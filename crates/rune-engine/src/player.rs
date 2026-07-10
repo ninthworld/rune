@@ -15,6 +15,9 @@ pub const STARTING_LIFE: i32 = 20;
 pub struct Player {
     /// Current life total. May be negative before state-based actions resolve.
     pub life: i32,
+    /// Whether this player has lost the game. Set by the state-based-actions
+    /// loop (e.g. on reaching 0 or less life); never unset.
+    pub has_lost: bool,
     /// The player's deck (private, ordered).
     pub library: Vec<CardId>,
     /// Cards in the player's hand (private).
