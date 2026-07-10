@@ -5,12 +5,14 @@
 //! - No I/O, no async, no globals, no time. Pure functions only.
 //! - Everything derivable is computed on demand (pull-based), never cached on objects.
 
+mod card;
 mod id;
 mod phase;
 mod player;
 mod state;
 mod zone;
 
+pub use card::{CardData, CardDatabase};
 pub use id::{CardId, PermanentId, PlayerId};
 pub use phase::Step;
 pub use player::{Player, STARTING_LIFE};

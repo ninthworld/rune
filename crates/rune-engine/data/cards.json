@@ -1,0 +1,45 @@
+[
+  {
+    "id": 1,
+    "name": "Thornback Boar",
+    "type_line": "Creature — Boar",
+    "mana_cost": "{2}{G}",
+    "oracle_text": "",
+    "power": 3,
+    "toughness": 2
+  },
+  {
+    "id": 2,
+    "name": "Riverbank Otter",
+    "type_line": "Creature — Otter",
+    "mana_cost": "{1}{U}",
+    "oracle_text": "",
+    "power": 1,
+    "toughness": 3
+  },
+  {
+    "id": 3,
+    "name": "Emberfang Jackal",
+    "type_line": "Creature — Jackal",
+    "mana_cost": "{1}{R}",
+    "oracle_text": "",
+    "power": 2,
+    "toughness": 1
+  },
+  {
+    "id": 4,
+    "name": "Stonehide Basilisk",
+    "type_line": "Creature — Basilisk",
+    "mana_cost": "{4}{G}",
+    "oracle_text": "",
+    "power": 4,
+    "toughness": 5
+  },
+  {
+    "id": 5,
+    "name": "Forest",
+    "type_line": "Basic Land — Forest",
+    "mana_cost": "",
+    "oracle_text": ""
+  }
+]
