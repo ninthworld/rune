@@ -1,17 +1,23 @@
 version: 2
 updates:
+  # open-pull-requests-limit: 0 disables routine version-update PRs for the
+  # ecosystem. Dependabot *security* updates are a separate repo feature and are
+  # unaffected, so security patches still open PRs.
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     labels: [dependencies, area:engine]
   - package-ecosystem: npm
     directory: /clients/web
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     labels: [dependencies, area:client]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     labels: [dependencies]
