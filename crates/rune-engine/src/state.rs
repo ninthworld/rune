@@ -31,6 +31,16 @@ pub struct GameState {
     pub turn: u32,
     /// The player whose turn it is, as an index into [`Self::players`].
     pub active_player: PlayerId,
+    /// The player who currently holds priority, as an index into
+    /// [`Self::players`]. Priority rotates through the seats as players pass;
+    /// when all have passed in succession the step ends and priority returns to
+    /// the active player. Out of range (as in [`Default`]) means no one holds
+    /// priority, so no actions are legal.
+    pub priority: PlayerId,
+    /// How many players have passed priority in unbroken succession. When this
+    /// reaches the number of seats, the step ends (see [`crate::apply_action`]);
+    /// any action that is not a pass resets it to `0`.
+    pub consecutive_passes: usize,
     /// The current phase/step of the turn.
     pub step: Step,
     /// Every player, in seating (turn) order.
@@ -56,12 +66,21 @@ impl GameState {
         Self {
             turn: 1,
             active_player: PlayerId(0),
+            priority: PlayerId(0),
+            consecutive_passes: 0,
             step: Step::Untap,
             players: vec![Player::new(), Player::new()],
             battlefield: Vec::new(),
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
         }
+    }
+
+    /// The player who currently holds priority, or `None` if [`Self::priority`]
+    /// is out of range (as in the empty [`Default`] state).
+    #[must_use]
+    pub fn priority_holder(&self) -> Option<&Player> {
+        self.players.get(self.priority.0)
     }
 
     /// Borrow the active player, or `None` if [`Self::active_player`] is out of
