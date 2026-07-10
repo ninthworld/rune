@@ -5,17 +5,24 @@
 //! - No I/O, no async, no globals, no time. Pure functions only.
 //! - Everything derivable is computed on demand (pull-based), never cached on objects.
 
+mod ability;
 mod card;
 mod id;
+mod mana;
 mod phase;
 mod player;
+mod scripted;
+mod stack;
 mod state;
 mod zone;
 
-pub use card::{CardData, CardDatabase};
+pub use ability::{is_mana_ability, Ability, Cost, Effect, TriggerCondition};
+pub use card::{abilities_of, CardData, CardDatabase};
 pub use id::{CardId, PermanentId, PlayerId};
+pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use phase::Step;
 pub use player::{Player, STARTING_LIFE};
+pub use stack::{StackId, StackObject, StackObjectKind};
 pub use state::{GameState, Permanent};
 pub use zone::Zone;
 
@@ -25,46 +32,115 @@ pub use zone::Zone;
 pub enum Action {
     /// Yield priority without taking any other action.
     PassPriority,
+    /// Play a land from hand (a special action; lands do not use the stack).
+    PlayLand {
+        /// The land card in the active player's hand to play.
+        card: CardId,
+    },
+    /// Activate an ability of a permanent the priority holder controls.
+    ActivateAbility {
+        /// The permanent whose ability is activated.
+        permanent: PermanentId,
+        /// Index into the permanent's abilities (see [`abilities_of`]).
+        index: usize,
+    },
+    /// Cast a spell from hand, paying its mana cost from the caster's pool.
+    CastSpell {
+        /// The card in the caster's hand to cast.
+        card: CardId,
+    },
 }
 
 /// A triggered ability that a state transition has caused to trigger.
 ///
 /// Triggers are collected by diffing the state before and after an action (see
 /// [`collect_triggers`]) — never via listeners or observers (crate `AGENTS.md`).
-/// No abilities trigger yet, so the diff always yields an empty set today; the
-/// type and the diff exist so the pipeline stage is real rather than a `TODO`.
+/// A collected trigger carries everything needed to put the ability on the stack.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trigger {
     /// The permanent whose ability triggered.
     pub source: PermanentId,
+    /// The player who controls the triggered ability (its source's controller).
+    pub controller: PlayerId,
+    /// The effects the ability produces when it resolves.
+    pub effects: Vec<Effect>,
 }
 
 /// Enumerate the actions legal for the player who currently holds priority.
 ///
-/// Pull-based and pure: computed fresh from `state`, never cached on it. Today
-/// the only action is [`Action::PassPriority`], offered to the priority holder.
-/// A state with no valid priority holder (as in [`GameState::default`]) offers
-/// nothing.
+/// Pull-based and pure: computed fresh from `state`, never cached on it. The
+/// priority holder may always pass; may play a land, cast a creature, or (for
+/// permanents they control) activate abilities when the relevant timing and cost
+/// conditions hold. A state with no valid priority holder offers nothing.
 #[must_use]
-pub fn valid_actions(state: &GameState) -> Vec<Action> {
-    if state.priority_holder().is_some() {
-        vec![Action::PassPriority]
-    } else {
-        Vec::new()
+pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
+    if state.priority_holder().is_none() {
+        return Vec::new();
     }
+    let priority = state.priority;
+    let mut actions = vec![Action::PassPriority];
+
+    // Sorcery-speed: the active player, in a main phase, with an empty stack.
+    let sorcery_speed = priority == state.active_player
+        && matches!(state.step, Step::PrecombatMain | Step::PostcombatMain)
+        && state.stack.is_empty();
+
+    if let Some(player) = state.players.get(priority.0) {
+        // Play a land: at sorcery speed, one per turn.
+        if sorcery_speed && !state.land_played {
+            for &card in &player.hand {
+                if is_land(db, card) {
+                    actions.push(Action::PlayLand { card });
+                }
+            }
+        }
+
+        // Cast a creature spell payable from the current pool (sorcery speed).
+        if sorcery_speed {
+            for &card in &player.hand {
+                if let Some(data) = db.card(card) {
+                    if is_creature(db, card)
+                        && player.mana_pool.can_pay(&parse_mana_cost(&data.mana_cost))
+                    {
+                        actions.push(Action::CastSpell { card });
+                    }
+                }
+            }
+        }
+    }
+
+    // Activate abilities of permanents the priority holder controls.
+    for perm in &state.battlefield {
+        if perm.controller != priority {
+            continue;
+        }
+        for (index, ability) in abilities_of(db, perm.card).iter().enumerate() {
+            if let Ability::Activated { cost, .. } = ability {
+                if cost_payable(cost, perm) {
+                    actions.push(Action::ActivateAbility {
+                        permanent: perm.id,
+                        index,
+                    });
+                }
+            }
+        }
+    }
+
+    actions
 }
 
 /// The single entry point of the engine: a pure state transition.
 ///
 /// Pipeline: validate `action` against [`valid_actions`] → clone → apply →
 /// replacement effects (scaffold) → state-based-actions loop → collect triggers
-/// → return. An action that is not currently legal is rejected as a no-op: the
-/// input is returned unchanged (the input is never mutated either way).
+/// and put them on the stack → return. An action that is not currently legal is
+/// rejected as a no-op: the input is returned unchanged (never mutated either
+/// way). `db` supplies the immutable oracle data the pipeline reads.
 #[must_use]
-pub fn apply_action(state: &GameState, action: &Action) -> GameState {
+pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> GameState {
     // 1. Validate against the actions actually on offer. An illegal action is a
     //    no-op — return the input unchanged rather than erroring.
-    if !valid_actions(state).contains(action) {
+    if !valid_actions(state, db).contains(action) {
         return state.clone();
     }
 
@@ -74,6 +150,11 @@ pub fn apply_action(state: &GameState, action: &Action) -> GameState {
     // 3. Apply the chosen action.
     match action {
         Action::PassPriority => apply_pass_priority(&mut next),
+        Action::PlayLand { card } => apply_play_land(&mut next, *card),
+        Action::ActivateAbility { permanent, index } => {
+            apply_activate_ability(&mut next, *permanent, *index, db);
+        }
+        Action::CastSpell { card } => apply_cast_spell(&mut next, *card, db),
     }
 
     // 4. Replacement effects. Scaffold: no replacement effects are modeled yet,
@@ -83,16 +164,26 @@ pub fn apply_action(state: &GameState, action: &Action) -> GameState {
     // 5. State-based actions, run to a fixed point.
     run_state_based_actions(&mut next);
 
-    // 6. Collect triggers by diffing before/after. None fire yet; the result is
-    //    discarded until there is a stack to put them on.
-    let _triggers = collect_triggers(state, &next);
+    // 6. Collect triggers by diffing before/after and put each on the stack.
+    for trigger in collect_triggers(state, &next, db) {
+        let id = next.mint_id();
+        next.stack.push(StackObject {
+            id: StackId(id),
+            controller: trigger.controller,
+            kind: StackObjectKind::Ability {
+                source: trigger.source,
+                effects: trigger.effects,
+            },
+        });
+    }
 
     next
 }
 
 /// Resolve a pass of priority. Priority moves to the next seat; once every
-/// player has passed in unbroken succession the step ends — the turn structure
-/// advances ([`GameState::advance`]) and the new active player receives priority.
+/// player has passed in unbroken succession, the top of the stack resolves (if
+/// any), otherwise the turn structure advances ([`GameState::advance`]); either
+/// way the new active player receives priority.
 fn apply_pass_priority(state: &mut GameState) {
     let seats = state.players.len();
     if seats == 0 {
@@ -100,12 +191,176 @@ fn apply_pass_priority(state: &mut GameState) {
     }
     state.consecutive_passes += 1;
     if state.consecutive_passes >= seats {
-        *state = state.advance();
+        if let Some(top) = state.stack.pop() {
+            resolve_stack_object(state, top);
+        } else {
+            *state = state.advance();
+        }
         state.consecutive_passes = 0;
         state.priority = state.active_player;
     } else {
         state.priority = PlayerId((state.priority.0 + 1) % seats);
     }
+}
+
+/// Play a land from the active player's hand onto the battlefield. Not via the
+/// stack (CR 116.2a); a fresh [`PermanentId`] is minted on entry.
+fn apply_play_land(state: &mut GameState, card: CardId) {
+    let controller = state.priority;
+    {
+        let Some(player) = state.players.get_mut(controller.0) else {
+            return;
+        };
+        let Some(pos) = player.hand.iter().position(|&c| c == card) else {
+            return;
+        };
+        player.hand.remove(pos);
+    }
+    let id = state.mint_id();
+    state.battlefield.push(Permanent {
+        id: PermanentId(id),
+        card,
+        controller,
+        tapped: false,
+    });
+    state.land_played = true;
+}
+
+/// Activate ability `index` of `permanent`, paying its costs. A mana ability
+/// resolves immediately without using the stack or changing priority (CR 605.3);
+/// any other ability goes on the stack and the caster retains priority.
+fn apply_activate_ability(
+    state: &mut GameState,
+    permanent: PermanentId,
+    index: usize,
+    db: &CardDatabase,
+) {
+    let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
+        return;
+    };
+    let controller = perm.controller;
+    let card = perm.card;
+    let Some(ability) = abilities_of(db, card).get(index).cloned() else {
+        return;
+    };
+    let Ability::Activated { cost, effects } = &ability else {
+        return;
+    };
+
+    // Pay the costs.
+    for c in cost {
+        match c {
+            Cost::Tap => {
+                if let Some(p) = state.battlefield.iter_mut().find(|p| p.id == permanent) {
+                    p.tapped = true;
+                }
+            }
+        }
+    }
+
+    if is_mana_ability(&ability) {
+        // Mana ability: resolve now, no stack object, priority unchanged.
+        for effect in effects {
+            apply_effect(state, effect, controller);
+        }
+    } else {
+        let id = state.mint_id();
+        state.stack.push(StackObject {
+            id: StackId(id),
+            controller,
+            kind: StackObjectKind::Ability {
+                source: permanent,
+                effects: effects.clone(),
+            },
+        });
+        state.consecutive_passes = 0;
+    }
+}
+
+/// Cast a creature spell: pay its mana cost from the caster's pool, move the card
+/// from hand onto the stack, and reset the pass count (the caster keeps priority).
+fn apply_cast_spell(state: &mut GameState, card: CardId, db: &CardDatabase) {
+    let controller = state.priority;
+    let Some(data) = db.card(card) else {
+        return;
+    };
+    let cost = parse_mana_cost(&data.mana_cost);
+    {
+        let Some(player) = state.players.get_mut(controller.0) else {
+            return;
+        };
+        let Some(new_pool) = player.mana_pool.pay(&cost) else {
+            return;
+        };
+        let Some(pos) = player.hand.iter().position(|&c| c == card) else {
+            return;
+        };
+        player.hand.remove(pos);
+        player.mana_pool = new_pool;
+    }
+    let id = state.mint_id();
+    state.stack.push(StackObject {
+        id: StackId(id),
+        controller,
+        kind: StackObjectKind::Spell { card },
+    });
+    state.consecutive_passes = 0;
+}
+
+/// Resolve one object popped from the top of the stack.
+fn resolve_stack_object(state: &mut GameState, object: StackObject) {
+    match object.kind {
+        StackObjectKind::Spell { card } => {
+            // A permanent spell enters the battlefield with a fresh id.
+            let id = state.mint_id();
+            state.battlefield.push(Permanent {
+                id: PermanentId(id),
+                card,
+                controller: object.controller,
+                tapped: false,
+            });
+        }
+        StackObjectKind::Ability { effects, .. } => {
+            for effect in &effects {
+                apply_effect(state, effect, object.controller);
+            }
+        }
+    }
+}
+
+/// Apply a single [`Effect`] to `state` on behalf of `controller`.
+fn apply_effect(state: &mut GameState, effect: &Effect, controller: PlayerId) {
+    let Some(player) = state.players.get_mut(controller.0) else {
+        return;
+    };
+    match effect {
+        Effect::AddMana { color, amount } => player.mana_pool.add(*color, *amount),
+        Effect::DrawCard { count } => {
+            for _ in 0..*count {
+                if let Some(card) = player.library.pop() {
+                    player.hand.push(card);
+                }
+            }
+        }
+    }
+}
+
+/// Whether every cost in `cost` is payable given the source `permanent`'s state.
+fn cost_payable(cost: &[Cost], permanent: &Permanent) -> bool {
+    cost.iter().all(|c| match c {
+        Cost::Tap => !permanent.tapped,
+    })
+}
+
+/// Whether `card`'s type line marks it as a land.
+fn is_land(db: &CardDatabase, card: CardId) -> bool {
+    db.card(card).is_some_and(|c| c.type_line.contains("Land"))
+}
+
+/// Whether `card`'s type line marks it as a creature.
+fn is_creature(db: &CardDatabase, card: CardId) -> bool {
+    db.card(card)
+        .is_some_and(|c| c.type_line.contains("Creature"))
 }
 
 /// Apply replacement effects. Scaffold: no replacement effects exist yet, so
@@ -131,12 +386,41 @@ fn run_state_based_actions(state: &mut GameState) {
 }
 
 /// Collect the triggers that should now exist by diffing `before` against
-/// `after`. No abilities trigger yet, so this always returns an empty set; the
-/// diff is a pure function of the two states, with no listeners (crate
-/// `AGENTS.md`).
+/// `after`. For every permanent, each triggered ability whose condition
+/// ([`condition_met`]) holds across the diff yields one [`Trigger`]. Pure, with
+/// no listeners (crate `AGENTS.md`).
 #[must_use]
-pub fn collect_triggers(_before: &GameState, _after: &GameState) -> Vec<Trigger> {
-    Vec::new()
+pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase) -> Vec<Trigger> {
+    let mut triggers = Vec::new();
+    for perm in &after.battlefield {
+        for ability in abilities_of(db, perm.card) {
+            if let Ability::Triggered { event, effects } = ability {
+                if condition_met(&event, perm.id, before, after) {
+                    triggers.push(Trigger {
+                        source: perm.id,
+                        controller: perm.controller,
+                        effects,
+                    });
+                }
+            }
+        }
+    }
+    triggers
+}
+
+/// Evaluate a trigger condition as a pure predicate over the before/after states.
+fn condition_met(
+    condition: &TriggerCondition,
+    source: PermanentId,
+    before: &GameState,
+    after: &GameState,
+) -> bool {
+    match condition {
+        TriggerCondition::SelfEntersBattlefield => {
+            after.battlefield.iter().any(|p| p.id == source)
+                && !before.battlefield.iter().any(|p| p.id == source)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -145,26 +429,49 @@ mod tests {
 
     use super::*;
 
+    /// The bundled card database, for tests that need oracle data.
+    fn db() -> CardDatabase {
+        CardDatabase::bundled().unwrap()
+    }
+
+    /// A two-player game in the precombat main phase with player 0 holding a
+    /// Forest and Verdant Scout, and one card to draw in the library.
+    fn slice_state() -> GameState {
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        state.players[0].hand = vec![CardId(5), CardId(6)];
+        state.players[0].library = vec![CardId(1)];
+        state
+    }
+
     #[test]
     fn apply_action_does_not_mutate_input() {
         // PassPriority now changes the state, so the input and output differ —
         // what must hold is that the *input* is untouched (purity).
         let before = GameState::new_two_player();
         let snapshot = before.clone();
-        let _after = apply_action(&before, &Action::PassPriority);
+        let _after = apply_action(&before, &Action::PassPriority, &db());
+        assert_eq!(before, snapshot);
+    }
+
+    #[test]
+    fn new_actions_do_not_mutate_input() {
+        let before = slice_state();
+        let snapshot = before.clone();
+        let _ = apply_action(&before, &Action::PlayLand { card: CardId(5) }, &db());
         assert_eq!(before, snapshot);
     }
 
     #[test]
     fn valid_actions_offers_pass_priority_to_the_priority_holder() {
         let state = GameState::new_two_player();
-        assert_eq!(valid_actions(&state), vec![Action::PassPriority]);
+        assert_eq!(valid_actions(&state, &db()), vec![Action::PassPriority]);
     }
 
     #[test]
     fn valid_actions_on_seatless_state_is_empty() {
         // Default has no players, so no one holds priority and nothing is legal.
-        assert!(valid_actions(&GameState::default()).is_empty());
+        assert!(valid_actions(&GameState::default(), &db()).is_empty());
     }
 
     #[test]
@@ -172,7 +479,7 @@ mod tests {
         // On a seatless state PassPriority is not on offer; applying it must
         // leave the state unchanged.
         let state = GameState::default();
-        let after = apply_action(&state, &Action::PassPriority);
+        let after = apply_action(&state, &Action::PassPriority, &db());
         assert_eq!(after, state);
     }
 
@@ -180,7 +487,7 @@ mod tests {
     fn passing_priority_rotates_before_the_step_ends() {
         // First pass hands priority to the other seat without ending the step.
         let state = GameState::new_two_player();
-        let after = apply_action(&state, &Action::PassPriority);
+        let after = apply_action(&state, &Action::PassPriority, &db());
         assert_eq!(after.priority, PlayerId(1));
         assert_eq!(after.consecutive_passes, 1);
         assert_eq!(after.step, Step::Untap);
@@ -191,9 +498,10 @@ mod tests {
     fn a_full_round_of_passes_advances_the_step() {
         // Both players pass in succession: the step advances and priority
         // returns to the active player with the pass count reset.
+        let db = db();
         let state = GameState::new_two_player();
-        let state = apply_action(&state, &Action::PassPriority);
-        let state = apply_action(&state, &Action::PassPriority);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
         assert_eq!(state.step, Step::Upkeep);
         assert_eq!(state.turn, 1);
         assert_eq!(state.active_player, PlayerId(0));
@@ -205,7 +513,7 @@ mod tests {
     fn state_based_actions_mark_a_player_at_zero_life_as_lost() {
         let mut state = GameState::new_two_player();
         state.players[1].life = 0;
-        let after = apply_action(&state, &Action::PassPriority);
+        let after = apply_action(&state, &Action::PassPriority, &db());
         assert!(after.players[1].has_lost);
         assert!(!after.players[0].has_lost);
     }
@@ -214,10 +522,11 @@ mod tests {
     fn state_based_actions_reach_a_fixed_point() {
         // Running SBAs on an already-settled state changes nothing (a second
         // application is idempotent), i.e. the loop terminates at a fixed point.
+        let db = db();
         let mut state = GameState::new_two_player();
         state.players[0].life = -3;
-        let once = apply_action(&state, &Action::PassPriority);
-        let twice = apply_action(&once, &Action::PassPriority);
+        let once = apply_action(&state, &Action::PassPriority, &db);
+        let twice = apply_action(&once, &Action::PassPriority, &db);
         assert!(once.players[0].has_lost);
         assert_eq!(once.players[0].has_lost, twice.players[0].has_lost);
     }
@@ -226,7 +535,139 @@ mod tests {
     fn trigger_diff_yields_nothing_for_a_plain_transition() {
         let before = GameState::new_two_player();
         let after = before.advance();
-        assert!(collect_triggers(&before, &after).is_empty());
+        assert!(collect_triggers(&before, &after, &db()).is_empty());
+    }
+
+    #[test]
+    fn forest_mana_ability_adds_green_without_using_the_stack() {
+        let db = db();
+        let mut state = slice_state();
+        let id = state.mint_id();
+        state.battlefield.push(Permanent {
+            id: PermanentId(id),
+            card: CardId(5),
+            controller: PlayerId(0),
+            tapped: false,
+        });
+        let after = apply_action(
+            &state,
+            &Action::ActivateAbility {
+                permanent: PermanentId(id),
+                index: 0,
+            },
+            &db,
+        );
+        assert_eq!(after.players[0].mana_pool.green, 1);
+        assert!(after.battlefield[0].tapped);
+        assert!(after.stack.is_empty());
+    }
+
+    #[test]
+    fn mana_ability_does_not_pass_priority() {
+        let db = db();
+        let mut state = slice_state();
+        let id = state.mint_id();
+        state.battlefield.push(Permanent {
+            id: PermanentId(id),
+            card: CardId(5),
+            controller: PlayerId(0),
+            tapped: false,
+        });
+        let after = apply_action(
+            &state,
+            &Action::ActivateAbility {
+                permanent: PermanentId(id),
+                index: 0,
+            },
+            &db,
+        );
+        assert_eq!(after.priority, PlayerId(0));
+        assert_eq!(after.consecutive_passes, 0);
+    }
+
+    #[test]
+    fn casting_a_creature_moves_it_to_the_stack_and_pays_mana() {
+        let db = db();
+        let mut state = slice_state();
+        state.players[0].mana_pool.add(Color::Green, 1);
+        let after = apply_action(&state, &Action::CastSpell { card: CardId(6) }, &db);
+        assert_eq!(after.stack.len(), 1);
+        assert_eq!(after.players[0].mana_pool.green, 0);
+        assert!(!after.players[0].hand.contains(&CardId(6)));
+    }
+
+    #[test]
+    fn resolving_a_creature_spell_puts_it_on_the_battlefield() {
+        let db = db();
+        let mut state = slice_state();
+        state.players[0].mana_pool.add(Color::Green, 1);
+        let state = apply_action(&state, &Action::CastSpell { card: CardId(6) }, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(state.battlefield.iter().any(|p| p.card == CardId(6)));
+    }
+
+    #[test]
+    fn collect_triggers_detects_etb_by_permanent_id_diff() {
+        let db = db();
+        let before = GameState::new_two_player();
+        let mut after = before.clone();
+        after.battlefield.push(Permanent {
+            id: PermanentId(1),
+            card: CardId(6),
+            controller: PlayerId(0),
+            tapped: false,
+        });
+        let triggers = collect_triggers(&before, &after, &db);
+        assert_eq!(triggers.len(), 1);
+        assert_eq!(triggers[0].source, PermanentId(1));
+        assert_eq!(triggers[0].effects, vec![Effect::DrawCard { count: 1 }]);
+    }
+
+    #[test]
+    fn issue_card_effects_etb_draw_end_to_end() {
+        // Full vertical slice: play Forest, tap for {G}, cast Verdant Scout,
+        // resolve it (ETB triggers), then resolve the trigger (controller draws).
+        let db = db();
+        let state = slice_state();
+
+        // Play Forest.
+        let state = apply_action(&state, &Action::PlayLand { card: CardId(5) }, &db);
+        assert_eq!(state.battlefield.len(), 1);
+        assert!(state.land_played);
+        let forest = state.battlefield[0].id;
+
+        // Tap Forest for {G} (mana ability resolves immediately).
+        let state = apply_action(
+            &state,
+            &Action::ActivateAbility {
+                permanent: forest,
+                index: 0,
+            },
+            &db,
+        );
+        assert!(state.battlefield[0].tapped);
+        assert_eq!(state.players[0].mana_pool.green, 1);
+        assert!(state.stack.is_empty());
+        assert_eq!(state.priority, PlayerId(0));
+
+        // Cast Verdant Scout.
+        let state = apply_action(&state, &Action::CastSpell { card: CardId(6) }, &db);
+        assert_eq!(state.stack.len(), 1);
+        assert_eq!(state.players[0].mana_pool.green, 0);
+
+        // Pass twice: the creature resolves and its ETB trigger goes on the stack.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(state.battlefield.iter().any(|p| p.card == CardId(6)));
+        assert_eq!(state.stack.len(), 1);
+
+        // Pass twice more: the ETB ability resolves and player 0 draws.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(state.stack.is_empty());
+        assert!(state.players[0].hand.contains(&CardId(1)));
+        assert!(state.players[0].library.is_empty());
     }
 
     #[test]
@@ -237,6 +678,8 @@ mod tests {
         assert_eq!(state.step, Step::Untap);
         assert_eq!(state.players.len(), 2);
         assert!(state.battlefield.is_empty());
+        assert!(state.stack.is_empty());
+        assert!(!state.land_played);
 
         for player in &state.players {
             assert_eq!(player.life, STARTING_LIFE);

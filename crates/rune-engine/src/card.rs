@@ -9,7 +9,9 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
+use crate::ability::Ability;
 use crate::id::CardId;
+use crate::scripted::scripted_abilities;
 
 /// The bundled card snapshot, embedded at compile time.
 ///
@@ -42,6 +44,11 @@ pub struct CardData {
     /// Printed toughness, for creatures; `None` for non-creatures.
     #[serde(default)]
     pub toughness: Option<i32>,
+    /// The card's abilities as declarative data. Empty for vanilla cards. Cards
+    /// whose behavior the data IR cannot express instead register abilities in
+    /// [`crate::scripted`]; use [`abilities_of`] to read both sources together.
+    #[serde(default)]
+    pub abilities: Vec<Ability>,
 }
 
 /// One entry in the JSON snapshot: a [`CardId`] paired with its [`CardData`].
@@ -110,17 +117,34 @@ impl CardDatabase {
     }
 }
 
+/// All abilities of a card: its data-driven [`CardData::abilities`] plus any
+/// code-defined ones from [`crate::scripted`].
+///
+/// Returns an empty list if the id is unknown and has no scripted abilities. This
+/// is the single accessor the pipeline uses so both authoring tiers are always
+/// considered together.
+#[must_use]
+pub fn abilities_of(db: &CardDatabase, card: CardId) -> Vec<Ability> {
+    let mut abilities = db
+        .card(card)
+        .map(|c| c.abilities.clone())
+        .unwrap_or_default();
+    abilities.extend(scripted_abilities(card));
+    abilities
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+    use crate::ability::{Effect, TriggerCondition};
 
     #[test]
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 5);
+        assert_eq!(db.len(), 6);
     }
 
     #[test]
@@ -163,5 +187,45 @@ mod tests {
         let db = CardDatabase::from_json(json).unwrap();
         assert_eq!(db.len(), 1);
         assert_eq!(db.card(CardId(42)).unwrap().name, "Test Wisp");
+    }
+
+    #[test]
+    fn vanilla_cards_deserialize_with_no_abilities() {
+        let db = CardDatabase::bundled().unwrap();
+        assert!(db.card(CardId(1)).unwrap().abilities.is_empty());
+    }
+
+    #[test]
+    fn forest_has_one_activated_mana_ability() {
+        let db = CardDatabase::bundled().unwrap();
+        let forest = db.card(CardId(5)).unwrap();
+        assert_eq!(forest.abilities.len(), 1);
+        assert!(crate::ability::is_mana_ability(&forest.abilities[0]));
+    }
+
+    #[test]
+    fn verdant_scout_has_an_etb_draw_trigger() {
+        let db = CardDatabase::bundled().unwrap();
+        let scout = db.card(CardId(6)).unwrap();
+        assert_eq!(
+            scout.abilities,
+            vec![Ability::Triggered {
+                event: TriggerCondition::SelfEntersBattlefield,
+                effects: vec![Effect::DrawCard { count: 1 }],
+            }]
+        );
+    }
+
+    #[test]
+    fn abilities_of_unions_data_and_scripted_sources() {
+        let db = CardDatabase::bundled().unwrap();
+        // Forest's ability comes from data; no scripted card is registered, so
+        // the accessor returns exactly the data-driven ability.
+        assert_eq!(
+            abilities_of(&db, CardId(5)),
+            db.card(CardId(5)).unwrap().abilities
+        );
+        // An unknown id with no scripted abilities yields nothing.
+        assert!(abilities_of(&db, CardId(9999)).is_empty());
     }
 }

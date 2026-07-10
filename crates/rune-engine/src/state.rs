@@ -3,6 +3,7 @@
 use crate::id::{CardId, PermanentId, PlayerId};
 use crate::phase::Step;
 use crate::player::Player;
+use crate::stack::StackObject;
 
 /// A permanent on the shared battlefield.
 ///
@@ -47,6 +48,16 @@ pub struct GameState {
     pub players: Vec<Player>,
     /// The shared battlefield, owned by the game rather than any one player.
     pub battlefield: Vec<Permanent>,
+    /// The stack of spells and abilities, bottom first (the last element is the
+    /// top and resolves first). Mana abilities never appear here.
+    pub stack: Vec<StackObject>,
+    /// Monotonic source of fresh object ids ([`PermanentId`], stack ids). Only
+    /// ever increases, so an id is never reused even as objects change zones —
+    /// zone-change identity is the mechanism (`crates/rune-engine/AGENTS.md`).
+    pub next_object_id: u64,
+    /// Whether the active player has played a land this turn. Reset when the next
+    /// turn begins. Enforces the one-land-per-turn rule.
+    pub land_played: bool,
     /// Extra turns waiting to be taken, as a stack: the entry pushed last is
     /// taken first (MTG rule 720.1 — the most recently created extra turn
     /// happens first). Each entry is the player who takes that turn.
@@ -71,9 +82,22 @@ impl GameState {
             step: Step::Untap,
             players: vec![Player::new(), Player::new()],
             battlefield: Vec::new(),
+            stack: Vec::new(),
+            next_object_id: 1,
+            land_played: false,
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
         }
+    }
+
+    /// Mint a fresh, never-reused object id from the monotonic counter.
+    ///
+    /// Used when a permanent enters the battlefield or an object goes on the
+    /// stack, so each gets a distinct identity.
+    pub fn mint_id(&mut self) -> u64 {
+        let id = self.next_object_id;
+        self.next_object_id += 1;
+        id
     }
 
     /// The player who currently holds priority, or `None` if [`Self::priority`]
@@ -127,6 +151,7 @@ impl GameState {
             None => PlayerId((self.active_player.0 + 1) % self.players.len()),
         };
         self.step = Step::Untap;
+        self.land_played = false;
     }
 
     /// Return a copy with an extra turn granted to `player`. Because extra turns
