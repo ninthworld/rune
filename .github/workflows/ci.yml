@@ -37,10 +37,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      # package-lock.json is now committed; backlog #2 can switch this to
-      # `npm ci` + setup-node cache.
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
       - name: Install
-        run: npm install
+        run: npm ci
       - name: Lint
         run: npm run lint
       - name: Typecheck
