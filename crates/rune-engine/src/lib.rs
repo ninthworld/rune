@@ -103,6 +103,132 @@ mod tests {
     }
 
     #[test]
+    fn advance_walks_one_full_turn_without_rotating() {
+        // From Untap, eleven advances reach Cleanup, all within turn 1 for the
+        // same active player — no rotation happens mid-turn.
+        let mut state = GameState::new_two_player();
+        let sequence = [
+            Step::Upkeep,
+            Step::Draw,
+            Step::PrecombatMain,
+            Step::BeginCombat,
+            Step::DeclareAttackers,
+            Step::DeclareBlockers,
+            Step::CombatDamage,
+            Step::EndCombat,
+            Step::PostcombatMain,
+            Step::End,
+            Step::Cleanup,
+        ];
+        for expected in sequence {
+            state = state.advance();
+            assert_eq!(state.step, expected);
+            assert_eq!(state.turn, 1);
+            assert_eq!(state.active_player, PlayerId(0));
+        }
+    }
+
+    #[test]
+    fn advance_past_cleanup_starts_next_players_turn() {
+        let mut state = GameState::new_two_player();
+        state.step = Step::Cleanup;
+
+        let next = state.advance();
+        assert_eq!(next.turn, 2);
+        assert_eq!(next.active_player, PlayerId(1));
+        assert_eq!(next.step, Step::Untap);
+    }
+
+    #[test]
+    fn two_turns_cycle_back_to_the_first_player() {
+        // Player 0 (turn 1) -> player 1 (turn 2) -> player 0 (turn 3).
+        let mut state = GameState::new_two_player();
+        state.step = Step::Cleanup;
+        let state = state.advance();
+        assert_eq!(state.active_player, PlayerId(1));
+
+        let mut state = state;
+        state.step = Step::Cleanup;
+        let state = state.advance();
+        assert_eq!(state.turn, 3);
+        assert_eq!(state.active_player, PlayerId(0));
+    }
+
+    #[test]
+    fn extra_turn_is_taken_before_normal_rotation() {
+        // Active player 0 has an extra turn queued; ending the turn hands the
+        // turn back to player 0 rather than rotating to player 1.
+        let mut state = GameState::new_two_player().with_extra_turn(PlayerId(0));
+        state.step = Step::Cleanup;
+
+        let next = state.advance();
+        assert_eq!(next.turn, 2);
+        assert_eq!(next.active_player, PlayerId(0));
+        assert_eq!(next.step, Step::Untap);
+        assert!(next.extra_turns.is_empty());
+    }
+
+    #[test]
+    fn extra_turns_are_taken_last_in_first_out() {
+        // Grant player 1's extra turn, then player 0's: player 0 goes first.
+        let mut state = GameState::new_two_player()
+            .with_extra_turn(PlayerId(1))
+            .with_extra_turn(PlayerId(0));
+
+        state.step = Step::Cleanup;
+        let state = state.advance();
+        assert_eq!(state.active_player, PlayerId(0));
+
+        let mut state = state;
+        state.step = Step::Cleanup;
+        let state = state.advance();
+        assert_eq!(state.active_player, PlayerId(1));
+
+        // With the queue drained, rotation resumes normally.
+        let mut state = state;
+        state.step = Step::Cleanup;
+        let state = state.advance();
+        assert_eq!(state.active_player, PlayerId(0));
+    }
+
+    #[test]
+    fn extra_step_is_visited_before_the_natural_sequence() {
+        // An additional precombat main phase inserted after the postcombat main.
+        let mut state = GameState::new_two_player();
+        state.step = Step::PostcombatMain;
+        let state = state.with_extra_step(Step::PrecombatMain);
+
+        let next = state.advance();
+        assert_eq!(next.step, Step::PrecombatMain);
+        assert_eq!(next.turn, 1);
+        assert_eq!(next.active_player, PlayerId(0));
+        assert!(next.extra_steps.is_empty());
+
+        // Once the extra step is consumed, the sequence resumes from it.
+        assert_eq!(next.advance().step, Step::BeginCombat);
+    }
+
+    #[test]
+    fn advance_does_not_mutate_input() {
+        let before = GameState::new_two_player();
+        let _ = before.advance();
+        assert_eq!(before.step, Step::Untap);
+        assert_eq!(before.turn, 1);
+    }
+
+    #[test]
+    fn advance_on_seatless_state_does_not_panic() {
+        // Default state has no players; ending its turn must not divide by zero.
+        let state = GameState {
+            step: Step::Cleanup,
+            ..GameState::default()
+        };
+        let next = state.advance();
+        assert_eq!(next.turn, 0);
+        assert_eq!(next.step, Step::Cleanup);
+    }
+
+    #[test]
     fn player_zone_accessor_matches_fields() {
         let mut player = Player::new();
         player.hand.push(CardId(7));
