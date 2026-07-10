@@ -1,4 +1,4 @@
-.PHONY: check engine-test engine-lint engine-fmt client-check client-install setup
+.PHONY: check engine-test engine-lint engine-fmt client-check client-lint client-install setup
 
 check: engine-lint engine-test client-check ## Everything CI runs
 
@@ -15,8 +15,11 @@ engine-test:
 client-install:
 	cd clients/web && npm install
 
+client-lint: client-install
+	cd clients/web && npm run lint
+
 client-check: client-install
-	cd clients/web && npm run typecheck && npm run build
+	cd clients/web && npm run lint && npm run typecheck && npm run build
 
 setup:
 	scripts/bootstrap.sh
