@@ -6,8 +6,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-# serde + serde_json belong here (first backlog item) — this crate is the one place
-# wire-format dependencies are expected.
+# This crate is the one place wire-format dependencies are expected: it defines
+# the JSON contract every client and the server serialize to and from.
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
 
 [lints]
 workspace = true

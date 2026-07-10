@@ -8,18 +8,23 @@ and this document in the same PR.**
 ## Server → client: GameView
 
 Personalized per player (hidden information is redacted server-side; the client
-never receives what its player may not know).
+never receives what its player may not know). The concrete types live in the
+`rune-protocol` crate; the wire format is their serde JSON.
 
-| Field | Notes |
-|---|---|
-| `my_hand` | Full card objects for the receiving player only |
-| `opponents[]` | `player_id`, `hand_size`, `life`, zone counts, statuses |
-| `battlefield[]` | Permanents with controller, owner, computed characteristics |
-| `stack[]` | Spells and abilities; ability entries carry source + trigger text |
-| `graveyards`, `exile` | Public ordered lists per player |
-| `phase`, `priority_player` | Drives overview/focus mode client-side |
-| `valid_actions[]` | See below — the only source of interactivity |
-| `action_deadline` | Seconds remaining for the pending decision |
+| Field | Type | Notes |
+|---|---|---|
+| `my_hand` | `CardView[]` | Full card objects for the receiving player only |
+| `opponents` | `OpponentView[]` | `player_id`, `hand_size`, `life`, `library_size`, `graveyard_size`, `statuses` |
+| `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `counters` |
+| `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |
+| `graveyards`, `exile` | `ZonePile[]` | Public ordered lists per player |
+| `phase` | `Phase` | Current turn step (snake_case enum); drives overview/focus mode |
+| `priority_player` | `PlayerId?` | Who holds priority now, if anyone |
+| `valid_actions` | `ValidAction[]` | See below — the only source of interactivity |
+| `action_deadline` | `number?` | Seconds remaining for the pending decision |
+
+Empty collections and absent optionals are omitted from the JSON; clients must
+treat a missing field as its empty/`null` default.
 
 ### valid_actions[]
 

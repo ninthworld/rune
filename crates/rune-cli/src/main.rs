@@ -5,8 +5,12 @@
 fn main() {
     let sample = rune_protocol::ValidAction {
         id: "a1".into(),
+        kind: "pass_priority".into(),
         label: "Pass".into(),
         subject: vec![],
     };
-    println!("rune-cli scaffold — sample action: [{}] {}", sample.id, sample.label);
+    println!(
+        "rune-cli scaffold — sample action: [{}] {}",
+        sample.id, sample.label
+    );
 }
