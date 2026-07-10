@@ -19,6 +19,7 @@ never receives what its player may not know). The concrete types live in the
 | `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |
 | `graveyards`, `exile` | `ZonePile[]` | Public ordered lists per player |
 | `phase` | `Phase` | Current turn step (snake_case enum); drives overview/focus mode |
+| `mana_pool` | `string[]` | The receiving player's unspent mana as pip strings (e.g. `["{G}"]`); server-computed, display-only. Omitted when empty |
 | `priority_player` | `PlayerId?` | Who holds priority now, if anyone |
 | `valid_actions` | `ValidAction[]` | See below — the only source of interactivity |
 | `action_deadline` | `number?` | Seconds remaining for the pending decision |
@@ -36,9 +37,14 @@ treat a missing field as its empty/`null` default.
 - `subject` lists the entity ids this action belongs to. Clients render
   entity-subject actions on the entity; subject-less actions (pass, end turn)
   go in the action bar (ADR 0004).
+- `type` is a free-form string. Kinds emitted today: `pass_priority`
+  (subject-less); `play_land` and `cast_spell` (subject = the hand card's entity
+  id); `activate_ability` (subject = the source permanent's entity id). Clients
+  key off `type`/`subject`/`label` and tolerate unknown kinds.
 - Multi-step actions (targets, modes, X) will extend this with a `requirements`
   list consumed as a client-side prompt queue; answers are submitted atomically.
-  Spec to be finalized alongside the first targeted spell (see backlog).
+  Spec to be finalized alongside the first targeted spell (see backlog). The
+  effect IR that backs these actions is decided in ADR 0007.
 
 ## Client → server: ChooseAction
 
