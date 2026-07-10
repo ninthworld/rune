@@ -21,9 +21,14 @@ and docs/design/ui-design-notes.md before changing anything.
 
 ## Commands
 - `npm install` (in this directory)
-- `npm run typecheck` — strict TS, the lint gate until ESLint lands
+- `npm run lint` — ESLint (flat config) + Prettier `--check`; CI runs this
+- `npm run lint:fix` — auto-fix ESLint + write Prettier formatting
+- `npm run typecheck` — strict TS
 - `npm run build` — typecheck + production build (CI runs this)
 - `npm run dev` — Vite dev server
+
+Formatting is owned by Prettier (`.prettierrc.json`); don't hand-format. See
+`docs/coding-standards.md` for the project-wide standard.
 
 ## References
 - prototypes/ui-battlefield-v3.html — working reference for card factory, bands,

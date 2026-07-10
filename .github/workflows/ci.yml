@@ -37,10 +37,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      # TODO(#backlog): switch to `npm ci` + setup-node cache once package-lock.json
-      # is committed by the first client PR.
+      # package-lock.json is now committed; backlog #2 can switch this to
+      # `npm ci` + setup-node cache.
       - name: Install
         run: npm install
+      - name: Lint
+        run: npm run lint
       - name: Typecheck
         run: npm run typecheck
       - name: Build
