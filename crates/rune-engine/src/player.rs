@@ -1,6 +1,7 @@
 //! Per-player state and its private zones.
 
 use crate::id::CardId;
+use crate::mana::ManaPool;
 use crate::zone::Zone;
 
 /// Life total every player starts a game with.
@@ -26,6 +27,9 @@ pub struct Player {
     pub graveyard: Vec<CardId>,
     /// Cards this player owns in exile.
     pub exile: Vec<CardId>,
+    /// Unspent mana in the player's pool. Emptied between steps (not yet modeled
+    /// for the vertical slice, which spends mana within one step).
+    pub mana_pool: ManaPool,
 }
 
 impl Player {
