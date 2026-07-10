@@ -1,0 +1,49 @@
+# cargo-deny configuration for RUNE.
+# See docs/decisions/0005-license.md — the project is MIT (inbound=outbound),
+# so vendored/third-party code must be MIT-compatible. Copyleft licenses
+# (GPL/LGPL/AGPL/MPL) are intentionally NOT allowed.
+#
+# Schema targets cargo-deny 0.20.x.
+
+[graph]
+# Check dependencies for all targets by default.
+all-features = true
+
+[advisories]
+# Use the built-in advisory database defaults (denies vulnerabilities and
+# unmaintained/yanked crates). Add advisory IDs here to consciously ignore them.
+ignore = []
+
+[licenses]
+# Only permissive, MIT-compatible licenses are allowed. This list is kept tight:
+# it contains exactly the license families the ADR permits and that the current
+# dependency set actually uses.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+confidence-threshold = 0.8
+exceptions = []
+# The allow-list above encodes policy (all MIT-compatible families the ADR
+# permits), so don't warn about allowed licenses no current crate happens to use.
+unused-allowed-license = "allow"
+
+[bans]
+# Warn (do not fail) on duplicate crate versions; the check job is non-required.
+multiple-versions = "warn"
+wildcards = "allow"
+allow = []
+deny = []
+
+[sources]
+# Only crates.io is trusted as a registry; unknown git sources are flagged.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
