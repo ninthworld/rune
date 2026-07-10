@@ -22,19 +22,23 @@ pub type EntityId = String;
 /// derives them. Grows alongside the card database (backlog: engine card loader).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CardView {
+    /// Entity id of this card instance.
     pub id: EntityId,
+    /// Display name.
     pub name: String,
     /// e.g. `"Creature — Elf Warrior"`.
     pub type_line: String,
     /// Displayed mana cost string, e.g. `"{1}{G}"`. `None` for cards without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mana_cost: Option<String>,
+    /// Rules text as displayed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub oracle_text: String,
-    /// Displayed power/toughness (strings so `*` and other non-numeric values
-    /// round-trip). Present only for creatures.
+    /// Displayed power (a string so `*` and other non-numeric values round-trip).
+    /// Present only for creatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub power: Option<String>,
+    /// Displayed toughness; see [`CardView::power`]. Present only for creatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toughness: Option<String>,
 }
@@ -43,10 +47,15 @@ pub struct CardView {
 /// are reduced to counts, public state is exact.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpponentView {
+    /// Which opponent this describes.
     pub player_id: PlayerId,
+    /// Number of cards in hand (contents hidden).
     pub hand_size: u32,
+    /// Current life total.
     pub life: i32,
+    /// Number of cards left in library.
     pub library_size: u32,
+    /// Number of cards in the graveyard.
     pub graveyard_size: u32,
     /// Free-form status labels (e.g. `"monarch"`, `"hexproof"`) for display only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -56,11 +65,15 @@ pub struct OpponentView {
 /// A permanent on the battlefield with its server-computed characteristics.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Permanent {
+    /// Entity id of this permanent.
     pub id: EntityId,
+    /// Player who currently controls it.
     pub controller: PlayerId,
+    /// Player who owns it (matters when control changes).
     pub owner: PlayerId,
     /// The permanent's current (computed) card face.
     pub card: CardView,
+    /// Whether the permanent is tapped.
     #[serde(default, skip_serializing_if = "is_false")]
     pub tapped: bool,
     /// Named counters and their quantities, e.g. `{"+1/+1": 2}`.
@@ -71,7 +84,9 @@ pub struct Permanent {
 /// A named counter on a permanent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Counter {
+    /// Counter name, e.g. `"+1/+1"` or `"loyalty"`.
     pub kind: String,
+    /// How many of this counter are present.
     pub count: u32,
 }
 
@@ -79,10 +94,13 @@ pub struct Counter {
 /// source permanent so the client can point back at it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StackItem {
+    /// Entity id of this stack object.
     pub id: EntityId,
+    /// Player who controls it (chooses targets/resolution).
     pub controller: PlayerId,
     /// Spell name or ability text as it should be displayed.
     pub description: String,
+    /// Source permanent for an ability; `None` for a spell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<EntityId>,
 }
@@ -90,7 +108,9 @@ pub struct StackItem {
 /// A public, ordered pile owned by one player (graveyard or exile).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ZonePile {
+    /// Player who owns the pile.
     pub player_id: PlayerId,
+    /// Cards in zone order (top last).
     pub cards: Vec<CardView>,
 }
 
@@ -99,17 +119,29 @@ pub struct ZonePile {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
+    /// Untap step.
     Untap,
+    /// Upkeep step.
     Upkeep,
+    /// Draw step.
     Draw,
+    /// Precombat main phase.
     PrecombatMain,
+    /// Beginning of combat step.
     BeginCombat,
+    /// Declare attackers step.
     DeclareAttackers,
+    /// Declare blockers step.
     DeclareBlockers,
+    /// Combat damage step.
     CombatDamage,
+    /// End of combat step.
     EndCombat,
+    /// Postcombat main phase.
     PostcombatMain,
+    /// End step.
     End,
+    /// Cleanup step.
     Cleanup,
 }
 
@@ -119,13 +151,16 @@ pub enum Phase {
 /// (docs/decisions/0004-subject-owned-actions.md).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValidAction {
+    /// Opaque id the client echoes back in [`ChooseAction`] to take this action.
     pub id: String,
     /// Coarse action category (e.g. `"pass_priority"`, `"activate_ability"`).
     /// A free-form string, not an enum, so new action kinds do not break older
     /// clients that only key off `subject` and `label`.
     #[serde(rename = "type")]
     pub kind: String,
+    /// Human-readable label to render for this action.
     pub label: String,
+    /// Entity ids this action belongs to; empty for global actions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subject: Vec<String>,
 }
@@ -139,16 +174,22 @@ pub struct GameView {
     /// Full card objects for the receiving player only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub my_hand: Vec<CardView>,
+    /// Redacted views of every other player.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub opponents: Vec<OpponentView>,
+    /// All permanents in play.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub battlefield: Vec<Permanent>,
+    /// The stack, bottom first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stack: Vec<StackItem>,
+    /// Each player's graveyard.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graveyards: Vec<ZonePile>,
+    /// Each player's exile zone.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exile: Vec<ZonePile>,
+    /// The current turn step.
     pub phase: Phase,
     /// The player who currently holds priority, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -166,6 +207,7 @@ pub struct GameView {
 /// rejected and the current `GameView` is re-sent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChooseAction {
+    /// The `id` of the chosen [`ValidAction`].
     pub action_id: String,
 }
 
@@ -175,6 +217,7 @@ pub struct ChooseAction {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
+    /// The player chose one of the issued valid actions.
     ChooseAction(ChooseAction),
 }
 
