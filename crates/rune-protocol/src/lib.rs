@@ -191,6 +191,10 @@ pub struct GameView {
     pub exile: Vec<ZonePile>,
     /// The current turn step.
     pub phase: Phase,
+    /// The receiving player's unspent mana, as pip strings (e.g. `["{G}", "{G}"]`).
+    /// Server-computed; the client only displays it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mana_pool: Vec<String>,
     /// The player who currently holds priority, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority_player: Option<PlayerId>,
@@ -319,6 +323,7 @@ mod tests {
             }],
             exile: vec![],
             phase: Phase::PrecombatMain,
+            mana_pool: vec!["{G}".into()],
             priority_player: Some("p1".into()),
             valid_actions: vec![ValidAction {
                 id: "a2".into(),
@@ -344,6 +349,7 @@ mod tests {
             graveyards: vec![],
             exile: vec![],
             phase: Phase::Upkeep,
+            mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
             action_deadline: None,
@@ -351,6 +357,31 @@ mod tests {
         let json = serde_json::to_string(&view).unwrap();
         let back: GameView = serde_json::from_str(&json).unwrap();
         assert_eq!(back, view);
+    }
+
+    #[test]
+    fn mana_pool_is_omitted_when_empty_and_round_trips_when_present() {
+        let mut view = GameView {
+            my_hand: vec![],
+            opponents: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            graveyards: vec![],
+            exile: vec![],
+            phase: Phase::PrecombatMain,
+            mana_pool: vec![],
+            priority_player: None,
+            valid_actions: vec![],
+            action_deadline: None,
+        };
+        // Empty pool is elided from the wire.
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(json.get("mana_pool").is_none());
+
+        // A non-empty pool round-trips as a list of pip strings.
+        view.mana_pool = vec!["{G}".into(), "{G}".into()];
+        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
+        assert_eq!(back.mana_pool, vec!["{G}".to_string(), "{G}".to_string()]);
     }
 
     #[test]
