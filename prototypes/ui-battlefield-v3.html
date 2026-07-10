@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MTG battlefield prototype v3 — zones + inspect</title>
+<style>
+  :root {
+    --dom-bg: rgba(20, 22, 26, 0.93);
+    --dom-border: #2a2e34;
+    --txt: #e8e6e1;
+    --txt-2: #b9bdc4;
+    --txt-3: #8b909a;
+    --sel: #7fb2e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0e1013; overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; }
+
+  .island { position: fixed; z-index: 10; background: var(--dom-bg);
+    border: 0.5px solid var(--dom-border); border-radius: 11px; color: var(--txt); }
+
+  #opp-tile { top: 0; left: 0; right: 0; border-radius: 0;
+    border-width: 0 0 0.5px 0; background: rgba(14,16,19,0.9);
+    display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
+  #my-tile  { left: 14px; bottom: 14px; display: flex; align-items: center;
+    gap: 10px; padding: 7px 12px 7px 7px; }
+
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: #3a3e45;
+    color: #d8dbdf; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 500; flex-shrink: 0; }
+  .avatar.priority { border: 2px solid var(--sel); }
+  .pname { color: var(--txt-2); font-size: 12px; line-height: 1.2; }
+  .plife { color: var(--txt); font-size: 18px; font-weight: 500; line-height: 1.1; }
+
+  /* zone rail */
+  .rail { display: flex; align-items: center; gap: 10px; }
+  .rail-sep { width: 0.5px; height: 34px; background: var(--dom-border); }
+  .zone { background: none; border: none; padding: 0; text-align: center;
+    color: var(--txt-3); font: inherit; cursor: default; }
+  .zone.clicky { cursor: pointer; }
+  .zone .pile { width: 26px; height: 36px; border-radius: 4px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    background: #2c3038; border: 1.5px solid #565b63; color: var(--txt-3); }
+  .zone .cnt { font-size: 11px; margin-top: 3px; display: block; }
+  .zone.clicky:hover .pile { border-color: var(--sel); }
+  .zone.clicky:hover .cnt { color: #b7d4ee; }
+  #gy-top { flex-direction: column; overflow: hidden; background: #23262b; padding: 0; }
+  #gy-top .strip { height: 9px; width: 100%; }
+  #gy-top .mono { flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 500; width: 100%; }
+
+  #phase { margin-left: auto; text-align: right; }
+  #phase .step { color: var(--txt); font-size: 13px; font-weight: 500; }
+  #phase .who  { color: var(--txt-3); font-size: 12px; }
+  #phase .dot  { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--sel); margin-right: 6px; vertical-align: 1px; }
+
+  #actions { left: 50%; transform: translateX(-50%); bottom: 130px;
+    display: flex; gap: 7px; padding: 7px; }
+  #actions button, .btn { background: transparent; border: 0.5px solid #3a3e45;
+    color: var(--txt-2); font: 500 13px/1 inherit; font-family: inherit;
+    border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+  #actions button:hover, .btn:hover { border-color: #565b63; color: var(--txt); }
+  #actions button.primary { background: rgba(127,178,229,0.12);
+    border-color: var(--sel); color: #b7d4ee; }
+
+  #mana { left: 14px; bottom: 76px; display: none; gap: 4px; padding: 6px 9px; }
+  #mana.on { display: flex; }
+  .mana-pip { width: 18px; height: 18px; border-radius: 50%; background: #a3c095;
+    color: #1e3320; font-size: 12px; font-weight: 500;
+    display: flex; align-items: center; justify-content: center; }
+
+  #hint { right: 14px; bottom: 14px; padding: 8px 12px; max-width: 260px;
+    color: var(--txt-3); font-size: 12px; line-height: 1.55; }
+  #hint b { color: var(--txt-2); font-weight: 500; }
+
+  /* HTML card component (DOM surfaces: peek, inspect, browser) */
+  .hcard { background: #23262b; border-radius: 8px; display: flex;
+    flex-direction: column; overflow: hidden; flex-shrink: 0; }
+  .hcard .hd { padding: 5px 7px 4px; }
+  .hcard .nm { color: var(--txt); font-size: 11px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hcard .pips { display: flex; gap: 2px; margin-top: 3px; }
+  .hcard .pip { width: 14px; height: 14px; border-radius: 50%; font-size: 11px;
+    display: flex; align-items: center; justify-content: center; }
+  .hcard .mid { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .hcard .rules { padding: 0 8px 5px; }
+  .hcard .tline { color: #9ba0a8; font-size: 11px; padding-top: 5px; }
+  .hcard .rtext { color: #c6c9ce; font-size: 11px; line-height: 1.5; margin-top: 4px; }
+  .hcard .ft { display: flex; justify-content: flex-end; padding: 0 6px 6px; }
+  .hcard .pt { font-size: 11px; font-weight: 500; border-radius: 4px; padding: 0 6px; }
+
+  /* browser overlay */
+  #browser { position: fixed; inset: 0; z-index: 30; display: none;
+    align-items: center; justify-content: center; background: rgba(8,9,11,0.55); }
+  #browser.open { display: flex; }
+  #browser .panel { width: min(560px, calc(100vw - 40px)); max-height: 80vh;
+    display: flex; flex-direction: column;
+    background: #1a1d21; border: 0.5px solid #33373d; border-radius: 14px;
+    padding: 14px 16px 14px; color: var(--txt); }
+  #browser .bhead { display: flex; align-items: center; gap: 10px; }
+  #browser .bhead .ttl { font-size: 14px; font-weight: 500; }
+  #browser .bhead .sub { color: var(--txt-3); font-size: 12px; }
+  #browser .chips { display: flex; gap: 6px; margin-top: 10px; align-items: center;
+    flex-wrap: wrap; }
+  #browser .chip { border: 0.5px solid #3a3e45; color: var(--txt-2); font-size: 11px;
+    border-radius: 8px; padding: 3px 10px; background: none; font-family: inherit;
+    cursor: pointer; }
+  #browser .chip.on { background: rgba(127,178,229,0.14); border-color: var(--sel);
+    color: #b7d4ee; }
+  #browser input[type="search"] { margin-left: auto; background: none;
+    border: 0.5px solid #3a3e45; border-radius: 8px; color: var(--txt);
+    font: 400 12px/1 inherit; font-family: inherit; padding: 5px 9px; width: 130px; }
+  #browser input[type="search"]:focus { outline: none; border-color: var(--sel); }
+  #browser .grid { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px;
+    overflow-y: auto; padding: 8px 2px 2px; }
+  #browser .grid .hcard { width: 58px; height: 82px; cursor: pointer; }
+  #browser .grid .hcard:hover { outline: 1.5px solid var(--sel); outline-offset: 2px; }
+  #browser .empty { color: var(--txt-3); font-size: 12px; padding: 24px 0; }
+  .iconbtn { background: transparent; border: 0.5px solid #3a3e45; color: var(--txt-2);
+    border-radius: 7px; width: 26px; height: 26px; display: flex; align-items: center;
+    justify-content: center; padding: 0; cursor: pointer; font-size: 14px;
+    font-family: inherit; }
+  .iconbtn:hover { border-color: #565b63; color: var(--txt); }
+
+  /* peek + pinned inspect */
+  #peek { position: fixed; z-index: 40; display: none; pointer-events: none; }
+  #peek.open { display: block; }
+  #peek .hcard { width: 178px; height: 250px; border-radius: 11px; }
+  #peek .nm { font-size: 13px; }
+  #peek .rtext { font-size: 12px; }
+  #peek .pt { font-size: 12px; padding: 2px 9px; border-radius: 6px; }
+
+  #inspect { position: fixed; z-index: 50; right: 14px; top: 64px; width: 400px;
+    max-width: calc(100vw - 28px); display: none;
+    background: #1a1d21; border: 0.5px solid #33373d; border-radius: 14px;
+    padding: 14px; color: var(--txt); }
+  #inspect.open { display: flex; gap: 14px; }
+  #inspect .hcard { width: 150px; }
+  #inspect .state { flex: 1; min-width: 0; font-size: 12px; }
+  #inspect .shead { color: var(--txt-2); font-size: 11px; font-weight: 500; }
+  #inspect .bigpt { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+  #inspect .bigpt .cur { color: #e8d9a8; font-size: 19px; font-weight: 500; }
+  #inspect .bigpt .prn { color: #6e747d; font-size: 11px; }
+  #inspect .rows { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+  #inspect .row { display: flex; gap: 7px; align-items: center; color: #c6c9ce; }
+  #inspect .row .ti { font-size: 14px; color: var(--txt-3); }
+  #inspect .rel { border-top: 0.5px solid #2a2e34; margin-top: 12px; padding-top: 9px; }
+  #inspect .zbadge { background: #2c3138; color: var(--txt-2); font-size: 11px;
+    border-radius: 8px; padding: 2px 8px; }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+
+<div class="island" id="opp-tile">
+  <div class="avatar" id="opp-avatar">GA</div>
+  <div>
+    <div class="pname">Garm67</div>
+    <div class="plife" id="opp-life">24</div>
+  </div>
+  <div class="rail">
+    <div class="rail-sep"></div>
+    <div class="zone" title="Hand">
+      <div class="pile"><i class="ti ti-cards" aria-hidden="true" style="font-size:13px"></i></div>
+      <span class="cnt" id="opp-hand-n">5</span>
+    </div>
+    <div class="zone" title="Library">
+      <div class="pile"><i class="ti ti-stack-2" aria-hidden="true" style="font-size:13px"></i></div>
+      <span class="cnt" id="opp-lib-n">34</span>
+    </div>
+    <button class="zone clicky" id="opp-gy" title="Graveyard" aria-label="Opponent's graveyard">
+      <div class="pile"><i class="ti ti-grave-2" aria-hidden="true" style="font-size:13px"></i></div>
+      <span class="cnt" id="opp-gy-n">0</span>
+    </button>
+  </div>
+  <div id="phase">
+    <div class="step"><span class="dot"></span><span id="phase-step">Main 1</span></div>
+    <div class="who" id="phase-who">You have priority</div>
+  </div>
+</div>
+
+<div class="island" id="my-tile">
+  <div class="avatar priority" id="my-avatar">KA</div>
+  <div>
+    <div class="pname">Kashaar</div>
+    <div class="plife" id="my-life">31</div>
+  </div>
+  <div class="rail">
+    <div class="rail-sep"></div>
+    <div class="zone" title="Library">
+      <div class="pile"><i class="ti ti-stack-2" aria-hidden="true" style="font-size:13px"></i></div>
+      <span class="cnt" id="my-lib-n">34</span>
+    </div>
+    <button class="zone clicky" id="my-gy" title="Graveyard" aria-label="Your graveyard">
+      <div class="pile" id="gy-top"><i class="ti ti-grave-2" aria-hidden="true" style="font-size:13px"></i></div>
+      <span class="cnt" id="my-gy-n">0</span>
+    </button>
+    <div class="zone" id="my-exile" title="Exile" style="display:none">
+      <div class="pile" style="border-style:dashed"><i class="ti ti-ban" aria-hidden="true" style="font-size:12px"></i></div>
+      <span class="cnt" id="my-ex-n">0</span>
+    </div>
+  </div>
+</div>
+
+<div class="island" id="mana" aria-label="Floating mana"></div>
+<div class="island" id="actions" role="toolbar" aria-label="Actions"></div>
+
+<div class="island" id="hint">
+  <b>New:</b> click a graveyard in either player tile to browse it.
+  Hover any card a moment to peek; right-click or long-press
+  (or select + <b>I</b>) to pin full inspect. Esc closes things in order.
+</div>
+
+<div id="browser" role="dialog" aria-label="Zone browser">
+  <div class="panel">
+    <div class="bhead">
+      <span class="ttl" id="b-title">Graveyard</span>
+      <span class="sub" id="b-count"></span>
+      <button class="chip" id="b-order" style="margin-left:auto">Newest first</button>
+      <button class="iconbtn" id="b-close" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="chips" id="b-chips"></div>
+    <div class="grid" id="b-grid"></div>
+  </div>
+</div>
+
+<div id="peek" aria-hidden="true"></div>
+
+<div id="inspect" role="dialog" aria-label="Card inspect">
+  <div id="i-card"></div>
+  <div class="state">
+    <div style="display:flex;align-items:center">
+      <span class="shead">Current state</span>
+      <button class="iconbtn" id="i-close" aria-label="Close" style="margin-left:auto"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="i-state"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+<script>
+/* =====================================================================
+   v3 = v2 (subject actions, battlefield bands, hand compression)
+      + zone rail in player tiles (library / graveyard / exile chips)
+      + zone browser overlay (one component: graveyards now; exile,
+        searches, and select_from_zone prompts later)
+      + two-intensity inspect: peek (hover dwell) and pinned panel
+        (right-click, long-press, select + I, or click in browser)
+   Two card renderers, one token source: the Pixi factory for canvas
+   and the .hcard HTML component for DOM surfaces both read PALETTE.
+   ===================================================================== */
+
+/* ---------- shared tokens (single source for BOTH renderers) ---------- */
+const PALETTE = {
+  W:'#CFC7AC', U:'#4E86C1', B:'#77688C', R:'#C05B4D',
+  G:'#57935F', M:'#C9A84C', C:'#8C949C', L:'#A08A6E',
+};
+const PT_DARK = {
+  W:'#2A2820', U:'#0D1F33', B:'#17111F', R:'#2E0D08',
+  G:'#122015', M:'#2E240A', C:'#1C2024', L:'#241C12',
+};
+const PIP = {
+  W:['#F1EBD4','#4A4636'], U:['#AFCBE9','#17324E'], B:['#A79DB5','#2A2233'],
+  R:['#E5A192','#4A170E'], G:['#A3C095','#1E3320'], N:['#CACBCF','#26262A'],
+};
+const hexNum = (h) => parseInt(h.slice(1), 16);
+const rgba = (h, a) => {
+  const n = hexNum(h);
+  return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+};
+const BODY = 0x23262B, BOARD = '#15171A', NAME = 0xE8E6E1;
+const SEL = 0x7FB2E5, BADGE_BG = 0x3A3E45, BADGE_TX = 0xD8DBDF;
+const GOLD = 0xC9A84C, GOLD_TX = 0x2E240A;
+
+const TIER = {
+  hand:    { w: 104, h: 146, name: 12, mono: 38, pip: 15, header: 40 },
+  field:   { w: 84,  h: 118, name: 11, mono: 30, pip: 13, header: 34 },
+  support: { w: 66,  h: 92,  name: 11, mono: 22, pip: 12, header: 30 },
+  chip:    { w: 44,  h: 60 },
+};
+const BAND = {
+  creature: 'front', planeswalker: 'front', battle: 'front',
+  artifact: 'support', enchantment: 'support',
+  land: 'back',
+};
+
+/* ---------- card database: printed text + related (schema: `related`) ---------- */
+const CARD_DB = {
+  'Forest':          { tline: 'Basic Land — Forest', text: '{T}: Add {G}.' },
+  'Plains':          { tline: 'Basic Land — Plains', text: '{T}: Add {W}.' },
+  'Thicket Warden':  { tline: 'Creature — Treefolk',
+    text: 'Vigilance. When Thicket Warden enters, create a 1/1 green Saproling creature token.',
+    related: [{ name: 'Saproling', identity: 'G', pt: [1,1] }] },
+  'Saproling':       { tline: 'Token Creature — Saproling', text: '' },
+  'Tide Scholar':    { tline: 'Creature — Merfolk Wizard',
+    text: 'When Tide Scholar enters, scry 2.' },
+  'Cinder Rusher':   { tline: 'Creature — Elemental', text: 'Haste.' },
+  'Grave Whisper':   { tline: 'Creature — Spirit',
+    text: 'When Grave Whisper dies, each opponent loses 1 life.' },
+  'Dawn Sentinel':   { tline: 'Creature — Human Soldier', text: 'Vigilance.' },
+  'Dawn Angel':      { tline: 'Creature — Angel', text: 'Flying, lifelink.' },
+  'Lyra':            { tline: 'Legendary Creature — Angel',
+    text: 'Flying, first strike, lifelink. Other Angels you control get +1/+1.' },
+  'Pridemate':       { tline: 'Creature — Cat Soldier',
+    text: 'Whenever you gain life, put a +1/+1 counter on Pridemate.' },
+  'Duskbloom Rider': { tline: 'Creature — Human Knight',
+    text: '{T}: You gain 1 life.' },
+  'Verdant Pact':    { tline: 'Enchantment',
+    text: 'At the beginning of your upkeep, you gain 1 life.' },
+  'Bronze Idol':     { tline: 'Artifact', text: '{T}: Add {C}.' },
+  'Halo Font':       { tline: 'Artifact', text: '{T}: Add {W}.' },
+  'Ember Lance':     { tline: 'Instant',
+    text: 'Ember Lance deals 3 damage to any target.' },
+};
+
+/* ---------- mock GameView ---------- */
+let uid = 0;
+const perm = (name, identity, pt, type, extra = {}) =>
+  ({ id: 'perm' + (++uid), name, identity, pt, type,
+     tapped: false, sick: false, counters: 0, zone: 'battlefield', ...extra });
+const gyCard = (name, identity, pt, type) =>
+  ({ id: 'gy' + (++uid), name, identity, pt, type, zone: 'graveyard' });
+const many = (n, make) => Array.from({ length: n }, make);
+
+const gameView = {
+  turn: { step: 'Main 1', priority: 'me' },
+  opponent: {
+    name: 'Garm67', life: 24, handCount: 5, library: 34,
+    battlefield: [
+      ...many(6, () => perm('Plains', 'L', null, 'land')),
+      perm('Halo Font', 'W', null, 'artifact'),
+      perm('Dawn Angel', 'W', [5, 5], 'creature'),
+      perm('Lyra', 'W', [5, 5], 'creature', { tapped: true }),
+      perm('Pridemate', 'W', [2, 2], 'creature', { counters: 2 }),
+    ],
+    graveyard: [
+      gyCard('Plains', 'L', null, 'land'),
+      gyCard('Dawn Sentinel', 'W', [2, 2], 'creature'),
+    ],
+  },
+  me: {
+    name: 'Kashaar', life: 31, mana: { G: 0 }, library: 34, exile: 0,
+    battlefield: [
+      ...many(4, () => perm('Forest', 'L', null, 'land')),
+      perm('Verdant Pact', 'G', null, 'enchantment'),
+      perm('Bronze Idol', 'C', null, 'artifact'),
+      perm('Thicket Warden', 'G', [4, 5], 'creature'),
+      ...many(3, () => perm('Saproling', 'G', [1, 1], 'creature')),
+      perm('Duskbloom Rider', 'M', [3, 3], 'creature'),
+    ],
+    hand: [
+      { id: 'h1', name: 'Forest', identity: 'L', cost: [], pt: null, type: 'land', zone: 'hand' },
+      { id: 'h2', name: 'Thicket Warden', identity: 'G', cost: ['2','G','G'], pt: [4,5], type: 'creature', zone: 'hand' },
+      { id: 'h3', name: 'Tide Scholar', identity: 'U', cost: ['2','U'], pt: [1,3], type: 'creature', zone: 'hand' },
+      { id: 'h4', name: 'Cinder Rusher', identity: 'R', cost: ['R'], pt: [1,1], type: 'creature', zone: 'hand' },
+      { id: 'h5', name: 'Grave Whisper', identity: 'B', cost: ['1','B'], pt: [2,1], type: 'creature', zone: 'hand' },
+    ],
+    graveyard: [
+      gyCard('Forest', 'L', null, 'land'),
+      gyCard('Saproling', 'G', [1, 1], 'creature'),
+      gyCard('Ember Lance', 'R', null, 'instant'),
+      gyCard('Tide Scholar', 'U', [1, 3], 'creature'),
+      gyCard('Forest', 'L', null, 'land'),
+      gyCard('Grave Whisper', 'B', [2, 1], 'creature'),
+      gyCard('Dawn Sentinel', 'W', [2, 2], 'creature'),
+      gyCard('Duskbloom Rider', 'M', [3, 3], 'creature'),
+    ],
+  },
+};
+
+const DRAW_POOL = [
+  { name: 'Forest', identity: 'L', cost: [], pt: null, type: 'land' },
+  { name: 'Tide Scholar', identity: 'U', cost: ['2','U'], pt: [1,3], type: 'creature' },
+  { name: 'Cinder Rusher', identity: 'R', cost: ['R'], pt: [1,1], type: 'creature' },
+  { name: 'Grave Whisper', identity: 'B', cost: ['1','B'], pt: [2,1], type: 'creature' },
+  { name: 'Dawn Sentinel', identity: 'W', cost: ['1','W'], pt: [2,2], type: 'creature' },
+  { name: 'Thicket Warden', identity: 'G', cost: ['2','G','G'], pt: [4,5], type: 'creature' },
+];
+let drawUid = 100;
+
+const ui = { selected: null, selectedIds: [], browser: null, inspect: null };
+
+/* ---------- Pixi app ---------- */
+const app = new PIXI.Application({
+  background: BOARD, antialias: true, autoDensity: true,
+  resolution: Math.min(window.devicePixelRatio || 1, 2),
+  resizeTo: document.getElementById('stage'),
+});
+document.getElementById('stage').appendChild(app.view);
+app.view.addEventListener('contextmenu', (e) => e.preventDefault());
+
+const zoneLayers = { opp: new PIXI.Container(), mine: new PIXI.Container(),
+                     hand: new PIXI.Container() };
+Object.values(zoneLayers).forEach(l => app.stage.addChild(l));
+zoneLayers.hand.sortableChildren = true;
+
+/* ---------- frame texture cache ---------- */
+const frameCache = new Map();
+function frameTexture(identity, tier) {
+  const key = identity + '|' + tier;
+  if (frameCache.has(key)) return frameCache.get(key);
+  const t = TIER[tier], c = hexNum(PALETTE[identity]);
+  const g = new PIXI.Graphics();
+  g.lineStyle({ width: 1.5, color: c, alpha: 1, alignment: 1 });
+  g.beginFill(BODY);
+  g.drawRoundedRect(0, 0, t.w, t.h, tier === 'chip' ? 6 : 8);
+  g.endFill();
+  if (t.header) {
+    g.lineStyle(0);
+    g.beginFill(c, 0.16);
+    g.drawRoundedRect(3, 3, t.w - 6, t.header, 5);
+    g.endFill();
+  }
+  const tex = app.renderer.generateTexture(g, { resolution: 2 });
+  frameCache.set(key, tex);
+  return tex;
+}
+
+/* ---------- pixi helpers ---------- */
+function mkText(str, size, color, weight = '500') {
+  const tx = new PIXI.Text(str, { fontFamily: 'system-ui, sans-serif',
+    fontSize: size, fill: color, fontWeight: weight });
+  tx.resolution = 2;
+  return tx;
+}
+function pill(label, size, bg, fg) {
+  const wrap = new PIXI.Container();
+  const tx = mkText(label, size, fg);
+  const g = new PIXI.Graphics();
+  g.beginFill(bg); g.drawRoundedRect(0, 0, tx.width + 12, tx.height + 3, 5); g.endFill();
+  tx.position.set(6, 1.5);
+  wrap.addChild(g, tx);
+  return wrap;
+}
+function pxBadge(label, bg, fg, stroke) {
+  const wrap = new PIXI.Container();
+  const tx = mkText(label, 11, fg);
+  const g = new PIXI.Graphics();
+  if (stroke != null) g.lineStyle({ width: 0.5, color: stroke });
+  g.beginFill(bg); g.drawRoundedRect(0, 0, tx.width + 12, 17, 8); g.endFill();
+  tx.position.set(6, 1.5);
+  wrap.addChild(g, tx);
+  return wrap;
+}
+function manaGlyph(r = 13) {
+  const glyph = new PIXI.Graphics();
+  glyph.beginFill(hexNum(PALETTE.G), 0.25); glyph.drawCircle(0, 0, r); glyph.endFill();
+  const gtx = mkText('G', 12, 0xA3C095); gtx.anchor.set(0.5);
+  glyph.addChild(gtx);
+  return glyph;
+}
+
+/* ---------- inspect + peek plumbing ---------- */
+let peekTimer = null, longTimer = null, longFired = false;
+const canHover = matchMedia('(hover: hover)').matches;
+
+function attachInspect(outer, inner, entity) {
+  outer.on('pointerover', () => {
+    if (!canHover || !entity) return;
+    peekTimer = setTimeout(() => showPeek(entity, outer), 450);
+  });
+  outer.on('pointerout', () => { clearTimeout(peekTimer); hidePeek(); });
+  outer.on('pointerdown', () => {
+    longFired = false;
+    longTimer = setTimeout(() => { longFired = true; openInspect(entity); }, 500);
+  });
+  const cancel = () => clearTimeout(longTimer);
+  outer.on('pointerup', cancel);
+  outer.on('pointerupoutside', cancel);
+  outer.on('rightclick', () => openInspect(entity));
+}
+
+/* ---------- pixi card factory ---------- */
+function makeCard(data, tier) {
+  const t = TIER[tier];
+  const outer = new PIXI.Container();
+  const inner = new PIXI.Container();
+  outer.addChild(inner);
+
+  if (data.count > 1) {
+    for (let i = Math.min(data.count - 1, 2); i >= 1; i--) {
+      const under = new PIXI.Sprite(frameTexture(data.identity, tier));
+      under.width = t.w; under.height = t.h;
+      under.position.set(i * 5, i * -3.5);
+      under.alpha = 0.45;
+      inner.addChild(under);
+    }
+  }
+
+  const frame = new PIXI.Sprite(frameTexture(data.identity, tier));
+  frame.width = t.w; frame.height = t.h;
+  inner.addChild(frame);
+
+  if (tier === 'chip') {
+    const glyph = manaGlyph(11);
+    glyph.position.set(t.w / 2, t.h / 2);
+    inner.addChild(glyph);
+  } else {
+    const name = mkText(data.name, t.name, NAME);
+    if (name.width > t.w - 14) {
+      let s = data.name;
+      while (s.length > 2 && name.width > t.w - 20) { s = s.slice(0, -1); name.text = s + '…'; }
+    }
+    name.position.set(7, 7);
+    inner.addChild(name);
+
+    if (data.cost && data.cost.length) {
+      data.cost.forEach((sym, i) => {
+        const isNum = !PIP[sym] || /\d/.test(sym);
+        const [bg, fg] = isNum ? PIP.N : PIP[sym];
+        const p = new PIXI.Graphics();
+        p.beginFill(hexNum(bg));
+        p.drawCircle(0, 0, t.pip / 2 + 1); p.endFill();
+        p.position.set(7 + t.pip / 2 + i * (t.pip + 4), 7 + name.height + 9);
+        const s = mkText(sym, 11, hexNum(fg));
+        s.anchor.set(0.5);
+        p.addChild(s);
+        inner.addChild(p);
+      });
+    }
+
+    if (data.type === 'land') {
+      const glyph = manaGlyph();
+      glyph.position.set(t.w / 2, t.h / 2 + 8);
+      inner.addChild(glyph);
+    } else {
+      const mono = mkText(data.name[0], t.mono, hexNum(PALETTE[data.identity]));
+      mono.alpha = 0.22; mono.anchor.set(0.5);
+      mono.position.set(t.w / 2, (t.h + t.header) / 2);
+      inner.addChild(mono);
+    }
+
+    if (data.pt) {
+      const p = data.pt[0] + (data.counters || 0);
+      const q = data.pt[1] + (data.counters || 0);
+      const pt = pill(p + '/' + q, 11,
+        hexNum(PALETTE[data.identity]), hexNum(PT_DARK[data.identity]));
+      pt.position.set(t.w - pt.width - 5, t.h - pt.height - 5);
+      inner.addChild(pt);
+    }
+  }
+
+  let bx = t.w - 8;
+  const addBadge = (b) => { b.position.set(bx - b.width + 8, -8); bx -= b.width + 4; inner.addChild(b); };
+  if (data.count > 1) addBadge(pxBadge('×' + data.count, BADGE_BG, BADGE_TX, 0x565B63));
+  if (data.counters) addBadge(pxBadge('+' + data.counters, GOLD, GOLD_TX));
+  if (data.sick && tier !== 'chip') addBadge(pxBadge('zz', BADGE_BG, BADGE_TX, 0x565B63));
+
+  if (data.selected) {
+    const ring = new PIXI.Graphics();
+    ring.lineStyle({ width: 2, color: SEL, alignment: 0 });
+    ring.drawRoundedRect(-2, -2, t.w + 4, t.h + 4, 10);
+    inner.addChild(ring);
+  }
+
+  inner.pivot.set(t.w / 2, t.h / 2);
+  if (data.tapped) {
+    inner.rotation = Math.PI / 2;
+    inner.alpha = 0.55;
+    inner.position.set(t.h / 2, t.w / 2);
+    outer.fw = t.h; outer.fh = t.w;
+  } else {
+    inner.alpha = data.sick ? 0.85 : 1;
+    inner.position.set(t.w / 2, t.h / 2);
+    outer.fw = t.w; outer.fh = t.h;
+  }
+
+  /* peek + long-press + right-click inspect on every card */
+  outer.eventMode = 'static';
+  attachInspect(outer, inner, data.entity || data);
+
+  if (data.interactive) {
+    outer.cursor = 'pointer';
+    outer.on('pointertap', () => {
+      if (longFired) { longFired = false; return; }
+      data.onTap();
+    });
+    outer.on('pointerover', () => { inner.y -= 6; outer.zIndex = (outer.zIndex || 0) + 500; });
+    outer.on('pointerout',  () => { inner.y += 6; outer.zIndex = (outer.zIndex || 0) - 500; });
+  } else if (data.dimIfInert && !data.tapped) {
+    inner.alpha *= 0.9;
+  }
+  return outer;
+}
+
+/* ---------- HTML card component (shared tokens, DOM surfaces) ---------- */
+function htmlCard(c, opts = {}) {
+  const acc = PALETTE[c.identity];
+  const db = CARD_DB[c.name] || {};
+  const pips = (c.cost || []).map(sym => {
+    const isNum = !PIP[sym] || /\d/.test(sym);
+    const [bg, fg] = isNum ? PIP.N : PIP[sym];
+    return '<span class="pip" style="background:' + bg + ';color:' + fg + '">' + sym + '</span>';
+  }).join('');
+  const counters = c.counters || 0;
+  const pt = c.pt
+    ? '<div class="ft"><span class="pt" style="background:' + acc + ';color:' + PT_DARK[c.identity] + '">'
+      + (c.pt[0] + counters) + '/' + (c.pt[1] + counters) + '</span></div>'
+    : '';
+  const mid = opts.full
+    ? (c.type === 'land'
+        ? '<div class="mid" style="min-height:44px"><span style="width:26px;height:26px;border-radius:50%;background:'
+          + rgba(PALETTE.G, 0.25) + ';color:#A3C095;font-size:13px;display:flex;align-items:center;justify-content:center;font-weight:500">G</span></div>'
+        : '<div class="mid" style="min-height:44px"><span style="font-size:' + (opts.mono || 44)
+          + 'px;font-weight:500;color:' + rgba(acc, 0.22) + '">' + c.name[0] + '</span></div>')
+      + '<div class="rules"><div class="tline" style="border-top:0.5px solid ' + rgba(acc, 0.35) + '">'
+      + (db.tline || '') + '</div>'
+      + (db.text ? '<div class="rtext">' + db.text + '</div>' : '') + '</div>'
+    : (c.type === 'land'
+        ? '<div class="mid"><span style="width:18px;height:18px;border-radius:50%;background:'
+          + rgba(PALETTE.G, 0.25) + ';color:#A3C095;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:500">G</span></div>'
+        : '<div class="mid"><span style="font-size:20px;font-weight:500;color:' + rgba(acc, 0.22) + '">'
+          + c.name[0] + '</span></div>');
+  return '<div class="hcard" style="border:1.5px solid ' + acc + '">'
+    + '<div class="hd" style="background:' + rgba(acc, 0.16) + '">'
+    + '<div class="nm">' + c.name + '</div>'
+    + (pips ? '<div class="pips">' + pips + '</div>' : '')
+    + '</div>' + mid + pt + '</div>';
+}
+
+/* ---------- peek ---------- */
+const peekEl = document.getElementById('peek');
+function showPeek(entity, outer) {
+  if (ui.inspect) return;
+  peekEl.innerHTML = htmlCard(entity, { full: true, mono: 44 });
+  peekEl.classList.add('open');
+  const b = outer.getBounds();
+  const pw = 178, ph = 250, m = 12;
+  let x = b.right + m;
+  if (x + pw > innerWidth - 8) x = b.left - m - pw;
+  let y = Math.min(Math.max(8, b.top + b.height / 2 - ph / 2), innerHeight - ph - 8);
+  peekEl.style.left = x + 'px';
+  peekEl.style.top = y + 'px';
+}
+function hidePeek() { peekEl.classList.remove('open'); }
+
+/* ---------- pinned inspect ---------- */
+const inspectEl = document.getElementById('inspect');
+function openInspect(entity) {
+  clearTimeout(peekTimer); hidePeek();
+  ui.inspect = entity;
+  document.getElementById('i-card').innerHTML = htmlCard(entity, { full: true, mono: 36 });
+  const db = CARD_DB[entity.name] || {};
+  let s = '';
+  if (entity.pt) {
+    const cur = (entity.pt[0] + (entity.counters || 0)) + '/' + (entity.pt[1] + (entity.counters || 0));
+    const modified = (entity.counters || 0) !== 0;
+    s += '<div class="bigpt"><span class="cur"' + (modified ? '' : ' style="color:#e8e6e1"') + '>'
+      + cur + '</span>'
+      + (modified ? '<span class="prn">printed ' + entity.pt[0] + '/' + entity.pt[1] + '</span>' : '')
+      + '</div>';
+  }
+  s += '<div class="rows">';
+  if (entity.counters) {
+    s += '<div class="row"><span style="background:#C9A84C;color:#2E240A;font-size:11px;font-weight:500;border-radius:7px;padding:0 6px">+'
+      + entity.counters + '</span><span>' + entity.counters + ' +1/+1 counter' + (entity.counters > 1 ? 's' : '') + '</span></div>';
+  }
+  if (entity.tapped) s += '<div class="row"><i class="ti ti-rotate-clockwise" aria-hidden="true"></i><span>Tapped</span></div>';
+  if (entity.sick) s += '<div class="row"><i class="ti ti-clock" aria-hidden="true"></i><span>Summoning sick</span></div>';
+  if (entity.zone !== 'battlefield') {
+    s += '<div class="row"><span class="zbadge">' + (entity.zone === 'graveyard' ? 'In graveyard' : 'In hand') + '</span></div>';
+  }
+  s += '</div>';
+  if (db.related && db.related.length) {
+    s += '<div class="rel"><div class="shead">Related</div>';
+    for (const r of db.related) {
+      s += '<div style="display:flex;align-items:center;gap:7px;margin-top:7px">'
+        + '<div style="width:26px;height:36px;background:#23262b;border:1.5px solid ' + PALETTE[r.identity]
+        + ';border-radius:4px;display:flex;align-items:center;justify-content:center;color:#c6e0c9;font-size:11px;font-weight:500">'
+        + r.pt[0] + '/' + r.pt[1] + '</div>'
+        + '<span style="color:#c6c9ce;font-size:12px">' + r.name + ' token</span></div>';
+    }
+    s += '</div>';
+  }
+  document.getElementById('i-state').innerHTML = s;
+  inspectEl.classList.add('open');
+}
+function closeInspect() { ui.inspect = null; inspectEl.classList.remove('open'); }
+document.getElementById('i-close').addEventListener('click', closeInspect);
+
+/* ---------- zone browser (one component for every list of cards) ---------- */
+const browserEl = document.getElementById('browser');
+const bState = { cards: [], filter: 'all', newest: true, title: '' };
+
+function openBrowser(title, cards) {
+  ui.browser = true;
+  bState.cards = cards; bState.filter = 'all'; bState.newest = true; bState.title = title;
+  renderBrowser();
+  browserEl.classList.add('open');
+}
+function closeBrowser() { ui.browser = null; browserEl.classList.remove('open'); }
+document.getElementById('b-close').addEventListener('click', closeBrowser);
+browserEl.addEventListener('click', (e) => { if (e.target === browserEl) closeBrowser(); });
+document.getElementById('b-order').addEventListener('click', () => {
+  bState.newest = !bState.newest; renderBrowser();
+});
+
+function renderBrowser() {
+  document.getElementById('b-title').textContent = bState.title;
+  document.getElementById('b-count').textContent = bState.cards.length + ' cards';
+  document.getElementById('b-order').textContent = bState.newest ? 'Newest first' : 'Oldest first';
+
+  const cat = (c) => c.type === 'creature' ? 'creatures' : c.type === 'land' ? 'lands' : 'other';
+  const counts = { all: bState.cards.length, creatures: 0, lands: 0, other: 0 };
+  bState.cards.forEach(c => counts[cat(c)]++);
+
+  const chips = document.getElementById('b-chips');
+  chips.innerHTML = '';
+  for (const [key, label] of [['all','All'],['creatures','Creatures'],['lands','Lands'],['other','Other']]) {
+    if (key !== 'all' && !counts[key]) continue;
+    const b = document.createElement('button');
+    b.className = 'chip' + (bState.filter === key ? ' on' : '');
+    b.textContent = label + ' ' + counts[key];
+    b.addEventListener('click', () => { bState.filter = key; renderBrowser(); });
+    chips.appendChild(b);
+  }
+  const search = document.createElement('input');
+  search.type = 'search'; search.placeholder = 'Search';
+  search.value = bState.q || '';
+  search.addEventListener('input', () => { bState.q = search.value; renderGrid(); });
+  chips.appendChild(search);
+  renderGrid();
+
+  function renderGrid() {
+    const grid = document.getElementById('b-grid');
+    let list = bState.newest ? bState.cards.slice().reverse() : bState.cards.slice();
+    if (bState.filter !== 'all') list = list.filter(c => cat(c) === bState.filter);
+    if (bState.q) list = list.filter(c => c.name.toLowerCase().includes(bState.q.toLowerCase()));
+    grid.innerHTML = list.length
+      ? list.map(c => '<div data-id="' + c.id + '" style="cursor:pointer">' + htmlCard(c) + '</div>').join('')
+      : '<div class="empty">No cards here yet.</div>';
+    grid.querySelectorAll('[data-id]').forEach(el => {
+      el.addEventListener('click', () => {
+        const c = bState.cards.find(x => x.id === el.dataset.id);
+        if (c) openInspect(c);
+      });
+    });
+  }
+}
+
+document.getElementById('my-gy').addEventListener('click', () =>
+  openBrowser("Kashaar's graveyard", gameView.me.graveyard));
+document.getElementById('opp-gy').addEventListener('click', () =>
+  openBrowser("Garm67's graveyard", gameView.opponent.graveyard));
+
+/* ---------- grouping + bands ---------- */
+function groupPermanents(perms) {
+  const groups = new Map();
+  for (const p of perms) {
+    const key = [p.name, p.identity, p.type, p.tapped, p.sick, p.counters,
+                 p.pt ? p.pt.join() : ''].join('|');
+    if (!groups.has(key)) groups.set(key, { key, ...p, count: 0, ids: [] });
+    const g = groups.get(key);
+    g.count++; g.ids.push(p.id);
+  }
+  return [...groups.values()];
+}
+function bands(perms, mirrored) {
+  const groups = groupPermanents(perms);
+  const pick = (band) => groups.filter(g => BAND[g.type] === band);
+  const rows = [
+    { groups: pick('front'),   tier: 'field' },
+    { groups: pick('support'), tier: 'support' },
+    { groups: pick('back'),    tier: 'chip' },
+  ].filter(r => r.groups.length);
+  return mirrored ? rows.reverse() : rows;
+}
+
+/* ---------- actions ---------- */
+function computeValidActions() {
+  const acts = [];
+  for (const c of gameView.me.hand) {
+    acts.push({ id: 'cast:' + c.id, kind: 'cast', subject: [c.id],
+      label: (c.type === 'land' ? 'Play ' : 'Cast ') + c.name });
+  }
+  const untapped = gameView.me.battlefield.filter(p => p.type === 'land' && !p.tapped);
+  if (untapped.length) {
+    acts.push({ id: 'tapland', kind: 'tapland', subject: untapped.map(p => p.id),
+      label: 'Tap Forest for mana' });
+  }
+  const rider = gameView.me.battlefield.find(p => p.name === 'Duskbloom Rider' && !p.tapped);
+  if (rider) {
+    acts.push({ id: 'ability:' + rider.id, kind: 'ability', subject: [rider.id],
+      permId: rider.id, label: 'Tap — gain 1 life' });
+  }
+  acts.push({ id: 'draw', kind: 'draw', subject: null, label: 'Draw 5 (demo)' });
+  acts.push({ id: 'end', kind: 'end', subject: null, label: 'End turn' });
+  return acts;
+}
+const intersects = (a, b) => a && b && a.some(x => b.includes(x));
+
+function dispatch(action) {
+  if (action.kind === 'cast') {
+    const i = gameView.me.hand.findIndex(c => c.id === action.subject[0]);
+    if (i < 0) return;
+    const c = gameView.me.hand.splice(i, 1)[0];
+    gameView.me.battlefield.push(perm(c.name, c.identity, c.pt, c.type,
+      { sick: c.type === 'creature' }));
+    gameView.me.mana.G = 0;
+    clearSelection();
+  } else if (action.kind === 'tapland') {
+    const f = gameView.me.battlefield.find(p => p.type === 'land' && !p.tapped);
+    if (f) { f.tapped = true; gameView.me.mana.G++; }
+  } else if (action.kind === 'ability') {
+    const r = gameView.me.battlefield.find(p => p.id === action.permId);
+    if (r) { r.tapped = true; gameView.me.life++; }
+    clearSelection();
+  } else if (action.kind === 'draw') {
+    const n = Math.min(5, gameView.me.library);
+    for (let i = 0; i < n; i++) {
+      const c = DRAW_POOL[Math.floor(Math.random() * DRAW_POOL.length)];
+      gameView.me.hand.push({ ...c, id: 'h' + (++drawUid), zone: 'hand' });
+    }
+    gameView.me.library -= n;
+  } else if (action.kind === 'end') {
+    gameView.me.battlefield.forEach(p => { p.tapped = false; p.sick = false; });
+    gameView.me.mana.G = 0;
+    clearSelection();
+    gameView.turn.priority = 'opp';
+    render();
+    setTimeout(() => { gameView.turn.priority = 'me'; render(); }, 900);
+    return;
+  }
+  render();
+}
+function clearSelection() { ui.selected = null; ui.selectedIds = []; }
+function select(key, ids) { ui.selected = key; ui.selectedIds = ids; render(); }
+
+/* ---------- layout ---------- */
+function layout(w, h) {
+  return { mineCenter: h * 0.52, handCy: h - 78, gap: 10, rowGap: 14 };
+}
+function bandHeight(perms) {
+  return bands(perms, false).reduce((s, r) => s + TIER[r.tier].h + 14, -14);
+}
+function layoutRow(container, cards, cx, cy, gap) {
+  const total = cards.reduce((s, c) => s + c.fw, 0) + gap * (cards.length - 1);
+  let x = cx - total / 2;
+  for (const c of cards) {
+    c.position.set(x, cy - c.fh / 2);
+    x += c.fw + gap;
+    container.addChild(c);
+  }
+}
+function layoutHand(container, cards, cx, cy, availW) {
+  const w = TIER.hand.w, n = cards.length;
+  if (!n) return;
+  let spacing = w + 8;
+  if (n > 1 && n * w + (n - 1) * 8 > availW) {
+    spacing = Math.max(22, (availW - w) / (n - 1));
+  }
+  const total = w + (n - 1) * spacing;
+  let x = cx - total / 2;
+  cards.forEach((c, i) => {
+    c.position.set(x, cy - c.fh / 2);
+    c.zIndex = c.selectedCard ? 900 : i;
+    x += spacing;
+    container.addChild(c);
+  });
+}
+
+/* ---------- render ---------- */
+function render() {
+  const w = app.screen.width, h = app.screen.height;
+  const L = layout(w, h);
+  Object.values(zoneLayers).forEach(l => l.removeChildren());
+
+  const acts = gameView.turn.priority === 'me' ? computeValidActions() : [];
+  const actionable = (ids) => acts.filter(a => intersects(a.subject, ids));
+
+  let rows = bands(gameView.opponent.battlefield, true);
+  let y = 62;
+  for (const row of rows) {
+    const cards = row.groups.map(g =>
+      makeCard({ ...g, entity: g, interactive: false }, row.tier));
+    layoutRow(zoneLayers.opp, cards, w / 2, y + TIER[row.tier].h / 2, L.gap);
+    y += TIER[row.tier].h + L.rowGap;
+  }
+
+  rows = bands(gameView.me.battlefield, false);
+  const myBandH = bandHeight(gameView.me.battlefield);
+  y = L.mineCenter - myBandH / 2;
+  for (const row of rows) {
+    const cards = row.groups.map(g => {
+      const myActs = actionable(g.ids);
+      return makeCard({
+        ...g, entity: g,
+        selected: ui.selected === g.key,
+        interactive: myActs.length > 0,
+        dimIfInert: true,
+        onTap: () => {
+          if (ui.selected === g.key && myActs.length) dispatch(myActs[0]);
+          else select(g.key, g.ids);
+        },
+      }, row.tier);
+    });
+    layoutRow(zoneLayers.mine, cards, w / 2, y + TIER[row.tier].h / 2, L.gap);
+    y += TIER[row.tier].h + L.rowGap;
+  }
+
+  const handCards = gameView.me.hand.map(c => {
+    const myActs = actionable([c.id]);
+    const card = makeCard({
+      ...c, entity: c, count: 1,
+      selected: ui.selected === c.id,
+      interactive: myActs.length > 0,
+      onTap: () => {
+        if (ui.selected === c.id && myActs.length) dispatch(myActs[0]);
+        else select(c.id, [c.id]);
+      },
+    }, 'hand');
+    card.selectedCard = ui.selected === c.id;
+    if (card.selectedCard) card.children[0].y -= 10;
+    return card;
+  });
+  layoutHand(zoneLayers.hand, handCards, w / 2, L.handCy, w - 60);
+
+  renderDom(acts);
+}
+
+function renderDom(acts) {
+  document.getElementById('opp-life').textContent = gameView.opponent.life;
+  document.getElementById('opp-hand-n').textContent = gameView.opponent.handCount;
+  document.getElementById('opp-lib-n').textContent = gameView.opponent.library;
+  document.getElementById('opp-gy-n').textContent = gameView.opponent.graveyard.length;
+  document.getElementById('my-life').textContent = gameView.me.life;
+  document.getElementById('my-lib-n').textContent = gameView.me.library;
+  document.getElementById('my-gy-n').textContent = gameView.me.graveyard.length;
+
+  /* graveyard chip previews its top (newest) card's identity */
+  const gyTop = document.getElementById('gy-top');
+  const top = gameView.me.graveyard[gameView.me.graveyard.length - 1];
+  if (top) {
+    const acc = PALETTE[top.identity];
+    gyTop.style.border = '1.5px solid ' + acc;
+    gyTop.innerHTML = '<span class="strip" style="background:' + rgba(acc, 0.3) + '"></span>'
+      + '<span class="mono" style="color:' + rgba(acc, 0.8) + '">' + top.name[0] + '</span>';
+  }
+
+  const ex = document.getElementById('my-exile');
+  ex.style.display = gameView.me.exile > 0 ? '' : 'none';
+  document.getElementById('my-ex-n').textContent = gameView.me.exile;
+
+  const mine = gameView.turn.priority === 'me';
+  document.getElementById('phase-who').textContent =
+    mine ? 'You have priority' : "Opponent's turn";
+  document.getElementById('my-avatar').classList.toggle('priority', mine);
+  document.getElementById('opp-avatar').classList.toggle('priority', !mine);
+
+  const mana = document.getElementById('mana');
+  mana.classList.toggle('on', gameView.me.mana.G > 0);
+  mana.innerHTML = '';
+  for (let i = 0; i < gameView.me.mana.G; i++) {
+    const p = document.createElement('span');
+    p.className = 'mana-pip'; p.textContent = 'G';
+    mana.appendChild(p);
+  }
+
+  const bar = document.getElementById('actions');
+  bar.innerHTML = '';
+  const globals = acts.filter(a => !a.subject);
+  const contextual = acts.filter(a => intersects(a.subject, ui.selectedIds));
+  for (const a of contextual) {
+    const b = document.createElement('button');
+    b.textContent = a.label;
+    b.classList.add('primary');
+    b.addEventListener('click', () => dispatch(a));
+    bar.appendChild(b);
+  }
+  for (const a of globals) {
+    const b = document.createElement('button');
+    b.textContent = a.label;
+    b.addEventListener('click', () => dispatch(a));
+    bar.appendChild(b);
+  }
+}
+
+/* ---------- keyboard: Esc closes topmost, I inspects selection ---------- */
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (ui.inspect) return closeInspect();
+    if (ui.browser) return closeBrowser();
+    clearSelection(); render();
+  }
+  if (e.key === 'Enter' && ui.selectedIds.length) {
+    const acts = computeValidActions();
+    const primary = acts.find(a => intersects(a.subject, ui.selectedIds));
+    if (primary) dispatch(primary);
+  }
+  if ((e.key === 'i' || e.key === 'I') && ui.selectedIds.length) {
+    const id = ui.selectedIds[0];
+    const entity = gameView.me.battlefield.find(p => p.id === id)
+      || gameView.me.hand.find(c => c.id === id);
+    if (entity) openInspect(entity);
+  }
+});
+
+window.addEventListener('resize', () => render());
+
+render();
+</script>
+</body>
+</html>

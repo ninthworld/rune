@@ -1,0 +1,32 @@
+# AGENTS.md — clients/web
+
+The RUNE web client. A dumb renderer by design — read docs/brief.md (Component 2)
+and docs/design/ui-design-notes.md before changing anything.
+
+## Hard rules
+- `valid_actions[]` drives ALL interactivity. Nothing outside it is clickable,
+  focusable, or hoverable-as-actionable. The client never computes legality.
+- Actions have subjects: entity-subject actions render on the entity; the action bar
+  holds only global actions plus a contextual echo of the selection. Never enumerate
+  per-card actions as bar buttons (docs/decisions/0004).
+- DOM/canvas split (docs/decisions/0003): battlefield, hand, and stack cards live in
+  the Pixi canvas; prompts, action bar, player tiles, log, browsers, and inspect are
+  React DOM. Text a user reads or clicks is DOM.
+- All card colors/sizes come from `src/tokens.ts`. Both renderers (Pixi + HTML)
+  read the same constants; never inline card colors.
+- The whole UI must rebuild from a single GameView + pending prompt (reconnect test).
+- Effective values (P/T, counters) are displayed exactly as the server computes them.
+- No `localStorage` of game state; server is the source of truth.
+- Touch first: 44px minimum targets; no action reachable only by drag or hover.
+
+## Commands
+- `npm install` (in this directory)
+- `npm run typecheck` — strict TS, the lint gate until ESLint lands
+- `npm run build` — typecheck + production build (CI runs this)
+- `npm run dev` — Vite dev server
+
+## References
+- prototypes/ui-battlefield-v3.html — working reference for card factory, bands,
+  zone rail, browser, inspect. Reference only; never import from prototypes/.
+- docs/design/ui-requirements.md — full capability list; check the stress analysis
+  section before locking any rendering decision.

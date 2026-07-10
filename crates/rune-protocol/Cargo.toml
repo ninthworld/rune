@@ -1,0 +1,13 @@
+[package]
+name = "rune-protocol"
+description = "RUNE client/server protocol types: GameView, valid actions, action choice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# serde + serde_json belong here (first backlog item) — this crate is the one place
+# wire-format dependencies are expected.
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rune-engine",
+    "crates/rune-protocol",
+    "crates/rune-server",
+    "crates/rune-cli",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "TBD"
+repository = "https://github.com/OWNER/rune"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"

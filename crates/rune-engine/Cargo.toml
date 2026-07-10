@@ -1,0 +1,13 @@
+[package]
+name = "rune-engine"
+description = "RUNE rules engine: pure, immutable game state machine (layer 3)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Intentionally empty. The engine must stay free of I/O and runtime dependencies.
+# Rules-adjacent crates (serde for snapshots, etc.) require an ADR before adding.
+
+[lints]
+workspace = true

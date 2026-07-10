@@ -1,0 +1,6 @@
+# Humans who review and merge. Replace OWNER with the maintainer's GitHub handle.
+# Agents never merge; every path requires a human owner's review.
+*                   @OWNER
+/crates/rune-engine/ @OWNER
+/docs/protocol.md    @OWNER
+/docs/decisions/     @OWNER

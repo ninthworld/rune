@@ -1,0 +1,23 @@
+name: Design decision
+description: A choice that needs an ADR before implementation
+labels: [decision]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Decision needed
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options considered
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: What this blocks

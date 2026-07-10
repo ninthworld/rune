@@ -1,0 +1,12 @@
+[package]
+name = "rune-cli"
+description = "RUNE terminal client: proves the two-message protocol without a UI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rune-protocol = { path = "../rune-protocol" }
+
+[lints]
+workspace = true
