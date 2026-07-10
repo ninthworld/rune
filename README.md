@@ -70,5 +70,9 @@ lives in [`AGENTS.md`](AGENTS.md); the process lives in
 RUNE is a free fan project, not affiliated with or endorsed by Wizards of the Coast.
 It implements game rules (not copyrightable), uses no card images or official frame
 designs, and must never be monetized. Card oracle text is used under the same
-tolerated-fan-project posture as long-standing prior art (XMage, Forge). License
-selection is tracked in [`docs/decisions/0005-license.md`](docs/decisions/0005-license.md).
+tolerated-fan-project posture as long-standing prior art (XMage, Forge).
+
+The source code is licensed under the [MIT License](LICENSE); see
+[`docs/decisions/0005-license.md`](docs/decisions/0005-license.md) for the rationale.
+The MIT license governs the code only — the non-monetization and no-card-images
+posture above still applies to how the project is distributed.
