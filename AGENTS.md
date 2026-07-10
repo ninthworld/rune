@@ -4,6 +4,9 @@ RUNE is an open-source Magic: The Gathering implementation: a Rust server that o
 all game logic and a React/Pixi web client that is a "dumb" renderer. They speak a
 two-message JSON/WebSocket protocol. Full context: `docs/brief.md`.
 
+All code follows `docs/coding-standards.md` (enforced by `make check`) — read it
+before writing code.
+
 ## Hard rules
 
 - **Zero game logic in the client.** The client renders `GameView` and sends back an

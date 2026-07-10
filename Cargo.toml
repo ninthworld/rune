@@ -13,5 +13,22 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/OWNER/rune"
 
+# Coding standards are enforced here (docs/coding-standards.md). These apply to
+# every crate via `[lints] workspace = true`. Baseline: practical-strict —
+# deny warnings, forbid panicking APIs outside tests, require docs on public
+# items. clippy::pedantic/nursery are deliberately NOT enabled.
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+
 [workspace.lints.clippy]
-unwrap_used = "warn"
+# Panicking APIs are banned in non-test code; test modules opt back in with a
+# module-level `#![allow(...)]` (see docs/coding-standards.md).
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+# No debugging/placeholder leftovers in committed code.
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
