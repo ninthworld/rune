@@ -8,6 +8,7 @@ import type { GameView } from './protocol';
 
 /** The wire text a client would receive over the socket. */
 export const SAMPLE_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
   my_hand: [
     {
       id: 'c1',
@@ -61,6 +62,7 @@ export const SAMPLE_GAME_VIEW_JSON = JSON.stringify({
 
 /** The fully-normalized {@link GameView} the client should hold after parsing. */
 export const SAMPLE_GAME_VIEW: GameView = {
+  you: 'p1',
   my_hand: [
     {
       id: 'c1',

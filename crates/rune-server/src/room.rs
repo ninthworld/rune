@@ -337,6 +337,10 @@ mod tests {
         let view0 = wait_for_view(&mut rx0).await;
         let view1 = wait_for_view(&mut rx1).await;
 
+        // Each seat's view names its own receiver in `you`.
+        assert_eq!(view0.you, "p0");
+        assert_eq!(view1.you, "p1");
+
         // Player 0 sees their own two cards but only a count for player 1's hand.
         assert_eq!(view0.my_hand.len(), 2);
         assert_eq!(view0.opponents.len(), 1);

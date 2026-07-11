@@ -54,6 +54,9 @@ export function normalizeGameView(payload: unknown): GameView {
   }
 
   return {
+    // An older server may omit `you`; default to '' so the payload still
+    // normalizes rather than crashing (forward/backward compatibility).
+    you: typeof payload.you === 'string' ? payload.you : '',
     my_hand: asArray(payload.my_hand, 'my_hand'),
     opponents: asArray(payload.opponents, 'opponents'),
     battlefield: asArray(payload.battlefield, 'battlefield'),

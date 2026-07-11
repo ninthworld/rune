@@ -420,6 +420,7 @@ mod tests {
 
     fn view_with_actions(actions: Vec<ValidAction>) -> GameView {
         GameView {
+            you: "p0".into(),
             my_hand: vec![],
             opponents: vec![],
             battlefield: vec![],

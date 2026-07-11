@@ -171,6 +171,12 @@ pub struct ValidAction {
 /// is load-bearing across messages.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GameView {
+    /// The receiver's own seat entity id (the `p{N}` form used for players
+    /// throughout the view). Lets a client identify itself directly instead of
+    /// inferring it from which id is not an opponent. `#[serde(default)]` so a
+    /// payload from an older server that omits it still deserializes (to `""`).
+    #[serde(default)]
+    pub you: PlayerId,
     /// Full card objects for the receiving player only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub my_hand: Vec<CardView>,
@@ -275,6 +281,7 @@ mod tests {
     #[test]
     fn game_view_round_trips_through_json() {
         let view = GameView {
+            you: "p1".into(),
             my_hand: vec![CardView {
                 id: "c1".into(),
                 name: "Llanowar Elves".into(),
@@ -342,6 +349,7 @@ mod tests {
     #[test]
     fn empty_game_view_round_trips() {
         let view = GameView {
+            you: "p0".into(),
             my_hand: vec![],
             opponents: vec![],
             battlefield: vec![],
@@ -362,6 +370,7 @@ mod tests {
     #[test]
     fn mana_pool_is_omitted_when_empty_and_round_trips_when_present() {
         let mut view = GameView {
+            you: "p0".into(),
             my_hand: vec![],
             opponents: vec![],
             battlefield: vec![],
@@ -392,5 +401,39 @@ mod tests {
         let view: GameView = serde_json::from_str(json).unwrap();
         assert_eq!(view.phase, Phase::Draw);
         assert!(view.my_hand.is_empty());
+    }
+
+    #[test]
+    fn you_defaults_to_empty_when_absent() {
+        // Backward-compat: a payload from an older server omits `you`; it must
+        // still deserialize, defaulting the seat id to an empty string rather
+        // than failing the whole message.
+        let json = r#"{ "phase": "draw" }"#;
+        let view: GameView = serde_json::from_str(json).unwrap();
+        assert_eq!(view.you, "");
+    }
+
+    #[test]
+    fn game_view_serializes_you_on_the_wire() {
+        let view = GameView {
+            you: "p1".into(),
+            my_hand: vec![],
+            opponents: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            graveyards: vec![],
+            exile: vec![],
+            phase: Phase::Upkeep,
+            mana_pool: vec![],
+            priority_player: None,
+            valid_actions: vec![],
+            action_deadline: None,
+        };
+        let json = serde_json::to_value(&view).unwrap();
+        // The receiver's own seat id is always present on the wire (like `phase`),
+        // not elided the way empty collections are.
+        assert_eq!(json.get("you"), Some(&serde_json::json!("p1")));
+        let back: GameView = serde_json::from_value(json).unwrap();
+        assert_eq!(back.you, "p1");
     }
 }

@@ -224,6 +224,9 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
 /// verbatim. `valid_actions` are populated only when `viewer` holds priority,
 /// because the engine offers actions to exactly one seat at a time.
 ///
+/// The view names its receiver in `you` (the viewer's `p{N}` seat id), so the
+/// client identifies itself directly rather than inferring it from the zones.
+///
 /// A view is a complete snapshot: a client can reconstruct its entire UI from this
 /// one message, which is what makes reconnect a plain re-send (`docs/protocol.md`).
 pub(crate) fn personalized_view(
@@ -296,6 +299,7 @@ pub(crate) fn personalized_view(
     };
 
     GameView {
+        you: player_id(viewer),
         my_hand,
         opponents,
         battlefield,

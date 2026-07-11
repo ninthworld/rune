@@ -18,7 +18,7 @@ import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { EntityOverlay } from './EntityOverlay';
 import { PlayerTiles } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
-import { buildTableScene, deriveLocalPlayerId, type RenderedCard, type TableScene } from './scene';
+import { buildTableScene, type RenderedCard, type TableScene } from './scene';
 import { boardWrap, main, muted } from './styles';
 
 /** Find a rendered card anywhere in the scene by entity id. */
@@ -37,10 +37,12 @@ export function Table() {
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
 
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
-  const localId = useMemo(() => (view ? deriveLocalPlayerId(view) : undefined), [view]);
+  // The server names the receiver directly in `view.you`; an older server may
+  // omit it (empty), which we treat as "unknown".
+  const localId = view?.you || undefined;
   const scene = useMemo(
-    () => (view ? buildTableScene(view, localId, selectedId ?? undefined) : null),
-    [view, localId, selectedId],
+    () => (view ? buildTableScene(view, selectedId ?? undefined) : null),
+    [view, selectedId],
   );
 
   if (!view || !scene) {

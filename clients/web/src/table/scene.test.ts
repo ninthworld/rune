@@ -3,7 +3,7 @@ import { normalizeGameView } from '../wire';
 import { SAMPLE_GAME_VIEW } from '../game-view.fixture';
 import type { GameView } from '../protocol';
 import { deriveColorIdentity } from './colorIdentity';
-import { buildTableScene, deriveLocalPlayerId } from './scene';
+import { buildTableScene } from './scene';
 
 describe('deriveColorIdentity', () => {
   it('frames any land as land regardless of cost', () => {
@@ -48,26 +48,43 @@ describe('deriveColorIdentity', () => {
   });
 });
 
-describe('deriveLocalPlayerId', () => {
-  it('identifies the receiver as the public-zone player who is not an opponent', () => {
-    expect(deriveLocalPlayerId(SAMPLE_GAME_VIEW)).toBe('p1');
+describe('buildTableScene local player', () => {
+  it('identifies the receiver straight from view.you', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    expect(scene.localPlayerId).toBe('p1');
+    expect(scene.bands.at(-1)?.isLocal).toBe(true);
   });
 
-  it('returns undefined when no non-opponent id is present', () => {
-    const view: GameView = {
+  it('resolves the local band at game start, before any public zone exists', () => {
+    // The heuristic this replaces returned undefined on an empty opening board;
+    // `view.you` names the receiver even with nothing on the table yet.
+    const opening: GameView = {
       ...SAMPLE_GAME_VIEW,
+      you: 'p1',
       battlefield: [],
       graveyards: [],
       exile: [],
       priority_player: undefined,
     };
-    expect(deriveLocalPlayerId(view)).toBeUndefined();
+    const scene = buildTableScene(opening);
+    expect(scene.localPlayerId).toBe('p1');
+    // A local band is still laid out for the receiver even with no permanents.
+    expect(scene.bands.map((b) => b.playerId)).toEqual(['p2', 'p1']);
+    expect(scene.bands.at(-1)?.isLocal).toBe(true);
+  });
+
+  it('treats an absent view.you (older server) as unknown', () => {
+    const legacy = normalizeGameView({ ...JSON.parse(JSON.stringify(SAMPLE_GAME_VIEW)), you: '' });
+    const scene = buildTableScene(legacy);
+    expect(scene.localPlayerId).toBeUndefined();
+    // No band is flagged local when the receiver is unknown.
+    expect(scene.bands.every((b) => !b.isLocal)).toBe(true);
   });
 });
 
 describe('buildTableScene', () => {
   it('groups the battlefield into per-controller bands with the local band last', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'p1');
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
     expect(scene.bands.map((b) => b.playerId)).toEqual(['p2', 'p1']);
     const local = scene.bands.at(-1);
     expect(local?.isLocal).toBe(true);
@@ -75,7 +92,7 @@ describe('buildTableScene', () => {
   });
 
   it('passes P/T, tapped and counters through verbatim (no game logic)', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'p1');
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
     const bear = scene.bands.at(-1)?.cards[0];
     expect(bear?.data.power).toBe('2');
     expect(bear?.data.toughness).toBe('2');
@@ -85,7 +102,7 @@ describe('buildTableScene', () => {
   });
 
   it('routes each subject-action onto its entity, leaving others non-interactive', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'p1');
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
     const bear = scene.bands.at(-1)?.cards[0];
     // The activate-ability action names perm_xyz, so it rides on the card.
     expect(bear?.actions.map((a) => a.id)).toEqual(['a2']);
@@ -95,19 +112,19 @@ describe('buildTableScene', () => {
   });
 
   it('renders the local hand at hand tier', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'p1');
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
     expect(scene.hand.map((c) => c.tier)).toEqual(['hand']);
   });
 
   it('marks the selected entity so its card draws a ring', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'p1', 'perm_xyz');
+    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
     expect(scene.bands.at(-1)?.cards[0]?.data.selected).toBe(true);
     expect(scene.hand[0]?.data.selected).toBe(false);
   });
 
   it('is a pure function of its inputs: identical view → identical scene', () => {
-    const a = buildTableScene(SAMPLE_GAME_VIEW, 'p1', 'perm_xyz');
-    const b = buildTableScene(SAMPLE_GAME_VIEW, 'p1', 'perm_xyz');
+    const a = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
+    const b = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
     expect(a).toEqual(b);
   });
 
@@ -128,7 +145,7 @@ describe('buildTableScene', () => {
       phase: 'end',
       valid_actions: [],
     });
-    const scene = buildTableScene(next, 'p1');
+    const scene = buildTableScene(next);
     const allBattlefield = scene.bands.flatMap((b) => b.cards.map((c) => c.entityId));
     expect(allBattlefield).toEqual(['perm_new']);
     expect(allBattlefield).not.toContain('perm_xyz');

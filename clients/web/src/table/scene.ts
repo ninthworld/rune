@@ -84,19 +84,12 @@ const LAYOUT = {
 } as const;
 
 /**
- * Identify which player is "me". The GameView never names the receiver, but the
- * hidden-zone `opponents[]` list does name everyone else, so the local player is
- * whichever id appears in a public zone yet is not an opponent. Pure display
- * inference — it selects a band to render nearest the hand, nothing more.
+ * The receiver's own seat id, taken straight from `view.you`. An older server
+ * may send it empty; treat that as "unknown" (`undefined`) so band ordering and
+ * `isLocal` degrade the same way they did before the field existed.
  */
-export function deriveLocalPlayerId(view: GameView): PlayerId | undefined {
-  const opponents = new Set(view.opponents.map((o) => o.player_id));
-  const candidates: PlayerId[] = [];
-  for (const perm of view.battlefield) candidates.push(perm.controller, perm.owner);
-  for (const pile of view.graveyards) candidates.push(pile.player_id);
-  for (const pile of view.exile) candidates.push(pile.player_id);
-  if (view.priority_player) candidates.push(view.priority_player);
-  return candidates.find((id) => !opponents.has(id));
+function localPlayerIdOf(view: GameView): PlayerId | undefined {
+  return view.you || undefined;
 }
 
 /** Map a server card + permanent state onto the factory's display data. */
@@ -149,11 +142,8 @@ function layRow(
  * Build the full scene from a view. `selectedId` marks the currently selected
  * entity so its card draws a selection ring; it never changes what is offered.
  */
-export function buildTableScene(
-  view: GameView,
-  localPlayerId?: PlayerId,
-  selectedId?: EntityId,
-): TableScene {
+export function buildTableScene(view: GameView, selectedId?: EntityId): TableScene {
+  const localPlayerId = localPlayerIdOf(view);
   const subjectActions = view.valid_actions.filter((a) => a.subject && a.subject.length > 0);
 
   // Group battlefield permanents by controller (zone placement follows the
