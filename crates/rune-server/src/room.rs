@@ -690,6 +690,7 @@ mod tests {
             seat: 0,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: pass0.id.clone(),
+                ..Default::default()
             }),
         });
 
@@ -709,6 +710,7 @@ mod tests {
             seat: 1,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: pass1.id.clone(),
+                ..Default::default()
             }),
         });
 
