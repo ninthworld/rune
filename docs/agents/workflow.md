@@ -13,6 +13,9 @@
    with evidence rather than retrying blindly.
 5. **Conflicts between agents are resolved by humans**, not by other agents.
 
+To run this loop locally with a model served by Ollama instead of a cloud
+provider, see [`local-ai-setup.md`](local-ai-setup.md).
+
 ## Labels
 
 `agent-task`, `agent` (on PRs), `bug`, `decision`, `dependencies`,
