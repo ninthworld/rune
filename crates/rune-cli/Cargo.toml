@@ -7,6 +7,36 @@ license.workspace = true
 
 [dependencies]
 rune-protocol = { path = "../rune-protocol" }
+# The wire codec: the CLI (de)serializes the same JSON protocol as the server.
+serde_json = "1"
+# Async transport stack — the client half of the same choice recorded for the
+# server in docs/decisions/0008-tokio-websocket-server.md (tokio, tokio-tungstenite,
+# futures-util). No new/different crate, so no separate ADR.
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "macros",
+    "io-util",
+    "io-std",
+] }
+# Client-side WebSocket: `connect_async` plus framed message I/O. TLS is out of
+# scope (plain `ws://`), matching ADR-0008 — no native-tls/rustls surface.
+tokio-tungstenite = { version = "0.24", default-features = false, features = [
+    "connect",
+    "handshake",
+] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+
+[dev-dependencies]
+# The end-to-end session test drives the real room task (layer 2) over an
+# in-memory duplex WebSocket, exactly as the server's own room integration test
+# does — proving the CLI speaks the room's wire protocol without a live socket.
+rune-server = { path = "../rune-server" }
+rune-engine = { path = "../rune-engine" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = [
+    "handshake",
+] }
 
 [lints]
 workspace = true
