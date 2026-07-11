@@ -73,11 +73,19 @@ export const FRAME = {
  * Typography tokens. `charWidthRatio` is the average glyph advance as a fraction
  * of font size; the Pixi factory uses it to estimate text extents for layout so
  * it never needs a live canvas/GPU text measurement (keeps it headless-testable).
+ *
+ * `bitmapName`/`bitmapBaseSize` configure the shared, cached `BitmapFont` the card
+ * factory rasterizes ONCE and draws all card text from (ui-requirements §11: "all
+ * text in the Pixi layer via cached bitmap text"). The atlas is generated white at
+ * `bitmapBaseSize` (the largest glyph we ever display — the hand-tier monogram) so
+ * every label can be tinted to its token color and scaled DOWN without re-rasterizing.
  */
 export const FONT = {
   family: 'system-ui, sans-serif',
   weight: '500',
   charWidthRatio: 0.55,
+  bitmapName: 'RuneCard',
+  bitmapBaseSize: 42,
 } as const;
 
 /** Card size tiers: digest (opponent chips) / field / support / hand / full (inspect). */
