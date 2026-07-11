@@ -11,9 +11,10 @@
 //! already depends on, and adds nothing to the wire contract in `rune-protocol`.
 
 use rune_engine::{
-    valid_actions, Action, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
-    CounterKind, Effect, GameResult, GameState, LossReason, PermanentId, Player, PlayerId, StackId,
-    StackObject, StackObjectKind, Step,
+    attacker_candidates, blocker_candidates, bottom_requirement, declared_attackers,
+    target_requirements, valid_actions, Action, Block, CardData, CardDatabase, CardId,
+    CardInstance, CardInstanceId, CounterKind, Effect, GameResult, GameState, LossReason,
+    PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameOverReason, GameResult as GameResultView, GameView,
@@ -240,6 +241,123 @@ fn content_token(kind: &str, subject: &[String], requirements: &[TargetRequireme
     format!("t{:016x}", hasher.finish())
 }
 
+/// The opaque wire entity id naming the specific game object an engine [`Target`]
+/// points at, reusing the same per-instance id scheme every other action uses
+/// ([`card_entity_id`]/[`permanent_entity_id`]/[`player_id`]). This is what makes a
+/// projected candidate — and a returned selection — name one unambiguous object.
+fn target_entity_id(target: Target) -> String {
+    match target {
+        Target::Player(seat) => player_id(seat),
+        Target::Permanent(id) => permanent_entity_id(id),
+        Target::Card(id) => card_entity_id(id),
+    }
+}
+
+/// The human-readable prompt for an ability-target slot's [`TargetSpec`]. Kept
+/// exhaustive so a new spec forces a matching wire prompt here.
+fn target_spec_prompt(spec: TargetSpec) -> &'static str {
+    match spec {
+        TargetSpec::AnyPlayer => "Choose target player",
+        TargetSpec::AnyPermanent => "Choose target permanent",
+        TargetSpec::AnyCreature => "Choose target creature",
+    }
+}
+
+/// The stable requirement-slot id for the blockers assigned to `attacker` in a
+/// [`Action::DeclareBlockers`] projection. One slot per declared attacker, keyed by
+/// the attacker's permanent id, so the returned choice names which attacker the
+/// selected blockers are assigned to. Recomputed (never parsed) on resolution.
+fn blocker_slot(attacker: PermanentId) -> String {
+    format!("block_{}", attacker.0)
+}
+
+/// The bottoming requirement slot for a mulligan [`Action::Keep`] (CR 103.5,
+/// London): the [`bottom_requirement`] candidates (the deciding seat's hand cards)
+/// projected as a single multi-select slot asking for `count` cards. Empty for a
+/// first-hand keep (nothing owed), so that keep stays a plain, choice-free action.
+fn keep_requirements(state: &GameState, action: &Action) -> Vec<TargetRequirement> {
+    match bottom_requirement(state, action) {
+        Some(req) => vec![TargetRequirement {
+            slot: "bottom".to_string(),
+            prompt: format!("Put {} card(s) on the bottom of your library", req.count),
+            candidates: req.candidates.into_iter().map(target_entity_id).collect(),
+        }],
+        None => Vec::new(),
+    }
+}
+
+/// The attacker-declaration requirement slot (CR 508.1a): the engine's
+/// [`attacker_candidates`] projected as a single multi-select slot. Empty when no
+/// creature may attack, so declaring no attackers stays a plain, choice-free action
+/// (and the token-less path keeps working when there is nothing to choose).
+fn attacker_requirements(state: &GameState, db: &CardDatabase) -> Vec<TargetRequirement> {
+    let candidates = attacker_candidates(state, db);
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+    vec![TargetRequirement {
+        slot: "attackers".to_string(),
+        prompt: "Choose which creatures attack".to_string(),
+        candidates: candidates.into_iter().map(permanent_entity_id).collect(),
+    }]
+}
+
+/// The blocker-declaration requirement slots (CR 509.1a): one slot per declared
+/// attacker ([`declared_attackers`]), each listing the eligible
+/// [`blocker_candidates`] the defender may assign to that attacker. Empty when
+/// there is nothing to block or no creature to block with, so declaring no blockers
+/// stays a plain, choice-free action.
+fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<TargetRequirement> {
+    let attackers = declared_attackers(state);
+    let blockers = blocker_candidates(state, db);
+    if attackers.is_empty() || blockers.is_empty() {
+        return Vec::new();
+    }
+    let candidates: Vec<String> = blockers.into_iter().map(permanent_entity_id).collect();
+    attackers
+        .into_iter()
+        .map(|attacker| TargetRequirement {
+            slot: blocker_slot(attacker),
+            prompt: format!(
+                "Choose blockers for {}",
+                permanent_card_name(state, attacker, db)
+            ),
+            candidates: candidates.clone(),
+        })
+        .collect()
+}
+
+/// The ability-target requirement slots (ADR 0009 §Enumeration, deferral #73): the
+/// engine's per-slot [`target_requirements`] candidate sets projected one slot each
+/// (`t0`, `t1`, …), reusing the same content-binding machinery as the mulligan and
+/// combat multi-selects. Empty for a non-targeting ability.
+fn ability_requirements(
+    state: &GameState,
+    db: &CardDatabase,
+    action: &Action,
+) -> Vec<TargetRequirement> {
+    target_requirements(state, db, action)
+        .into_iter()
+        .enumerate()
+        .map(|(index, req)| TargetRequirement {
+            slot: format!("t{index}"),
+            prompt: target_spec_prompt(req.spec).to_string(),
+            candidates: req.candidates.into_iter().map(target_entity_id).collect(),
+        })
+        .collect()
+}
+
+/// The display name of the permanent `id` on the battlefield, for a human prompt,
+/// or a stable placeholder if it is not found.
+fn permanent_card_name(state: &GameState, id: PermanentId, db: &CardDatabase) -> String {
+    state
+        .battlefield
+        .iter()
+        .find(|perm| perm.id == id)
+        .map(|perm| card_name(perm.card, db))
+        .unwrap_or_else(|| "the attacker".to_string())
+}
+
 /// Project one engine [`Action`] onto its wire [`ValidAction`], attaching the
 /// subject entity so the client can render the action on the card/permanent it
 /// belongs to (ADR 0004), the ordered target `requirements` it must fill, and the
@@ -249,12 +367,21 @@ fn content_token(kind: &str, subject: &[String], requirements: &[TargetRequireme
 /// ([`card_entity_id`]/[`permanent_entity_id`]/[`player_id`], issue #51), never a
 /// bare printed card, so a targeted answer is unambiguous.
 ///
-/// The engine [`Action`] set does not yet carry selectable targets (issues #70/#71
-/// grow that), so `requirements` is empty for every current action and the token
-/// binds `kind` + `subject` alone. When a targeted action lands, its target specs
-/// are projected into `requirements` here — one slot per target, each listing the
-/// engine's legal candidate entity ids — and the token binds them automatically.
-fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAction {
+/// Multi-select and targeted actions carry their engine candidate sets in
+/// `requirements`, projected from the freshly computed legal sets (issue #140):
+/// the mulligan [`Action::Keep`] bottoming ([`bottom_requirement`]), the combat
+/// [`Action::DeclareAttackers`]/[`Action::DeclareBlockers`] declarations
+/// ([`attacker_candidates`]/[`blocker_candidates`]), and ability targets
+/// ([`target_requirements`], ADR 0009 deferral #73). The token binds those
+/// requirements automatically (see [`content_token`]), and [`resolve_action`] maps
+/// a returned selection back onto the concrete engine action. An action with
+/// nothing to choose projects empty `requirements` and stays a plain action.
+fn valid_action_view(
+    id: String,
+    action: &Action,
+    state: &GameState,
+    db: &CardDatabase,
+) -> ValidAction {
     let (kind, label, subject, requirements): (
         String,
         String,
@@ -289,14 +416,13 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
             "activate_ability".to_string(),
             "Activate ability".to_string(),
             vec![permanent_entity_id(*permanent)],
-            Vec::new(),
+            ability_requirements(state, db, action),
         ),
         // Pre-game London mulligan decisions (CR 103.5). Subject-less, so the
-        // client renders them in the action bar (ADR 0004). The `Keep` bottoming
-        // choice is a multi-select `requirements` slot (candidates = hand card
-        // entity ids); projecting it rides the same engine→wire requirements
-        // wiring still pending for targeting (ADR 0009 follow-up #73), so it is
-        // left empty here for now — a first-hand keep (no bottoming) already works.
+        // client renders them in the action bar (ADR 0004). A `Mulligan` has no
+        // sub-choice; a `Keep` carries the bottoming multi-select slot (candidates
+        // = the deciding seat's hand card entity ids, count = mulligans taken) when
+        // one is owed, and nothing for a first-hand keep.
         Action::Mulligan => (
             "mulligan".to_string(),
             "Mulligan".to_string(),
@@ -307,25 +433,25 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
             "keep".to_string(),
             "Keep hand".to_string(),
             Vec::new(),
-            Vec::new(),
+            keep_requirements(state, action),
         ),
         // Combat declarations (CR 508/509) are subject-less choices offered to the
-        // priority holder. Their multi-select candidate `requirements` (from the
-        // engine's `attacker_candidates`/`blocker_candidates`) are projected once
-        // the client-side declaration UX lands (a follow-up, mirroring how ability
-        // target `requirements` are still deferred above); until then the empty
-        // requirement form round-trips as a "no attackers/blockers" declaration.
+        // priority holder, carrying their multi-select candidate `requirements` from
+        // the engine's freshly computed legal sets: attacker candidates for the
+        // active player, and one blocker slot per declared attacker for the
+        // defender. Empty when there is nothing to declare, so the empty (token-less)
+        // form still round-trips as a "no attackers/blockers" declaration.
         Action::DeclareAttackers { .. } => (
             "declare_attackers".to_string(),
             "Declare attackers".to_string(),
             Vec::new(),
-            Vec::new(),
+            attacker_requirements(state, db),
         ),
         Action::DeclareBlockers { .. } => (
             "declare_blockers".to_string(),
             "Declare blockers".to_string(),
             Vec::new(),
-            Vec::new(),
+            blocker_requirements(state, db),
         ),
         // Concede (CR 104.3a): a subject-less action always offered to the acting
         // seat, rendered in the action bar (ADR 0004).
@@ -430,7 +556,7 @@ pub(crate) fn personalized_view(
     let valid_actions = if holds_priority && state.priority == viewer {
         issued_actions(state, db)
             .into_iter()
-            .map(|(id, action)| valid_action_view(id, &action, db))
+            .map(|(id, action)| valid_action_view(id, &action, state, db))
             .collect()
     } else {
         Vec::new()
@@ -497,30 +623,151 @@ fn targets_fill_requirements(targets: &[TargetChoice], requirements: &[TargetReq
     })
 }
 
+/// The entity ids chosen for `slot` in a returned selection, or an empty slice if
+/// the client sent no answer for it (a legal "select nothing" for an optional
+/// multi-select like a combat declaration).
+fn chosen_for<'a>(targets: &'a [TargetChoice], slot: &str) -> &'a [String] {
+    targets
+        .iter()
+        .find(|choice| choice.slot == slot)
+        .map_or(&[], |choice| choice.chosen.as_slice())
+}
+
+/// Map a returned mulligan bottoming selection onto the concrete
+/// [`Action::Keep`] (CR 103.5): each chosen entity id must name a card currently in
+/// the deciding seat's hand, resolved to its [`Target::Card`]. `None` if any chosen
+/// id names no such card (rejecting the answer rather than silently dropping it).
+fn bind_keep(state: &GameState, targets: &[TargetChoice]) -> Option<Action> {
+    let hand = &state.players.get(state.priority.0)?.hand;
+    let mut bottom = Vec::new();
+    for id in chosen_for(targets, "bottom") {
+        let inst = hand.iter().find(|card| card_entity_id(card.id) == *id)?;
+        bottom.push(Target::Card(inst.id));
+    }
+    Some(Action::Keep { bottom })
+}
+
+/// Map a returned attacker declaration onto the concrete
+/// [`Action::DeclareAttackers`] (CR 508.1a): every chosen id must be a current
+/// attacker candidate (an empty selection — declare no attackers — is legal). Any
+/// unrecognized slot or non-candidate id rejects the answer.
+fn bind_attackers(
+    state: &GameState,
+    db: &CardDatabase,
+    offered: &[TargetRequirement],
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    if targets
+        .iter()
+        .any(|choice| !offered.iter().any(|req| req.slot == choice.slot))
+    {
+        return None;
+    }
+    let candidates = attacker_candidates(state, db);
+    let mut attackers = Vec::new();
+    for id in chosen_for(targets, "attackers") {
+        attackers.push(permanent_in(&candidates, id)?);
+    }
+    Some(Action::DeclareAttackers { attackers })
+}
+
+/// Map a returned blocker declaration onto the concrete
+/// [`Action::DeclareBlockers`] (CR 509.1a): each answered slot names a declared
+/// attacker, and every chosen id in it must be a current blocker candidate assigned
+/// to that attacker. An empty selection — declare no blockers — is legal. Any slot
+/// that names no declared attacker, or a non-candidate blocker, rejects the answer.
+fn bind_blockers(state: &GameState, db: &CardDatabase, targets: &[TargetChoice]) -> Option<Action> {
+    let attackers = declared_attackers(state);
+    let candidates = blocker_candidates(state, db);
+    let mut blocks = Vec::new();
+    for choice in targets {
+        let attacker = attackers
+            .iter()
+            .copied()
+            .find(|&attacker| blocker_slot(attacker) == choice.slot)?;
+        for id in &choice.chosen {
+            let blocker = permanent_in(&candidates, id)?;
+            blocks.push(Block { blocker, attacker });
+        }
+    }
+    Some(Action::DeclareBlockers { blocks })
+}
+
+/// Map a returned ability-target selection onto the concrete
+/// [`Action::ActivateAbility`] (ADR 0009 §Enumeration): one target per slot, in
+/// slot order, each drawn from that slot's freshly recomputed legal candidate set.
+/// `None` if a slot is unanswered, answered with other than a single id, or answered
+/// with an id outside its candidates.
+fn bind_ability_targets(
+    state: &GameState,
+    db: &CardDatabase,
+    action: &Action,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let requirements = target_requirements(state, db, action);
+    let mut chosen = Vec::with_capacity(requirements.len());
+    for (index, req) in requirements.iter().enumerate() {
+        let [id] = chosen_for(targets, &format!("t{index}")) else {
+            return None;
+        };
+        let target = req
+            .candidates
+            .iter()
+            .copied()
+            .find(|&candidate| target_entity_id(candidate) == *id)?;
+        chosen.push(target);
+    }
+    let Action::ActivateAbility {
+        permanent, index, ..
+    } = action
+    else {
+        return None;
+    };
+    Some(Action::ActivateAbility {
+        permanent: *permanent,
+        index: *index,
+        targets: chosen,
+    })
+}
+
+/// The [`PermanentId`] a chosen entity id names within `candidates`, or `None` when
+/// the id is not one of that freshly computed legal set — so a stale or forged id
+/// can never bind to a live object.
+fn permanent_in(candidates: &[PermanentId], id: &str) -> Option<PermanentId> {
+    candidates
+        .iter()
+        .copied()
+        .find(|&candidate| permanent_entity_id(candidate) == id)
+}
+
 /// Resolve a returned [`ChooseAction`] into the engine [`Action`] to apply, or
 /// `None` if the answer does not name — and correctly bind to — an action this
 /// `seat` was actually offered.
 ///
 /// This is pure routing, not rules: the engine already decided legality (in
-/// [`issued_actions`]); this only checks the answer against what was offered.
-/// Because the engine offers actions to exactly one seat (the priority holder), an
-/// answer from any other seat resolves to `None`. Resolution rejects, rather than
-/// applies, when:
+/// [`issued_actions`]) and re-checks it in [`apply_action`](rune_engine::apply_action);
+/// this only checks the answer against what was offered and threads the chosen
+/// selection onto the concrete engine action. Because the engine offers actions to
+/// exactly one seat (the priority holder), an answer from any other seat resolves to
+/// `None`. Resolution rejects, rather than applies, when:
 ///
 /// - the seat does not hold priority, or the id names no offered action;
 /// - the returned [`token`](ChooseAction::token) is present but does not match the
 ///   token the server currently issues for that id — a stale/redirected id whose
 ///   action content has changed hashes to a different token, so it can never rebind
 ///   to a *different* action (ADR 0009 §Protocol, content binding);
-/// - the token is absent (`""`) yet the offered action is a multi-step one that
+/// - the token is absent (`""`) yet the offered action carries `requirements` and so
 ///   *requires* binding — a bound action must be answered with its token, never on
 ///   the legacy positional path;
-/// - the returned targets do not exactly fill the offered action's requirement
-///   slots from their current legal candidate sets.
+/// - the returned selection does not map onto the offered action's requirement slots
+///   from their current legal candidate sets (see the per-kind `bind_*` helpers).
 ///
-/// An empty token is still accepted for a plain, requirement-less action so the
-/// terminal client (`rune-cli`), which does not yet echo tokens, keeps working;
-/// such sequential actions are safe on the positional path (ADR 0009 §Context).
+/// The mulligan bottoming and ability-target slots are mandatory (each must be
+/// filled from its candidates), while the combat declarations are optional
+/// multi-selects — an empty selection legally declares no attackers/blockers. An
+/// empty token is still accepted for a plain, requirement-less action (a
+/// requirement-less combat declaration included), so the token-less positional path
+/// keeps working for sequential actions (ADR 0009 §Context).
 pub(crate) fn resolve_action(
     state: &GameState,
     db: &CardDatabase,
@@ -537,7 +784,7 @@ pub(crate) fn resolve_action(
         .into_iter()
         .find(|(id, _)| *id == choice.action_id)
         .map(|(id, action)| {
-            let offered = valid_action_view(id, &action, db);
+            let offered = valid_action_view(id, &action, state, db);
             (action, offered)
         })?;
 
@@ -551,16 +798,34 @@ pub(crate) fn resolve_action(
         return None;
     }
 
-    // Validate the returned selection against the action's current legal candidates.
-    if !targets_fill_requirements(&choice.targets, &offered.requirements) {
-        return None;
+    // Map the returned selection onto the concrete engine action. The combat
+    // declarations are optional multi-selects (empty is legal), so they bind
+    // directly against their fresh candidate sets; the mulligan keep and ability
+    // targets are mandatory slots, gated by [`targets_fill_requirements`] first.
+    match &action {
+        Action::DeclareAttackers { .. } => {
+            bind_attackers(state, db, &offered.requirements, &choice.targets)
+        }
+        Action::DeclareBlockers { .. } => bind_blockers(state, db, &choice.targets),
+        Action::Keep { .. } => {
+            if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+                return None;
+            }
+            bind_keep(state, &choice.targets)
+        }
+        Action::ActivateAbility { .. } => {
+            if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+                return None;
+            }
+            bind_ability_targets(state, db, &action, &choice.targets)
+        }
+        _ => {
+            if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+                return None;
+            }
+            Some(action)
+        }
     }
-
-    // Map the validated selection onto the engine action. No engine `Action` carries
-    // targets yet (issues #70/#71), so a well-formed answer has no targets to thread
-    // in and the action resolves as-is; the chosen ids are applied here once the
-    // engine grows targeted actions.
-    Some(action)
 }
 
 #[cfg(test)]
@@ -1096,5 +1361,260 @@ mod tests {
         let other = personalized_view(&state, &db, PlayerId(1));
         assert!(other.valid_actions.is_empty());
         assert_eq!(other.opponents[0].hand_size, 1);
+    }
+
+    /// Put a creature (or any card) permanent onto the battlefield under
+    /// `controller`, returning its fresh [`PermanentId`]. `attacking`/`tapped` let a
+    /// caller stage a combat state directly.
+    fn put_permanent(
+        state: &mut GameState,
+        card: CardId,
+        controller: PlayerId,
+        tapped: bool,
+        attacking: bool,
+    ) -> PermanentId {
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id,
+            instance: CardInstanceId(0),
+            card,
+            controller,
+            tapped,
+            // Entered a previous turn, so it is free of summoning sickness in a
+            // turn > 0 combat state (CR 302.6).
+            entered_turn: 0,
+            attacking,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+        });
+        id
+    }
+
+    /// A mulligan [`Action::Keep`] taken after a mulligan projects its bottoming
+    /// candidates (CR 103.5, London) as a single multi-select `requirements` slot
+    /// naming the hand's cards, and a returned selection of the owed count resolves
+    /// to a `Keep` bottoming exactly those cards (issue #140).
+    #[test]
+    fn issue_140_mulligan_keep_projects_bottoming_candidates_and_a_selection_resolves() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let c0 = state.new_instance(CardId(5));
+        let c1 = state.new_instance(CardId(6));
+        state.players[0].hand = vec![c0, c1];
+        state.players[1].hand = vec![state.new_instance(CardId(1))];
+        // Seat 0 has taken one mulligan, so a keep now owes one bottomed card.
+        let mut mull = rune_engine::MulliganState::new(2, 7);
+        mull.decisions[0].taken = 1;
+        state.mulligan = Some(mull);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let keep = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "keep")
+            .expect("the deciding seat is offered a keep");
+
+        // One multi-select bottoming slot listing exactly the hand cards.
+        assert_eq!(keep.requirements.len(), 1, "one bottoming slot");
+        let slot = &keep.requirements[0];
+        assert_eq!(slot.slot, "bottom");
+        assert_eq!(
+            slot.candidates,
+            vec![card_entity_id(c0.id), card_entity_id(c1.id)],
+        );
+
+        // Returning one chosen card resolves to a Keep bottoming exactly it.
+        let choose = ChooseAction {
+            action_id: keep.id.clone(),
+            token: keep.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "bottom".to_string(),
+                chosen: vec![card_entity_id(c0.id)],
+            }],
+        };
+        let resolved =
+            resolve_action(&state, &db, PlayerId(0), &choose).expect("the selection resolves");
+        assert_eq!(
+            resolved,
+            Action::Keep {
+                bottom: vec![Target::Card(c0.id)],
+            },
+        );
+    }
+
+    /// The declare-attackers view advertises the engine's attacker candidates
+    /// (CR 508.1a) as a multi-select `requirements` slot, and a returned selection
+    /// resolves to a `DeclareAttackers` naming exactly those permanents (issue #140).
+    #[test]
+    fn issue_140_declare_attackers_projects_candidates_and_a_selection_resolves() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.step = Step::DeclareAttackers;
+        // An eligible attacker (untapped, non-sick creature) for the active player,
+        // plus a tapped one that is not a candidate.
+        let attacker = put_permanent(&mut state, CardId(6), PlayerId(0), false, false);
+        let _tapped = put_permanent(&mut state, CardId(6), PlayerId(0), true, false);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let declare = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "declare_attackers")
+            .expect("the active player declares attackers");
+        assert_eq!(declare.requirements.len(), 1);
+        assert_eq!(declare.requirements[0].slot, "attackers");
+        assert_eq!(
+            declare.requirements[0].candidates,
+            vec![permanent_entity_id(attacker)],
+            "only the eligible attacker is a candidate",
+        );
+
+        let choose = ChooseAction {
+            action_id: declare.id.clone(),
+            token: declare.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "attackers".to_string(),
+                chosen: vec![permanent_entity_id(attacker)],
+            }],
+        };
+        let resolved =
+            resolve_action(&state, &db, PlayerId(0), &choose).expect("the selection resolves");
+        assert_eq!(
+            resolved,
+            Action::DeclareAttackers {
+                attackers: vec![attacker],
+            },
+        );
+
+        // Declaring no attackers stays legal: the token-bound answer with an empty
+        // selection resolves to an empty declaration (optional multi-select).
+        let none = ChooseAction {
+            action_id: declare.id.clone(),
+            token: declare.token.clone(),
+            targets: Vec::new(),
+        };
+        assert_eq!(
+            resolve_action(&state, &db, PlayerId(0), &none),
+            Some(Action::DeclareAttackers {
+                attackers: Vec::new(),
+            }),
+        );
+    }
+
+    /// The declare-blockers view advertises one slot per declared attacker
+    /// (CR 509.1a), each listing the defender's eligible blockers, and a returned
+    /// blocker→attacker assignment resolves to a `DeclareBlockers` (issue #140).
+    #[test]
+    fn issue_140_declare_blockers_projects_candidates_and_a_selection_resolves() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.step = Step::DeclareBlockers;
+        // The defending player (seat 1) is deciding.
+        state.priority = PlayerId(1);
+        let attacker = put_permanent(&mut state, CardId(6), PlayerId(0), true, true);
+        let blocker = put_permanent(&mut state, CardId(6), PlayerId(1), false, false);
+
+        let view = personalized_view(&state, &db, PlayerId(1));
+        let declare = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "declare_blockers")
+            .expect("the defender declares blockers");
+        assert_eq!(
+            declare.requirements.len(),
+            1,
+            "one slot per declared attacker"
+        );
+        assert_eq!(declare.requirements[0].slot, blocker_slot(attacker));
+        assert_eq!(
+            declare.requirements[0].candidates,
+            vec![permanent_entity_id(blocker)],
+        );
+
+        let choose = ChooseAction {
+            action_id: declare.id.clone(),
+            token: declare.token.clone(),
+            targets: vec![TargetChoice {
+                slot: blocker_slot(attacker),
+                chosen: vec![permanent_entity_id(blocker)],
+            }],
+        };
+        let resolved =
+            resolve_action(&state, &db, PlayerId(1), &choose).expect("the assignment resolves");
+        assert_eq!(
+            resolved,
+            Action::DeclareBlockers {
+                blocks: vec![Block { blocker, attacker }],
+            },
+        );
+    }
+
+    /// The ability-target `requirements` projection (ADR 0009 deferral #73, folded
+    /// into issue #140): a `{T}: Tap target creature` activation advertises its one
+    /// target slot with the legal creature candidates, and a returned target
+    /// resolves to an `ActivateAbility` carrying exactly that chosen target.
+    #[test]
+    fn issue_140_ability_target_requirements_project_and_a_selection_resolves() {
+        // A Tapper artifact ({T}: Tap target creature) and a Bear to target.
+        let json = r#"[
+            {"id":200,"name":"Tapper","types":["artifact"],"mana_cost":"","oracle_text":"",
+             "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
+                          "effects":[{"kind":"tap","target":"any_creature"}]}]},
+            {"id":201,"name":"Bear","types":["creature"],"mana_cost":"","oracle_text":"",
+             "power":2,"toughness":2}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let tapper = put_permanent(&mut state, CardId(200), PlayerId(0), false, false);
+        let bear = put_permanent(&mut state, CardId(201), PlayerId(0), false, false);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let activate = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "activate_ability")
+            .expect("the Tapper's ability is activatable");
+        assert_eq!(activate.subject, vec![permanent_entity_id(tapper)]);
+        assert_eq!(activate.requirements.len(), 1, "one target slot");
+        assert_eq!(activate.requirements[0].slot, "t0");
+        assert_eq!(
+            activate.requirements[0].candidates,
+            vec![permanent_entity_id(bear)],
+            "only the creature is a legal target (not the Tapper itself)",
+        );
+
+        let choose = ChooseAction {
+            action_id: activate.id.clone(),
+            token: activate.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "t0".to_string(),
+                chosen: vec![permanent_entity_id(bear)],
+            }],
+        };
+        let resolved =
+            resolve_action(&state, &db, PlayerId(0), &choose).expect("the target resolves");
+        assert_eq!(
+            resolved,
+            Action::ActivateAbility {
+                permanent: tapper,
+                index: 0,
+                targets: vec![Target::Permanent(bear)],
+            },
+        );
+
+        // A target outside the advertised candidates (the Tapper itself) is rejected.
+        let illegal = ChooseAction {
+            action_id: activate.id.clone(),
+            token: activate.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "t0".to_string(),
+                chosen: vec![permanent_entity_id(tapper)],
+            }],
+        };
+        assert!(resolve_action(&state, &db, PlayerId(0), &illegal).is_none());
     }
 }

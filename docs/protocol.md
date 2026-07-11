@@ -119,9 +119,8 @@ The whole array is omitted when a permanent has no counters.
   (subject-less); `play_land` and `cast_spell` (subject = the hand card's entity
   id); `activate_ability` (subject = the source permanent's entity id);
   `declare_attackers` and `declare_blockers` (subject-less combat declarations,
-  CR 508/509 — their multi-select candidate `requirements` are a follow-up, as the
-  targeting `requirements` still are). Clients key off `type`/`subject`/`label`
-  and tolerate unknown kinds.
+  CR 508/509, carrying their multi-select candidate `requirements` — see below).
+  Clients key off `type`/`subject`/`label` and tolerate unknown kinds.
 - `token` is a **content-binding token** (ADR 0009): a server-issued value bound
   to this action's exact content (kind + subject + requirements). The client
   echoes it back verbatim in `ChooseAction`; the server recomputes it from the
@@ -159,6 +158,43 @@ action can be taken:
   in a single `ChooseAction` (see below) — never a stateful multi-message
   handshake. The effect IR that backs these actions is decided in ADR 0007.
 - Absent/empty for a plain action that needs no sub-choice.
+
+The same `requirements` shape carries every server-computed candidate set, not
+just ability targets. A slot's `candidates` are the engine's freshly computed
+legal set, so a rebuilt view always advertises current candidates:
+
+- **Mulligan bottoming** (`keep`, CR 103.5 London): one slot `"bottom"` whose
+  `candidates` are the deciding seat's hand-card entity ids, one to choose per
+  mulligan taken. Absent for a first-hand keep (nothing owed).
+
+  ```json
+  { "id": "a1", "type": "keep", "label": "Keep hand", "token": "h:5c1d",
+    "requirements": [
+      { "slot": "bottom", "prompt": "Put 1 card(s) on the bottom of your library",
+        "candidates": ["card_7", "card_8"] } ] }
+  ```
+
+- **Declare attackers** (`declare_attackers`, CR 508.1a): one slot `"attackers"`
+  whose `candidates` are the eligible attacking creatures. Absent when none may
+  attack.
+- **Declare blockers** (`declare_blockers`, CR 509.1a): one slot **per declared
+  attacker** (`"block_<id>"`), each listing the defender's eligible blockers to
+  assign to that attacker; the answer's `chosen` names the blockers assigned to
+  it. Absent when there is nothing to block or nothing to block with.
+
+  ```json
+  { "id": "a1", "type": "declare_blockers", "label": "Declare blockers",
+    "token": "h:2b90",
+    "requirements": [
+      { "slot": "block_12", "prompt": "Choose blockers for Verdant Scout",
+        "candidates": ["perm_20"] } ] }
+  ```
+
+These combat declarations are **optional** multi-selects: an empty selection
+(answering with no `targets`, or a slot left unfilled) legally declares no
+attackers/blockers, unlike a mandatory ability-target slot which must be filled.
+The server still validates every submitted id against the slot's current
+candidates and rejects anything else.
 
 ## Client → server: ChooseAction
 
