@@ -8,5 +8,6 @@
   { "oracle_id": 7, "collector_number": "7", "rarity": "common" },
   { "oracle_id": 8, "collector_number": "8", "rarity": "common" },
   { "oracle_id": 9, "collector_number": "9", "rarity": "uncommon" },
-  { "oracle_id": 10, "collector_number": "10", "rarity": "rare" }
+  { "oracle_id": 10, "collector_number": "10", "rarity": "rare" },
+  { "oracle_id": 11, "collector_number": "11", "rarity": "uncommon" }
 ]

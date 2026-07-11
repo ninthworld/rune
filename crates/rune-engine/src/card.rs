@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::ability::Ability;
+use crate::ability::{Ability, Effect};
 use crate::card_type::{CardType, Supertype};
 use crate::id::{CardId, OracleId};
 use crate::scripted::scripted_abilities;
@@ -90,6 +90,14 @@ pub struct CardData {
     /// [`crate::scripted`]; use [`abilities_of`] to read both sources together.
     #[serde(default)]
     pub abilities: Vec<Ability>,
+    /// The effects this card's **spell ability** produces on resolution — the
+    /// instant/sorcery analogue of an ability's effects (CR 608.2c). Empty for a
+    /// vanilla card and for a permanent spell whose only "effect" is entering the
+    /// battlefield. A targeting spell effect declares its [`crate::TargetSpec`]
+    /// here exactly as an ability's effect does, so a spell chooses targets as it
+    /// is cast (CR 601.2c); read them with [`spell_effects_of`].
+    #[serde(default)]
+    pub spell_effects: Vec<Effect>,
 }
 
 impl CardData {
@@ -368,6 +376,22 @@ pub fn abilities_of(db: &CardDatabase, card: CardId) -> Vec<Ability> {
     abilities
 }
 
+/// The effects a spell of printed card `card` produces on resolution
+/// ([`CardData::spell_effects`]), or an empty list for an unknown id or a card
+/// with no spell ability.
+///
+/// The spell-side counterpart of [`abilities_of`]: the resolve path reads these
+/// to apply a spell's effects (pairing targeting effects with the targets chosen
+/// at cast), and [`crate::valid_actions`] reads them to enumerate a targeted
+/// cast's requirement slots — the same effect IR, whether it rides an ability or
+/// a spell.
+#[must_use]
+pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
+    db.card(card)
+        .map(|c| c.spell_effects.clone())
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -380,7 +404,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 10);
+        assert_eq!(db.len(), 11);
     }
 
     #[test]
@@ -496,10 +520,31 @@ mod tests {
     }
 
     #[test]
+    fn runic_negation_carries_a_counter_spell_effect() {
+        // The counterspell fixture (id 11) is a vanilla-abilities instant whose
+        // spell effect counters a spell on the stack (CR 701.5).
+        use crate::ability::TargetSpec;
+        let db = CardDatabase::bundled().unwrap();
+        let negation = db.card(CardId(11)).unwrap();
+        assert_eq!(negation.name, "Runic Negation");
+        assert_eq!(negation.types, vec![CardType::Instant]);
+        assert!(negation.abilities.is_empty());
+        assert_eq!(
+            negation.spell_effects,
+            vec![Effect::CounterSpell {
+                target: TargetSpec::SpellOnStack,
+            }]
+        );
+        assert_eq!(spell_effects_of(&db, CardId(11)), negation.spell_effects);
+        // A card with no spell ability reports none.
+        assert!(spell_effects_of(&db, CardId(1)).is_empty());
+    }
+
+    #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the ten fixtures; FIX2 reprints one — eleven printings total.
-        assert_eq!(printings.len(), 11);
+        // FIX prints the eleven fixtures; FIX2 reprints one — twelve printings total.
+        assert_eq!(printings.len(), 12);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));

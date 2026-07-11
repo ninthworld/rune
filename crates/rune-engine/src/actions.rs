@@ -7,7 +7,7 @@
 //! [`action_is_legal`] before applying it.
 
 use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
-use crate::card::{abilities_of, CardData};
+use crate::card::{abilities_of, spell_effects_of, CardData};
 use crate::card_type::CardType;
 use crate::combat::{
     attacker_candidates, blocker_candidates, declared_attackers, defending_player,
@@ -57,6 +57,18 @@ pub enum Action {
         /// The specific card in the caster's hand to cast. Names the physical
         /// copy, so two identical cards in hand are distinguishable.
         card: CardInstance,
+        /// The targets chosen for this cast, one per target slot the card's spell
+        /// effects declare (see [`Effect::target_spec`]), in that order. Empty for
+        /// a spell that targets nothing.
+        ///
+        /// The same **parameterized targeted representation** an ability uses (ADR
+        /// 0009 §Enumeration): the [`Action`] carries the player's selection (CR
+        /// 601.2c — targets are chosen as part of casting), rather than the
+        /// generator pre-expanding one variant per legal target combination.
+        /// [`valid_actions`] advertises the cast once in its requirement form (this
+        /// field empty); per-slot candidates come from [`target_requirements`], and
+        /// a filled selection is validated slot-by-slot in [`action_is_legal`].
+        targets: Vec<Target>,
     },
     /// Discard one card from hand to satisfy the cleanup step's maximum-hand-size
     /// turn-based action (CR 514.1). Offered — one per card in the active
@@ -137,12 +149,11 @@ impl Action {
     /// action that carries none.
     fn targets(&self) -> &[Target] {
         match self {
-            Action::ActivateAbility { targets, .. } => targets,
+            Action::ActivateAbility { targets, .. } | Action::CastSpell { targets, .. } => targets,
             // `Keep::bottom` is a mulligan sub-choice, not a target selection; it
             // is validated through the mulligan path, never this one.
             Action::PassPriority
             | Action::PlayLand { .. }
-            | Action::CastSpell { .. }
             | Action::Discard { .. }
             | Action::Mulligan
             | Action::Keep { .. }
@@ -166,6 +177,12 @@ impl Action {
             } => Action::ActivateAbility {
                 permanent: *permanent,
                 index: *index,
+                targets: Vec::new(),
+            },
+            // A cast drops its target selection to its requirement form, the shape
+            // `valid_actions` advertises (CR 601.2c targets are filled in later).
+            Action::CastSpell { card, .. } => Action::CastSpell {
+                card: *card,
                 targets: Vec::new(),
             },
             // The mulligan keep's bottom selection is cleared the same way, so its
@@ -319,7 +336,22 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             // spell is bound by it.
             let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
             if timing_ok && player.mana_pool.can_pay(&parse_mana_cost(&data.mana_cost)) {
-                actions.push(Action::CastSpell { card });
+                // A targeted spell is offered only when *every* target slot has at
+                // least one legal candidate (CR 601.2c — a spell that can't choose
+                // legal targets can't be cast). A slot's candidates come from the
+                // same per-slot enumeration abilities use, so this stays O(N) per
+                // slot and never forms the cartesian product.
+                let castable = data
+                    .spell_effects
+                    .iter()
+                    .filter_map(Effect::target_spec)
+                    .all(|spec| !legal_targets_for_spec(spec, state, db).is_empty());
+                if castable {
+                    actions.push(Action::CastSpell {
+                        card,
+                        targets: Vec::new(),
+                    });
+                }
             }
         }
     }
@@ -445,24 +477,30 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
 }
 
 /// The ordered [`TargetSpec`]s `action` must be given a target for — one per
-/// targeting effect the action's ability declares, in resolution order. Empty
-/// for an action with no targeting effects (or one the state cannot resolve).
+/// targeting effect the action declares, in resolution order. Empty for an action
+/// with no targeting effects (or one the state cannot resolve).
 ///
-/// Only [`Action::ActivateAbility`] can target today; a spell carries no
-/// engine-modeled effects yet (see the resolve path), so it declares no specs.
+/// An [`Action::ActivateAbility`] reads its activated ability's effects; an
+/// [`Action::CastSpell`] reads the cast card's spell effects
+/// ([`spell_effects_of`]) — the same effect IR either way, so a spell chooses
+/// targets exactly as an ability does (CR 601.2c). Every other action targets
+/// nothing.
 fn action_target_specs(state: &GameState, db: &CardDatabase, action: &Action) -> Vec<TargetSpec> {
-    let Action::ActivateAbility {
-        permanent, index, ..
-    } = action
-    else {
-        return Vec::new();
-    };
-    let Some(perm) = state.battlefield.iter().find(|p| p.id == *permanent) else {
-        return Vec::new();
-    };
-    let abilities = abilities_of(db, perm.card);
-    let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
-        return Vec::new();
+    let effects = match action {
+        Action::ActivateAbility {
+            permanent, index, ..
+        } => {
+            let Some(perm) = state.battlefield.iter().find(|p| p.id == *permanent) else {
+                return Vec::new();
+            };
+            let abilities = abilities_of(db, perm.card);
+            let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
+                return Vec::new();
+            };
+            effects.clone()
+        }
+        Action::CastSpell { card, .. } => spell_effects_of(db, card.card),
+        _ => return Vec::new(),
     };
     effects.iter().filter_map(Effect::target_spec).collect()
 }
@@ -484,6 +522,15 @@ fn legal_targets_for_spec(spec: TargetSpec, state: &GameState, db: &CardDatabase
             .battlefield
             .iter()
             .map(|perm| Target::Permanent(perm.id))
+            .collect(),
+        // Only spells on the stack are candidates — abilities are not spells, and
+        // mana abilities never use the stack (CR 605.3), so neither can be a
+        // "counter target spell" candidate.
+        TargetSpec::SpellOnStack => state
+            .stack
+            .iter()
+            .filter(|o| matches!(o.kind, crate::stack::StackObjectKind::Spell { .. }))
+            .map(|o| Target::Spell(o.id))
             .collect(),
     };
     universe
@@ -859,7 +906,10 @@ mod tests {
     /// Whether `card` is offered as a [`Action::CastSpell`] for the hand instance
     /// `inst`.
     fn cast_offered(state: &GameState, db: &CardDatabase, inst: CardInstance) -> bool {
-        valid_actions(state, db).contains(&Action::CastSpell { card: inst })
+        valid_actions(state, db).contains(&Action::CastSpell {
+            card: inst,
+            targets: Vec::new(),
+        })
     }
 
     /// A two-player game at player 0's precombat main with a single copy of
@@ -967,7 +1017,14 @@ mod tests {
             assert!(!cast_offered(&mid_stack, &db, inst));
 
             // Cast it, then both players pass: it resolves onto the battlefield.
-            let state = apply_action(&state, &Action::CastSpell { card: inst }, &db);
+            let state = apply_action(
+                &state,
+                &Action::CastSpell {
+                    card: inst,
+                    targets: Vec::new(),
+                },
+                &db,
+            );
             assert_eq!(state.stack.len(), 1);
             let state = apply_action(&state, &Action::PassPriority, &db);
             let state = apply_action(&state, &Action::PassPriority, &db);
@@ -993,9 +1050,23 @@ mod tests {
         state.players[0].mana_pool.add(Color::Red, 2);
 
         // Cast A, then B (legal to respond because both are instants).
-        let state = apply_action(&state, &Action::CastSpell { card: a }, &db);
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: a,
+                targets: Vec::new(),
+            },
+            &db,
+        );
         assert!(cast_offered(&state, &db, b));
-        let state = apply_action(&state, &Action::CastSpell { card: b }, &db);
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: b,
+                targets: Vec::new(),
+            },
+            &db,
+        );
         assert_eq!(state.stack.len(), 2);
 
         // Resolve the top (B), then the next (A).
@@ -1061,5 +1132,122 @@ mod tests {
             cast_offered(&state, &db, charm),
             "a non-Aura enchantment of the same cost is castable"
         );
+    }
+
+    // ----- Spell targets at cast + the first counterspell (issue #148) -----
+    //
+    // Fixture oracle id 11 is Runic Negation ({U} instant, "Counter target
+    // spell." — a `CounterSpell { SpellOnStack }` spell effect). A vanilla
+    // Thornback Boar (id 1) is the creature spell it counters.
+    const COUNTERSPELL: CardId = CardId(11);
+    const CREATURE: CardId = CardId(1);
+
+    /// A two-player game at player 0's precombat main with a Runic Negation in
+    /// hand and `{U}` in pool, and a creature spell (controlled by player 1) on
+    /// the stack for it to target. Returns the state, the counterspell hand
+    /// instance, and the creature spell's [`StackId`].
+    fn counterspell_over_a_creature_spell() -> (GameState, CardInstance, StackId) {
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let boar = state.new_instance(CREATURE);
+        let sid = StackId(state.mint_id());
+        state.stack.push(StackObject {
+            id: sid,
+            controller: PlayerId(1),
+            kind: StackObjectKind::Spell { card: boar },
+            targets: Vec::new(),
+        });
+        let negation = state.new_instance(COUNTERSPELL);
+        state.players[0].hand = vec![negation];
+        state.players[0].mana_pool.add(Color::Blue, 1);
+        (state, negation, sid)
+    }
+
+    #[test]
+    fn issue_148_targeted_cast_advertised_once_with_the_spell_on_stack_as_a_candidate() {
+        // A "counter target spell" cast is offered once in its requirement form
+        // (empty targets), and its single slot lists exactly the spell on the
+        // stack (CR 601.2c / 701.5).
+        let db = db();
+        let (state, negation, sid) = counterspell_over_a_creature_spell();
+
+        let cast = Action::CastSpell {
+            card: negation,
+            targets: Vec::new(),
+        };
+        assert!(valid_actions(&state, &db).contains(&cast));
+
+        let reqs = target_requirements(&state, &db, &cast);
+        assert_eq!(reqs.len(), 1, "one target slot");
+        assert_eq!(reqs[0].spec, TargetSpec::SpellOnStack);
+        assert_eq!(reqs[0].candidates, vec![Target::Spell(sid)]);
+    }
+
+    #[test]
+    fn issue_148_targeted_cast_with_no_legal_candidate_is_not_offered() {
+        // CR 601.2c: with no spell on the stack the counterspell's only slot has
+        // zero candidates, so `valid_actions` never offers the cast.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let negation = state.new_instance(COUNTERSPELL);
+        state.players[0].hand = vec![negation];
+        state.players[0].mana_pool.add(Color::Blue, 1);
+
+        assert!(
+            !valid_actions(&state, &db)
+                .iter()
+                .any(|a| matches!(a, Action::CastSpell { .. })),
+            "a targeted cast with zero legal candidates is never offered"
+        );
+    }
+
+    #[test]
+    fn issue_148_counterspell_cannot_target_an_ability_on_the_stack_cr_605_3() {
+        // Only spells are SpellOnStack candidates: an ability on the stack is not a
+        // spell, and a mana ability never uses the stack at all (CR 605.3). With
+        // only an ability on the stack the counterspell has no legal target and is
+        // not offered.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let sid = StackId(state.mint_id());
+        state.stack.push(StackObject {
+            id: sid,
+            controller: PlayerId(1),
+            kind: StackObjectKind::Ability {
+                source: PermanentId(999),
+                effects: vec![Effect::DrawCard { count: 1 }],
+            },
+            targets: Vec::new(),
+        });
+        let negation = state.new_instance(COUNTERSPELL);
+        state.players[0].hand = vec![negation];
+        state.players[0].mana_pool.add(Color::Blue, 1);
+
+        // The ability is not a candidate, so the slot is empty and no cast is offered.
+        assert!(legal_targets_for_spec(TargetSpec::SpellOnStack, &state, &db).is_empty());
+        assert!(!valid_actions(&state, &db)
+            .iter()
+            .any(|a| matches!(a, Action::CastSpell { .. })));
+    }
+
+    #[test]
+    fn issue_148_a_cast_with_an_illegal_spell_target_is_a_no_op() {
+        // A target of the right kind but outside the legal set — a StackId naming
+        // no spell on the stack — fails the fresh legality check, so the whole cast
+        // is rejected as a no-op (nothing cast, no mana paid).
+        let db = db();
+        let (state, negation, _sid) = counterspell_over_a_creature_spell();
+
+        let after = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: negation,
+                targets: vec![Target::Spell(StackId(99_999))],
+            },
+            &db,
+        );
+        assert_eq!(after, state);
     }
 }
