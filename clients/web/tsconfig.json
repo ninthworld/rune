@@ -15,7 +15,10 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@protocol-fixtures/gameview.json": ["../../crates/rune-protocol/fixtures/gameview.json"]
+      "@protocol-fixtures/gameview.json": ["../../crates/rune-protocol/fixtures/gameview.json"],
+      "@protocol-fixtures/gameview-over.json": [
+        "../../crates/rune-protocol/fixtures/gameview-over.json"
+      ]
     }
   },
   "include": ["src"]

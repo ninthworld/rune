@@ -220,6 +220,71 @@ export const muted: CSSProperties = {
   color: SURFACES.typeText,
 };
 
+/**
+ * Game-over overlay (issue #141). A DOM modal (ADR 0003: text a user reads is
+ * DOM, not canvas) laid over the final board, announcing the terminal result. It
+ * is pure render output of the latest `GameView.result` — no card tokens, only UI
+ * chrome reading the shared `SURFACES` palette.
+ */
+export const gameOverBackdrop: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(9, 10, 12, 0.72)',
+  zIndex: 10,
+};
+
+export const gameOverPanel: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 10,
+  width: '100%',
+  maxWidth: 420,
+  padding: 28,
+  borderRadius: 14,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  textAlign: 'center',
+  boxSizing: 'border-box',
+};
+
+/** The headline verdict (Victory / Defeat / Draw). */
+export const gameOverHeadline: CSSProperties = {
+  margin: 0,
+  fontSize: 30,
+  fontWeight: 800,
+  letterSpacing: 0.5,
+};
+
+/** Victory tint (shared selection accent). */
+export const gameOverWin: CSSProperties = { color: SURFACES.selection };
+
+/** Defeat tint (shared alert/targeting accent). */
+export const gameOverLoss: CSSProperties = { color: SURFACES.targeting };
+
+/** Draw / neutral tint. */
+export const gameOverNeutral: CSSProperties = { color: SURFACES.nameText };
+
+/** The winner/draw sub-line naming who won. */
+export const gameOverWinner: CSSProperties = {
+  margin: 0,
+  fontSize: 16,
+  fontWeight: 600,
+  color: SURFACES.nameText,
+};
+
+/** The reason line, in the muted secondary color. */
+export const gameOverReason: CSSProperties = {
+  margin: 0,
+  fontSize: 14,
+  color: SURFACES.typeText,
+};
+
 /** The pre-first-frame waiting row: status text alongside a Disconnect action. */
 export const waitingBar: CSSProperties = {
   display: 'flex',

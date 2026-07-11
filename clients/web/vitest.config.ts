@@ -16,6 +16,11 @@ export default defineConfig({
       '@protocol-fixtures/gameview.json': fileURLToPath(
         new URL('../../crates/rune-protocol/fixtures/gameview.json', import.meta.url),
       ),
+      // The terminal (game-over) counterpart fixture (issue #141): the client
+      // asserts the same wire shape the Rust crate round-trips for a finished game.
+      '@protocol-fixtures/gameview-over.json': fileURLToPath(
+        new URL('../../crates/rune-protocol/fixtures/gameview-over.json', import.meta.url),
+      ),
     },
   },
   test: {

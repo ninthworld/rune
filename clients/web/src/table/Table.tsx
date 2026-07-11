@@ -25,6 +25,7 @@ import { publishScene } from '../testHooks';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { EntityOverlay } from './EntityOverlay';
+import { GameOverOverlay } from './GameOverOverlay';
 import { PlayerTiles } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
 import {
@@ -121,6 +122,24 @@ export function Table() {
             Disconnect
           </button>
         </div>
+      </main>
+    );
+  }
+
+  // Game over (issue #141): a terminal view carries `result`. The whole screen is
+  // pure render of that latest view — the DOM overlay names the verdict/reason and
+  // the interactive prompt/action UI is suppressed (the server sends no actions
+  // once the game is over). The final board + tiles stay visible beneath, read-only
+  // (no EntityOverlay, so nothing is selectable/targetable). Nothing is load-bearing
+  // across messages, so a reconnect that replays this view shows the same screen.
+  if (view.result) {
+    return (
+      <main style={main} data-testid="table-game-over">
+        <PlayerTiles view={view} localId={localId} />
+        <div style={boardWrap(scene.width, scene.height)}>
+          <BattlefieldCanvas scene={scene} />
+        </div>
+        <GameOverOverlay result={view.result} you={view.you} />
       </main>
     );
   }

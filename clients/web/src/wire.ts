@@ -9,10 +9,12 @@
  * forward compatibility.
  */
 import {
+  type GameResult,
   type GameView,
   type LobbyView,
   PHASES,
   type Phase,
+  type PlayerId,
   type RoomConfig,
   type RoomView,
   type SeatView,
@@ -48,10 +50,30 @@ function asArray<T>(value: unknown, field: string): T[] {
 }
 
 /**
+ * Normalize the optional terminal {@link GameResult} half of a {@link GameView}.
+ * Returns `undefined` while the game is live (the server omits `result`, or sends
+ * a malformed object with no string `reason`), so its mere presence signals game
+ * over. `losers` defaults to the empty array; `winner` stays absent for a draw.
+ * The `reason` is carried through verbatim — the client renders it and derives no
+ * terminality of its own; an unrecognized future value is tolerated (forward
+ * compatibility) and handled generically by the game-over overlay.
+ */
+function normalizeGameResult(payload: unknown): GameResult | undefined {
+  if (!isRecord(payload) || typeof payload.reason !== 'string') return undefined;
+  const result: GameResult = {
+    losers: asArray<PlayerId>(payload.losers, 'result.losers'),
+    reason: payload.reason as GameResult['reason'],
+  };
+  if (typeof payload.winner === 'string') result.winner = payload.winner;
+  return result;
+}
+
+/**
  * Normalize an already-parsed payload into a complete {@link GameView}. Missing
  * collections become empty arrays; optional scalars (`priority_player`,
- * `action_deadline`) are carried through untouched. Throws {@link ProtocolError}
- * if the payload is not an object or lacks a valid `phase`.
+ * `action_deadline`) are carried through untouched, and the terminal `result` is
+ * carried through only when the game is over. Throws {@link ProtocolError} if the
+ * payload is not an object or lacks a valid `phase`.
  */
 export function normalizeGameView(payload: unknown): GameView {
   if (!isRecord(payload)) {
@@ -78,6 +100,7 @@ export function normalizeGameView(payload: unknown): GameView {
     valid_actions: asArray(payload.valid_actions, 'valid_actions'),
     action_deadline:
       typeof payload.action_deadline === 'number' ? payload.action_deadline : undefined,
+    result: normalizeGameResult(payload.result),
   };
 }
 

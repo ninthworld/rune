@@ -12,6 +12,9 @@ import { LOBBY_ROOM_UNDECKED_JSON, LOBBY_ROOMLESS_JSON } from './lobby-view.fixt
 // and round-tripped by its Rust test. Resolved via a path alias (tsconfig.json +
 // vitest.config.ts) so there is exactly one copy of the JSON in the repo.
 import CONTRACT_FIXTURE from '@protocol-fixtures/gameview.json';
+// The terminal counterpart of the canonical fixture: a finished game carrying a
+// `result` and no `valid_actions` (issue #141). Same dual-consumed shape as above.
+import CONTRACT_FIXTURE_OVER from '@protocol-fixtures/gameview-over.json';
 
 describe('parseGameView', () => {
   it('decodes a representative wire frame into the expected GameView', () => {
@@ -35,7 +38,39 @@ describe('parseGameView', () => {
       priority_player: undefined,
       valid_actions: [],
       action_deadline: undefined,
+      result: undefined,
     });
+  });
+
+  it('omits result while the game is live', () => {
+    // The empty-optional convention: a live view has no `result` field, so its
+    // presence alone signals game over. A malformed result (no string reason) is
+    // likewise dropped rather than crashing the whole view.
+    expect(parseGameView('{"phase":"upkeep"}').result).toBeUndefined();
+    expect(parseGameView('{"phase":"end","result":{}}').result).toBeUndefined();
+  });
+
+  it('carries the terminal result through, defaulting losers and eliding a draw’s winner', () => {
+    // Game over (issue #141): winner + losers + reason round-trip verbatim.
+    const won = parseGameView(
+      '{"phase":"end","valid_actions":[],"result":{"winner":"p0","losers":["p1"],"reason":"decked"}}',
+    );
+    expect(won.result).toEqual({ winner: 'p0', losers: ['p1'], reason: 'decked' });
+
+    // A draw omits `winner`; `losers` present in seat order.
+    const drawn = parseGameView(
+      '{"phase":"end","result":{"losers":["p0","p1"],"reason":"life_zero"}}',
+    );
+    expect(drawn.result?.winner).toBeUndefined();
+    expect(drawn.result).toEqual({ losers: ['p0', 'p1'], reason: 'life_zero' });
+
+    // Absent `losers` defaults to the empty array (still a valid game-over signal).
+    const sparse = parseGameView('{"phase":"end","result":{"reason":"concede"}}');
+    expect(sparse.result).toEqual({ losers: [], reason: 'concede' });
+
+    // An unrecognized future reason is tolerated (forward compat), carried verbatim.
+    const future = parseGameView('{"phase":"end","result":{"reason":"some_future_reason"}}');
+    expect(future.result?.reason).toBe('some_future_reason');
   });
 
   it('carries the receiver id through from view.you', () => {
@@ -145,6 +180,16 @@ describe('cross-language contract fixture (issue #56)', () => {
   it('normalizes the parsed object identically to the raw wire text', () => {
     // normalizeGameView (object) and parseGameView (text) are the same pipeline.
     expect(normalizeGameView(CONTRACT_FIXTURE)).toEqual(parseGameView(wireJson));
+  });
+
+  it('parses the terminal counterpart fixture into a game-over GameView', () => {
+    // The finished-game fixture (issue #141): `result` present, `valid_actions`
+    // empty. A field renamed/retyped in the Rust `GameResult`/`GameOverReason` and
+    // updated here breaks this assertion, catching cross-language drift.
+    const view = parseGameView(JSON.stringify(CONTRACT_FIXTURE_OVER));
+    expect(view.you).toBe('p0');
+    expect(view.valid_actions).toEqual([]);
+    expect(view.result).toEqual({ winner: 'p0', losers: ['p1'], reason: 'decked' });
   });
 });
 
