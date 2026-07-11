@@ -75,6 +75,14 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: clients/web/package-lock.json
+      # The real-server smoke tier (issue #144) launches the actual `rune-server`
+      # binary, so the E2E job needs the Rust toolchain to build it. Cached like the
+      # Engine job so this adds no cold compile on a warm cache.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build rune-server
+        run: cargo build -p rune-server
+        working-directory: ${{ github.workspace }}
       - name: Install
         run: npm ci
       - name: Typecheck e2e

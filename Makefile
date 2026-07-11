@@ -29,8 +29,10 @@ client-audit: client-install
 # Browser end-to-end suite (ADR 0011). Deliberately OUTSIDE `make check`: it needs
 # a real browser and a built-and-served client, so it runs as its own target and
 # its own CI job to keep the fast unit gate browser-free. Drives the preinstalled
-# Chromium and never downloads a browser.
+# Chromium and never downloads a browser. Builds `rune-server` first because the
+# real-server smoke tier (issue #144) launches the actual binary.
 e2e: client-install
+	cargo build -p rune-server
 	cd clients/web && npm run e2e:typecheck && npm run e2e
 
 setup:
