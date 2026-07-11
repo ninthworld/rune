@@ -497,8 +497,12 @@ fn apply_activate_ability(
     }
 }
 
-/// Cast a creature spell: pay its mana cost from the caster's pool, move the card
-/// from hand onto the stack, and reset the pass count (the caster keeps priority).
+/// Cast a spell of any castable type: pay its mana cost from the caster's pool,
+/// move the card from hand onto the stack, and reset the pass count (the caster
+/// keeps priority). Type-agnostic — the card's types decide only how it *resolves*
+/// (a permanent enters the battlefield, an instant/sorcery goes to the graveyard,
+/// CR 608.3), routed in [`resolve_stack_object`]; timing legality (instant vs.
+/// sorcery speed, CR 117.1a) is enforced upstream in [`crate::valid_actions`].
 fn apply_cast_spell(state: &mut GameState, card: CardInstance, db: &CardDatabase) {
     let controller = state.priority;
     let Some(data) = db.card(card.card) else {
