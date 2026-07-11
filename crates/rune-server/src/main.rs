@@ -7,7 +7,7 @@
 
 use std::process::ExitCode;
 
-use rune_server::{Config, Server};
+use rune_server::{Config, Lobby, Server};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -19,6 +19,16 @@ async fn main() -> ExitCode {
         Ok(config) => config,
         Err(error) => {
             error!(%error, "invalid configuration");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // The lobby owns the room registry and the card database every room is built
+    // from. A snapshot that fails to parse means we cannot host games at all.
+    let lobby = match Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS) {
+        Ok(lobby) => lobby,
+        Err(error) => {
+            error!(%error, "failed to load bundled card database");
             return ExitCode::FAILURE;
         }
     };
@@ -41,7 +51,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    if let Err(error) = server.run(shutdown).await {
+    if let Err(error) = server.run(lobby, shutdown).await {
         error!(%error, "server exited with an error");
         return ExitCode::FAILURE;
     }

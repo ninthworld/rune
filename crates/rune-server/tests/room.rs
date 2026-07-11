@@ -70,7 +70,8 @@ async fn websocket_peer_joins_room_and_drives_pass_priority() {
     room_task.await.unwrap();
 }
 
-/// Bridge helper: named so the spawned future has a concrete type.
+/// Bridge helper: named so the spawned future has a concrete type. The bridge only
+/// ends when the peer or room does, so it never needs a shutdown signal here.
 async fn serve(handle: rune_server::RoomHandle, ws: WebSocketStream<tokio::io::DuplexStream>) {
-    rune_server::serve_connection(0, handle, ws).await;
+    rune_server::serve_connection(0, handle, ws, std::future::pending::<()>()).await;
 }
