@@ -43,7 +43,12 @@ sized for one PR unless noted.
     over WebSocket, renders each personalized `GameView`, and echoes back a chosen
     `action_id`; end-to-end test drives the real room task over an in-memory
     transport).
-13. ⏳ **cli: LLM agent mode** — GameView JSON in, action_id out, timeout fallback.
+13. ✅ **cli: LLM agent mode** — GameView JSON in, action_id out, timeout fallback
+    — issue #33 (`rune-cli --agent` drives the same connection loop through an
+    `Agent` trait; a deterministic built-in/stub picks among the offered
+    `valid_actions`, with a configurable deadline and safe pass-priority fallback
+    on error/timeout/invalid id; real providers wire in behind the trait,
+    CI stays network-free).
 
 ## Client (after protocol serde) — ⏳ needs issues
 14. ✅ **client: WebSocket store** — Zustand store holding latest GameView; reconnect
