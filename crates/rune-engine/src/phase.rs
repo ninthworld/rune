@@ -56,3 +56,32 @@ impl Step {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn step_next_cycles_through_the_turn() {
+        // Twelve steps, wrapping back to Untap.
+        let mut step = Step::Untap;
+        let sequence = [
+            Step::Upkeep,
+            Step::Draw,
+            Step::PrecombatMain,
+            Step::BeginCombat,
+            Step::DeclareAttackers,
+            Step::DeclareBlockers,
+            Step::CombatDamage,
+            Step::EndCombat,
+            Step::PostcombatMain,
+            Step::End,
+            Step::Cleanup,
+            Step::Untap,
+        ];
+        for expected in sequence {
+            step = step.next();
+            assert_eq!(step, expected);
+        }
+    }
+}

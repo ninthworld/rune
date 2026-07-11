@@ -53,3 +53,19 @@ impl Player {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn player_zone_accessor_matches_fields() {
+        let mut player = Player::new();
+        player.hand.push(CardId(7));
+        player.graveyard.push(CardId(9));
+        assert_eq!(player.zone(Zone::Hand), &vec![CardId(7)]);
+        assert_eq!(player.zone(Zone::Graveyard), &vec![CardId(9)]);
+        assert!(player.zone(Zone::Library).is_empty());
+        assert!(player.zone(Zone::Exile).is_empty());
+    }
+}
