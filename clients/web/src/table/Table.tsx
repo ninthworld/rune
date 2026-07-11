@@ -9,9 +9,17 @@
  *   sends `ChooseAction` through the store, and the UI then rebuilds purely from
  *   the resulting GameView. The only client-side state is ephemeral selection
  *   (nothing load-bearing across messages — the reconnect/replay invariant).
+ *
+ * Targeting mode (ADR 0009 §Client): choosing an action that carries
+ * `requirements` enters a data-driven targeting flow. The client walks the
+ * requirement slots as a prompt queue, offering only the server-listed candidates
+ * (highlighted; everything else dimmed and inert), then submits the whole answer
+ * atomically with the action's content-binding token — one `ChooseAction`, never
+ * a multi-message handshake. The in-progress selection is ephemeral and discarded
+ * on the next view, so the UI stays reconstructable from one GameView + prompt.
  */
 import { useEffect, useMemo, useState } from 'react';
-import type { EntityId } from '../protocol';
+import type { EntityId, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
@@ -24,6 +32,15 @@ import {
   type RenderedCard,
   type TableScene,
 } from './scene';
+import {
+  activeCandidates,
+  activeRequirement,
+  assembleTargets,
+  beginTargeting,
+  pick,
+  requiresTargets,
+  type TargetingSession,
+} from './targeting';
 import { boardWrap, main, muted } from './styles';
 
 /**
@@ -59,16 +76,30 @@ export function Table() {
   const view = useGameStore((state) => state.view);
   const choose = useGameStore((state) => state.choose);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
+  const [targeting, setTargeting] = useState<TargetingSession | null>(null);
+
+  // A fresh view supersedes any in-progress targeting: the answer either landed
+  // (server's response) or is now stale. Discarding it here is what keeps the
+  // targeting UI reconstructable from one GameView + prompt (no load-bearing
+  // state across messages).
+  useEffect(() => {
+    setTargeting(null);
+  }, [view]);
 
   const viewportWidth = useViewportWidth();
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
   // The server names the receiver directly in `view.you`; an older server may
   // omit it (empty), which we treat as "unknown".
   const localId = view?.you || undefined;
-  const scene = useMemo(
-    () => (view ? buildTableScene(view, selectedId ?? undefined, viewportWidth) : null),
-    [view, selectedId, viewportWidth],
-  );
+  const scene = useMemo(() => {
+    if (!view) return null;
+    // In targeting mode the active slot's server candidates drive highlight/dim;
+    // selection is suppressed so the only interaction is picking a target.
+    const activeReq = targeting ? activeRequirement(targeting) : null;
+    const targetingScene = activeReq ? { candidates: activeReq.candidates ?? [] } : undefined;
+    const sel = targeting ? undefined : (selectedId ?? undefined);
+    return buildTableScene(view, sel, viewportWidth, targetingScene);
+  }, [view, selectedId, viewportWidth, targeting]);
 
   if (!view || !scene) {
     return (
@@ -79,39 +110,81 @@ export function Table() {
   }
 
   // The selected entity's actions come straight from what the server offered —
-  // never recomputed. If the selection no longer exists in the new view, this is
-  // empty and the echo disappears (state stays non-load-bearing).
+  // never recomputed. Suppressed during targeting (selection is inactive then).
   const selectedActions =
-    selectedId === null
+    selectedId === null || targeting !== null
       ? []
       : (prompt?.subjectActions ?? []).filter((action) => action.subject?.includes(selectedId));
   const selectedCard = findCard(scene, selectedId);
 
-  const fire = (actionId: string): void => {
-    choose(actionId);
+  // Fire an action: a multi-step (targeted) action enters targeting mode; a plain
+  // action is submitted immediately (token echoed, no targets).
+  const fire = (action: ValidAction): void => {
+    if (requiresTargets(action)) {
+      setSelectedId(null);
+      setTargeting(beginTargeting(action));
+      return;
+    }
+    choose(action);
     setSelectedId(null);
   };
+
+  // Pick a target for the active slot. When the last slot is filled, assemble and
+  // submit the whole answer atomically (action token + one choice per slot).
+  const pickTarget = (entityId: EntityId): void => {
+    if (!targeting) return;
+    const advanced = pick(targeting, entityId);
+    const targets = assembleTargets(advanced);
+    if (targets !== null) {
+      choose(advanced.action, targets);
+      setTargeting(null);
+    } else {
+      setTargeting(advanced);
+    }
+  };
+
+  const cancelTargeting = (): void => setTargeting(null);
   const toggleSelect = (id: EntityId): void =>
     setSelectedId((current) => (current === id ? null : id));
 
+  const activeReq = targeting ? activeRequirement(targeting) : null;
+  const targetingBanner =
+    targeting && activeReq
+      ? {
+          label: targeting.action.label,
+          prompt: activeReq.prompt,
+          step: targeting.picks.length + 1,
+          total: targeting.action.requirements?.length ?? 0,
+        }
+      : null;
+
   return (
     <main style={main}>
-      <PromptBanner view={view} prompt={prompt} />
-      <PlayerTiles view={view} localId={localId} />
+      <PromptBanner view={view} prompt={prompt} targeting={targetingBanner} />
+      <PlayerTiles
+        view={view}
+        localId={localId}
+        targeting={
+          targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+        }
+      />
       <div style={boardWrap(scene.width, scene.height)}>
         <BattlefieldCanvas scene={scene} />
         <EntityOverlay
           scene={scene}
           selectedId={selectedId}
+          targeting={targeting !== null}
           onSelect={toggleSelect}
           onChoose={fire}
+          onPickTarget={pickTarget}
         />
       </div>
       <ActionBar
-        globalActions={prompt?.globalActions ?? []}
+        globalActions={targeting ? [] : (prompt?.globalActions ?? [])}
         selectedActions={selectedActions}
         selectedName={selectedCard?.name}
         onChoose={fire}
+        onCancelTargeting={targeting ? cancelTargeting : undefined}
       />
     </main>
   );

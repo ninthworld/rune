@@ -80,15 +80,45 @@ describe('game store', () => {
     expect(selectPendingPrompt(view)).toBeNull();
   });
 
-  it('sends a ChooseAction echoing the chosen id', () => {
+  it('sends a ChooseAction echoing the chosen id (plain action, no token/targets)', () => {
     const store = createGameStore();
     const { factory, sockets } = recordingFactory();
     store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
     sockets[0].emitOpen();
     sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
 
-    store.getState().choose('a2');
+    store.getState().choose({ id: 'a2', type: 'activate_ability', label: 'Tap for mana' });
     expect(sockets[0].sent).toEqual([JSON.stringify({ type: 'choose_action', action_id: 'a2' })]);
+  });
+
+  it('answers a targeted action atomically: echoes the token and per-slot targets', () => {
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0].emitOpen();
+    sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
+
+    // The action carries the server's content-binding token; the assembled answer
+    // is submitted in a single message (never a multi-step handshake).
+    store.getState().choose(
+      {
+        id: 'a3',
+        type: 'cast_spell',
+        label: 'Cast Lightning Bolt',
+        subject: ['c3'],
+        token: 'h:9f2c',
+        requirements: [{ slot: 't0', prompt: 'target creature', candidates: ['perm_xyz'] }],
+      },
+      [{ slot: 't0', chosen: ['perm_xyz'] }],
+    );
+    expect(sockets[0].sent).toEqual([
+      JSON.stringify({
+        type: 'choose_action',
+        action_id: 'a3',
+        token: 'h:9f2c',
+        targets: [{ slot: 't0', chosen: ['perm_xyz'] }],
+      }),
+    ]);
   });
 
   it('tracks connection status through the lifecycle', () => {
@@ -160,7 +190,7 @@ describe('game store', () => {
     store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
     sockets[0].emitOpen();
     sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
-    store.getState().choose('a2');
+    store.getState().choose({ id: 'a2', type: 'activate_ability', label: 'Tap for mana' });
 
     expect(setItem).not.toHaveBeenCalled();
     vi.unstubAllGlobals();

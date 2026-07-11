@@ -71,6 +71,19 @@ export interface CardDisplayData {
   summoningSick?: boolean;
   /** Whether the card is currently selected (draws a selection ring). */
   selected?: boolean;
+  /**
+   * Whether the card is a legal target for the active target slot (ADR 0009
+   * §Client). Draws a targeting ring in the shared targeting color. The caller
+   * derives this purely from the server-listed candidates — the factory computes
+   * no legality.
+   */
+  targeting?: boolean;
+  /**
+   * Whether the card is dimmed and non-interactive because targeting mode is
+   * active and it is NOT a legal target. Purely a display state driven by the
+   * server's candidate list; reduces alpha so ineligible cards recede.
+   */
+  dimmed?: boolean;
 }
 
 /**
@@ -96,6 +109,8 @@ export function cardVisualSignature(data: CardDisplayData, tier: CardTier = 'fie
     tapped: data.tapped ?? false,
     summoningSick: data.summoningSick ?? false,
     selected: data.selected ?? false,
+    targeting: data.targeting ?? false,
+    dimmed: data.dimmed ?? false,
     counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
   });
 }
@@ -322,26 +337,31 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
     addBadge('zz', BADGE.bg, BADGE.text);
   }
 
-  // Selection ring (drawn inside `inner` so it rotates with a tapped card).
-  if (data.selected) {
+  // Selection / targeting ring (drawn inside `inner` so it rotates with a tapped
+  // card). A legal target draws a ring in the shared targeting color; otherwise a
+  // selected card draws the selection ring. The candidate set is server-supplied,
+  // so this reflects legality without ever computing it.
+  const ringColor = data.targeting ? SURFACES.targeting : data.selected ? SURFACES.selection : null;
+  if (ringColor !== null) {
     const ring = new Graphics();
     ring.lineStyle({
       width: FRAME.selectionWidth,
-      color: hexToNumber(SURFACES.selection),
+      color: hexToNumber(ringColor),
       alignment: 0,
     });
     ring.drawRoundedRect(-2, -2, t.w + 4, t.h + 4, FRAME.radius + 2);
     inner.addChild(ring);
   }
 
-  // Tapped: rotate 90° about the card center and dim.
+  // Tapped: rotate 90° about the card center and dim. A dimmed card (ineligible
+  // during targeting mode) recedes further, multiplying its base alpha.
   inner.pivot.set(t.w / 2, t.h / 2);
+  const baseAlpha = data.tapped ? FRAME.tappedAlpha : data.summoningSick ? FRAME.sickAlpha : 1;
+  inner.alpha = data.dimmed ? baseAlpha * FRAME.dimmedAlpha : baseAlpha;
   if (data.tapped) {
     inner.rotation = Math.PI / 2;
-    inner.alpha = FRAME.tappedAlpha;
     inner.position.set(t.h / 2, t.w / 2);
   } else {
-    inner.alpha = data.summoningSick ? FRAME.sickAlpha : 1;
     inner.position.set(t.w / 2, t.h / 2);
   }
 

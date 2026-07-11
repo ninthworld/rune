@@ -47,8 +47,28 @@ export interface RenderedCard {
   data: CardDisplayData;
   /** Logical position of the card. */
   rect: Rect;
-  /** The subject-actions bound to this entity (empty ⇒ not interactive). */
+  /**
+   * The subject-actions bound to this entity (empty ⇒ not interactive). During
+   * targeting mode this is forced empty: the only interaction is picking a target.
+   */
   actions: ValidAction[];
+  /**
+   * Whether this card is a legal target for the active target slot — set only in
+   * targeting mode, straight from the server's candidate list (ADR 0009 §Client).
+   * The overlay makes exactly these cards pickable; everything else is dimmed.
+   */
+  targetable: boolean;
+}
+
+/**
+ * The active targeting step, as the table renders it: the legal candidate entity
+ * ids for the one slot the player is currently filling. Supplied by the caller
+ * (the server enumerated them); the scene highlights exactly these and dims the
+ * rest, computing NO legality of its own.
+ */
+export interface TargetingScene {
+  /** The entity ids that are legal targets for the active slot. */
+  candidates: EntityId[];
 }
 
 /** A per-controller battlefield row. */
@@ -181,14 +201,40 @@ function layBand(
  * `viewportWidth` is the logical width budget bands wrap within (defaults to
  * {@link DEFAULT_VIEWPORT_WIDTH}); the returned `width` never exceeds it beyond a
  * single card, so the board never needs a horizontal page scrollbar.
+ *
+ * When `targeting` is supplied the scene enters targeting mode: only the listed
+ * candidate cards are targetable (highlighted with the targeting ring), every
+ * other card is dimmed and non-interactive, and normal subject-actions are
+ * suppressed so the sole interaction is picking a target. The candidates come
+ * straight from the server; the scene derives no legality (ADR 0009 §Client).
  */
 export function buildTableScene(
   view: GameView,
   selectedId?: EntityId,
   viewportWidth: number = DEFAULT_VIEWPORT_WIDTH,
+  targeting?: TargetingScene,
 ): TableScene {
   const localPlayerId = localPlayerIdOf(view);
   const subjectActions = view.valid_actions.filter((a) => a.subject && a.subject.length > 0);
+  const candidateSet = targeting ? new Set(targeting.candidates) : null;
+
+  // Fold targeting state into a card's display data + interactivity. Outside
+  // targeting mode this is a no-op; inside it, the server's candidate list is the
+  // only thing deciding highlight (targetable) vs dim, and all subject-actions are
+  // suppressed because the only move now is choosing a target.
+  const withTargeting = (
+    card: Omit<RenderedCard, 'rect' | 'targetable'>,
+  ): Omit<RenderedCard, 'rect'> => {
+    if (candidateSet === null) return { ...card, targetable: false };
+    const targetable = candidateSet.has(card.entityId);
+    return {
+      ...card,
+      // A target being picked is not "selected"; suppress the selection ring.
+      data: { ...card.data, selected: false, targeting: targetable, dimmed: !targetable },
+      actions: [],
+      targetable,
+    };
+  };
 
   // Group battlefield permanents by controller (zone placement follows the
   // controller, not the owner — Control-Magic-safe, per ui-requirements §2).
@@ -207,18 +253,19 @@ export function buildTableScene(
   }
   if (localPlayerId !== undefined) ordered.push(localPlayerId);
 
-  const toRenderable = (perm: Permanent): Omit<RenderedCard, 'rect'> => ({
-    entityId: perm.id,
-    zone: 'battlefield',
-    tier: 'field',
-    name: perm.card.name,
-    data: toDisplayData(perm.card, {
-      tapped: perm.tapped,
-      counters: perm.counters,
-      selected: perm.id === selectedId,
-    }),
-    actions: actionsFor(perm.id, subjectActions),
-  });
+  const toRenderable = (perm: Permanent): Omit<RenderedCard, 'rect'> =>
+    withTargeting({
+      entityId: perm.id,
+      zone: 'battlefield',
+      tier: 'field',
+      name: perm.card.name,
+      data: toDisplayData(perm.card, {
+        tapped: perm.tapped,
+        counters: perm.counters,
+        selected: perm.id === selectedId,
+      }),
+      actions: actionsFor(perm.id, subjectActions),
+    });
 
   const bands: Band[] = [];
   let top = LAYOUT.margin;
@@ -248,14 +295,16 @@ export function buildTableScene(
     width: handWidth,
     height: handHeight,
   } = layBand(
-    view.my_hand.map((card) => ({
-      entityId: card.id,
-      zone: 'hand' as const,
-      tier: 'hand' as const,
-      name: card.name,
-      data: toDisplayData(card, { selected: card.id === selectedId }),
-      actions: actionsFor(card.id, subjectActions),
-    })),
+    view.my_hand.map((card) =>
+      withTargeting({
+        entityId: card.id,
+        zone: 'hand' as const,
+        tier: 'hand' as const,
+        name: card.name,
+        data: toDisplayData(card, { selected: card.id === selectedId }),
+        actions: actionsFor(card.id, subjectActions),
+      }),
+    ),
     top,
     handT.w,
     handT.h,

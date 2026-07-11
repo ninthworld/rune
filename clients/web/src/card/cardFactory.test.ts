@@ -126,6 +126,16 @@ describe('buildCardDisplay', () => {
     expect(inner.alpha).toBeLessThan(1);
   });
 
+  it('dims an ineligible target during targeting mode', () => {
+    // A plain (untapped, unsick) card dims well below full opacity when it is not
+    // a legal target — the ADR 0009 "everything else dimmed" state.
+    const inner = buildCardDisplay({ ...grizzlyBears, dimmed: true }).children[0] as Container;
+    expect(inner.alpha).toBeLessThan(0.5);
+    // A highlighted candidate is NOT dimmed: it stays fully opaque.
+    const lit = buildCardDisplay({ ...grizzlyBears, targeting: true }).children[0] as Container;
+    expect(lit.alpha).toBe(1);
+  });
+
   it('accepts the color identity from the caller (no derivation)', () => {
     // Same card data framed by a different identity yields that identity's P/T
     // token color — proving the factory reads what it is handed.

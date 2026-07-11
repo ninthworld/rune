@@ -39,6 +39,9 @@ export const banner: CSSProperties = {
 
 export const bannerAccent: CSSProperties = { color: SURFACES.selection, fontWeight: 600 };
 
+/** The lead span of the targeting-mode banner, in the shared targeting color. */
+export const bannerTargeting: CSSProperties = { color: SURFACES.targeting, fontWeight: 600 };
+
 export const tiles: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -57,6 +60,33 @@ export const tile: CSSProperties = {
 
 export const localTile: CSSProperties = {
   borderColor: SURFACES.selection,
+};
+
+/** A player tile that is a legal target during targeting mode: ringed + pickable. */
+export const targetTile: CSSProperties = {
+  borderColor: SURFACES.targeting,
+  boxShadow: `0 0 0 1px ${SURFACES.targeting}`,
+  cursor: 'pointer',
+};
+
+/** A player tile dimmed as an ineligible target during targeting mode. */
+export const dimmedTile: CSSProperties = {
+  opacity: 0.32,
+};
+
+/**
+ * Reset applied to a `<button>` wrapping a player tile so it keeps the tile's own
+ * box/typography rather than the browser's default button chrome. The tile styles
+ * (including {@link targetTile}) are spread on top.
+ */
+export const tileButtonReset: CSSProperties = {
+  font: 'inherit',
+  color: 'inherit',
+  textAlign: 'left',
+  padding: 0,
+  margin: 0,
+  background: 'none',
+  border: 'none',
 };
 
 export const tileName: CSSProperties = {
@@ -103,6 +133,20 @@ export function hotspot(rect: Rect, selected: boolean): CSSProperties {
     borderRadius: 10,
     cursor: 'pointer',
     pointerEvents: 'auto',
+  };
+}
+
+/**
+ * A target-pick hotspot for targeting mode: the same touch-sized hitbox as a
+ * selection {@link hotspot}, ringed and faintly filled in the shared targeting
+ * color so a legal target reads as pickable. Ineligible cards get no hotspot at
+ * all (they are dimmed in the canvas), so only candidates catch a click.
+ */
+export function targetHotspot(rect: Rect): CSSProperties {
+  return {
+    ...hotspot(rect, false),
+    border: `2px solid ${SURFACES.targeting}`,
+    background: 'rgba(224, 120, 74, 0.14)',
   };
 }
 
