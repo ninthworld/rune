@@ -718,6 +718,8 @@ mod tests {
         assert!(state.battlefield.is_empty());
         assert!(state.stack.is_empty());
         assert!(!state.land_played);
+        // The RNG seed slot defaults to 0 when no seed is injected.
+        assert_eq!(state.rng_seed, 0);
 
         for player in &state.players {
             assert_eq!(player.life, STARTING_LIFE);
@@ -730,6 +732,18 @@ mod tests {
         // The active player resolves to an actual seat.
         let active = state.active_player().unwrap();
         assert_eq!(active.life, STARTING_LIFE);
+    }
+
+    #[test]
+    fn seeded_constructor_records_the_seed_and_changes_nothing_else() {
+        // The injected seed is stored verbatim, and the only difference from the
+        // default constructor is that one field — the slot is inert for now.
+        let seeded = GameState::new_two_player_with_seed(0xDEAD_BEEF);
+        assert_eq!(seeded.rng_seed, 0xDEAD_BEEF);
+
+        let mut normalized = seeded.clone();
+        normalized.rng_seed = 0;
+        assert_eq!(normalized, GameState::new_two_player());
     }
 
     #[test]
