@@ -94,6 +94,7 @@ mod tests {
             card: CardId(6),
             controller: PlayerId(0),
             tapped: false,
+            counters: Default::default(),
         });
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);

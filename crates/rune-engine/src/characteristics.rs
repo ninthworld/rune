@@ -9,16 +9,17 @@
 //! (consistent with the `GameState` "no cached derivations" invariant in
 //! `state.rs`).
 //!
-//! This module is **slice 1 of 3** (ADR 0010 §3): it seeds current
-//! characteristics straight from printed values, with no modifiers. Counters
-//! (layer 7c) and static P/T modifications land in later slices behind this same
-//! function signature, so callers never change as layers are filled in.
+//! This module is **slice 2 of 3** (ADR 0010 §3): it seeds current
+//! characteristics from printed values and then folds `+1/+1` and `-1/-1`
+//! counters into power/toughness at CR 613 **layer 7c** (the counters step).
+//! Static P/T modifications (anthems, pumps) land in the final slice behind this
+//! same function signature, so callers never change as layers are filled in.
 
 use crate::ability::Ability;
 use crate::card::{abilities_of, CardDatabase};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;
-use crate::state::GameState;
+use crate::state::{CounterKind, GameState, Permanent};
 
 /// A permanent's *current* characteristics, computed fresh — **never stored on
 /// state**.
@@ -29,9 +30,10 @@ use crate::state::GameState;
 /// [`GameState`](crate::GameState); recomputing it every query is what keeps the
 /// engine pure and undo/replay/resync free (ADR 0010).
 ///
-/// In this first slice the values equal the permanent's printed
-/// [`CardData`](crate::CardData). As continuous-effect layers land, the same
-/// type carries their results without changing shape.
+/// Its power/toughness are the printed values with any `+1/+1` / `-1/-1`
+/// counters folded in (layer 7c); the remaining fields still equal the printed
+/// [`CardData`](crate::CardData). As further continuous-effect layers land, the
+/// same type carries their results without changing shape.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Characteristics {
     /// Current supertypes (e.g. [`Supertype::Basic`], [`Supertype::Legendary`]).
@@ -58,9 +60,10 @@ pub struct Characteristics {
 /// `permanent`, reading its printed [`CardData`](crate::CardData) as the seed.
 ///
 /// This is the one pure read path mandated by ADR 0010: it runs fresh on every
-/// call and caches nothing. In this slice the result is exactly the printed
-/// values — no counters and no modifiers, which arrive in later slices behind
-/// this unchanged signature. It takes `&CardDatabase` for the same reason
+/// call and caches nothing. In this slice the result is the printed values with
+/// the permanent's `+1/+1` / `-1/-1` counters folded into power/toughness at CR
+/// 613 layer 7c; static P/T modifiers arrive in the final slice behind this
+/// unchanged signature. It takes `&CardDatabase` for the same reason
 /// [`apply_action`](crate::apply_action) does (ADR 0007): the printed seed lives
 /// in the database, which is kept out of [`GameState`](crate::GameState) to
 /// preserve that type's `Eq`/purity.
@@ -83,15 +86,33 @@ pub fn characteristics(
     let Some(card) = db.card(perm.card) else {
         return Characteristics::default();
     };
+    // CR 613 layer 7c: `+1/+1` and `-1/-1` counters adjust power and toughness
+    // by the same signed amount. They only apply to a permanent that has P/T; a
+    // permanent with no printed power/toughness (`None`) stays `None`.
+    let counter_delta = pt_counter_delta(perm);
     Characteristics {
         supertypes: card.supertypes.clone(),
         types: card.types.clone(),
         subtypes: card.subtypes.clone(),
         mana_cost: card.mana_cost.clone(),
-        power: card.power,
-        toughness: card.toughness,
+        power: card.power.map(|p| p.saturating_add(counter_delta)),
+        toughness: card.toughness.map(|t| t.saturating_add(counter_delta)),
         abilities: abilities_of(db, perm.card),
     }
+}
+
+/// The net power/toughness shift from `perm`'s `+1/+1` and `-1/-1` counters at
+/// CR 613 layer 7c: one `+1/+1` counter contributes `+1`, one `-1/-1` counter
+/// `-1`, and the kinds sum independently (they do not annihilate here — that is
+/// the `+1/+1`/`-1/-1` state-based action, out of this slice's scope).
+///
+/// Counts are `u32`; conversion saturates at [`i32::MAX`] rather than panic
+/// (the engine forbids panicking APIs), which no realistic game ever reaches.
+fn pt_counter_delta(perm: &Permanent) -> i32 {
+    let plus = i32::try_from(perm.counter_count(CounterKind::PlusOnePlusOne)).unwrap_or(i32::MAX);
+    let minus =
+        i32::try_from(perm.counter_count(CounterKind::MinusOneMinusOne)).unwrap_or(i32::MAX);
+    plus.saturating_sub(minus)
 }
 
 #[cfg(test)]
@@ -102,6 +123,7 @@ mod tests {
     use crate::ability::is_mana_ability;
     use crate::id::{CardId, CardInstanceId, PlayerId};
     use crate::state::Permanent;
+    use std::collections::BTreeMap;
 
     /// Put a permanent for `card` on the battlefield and return its id.
     fn place(state: &mut GameState, card: CardId) -> PermanentId {
@@ -112,8 +134,15 @@ mod tests {
             card,
             controller: PlayerId(0),
             tapped: false,
+            counters: BTreeMap::new(),
         });
         id
+    }
+
+    /// Set the count of `kind` counters on the permanent identified by `id`.
+    fn set_counters(state: &mut GameState, id: PermanentId, kind: CounterKind, count: u32) {
+        let perm = state.battlefield.iter_mut().find(|p| p.id == id).unwrap();
+        perm.counters.insert(kind, count);
     }
 
     #[test]
@@ -136,6 +165,82 @@ mod tests {
         assert_eq!(ch.power, printed.power);
         assert_eq!(ch.toughness, printed.toughness);
         assert_eq!(ch.types, printed.types);
+    }
+
+    #[test]
+    fn plus_one_counters_add_to_printed_power_and_toughness() {
+        // Thornback Boar is a printed 3/2. Three +1/+1 counters make it a 6/5.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 3);
+
+        let ch = characteristics(&state, boar, &db);
+        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.toughness, Some(5));
+        // Only P/T shifts; the printed types are untouched by counters.
+        assert_eq!(ch.types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn mixed_plus_and_minus_counters_net_correctly() {
+        // 3/2 Boar with two +1/+1 and one -1/-1 nets +1/+1 overall -> 4/3.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 2);
+        set_counters(&mut state, boar, CounterKind::MinusOneMinusOne, 1);
+
+        let ch = characteristics(&state, boar, &db);
+        assert_eq!(ch.power, Some(4));
+        assert_eq!(ch.toughness, Some(3));
+    }
+
+    #[test]
+    fn minus_counters_can_drive_power_and_toughness_negative() {
+        // Counters are folded verbatim; SBAs (a 0-or-less-toughness creature
+        // dying, annihilation of +1/+1 vs -1/-1) are not this slice's concern,
+        // so three -1/-1 on a 3/2 computes a raw 0/-1.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        set_counters(&mut state, boar, CounterKind::MinusOneMinusOne, 3);
+
+        let ch = characteristics(&state, boar, &db);
+        assert_eq!(ch.power, Some(0));
+        assert_eq!(ch.toughness, Some(-1));
+    }
+
+    #[test]
+    fn counters_on_a_permanent_without_pt_leave_it_without_pt() {
+        // A Forest has no printed P/T; a stray +1/+1 counter does not conjure any
+        // (layer 7c only adjusts an existing power/toughness).
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let forest = place(&mut state, CardId(5));
+        set_counters(&mut state, forest, CounterKind::PlusOnePlusOne, 2);
+
+        let ch = characteristics(&state, forest, &db);
+        assert_eq!(ch.power, None);
+        assert_eq!(ch.toughness, None);
+    }
+
+    #[test]
+    fn counter_count_defaults_to_zero_and_reports_stored_counts() {
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        let find = |state: &GameState| {
+            state
+                .battlefield
+                .iter()
+                .find(|p| p.id == boar)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(find(&state).counter_count(CounterKind::PlusOnePlusOne), 0);
+        set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 4);
+        assert_eq!(find(&state).counter_count(CounterKind::PlusOnePlusOne), 4);
+        assert_eq!(find(&state).counter_count(CounterKind::MinusOneMinusOne), 0);
     }
 
     #[test]

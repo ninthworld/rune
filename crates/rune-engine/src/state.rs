@@ -12,10 +12,27 @@
 //! injected seed" structurally satisfiable, rather than satisfied only by the
 //! current absence of randomness.
 
+use std::collections::BTreeMap;
+
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::phase::Step;
 use crate::player::Player;
 use crate::stack::StackObject;
+
+/// A kind of counter that can sit on a [`Permanent`].
+///
+/// Only the power/toughness counters the layer system folds into computed
+/// characteristics today are modeled (ADR 0010 slice 2, CR 613.7c). Other kinds
+/// (loyalty, charge, …) are deferred until an effect needs them, at which point
+/// a variant is added here. Used as a [`BTreeMap`] key in
+/// [`Permanent::counters`], so ordering is derived and replay-stable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CounterKind {
+    /// A `+1/+1` counter: adds 1 to power and 1 to toughness (CR 122, CR 613.7c).
+    PlusOnePlusOne,
+    /// A `-1/-1` counter: subtracts 1 from power and 1 from toughness.
+    MinusOneMinusOne,
+}
 
 /// A permanent on the shared battlefield.
 ///
@@ -36,6 +53,25 @@ pub struct Permanent {
     pub controller: PlayerId,
     /// Whether the permanent is tapped.
     pub tapped: bool,
+    /// Counters on this permanent, keyed by [`CounterKind`] and mapped to how
+    /// many of that kind are present.
+    ///
+    /// This is **raw stored state, not a derivation** (ADR 0010 §1): nothing
+    /// else in [`GameState`] determines a permanent's counters, so the
+    /// "no cached derivations" invariant does not apply to it. Current
+    /// power/toughness *is* derived and folds these in on demand via
+    /// [`characteristics`](crate::characteristics::characteristics); it is never
+    /// stored. A kind absent from the map means zero of that counter; a present
+    /// entry is a positive count.
+    pub counters: BTreeMap<CounterKind, u32>,
+}
+
+impl Permanent {
+    /// How many counters of `kind` are on this permanent, `0` when none are.
+    #[must_use]
+    pub fn counter_count(&self, kind: CounterKind) -> u32 {
+        self.counters.get(&kind).copied().unwrap_or(0)
+    }
 }
 
 /// The complete, immutable state of a game at one moment.
