@@ -39,8 +39,8 @@ sized for one PR unless noted.
 13. ⏳ **cli: LLM agent mode** — GameView JSON in, action_id out, timeout fallback.
 
 ## Client (after protocol serde) — ⏳ needs issues
-14. ⏳ **client: WebSocket store** — Zustand store holding latest GameView; reconnect
-    resends full state (test the reconstruct-from-one-GameView invariant).
+14. ✅ **client: WebSocket store** — Zustand store holding latest GameView; reconnect
+    resends full state (test the reconstruct-from-one-GameView invariant) — issue #34.
 15. ⏳ **client: port the Pixi card factory from prototypes/ui-battlefield-v3.html**
     into src/, reading src/tokens.ts (reference only — reimplement, don't import).
 16. ⏳ **client: battlefield bands + hand + action bar** rendering GameView from the
