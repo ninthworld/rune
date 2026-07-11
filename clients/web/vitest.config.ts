@@ -21,6 +21,12 @@ export default defineConfig({
       '@protocol-fixtures/gameview-over.json': fileURLToPath(
         new URL('../../crates/rune-protocol/fixtures/gameview-over.json', import.meta.url),
       ),
+      // The prompt-shapes fixture (issue #156): a pre-game mulligan frame carrying
+      // the `option` + `select_from_zone` prompts the server projects, round-tripped
+      // by the Rust crate and asserted here so the wire shapes cannot drift.
+      '@protocol-fixtures/gameview-prompts.json': fileURLToPath(
+        new URL('../../crates/rune-protocol/fixtures/gameview-prompts.json', import.meta.url),
+      ),
     },
   },
   test: {

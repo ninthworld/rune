@@ -159,6 +159,73 @@ action can be taken:
   handshake. The effect IR that backs these actions is decided in ADR 0007.
 - Absent/empty for a plain action that needs no sub-choice.
 
+#### Prompt slots: `option`, `select_from_zone`, `order`
+
+Alongside the target `requirements`, a `ValidAction` may carry a `prompts` list —
+**generalizations of the same slot pattern** (slot + prompt + candidates, bound by
+the action's `token`, ADR 0009), for choices that are not target selection. A
+`prompts` entry is tagged by `kind` and answered by the **same** `targets`/`chosen`
+mechanism keyed by `slot` (see `ChooseAction` below): the client walks
+`requirements` and `prompts` as one prompt queue and submits every slot atomically
+in a single message. The action's content-binding `token` folds in the prompts too,
+so ADR 0009's reject-stale protection covers all three shapes. `prompts` is
+absent/empty for an action that poses no such choice; clients tolerate an unknown
+future `kind`.
+
+- **`option`** — pick exactly one of N named choices (also the clean shape for a
+  yes/no). Carries `options[]` of `{ id, label }`; the answer's `chosen` is the
+  single chosen option `id`. Emitted by the server for the pre-game **mulligan
+  keep/take-another decision** (`mulligan_decision` action, CR 103.5), which
+  collapses the former separate `keep`/`mulligan` actions into one.
+
+  ```json
+  { "id": "a0", "type": "mulligan_decision", "label": "Keep or mulligan",
+    "token": "t00000000deadbeef",
+    "prompts": [
+      { "kind": "option", "slot": "decision",
+        "prompt": "Keep this hand or take a mulligan?",
+        "options": [ { "id": "keep", "label": "Keep this hand" },
+                     { "id": "mulligan", "label": "Mulligan" } ] }
+    ] }
+  ```
+
+- **`select_from_zone`** — pick `count` cards from a zone. Carries `zone` (e.g.
+  `"hand"`), `owner` (the `PlayerId` whose zone it is), `count`, and the legal
+  `candidates[]` entity ids; the answer's `chosen` lists the selected ids. Emitted
+  by the server for the **cleanup discard-to-maximum** (`discard` action, CR 514.1 —
+  `count: 1`, collapsing the former per-card `discard` actions into one) and for the
+  **mulligan bottoming** owed after a mulligan (carried on the same
+  `mulligan_decision` action; London bottoming rides ADR 0009's `requirements` slot,
+  and a keep answers both `decision` and the bottoming slot).
+
+  ```json
+  { "id": "a0", "type": "discard", "label": "Discard a card",
+    "token": "t0000000000c0ffee",
+    "prompts": [
+      { "kind": "select_from_zone", "slot": "discard",
+        "prompt": "Choose a card to discard",
+        "zone": "hand", "owner": "p0", "count": 1,
+        "candidates": ["card_10", "card_11", "card_12"] }
+    ] }
+  ```
+
+- **`order`** — arrange N items into an order. Carries `items[]` (the entity ids to
+  arrange); the answer's `chosen` is a permutation of exactly those ids. Intended for
+  **ordering simultaneous triggers** (APNAP, CR 603.3b) and later **scry**. No server
+  state emits it yet — the engine does not pose a trigger-ordering choice until that
+  lands (issue #151) — so it is a documented, round-tripped shape without a live
+  projection.
+
+  ```json
+  { "id": "a0", "type": "order_triggers", "label": "Order triggers",
+    "token": "t0",
+    "prompts": [
+      { "kind": "order", "slot": "triggers",
+        "prompt": "Order these triggered abilities",
+        "items": ["stack_1", "stack_2"] }
+    ] }
+  ```
+
 The same `requirements` shape carries every server-computed candidate set, not
 just ability targets. A slot's `candidates` are the engine's freshly computed
 legal set, so a rebuilt view always advertises current candidates:
@@ -214,11 +281,12 @@ For a multi-step action the client submits its whole selection atomically —
 ```
 
 - `token` echoes the chosen action's `token` verbatim (content binding above).
-- `targets[]` answers the action's requirement slots: `slot` matches a
-  `requirements[].slot`, and `chosen` lists the selected entity ids for it (one
-  for a single-target slot; the list generalizes to multi-select choices the
-  model defers for now). Every id in `chosen` must be one of that slot's
-  advertised `candidates`, or the server treats the action as a no-op.
+- `targets[]` answers the action's requirement **and** prompt slots: `slot`
+  matches a `requirements[].slot` or a `prompts[].slot`, and `chosen` lists the
+  selected ids for it — one for a single-target slot; a chosen option `id` for an
+  `option`; the selected zone ids for a `select_from_zone`; the full ordering for
+  an `order`. Every id must be one of that slot's advertised
+  candidates/options/items, or the server treats the action as a no-op.
 - `token` and `targets` are omitted when empty, so the minimal message above
   stays valid. The server validates the id, verifies the token against the
   action it currently offers, and re-checks each chosen target against that

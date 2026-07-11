@@ -15,6 +15,9 @@ import CONTRACT_FIXTURE from '@protocol-fixtures/gameview.json';
 // The terminal counterpart of the canonical fixture: a finished game carrying a
 // `result` and no `valid_actions` (issue #141). Same dual-consumed shape as above.
 import CONTRACT_FIXTURE_OVER from '@protocol-fixtures/gameview-over.json';
+// The prompt-shapes fixture (issue #156): a mulligan frame carrying `option` +
+// `select_from_zone` prompts, round-tripped by the Rust crate and asserted here.
+import CONTRACT_FIXTURE_PROMPTS from '@protocol-fixtures/gameview-prompts.json';
 
 describe('parseGameView', () => {
   it('decodes a representative wire frame into the expected GameView', () => {
@@ -180,6 +183,71 @@ describe('cross-language contract fixture (issue #56)', () => {
   it('normalizes the parsed object identically to the raw wire text', () => {
     // normalizeGameView (object) and parseGameView (text) are the same pipeline.
     expect(normalizeGameView(CONTRACT_FIXTURE)).toEqual(parseGameView(wireJson));
+  });
+
+  it('carries the prompt-shapes fixture (option + select_from_zone) through intact', () => {
+    // The same JSON the Rust crate round-trips (issue #156). The prompt slots must
+    // survive normalization verbatim so the client can render/echo them; a field
+    // renamed/retyped in the Rust `Prompt` and updated here breaks this assertion.
+    const view = parseGameView(JSON.stringify(CONTRACT_FIXTURE_PROMPTS));
+    expect(view.you).toBe('p0');
+    const decision = view.valid_actions[0];
+    expect(decision.type).toBe('mulligan_decision');
+    expect(decision.token).toBe('t00000000deadbeef');
+    expect(decision.prompts).toEqual([
+      {
+        kind: 'option',
+        slot: 'decision',
+        prompt: 'Keep this hand or take a mulligan?',
+        options: [
+          { id: 'keep', label: 'Keep this hand' },
+          { id: 'mulligan', label: 'Mulligan' },
+        ],
+      },
+      {
+        kind: 'select_from_zone',
+        slot: 'bottom',
+        prompt: 'Put 1 card(s) on the bottom of your library',
+        zone: 'hand',
+        owner: 'p0',
+        count: 1,
+        candidates: ['card_10', 'card_11'],
+      },
+    ]);
+  });
+
+  it('carries an order prompt through normalization intact', () => {
+    // `order` has no server projection yet (awaits trigger ordering, #151), but its
+    // wire shape must round-trip so the client can render it when it lands.
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'upkeep',
+        valid_actions: [
+          {
+            id: 'a0',
+            type: 'order_triggers',
+            label: 'Order triggers',
+            token: 't0',
+            prompts: [
+              {
+                kind: 'order',
+                slot: 'triggers',
+                prompt: 'Order these triggered abilities',
+                items: ['stack_1', 'stack_2'],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(view.valid_actions[0].prompts).toEqual([
+      {
+        kind: 'order',
+        slot: 'triggers',
+        prompt: 'Order these triggered abilities',
+        items: ['stack_1', 'stack_2'],
+      },
+    ]);
   });
 
   it('parses the terminal counterpart fixture into a game-over GameView', () => {

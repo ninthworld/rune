@@ -18,8 +18,8 @@ use rune_engine::{
 };
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameOverReason, GameResult as GameResultView, GameView,
-    OpponentView, Permanent as PermanentView, Phase, StackItem, TargetChoice, TargetRequirement,
-    ValidAction, ZonePile,
+    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, StackItem, TargetChoice,
+    TargetRequirement, ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -198,33 +198,193 @@ fn zone_piles(
         .collect()
 }
 
-/// The actions the engine currently offers the priority holder, each paired with
-/// the opaque id a client echoes back to choose it.
+/// How a returned answer for a projected wire action is bound back onto a concrete
+/// engine [`Action`]. Most wire actions are a 1:1 [`Bind::Standard`] projection of a
+/// single engine action; two are *collapsed* projections that fold a combinatorial
+/// engine enumeration into one richer-prompt action (issue #156):
+/// [`Bind::MulliganDecision`] replaces the separate `Mulligan`/`Keep` actions with a
+/// single [`Prompt::Option`], and [`Bind::DiscardFromHand`] replaces the per-card
+/// cleanup `Discard` actions with a single [`Prompt::SelectFromZone`].
+enum Bind {
+    /// A 1:1 projection of this engine action; resolution threads any target
+    /// `requirements` back through the per-kind `bind_*` helpers.
+    Standard(Action),
+    /// The collapsed mulligan keep/take-another decision: an [`Prompt::Option`] plus,
+    /// when a bottoming is owed, the [`bottom_requirement`] slot (CR 103.5).
+    MulliganDecision,
+    /// The collapsed cleanup discard: a single [`Prompt::SelectFromZone`] over the
+    /// active player's hand, resolving to one [`Action::Discard`] (CR 514.1).
+    DiscardFromHand,
+}
+
+/// One projected wire action together with how to bind a returned answer to it.
+struct Projected {
+    /// The wire action the client sees and answers.
+    view: ValidAction,
+    /// How [`resolve_action`] maps the answer back onto an engine [`Action`].
+    bind: Bind,
+}
+
+/// The wire actions the engine currently offers the priority holder, each paired
+/// with how a returned answer binds back to the engine.
 ///
-/// The ids are positional, but they are no longer what *binds* a returned answer to
-/// an action: each projected [`ValidAction`] also carries a content-binding
-/// [`token`](ValidAction::token) (see [`valid_action_view`]) hashed from the
-/// action's own content. [`resolve_action`] verifies that token, so a stale
-/// positional id whose action has since changed cannot silently rebind — the
-/// full-state invariant now covers routing *and* content. Empty when no one holds
-/// priority.
-fn issued_actions(state: &GameState, db: &CardDatabase) -> Vec<(String, Action)> {
-    valid_actions(state, db)
-        .into_iter()
-        .enumerate()
-        .map(|(index, action)| (format!("a{index}"), action))
-        .collect()
+/// The ids are positional (`a0`, `a1`, …), but they are no longer what *binds* a
+/// returned answer to an action: each projected [`ValidAction`] also carries a
+/// content-binding [`token`](ValidAction::token) hashed from the action's own
+/// content (kind + subject + requirements + prompts). [`resolve_action`] verifies
+/// that token, so a stale positional id whose action has since changed cannot
+/// silently rebind. Empty when no one holds priority.
+///
+/// Two engine enumerations are *collapsed* into one richer-prompt action apiece
+/// (issue #156), deleting the enumeration: the pre-game `Mulligan`/`Keep` pair
+/// becomes a single `mulligan_decision` (an [`Prompt::Option`]), and the per-card
+/// cleanup `Discard` list becomes a single `discard` (a [`Prompt::SelectFromZone`]).
+/// Every other engine action projects 1:1 via [`valid_action_view`].
+fn projected_actions(state: &GameState, db: &CardDatabase) -> Vec<Projected> {
+    let mut out: Vec<Projected> = Vec::new();
+    let mut next = 0usize;
+    let mut mulligan_done = false;
+    let mut discard_done = false;
+    for action in valid_actions(state, db) {
+        let projected = match &action {
+            // Collapse the keep/take-another pair into one option-bearing action.
+            Action::Mulligan | Action::Keep { .. } => {
+                if mulligan_done {
+                    continue;
+                }
+                mulligan_done = true;
+                build_mulligan_decision(state, next_id(&mut next))
+            }
+            // Collapse the per-card discard list into one select-from-zone action.
+            Action::Discard { .. } => {
+                if discard_done {
+                    continue;
+                }
+                discard_done = true;
+                build_discard(state, next_id(&mut next))
+            }
+            _ => Projected {
+                view: valid_action_view(next_id(&mut next), &action, state, db),
+                bind: Bind::Standard(action),
+            },
+        };
+        out.push(projected);
+    }
+    out
+}
+
+/// Take the next positional wire id (`a0`, `a1`, …), advancing the counter. Only
+/// called when an action is actually emitted, so ids stay dense across collapses.
+fn next_id(next: &mut usize) -> String {
+    let id = format!("a{next}");
+    *next += 1;
+    id
+}
+
+/// The collapsed mulligan keep/take-another decision (CR 103.5, London), a real
+/// [`Prompt::Option`] projection (issue #156). The two engine actions
+/// [`Action::Mulligan`]/[`Action::Keep`] are folded into one `mulligan_decision`
+/// action carrying an option slot (`decision`) whose two choices are *keep* and
+/// *mulligan*. When a bottoming is owed (the seat has mulliganed), the same action
+/// also carries the [`bottom_requirement`] multi-select slot from issue #140, so a
+/// keep answer selects which cards to bottom; [`resolve_action`] binds *keep* to
+/// [`Action::Keep`] with those cards and *mulligan* to [`Action::Mulligan`].
+fn build_mulligan_decision(state: &GameState, id: String) -> Projected {
+    let kind = "mulligan_decision".to_string();
+    let subject: Vec<String> = Vec::new();
+    // The bottoming is projected exactly as issue #140 did — as a `requirements`
+    // multi-select slot — so a keep still binds through [`bind_keep`] unchanged.
+    let requirements = keep_requirements(state, &Action::Keep { bottom: Vec::new() });
+    let prompts = vec![Prompt::Option {
+        slot: "decision".to_string(),
+        prompt: "Keep this hand or take a mulligan?".to_string(),
+        options: vec![
+            PromptOption {
+                id: "keep".to_string(),
+                label: "Keep this hand".to_string(),
+            },
+            PromptOption {
+                id: "mulligan".to_string(),
+                label: "Mulligan".to_string(),
+            },
+        ],
+    }];
+    let token = content_token(&kind, &subject, &requirements, &prompts);
+    Projected {
+        view: ValidAction {
+            id,
+            kind,
+            label: "Keep or mulligan".to_string(),
+            subject,
+            requirements,
+            prompts,
+            token,
+        },
+        bind: Bind::MulliganDecision,
+    }
+}
+
+/// The collapsed cleanup discard-to-maximum choice (CR 514.1), a real
+/// [`Prompt::SelectFromZone`] projection (issue #156). The engine offers one
+/// [`Action::Discard`] per card in the over-full hand; this folds them into a single
+/// `discard` action carrying one select-from-zone slot over the active player's hand
+/// (`count: 1` — the engine discards one card per turn-based check, re-offering while
+/// still over the limit). [`resolve_action`] binds the chosen id to that
+/// [`Action::Discard`].
+fn build_discard(state: &GameState, id: String) -> Projected {
+    let seat = state.priority;
+    let candidates: Vec<String> = state
+        .players
+        .get(seat.0)
+        .map(|player| {
+            player
+                .hand
+                .iter()
+                .map(|inst| card_entity_id(inst.id))
+                .collect()
+        })
+        .unwrap_or_default();
+    let kind = "discard".to_string();
+    let subject: Vec<String> = Vec::new();
+    let requirements: Vec<TargetRequirement> = Vec::new();
+    let prompts = vec![Prompt::SelectFromZone {
+        slot: "discard".to_string(),
+        prompt: "Choose a card to discard".to_string(),
+        zone: "hand".to_string(),
+        owner: player_id(seat),
+        count: 1,
+        candidates,
+    }];
+    let token = content_token(&kind, &subject, &requirements, &prompts);
+    Projected {
+        view: ValidAction {
+            id,
+            kind,
+            label: "Discard a card".to_string(),
+            subject,
+            requirements,
+            prompts,
+            token,
+        },
+        bind: Bind::DiscardFromHand,
+    }
 }
 
 /// The content-binding token for an action, hashed from the exact content the
-/// client is answering: its `kind`, `subject`, and `requirements` (slot ids,
-/// prompts, and legal candidate entity ids). ADR 0009 §Protocol specifies a
-/// hash/echo of the content — not a random nonce — so the server stays stateless:
-/// it never stores a per-id secret, it recomputes the token from the freshly
-/// regenerated action. Two actions with different content therefore hash to
-/// different tokens, which is what lets [`resolve_action`] reject a stale or
-/// redirected id whose token no longer matches.
-fn content_token(kind: &str, subject: &[String], requirements: &[TargetRequirement]) -> String {
+/// client is answering: its `kind`, `subject`, `requirements` (target slots), and
+/// `prompts` (the option/select-from-zone/order slots, issue #156). ADR 0009
+/// §Protocol specifies a hash/echo of the content — not a random nonce — so the
+/// server stays stateless: it never stores a per-id secret, it recomputes the token
+/// from the freshly regenerated action. Two actions with different content therefore
+/// hash to different tokens, which is what lets [`resolve_action`] reject a stale or
+/// redirected id whose token no longer matches — for a prompt-bearing action just as
+/// for a targeted one.
+fn content_token(
+    kind: &str,
+    subject: &[String],
+    requirements: &[TargetRequirement],
+    prompts: &[Prompt],
+) -> String {
     use std::hash::{Hash, Hasher};
 
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -238,7 +398,62 @@ fn content_token(kind: &str, subject: &[String], requirements: &[TargetRequireme
         req.prompt.hash(&mut hasher);
         req.candidates.hash(&mut hasher);
     }
+    // `Prompt` is likewise a non-`Hash` wire enum; fold each variant's tag and fields
+    // in explicitly so a change to any prompt content re-derives a different token.
+    prompts.len().hash(&mut hasher);
+    for prompt in prompts {
+        hash_prompt(prompt, &mut hasher);
+    }
     format!("t{:016x}", hasher.finish())
+}
+
+/// Fold one wire [`Prompt`] into `hasher` for [`content_token`]: a per-variant tag
+/// byte followed by its fields, length-prefixed where variable, so two prompts that
+/// differ anywhere hash differently.
+fn hash_prompt(prompt: &Prompt, hasher: &mut impl std::hash::Hasher) {
+    use std::hash::Hash;
+    match prompt {
+        Prompt::Option {
+            slot,
+            prompt,
+            options,
+        } => {
+            0u8.hash(hasher);
+            slot.hash(hasher);
+            prompt.hash(hasher);
+            options.len().hash(hasher);
+            for option in options {
+                option.id.hash(hasher);
+                option.label.hash(hasher);
+            }
+        }
+        Prompt::SelectFromZone {
+            slot,
+            prompt,
+            zone,
+            owner,
+            count,
+            candidates,
+        } => {
+            1u8.hash(hasher);
+            slot.hash(hasher);
+            prompt.hash(hasher);
+            zone.hash(hasher);
+            owner.hash(hasher);
+            count.hash(hasher);
+            candidates.hash(hasher);
+        }
+        Prompt::Order {
+            slot,
+            prompt,
+            items,
+        } => {
+            2u8.hash(hasher);
+            slot.hash(hasher);
+            prompt.hash(hasher);
+            items.hash(hasher);
+        }
+    }
 }
 
 /// The opaque wire entity id naming the specific game object an engine [`Target`]
@@ -462,13 +677,18 @@ fn valid_action_view(
             Vec::new(),
         ),
     };
-    let token = content_token(&kind, &subject, &requirements);
+    // A 1:1 engine-action projection carries no `prompts` (the option /
+    // select-from-zone / order shapes ride only on the collapsed mulligan and
+    // discard actions, issue #156).
+    let prompts: Vec<Prompt> = Vec::new();
+    let token = content_token(&kind, &subject, &requirements, &prompts);
     ValidAction {
         id,
         kind,
         label,
         subject,
         requirements,
+        prompts,
         token,
     }
 }
@@ -554,9 +774,9 @@ pub(crate) fn personalized_view(
     let priority_player = holds_priority.then(|| player_id(state.priority));
 
     let valid_actions = if holds_priority && state.priority == viewer {
-        issued_actions(state, db)
+        projected_actions(state, db)
             .into_iter()
-            .map(|(id, action)| valid_action_view(id, &action, state, db))
+            .map(|projected| projected.view)
             .collect()
     } else {
         Vec::new()
@@ -745,7 +965,7 @@ fn permanent_in(candidates: &[PermanentId], id: &str) -> Option<PermanentId> {
 /// `seat` was actually offered.
 ///
 /// This is pure routing, not rules: the engine already decided legality (in
-/// [`issued_actions`]) and re-checks it in [`apply_action`](rune_engine::apply_action);
+/// [`projected_actions`]) and re-checks it in [`apply_action`](rune_engine::apply_action);
 /// this only checks the answer against what was offered and threads the chosen
 /// selection onto the concrete engine action. Because the engine offers actions to
 /// exactly one seat (the priority holder), an answer from any other seat resolves to
@@ -778,54 +998,118 @@ pub(crate) fn resolve_action(
         return None;
     }
 
-    // Regenerate the offered action for this id and project it, so the token and
-    // requirement candidates are recomputed from current state (stateless routing).
-    let (action, offered) = issued_actions(state, db)
+    // Regenerate the offered wire actions from current state, so the token,
+    // requirement candidates, and prompt content are all recomputed (stateless
+    // routing), then find the one this answer names.
+    let Projected {
+        view: offered,
+        bind,
+    } = projected_actions(state, db)
         .into_iter()
-        .find(|(id, _)| *id == choice.action_id)
-        .map(|(id, action)| {
-            let offered = valid_action_view(id, &action, state, db);
-            (action, offered)
-        })?;
+        .find(|projected| projected.view.id == choice.action_id)?;
 
     // Content binding: verify the token (or, for a token-less answer, permit only a
-    // plain action on the legacy positional path).
+    // plain action on the legacy positional path — one carrying neither requirements
+    // nor prompts to bind).
     if choice.token.is_empty() {
-        if !offered.requirements.is_empty() {
+        if !offered.requirements.is_empty() || !offered.prompts.is_empty() {
             return None;
         }
     } else if choice.token != offered.token {
         return None;
     }
 
-    // Map the returned selection onto the concrete engine action. The combat
-    // declarations are optional multi-selects (empty is legal), so they bind
-    // directly against their fresh candidate sets; the mulligan keep and ability
-    // targets are mandatory slots, gated by [`targets_fill_requirements`] first.
-    match &action {
-        Action::DeclareAttackers { .. } => {
-            bind_attackers(state, db, &offered.requirements, &choice.targets)
-        }
-        Action::DeclareBlockers { .. } => bind_blockers(state, db, &choice.targets),
-        Action::Keep { .. } => {
-            if !targets_fill_requirements(&choice.targets, &offered.requirements) {
-                return None;
+    match bind {
+        // The collapsed richer-prompt actions (issue #156) map their option /
+        // select-from-zone answers back onto the concrete engine action.
+        Bind::MulliganDecision => bind_mulligan_decision(state, &offered, &choice.targets),
+        Bind::DiscardFromHand => bind_discard(state, &offered, &choice.targets),
+        // A 1:1 engine-action projection. The combat declarations are optional
+        // multi-selects (empty is legal), so they bind directly against their fresh
+        // candidate sets; the ability targets are mandatory slots, gated by
+        // [`targets_fill_requirements`] first.
+        Bind::Standard(action) => match &action {
+            Action::DeclareAttackers { .. } => {
+                bind_attackers(state, db, &offered.requirements, &choice.targets)
             }
-            bind_keep(state, &choice.targets)
-        }
-        Action::ActivateAbility { .. } => {
-            if !targets_fill_requirements(&choice.targets, &offered.requirements) {
-                return None;
+            Action::DeclareBlockers { .. } => bind_blockers(state, db, &choice.targets),
+            Action::ActivateAbility { .. } => {
+                if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+                    return None;
+                }
+                bind_ability_targets(state, db, &action, &choice.targets)
             }
-            bind_ability_targets(state, db, &action, &choice.targets)
-        }
-        _ => {
-            if !targets_fill_requirements(&choice.targets, &offered.requirements) {
-                return None;
+            _ => {
+                if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+                    return None;
+                }
+                Some(action)
             }
-            Some(action)
-        }
+        },
     }
+}
+
+/// Bind a returned answer to the collapsed `mulligan_decision` action (issue #156):
+/// read the mandatory `decision` [`Prompt::Option`] and route *mulligan* to
+/// [`Action::Mulligan`] or *keep* to [`Action::Keep`], threading any bottoming
+/// selection through [`bind_keep`]. `None` if the option slot is unanswered, answered
+/// with an unknown id, or (for a keep that owes a bottoming) the `bottom` slot is not
+/// filled from its freshly recomputed candidates.
+fn bind_mulligan_decision(
+    state: &GameState,
+    offered: &ValidAction,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let [pick] = chosen_for(targets, "decision") else {
+        return None;
+    };
+    match pick.as_str() {
+        "mulligan" => Some(Action::Mulligan),
+        "keep" => {
+            // Any owed bottoming slot must be filled from its current candidates
+            // (the extra `decision` prompt slot is ignored). The engine re-checks the
+            // exact owed count in `apply_action` (CR 103.5).
+            let bottoming_ok = offered.requirements.iter().all(|req| {
+                targets.iter().any(|choice| {
+                    choice.slot == req.slot
+                        && !choice.chosen.is_empty()
+                        && choice.chosen.iter().all(|id| req.candidates.contains(id))
+                })
+            });
+            if !bottoming_ok {
+                return None;
+            }
+            bind_keep(state, targets)
+        }
+        _ => None,
+    }
+}
+
+/// Bind a returned answer to the collapsed `discard` action (issue #156): the single
+/// `discard` [`Prompt::SelectFromZone`] slot must name exactly one card, drawn from
+/// its freshly recomputed candidates and resolved to that hand instance's
+/// [`Action::Discard`]. `None` if the slot is unanswered, names other than one card,
+/// or names a card outside the current candidates / no longer in hand.
+fn bind_discard(
+    state: &GameState,
+    offered: &ValidAction,
+    targets: &[TargetChoice],
+) -> Option<Action> {
+    let candidates = offered.prompts.iter().find_map(|prompt| match prompt {
+        Prompt::SelectFromZone {
+            slot, candidates, ..
+        } if slot == "discard" => Some(candidates),
+        _ => None,
+    })?;
+    let [id] = chosen_for(targets, "discard") else {
+        return None;
+    };
+    if !candidates.contains(id) {
+        return None;
+    }
+    let hand = &state.players.get(state.priority.0)?.hand;
+    let inst = hand.iter().find(|card| card_entity_id(card.id) == *id)?;
+    Some(Action::Discard { card: *inst })
 }
 
 #[cfg(test)]
@@ -1166,7 +1450,7 @@ mod tests {
         let pass = &view.valid_actions[0];
         assert_eq!(
             pass.token,
-            content_token(&pass.kind, &pass.subject, &pass.requirements),
+            content_token(&pass.kind, &pass.subject, &pass.requirements, &pass.prompts),
         );
     }
 
@@ -1312,12 +1596,13 @@ mod tests {
         assert!(resolve_action(&state, &db, PlayerId(0), &spurious).is_none());
     }
 
-    /// During the pre-game London mulligan (CR 103.5, engine issue #111) the view
-    /// projects the deciding seat's keep/mulligan decision, each carrying a
-    /// content-binding token (ADR 0009), while hand redaction is unaffected: the
-    /// viewer sees its own hand in full and only the *size* of the opponent's.
+    /// During the pre-game London mulligan (CR 103.5) the view projects the deciding
+    /// seat's keep/take-another choice as a single `mulligan_decision` action
+    /// carrying an [`Prompt::Option`] (issue #156, the real `option` projection),
+    /// token-bound, while hand redaction is unaffected: the viewer sees its own hand
+    /// in full and only the *size* of the opponent's.
     #[test]
-    fn mulligan_actions_project_with_tokens_and_redaction_holds() {
+    fn mulligan_decision_projects_an_option_prompt_and_redaction_holds() {
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
         // Enter the mulligan phase with seat 0 deciding; give both seats hands.
@@ -1333,28 +1618,68 @@ mod tests {
         assert_eq!(view.opponents.len(), 1);
         assert_eq!(view.opponents[0].hand_size, 2);
 
-        // The deciding seat is offered exactly keep + mulligan, each token-bound.
-        let kinds: Vec<&str> = view.valid_actions.iter().map(|a| a.kind.as_str()).collect();
-        assert!(kinds.contains(&"mulligan"));
-        assert!(kinds.contains(&"keep"));
+        // The two engine actions collapse into ONE token-bound `mulligan_decision`
+        // (plus the always-available concede) — the keep/mulligan enumeration is gone.
         assert!(
             view.valid_actions.iter().all(|a| !a.token.is_empty()),
-            "every mulligan action carries a content-binding token (ADR 0009)",
+            "every action carries a content-binding token (ADR 0009)",
         );
-        let mulligan = view
+        assert!(view.valid_actions.iter().all(|a| a.kind != "keep"));
+        assert!(view.valid_actions.iter().all(|a| a.kind != "mulligan"));
+        let decision = view
             .valid_actions
             .iter()
-            .find(|a| a.kind == "mulligan")
-            .unwrap();
-        let keep = view
-            .valid_actions
-            .iter()
-            .find(|a| a.kind == "keep")
-            .unwrap();
-        assert_ne!(
-            mulligan.token, keep.token,
-            "distinct action content hashes to distinct tokens",
+            .find(|a| a.kind == "mulligan_decision")
+            .expect("the deciding seat is offered a single mulligan decision");
+
+        // It carries exactly one `option` prompt whose choices are keep + mulligan.
+        assert_eq!(decision.prompts.len(), 1);
+        let Prompt::Option { slot, options, .. } = &decision.prompts[0] else {
+            panic!("the mulligan decision is an option prompt");
+        };
+        assert_eq!(slot, "decision");
+        assert_eq!(
+            options.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
+            vec!["keep", "mulligan"],
         );
+        // A first-hand keep owes no bottoming, so there is no select-from-zone slot.
+        assert!(decision.requirements.is_empty());
+
+        // Both options resolve back to the concrete engine actions.
+        let keep = ChooseAction {
+            action_id: decision.id.clone(),
+            token: decision.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "decision".to_string(),
+                chosen: vec!["keep".to_string()],
+            }],
+        };
+        assert_eq!(
+            resolve_action(&state, &db, PlayerId(0), &keep),
+            Some(Action::Keep { bottom: Vec::new() }),
+        );
+        let mull = ChooseAction {
+            action_id: decision.id.clone(),
+            token: decision.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "decision".to_string(),
+                chosen: vec!["mulligan".to_string()],
+            }],
+        };
+        assert_eq!(
+            resolve_action(&state, &db, PlayerId(0), &mull),
+            Some(Action::Mulligan),
+        );
+        // An unknown option id is rejected.
+        let bogus = ChooseAction {
+            action_id: decision.id.clone(),
+            token: decision.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "decision".to_string(),
+                chosen: vec!["scoop".to_string()],
+            }],
+        };
+        assert!(resolve_action(&state, &db, PlayerId(0), &bogus).is_none());
 
         // The non-deciding seat is offered nothing (actions are redacted to the
         // priority holder) and still only sees the opponent's hand size.
@@ -1391,12 +1716,13 @@ mod tests {
         id
     }
 
-    /// A mulligan [`Action::Keep`] taken after a mulligan projects its bottoming
-    /// candidates (CR 103.5, London) as a single multi-select `requirements` slot
-    /// naming the hand's cards, and a returned selection of the owed count resolves
-    /// to a `Keep` bottoming exactly those cards (issue #140).
+    /// A mulligan decision taken after a mulligan carries, alongside its `option`
+    /// slot, the London bottoming (CR 103.5) as a `select_from_zone` prompt over the
+    /// hand's cards (issue #156, the `select_from_zone` projection reusing #140's
+    /// bottoming), and a keep answer naming the owed cards resolves to a `Keep`
+    /// bottoming exactly those cards.
     #[test]
-    fn issue_140_mulligan_keep_projects_bottoming_candidates_and_a_selection_resolves() {
+    fn mulligan_decision_keep_projects_bottoming_as_select_from_zone_and_resolves() {
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
         let c0 = state.new_instance(CardId(5));
@@ -1409,29 +1735,35 @@ mod tests {
         state.mulligan = Some(mull);
 
         let view = personalized_view(&state, &db, PlayerId(0));
-        let keep = view
+        let decision = view
             .valid_actions
             .iter()
-            .find(|a| a.kind == "keep")
-            .expect("the deciding seat is offered a keep");
+            .find(|a| a.kind == "mulligan_decision")
+            .expect("the deciding seat is offered a mulligan decision");
 
-        // One multi-select bottoming slot listing exactly the hand cards.
-        assert_eq!(keep.requirements.len(), 1, "one bottoming slot");
-        let slot = &keep.requirements[0];
-        assert_eq!(slot.slot, "bottom");
+        // The bottoming rides #140's `requirements` "bottom" slot (candidates = the
+        // hand cards, count implied by the owed mulligans).
+        assert_eq!(decision.requirements.len(), 1, "one bottoming slot");
+        assert_eq!(decision.requirements[0].slot, "bottom");
         assert_eq!(
-            slot.candidates,
+            decision.requirements[0].candidates,
             vec![card_entity_id(c0.id), card_entity_id(c1.id)],
         );
 
-        // Returning one chosen card resolves to a Keep bottoming exactly it.
+        // A keep naming one card to bottom resolves to a Keep bottoming exactly it.
         let choose = ChooseAction {
-            action_id: keep.id.clone(),
-            token: keep.token.clone(),
-            targets: vec![TargetChoice {
-                slot: "bottom".to_string(),
-                chosen: vec![card_entity_id(c0.id)],
-            }],
+            action_id: decision.id.clone(),
+            token: decision.token.clone(),
+            targets: vec![
+                TargetChoice {
+                    slot: "decision".to_string(),
+                    chosen: vec!["keep".to_string()],
+                },
+                TargetChoice {
+                    slot: "bottom".to_string(),
+                    chosen: vec![card_entity_id(c0.id)],
+                },
+            ],
         };
         let resolved =
             resolve_action(&state, &db, PlayerId(0), &choose).expect("the selection resolves");
@@ -1440,6 +1772,161 @@ mod tests {
             Action::Keep {
                 bottom: vec![Target::Card(c0.id)],
             },
+        );
+
+        // A keep that omits the owed bottoming is rejected (the mandatory slot is
+        // unfilled), so a stale/empty answer cannot bottom nothing when one is owed.
+        let empty_keep = ChooseAction {
+            action_id: decision.id.clone(),
+            token: decision.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "decision".to_string(),
+                chosen: vec!["keep".to_string()],
+            }],
+        };
+        assert!(resolve_action(&state, &db, PlayerId(0), &empty_keep).is_none());
+    }
+
+    /// A `PrecombatMain`-agnostic cleanup state (CR 514.1) with the active player
+    /// over the maximum hand size, for the discard `select_from_zone` projection.
+    fn cleanup_over_hand_limit() -> (GameState, Vec<CardInstance>) {
+        let mut state = GameState::new_two_player();
+        state.step = Step::Cleanup;
+        state.priority = state.active_player;
+        // Nine cards in hand — over the seven-card maximum (CR 514.1), with room to
+        // shed one and still be over the limit (used by the stale-token test).
+        let hand: Vec<CardInstance> = (0..9).map(|_| state.new_instance(CardId(5))).collect();
+        state.players[state.active_player.0].hand = hand.clone();
+        (state, hand)
+    }
+
+    /// The cleanup discard-to-maximum (CR 514.1) collapses the engine's per-card
+    /// `Discard` list into ONE `discard` action carrying a single `select_from_zone`
+    /// prompt over the hand (issue #156, the flagship `select_from_zone` projection);
+    /// a chosen card resolves to that concrete [`Action::Discard`].
+    #[test]
+    fn cleanup_discard_projects_select_from_zone_and_a_selection_resolves() {
+        let db = CardDatabase::bundled().unwrap();
+        let (state, hand) = cleanup_over_hand_limit();
+
+        let view = personalized_view(&state, &db, state.active_player);
+
+        // Exactly one `discard` action (the N per-card actions are gone), token-bound.
+        let discards: Vec<&ValidAction> = view
+            .valid_actions
+            .iter()
+            .filter(|a| a.kind == "discard")
+            .collect();
+        assert_eq!(discards.len(), 1, "one collapsed discard, not one per card");
+        let discard = discards[0];
+        assert!(!discard.token.is_empty());
+
+        // It carries one select-from-zone slot over the hand (count 1, all cards).
+        assert_eq!(discard.prompts.len(), 1);
+        let Prompt::SelectFromZone {
+            slot,
+            zone,
+            owner,
+            count,
+            candidates,
+            ..
+        } = &discard.prompts[0]
+        else {
+            panic!("the discard is a select-from-zone prompt");
+        };
+        assert_eq!(slot, "discard");
+        assert_eq!(zone, "hand");
+        assert_eq!(owner, &player_id(state.active_player));
+        assert_eq!(*count, 1);
+        assert_eq!(
+            *candidates,
+            hand.iter()
+                .map(|c| card_entity_id(c.id))
+                .collect::<Vec<_>>(),
+        );
+
+        // Choosing one card resolves to a Discard of exactly that instance.
+        let choose = ChooseAction {
+            action_id: discard.id.clone(),
+            token: discard.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "discard".to_string(),
+                chosen: vec![card_entity_id(hand[3].id)],
+            }],
+        };
+        assert_eq!(
+            resolve_action(&state, &db, state.active_player, &choose),
+            Some(Action::Discard { card: hand[3] }),
+        );
+
+        // A card not among the candidates (never in hand) is rejected.
+        let foreign = ChooseAction {
+            action_id: discard.id.clone(),
+            token: discard.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "discard".to_string(),
+                chosen: vec!["card_99999".to_string()],
+            }],
+        };
+        assert!(resolve_action(&state, &db, state.active_player, &foreign).is_none());
+    }
+
+    /// Content binding (ADR 0009) covers the new prompt shapes too: a token captured
+    /// for a `select_from_zone` discard while the hand is one shape is rejected once
+    /// the hand — and so the prompt's candidates — has changed, exactly as it is for a
+    /// targeted action. A stale prompt answer can never rebind.
+    #[test]
+    fn stale_token_on_a_prompt_action_is_rejected() {
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, hand) = cleanup_over_hand_limit();
+
+        // Capture the answer a client would send for the discard action now.
+        let before = personalized_view(&state, &db, state.active_player);
+        let discard_before = before
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "discard")
+            .expect("a discard is offered while over the hand limit");
+        let stale = ChooseAction {
+            action_id: discard_before.id.clone(),
+            token: discard_before.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "discard".to_string(),
+                chosen: vec![card_entity_id(hand[0].id)],
+            }],
+        };
+
+        // The hand changes (a card leaves), so the prompt's candidates — and thus the
+        // action's content token — change under the same positional id.
+        let seat = state.active_player.0;
+        state.players[seat].hand.remove(1);
+        let after = personalized_view(&state, &db, state.active_player);
+        let discard_after = after
+            .valid_actions
+            .iter()
+            .find(|a| a.id == stale.action_id)
+            .expect("the id is still offered");
+        assert_ne!(
+            discard_before.token, discard_after.token,
+            "changed candidates re-derive a different content token",
+        );
+
+        // The stale token no longer matches, so the answer is rejected.
+        assert!(resolve_action(&state, &db, state.active_player, &stale).is_none());
+
+        // The current token for that same id does resolve, proving it is the token
+        // (not the bare id) that binds a prompt answer.
+        let fresh = ChooseAction {
+            action_id: discard_after.id.clone(),
+            token: discard_after.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "discard".to_string(),
+                chosen: vec![card_entity_id(hand[0].id)],
+            }],
+        };
+        assert_eq!(
+            resolve_action(&state, &db, state.active_player, &fresh),
+            Some(Action::Discard { card: hand[0] }),
         );
     }
 
