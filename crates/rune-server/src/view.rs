@@ -15,8 +15,8 @@ use rune_engine::{
     GameState, PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step,
 };
 use rune_protocol::{
-    CardView, GameView, OpponentView, Permanent as PermanentView, Phase, StackItem, ValidAction,
-    ZonePile,
+    CardView, ChooseAction, GameView, OpponentView, Permanent as PermanentView, Phase, StackItem,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -171,11 +171,13 @@ fn zone_piles(
 /// The actions the engine currently offers the priority holder, each paired with
 /// the opaque id a client echoes back to choose it.
 ///
-/// The ids are positional and therefore deterministic: recomputing this list from
-/// the same [`GameState`] yields the identical id→action mapping. That is what
-/// lets the room resolve a returned `action_id` (see [`resolve_action`]) without
-/// storing any per-connection state — the full-state invariant applies to routing
-/// too. Empty when no one holds priority.
+/// The ids are positional, but they are no longer what *binds* a returned answer to
+/// an action: each projected [`ValidAction`] also carries a content-binding
+/// [`token`](ValidAction::token) (see [`valid_action_view`]) hashed from the
+/// action's own content. [`resolve_action`] verifies that token, so a stale
+/// positional id whose action has since changed cannot silently rebind — the
+/// full-state invariant now covers routing *and* content. Empty when no one holds
+/// priority.
 fn issued_actions(state: &GameState, db: &CardDatabase) -> Vec<(String, Action)> {
     valid_actions(state, db)
         .into_iter()
@@ -184,46 +186,85 @@ fn issued_actions(state: &GameState, db: &CardDatabase) -> Vec<(String, Action)>
         .collect()
 }
 
+/// The content-binding token for an action, hashed from the exact content the
+/// client is answering: its `kind`, `subject`, and `requirements` (slot ids,
+/// prompts, and legal candidate entity ids). ADR 0009 §Protocol specifies a
+/// hash/echo of the content — not a random nonce — so the server stays stateless:
+/// it never stores a per-id secret, it recomputes the token from the freshly
+/// regenerated action. Two actions with different content therefore hash to
+/// different tokens, which is what lets [`resolve_action`] reject a stale or
+/// redirected id whose token no longer matches.
+fn content_token(kind: &str, subject: &[String], requirements: &[TargetRequirement]) -> String {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    kind.hash(&mut hasher);
+    subject.hash(&mut hasher);
+    // `TargetRequirement` intentionally does not derive `Hash` (it is a wire type),
+    // so fold its fields in explicitly, length-prefixed to stay unambiguous.
+    requirements.len().hash(&mut hasher);
+    for req in requirements {
+        req.slot.hash(&mut hasher);
+        req.prompt.hash(&mut hasher);
+        req.candidates.hash(&mut hasher);
+    }
+    format!("t{:016x}", hasher.finish())
+}
+
 /// Project one engine [`Action`] onto its wire [`ValidAction`], attaching the
 /// subject entity so the client can render the action on the card/permanent it
-/// belongs to (ADR 0004).
+/// belongs to (ADR 0004), the ordered target `requirements` it must fill, and the
+/// content-binding `token` (see [`content_token`]) the client echoes back.
+///
+/// Every subject/candidate names a *specific* game object by its per-instance id
+/// ([`card_entity_id`]/[`permanent_entity_id`]/[`player_id`], issue #51), never a
+/// bare printed card, so a targeted answer is unambiguous.
+///
+/// The engine [`Action`] set does not yet carry selectable targets (issues #70/#71
+/// grow that), so `requirements` is empty for every current action and the token
+/// binds `kind` + `subject` alone. When a targeted action lands, its target specs
+/// are projected into `requirements` here — one slot per target, each listing the
+/// engine's legal candidate entity ids — and the token binds them automatically.
 fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAction {
-    match action {
-        // No action emits target requirements or a content-binding token yet; the
-        // server-side machinery to compute them lands in #73 (ADR 0009 §Protocol).
-        // Until then every action is unbound: empty `requirements`, empty `token`.
-        Action::PassPriority => ValidAction {
-            id,
-            kind: "pass_priority".to_string(),
-            label: "Pass priority".to_string(),
-            subject: Vec::new(),
-            requirements: Vec::new(),
-            token: String::new(),
-        },
-        Action::PlayLand { card } => ValidAction {
-            id,
-            kind: "play_land".to_string(),
-            label: format!("Play {}", card_name(card.card, db)),
-            subject: vec![card_entity_id(card.id)],
-            requirements: Vec::new(),
-            token: String::new(),
-        },
-        Action::CastSpell { card } => ValidAction {
-            id,
-            kind: "cast_spell".to_string(),
-            label: format!("Cast {}", card_name(card.card, db)),
-            subject: vec![card_entity_id(card.id)],
-            requirements: Vec::new(),
-            token: String::new(),
-        },
-        Action::ActivateAbility { permanent, .. } => ValidAction {
-            id,
-            kind: "activate_ability".to_string(),
-            label: "Activate ability".to_string(),
-            subject: vec![permanent_entity_id(*permanent)],
-            requirements: Vec::new(),
-            token: String::new(),
-        },
+    let (kind, label, subject, requirements): (
+        String,
+        String,
+        Vec<String>,
+        Vec<TargetRequirement>,
+    ) = match action {
+        Action::PassPriority => (
+            "pass_priority".to_string(),
+            "Pass priority".to_string(),
+            Vec::new(),
+            Vec::new(),
+        ),
+        Action::PlayLand { card } => (
+            "play_land".to_string(),
+            format!("Play {}", card_name(card.card, db)),
+            vec![card_entity_id(card.id)],
+            Vec::new(),
+        ),
+        Action::CastSpell { card } => (
+            "cast_spell".to_string(),
+            format!("Cast {}", card_name(card.card, db)),
+            vec![card_entity_id(card.id)],
+            Vec::new(),
+        ),
+        Action::ActivateAbility { permanent, .. } => (
+            "activate_ability".to_string(),
+            "Activate ability".to_string(),
+            vec![permanent_entity_id(*permanent)],
+            Vec::new(),
+        ),
+    };
+    let token = content_token(&kind, &subject, &requirements);
+    ValidAction {
+        id,
+        kind,
+        label,
+        subject,
+        requirements,
+        token,
     }
 }
 
@@ -326,34 +367,119 @@ pub(crate) fn personalized_view(
     }
 }
 
-/// Resolve an `action_id` a seat returned into the engine [`Action`] to apply, or
-/// `None` if that id was not among the actions offered to `seat`.
+/// Whether a returned target selection exactly fills an action's requirement
+/// slots from their advertised legal candidates (ADR 0009 §Enumeration).
 ///
-/// This is pure routing, not rules: it never decides legality (the engine already
-/// did, in [`issued_actions`]) — it only checks that the id names something that
-/// seat was actually offered. Because the engine offers actions to exactly one
-/// seat (the priority holder), an id returned by any other seat resolves to `None`
-/// and the room rejects it. An unknown or stale id resolves to `None` too.
+/// The check is against the *freshly recomputed* candidate sets, not the ones the
+/// client saw: there must be exactly one [`TargetChoice`] per [`TargetRequirement`]
+/// slot, each choice non-empty and drawn entirely from that slot's current legal
+/// candidates. A redirected id therefore cannot smuggle in a target that is no
+/// longer legal. Requirement-less actions accept exactly an empty selection.
+fn targets_fill_requirements(targets: &[TargetChoice], requirements: &[TargetRequirement]) -> bool {
+    if targets.len() != requirements.len() {
+        return false;
+    }
+    requirements.iter().all(|req| {
+        targets.iter().any(|choice| {
+            choice.slot == req.slot
+                && !choice.chosen.is_empty()
+                && choice.chosen.iter().all(|id| req.candidates.contains(id))
+        })
+    })
+}
+
+/// Resolve a returned [`ChooseAction`] into the engine [`Action`] to apply, or
+/// `None` if the answer does not name — and correctly bind to — an action this
+/// `seat` was actually offered.
+///
+/// This is pure routing, not rules: the engine already decided legality (in
+/// [`issued_actions`]); this only checks the answer against what was offered.
+/// Because the engine offers actions to exactly one seat (the priority holder), an
+/// answer from any other seat resolves to `None`. Resolution rejects, rather than
+/// applies, when:
+///
+/// - the seat does not hold priority, or the id names no offered action;
+/// - the returned [`token`](ChooseAction::token) is present but does not match the
+///   token the server currently issues for that id — a stale/redirected id whose
+///   action content has changed hashes to a different token, so it can never rebind
+///   to a *different* action (ADR 0009 §Protocol, content binding);
+/// - the token is absent (`""`) yet the offered action is a multi-step one that
+///   *requires* binding — a bound action must be answered with its token, never on
+///   the legacy positional path;
+/// - the returned targets do not exactly fill the offered action's requirement
+///   slots from their current legal candidate sets.
+///
+/// An empty token is still accepted for a plain, requirement-less action so the
+/// terminal client (`rune-cli`), which does not yet echo tokens, keeps working;
+/// such sequential actions are safe on the positional path (ADR 0009 §Context).
 pub(crate) fn resolve_action(
     state: &GameState,
     db: &CardDatabase,
     seat: PlayerId,
-    action_id: &str,
+    choice: &ChooseAction,
 ) -> Option<Action> {
     if state.priority_holder().is_none() || state.priority != seat {
         return None;
     }
-    issued_actions(state, db)
+
+    // Regenerate the offered action for this id and project it, so the token and
+    // requirement candidates are recomputed from current state (stateless routing).
+    let (action, offered) = issued_actions(state, db)
         .into_iter()
-        .find(|(id, _)| id == action_id)
-        .map(|(_, action)| action)
+        .find(|(id, _)| *id == choice.action_id)
+        .map(|(id, action)| {
+            let offered = valid_action_view(id, &action, db);
+            (action, offered)
+        })?;
+
+    // Content binding: verify the token (or, for a token-less answer, permit only a
+    // plain action on the legacy positional path).
+    if choice.token.is_empty() {
+        if !offered.requirements.is_empty() {
+            return None;
+        }
+    } else if choice.token != offered.token {
+        return None;
+    }
+
+    // Validate the returned selection against the action's current legal candidates.
+    if !targets_fill_requirements(&choice.targets, &offered.requirements) {
+        return None;
+    }
+
+    // Map the validated selection onto the engine action. No engine `Action` carries
+    // targets yet (issues #70/#71), so a well-formed answer has no targets to thread
+    // in and the action resolves as-is; the chosen ids are applied here once the
+    // engine grows targeted actions.
+    Some(action)
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::panic)]
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
+
+    /// Build the [`ChooseAction`] a well-behaved client sends for `action`:
+    /// echoing its id and content-binding token verbatim, with no targets (no
+    /// current engine action carries requirements).
+    fn answer(action: &ValidAction) -> ChooseAction {
+        ChooseAction {
+            action_id: action.id.clone(),
+            token: action.token.clone(),
+            targets: Vec::new(),
+        }
+    }
+
+    /// A `PrecombatMain` two-player state with the given hand for seat 0, who holds
+    /// priority and can act at sorcery speed.
+    fn state_with_hand(cards: &[CardId]) -> (GameState, Vec<CardInstance>) {
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let hand: Vec<CardInstance> = cards.iter().map(|&c| state.new_instance(c)).collect();
+        state.players[0].hand = hand.clone();
+        (state, hand)
+    }
 
     /// Two copies of the same printed card in one hand must project to distinct
     /// entity ids and independently routable actions (issue #51). Before
@@ -390,7 +516,7 @@ mod tests {
         // Each action id routes back to a PlayLand naming the exact instance its
         // subject entity referenced — no ambiguity, no "first matching copy".
         for action in &land_actions {
-            let resolved = resolve_action(&state, &db, PlayerId(0), &action.id).unwrap();
+            let resolved = resolve_action(&state, &db, PlayerId(0), &answer(action)).unwrap();
             let Action::PlayLand { card } = resolved else {
                 panic!("play_land action must resolve to a PlayLand");
             };
@@ -401,7 +527,7 @@ mod tests {
         let routed: Vec<CardInstance> = land_actions
             .iter()
             .map(
-                |a| match resolve_action(&state, &db, PlayerId(0), &a.id).unwrap() {
+                |a| match resolve_action(&state, &db, PlayerId(0), &answer(a)).unwrap() {
                     Action::PlayLand { card } => card,
                     other => panic!("expected PlayLand, got {other:?}"),
                 },
@@ -428,5 +554,178 @@ mod tests {
                 personalized_view(&reseeded, &db, viewer),
             );
         }
+    }
+
+    /// Every emitted action carries a non-empty content-binding token, and the
+    /// token is a function of the action's content: two actions of the same kind
+    /// that name different subjects hash to different tokens. This is what lets a
+    /// stale positional id be caught when its action content changes.
+    #[test]
+    fn every_action_carries_a_content_bound_token() {
+        let db = CardDatabase::bundled().unwrap();
+        let (state, _) = state_with_hand(&[CardId(5), CardId(5)]);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        assert!(view.valid_actions.iter().all(|a| !a.token.is_empty()));
+
+        // Same `kind`, different subject instance -> different token.
+        let land_tokens: Vec<&str> = view
+            .valid_actions
+            .iter()
+            .filter(|a| a.kind == "play_land")
+            .map(|a| a.token.as_str())
+            .collect();
+        assert_eq!(land_tokens.len(), 2);
+        assert_ne!(land_tokens[0], land_tokens[1]);
+
+        // The token is deterministic: recomputing the same action reproduces it,
+        // which is exactly what makes server-side verification stateless.
+        let pass = &view.valid_actions[0];
+        assert_eq!(
+            pass.token,
+            content_token(&pass.kind, &pass.subject, &pass.requirements),
+        );
+    }
+
+    /// A token-bound action round-trips view -> choose -> engine: the client echoes
+    /// the id and token it was issued and the server resolves it to the exact engine
+    /// action, naming the specific instance the subject referenced.
+    #[test]
+    fn token_bound_action_round_trips_to_the_engine() {
+        let db = CardDatabase::bundled().unwrap();
+        let (state, hand) = state_with_hand(&[CardId(5)]);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let land = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "play_land")
+            .expect("a land is playable at sorcery speed");
+
+        let resolved = resolve_action(&state, &db, PlayerId(0), &answer(land))
+            .expect("the offered id + matching token resolves");
+        let Action::PlayLand { card } = resolved else {
+            panic!("play_land must resolve to a PlayLand");
+        };
+        assert_eq!(card, hand[0]);
+        assert_eq!(land.subject[0], card_entity_id(card.id));
+    }
+
+    /// A returned token that does not match the one the server currently issues for
+    /// that id is rejected — the answer does not resolve to any action.
+    #[test]
+    fn mismatched_token_is_rejected() {
+        let db = CardDatabase::bundled().unwrap();
+        let (state, _) = state_with_hand(&[CardId(5)]);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let land = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "play_land")
+            .expect("a land is playable");
+
+        let tampered = ChooseAction {
+            action_id: land.id.clone(),
+            token: "t0000000000000000".to_string(),
+            targets: Vec::new(),
+        };
+        assert!(resolve_action(&state, &db, PlayerId(0), &tampered).is_none());
+    }
+
+    /// The core content-binding guarantee: a positional id whose action has since
+    /// changed cannot rebind to the *different* action now sitting at that id. The
+    /// client captures the token for `a1` while it means "play Forest A"; the hand
+    /// is then reordered so `a1` means "play Forest B". Replaying the stale token is
+    /// rejected, while the *current* token for `a1` resolves to the new action —
+    /// proving it is the token, not the bare id, that binds.
+    #[test]
+    fn redirected_id_cannot_resolve_to_a_different_action() {
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, hand) = state_with_hand(&[CardId(5), CardId(5)]);
+        let (forest_a, forest_b) = (hand[0], hand[1]);
+
+        // Capture the answer the client would send for the first land action (a1).
+        let before = personalized_view(&state, &db, PlayerId(0));
+        let a1_before = before
+            .valid_actions
+            .iter()
+            .find(|a| a.subject == [card_entity_id(forest_a.id)])
+            .expect("Forest A is offered");
+        let stale = answer(a1_before);
+
+        // Reorder the hand so the same positional id now names Forest B instead.
+        state.players[0].hand = vec![forest_b, forest_a];
+        let after = personalized_view(&state, &db, PlayerId(0));
+        let a1_after = after
+            .valid_actions
+            .iter()
+            .find(|a| a.id == stale.action_id)
+            .expect("the id is still offered");
+        assert_eq!(a1_after.subject, [card_entity_id(forest_b.id)]);
+
+        // The stale token cannot rebind to Forest B's action.
+        assert!(resolve_action(&state, &db, PlayerId(0), &stale).is_none());
+
+        // The current token for that same id does resolve — to Forest B, the new
+        // action, never Forest A.
+        let resolved = resolve_action(&state, &db, PlayerId(0), &answer(a1_after))
+            .expect("the current token resolves");
+        let Action::PlayLand { card } = resolved else {
+            panic!("expected a PlayLand");
+        };
+        assert_eq!(card, forest_b);
+    }
+
+    /// A plain, requirement-less action answered with an empty token still resolves
+    /// on the legacy positional path, so the terminal client (which does not yet
+    /// echo tokens) keeps working. Sequential plain actions are safe there.
+    #[test]
+    fn empty_token_resolves_a_plain_action() {
+        let db = CardDatabase::bundled().unwrap();
+        let (state, _) = state_with_hand(&[CardId(5)]);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let pass = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .expect("pass is always offered");
+
+        let legacy = ChooseAction {
+            action_id: pass.id.clone(),
+            token: String::new(),
+            targets: Vec::new(),
+        };
+        assert_eq!(
+            resolve_action(&state, &db, PlayerId(0), &legacy),
+            Some(Action::PassPriority),
+        );
+    }
+
+    /// Targets sent for an action that advertises no requirement slots are rejected:
+    /// a well-formed answer fills exactly the slots offered, and today no engine
+    /// action offers any.
+    #[test]
+    fn unexpected_targets_are_rejected() {
+        let db = CardDatabase::bundled().unwrap();
+        let (state, _) = state_with_hand(&[CardId(5)]);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let pass = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .expect("pass is always offered");
+
+        let spurious = ChooseAction {
+            action_id: pass.id.clone(),
+            token: pass.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "slot0".to_string(),
+                chosen: vec![player_id(PlayerId(1))],
+            }],
+        };
+        assert!(resolve_action(&state, &db, PlayerId(0), &spurious).is_none());
     }
 }
