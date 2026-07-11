@@ -21,8 +21,10 @@ mod mana;
 mod phase;
 mod player;
 mod resolve;
+mod rng;
 mod sba;
 mod scripted;
+mod setup;
 mod stack;
 mod state;
 mod triggers;
@@ -38,6 +40,9 @@ pub use id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use phase::Step;
 pub use player::{Player, STARTING_LIFE};
+pub use setup::{
+    GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
+};
 pub use stack::{StackId, StackObject, StackObjectKind};
 pub use state::{CounterKind, EffectAffects, GameState, Modification, Permanent, StaticEffect};
 pub use triggers::{collect_triggers, Trigger};
