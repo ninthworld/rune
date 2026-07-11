@@ -18,6 +18,7 @@ mod card_type;
 mod characteristics;
 mod id;
 mod mana;
+mod mulligan;
 mod phase;
 mod player;
 mod resolve;
@@ -38,6 +39,7 @@ pub use card_type::{CardType, Supertype};
 pub use characteristics::{characteristics, Characteristics};
 pub use id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
+pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;
 pub use player::{Player, MAX_HAND_SIZE, STARTING_LIFE};
 pub use setup::{

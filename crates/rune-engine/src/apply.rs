@@ -8,11 +8,13 @@
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, Target};
 use crate::actions::{action_is_legal, Action};
 use crate::card::abilities_of;
-use crate::id::{CardInstance, PermanentId, PlayerId};
+use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
+use crate::mulligan::advance_after_keep;
 use crate::phase::Step;
 use crate::player::MAX_HAND_SIZE;
 use crate::resolve::resolve_stack_object;
+use crate::rng::SplitMix64;
 use crate::sba::run_state_based_actions;
 use crate::stack::{StackId, StackObject, StackObjectKind};
 use crate::state::{GameState, Permanent};
@@ -52,6 +54,8 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         }
         Action::CastSpell { card } => apply_cast_spell(&mut next, *card, db),
         Action::Discard { card } => apply_discard(&mut next, *card),
+        Action::Mulligan => apply_mulligan(&mut next),
+        Action::Keep { bottom } => apply_keep(&mut next, bottom),
     }
 
     // 4. Replacement effects. Scaffold: no replacement effects are modeled yet,
@@ -228,6 +232,84 @@ fn apply_discard(state: &mut GameState, card: CardInstance) {
         state.consecutive_passes = 0;
         state.priority = state.active_player;
     }
+}
+
+/// Take a mulligan during the pre-game London mulligan phase (CR 103.5): shuffle
+/// the deciding seat's hand back into its library, redraw a fresh opening hand,
+/// and record the mulligan.
+///
+/// The deciding seat is the priority holder (see [`crate::valid_actions`]).
+/// Priority stays with that seat — after redrawing it decides again (keep or
+/// mulligan). The reshuffle draws from
+/// [`GameState::rng_seed`](crate::GameState::rng_seed) and stores the advanced
+/// generator state back, so the whole game still replays from its seed.
+fn apply_mulligan(state: &mut GameState) {
+    let seat = state.priority;
+    let Some(hand_size) = state.mulligan.as_ref().map(|m| m.hand_size) else {
+        return;
+    };
+    // Read the seed, reshuffle-and-redraw for the deciding seat, then store the
+    // advanced generator state back into the slot.
+    let mut rng = SplitMix64::new(state.rng_seed);
+    if let Some(player) = state.players.get_mut(seat.0) {
+        player.library.append(&mut player.hand);
+        rng.shuffle(&mut player.library);
+        let draw = hand_size.min(player.library.len());
+        for _ in 0..draw {
+            if let Some(card) = player.library.pop() {
+                player.hand.push(card);
+            }
+        }
+    }
+    state.rng_seed = rng.state();
+    if let Some(decision) = state
+        .mulligan
+        .as_mut()
+        .and_then(|m| m.decisions.get_mut(seat.0))
+    {
+        decision.taken += 1;
+    }
+}
+
+/// Keep the current hand during the pre-game London mulligan phase (CR 103.5).
+///
+/// Puts the chosen `bottom` cards (already validated to be exactly one distinct
+/// hand card per mulligan taken — see [`action_is_legal`]) on the bottom of the
+/// deciding seat's library in the given order, marks the seat as having kept, and
+/// hands the decision to the next still-deciding seat. Once every seat has kept
+/// the phase ends and turn 1 begins ([`advance_after_keep`]).
+fn apply_keep(state: &mut GameState, bottom: &[Target]) {
+    let seat = state.priority;
+    if let Some(player) = state.players.get_mut(seat.0) {
+        // Remove the chosen cards from hand, preserving the chosen order.
+        let chosen: Vec<CardInstanceId> = bottom
+            .iter()
+            .filter_map(|t| match t {
+                Target::Card(id) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        let mut bottomed = Vec::with_capacity(chosen.len());
+        for id in &chosen {
+            if let Some(pos) = player.hand.iter().position(|inst| inst.id == *id) {
+                bottomed.push(player.hand.remove(pos));
+            }
+        }
+        // Place them on the bottom of the library. The top of the library is the
+        // last element, so the bottom is the front: insert the chosen cards there
+        // in order (first chosen ends up deepest).
+        for (offset, card) in bottomed.into_iter().enumerate() {
+            player.library.insert(offset, card);
+        }
+    }
+    if let Some(decision) = state
+        .mulligan
+        .as_mut()
+        .and_then(|m| m.decisions.get_mut(seat.0))
+    {
+        decision.kept = true;
+    }
+    advance_after_keep(state);
 }
 
 /// Play a land from the active player's hand onto the battlefield. Not via the

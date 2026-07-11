@@ -64,6 +64,25 @@ pub enum Action {
         /// The specific card in the active player's hand to discard.
         card: CardInstance,
     },
+    /// Mulligan the current opening hand during the pre-game London mulligan
+    /// (CR 103.5): shuffle it back into the library, draw a fresh hand of the
+    /// opening size, and decide again. Offered only in the mulligan phase, to the
+    /// deciding seat (see [`crate::mulligan`]).
+    Mulligan,
+    /// Keep the current opening hand, ending this seat's London-mulligan decisions
+    /// (CR 103.5). A seat that has taken `N` mulligans must put `N` cards on the
+    /// bottom of its library; `bottom` names those cards, one [`Target::Card`]
+    /// per card, chosen from the [bottoming requirement](crate::bottom_requirement)
+    /// (empty for a first-hand keep). [`valid_actions`] advertises this in its
+    /// *requirement* form (empty `bottom`); a filled-in selection is validated in
+    /// [`action_is_legal`]. Offered only in the mulligan phase, to the deciding
+    /// seat.
+    Keep {
+        /// The chosen cards to put on the bottom of the library, in the order they
+        /// are placed there. Exactly one [`Target::Card`] per mulligan taken, each
+        /// naming a distinct card currently in the deciding seat's hand.
+        bottom: Vec<Target>,
+    },
 }
 
 impl Action {
@@ -72,10 +91,14 @@ impl Action {
     fn targets(&self) -> &[Target] {
         match self {
             Action::ActivateAbility { targets, .. } => targets,
+            // `Keep::bottom` is a mulligan sub-choice, not a target selection; it
+            // is validated through the mulligan path, never this one.
             Action::PassPriority
             | Action::PlayLand { .. }
             | Action::CastSpell { .. }
-            | Action::Discard { .. } => &[],
+            | Action::Discard { .. }
+            | Action::Mulligan
+            | Action::Keep { .. } => &[],
         }
     }
 
@@ -91,6 +114,9 @@ impl Action {
                 index: *index,
                 targets: Vec::new(),
             },
+            // The mulligan keep's bottom selection is cleared the same way, so its
+            // requirement form matches what [`valid_actions`] advertises.
+            Action::Keep { .. } => Action::Keep { bottom: Vec::new() },
             other => other.clone(),
         }
     }
@@ -129,6 +155,14 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         return Vec::new();
     }
     let priority = state.priority;
+
+    // Pre-game London mulligan (CR 103.5): while the mulligan phase is in progress
+    // the only choices are the deciding seat's keep/mulligan, and turn 1 has not
+    // begun — no lands, spells, abilities, or priority passes are offered until
+    // every player has kept (see [`crate::mulligan`]).
+    if let Some(actions) = crate::mulligan::mulligan_actions(state) {
+        return actions;
+    }
 
     // Cleanup step: no player receives priority (CR 514.3). The only choice is
     // the active player discarding down to the maximum hand size (CR 514.1),
@@ -253,6 +287,13 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //    could take — no combination is ever enumerated here.
     if !valid_actions(state, db).contains(&action.without_targets()) {
         return false;
+    }
+
+    // 1a. A mulligan keep validates its bottoming selection (CR 103.5) rather than
+    //     the target-slot machinery: exactly one distinct hand card per mulligan
+    //     taken (see [`crate::mulligan::keep_bottom_is_legal`]).
+    if let Action::Keep { bottom } = action {
+        return crate::mulligan::keep_bottom_is_legal(state, bottom);
     }
 
     // 2. The carried targets must fill every slot the action declares, each with
