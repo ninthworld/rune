@@ -17,18 +17,38 @@ interface Props {
   selectedActions: ValidAction[];
   /** Name of the selected entity, shown as the echo's heading. */
   selectedName?: string;
-  /** Echo back the chosen `valid_actions.id`. */
-  onChoose: (actionId: string) => void;
+  /** Echo back the chosen action (the store reads its id + content-binding token). */
+  onChoose: (action: ValidAction) => void;
+  /** Present in targeting mode: abandon the in-progress target selection. */
+  onCancelTargeting?: () => void;
 }
 
-export function ActionBar({ globalActions, selectedActions, selectedName, onChoose }: Props) {
+export function ActionBar({
+  globalActions,
+  selectedActions,
+  selectedName,
+  onChoose,
+  onCancelTargeting,
+}: Props) {
+  // During targeting the bar is dedicated to cancelling the in-progress pick;
+  // no other global action is offered until the target is chosen or abandoned.
+  if (onCancelTargeting) {
+    return (
+      <div role="toolbar" aria-label="Actions" data-testid="action-bar" style={bar}>
+        <button type="button" onClick={onCancelTargeting} style={button}>
+          Cancel targeting
+        </button>
+      </div>
+    );
+  }
+
   const hasEcho = selectedActions.length > 0 && selectedName !== undefined;
   const empty = globalActions.length === 0 && !hasEcho;
 
   return (
     <div role="toolbar" aria-label="Actions" data-testid="action-bar" style={bar}>
       {globalActions.map((action) => (
-        <button key={action.id} type="button" onClick={() => onChoose(action.id)} style={button}>
+        <button key={action.id} type="button" onClick={() => onChoose(action)} style={button}>
           {action.label}
         </button>
       ))}
@@ -37,12 +57,7 @@ export function ActionBar({ globalActions, selectedActions, selectedName, onChoo
         <div data-testid="selection-echo" style={echo}>
           <span style={echoLabel}>{selectedName}</span>
           {selectedActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onClick={() => onChoose(action.id)}
-              style={button}
-            >
+            <button key={action.id} type="button" onClick={() => onChoose(action)} style={button}>
               {action.label}
             </button>
           ))}

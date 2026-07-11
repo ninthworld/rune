@@ -67,6 +67,8 @@ export const FRAME = {
   selectionWidth: 2,
   tappedAlpha: 0.55,
   sickAlpha: 0.85,
+  /** Alpha for a card dimmed as an ineligible target during targeting mode. */
+  dimmedAlpha: 0.32,
 } as const;
 
 /**

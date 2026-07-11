@@ -56,6 +56,33 @@ describe('parseGameView', () => {
   it('rejects a present-but-wrong-typed collection', () => {
     expect(() => parseGameView('{"phase":"draw","valid_actions":{}}')).toThrow(ProtocolError);
   });
+
+  it('carries a targeted action’s requirements and content-binding token through intact', () => {
+    // #74/ADR 0009: a multi-step action rides on valid_actions with its slots and
+    // token. Normalization must not drop them (the client renders/echoes them).
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'precombat_main',
+        valid_actions: [
+          {
+            id: 'a3',
+            type: 'cast_spell',
+            label: 'Cast Lightning Bolt',
+            subject: ['c3'],
+            token: 'h:9f2c',
+            requirements: [
+              { slot: 't0', prompt: 'target creature or player', candidates: ['perm_a', 'p2'] },
+            ],
+          },
+        ],
+      }),
+    );
+    const action = view.valid_actions[0];
+    expect(action.token).toBe('h:9f2c');
+    expect(action.requirements).toEqual([
+      { slot: 't0', prompt: 'target creature or player', candidates: ['perm_a', 'p2'] },
+    ]);
+  });
 });
 
 describe('cross-language contract fixture (issue #56)', () => {

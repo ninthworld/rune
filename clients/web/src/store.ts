@@ -19,7 +19,7 @@
  */
 import { create, type StateCreator } from 'zustand';
 import { createStore } from 'zustand/vanilla';
-import { chooseAction, type GameView, type ValidAction } from './protocol';
+import { chooseAction, type GameView, type TargetChoice, type ValidAction } from './protocol';
 import { parseGameView } from './wire';
 
 /** Connection lifecycle for status display only (never load-bearing game state). */
@@ -48,8 +48,14 @@ export interface GameStore {
   connect: (url: string, options?: ConnectOptions) => void;
   /** Close the connection intentionally; suppresses auto-reconnect. */
   disconnect: () => void;
-  /** Send a `ChooseAction` for one of the currently issued `valid_actions`. */
-  choose: (actionId: string) => void;
+  /**
+   * Send a `ChooseAction` for one of the currently issued `valid_actions`,
+   * answered atomically. The chosen action's content-binding `token` is echoed
+   * verbatim, and `targets` (one entry per requirement slot, assembled by the UI
+   * from the server's candidates) is submitted in the same message — never a
+   * multi-message handshake. No legality is computed here (hard rule).
+   */
+  choose: (action: ValidAction, targets?: TargetChoice[]) => void;
   /**
    * Ingest one raw server frame, replacing the stored view. This is the single
    * entry point for server→client state and the seam tests use to feed a lone
@@ -136,11 +142,12 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       set({ status: 'closed' });
     },
 
-    choose(actionId): void {
-      // Echo the chosen action id; the server validates it against what it
-      // issued. No legality is computed here (hard rule).
+    choose(action, targets): void {
+      // Echo the chosen action id plus its content-binding token verbatim, and
+      // the assembled per-slot targets. The server validates all three against
+      // what it issued; no legality is computed here (hard rule).
       if (!socket) return;
-      socket.send(JSON.stringify(chooseAction(actionId)));
+      socket.send(JSON.stringify(chooseAction(action.id, action.token, targets)));
     },
 
     ingest(raw): void {

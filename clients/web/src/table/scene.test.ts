@@ -165,6 +165,51 @@ describe('buildTableScene', () => {
     expect(a).toEqual(b);
   });
 
+  it('leaves nothing targetable outside targeting mode', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const all = [...scene.bands.flatMap((b) => b.cards), ...scene.hand];
+    expect(all.every((c) => c.targetable === false)).toBe(true);
+    expect(all.every((c) => c.data.targeting === undefined || c.data.targeting === false)).toBe(
+      true,
+    );
+  });
+});
+
+describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
+  it('highlights exactly the server candidates and dims everything else', () => {
+    // perm_xyz is a legal target; the hand card c1 is not.
+    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, { candidates: ['perm_xyz'] });
+    const bear = scene.bands.at(-1)?.cards[0];
+    const handCard = scene.hand[0];
+
+    // The candidate is highlighted and pickable, with its normal actions suppressed.
+    expect(bear?.entityId).toBe('perm_xyz');
+    expect(bear?.targetable).toBe(true);
+    expect(bear?.data.targeting).toBe(true);
+    expect(bear?.data.dimmed).toBe(false);
+    expect(bear?.actions).toEqual([]);
+
+    // Everything else is dimmed and non-interactive — legality came from the
+    // server's candidate list, never computed here.
+    expect(handCard?.entityId).toBe('c1');
+    expect(handCard?.targetable).toBe(false);
+    expect(handCard?.data.targeting).toBe(false);
+    expect(handCard?.data.dimmed).toBe(true);
+    expect(handCard?.actions).toEqual([]);
+  });
+
+  it('suppresses the selection ring while targeting (a target is not a selection)', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz', 1280, { candidates: ['perm_xyz'] });
+    // Even though perm_xyz was the selected id, targeting mode clears `selected`.
+    expect(scene.bands.at(-1)?.cards[0]?.data.selected).toBe(false);
+  });
+
+  it('stays a pure function of its inputs in targeting mode', () => {
+    const a = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, { candidates: ['perm_xyz'] });
+    const b = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, { candidates: ['perm_xyz'] });
+    expect(a).toEqual(b);
+  });
+
   it('lays a single small band as one row (no wrapping when everything fits)', () => {
     const scene = buildTableScene(boardView(['p1'], 3), undefined, 1280);
     const ys = new Set(scene.bands[0]?.cards.map((c) => c.rect.y));
