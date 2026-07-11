@@ -49,6 +49,70 @@ make check             # everything CI runs: fmt, clippy, tests, client build
 | `docs` | Brief, protocol, UI requirements, ADRs |
 | `prototypes` | Standalone HTML UI prototypes (reference only) |
 
+## Running the project
+
+The server owns the game; every client connects to it over WebSocket. Start the
+server first, then attach a client. (Pre-alpha: the engine and client are still
+stubs, so these run but don't yet play a full game.)
+
+### Server
+
+```sh
+cargo run -p rune-server
+```
+
+Binds `127.0.0.1:9000` by default. Override the listen address with the `--addr`
+flag or the `RUNE_SERVER_ADDR` environment variable:
+
+```sh
+cargo run -p rune-server -- --addr 0.0.0.0:9000
+RUNE_SERVER_ADDR=0.0.0.0:9000 cargo run -p rune-server
+```
+
+The server logs to stderr and serves until Ctrl-C.
+
+### Terminal client (`rune-cli`)
+
+With a server running, connect the terminal client. Interactive mode renders each
+`GameView` as a numbered list of legal actions and reads your choice from stdin:
+
+```sh
+cargo run -p rune-cli
+```
+
+Agent mode (`--agent`) hands each view to the built-in deterministic agent instead
+of prompting — useful for smoke-testing AI opponents:
+
+```sh
+cargo run -p rune-cli -- --agent
+```
+
+Flags (each has an environment-variable fallback):
+
+| Flag | Env fallback | Default | Purpose |
+|---|---|---|---|
+| `--addr`, `-a` `<host:port \| ws://…>` | `RUNE_SERVER_ADDR` | `127.0.0.1:9000` | Server to connect to |
+| `--agent` | — | off | Drive with the built-in agent instead of stdin |
+| `--agent-timeout <seconds>` | `RUNE_AGENT_TIMEOUT` | `5` | Per-decision deadline in agent mode |
+
+### Web client (`clients/web`)
+
+The React + Pixi.js client is a Vite app. Install dependencies once, then run the
+dev server:
+
+```sh
+cd clients/web
+npm install
+npm run dev            # Vite dev server with hot reload (default http://localhost:5173)
+```
+
+Build and preview a production bundle:
+
+```sh
+npm run build          # type-check, then emit a production build to dist/
+npm run preview        # serve the built bundle locally
+```
+
 ## Development model
 
 This repository is primarily developed by AI coding agents working through GitHub
