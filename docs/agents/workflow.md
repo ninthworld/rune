@@ -28,6 +28,8 @@ provider, see [`local-ai-setup.md`](local-ai-setup.md).
 - `make check` green in CI.
 - Tests cover the change; rules fixes include a regression test named after the issue.
 - Docs/ADRs updated where behavior or architecture changed.
+- `docs/rules-coverage.md` updated when engine rule behavior was added or changed
+  (the CR-citation convention in `docs/coding-standards.md`).
 - No unrelated diffs.
 
 ## Repository settings (apply once on GitHub — cannot be committed)
