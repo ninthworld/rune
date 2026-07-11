@@ -1,5 +1,13 @@
 # MTG Engine — Project Brief
 
+> **Status: vision document.** This brief captures the original design intent and
+> is intentionally preserved as-is for its roadmap and rationale. Where it conflicts
+> with shipped reality, the source of truth wins — namely the ADRs in
+> `docs/decisions/`, `docs/protocol.md`, and the code (`clients/web/src/tokens.ts`,
+> `crates/rune-engine/src/state.rs`). Sections that have since diverged carry an
+> inline **Shipped:** note pointing at the authority; the surrounding vision text
+> is left untouched on purpose.
+
 ## Project Overview
 
 An open-source Magic: The Gathering implementation consisting of a high-performance rules engine server and a platform-agnostic client. The project is divided into two largely independent components: a Rust server that owns all game logic, and a React web client that owns all rendering and user interaction. These communicate over a minimal JSON/WebSocket API.
@@ -70,11 +78,18 @@ The entire client-server protocol is two message types:
   "priority_player": "player_1",
   "valid_actions": [
     { "id": "a1", "type": "pass_priority", "label": "Pass" },
-    { "id": "a2", "type": "activate_ability", "source": "card_xyz", "label": "Tap for mana" }
+    { "id": "a2", "type": "activate_ability", "subject": ["card_xyz"], "label": "Tap for mana" }
   ],
   "action_deadline": 30
 }
 ```
+
+> **Shipped:** actions route by a `subject: [entity_id]` array, not a `"source"`
+> field, per ADR 0004 (`docs/decisions/0004-subject-owned-actions.md`). The client
+> renders subject-owned actions as interactivity on the entity itself; only
+> subject-less actions (pass, end turn, confirm) become bar buttons. See
+> `docs/protocol.md` for the authoritative message shapes (`GameView`, `Action`),
+> which also differ in field names and structure from this illustrative sketch.
 
 **Client → Server:**
 ```json
@@ -107,6 +122,12 @@ fn apply_action(state: &GameState, action: Action) -> GameState {
     next
 }
 ```
+
+> **Shipped:** the battlefield is a `Vec<Permanent>`, not a
+> `HashMap<PermanentId, Permanent>` (`crates/rune-engine/src/state.rs`). Each
+> `Permanent` carries its own minted `PermanentId`; lookups scan the vec. Field
+> names also differ from this sketch (e.g. `active_player`/`priority` are seat
+> indices). Treat `state.rs` as authoritative for the state shape.
 
 **Why immutable:**
 - Undo is trivial — history is just `Vec<GameState>`, go back to any index
@@ -182,6 +203,13 @@ A "dumb" renderer. It displays the GameView the server sends and translates play
 
 **Integration:** React renders a single `<canvas>` element. The Pixi scene graph inside it is managed via `react-pixi-fiber`, allowing Pixi objects to be written as React components.
 
+> **Shipped:** there is no `react-pixi-fiber`. A single React component
+> (`clients/web/src/table/BattlefieldCanvas.tsx`) owns a raw `pixi.js`
+> `Application` and imperatively rebuilds the scene from the `TableScene` on each
+> change. Interactivity lives entirely in the DOM overlay above the canvas
+> (ADR 0003), so the canvas stays a pure visual surface and degrades to a no-op
+> where no WebGL context exists (headless CI).
+
 ### Custom Card Rendering (No Images)
 
 Cards are procedurally rendered from card data. No image downloads. Benefits:
@@ -208,6 +236,13 @@ Cards are procedurally rendered from card data. No image downloads. Benefits:
 - White: `#F9FAF4`, Blue: `#0E68AB`, Black: `#150B00`
 - Red: `#D3202A`, Green: `#00733E`, Gold (multicolor): gradient
 - Colorless: `#9C9B8E`
+
+> **Shipped:** these early swatches are superseded by the `PALETTE` in
+> `clients/web/src/tokens.ts`, which is the single source of truth for both card
+> renderers (the muted board-friendly values there — e.g. White `#CFC7AC`, Blue
+> `#4E86C1` — differ from the ones above, and multicolor `M` is a flat swatch,
+> not a gradient). `tokens.ts` also adds a distinct land (`L`) frame color.
+> Change `docs/design/ui-design-notes.md` and `tokens.ts` together, not this list.
 
 **Mana pip icons and card borders:** SVG paths drawn in Pixi, not rasterized images. Scale perfectly at any size, sharp on all DPI.
 
@@ -333,6 +368,14 @@ Damage assignment:
 | Typography | Inter or similar single variable font |
 | Build | Vite |
 
+> **Shipped:** the client is deliberately lean and does not use these UI
+> libraries. Battlefield rendering is raw `pixi.js` (no `react-pixi-fiber`; see
+> `BattlefieldCanvas.tsx`). There is no `shadcn/ui`, Radix, or Tailwind — the DOM
+> layer uses hand-written inline style objects (`clients/web/src/table/styles.ts`)
+> with UI-chrome values, reading shared card tokens from `tokens.ts` where DOM and
+> canvas must agree. Typography is the system font stack (`system-ui, sans-serif`,
+> `FONT.family` in `tokens.ts`), not Inter. React, Zustand, and Vite are as listed.
+
 ### Deployment
 
 The React client is a static build (HTML + JS + CSS). It can be:
@@ -358,6 +401,15 @@ For desktop: Tauri (Rust-based shell) wraps the React UI and manages the bundled
 - `loyalty` (nullable, for planeswalkers)
 - `keywords` (array)
 - `layout` (normal, transform, adventure, etc.)
+
+> **Shipped:** this is a card-database wishlist, not the wire shape. The
+> `CardView` the server actually sends (`docs/protocol.md`,
+> `clients/web/src/protocol.ts`) carries `name`, `type_line`, and optional
+> `mana_cost`/`oracle_text`/`power`/`toughness` — and notably **omits**
+> `color_identity`. The client derives the display frame color locally from the
+> type line and mana-cost string (`clients/web/src/table/colorIdentity.ts`),
+> which is display glue, not game logic. If the server should own color identity
+> instead, that is a protocol change and belongs in a separate issue.
 
 **Card database in the Rust engine:** Loaded at startup from JSON. Cards are immutable data. The engine references cards by `CardId` (a stable integer or UUID) and looks them up in a static map.
 
