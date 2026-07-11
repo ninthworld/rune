@@ -21,6 +21,7 @@
 //! See `docs/decisions/0008-tokio-websocket-server.md` for the dependency
 //! choices behind this crate.
 
+mod format;
 mod lobby;
 mod room;
 mod view;

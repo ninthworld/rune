@@ -329,7 +329,7 @@ format is their serde JSON, and unknown fields are ignored (forward compat).
 | Field | Type | Notes |
 |---|---|---|
 | `seats` | `number` (u8) | Number of seats, validated server-side into the inclusive range `2..=8`. The lobby supports 2–8 seats even while the engine remains two-player |
-| `game_setup` | `GameSetupId` (string) | Opaque game-setup id naming which setup (players, starting life, hand size, …) the room builds its game from. The catalogue is owned by ADR 0013; the server validates the id |
+| `game_setup` | `GameSetupId` (string) | Opaque game-setup id naming which setup (players, starting life, hand size, …) the room builds its game from. The catalogue is owned by ADR 0013; the server validates the id against its format registry (ADR 0013 §4) — a `create_room` naming an unknown id is rejected and no room is opened |
 
 #### SeatView
 
@@ -365,7 +365,7 @@ current `LobbyView` re-sent. The `type` discriminator selects the command:
 | `hello` | `token?` (`SessionToken`) | First contact or reconnect. Carries a previously issued session token to reclaim a held-open seat, echoed verbatim; omitted on a fresh connection (server then issues a new identity) |
 | `create_room` | `config` (`RoomConfig`) | Create a new room; the reply's `RoomView` carries the freshly issued `room_id` |
 | `join_room` | `room_id` (`RoomId`) | Join an existing room by id. No matchmaking or discovery — the id must have been shared out-of-band |
-| `submit_deck` | `cards` (`CardIdentity[]`) | Submit a decklist as a flat list of opaque card-identity handles (a card appearing multiple times is repeated). The server validates it authoritatively against the card database; `cards` is omitted when empty |
+| `submit_deck` | `cards` (`CardIdentity[]`) | Submit a decklist as a flat list of opaque card-identity handles (a card appearing multiple times is repeated). The server validates it authoritatively: every identity must resolve against the card database, and the whole decklist must be legal for the room's format (deck size and per-card copy limit, basic lands exempt — deck legality is server/format policy, never an engine rule, ADR 0013 §4). An illegal deck is rejected and the seat left undecked; `cards` is omitted when empty |
 | `ready` | `ready` (`bool`) | Declare (`true`) or retract (`false`) readiness. A seat may ready only once it is occupied and decked |
 | `leave` | — | Leave the current room, vacating the seat |
 
