@@ -26,8 +26,9 @@ sized for one PR unless noted.
 9. ✅ **engine: card database loader** — issue #25.
 
 ## Server + CLI — ⏳ needs issues
-10. ⏳ **server: tokio + WebSocket skeleton** — layer 1 accepts connections; ADR for
-    dependency additions. (`crates/rune-server/src/main.rs` is still a scaffold.)
+10. ✅ **server: tokio + WebSocket skeleton** — layer 1 accepts connections; ADR for
+    dependency additions — issue #30 (ADR-0008; tokio + tokio-tungstenite accept
+    loop with graceful shutdown).
 11. ⏳ **server: room task** — one task per room, owns one engine instance,
     broadcasts personalized GameViews.
 12. ⏳ **cli: interactive client** — numbered valid_actions, stdin choice loop
