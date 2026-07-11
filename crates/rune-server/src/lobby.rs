@@ -74,6 +74,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
+use crate::format::{DeckError, FormatRegistry};
 use crate::room::{serve_connection, Room, RoomHandle, Seat};
 
 /// Inclusive range of seats a room may be configured with. The lobby and room
@@ -135,6 +136,12 @@ struct Inner {
     ///
     /// [`CardIdentity`]: rune_protocol::CardIdentity
     db: CardDatabase,
+    /// The server's format registry (ADR 0013 §4): each room's `game_setup` id is a
+    /// key into this, yielding the engine [`GameSetup`] the room starts with plus the
+    /// deck-legality rules [`Lobby::submit_deck`] validates a decklist against. A
+    /// `CreateRoom` naming an unknown id is rejected before a room opens. Deck
+    /// legality is *server* policy, never an engine rule (ADR 0013 §4).
+    formats: FormatRegistry,
     /// The cap on concurrently hosted rooms.
     max_rooms: usize,
 }
@@ -228,6 +235,9 @@ pub(crate) enum LobbyError {
     NotInRoom,
     /// `create_room` with a seat count outside [`SEAT_RANGE`].
     InvalidSeatCount(u8),
+    /// `create_room` whose `game_setup` id names no format in the registry (ADR
+    /// 0013 §4). Carries the offending id; no room is opened.
+    UnknownFormat(String),
     /// `join_room` with an id no active room has.
     UnknownRoom,
     /// `join_room` on a room whose every seat is occupied.
@@ -240,6 +250,10 @@ pub(crate) enum LobbyError {
     /// known card in the database. Carries the offending identity; the seat stays
     /// undecked (its previous deck, if any, is untouched).
     UnknownCard(String),
+    /// `submit_deck` whose decklist is illegal for the room's format (ADR 0013 §4):
+    /// too few or too many cards, or too many copies of a non-basic card. Carries a
+    /// [`DeckError`] naming the violation; the seat keeps whatever deck it had.
+    IllegalDeck(DeckError),
     /// `ready` (up) on a seat that has not yet submitted a valid deck.
     NotDecked,
     /// A lobby command aimed at a room whose game has already started (its seats
@@ -254,11 +268,13 @@ impl std::fmt::Display for LobbyError {
             Self::AlreadyInRoom => write!(f, "already in a room"),
             Self::NotInRoom => write!(f, "not in a room"),
             Self::InvalidSeatCount(n) => write!(f, "seat count {n} is outside 2..=8"),
+            Self::UnknownFormat(id) => write!(f, "unknown game_setup format {id}"),
             Self::UnknownRoom => write!(f, "unknown room id"),
             Self::RoomFull => write!(f, "room is full"),
             Self::AtCapacity => write!(f, "lobby is at room capacity"),
             Self::NotSeated => write!(f, "not seated in a room"),
             Self::UnknownCard(id) => write!(f, "unknown card identity {id}"),
+            Self::IllegalDeck(error) => write!(f, "illegal deck: {error}"),
             Self::NotDecked => write!(f, "seat has not submitted a valid deck"),
             Self::GameStarted => write!(f, "the room's game has already started"),
         }
@@ -281,6 +297,7 @@ impl Lobby {
             inner: Arc::new(Inner {
                 registry: RwLock::new(Registry::default()),
                 db,
+                formats: FormatRegistry::with_defaults(),
                 max_rooms,
             }),
         }
@@ -478,6 +495,12 @@ impl Lobby {
         if !SEAT_RANGE.contains(&config.seats) {
             return Err(LobbyError::InvalidSeatCount(config.seats));
         }
+        // The `game_setup` id must name a registered format (ADR 0013 §4); an unknown
+        // id is refused before a room is opened, so no room ever holds a setup the
+        // server cannot build a game from or validate decks against.
+        if self.inner.formats.get(&config.game_setup).is_none() {
+            return Err(LobbyError::UnknownFormat(config.game_setup.clone()));
+        }
         // Free capacity held by empty rooms before checking the cap, so a creator is
         // never refused for a slot no live room still needs.
         reap_empty(registry);
@@ -508,14 +531,19 @@ impl Lobby {
         Ok(())
     }
 
-    /// Handle `submit_deck`: validate every card identity against the database and,
+    /// Handle `submit_deck`: resolve every card identity against the database, then
+    /// validate the whole decklist against the room's **format** (ADR 0013 §4) and,
     /// on success, store the seat's deck (leaving it decked) and re-notify the room.
     ///
-    /// Validation is authoritative and all-or-nothing: the first identity that does
-    /// not resolve rejects the whole command with [`LobbyError::UnknownCard`] and the
-    /// seat keeps whatever deck it had (it stays undecked if it had none) — "unknown
-    /// ids → typed error, seat stays undecked" (ADR 0012). Re-submitting a deck
-    /// clears that seat's ready flag, so a changed deck must be re-readied.
+    /// Validation is authoritative and all-or-nothing, in two stages: first the first
+    /// identity that does not resolve rejects the whole command with
+    /// [`LobbyError::UnknownCard`] ("unknown ids → typed error, seat stays undecked",
+    /// ADR 0012); then the resolved deck is checked against the format's deck-legality
+    /// rules — size and per-card copy limit — and an illegal deck is rejected with a
+    /// structured [`LobbyError::IllegalDeck`] naming the violation (ADR 0013 §4). On
+    /// any rejection the seat keeps whatever deck it had (it stays undecked if it had
+    /// none). Re-submitting a legal deck clears that seat's ready flag, so a changed
+    /// deck must be re-readied. Deck legality is *server* policy, never an engine rule.
     fn submit_deck(
         &self,
         registry: &mut Registry,
@@ -537,6 +565,14 @@ impl Lobby {
             let card = resolve_card(&self.inner.db, identity)
                 .ok_or_else(|| LobbyError::UnknownCard(identity.clone()))?;
             deck.push(card);
+        }
+        // Validate the resolved deck against the room's format before storing it, so
+        // an illegal deck never seats a broken game (ADR 0013 §4). The format is
+        // guaranteed present: `create_room` rejected any unknown `game_setup` id.
+        if let Some(format) = self.inner.formats.get(&room.config.game_setup) {
+            format
+                .validate_deck(&deck, &self.inner.db)
+                .map_err(LobbyError::IllegalDeck)?;
         }
         if let Some(gate) = room.gate.get_mut(seat) {
             gate.deck = Some(deck);
@@ -587,8 +623,9 @@ impl Lobby {
     /// Construct the game and hand off, but only if the room is fully gated: every
     /// seat occupied, decked, and ready. Otherwise a no-op — the room stays pre-game.
     ///
-    /// On the gate passing, builds a [`GameSetup`] from the seats' submitted decks in
-    /// seat order with a server-generated seed, spawns a [`Room`] around
+    /// On the gate passing, builds the room format's engine [`GameSetup`] (ADR 0013
+    /// §4) from the seats' submitted decks in seat order with a server-generated seed,
+    /// spawns a [`Room`] around
     /// [`GameState::new`], stores its handle on the [`RoomEntry`], and pushes each
     /// seated session a [`LobbySignal::Start`] carrying its seat and the room handle.
     /// Each connection then reunites its socket and switches to `serve_connection`
@@ -615,7 +652,13 @@ impl Lobby {
             .iter()
             .map(|gate| PlayerSetup::new(gate.deck.clone().unwrap_or_default()))
             .collect();
-        let setup = GameSetup::new(players, generate_seed());
+        // The format supplies the engine `GameSetup` parameters (ADR 0013 §4); it is
+        // guaranteed present (create_room rejected any unknown id), but fall back to
+        // engine defaults rather than panicking if it is somehow absent.
+        let setup: GameSetup = match self.inner.formats.get(&room.config.game_setup) {
+            Some(format) => format.game_setup(players, generate_seed()),
+            None => GameSetup::new(players, generate_seed()),
+        };
         let db = self.inner.db.clone();
         let state = match GameState::new(&setup, &db) {
             Ok(state) => state,
@@ -1056,16 +1099,34 @@ mod tests {
     }
 
     fn config(seats: u8) -> RoomConfig {
+        config_with(seats, "standard_2p")
+    }
+
+    /// A room config for a specific `game_setup` format — used by the deck-legality
+    /// tests, which need the strict `starter-1v1` rules (the default `standard_2p`
+    /// imposes none).
+    fn config_with(seats: u8, game_setup: &str) -> RoomConfig {
         RoomConfig {
             seats,
-            game_setup: "standard_2p".to_string(),
+            game_setup: game_setup.to_string(),
         }
     }
 
-    /// A 40-card decklist over the bundled ids 1..=6, expressed as wire card
-    /// identities (the server interprets each as a decimal [`CardId`]).
+    /// A legal 40-card decklist for the seeded formats, expressed as wire card
+    /// identities (the server interprets each as a decimal [`CardId`]): four copies
+    /// each of the five non-basics (ids 1,2,3,4,6) plus twenty basic Forests (id 5),
+    /// which are exempt from the copy limit.
     fn decklist() -> Vec<String> {
-        (0..40).map(|i| ((i % 6) + 1).to_string()).collect()
+        let mut cards = Vec::new();
+        for id in [1, 2, 3, 4, 6] {
+            for _ in 0..4 {
+                cards.push(id.to_string());
+            }
+        }
+        for _ in 0..20 {
+            cards.push("5".to_string());
+        }
+        cards
     }
 
     /// Submit a valid deck for `client`. `command` pushes synchronously, so the
@@ -1251,6 +1312,51 @@ mod tests {
             // Rejection re-sends the current view: still roomless.
             assert!(client.current().room.is_none());
         }
+    }
+
+    #[tokio::test]
+    async fn create_room_with_an_unknown_game_setup_is_rejected() {
+        // The `game_setup` id must key into the format registry (ADR 0013 §4); an
+        // unknown id is refused and no room is opened.
+        let lobby = lobby(4);
+        let mut client = Client::connect(&lobby).await;
+        let _ = client.view().await;
+        let err = lobby
+            .command(
+                &client.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: RoomConfig {
+                        seats: 2,
+                        game_setup: "no-such-format".to_string(),
+                    },
+                }),
+            )
+            .await
+            .expect_err("unknown game_setup is rejected");
+        assert_eq!(err, LobbyError::UnknownFormat("no-such-format".to_string()));
+        // Rejection re-sends the current view: still roomless.
+        assert!(client.current().room.is_none());
+    }
+
+    #[tokio::test]
+    async fn create_room_accepts_the_seeded_starter_format() {
+        // The seeded "starter-1v1" format resolves, so a room can be opened with it.
+        let lobby = lobby(4);
+        let mut client = Client::connect(&lobby).await;
+        let _ = client.view().await;
+        lobby
+            .command(
+                &client.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: RoomConfig {
+                        seats: 2,
+                        game_setup: "starter-1v1".to_string(),
+                    },
+                }),
+            )
+            .await
+            .expect("the seeded starter format is accepted");
+        assert!(client.view().await.room.is_some());
     }
 
     #[tokio::test]
@@ -1774,12 +1880,20 @@ mod tests {
     /// Seat a fresh two-seat room with `alice` (creator, seat 0) and `bob` (seat 1),
     /// draining the roster pushes so each client's next `view()` is the seat's own.
     async fn seated_pair(lobby: &Lobby) -> (Client, Client, RoomId) {
+        seated_pair_in(lobby, "standard_2p").await
+    }
+
+    /// Like [`seated_pair`], but opens the room under a named `game_setup` format —
+    /// the deck-legality tests use `starter-1v1` so its size/copy rules apply.
+    async fn seated_pair_in(lobby: &Lobby, game_setup: &str) -> (Client, Client, RoomId) {
         let mut alice = Client::connect(lobby).await;
         let _ = alice.view().await;
         lobby
             .command(
                 &alice.token,
-                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: config_with(2, game_setup),
+                }),
             )
             .await
             .expect("alice creates");
@@ -1852,6 +1966,79 @@ mod tests {
         assert_eq!(err, LobbyError::UnknownCard("9999".to_string()));
         // The seat stays undecked; the rejection re-sent the current view.
         assert!(!alice.current().room.expect("in room").seats[0].decked);
+    }
+
+    #[tokio::test]
+    async fn submit_deck_under_the_minimum_size_is_rejected_and_seat_stays_undecked() {
+        // The seeded format requires 40 cards (ADR 0013 §4); a ten-card deck of known
+        // ids is rejected as illegal, and the seat is left undecked.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
+
+        let err = lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: vec!["1".to_string(); 10],
+                }),
+            )
+            .await
+            .expect_err("an under-minimum deck is rejected");
+        assert_eq!(
+            err,
+            LobbyError::IllegalDeck(DeckError::BelowMinimum { have: 10, min: 40 })
+        );
+        assert!(!alice.current().room.expect("in room").seats[0].decked);
+    }
+
+    #[tokio::test]
+    async fn submit_deck_over_the_copy_limit_for_a_non_basic_is_rejected() {
+        // Five copies of a non-basic (id 1) in an otherwise legal 40-card deck exceed
+        // the four-copy limit (ADR 0013 §4); the deck is rejected and stays out.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
+
+        let mut cards = vec!["1".to_string(); 5];
+        for id in [2, 3, 4, 6] {
+            for _ in 0..4 {
+                cards.push(id.to_string());
+            }
+        }
+        for _ in 0..19 {
+            cards.push("5".to_string());
+        }
+        assert_eq!(cards.len(), 40);
+
+        let err = lobby
+            .command(&alice.token, LobbyCommand::SubmitDeck(SubmitDeck { cards }))
+            .await
+            .expect_err("an over-copy-limit deck is rejected");
+        assert_eq!(
+            err,
+            LobbyError::IllegalDeck(DeckError::CopyLimit {
+                card: CardId(1),
+                count: 5,
+                limit: 4,
+            })
+        );
+        assert!(!alice.current().room.expect("in room").seats[0].decked);
+    }
+
+    #[tokio::test]
+    async fn submit_deck_accepts_a_legal_deck_with_many_basics() {
+        // The shared `decklist()` holds twenty basic Forests (id 5), far over the
+        // four-copy limit, yet basics are exempt (ADR 0013 §4): the deck is accepted.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+            )
+            .await
+            .expect("a legal deck with many basics is accepted");
+        assert!(alice.current().room.expect("in room").seats[0].decked);
     }
 
     #[tokio::test]
