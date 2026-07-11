@@ -152,7 +152,11 @@ async fn two_clients_create_and_join_a_room_by_id_end_to_end() {
         bob_view_room.seats[1].occupied_by.as_deref(),
         Some(bob_room.you.as_str())
     );
-    assert_eq!(bob_room.valid_commands, vec!["leave".to_string()]);
+    // Seated but undecked: bob may submit a deck or leave (the ready gate, #112).
+    assert_eq!(
+        bob_room.valid_commands,
+        vec!["submit_deck".to_string(), "leave".to_string()]
+    );
 
     // Alice is pushed an updated roster showing both seats filled.
     let alice_full = view_where(&mut alice, |v| {

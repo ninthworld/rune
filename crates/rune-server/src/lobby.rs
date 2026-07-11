@@ -1,5 +1,7 @@
-//! Layer 1 lobby — session identity plus the explicit-room registry and the
-//! pre-game `LobbyView`/`LobbyCommand` routing (ADR 0012, issue #110).
+//! Layer 1 lobby — session identity, the explicit-room registry, the pre-game
+//! `LobbyView`/`LobbyCommand` routing (ADR 0012, issue #110), the deck-submission and
+//! ready gate that constructs the game and hands each seat off to the in-game contract
+//! (issue #112), and reconnect-to-a-held-seat by session token (issue #113).
 //!
 //! The lobby is the connective tissue between the accept loop (issue #30) and the
 //! room task (issue #31). It owns the **room registry** — the shared
@@ -21,22 +23,25 @@
 //! # No game until the pre-game gate passes
 //! Creating or joining a room does **not** construct an engine game or send a
 //! `GameView`. A room stays in the lobby phase — pushing `LobbyView`s — until every
-//! seat is filled, decked, and ready (the ready gate, issue #112). This retires the
-//! previous "auto-seat into a game that is already live with one player and empty
-//! decks" behavior (ADR 0012).
+//! seat is filled, decked (a `submit_deck` whose card identities all resolve against
+//! the [`CardDatabase`]), and ready. The instant the last seat readies,
+//! [`Lobby::start_game`] builds a [`GameSetup`] from the submitted decks with a
+//! server-generated seed, spawns the [`Room`], and pushes each seat a game hand-off;
+//! nothing game-related is sent before that moment. This retires the previous
+//! "auto-seat into a game that is already live with one player and empty decks"
+//! behavior (ADR 0012).
 //!
 //! # Holding seats for reconnect, and reclaiming rooms
 //! A **seated** session is held open across a dropped connection: a disconnect
 //! neither vacates the seat nor reclaims the room, so the session's token can later
-//! reclaim exactly that seat (issue #113). This mirrors the room task's own
-//! seat-holding policy (`room.rs`) and, like it, has no idle timeout yet (turn
-//! clocks are a later milestone). A **roomless** session holds nothing to reconnect
-//! to, so it is dropped outright on disconnect. A room's registry entry — and the
-//! [`Lobby::max_rooms`] capacity it holds — is reclaimed once the room is **empty**,
-//! i.e. every seat has been *explicitly* vacated by a `Leave`. Reclamation runs
-//! opportunistically on room creation (so freed capacity is available to the next
-//! creator, even at the cap) and after every leave. Migrated from the
-//! game-over/abandonment reaping of issue #54, which reaped *game-task* rooms.
+//! reclaim exactly that seat (issue #113). A **roomless** session holds nothing to
+//! reconnect to, so it is dropped outright on disconnect. A pre-game room's registry
+//! entry — and the [`Lobby::max_rooms`] capacity it holds — is reclaimed once the room
+//! is **empty**, i.e. every seat has been *explicitly* vacated by a `Leave`.
+//! Reclamation runs opportunistically on room creation (so freed capacity is available
+//! to the next creator, even at the cap) and after every leave. A **started** room
+//! ([`RoomEntry::game`] is `Some`) is never reaped: its game task owns the seats'
+//! lifecycle now.
 //!
 //! # Identity and reconnect (issue #113)
 //! Every connection is issued an **unguessable** per-session token ([`mint_token`])
@@ -53,13 +58,15 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
-use rune_engine::CardDatabase;
+use rune_engine::{CardDatabase, CardId, GameSetup, GameState, PlayerSetup};
 use rune_protocol::{
-    CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, RoomConfig, RoomId, RoomView,
-    SeatView, SessionToken,
+    CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomView,
+    SeatView, SessionToken, SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -67,16 +74,43 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
+use crate::room::{serve_connection, Room, RoomHandle, Seat};
+
 /// Inclusive range of seats a room may be configured with. The lobby and room
 /// plumbing support 2–8 seats even while the engine remains two-player (ADR 0012):
 /// a config the engine cannot yet build a game for is caught later, at the ready
 /// gate (issue #112), not here.
 const SEAT_RANGE: std::ops::RangeInclusive<u8> = 2..=8;
 
-/// Latest-value outbox the lobby pushes a connection's [`LobbyView`] to. Like the
+/// What the lobby pushes to one connection: either a fresh full [`LobbyView`] to
+/// render, or — the instant the ready gate passes — the hand-off that switches the
+/// connection to the in-game contract (ADR 0012).
+///
+/// Not a protocol type: it never touches the wire. The connection task
+/// ([`serve_lobby_connection`]) serializes a [`View`](LobbySignal::View) to JSON and
+/// writes it back, and on [`Start`](LobbySignal::Start) it reunites its socket and
+/// hands off to [`serve_connection`], after which the room speaks `GameView`s.
+#[derive(Clone)]
+pub(crate) enum LobbySignal {
+    /// A fresh pre-game snapshot to serialize and send.
+    View(LobbyView),
+    /// The gate passed: this connection now owns `seat` of a started room and
+    /// should switch to the in-game contract driven by `room`.
+    Start {
+        /// The seat this connection holds at the table.
+        seat: Seat,
+        /// Handle to the running room task that now owns the one game.
+        room: RoomHandle,
+    },
+}
+
+/// Latest-value outbox the lobby pushes a connection's [`LobbySignal`] to. Like the
 /// room's per-seat outbox, it is a [`watch`] so a slow reader always observes the
 /// newest lobby state and never accumulates a backlog of superseded snapshots.
-pub(crate) type LobbyOutbox = watch::Sender<Option<LobbyView>>;
+/// Before the gate it carries [`LobbySignal::View`]s; the single terminal
+/// [`LobbySignal::Start`] is never overwritten because no view is pushed to a
+/// started seat afterward (see [`push_view`]).
+pub(crate) type LobbyOutbox = watch::Sender<Option<LobbySignal>>;
 
 /// The shared session + room registry (layer 1 of `docs/brief.md`).
 ///
@@ -94,10 +128,12 @@ struct Inner {
     /// The mutable set of sessions and active rooms.
     registry: RwLock<Registry>,
     /// The card database a room's game is built from and decklists are validated
-    /// against. Not yet consumed here: the ready gate (issue #112) constructs the
-    /// game and validates submitted decks against it. Held now because the lobby
-    /// owns the database every room draws from (ADR 0012).
-    #[allow(dead_code)]
+    /// against. The ready gate resolves each submitted [`CardIdentity`] against it
+    /// ([`Lobby::submit_deck`]) and constructs the game from the accepted decks
+    /// ([`Lobby::start_game`]). The lobby owns the database every room draws from
+    /// (ADR 0012).
+    ///
+    /// [`CardIdentity`]: rune_protocol::CardIdentity
     db: CardDatabase,
     /// The cap on concurrently hosted rooms.
     max_rooms: usize,
@@ -139,7 +175,7 @@ struct Session {
     room: Option<RoomId>,
     /// The seat index within [`Session::room`], if seated.
     seat: Option<usize>,
-    /// Where this connection's [`LobbyView`]s are pushed. After a disconnect of a
+    /// Where this connection's [`LobbySignal`]s are pushed. After a disconnect of a
     /// held (seated) session the receiver is gone, so pushes silently no-op until a
     /// reconnect installs a fresh outbox here.
     outbox: LobbyOutbox,
@@ -148,13 +184,35 @@ struct Session {
     generation: u64,
 }
 
-/// One pre-game room: a config plus a per-seat occupancy roster. It holds **no**
-/// engine game — that is constructed only when the ready gate passes (issue #112).
+/// One room: a config, a per-seat occupancy roster, and each seat's pre-game gate
+/// state. It holds **no** engine game while pre-game; once the ready gate passes,
+/// [`game`](RoomEntry::game) holds the running room task and the seats have switched
+/// to the in-game contract (ADR 0012, issue #112).
 struct RoomEntry {
     /// The room's configuration, echoed in every [`RoomView`].
     config: RoomConfig,
     /// Per-seat occupancy: the [`SessionToken`] seated at each index, or `None`.
     seats: Vec<Option<SessionToken>>,
+    /// Per-seat gate state (submitted deck + ready flag), parallel to
+    /// [`seats`](RoomEntry::seats). Kept in a separate vector so seat *occupancy*
+    /// stays a plain `Vec<Option<SessionToken>>`.
+    gate: Vec<SeatGate>,
+    /// The running game once the ready gate has passed; `None` while the room is
+    /// still pre-game. A started room is never reaped as "empty" and rejects further
+    /// lobby commands — its seats speak `GameView`s now.
+    game: Option<RoomHandle>,
+}
+
+/// One seat's pre-game gate state: the deck it submitted (validated against the
+/// card database) and whether it has readied. Decklist *contents* never leave the
+/// server — only the derived `decked` flag appears in a [`RoomView`].
+#[derive(Clone, Default)]
+struct SeatGate {
+    /// The seat's validated decklist as engine card ids, or `None` if undecked.
+    deck: Option<Vec<CardId>>,
+    /// Whether the seat has declared itself ready. A seat may ready only once
+    /// [`deck`](SeatGate::deck) is `Some`.
+    ready: bool,
 }
 
 /// Why a [`LobbyCommand`] was rejected. On any of these the connection's current
@@ -176,9 +234,17 @@ pub(crate) enum LobbyError {
     RoomFull,
     /// `create_room` while the registry is already at [`Lobby::max_rooms`].
     AtCapacity,
-    /// A protocol command not yet handled in this phase (`submit_deck`, `ready`):
-    /// the deck/ready gate is issue #112.
-    Unsupported,
+    /// A `submit_deck`/`ready` command from a session that is not seated in a room.
+    NotSeated,
+    /// `submit_deck` whose decklist held a card identity that does not resolve to a
+    /// known card in the database. Carries the offending identity; the seat stays
+    /// undecked (its previous deck, if any, is untouched).
+    UnknownCard(String),
+    /// `ready` (up) on a seat that has not yet submitted a valid deck.
+    NotDecked,
+    /// A lobby command aimed at a room whose game has already started (its seats
+    /// speak `GameView`s now, not lobby commands).
+    GameStarted,
 }
 
 impl std::fmt::Display for LobbyError {
@@ -191,7 +257,10 @@ impl std::fmt::Display for LobbyError {
             Self::UnknownRoom => write!(f, "unknown room id"),
             Self::RoomFull => write!(f, "room is full"),
             Self::AtCapacity => write!(f, "lobby is at room capacity"),
-            Self::Unsupported => write!(f, "command not supported in this phase yet"),
+            Self::NotSeated => write!(f, "not seated in a room"),
+            Self::UnknownCard(id) => write!(f, "unknown card identity {id}"),
+            Self::NotDecked => write!(f, "seat has not submitted a valid deck"),
+            Self::GameStarted => write!(f, "the room's game has already started"),
         }
     }
 }
@@ -380,8 +449,10 @@ impl Lobby {
                 join_room(&mut registry, token, &room_id)
             }
             LobbyCommand::Leave => leave_room(&mut registry, token),
-            // The deck-submission and ready gate is issue #112.
-            LobbyCommand::SubmitDeck(_) | LobbyCommand::Ready(_) => Err(LobbyError::Unsupported),
+            LobbyCommand::SubmitDeck(SubmitDeck { cards }) => {
+                self.submit_deck(&mut registry, token, &cards)
+            }
+            LobbyCommand::Ready(Ready { ready }) => self.ready(&mut registry, token, ready),
         };
         // Whether the command succeeded (and already pushed the affected views) or
         // was rejected, the sender always ends with a fresh, authoritative view.
@@ -417,17 +488,167 @@ impl Lobby {
         let n = registry.next_room;
         registry.next_room += 1;
         let room_id = format!("r{n}");
-        let mut seats = vec![None; config.seats as usize];
+        let seat_count = config.seats as usize;
+        let mut seats = vec![None; seat_count];
         seats[0] = Some(token.clone());
-        registry
-            .rooms
-            .insert(room_id.clone(), RoomEntry { config, seats });
+        registry.rooms.insert(
+            room_id.clone(),
+            RoomEntry {
+                config,
+                seats,
+                gate: vec![SeatGate::default(); seat_count],
+                game: None,
+            },
+        );
         if let Some(session) = registry.sessions.get_mut(token) {
             session.room = Some(room_id.clone());
             session.seat = Some(0);
         }
         info!(%token, %room_id, "opened room");
         Ok(())
+    }
+
+    /// Handle `submit_deck`: validate every card identity against the database and,
+    /// on success, store the seat's deck (leaving it decked) and re-notify the room.
+    ///
+    /// Validation is authoritative and all-or-nothing: the first identity that does
+    /// not resolve rejects the whole command with [`LobbyError::UnknownCard`] and the
+    /// seat keeps whatever deck it had (it stays undecked if it had none) — "unknown
+    /// ids → typed error, seat stays undecked" (ADR 0012). Re-submitting a deck
+    /// clears that seat's ready flag, so a changed deck must be re-readied.
+    fn submit_deck(
+        &self,
+        registry: &mut Registry,
+        token: &SessionToken,
+        cards: &[String],
+    ) -> Result<(), LobbyError> {
+        let (room_id, seat) = seat_of(registry, token)?;
+        let room = registry
+            .rooms
+            .get_mut(&room_id)
+            .ok_or(LobbyError::NotSeated)?;
+        if room.game.is_some() {
+            return Err(LobbyError::GameStarted);
+        }
+        // Resolve the whole list before mutating, so a bad identity leaves the seat's
+        // existing gate state untouched.
+        let mut deck = Vec::with_capacity(cards.len());
+        for identity in cards {
+            let card = resolve_card(&self.inner.db, identity)
+                .ok_or_else(|| LobbyError::UnknownCard(identity.clone()))?;
+            deck.push(card);
+        }
+        if let Some(gate) = room.gate.get_mut(seat) {
+            gate.deck = Some(deck);
+            gate.ready = false;
+        }
+        push_room(registry, &room_id);
+        info!(%token, %room_id, seat, "seat submitted a valid deck");
+        Ok(())
+    }
+
+    /// Handle `ready`: toggle the seat's ready flag, then — when readying up completes
+    /// the gate — construct the game and hand every seat off to the in-game contract.
+    ///
+    /// Readying up requires a submitted deck ([`LobbyError::NotDecked`] otherwise);
+    /// un-readying (`ready == false`) is always allowed for a seated player before the
+    /// game starts. When the last seat readies and every seat is filled, decked, and
+    /// ready, [`start_game`](Lobby::start_game) builds the `GameState` and switches the
+    /// room to the game phase (ADR 0012).
+    fn ready(
+        &self,
+        registry: &mut Registry,
+        token: &SessionToken,
+        ready: bool,
+    ) -> Result<(), LobbyError> {
+        let (room_id, seat) = seat_of(registry, token)?;
+        let room = registry
+            .rooms
+            .get_mut(&room_id)
+            .ok_or(LobbyError::NotSeated)?;
+        if room.game.is_some() {
+            return Err(LobbyError::GameStarted);
+        }
+        if ready && room.gate.get(seat).is_none_or(|g| g.deck.is_none()) {
+            return Err(LobbyError::NotDecked);
+        }
+        if let Some(gate) = room.gate.get_mut(seat) {
+            gate.ready = ready;
+        }
+        // Everyone in the room sees the changed ready flag.
+        push_room(registry, &room_id);
+        if ready {
+            self.start_game(registry, &room_id);
+        }
+        info!(%token, %room_id, seat, ready, "seat toggled ready");
+        Ok(())
+    }
+
+    /// Construct the game and hand off, but only if the room is fully gated: every
+    /// seat occupied, decked, and ready. Otherwise a no-op — the room stays pre-game.
+    ///
+    /// On the gate passing, builds a [`GameSetup`] from the seats' submitted decks in
+    /// seat order with a server-generated seed, spawns a [`Room`] around
+    /// [`GameState::new`], stores its handle on the [`RoomEntry`], and pushes each
+    /// seated session a [`LobbySignal::Start`] carrying its seat and the room handle.
+    /// Each connection then reunites its socket and switches to `serve_connection`
+    /// (`GameView`s from here on). If construction fails — which cannot happen once
+    /// every deck validated at submit against the same database — the game is not
+    /// started and the room stays pre-game (logged), rather than panicking.
+    fn start_game(&self, registry: &mut Registry, room_id: &RoomId) {
+        let Some(room) = registry.rooms.get(room_id) else {
+            return;
+        };
+        // Gate: every seat filled, decked, and ready.
+        let ready_to_start = room
+            .seats
+            .iter()
+            .zip(&room.gate)
+            .all(|(occupant, gate)| occupant.is_some() && gate.deck.is_some() && gate.ready);
+        if !ready_to_start {
+            return;
+        }
+
+        // Build the setup from each seat's deck, in seat order.
+        let players: Vec<PlayerSetup> = room
+            .gate
+            .iter()
+            .map(|gate| PlayerSetup::new(gate.deck.clone().unwrap_or_default()))
+            .collect();
+        let setup = GameSetup::new(players, generate_seed());
+        let db = self.inner.db.clone();
+        let state = match GameState::new(&setup, &db) {
+            Ok(state) => state,
+            Err(error) => {
+                // Unreachable in practice: every card id was validated at submit.
+                warn!(%room_id, %error, "game construction failed; room stays pre-game");
+                return;
+            }
+        };
+        let (handle, _task) = Room::new(state, db).spawn();
+
+        // Hand every seated session off to the in-game contract.
+        let occupants: Vec<(Seat, SessionToken)> = room
+            .seats
+            .iter()
+            .enumerate()
+            .filter_map(|(seat, occupant)| occupant.clone().map(|token| (seat, token)))
+            .collect();
+        for (seat, token) in &occupants {
+            if let Some(session) = registry.sessions.get(token) {
+                let _ = session.outbox.send(Some(LobbySignal::Start {
+                    seat: *seat,
+                    room: handle.clone(),
+                }));
+            }
+        }
+        // Mark the room started so it rejects further lobby commands and is never
+        // reaped as empty. The task handle keeps the room alive alongside the
+        // connections' own handles.
+        if let Some(room) = registry.rooms.get_mut(room_id) {
+            room.game = Some(handle);
+        }
+        info!(%room_id, seats = occupants.len(), "ready gate passed; game constructed");
     }
 }
 
@@ -489,24 +710,73 @@ fn leave_room(registry: &mut Registry, token: &SessionToken) -> Result<(), Lobby
     Ok(())
 }
 
-/// Clear a seat's occupant. A stale room id/seat is ignored.
+/// Clear a seat's occupant and reset its pre-game gate state (a vacated seat is
+/// undecked and unready). A stale room id/seat is ignored.
 fn vacate(registry: &mut Registry, room_id: &RoomId, seat: usize) {
     if let Some(room) = registry.rooms.get_mut(room_id) {
         if let Some(slot) = room.seats.get_mut(seat) {
             *slot = None;
         }
+        if let Some(gate) = room.gate.get_mut(seat) {
+            *gate = SeatGate::default();
+        }
     }
 }
 
-/// Drop every room with no remaining occupants, freeing the capacity it held.
+/// Drop every **pre-game** room with no remaining occupants, freeing the capacity it
+/// held. A started room ([`RoomEntry::game`] is `Some`) is left alone: its game task
+/// owns the seats' lifecycle now, so it is not an empty pre-game room to reclaim.
 fn reap_empty(registry: &mut Registry) {
     registry.rooms.retain(|room_id, room| {
+        if room.game.is_some() {
+            return true;
+        }
         let occupied = room.seats.iter().any(Option::is_some);
         if !occupied {
             info!(%room_id, "reclaimed empty room");
         }
         occupied
     });
+}
+
+/// The room id and seat index of a seated session, or [`LobbyError::NotSeated`] if
+/// the session is not seated in a room.
+fn seat_of(registry: &Registry, token: &SessionToken) -> Result<(RoomId, usize), LobbyError> {
+    match registry.sessions.get(token) {
+        Some(Session {
+            room: Some(room_id),
+            seat: Some(seat),
+            ..
+        }) => Ok((room_id.clone(), *seat)),
+        _ => Err(LobbyError::NotSeated),
+    }
+}
+
+/// Resolve a wire [`CardIdentity`] to an engine [`CardId`], or `None` if it does not
+/// name a card in `db`.
+///
+/// ADR 0013 owns the eventual card-identity vocabulary; until it lands the server
+/// interprets an identity as the decimal [`CardId`] key of the card database, so a
+/// non-numeric or out-of-database identity is simply unknown.
+///
+/// [`CardIdentity`]: rune_protocol::CardIdentity
+fn resolve_card(db: &CardDatabase, identity: &str) -> Option<CardId> {
+    let id = CardId(identity.parse::<u64>().ok()?);
+    db.card(id).is_some().then_some(id)
+}
+
+/// A server-generated shuffle seed for a starting game (ADR 0012). The engine is
+/// pure and takes its only randomness from this seed; the *server* is where the
+/// entropy is sourced. Mixes the wall clock with a process-lifetime counter so two
+/// games constructed in the same instant still get distinct seeds.
+fn generate_seed() -> u64 {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    nanos ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15)
 }
 
 /// Mint an unguessable per-session token from the operating-system CSPRNG.
@@ -539,13 +809,7 @@ fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
         .room
         .as_ref()
         .and_then(|room_id| build_room_view(registry, room_id));
-    // `valid_commands` is the only source of interactivity; advertise exactly what
-    // this phase implements. The deck/ready commands arrive with issue #112.
-    let valid_commands = if session.room.is_some() {
-        vec!["leave".to_string()]
-    } else {
-        vec!["create_room".to_string(), "join_room".to_string()]
-    };
+    let valid_commands = valid_commands(registry, session);
     Some(LobbyView {
         session: token.clone(),
         you: session.player.clone(),
@@ -554,9 +818,34 @@ fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
     })
 }
 
+/// The lobby commands legal for a session right now — the only source of
+/// interactivity in a [`LobbyView`], exactly as `valid_actions` is in `GameView`.
+///
+/// Roomless: `create_room`/`join_room`. Seated in a pre-game room: always
+/// `submit_deck` and `leave`, plus `ready` once the seat is decked, or `unready`
+/// once it is ready. (A started room's seats are on the in-game contract and never
+/// see a `LobbyView`, so no in-game case appears here.)
+fn valid_commands(registry: &Registry, session: &Session) -> Vec<String> {
+    let Some(room_id) = session.room.as_ref() else {
+        return vec!["create_room".to_string(), "join_room".to_string()];
+    };
+    let mut commands = vec!["submit_deck".to_string()];
+    if let (Some(room), Some(seat)) = (registry.rooms.get(room_id), session.seat) {
+        if let Some(gate) = room.gate.get(seat) {
+            if gate.ready {
+                commands.push("unready".to_string());
+            } else if gate.deck.is_some() {
+                commands.push("ready".to_string());
+            }
+        }
+    }
+    commands.push("leave".to_string());
+    commands
+}
+
 /// Build the [`RoomView`] for a room: its config and full seat roster, with each
-/// occupant resolved to its public [`PlayerId`]. Decklist contents are never
-/// exposed — only `decked`/`ready` flags, both `false` until issue #112.
+/// occupant resolved to its public [`PlayerId`]. Decklist *contents* are never
+/// exposed — only the derived `decked` flag and the `ready` flag per seat.
 fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
     let room = registry.rooms.get(room_id)?;
     let seats = room
@@ -568,11 +857,12 @@ fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
                 .as_ref()
                 .and_then(|tok| registry.sessions.get(tok))
                 .map(|session| session.player.clone());
+            let gate = room.gate.get(index);
             SeatView {
                 seat: index as u8,
                 occupied_by,
-                decked: false,
-                ready: false,
+                decked: gate.is_some_and(|g| g.deck.is_some()),
+                ready: gate.is_some_and(|g| g.ready),
             }
         })
         .collect();
@@ -585,11 +875,25 @@ fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
 
 /// Push a fresh [`LobbyView`] to one session's outbox. A closed outbox (the reader
 /// is gone) is ignored — the disconnect path cleans the session up.
+///
+/// A session seated in a **started** room is skipped: it has already been sent the
+/// terminal [`LobbySignal::Start`], and pushing a view would overwrite that hand-off
+/// in the latest-value channel before the connection reads it. Started seats are on
+/// the in-game contract and no longer render `LobbyView`s.
 fn push_view(registry: &Registry, token: &SessionToken) {
+    let Some(session) = registry.sessions.get(token) else {
+        return;
+    };
+    if session
+        .room
+        .as_ref()
+        .and_then(|room_id| registry.rooms.get(room_id))
+        .is_some_and(|room| room.game.is_some())
+    {
+        return;
+    }
     if let Some(view) = build_view(registry, token) {
-        if let Some(session) = registry.sessions.get(token) {
-            let _ = session.outbox.send(Some(view));
-        }
+        let _ = session.outbox.send(Some(LobbySignal::View(view)));
     }
 }
 
@@ -611,23 +915,27 @@ fn push_room(registry: &Registry, room_id: &RoomId) {
 /// it registers a session (receiving the initial [`LobbyView`]), then pumps the
 /// socket both ways until either side closes. Decoded [`LobbyCommand`]s are routed
 /// through [`Lobby::command`]; every [`LobbyView`] the lobby pushes is serialized to
-/// JSON and written back. On exit the session is disconnected, vacating its seat.
+/// JSON and written back. On exit the session is disconnected — a **seated** session
+/// has its seat held open for reconnect (issue #113), a roomless one is dropped.
 ///
 /// It carries **no game logic** — it only (de)serializes the lobby protocol and
-/// routes commands to the authoritative registry. Construction of the engine game
-/// and the switch to the in-game `GameView` contract happen at the ready gate
-/// (issue #112), not here.
+/// routes commands to the authoritative registry. Constructing the engine game is
+/// the lobby's job at the ready gate; when it fires, this bridge learns of it via a
+/// [`LobbySignal::Start`] on the outbox, reunites its socket, and **hands off to
+/// [`serve_connection`]** — from there the connection speaks the in-game `GameView`
+/// contract for the life of that game. Nothing game-related is written before that.
 ///
 /// `shutdown` lets the layer-1 server stop the bridge on server shutdown: when it
 /// resolves, the session is released and the socket is closed politely, just as if
-/// the peer had hung up.
+/// the peer had hung up. It is forwarded to the in-game bridge on hand-off, so a
+/// started game shuts down cleanly too.
 pub async fn serve_lobby_connection<S, F>(lobby: Lobby, ws: WebSocketStream<S>, shutdown: F)
 where
     S: AsyncRead + AsyncWrite + Unpin,
     F: Future<Output = ()>,
 {
     let (mut write, mut read) = ws.split();
-    let (outbox_tx, mut outbox_rx) = watch::channel::<Option<LobbyView>>(None);
+    let (outbox_tx, mut outbox_rx) = watch::channel::<Option<LobbySignal>>(None);
     // Registering the session pushes the initial LobbyView onto the outbox, so the
     // writer arm below sends it as the connection's first frame. The handle can be
     // reassigned mid-connection when a `Hello` reconnects to a held seat.
@@ -641,6 +949,9 @@ where
             return;
         }
     };
+
+    // Set once the ready gate hands this connection off to a started game.
+    let mut handoff: Option<(Seat, RoomHandle)> = None;
 
     tokio::pin!(shutdown);
     loop {
@@ -670,8 +981,8 @@ where
             changed = outbox_rx.changed() => match changed {
                 Ok(()) => {
                     let latest = outbox_rx.borrow_and_update().clone();
-                    if let Some(view) = latest {
-                        match serde_json::to_string(&view) {
+                    match latest {
+                        Some(LobbySignal::View(view)) => match serde_json::to_string(&view) {
                             Ok(json) => {
                                 if write.send(Message::Text(json)).await.is_err() {
                                     break;
@@ -680,12 +991,33 @@ where
                             Err(error) => {
                                 warn!(token = %handle.token, %error, "failed to serialize lobby view");
                             }
+                        },
+                        // The ready gate passed: stop serving the lobby and hand off
+                        // to the in-game contract below.
+                        Some(LobbySignal::Start { seat, room }) => {
+                            handoff = Some((seat, room));
+                            break;
                         }
+                        None => {}
                     }
                 }
                 Err(_) => break,
             },
         }
+    }
+
+    if let Some((seat, room)) = handoff {
+        // Reunite the split socket and switch to the in-game bridge. The session is
+        // *not* disconnected: its seat is now the game's, held open for reconnect
+        // (issue #113). The shutdown future carries over so the game bridge still
+        // closes cleanly on server shutdown.
+        match write.reunite(read) {
+            Ok(ws) => serve_connection(seat, room, ws, shutdown).await,
+            Err(error) => {
+                warn!(token = %handle.token, %error, "failed to reunite socket for game hand-off")
+            }
+        }
+        return;
     }
 
     lobby.disconnect(&handle).await;
@@ -717,7 +1049,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
-    use rune_protocol::{Ready, SubmitDeck};
+    use rune_protocol::Hello;
 
     fn lobby(max_rooms: usize) -> Lobby {
         Lobby::bundled(max_rooms).expect("bundled cards")
@@ -730,12 +1062,30 @@ mod tests {
         }
     }
 
+    /// A 40-card decklist over the bundled ids 1..=6, expressed as wire card
+    /// identities (the server interprets each as a decimal [`CardId`]).
+    fn decklist() -> Vec<String> {
+        (0..40).map(|i| ((i % 6) + 1).to_string()).collect()
+    }
+
+    /// Submit a valid deck for `client`. `command` pushes synchronously, so the
+    /// client's [`current`](Client::current) view reflects it once this returns.
+    async fn submit_valid_deck(lobby: &Lobby, client: &Client) {
+        lobby
+            .command(
+                &client.token,
+                LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+            )
+            .await
+            .expect("valid deck accepted");
+    }
+
     /// A test client: a registered session plus its outbox receiver. Holds the
     /// connection `generation` too so it can build a [`SessionHandle`] for disconnect.
     struct Client {
         token: SessionToken,
         generation: u64,
-        rx: watch::Receiver<Option<LobbyView>>,
+        rx: watch::Receiver<Option<LobbySignal>>,
     }
 
     impl Client {
@@ -772,18 +1122,42 @@ mod tests {
             }
         }
 
-        /// The latest view pushed to this client (awaiting the next change).
-        async fn view(&mut self) -> LobbyView {
-            self.rx.changed().await.expect("a view was pushed");
+        /// The latest signal pushed to this client (awaiting the next change).
+        async fn signal(&mut self) -> LobbySignal {
+            self.rx.changed().await.expect("a signal was pushed");
             self.rx
                 .borrow_and_update()
                 .clone()
-                .expect("pushed view is never the initial empty slot")
+                .expect("pushed signal is never the initial empty slot")
+        }
+
+        /// The latest pre-game view pushed to this client (awaiting the next change).
+        async fn view(&mut self) -> LobbyView {
+            match self.signal().await {
+                LobbySignal::View(view) => view,
+                LobbySignal::Start { .. } => panic!("expected a lobby view, got a game start"),
+            }
         }
 
         /// The current view without waiting for a further change.
         fn current(&self) -> LobbyView {
-            self.rx.borrow().clone().expect("a view is present")
+            match self.rx.borrow().clone().expect("a signal is present") {
+                LobbySignal::View(view) => view,
+                LobbySignal::Start { .. } => panic!("expected a lobby view, got a game start"),
+            }
+        }
+
+        /// Whether a game-start hand-off has been pushed to this client.
+        fn started(&self) -> bool {
+            matches!(*self.rx.borrow(), Some(LobbySignal::Start { .. }))
+        }
+
+        /// The seat carried by a pushed game-start hand-off, if any.
+        fn start_seat(&self) -> Option<Seat> {
+            match &*self.rx.borrow() {
+                Some(LobbySignal::Start { seat, .. }) => Some(*seat),
+                _ => None,
+            }
         }
     }
 
@@ -831,7 +1205,11 @@ mod tests {
         assert!(room.seats[1].occupied_by.is_none());
         // No game is constructed: the roster reflects nobody decked or ready.
         assert!(room.seats.iter().all(|s| !s.decked && !s.ready));
-        assert_eq!(view.valid_commands, vec!["leave".to_string()]);
+        // Seated but undecked: the seat may submit a deck or leave, not ready up.
+        assert_eq!(
+            view.valid_commands,
+            vec!["submit_deck".to_string(), "leave".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -974,9 +1352,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_full_room_stays_in_the_lobby_phase_with_no_game() {
-        // Two seats, both filled — yet with no ready gate (issue #112) nobody starts
-        // a game: both occupants stay in the lobby phase. This is what retires the
-        // old "live with one player and empty decks" behavior.
+        // Two seats, both filled — yet with no ready gate passing nobody starts a
+        // game: both occupants stay in the lobby phase. This is what retires the old
+        // "live with one player and empty decks" behavior.
         let lobby = lobby(4);
         let mut alice = Client::connect(&lobby).await;
         let _ = alice.view().await;
@@ -996,9 +1374,17 @@ mod tests {
             .await
             .unwrap();
 
-        // Both remain in the lobby: the only interactivity is `leave`, never actions.
-        assert_eq!(bob.view().await.valid_commands, vec!["leave".to_string()]);
-        assert_eq!(alice.view().await.valid_commands, vec!["leave".to_string()]);
+        // Both remain in the lobby: interactivity is deck submission / leave, never
+        // in-game actions. No game has been constructed.
+        assert_eq!(
+            bob.view().await.valid_commands,
+            vec!["submit_deck".to_string(), "leave".to_string()]
+        );
+        assert_eq!(
+            alice.view().await.valid_commands,
+            vec!["submit_deck".to_string(), "leave".to_string()]
+        );
+        assert!(!bob.started() && !alice.started());
     }
 
     #[tokio::test]
@@ -1358,16 +1744,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn leave_without_a_room_and_deferred_commands_are_typed_errors() {
+    async fn commands_that_require_a_seat_are_typed_errors_when_roomless() {
         let lobby = lobby(4);
         let mut alice = Client::connect(&lobby).await;
         let _ = alice.view().await;
 
+        // Roomless: leave, submit_deck, and ready all require a seat.
         assert_eq!(
             lobby.command(&alice.token, LobbyCommand::Leave).await,
             Err(LobbyError::NotInRoom)
         );
-        // The deck/ready gate is issue #112: these commands are not yet handled.
         assert_eq!(
             lobby
                 .command(
@@ -1375,14 +1761,230 @@ mod tests {
                     LobbyCommand::SubmitDeck(SubmitDeck::default())
                 )
                 .await,
-            Err(LobbyError::Unsupported)
+            Err(LobbyError::NotSeated)
         );
         assert_eq!(
             lobby
                 .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
                 .await,
-            Err(LobbyError::Unsupported)
+            Err(LobbyError::NotSeated)
         );
+    }
+
+    /// Seat a fresh two-seat room with `alice` (creator, seat 0) and `bob` (seat 1),
+    /// draining the roster pushes so each client's next `view()` is the seat's own.
+    async fn seated_pair(lobby: &Lobby) -> (Client, Client, RoomId) {
+        let mut alice = Client::connect(lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("alice creates");
+        let room_id = alice.view().await.room.expect("alice in room").room_id;
+
+        let mut bob = Client::connect(lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::JoinRoom(JoinRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .expect("bob joins");
+        let _ = bob.view().await;
+        let _ = alice.view().await; // roster-updated push from bob's join
+        (alice, bob, room_id)
+    }
+
+    #[tokio::test]
+    async fn submit_deck_marks_the_seat_decked_for_everyone_and_offers_ready() {
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+            )
+            .await
+            .expect("valid deck accepted");
+
+        // Alice sees herself decked and is now offered `ready`.
+        let alice_view = alice.current();
+        let alice_room = alice_view.room.expect("alice in room");
+        assert!(alice_room.seats[0].decked);
+        assert!(!alice_room.seats[0].ready);
+        assert_eq!(
+            alice_view.valid_commands,
+            vec![
+                "submit_deck".to_string(),
+                "ready".to_string(),
+                "leave".to_string()
+            ]
+        );
+
+        // Bob (an undecked peer) is told alice is decked, but never sees her deck.
+        let bob_room = bob.current().room.expect("bob in room");
+        assert!(bob_room.seats[0].decked);
+        assert!(!bob_room.seats[1].decked);
+    }
+
+    #[tokio::test]
+    async fn submit_deck_with_an_unknown_card_is_rejected_and_seat_stays_undecked() {
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair(&lobby).await;
+
+        // A non-existent id (bundled db holds only 1..=6) rejects the whole list.
+        let err = lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: vec!["1".to_string(), "9999".to_string()],
+                }),
+            )
+            .await
+            .expect_err("unknown card id is rejected");
+        assert_eq!(err, LobbyError::UnknownCard("9999".to_string()));
+        // The seat stays undecked; the rejection re-sent the current view.
+        assert!(!alice.current().room.expect("in room").seats[0].decked);
+    }
+
+    #[tokio::test]
+    async fn readying_up_requires_a_submitted_deck() {
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair(&lobby).await;
+
+        // Ready before decking is a typed error; the seat stays unready.
+        assert_eq!(
+            lobby
+                .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+                .await,
+            Err(LobbyError::NotDecked)
+        );
+        assert!(!alice.current().room.expect("in room").seats[0].ready);
+    }
+
+    #[tokio::test]
+    async fn ready_toggles_and_un_ready_is_allowed_before_start() {
+        // `command` pushes synchronously, so `current()` reflects the latest state
+        // as soon as the call returns — no need to await intermediate frames (which
+        // a latest-value watch would coalesce anyway).
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+        submit_valid_deck(&lobby, &alice).await;
+
+        // Ready up: alice's seat shows ready and she is now offered `unready`, and
+        // her peer sees the flag too.
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("ready accepted");
+        assert!(alice.current().room.expect("in room").seats[0].ready);
+        assert_eq!(
+            alice.current().valid_commands,
+            vec![
+                "submit_deck".to_string(),
+                "unready".to_string(),
+                "leave".to_string()
+            ]
+        );
+        assert!(bob.current().room.expect("in room").seats[0].ready);
+
+        // Un-ready: allowed before the game starts; the flag clears for everyone.
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: false }))
+            .await
+            .expect("un-ready accepted");
+        assert!(!alice.current().room.expect("in room").seats[0].ready);
+        assert!(!bob.current().room.expect("in room").seats[0].ready);
+        // Only the decked seat readied then un-readied: still no game.
+        assert!(!alice.started() && !bob.started());
+    }
+
+    #[tokio::test]
+    async fn start_is_blocked_while_a_seat_is_undecked() {
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+        // Only alice decks and readies; bob never submits a deck.
+        submit_valid_deck(&lobby, &alice).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+
+        // The gate cannot pass with bob undecked: no game is constructed.
+        assert!(!alice.started() && !bob.started());
+        assert!(alice.current().room.expect("in room").seats[0].ready);
+    }
+
+    #[tokio::test]
+    async fn start_is_blocked_while_a_seat_is_unready() {
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+        // Both deck; only alice readies.
+        submit_valid_deck(&lobby, &alice).await;
+        submit_valid_deck(&lobby, &bob).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+
+        // Bob is decked but unready: the gate stays shut.
+        assert!(!alice.started() && !bob.started());
+    }
+
+    #[tokio::test]
+    async fn last_seat_readying_constructs_the_game_and_hands_off_every_seat() {
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+        submit_valid_deck(&lobby, &alice).await;
+        submit_valid_deck(&lobby, &bob).await;
+
+        // Alice readies first — not enough; the gate needs every seat.
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        assert!(!alice.started() && !bob.started());
+
+        // Bob readies last: the gate passes and both seats are handed off to a game.
+        // The terminal `Start` supersedes the roster push in each latest-value outbox.
+        lobby
+            .command(&bob.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("bob readies");
+
+        assert_eq!(alice.start_seat(), Some(0));
+        assert_eq!(bob.start_seat(), Some(1));
+
+        // Post-start, further lobby commands to the started room are rejected.
+        assert_eq!(
+            lobby
+                .command(&alice.token, LobbyCommand::Ready(Ready { ready: false }))
+                .await,
+            Err(LobbyError::GameStarted)
+        );
+    }
+
+    #[tokio::test]
+    async fn hello_command_is_acknowledged_with_a_fresh_view() {
+        // A `Hello` routed through `command` (rather than the serve loop's reconnect
+        // path) is a harmless ack that re-sends the current view.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let first = alice.view().await;
+        lobby
+            .command(&alice.token, LobbyCommand::Hello(Hello::default()))
+            .await
+            .expect("hello acknowledged");
+        let again = alice.view().await;
+        assert_eq!(again.session, first.session);
+        assert!(again.room.is_none());
     }
 
     #[tokio::test]
