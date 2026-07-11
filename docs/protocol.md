@@ -53,6 +53,10 @@ The whole array is omitted when a permanent has no counters.
 - `subject` lists the entity ids this action belongs to. Clients render
   entity-subject actions on the entity; subject-less actions (pass, end turn)
   go in the action bar (ADR 0004).
+- Entity ids are opaque strings and are **per physical instance**: two copies of
+  the same printed card in a zone carry different card entity ids, so an action
+  subject names exactly one copy. Clients treat these ids as opaque handles and
+  never parse them (the `card_N`/`perm_N` forms are server-internal).
 - `type` is a free-form string. Kinds emitted today: `pass_priority`
   (subject-less); `play_land` and `cast_spell` (subject = the hand card's entity
   id); `activate_ability` (subject = the source permanent's entity id). Clients

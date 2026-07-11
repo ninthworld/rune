@@ -8,7 +8,7 @@
 use crate::ability::{Ability, Cost};
 use crate::card::abilities_of;
 use crate::card_type::CardType;
-use crate::id::{CardId, PermanentId};
+use crate::id::{CardId, CardInstance, PermanentId};
 use crate::mana::parse_mana_cost;
 use crate::phase::Step;
 use crate::state::{GameState, Permanent};
@@ -23,8 +23,9 @@ pub enum Action {
     PassPriority,
     /// Play a land from hand (a special action; lands do not use the stack).
     PlayLand {
-        /// The land card in the active player's hand to play.
-        card: CardId,
+        /// The specific land card in the active player's hand to play. Names the
+        /// physical copy, so two identical lands in hand are distinguishable.
+        card: CardInstance,
     },
     /// Activate an ability of a permanent the priority holder controls.
     ActivateAbility {
@@ -35,8 +36,9 @@ pub enum Action {
     },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
-        /// The card in the caster's hand to cast.
-        card: CardId,
+        /// The specific card in the caster's hand to cast. Names the physical
+        /// copy, so two identical cards in hand are distinguishable.
+        card: CardInstance,
     },
 }
 
@@ -63,7 +65,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         // Play a land: at sorcery speed, one per turn.
         if sorcery_speed && !state.land_played {
             for &card in &player.hand {
-                if is_land(db, card) {
+                if is_land(db, card.card) {
                     actions.push(Action::PlayLand { card });
                 }
             }
@@ -72,8 +74,8 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         // Cast a creature spell payable from the current pool (sorcery speed).
         if sorcery_speed {
             for &card in &player.hand {
-                if let Some(data) = db.card(card) {
-                    if is_creature(db, card)
+                if let Some(data) = db.card(card.card) {
+                    if is_creature(db, card.card)
                         && player.mana_pool.can_pay(&parse_mana_cost(&data.mana_cost))
                     {
                         actions.push(Action::CastSpell { card });

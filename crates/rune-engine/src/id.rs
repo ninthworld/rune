@@ -7,9 +7,34 @@
 /// Identifies a card definition (a specific printing/oracle entry).
 ///
 /// A card keeps the same `CardId` in every zone; it is not the battlefield
-/// identity (see [`PermanentId`]).
+/// identity (see [`PermanentId`]) nor the per-copy identity (see
+/// [`CardInstanceId`]). Two copies of the same printing share one `CardId`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct CardId(pub u64);
+
+/// Identifies one physical card in a game, distinct from every other copy.
+///
+/// Minted fresh from [`crate::GameState::mint_id`] when a card first enters a
+/// zone, so two copies of the same [`CardId`] (two Forests in hand) are
+/// individually addressable in library, hand, graveyard, exile, and on the
+/// stack. Unlike [`PermanentId`], which is reborn on each battlefield entry, an
+/// instance id stays with the physical card as it moves between those zones.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub struct CardInstanceId(pub u64);
+
+/// One physical card occupying a zone: its per-game [`CardInstanceId`] paired
+/// with the [`CardId`] of the printing it is a copy of.
+///
+/// This pairing is the mapping from instance identity to printed card that lets
+/// duplicate copies stay distinguishable within a zone (`Vec<CardInstance>`),
+/// rather than collapsing to a bare `CardId`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub struct CardInstance {
+    /// This copy's unique per-game identity.
+    pub id: CardInstanceId,
+    /// The printing this copy represents.
+    pub card: CardId,
+}
 
 /// Identifies a seat at the table by index into [`crate::GameState::players`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]

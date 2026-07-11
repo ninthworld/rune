@@ -32,7 +32,7 @@ pub use actions::{valid_actions, Action};
 pub use apply::apply_action;
 pub use card::{abilities_of, CardData, CardDatabase};
 pub use card_type::{CardType, Supertype};
-pub use id::{CardId, PermanentId, PlayerId};
+pub use id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use phase::Step;
 pub use player::{Player, STARTING_LIFE};

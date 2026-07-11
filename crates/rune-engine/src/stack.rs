@@ -5,7 +5,7 @@
 //! players pass priority in succession (see `crate::apply_action`).
 
 use crate::ability::Effect;
-use crate::id::{CardId, PermanentId, PlayerId};
+use crate::id::{CardInstance, PermanentId, PlayerId};
 
 /// Identity of an object on the stack, minted fresh when the object is put there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -28,8 +28,10 @@ pub enum StackObjectKind {
     /// A permanent spell cast from a hand; resolving it puts the permanent onto
     /// the battlefield.
     Spell {
-        /// The card being cast.
-        card: CardId,
+        /// The physical card being cast. Carried as a [`CardInstance`] so the
+        /// card's identity is preserved from hand, across the stack, onto the
+        /// battlefield or into the graveyard.
+        card: CardInstance,
     },
     /// A triggered or activated (non-mana) ability; resolving it applies its
     /// effects.

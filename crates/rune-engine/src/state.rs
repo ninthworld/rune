@@ -12,7 +12,7 @@
 //! injected seed" structurally satisfiable, rather than satisfied only by the
 //! current absence of randomness.
 
-use crate::id::{CardId, PermanentId, PlayerId};
+use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::phase::Step;
 use crate::player::Player;
 use crate::stack::StackObject;
@@ -20,11 +20,16 @@ use crate::stack::StackObject;
 /// A permanent on the shared battlefield.
 ///
 /// Its [`PermanentId`] is minted fresh on battlefield entry and is distinct
-/// from the [`CardId`] of the card it represents.
+/// from the [`CardId`] of the card it represents. It also links the
+/// [`CardInstanceId`] of the physical card it originated from, so identity is
+/// preserved when the permanent leaves the battlefield for another zone.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Permanent {
     /// Battlefield identity, fresh on entry.
     pub id: PermanentId,
+    /// The physical card this permanent originated from. Stable across the zone
+    /// change that put it here, unlike [`Self::id`].
+    pub instance: CardInstanceId,
     /// The card this permanent represents.
     pub card: CardId,
     /// The player who currently controls it.
@@ -134,6 +139,19 @@ impl GameState {
         let id = self.next_object_id;
         self.next_object_id += 1;
         id
+    }
+
+    /// Mint a fresh [`CardInstance`] for `card`, drawing a unique
+    /// [`CardInstanceId`] from the monotonic counter.
+    ///
+    /// Called when a physical card first enters a game — deck loading (issue #9),
+    /// token creation, or test setup — so every copy is individually addressable
+    /// even when it shares a [`CardId`] with another.
+    pub fn new_instance(&mut self, card: CardId) -> CardInstance {
+        CardInstance {
+            id: CardInstanceId(self.mint_id()),
+            card,
+        }
     }
 
     /// The player who currently holds priority, or `None` if [`Self::priority`]

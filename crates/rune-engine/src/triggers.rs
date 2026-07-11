@@ -68,7 +68,7 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
-    use crate::id::CardId;
+    use crate::id::{CardId, CardInstanceId};
     use crate::state::Permanent;
 
     /// The bundled card database, for tests that need oracle data.
@@ -90,6 +90,7 @@ mod tests {
         let mut after = before.clone();
         after.battlefield.push(Permanent {
             id: PermanentId(1),
+            instance: CardInstanceId(1),
             card: CardId(6),
             controller: PlayerId(0),
             tapped: false,
