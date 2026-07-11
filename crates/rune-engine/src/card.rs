@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::ability::Ability;
+use crate::card_type::{CardType, Supertype};
 use crate::id::CardId;
 use crate::scripted::scripted_abilities;
 
@@ -31,8 +32,17 @@ const BUNDLED_SNAPSHOT: &str = include_str!("../data/cards.json");
 pub struct CardData {
     /// The card's name (e.g. `"Thornback Boar"`).
     pub name: String,
-    /// The full type line (e.g. `"Creature — Boar"`, `"Basic Land — Forest"`).
-    pub type_line: String,
+    /// Printed supertypes (e.g. `Basic`, `Legendary`); empty for most cards. Part
+    /// of the structured type line the engine reasons about — the display string
+    /// is rendered by [`CardData::type_line`], never parsed back.
+    #[serde(default)]
+    pub supertypes: Vec<Supertype>,
+    /// Printed card types (e.g. `Creature`, `Land`). Every card has at least one.
+    pub types: Vec<CardType>,
+    /// Printed subtypes (e.g. `"Elf"`, `"Scout"`, `"Forest"`); empty for many
+    /// cards. Open-ended, so kept as strings rather than an enum.
+    #[serde(default)]
+    pub subtypes: Vec<String>,
     /// The mana cost in curly-brace notation (e.g. `"{2}{G}"`); empty for cards
     /// with no mana cost, such as basic lands.
     pub mana_cost: String,
@@ -49,6 +59,37 @@ pub struct CardData {
     /// [`crate::scripted`]; use [`abilities_of`] to read both sources together.
     #[serde(default)]
     pub abilities: Vec<Ability>,
+}
+
+impl CardData {
+    /// Render the printed type line for display, e.g. `"Basic Land — Forest"` or
+    /// `"Creature — Elf Scout"`. Supertypes and types are joined with spaces;
+    /// subtypes, if any, follow an em dash. This is the single source for the
+    /// display string — it is never parsed back into types.
+    #[must_use]
+    pub fn type_line(&self) -> String {
+        let mut head: Vec<&str> = Vec::new();
+        head.extend(self.supertypes.iter().map(|s| s.display()));
+        head.extend(self.types.iter().map(|t| t.display()));
+        let mut line = head.join(" ");
+        if !self.subtypes.is_empty() {
+            line.push_str(" — ");
+            line.push_str(&self.subtypes.join(" "));
+        }
+        line
+    }
+
+    /// Whether the card has printed card type `card_type`.
+    #[must_use]
+    pub fn has_type(&self, card_type: CardType) -> bool {
+        self.types.contains(&card_type)
+    }
+
+    /// Whether the card has printed subtype `subtype` (case-sensitive, as printed).
+    #[must_use]
+    pub fn has_subtype(&self, subtype: &str) -> bool {
+        self.subtypes.iter().any(|s| s == subtype)
+    }
 }
 
 /// One entry in the JSON snapshot: a [`CardId`] paired with its [`CardData`].
@@ -139,6 +180,7 @@ mod tests {
 
     use super::*;
     use crate::ability::{Effect, TriggerCondition};
+    use crate::card_type::{CardType, Supertype};
 
     #[test]
     fn bundled_snapshot_parses() {
@@ -152,7 +194,9 @@ mod tests {
         let db = CardDatabase::bundled().unwrap();
         let boar = db.card(CardId(1)).unwrap();
         assert_eq!(boar.name, "Thornback Boar");
-        assert_eq!(boar.type_line, "Creature — Boar");
+        assert_eq!(boar.types, vec![CardType::Creature]);
+        assert_eq!(boar.subtypes, vec!["Boar".to_string()]);
+        assert_eq!(boar.type_line(), "Creature — Boar");
         assert_eq!(boar.mana_cost, "{2}{G}");
         assert_eq!(boar.oracle_text, "");
         assert_eq!(boar.power, Some(3));
@@ -164,7 +208,9 @@ mod tests {
         let db = CardDatabase::bundled().unwrap();
         let forest = db.card(CardId(5)).unwrap();
         assert_eq!(forest.name, "Forest");
-        assert_eq!(forest.type_line, "Basic Land — Forest");
+        assert_eq!(forest.supertypes, vec![Supertype::Basic]);
+        assert_eq!(forest.types, vec![CardType::Land]);
+        assert_eq!(forest.type_line(), "Basic Land — Forest");
         assert_eq!(forest.mana_cost, "");
         assert_eq!(forest.power, None);
         assert_eq!(forest.toughness, None);
@@ -183,10 +229,37 @@ mod tests {
 
     #[test]
     fn from_json_parses_a_minimal_snapshot() {
-        let json = r#"[{"id":42,"name":"Test Wisp","type_line":"Creature — Spirit","mana_cost":"{U}","oracle_text":"","power":1,"toughness":1}]"#;
+        let json = r#"[{"id":42,"name":"Test Wisp","types":["creature"],"subtypes":["Spirit"],"mana_cost":"{U}","oracle_text":"","power":1,"toughness":1}]"#;
         let db = CardDatabase::from_json(json).unwrap();
         assert_eq!(db.len(), 1);
-        assert_eq!(db.card(CardId(42)).unwrap().name, "Test Wisp");
+        let wisp = db.card(CardId(42)).unwrap();
+        assert_eq!(wisp.name, "Test Wisp");
+        assert_eq!(wisp.type_line(), "Creature — Spirit");
+    }
+
+    #[test]
+    fn type_line_renders_supertypes_types_and_subtypes() {
+        let db = CardDatabase::bundled().unwrap();
+        // Multiple subtypes are space-joined after the em dash.
+        assert_eq!(
+            db.card(CardId(6)).unwrap().type_line(),
+            "Creature — Elf Scout"
+        );
+        // A supertype precedes the card type; the land subtype follows the dash.
+        assert_eq!(
+            db.card(CardId(5)).unwrap().type_line(),
+            "Basic Land — Forest"
+        );
+    }
+
+    #[test]
+    fn has_type_and_has_subtype_query_structured_types() {
+        let db = CardDatabase::bundled().unwrap();
+        let scout = db.card(CardId(6)).unwrap();
+        assert!(scout.has_type(CardType::Creature));
+        assert!(!scout.has_type(CardType::Land));
+        assert!(scout.has_subtype("Elf"));
+        assert!(!scout.has_subtype("Goblin"));
     }
 
     #[test]

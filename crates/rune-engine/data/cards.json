@@ -2,7 +2,8 @@
   {
     "id": 1,
     "name": "Thornback Boar",
-    "type_line": "Creature — Boar",
+    "types": ["creature"],
+    "subtypes": ["Boar"],
     "mana_cost": "{2}{G}",
     "oracle_text": "",
     "power": 3,
@@ -11,7 +12,8 @@
   {
     "id": 2,
     "name": "Riverbank Otter",
-    "type_line": "Creature — Otter",
+    "types": ["creature"],
+    "subtypes": ["Otter"],
     "mana_cost": "{1}{U}",
     "oracle_text": "",
     "power": 1,
@@ -20,7 +22,8 @@
   {
     "id": 3,
     "name": "Emberfang Jackal",
-    "type_line": "Creature — Jackal",
+    "types": ["creature"],
+    "subtypes": ["Jackal"],
     "mana_cost": "{1}{R}",
     "oracle_text": "",
     "power": 2,
@@ -29,7 +32,8 @@
   {
     "id": 4,
     "name": "Stonehide Basilisk",
-    "type_line": "Creature — Basilisk",
+    "types": ["creature"],
+    "subtypes": ["Basilisk"],
     "mana_cost": "{4}{G}",
     "oracle_text": "",
     "power": 4,
@@ -38,7 +42,9 @@
   {
     "id": 5,
     "name": "Forest",
-    "type_line": "Basic Land — Forest",
+    "supertypes": ["basic"],
+    "types": ["land"],
+    "subtypes": ["Forest"],
     "mana_cost": "",
     "oracle_text": "",
     "abilities": [
@@ -52,7 +58,8 @@
   {
     "id": 6,
     "name": "Verdant Scout",
-    "type_line": "Creature — Elf Scout",
+    "types": ["creature"],
+    "subtypes": ["Elf", "Scout"],
     "mana_cost": "{G}",
     "oracle_text": "When Verdant Scout enters the battlefield, draw a card.",
     "power": 1,

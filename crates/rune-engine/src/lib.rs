@@ -7,6 +7,7 @@
 
 mod ability;
 mod card;
+mod card_type;
 mod id;
 mod mana;
 mod phase;
@@ -18,6 +19,7 @@ mod zone;
 
 pub use ability::{is_mana_ability, Ability, Cost, Effect, TriggerCondition};
 pub use card::{abilities_of, CardData, CardDatabase};
+pub use card_type::{CardType, Supertype};
 pub use id::{CardId, PermanentId, PlayerId};
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use phase::Step;
@@ -352,15 +354,15 @@ fn cost_payable(cost: &[Cost], permanent: &Permanent) -> bool {
     })
 }
 
-/// Whether `card`'s type line marks it as a land.
+/// Whether `card` is a land, by its structured printed types.
 fn is_land(db: &CardDatabase, card: CardId) -> bool {
-    db.card(card).is_some_and(|c| c.type_line.contains("Land"))
+    db.card(card).is_some_and(|c| c.has_type(CardType::Land))
 }
 
-/// Whether `card`'s type line marks it as a creature.
+/// Whether `card` is a creature, by its structured printed types.
 fn is_creature(db: &CardDatabase, card: CardId) -> bool {
     db.card(card)
-        .is_some_and(|c| c.type_line.contains("Creature"))
+        .is_some_and(|c| c.has_type(CardType::Creature))
 }
 
 /// Apply replacement effects. Scaffold: no replacement effects exist yet, so
