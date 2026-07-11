@@ -13,21 +13,24 @@
  *   (`"block_<id>"`); each answered with the subset of blockers assigned to that
  *   attacker (the per-attacker "two-level" pick: which attacker (slot) → which
  *   blockers (toggled candidates)).
- * - **Mulligan bottoming / discard** — a `select_from_zone` prompt slot with an
- *   exact `count`; the answer is exactly `count` cards from the zone.
+ * - **Mulligan bottoming / discard / tutor** — a `select_from_zone` prompt slot
+ *   with an exact `count`; the answer is exactly `count` cards from the zone.
+ * - **Ordering (issue #157)** — an `order` prompt slot; the answer is all of its
+ *   `items` arranged into the chosen order (a permutation), reordered rather than
+ *   toggled. Every item is always included; only its position changes.
  *
- * As with targeting, **zero legality lives here**: candidate ids, counts, and the
- * option list all come straight off the {@link ValidAction} the server issued; the
- * session only records which advertised candidates the player toggled per slot and
- * assembles one atomic answer (`token` + one {@link TargetChoice} per slot). A
- * session is ephemeral UI state, reconstructable from the current view plus the
- * player's in-progress input, and discarded whenever a fresh view arrives — nothing
- * here is load-bearing across messages (hard rule: zero game logic in the client).
+ * As with targeting, **zero legality lives here**: candidate ids, counts, options,
+ * and order items all come straight off the {@link ValidAction} the server issued;
+ * the session only records which advertised candidates the player toggled (or the
+ * order they arranged) per slot and assembles one atomic answer (`token` + one
+ * {@link TargetChoice} per slot). A session is ephemeral UI state, reconstructable
+ * from the current view plus the player's in-progress input, and discarded whenever
+ * a fresh view arrives — nothing here is load-bearing across messages (hard rule:
+ * zero game logic in the client).
  *
- * The pre-game mulligan keep/take-another **`option`** prompt is carried through so
- * the bottoming step is reachable, but its richer UX (and the general
- * `option`/`order` prompt shapes) is issue #157; this module renders an option only
- * as an atomic submit trigger.
+ * The keep/take-another **`option`** prompt is collected separately and answered by
+ * the caller with the chosen option id; issue #157 renders it as a modal picker in
+ * the prompt banner (the richer UX #143 deferred).
  */
 import type { EntityId, Prompt, PromptOption, TargetChoice, ValidAction } from '../protocol';
 
@@ -54,21 +57,36 @@ export function isMultiSelect(action: ValidAction): boolean {
   return classifyAction(action) === 'multi';
 }
 
-/** A walked candidate slot: a subset requirement, or a count-bounded zone pick. */
+/**
+ * A walked slot: a subset requirement, a count-bounded zone pick, or an arrange
+ * (`order`) list. All three are answered by one {@link TargetChoice} keyed by
+ * `slot`; they differ only in how the player edits the chosen ids.
+ */
 export interface MultiSelectSlot {
   /** Opaque slot id the answer keys back to. */
   slot: string;
-  /** Human-readable prompt describing what to select. */
+  /** Human-readable prompt describing what to select or arrange. */
   prompt: string;
   /**
    * `subset` — any number of the candidates (attackers/blockers, optional).
    * `count` — exactly {@link MultiSelectSlot.count} of them (bottoming/discard).
+   * `order` — all of the candidates, arranged into the chosen order (a permutation).
    */
-  kind: 'subset' | 'count';
-  /** The server-listed candidate entity ids — the only ids the client may toggle. */
+  kind: 'subset' | 'count' | 'order';
+  /**
+   * The server-listed candidate entity ids — for `subset`/`count` the only ids the
+   * client may toggle; for `order` the full item set the player arranges.
+   */
   candidates: EntityId[];
   /** For a `count` slot, exactly how many must be chosen. */
   count?: number;
+  /**
+   * For a `select_from_zone` slot, the zone the cards come from (`"hand"`,
+   * `"graveyard"`, …). Display context only — the client renders candidates in
+   * place when the zone is on the board (hand) and in an overlay list when it is
+   * not (graveyard/library). Absent for a `subset` (combat) or `order` slot.
+   */
+  zone?: string;
 }
 
 /** A named-option prompt (mulligan keep/take-another) carried as a submit trigger. */
@@ -109,11 +127,18 @@ function isOption(prompt: Prompt): prompt is Extract<Prompt, { kind: 'option' }>
   return prompt.kind === 'option';
 }
 
+/** Whether a prompt is an `order` slot (arrange N items). */
+function isOrder(prompt: Prompt): prompt is Extract<Prompt, { kind: 'order' }> {
+  return prompt.kind === 'order';
+}
+
 /**
  * Begin a multi-select over an action. Walked slots are its target `requirements`
- * (subset) followed by any `select_from_zone` prompts (count); `option` prompts are
- * collected separately. `order` prompts are ignored here (issue #157). Callers gate
- * this on {@link isMultiSelect}.
+ * (subset) followed by any `select_from_zone` (count) and `order` prompts;
+ * `option` prompts are collected separately (answered by the caller). An `order`
+ * slot starts pre-filled with its items in the server's initial order, since every
+ * item is included and only its position changes. Callers gate this on
+ * {@link isMultiSelect}.
  */
 export function beginMultiSelect(action: ValidAction): MultiSelectSession {
   const slots: MultiSelectSlot[] = (action.requirements ?? []).map((req) => ({
@@ -131,13 +156,23 @@ export function beginMultiSelect(action: ValidAction): MultiSelectSession {
         kind: 'count',
         candidates: prompt.candidates ?? [],
         count: prompt.count,
+        zone: prompt.zone,
+      });
+    } else if (isOrder(prompt)) {
+      slots.push({
+        slot: prompt.slot,
+        prompt: prompt.prompt,
+        kind: 'order',
+        candidates: prompt.items ?? [],
       });
     } else if (isOption(prompt)) {
       options.push({ slot: prompt.slot, prompt: prompt.prompt, options: prompt.options ?? [] });
     }
-    // `order` prompts have no candidate/count slot here — deferred to #157.
   }
-  return { action, slots, options, active: 0, chosen: slots.map(() => []) };
+  // An `order` slot is answered with all its items, so it starts pre-filled in the
+  // server's initial order; every other slot starts empty (nothing chosen yet).
+  const chosen = slots.map((slot) => (slot.kind === 'order' ? [...slot.candidates] : []));
+  return { action, slots, options, active: 0, chosen };
 }
 
 /** The slot the player is currently toggling, or `null` if there are none. */
@@ -171,9 +206,38 @@ export function toggle(session: MultiSelectSession, entityId: EntityId): MultiSe
   return { ...session, chosen };
 }
 
-/** Whether one slot's current selection meets its constraint (subset: always). */
+/**
+ * Toggle a candidate is not how an `order` slot is edited — its items are
+ * rearranged. Move `entityId` one step within the active slot's order (`-1` earlier,
+ * `+1` later), returning the advanced session. A no-op for a non-order slot, an id
+ * not present, or a move off either end (the UI disables those controls anyway).
+ */
+export function moveInActiveSlot(
+  session: MultiSelectSession,
+  entityId: EntityId,
+  direction: -1 | 1,
+): MultiSelectSession {
+  const slot = activeSlot(session);
+  if (!slot || slot.kind !== 'order') return session;
+  const current = session.chosen[session.active] ?? [];
+  const from = current.indexOf(entityId);
+  const to = from + direction;
+  if (from < 0 || to < 0 || to >= current.length) return session;
+  const next = [...current];
+  [next[from], next[to]] = [next[to], next[from]];
+  const chosen = session.chosen.map((ids, i) => (i === session.active ? next : ids));
+  return { ...session, chosen };
+}
+
+/**
+ * Whether one slot's current selection meets its constraint: a `count` slot needs
+ * exactly `count`; an `order` slot needs all its items present (always true after a
+ * pre-fill + reorders); a `subset` slot is always satisfied (even the empty set).
+ */
 function slotSatisfied(slot: MultiSelectSlot, chosen: EntityId[]): boolean {
-  return slot.kind === 'count' ? chosen.length === (slot.count ?? 0) : true;
+  if (slot.kind === 'count') return chosen.length === (slot.count ?? 0);
+  if (slot.kind === 'order') return chosen.length === slot.candidates.length;
+  return true;
 }
 
 /** Whether every walked slot's selection meets its constraint (drives Confirm). */

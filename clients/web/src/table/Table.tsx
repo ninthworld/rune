@@ -19,7 +19,7 @@
  * on the next view, so the UI stays reconstructable from one GameView + prompt.
  */
 import { useEffect, useMemo, useState } from 'react';
-import type { EntityId, ValidAction } from '../protocol';
+import type { EntityId, GameView, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { publishScene } from '../testHooks';
 import { ActionBar } from './ActionBar';
@@ -56,10 +56,12 @@ import {
   hasOptions,
   isLastSlot,
   isMultiSelect,
+  moveInActiveSlot as msMove,
   optionsSubmittable,
   toggle as msToggle,
   type MultiSelectSession,
 } from './multiSelect';
+import { PromptSurface } from './PromptSurface';
 import { boardWrap, button, main, muted, waitingBar } from './styles';
 
 /**
@@ -91,6 +93,27 @@ function findCard(scene: TableScene, id: EntityId | null): RenderedCard | undefi
   return scene.hand.find((card) => card.entityId === id);
 }
 
+/**
+ * A display-name lookup across every zone whose cards the view exposes (hand,
+ * battlefield, graveyards, exile). Used to label the prompt surface's rows for a
+ * `select_from_zone`/`order` over a non-canvas zone; an id with no known card
+ * (e.g. a hidden library card or an abstract ordered trigger) falls back to its id.
+ */
+function cardNameOf(view: GameView, id: EntityId): string {
+  for (const card of view.my_hand) if (card.id === id) return card.name;
+  for (const perm of view.battlefield) if (perm.id === id) return perm.card.name;
+  for (const pile of view.graveyards)
+    for (const card of pile.cards) if (card.id === id) return card.name;
+  for (const pile of view.exile)
+    for (const card of pile.cards) if (card.id === id) return card.name;
+  return id;
+}
+
+/** Whether an id is rendered as a canvas card (hand or battlefield) in this view. */
+function isOnCanvas(view: GameView, id: EntityId): boolean {
+  return view.my_hand.some((card) => card.id === id) || view.battlefield.some((p) => p.id === id);
+}
+
 export function Table() {
   const view = useGameStore((state) => state.view);
   const choose = useGameStore((state) => state.choose);
@@ -109,18 +132,43 @@ export function Table() {
     setMultiSelect(null);
   }, [view]);
 
+  // Escape abandons the in-progress selection, mirroring the targeting-mode Cancel
+  // affordance (keyboard parity across both prompt modes). Multi-select takes
+  // precedence when both somehow coexist; a plain view ignores the key.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      if (multiSelect) setMultiSelect(null);
+      else if (targeting) setTargeting(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [multiSelect, targeting]);
+
   const viewportWidth = useViewportWidth();
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
   // The server names the receiver directly in `view.you`; an older server may
   // omit it (empty), which we treat as "unknown".
   const localId = view?.you || undefined;
+
+  // The active multi-select slot and whether it is answered in the DOM prompt
+  // surface rather than on the canvas: an `order` list, or a `select_from_zone`
+  // whose candidates are not board cards (graveyard/library). A hand/battlefield
+  // selection stays on the canvas (candidates highlight in place).
+  const msSlot = multiSelect ? msActiveSlot(multiSelect) : null;
+  const overlayMode =
+    !!msSlot &&
+    !!view &&
+    (msSlot.kind === 'order' || !msSlot.candidates.some((id) => isOnCanvas(view, id)));
+
   const scene = useMemo(() => {
     if (!view) return null;
-    // In targeting / multi-select mode the active slot's server candidates drive
-    // highlight/dim; a multi-select also marks the already-chosen candidates.
-    // Entity selection is suppressed so the only interaction is picking candidates.
+    // In targeting / on-canvas multi-select mode the active slot's server candidates
+    // drive highlight/dim; a multi-select also marks the already-chosen candidates.
+    // In overlay mode the picking happens in the DOM surface, so the board stays
+    // neutral (no candidates passed) rather than dimming every card.
     let targetingScene: TargetingScene | undefined;
-    if (multiSelect) {
+    if (multiSelect && !overlayMode) {
       targetingScene = {
         candidates: msActiveCandidates(multiSelect),
         selected: msActiveChosen(multiSelect),
@@ -131,7 +179,7 @@ export function Table() {
     }
     const sel = targeting || multiSelect ? undefined : (selectedId ?? undefined);
     return buildTableScene(view, sel, viewportWidth, targetingScene);
-  }, [view, selectedId, viewportWidth, targeting, multiSelect]);
+  }, [view, selectedId, viewportWidth, targeting, multiSelect, overlayMode]);
 
   // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
   // production builds; the e2e suite reads it to assert what the canvas draws.
@@ -237,9 +285,16 @@ export function Table() {
     setMultiSelect(null);
   };
 
-  // Submit an option decision (mulligan keep/take-another) together with the
-  // current per-slot selection (e.g. the bottomed cards) in one atomic answer. The
-  // rich option/order prompt UX is issue #157; here an option is a submit trigger.
+  // Move an item one step within the active `order` slot (issue #157). Nothing is
+  // submitted until the player confirms — reordering only edits the pending answer.
+  const moveOrder = (entityId: EntityId, direction: -1 | 1): void => {
+    if (!multiSelect) return;
+    setMultiSelect(msMove(multiSelect, entityId, direction));
+  };
+
+  // Submit an option decision (the banner's modal picker, e.g. mulligan keep/take-
+  // another) together with the current per-slot selection (e.g. the bottomed cards)
+  // in one atomic answer, keyed by the option slot the server posed.
   const chooseOption = (optionId: string): void => {
     if (!multiSelect) return;
     const optionSlot = multiSelect.options[0];
@@ -264,7 +319,9 @@ export function Table() {
         }
       : null;
 
-  const msSlot = multiSelect ? msActiveSlot(multiSelect) : null;
+  // The option decision (if any) renders as the banner's modal picker: its named
+  // choices plus the count affordance that blocks submit while a paired count slot
+  // is partially filled (e.g. a mulligan whose bottoming is not yet complete).
   const multiSelectBanner =
     multiSelect && (msSlot || hasOptions(multiSelect))
       ? {
@@ -274,6 +331,15 @@ export function Table() {
           total: multiSelect.slots.length,
           chosen: msActiveChosen(multiSelect).length,
           required: msSlot?.kind === 'count' ? msSlot.count : undefined,
+          slotKind: msSlot?.kind,
+          options: hasOptions(multiSelect)
+            ? (multiSelect.options[0]?.options ?? []).map((option) => ({
+                id: option.id,
+                label: option.label,
+              }))
+            : undefined,
+          optionPrompt: hasOptions(multiSelect) ? multiSelect.options[0]?.prompt : undefined,
+          optionsEnabled: optionsSubmittable(multiSelect),
         }
       : null;
 
@@ -288,17 +354,21 @@ export function Table() {
               enabled: allSlotsSatisfied(multiSelect),
               onConfirm: confirmMultiSelect,
             },
-        options: hasOptions(multiSelect)
-          ? (multiSelect.options[0]?.options ?? []).map((option) => ({
-              id: option.id,
-              label: option.label,
-            }))
-          : undefined,
-        optionsEnabled: optionsSubmittable(multiSelect),
-        onOption: chooseOption,
         onCancel: cancelMultiSelect,
       }
     : undefined;
+
+  // The DOM prompt surface's rows for an overlay-mode slot: an `order` list (items
+  // in current order) or a non-canvas `select_from_zone` (candidates with chosen).
+  const surfaceChosen = multiSelect ? msActiveChosen(multiSelect) : [];
+  const surfaceItems =
+    overlayMode && msSlot
+      ? (msSlot.kind === 'order' ? surfaceChosen : msSlot.candidates).map((id) => ({
+          id,
+          label: cardNameOf(view, id),
+          chosen: surfaceChosen.includes(id),
+        }))
+      : [];
 
   return (
     <main style={main}>
@@ -307,6 +377,7 @@ export function Table() {
         prompt={prompt}
         targeting={targetingBanner}
         multiSelect={multiSelectBanner}
+        onOption={chooseOption}
       />
       <PlayerTiles
         view={view}
@@ -333,6 +404,16 @@ export function Table() {
           onPickTarget={multiSelect ? toggleCandidate : pickTarget}
         />
       </div>
+      {overlayMode && msSlot && (
+        <PromptSurface
+          mode={msSlot.kind === 'order' ? 'order' : 'select'}
+          prompt={msSlot.prompt}
+          zone={msSlot.zone}
+          items={surfaceItems}
+          onToggle={toggleCandidate}
+          onMove={moveOrder}
+        />
+      )}
       <ActionBar
         globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
         selectedActions={selectedActions}
