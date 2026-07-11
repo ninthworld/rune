@@ -12,6 +12,7 @@ import {
   hasOptions,
   isLastSlot,
   isMultiSelect,
+  moveInActiveSlot,
   optionsSubmittable,
   toggle,
 } from './multiSelect';
@@ -65,6 +66,41 @@ const mulligan: ValidAction = {
       owner: 'p1',
       count: 1,
       candidates: ['card_a', 'card_b'],
+    },
+  ],
+};
+
+/** A standalone `option` decision (issue #157): only a modal option prompt. */
+const optionOnly: ValidAction = {
+  id: 'a8',
+  type: 'choose_mode',
+  label: 'Fork in the Road',
+  token: 'h:mode',
+  prompts: [
+    {
+      kind: 'option',
+      slot: 'mode',
+      prompt: 'Choose a mode',
+      options: [
+        { id: 'draw', label: 'Draw a card' },
+        { id: 'gain', label: 'Gain 3 life' },
+      ],
+    },
+  ],
+};
+
+/** An `order` decision (issue #157): arrange three items into a permutation. */
+const orderTriggers: ValidAction = {
+  id: 'a9',
+  type: 'order_triggers',
+  label: 'Order triggers',
+  token: 'h:ord0',
+  prompts: [
+    {
+      kind: 'order',
+      slot: 'order',
+      prompt: 'Order these triggered abilities',
+      items: ['trig_a', 'trig_b', 'trig_c'],
     },
   ],
 };
@@ -175,5 +211,56 @@ describe('bottoming: count-bounded select_from_zone', () => {
       { slot: 'decision', chosen: ['keep'] },
       { slot: 'bottom', chosen: ['card_a'] },
     ]);
+  });
+});
+
+describe('option: a standalone modal decision (issue #157)', () => {
+  it('carries the option as a separate slot with no walked selection slot', () => {
+    const s = beginMultiSelect(optionOnly);
+    expect(hasOptions(s)).toBe(true);
+    expect(s.slots).toEqual([]);
+    expect(activeSlot(s)).toBeNull();
+    expect(s.options[0]?.options.map((o) => o.id)).toEqual(['draw', 'gain']);
+    // With no count slot to gate it, the option is always submittable.
+    expect(optionsSubmittable(s)).toBe(true);
+    // The caller supplies the chosen option id; there are no walked-slot choices.
+    expect(assembleChoices(s, [{ slot: 'mode', chosen: ['gain'] }])).toEqual([
+      { slot: 'mode', chosen: ['gain'] },
+    ]);
+  });
+});
+
+describe('order: arrange N items into a permutation (issue #157)', () => {
+  it('pre-fills the slot with the initial order and is satisfied from the start', () => {
+    const s = beginMultiSelect(orderTriggers);
+    expect(hasOptions(s)).toBe(false);
+    expect(activeSlot(s)?.kind).toBe('order');
+    expect(isLastSlot(s)).toBe(true);
+    // Every item is included in the server's initial order, so it is complete.
+    expect(activeChosen(s)).toEqual(['trig_a', 'trig_b', 'trig_c']);
+    expect(allSlotsSatisfied(s)).toBe(true);
+    expect(assembleChoices(s)).toEqual([{ slot: 'order', chosen: ['trig_a', 'trig_b', 'trig_c'] }]);
+  });
+
+  it('moves an item one step and clamps at each end', () => {
+    let s = beginMultiSelect(orderTriggers);
+    // Move the middle item up, then the (now) middle item down.
+    s = moveInActiveSlot(s, 'trig_b', -1);
+    expect(activeChosen(s)).toEqual(['trig_b', 'trig_a', 'trig_c']);
+    s = moveInActiveSlot(s, 'trig_a', 1);
+    expect(activeChosen(s)).toEqual(['trig_b', 'trig_c', 'trig_a']);
+
+    // Clamped: the first item cannot move up, the last cannot move down.
+    expect(moveInActiveSlot(s, 'trig_b', -1)).toBe(s);
+    expect(moveInActiveSlot(s, 'trig_a', 1)).toBe(s);
+    // An id not in the list is ignored.
+    expect(moveInActiveSlot(s, 'not_here', -1)).toBe(s);
+    // Still a full permutation — always confirmable.
+    expect(allSlotsSatisfied(s)).toBe(true);
+  });
+
+  it('ignores a move on a non-order (toggle) slot', () => {
+    const s = beginMultiSelect(attackers);
+    expect(moveInActiveSlot(s, 'atk_1', 1)).toBe(s);
   });
 });

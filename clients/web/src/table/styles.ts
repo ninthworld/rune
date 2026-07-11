@@ -42,6 +42,129 @@ export const bannerAccent: CSSProperties = { color: SURFACES.selection, fontWeig
 /** The lead span of the targeting-mode banner, in the shared targeting color. */
 export const bannerTargeting: CSSProperties = { color: SURFACES.targeting, fontWeight: 600 };
 
+/**
+ * The modal option picker inside the prompt banner (issue #157): the option prompt
+ * plus its named-choice buttons, grouped so a keep/mulligan-style decision reads as
+ * one contained choice rather than scattered chrome.
+ */
+export const bannerOptions: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 8,
+  marginLeft: 'auto',
+  paddingLeft: 12,
+  borderLeft: '1px solid #3A4049',
+};
+
+/** One named-choice button in the banner's modal option picker. */
+export const optionButton: CSSProperties = {
+  minHeight: TOUCH,
+  padding: '0 16px',
+  borderRadius: 8,
+  border: `1px solid ${SURFACES.selection}`,
+  background: '#2A2F37',
+  color: SURFACES.nameText,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
+/**
+ * The prompt surface panel (issue #157): a DOM list overlay for a `select_from_zone`
+ * whose zone is not on the board (graveyard/library) and for an `order` arrange
+ * list. Text a user reads/clicks is DOM (ADR 0003); it reads the shared `SURFACES`
+ * palette and never touches card color/size tokens.
+ */
+export const promptSurface: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  padding: '12px 14px',
+  borderRadius: 8,
+  background: '#1E2126',
+  border: `1px solid ${SURFACES.targeting}`,
+  alignSelf: 'center',
+  width: '100%',
+  maxWidth: 420,
+  boxSizing: 'border-box',
+};
+
+/** The prompt surface heading (the server's slot prompt). */
+export const promptSurfaceTitle: CSSProperties = {
+  margin: 0,
+  fontSize: 14,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+/** The zone context sub-line (e.g. "Graveyard"). */
+export const promptSurfaceZone: CSSProperties = {
+  fontSize: 12,
+  color: SURFACES.typeText,
+  textTransform: 'capitalize',
+};
+
+/** The vertical list of candidate / order rows. */
+export const promptSurfaceList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+};
+
+/** One row in the prompt surface: a card name with its controls. */
+export const promptSurfaceRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '6px 8px',
+  borderRadius: 8,
+  background: '#15171A',
+  border: '1px solid #2C313A',
+  minHeight: TOUCH,
+  boxSizing: 'border-box',
+};
+
+/** A prompt-surface row that is currently chosen (select mode), ringed in accent. */
+export const promptSurfaceRowChosen: CSSProperties = {
+  borderColor: SURFACES.selection,
+  boxShadow: `0 0 0 1px ${SURFACES.selection}`,
+};
+
+/** The card-name label within a prompt-surface row (grows to push controls right). */
+export const promptSurfaceName: CSSProperties = {
+  flex: 1,
+  fontSize: 13,
+  fontWeight: 600,
+  color: SURFACES.nameText,
+};
+
+/** The 1-based position badge shown on an order row. */
+export const promptSurfaceIndex: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: SURFACES.typeText,
+  minWidth: 18,
+  textAlign: 'right',
+};
+
+/** A compact square control button (toggle / move up / move down) in a row. */
+export const promptSurfaceControl: CSSProperties = {
+  minHeight: TOUCH,
+  minWidth: TOUCH,
+  padding: '0 10px',
+  borderRadius: 8,
+  border: '1px solid #3A4049',
+  background: '#2A2F37',
+  color: SURFACES.nameText,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
 export const tiles: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
