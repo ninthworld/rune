@@ -28,7 +28,7 @@ use std::process::ExitCode;
 
 use rune_cli::{
     connect, run_agent_lobby_session, run_lobby_session, AgentConfig, CliConfig, LobbyConfig,
-    PassPriorityAgent, SessionError,
+    RuleBasedAgent, SessionError,
 };
 use tokio::io::BufReader;
 
@@ -98,9 +98,9 @@ async fn run_agent(
     );
     let ws = connect(config).await?;
     eprintln!(
-        "rune-cli: connected. Driving the lobby, then playing with the built-in pass-priority agent (deadline {:?}).",
+        "rune-cli: connected. Driving the lobby, then playing with the built-in rule-based agent (deadline {:?}).",
         agent.deadline
     );
     let log = tokio::io::stderr();
-    run_agent_lobby_session(ws, &PassPriorityAgent, agent.deadline, log, lobby).await
+    run_agent_lobby_session(ws, &RuleBasedAgent, agent.deadline, log, lobby).await
 }

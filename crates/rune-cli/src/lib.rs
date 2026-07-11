@@ -27,8 +27,9 @@ mod agent;
 mod lobby;
 
 pub use agent::{
-    is_offered, request_payload, run_agent_lobby_session, run_agent_session, safe_default, Agent,
-    AgentConfig, AgentError, PassPriorityAgent, AGENT_TIMEOUT_ENV_VAR, DEFAULT_AGENT_DEADLINE,
+    choose_action, fill_answers, is_offered, request_payload, run_agent_lobby_session,
+    run_agent_session, safe_default, Agent, AgentConfig, AgentError, PassPriorityAgent,
+    RuleBasedAgent, AGENT_TIMEOUT_ENV_VAR, DEFAULT_AGENT_DEADLINE,
 };
 pub use lobby::{render_lobby, LobbyConfig, RoomAction};
 

@@ -10,8 +10,8 @@
 
 use std::time::Duration;
 
-use rune_cli::{run_agent_session, Agent, AgentError};
-use rune_engine::{CardDatabase, GameState};
+use rune_cli::{run_agent_session, Agent, AgentError, RuleBasedAgent};
+use rune_engine::{CardDatabase, CardId, GameSetup, GameState};
 use rune_protocol::GameView;
 use rune_server::{serve_connection, Room, RoomHandle, RoomInput, Seat};
 use tokio::io::{duplex, DuplexStream};
@@ -98,4 +98,59 @@ async fn fake_agent_completes_a_pass_priority_round() {
     let _ = bridge.await;
     room_task.abort();
     let _ = room_task.await;
+}
+
+/// A 40-card starter deck over the bundled ids 1..=6 (green creatures + Forest).
+fn decklist() -> Vec<CardId> {
+    (0..40u64).map(|i| CardId((i % 6) + 1)).collect()
+}
+
+/// Two [`RuleBasedAgent`]s play a **full game to completion over the real socket
+/// loop** ([`run_agent_session`]): the production path that reads each `GameView`,
+/// asks the agent, fills its prompt/requirement slots, and echoes the token +
+/// targets on the wire. The seeded room begins in the London mulligan and runs until
+/// the engine declares a winner, at which point the room closes both sockets and both
+/// sessions return cleanly. This proves the agent's filled answers (mulligan keep,
+/// cleanup discard, combat declarations) round-trip through `resolve_action` end to
+/// end — not just the direct policy path in `tests/agent_game.rs`.
+#[tokio::test]
+async fn two_rule_based_agents_play_a_full_game_over_the_socket_loop() {
+    let db = CardDatabase::bundled().expect("bundled cards");
+    let setup = GameSetup::two_player(decklist(), decklist(), 0x5EED_0000_0000_1959);
+    let state = GameState::new(&setup, &db).expect("valid setup");
+    let (handle, room_task) = Room::new(state, db).spawn();
+
+    // Each seat: a duplex socket bridged into the room, driven by a rule-based agent.
+    let mut sessions = Vec::new();
+    let mut bridges = Vec::new();
+    for seat in 0..2usize {
+        let (server_io, client_io) = duplex(64 * 1024);
+        let server_ws = WebSocketStream::from_raw_socket(server_io, Role::Server, None).await;
+        let client_ws = WebSocketStream::from_raw_socket(client_io, Role::Client, None).await;
+        bridges.push(tokio::spawn(serve(seat, handle.clone(), server_ws)));
+        sessions.push(tokio::spawn(async move {
+            let mut log: Vec<u8> = Vec::new();
+            run_agent_session(client_ws, &RuleBasedAgent, Duration::from_secs(5), &mut log)
+                .await
+                .expect("agent session runs cleanly");
+        }));
+    }
+    // Drop our handle so the room stops once it reaches a terminal state.
+    drop(handle);
+
+    // Both sessions return only when the room closes their sockets on game over. A
+    // timeout guards against a stall (a policy that fails to answer some slot).
+    for session in sessions {
+        tokio::time::timeout(Duration::from_secs(30), session)
+            .await
+            .expect("the game finished and the socket closed before the timeout")
+            .expect("agent task did not panic");
+    }
+
+    room_task
+        .await
+        .expect("the room task terminates after the game is over");
+    for bridge in bridges {
+        let _ = bridge.await;
+    }
 }
