@@ -41,6 +41,10 @@ jobs:
           cache-dependency-path: clients/web/package-lock.json
       - name: Install
         run: npm ci
+      - name: Audit
+        # Fail on new high/critical advisories. Accepted findings are pinned via
+        # package.json "overrides"; threshold documented in clients/web/AGENTS.md.
+        run: npm audit --audit-level=high
       - name: Lint
         run: npm run lint
       - name: Typecheck
