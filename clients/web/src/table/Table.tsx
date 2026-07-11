@@ -10,7 +10,7 @@
  *   the resulting GameView. The only client-side state is ephemeral selection
  *   (nothing load-bearing across messages — the reconnect/replay invariant).
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { EntityId } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { ActionBar } from './ActionBar';
@@ -18,8 +18,32 @@ import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { EntityOverlay } from './EntityOverlay';
 import { PlayerTiles } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
-import { buildTableScene, type RenderedCard, type TableScene } from './scene';
+import {
+  buildTableScene,
+  DEFAULT_VIEWPORT_WIDTH,
+  type RenderedCard,
+  type TableScene,
+} from './scene';
 import { boardWrap, main, muted } from './styles';
+
+/**
+ * The current logical width the board may wrap within, tracking the window so the
+ * battlefield re-wraps on resize (the layout stays a pure function — this only
+ * feeds it the live budget). Falls back to {@link DEFAULT_VIEWPORT_WIDTH} where
+ * there is no `window` (SSR/tests).
+ */
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() =>
+    typeof window === 'undefined' ? DEFAULT_VIEWPORT_WIDTH : window.innerWidth,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = (): void => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return width;
+}
 
 /** Find a rendered card anywhere in the scene by entity id. */
 function findCard(scene: TableScene, id: EntityId | null): RenderedCard | undefined {
@@ -36,13 +60,14 @@ export function Table() {
   const choose = useGameStore((state) => state.choose);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
 
+  const viewportWidth = useViewportWidth();
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
   // The server names the receiver directly in `view.you`; an older server may
   // omit it (empty), which we treat as "unknown".
   const localId = view?.you || undefined;
   const scene = useMemo(
-    () => (view ? buildTableScene(view, selectedId ?? undefined) : null),
-    [view, selectedId],
+    () => (view ? buildTableScene(view, selectedId ?? undefined, viewportWidth) : null),
+    [view, selectedId, viewportWidth],
   );
 
   if (!view || !scene) {
