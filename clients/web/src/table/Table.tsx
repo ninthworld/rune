@@ -28,6 +28,7 @@ import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
 import { PlayerTiles } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
+import { StackPanel } from './StackPanel';
 import {
   buildTableScene,
   DEFAULT_VIEWPORT_WIDTH,
@@ -199,6 +200,12 @@ export function Table() {
       <PlayerTiles
         view={view}
         localId={localId}
+        targeting={
+          targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+        }
+      />
+      <StackPanel
+        view={view}
         targeting={
           targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
         }
