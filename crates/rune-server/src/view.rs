@@ -399,6 +399,8 @@ pub(crate) fn personalized_view(
             // attacking, and which attacker it is blocking (as an entity id).
             attacking: perm.attacking,
             blocking: perm.blocking.map(permanent_entity_id),
+            // Marked combat damage (CR 120.3 / 510), for lethal-damage display.
+            damage: perm.damage,
             counters: permanent_counters(perm),
         })
         .collect();
@@ -776,6 +778,43 @@ mod tests {
             blocker_view.blocking.as_deref(),
             Some(permanent_entity_id(attacker).as_str())
         );
+    }
+
+    /// Marked combat damage (issue #118) projects onto [`PermanentView::damage`]:
+    /// a damaged permanent reports its marked damage, and an undamaged one reports
+    /// `0`, which `skip_serializing_if` then drops from the wire.
+    #[test]
+    fn issue_118_marked_damage_projects_into_the_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+
+        let damaged = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: damaged,
+            instance: CardInstanceId(0),
+            card: CardId(1),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
+            damage: 2,
+            counters: std::collections::BTreeMap::new(),
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let projected = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(damaged))
+            .expect("damaged permanent in view");
+        assert_eq!(projected.damage, 2);
+
+        // Zero marked damage elides from the JSON (skip_serializing_if wire shape).
+        let mut undamaged = projected.clone();
+        undamaged.damage = 0;
+        let json = serde_json::to_value(&undamaged).unwrap();
+        assert!(json.get("damage").is_none());
     }
 
     /// Every emitted action carries a non-empty content-binding token, and the

@@ -29,7 +29,7 @@ never receives what its player may not know). The concrete types live in the
 | `you` | `PlayerId` | The receiver's own seat entity id (same `p{N}` form used for players). Lets a client identify itself directly. A client that receives a payload without it (older server) treats it as `""`/unknown |
 | `my_hand` | `CardView[]` | Full card objects for the receiving player only |
 | `opponents` | `OpponentView[]` | `player_id`, `hand_size`, `life`, `library_size`, `graveyard_size`, `statuses` |
-| `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `attacking`, `blocking`, `counters` (a `Counter[]`, see below) |
+| `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `attacking`, `blocking`, `damage`, `counters` (a `Counter[]`, see below) |
 | `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |
 | `graveyards`, `exile` | `ZonePile[]` | Public ordered lists per player |
 | `phase` | `Phase` | Current turn step (snake_case enum); drives overview/focus mode |
@@ -51,11 +51,17 @@ and display-only like every other characteristic:
 - `blocking` — the entity id of the attacker this permanent is blocking, when it
   is a declared blocker. Omitted (`null`) when it is not blocking. Several
   blockers may name the same attacker; a blocker names exactly one attacker.
+- `damage` — combat damage marked on this permanent this turn (CR 120.3), an
+  unsigned integer. This is the value the engine's lethal-damage state-based
+  action compares against toughness (CR 704.5g); it accumulates during the
+  combat-damage step (CR 510) and is cleared at cleanup (CR 514.2). Omitted
+  (treated as `0`) when no damage is marked.
 
-Both are omitted from the JSON in the common not-in-combat case, so a permanent
-outside combat keeps its terse wire shape. The client renders these; it never
-derives combat legality (which creatures may attack or block is decided by the
-engine and surfaced through `valid_actions`).
+All three are omitted from the JSON in the common not-in-combat, undamaged case,
+so a permanent outside combat keeps its terse wire shape. The client renders
+these; it never derives combat legality or lethality (which creatures may attack
+or block, and which die, is decided by the engine and surfaced through the view
+and `valid_actions`).
 
 ### Counter
 

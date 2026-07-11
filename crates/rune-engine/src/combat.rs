@@ -1,13 +1,18 @@
-//! Combat declarations: eligibility of attackers and blockers, and the small
-//! amount of turn-structure bookkeeping the declare steps need.
+//! Combat declarations and combat damage: eligibility of attackers and blockers,
+//! the turn-structure bookkeeping the declare steps need, and the combat-damage
+//! assignment the combat-damage step performs.
 //!
-//! Declaration only (issue #117): who *may* attack (CR 508.1a), who *may* block
-//! (CR 509.1a), and which player owes the declaration in each declare step. It
-//! stops short of combat damage (issue #118), first strike, and vigilance. Every
-//! function here is a pure predicate/enumeration over an immutable
-//! [`GameState`] — no I/O, no mutation — consistent with the engine's rules.
+//! Declarations (issue #117): who *may* attack (CR 508.1a), who *may* block
+//! (CR 509.1a), and which player owes the declaration in each declare step.
+//! Combat damage (issue #118): the assignment each attacker and blocker makes in
+//! the combat-damage step (CR 510.1), gathered so it can be dealt simultaneously
+//! (CR 510.2). It stops short of first strike / double strike (a second damage
+//! step), trample, deathtouch, and player-chosen damage-assignment order. Every
+//! function here is a pure predicate/enumeration over an immutable [`GameState`]
+//! — no I/O, no mutation — consistent with the engine's rules.
 
 use crate::card_type::CardType;
+use crate::characteristics::characteristics;
 use crate::id::{PermanentId, PlayerId};
 use crate::phase::Step;
 use crate::state::{GameState, Permanent};
@@ -130,6 +135,134 @@ pub(crate) fn pending_declarer(state: &GameState) -> Option<PlayerId> {
 #[must_use]
 pub(crate) fn priority_after_step_change(state: &GameState) -> PlayerId {
     pending_declarer(state).unwrap_or(state.active_player)
+}
+
+/// A single combat-damage assignment computed for the combat-damage step
+/// (CR 510.1c). Kept as data to apply *after* every assignment is computed, so
+/// all combat damage is dealt at once (simultaneously, CR 510.2) — no creature
+/// leaves combat partway through the batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CombatDamage {
+    /// Combat damage a creature deals to a player: an unblocked attacker striking
+    /// the defending player (CR 510.1c).
+    ToPlayer {
+        /// The player the damage is dealt to.
+        player: PlayerId,
+        /// How much damage.
+        amount: u32,
+    },
+    /// Combat damage a creature deals to another creature: an attacker to its
+    /// blockers, or a blocker to the attacker it blocks (CR 510.1c). Marked on
+    /// the permanent (CR 120.3).
+    ToPermanent {
+        /// The permanent the damage is marked on.
+        permanent: PermanentId,
+        /// How much damage.
+        amount: u32,
+    },
+}
+
+/// The current power of `id` as a non-negative amount of combat damage: a
+/// creature assigns combat damage equal to its power (CR 510.1a), and a creature
+/// with `0` or negative power (or none at all) assigns none. Reads current
+/// power through [`characteristics`], so counters and anthems are folded in.
+fn combat_power(state: &GameState, id: PermanentId, db: &CardDatabase) -> u32 {
+    let power = characteristics(state, id, db).power.unwrap_or(0);
+    u32::try_from(power.max(0)).unwrap_or(0)
+}
+
+/// The damage still needed to be lethal to the blocker `id`: its current
+/// toughness less any damage already marked on it, floored at `0` (CR 510.1c —
+/// an attacker assigns at least lethal damage to a blocker before the next).
+/// `0` for a creature with no toughness or already at/over lethal.
+fn lethal_needed(state: &GameState, id: PermanentId, db: &CardDatabase) -> u32 {
+    let toughness = characteristics(state, id, db).toughness.unwrap_or(0);
+    let marked = state
+        .battlefield
+        .iter()
+        .find(|p| p.id == id)
+        .map_or(0, |p| p.damage);
+    let remaining = toughness - i32::try_from(marked).unwrap_or(i32::MAX);
+    u32::try_from(remaining.max(0)).unwrap_or(0)
+}
+
+/// The blockers assigned to `attacker`, in stable battlefield order — the order
+/// in which combat damage is spread across them (see [`combat_damage`]).
+fn blockers_of(state: &GameState, attacker: PermanentId) -> Vec<PermanentId> {
+    state
+        .battlefield
+        .iter()
+        .filter(|p| p.blocking == Some(attacker))
+        .map(|p| p.id)
+        .collect()
+}
+
+/// Compute all combat damage for the combat-damage step (CR 510.1): every
+/// attacking and blocking creature assigns its power as combat damage, gathered
+/// here so [`crate::apply_action`] can apply the whole batch at once
+/// (simultaneously, CR 510.2).
+///
+/// - An **unblocked** attacker — no creature is blocking it — assigns its combat
+///   damage to the player it is attacking, the defending player (CR 510.1c).
+/// - A **blocked** attacker assigns its combat damage among the creatures
+///   blocking it. Player-chosen damage-assignment order is deferred (issue #118
+///   scope); the deterministic default here is battlefield order, assigning each
+///   blocker just-lethal damage (its current toughness, less damage already
+///   marked) before moving to the next, with any remainder past the last blocker
+///   left undealt (no trample). This needs no player input.
+/// - Each blocking creature assigns its combat damage to the attacker it blocks
+///   (CR 510.1c). A creature that is blocked deals no damage to the defending
+///   player, even if a blocker has since been removed (issue #118 does not model
+///   blocker removal between declaration and damage).
+///
+/// First strike / double strike, trample, and deathtouch are out of scope, so a
+/// single ordinary damage batch is produced. Pure over the immutable state.
+pub(crate) fn combat_damage(state: &GameState, db: &CardDatabase) -> Vec<CombatDamage> {
+    let defender = defending_player(state);
+    let mut out = Vec::new();
+    for attacker in state.battlefield.iter().filter(|p| p.attacking) {
+        let power = combat_power(state, attacker.id, db);
+        let blockers = blockers_of(state, attacker.id);
+        if blockers.is_empty() {
+            // Unblocked: the attacker's damage goes to the defending player.
+            if power > 0 {
+                if let Some(player) = defender {
+                    out.push(CombatDamage::ToPlayer {
+                        player,
+                        amount: power,
+                    });
+                }
+            }
+            continue;
+        }
+        // Blocked: spread the attacker's power across its blockers in battlefield
+        // order, lethal-per-blocker, remainder undealt (no trample).
+        let mut remaining = power;
+        for blocker in &blockers {
+            if remaining == 0 {
+                break;
+            }
+            let assign = remaining.min(lethal_needed(state, *blocker, db));
+            if assign > 0 {
+                out.push(CombatDamage::ToPermanent {
+                    permanent: *blocker,
+                    amount: assign,
+                });
+                remaining -= assign;
+            }
+        }
+        // Each blocker deals its own power back to the attacker (CR 510.1c).
+        for blocker in &blockers {
+            let bp = combat_power(state, *blocker, db);
+            if bp > 0 {
+                out.push(CombatDamage::ToPermanent {
+                    permanent: attacker.id,
+                    amount: bp,
+                });
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]

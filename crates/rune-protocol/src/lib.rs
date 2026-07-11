@@ -93,6 +93,12 @@ pub struct Permanent {
     /// blocking. Several blockers may name the same attacker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocking: Option<EntityId>,
+    /// Damage marked on this permanent this turn (CR 120.3), the value the
+    /// lethal-damage state-based action compares against toughness (CR 704.5g).
+    /// Server-computed; the client displays it and never derives it. Cleared at
+    /// cleanup (CR 514.2). `0`/omitted when no damage is marked.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub damage: u32,
     /// Named counters and their quantities, e.g. `{"+1/+1": 2}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub counters: Vec<Counter>,
@@ -506,6 +512,11 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)] // panics are the failure signal in tests
 mod tests {
@@ -666,6 +677,7 @@ mod tests {
                 tapped: true,
                 attacking: false,
                 blocking: None,
+                damage: 0,
                 counters: vec![Counter {
                     kind: "+1/+1".into(),
                     count: 2,
@@ -829,9 +841,10 @@ mod tests {
 
     #[test]
     fn permanent_combat_state_round_trips_and_elides_when_absent() {
-        // Attack/block state (issue #117): `attacking` and `blocking` round-trip
-        // when present, and both elide from the wire in the common not-in-combat
-        // case so the serialized shape is unchanged for non-combat permanents.
+        // Attack/block state (issue #117) and marked damage (issue #118):
+        // `attacking`, `blocking`, and `damage` round-trip when present, and all
+        // elide from the wire in the common not-in-combat, undamaged case so the
+        // serialized shape is unchanged for non-combat permanents.
         let base = Permanent {
             id: "perm_1".into(),
             controller: "p0".into(),
@@ -848,13 +861,15 @@ mod tests {
             tapped: false,
             attacking: false,
             blocking: None,
+            damage: 0,
             counters: vec![],
         };
 
-        // Not in combat: both fields elide from the JSON.
+        // Not in combat and undamaged: all three fields elide from the JSON.
         let json = serde_json::to_value(&base).unwrap();
         assert!(json.get("attacking").is_none());
         assert!(json.get("blocking").is_none());
+        assert!(json.get("damage").is_none());
 
         // An attacker and its blocker both round-trip with their state present.
         let attacker = Permanent {
@@ -882,6 +897,18 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<Permanent>(blocker_json).unwrap(),
             blocker
+        );
+
+        // Marked damage round-trips when non-zero and serializes as a number.
+        let damaged = Permanent {
+            damage: 2,
+            ..base.clone()
+        };
+        let damaged_json = serde_json::to_value(&damaged).unwrap();
+        assert_eq!(damaged_json.get("damage"), Some(&serde_json::json!(2)));
+        assert_eq!(
+            serde_json::from_value::<Permanent>(damaged_json).unwrap(),
+            damaged
         );
     }
 
