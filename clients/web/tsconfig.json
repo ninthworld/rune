@@ -18,6 +18,9 @@
       "@protocol-fixtures/gameview.json": ["../../crates/rune-protocol/fixtures/gameview.json"],
       "@protocol-fixtures/gameview-over.json": [
         "../../crates/rune-protocol/fixtures/gameview-over.json"
+      ],
+      "@protocol-fixtures/gameview-prompts.json": [
+        "../../crates/rune-protocol/fixtures/gameview-prompts.json"
       ]
     }
   },

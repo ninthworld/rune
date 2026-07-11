@@ -16,7 +16,8 @@
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use rune_protocol::{
-    CardView, ChooseAction, ClientMessage, GameView, TargetChoice, TargetRequirement, ValidAction,
+    CardView, ChooseAction, ClientMessage, GameView, Prompt, PromptOption, TargetChoice,
+    TargetRequirement, ValidAction,
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
@@ -415,11 +416,12 @@ where
     }
 }
 
-/// Walk a chosen action's target `requirements` as a prompt queue, returning one
-/// [`TargetChoice`] per slot filled from that slot's advertised `candidates`
-/// (ADR 0009). Returns `Ok(None)` if stdin hits EOF mid-selection. An action with no
-/// requirements returns an empty selection without prompting, so plain actions are
-/// unchanged.
+/// Walk a chosen action's `requirements` and then its `prompts` as one prompt queue,
+/// returning one [`TargetChoice`] per slot (ADR 0009, issue #156). Target slots are
+/// filled from their advertised `candidates`; the option / select-from-zone / order
+/// prompt slots are answered minimally (see [`prompt_choice`]). Returns `Ok(None)` if
+/// stdin hits EOF mid-selection. An action with neither returns an empty selection
+/// without prompting, so plain actions are unchanged.
 async fn prompt_targets<R, W>(
     action: &ValidAction,
     input: &mut R,
@@ -430,7 +432,7 @@ where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let mut targets = Vec::with_capacity(action.requirements.len());
+    let mut targets = Vec::with_capacity(action.requirements.len() + action.prompts.len());
     for req in &action.requirements {
         write_str(output, &render_requirement(req)).await?;
         let chosen = loop {
@@ -452,7 +454,143 @@ where
             chosen: vec![chosen],
         });
     }
+    for prompt in &action.prompts {
+        match prompt_choice(prompt, input, output, line).await? {
+            Some(choice) => targets.push(choice),
+            None => return Ok(None),
+        }
+    }
     Ok(Some(targets))
+}
+
+/// Answer one non-target [`Prompt`] slot (issue #156), returning its
+/// [`TargetChoice`] or `Ok(None)` on EOF. An `option` slot is a numbered choice; a
+/// `select_from_zone` slot reads its `count` cards from the listed candidates; an
+/// `order` slot is submitted in the order given (the terminal client offers no
+/// reordering UI — that is the web client's job, issue #157). The client only ever
+/// offers ids the server listed and computes no legality.
+async fn prompt_choice<R, W>(
+    prompt: &Prompt,
+    input: &mut R,
+    output: &mut W,
+    line: &mut String,
+) -> Result<Option<TargetChoice>, SessionError>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    match prompt {
+        Prompt::Option {
+            slot,
+            prompt: text,
+            options,
+        } => {
+            write_str(output, &render_options(text, options)).await?;
+            let chosen = loop {
+                write_str(output, &choice_prompt(options.len())).await?;
+                output.flush().await.map_err(SessionError::Io)?;
+                line.clear();
+                if input.read_line(line).await.map_err(SessionError::Io)? == 0 {
+                    return Ok(None);
+                }
+                match option_at(options, line) {
+                    Some(id) => break id.to_string(),
+                    None => write_str(output, &not_listed(line)).await?,
+                }
+            };
+            Ok(Some(TargetChoice {
+                slot: slot.clone(),
+                chosen: vec![chosen],
+            }))
+        }
+        Prompt::SelectFromZone {
+            slot,
+            prompt: text,
+            count,
+            candidates,
+            ..
+        } => {
+            write_str(output, &render_candidates(text, candidates, *count)).await?;
+            let mut chosen = Vec::with_capacity(*count as usize);
+            for which in 1..=*count {
+                let id = loop {
+                    write_str(output, &nth_card_prompt(candidates.len(), which, *count)).await?;
+                    output.flush().await.map_err(SessionError::Io)?;
+                    line.clear();
+                    if input.read_line(line).await.map_err(SessionError::Io)? == 0 {
+                        return Ok(None);
+                    }
+                    match candidate_at(candidates, line) {
+                        Some(id) => break id.to_string(),
+                        None => write_str(output, &not_listed(line)).await?,
+                    }
+                };
+                chosen.push(id);
+            }
+            Ok(Some(TargetChoice {
+                slot: slot.clone(),
+                chosen,
+            }))
+        }
+        Prompt::Order {
+            slot,
+            prompt: text,
+            items,
+        } => {
+            write_str(
+                output,
+                &format!("\n{text}: submitting in the listed order.\n"),
+            )
+            .await?;
+            Ok(Some(TargetChoice {
+                slot: slot.clone(),
+                chosen: items.clone(),
+            }))
+        }
+    }
+}
+
+/// Render an `option` prompt's named choices as a numbered menu.
+fn render_options(text: &str, options: &[PromptOption]) -> String {
+    let mut out = format!("\n{text}:\n");
+    for (index, option) in options.iter().enumerate() {
+        out.push_str(&format!("  {}) {}\n", index + 1, option.label));
+    }
+    out
+}
+
+/// Map a 1-based menu entry onto an `option` choice's id, or `None` if it names no
+/// listed option.
+fn option_at<'a>(options: &'a [PromptOption], input: &str) -> Option<&'a str> {
+    let choice: usize = input.trim().parse().ok()?;
+    options
+        .get(choice.checked_sub(1)?)
+        .map(|option| option.id.as_str())
+}
+
+/// The prompt shown before reading an `option` choice.
+fn choice_prompt(count: usize) -> String {
+    format!("Choose [1-{count}] (Ctrl-D to quit): ")
+}
+
+/// Render a `select_from_zone` prompt's candidate ids as a numbered menu.
+fn render_candidates(text: &str, candidates: &[String], count: u32) -> String {
+    let mut out = format!("\n{text} (choose {count}):\n");
+    for (index, candidate) in candidates.iter().enumerate() {
+        out.push_str(&format!("  {}) {}\n", index + 1, candidate));
+    }
+    out
+}
+
+/// Map a 1-based menu entry onto a `select_from_zone` candidate id.
+fn candidate_at<'a>(candidates: &'a [String], input: &str) -> Option<&'a str> {
+    let choice: usize = input.trim().parse().ok()?;
+    candidates.get(choice.checked_sub(1)?).map(String::as_str)
+}
+
+/// The prompt shown before reading the `which`-of-`total` card of a select-from-zone.
+fn nth_card_prompt(count: usize, which: u32, total: u32) -> String {
+    format!("Select card {which} of {total} [1-{count}] (Ctrl-D to quit): ")
 }
 
 /// Map an operator's raw menu entry to the offered `action_id`, or `None` if it

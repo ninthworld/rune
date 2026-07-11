@@ -19,7 +19,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use rune_protocol::{ChooseAction, ClientMessage, GameView};
+use rune_protocol::{ChooseAction, ClientMessage, GameView, Prompt, TargetChoice};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
@@ -375,9 +375,11 @@ where
 
 /// Build the [`ChooseAction`] to send for a chosen action id: echo the offered
 /// action's content-binding `token` verbatim (ADR 0009). The pass-priority agent
-/// only ever picks requirement-less actions; if a chosen action does carry target
-/// requirements the agent has no way to fill, this falls back to a requirement-less
-/// pass rather than send an answer the server would reject and re-offer forever.
+/// answers any non-target `prompts` minimally ([`minimal_prompt_answers`]) so the
+/// pre-game mulligan and cleanup discard never stall it (issue #156). If a chosen
+/// action carries target `requirements` the agent has no way to fill, this falls back
+/// to a requirement-less pass rather than send an answer the server would reject and
+/// re-offer forever.
 async fn agent_choice<W>(
     view: &GameView,
     action_id: &str,
@@ -390,10 +392,12 @@ where
         return Ok(None);
     };
     if action.requirements.is_empty() {
+        // No target requirements: answer any prompt slots minimally (a plain action
+        // yields an empty selection, unchanged).
         return Ok(Some(ChooseAction {
             action_id: action.id.clone(),
             token: action.token.clone(),
-            targets: Vec::new(),
+            targets: minimal_prompt_answers(&action.prompts),
         }));
     }
 
@@ -425,6 +429,36 @@ where
             Ok(None)
         }
     }
+}
+
+/// The minimal, never-stalling answer to a chosen action's non-target [`Prompt`]
+/// slots (issue #156): pick the **first** option, the first `count` zone candidates,
+/// or the items in their given order. This is the agent analogue of the safe default
+/// — it keeps the pre-game mulligan (keep the first hand) and cleanup discard moving
+/// without any game reasoning. It computes no legality; the server re-checks every id.
+fn minimal_prompt_answers(prompts: &[Prompt]) -> Vec<TargetChoice> {
+    prompts
+        .iter()
+        .filter_map(|prompt| match prompt {
+            Prompt::Option { slot, options, .. } => options.first().map(|option| TargetChoice {
+                slot: slot.clone(),
+                chosen: vec![option.id.clone()],
+            }),
+            Prompt::SelectFromZone {
+                slot,
+                count,
+                candidates,
+                ..
+            } => Some(TargetChoice {
+                slot: slot.clone(),
+                chosen: candidates.iter().take(*count as usize).cloned().collect(),
+            }),
+            Prompt::Order { slot, items, .. } => Some(TargetChoice {
+                slot: slot.clone(),
+                chosen: items.clone(),
+            }),
+        })
+        .collect()
 }
 
 /// Resolve one actionable view to the `action_id` to send, applying the deadline

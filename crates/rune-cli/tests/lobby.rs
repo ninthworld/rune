@@ -205,26 +205,46 @@ async fn interactive_cli_drives_numbered_menus_to_a_game_start() {
     // by typing menu numbers and sub-prompt answers, exactly as an operator would.
     // Menus: roomless [create_room, join_room] → "2"; then a room id; in-room
     // [submit_deck, leave] → "1" + a decklist; in-room [submit_deck, ready, leave] →
-    // "2" to ready.
+    // "2" to ready. Once the game starts it faces the pre-game mulligan decision
+    // (issue #156): the collapsed `mulligan_decision` action ("1") whose `option`
+    // prompt offers keep ("1") or mulligan — so it keeps its opening hand and the
+    // game proceeds past the mulligan rather than stalling the moment it is offered
+    // a decision. Input then runs out and the client exits at the next prompt.
     let deck_csv = decklist().join(",");
-    let scripted = format!("2\nr0\n1\n{deck_csv}\n2\n");
+    let scripted = format!("2\nr0\n1\n{deck_csv}\n2\n1\n1\n");
     let stdin = BufReader::new(scripted.as_bytes());
     let (mut out_reader, out_writer) = tokio::io::duplex(64 * 1024);
 
+    // Drive the interactive session to completion while draining everything it prints
+    // into `output`, so the assertions see the full transcript regardless of which
+    // side of the pump finishes first (the client exits on stdin EOF partway into the
+    // game, which must not race away the captured output).
     let joiner_ws = connect(&lobby).await;
-    let run = run_lobby_session(joiner_ws, stdin, out_writer);
-    let observe = async {
-        let mut out = String::new();
-        accumulate_until(&mut out_reader, &mut out, "Game starting!").await;
-        out
-    };
-    let output = tokio::select! {
-        result = run => {
-            result.expect("interactive lobby session runs cleanly");
-            String::new()
+    let mut output = String::new();
+    {
+        let run = run_lobby_session(joiner_ws, stdin, out_writer);
+        tokio::pin!(run);
+        let mut buf = [0u8; 1024];
+        loop {
+            tokio::select! {
+                result = &mut run => {
+                    result.expect("interactive lobby session runs cleanly");
+                    break;
+                }
+                read = out_reader.read(&mut buf) => match read {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => output.push_str(&String::from_utf8_lossy(&buf[..n])),
+                },
+            }
         }
-        text = observe => text,
-    };
+        // Drain anything still buffered after the session returned.
+        loop {
+            match out_reader.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => output.push_str(&String::from_utf8_lossy(&buf[..n])),
+            }
+        }
+    }
 
     // The interactive client rendered lobby menus and reached the game hand-off.
     assert!(

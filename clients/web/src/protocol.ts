@@ -147,15 +147,89 @@ export interface TargetRequirement {
   candidates?: EntityId[];
 }
 
+/** One named choice of a {@link OptionPrompt} slot: an opaque `id` the client
+ * echoes back and a human-readable `label` to render. */
+export interface PromptOption {
+  /** Opaque id echoed back as the slot's chosen value. Never parsed. */
+  id: string;
+  /** Human-readable label to render for this choice. */
+  label: string;
+}
+
+/**
+ * Pick exactly one of N named choices — the clean shape for a modal choice or a
+ * yes/no (e.g. the mulligan keep/take-another decision). Answered with the chosen
+ * {@link PromptOption.id} as the slot's single {@link TargetChoice.chosen} entry.
+ */
+export interface OptionPrompt {
+  /** Discriminator. */
+  kind: 'option';
+  /** Opaque slot id the client echoes back as {@link TargetChoice.slot}. */
+  slot: string;
+  /** Human-readable prompt describing the decision. */
+  prompt: string;
+  /** The named choices — the only answers the client may submit. */
+  options?: PromptOption[];
+}
+
+/**
+ * Pick {@link SelectFromZonePrompt.count} entity ids from a zone (cleanup
+ * discard-to-max, mulligan bottoming, future tutors). Answered with the selected
+ * ids in {@link TargetChoice.chosen}; each must be one of `candidates`.
+ */
+export interface SelectFromZonePrompt {
+  /** Discriminator. */
+  kind: 'select_from_zone';
+  /** Opaque slot id the client echoes back as {@link TargetChoice.slot}. */
+  slot: string;
+  /** Human-readable prompt describing what to select. */
+  prompt: string;
+  /** The zone the cards come from, e.g. `"hand"` (display context; free-form). */
+  zone: string;
+  /** The player who owns the zone being selected from. */
+  owner: PlayerId;
+  /** Exactly how many ids must be chosen. */
+  count: number;
+  /** The legal candidate entity ids — the only ids the client may pick. */
+  candidates?: EntityId[];
+}
+
+/**
+ * Arrange N items into an order (ordering simultaneous triggers, scry). Answered
+ * with all of {@link OrderPrompt.items} in the chosen order in
+ * {@link TargetChoice.chosen} (a permutation of `items`).
+ */
+export interface OrderPrompt {
+  /** Discriminator. */
+  kind: 'order';
+  /** Opaque slot id the client echoes back as {@link TargetChoice.slot}. */
+  slot: string;
+  /** Human-readable prompt describing what to order. */
+  prompt: string;
+  /** The items to arrange, in their initial order. */
+  items?: EntityId[];
+}
+
+/**
+ * A non-target choice slot a {@link ValidAction} may pose, a generalization of the
+ * {@link TargetRequirement} slot pattern (slot + prompt + candidates, bound by the
+ * action's content {@link ValidAction.token}, ADR 0009) to three richer shapes.
+ * The `kind` tag discriminates the shape on the wire; every shape is answered by a
+ * {@link TargetChoice} keyed by `slot` and submitted atomically. Clients tolerate
+ * an unknown future `kind`.
+ */
+export type Prompt = OptionPrompt | SelectFromZonePrompt | OrderPrompt;
+
 /**
  * One entry of {@link GameView.valid_actions}: the only source of interactivity.
  * `subject` names the entities an action belongs to so the client can render it
  * ON the entity rather than in a global bar (ADR 0004).
  *
  * A multi-step action (a targeted spell/ability) also carries an ordered
- * {@link ValidAction.requirements} list the client walks as a prompt queue, plus
+ * {@link ValidAction.requirements} list, and/or a {@link ValidAction.prompts} list
+ * of the non-target choice shapes, that the client walks as one prompt queue, plus
  * a content-binding {@link ValidAction.token} it echoes verbatim in the answer
- * (ADR 0009 §Protocol). Both are absent for a plain, no-choice action.
+ * (ADR 0009 §Protocol). All are absent for a plain, no-choice action.
  */
 export interface ValidAction {
   /** Opaque id the client echoes back in a {@link ChooseAction} to take it. */
@@ -177,10 +251,18 @@ export interface ValidAction {
    */
   requirements?: TargetRequirement[];
   /**
+   * Non-target choice slots this action poses (option / select_from_zone / order,
+   * issue #156), a generalization of {@link ValidAction.requirements}. The client
+   * walks them as part of the same prompt queue and answers each slot with a
+   * {@link TargetChoice} keyed by `slot`. Absent for a plain action.
+   */
+  prompts?: Prompt[];
+  /**
    * Content-binding token: an opaque server-issued value bound to this action's
-   * exact content. The client echoes it back **verbatim** in
-   * {@link ChooseAction.token} and never parses or derives it; the server rejects
-   * an answer whose token does not match. Absent only for a legacy unbound action.
+   * exact content (subject + requirements + prompts). The client echoes it back
+   * **verbatim** in {@link ChooseAction.token} and never parses or derives it; the
+   * server rejects an answer whose token does not match. Absent only for a legacy
+   * unbound action.
    */
   token?: string;
 }
@@ -271,17 +353,18 @@ export interface GameView {
 }
 
 /**
- * The player's answer to one {@link TargetRequirement} slot: the selected entity
- * ids, keyed back to the slot by `slot`. Each id must be one of that slot's
- * advertised {@link TargetRequirement.candidates} or the server treats the action
- * as a no-op.
+ * The player's answer to one choice slot — a {@link TargetRequirement} or a
+ * {@link Prompt} — keyed back to the slot by `slot`. The same shape answers every
+ * slot kind; each id must be one of that slot's advertised candidates / options /
+ * items or the server treats the action as a no-op.
  */
 export interface TargetChoice {
-  /** The {@link TargetRequirement.slot} this answers. */
+  /** The {@link TargetRequirement} or {@link Prompt} slot this answers. */
   slot: string;
   /**
-   * The entity ids chosen for this slot (one for a single-target slot; the list
-   * generalizes to multi-select choices the model defers for now).
+   * The entity ids chosen for this slot: a target id; the chosen
+   * {@link PromptOption.id} for an option; the selected ids for a select-from-zone;
+   * or the full ordering for an order prompt.
    */
   chosen?: EntityId[];
 }
