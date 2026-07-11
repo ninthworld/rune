@@ -8,7 +8,10 @@
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
 use crate::actions::{action_is_legal, Action, Block};
 use crate::card::{abilities_of, Keyword};
-use crate::combat::{combat_damage, has_keyword, priority_after_step_change, CombatDamage};
+use crate::combat::{
+    blocked_attackers, combat_damage, combat_has_first_strike, has_keyword,
+    priority_after_step_change, CombatDamage, DamageStep,
+};
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::mulligan::advance_after_keep;
@@ -179,25 +182,72 @@ fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
 
 /// Combat-damage step turn-based action: deal all combat damage (CR 510).
 ///
-/// Every attacker and blocker's assignment is computed first
-/// ([`combat_damage`]), then applied in one pass, so the whole batch lands
-/// simultaneously (CR 510.2): unblocked attackers reduce the defending player's
-/// life (which flows into the life ≤ 0 state-based action, CR 704.5a), and
-/// attacker/blocker damage is marked on creatures (CR 120.3) for the
-/// lethal-damage state-based action to read (CR 704.5g). Marked damage is
-/// cleared later, at cleanup (CR 514.2). The state-based-actions loop that
-/// destroys lethally-damaged creatures runs in [`apply_action`] after this.
+/// If any creature in combat has first strike there are **two** damage steps
+/// (CR 510.5): first-strikers deal in the first, everyone else in the second, and
+/// the state-based-actions loop runs *between* them so a creature killed by first
+/// strike is gone before it would deal its regular-step damage. Otherwise a single
+/// ordinary step is dealt. Each step's assignments are computed
+/// ([`combat_damage`]) then applied in one pass, so the batch lands simultaneously
+/// (CR 510.2): damage to a player is life loss (feeding CR 704.5a), damage to a
+/// creature is marked (CR 120.3) for CR 704.5g, deathtouch damage additionally
+/// flags its recipient for CR 704.5h, and lifelink gains life in the same batch
+/// (CR 702.15e). The set of blocked attackers is captured up front so a blocked
+/// creature whose blockers died to first strike is not re-read as unblocked
+/// (CR 509.1h). The pipeline's state-based-actions loop runs again after this.
 fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
-    for assignment in combat_damage(state, db) {
+    // CR 509.1h: which attackers are blocked is fixed before any damage is dealt.
+    let blocked = blocked_attackers(state);
+    if combat_has_first_strike(state, db) {
+        apply_combat_batch(
+            state,
+            combat_damage(state, db, DamageStep::FirstStrike, &blocked),
+        );
+        // CR 510.5: SBAs are checked between the two combat-damage steps.
+        run_state_based_actions(state, db);
+        apply_combat_batch(
+            state,
+            combat_damage(state, db, DamageStep::Regular, &blocked),
+        );
+    } else {
+        apply_combat_batch(state, combat_damage(state, db, DamageStep::Only, &blocked));
+    }
+}
+
+/// Apply one combat-damage step's computed batch to `state` (CR 510.2). Life
+/// changes and marked damage land together; a deathtouch mark records the
+/// recipient for the CR 704.5h state-based action, and lifelink life gain rides
+/// the same batch as the damage (CR 702.15e).
+fn apply_combat_batch(state: &mut GameState, batch: Vec<CombatDamage>) {
+    for assignment in batch {
         match assignment {
             CombatDamage::ToPlayer { player, amount } => {
                 if let Some(p) = state.players.get_mut(player.0) {
                     p.life -= i32::try_from(amount).unwrap_or(i32::MAX);
                 }
             }
-            CombatDamage::ToPermanent { permanent, amount } => {
+            CombatDamage::ToPermanent {
+                permanent,
+                amount,
+                deathtouch,
+            } => {
+                let mut marked = false;
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == permanent) {
                     perm.damage = perm.damage.saturating_add(amount);
+                    marked = true;
+                }
+                // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source
+                // makes the recipient a candidate for destruction.
+                if marked
+                    && deathtouch
+                    && amount > 0
+                    && !state.deathtouch_struck.contains(&permanent)
+                {
+                    state.deathtouch_struck.push(permanent);
+                }
+            }
+            CombatDamage::GainLife { player, amount } => {
+                if let Some(p) = state.players.get_mut(player.0) {
+                    p.life += i32::try_from(amount).unwrap_or(i32::MAX);
                 }
             }
         }
@@ -247,10 +297,15 @@ fn apply_concede(state: &mut GameState) {
 /// Cleanup step turn-based action: remove all damage marked on permanents
 /// (CR 514.2). Runs on entry to the step; the discard (CR 514.1) is a separate
 /// player choice routed through [`apply_discard`].
+///
+/// Also clears any lingering deathtouch marks (CR 702.2b lasts "this turn"): the
+/// state-based-actions loop normally drains them the moment they are recorded, so
+/// this is a belt-and-suspenders reset at the turn boundary.
 fn remove_all_marked_damage(state: &mut GameState) {
     for perm in &mut state.battlefield {
         perm.damage = 0;
     }
+    state.deathtouch_struck.clear();
 }
 
 /// Discard one card from the active player's hand to its owner's graveyard,
@@ -2274,5 +2329,266 @@ mod tests {
         assert_eq!(state.players[0].life, 0);
         assert!(state.players[0].has_lost);
         assert_eq!(state.players[0].loss_reason, Some(LossReason::ZeroLife));
+    }
+
+    // ----- Combat II: first strike / trample / deathtouch / lifelink (issue #154) -----
+    // Fixture ids: 22 first strike (2/2), 23 trample (5/4), 24 deathtouch (1/1),
+    // 25 lifelink (2/3), 26 trample+deathtouch (4/4); 1 Boar (3/2), 4 Basilisk (4/5).
+
+    #[test]
+    fn issue_154_first_striker_kills_its_blocker_before_it_strikes_back_cr_510_5() {
+        // CR 510.5: a 2/2 first striker deals in the first-strike step, killing a
+        // 3/2 Boar (2 ≥ 2) before the regular step — so the Boar deals no damage
+        // back and the first striker survives untouched, though a 3/2 would
+        // otherwise have killed it.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let striker = place_permanent(&mut state, CardId(22), PlayerId(0), false, 0);
+        let boar = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![striker],
+            vec![Block {
+                blocker: boar,
+                attacker: striker,
+            }],
+            &db,
+        );
+
+        assert!(!alive(&after, boar), "the blocker died to first strike");
+        assert!(
+            alive(&after, striker),
+            "the first striker survives — its blocker never dealt damage"
+        );
+        assert_eq!(
+            find_perm(&after, striker).damage,
+            0,
+            "no damage was dealt back to the first striker (CR 510.5)"
+        );
+    }
+
+    #[test]
+    fn issue_154_two_first_strikers_still_trade_cr_510_5() {
+        // CR 510.5: two 2/2 first strikers both deal in the first-strike step, so
+        // they trade normally — each deals lethal to the other simultaneously.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(22), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(22), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![attacker],
+            vec![Block { blocker, attacker }],
+            &db,
+        );
+
+        assert!(
+            !alive(&after, attacker),
+            "first striker took lethal first strike"
+        );
+        assert!(
+            !alive(&after, blocker),
+            "first striker took lethal first strike"
+        );
+    }
+
+    #[test]
+    fn issue_154_deathtouch_one_damage_destroys_a_big_creature_cr_704_5h() {
+        // CR 702.2b / 704.5h: a 1/1 deathtouch blocker deals 1 to a 4/5 attacker,
+        // which is not lethal by toughness (1 < 5) but is lethal by deathtouch — the
+        // Basilisk is destroyed. The 1/1 dies to the Basilisk's 4 (CR 704.5g).
+        let db = db();
+        let mut state = at_declare_attackers();
+        let basilisk = place_permanent(&mut state, CardId(4), PlayerId(0), false, 0);
+        let adder = place_permanent(&mut state, CardId(24), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![basilisk],
+            vec![Block {
+                blocker: adder,
+                attacker: basilisk,
+            }],
+            &db,
+        );
+
+        assert!(
+            !alive(&after, basilisk),
+            "1 deathtouch damage destroys the 4/5 (CR 704.5h)"
+        );
+        assert!(
+            !alive(&after, adder),
+            "the 1/1 took the Basilisk's 4 (CR 704.5g)"
+        );
+        assert!(
+            after.deathtouch_struck.is_empty(),
+            "the deathtouch flag is consumed by the SBA loop"
+        );
+    }
+
+    #[test]
+    fn issue_154_deathtouch_attacker_kills_the_five_five_it_strikes() {
+        // Acceptance: a deathtouch 1/1 kills a large creature in combat. The 1/1
+        // attacker assigns 1 (deathtouch-lethal) to a 4/5 blocker; the blocker is
+        // destroyed by CR 704.5h.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let adder = place_permanent(&mut state, CardId(24), PlayerId(0), false, 0);
+        let basilisk = place_permanent(&mut state, CardId(4), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![adder],
+            vec![Block {
+                blocker: basilisk,
+                attacker: adder,
+            }],
+            &db,
+        );
+
+        assert!(
+            !alive(&after, basilisk),
+            "deathtouch kills the 4/5 (CR 704.5h)"
+        );
+    }
+
+    #[test]
+    fn issue_154_trample_over_a_chump_block_hits_the_player_cr_702_19e() {
+        // CR 702.19e: a blocked 5/4 trampler assigns 2 (lethal) to a 3/2 Boar and
+        // tramples the remaining 3 to the defending player.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let trampler = place_permanent(&mut state, CardId(23), PlayerId(0), false, 0);
+        let chump = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![trampler],
+            vec![Block {
+                blocker: chump,
+                attacker: trampler,
+            }],
+            &db,
+        );
+
+        assert!(!alive(&after, chump), "the chump blocker died");
+        assert_eq!(
+            after.players[1].life,
+            start_life - 3,
+            "the excess 3 tramples over to the player (CR 702.19e)"
+        );
+    }
+
+    #[test]
+    fn issue_154_full_block_absorbs_all_trample_damage_cr_702_19e() {
+        // CR 702.19e: only the excess over lethal tramples. A 5/4 trampler fully
+        // blocked by a 4/5 Basilisk assigns all 5 to the Basilisk (still 5 short of
+        // absorbing? no — 5 ≥ 5 toughness) with none left over, so the player takes
+        // nothing.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let trampler = place_permanent(&mut state, CardId(23), PlayerId(0), false, 0); // 5/4
+        let wall = place_permanent(&mut state, CardId(4), PlayerId(1), false, 0); // 4/5
+
+        let after = run_combat(
+            &state,
+            vec![trampler],
+            vec![Block {
+                blocker: wall,
+                attacker: trampler,
+            }],
+            &db,
+        );
+
+        assert_eq!(
+            after.players[1].life, start_life,
+            "a fully-absorbing blocker leaves no trample excess (CR 702.19e)"
+        );
+        assert!(!alive(&after, wall), "the 4/5 took lethal 5");
+    }
+
+    #[test]
+    fn issue_154_deathtouch_trampler_assigns_one_per_blocker_rest_to_player() {
+        // CR 510.1e + 702.19e: a 4/4 trample+deathtouch attacker needs assign only 1
+        // to a 4/5 blocker (deathtouch makes 1 lethal), tramping the other 3 over to
+        // the player; the blocker is destroyed by CR 704.5h.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let baneclaw = place_permanent(&mut state, CardId(26), PlayerId(0), false, 0); // 4/4
+        let blocker = place_permanent(&mut state, CardId(4), PlayerId(1), false, 0); // 4/5
+
+        let after = run_combat(
+            &state,
+            vec![baneclaw],
+            vec![Block {
+                blocker,
+                attacker: baneclaw,
+            }],
+            &db,
+        );
+
+        assert!(
+            !alive(&after, blocker),
+            "1 deathtouch damage destroys the blocker (CR 704.5h)"
+        );
+        assert_eq!(
+            after.players[1].life,
+            start_life - 3,
+            "assigns 1 to the blocker, tramples 3 to the player (CR 510.1e/702.19e)"
+        );
+    }
+
+    #[test]
+    fn issue_154_lifelink_gains_life_in_the_same_event_as_the_damage_cr_702_15e() {
+        // CR 702.15e: a lifelink source gains its controller life equal to the
+        // damage, simultaneously. An unblocked 2/3 lifelinker hits player 1 for 2
+        // and its controller (player 0) gains 2.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let atk_life = state.players[0].life;
+        let def_life = state.players[1].life;
+        let cleric = place_permanent(&mut state, CardId(25), PlayerId(0), false, 0);
+
+        let after = run_combat(&state, vec![cleric], Vec::new(), &db);
+
+        assert_eq!(
+            after.players[0].life,
+            atk_life + 2,
+            "lifelink gains its controller 2 (CR 702.15e)"
+        );
+        assert_eq!(after.players[1].life, def_life - 2, "the defender took 2");
+    }
+
+    #[test]
+    fn issue_154_lifelink_on_blocking_damage_gains_life_cr_702_15e() {
+        // CR 702.15e: lifelink applies to any damage the source deals, including a
+        // blocker's damage to the attacker. A 2/3 lifelink blocker deals 2 to a 3/2
+        // Boar and its controller gains 2, even as the blocker dies to the Boar.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let boar = place_permanent(&mut state, CardId(1), PlayerId(0), false, 0);
+        let cleric = place_permanent(&mut state, CardId(25), PlayerId(1), false, 0);
+        let def_life = state.players[1].life;
+
+        let after = run_combat(
+            &state,
+            vec![boar],
+            vec![Block {
+                blocker: cleric,
+                attacker: boar,
+            }],
+            &db,
+        );
+
+        assert_eq!(
+            after.players[1].life,
+            def_life + 2,
+            "the lifelink blocker's controller gains 2 from its combat damage"
+        );
     }
 }

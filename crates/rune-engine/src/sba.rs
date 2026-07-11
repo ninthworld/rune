@@ -20,6 +20,11 @@ use crate::CardDatabase;
 ///   player by [`crate::Player::draw`] and consumed here.
 /// - **CR 704.5g** — a creature with lethal marked damage (damage ≥ its
 ///   toughness, toughness > 0) is destroyed and put into its owner's graveyard.
+/// - **CR 704.5h** — a creature dealt any nonzero damage this turn by a source
+///   with deathtouch is destroyed, regardless of whether that damage is lethal by
+///   toughness. The struck creatures are recorded in
+///   [`GameState::deathtouch_struck`](crate::GameState::deathtouch_struck) when
+///   combat damage is applied and consumed (drained) here.
 ///
 /// These run in the same loop so a chain settles in one call: e.g. a creature
 /// dying does not itself change a life total today, but keeping the checks in one
@@ -50,14 +55,22 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                 changed = true;
             }
         }
-        // CR 704.5g: destroy every creature with lethal marked damage. Collected
-        // before mutating so the whole set is judged against one snapshot (the
-        // checks are simultaneous, CR 704.3), then each is moved to its owner's
-        // graveyard.
+        // CR 704.5h: a creature dealt damage by a deathtouch source is destroyed.
+        // The set is recorded when combat damage is applied (see
+        // `apply.rs :: deal_combat_damage`); draining it here consumes the flag so
+        // the pass reaches a fixed point, mirroring the empty-library-draw flag.
+        let struck = std::mem::take(&mut state.deathtouch_struck);
+        if !struck.is_empty() {
+            changed = true;
+        }
+        // CR 704.5g/704.5h: destroy every creature with lethal marked damage or
+        // flagged as struck by deathtouch. Collected before mutating so the whole
+        // set is judged against one snapshot (the checks are simultaneous,
+        // CR 704.3), then each is moved to its owner's graveyard.
         let doomed: Vec<PermanentId> = state
             .battlefield
             .iter()
-            .filter(|perm| has_lethal_damage(perm, state, db))
+            .filter(|perm| has_lethal_damage(perm, state, db) || struck.contains(&perm.id))
             .map(|perm| perm.id)
             .collect();
         for id in doomed {
@@ -196,6 +209,43 @@ mod tests {
             !state.battlefield.iter().any(|p| p.id == boar),
             "3 damage is lethal to a 3/3 (CR 704.5g)"
         );
+    }
+
+    #[test]
+    fn cr_704_5h_deathtouch_struck_creature_is_destroyed_below_lethal_damage() {
+        // CR 704.5h: a creature flagged as struck by a deathtouch source is
+        // destroyed even though its 1 marked damage is far below its toughness. The
+        // Basilisk (4/5) survives 1 marked damage by CR 704.5g but not the flag.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let basilisk = place(&mut state, CardId(4), PlayerId(0), 1); // 1 marked damage
+        state.deathtouch_struck.push(basilisk);
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == basilisk),
+            "a deathtouch-struck creature is destroyed (CR 704.5h)"
+        );
+        assert_eq!(state.players[0].graveyard.len(), 1);
+        assert!(
+            state.deathtouch_struck.is_empty(),
+            "the deathtouch flag is consumed so the loop settles"
+        );
+    }
+
+    #[test]
+    fn cr_704_5h_stale_deathtouch_flag_settles_without_error() {
+        // A struck id whose creature is already gone is drained harmlessly and the
+        // loop still reaches a fixed point (no infinite loop, no panic).
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.deathtouch_struck.push(PermanentId(999));
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(state.deathtouch_struck.is_empty());
+        assert!(state.battlefield.is_empty());
     }
 
     #[test]
