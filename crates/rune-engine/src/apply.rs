@@ -8,7 +8,7 @@
 use crate::ability::{is_mana_ability, Ability, Cost, Effect};
 use crate::actions::{valid_actions, Action};
 use crate::card::abilities_of;
-use crate::id::{CardId, PermanentId, PlayerId};
+use crate::id::{CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::resolve::resolve_stack_object;
 use crate::sba::run_state_based_actions;
@@ -92,14 +92,15 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
 }
 
 /// Play a land from the active player's hand onto the battlefield. Not via the
-/// stack (CR 116.2a); a fresh [`PermanentId`] is minted on entry.
-fn apply_play_land(state: &mut GameState, card: CardId) {
+/// stack (CR 116.2a); a fresh [`PermanentId`] is minted on entry while the
+/// card's [`crate::CardInstanceId`] carries over unchanged.
+fn apply_play_land(state: &mut GameState, card: CardInstance) {
     let controller = state.priority;
     {
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
         };
-        let Some(pos) = player.hand.iter().position(|&c| c == card) else {
+        let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) else {
             return;
         };
         player.hand.remove(pos);
@@ -107,7 +108,8 @@ fn apply_play_land(state: &mut GameState, card: CardId) {
     let id = state.mint_id();
     state.battlefield.push(Permanent {
         id: PermanentId(id),
-        card,
+        instance: card.id,
+        card: card.card,
         controller,
         tapped: false,
     });
@@ -167,9 +169,9 @@ fn apply_activate_ability(
 
 /// Cast a creature spell: pay its mana cost from the caster's pool, move the card
 /// from hand onto the stack, and reset the pass count (the caster keeps priority).
-fn apply_cast_spell(state: &mut GameState, card: CardId, db: &CardDatabase) {
+fn apply_cast_spell(state: &mut GameState, card: CardInstance, db: &CardDatabase) {
     let controller = state.priority;
-    let Some(data) = db.card(card) else {
+    let Some(data) = db.card(card.card) else {
         return;
     };
     let cost = parse_mana_cost(&data.mana_cost);
@@ -180,7 +182,7 @@ fn apply_cast_spell(state: &mut GameState, card: CardId, db: &CardDatabase) {
         let Some(new_pool) = player.mana_pool.pay(&cost) else {
             return;
         };
-        let Some(pos) = player.hand.iter().position(|&c| c == card) else {
+        let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) else {
             return;
         };
         player.hand.remove(pos);
@@ -221,6 +223,7 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+    use crate::id::CardId;
     use crate::mana::Color;
     use crate::phase::Step;
 
@@ -230,13 +233,26 @@ mod tests {
     }
 
     /// A two-player game in the precombat main phase with player 0 holding a
-    /// Forest and Verdant Scout, and one card to draw in the library.
+    /// Forest and Verdant Scout, and one card to draw in the library. Each card
+    /// is a freshly minted [`CardInstance`] so copies stay distinguishable.
     fn slice_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        state.players[0].hand = vec![CardId(5), CardId(6)];
-        state.players[0].library = vec![CardId(1)];
+        let forest = state.new_instance(CardId(5));
+        let scout = state.new_instance(CardId(6));
+        let draw = state.new_instance(CardId(1));
+        state.players[0].hand = vec![forest, scout];
+        state.players[0].library = vec![draw];
         state
+    }
+
+    /// The first hand instance in `seat`'s hand whose printed card is `card`.
+    fn hand_instance(state: &GameState, seat: usize, card: CardId) -> CardInstance {
+        *state.players[seat]
+            .hand
+            .iter()
+            .find(|c| c.card == card)
+            .unwrap()
     }
 
     #[test]
@@ -253,7 +269,8 @@ mod tests {
     fn new_actions_do_not_mutate_input() {
         let before = slice_state();
         let snapshot = before.clone();
-        let _ = apply_action(&before, &Action::PlayLand { card: CardId(5) }, &db());
+        let forest = hand_instance(&before, 0, CardId(5));
+        let _ = apply_action(&before, &Action::PlayLand { card: forest }, &db());
         assert_eq!(before, snapshot);
     }
 
@@ -296,9 +313,11 @@ mod tests {
     fn forest_mana_ability_adds_green_without_using_the_stack() {
         let db = db();
         let mut state = slice_state();
+        let inst = state.new_instance(CardId(5));
         let id = state.mint_id();
         state.battlefield.push(Permanent {
             id: PermanentId(id),
+            instance: inst.id,
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
@@ -320,9 +339,11 @@ mod tests {
     fn mana_ability_does_not_pass_priority() {
         let db = db();
         let mut state = slice_state();
+        let inst = state.new_instance(CardId(5));
         let id = state.mint_id();
         state.battlefield.push(Permanent {
             id: PermanentId(id),
+            instance: inst.id,
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
@@ -344,10 +365,11 @@ mod tests {
         let db = db();
         let mut state = slice_state();
         state.players[0].mana_pool.add(Color::Green, 1);
-        let after = apply_action(&state, &Action::CastSpell { card: CardId(6) }, &db);
+        let scout = hand_instance(&state, 0, CardId(6));
+        let after = apply_action(&state, &Action::CastSpell { card: scout }, &db);
         assert_eq!(after.stack.len(), 1);
         assert_eq!(after.players[0].mana_pool.green, 0);
-        assert!(!after.players[0].hand.contains(&CardId(6)));
+        assert!(!after.players[0].hand.iter().any(|c| c.id == scout.id));
     }
 
     #[test]
@@ -356,11 +378,16 @@ mod tests {
         // resolve it (ETB triggers), then resolve the trigger (controller draws).
         let db = db();
         let state = slice_state();
+        let forest_card = hand_instance(&state, 0, CardId(5));
+        let scout_card = hand_instance(&state, 0, CardId(6));
+        let draw_card = state.players[0].library[0];
 
         // Play Forest.
-        let state = apply_action(&state, &Action::PlayLand { card: CardId(5) }, &db);
+        let state = apply_action(&state, &Action::PlayLand { card: forest_card }, &db);
         assert_eq!(state.battlefield.len(), 1);
         assert!(state.land_played);
+        // The land keeps its hand instance identity on the battlefield.
+        assert_eq!(state.battlefield[0].instance, forest_card.id);
         let forest = state.battlefield[0].id;
 
         // Tap Forest for {G} (mana ability resolves immediately).
@@ -378,7 +405,7 @@ mod tests {
         assert_eq!(state.priority, PlayerId(0));
 
         // Cast Verdant Scout.
-        let state = apply_action(&state, &Action::CastSpell { card: CardId(6) }, &db);
+        let state = apply_action(&state, &Action::CastSpell { card: scout_card }, &db);
         assert_eq!(state.stack.len(), 1);
         assert_eq!(state.players[0].mana_pool.green, 0);
 
@@ -392,7 +419,44 @@ mod tests {
         let state = apply_action(&state, &Action::PassPriority, &db);
         let state = apply_action(&state, &Action::PassPriority, &db);
         assert!(state.stack.is_empty());
-        assert!(state.players[0].hand.contains(&CardId(1)));
+        assert!(state.players[0].hand.contains(&draw_card));
         assert!(state.players[0].library.is_empty());
+    }
+
+    #[test]
+    fn issue_51_duplicate_cards_have_distinct_instances_and_routable_actions() {
+        // Two copies of the same printed card (two Forests) in one hand must be
+        // individually addressable: distinct instance ids, one PlayLand action
+        // per copy, and applying one action plays that exact copy — not "the
+        // first matching copy".
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let forest_a = state.new_instance(CardId(5));
+        let forest_b = state.new_instance(CardId(5));
+        state.players[0].hand = vec![forest_a, forest_b];
+
+        // Same printed card, but two distinct physical instances.
+        assert_eq!(forest_a.card, forest_b.card);
+        assert_ne!(forest_a.id, forest_b.id);
+
+        // The engine offers one land action per copy, each naming its own copy.
+        let plays: Vec<CardInstance> = valid_actions(&state, &db)
+            .into_iter()
+            .filter_map(|action| match action {
+                Action::PlayLand { card } => Some(card),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(plays.len(), 2);
+        assert!(plays.contains(&forest_a));
+        assert!(plays.contains(&forest_b));
+
+        // Routing the action for the second copy removes exactly that copy,
+        // leaving the first untouched in hand.
+        let after = apply_action(&state, &Action::PlayLand { card: forest_b }, &db);
+        assert_eq!(after.players[0].hand, vec![forest_a]);
+        assert_eq!(after.battlefield.len(), 1);
+        assert_eq!(after.battlefield[0].instance, forest_b.id);
     }
 }

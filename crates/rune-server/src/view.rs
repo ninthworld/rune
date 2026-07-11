@@ -11,8 +11,8 @@
 //! already depends on, and adds nothing to the wire contract in `rune-protocol`.
 
 use rune_engine::{
-    valid_actions, Action, CardData, CardDatabase, CardId, Effect, GameState, PermanentId, Player,
-    PlayerId, StackId, StackObject, StackObjectKind, Step,
+    valid_actions, Action, CardData, CardDatabase, CardId, CardInstance, CardInstanceId, Effect,
+    GameState, PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step,
 };
 use rune_protocol::{
     CardView, GameView, OpponentView, Permanent as PermanentView, Phase, StackItem, ValidAction,
@@ -26,11 +26,12 @@ fn player_id(seat: PlayerId) -> String {
 
 /// The opaque protocol id for a card referenced from a hand or a public pile.
 ///
-/// The engine identifies a hand card by its [`CardId`] and acts on the first
-/// matching copy, so encoding the id (rather than a per-copy instance id) keeps
-/// the view's entity ids consistent with the action the engine will apply.
-fn card_entity_id(card: CardId) -> String {
-    format!("card_{}", card.0)
+/// Keyed by the per-copy [`CardInstanceId`], so two copies of the same printing
+/// get distinct entity ids (`card_5` vs `card_6`) and the action a client echoes
+/// back names an unambiguous instance — the engine no longer falls back to "the
+/// first matching copy".
+fn card_entity_id(instance: CardInstanceId) -> String {
+    format!("card_{}", instance.0)
 }
 
 /// The opaque protocol id for a permanent on the battlefield.
@@ -128,7 +129,7 @@ fn stack_item(object: &StackObject, db: &CardDatabase) -> StackItem {
         StackObjectKind::Spell { card } => StackItem {
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
-            description: card_name(*card, db),
+            description: card_name(card.card, db),
             source: None,
         },
         StackObjectKind::Ability { source, effects } => StackItem {
@@ -144,7 +145,7 @@ fn stack_item(object: &StackObject, db: &CardDatabase) -> StackItem {
 /// skipping empty piles so the wire stays terse.
 fn zone_piles(
     state: &GameState,
-    pick: impl Fn(&Player) -> &Vec<CardId>,
+    pick: impl Fn(&Player) -> &Vec<CardInstance>,
     db: &CardDatabase,
 ) -> Vec<ZonePile> {
     state
@@ -160,7 +161,7 @@ fn zone_piles(
                 player_id: player_id(PlayerId(seat)),
                 cards: cards
                     .iter()
-                    .map(|&card| card_view(card_entity_id(card), card, db))
+                    .map(|&inst| card_view(card_entity_id(inst.id), inst.card, db))
                     .collect(),
             })
         })
@@ -197,14 +198,14 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
         Action::PlayLand { card } => ValidAction {
             id,
             kind: "play_land".to_string(),
-            label: format!("Play {}", card_name(*card, db)),
-            subject: vec![card_entity_id(*card)],
+            label: format!("Play {}", card_name(card.card, db)),
+            subject: vec![card_entity_id(card.id)],
         },
         Action::CastSpell { card } => ValidAction {
             id,
             kind: "cast_spell".to_string(),
-            label: format!("Cast {}", card_name(*card, db)),
-            subject: vec![card_entity_id(*card)],
+            label: format!("Cast {}", card_name(card.card, db)),
+            subject: vec![card_entity_id(card.id)],
         },
         Action::ActivateAbility { permanent, .. } => ValidAction {
             id,
@@ -241,7 +242,7 @@ pub(crate) fn personalized_view(
             player
                 .hand
                 .iter()
-                .map(|&card| card_view(card_entity_id(card), card, db))
+                .map(|&inst| card_view(card_entity_id(inst.id), inst.card, db))
                 .collect()
         })
         .unwrap_or_default();
@@ -339,9 +340,66 @@ pub(crate) fn resolve_action(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unwrap_used, clippy::panic)]
 
     use super::*;
+
+    /// Two copies of the same printed card in one hand must project to distinct
+    /// entity ids and independently routable actions (issue #51). Before
+    /// per-instance identity both copies shared `card_5`, so a returned action
+    /// resolved against "the first matching copy".
+    #[test]
+    fn issue_51_duplicate_hand_cards_get_distinct_entities_and_actions() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let forest_a = state.new_instance(CardId(5));
+        let forest_b = state.new_instance(CardId(5));
+        state.players[0].hand = vec![forest_a, forest_b];
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+
+        // Each physical copy gets its own hand entity id.
+        let hand_ids: Vec<&str> = view.my_hand.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(hand_ids.len(), 2);
+        assert_ne!(hand_ids[0], hand_ids[1]);
+        assert!(hand_ids.contains(&card_entity_id(forest_a.id).as_str()));
+        assert!(hand_ids.contains(&card_entity_id(forest_b.id).as_str()));
+
+        // Two land actions, each carrying its own copy's entity id as subject.
+        let land_actions: Vec<&ValidAction> = view
+            .valid_actions
+            .iter()
+            .filter(|a| a.kind == "play_land")
+            .collect();
+        assert_eq!(land_actions.len(), 2);
+        let subjects: Vec<&str> = land_actions.iter().map(|a| a.subject[0].as_str()).collect();
+        assert_ne!(subjects[0], subjects[1]);
+
+        // Each action id routes back to a PlayLand naming the exact instance its
+        // subject entity referenced — no ambiguity, no "first matching copy".
+        for action in &land_actions {
+            let resolved = resolve_action(&state, &db, PlayerId(0), &action.id).unwrap();
+            let Action::PlayLand { card } = resolved else {
+                panic!("play_land action must resolve to a PlayLand");
+            };
+            assert_eq!(action.subject[0], card_entity_id(card.id));
+        }
+
+        // The two actions route to two different instances between them.
+        let routed: Vec<CardInstance> = land_actions
+            .iter()
+            .map(
+                |a| match resolve_action(&state, &db, PlayerId(0), &a.id).unwrap() {
+                    Action::PlayLand { card } => card,
+                    other => panic!("expected PlayLand, got {other:?}"),
+                },
+            )
+            .collect();
+        assert_ne!(routed[0].id, routed[1].id);
+        assert!(routed.contains(&forest_a));
+        assert!(routed.contains(&forest_b));
+    }
 
     /// The engine RNG seed must never surface in a personalized view: it would
     /// leak future shuffle outcomes. Two states differing only in `rng_seed`

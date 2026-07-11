@@ -16,16 +16,18 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     match object.kind {
         StackObjectKind::Spell { card } => {
             // Route by the resolving card's types (CR 608.3). A permanent spell
-            // enters the battlefield with a fresh id; an instant/sorcery creates
-            // no Permanent and instead goes to its owner's graveyard (CR 608.2m).
-            // The engine does not yet track ownership apart from control, so we
-            // use the controller's graveyard on the owner == controller
-            // assumption — ownership tracking is future work.
-            if db.card(card).is_some_and(CardData::is_permanent) {
+            // enters the battlefield with a fresh id (its instance id carries
+            // over); an instant/sorcery creates no Permanent and instead goes to
+            // its owner's graveyard as the same instance (CR 608.2m). The engine
+            // does not yet track ownership apart from control, so we use the
+            // controller's graveyard on the owner == controller assumption —
+            // ownership tracking is future work.
+            if db.card(card.card).is_some_and(CardData::is_permanent) {
                 let id = state.mint_id();
                 state.battlefield.push(Permanent {
                     id: PermanentId(id),
-                    card,
+                    instance: card.id,
+                    card: card.card,
                     controller: object.controller,
                     tapped: false,
                 });
@@ -48,7 +50,7 @@ mod tests {
     use super::*;
     use crate::actions::Action;
     use crate::apply_action;
-    use crate::id::{CardId, PlayerId};
+    use crate::id::{CardId, CardInstance, PlayerId};
     use crate::mana::Color;
     use crate::phase::Step;
     use crate::stack::StackId;
@@ -59,13 +61,26 @@ mod tests {
     }
 
     /// A two-player game in the precombat main phase with player 0 holding a
-    /// Forest and Verdant Scout, and one card to draw in the library.
+    /// Forest and Verdant Scout, and one card to draw in the library. Each card
+    /// is a freshly minted [`CardInstance`] so copies stay distinguishable.
     fn slice_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        state.players[0].hand = vec![CardId(5), CardId(6)];
-        state.players[0].library = vec![CardId(1)];
+        let forest = state.new_instance(CardId(5));
+        let scout = state.new_instance(CardId(6));
+        let draw = state.new_instance(CardId(1));
+        state.players[0].hand = vec![forest, scout];
+        state.players[0].library = vec![draw];
         state
+    }
+
+    /// The first hand instance in `seat`'s hand whose printed card is `card`.
+    fn hand_instance(state: &GameState, seat: usize, card: CardId) -> CardInstance {
+        *state.players[seat]
+            .hand
+            .iter()
+            .find(|c| c.card == card)
+            .unwrap()
     }
 
     #[test]
@@ -73,10 +88,17 @@ mod tests {
         let db = db();
         let mut state = slice_state();
         state.players[0].mana_pool.add(Color::Green, 1);
-        let state = apply_action(&state, &Action::CastSpell { card: CardId(6) }, &db);
+        let scout = hand_instance(&state, 0, CardId(6));
+        let state = apply_action(&state, &Action::CastSpell { card: scout }, &db);
         let state = apply_action(&state, &Action::PassPriority, &db);
         let state = apply_action(&state, &Action::PassPriority, &db);
-        assert!(state.battlefield.iter().any(|p| p.card == CardId(6)));
+        // The permanent that resolves carries the same instance the spell had.
+        let perm = state
+            .battlefield
+            .iter()
+            .find(|p| p.card == CardId(6))
+            .unwrap();
+        assert_eq!(perm.instance, scout.id);
     }
 
     #[test]
@@ -91,11 +113,12 @@ mod tests {
 
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
+        let bolt = state.new_instance(CardId(100));
         let sid = state.mint_id();
         state.stack.push(StackObject {
             id: StackId(sid),
             controller: PlayerId(0),
-            kind: StackObjectKind::Spell { card: CardId(100) },
+            kind: StackObjectKind::Spell { card: bolt },
         });
 
         let state = apply_action(&state, &Action::PassPriority, &db);
@@ -103,6 +126,6 @@ mod tests {
 
         assert!(state.stack.is_empty());
         assert!(state.battlefield.is_empty());
-        assert_eq!(state.players[0].graveyard, vec![CardId(100)]);
+        assert_eq!(state.players[0].graveyard, vec![bolt]);
     }
 }

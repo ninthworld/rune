@@ -1,6 +1,6 @@
 //! Per-player state and its private zones.
 
-use crate::id::CardId;
+use crate::id::CardInstance;
 use crate::mana::ManaPool;
 use crate::zone::Zone;
 
@@ -9,9 +9,9 @@ pub const STARTING_LIFE: i32 = 20;
 
 /// A single player's state: their life total and the four zones they own.
 ///
-/// Cards are stored as ordered piles of [`CardId`]; the top of the library is
-/// the last element. The shared battlefield lives on [`crate::GameState`], not
-/// here.
+/// Cards are stored as ordered piles of [`CardInstance`]s, so two copies of the
+/// same printing stay individually addressable; the top of the library is the
+/// last element. The shared battlefield lives on [`crate::GameState`], not here.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Player {
     /// Current life total. May be negative before state-based actions resolve.
@@ -20,13 +20,13 @@ pub struct Player {
     /// loop (e.g. on reaching 0 or less life); never unset.
     pub has_lost: bool,
     /// The player's deck (private, ordered).
-    pub library: Vec<CardId>,
+    pub library: Vec<CardInstance>,
     /// Cards in the player's hand (private).
-    pub hand: Vec<CardId>,
+    pub hand: Vec<CardInstance>,
     /// The player's graveyard (public, ordered).
-    pub graveyard: Vec<CardId>,
+    pub graveyard: Vec<CardInstance>,
     /// Cards this player owns in exile.
-    pub exile: Vec<CardId>,
+    pub exile: Vec<CardInstance>,
     /// Unspent mana in the player's pool. Emptied between steps (not yet modeled
     /// for the vertical slice, which spends mana within one step).
     pub mana_pool: ManaPool,
@@ -44,7 +44,7 @@ impl Player {
 
     /// Borrow one of the player's private zones by name.
     #[must_use]
-    pub fn zone(&self, zone: Zone) -> &Vec<CardId> {
+    pub fn zone(&self, zone: Zone) -> &Vec<CardInstance> {
         match zone {
             Zone::Library => &self.library,
             Zone::Hand => &self.hand,
@@ -57,14 +57,23 @@ impl Player {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::id::{CardId, CardInstanceId};
 
     #[test]
     fn player_zone_accessor_matches_fields() {
+        let hand_card = CardInstance {
+            id: CardInstanceId(7),
+            card: CardId(7),
+        };
+        let grave_card = CardInstance {
+            id: CardInstanceId(9),
+            card: CardId(9),
+        };
         let mut player = Player::new();
-        player.hand.push(CardId(7));
-        player.graveyard.push(CardId(9));
-        assert_eq!(player.zone(Zone::Hand), &vec![CardId(7)]);
-        assert_eq!(player.zone(Zone::Graveyard), &vec![CardId(9)]);
+        player.hand.push(hand_card);
+        player.graveyard.push(grave_card);
+        assert_eq!(player.zone(Zone::Hand), &vec![hand_card]);
+        assert_eq!(player.zone(Zone::Graveyard), &vec![grave_card]);
         assert!(player.zone(Zone::Library).is_empty());
         assert!(player.zone(Zone::Exile).is_empty());
     }

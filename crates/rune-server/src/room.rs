@@ -339,10 +339,14 @@ mod tests {
     fn dealt_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        state.players[0].hand = vec![CardId(5), CardId(6)];
-        state.players[0].library = vec![CardId(1)];
-        state.players[1].hand = vec![CardId(1)];
-        state.players[1].library = vec![CardId(1), CardId(1)];
+        let p0_hand = vec![state.new_instance(CardId(5)), state.new_instance(CardId(6))];
+        let p0_lib = vec![state.new_instance(CardId(1))];
+        let p1_hand = vec![state.new_instance(CardId(1))];
+        let p1_lib = vec![state.new_instance(CardId(1)), state.new_instance(CardId(1))];
+        state.players[0].hand = p0_hand;
+        state.players[0].library = p0_lib;
+        state.players[1].hand = p1_hand;
+        state.players[1].library = p1_lib;
         state
     }
 
