@@ -73,6 +73,33 @@ export interface CardDisplayData {
   selected?: boolean;
 }
 
+/**
+ * The explicit set of visual inputs {@link buildCardDisplay} reads, serialized
+ * into a stable key. Two cards with equal signatures build byte-identical display
+ * objects, so a reconciler may reuse one across frames instead of rebuilding its
+ * ~10 Graphics/Text nodes. **Position is deliberately absent**: a position-only
+ * change keeps the signature and only moves the existing container.
+ *
+ * Keep this in lockstep with the fields {@link buildCardDisplay} actually reads —
+ * it is the single definition of "same-looking card" for the reconcile layer
+ * (issue #58). It is a cache key only, never load-bearing game state.
+ */
+export function cardVisualSignature(data: CardDisplayData, tier: CardTier = 'field'): string {
+  return JSON.stringify({
+    tier,
+    name: data.name,
+    typeLine: data.typeLine,
+    colorIdentity: data.colorIdentity,
+    manaCost: data.manaCost ?? null,
+    power: data.power ?? null,
+    toughness: data.toughness ?? null,
+    tapped: data.tapped ?? false,
+    summoningSick: data.summoningSick ?? false,
+    selected: data.selected ?? false,
+    counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
+  });
+}
+
 /** One parsed mana symbol ready to draw: the glyph plus its pip swatch. */
 export interface ManaPip {
   /** The symbol as displayed inside the pip, e.g. `"1"` or `"G"`. */
