@@ -4,7 +4,7 @@
 //! value semantics. Objects resolve top-first (last element is the top) when all
 //! players pass priority in succession (see `crate::apply_action`).
 
-use crate::ability::Effect;
+use crate::ability::{Effect, Target};
 use crate::id::{CardInstance, PermanentId, PlayerId};
 
 /// Identity of an object on the stack, minted fresh when the object is put there.
@@ -20,6 +20,16 @@ pub struct StackObject {
     pub controller: PlayerId,
     /// What the object is.
     pub kind: StackObjectKind,
+    /// The targets chosen for this object when it was put on the stack (CR
+    /// 601.2c — targets are locked in on announcement, not on resolution), in
+    /// the order of the targeting [`Effect`]s that consume them.
+    ///
+    /// Empty for an object that targets nothing. Recording the choice here keeps
+    /// the stack a complete, inspectable record ("Lightning Bolt targeting that
+    /// creature") and lets resolution re-check each target's legality against
+    /// current state without any side lookup. Enumerating and choosing these
+    /// values from `valid_actions` is issue #71; this field only stores them.
+    pub targets: Vec<Target>,
 }
 
 /// The two things that can be on the stack: a spell or an ability.

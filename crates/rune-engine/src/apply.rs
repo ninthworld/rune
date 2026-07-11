@@ -5,7 +5,7 @@
 //! runs replacement effects, state-based actions, and trigger collection, and
 //! returns the new state. Pure over an immutable [`crate::GameState`].
 
-use crate::ability::{is_mana_ability, Ability, Cost, Effect};
+use crate::ability::{is_mana_ability, Ability, Cost, Effect, Target};
 use crate::actions::{valid_actions, Action};
 use crate::card::abilities_of;
 use crate::id::{CardInstance, PermanentId, PlayerId};
@@ -62,6 +62,8 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
                 source: trigger.source,
                 effects: trigger.effects,
             },
+            // Target choosing on announcement is issue #71; triggers carry none.
+            targets: Vec::new(),
         });
     }
 
@@ -163,6 +165,8 @@ fn apply_activate_ability(
                 source: permanent,
                 effects: effects.clone(),
             },
+            // Choosing targets at activation time is issue #71; none for now.
+            targets: Vec::new(),
         });
         state.consecutive_passes = 0;
     }
@@ -194,6 +198,8 @@ fn apply_cast_spell(state: &mut GameState, card: CardInstance, db: &CardDatabase
         id: StackId(id),
         controller,
         kind: StackObjectKind::Spell { card },
+        // Choosing targets when casting is issue #71; none for now.
+        targets: Vec::new(),
     });
     state.consecutive_passes = 0;
 }
@@ -212,6 +218,36 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
                 }
             }
         }
+        // A targeting effect: its subject is a chosen target, not the controller,
+        // so it is applied via [`apply_targeted_effect`] and is a no-op here.
+        Effect::Tap { .. } => {}
+    }
+}
+
+/// Apply a targeting [`Effect`] to its already-legality-checked chosen
+/// [`Target`], on behalf of `controller`.
+///
+/// The caller (the resolve path) is responsible for re-checking the target's
+/// legality first (CR 608.2b) and only invoking this for a target that is still
+/// legal; a mismatched target-value kind is a no-op here. Effects with an
+/// implicit subject never reach this function — they route through
+/// [`apply_effect`].
+pub(crate) fn apply_targeted_effect(
+    state: &mut GameState,
+    effect: &Effect,
+    target: Target,
+    _controller: PlayerId,
+) {
+    match effect {
+        Effect::Tap { .. } => {
+            if let Target::Permanent(id) = target {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    perm.tapped = true;
+                }
+            }
+        }
+        // Implicit-subject effects do not target; they never reach here.
+        Effect::AddMana { .. } | Effect::DrawCard { .. } => {}
     }
 }
 
