@@ -234,6 +234,35 @@ pub struct TargetRequirement {
     pub candidates: Vec<EntityId>,
 }
 
+/// Why a game ended, as carried in [`GameResult::reason`]. A closed, snake_case
+/// enum mirroring the engine's losing conditions (CR 104.3 / CR 704.5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GameOverReason {
+    /// A player was reduced to 0 or less life (CR 704.5a).
+    LifeZero,
+    /// A player attempted to draw from an empty library (CR 704.5c).
+    Decked,
+    /// A player conceded (CR 104.3a).
+    Concede,
+}
+
+/// The terminal outcome of a game (CR 104.2a), present on a [`GameView`] only once
+/// the game is over. While the game is live the field is omitted entirely (the
+/// empty-optional convention), so its mere presence signals game over to a client.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameResult {
+    /// The winning player (CR 104.2a), or omitted for a draw where every remaining
+    /// player lost at once (CR 104.4a).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub winner: Option<PlayerId>,
+    /// The players who lost, in seat order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub losers: Vec<PlayerId>,
+    /// Why the game ended.
+    pub reason: GameOverReason,
+}
+
 /// The personalized state the server sends after every change (docs/protocol.md).
 /// Hidden information is redacted server-side before this is built. A client must
 /// be able to fully reconstruct its UI from a single `GameView` — no client state
@@ -279,6 +308,12 @@ pub struct GameView {
     /// Seconds remaining for the pending decision, if a clock is running.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action_deadline: Option<f64>,
+    /// The terminal result once the game is over (winner/losers/reason, CR 104.2a).
+    /// Omitted while the game is live (the empty-optional convention), so its
+    /// presence alone tells a client the game has ended; when present,
+    /// `valid_actions` is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<GameResult>,
 }
 
 /// The client's chosen action, answered atomically: the `id` of one issued
@@ -706,6 +741,7 @@ mod tests {
                 token: "h:00ab".into(),
             }],
             action_deadline: Some(12.5),
+            result: None,
         };
 
         let json = serde_json::to_string(&view).unwrap();
@@ -728,6 +764,7 @@ mod tests {
             priority_player: None,
             valid_actions: vec![],
             action_deadline: None,
+            result: None,
         };
         let json = serde_json::to_string(&view).unwrap();
         let back: GameView = serde_json::from_str(&json).unwrap();
@@ -749,6 +786,7 @@ mod tests {
             priority_player: None,
             valid_actions: vec![],
             action_deadline: None,
+            result: None,
         };
         // Empty pool is elided from the wire.
         let json = serde_json::to_value(&view).unwrap();
@@ -1126,6 +1164,58 @@ mod tests {
     }
 
     #[test]
+    fn game_view_result_is_omitted_while_live_and_round_trips_when_over() {
+        // Empty-optional convention: `result` is absent from the wire while the
+        // game is live, and round-trips (winner/losers/reason) once it is over.
+        let mut view = GameView {
+            you: "p0".into(),
+            my_hand: vec![],
+            opponents: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            graveyards: vec![],
+            exile: vec![],
+            phase: Phase::End,
+            mana_pool: vec![],
+            priority_player: None,
+            valid_actions: vec![],
+            action_deadline: None,
+            result: None,
+        };
+        // Live game: the field elides entirely.
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(json.get("result").is_none());
+
+        // Game over: winner p0, loser p1, decked. Round-trips losslessly.
+        view.result = Some(GameResult {
+            winner: Some("p0".into()),
+            losers: vec!["p1".into()],
+            reason: GameOverReason::Decked,
+        });
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(
+            json.get("result").unwrap(),
+            &serde_json::json!({
+                "winner": "p0",
+                "losers": ["p1"],
+                "reason": "decked"
+            })
+        );
+        let back: GameView = serde_json::from_value(json).unwrap();
+        assert_eq!(back, view);
+
+        // A draw omits the winner but still round-trips.
+        view.result = Some(GameResult {
+            winner: None,
+            losers: vec!["p0".into(), "p1".into()],
+            reason: GameOverReason::LifeZero,
+        });
+        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
+        assert_eq!(back, view);
+        assert!(back.result.unwrap().winner.is_none());
+    }
+
+    #[test]
     fn game_view_serializes_you_on_the_wire() {
         let view = GameView {
             you: "p1".into(),
@@ -1140,6 +1230,7 @@ mod tests {
             priority_player: None,
             valid_actions: vec![],
             action_deadline: None,
+            result: None,
         };
         let json = serde_json::to_value(&view).unwrap();
         // The receiver's own seat id is always present on the wire (like `phase`),

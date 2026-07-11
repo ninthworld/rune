@@ -183,13 +183,15 @@ impl Room {
         info!("game reached a terminal state; room task stopping after final broadcast");
     }
 
-    /// Whether the game has reached a terminal state: some player has lost.
+    /// Whether the game has reached a terminal state (CR 104.2a).
     ///
-    /// The engine sets `Player::has_lost` in its state-based-actions loop
-    /// (`crates/rune-engine/src/player.rs`); the room only reads that flag and never
-    /// decides a loss itself, keeping all game logic in the engine.
+    /// Delegates entirely to the engine's [`GameState::is_over`], which decides
+    /// terminality from the losing conditions it models; the room only reads that
+    /// verdict and never decides a loss itself, keeping all game logic in the
+    /// engine. On a terminal state the room stops advancing and keeps broadcasting
+    /// the final view (see [`Room::run`]).
     fn game_over(&self) -> bool {
-        self.state.players.iter().any(|player| player.has_lost)
+        self.state.is_over()
     }
 
     /// Seat (or re-seat) a connection and bring it current with a full view.
@@ -655,6 +657,50 @@ mod tests {
         );
 
         // The task terminates on its own, without any handle being dropped.
+        task.await
+            .expect("room task should terminate after game over");
+    }
+
+    #[tokio::test]
+    async fn issue_119_final_broadcast_carries_the_game_result() {
+        // On game over the room's final broadcast carries the terminal result, so a
+        // client learns the winner and reason from the last view (CR 104.2a). While
+        // the game is live the result is absent.
+        let (handle, task) = Room::new(near_terminal_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let opening = wait_for_view(&mut rx0).await;
+        assert!(opening.result.is_none(), "a live game carries no result");
+
+        let pass = opening
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .expect("pass offered to the priority holder");
+        handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: pass.id.clone(),
+                ..Default::default()
+            }),
+        });
+
+        // The single pass runs the SBA that marks the 0-life opponent lost; the
+        // final broadcast then carries the terminal result.
+        let final_view = wait_for_view(&mut rx0).await;
+        let result = final_view
+            .result
+            .expect("the final broadcast carries the game result");
+        assert_eq!(result.winner.as_deref(), Some("p0"));
+        assert_eq!(result.reason, rune_protocol::GameOverReason::LifeZero);
+        assert!(
+            final_view.valid_actions.is_empty(),
+            "a terminal view offers no actions"
+        );
+
         task.await
             .expect("room task should terminate after game over");
     }

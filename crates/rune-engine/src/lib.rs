@@ -43,11 +43,13 @@ pub use id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;
-pub use player::{Player, MAX_HAND_SIZE, STARTING_LIFE};
+pub use player::{LossReason, Player, MAX_HAND_SIZE, STARTING_LIFE};
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
 };
 pub use stack::{StackId, StackObject, StackObjectKind};
-pub use state::{CounterKind, EffectAffects, GameState, Modification, Permanent, StaticEffect};
+pub use state::{
+    CounterKind, EffectAffects, GameResult, GameState, Modification, Permanent, StaticEffect,
+};
 pub use triggers::{collect_triggers, Trigger};
 pub use zone::Zone;
