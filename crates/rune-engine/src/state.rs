@@ -1,4 +1,16 @@
 //! The root game state and the shared battlefield.
+//!
+//! ## Randomness invariant
+//!
+//! All randomness in the engine draws from [`GameState::rng_seed`] and nowhere
+//! else — no `rand` crate, no wall-clock time, no thread-local or ambient
+//! generator. The seed is injected through the constructors, so a game replays
+//! identically from the same starting state. When shuffling lands it will
+//! advance this seed with a tiny inline generator (e.g. SplitMix64); until then
+//! the slot is reserved but unused. Concentrating every future draw here is what
+//! makes the `crates/rune-engine/AGENTS.md` rule "no randomness without an
+//! injected seed" structurally satisfiable, rather than satisfied only by the
+//! current absence of randomness.
 
 use crate::id::{CardId, PermanentId, PlayerId};
 use crate::phase::Step;
@@ -66,14 +78,37 @@ pub struct GameState {
     /// stack: the entry pushed last is visited first. An additional phase
     /// (e.g. an extra combat) is represented by queueing its constituent steps.
     pub extra_steps: Vec<Step>,
+    /// Deterministic RNG seed/state for this game, injected at construction and
+    /// advanced deterministically each time randomness is consumed (e.g. a
+    /// future shuffle), so the whole game replays identically from the same
+    /// starting seed. Every engine randomness draw takes from this slot and
+    /// nowhere else — see the [module docs](self) for the full invariant. No
+    /// generator ships yet; the slot is reserved so shuffling can land without a
+    /// breaking state-shape change.
+    ///
+    /// Never included in any `GameView`: exposing it would leak future shuffle
+    /// outcomes to players, so the engine→protocol projection must not copy it.
+    pub rng_seed: u64,
 }
 
 impl GameState {
     /// An initial two-player game: turn 1, player 0 to act, at the [`Step::Untap`]
     /// step of the first turn. Both players start with empty libraries — deck
     /// loading arrives with the card database (issue #9).
+    ///
+    /// The RNG seed defaults to `0`; use [`Self::new_two_player_with_seed`] to
+    /// inject an explicit seed. Defaulting here keeps existing call sites
+    /// unchanged while reserving the deterministic-randomness slot.
     #[must_use]
     pub fn new_two_player() -> Self {
+        Self::new_two_player_with_seed(0)
+    }
+
+    /// An initial two-player game seeded with `rng_seed`, otherwise identical to
+    /// [`Self::new_two_player`]. The seed feeds all future engine randomness
+    /// (e.g. shuffling); see [`Self::rng_seed`].
+    #[must_use]
+    pub fn new_two_player_with_seed(rng_seed: u64) -> Self {
         Self {
             turn: 1,
             active_player: PlayerId(0),
@@ -87,6 +122,7 @@ impl GameState {
             land_played: false,
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
+            rng_seed,
         }
     }
 

@@ -332,3 +332,28 @@ pub(crate) fn resolve_action(
         .find(|(id, _)| id == action_id)
         .map(|(_, action)| action)
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    /// The engine RNG seed must never surface in a personalized view: it would
+    /// leak future shuffle outcomes. Two states differing only in `rng_seed`
+    /// therefore project to byte-identical views for the same seat.
+    #[test]
+    fn rng_seed_never_appears_in_a_personalized_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let base = GameState::new_two_player_with_seed(0);
+        let reseeded = GameState::new_two_player_with_seed(0xABCD_1234_5678_9ABC);
+
+        for seat in 0..base.players.len() {
+            let viewer = PlayerId(seat);
+            assert_eq!(
+                personalized_view(&base, &db, viewer),
+                personalized_view(&reseeded, &db, viewer),
+            );
+        }
+    }
+}
