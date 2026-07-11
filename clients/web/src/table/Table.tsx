@@ -41,7 +41,7 @@ import {
   requiresTargets,
   type TargetingSession,
 } from './targeting';
-import { boardWrap, main, muted } from './styles';
+import { boardWrap, button, main, muted, waitingBar } from './styles';
 
 /**
  * The current logical width the board may wrap within, tracking the window so the
@@ -75,6 +75,7 @@ function findCard(scene: TableScene, id: EntityId | null): RenderedCard | undefi
 export function Table() {
   const view = useGameStore((state) => state.view);
   const choose = useGameStore((state) => state.choose);
+  const disconnect = useGameStore((state) => state.disconnect);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
   const [targeting, setTargeting] = useState<TargetingSession | null>(null);
 
@@ -102,9 +103,17 @@ export function Table() {
   }, [view, selectedId, viewportWidth, targeting]);
 
   if (!view || !scene) {
+    // Socket is open (App only mounts the table then) but no frame has arrived
+    // yet. Show a live status plus a Disconnect action so this is never a dead
+    // screen; it resolves the instant the first GameView lands.
     return (
-      <main style={main}>
-        <span style={muted}>Waiting for game state…</span>
+      <main style={main} data-testid="table-waiting">
+        <div style={waitingBar}>
+          <span style={muted}>Connected — waiting for first game state…</span>
+          <button type="button" style={button} onClick={disconnect} data-testid="disconnect-button">
+            Disconnect
+          </button>
+        </div>
       </main>
     );
   }
