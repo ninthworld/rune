@@ -1,5 +1,9 @@
 # Seed backlog
 
+> **Superseded by [`docs/roadmap.md`](../roadmap.md)** (2026-07-11). Every seed
+> item below has shipped; this file is kept as history. Do not add items here —
+> new work comes from the roadmap's milestone feature tables and GitHub issues.
+
 Convert the **still-open** items below into GitHub issues (agent-task template),
 in order. Ordering follows the development sequence in docs/brief.md. Each is
 sized for one PR unless noted.

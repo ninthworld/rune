@@ -6,7 +6,8 @@ and nothing more. Any client — web UI, terminal, or an LLM agent — speaks th
 two-message protocol.
 
 > **Status: pre-alpha scaffold.** Structure, contracts, and CI exist; the engine and
-> client are stubs. See [`docs/agents/backlog.md`](docs/agents/backlog.md) for what's next.
+> client are stubs. See [`docs/roadmap.md`](docs/roadmap.md) for the milestones and
+> what's next.
 
 ## Architecture
 
