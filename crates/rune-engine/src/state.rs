@@ -5,12 +5,14 @@
 //! All randomness in the engine draws from [`GameState::rng_seed`] and nowhere
 //! else — no `rand` crate, no wall-clock time, no thread-local or ambient
 //! generator. The seed is injected through the constructors, so a game replays
-//! identically from the same starting state. When shuffling lands it will
-//! advance this seed with a tiny inline generator (e.g. SplitMix64); until then
-//! the slot is reserved but unused. Concentrating every future draw here is what
-//! makes the `crates/rune-engine/AGENTS.md` rule "no randomness without an
-//! injected seed" structurally satisfiable, rather than satisfied only by the
-//! current absence of randomness.
+//! identically from the same starting state. [`GameState::new`] consumes it to
+//! shuffle opening libraries (CR 103.3) with a tiny inline generator (SplitMix64,
+//! see [`crate::rng`] and `docs/decisions/0014-deterministic-seeded-shuffle.md`)
+//! and stores the advanced generator state back into the slot, so later draws
+//! continue the same stream. Concentrating every draw here is what makes the
+//! `crates/rune-engine/AGENTS.md` rule "no randomness without an injected seed"
+//! structurally satisfiable, rather than satisfied only by the absence of
+//! randomness.
 
 use std::collections::BTreeMap;
 
@@ -217,8 +219,10 @@ pub struct GameState {
 
 impl GameState {
     /// An initial two-player game: turn 1, player 0 to act, at the [`Step::Untap`]
-    /// step of the first turn. Both players start with empty libraries — deck
-    /// loading arrives with the card database (issue #9).
+    /// step of the first turn. Both players start with **empty** libraries and
+    /// hands — this is the bare scaffold for tests and turn-structure code. To
+    /// start a game from real decklists (shuffled libraries, opening hands drawn),
+    /// use [`Self::new`] with a [`GameSetup`](crate::GameSetup).
     ///
     /// The RNG seed defaults to `0`; use [`Self::new_two_player_with_seed`] to
     /// inject an explicit seed. Defaulting here keeps existing call sites
