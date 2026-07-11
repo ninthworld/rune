@@ -47,7 +47,7 @@ The whole array is omitted when a permanent has no counters.
 
 ```json
 { "id": "a2", "type": "activate_ability", "label": "Tap for mana",
-  "subject": ["perm_xyz"] }
+  "subject": ["perm_xyz"], "token": "h:00ab" }
 ```
 
 - `subject` lists the entity ids this action belongs to. Clients render
@@ -61,19 +61,72 @@ The whole array is omitted when a permanent has no counters.
   (subject-less); `play_land` and `cast_spell` (subject = the hand card's entity
   id); `activate_ability` (subject = the source permanent's entity id). Clients
   key off `type`/`subject`/`label` and tolerate unknown kinds.
-- Multi-step actions (targets, modes, X) will extend this with a `requirements`
-  list consumed as a client-side prompt queue; answers are submitted atomically.
-  Spec to be finalized alongside the first targeted spell (see backlog). The
-  effect IR that backs these actions is decided in ADR 0007.
+- `token` is a **content-binding token** (ADR 0009): a server-issued value bound
+  to this action's exact content (kind + subject + requirements). The client
+  echoes it back verbatim in `ChooseAction`; the server recomputes it from the
+  freshly regenerated action and rejects any answer whose token does not match.
+  This stops a stale positional `id` (e.g. `a2`) from silently rebinding to a
+  *different* action once decisions stop being strictly sequential. Specified as
+  a hash/echo of the action content so the server stays stateless (it remembers
+  no per-id secret; it recomputes). Opaque — clients never parse or derive it.
+  Omitted when unbound (older server); an omitted/`""` token matches no real
+  action and is safely rejected.
+
+#### Multi-step actions: `requirements`
+
+A targeted spell/ability (and later modes and X) carries an ordered
+`requirements` list — one entry per choice slot the player must fill before the
+action can be taken:
+
+```json
+{ "id": "a3", "type": "cast_spell", "label": "Cast Lightning Bolt",
+  "subject": ["c3"], "token": "h:9f2c",
+  "requirements": [
+    { "slot": "t0", "prompt": "target creature or player",
+      "candidates": ["perm_bear", "p1", "p2"] }
+  ] }
+```
+
+- Each requirement is one target slot: `slot` (opaque id the answer keys back
+  to), `prompt` (human-readable spec label to display), and `candidates` (the
+  legal entity ids the server enumerated — the **only** choices the client may
+  offer). The server computes legality; the client highlights exactly these
+  candidates and derives nothing (ADR 0009 §Client).
+- `candidates` is enumerated O(N) per slot, never the cartesian product of
+  combinations across slots (ADR 0009 §Enumeration).
+- The client walks `requirements` as a prompt queue and submits **all** answers
+  in a single `ChooseAction` (see below) — never a stateful multi-message
+  handshake. The effect IR that backs these actions is decided in ADR 0007.
+- Absent/empty for a plain action that needs no sub-choice.
 
 ## Client → server: ChooseAction
 
+For a plain, no-choice action the message is just the id (and, once servers
+issue them, the action's `token`):
+
 ```json
-{ "type": "choose_action", "action_id": "a2" }
+{ "type": "choose_action", "action_id": "a2", "token": "h:00ab" }
 ```
 
-That is the entire message. The server validates against the actions it issued;
-anything else is rejected and the current GameView is re-sent.
+For a multi-step action the client submits its whole selection atomically —
+`token` plus one `targets` entry per `requirements` slot:
+
+```json
+{ "type": "choose_action", "action_id": "a3", "token": "h:9f2c",
+  "targets": [ { "slot": "t0", "chosen": ["perm_bear"] } ] }
+```
+
+- `token` echoes the chosen action's `token` verbatim (content binding above).
+- `targets[]` answers the action's requirement slots: `slot` matches a
+  `requirements[].slot`, and `chosen` lists the selected entity ids for it (one
+  for a single-target slot; the list generalizes to multi-select choices the
+  model defers for now). Every id in `chosen` must be one of that slot's
+  advertised `candidates`, or the server treats the action as a no-op.
+- `token` and `targets` are omitted when empty, so the minimal message above
+  stays valid. The server validates the id, verifies the token against the
+  action it currently offers, and re-checks each chosen target against that
+  slot's freshly computed legal set; anything else is rejected and the current
+  GameView is re-sent.
 
 ## Invariants
 

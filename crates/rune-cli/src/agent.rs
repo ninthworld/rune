@@ -273,7 +273,12 @@ where
 
         // 3. Ask the agent, with a hard deadline and a validated, safe fallback.
         if let Some(action_id) = decide(agent, &view, deadline, &mut log).await? {
-            let choose = ClientMessage::ChooseAction(ChooseAction { action_id });
+            // Plain action answer: target selection and content-binding token are
+            // not emitted yet (#73 / ADR 0009), so the rest defaults empty.
+            let choose = ClientMessage::ChooseAction(ChooseAction {
+                action_id,
+                ..Default::default()
+            });
             let json = serde_json::to_string(&choose).map_err(SessionError::Encode)?;
             write
                 .send(Message::Text(json))
@@ -375,6 +380,7 @@ mod tests {
             kind: "pass_priority".into(),
             label: "Pass priority".into(),
             subject: vec![],
+            ..Default::default()
         }
     }
 
@@ -384,6 +390,7 @@ mod tests {
             kind: "play_land".into(),
             label: "Play Forest".into(),
             subject: vec!["card_5".into()],
+            ..Default::default()
         }
     }
 

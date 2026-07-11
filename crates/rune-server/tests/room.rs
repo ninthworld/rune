@@ -51,6 +51,7 @@ async fn websocket_peer_joins_room_and_drives_pass_priority() {
     // Echo the offered action id back over the wire; the room applies it.
     let choose = ClientMessage::ChooseAction(ChooseAction {
         action_id: pass.id.clone(),
+        ..Default::default()
     });
     client_ws
         .send(Message::Text(serde_json::to_string(&choose).unwrap()))

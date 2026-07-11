@@ -102,6 +102,7 @@ where
 {
     let choose = ClientMessage::ChooseAction(ChooseAction {
         action_id: action_id.to_string(),
+        ..Default::default()
     });
     let json = serde_json::to_string(&choose).expect("encode ChooseAction");
     ws.send(Message::Text(json)).await.expect("send");

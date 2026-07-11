@@ -269,7 +269,12 @@ where
         };
 
         // 4. Echo the chosen action id back; the server decides what happens next.
-        let choose = ClientMessage::ChooseAction(ChooseAction { action_id });
+        // A plain action answer today: no target selection or content-binding
+        // token yet (both land with #73 / ADR 0009), so the rest defaults empty.
+        let choose = ClientMessage::ChooseAction(ChooseAction {
+            action_id,
+            ..Default::default()
+        });
         let json = serde_json::to_string(&choose).map_err(SessionError::Encode)?;
         write
             .send(Message::Text(json))
@@ -441,6 +446,7 @@ mod tests {
             kind: "pass_priority".into(),
             label: "Pass priority".into(),
             subject: vec![],
+            ..Default::default()
         }
     }
 
@@ -450,6 +456,7 @@ mod tests {
             kind: "play_land".into(),
             label: "Play Forest".into(),
             subject: vec!["card_5".into()],
+            ..Default::default()
         }
     }
 
