@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { App } from './App';
 import { useGameStore, type SocketFactory } from './store';
 import { SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
+import { LOBBY_ROOMLESS_JSON } from './lobby-view.fixture';
 
 /**
  * A manually-driven stand-in for the browser `WebSocket` (same shape store.test.ts
@@ -51,19 +52,19 @@ function connectWith(factory: SocketFactory): void {
 afterEach(() => {
   cleanup();
   act(() => useGameStore.getState().disconnect());
-  useGameStore.setState({ status: 'idle', view: null });
+  useGameStore.setState({ status: 'idle', view: null, lobby: null, lobbyError: null });
 });
 
-describe('App connection gating (issue #103)', () => {
+describe('App connection gating (issues #103, #114)', () => {
   it('cold-starts on the connection screen with a Connect action', () => {
-    useGameStore.setState({ status: 'idle', view: null });
+    useGameStore.setState({ status: 'idle', view: null, lobby: null });
     render(<App />);
 
     expect(screen.getByTestId('connection-screen')).toBeDefined();
     expect(screen.getByTestId('connect-button').textContent).toBe('Connect');
   });
 
-  it('walks idle → connecting → open → first view → table', () => {
+  it('walks idle → connecting → open → lobby → first GameView → table', () => {
     const { factory, sockets } = recordingFactory();
     render(<App />);
 
@@ -75,28 +76,47 @@ describe('App connection gating (issue #103)', () => {
     expect(screen.getByTestId('connection-status').textContent).toContain('Opening a connection');
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
 
-    // open, no view yet: the table's waiting fallback (never a dead screen).
+    // open, no lobby frame yet: the lobby's waiting fallback (never a dead screen).
     act(() => sockets[0].emitOpen());
-    expect(screen.getByTestId('table-waiting')).toBeDefined();
-    expect(screen.getByTestId('disconnect-button')).toBeDefined();
+    expect(screen.getByTestId('lobby-waiting')).toBeDefined();
+    expect(screen.getByTestId('lobby-disconnect-button')).toBeDefined();
     expect(screen.queryByTestId('connection-screen')).toBeNull();
 
-    // first GameView: the full table replaces the fallback.
+    // first LobbyView: the interactive lobby replaces the fallback.
+    act(() => sockets[0].emitMessage(LOBBY_ROOMLESS_JSON));
+    expect(screen.getByTestId('lobby-screen')).toBeDefined();
+    expect(screen.queryByTestId('lobby-waiting')).toBeNull();
+
+    // first GameView (game constructed): the full table replaces the lobby.
     act(() => sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON));
     expect(screen.getByTestId('action-bar')).toBeDefined();
-    expect(screen.queryByTestId('table-waiting')).toBeNull();
+    expect(screen.queryByTestId('lobby-screen')).toBeNull();
   });
 
-  it('the waiting fallback can disconnect back to the connection screen', () => {
+  it('the lobby waiting fallback can disconnect back to the connection screen', () => {
     const { factory, sockets } = recordingFactory();
     render(<App />);
 
     connectWith(factory);
     act(() => sockets[0].emitOpen());
-    expect(screen.getByTestId('table-waiting')).toBeDefined();
+    expect(screen.getByTestId('lobby-waiting')).toBeDefined();
 
-    fireEvent.click(screen.getByTestId('disconnect-button'));
+    fireEvent.click(screen.getByTestId('lobby-disconnect-button'));
     expect(screen.getByTestId('connection-screen')).toBeDefined();
+  });
+
+  it('disconnecting from an in-room lobby returns to the connection screen', () => {
+    const { factory, sockets } = recordingFactory();
+    render(<App />);
+
+    connectWith(factory);
+    act(() => sockets[0].emitOpen());
+    act(() => sockets[0].emitMessage(LOBBY_ROOMLESS_JSON));
+    expect(screen.getByTestId('lobby-screen')).toBeDefined();
+
+    fireEvent.click(screen.getByTestId('lobby-disconnect-button'));
+    expect(screen.getByTestId('connection-screen')).toBeDefined();
+    expect(screen.queryByTestId('lobby-screen')).toBeNull();
   });
 
   it('shows a retry after the connection closes (error surfaces as a close)', () => {

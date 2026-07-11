@@ -299,3 +299,113 @@ export const errorText: CSSProperties = {
   color: SURFACES.targeting,
   fontWeight: 600,
 };
+
+/**
+ * Lobby chrome (issue #114). The pre-game lobby screen reuses the connection
+ * screen's panel/field/button vocabulary above; these add only the few shapes the
+ * lobby needs (a wider panel, the room-id row, and the per-seat roster). Like all
+ * the chrome here they read `SURFACES` tokens and never touch card color/size.
+ */
+export const lobbyPanel: CSSProperties = {
+  ...connectPanel,
+  maxWidth: 560,
+};
+
+/** A native `<select>` styled to match {@link input}. */
+export const select: CSSProperties = {
+  ...input,
+  cursor: 'pointer',
+};
+
+/** A subtle grouping card inside the lobby panel (create/join/room sections). */
+export const lobbySection: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  padding: 16,
+  borderRadius: 10,
+  background: '#15171A',
+  border: '1px solid #2C313A',
+};
+
+/** Section heading inside the lobby panel. */
+export const lobbySectionTitle: CSSProperties = {
+  margin: 0,
+  fontSize: 15,
+  fontWeight: 700,
+};
+
+/** The copyable room-id row: monospace id + a Copy affordance. */
+export const roomIdRow: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 8,
+};
+
+/** The room id rendered as a selectable, monospace code chip. */
+export const roomIdCode: CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 15,
+  fontWeight: 700,
+  padding: '6px 10px',
+  borderRadius: 8,
+  background: '#0F1114',
+  border: '1px solid #3A4049',
+  userSelect: 'all',
+  wordBreak: 'break-all',
+};
+
+/** The seat roster list. */
+export const seatList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+};
+
+/** One seat row in the roster. */
+export const seatRow: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 8,
+  padding: '8px 12px',
+  borderRadius: 8,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  fontSize: 13,
+};
+
+/** The local player's seat, ringed in the shared selection color. */
+export const seatRowLocal: CSSProperties = {
+  borderColor: SURFACES.selection,
+};
+
+/** A small status badge on a seat row (filled / decked / ready). */
+export const seatBadge: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  padding: '2px 8px',
+  borderRadius: 999,
+  background: '#2A2F37',
+  color: SURFACES.typeText,
+  border: '1px solid #3A4049',
+};
+
+/** A status badge for an affirmative state (decked / ready), in the accent color. */
+export const seatBadgeOn: CSSProperties = {
+  ...seatBadge,
+  color: SURFACES.selection,
+  borderColor: SURFACES.selection,
+};
+
+/** Pushes trailing seat badges to the right of the seat row. */
+export const seatBadges: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  marginLeft: 'auto',
+};
