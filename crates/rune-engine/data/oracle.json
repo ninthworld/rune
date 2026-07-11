@@ -188,5 +188,49 @@
         "count": 1
       }
     ]
+  },
+  {
+    "id": 18,
+    "name": "Skywhisker Drake",
+    "types": ["creature"],
+    "subtypes": ["Drake"],
+    "mana_cost": "{2}{U}",
+    "oracle_text": "Flying",
+    "power": 2,
+    "toughness": 2,
+    "keywords": ["flying"]
+  },
+  {
+    "id": 19,
+    "name": "Bramblefang Spider",
+    "types": ["creature"],
+    "subtypes": ["Spider"],
+    "mana_cost": "{1}{G}",
+    "oracle_text": "Reach",
+    "power": 1,
+    "toughness": 3,
+    "keywords": ["reach"]
+  },
+  {
+    "id": 20,
+    "name": "Ironwatch Sentinel",
+    "types": ["creature"],
+    "subtypes": ["Soldier"],
+    "mana_cost": "{2}{W}",
+    "oracle_text": "Vigilance",
+    "power": 2,
+    "toughness": 3,
+    "keywords": ["vigilance"]
+  },
+  {
+    "id": 21,
+    "name": "Emberrush Raider",
+    "types": ["creature"],
+    "subtypes": ["Goblin"],
+    "mana_cost": "{1}{R}",
+    "oracle_text": "Haste",
+    "power": 2,
+    "toughness": 1,
+    "keywords": ["haste"]
   }
 ]

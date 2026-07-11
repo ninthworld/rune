@@ -7,8 +7,8 @@
 
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
 use crate::actions::{action_is_legal, Action, Block};
-use crate::card::abilities_of;
-use crate::combat::{combat_damage, priority_after_step_change, CombatDamage};
+use crate::card::{abilities_of, Keyword};
+use crate::combat::{combat_damage, has_keyword, priority_after_step_change, CombatDamage};
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::mulligan::advance_after_keep;
@@ -57,7 +57,9 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
-        Action::DeclareAttackers { attackers } => apply_declare_attackers(&mut next, attackers),
+        Action::DeclareAttackers { attackers } => {
+            apply_declare_attackers(&mut next, attackers, db);
+        }
         Action::DeclareBlockers { blocks } => apply_declare_blockers(&mut next, blocks),
         Action::Concede => apply_concede(&mut next),
     }
@@ -370,18 +372,23 @@ fn remove_creatures_from_combat(state: &mut GameState) {
 }
 
 /// Declare the active player's attackers (CR 508.1): mark each as attacking and
-/// tap it (attacking taps — no vigilance is modeled yet, CR 508.1f), then record
-/// that the declaration is done and open the step's priority round with the active
-/// player. An empty selection is a legal "no attackers" declaration (CR 508.1a).
+/// tap it (attacking taps, CR 508.1f) unless it has vigilance (CR 702.20b), then
+/// record that the declaration is done and open the step's priority round with the
+/// active player. An empty selection is a legal "no attackers" declaration
+/// (CR 508.1a).
 ///
 /// Only ever reached during the declare-attackers step for the active player (the
 /// action is offered nowhere else — see [`crate::valid_actions`]) and only for a
 /// selection already validated in [`action_is_legal`].
-fn apply_declare_attackers(state: &mut GameState, attackers: &[PermanentId]) {
+fn apply_declare_attackers(state: &mut GameState, attackers: &[PermanentId], db: &CardDatabase) {
     for &id in attackers {
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
             perm.attacking = true;
-            perm.tapped = true;
+            // CR 508.1f / CR 702.20b: attacking taps the creature, unless it has
+            // vigilance, in which case it attacks without tapping.
+            if !has_keyword(perm, Keyword::Vigilance, db) {
+                perm.tapped = true;
+            }
         }
     }
     state.attackers_declared = true;
@@ -1481,6 +1488,141 @@ mod tests {
 
         assert!(!find_perm(&state, attacker).attacking);
         assert_eq!(find_perm(&state, blocker).blocking, None);
+    }
+
+    // ----- Combat keywords I: flying/reach/vigilance/haste (issue #153) -----
+
+    #[test]
+    fn issue_153_vigilant_attacker_stays_untapped_and_can_block_next_turn_cr_702_20b() {
+        // CR 702.20b: a creature with vigilance doesn't tap when it attacks, so it
+        // stays untapped through combat and is available to block on the opponent's
+        // next turn (an untapped creature can block, CR 509.1a). Ironwatch Sentinel
+        // (id 20) has vigilance; Verdant Scout (id 6) is a plain control.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let vigilant = place_permanent(&mut state, CardId(20), PlayerId(0), false, 0);
+        let plain = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+
+        let after = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![vigilant, plain],
+            },
+            &db,
+        );
+        assert!(find_perm(&after, vigilant).attacking);
+        assert!(
+            !find_perm(&after, vigilant).tapped,
+            "vigilance skips the attack tap (CR 702.20b)"
+        );
+        assert!(
+            find_perm(&after, plain).tapped,
+            "a non-vigilant attacker still taps (CR 508.1f)"
+        );
+
+        // Because it stayed untapped, on the opponent's turn (player 1 active, so
+        // player 0 defends) it is an eligible blocker.
+        let mut defense = after;
+        defense.active_player = PlayerId(1);
+        defense.step = Step::DeclareBlockers;
+        let opp_attacker = place_permanent(&mut defense, CardId(6), PlayerId(1), false, 0);
+        if let Some(p) = defense
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == opp_attacker)
+        {
+            p.attacking = true;
+        }
+        assert!(
+            blocker_candidates(&defense, &db).contains(&vigilant),
+            "the still-untapped vigilant creature can block next turn (CR 509.1a)"
+        );
+    }
+
+    #[test]
+    fn issue_153_hasty_creature_attacks_the_turn_it_enters_cr_702_10b() {
+        // CR 702.10b: a creature with haste ignores the summoning-sickness attack
+        // restriction, so Emberrush Raider (id 21) may attack even though it entered
+        // this very turn — where a non-hasty creature could not (CR 302.6).
+        let db = db();
+        let mut state = at_declare_attackers();
+        let hasty = place_permanent(&mut state, CardId(21), PlayerId(0), false, 0);
+        let this_turn = state.turn;
+        set_entered_turn(&mut state, hasty, this_turn);
+
+        assert!(attacker_candidates(&state, &db).contains(&hasty));
+        let after = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![hasty],
+            },
+            &db,
+        );
+        assert!(
+            find_perm(&after, hasty).attacking,
+            "a hasty creature attacks the turn it enters (CR 702.10b)"
+        );
+        assert!(
+            find_perm(&after, hasty).tapped,
+            "attacking still taps it — it has no vigilance"
+        );
+    }
+
+    #[test]
+    fn issue_153_ground_creature_cannot_block_a_flyer_cr_702_9c() {
+        // CR 702.9c / 702.17b: a ground creature assigned to block a flyer is an
+        // illegal declaration (a no-op); a reach creature may block it. Skywhisker
+        // Drake (id 18) flies, Bramblefang Spider (id 19) has reach, Verdant Scout
+        // (id 6) is a ground creature.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let flyer = place_permanent(&mut state, CardId(18), PlayerId(0), false, 0);
+        let ground = place_permanent(&mut state, CardId(6), PlayerId(1), false, 0);
+        let reacher = place_permanent(&mut state, CardId(19), PlayerId(1), false, 0);
+
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![flyer],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        assert_eq!(state.step, Step::DeclareBlockers);
+
+        // A ground creature cannot be assigned to block the flyer: a no-op.
+        let blocked_by_ground = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker: ground,
+                    attacker: flyer,
+                }],
+            },
+            &db,
+        );
+        assert_eq!(
+            blocked_by_ground, state,
+            "a ground creature cannot block a flyer (CR 702.9c)"
+        );
+
+        // A reach creature can: the block is recorded.
+        let blocked_by_reach = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker: reacher,
+                    attacker: flyer,
+                }],
+            },
+            &db,
+        );
+        assert_eq!(
+            find_perm(&blocked_by_reach, reacher).blocking,
+            Some(flyer),
+            "a reach creature can block a flyer (CR 702.17b)"
+        );
+        assert!(blocked_by_reach.blockers_declared);
     }
 
     // ----- Combat II: combat damage and lethal-damage SBA (issue #118) -----

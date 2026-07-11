@@ -13,7 +13,7 @@
 use rune_engine::{
     attacker_candidates, blocker_candidates, bottom_requirement, declared_attackers,
     target_requirements, valid_actions, Action, Block, CardData, CardDatabase, CardId,
-    CardInstance, CardInstanceId, CounterKind, Effect, GameResult, GameState, LossReason,
+    CardInstance, CardInstanceId, CounterKind, Effect, GameResult, GameState, Keyword, LossReason,
     PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 use rune_protocol::{
@@ -117,13 +117,32 @@ fn card_view(entity_id: String, card: CardId, db: &CardDatabase) -> CardView {
             oracle_text: String::new(),
             power: None,
             toughness: None,
+            keywords: Vec::new(),
         },
+    }
+}
+
+/// The wire name for an engine [`Keyword`], as the client expects it in
+/// [`CardView::keywords`] (e.g. `"flying"`, `"first_strike"`). Kept exhaustive so
+/// a new engine keyword forces a matching wire string here rather than silently
+/// going unnamed.
+fn keyword_str(keyword: Keyword) -> &'static str {
+    match keyword {
+        Keyword::Flying => "flying",
+        Keyword::Reach => "reach",
+        Keyword::Vigilance => "vigilance",
+        Keyword::Haste => "haste",
+        Keyword::FirstStrike => "first_strike",
+        Keyword::Trample => "trample",
+        Keyword::Deathtouch => "deathtouch",
+        Keyword::Lifelink => "lifelink",
     }
 }
 
 /// Project engine [`CardData`] onto the wire [`CardView`]. Power/toughness become
 /// strings so non-numeric values round-trip (`rune-protocol`); an empty mana cost
-/// is elided rather than sent as `""`.
+/// is elided rather than sent as `""`; printed keywords project to their lowercase
+/// wire names for display.
 fn full_card_view(entity_id: String, data: &CardData) -> CardView {
     CardView {
         id: entity_id,
@@ -133,6 +152,11 @@ fn full_card_view(entity_id: String, data: &CardData) -> CardView {
         oracle_text: data.oracle_text.clone(),
         power: data.power.map(|p| p.to_string()),
         toughness: data.toughness.map(|t| t.to_string()),
+        keywords: data
+            .keywords
+            .iter()
+            .map(|&kw| keyword_str(kw).to_owned())
+            .collect(),
     }
 }
 
@@ -1444,6 +1468,60 @@ mod tests {
         undamaged.damage = 0;
         let json = serde_json::to_value(&undamaged).unwrap();
         assert!(json.get("damage").is_none());
+    }
+
+    /// A permanent's printed keywords (issue #153) project onto its card view as
+    /// lowercase wire names for the client to render, and a keyword-less card omits
+    /// the field. Skywhisker Drake (id 18) has flying; Thornback Boar (id 1) has none.
+    #[test]
+    fn issue_153_keywords_project_onto_the_card_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+
+        let flyer = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: flyer,
+            instance: CardInstanceId(0),
+            card: CardId(18),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+        });
+        let vanilla = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: vanilla,
+            instance: CardInstanceId(1),
+            card: CardId(1),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let flyer_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(flyer))
+            .expect("flyer in view");
+        assert_eq!(flyer_view.card.keywords, vec!["flying".to_string()]);
+
+        let vanilla_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(vanilla))
+            .expect("vanilla in view");
+        assert!(vanilla_view.card.keywords.is_empty());
+        // The empty list elides from the JSON (skip_serializing_if wire shape).
+        let json = serde_json::to_value(&vanilla_view.card).unwrap();
+        assert!(json.get("keywords").is_none());
     }
 
     /// Every emitted action carries a non-empty content-binding token, and the

@@ -36,6 +36,12 @@ export interface CardView {
   power?: string;
   /** Displayed toughness; see {@link CardView.power}. Present only for creatures. */
   toughness?: string;
+  /**
+   * The card's keyword abilities as lowercase wire names (e.g. `"flying"`,
+   * `"first_strike"`), server-computed for display. The client renders badges and
+   * never derives them. Omitted (treated as empty) when the card has none.
+   */
+  keywords?: string[];
 }
 
 /**

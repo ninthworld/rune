@@ -53,6 +53,43 @@ const SET_MANIFEST: &[SetSnapshot] = &[
     },
 ];
 
+/// A keyword ability printed on a card (CR 702). Closed set, deserialized from
+/// lowercase names (e.g. `"flying"`, `"first_strike"`).
+///
+/// This is the printed keyword representation the combat and layer systems read;
+/// keyword-granting continuous effects are future work, so a permanent's keywords
+/// are its card's printed [`CardData::keywords`] today. All eight variants of the
+/// first two keyword tranches are modeled as data so the keywords-II work (first
+/// strike / trample / deathtouch / lifelink enforcement) needs no data migration;
+/// only [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
+/// [`Vigilance`](Keyword::Vigilance), and [`Haste`](Keyword::Haste) are enforced
+/// at combat-declaration time so far.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Keyword {
+    /// Flying (CR 702.9): can be blocked only by creatures with flying or reach.
+    Flying,
+    /// Reach (CR 702.17): can block creatures with flying.
+    Reach,
+    /// Vigilance (CR 702.20): attacking doesn't cause the creature to tap.
+    Vigilance,
+    /// Haste (CR 702.10): ignores the summoning-sickness restriction on attacking.
+    Haste,
+    /// First strike (CR 702.7): deals combat damage in a first combat-damage step.
+    /// Data only in this tranche; enforcement is keywords II.
+    FirstStrike,
+    /// Trample (CR 702.19): assigns excess combat damage to the player or
+    /// planeswalker it is attacking. Data only in this tranche; enforcement is
+    /// keywords II.
+    Trample,
+    /// Deathtouch (CR 702.2): any nonzero combat damage it deals is lethal. Data
+    /// only in this tranche; enforcement is keywords II.
+    Deathtouch,
+    /// Lifelink (CR 702.15): damage it deals also gains its controller that much
+    /// life. Data only in this tranche; enforcement is keywords II.
+    Lifelink,
+}
+
 /// The static, printing-independent characteristics of a card.
 ///
 /// This is the immutable "oracle" data the engine reasons about today. It holds
@@ -98,6 +135,12 @@ pub struct CardData {
     /// is cast (CR 601.2c); read them with [`spell_effects_of`].
     #[serde(default)]
     pub spell_effects: Vec<Effect>,
+    /// The card's printed keyword abilities (CR 702), e.g. flying or haste. Empty
+    /// for a card with none. Read with [`CardData::has_keyword`]; the combat and
+    /// summoning-sickness code consults these directly, since keyword-granting
+    /// continuous effects are not modeled yet.
+    #[serde(default)]
+    pub keywords: Vec<Keyword>,
 }
 
 impl CardData {
@@ -147,6 +190,14 @@ impl CardData {
     #[must_use]
     pub fn has_subtype(&self, subtype: &str) -> bool {
         self.subtypes.iter().any(|s| s == subtype)
+    }
+
+    /// Whether the card has printed keyword ability `keyword` (CR 702). Reads the
+    /// printed [`CardData::keywords`]; keyword-granting continuous effects are
+    /// future work, so this is authoritative for a permanent's keywords today.
+    #[must_use]
+    pub fn has_keyword(&self, keyword: Keyword) -> bool {
+        self.keywords.contains(&keyword)
     }
 }
 
@@ -404,7 +455,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 17);
+        assert_eq!(db.len(), 21);
     }
 
     #[test]
@@ -604,10 +655,55 @@ mod tests {
     }
 
     #[test]
+    fn issue_153_keyword_fixtures_carry_their_printed_keywords() {
+        // CR 702: the four enforced-here keyword fixtures each print exactly one
+        // keyword, deserialized from its snake_case name, and a vanilla creature
+        // prints none.
+        let db = CardDatabase::bundled().unwrap();
+
+        let flyer = db.card(CardId(18)).unwrap();
+        assert_eq!(flyer.name, "Skywhisker Drake");
+        assert!(flyer.has_keyword(Keyword::Flying));
+        assert!(!flyer.has_keyword(Keyword::Reach));
+
+        assert!(db.card(CardId(19)).unwrap().has_keyword(Keyword::Reach));
+        assert!(db.card(CardId(20)).unwrap().has_keyword(Keyword::Vigilance));
+        assert!(db.card(CardId(21)).unwrap().has_keyword(Keyword::Haste));
+
+        // A vanilla creature prints no keywords.
+        assert!(db.card(CardId(1)).unwrap().keywords.is_empty());
+        assert!(!db.card(CardId(1)).unwrap().has_keyword(Keyword::Flying));
+    }
+
+    #[test]
+    fn all_eight_keyword_variants_deserialize_from_snake_case() {
+        // The closed keyword set round-trips from its wire names, including the
+        // four data-only variants keywords II will enforce (CR 702).
+        let json = r#"[{"id":900,"name":"Every Keyword","types":["creature"],
+            "mana_cost":"","oracle_text":"","power":1,"toughness":1,
+            "keywords":["flying","reach","vigilance","haste","first_strike",
+                        "trample","deathtouch","lifelink"]}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+        let card = db.card(CardId(900)).unwrap();
+        for kw in [
+            Keyword::Flying,
+            Keyword::Reach,
+            Keyword::Vigilance,
+            Keyword::Haste,
+            Keyword::FirstStrike,
+            Keyword::Trample,
+            Keyword::Deathtouch,
+            Keyword::Lifelink,
+        ] {
+            assert!(card.has_keyword(kw), "expected keyword {kw:?}");
+        }
+    }
+
+    #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the seventeen fixtures; FIX2 reprints one — eighteen printings total.
-        assert_eq!(printings.len(), 18);
+        // FIX prints the twenty-one fixtures; FIX2 reprints one — twenty-two printings total.
+        assert_eq!(printings.len(), 22);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));

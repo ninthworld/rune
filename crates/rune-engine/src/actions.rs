@@ -10,7 +10,8 @@ use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
 use crate::card::{abilities_of, spell_effects_of, CardData};
 use crate::card_type::CardType;
 use crate::combat::{
-    attacker_candidates, blocker_candidates, declared_attackers, defending_player,
+    attacker_candidates, blocker_can_block_attacker, blocker_candidates, declared_attackers,
+    defending_player,
 };
 use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
@@ -565,17 +566,27 @@ fn attackers_selection_is_legal(
 
 /// Whether a declared blocker selection is legal (CR 509.1a): every blocker is a
 /// current blocker candidate ([`blocker_candidates`]), every named attacker is
-/// currently attacking ([`declared_attackers`]), and no creature is declared as a
-/// blocker more than once (each blocker is assigned to exactly one attacker). An
-/// empty selection is legal (declaring no blockers).
+/// currently attacking ([`declared_attackers`]), no creature is declared as a
+/// blocker more than once (each blocker is assigned to exactly one attacker), and
+/// each blocker can legally block the attacker it is assigned to given evasion
+/// keywords — a flyer can be blocked only by flying or reach (CR 702.9c, 702.17b,
+/// via [`blocker_can_block_attacker`]). An empty selection is legal (declaring no
+/// blockers).
+///
+/// Evasion is checked per assignment rather than by trimming the candidate set, so
+/// a partial block of a mix of flying and ground attackers stays expressible: a
+/// ground creature may still block the ground attacker in the same declaration
+/// that a flyer blocks the flyer.
 fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Block]) -> bool {
     let blockers = blocker_candidates(state, db);
     let attackers = declared_attackers(state);
     let assigned: Vec<PermanentId> = blocks.iter().map(|b| b.blocker).collect();
     all_unique(&assigned)
-        && blocks
-            .iter()
-            .all(|b| blockers.contains(&b.blocker) && attackers.contains(&b.attacker))
+        && blocks.iter().all(|b| {
+            blockers.contains(&b.blocker)
+                && attackers.contains(&b.attacker)
+                && blocker_can_block_attacker(state, b.attacker, b.blocker, db)
+        })
 }
 
 /// Whether every element of `ids` is distinct. O(n²), which is fine for the

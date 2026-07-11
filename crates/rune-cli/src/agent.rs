@@ -1128,6 +1128,7 @@ mod tests {
             oracle_text: String::new(),
             power: None,
             toughness: None,
+            keywords: vec![],
         }
     }
 
@@ -1145,6 +1146,7 @@ mod tests {
                 oracle_text: String::new(),
                 power: Some(power.to_string()),
                 toughness: Some(toughness.to_string()),
+                keywords: vec![],
             },
             tapped: false,
             attacking: false,
