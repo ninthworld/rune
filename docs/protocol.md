@@ -16,7 +16,7 @@ never receives what its player may not know). The concrete types live in the
 | `you` | `PlayerId` | The receiver's own seat entity id (same `p{N}` form used for players). Lets a client identify itself directly. A client that receives a payload without it (older server) treats it as `""`/unknown |
 | `my_hand` | `CardView[]` | Full card objects for the receiving player only |
 | `opponents` | `OpponentView[]` | `player_id`, `hand_size`, `life`, `library_size`, `graveyard_size`, `statuses` |
-| `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `counters` |
+| `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `counters` (a `Counter[]`, see below) |
 | `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |
 | `graveyards`, `exile` | `ZonePile[]` | Public ordered lists per player |
 | `phase` | `Phase` | Current turn step (snake_case enum); drives overview/focus mode |
@@ -27,6 +27,21 @@ never receives what its player may not know). The concrete types live in the
 
 Empty collections and absent optionals are omitted from the JSON; clients must
 treat a missing field as its empty/`null` default.
+
+### Counter
+
+A permanent's `counters` is an array of `Counter` objects, each a named counter
+and its quantity. Both fields are required:
+
+```json
+{ "kind": "+1/+1", "count": 2 }
+```
+
+- `kind` — the counter name as displayed, e.g. `"+1/+1"` or `"loyalty"`.
+- `count` — how many of that counter are present (an unsigned integer).
+
+The server computes these; clients display them verbatim and never derive them.
+The whole array is omitted when a permanent has no counters.
 
 ### valid_actions[]
 

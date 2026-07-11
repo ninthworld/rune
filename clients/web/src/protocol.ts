@@ -105,24 +105,12 @@ export interface ZonePile {
 }
 
 /**
- * The current turn step. Mirrors the `Phase` enum's snake_case serde encoding.
+ * Every `Phase` value in turn order, for runtime validation of the wire. This is
+ * the single source of truth: the {@link Phase} union is derived from it, so a
+ * value added here can never drift out of the type (and vice versa). Mirrors the
+ * `Phase` enum's snake_case serde encoding in `crates/rune-protocol/src/lib.rs`.
  */
-export type Phase =
-  | 'untap'
-  | 'upkeep'
-  | 'draw'
-  | 'precombat_main'
-  | 'begin_combat'
-  | 'declare_attackers'
-  | 'declare_blockers'
-  | 'combat_damage'
-  | 'end_combat'
-  | 'postcombat_main'
-  | 'end'
-  | 'cleanup';
-
-/** Every `Phase` value, for runtime validation of the wire. */
-export const PHASES: readonly Phase[] = [
+export const PHASES = [
   'untap',
   'upkeep',
   'draw',
@@ -136,6 +124,9 @@ export const PHASES: readonly Phase[] = [
   'end',
   'cleanup',
 ] as const;
+
+/** The current turn step; one of {@link PHASES}. */
+export type Phase = (typeof PHASES)[number];
 
 /**
  * One entry of {@link GameView.valid_actions}: the only source of interactivity.
