@@ -290,6 +290,24 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
             vec![permanent_entity_id(*permanent)],
             Vec::new(),
         ),
+        // Pre-game London mulligan decisions (CR 103.5). Subject-less, so the
+        // client renders them in the action bar (ADR 0004). The `Keep` bottoming
+        // choice is a multi-select `requirements` slot (candidates = hand card
+        // entity ids); projecting it rides the same engine→wire requirements
+        // wiring still pending for targeting (ADR 0009 follow-up #73), so it is
+        // left empty here for now — a first-hand keep (no bottoming) already works.
+        Action::Mulligan => (
+            "mulligan".to_string(),
+            "Mulligan".to_string(),
+            Vec::new(),
+            Vec::new(),
+        ),
+        Action::Keep { .. } => (
+            "keep".to_string(),
+            "Keep hand".to_string(),
+            Vec::new(),
+            Vec::new(),
+        ),
     };
     let token = content_token(&kind, &subject, &requirements);
     ValidAction {
@@ -846,5 +864,56 @@ mod tests {
             }],
         };
         assert!(resolve_action(&state, &db, PlayerId(0), &spurious).is_none());
+    }
+
+    /// During the pre-game London mulligan (CR 103.5, engine issue #111) the view
+    /// projects the deciding seat's keep/mulligan decision, each carrying a
+    /// content-binding token (ADR 0009), while hand redaction is unaffected: the
+    /// viewer sees its own hand in full and only the *size* of the opponent's.
+    #[test]
+    fn mulligan_actions_project_with_tokens_and_redaction_holds() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        // Enter the mulligan phase with seat 0 deciding; give both seats hands.
+        state.players[0].hand = vec![state.new_instance(CardId(5))];
+        state.players[1].hand = vec![state.new_instance(CardId(6)), state.new_instance(CardId(1))];
+        state.mulligan = Some(rune_engine::MulliganState::new(2, 7));
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+
+        // Redaction is unaffected: the viewer sees its own hand in full, and the
+        // opponent is reduced to a hand *size* with no card contents leaked.
+        assert_eq!(view.my_hand.len(), 1);
+        assert_eq!(view.opponents.len(), 1);
+        assert_eq!(view.opponents[0].hand_size, 2);
+
+        // The deciding seat is offered exactly keep + mulligan, each token-bound.
+        let kinds: Vec<&str> = view.valid_actions.iter().map(|a| a.kind.as_str()).collect();
+        assert!(kinds.contains(&"mulligan"));
+        assert!(kinds.contains(&"keep"));
+        assert!(
+            view.valid_actions.iter().all(|a| !a.token.is_empty()),
+            "every mulligan action carries a content-binding token (ADR 0009)",
+        );
+        let mulligan = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "mulligan")
+            .unwrap();
+        let keep = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "keep")
+            .unwrap();
+        assert_ne!(
+            mulligan.token, keep.token,
+            "distinct action content hashes to distinct tokens",
+        );
+
+        // The non-deciding seat is offered nothing (actions are redacted to the
+        // priority holder) and still only sees the opponent's hand size.
+        let other = personalized_view(&state, &db, PlayerId(1));
+        assert!(other.valid_actions.is_empty());
+        assert_eq!(other.opponents[0].hand_size, 1);
     }
 }

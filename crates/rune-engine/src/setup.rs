@@ -5,17 +5,20 @@
 //! ids plus the starting life total and hand size — and [`GameState::new`] turns
 //! it into a ready-to-play state: instances minted for every card, each library
 //! shuffled deterministically from the injected seed (CR 103.3), and opening
-//! hands drawn (CR 103.5). No I/O and no OS entropy is involved; the only source
+//! hands drawn (CR 103.5). The resulting state opens in the London mulligan
+//! decision phase (CR 103.5, [`crate::mulligan`]) — turn 1 does not begin until
+//! every player has kept. No I/O and no OS entropy is involved; the only source
 //! of randomness is the seed carried in [`GameSetup::rng_seed`], consumed through
 //! [`crate::rng`].
 //!
-//! Out of scope here (see issue #109): mulligans (#111), deck-legality checks
-//! (deck size, singleton/limit rules), and the set/printing model (ADR 0013).
-//! Unknown card ids are the one input error this constructor rejects.
+//! Out of scope here: deck-legality checks (deck size, singleton/limit rules) and
+//! the set/printing model (ADR 0013). Unknown card ids are the one input error
+//! this constructor rejects.
 
 use std::fmt;
 
 use crate::id::{CardId, PlayerId};
+use crate::mulligan::MulliganState;
 use crate::phase::Step;
 use crate::player::{Player, STARTING_LIFE};
 use crate::rng::SplitMix64;
@@ -140,10 +143,14 @@ impl GameState {
     /// minted per decklist entry into the library, each library is shuffled
     /// deterministically from [`GameSetup::rng_seed`] (CR 103.3), and the top
     /// [`GameSetup::starting_hand_size`] cards become that player's opening hand
-    /// (CR 103.5). Turn 1 belongs to seat 0 at [`Step::Untap`]; libraries populate
-    /// [`Player::library`] so their counts flow through `GameView` unchanged. The
-    /// seed is stored back into [`GameState::rng_seed`](crate::GameState::rng_seed)
-    /// advanced past the setup shuffles, so later randomness continues the stream.
+    /// (CR 103.5). The state then opens in the London mulligan phase
+    /// ([`GameState::mulligan`](crate::GameState::mulligan) is `Some`), with seat 0
+    /// deciding first; turn 1 (seat 0 at [`Step::Untap`]) begins only once every
+    /// player has kept. Libraries populate [`Player::library`] so their counts flow
+    /// through `GameView` unchanged. The seed is stored back into
+    /// [`GameState::rng_seed`](crate::GameState::rng_seed) advanced past the setup
+    /// shuffles, so later randomness (including mulligan reshuffles) continues the
+    /// stream.
     ///
     /// Shuffling consumes the seeded stream one seat at a time in seating order,
     /// so a seat's library order depends on both the seed and the seats before it
@@ -181,6 +188,9 @@ impl GameState {
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
             rng_seed: setup.rng_seed,
+            // Populated below once seat count is known: the game opens in the
+            // London mulligan decision phase (CR 103.5), not on turn 1.
+            mulligan: None,
         };
 
         let mut rng = SplitMix64::new(setup.rng_seed);
@@ -207,6 +217,14 @@ impl GameState {
         // Persist the advanced generator state so subsequent randomness (future
         // in-game shuffles, etc.) continues the same deterministic stream.
         state.rng_seed = rng.state();
+
+        // Enter the London mulligan decision phase (CR 103.5): turn 1 does not
+        // begin until every player has kept. Seat 0 decides first; priority is
+        // already seated there.
+        state.mulligan = Some(MulliganState::new(
+            state.players.len(),
+            setup.starting_hand_size,
+        ));
 
         Ok(state)
     }

@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
+use crate::mulligan::MulliganState;
 use crate::phase::Step;
 use crate::player::Player;
 use crate::stack::StackObject;
@@ -220,6 +221,13 @@ pub struct GameState {
     /// Never included in any `GameView`: exposing it would leak future shuffle
     /// outcomes to players, so the engine→protocol projection must not copy it.
     pub rng_seed: u64,
+    /// The pre-game [London mulligan](crate::mulligan) decision phase, when one is
+    /// in progress (CR 103.5). `Some` from the moment opening hands are dealt
+    /// ([`Self::new`]) until every player has kept, during which
+    /// [`crate::valid_actions`] offers only each player's keep/mulligan decision
+    /// and the turn structure does not advance; cleared to `None` — the value in
+    /// every test-scaffold and post-mulligan state — once the game has begun.
+    pub mulligan: Option<MulliganState>,
 }
 
 impl GameState {
@@ -257,6 +265,10 @@ impl GameState {
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
             rng_seed,
+            // The bare scaffold starts a game already in progress, past any
+            // mulligan; the London mulligan phase is entered only by [`Self::new`]
+            // from a real [`GameSetup`](crate::GameSetup).
+            mulligan: None,
         }
     }
 
