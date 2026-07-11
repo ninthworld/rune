@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeGameView, parseGameView, ProtocolError } from './wire';
 import { SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
+// The single canonical cross-language fixture, owned by the `rune-protocol` crate
+// and round-tripped by its Rust test. Resolved via a path alias (tsconfig.json +
+// vitest.config.ts) so there is exactly one copy of the JSON in the repo.
+import CONTRACT_FIXTURE from '@protocol-fixtures/gameview.json';
 
 describe('parseGameView', () => {
   it('decodes a representative wire frame into the expected GameView', () => {
@@ -51,5 +55,61 @@ describe('parseGameView', () => {
 
   it('rejects a present-but-wrong-typed collection', () => {
     expect(() => parseGameView('{"phase":"draw","valid_actions":{}}')).toThrow(ProtocolError);
+  });
+});
+
+describe('cross-language contract fixture (issue #56)', () => {
+  // The same JSON the Rust `rune-protocol` round-trip test consumes. If a field is
+  // renamed/retyped/removed in the Rust crate and this fixture is updated to match,
+  // these typed assertions break here (and vice versa) — drift fails a test instead
+  // of relying on same-PR discipline.
+  const wireJson = JSON.stringify(CONTRACT_FIXTURE);
+
+  it('parses through parseGameView into the fully-typed GameView', () => {
+    const view = parseGameView(wireJson);
+
+    expect(view.you).toBe('p1');
+    expect(view.phase).toBe('precombat_main');
+    expect(view.priority_player).toBe('p1');
+    expect(view.action_deadline).toBe(12.5);
+    expect(view.mana_pool).toEqual(['{G}', '{G}']);
+
+    // Populated hand: the creature carries P/T, the land omits them.
+    expect(view.my_hand.map((c) => c.id)).toEqual(['c1', 'c2', 'c3']);
+    expect(view.my_hand[0].power).toBe('1');
+    expect(view.my_hand[1].power).toBeUndefined();
+
+    // Opponent view: hidden zones reduced to counts, statuses carried through.
+    expect(view.opponents[0].hand_size).toBe(7);
+    expect(view.opponents[0].statuses).toEqual(['monarch']);
+
+    // Battlefield exercises the `Counter { kind, count }` shape and `tapped`.
+    expect(view.battlefield[0].tapped).toBe(true);
+    expect(view.battlefield[0].counters).toEqual([{ kind: '+1/+1', count: 2 }]);
+    expect(view.battlefield[1].counters).toEqual([{ kind: 'loyalty', count: 5 }]);
+    expect(view.battlefield[1].tapped).toBeUndefined();
+
+    // Stack: an ability carries its `source`; a spell does not.
+    expect(view.stack[0].source).toBeUndefined();
+    expect(view.stack[1].source).toBe('perm_bear');
+
+    // Public piles round-trip populated.
+    expect(view.graveyards[0].cards[0].id).toBe('g1');
+    expect(view.exile[0].cards[0].id).toBe('x1');
+
+    // Every valid-action kind emitted today is present, in order; pass is global.
+    expect(view.valid_actions.map((a) => a.type)).toEqual([
+      'pass_priority',
+      'play_land',
+      'cast_spell',
+      'activate_ability',
+    ]);
+    expect(view.valid_actions[0].subject).toBeUndefined();
+    expect(view.valid_actions[3].subject).toEqual(['perm_bear']);
+  });
+
+  it('normalizes the parsed object identically to the raw wire text', () => {
+    // normalizeGameView (object) and parseGameView (text) are the same pipeline.
+    expect(normalizeGameView(CONTRACT_FIXTURE)).toEqual(parseGameView(wireJson));
   });
 });

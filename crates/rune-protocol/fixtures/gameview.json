@@ -1,0 +1,121 @@
+{
+  "you": "p1",
+  "my_hand": [
+    {
+      "id": "c1",
+      "name": "Llanowar Elves",
+      "type_line": "Creature — Elf Druid",
+      "mana_cost": "{G}",
+      "oracle_text": "{T}: Add {G}.",
+      "power": "1",
+      "toughness": "1"
+    },
+    {
+      "id": "c2",
+      "name": "Forest",
+      "type_line": "Basic Land — Forest"
+    },
+    {
+      "id": "c3",
+      "name": "Lightning Bolt",
+      "type_line": "Instant",
+      "mana_cost": "{R}",
+      "oracle_text": "Lightning Bolt deals 3 damage to any target."
+    }
+  ],
+  "opponents": [
+    {
+      "player_id": "p2",
+      "hand_size": 7,
+      "life": 20,
+      "library_size": 53,
+      "graveyard_size": 1,
+      "statuses": ["monarch"]
+    }
+  ],
+  "battlefield": [
+    {
+      "id": "perm_bear",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_bear",
+        "name": "Grizzly Bears",
+        "type_line": "Creature — Bear",
+        "mana_cost": "{1}{G}",
+        "power": "2",
+        "toughness": "2"
+      },
+      "tapped": true,
+      "counters": [{ "kind": "+1/+1", "count": 2 }]
+    },
+    {
+      "id": "perm_nissa",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_nissa",
+        "name": "Nissa, Who Shakes the World",
+        "type_line": "Legendary Planeswalker — Nissa",
+        "mana_cost": "{3}{G}{G}",
+        "oracle_text": "Whenever you tap a Forest for mana, add an additional {G}."
+      },
+      "counters": [{ "kind": "loyalty", "count": 5 }]
+    }
+  ],
+  "stack": [
+    {
+      "id": "s1",
+      "controller": "p2",
+      "description": "Lightning Bolt"
+    },
+    {
+      "id": "s2",
+      "controller": "p1",
+      "description": "Add {G}.",
+      "source": "perm_bear"
+    }
+  ],
+  "graveyards": [
+    {
+      "player_id": "p2",
+      "cards": [
+        {
+          "id": "g1",
+          "name": "Opt",
+          "type_line": "Instant",
+          "mana_cost": "{U}",
+          "oracle_text": "Scry 1. Draw a card."
+        }
+      ]
+    }
+  ],
+  "exile": [
+    {
+      "player_id": "p1",
+      "cards": [
+        {
+          "id": "x1",
+          "name": "Path to Exile",
+          "type_line": "Instant",
+          "mana_cost": "{W}"
+        }
+      ]
+    }
+  ],
+  "phase": "precombat_main",
+  "mana_pool": ["{G}", "{G}"],
+  "priority_player": "p1",
+  "valid_actions": [
+    { "id": "a1", "type": "pass_priority", "label": "Pass" },
+    { "id": "a2", "type": "play_land", "label": "Play Forest", "subject": ["c2"] },
+    { "id": "a3", "type": "cast_spell", "label": "Cast Lightning Bolt", "subject": ["c3"] },
+    {
+      "id": "a4",
+      "type": "activate_ability",
+      "label": "Tap for mana",
+      "subject": ["perm_bear"]
+    }
+  ],
+  "action_deadline": 12.5
+}

@@ -11,7 +11,12 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "noEmit": true
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@protocol-fixtures/gameview.json": ["../../crates/rune-protocol/fixtures/gameview.json"]
+    }
   },
   "include": ["src"]
 }

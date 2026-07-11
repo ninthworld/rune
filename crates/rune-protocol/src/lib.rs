@@ -394,6 +394,85 @@ mod tests {
     }
 
     #[test]
+    fn canonical_fixture_round_trips_and_matches_typed_fields() {
+        // Single-sourced cross-language contract fixture (issue #56): this exact
+        // JSON is also consumed by the web client's `wire.test.ts`. A field
+        // renamed, retyped, or removed in this crate without updating the fixture
+        // fails to deserialize (or mismatches an assertion) here — the same drift
+        // the same-PR discipline used to catch by convention alone.
+        let json = include_str!("../fixtures/gameview.json");
+        let view: GameView = serde_json::from_str(json).unwrap();
+
+        // Round-trips through serde JSON without loss.
+        let reencoded = serde_json::to_string(&view).unwrap();
+        let back: GameView = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(back, view);
+
+        // Load-bearing typed fields: a rename/retype in the structs breaks one of
+        // these (or the deserialize above) rather than passing silently.
+        assert_eq!(view.you, "p1");
+        assert_eq!(view.phase, Phase::PrecombatMain);
+        assert_eq!(view.mana_pool, vec!["{G}".to_string(), "{G}".to_string()]);
+        assert_eq!(view.priority_player.as_deref(), Some("p1"));
+        assert_eq!(view.action_deadline, Some(12.5));
+
+        // Populated hand: creature carries P/T, the land omits them.
+        assert_eq!(
+            view.my_hand
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect::<Vec<_>>(),
+            ["c1", "c2", "c3"]
+        );
+        assert_eq!(view.my_hand[0].power.as_deref(), Some("1"));
+        assert_eq!(view.my_hand[1].power, None);
+
+        // Opponent view redacts hidden zones to counts and carries statuses.
+        assert_eq!(view.opponents[0].hand_size, 7);
+        assert_eq!(view.opponents[0].statuses, vec!["monarch".to_string()]);
+
+        // Battlefield: a tapped permanent with a `+1/+1` counter and a
+        // planeswalker with a `loyalty` counter — exercising `Counter {kind, count}`.
+        let bear = &view.battlefield[0];
+        assert!(bear.tapped);
+        assert_eq!(
+            bear.counters,
+            vec![Counter {
+                kind: "+1/+1".into(),
+                count: 2,
+            }]
+        );
+        assert_eq!(view.battlefield[1].counters[0].kind, "loyalty");
+        assert_eq!(view.battlefield[1].counters[0].count, 5);
+        assert!(!view.battlefield[1].tapped);
+
+        // Stack: an ability carries its `source`; a spell does not.
+        assert_eq!(view.stack[0].source, None);
+        assert_eq!(view.stack[1].source.as_deref(), Some("perm_bear"));
+
+        // Public piles round-trip populated.
+        assert_eq!(view.graveyards[0].cards[0].id, "g1");
+        assert_eq!(view.exile[0].cards[0].id, "x1");
+
+        // Every valid-action kind emitted today is represented, in order.
+        assert_eq!(
+            view.valid_actions
+                .iter()
+                .map(|a| a.kind.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "pass_priority",
+                "play_land",
+                "cast_spell",
+                "activate_ability"
+            ]
+        );
+        // `pass_priority` is subject-less; the ability action names its permanent.
+        assert!(view.valid_actions[0].subject.is_empty());
+        assert_eq!(view.valid_actions[3].subject, vec!["perm_bear".to_string()]);
+    }
+
+    #[test]
     fn unknown_fields_are_ignored() {
         // Forward-compat invariant (docs/protocol.md): a newer server may add
         // fields; older clients must still deserialize the message.
