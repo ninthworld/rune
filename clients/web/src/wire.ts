@@ -8,7 +8,15 @@
  * cost, or effect is ever computed here — unknown fields are tolerated for
  * forward compatibility.
  */
-import { type GameView, PHASES, type Phase } from './protocol';
+import {
+  type GameView,
+  type LobbyView,
+  PHASES,
+  type Phase,
+  type RoomConfig,
+  type RoomView,
+  type SeatView,
+} from './protocol';
 
 /** Raised when a server payload is not a decodable {@link GameView}. */
 export class ProtocolError extends Error {
@@ -85,4 +93,90 @@ export function parseGameView(raw: string): GameView {
     throw new ProtocolError(`server frame is not valid JSON: ${String(cause)}`);
   }
   return normalizeGameView(parsed);
+}
+
+/** Coerce a wire value into a string, treating an omitted field as `''`. */
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/** Normalize a wire `RoomConfig`, defaulting a missing/invalid `seats` to `0`. */
+function normalizeRoomConfig(payload: unknown): RoomConfig {
+  const record = isRecord(payload) ? payload : {};
+  return {
+    seats: typeof record.seats === 'number' ? record.seats : 0,
+    game_setup: asString(record.game_setup),
+  };
+}
+
+/**
+ * Normalize a wire {@link SeatView}. `occupied_by` stays absent for an empty
+ * seat; `decked`/`ready` default to `false` (the server elides them when false).
+ */
+function normalizeSeatView(payload: unknown, index: number): SeatView {
+  const record = isRecord(payload) ? payload : {};
+  const seat: SeatView = {
+    seat: typeof record.seat === 'number' ? record.seat : index,
+    decked: record.decked === true,
+    ready: record.ready === true,
+  };
+  if (typeof record.occupied_by === 'string') seat.occupied_by = record.occupied_by;
+  return seat;
+}
+
+/** Normalize the optional room half of a {@link LobbyView}. */
+function normalizeRoomView(payload: unknown): RoomView {
+  const record = isRecord(payload) ? payload : {};
+  return {
+    room_id: asString(record.room_id),
+    config: normalizeRoomConfig(record.config),
+    seats: asArray(record.seats, 'room.seats').map(normalizeSeatView),
+  };
+}
+
+/**
+ * Normalize an already-parsed payload into a complete {@link LobbyView}. Missing
+ * `session`/`you` default to `''` (like `GameView.you`), `room` stays absent when
+ * omitted, and `valid_commands` becomes the empty array. This is wire hygiene, not
+ * game logic — unknown fields are tolerated for forward compatibility.
+ */
+export function normalizeLobbyView(payload: unknown): LobbyView {
+  if (!isRecord(payload)) {
+    throw new ProtocolError('LobbyView payload must be a JSON object');
+  }
+  const view: LobbyView = {
+    session: asString(payload.session),
+    you: asString(payload.you),
+    valid_commands: asArray<string>(payload.valid_commands, 'valid_commands'),
+  };
+  if (isRecord(payload.room)) view.room = normalizeRoomView(payload.room);
+  return view;
+}
+
+/**
+ * One decoded server→client frame: either an in-game {@link GameView} or a
+ * pre-game {@link LobbyView}. The two are distinguished structurally — a
+ * `GameView` always carries a valid {@link Phase}; a `LobbyView` never does — so
+ * a single connection can carry both across the lobby→game handoff.
+ */
+export type ServerFrame =
+  | { readonly kind: 'game'; readonly view: GameView }
+  | { readonly kind: 'lobby'; readonly lobby: LobbyView };
+
+/**
+ * Parse a raw server→client text frame, routing it to a {@link GameView} or a
+ * {@link LobbyView} by the presence of a valid `phase`. Throws
+ * {@link ProtocolError} on malformed JSON or a non-object payload.
+ */
+export function parseServerFrame(raw: string): ServerFrame {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (cause) {
+    throw new ProtocolError(`server frame is not valid JSON: ${String(cause)}`);
+  }
+  if (isRecord(parsed) && isPhase(parsed.phase)) {
+    return { kind: 'game', view: normalizeGameView(parsed) };
+  }
+  return { kind: 'lobby', lobby: normalizeLobbyView(parsed) };
 }

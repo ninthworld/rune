@@ -274,3 +274,194 @@ export function chooseAction(
   if (targets !== undefined && targets.length > 0) message.targets = targets;
   return message;
 }
+
+// ---------------------------------------------------------------------------
+// Lobby protocol — the pre-game analogue of the two in-game messages
+// (docs/protocol.md "Lobby phase"; docs/decisions/0012-lobby-protocol.md).
+//
+// The server pushes a full {@link LobbyView} on every change and the client
+// rebuilds its entire pre-game UI (identity, room, seat roster, who is
+// decked/ready) from that one message. {@link LobbyView.valid_commands} is the
+// only source of interactivity, exactly as `valid_actions` is in `GameView`; the
+// client computes no legality. Once a game is constructed the connection switches
+// to the in-game `GameView`/`ChooseAction` contract for the life of that game.
+//
+// These shapes mirror the `rune-protocol` crate; any change is a contract change.
+// ---------------------------------------------------------------------------
+
+/**
+ * Server-issued opaque session/reconnect token. The client stores it and echoes
+ * it verbatim on a later {@link HelloCommand} (after a refresh or dropped socket).
+ * It is an identity handle only — never parsed, never authentication of a human.
+ */
+export type SessionToken = string;
+
+/** Opaque room id, issued on {@link CreateRoomCommand} and shared out-of-band. */
+export type RoomId = string;
+
+/** Opaque game-setup id carried in a {@link RoomConfig}; the server validates it. */
+export type GameSetupId = string;
+
+/**
+ * Opaque card-identity handle in a submitted decklist. These are card
+ * *identities*, never printings or images (project legal rules); the server
+ * validates each against its card database and the client never parses them.
+ */
+export type CardIdentity = string;
+
+/** A room's configuration, supplied by the creator and echoed in every view. */
+export interface RoomConfig {
+  /** Number of seats, validated server-side into the inclusive range `2..=8`. */
+  seats: number;
+  /** Opaque game-setup id naming which setup the room builds its game from. */
+  game_setup: GameSetupId;
+}
+
+/**
+ * One seat in a room's roster, as any connection sees it. Hidden information
+ * stays redacted: a seat's decklist contents are never exposed, only that the
+ * seat is decked.
+ */
+export interface SeatView {
+  /** Zero-based seat index within the room. */
+  seat: number;
+  /** The player occupying this seat; absent when the seat is empty. */
+  occupied_by?: PlayerId;
+  /** Whether this seat has submitted a server-validated deck (defaults `false`). */
+  decked?: boolean;
+  /** Whether this seat has declared itself ready (defaults `false`). */
+  ready?: boolean;
+}
+
+/** The room a connection is in, with its config and full seat roster. */
+export interface RoomView {
+  /** The room's opaque id, shared to invite a second player. */
+  room_id: RoomId;
+  /** The room's configuration. */
+  config: RoomConfig;
+  /** Every seat in the room, in seat order. */
+  seats: SeatView[];
+}
+
+/**
+ * The full pre-game state for one connection, pushed on every change — the
+ * pre-game analogue of {@link GameView}. The client rebuilds its entire pre-game
+ * UI from a single `LobbyView` (reconnect-safe by construction) and derives no
+ * legality: {@link LobbyView.valid_commands} is the only source of interactivity.
+ */
+export interface LobbyView {
+  /**
+   * The connection's session/reconnect token (private — the client's own handle,
+   * distinct from the public {@link LobbyView.you}). Always present on the wire;
+   * defaulted to `''` if a payload omits it.
+   */
+  session: SessionToken;
+  /**
+   * The connection's public player identity, used to match itself against a
+   * {@link SeatView.occupied_by}. Defaults to `''` when absent.
+   */
+  you: PlayerId;
+  /** The room the connection is in, if any. Absent when not in a room. */
+  room?: RoomView;
+  /**
+   * The lobby command kinds currently legal for this connection (e.g.
+   * `"create_room"`, `"join_room"`, `"submit_deck"`, `"ready"`, `"unready"`,
+   * `"leave"`). Free-form strings; the client renders exactly these and tolerates
+   * unknown kinds, computing no legality of its own.
+   */
+  valid_commands: string[];
+}
+
+/** First-contact / reconnect command; carries a prior token when reconnecting. */
+export interface HelloCommand {
+  /** Discriminator. */
+  type: 'hello';
+  /** A previously issued session token to reclaim a held-open seat (or omitted). */
+  token?: SessionToken;
+}
+
+/** Create a new room with the given config; the reply carries the new room id. */
+export interface CreateRoomCommand {
+  /** Discriminator. */
+  type: 'create_room';
+  /** The configuration for the new room. */
+  config: RoomConfig;
+}
+
+/** Join an existing room by id (no matchmaking or discovery). */
+export interface JoinRoomCommand {
+  /** Discriminator. */
+  type: 'join_room';
+  /** The opaque id of the room to join. */
+  room_id: RoomId;
+}
+
+/** Submit a decklist for this connection's seat (server-validated). */
+export interface SubmitDeckCommand {
+  /** Discriminator. */
+  type: 'submit_deck';
+  /** The card identities, duplicates repeated; omitted when empty. */
+  cards?: CardIdentity[];
+}
+
+/** Declare or retract readiness for this connection's seat. */
+export interface ReadyCommand {
+  /** Discriminator. */
+  type: 'ready';
+  /** `true` to ready up, `false` to un-ready. */
+  ready: boolean;
+}
+
+/** Leave the current room, vacating the seat. */
+export interface LeaveCommand {
+  /** Discriminator. */
+  type: 'leave';
+}
+
+/**
+ * Everything a client can send in the lobby phase, a single tagged message
+ * structurally parallel to {@link ChooseAction}. The server validates every
+ * command against authoritative state and answers with a fresh {@link LobbyView};
+ * an invalid command is rejected and the current `LobbyView` re-sent.
+ */
+export type LobbyCommand =
+  | HelloCommand
+  | CreateRoomCommand
+  | JoinRoomCommand
+  | SubmitDeckCommand
+  | ReadyCommand
+  | LeaveCommand;
+
+/** Build a `hello` command, including a prior token only when present. */
+export function helloCommand(token?: SessionToken): HelloCommand {
+  const message: HelloCommand = { type: 'hello' };
+  if (token !== undefined && token !== '') message.token = token;
+  return message;
+}
+
+/** Build a `create_room` command for the given config. */
+export function createRoomCommand(config: RoomConfig): CreateRoomCommand {
+  return { type: 'create_room', config };
+}
+
+/** Build a `join_room` command for the given room id. */
+export function joinRoomCommand(roomId: RoomId): JoinRoomCommand {
+  return { type: 'join_room', room_id: roomId };
+}
+
+/** Build a `submit_deck` command, eliding `cards` when the decklist is empty. */
+export function submitDeckCommand(cards: CardIdentity[]): SubmitDeckCommand {
+  const message: SubmitDeckCommand = { type: 'submit_deck' };
+  if (cards.length > 0) message.cards = cards;
+  return message;
+}
+
+/** Build a `ready` command declaring (`true`) or retracting (`false`) readiness. */
+export function readyCommand(ready: boolean): ReadyCommand {
+  return { type: 'ready', ready };
+}
+
+/** Build a `leave` command. */
+export function leaveCommand(): LeaveCommand {
+  return { type: 'leave' };
+}

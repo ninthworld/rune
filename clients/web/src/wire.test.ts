@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeGameView, parseGameView, ProtocolError } from './wire';
+import {
+  normalizeGameView,
+  normalizeLobbyView,
+  parseGameView,
+  parseServerFrame,
+  ProtocolError,
+} from './wire';
 import { SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
+import { LOBBY_ROOM_UNDECKED_JSON, LOBBY_ROOMLESS_JSON } from './lobby-view.fixture';
 // The single canonical cross-language fixture, owned by the `rune-protocol` crate
 // and round-tripped by its Rust test. Resolved via a path alias (tsconfig.json +
 // vitest.config.ts) so there is exactly one copy of the JSON in the repo.
@@ -138,5 +145,56 @@ describe('cross-language contract fixture (issue #56)', () => {
   it('normalizes the parsed object identically to the raw wire text', () => {
     // normalizeGameView (object) and parseGameView (text) are the same pipeline.
     expect(normalizeGameView(CONTRACT_FIXTURE)).toEqual(parseGameView(wireJson));
+  });
+});
+
+describe('lobby wire (issue #114)', () => {
+  it('normalizes a room-less LobbyView, defaulting elided fields', () => {
+    const view = normalizeLobbyView(JSON.parse(LOBBY_ROOMLESS_JSON));
+    expect(view).toEqual({
+      session: 's:ab12',
+      you: 'p1',
+      valid_commands: ['create_room', 'join_room'],
+    });
+    expect(view.room).toBeUndefined();
+  });
+
+  it('normalizes a room with a seat roster, defaulting decked/ready to false', () => {
+    const view = normalizeLobbyView(JSON.parse(LOBBY_ROOM_UNDECKED_JSON));
+    expect(view.room?.room_id).toBe('r:7f3');
+    expect(view.room?.config).toEqual({ seats: 2, game_setup: '1v1' });
+    // Seat 0 is occupied but not decked/ready; seat 1 is empty.
+    expect(view.room?.seats[0]).toEqual({
+      seat: 0,
+      occupied_by: 'p1',
+      decked: false,
+      ready: false,
+    });
+    expect(view.room?.seats[1].occupied_by).toBeUndefined();
+  });
+
+  it('tolerates a sparse/empty LobbyView and unknown fields (forward compat)', () => {
+    const view = normalizeLobbyView({ some_future_field: true });
+    expect(view).toEqual({ session: '', you: '', valid_commands: [] });
+  });
+
+  it('rejects a non-object LobbyView payload', () => {
+    expect(() => normalizeLobbyView(42)).toThrow(ProtocolError);
+  });
+
+  it('routes a frame with a valid phase to a GameView', () => {
+    const frame = parseServerFrame(SAMPLE_GAME_VIEW_JSON);
+    expect(frame.kind).toBe('game');
+    if (frame.kind === 'game') expect(frame.view.phase).toBe('precombat_main');
+  });
+
+  it('routes a phase-less frame to a LobbyView', () => {
+    const frame = parseServerFrame(LOBBY_ROOMLESS_JSON);
+    expect(frame.kind).toBe('lobby');
+    if (frame.kind === 'lobby') expect(frame.lobby.session).toBe('s:ab12');
+  });
+
+  it('rejects malformed JSON when routing a frame', () => {
+    expect(() => parseServerFrame('not json')).toThrow(ProtocolError);
   });
 });

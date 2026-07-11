@@ -14,6 +14,12 @@
  */
 import { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { SAMPLE_GAME_VIEW_JSON } from '../src/game-view.fixture';
+import {
+  LOBBY_ROOMLESS_JSON,
+  LOBBY_ROOM_DECKED_JSON,
+  LOBBY_ROOM_UNDECKED_JSON,
+} from '../src/lobby-view.fixture';
 
 /** A running mock server: its `ws://` address and a lifecycle handle. */
 export interface MockServer {
@@ -40,6 +46,67 @@ export function startMockServer(frameJson: string): Promise<MockServer> {
       // Push the canned frame immediately; the client rebuilds its whole UI from
       // this single GameView (the reconstruct-from-one-GameView invariant).
       socket.send(frameJson);
+    });
+
+    wss.on('listening', () => {
+      const { port } = wss.address() as AddressInfo;
+      resolve({
+        url: `ws://127.0.0.1:${port}`,
+        received,
+        close: () =>
+          new Promise((done) => {
+            for (const client of wss.clients) client.terminate();
+            wss.close(() => done());
+          }),
+      });
+    });
+  });
+}
+
+/**
+ * Start a mock server that scripts the whole lobby handshake (ADR 0012), replying
+ * to each `LobbyCommand` with the next canned `LobbyView` and finally the fixture
+ * `GameView` when the player readies up — so the browser e2e drives the real
+ * address → lobby → game flow (issue #114). Like {@link startMockServer} it holds
+ * no logic: it maps a command `type` to a pre-baked frame from the shared
+ * fixtures, so the client, this server, and the real server cannot silently
+ * disagree about the lobby wire shape.
+ */
+export function startLobbyMockServer(): Promise<MockServer> {
+  return new Promise((resolve) => {
+    const received: string[] = [];
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+
+    wss.on('connection', (socket: WebSocket) => {
+      socket.on('message', (data) => {
+        const raw = data.toString();
+        received.push(raw);
+        let type: string | undefined;
+        try {
+          type = (JSON.parse(raw) as { type?: string }).type;
+        } catch {
+          return;
+        }
+        switch (type) {
+          case 'hello':
+            socket.send(LOBBY_ROOMLESS_JSON);
+            break;
+          case 'create_room':
+          case 'join_room':
+            socket.send(LOBBY_ROOM_UNDECKED_JSON);
+            break;
+          case 'submit_deck':
+            socket.send(LOBBY_ROOM_DECKED_JSON);
+            break;
+          case 'ready':
+            // Every seat is filled, decked, and ready: the game is constructed and
+            // the connection switches to the in-game GameView contract.
+            socket.send(SAMPLE_GAME_VIEW_JSON);
+            break;
+          default:
+            break;
+        }
+      });
     });
 
     wss.on('listening', () => {

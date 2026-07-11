@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGameStore, selectPendingPrompt, type SocketFactory } from './store';
 import { normalizeGameView } from './wire';
+import { createRoomCommand, joinRoomCommand, readyCommand, submitDeckCommand } from './protocol';
 import { SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
+import {
+  LOBBY_ROOMLESS_JSON,
+  LOBBY_ROOM_DECKED_JSON,
+  LOBBY_ROOM_READY_JSON,
+  LOBBY_ROOM_UNDECKED_JSON,
+} from './lobby-view.fixture';
 
 /**
  * A structural stand-in for the browser `WebSocket`, driven manually so tests
@@ -88,7 +95,9 @@ describe('game store', () => {
     sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
 
     store.getState().choose({ id: 'a2', type: 'activate_ability', label: 'Tap for mana' });
-    expect(sockets[0].sent).toEqual([JSON.stringify({ type: 'choose_action', action_id: 'a2' })]);
+    // The socket also carried the lobby `Hello` on open; the ChooseAction is the
+    // frame under test here.
+    expect(sockets[0].sent).toContain(JSON.stringify({ type: 'choose_action', action_id: 'a2' }));
   });
 
   it('answers a targeted action atomically: echoes the token and per-slot targets', () => {
@@ -111,14 +120,14 @@ describe('game store', () => {
       },
       [{ slot: 't0', chosen: ['perm_xyz'] }],
     );
-    expect(sockets[0].sent).toEqual([
+    expect(sockets[0].sent).toContain(
       JSON.stringify({
         type: 'choose_action',
         action_id: 'a3',
         token: 'h:9f2c',
         targets: [{ slot: 't0', chosen: ['perm_xyz'] }],
       }),
-    ]);
+    );
   });
 
   it('tracks connection status through the lifecycle', () => {
@@ -173,6 +182,140 @@ describe('game store', () => {
       store.getState().disconnect();
       vi.advanceTimersByTime(1000);
       expect(sockets).toHaveLength(1);
+    });
+  });
+
+  describe('lobby (issue #114)', () => {
+    /** Connect + open a store with a fake socket, returning the socket. */
+    function open(): { store: ReturnType<typeof createGameStore>; socket: FakeSocket } {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      return { store, socket: sockets[0] };
+    }
+
+    it('greets the server with a Hello on open (no token on first contact)', () => {
+      const { socket } = open();
+      expect(socket.sent).toEqual([JSON.stringify({ type: 'hello' })]);
+    });
+
+    it('routes a LobbyView frame to `lobby` (not `view`)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+
+      expect(store.getState().view).toBeNull();
+      expect(store.getState().lobby).toEqual({
+        session: 's:ab12',
+        you: 'p1',
+        valid_commands: ['create_room', 'join_room'],
+      });
+    });
+
+    it('transitions to the game (sets `view`) on the first GameView', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+      expect(store.getState().lobby).not.toBeNull();
+
+      // The game is constructed; the server now speaks GameViews.
+      socket.emitMessage(SAMPLE_GAME_VIEW_JSON);
+      expect(store.getState().view).toEqual(SAMPLE_GAME_VIEW);
+    });
+
+    it('sends lobby commands verbatim', () => {
+      const { store, socket } = open();
+      store.getState().sendLobby(createRoomCommand({ seats: 4, game_setup: 'ffa-4' }));
+      store.getState().sendLobby(joinRoomCommand('r:7f3'));
+      store.getState().sendLobby(submitDeckCommand(['1', '1', '5']));
+      store.getState().sendLobby(readyCommand(true));
+
+      expect(socket.sent).toContain(
+        JSON.stringify({ type: 'create_room', config: { seats: 4, game_setup: 'ffa-4' } }),
+      );
+      expect(socket.sent).toContain(JSON.stringify({ type: 'join_room', room_id: 'r:7f3' }));
+      expect(socket.sent).toContain(
+        JSON.stringify({ type: 'submit_deck', cards: ['1', '1', '5'] }),
+      );
+      expect(socket.sent).toContain(JSON.stringify({ type: 'ready', ready: true }));
+    });
+
+    it('clears any error when a command takes effect (create → in a room)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+      store.getState().sendLobby(createRoomCommand({ seats: 2, game_setup: '1v1' }));
+      // The server confirms with a room-bearing LobbyView.
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+
+      expect(store.getState().lobbyError).toBeNull();
+      expect(store.getState().lobby?.room?.room_id).toBe('r:7f3');
+    });
+
+    it('surfaces a non-fatal, retryable error when a join is rejected', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+      store.getState().sendLobby(joinRoomCommand('r:nope'));
+      // Rejected: the server re-sends the current (still room-less) LobbyView.
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+
+      expect(store.getState().lobbyError).toContain('Could not join');
+      // The lobby is still interactive (create/join still offered) — retry-able.
+      expect(store.getState().lobby?.valid_commands).toContain('join_room');
+    });
+
+    it('flags a rejected deck, then clears it on a successful resubmit', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+
+      // Submit a deck; the server rejects it (re-sends the undecked view).
+      store.getState().sendLobby(submitDeckCommand(['1']));
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+      expect(store.getState().lobbyError).toContain('deck was rejected');
+
+      // Resubmit; this time the seat comes back decked and the error clears.
+      store.getState().sendLobby(submitDeckCommand(['1', '5']));
+      socket.emitMessage(LOBBY_ROOM_DECKED_JSON);
+      expect(store.getState().lobbyError).toBeNull();
+      expect(store.getState().lobby?.room?.seats[0].decked).toBe(true);
+    });
+
+    it('reconciles ready → the seat reads ready with no error', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOM_DECKED_JSON);
+      store.getState().sendLobby(readyCommand(true));
+      socket.emitMessage(LOBBY_ROOM_READY_JSON);
+
+      expect(store.getState().lobbyError).toBeNull();
+      expect(store.getState().lobby?.room?.seats[0].ready).toBe(true);
+    });
+
+    it('drops lobby state on disconnect (returns to an interactive screen)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+      expect(store.getState().lobby).not.toBeNull();
+
+      store.getState().disconnect();
+      expect(store.getState().lobby).toBeNull();
+      expect(store.getState().lobbyError).toBeNull();
+      expect(store.getState().status).toBe('closed');
+    });
+
+    it('echoes the last session token on a reconnecting Hello', () => {
+      vi.useFakeTimers();
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, reconnectDelayMs: 10 });
+      sockets[0].emitOpen();
+      // The first LobbyView issues the session token.
+      sockets[0].emitMessage(LOBBY_ROOMLESS_JSON);
+
+      // The socket drops; auto-reconnect opens a fresh socket that re-greets.
+      sockets[0].drop();
+      vi.advanceTimersByTime(10);
+      expect(sockets).toHaveLength(2);
+      sockets[1].emitOpen();
+
+      expect(sockets[1].sent).toEqual([JSON.stringify({ type: 'hello', token: 's:ab12' })]);
+      vi.useRealTimers();
     });
   });
 
