@@ -8,6 +8,10 @@ license.workspace = true
 [dependencies]
 rune-engine = { path = "../rune-engine" }
 rune-protocol = { path = "../rune-protocol" }
+# Serialize the JSON protocol at the transport boundary. serde_json is already the
+# workspace's wire codec (rune-protocol, rune-engine); the server speaks the same
+# JSON, so this is not a materially new dependency (ADR-0008 covers the stack).
+serde_json = "1"
 # Async transport stack — see docs/decisions/0008-tokio-websocket-server.md.
 tokio = { version = "1", features = [
     "rt-multi-thread",

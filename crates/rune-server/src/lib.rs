@@ -1,15 +1,24 @@
-//! RUNE server transport — layer 1 (lobby) accept loop.
+//! RUNE server transport — layers 1 (lobby) and 2 (rooms).
 //!
 //! This crate owns networking, sessions, and timers; it never owns rules — that
-//! is [`rune_engine`]. This module is the layer-1 skeleton: it runs a Tokio
-//! runtime, accepts WebSocket client connections, logs their lifecycle, and
-//! shuts down gracefully. It contains **no game logic** — the per-connection
-//! handler here only echoes frames to prove the transport. The rooms layer
-//! (layer 2) that drives the engine and pushes `GameView`s lands in a later
-//! milestone (see `docs/agents/backlog.md` #11).
+//! is [`rune_engine`]. Layer 1 (this module) runs a Tokio runtime, accepts
+//! WebSocket client connections, logs their lifecycle, and shuts down gracefully.
+//! Layer 2 is the [`room`] module: one async task per room owns a single engine
+//! game, applies chosen actions through the engine, and pushes each connected seat
+//! its own personalized [`rune_protocol::GameView`]. Redacting hidden zones and
+//! naming entities for the wire is the pure [`view`] shim.
+//!
+//! The server holds **no game logic**: the accept path here only proves the
+//! transport with an echo, and the room routes an `action_id` back to the engine's
+//! own `valid_actions`/`apply_action` rather than deciding legality itself.
 //!
 //! See `docs/decisions/0008-tokio-websocket-server.md` for the dependency
-//! choices behind this module.
+//! choices behind this crate.
+
+mod room;
+mod view;
+
+pub use room::{serve_connection, Room, RoomHandle, RoomInput, Seat};
 
 use std::future::Future;
 use std::net::SocketAddr;
