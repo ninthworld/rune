@@ -29,8 +29,10 @@ sized for one PR unless noted.
 10. ✅ **server: tokio + WebSocket skeleton** — layer 1 accepts connections; ADR for
     dependency additions — issue #30 (ADR-0008; tokio + tokio-tungstenite accept
     loop with graceful shutdown).
-11. ⏳ **server: room task** — one task per room, owns one engine instance,
-    broadcasts personalized GameViews.
+11. ✅ **server: room task** — one async task per room owns one engine instance,
+    routes `action_id`s through `valid_actions`/`apply_action`, and broadcasts
+    personalized, hidden-zone-redacted GameViews; seats held open across
+    disconnects — issue #31.
 12. ⏳ **cli: interactive client** — numbered valid_actions, stdin choice loop
     against a local server (dev sequence step 3). (`crates/rune-cli/src/main.rs`
     is still a scaffold.)

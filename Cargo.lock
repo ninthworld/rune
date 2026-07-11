@@ -326,6 +326,7 @@ dependencies = [
  "futures-util",
  "rune-engine",
  "rune-protocol",
+ "serde_json",
  "tokio",
  "tokio-tungstenite",
  "tracing",
