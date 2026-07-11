@@ -58,6 +58,12 @@ export interface RenderedCard {
    * The overlay makes exactly these cards pickable; everything else is dimmed.
    */
   targetable: boolean;
+  /**
+   * Whether this candidate is currently chosen in the active multi-select slot
+   * (issue #143). Only ever true for a {@link RenderedCard.targetable} card while a
+   * multi-select toggles a subset; drives the pressed/ringed affordance.
+   */
+  chosen: boolean;
 }
 
 /**
@@ -69,6 +75,12 @@ export interface RenderedCard {
 export interface TargetingScene {
   /** The entity ids that are legal targets for the active slot. */
   candidates: EntityId[];
+  /**
+   * The candidate ids already chosen in the active slot (multi-select only, issue
+   * #143). Each such card renders as chosen (ringed/pressed) on top of its
+   * targeting highlight; empty/absent for the single-target flow.
+   */
+  selected?: EntityId[];
 }
 
 /** A per-controller battlefield row. */
@@ -217,22 +229,28 @@ export function buildTableScene(
   const localPlayerId = localPlayerIdOf(view);
   const subjectActions = view.valid_actions.filter((a) => a.subject && a.subject.length > 0);
   const candidateSet = targeting ? new Set(targeting.candidates) : null;
+  const chosenSet = targeting ? new Set(targeting.selected ?? []) : null;
 
   // Fold targeting state into a card's display data + interactivity. Outside
   // targeting mode this is a no-op; inside it, the server's candidate list is the
   // only thing deciding highlight (targetable) vs dim, and all subject-actions are
-  // suppressed because the only move now is choosing a target.
+  // suppressed because the only move now is choosing a target. In a multi-select a
+  // candidate already toggled into the answer is additionally marked `chosen`
+  // (ringed), reusing the selection ring so the pick reads as committed.
   const withTargeting = (
-    card: Omit<RenderedCard, 'rect' | 'targetable'>,
+    card: Omit<RenderedCard, 'rect' | 'targetable' | 'chosen'>,
   ): Omit<RenderedCard, 'rect'> => {
-    if (candidateSet === null) return { ...card, targetable: false };
+    if (candidateSet === null) return { ...card, targetable: false, chosen: false };
     const targetable = candidateSet.has(card.entityId);
+    const chosen = targetable && (chosenSet?.has(card.entityId) ?? false);
     return {
       ...card,
-      // A target being picked is not "selected"; suppress the selection ring.
-      data: { ...card.data, selected: false, targeting: targetable, dimmed: !targetable },
+      // A chosen multi-select candidate draws the selection ring; a not-yet-chosen
+      // candidate shows only the targeting highlight.
+      data: { ...card.data, selected: chosen, targeting: targetable, dimmed: !targetable },
       actions: [],
       targetable,
+      chosen,
     };
   };
 
