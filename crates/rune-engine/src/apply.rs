@@ -8,7 +8,7 @@
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, Target};
 use crate::actions::{action_is_legal, Action, Block};
 use crate::card::abilities_of;
-use crate::combat::priority_after_step_change;
+use crate::combat::{combat_damage, priority_after_step_change, CombatDamage};
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::mulligan::advance_after_keep;
@@ -54,7 +54,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             apply_activate_ability(&mut next, *permanent, *index, targets, db);
         }
         Action::CastSpell { card } => apply_cast_spell(&mut next, *card, db),
-        Action::Discard { card } => apply_discard(&mut next, *card),
+        Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
         Action::DeclareAttackers { attackers } => apply_declare_attackers(&mut next, attackers),
@@ -66,7 +66,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
     apply_replacements(&mut next);
 
     // 5. State-based actions, run to a fixed point.
-    run_state_based_actions(&mut next);
+    run_state_based_actions(&mut next, db);
 
     // 6. Collect triggers by diffing before/after and put each on the stack.
     for trigger in collect_triggers(state, &next, db) {
@@ -100,7 +100,7 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
         if let Some(top) = state.stack.pop() {
             resolve_stack_object(state, top, db);
         } else {
-            advance_through_turn_based_steps(state);
+            advance_through_turn_based_steps(state, db);
         }
         state.consecutive_passes = 0;
         // Priority goes to the active player, except that a step whose turn-based
@@ -124,10 +124,10 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
 /// where the rules give no priority. Priority assignment itself stays with the
 /// caller. Terminates because every turn passes through a priority step
 /// (e.g. upkeep) at most a couple of advances away.
-fn advance_through_turn_based_steps(state: &mut GameState) {
+fn advance_through_turn_based_steps(state: &mut GameState, db: &CardDatabase) {
     loop {
         *state = state.advance();
-        perform_turn_based_actions(state);
+        perform_turn_based_actions(state, db);
         if step_pauses_for_players(state) {
             break;
         }
@@ -163,13 +163,41 @@ fn active_player_over_hand_size(state: &GameState) -> bool {
 /// the board; player-choice actions (the cleanup discard) are offered through
 /// [`crate::valid_actions`] instead. Steps with no modeled turn-based action are
 /// a no-op.
-fn perform_turn_based_actions(state: &mut GameState) {
+fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
     match state.step {
         Step::Untap => untap_active_players_permanents(state),
         Step::Draw => draw_for_turn(state),
+        Step::CombatDamage => deal_combat_damage(state, db),
         Step::EndCombat => remove_creatures_from_combat(state),
         Step::Cleanup => remove_all_marked_damage(state),
         _ => {}
+    }
+}
+
+/// Combat-damage step turn-based action: deal all combat damage (CR 510).
+///
+/// Every attacker and blocker's assignment is computed first
+/// ([`combat_damage`]), then applied in one pass, so the whole batch lands
+/// simultaneously (CR 510.2): unblocked attackers reduce the defending player's
+/// life (which flows into the life ≤ 0 state-based action, CR 704.5a), and
+/// attacker/blocker damage is marked on creatures (CR 120.3) for the
+/// lethal-damage state-based action to read (CR 704.5g). Marked damage is
+/// cleared later, at cleanup (CR 514.2). The state-based-actions loop that
+/// destroys lethally-damaged creatures runs in [`apply_action`] after this.
+fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
+    for assignment in combat_damage(state, db) {
+        match assignment {
+            CombatDamage::ToPlayer { player, amount } => {
+                if let Some(p) = state.players.get_mut(player.0) {
+                    p.life -= i32::try_from(amount).unwrap_or(i32::MAX);
+                }
+            }
+            CombatDamage::ToPermanent { permanent, amount } => {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == permanent) {
+                    perm.damage = perm.damage.saturating_add(amount);
+                }
+            }
+        }
     }
 }
 
@@ -222,7 +250,7 @@ fn remove_all_marked_damage(state: &mut GameState) {
 /// [`apply_action`]'s caller path via the pass handler's assignment, so it is set
 /// here too. While the player is still over the limit the step stays put and more
 /// discards are offered.
-fn apply_discard(state: &mut GameState, card: CardInstance) {
+fn apply_discard(state: &mut GameState, card: CardInstance, db: &CardDatabase) {
     let active = state.active_player;
     {
         let Some(player) = state.players.get_mut(active.0) else {
@@ -235,7 +263,7 @@ fn apply_discard(state: &mut GameState, card: CardInstance) {
         player.graveyard.push(discarded);
     }
     if state.step == Step::Cleanup && !active_player_over_hand_size(state) {
-        advance_through_turn_based_steps(state);
+        advance_through_turn_based_steps(state, db);
         state.consecutive_passes = 0;
         state.priority = priority_after_step_change(state);
     }
@@ -1289,11 +1317,13 @@ mod tests {
     #[test]
     fn issue_117_end_of_combat_removes_creatures_from_combat_cr_511_3() {
         // CR 511.3: at end of combat, all creatures are removed from combat — the
-        // attacking flag and blocking assignments are cleared.
+        // attacking flag and blocking assignments are cleared. Uses Stonehide
+        // Basilisks (4/5) so both survive the combat-damage step (issue #118) and
+        // are still on the battlefield to check at end of combat.
         let db = db();
         let mut state = at_declare_attackers();
-        let attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
-        let blocker = place_permanent(&mut state, CardId(6), PlayerId(1), false, 0);
+        let attacker = place_permanent(&mut state, CardId(4), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(4), PlayerId(1), false, 0);
 
         // Declare attackers, pass to declare blockers, declare a block, then pass
         // through combat-damage into end-of-combat.
@@ -1320,5 +1350,230 @@ mod tests {
 
         assert!(!find_perm(&state, attacker).attacking);
         assert_eq!(find_perm(&state, blocker).blocking, None);
+    }
+
+    // ----- Combat II: combat damage and lethal-damage SBA (issue #118) -----
+
+    /// Whether a permanent id is still on the battlefield.
+    fn alive(state: &GameState, id: PermanentId) -> bool {
+        state.battlefield.iter().any(|p| p.id == id)
+    }
+
+    /// Drive combat from the declare-attackers step through the combat-damage
+    /// step: declare `attackers`, pass to declare-blockers, declare `blocks`, then
+    /// pass into combat damage (where the turn-based damage assignment runs and the
+    /// state-based-actions loop resolves). Returns the state paused at
+    /// [`Step::CombatDamage`].
+    fn run_combat(
+        state: &GameState,
+        attackers: Vec<PermanentId>,
+        blocks: Vec<Block>,
+        db: &CardDatabase,
+    ) -> GameState {
+        let state = apply_action(state, &Action::DeclareAttackers { attackers }, db);
+        let state = pass_full_round(&state, db);
+        assert_eq!(state.step, Step::DeclareBlockers);
+        let state = apply_action(&state, &Action::DeclareBlockers { blocks }, db);
+        let state = pass_full_round(&state, db);
+        assert_eq!(state.step, Step::CombatDamage);
+        state
+    }
+
+    #[test]
+    fn issue_118_unblocked_attacker_damages_the_defending_player_cr_510_1c() {
+        // CR 510.1c: an unblocked attacker assigns its combat damage to the player
+        // it is attacking. A 3/2 Thornback Boar hits the defender for 3.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(1), PlayerId(0), false, 0);
+        let start_life = state.players[1].life;
+
+        let after = run_combat(&state, vec![attacker], Vec::new(), &db);
+
+        assert_eq!(
+            after.players[1].life,
+            start_life - 3,
+            "unblocked 3/2 deals 3 to the defending player (CR 510.1c)"
+        );
+        // The unblocked attacker took no damage and survives.
+        assert!(alive(&after, attacker));
+        assert_eq!(find_perm(&after, attacker).damage, 0);
+    }
+
+    #[test]
+    fn issue_118_blocked_attacker_and_blocker_deal_lethal_and_both_die_cr_510_704_5g() {
+        // CR 510.1c: a blocked attacker and its blocker deal combat damage to each
+        // other. CR 704.5g: each takes lethal damage and is destroyed. Two 3/2
+        // Boars trade — both go to their owners' graveyards, and the defending
+        // player takes no damage.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(1), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+        let start_life = state.players[1].life;
+
+        let after = run_combat(
+            &state,
+            vec![attacker],
+            vec![Block { blocker, attacker }],
+            &db,
+        );
+
+        assert!(!alive(&after, attacker), "attacker took lethal (CR 704.5g)");
+        assert!(!alive(&after, blocker), "blocker took lethal (CR 704.5g)");
+        assert_eq!(after.players[0].graveyard.len(), 1);
+        assert_eq!(after.players[1].graveyard.len(), 1);
+        assert_eq!(
+            after.players[1].life, start_life,
+            "a blocked attacker deals no damage to the defending player"
+        );
+    }
+
+    #[test]
+    fn issue_118_multi_block_mutual_destruction_cr_510_1c() {
+        // CR 510.1c multi-block: a 4/5 Basilisk double-blocked by two 3/2 Boars
+        // assigns its 4 power across the blockers in battlefield order,
+        // lethal-per-blocker (2 each) — killing both — while the blockers deal a
+        // combined 6 back, lethal to the 5-toughness attacker (CR 704.5g). All
+        // three creatures are destroyed.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(4), PlayerId(0), false, 0);
+        let blocker_a = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+        let blocker_b = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![attacker],
+            vec![
+                Block {
+                    blocker: blocker_a,
+                    attacker,
+                },
+                Block {
+                    blocker: blocker_b,
+                    attacker,
+                },
+            ],
+            &db,
+        );
+
+        assert!(!alive(&after, attacker), "4/5 dies to 3+3 combat damage");
+        assert!(!alive(&after, blocker_a), "first blocker took lethal 2");
+        assert!(!alive(&after, blocker_b), "second blocker took lethal 2");
+        assert_eq!(after.players[0].graveyard.len(), 1);
+        assert_eq!(after.players[1].graveyard.len(), 2);
+    }
+
+    #[test]
+    fn issue_118_multi_block_assigns_lethal_in_battlefield_order_cr_510_1c() {
+        // CR 510.1c: with no player-chosen order (deferred), the default splits the
+        // attacker's power across blockers in battlefield order, assigning each
+        // just-lethal before the next. A 4/5 Basilisk double-blocked by two 1/3
+        // Otters assigns 3 (lethal) to the first Otter and the remaining 1 to the
+        // second, so only the first dies; the leftover cannot spill further (no
+        // trample). The Basilisk survives the 1+1 it takes, with that damage marked.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(4), PlayerId(0), false, 0);
+        let first = place_permanent(&mut state, CardId(2), PlayerId(1), false, 0);
+        let second = place_permanent(&mut state, CardId(2), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![attacker],
+            vec![
+                Block {
+                    blocker: first,
+                    attacker,
+                },
+                Block {
+                    blocker: second,
+                    attacker,
+                },
+            ],
+            &db,
+        );
+
+        assert!(
+            !alive(&after, first),
+            "first blocker took lethal 3 (1/3 Otter)"
+        );
+        assert!(
+            alive(&after, second),
+            "second blocker took only the leftover 1 and survives"
+        );
+        assert_eq!(
+            find_perm(&after, second).damage,
+            1,
+            "the remaining 1 damage is marked on the second blocker"
+        );
+        assert!(
+            alive(&after, attacker),
+            "the 4/5 survives 1+1 combat damage"
+        );
+        assert_eq!(
+            find_perm(&after, attacker).damage,
+            2,
+            "both blockers' 1 power is marked on the attacker"
+        );
+    }
+
+    #[test]
+    fn issue_118_combat_life_loss_flows_into_the_life_sba_cr_704_5a() {
+        // CR 704.5a: a player at 0 or less life loses. Unblocked combat damage
+        // (CR 510) reduces life, and the same SBA loop that runs after the action
+        // registers the loss. Defender at 3 life takes 4 from a Basilisk and loses.
+        let db = db();
+        let mut state = at_declare_attackers();
+        state.players[1].life = 3;
+        let attacker = place_permanent(&mut state, CardId(4), PlayerId(0), false, 0);
+
+        let after = run_combat(&state, vec![attacker], Vec::new(), &db);
+
+        assert_eq!(after.players[1].life, -1);
+        assert!(
+            after.players[1].has_lost,
+            "combat life loss flows into the life ≤ 0 SBA (CR 704.5a)"
+        );
+        assert!(!after.players[0].has_lost);
+    }
+
+    #[test]
+    fn issue_118_combat_marked_damage_is_cleared_at_cleanup_cr_514_2() {
+        // CR 514.2: marked damage is removed at cleanup. A 4/5 Basilisk that
+        // survives combat carries marked damage through the rest of the turn; by
+        // the time the turn passes to the opponent, its combat cleanup has wiped it.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(4), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(2), PlayerId(1), false, 0);
+
+        let mut state = run_combat(
+            &state,
+            vec![attacker],
+            vec![Block { blocker, attacker }],
+            &db,
+        );
+        assert!(alive(&state, attacker));
+        assert_eq!(
+            find_perm(&state, attacker).damage,
+            1,
+            "1 damage marked in combat"
+        );
+
+        // Pass rounds until the turn advances to the opponent; the active player's
+        // cleanup (CR 514.2) runs on the way and clears the marked damage.
+        let mut guard = 0;
+        while state.turn == 2 {
+            state = pass_full_round(&state, &db);
+            guard += 1;
+            assert!(guard < 40, "combat should reach the next turn");
+        }
+        assert_eq!(
+            find_perm(&state, attacker).damage,
+            0,
+            "marked damage is cleared at cleanup (CR 514.2)"
+        );
     }
 }
