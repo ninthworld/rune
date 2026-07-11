@@ -285,6 +285,121 @@ export const gameOverReason: CSSProperties = {
   color: SURFACES.typeText,
 };
 
+/**
+ * Stack panel (React DOM, ADR 0003 — the stack is text a user reads, so it is DOM
+ * chrome, not canvas). Pure render of `GameView.stack`, bottom-first on the wire
+ * and shown top-first so the object that resolves next reads at the top. Like all
+ * chrome here it reads the shared `SURFACES` palette and never touches card tokens.
+ */
+export const stackPanel: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  padding: '10px 12px',
+  borderRadius: 8,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  maxWidth: 360,
+};
+
+/** The panel heading, with the object count. */
+export const stackTitle: CSSProperties = {
+  margin: 0,
+  fontSize: 13,
+  fontWeight: 700,
+  color: SURFACES.typeText,
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+};
+
+/** The ordered list of stack entries. */
+export const stackList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+};
+
+/** One stack entry (spell or ability). */
+export const stackItem: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  padding: '8px 10px',
+  borderRadius: 8,
+  background: '#15171A',
+  border: '1px solid #2C313A',
+  fontSize: 13,
+  lineHeight: 1.4,
+};
+
+/** The top of the stack — the object that resolves next, ringed in the accent. */
+export const stackItemTop: CSSProperties = {
+  borderColor: SURFACES.selection,
+  boxShadow: `0 0 0 1px ${SURFACES.selection}`,
+};
+
+/** A stack entry that is a legal target during targeting mode: ringed + pickable. */
+export const stackTargetItem: CSSProperties = {
+  borderColor: SURFACES.targeting,
+  boxShadow: `0 0 0 1px ${SURFACES.targeting}`,
+  background: 'rgba(224, 120, 74, 0.14)',
+  cursor: 'pointer',
+};
+
+/**
+ * Reset for a `<button>` wrapping a stack entry so it keeps the entry's own box and
+ * typography rather than the browser's default button chrome (mirrors
+ * {@link tileButtonReset} for player tiles). The item styles are spread on top.
+ */
+export const stackItemButtonReset: CSSProperties = {
+  font: 'inherit',
+  color: 'inherit',
+  textAlign: 'left',
+  width: '100%',
+  margin: 0,
+};
+
+/** The spell name or ability text line (the primary label of an entry). */
+export const stackItemName: CSSProperties = {
+  fontWeight: 600,
+  color: SURFACES.nameText,
+};
+
+/** A secondary meta line (controller, source), in the muted color. */
+export const stackItemMeta: CSSProperties = {
+  fontSize: 12,
+  color: SURFACES.typeText,
+};
+
+/** The row of small badges on an entry (kind, top-of-stack marker). */
+export const stackBadges: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  alignItems: 'center',
+};
+
+/** A small pill labelling an entry's kind (Spell / Ability). */
+export const stackKindBadge: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  padding: '1px 7px',
+  borderRadius: 999,
+  background: '#2A2F37',
+  color: SURFACES.typeText,
+  border: '1px solid #3A4049',
+};
+
+/** The "resolves next" marker on the top entry, in the accent color. */
+export const stackTopBadge: CSSProperties = {
+  ...stackKindBadge,
+  color: SURFACES.selection,
+  borderColor: SURFACES.selection,
+};
+
 /** The pre-first-frame waiting row: status text alongside a Disconnect action. */
 export const waitingBar: CSSProperties = {
   display: 'flex',

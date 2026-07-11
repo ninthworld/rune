@@ -153,6 +153,32 @@ describe('Table game-over (issue #141)', () => {
   });
 });
 
+describe('Table stack panel (issue #142)', () => {
+  it('renders the stack panel from GameView.stack on a live view', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    // The sample frame carries one spell on the stack (s1 Lightning Bolt).
+    expect(screen.getByTestId('stack-panel')).toBeDefined();
+    expect(screen.getByTestId('stack-item-s1').textContent).toContain('Lightning Bolt');
+  });
+
+  it('shows no stack panel when the stack is empty', () => {
+    // A replacement frame with an empty stack removes the panel entirely.
+    const emptyStack = JSON.stringify({
+      you: 'p1',
+      my_hand: [],
+      opponents: [{ player_id: 'p2', hand_size: 2, life: 7, library_size: 30, graveyard_size: 5 }],
+      battlefield: [],
+      stack: [],
+      phase: 'end',
+      valid_actions: [],
+    });
+    seed(emptyStack);
+    render(<Table />);
+    expect(screen.queryByTestId('stack-panel')).toBeNull();
+  });
+});
+
 describe('Table targeting mode (ADR 0009 §Client)', () => {
   let choose: ReturnType<typeof vi.fn>;
 
