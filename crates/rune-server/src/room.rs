@@ -119,15 +119,38 @@ impl Room {
 
     /// The room's message loop. Exposed for tests and embedders that want to drive
     /// a room on their own task; most callers use [`Room::spawn`].
+    ///
+    /// The loop ends — and the task returns — when either the input channel closes
+    /// (every [`RoomHandle`] dropped) or the game reaches a terminal state (a player
+    /// has lost). On game over it pushes one final broadcast so every connected seat
+    /// sees the finished board, then stops; the lobby reclaims the room afterward
+    /// (issue #54).
     pub async fn run(mut self, mut inbox: mpsc::UnboundedReceiver<RoomInput>) {
-        while let Some(input) = inbox.recv().await {
+        while !self.game_over() {
+            let Some(input) = inbox.recv().await else {
+                info!("room input channel closed; room task stopping");
+                return;
+            };
             match input {
                 RoomInput::Join { seat, outbox } => self.on_join(seat, outbox),
                 RoomInput::Message { seat, message } => self.on_message(seat, &message),
                 RoomInput::Leave { seat } => self.on_leave(seat),
             }
         }
-        info!("room input channel closed; room task stopping");
+        // A player has lost: the game is over. Push the terminal state to every
+        // connected seat as the final broadcast, then stop — nothing further can
+        // happen, and the lobby will reclaim the room (issue #54).
+        self.broadcast();
+        info!("game reached a terminal state; room task stopping after final broadcast");
+    }
+
+    /// Whether the game has reached a terminal state: some player has lost.
+    ///
+    /// The engine sets `Player::has_lost` in its state-based-actions loop
+    /// (`crates/rune-engine/src/player.rs`); the room only reads that flag and never
+    /// decides a loss itself, keeping all game logic in the engine.
+    fn game_over(&self) -> bool {
+        self.state.players.iter().any(|player| player.has_lost)
     }
 
     /// Seat (or re-seat) a connection and bring it current with a full view.
@@ -158,7 +181,11 @@ impl Room {
                 match resolve_action(&self.state, &self.db, PlayerId(seat), &choose.action_id) {
                     Some(action) => {
                         self.state = apply_action(&self.state, &action, &self.db);
-                        self.broadcast();
+                        // A terminal result is delivered once by the run loop's final
+                        // broadcast; don't re-send the same full-state view here.
+                        if !self.game_over() {
+                            self.broadcast();
+                        }
                     }
                     None => {
                         warn!(
@@ -316,6 +343,15 @@ mod tests {
         state.players[0].library = vec![CardId(1)];
         state.players[1].hand = vec![CardId(1)];
         state.players[1].library = vec![CardId(1), CardId(1)];
+        state
+    }
+
+    /// A two-player game whose player 1 sits at 0 life. `apply_action` always runs
+    /// state-based actions, so the next applied action (even a pass) marks player 1
+    /// as having lost — driving the room to a terminal state.
+    fn near_terminal_state() -> GameState {
+        let mut state = GameState::new_two_player();
+        state.players[1].life = 0;
         state
     }
 
@@ -503,5 +539,42 @@ mod tests {
 
         drop(handle);
         task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_54_room_stops_after_the_game_reaches_a_terminal_state() {
+        let (handle, task) = Room::new(near_terminal_state(), db()).spawn();
+        let (tx0, mut rx0) = mpsc::unbounded_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let opening = wait_for_view(&mut rx0).await;
+
+        // Seat 0 holds priority. Passing runs state-based actions, which mark the
+        // 0-life opponent as lost: the game becomes terminal.
+        let pass = opening
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .expect("pass offered to the priority holder");
+        handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: pass.id.clone(),
+            }),
+        });
+
+        // The room pushes exactly one final broadcast, then shuts down: seat 0
+        // receives the terminal view and its outbox then closes.
+        let _final_view = wait_for_view(&mut rx0).await;
+        assert!(
+            rx0.recv().await.is_none(),
+            "the room's outbox should close once the game is over",
+        );
+
+        // The task terminates on its own, without any handle being dropped.
+        task.await
+            .expect("room task should terminate after game over");
     }
 }

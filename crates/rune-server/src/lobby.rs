@@ -32,15 +32,33 @@
 //!
 //! True reconnection — reuniting a returning player with their held-open seat — is
 //! consequently blocked on an identity / reconnect-token mechanism (a future
-//! milestone). Until it lands, a game whose opponent left simply sits with a
-//! permanently reserved seat. That reservation, and rooms in general, are not
-//! garbage-collected in this milestone (a separate issue).
+//! milestone).
+//!
+//! # Room lifecycle — finished and abandoned rooms are reclaimed (issue #54)
+//! A room's registry entry — and the [`Lobby::max_rooms`] capacity it holds — is
+//! freed once the room can no longer make progress or be joined:
+//!
+//! - **Game over.** The room task detects a terminal [`GameState`] (a player has
+//!   lost), pushes a final broadcast, and stops on its own; the lobby reaps the
+//!   stopped task.
+//! - **Full abandonment.** Every seat is [`SeatState::Retired`] — both players have
+//!   disconnected. Under the retire-never-reissue policy no connection can rejoin,
+//!   so the still-idle room task is aborted and its entry dropped.
+//!
+//! Reclamation runs opportunistically: on every [`Lobby::assign`] (so freed capacity
+//! is available to the next connection, even at the room cap) and after every
+//! [`Lobby::release`] (so an abandoning disconnect frees its room promptly). A
+//! *partially* abandoned room — one seat retired, the other still `Open` or `Taken`
+//! — is deliberately kept: its held-open seat is still live for a first join or a
+//! future reconnect, and only the whole room is ever reclaimed, never an individual
+//! seat.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use rune_engine::{CardDatabase, GameState};
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use tracing::info;
 
 use crate::room::{Room, RoomHandle, Seat};
@@ -87,6 +105,10 @@ struct RoomSlot {
     handle: RoomHandle,
     /// Lifecycle per seat, indexed by [`Seat`].
     seats: Vec<SeatState>,
+    /// Join handle for the room's Tokio task, retained so termination can be
+    /// observed ([`JoinHandle::is_finished`]) and, on reclamation, the task can be
+    /// aborted rather than silently dropped.
+    task: JoinHandle<()>,
 }
 
 /// The lifecycle of one seat in a room.
@@ -151,6 +173,10 @@ impl Lobby {
     pub(crate) async fn assign(&self) -> Option<SeatAssignment> {
         let mut registry = self.inner.registry.write().await;
 
+        // Reclaim finished (game-over) and fully abandoned rooms first, so their
+        // capacity is available to this connection even when we are at the cap.
+        Self::reap(&mut registry);
+
         // Prefer an existing room that still has a never-occupied (`Open`) seat.
         // A `Retired` seat is deliberately skipped: it is held reserved forever so
         // its vacated hand can never leak to a newcomer (see module docs).
@@ -173,9 +199,9 @@ impl Lobby {
         if registry.rooms.len() >= self.inner.max_rooms {
             return None;
         }
-        let (handle, _task) = Room::new(GameState::new_two_player(), self.inner.db.clone()).spawn();
-        // The opener takes seat 0; the room task lives as long as its registry
-        // entry keeps this handle (rooms are not reclaimed in this milestone).
+        let (handle, task) = Room::new(GameState::new_two_player(), self.inner.db.clone()).spawn();
+        // The opener takes seat 0; the room task lives until its game ends or every
+        // seat is vacated, at which point [`Lobby::reap`] reclaims this entry.
         let mut seats = vec![SeatState::Open; SEATS_PER_ROOM];
         if let Some(first) = seats.first_mut() {
             *first = SeatState::Taken;
@@ -187,6 +213,7 @@ impl Lobby {
             RoomSlot {
                 handle: handle.clone(),
                 seats,
+                task,
             },
         );
         info!(room_id, "opened room");
@@ -214,6 +241,36 @@ impl Lobby {
                 *state = SeatState::Retired;
             }
         }
+        // This disconnect may have fully abandoned the room (all seats retired), or
+        // the game may have ended; reclaim it now rather than waiting for the next
+        // assign.
+        Self::reap(&mut registry);
+    }
+
+    /// Reclaim rooms that are done, freeing the [`Lobby::max_rooms`] slot each holds.
+    ///
+    /// A registry entry is dropped when either:
+    ///
+    /// - its room **task has stopped** — the room detected a terminal [`GameState`]
+    ///   (a player lost) and shut down after its final broadcast; or
+    /// - **every seat is [`SeatState::Retired`]** — the room is fully abandoned (both
+    ///   players disconnected) and, because a released seat is retired and never
+    ///   reissued (issue #48), no connection can ever join it again.
+    ///
+    /// An abandoned room's task is still idle on its input channel, so it is aborted
+    /// before its entry is dropped; a stopped room's `abort` is a harmless no-op.
+    fn reap(registry: &mut Registry) {
+        registry.rooms.retain(|&room_id, slot| {
+            let stopped = slot.task.is_finished();
+            let abandoned = slot.seats.iter().all(|state| *state == SeatState::Retired);
+            if stopped || abandoned {
+                slot.task.abort();
+                info!(room_id, stopped, abandoned, "reclaimed room");
+                false
+            } else {
+                true
+            }
+        });
     }
 }
 
@@ -339,5 +396,76 @@ mod tests {
         lobby.release(0, 42).await;
         // The registry is still fully usable afterwards.
         assert!(lobby.assign().await.is_some());
+    }
+
+    /// Open a room around `state` with both seats already `Taken`, for tests that
+    /// need to inject a specific game (e.g. an already-terminal one). Returns the new
+    /// room's id and a handle for driving it.
+    async fn open_room_with_state(lobby: &Lobby, state: GameState) -> (RoomId, RoomHandle) {
+        let mut registry = lobby.inner.registry.write().await;
+        let (handle, task) = Room::new(state, lobby.inner.db.clone()).spawn();
+        let room_id = registry.next_id;
+        registry.next_id += 1;
+        registry.rooms.insert(
+            room_id,
+            RoomSlot {
+                handle: handle.clone(),
+                seats: vec![SeatState::Taken; SEATS_PER_ROOM],
+                task,
+            },
+        );
+        (room_id, handle)
+    }
+
+    #[tokio::test]
+    async fn issue_54_a_fully_abandoned_room_is_reclaimed_and_frees_capacity() {
+        // Capacity for exactly one room. Fill both its seats, then disconnect both.
+        let lobby = lobby(1);
+        let a = lobby.assign().await.expect("seat 0");
+        let b = lobby.assign().await.expect("seat 1");
+        assert_eq!(a.room_id, b.room_id);
+        // One room, both seats taken, at capacity: the next assign is refused.
+        assert!(lobby.assign().await.is_none());
+
+        // Both seats disconnect: the room is fully abandoned (all seats retired) and
+        // reclaimed on release, freeing the single room slot.
+        lobby.release(a.room_id, a.seat).await;
+        lobby.release(b.room_id, b.seat).await;
+
+        // A new connection now succeeds at what was previously the cap, in a brand-new
+        // room — the abandoned one is gone, not reissued.
+        let c = lobby.assign().await.expect("capacity freed by reclamation");
+        assert_ne!(c.room_id, a.room_id);
+    }
+
+    #[tokio::test]
+    async fn issue_54_a_finished_game_over_room_is_reclaimed_at_capacity() {
+        let lobby = lobby(1);
+        // Inject a room whose game is already over (player 1 has lost). Its task
+        // detects the terminal state and stops on its own without serving any input.
+        let mut terminal = GameState::new_two_player();
+        terminal.players[1].has_lost = true;
+        let (over_id, handle) = open_room_with_state(&lobby, terminal).await;
+
+        // Wait until the room task has actually stopped: a terminal room never enters
+        // its input loop, so joining it yields a closed outbox once the task returns.
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let _ = handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx,
+        });
+        assert!(
+            rx.recv().await.is_none(),
+            "terminal room task should stop instead of serving inputs",
+        );
+
+        // The registry is at capacity with that stopped room in its only slot. The
+        // next assign reaps the finished task, frees the slot, and seats the
+        // connection in a brand-new room.
+        let fresh = lobby
+            .assign()
+            .await
+            .expect("assign should reclaim the finished room's capacity");
+        assert_ne!(fresh.room_id, over_id);
     }
 }
