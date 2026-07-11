@@ -36,11 +36,16 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 
 ## Commands
 
-- `make check` — everything CI runs. Must pass before every PR.
+- `make check` — the fast unit gate (Engine + Client CI jobs). Must pass before every PR.
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make client-check` — typecheck + build in `clients/web`
+- `make e2e` — browser end-to-end suite (its own `E2E` CI job, **not** part of
+  `make check`; needs a browser + built client — see `docs/decisions/0011-*.md`)
 - `scripts/bootstrap.sh` — one-time toolchain setup
+
+> Full CI = `make check` (Engine + Client) **plus** the separate `E2E` job
+> (ADR 0011). A green `make check` is the unit gate, not the entire CI surface.
 
 ## Workflow
 

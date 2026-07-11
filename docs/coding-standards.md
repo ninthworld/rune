@@ -2,7 +2,12 @@
 
 The rules that always apply. Read this before writing code; agents must load it
 alongside `AGENTS.md`. Everything machine-checkable here is enforced by
-`make check` (which is exactly what CI runs) — if it isn't green, it isn't done.
+`make check` — the fast unit gate (the `Engine` + `Client` CI jobs); if it isn't
+green, it isn't done. As of ADR 0011 the browser end-to-end suite runs as a
+**separate `make e2e` target and `E2E` CI job**, deliberately outside `make check`
+(it needs a real browser and a built, served client). So the full CI surface is
+`make check` **plus** the `E2E` job: a green `make check` is necessary but is no
+longer the complete CI picture on its own.
 
 These standards sit **below** the architectural hard rules in `AGENTS.md`
 (zero game logic in the client, zero I/O in the engine, protocol = contract).

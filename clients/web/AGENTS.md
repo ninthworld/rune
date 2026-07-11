@@ -26,6 +26,10 @@ and docs/design/ui-design-notes.md before changing anything.
 - `npm run typecheck` — strict TS
 - `npm run build` — typecheck + production build (CI runs this)
 - `npm run dev` — Vite dev server
+- `npm run e2e` — Playwright browser suite (ADR 0011); run via `make e2e` from the
+  repo root. Separate from `make check` — needs a real browser + built client. Tests,
+  Playwright config, and the mock WS server live in `e2e/`; it drives the production
+  bundle built with the read-only `VITE_RUNE_TEST_HOOKS` scene hook (`src/testHooks.ts`).
 
 Formatting is owned by Prettier (`.prettierrc.json`); don't hand-format. See
 `docs/coding-standards.md` for the project-wide standard.

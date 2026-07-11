@@ -1,6 +1,6 @@
-.PHONY: check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit setup
+.PHONY: check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit e2e setup
 
-check: engine-lint engine-test client-check client-audit ## Everything CI runs
+check: engine-lint engine-test client-check client-audit ## Everything the Engine + Client CI jobs run (browser e2e is the separate `e2e` target / E2E job — see ADR 0011)
 
 engine-lint:
 	cargo fmt --all -- --check
@@ -25,6 +25,13 @@ client-check: client-install
 # Threshold and escape hatch (package.json "overrides") documented in clients/web/AGENTS.md.
 client-audit: client-install
 	cd clients/web && npm audit --audit-level=high
+
+# Browser end-to-end suite (ADR 0011). Deliberately OUTSIDE `make check`: it needs
+# a real browser and a built-and-served client, so it runs as its own target and
+# its own CI job to keep the fast unit gate browser-free. Drives the preinstalled
+# Chromium and never downloads a browser.
+e2e: client-install
+	cd clients/web && npm run e2e:typecheck && npm run e2e
 
 setup:
 	scripts/bootstrap.sh

@@ -1,5 +1,11 @@
 dist
 node_modules
 
+# The browser e2e suite (ADR 0011) has its own tooling; it is checked under
+# `make e2e`, not the unit gate, so `make check` stays fast and browser-free.
+e2e
+playwright-report
+test-results
+
 # Markdown docs are prose-formatted by hand, not Prettier.
 *.md

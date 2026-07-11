@@ -21,6 +21,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EntityId, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
+import { publishScene } from '../testHooks';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { EntityOverlay } from './EntityOverlay';
@@ -101,6 +102,12 @@ export function Table() {
     const sel = targeting ? undefined : (selectedId ?? undefined);
     return buildTableScene(view, sel, viewportWidth, targetingScene);
   }, [view, selectedId, viewportWidth, targeting]);
+
+  // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
+  // production builds; the e2e suite reads it to assert what the canvas draws.
+  useEffect(() => {
+    publishScene(scene);
+  }, [scene]);
 
   if (!view || !scene) {
     // Socket is open (App only mounts the table then) but no frame has arrived

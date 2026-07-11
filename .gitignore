@@ -5,6 +5,10 @@
 node_modules/
 dist/
 *.tsbuildinfo
+# Playwright e2e (ADR 0011) run artifacts
+playwright-report/
+test-results/
+.playwright/
 # Environment / secrets
 .env
 .env.*
