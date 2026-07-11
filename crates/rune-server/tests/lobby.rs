@@ -1,12 +1,13 @@
 //! End-to-end integration test for the layer-1 lobby: real WebSocket clients
 //! connect to the running server and drive the explicit-room protocol — create a
-//! room with a config, share its id, and join by id — over the wire (ADR 0012,
-//! issue #110). No game is constructed: the connections stay in the pre-game phase,
-//! exchanging `LobbyView`/`LobbyCommand`, until the ready gate (issue #112).
+//! room with a config, share its id, join by id, and reconnect to a held seat by
+//! session token — over the wire (ADR 0012, issues #110 and #113). No game is
+//! constructed: the connections stay in the pre-game phase, exchanging
+//! `LobbyView`/`LobbyCommand`, until the ready gate (issue #112).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use futures_util::{SinkExt, StreamExt};
-use rune_protocol::{CreateRoom, JoinRoom, LobbyCommand, LobbyView, RoomConfig};
+use rune_protocol::{CreateRoom, Hello, JoinRoom, LobbyCommand, LobbyView, RoomConfig};
 use rune_server::{Config, Lobby, Server};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::oneshot;
@@ -226,6 +227,57 @@ async fn create_beyond_capacity_is_refused_but_joining_still_works() {
     assert!(
         joined.room.is_some(),
         "joining an existing room still works at capacity"
+    );
+
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn a_returning_socket_reconnects_to_its_held_seat_by_token_end_to_end() {
+    // Full-stack reconnect (issue #113): a client creates a room, its socket drops,
+    // and a brand-new socket presenting the stored session token is routed back into
+    // the same seat and resynced from one `LobbyView`.
+    let server = RunningServer::start(Lobby::DEFAULT_MAX_ROOMS).await;
+
+    // Alice creates a room and records her secret session token and public identity.
+    let mut alice = connect(&server).await;
+    let _ = next_view(&mut alice).await;
+    send(
+        &mut alice,
+        LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+    )
+    .await;
+    let seated = view_where(&mut alice, |v| v.room.is_some()).await;
+    let room_id = seated.room.expect("alice in room").room_id;
+    let token = seated.session.clone();
+    let you = seated.you.clone();
+    assert!(!token.is_empty(), "a session token was issued");
+
+    // Her socket drops. The server holds the seat open for the token to return.
+    drop(alice);
+
+    // A fresh socket presents the token via `hello` and is reunited with the seat.
+    let mut returning = connect(&server).await;
+    let _ = next_view(&mut returning).await; // the fresh identity issued at connect
+    send(
+        &mut returning,
+        LobbyCommand::Hello(Hello {
+            token: Some(token.clone()),
+        }),
+    )
+    .await;
+
+    // One `LobbyView` fully resyncs the returning connection into the same room and
+    // seat, under the same public identity — the reconstruct-from-one-view invariant.
+    let resumed = view_where(&mut returning, |v| v.room.is_some()).await;
+    let room = resumed.room.expect("reconnected into the held room");
+    assert_eq!(room.room_id, room_id, "same room, not a new one");
+    assert_eq!(resumed.session, token, "same session token echoed back");
+    assert_eq!(resumed.you, you, "same public identity across reconnect");
+    assert_eq!(
+        room.seats[0].occupied_by.as_deref(),
+        Some(you.as_str()),
+        "routed back into the original seat 0",
     );
 
     server.stop().await;

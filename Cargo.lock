@@ -330,6 +330,7 @@ name = "rune-server"
 version = "0.0.1"
 dependencies = [
  "futures-util",
+ "getrandom",
  "rune-engine",
  "rune-protocol",
  "serde_json",
