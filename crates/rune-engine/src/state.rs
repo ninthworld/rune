@@ -74,6 +74,81 @@ impl Permanent {
     }
 }
 
+/// A continuous static effect currently in force (ADR 0010 slice 3, §4).
+///
+/// This is **raw stored input, not a derivation** (ADR 0010 §1): the source
+/// ability or permanent puts the effect here and its removal takes it away.
+/// Nothing else in [`GameState`] determines it, so the "no cached derivations"
+/// invariant does not apply to it — the same way [`Permanent::counters`] are
+/// stored. A permanent's *current* power/toughness folds the applicable effects
+/// in on demand via
+/// [`characteristics`](crate::characteristics::characteristics) and is never
+/// stored; removing an effect from [`GameState::static_effects`] therefore
+/// reverts every affected permanent's computed value with nothing to invalidate.
+///
+/// This slice models only the layer-7c power/toughness modification an anthem or
+/// pump performs; other layers slot in as new [`Modification`] variants behind
+/// the same read path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StaticEffect {
+    /// Object id of the source that put this effect into force — a permanent's
+    /// [`PermanentId`](crate::PermanentId) value today, or a future stack
+    /// object's id. It is minted from the monotonic [`GameState::next_object_id`],
+    /// so it is strictly increasing and replay-stable, and it doubles as this
+    /// effect's **timestamp**: within a layer, effects apply in ascending
+    /// `source` order (CR 613.7, ADR 0010 §4). No wall-clock and no ambient
+    /// counter is involved. Because it derives from the source object's id,
+    /// removing that source (and this entry with it) reverts the computed value.
+    pub source: u64,
+    /// Which permanents this effect applies to.
+    pub affects: EffectAffects,
+    /// The continuous modification this effect performs. The variant fixes the
+    /// CR 613 layer; only layer 7c power/toughness modification ships in this
+    /// slice.
+    pub modification: Modification,
+}
+
+impl StaticEffect {
+    /// This effect's timestamp for intra-layer ordering: its [`source`] object
+    /// id (ADR 0010 §4 — the id assigned when the effect was created). Exposed as
+    /// a named accessor so ordering code reads by intent rather than by field.
+    ///
+    /// [`source`]: Self::source
+    #[must_use]
+    pub fn timestamp(&self) -> u64 {
+        self.source
+    }
+}
+
+/// Selects the permanents a [`StaticEffect`] applies to.
+///
+/// A deliberately small closed set for this slice: no targeting (that is ADR
+/// 0009, a separate decision) and no authored-card selectors yet (those arrive
+/// with the cards that create these effects). The one variant models the
+/// canonical anthem, "creatures you control".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EffectAffects {
+    /// Every creature controlled by the given player (anthem-style "creatures
+    /// you control"). A permanent matches when it is currently a creature and
+    /// its controller equals this player.
+    CreaturesControlledBy(PlayerId),
+}
+
+/// The continuous modification a [`StaticEffect`] performs. The variant fixes
+/// the CR 613 layer the effect applies in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Modification {
+    /// CR 613 **layer 7c**: add the given signed amounts to power and toughness
+    /// (a negative amount subtracts). Applied after counters, in timestamp order
+    /// (ADR 0010 §3–§4).
+    PowerToughness {
+        /// Amount added to power.
+        power: i32,
+        /// Amount added to toughness.
+        toughness: i32,
+    },
+}
+
 /// The complete, immutable state of a game at one moment.
 ///
 /// Every field is either raw state or a stable id; nothing derivable (current
@@ -104,6 +179,14 @@ pub struct GameState {
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,
+    /// Continuous static effects currently in force (ADR 0010 slice 3). This is
+    /// **raw stored input, not a derivation**: the source ability/permanent puts
+    /// each effect here and its removal takes it away. A permanent's *current*
+    /// characteristics fold the applicable ones in on demand via
+    /// [`characteristics`](crate::characteristics::characteristics) and are never
+    /// stored. The read path sorts by [`StaticEffect::timestamp`], so this
+    /// vector's own order does not affect the computed result.
+    pub static_effects: Vec<StaticEffect>,
     /// Monotonic source of fresh object ids ([`PermanentId`], stack ids). Only
     /// ever increases, so an id is never reused even as objects change zones —
     /// zone-change identity is the mechanism (`crates/rune-engine/AGENTS.md`).
@@ -159,6 +242,7 @@ impl GameState {
             players: vec![Player::new(), Player::new()],
             battlefield: Vec::new(),
             stack: Vec::new(),
+            static_effects: Vec::new(),
             next_object_id: 1,
             land_played: false,
             extra_turns: Vec::new(),

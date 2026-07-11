@@ -9,17 +9,19 @@
 //! (consistent with the `GameState` "no cached derivations" invariant in
 //! `state.rs`).
 //!
-//! This module is **slice 2 of 3** (ADR 0010 §3): it seeds current
-//! characteristics from printed values and then folds `+1/+1` and `-1/-1`
-//! counters into power/toughness at CR 613 **layer 7c** (the counters step).
-//! Static P/T modifications (anthems, pumps) land in the final slice behind this
-//! same function signature, so callers never change as layers are filled in.
+//! This module is **slice 3 of 3** (ADR 0010 §3): it seeds current
+//! characteristics from printed values, folds `+1/+1` and `-1/-1` counters into
+//! power/toughness at CR 613 **layer 7c**, and then applies simple static P/T
+//! modifications (anthem-style "+X/+Y" effects) at that same layer **after**
+//! counters, in timestamp order. Layers 1–6 (copy, control, text, type, color,
+//! ability-adding) remain deferred behind this same function signature, so
+//! callers never change as they are filled in.
 
 use crate::ability::Ability;
 use crate::card::{abilities_of, CardDatabase};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;
-use crate::state::{CounterKind, GameState, Permanent};
+use crate::state::{CounterKind, EffectAffects, GameState, Modification, Permanent, StaticEffect};
 
 /// A permanent's *current* characteristics, computed fresh — **never stored on
 /// state**.
@@ -31,7 +33,8 @@ use crate::state::{CounterKind, GameState, Permanent};
 /// engine pure and undo/replay/resync free (ADR 0010).
 ///
 /// Its power/toughness are the printed values with any `+1/+1` / `-1/-1`
-/// counters folded in (layer 7c); the remaining fields still equal the printed
+/// counters folded in and then any applicable static `+X/+Y` modifiers applied
+/// (both layer 7c); the remaining fields still equal the printed
 /// [`CardData`](crate::CardData). As further continuous-effect layers land, the
 /// same type carries their results without changing shape.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -62,8 +65,9 @@ pub struct Characteristics {
 /// This is the one pure read path mandated by ADR 0010: it runs fresh on every
 /// call and caches nothing. In this slice the result is the printed values with
 /// the permanent's `+1/+1` / `-1/-1` counters folded into power/toughness at CR
-/// 613 layer 7c; static P/T modifiers arrive in the final slice behind this
-/// unchanged signature. It takes `&CardDatabase` for the same reason
+/// 613 layer 7c, then any static `+X/+Y` modifiers in force applied at that same
+/// layer after the counters, in timestamp order. It takes `&CardDatabase` for
+/// the same reason
 /// [`apply_action`](crate::apply_action) does (ADR 0007): the printed seed lives
 /// in the database, which is kept out of [`GameState`](crate::GameState) to
 /// preserve that type's `Eq`/purity.
@@ -90,13 +94,23 @@ pub fn characteristics(
     // by the same signed amount. They only apply to a permanent that has P/T; a
     // permanent with no printed power/toughness (`None`) stays `None`.
     let counter_delta = pt_counter_delta(perm);
+    // CR 613 layer 7c (after counters, ADR 0010 §3): static `+X/+Y` modifiers in
+    // force apply in timestamp order. `is_creature` gates anthem-style selectors;
+    // current type equals printed type until the type layers (1–6) land.
+    let is_creature = card.types.contains(&CardType::Creature);
+    let (static_power, static_toughness) = static_pt_delta(state, perm, is_creature);
     Characteristics {
         supertypes: card.supertypes.clone(),
         types: card.types.clone(),
         subtypes: card.subtypes.clone(),
         mana_cost: card.mana_cost.clone(),
-        power: card.power.map(|p| p.saturating_add(counter_delta)),
-        toughness: card.toughness.map(|t| t.saturating_add(counter_delta)),
+        power: card
+            .power
+            .map(|p| p.saturating_add(counter_delta).saturating_add(static_power)),
+        toughness: card.toughness.map(|t| {
+            t.saturating_add(counter_delta)
+                .saturating_add(static_toughness)
+        }),
         abilities: abilities_of(db, perm.card),
     }
 }
@@ -113,6 +127,60 @@ fn pt_counter_delta(perm: &Permanent) -> i32 {
     let minus =
         i32::try_from(perm.counter_count(CounterKind::MinusOneMinusOne)).unwrap_or(i32::MAX);
     plus.saturating_sub(minus)
+}
+
+/// The net layer-7c power/toughness shift on `perm` from continuous static
+/// effects (anthems, pumps), applied **after** counters in timestamp order
+/// (CR 613.7, ADR 0010 §3–§4). Returns `(power_delta, toughness_delta)`.
+///
+/// These modifiers are additive, so their sum is order-independent
+/// arithmetically; the engine still folds them in ascending timestamp order so
+/// the pipeline is deterministic and stays correct as order-sensitive effects
+/// (set P/T, characteristic-defining abilities) land in later slices.
+/// `is_creature` gates the anthem-style "creatures you control" selector.
+///
+/// Overflow saturates rather than panicking, matching
+/// [`pt_counter_delta`] and the engine's no-panic rule.
+fn static_pt_delta(state: &GameState, perm: &Permanent, is_creature: bool) -> (i32, i32) {
+    let mut power = 0_i32;
+    let mut toughness = 0_i32;
+    for effect in ordered_pt_modifiers(state, perm, is_creature) {
+        let Modification::PowerToughness {
+            power: dp,
+            toughness: dt,
+        } = effect.modification;
+        power = power.saturating_add(dp);
+        toughness = toughness.saturating_add(dt);
+    }
+    (power, toughness)
+}
+
+/// The layer-7c static P/T effects that apply to `perm`, sorted by timestamp
+/// (ascending [`StaticEffect::timestamp`], i.e. source object id).
+///
+/// Isolating the selection and ordering here keeps the "timestamp order"
+/// guarantee explicit and directly testable (ADR 0010 §4). Object ids are
+/// unique, so timestamps do not tie; the sort is stable regardless.
+fn ordered_pt_modifiers<'a>(
+    state: &'a GameState,
+    perm: &Permanent,
+    is_creature: bool,
+) -> Vec<&'a StaticEffect> {
+    let mut effects: Vec<&StaticEffect> = state
+        .static_effects
+        .iter()
+        .filter(|effect| affects(effect, perm, is_creature))
+        .collect();
+    effects.sort_by_key(|effect| effect.timestamp());
+    effects
+}
+
+/// Whether `effect` applies to `perm`, given whether `perm` is currently a
+/// creature. Encodes the [`EffectAffects`] selector semantics in one place.
+fn affects(effect: &StaticEffect, perm: &Permanent, is_creature: bool) -> bool {
+    match effect.affects {
+        EffectAffects::CreaturesControlledBy(player) => is_creature && perm.controller == player,
+    }
 }
 
 #[cfg(test)]
@@ -143,6 +211,22 @@ mod tests {
     fn set_counters(state: &mut GameState, id: PermanentId, kind: CounterKind, count: u32) {
         let perm = state.battlefield.iter_mut().find(|p| p.id == id).unwrap();
         perm.counters.insert(kind, count);
+    }
+
+    /// Add a static anthem "+`power`/+`toughness` to creatures `controller`
+    /// controls" from a source with the given `source` object id (its timestamp).
+    fn add_anthem(
+        state: &mut GameState,
+        source: u64,
+        controller: PlayerId,
+        power: i32,
+        toughness: i32,
+    ) {
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::CreaturesControlledBy(controller),
+            modification: Modification::PowerToughness { power, toughness },
+        });
     }
 
     #[test]
@@ -287,6 +371,98 @@ mod tests {
             characteristics(&state, ghost, &db),
             Characteristics::default()
         );
+    }
+
+    #[test]
+    fn single_static_modifier_stacks_on_printed_pt_and_counters() {
+        // Thornback Boar is a printed 3/2. One +1/+1 counter and one static
+        // +2/+2 anthem controlled by its controller compute 3+1+2 / 2+1+2 = 6/5,
+        // exercising "printed + counters + modifier" together (ADR 0010 §3).
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 1);
+        add_anthem(&mut state, 100, PlayerId(0), 2, 2);
+
+        let ch = characteristics(&state, boar, &db);
+        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.toughness, Some(5));
+        // Only P/T shifts; static modifiers never touch the printed types.
+        assert_eq!(ch.types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn two_static_modifiers_apply_in_timestamp_order_and_sum() {
+        // Two anthems whose sources were minted out of order in the state vector.
+        // The result is their sum (they are additive), and the read path folds
+        // them in ascending-timestamp order regardless of insertion order.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        // Inserted later-timestamp first to prove the pipeline sorts, not reads
+        // insertion order.
+        add_anthem(&mut state, 200, PlayerId(0), 0, 3); // +0/+3
+        add_anthem(&mut state, 100, PlayerId(0), 4, 0); // +4/+0
+
+        // Printed 3/2 + (+4/+0) + (+0/+3) = 7/5.
+        let ch = characteristics(&state, boar, &db);
+        assert_eq!(ch.power, Some(7));
+        assert_eq!(ch.toughness, Some(5));
+
+        // The ordering is deterministic: ascending timestamp (source id), not the
+        // Vec's insertion order.
+        let perm = state.battlefield.iter().find(|p| p.id == boar).unwrap();
+        let ordered: Vec<u64> = ordered_pt_modifiers(&state, perm, true)
+            .iter()
+            .map(|effect| effect.timestamp())
+            .collect();
+        assert_eq!(ordered, vec![100, 200]);
+    }
+
+    #[test]
+    fn removing_the_source_reverts_the_computed_value() {
+        // With the anthem in force the Boar is a 5/4; dropping the effect (its
+        // source leaving) reverts to the printed 3/2 with nothing cached to stale.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        add_anthem(&mut state, 100, PlayerId(0), 2, 2);
+
+        let boosted = characteristics(&state, boar, &db);
+        assert_eq!(boosted.power, Some(5));
+        assert_eq!(boosted.toughness, Some(4));
+
+        state.static_effects.clear();
+        let reverted = characteristics(&state, boar, &db);
+        assert_eq!(reverted.power, Some(3));
+        assert_eq!(reverted.toughness, Some(2));
+    }
+
+    #[test]
+    fn anthem_only_affects_matching_controllers_creatures() {
+        // An anthem for player 1 does not touch player 0's creature.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1)); // controlled by player 0
+        add_anthem(&mut state, 100, PlayerId(1), 5, 5);
+
+        let ch = characteristics(&state, boar, &db);
+        assert_eq!(ch.power, Some(3));
+        assert_eq!(ch.toughness, Some(2));
+    }
+
+    #[test]
+    fn anthem_does_not_grant_pt_to_a_noncreature() {
+        // A Forest is not a creature, so a "creatures you control" anthem leaves
+        // it without power/toughness (layer 7c only adjusts an existing P/T).
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let forest = place(&mut state, CardId(5));
+        add_anthem(&mut state, 100, PlayerId(0), 2, 2);
+
+        let ch = characteristics(&state, forest, &db);
+        assert_eq!(ch.power, None);
+        assert_eq!(ch.toughness, None);
     }
 
     #[test]
