@@ -353,10 +353,7 @@ pub fn fill_answers(view: &GameView, action: &ValidAction) -> Option<Vec<TargetC
             lowest_mana_value_ids(view, &req.candidates, count)
         } else {
             // An ability-target slot (`t0`, `t1`, …): a single mandatory target.
-            match target_preference(view, req) {
-                Some(id) => vec![id],
-                None => return None,
-            }
+            vec![target_preference(view, req)?]
         };
         out.push(TargetChoice {
             slot: req.slot.clone(),
