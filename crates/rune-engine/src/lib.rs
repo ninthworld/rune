@@ -39,6 +39,6 @@ pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use phase::Step;
 pub use player::{Player, STARTING_LIFE};
 pub use stack::{StackId, StackObject, StackObjectKind};
-pub use state::{GameState, Permanent};
+pub use state::{CounterKind, GameState, Permanent};
 pub use triggers::{collect_triggers, Trigger};
 pub use zone::Zone;
