@@ -4,6 +4,7 @@
 
 use crate::characteristics::characteristics;
 use crate::id::{CardInstance, PermanentId};
+use crate::player::LossReason;
 use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
 
@@ -14,19 +15,38 @@ use crate::CardDatabase;
 /// Modeled today:
 /// - **CR 704.5a** — a player at 0 or less life loses the game (combat life loss
 ///   flows in here).
+/// - **CR 704.5c** — a player who attempted to draw from an empty library since
+///   the last check loses the game (decking); the attempt is flagged on the
+///   player by [`crate::Player::draw`] and consumed here.
 /// - **CR 704.5g** — a creature with lethal marked damage (damage ≥ its
 ///   toughness, toughness > 0) is destroyed and put into its owner's graveyard.
 ///
-/// The two run in the same loop so a chain settles in one call: e.g. a creature
-/// dying does not itself change a life total today, but keeping both checks in
-/// one fixed-point pass is what CR 704.3 requires as more actions land.
+/// These run in the same loop so a chain settles in one call: e.g. a creature
+/// dying does not itself change a life total today, but keeping the checks in one
+/// fixed-point pass is what CR 704.3 requires as more actions land. Consuming a
+/// loss into the terminal [`GameResult`](crate::GameResult) — deciding the winner
+/// once one player remains (CR 104.2a) — is a pure derivation done on read, not
+/// stored here.
 pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) {
     loop {
         let mut changed = false;
-        // CR 704.5a: a player at 0 or less life loses.
+        // Losing conditions, unified (CR 704.5). Each marks the player as having
+        // lost and records why, exactly once.
         for player in &mut state.players {
+            // CR 704.5a: a player at 0 or less life loses.
             if player.life <= 0 && !player.has_lost {
                 player.has_lost = true;
+                player.loss_reason = Some(LossReason::ZeroLife);
+                changed = true;
+            }
+            // CR 704.5c: a player who attempted to draw from an empty library
+            // loses. Consume the flag so the pass reaches a fixed point.
+            if player.attempted_draw_from_empty {
+                player.attempted_draw_from_empty = false;
+                if !player.has_lost {
+                    player.has_lost = true;
+                    player.loss_reason = Some(LossReason::DrewFromEmptyLibrary);
+                }
                 changed = true;
             }
         }
@@ -184,7 +204,34 @@ mod tests {
         state.players[1].life = 0;
         let after = apply_action(&state, &Action::PassPriority, &db());
         assert!(after.players[1].has_lost);
+        // CR 704.5a: the loss records its reason so the terminal result can name it.
+        assert_eq!(after.players[1].loss_reason, Some(LossReason::ZeroLife));
         assert!(!after.players[0].has_lost);
+    }
+
+    #[test]
+    fn cr_704_5c_attempted_draw_from_empty_library_loses() {
+        // CR 704.5c: an attempted draw from an empty library, flagged on the
+        // player, is consumed by the SBA loop into a loss and the flag is cleared
+        // so the pass reaches a fixed point.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.players[0].attempted_draw_from_empty = true;
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(
+            state.players[0].has_lost,
+            "decking loses the game (CR 704.5c)"
+        );
+        assert_eq!(
+            state.players[0].loss_reason,
+            Some(LossReason::DrewFromEmptyLibrary)
+        );
+        assert!(
+            !state.players[0].attempted_draw_from_empty,
+            "the attempt flag is consumed so the loop settles"
+        );
     }
 
     #[test]

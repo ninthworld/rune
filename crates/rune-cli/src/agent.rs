@@ -371,6 +371,7 @@ mod tests {
             priority_player: Some("p0".into()),
             valid_actions: actions,
             action_deadline: None,
+            result: None,
         }
     }
 

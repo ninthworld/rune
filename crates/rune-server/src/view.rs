@@ -12,12 +12,13 @@
 
 use rune_engine::{
     valid_actions, Action, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
-    CounterKind, Effect, GameState, PermanentId, Player, PlayerId, StackId, StackObject,
-    StackObjectKind, Step,
+    CounterKind, Effect, GameResult, GameState, LossReason, PermanentId, Player, PlayerId, StackId,
+    StackObject, StackObjectKind, Step,
 };
 use rune_protocol::{
-    CardView, ChooseAction, Counter, GameView, OpponentView, Permanent as PermanentView, Phase,
-    StackItem, TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    CardView, ChooseAction, Counter, GameOverReason, GameResult as GameResultView, GameView,
+    OpponentView, Permanent as PermanentView, Phase, StackItem, TargetChoice, TargetRequirement,
+    ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -326,6 +327,14 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
             Vec::new(),
             Vec::new(),
         ),
+        // Concede (CR 104.3a): a subject-less action always offered to the acting
+        // seat, rendered in the action bar (ADR 0004).
+        Action::Concede => (
+            "concede".to_string(),
+            "Concede".to_string(),
+            Vec::new(),
+            Vec::new(),
+        ),
     };
     let token = content_token(&kind, &subject, &requirements);
     ValidAction {
@@ -440,6 +449,30 @@ pub(crate) fn personalized_view(
         priority_player,
         valid_actions,
         action_deadline: None,
+        // The terminal result once the game is over (CR 104.2a); `None` — and so
+        // omitted from the wire — while the game is live.
+        result: state.result().map(result_view),
+    }
+}
+
+/// The wire name for an engine [`LossReason`], as the client expects it in
+/// [`GameOverReason`]. Kept exhaustive so a new engine reason forces a matching
+/// wire variant here rather than silently going unnamed.
+fn game_over_reason(reason: LossReason) -> GameOverReason {
+    match reason {
+        LossReason::ZeroLife => GameOverReason::LifeZero,
+        LossReason::DrewFromEmptyLibrary => GameOverReason::Decked,
+        LossReason::Concede => GameOverReason::Concede,
+    }
+}
+
+/// Project the engine's terminal [`GameResult`] onto the wire [`GameResultView`],
+/// naming each seat by its `p{N}` id (CR 104.2a). Pure translation, no game logic.
+fn result_view(result: GameResult) -> GameResultView {
+    GameResultView {
+        winner: result.winner.map(player_id),
+        losers: result.losers.into_iter().map(player_id).collect(),
+        reason: game_over_reason(result.reason),
     }
 }
 
@@ -535,6 +568,30 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
+
+    /// A terminal game (issue #119) projects its result onto the view: the winner,
+    /// losers, and reason are named, and `valid_actions` is empty (CR 104.2a).
+    #[test]
+    fn issue_119_terminal_result_projects_onto_the_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.players[1].has_lost = true;
+        state.players[1].loss_reason = Some(LossReason::Concede);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let result = view.result.expect("a terminal state carries a result");
+        assert_eq!(result.winner.as_deref(), Some("p0"));
+        assert_eq!(result.losers, vec!["p1".to_string()]);
+        assert_eq!(result.reason, GameOverReason::Concede);
+        assert!(
+            view.valid_actions.is_empty(),
+            "a terminal state offers no actions (CR 104.2a)"
+        );
+
+        // A live game omits the result entirely.
+        let live = personalized_view(&GameState::new_two_player(), &db, PlayerId(0));
+        assert!(live.result.is_none());
+    }
 
     /// Build the [`ChooseAction`] a well-behaved client sends for `action`:
     /// echoing its id and content-binding token verbatim, with no targets (no

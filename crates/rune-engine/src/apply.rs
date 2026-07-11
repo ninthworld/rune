@@ -13,7 +13,7 @@ use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::mulligan::advance_after_keep;
 use crate::phase::Step;
-use crate::player::MAX_HAND_SIZE;
+use crate::player::{LossReason, MAX_HAND_SIZE};
 use crate::resolve::resolve_stack_object;
 use crate::rng::SplitMix64;
 use crate::sba::run_state_based_actions;
@@ -59,6 +59,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
         Action::DeclareAttackers { attackers } => apply_declare_attackers(&mut next, attackers),
         Action::DeclareBlockers { blocks } => apply_declare_blockers(&mut next, blocks),
+        Action::Concede => apply_concede(&mut next),
     }
 
     // 4. Replacement effects. Scaffold: no replacement effects are modeled yet,
@@ -216,18 +217,28 @@ fn untap_active_players_permanents(state: &mut GameState) {
 ///
 /// CR 103.8b: in a two-player game the player who takes the first turn skips the
 /// draw step of that turn. Turn 1 is, by construction, always the starting
-/// player's first turn, so that first draw is the one skipped. A draw from an
-/// empty library is a no-op here; the loss it should cause (CR 104.3c) is a
-/// state-based action not yet modeled.
+/// player's first turn, so that first draw is the one skipped. Drawing from an
+/// empty library flags the attempted draw so the state-based-actions loop makes
+/// the player lose (CR 704.5c); the flagging lives in [`crate::Player::draw`].
 fn draw_for_turn(state: &mut GameState) {
     if state.players.len() == 2 && state.turn == 1 {
         return;
     }
     let active = state.active_player;
     if let Some(player) = state.players.get_mut(active.0) {
-        if let Some(card) = player.library.pop() {
-            player.hand.push(card);
-        }
+        player.draw();
+    }
+}
+
+/// CR 104.3a: the priority holder concedes — they leave the game and lose
+/// immediately, at any time they could act. Modeled by marking the conceding seat
+/// as having lost with [`LossReason::Concede`]; the state-based-actions loop then
+/// settles and [`GameState::result`] derives the winner (CR 104.2a).
+fn apply_concede(state: &mut GameState) {
+    let seat = state.priority;
+    if let Some(player) = state.players.get_mut(seat.0) {
+        player.has_lost = true;
+        player.loss_reason.get_or_insert(LossReason::Concede);
     }
 }
 
@@ -527,9 +538,9 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
         Effect::AddMana { color, amount } => player.mana_pool.add(*color, *amount),
         Effect::DrawCard { count } => {
             for _ in 0..*count {
-                if let Some(card) = player.library.pop() {
-                    player.hand.push(card);
-                }
+                // Routes through `draw`, so a card-draw effect that empties the
+                // library also triggers the decking loss (CR 704.5c).
+                player.draw();
             }
         }
         // A targeting effect: its subject is a chosen target, not the controller,
@@ -960,8 +971,14 @@ mod tests {
             !choices.contains(&Action::PassPriority),
             "cleanup grants no priority (CR 514.3)"
         );
-        assert_eq!(choices.len(), 9, "one discard choice per card in hand");
-        assert!(choices.iter().all(|a| matches!(a, Action::Discard { .. })));
+        let discards = choices
+            .iter()
+            .filter(|a| matches!(a, Action::Discard { .. }))
+            .count();
+        assert_eq!(discards, 9, "one discard choice per card in hand");
+        // Concede is still offered during cleanup (CR 104.3a); nothing else is.
+        assert!(choices.contains(&Action::Concede));
+        assert_eq!(choices.len(), 10, "the nine discards plus concede");
 
         // Discard two specific cards; the second brings the hand to the maximum,
         // so cleanup completes and the turn advances to player 1.
@@ -1064,8 +1081,10 @@ mod tests {
         // Before declaring, the only action offered to the active player is the
         // declaration itself — no pass, no other action (a turn-based choice).
         let offered = valid(&state, &db);
-        assert_eq!(offered.len(), 1);
+        // The declaration plus the always-available concede (CR 104.3a).
+        assert_eq!(offered.len(), 2);
         assert!(matches!(offered[0], Action::DeclareAttackers { .. }));
+        assert!(offered.contains(&Action::Concede));
         assert_eq!(attacker_candidates(&state, &db), vec![attacker]);
 
         let after = apply_action(
@@ -1172,8 +1191,10 @@ mod tests {
         // declaration; both eligible blockers are candidates.
         assert_eq!(state.priority, PlayerId(1));
         let offered = valid(&state, &db);
-        assert_eq!(offered.len(), 1);
+        // The declaration plus the always-available concede (CR 104.3a).
+        assert_eq!(offered.len(), 2);
         assert!(matches!(offered[0], Action::DeclareBlockers { .. }));
+        assert!(offered.contains(&Action::Concede));
         let candidates = blocker_candidates(&state, &db);
         assert!(candidates.contains(&blocker_a) && candidates.contains(&blocker_b));
 
@@ -1575,5 +1596,98 @@ mod tests {
             0,
             "marked damage is cleared at cleanup (CR 514.2)"
         );
+    }
+
+    // ----- Game over: decking, concede, win detection (issue #119) -----
+
+    #[test]
+    fn issue_119_decking_at_the_draw_step_loses_cr_704_5c() {
+        // CR 704.5c: a player who attempts to draw from an empty library loses. On
+        // turn 2 the active player (seat 1) reaches its draw step with an empty
+        // library; the attempted draw makes it lose, so seat 0 wins (CR 104.2a).
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.active_player = PlayerId(1);
+        state.priority = PlayerId(1);
+        state.step = Step::Upkeep; // both libraries empty by construction.
+
+        let after = pass_full_round(&state, &db);
+
+        assert_eq!(after.step, Step::Draw, "the walk stops at the draw step");
+        assert!(
+            after.players[1].has_lost,
+            "an attempted draw from an empty library loses (CR 704.5c)"
+        );
+        assert_eq!(
+            after.players[1].loss_reason,
+            Some(LossReason::DrewFromEmptyLibrary)
+        );
+        let result = after.result().unwrap();
+        assert_eq!(result.winner, Some(PlayerId(0)), "the other player wins");
+        assert_eq!(result.losers, vec![PlayerId(1)]);
+        assert_eq!(result.reason, LossReason::DrewFromEmptyLibrary);
+    }
+
+    #[test]
+    fn issue_119_a_non_empty_draw_does_not_deck_cr_704_5c() {
+        // CR 704.5c only fires on an *empty* library: a normal draw leaves the
+        // player in the game with no loss recorded.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.active_player = PlayerId(1);
+        state.priority = PlayerId(1);
+        state.step = Step::Upkeep;
+        let card = state.new_instance(CardId(1));
+        state.players[1].library = vec![card];
+
+        let after = pass_full_round(&state, &db);
+
+        assert!(after.players[1].hand.contains(&card), "the card was drawn");
+        assert!(!after.players[1].has_lost, "a non-empty draw is no loss");
+        assert!(after.result().is_none(), "the game continues");
+    }
+
+    #[test]
+    fn issue_119_concede_ends_the_game_with_the_opponent_as_winner_cr_104_3a() {
+        // CR 104.3a: conceding makes the conceding player lose; CR 104.2a: the
+        // remaining player wins.
+        let db = db();
+        let state = GameState::new_two_player(); // seat 0 holds priority.
+        assert!(valid_actions(&state, &db).contains(&Action::Concede));
+
+        let after = apply_action(&state, &Action::Concede, &db);
+        assert!(after.players[0].has_lost);
+        assert_eq!(after.players[0].loss_reason, Some(LossReason::Concede));
+        let result = after.result().unwrap();
+        assert_eq!(result.winner, Some(PlayerId(1)));
+        assert_eq!(result.losers, vec![PlayerId(0)]);
+        assert_eq!(result.reason, LossReason::Concede);
+    }
+
+    #[test]
+    fn issue_119_terminal_state_rejects_further_actions_purely_cr_104_2a() {
+        // CR 104.2a: in a terminal state no action is legal; every submission is a
+        // pure no-op that returns the terminal state unchanged.
+        let db = db();
+        let state = apply_action(&GameState::new_two_player(), &Action::Concede, &db);
+        assert!(state.is_over());
+        assert_eq!(apply_action(&state, &Action::PassPriority, &db), state);
+        assert_eq!(apply_action(&state, &Action::Concede, &db), state);
+    }
+
+    #[test]
+    fn issue_119_zero_life_loss_records_its_reason_cr_704_5a() {
+        // CR 704.5a: the life ≤ 0 loss now carries its reason and consumes into a
+        // terminal result naming the winner (CR 104.2a).
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.players[1].life = 0;
+        let after = apply_action(&state, &Action::PassPriority, &db);
+        assert_eq!(after.players[1].loss_reason, Some(LossReason::ZeroLife));
+        let result = after.result().unwrap();
+        assert_eq!(result.winner, Some(PlayerId(0)));
+        assert_eq!(result.reason, LossReason::ZeroLife);
     }
 }

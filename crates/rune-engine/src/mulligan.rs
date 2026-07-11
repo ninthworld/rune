@@ -279,7 +279,9 @@ mod tests {
         assert_eq!(state.step, Step::Untap);
 
         let actions = valid_actions(&state, &db());
-        assert_eq!(actions, vec![Action::Mulligan, keep()]);
+        // Keep/mulligan for the deciding seat, plus the always-available concede
+        // (CR 104.3a) — a player may leave even during the mulligan.
+        assert_eq!(actions, vec![Action::Mulligan, keep(), Action::Concede]);
         assert!(
             !actions.contains(&Action::PassPriority),
             "turn 1 has not begun"
@@ -296,7 +298,10 @@ mod tests {
 
         let after = apply_action(&state, &keep(), &db);
         assert_eq!(after.priority, PlayerId(1), "the decision passed to seat 1");
-        assert_eq!(valid_actions(&after, &db), vec![Action::Mulligan, keep()]);
+        assert_eq!(
+            valid_actions(&after, &db),
+            vec![Action::Mulligan, keep(), Action::Concede]
+        );
     }
 
     #[test]
@@ -321,7 +326,10 @@ mod tests {
         assert_eq!(after.mulligan.as_ref().unwrap().decisions[0].taken, 1);
         assert!(!after.mulligan.as_ref().unwrap().decisions[0].kept);
         assert_eq!(after.priority, PlayerId(0));
-        assert_eq!(valid_actions(&after, &db), vec![Action::Mulligan, keep()]);
+        assert_eq!(
+            valid_actions(&after, &db),
+            vec![Action::Mulligan, keep(), Action::Concede]
+        );
     }
 
     #[test]

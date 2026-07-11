@@ -19,8 +19,27 @@ use std::collections::BTreeMap;
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mulligan::MulliganState;
 use crate::phase::Step;
-use crate::player::Player;
+use crate::player::{LossReason, Player};
 use crate::stack::StackObject;
+
+/// The terminal outcome of a game (CR 104.2a / CR 104.4a), derived on demand from
+/// player state — never stored on [`GameState`], in keeping with the engine's
+/// "everything derivable is computed on demand" invariant.
+///
+/// Produced by [`GameState::result`] once at most one player remains: the sole
+/// survivor is the winner (CR 104.2a), or there is no winner when every player has
+/// lost simultaneously (a draw, CR 104.4a).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GameResult {
+    /// The single remaining player who won (CR 104.2a), or `None` for a draw where
+    /// no player remains (CR 104.4a).
+    pub winner: Option<PlayerId>,
+    /// Every player who has lost, in seat order (CR 104.3).
+    pub losers: Vec<PlayerId>,
+    /// Why the game ended: the loss reason of the deciding loser (the sole loser
+    /// when there is a winner; the first loser in seat order for a draw).
+    pub reason: LossReason,
+}
 
 /// A kind of counter that can sit on a [`Permanent`].
 ///
@@ -344,6 +363,62 @@ impl GameState {
         self.players.get(self.priority.0)
     }
 
+    /// The game's terminal result if it is over, else `None` (CR 104.2a).
+    ///
+    /// A game with at least two seats ends the moment at most one player has not
+    /// lost: that survivor is the winner (CR 104.2a), or there is no winner when
+    /// every player has lost (a draw, CR 104.4a). Derived fresh from the losers'
+    /// stored [`has_lost`](Player::has_lost)/[`loss_reason`](Player::loss_reason);
+    /// nothing terminal is cached on the state.
+    #[must_use]
+    pub fn result(&self) -> Option<GameResult> {
+        // A game that has not seated at least two players cannot end this way.
+        if self.players.len() < 2 {
+            return None;
+        }
+        let losers: Vec<PlayerId> = self
+            .players
+            .iter()
+            .enumerate()
+            .filter(|(_, player)| player.has_lost)
+            .map(|(seat, _)| PlayerId(seat))
+            .collect();
+        let remaining = self.players.len() - losers.len();
+        // The game is over only once someone has lost and at most one seat remains
+        // (CR 104.2a). With every seat still in, there is no result yet.
+        if losers.is_empty() || remaining > 1 {
+            return None;
+        }
+        // One survivor wins (CR 104.2a); none survive → a draw (CR 104.4a).
+        let winner = self
+            .players
+            .iter()
+            .enumerate()
+            .find(|(_, player)| !player.has_lost)
+            .map(|(seat, _)| PlayerId(seat));
+        // The deciding reason: with a winner there is exactly one loser, so its
+        // reason is unambiguous; a draw takes the first loser's. `ZeroLife` is a
+        // defensive fallback for an externally-constructed loser with no recorded
+        // reason — the engine always records one alongside `has_lost`.
+        let reason = losers
+            .iter()
+            .find_map(|seat| self.players[seat.0].loss_reason)
+            .unwrap_or(LossReason::ZeroLife);
+        Some(GameResult {
+            winner,
+            losers,
+            reason,
+        })
+    }
+
+    /// Whether the game has reached a terminal state (CR 104.2a). In a terminal
+    /// state [`crate::valid_actions`] offers nothing and [`crate::apply_action`]
+    /// rejects every action as a no-op.
+    #[must_use]
+    pub fn is_over(&self) -> bool {
+        self.result().is_some()
+    }
+
     /// Borrow the active player, or `None` if [`Self::active_player`] is out of
     /// range (as it is in the empty [`Default`] state).
     #[must_use]
@@ -459,6 +534,42 @@ mod tests {
         let mut normalized = seeded.clone();
         normalized.rng_seed = 0;
         assert_eq!(normalized, GameState::new_two_player());
+    }
+
+    #[test]
+    fn cr_104_2a_result_is_none_while_both_players_remain() {
+        // The game is not over while at least two players remain.
+        let state = GameState::new_two_player();
+        assert!(state.result().is_none());
+        assert!(!state.is_over());
+    }
+
+    #[test]
+    fn cr_104_2a_last_player_standing_wins() {
+        // CR 104.2a: when one player remains, the game is over and that player wins.
+        let mut state = GameState::new_two_player();
+        state.players[1].has_lost = true;
+        state.players[1].loss_reason = Some(LossReason::Concede);
+
+        let result = state.result().unwrap();
+        assert_eq!(result.winner, Some(PlayerId(0)));
+        assert_eq!(result.losers, vec![PlayerId(1)]);
+        assert_eq!(result.reason, LossReason::Concede);
+        assert!(state.is_over());
+    }
+
+    #[test]
+    fn cr_104_4a_simultaneous_loss_is_a_draw() {
+        // CR 104.4a: if every remaining player loses at once, no one wins (a draw).
+        let mut state = GameState::new_two_player();
+        for player in &mut state.players {
+            player.has_lost = true;
+            player.loss_reason = Some(LossReason::ZeroLife);
+        }
+
+        let result = state.result().unwrap();
+        assert_eq!(result.winner, None, "a simultaneous loss has no winner");
+        assert_eq!(result.losers, vec![PlayerId(0), PlayerId(1)]);
     }
 
     #[test]

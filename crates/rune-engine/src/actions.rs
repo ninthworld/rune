@@ -111,6 +111,11 @@ pub enum Action {
         /// The blocker→attacker assignments, one per declared blocker.
         blocks: Vec<Block>,
     },
+    /// Concede the game (CR 104.3a). Always offered to the acting seat, in every
+    /// phase and step, so a player may leave at any time. Applying it marks the
+    /// conceding player as having lost; the game then becomes terminal with the
+    /// opponent as the winner (CR 104.2a).
+    Concede,
 }
 
 /// One blocker→attacker assignment of a [`Action::DeclareBlockers`] declaration
@@ -145,7 +150,9 @@ impl Action {
             // they hold none of the ability-targeting vocabulary; their selection
             // is validated separately in `action_is_legal`.
             | Action::DeclareAttackers { .. }
-            | Action::DeclareBlockers { .. } => &[],
+            | Action::DeclareBlockers { .. }
+            // Concede carries no selection.
+            | Action::Concede => &[],
         }
     }
 
@@ -207,13 +214,20 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     if state.priority_holder().is_none() {
         return Vec::new();
     }
+    // CR 104.2a: once the game is over nothing is legal — the terminal state offers
+    // no actions and [`crate::apply_action`] rejects any that are submitted.
+    if state.is_over() {
+        return Vec::new();
+    }
     let priority = state.priority;
 
     // Pre-game London mulligan (CR 103.5): while the mulligan phase is in progress
     // the only choices are the deciding seat's keep/mulligan, and turn 1 has not
     // begun — no lands, spells, abilities, or priority passes are offered until
-    // every player has kept (see [`crate::mulligan`]).
-    if let Some(actions) = crate::mulligan::mulligan_actions(state) {
+    // every player has kept (see [`crate::mulligan`]). Concede (CR 104.3a) is still
+    // offered — a player may leave even during the mulligan.
+    if let Some(mut actions) = crate::mulligan::mulligan_actions(state) {
+        offer_concede(&mut actions);
         return actions;
     }
 
@@ -221,7 +235,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     // the active player discarding down to the maximum hand size (CR 514.1),
     // offered as a select-from-zone choice — one [`Action::Discard`] per card in
     // hand — and only while they are over the limit. Everything else (passing,
-    // lands, spells, abilities) is unavailable here.
+    // lands, spells, abilities) is unavailable here — except conceding (CR 104.3a).
     if state.step == Step::Cleanup {
         let mut actions = Vec::new();
         if priority == state.active_player {
@@ -230,6 +244,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                     for &card in &player.hand {
                         actions.push(Action::Discard { card });
                     }
+                    offer_concede(&mut actions);
                 }
             }
         }
@@ -247,9 +262,11 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     if state.step == Step::DeclareAttackers && !state.attackers_declared {
         // CR 508.1: the active player declares attackers.
         return if priority == state.active_player {
-            vec![Action::DeclareAttackers {
+            let mut actions = vec![Action::DeclareAttackers {
                 attackers: Vec::new(),
-            }]
+            }];
+            offer_concede(&mut actions);
+            actions
         } else {
             Vec::new()
         };
@@ -257,7 +274,9 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     if state.step == Step::DeclareBlockers && !state.blockers_declared {
         // CR 509.1: the defending player declares blockers.
         return if Some(priority) == defending_player(state) {
-            vec![Action::DeclareBlockers { blocks: Vec::new() }]
+            let mut actions = vec![Action::DeclareBlockers { blocks: Vec::new() }];
+            offer_concede(&mut actions);
+            actions
         } else {
             Vec::new()
         };
@@ -315,7 +334,16 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         }
     }
 
+    offer_concede(&mut actions);
     actions
+}
+
+/// Append the always-available concede action (CR 104.3a) to `actions`. Called at
+/// every point [`valid_actions`] returns a non-empty offer to the acting seat, so
+/// a player may leave the game regardless of phase, step, or which special choice
+/// is currently owed.
+fn offer_concede(actions: &mut Vec<Action>) {
+    actions.push(Action::Concede);
 }
 
 /// The ordered target requirements of `action` against the current `state`: one
@@ -567,7 +595,41 @@ mod tests {
     #[test]
     fn valid_actions_offers_pass_priority_to_the_priority_holder() {
         let state = GameState::new_two_player();
-        assert_eq!(valid_actions(&state, &db()), vec![Action::PassPriority]);
+        // Pass plus the always-available concede (CR 104.3a).
+        assert_eq!(
+            valid_actions(&state, &db()),
+            vec![Action::PassPriority, Action::Concede]
+        );
+    }
+
+    #[test]
+    fn issue_119_concede_is_always_offered_cr_104_3a() {
+        // CR 104.3a: a player may concede at any time. Concede is offered to the
+        // acting seat in every window the engine surfaces a choice — a normal
+        // priority round and the special turn-based choices alike.
+        let db = db();
+
+        // Normal priority round (untap).
+        let state = GameState::new_two_player();
+        assert!(valid_actions(&state, &db).contains(&Action::Concede));
+
+        // Declare-attackers window: only the declaration and concede are offered.
+        let mut combat = GameState::new_two_player();
+        combat.turn = 2;
+        combat.step = Step::DeclareAttackers;
+        let offered = valid_actions(&combat, &db);
+        assert!(offered.contains(&Action::Concede));
+        assert!(!offered.contains(&Action::PassPriority));
+    }
+
+    #[test]
+    fn issue_119_terminal_state_offers_no_actions_cr_104_2a() {
+        // CR 104.2a: once a player has lost and one remains, the game is over and
+        // no actions are legal — not even concede.
+        let mut state = GameState::new_two_player();
+        state.players[1].has_lost = true;
+        assert!(state.is_over());
+        assert!(valid_actions(&state, &db()).is_empty());
     }
 
     #[test]

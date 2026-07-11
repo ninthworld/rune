@@ -37,9 +37,32 @@ never receives what its player may not know). The concrete types live in the
 | `priority_player` | `PlayerId?` | Who holds priority now, if anyone |
 | `valid_actions` | `ValidAction[]` | See below — the only source of interactivity |
 | `action_deadline` | `number?` | Seconds remaining for the pending decision |
+| `result` | `GameResult?` | The terminal outcome once the game is over (CR 104.2a). Omitted while the game is live; when present, `valid_actions` is empty. See [Game over](#game-over-result) |
 
 Empty collections and absent optionals are omitted from the JSON; clients must
 treat a missing field as its empty/`null` default.
+
+### Game over: result
+
+When the game ends (CR 104.2a), the view carries a `result` object and
+`valid_actions` becomes empty; further actions the client submits are rejected and
+the same final view is re-sent. While the game is live `result` is **omitted
+entirely** (the empty-optional convention), so its mere presence signals game over.
+
+```json
+{ "winner": "p0", "losers": ["p1"], "reason": "decked" }
+```
+
+- `winner` — the surviving player's id (CR 104.2a). Omitted for a draw, where every
+  remaining player lost at once (CR 104.4a).
+- `losers` — the players who lost, in seat order.
+- `reason` — why the game ended, a snake_case enum: `life_zero` (a player at 0 or
+  less life, CR 704.5a), `decked` (a player attempted to draw from an empty library,
+  CR 704.5c), or `concede` (a player conceded, CR 104.3a).
+
+The losing conditions are unified server-side; a player may always **concede** — a
+`concede` action is offered in `valid_actions` in every phase (CR 104.3a). The
+client renders the result; it never decides a winner or terminality itself.
 
 ### Combat state on a Permanent
 
