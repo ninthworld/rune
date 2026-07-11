@@ -30,6 +30,22 @@ and docs/design/ui-design-notes.md before changing anything.
 Formatting is owned by Prettier (`.prettierrc.json`); don't hand-format. See
 `docs/coding-standards.md` for the project-wide standard.
 
+## Dependency audit policy
+- CI and `make check` run `npm audit --audit-level=high` (the `client-audit`
+  Make target / the "Audit" CI step). A new **high or critical** advisory fails
+  the build; moderate/low are reported but non-blocking.
+- Why `high`: the client's toolchain (vite, vitest, esbuild) is dev/build-time
+  only — none ship in the runtime bundle. Gating at `high` blocks the serious,
+  actionable advisories without CI churn from the frequent moderate advisories
+  in build tooling. The tree is currently clean at every level (0 findings).
+- The lockfile stays committed; CI installs with `npm ci`. When a dependency
+  fix changes `package.json`, run `npm install` and commit the updated
+  `package-lock.json` so `npm ci` stays reproducible.
+- Escape hatch for an accepted/false-positive high+ finding: pin the transitive
+  package via a `"overrides"` entry in `package.json` (preferred, deterministic),
+  and note the advisory + justification in the PR. Do not silence with
+  `--audit-level` bumps.
+
 ## References
 - prototypes/ui-battlefield-v3.html — working reference for card factory, bands,
   zone rail, browser, inspect. Reference only; never import from prototypes/.
