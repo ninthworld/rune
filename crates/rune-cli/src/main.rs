@@ -27,8 +27,8 @@
 use std::process::ExitCode;
 
 use rune_cli::{
-    connect, run_agent_session, run_session, AgentConfig, CliConfig, PassPriorityAgent,
-    SessionError,
+    connect, run_agent_lobby_session, run_lobby_session, AgentConfig, CliConfig, LobbyConfig,
+    PassPriorityAgent, SessionError,
 };
 use tokio::io::BufReader;
 
@@ -48,9 +48,16 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let lobby = match LobbyConfig::from_args() {
+        Ok(lobby) => lobby,
+        Err(error) => {
+            eprintln!("rune-cli: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     let result = if agent.enabled {
-        run_agent(&config, &agent).await
+        run_agent(&config, &agent, &lobby).await
     } else {
         run_interactive(&config).await
     };
@@ -64,29 +71,36 @@ async fn main() -> ExitCode {
     }
 }
 
-/// Connect and drive the interactive session over real stdin/stdout until the
+/// Connect and drive the interactive flow — the lobby menus (create/join a room,
+/// submit a deck, ready) then the game loop — over real stdin/stdout, until the
 /// server closes or stdin reaches EOF.
 async fn run_interactive(config: &CliConfig) -> Result<(), SessionError> {
     eprintln!("rune-cli: connecting to {} ...", config.ws_url());
     let ws = connect(config).await?;
-    eprintln!("rune-cli: connected. Waiting for the first game view.");
+    eprintln!("rune-cli: connected. Entering the lobby.");
     let input = BufReader::new(tokio::io::stdin());
     let output = tokio::io::stdout();
-    run_session(ws, input, output).await
+    run_lobby_session(ws, input, output).await
 }
 
-/// Connect and drive the non-interactive agent session, logging each decision to
-/// stderr, until the server closes the connection.
-async fn run_agent(config: &CliConfig, agent: &AgentConfig) -> Result<(), SessionError> {
+/// Connect and drive the non-interactive agent flow: the lobby is driven from the
+/// `--agent`-mode flags (`--create`/`--room`, `--deck`, auto-ready) and the game is
+/// played by the built-in pass agent. Each decision is logged to stderr, until the
+/// server closes the connection.
+async fn run_agent(
+    config: &CliConfig,
+    agent: &AgentConfig,
+    lobby: &LobbyConfig,
+) -> Result<(), SessionError> {
     eprintln!(
         "rune-cli: connecting to {} (agent mode) ...",
         config.ws_url()
     );
     let ws = connect(config).await?;
     eprintln!(
-        "rune-cli: connected. Playing with the built-in pass-priority agent (deadline {:?}).",
+        "rune-cli: connected. Driving the lobby, then playing with the built-in pass-priority agent (deadline {:?}).",
         agent.deadline
     );
     let log = tokio::io::stderr();
-    run_agent_session(ws, &PassPriorityAgent, agent.deadline, log).await
+    run_agent_lobby_session(ws, &PassPriorityAgent, agent.deadline, log, lobby).await
 }
