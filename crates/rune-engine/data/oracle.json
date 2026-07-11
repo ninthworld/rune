@@ -71,5 +71,33 @@
         "effects": [{ "kind": "draw_card", "count": 1 }]
       }
     ]
+  },
+  {
+    "id": 7,
+    "name": "Quickfire Bolt",
+    "types": ["instant"],
+    "mana_cost": "{R}",
+    "oracle_text": ""
+  },
+  {
+    "id": 8,
+    "name": "Hurried Study",
+    "types": ["sorcery"],
+    "mana_cost": "{U}",
+    "oracle_text": ""
+  },
+  {
+    "id": 9,
+    "name": "Copper Lodestone",
+    "types": ["artifact"],
+    "mana_cost": "{1}",
+    "oracle_text": ""
+  },
+  {
+    "id": 10,
+    "name": "Verdant Blessing",
+    "types": ["enchantment"],
+    "mana_cost": "{G}",
+    "oracle_text": ""
   }
 ]

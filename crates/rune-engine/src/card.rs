@@ -39,7 +39,7 @@ struct SetSnapshot {
 
 /// The compile-time manifest of embedded set files (ADR 0013 §2).
 ///
-/// `FIX` prints the six oracle fixtures; `FIX2` reprints one of them, proving a
+/// `FIX` prints every oracle fixture; `FIX2` reprints one of them, proving a
 /// reprint is one printing entry and zero rules-logic changes. These are engine
 /// test fixtures, not a shipped set (ADR 0013 §5).
 const SET_MANIFEST: &[SetSnapshot] = &[
@@ -380,7 +380,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 6);
+        assert_eq!(db.len(), 10);
     }
 
     #[test]
@@ -498,8 +498,8 @@ mod tests {
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the six fixtures; FIX2 reprints one — seven printings total.
-        assert_eq!(printings.len(), 7);
+        // FIX prints the ten fixtures; FIX2 reprints one — eleven printings total.
+        assert_eq!(printings.len(), 11);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));

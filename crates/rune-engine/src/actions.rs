@@ -7,7 +7,7 @@
 //! [`action_is_legal`] before applying it.
 
 use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
-use crate::card::abilities_of;
+use crate::card::{abilities_of, CardData};
 use crate::card_type::CardType;
 use crate::combat::{
     attacker_candidates, blocker_candidates, declared_attackers, defending_player,
@@ -201,9 +201,11 @@ pub struct TargetRequirement {
 /// Enumerate the actions legal for the player who currently holds priority.
 ///
 /// Pull-based and pure: computed fresh from `state`, never cached on it. The
-/// priority holder may always pass; may play a land, cast a creature, or (for
-/// permanents they control) activate abilities when the relevant timing and cost
-/// conditions hold. A state with no valid priority holder offers nothing.
+/// priority holder may always pass; may play a land, cast a spell at its legal
+/// timing (instants any time they hold priority, everything else at sorcery
+/// speed — CR 117.1a), or (for permanents they control) activate abilities when
+/// the relevant timing and cost conditions hold. A state with no valid priority
+/// holder offers nothing.
 ///
 /// A targeted ability is advertised **once**, in its requirement form (empty
 /// [`Action::ActivateAbility::targets`]); its per-slot legal candidate sets are
@@ -299,16 +301,25 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             }
         }
 
-        // Cast a creature spell payable from the current pool (sorcery speed).
-        if sorcery_speed {
-            for &card in &player.hand {
-                if let Some(data) = db.card(card.card) {
-                    if is_creature(db, card.card)
-                        && player.mana_pool.can_pay(&parse_mana_cost(&data.mana_cost))
-                    {
-                        actions.push(Action::CastSpell { card });
-                    }
-                }
+        // Cast a spell from hand payable from the current pool, at the correct
+        // timing. A land is played, not cast (CR 116.2a); every other card type
+        // is cast as a spell. An instant may be cast whenever its controller has
+        // priority (CR 117.1a); every other spell — sorcery (CR 304.1), artifact,
+        // enchantment (CR 307.1), creature — is bound by the sorcery-speed gate
+        // above (the active player, a main phase, an empty stack). Only a cost
+        // payable from the current pool ([`ManaPool::can_pay`]) is offered.
+        for &card in &player.hand {
+            let Some(data) = db.card(card.card) else {
+                continue;
+            };
+            if !is_castable_spell(data) {
+                continue;
+            }
+            // CR 117.1a: an instant ignores the sorcery-speed gate; every other
+            // spell is bound by it.
+            let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
+            if timing_ok && player.mana_pool.can_pay(&parse_mana_cost(&data.mana_cost)) {
+                actions.push(Action::CastSpell { card });
             }
         }
     }
@@ -527,10 +538,23 @@ fn is_land(db: &CardDatabase, card: CardId) -> bool {
     db.card(card).is_some_and(|c| c.has_type(CardType::Land))
 }
 
-/// Whether `card` is a creature, by its structured printed types.
-fn is_creature(db: &CardDatabase, card: CardId) -> bool {
-    db.card(card)
-        .is_some_and(|c| c.has_type(CardType::Creature))
+/// Whether `card` may be cast as a spell from hand today (CR 117.1a).
+///
+/// A land is never cast — it is played as a special action (CR 116.2a) and is
+/// offered separately. An Aura is a spell, but it must choose a target as it is
+/// cast (CR 601.2c); casting spells with targets is issue #148, so an Aura stays
+/// uncastable until then even when its (sorcery-speed) timing is satisfied.
+/// Every other card type — instant, sorcery, artifact, enchantment, creature —
+/// is castable, subject to timing and cost checked by the caller.
+fn is_castable_spell(data: &CardData) -> bool {
+    !data.has_type(CardType::Land) && !is_aura(data)
+}
+
+/// Whether `card` is an Aura: an Enchantment with the `Aura` subtype (CR 303.4).
+/// Auras need a target chosen as they are cast, which is issue #148, so
+/// [`is_castable_spell`] excludes them until that lands.
+fn is_aura(data: &CardData) -> bool {
+    data.has_type(CardType::Enchantment) && data.has_subtype("Aura")
 }
 
 #[cfg(test)]
@@ -539,7 +563,9 @@ mod tests {
 
     use super::*;
     use crate::apply_action;
-    use crate::stack::StackObjectKind;
+    use crate::id::CardInstanceId;
+    use crate::mana::{Color, ManaPool};
+    use crate::stack::{StackId, StackObject, StackObjectKind};
 
     /// The bundled card database, for tests that need oracle data.
     fn db() -> CardDatabase {
@@ -818,5 +844,222 @@ mod tests {
             &db,
         );
         assert_eq!(after.players[0].mana_pool.green, 1);
+    }
+
+    // ----- Cast every card type with real timing (issue #147) -----
+    //
+    // Fixture oracle ids (see `data/oracle.json`): 7 Quickfire Bolt (instant,
+    // {R}), 8 Hurried Study (sorcery, {U}), 9 Copper Lodestone (artifact, {1}),
+    // 10 Verdant Blessing (enchantment, {G}), 6 Verdant Scout (creature, {G}).
+    const INSTANT: CardId = CardId(7);
+    const SORCERY: CardId = CardId(8);
+    const ARTIFACT: CardId = CardId(9);
+    const ENCHANTMENT: CardId = CardId(10);
+
+    /// Whether `card` is offered as a [`Action::CastSpell`] for the hand instance
+    /// `inst`.
+    fn cast_offered(state: &GameState, db: &CardDatabase, inst: CardInstance) -> bool {
+        valid_actions(state, db).contains(&Action::CastSpell { card: inst })
+    }
+
+    /// A two-player game at player 0's precombat main with a single copy of
+    /// `card` in player 0's hand and a mana pool generous enough to pay any of
+    /// the single-pip fixture costs. Returns the state and the hand instance.
+    fn hand_with(card: CardId) -> (GameState, CardInstance) {
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let inst = state.new_instance(card);
+        state.players[0].hand = vec![inst];
+        // One of each color plus colorless covers every fixture cost here.
+        state.players[0].mana_pool.add(Color::Red, 1);
+        state.players[0].mana_pool.add(Color::Blue, 1);
+        state.players[0].mana_pool.add(Color::Green, 1);
+        state.players[0].mana_pool.colorless = 1;
+        (state, inst)
+    }
+
+    #[test]
+    fn issue_147_instant_castable_with_a_nonempty_stack_and_off_turn_cr_117_1a() {
+        // CR 117.1a: a player may cast an instant any time they have priority —
+        // including while another spell waits on the stack (the first "respond to
+        // a spell" path) and during an opponent's turn.
+        let db = db();
+
+        // Another object already on the stack, player 0 holding priority.
+        let (mut mid_stack, bolt) = hand_with(INSTANT);
+        let sid = mid_stack.mint_id();
+        let other = mid_stack.new_instance(INSTANT);
+        mid_stack.stack.push(StackObject {
+            id: StackId(sid),
+            controller: PlayerId(0),
+            kind: StackObjectKind::Spell { card: other },
+            targets: Vec::new(),
+        });
+        assert!(!mid_stack.stack.is_empty());
+        assert!(
+            cast_offered(&mid_stack, &db, bolt),
+            "an instant is castable with a spell on the stack (CR 117.1a)"
+        );
+
+        // Opponent's turn: player 1 is active, player 0 holds priority.
+        let (mut off_turn, bolt) = hand_with(INSTANT);
+        off_turn.active_player = PlayerId(1);
+        off_turn.priority = PlayerId(0);
+        assert!(
+            cast_offered(&off_turn, &db, bolt),
+            "an instant is castable on the opponent's turn (CR 117.1a)"
+        );
+    }
+
+    #[test]
+    fn issue_147_sorcery_not_offered_off_turn_or_mid_stack_cr_304_1() {
+        // CR 304.1: a sorcery may be cast only at sorcery speed — the active
+        // player, a main phase, an empty stack. It is offered in none of the
+        // windows an instant is, only in that one.
+        let db = db();
+
+        // Positive control: on-turn, empty stack, main phase — offered.
+        let (on_turn, sorcery) = hand_with(SORCERY);
+        assert!(cast_offered(&on_turn, &db, sorcery));
+
+        // Off-turn (player 0 holds priority on player 1's turn) — not offered.
+        let (mut off_turn, sorcery) = hand_with(SORCERY);
+        off_turn.active_player = PlayerId(1);
+        off_turn.priority = PlayerId(0);
+        assert!(!cast_offered(&off_turn, &db, sorcery));
+
+        // Mid-stack (own turn, but a spell is on the stack) — not offered.
+        let (mut mid_stack, sorcery) = hand_with(SORCERY);
+        let sid = mid_stack.mint_id();
+        let other = mid_stack.new_instance(INSTANT);
+        mid_stack.stack.push(StackObject {
+            id: StackId(sid),
+            controller: PlayerId(0),
+            kind: StackObjectKind::Spell { card: other },
+            targets: Vec::new(),
+        });
+        assert!(!cast_offered(&mid_stack, &db, sorcery));
+    }
+
+    #[test]
+    fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefield() {
+        // CR 307.1 (enchantments) / artifacts are permanent spells cast at
+        // sorcery speed; on resolution they enter the battlefield (CR 608.3).
+        let db = db();
+        for card in [ARTIFACT, ENCHANTMENT] {
+            let (state, inst) = hand_with(card);
+
+            // Offered at sorcery speed...
+            assert!(
+                cast_offered(&state, &db, inst),
+                "a permanent spell is castable at sorcery speed"
+            );
+            // ...but not while a spell is on the stack (sorcery-speed gate).
+            let mut mid_stack = state.clone();
+            let sid = mid_stack.mint_id();
+            let other = mid_stack.new_instance(INSTANT);
+            mid_stack.stack.push(StackObject {
+                id: StackId(sid),
+                controller: PlayerId(0),
+                kind: StackObjectKind::Spell { card: other },
+                targets: Vec::new(),
+            });
+            assert!(!cast_offered(&mid_stack, &db, inst));
+
+            // Cast it, then both players pass: it resolves onto the battlefield.
+            let state = apply_action(&state, &Action::CastSpell { card: inst }, &db);
+            assert_eq!(state.stack.len(), 1);
+            let state = apply_action(&state, &Action::PassPriority, &db);
+            let state = apply_action(&state, &Action::PassPriority, &db);
+            assert!(state.stack.is_empty());
+            // The permanent spell entered the battlefield (CR 608.3).
+            let perm = state.battlefield.iter().find(|p| p.card == card).unwrap();
+            assert_eq!(perm.instance, inst.id, "keeps its instance identity");
+        }
+    }
+
+    #[test]
+    fn issue_147_cast_instant_resolves_after_a_later_instant_lifo_cr_608_1() {
+        // CR 608.1: the stack resolves last-in, first-out. Cast instant A, then —
+        // with A still on the stack — cast instant B. B is on top, so it resolves
+        // first: the two non-permanent spells reach the graveyard in the order
+        // B, A, the reverse of the order they were cast.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let a = state.new_instance(INSTANT);
+        let b = state.new_instance(INSTANT);
+        state.players[0].hand = vec![a, b];
+        state.players[0].mana_pool.add(Color::Red, 2);
+
+        // Cast A, then B (legal to respond because both are instants).
+        let state = apply_action(&state, &Action::CastSpell { card: a }, &db);
+        assert!(cast_offered(&state, &db, b));
+        let state = apply_action(&state, &Action::CastSpell { card: b }, &db);
+        assert_eq!(state.stack.len(), 2);
+
+        // Resolve the top (B), then the next (A).
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(state.stack.is_empty());
+
+        // LIFO: the later-cast B resolved first, so it is first in the graveyard.
+        let grave: Vec<CardInstanceId> = state.players[0].graveyard.iter().map(|c| c.id).collect();
+        assert_eq!(grave, vec![b.id, a.id]);
+    }
+
+    #[test]
+    fn issue_147_unpayable_spells_are_never_offered() {
+        // The unpayable-cost invariant extends to every new castable type: with an
+        // empty pool, no instant/sorcery/artifact/enchantment is offered; with the
+        // exact mana it is (sorcery-speed types on-turn with an empty stack).
+        let db = db();
+        for card in [INSTANT, SORCERY, ARTIFACT, ENCHANTMENT] {
+            let (state, inst) = hand_with(card);
+
+            // Drain the pool: nothing is payable, so nothing is offered.
+            let mut broke = state.clone();
+            broke.players[0].mana_pool = ManaPool::default();
+            assert!(
+                !cast_offered(&broke, &db, inst),
+                "an unpayable spell is never offered"
+            );
+            // With mana in the pool it is offered.
+            assert!(cast_offered(&state, &db, inst));
+        }
+    }
+
+    #[test]
+    fn issue_147_aura_is_uncastable_until_targets_at_cast_issue_148() {
+        // An Aura's timing (sorcery speed) is satisfiable, but it must choose a
+        // target as it is cast (CR 601.2c); casting spells with targets is issue
+        // #148, so the Aura is gated off entirely until then. A vanilla (non-aura)
+        // enchantment of the same cost is offered, proving the gate is the Aura
+        // subtype and not the enchantment type.
+        let json = r#"[
+            {"id":300,"name":"Test Aura","types":["enchantment"],"subtypes":["Aura"],
+             "mana_cost":"{G}","oracle_text":""},
+            {"id":301,"name":"Test Charm","types":["enchantment"],
+             "mana_cost":"{G}","oracle_text":""}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let aura = state.new_instance(CardId(300));
+        let charm = state.new_instance(CardId(301));
+        state.players[0].hand = vec![aura, charm];
+        state.players[0].mana_pool.add(Color::Green, 1);
+
+        assert!(
+            !cast_offered(&state, &db, aura),
+            "an Aura stays uncastable until spell targets land (issue #148)"
+        );
+        assert!(
+            cast_offered(&state, &db, charm),
+            "a non-Aura enchantment of the same cost is castable"
+        );
     }
 }
