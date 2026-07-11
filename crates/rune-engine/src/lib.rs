@@ -28,7 +28,7 @@ mod state;
 mod triggers;
 mod zone;
 
-pub use ability::{is_mana_ability, Ability, Cost, Effect, TriggerCondition};
+pub use ability::{is_mana_ability, Ability, Cost, Effect, Target, TargetSpec, TriggerCondition};
 pub use actions::{valid_actions, Action};
 pub use apply::apply_action;
 pub use card::{abilities_of, CardData, CardDatabase};

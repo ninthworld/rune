@@ -114,6 +114,7 @@ fn ability_description(effects: &[Effect]) -> String {
         .map(|effect| match effect {
             Effect::AddMana { color, amount } => format!("Add {} {}", amount, color.pip()),
             Effect::DrawCard { count } => format!("Draw {count} card(s)"),
+            Effect::Tap { .. } => "Tap target".to_string(),
         })
         .collect();
     if parts.is_empty() {

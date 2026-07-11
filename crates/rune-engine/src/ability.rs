@@ -12,6 +12,7 @@
 
 use serde::Deserialize;
 
+use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
 
 /// One ability of a card.
@@ -71,6 +72,84 @@ pub enum Effect {
         /// How many cards the controller draws.
         count: u8,
     },
+    /// Tap the single permanent this effect targets (e.g. `Tap target
+    /// creature.`).
+    ///
+    /// Unlike [`Effect::AddMana`]/[`Effect::DrawCard`], whose subject is the
+    /// controller, this effect names an explicit subject. The `target` field is
+    /// the [`TargetSpec`] constraining what may be chosen; the *chosen* value is
+    /// a [`Target`] recorded on the [`crate::StackObject`] when the ability is
+    /// put on the stack (CR 601.2c) and re-checked against current state on
+    /// resolution (CR 608.2b — see the resolve path).
+    Tap {
+        /// What this effect is allowed to target.
+        target: TargetSpec,
+    },
+}
+
+impl Effect {
+    /// The [`TargetSpec`] this effect must be given a chosen target for, or
+    /// `None` for an effect with an implicit subject ([`Effect::AddMana`],
+    /// [`Effect::DrawCard`]).
+    ///
+    /// The resolution path uses this to pair each of an object's stored
+    /// [`Target`]s with the effect that consumes it and to re-check that
+    /// target's legality (CR 608.2b). Kept exhaustive so a new targeting
+    /// [`Effect`] variant must declare its spec here.
+    #[must_use]
+    pub fn target_spec(&self) -> Option<TargetSpec> {
+        match self {
+            Effect::Tap { target } => Some(*target),
+            Effect::AddMana { .. } | Effect::DrawCard { .. } => None,
+        }
+    }
+}
+
+/// A **target spec**: what an [`Effect`] is allowed to target, authored as card
+/// data alongside the rest of the IR (CR 115.1 "target … as defined by the
+/// spell or ability").
+///
+/// This is a declaration, not a chosen value: it names a *class* of legal
+/// objects, while a [`Target`] names one specific object the player picked. The
+/// engine turns a spec into the concrete legal set on demand (enumeration is
+/// issue #71) and re-checks a chosen [`Target`] against it on resolution.
+///
+/// A closed, plain-data enum (no closures — ADR 0007) deserialized from a bare
+/// string tag, e.g. `{"kind": "tap", "target": "any_creature"}`. It grows by
+/// adding variants (any permanent of a type, an object in a named zone, …).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetSpec {
+    /// Any player in the game.
+    AnyPlayer,
+    /// Any permanent on the battlefield.
+    AnyPermanent,
+    /// Any creature on the battlefield (a permanent whose printed types include
+    /// [`crate::CardType::Creature`]).
+    AnyCreature,
+}
+
+/// A **chosen target**: a resolved reference to one specific game object the
+/// player aimed a spell or ability at (CR 601.2c).
+///
+/// Names a specific instance/permanent/player by its per-game identity, never a
+/// bare printed [`crate::CardId`] — two copies of one printing must stay
+/// distinguishable (per-instance identity, issue #51). Stored on the
+/// [`crate::StackObject`] and re-checked against its [`TargetSpec`] on
+/// resolution; this value type is the one issue #71 will also carry on a
+/// parameterized `Action`.
+///
+/// Plain `Copy`/`Eq` data with no closures, so [`crate::GameState`] keeps its
+/// value semantics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Target {
+    /// A specific player, by seat.
+    Player(PlayerId),
+    /// A specific permanent on the battlefield, by its battlefield identity.
+    Permanent(PermanentId),
+    /// A specific physical card, by its per-game instance identity (for targets
+    /// that name a card in a zone rather than a permanent).
+    Card(CardInstanceId),
 }
 
 /// The condition under which a [`Ability::Triggered`] triggers.
@@ -140,6 +219,63 @@ mod tests {
         let ability = Ability::Activated {
             cost: vec![Cost::Tap],
             effects: vec![Effect::DrawCard { count: 1 }],
+        };
+        assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn tap_effect_round_trips_with_its_target_spec() {
+        // The target spec is authored as a bare string tag on the effect.
+        let json = r#"{"kind":"tap","target":"any_creature"}"#;
+        let effect: Effect = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            effect,
+            Effect::Tap {
+                target: TargetSpec::AnyCreature,
+            }
+        );
+    }
+
+    #[test]
+    fn target_spec_variants_deserialize_from_bare_strings() {
+        assert_eq!(
+            serde_json::from_str::<TargetSpec>(r#""any_player""#).unwrap(),
+            TargetSpec::AnyPlayer
+        );
+        assert_eq!(
+            serde_json::from_str::<TargetSpec>(r#""any_permanent""#).unwrap(),
+            TargetSpec::AnyPermanent
+        );
+    }
+
+    #[test]
+    fn only_targeting_effects_report_a_target_spec() {
+        // A targeting effect exposes its spec; implicit-subject effects do not.
+        assert_eq!(
+            Effect::Tap {
+                target: TargetSpec::AnyPermanent,
+            }
+            .target_spec(),
+            Some(TargetSpec::AnyPermanent)
+        );
+        assert_eq!(Effect::DrawCard { count: 1 }.target_spec(), None);
+        assert_eq!(
+            Effect::AddMana {
+                color: Color::Green,
+                amount: 1
+            }
+            .target_spec(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_tap_effect_is_not_a_mana_ability() {
+        let ability = Ability::Activated {
+            cost: vec![Cost::Tap],
+            effects: vec![Effect::Tap {
+                target: TargetSpec::AnyCreature,
+            }],
         };
         assert!(!is_mana_ability(&ability));
     }
