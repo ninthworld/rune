@@ -20,7 +20,9 @@ use tokio_tungstenite::WebSocketStream;
 /// Bridge one server-side socket to `seat` of `room`; named so the spawned future
 /// has a concrete type.
 async fn serve(seat: Seat, room: RoomHandle, ws: WebSocketStream<DuplexStream>) {
-    serve_connection(seat, room, ws).await;
+    // This bridge only ends when the peer or room does, so it never needs a
+    // shutdown signal (`serve_connection` gained the parameter in issue #42).
+    serve_connection(seat, room, ws, std::future::pending::<()>()).await;
 }
 
 /// A connected CLI at seat 0 over the real room bridge, plus the two WebSocket

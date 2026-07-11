@@ -29,6 +29,11 @@ sized for one PR unless noted.
 10. ✅ **server: tokio + WebSocket skeleton** — layer 1 accepts connections; ADR for
     dependency additions — issue #30 (ADR-0008; tokio + tokio-tungstenite accept
     loop with graceful shutdown).
+    - ✅ **lobby: wire connections into rooms** — layer-1 room registry
+      (`Arc<RwLock<...>>` of active rooms) that seats each accepted+handshaken
+      connection via an auto-pairing "next open seat" policy and routes it into the
+      room task, replacing the #30 echo so a running binary can host a game end to
+      end — issue #42.
 11. ✅ **server: room task** — one async task per room owns one engine instance,
     routes `action_id`s through `valid_actions`/`apply_action`, and broadcasts
     personalized, hidden-zone-redacted GameViews; seats held open across

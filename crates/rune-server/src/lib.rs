@@ -6,29 +6,33 @@
 //! Layer 2 is the [`room`] module: one async task per room owns a single engine
 //! game, applies chosen actions through the engine, and pushes each connected seat
 //! its own personalized [`rune_protocol::GameView`]. Redacting hidden zones and
-//! naming entities for the wire is the pure [`view`] shim.
+//! naming entities for the wire is the pure [`view`] shim. The [`lobby`] module is
+//! the layer-1 room registry that seats accepted connections and routes them into
+//! rooms.
 //!
-//! The server holds **no game logic**: the accept path here only proves the
-//! transport with an echo, and the room routes an `action_id` back to the engine's
-//! own `valid_actions`/`apply_action` rather than deciding legality itself.
+//! The server holds **no game logic**: the accept path here only seats a connection
+//! and routes it into a room, and the room routes an `action_id` back to the
+//! engine's own `valid_actions`/`apply_action` rather than deciding legality itself.
 //!
 //! See `docs/decisions/0008-tokio-websocket-server.md` for the dependency
 //! choices behind this crate.
 
+mod lobby;
 mod room;
 mod view;
 
+pub use lobby::Lobby;
 pub use room::{serve_connection, Room, RoomHandle, RoomInput, Seat};
 
 use std::future::Future;
 use std::net::SocketAddr;
 
-use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
-use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
+
+use lobby::SeatAssignment;
 
 /// Listen address the server binds to when no override is supplied.
 ///
@@ -142,13 +146,16 @@ impl Server {
     /// connection cleanly and wait for its task to finish.
     ///
     /// Each accepted connection is handled on its own Tokio task (the
-    /// task-per-client model from `docs/brief.md`). A failed WebSocket handshake
-    /// or accept is logged and skipped; it never takes the listener down.
+    /// task-per-client model from `docs/brief.md`). Once its WebSocket handshake
+    /// succeeds, `lobby` seats it in a room and the connection is driven by the
+    /// room machinery; a connection that cannot be seated (the lobby is
+    /// oversubscribed) is closed cleanly. A failed handshake or accept is logged
+    /// and skipped; it never takes the listener down.
     ///
     /// # Errors
     /// Currently infallible in practice, but returns [`std::io::Result`] so the
     /// signature is stable as the loop grows.
-    pub async fn run<F>(self, shutdown: F) -> std::io::Result<()>
+    pub async fn run<F>(self, lobby: Lobby, shutdown: F) -> std::io::Result<()>
     where
         F: Future<Output = ()>,
     {
@@ -162,7 +169,7 @@ impl Server {
                 accepted = self.listener.accept() => match accepted {
                     Ok((stream, peer)) => {
                         let close_rx = close_tx.subscribe();
-                        connections.spawn(handle_connection(stream, peer, close_rx));
+                        connections.spawn(handle_connection(stream, peer, lobby.clone(), close_rx));
                     }
                     Err(error) => {
                         // Transient accept errors (e.g. fd exhaustion) must not
@@ -189,14 +196,21 @@ impl Server {
     }
 }
 
-/// Handle a single client: complete the WebSocket handshake, then echo frames
-/// until the peer closes, an error occurs, or shutdown is requested.
+/// Handle a single client: complete the WebSocket handshake, seat it in a room via
+/// the `lobby`, then let the room machinery drive it until the peer closes, the room
+/// stops, or shutdown is requested.
+///
+/// This is layer 1's connective tissue: it registers, seats, and routes, holding
+/// **no game logic** of its own. A connection the lobby cannot seat (oversubscribed)
+/// is closed cleanly. On exit the seat is released back to open in the registry, per
+/// the room's seat-held-open policy — the game state is left untouched.
 async fn handle_connection(
     stream: TcpStream,
     peer: SocketAddr,
-    mut close_rx: watch::Receiver<bool>,
+    lobby: Lobby,
+    close_rx: watch::Receiver<bool>,
 ) {
-    let ws = match tokio_tungstenite::accept_async(stream).await {
+    let mut ws = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
         Err(error) => {
             warn!(%peer, %error, "websocket handshake failed");
@@ -205,49 +219,34 @@ async fn handle_connection(
     };
     info!(%peer, "client connected");
 
-    let (mut write, mut read) = ws.split();
-    loop {
-        tokio::select! {
-            incoming = read.next() => {
-                let message = match incoming {
-                    Some(Ok(message)) => message,
-                    Some(Err(error)) => {
-                        warn!(%peer, %error, "websocket read error");
-                        break;
-                    }
-                    None => break,
-                };
-                match message {
-                    // Echo application frames — enough to prove the transport.
-                    Message::Text(_) | Message::Binary(_) => {
-                        if let Err(error) = write.send(message).await {
-                            warn!(%peer, %error, "websocket write error");
-                            break;
-                        }
-                    }
-                    Message::Ping(payload) => {
-                        if let Err(error) = write.send(Message::Pong(payload)).await {
-                            warn!(%peer, %error, "failed to answer ping");
-                            break;
-                        }
-                    }
-                    Message::Close(_) => break,
-                    Message::Pong(_) | Message::Frame(_) => {}
-                }
-            }
-            changed = close_rx.changed() => {
-                // `changed()` only errs if the sender dropped, which means the
-                // server is stopping regardless — close either way.
-                if changed.is_ok() && *close_rx.borrow() {
-                    let _ = write.send(Message::Close(None)).await;
-                }
-                break;
-            }
+    let Some(SeatAssignment {
+        room_id,
+        seat,
+        room,
+    }) = lobby.assign().await
+    else {
+        warn!(%peer, "lobby oversubscribed; rejecting connection");
+        let _ = ws.close(None).await;
+        return;
+    };
+    info!(%peer, room_id, seat, "client seated");
+
+    // Drive the connection with the shared room machinery, ending it politely when
+    // the server signals shutdown over the watch channel.
+    serve_connection(seat, room, ws, wait_for_shutdown(close_rx)).await;
+
+    lobby.release(room_id, seat).await;
+    info!(%peer, room_id, seat, "client disconnected; seat reopened");
+}
+
+/// Resolve once the server has signalled shutdown on the watch channel (or the
+/// sender was dropped, which also means the server is stopping).
+async fn wait_for_shutdown(mut close_rx: watch::Receiver<bool>) {
+    while close_rx.changed().await.is_ok() {
+        if *close_rx.borrow() {
+            return;
         }
     }
-
-    let _ = write.close().await;
-    info!(%peer, "client disconnected");
 }
 
 #[cfg(test)]

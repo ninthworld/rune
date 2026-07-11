@@ -11,6 +11,8 @@
 //! engine's own [`valid_actions`](rune_engine::valid_actions)/[`apply_action`](rune_engine::apply_action)
 //! and rejects anything the engine did not offer (see [`crate::view::resolve_action`]).
 
+use std::future::Future;
+
 use futures_util::{SinkExt, StreamExt};
 use rune_engine::{apply_action, CardDatabase, GameState, PlayerId};
 use rune_protocol::{ClientMessage, GameView};
@@ -208,9 +210,19 @@ impl Room {
 /// It carries **no game logic** — it only (de)serializes the protocol; which
 /// connection maps to which room and seat is a lobby/matchmaking concern handled
 /// elsewhere.
-pub async fn serve_connection<S>(seat: Seat, room: RoomHandle, ws: WebSocketStream<S>)
-where
+///
+/// `shutdown` lets the layer-1 lobby stop the bridge on server shutdown: when it
+/// resolves, the seat is released and the socket is closed politely, just as if the
+/// peer had hung up. Pass [`std::future::pending`] for a bridge that only ever ends
+/// when the peer or room does.
+pub async fn serve_connection<S, F>(
+    seat: Seat,
+    room: RoomHandle,
+    ws: WebSocketStream<S>,
+    shutdown: F,
+) where
     S: AsyncRead + AsyncWrite + Unpin,
+    F: Future<Output = ()>,
 {
     let (mut write, mut read) = ws.split();
     let (outbox_tx, mut outbox_rx) = mpsc::unbounded_channel::<GameView>();
@@ -223,8 +235,13 @@ where
         return;
     }
 
+    tokio::pin!(shutdown);
     loop {
         tokio::select! {
+            () = &mut shutdown => {
+                // Server is shutting down: leave the loop and close politely below.
+                break;
+            }
             incoming = read.next() => match incoming {
                 Some(Ok(Message::Text(text))) => {
                     forward_client_message(seat, &room, text.as_str());
