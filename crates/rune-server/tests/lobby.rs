@@ -1,11 +1,12 @@
-//! End-to-end integration test for the layer-1 lobby: two real WebSocket clients
-//! connect to the running server, the lobby seats them into one room, and they
-//! drive a full round of pass-priority through the binary. A third connection made
-//! when the lobby is at capacity is rejected cleanly.
+//! End-to-end integration test for the layer-1 lobby: real WebSocket clients
+//! connect to the running server and drive the explicit-room protocol — create a
+//! room with a config, share its id, and join by id — over the wire (ADR 0012,
+//! issue #110). No game is constructed: the connections stay in the pre-game phase,
+//! exchanging `LobbyView`/`LobbyCommand`, until the ready gate (issue #112).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use futures_util::{SinkExt, StreamExt};
-use rune_protocol::{ChooseAction, ClientMessage, GameView, Phase, ValidAction};
+use rune_protocol::{CreateRoom, JoinRoom, LobbyCommand, LobbyView, RoomConfig};
 use rune_server::{Config, Lobby, Server};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::oneshot;
@@ -63,16 +64,17 @@ async fn connect(
     ws
 }
 
-/// Read frames until a `GameView` satisfying `pred` arrives, decoding each text
+/// Read frames until a `LobbyView` satisfying `pred` arrives, decoding each text
 /// frame. Non-text frames are skipped.
-async fn view_where<S>(ws: &mut WebSocketStream<S>, pred: impl Fn(&GameView) -> bool) -> GameView
+async fn view_where<S>(ws: &mut WebSocketStream<S>, pred: impl Fn(&LobbyView) -> bool) -> LobbyView
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     loop {
         let message = ws.next().await.expect("stream open").expect("frame");
         if let Message::Text(text) = message {
-            let view: GameView = serde_json::from_str(text.as_str()).expect("valid GameView JSON");
+            let view: LobbyView =
+                serde_json::from_str(text.as_str()).expect("valid LobbyView JSON");
             if pred(&view) {
                 return view;
             }
@@ -80,94 +82,151 @@ where
     }
 }
 
-/// Read the next `GameView` from the stream (any view).
-async fn next_view<S>(ws: &mut WebSocketStream<S>) -> GameView
+/// Read the next `LobbyView` from the stream (any view).
+async fn next_view<S>(ws: &mut WebSocketStream<S>) -> LobbyView
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     view_where(ws, |_| true).await
 }
 
-/// The offered pass-priority action in a view, if any.
-fn pass_action(view: &GameView) -> Option<&ValidAction> {
-    view.valid_actions
-        .iter()
-        .find(|a| a.kind == "pass_priority")
-}
-
-/// Send a `ChooseAction` for the given action id over the socket.
-async fn choose<S>(ws: &mut WebSocketStream<S>, action_id: &str)
+/// Send a `LobbyCommand` over the socket.
+async fn send<S>(ws: &mut WebSocketStream<S>, command: LobbyCommand)
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let choose = ClientMessage::ChooseAction(ChooseAction {
-        action_id: action_id.to_string(),
-        ..Default::default()
-    });
-    let json = serde_json::to_string(&choose).expect("encode ChooseAction");
+    let json = serde_json::to_string(&command).expect("encode LobbyCommand");
     ws.send(Message::Text(json)).await.expect("send");
 }
 
+fn config(seats: u8) -> RoomConfig {
+    RoomConfig {
+        seats,
+        game_setup: "standard_2p".to_string(),
+    }
+}
+
 #[tokio::test]
-async fn two_clients_fill_a_room_and_pass_priority_end_to_end() {
+async fn two_clients_create_and_join_a_room_by_id_end_to_end() {
     let server = RunningServer::start(Lobby::DEFAULT_MAX_ROOMS).await;
 
-    // First client is seated at seat 0 (the active player) and is offered actions.
+    // Alice lands in the lobby (roomless) and creates a two-seat room.
     let mut alice = connect(&server).await;
     let alice_initial = next_view(&mut alice).await;
-    assert_eq!(alice_initial.priority_player.as_deref(), Some("p0"));
-    let alice_pass = pass_action(&alice_initial)
-        .expect("seat 0 holds priority and is offered a pass")
-        .id
-        .clone();
+    assert!(alice_initial.room.is_none());
+    send(
+        &mut alice,
+        LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+    )
+    .await;
 
-    // Second client is auto-paired into the same room at seat 1; it holds no
-    // priority yet, so it is offered nothing.
+    // Her next view carries the freshly issued, shareable room id and seats her at 0.
+    let alice_room = view_where(&mut alice, |v| v.room.is_some()).await;
+    let room = alice_room.room.expect("alice is in a room");
+    let room_id = room.room_id.clone();
+    assert!(!room_id.is_empty());
+    assert_eq!(room.config.seats, 2);
+    assert_eq!(
+        room.seats[0].occupied_by.as_deref(),
+        Some(alice_room.you.as_str())
+    );
+    assert!(room.seats[1].occupied_by.is_none());
+
+    // Bob lands in the lobby and joins by the shared id.
     let mut bob = connect(&server).await;
-    let bob_initial = next_view(&mut bob).await;
-    assert_eq!(bob_initial.priority_player.as_deref(), Some("p0"));
-    assert!(bob_initial.valid_actions.is_empty());
+    let _ = next_view(&mut bob).await;
+    send(
+        &mut bob,
+        LobbyCommand::JoinRoom(JoinRoom {
+            room_id: room_id.clone(),
+        }),
+    )
+    .await;
 
-    // Seat 0 passes: priority hands off to seat 1, proving the action routed through
-    // the engine (the server holds no game logic).
-    choose(&mut alice, &alice_pass).await;
-    let bob_has_priority =
-        view_where(&mut bob, |v| v.priority_player.as_deref() == Some("p1")).await;
-    let bob_pass = pass_action(&bob_has_priority)
-        .expect("priority handed to seat 1")
-        .id
-        .clone();
+    // Bob is seated at seat 1 of the same room — no game starts, only a full roster.
+    let bob_room = view_where(&mut bob, |v| v.room.is_some()).await;
+    let bob_view_room = bob_room.room.expect("bob is in a room");
+    assert_eq!(bob_view_room.room_id, room_id);
+    assert_eq!(
+        bob_view_room.seats[1].occupied_by.as_deref(),
+        Some(bob_room.you.as_str())
+    );
+    assert_eq!(bob_room.valid_commands, vec!["leave".to_string()]);
 
-    // Seat 1 passes too: both passed, so the step advances and priority returns to
-    // the active player (seat 0) — a full round of pass-priority end to end.
-    choose(&mut bob, &bob_pass).await;
-    let after_round = view_where(&mut alice, |v| v.priority_player.as_deref() == Some("p0")).await;
-    assert_eq!(after_round.phase, Phase::Upkeep);
-    assert!(!after_round.valid_actions.is_empty());
+    // Alice is pushed an updated roster showing both seats filled.
+    let alice_full = view_where(&mut alice, |v| {
+        v.room
+            .as_ref()
+            .is_some_and(|r| r.seats.iter().all(|s| s.occupied_by.is_some()))
+    })
+    .await;
+    assert!(alice_full.room.is_some());
 
     server.stop().await;
 }
 
 #[tokio::test]
-async fn connection_beyond_capacity_is_rejected_cleanly() {
-    // One room, two seats, no room for more.
+async fn joining_an_unknown_room_leaves_the_client_in_the_lobby() {
+    let server = RunningServer::start(Lobby::DEFAULT_MAX_ROOMS).await;
+
+    // A client that joins a nonexistent room is rejected: the current LobbyView is
+    // re-sent (still roomless) rather than seating it anywhere.
+    let mut carol = connect(&server).await;
+    let initial = next_view(&mut carol).await;
+    assert!(initial.room.is_none());
+    send(
+        &mut carol,
+        LobbyCommand::JoinRoom(JoinRoom {
+            room_id: "r-nope".to_string(),
+        }),
+    )
+    .await;
+    let after = next_view(&mut carol).await;
+    assert!(
+        after.room.is_none(),
+        "unknown-room join never seats the client"
+    );
+
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn create_beyond_capacity_is_refused_but_joining_still_works() {
+    // Capacity for exactly one room.
     let server = RunningServer::start(1).await;
 
-    // Fill both seats; reading each seat's view confirms it was actually seated.
+    // Alice creates the one allowed room.
     let mut alice = connect(&server).await;
     let _ = next_view(&mut alice).await;
+    send(
+        &mut alice,
+        LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+    )
+    .await;
+    let room_id = view_where(&mut alice, |v| v.room.is_some())
+        .await
+        .room
+        .expect("alice in room")
+        .room_id;
+
+    // Bob cannot create another room (at capacity): his view stays roomless. He can
+    // still join Alice's room by id — capacity limits room creation, not joining.
     let mut bob = connect(&server).await;
     let _ = next_view(&mut bob).await;
+    send(
+        &mut bob,
+        LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+    )
+    .await;
+    let refused = next_view(&mut bob).await;
+    assert!(refused.room.is_none(), "create at capacity is refused");
 
-    // A third connection completes the WebSocket handshake but the lobby has no seat
-    // for it, so the server closes it cleanly without ever sending a GameView.
-    let mut carol = connect(&server).await;
-    // A polite Close, an ended stream, or a transport reset all mean "not seated";
-    // only a text frame (a GameView) would mean the lobby wrongly seated Carol.
-    if let Some(Ok(Message::Text(text))) = carol.next().await {
-        panic!("oversubscribed connection was seated, got view: {text}");
-    }
+    send(&mut bob, LobbyCommand::JoinRoom(JoinRoom { room_id })).await;
+    let joined = view_where(&mut bob, |v| v.room.is_some()).await;
+    assert!(
+        joined.room.is_some(),
+        "joining an existing room still works at capacity"
+    );
 
-    // The two seated clients are unaffected: the game is still live for them.
     server.stop().await;
 }
