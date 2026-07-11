@@ -55,6 +55,11 @@ pub struct Permanent {
     pub controller: PlayerId,
     /// Whether the permanent is tapped.
     pub tapped: bool,
+    /// Damage marked on this permanent this turn (CR 120.3). Raw stored state,
+    /// zeroed as a turn-based action during the cleanup step (CR 514.2) and,
+    /// once combat lands (issue #118), compared against toughness by the
+    /// state-based-actions loop (CR 704.5g). `0` means no marked damage.
+    pub damage: u32,
     /// Counters on this permanent, keyed by [`CounterKind`] and mapped to how
     /// many of that kind are present.
     ///

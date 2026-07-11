@@ -278,6 +278,12 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
             vec![card_entity_id(card.id)],
             Vec::new(),
         ),
+        Action::Discard { card } => (
+            "discard".to_string(),
+            format!("Discard {}", card_name(card.card, db)),
+            vec![card_entity_id(card.id)],
+            Vec::new(),
+        ),
         Action::ActivateAbility { permanent, .. } => (
             "activate_ability".to_string(),
             "Activate ability".to_string(),
@@ -602,6 +608,7 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            damage: 0,
             // Insertion order is deliberately reversed from the expected wire
             // order to prove the projection sorts by kind, not by insertion.
             counters: [
@@ -618,6 +625,7 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            damage: 0,
             counters: std::collections::BTreeMap::new(),
         });
 

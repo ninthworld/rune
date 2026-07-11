@@ -10,6 +10,8 @@ use crate::actions::{action_is_legal, Action};
 use crate::card::abilities_of;
 use crate::id::{CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
+use crate::phase::Step;
+use crate::player::MAX_HAND_SIZE;
 use crate::resolve::resolve_stack_object;
 use crate::sba::run_state_based_actions;
 use crate::stack::{StackId, StackObject, StackObjectKind};
@@ -49,6 +51,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             apply_activate_ability(&mut next, *permanent, *index, targets, db);
         }
         Action::CastSpell { card } => apply_cast_spell(&mut next, *card, db),
+        Action::Discard { card } => apply_discard(&mut next, *card),
     }
 
     // 4. Replacement effects. Scaffold: no replacement effects are modeled yet,
@@ -90,12 +93,140 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
         if let Some(top) = state.stack.pop() {
             resolve_stack_object(state, top, db);
         } else {
-            *state = state.advance();
+            advance_through_turn_based_steps(state);
         }
         state.consecutive_passes = 0;
         state.priority = state.active_player;
     } else {
         state.priority = PlayerId((state.priority.0 + 1) % seats);
+    }
+}
+
+/// Advance the turn structure past every step that neither grants priority nor
+/// requires a player choice, performing each entered step's turn-based actions
+/// (CR 500.2) along the way, and stop on the first step that does.
+///
+/// This wraps the pure FSM [`GameState::advance`] with the turn-based-action
+/// dimension the FSM deliberately omits. The untap step grants no priority
+/// (CR 502.5) and the cleanup step grants none either (CR 514.3) unless the
+/// active player still owes a discard (CR 514.1), so both are skipped straight
+/// through when nothing pauses on them — a player never has to pass in a step
+/// where the rules give no priority. Priority assignment itself stays with the
+/// caller. Terminates because every turn passes through a priority step
+/// (e.g. upkeep) at most a couple of advances away.
+fn advance_through_turn_based_steps(state: &mut GameState) {
+    loop {
+        *state = state.advance();
+        perform_turn_based_actions(state);
+        if step_pauses_for_players(state) {
+            break;
+        }
+    }
+}
+
+/// Whether the current step stops the turn-structure walk to hand priority to a
+/// player (CR 117) or to collect a required player choice.
+///
+/// Untap never pauses — it grants no priority (CR 502.5). Cleanup pauses only
+/// while the active player is over the maximum hand size and thus owes a discard
+/// (CR 514.1); otherwise it grants no priority (CR 514.3) and is walked through.
+/// Every other step pauses to grant priority.
+fn step_pauses_for_players(state: &GameState) -> bool {
+    match state.step {
+        Step::Untap => false,
+        Step::Cleanup => active_player_over_hand_size(state),
+        _ => true,
+    }
+}
+
+/// Whether the active player currently holds more than [`MAX_HAND_SIZE`] cards
+/// and so owes a cleanup-step discard (CR 514.1). `false` on a seatless state.
+fn active_player_over_hand_size(state: &GameState) -> bool {
+    state
+        .players
+        .get(state.active_player.0)
+        .is_some_and(|p| p.hand.len() > MAX_HAND_SIZE)
+}
+
+/// Perform the turn-based actions of the step `state` has just entered
+/// (CR 500.2). Each is a pure, automatic mutation of the active player's part of
+/// the board; player-choice actions (the cleanup discard) are offered through
+/// [`crate::valid_actions`] instead. Steps with no modeled turn-based action are
+/// a no-op.
+fn perform_turn_based_actions(state: &mut GameState) {
+    match state.step {
+        Step::Untap => untap_active_players_permanents(state),
+        Step::Draw => draw_for_turn(state),
+        Step::Cleanup => remove_all_marked_damage(state),
+        _ => {}
+    }
+}
+
+/// Untap step turn-based action: untap every permanent the active player controls
+/// (CR 502.4). Permanents controlled by other players are unaffected.
+fn untap_active_players_permanents(state: &mut GameState) {
+    let active = state.active_player;
+    for perm in &mut state.battlefield {
+        if perm.controller == active {
+            perm.tapped = false;
+        }
+    }
+}
+
+/// Draw step turn-based action: the active player draws a card (CR 504.1).
+///
+/// CR 103.8b: in a two-player game the player who takes the first turn skips the
+/// draw step of that turn. Turn 1 is, by construction, always the starting
+/// player's first turn, so that first draw is the one skipped. A draw from an
+/// empty library is a no-op here; the loss it should cause (CR 104.3c) is a
+/// state-based action not yet modeled.
+fn draw_for_turn(state: &mut GameState) {
+    if state.players.len() == 2 && state.turn == 1 {
+        return;
+    }
+    let active = state.active_player;
+    if let Some(player) = state.players.get_mut(active.0) {
+        if let Some(card) = player.library.pop() {
+            player.hand.push(card);
+        }
+    }
+}
+
+/// Cleanup step turn-based action: remove all damage marked on permanents
+/// (CR 514.2). Runs on entry to the step; the discard (CR 514.1) is a separate
+/// player choice routed through [`apply_discard`].
+fn remove_all_marked_damage(state: &mut GameState) {
+    for perm in &mut state.battlefield {
+        perm.damage = 0;
+    }
+}
+
+/// Discard one card from the active player's hand to its owner's graveyard,
+/// satisfying part of the cleanup maximum-hand-size turn-based action (CR 514.1).
+///
+/// Only ever reached during [`Step::Cleanup`] (the action is offered nowhere
+/// else — see [`crate::valid_actions`]). When the discard brings the player to
+/// the maximum hand size the cleanup step is finished, so the turn structure
+/// walks on to the next step that pauses for a player; priority is re-seated by
+/// [`apply_action`]'s caller path via the pass handler's assignment, so it is set
+/// here too. While the player is still over the limit the step stays put and more
+/// discards are offered.
+fn apply_discard(state: &mut GameState, card: CardInstance) {
+    let active = state.active_player;
+    {
+        let Some(player) = state.players.get_mut(active.0) else {
+            return;
+        };
+        let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) else {
+            return;
+        };
+        let discarded = player.hand.remove(pos);
+        player.graveyard.push(discarded);
+    }
+    if state.step == Step::Cleanup && !active_player_over_hand_size(state) {
+        advance_through_turn_based_steps(state);
+        state.consecutive_passes = 0;
+        state.priority = state.active_player;
     }
 }
 
@@ -120,6 +251,7 @@ fn apply_play_land(state: &mut GameState, card: CardInstance) {
         card: card.card,
         controller,
         tapped: false,
+        damage: 0,
         counters: Default::default(),
     });
     state.land_played = true;
@@ -369,6 +501,7 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            damage: 0,
             counters: Default::default(),
         });
         let after = apply_action(
@@ -397,6 +530,7 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            damage: 0,
             counters: Default::default(),
         });
         let after = apply_action(
@@ -511,5 +645,204 @@ mod tests {
         assert_eq!(after.players[0].hand, vec![forest_a]);
         assert_eq!(after.battlefield.len(), 1);
         assert_eq!(after.battlefield[0].instance, forest_b.id);
+    }
+
+    // ----- Turn-based actions: untap, draw, cleanup (issue #116) -----
+
+    /// Put a permanent of `card` on the battlefield under `controller`, with the
+    /// given tapped and marked-damage state; returns its fresh id.
+    fn place_permanent(
+        state: &mut GameState,
+        card: CardId,
+        controller: PlayerId,
+        tapped: bool,
+        damage: u32,
+    ) -> PermanentId {
+        let inst = state.new_instance(card);
+        let id = state.mint_id();
+        state.battlefield.push(Permanent {
+            id: PermanentId(id),
+            instance: inst.id,
+            card,
+            controller,
+            tapped,
+            damage,
+            counters: Default::default(),
+        });
+        PermanentId(id)
+    }
+
+    /// Borrow the permanent with id `id`; panics if it is gone.
+    fn find_perm(state: &GameState, id: PermanentId) -> &Permanent {
+        state.battlefield.iter().find(|p| p.id == id).unwrap()
+    }
+
+    /// Both seats pass priority in succession, ending the current step.
+    fn pass_full_round(state: &GameState, db: &CardDatabase) -> GameState {
+        let s = apply_action(state, &Action::PassPriority, db);
+        apply_action(&s, &Action::PassPriority, db)
+    }
+
+    #[test]
+    fn issue_116_untap_step_untaps_only_the_active_players_permanents() {
+        // CR 502.4: the untap step untaps the permanents the active player
+        // controls (and only those). CR 502.5: no player receives priority during
+        // untap, so the walk never rests there — it proceeds straight to upkeep.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0's first turn, about to end.
+        let p0_perm = place_permanent(&mut state, CardId(5), PlayerId(0), true, 0);
+        let p1_perm = place_permanent(&mut state, CardId(5), PlayerId(1), true, 0);
+
+        let after = pass_full_round(&state, &db);
+
+        // The turn passed to player 1; their permanent untapped, player 0's did not.
+        assert_eq!(after.turn, 2);
+        assert_eq!(after.active_player, PlayerId(1));
+        assert!(
+            !find_perm(&after, p1_perm).tapped,
+            "active player's permanent untaps (CR 502.4)"
+        );
+        assert!(
+            find_perm(&after, p0_perm).tapped,
+            "a non-active player's permanent stays tapped (CR 502.4)"
+        );
+        // Untap granted no priority (CR 502.5): the walk stopped at upkeep.
+        assert_eq!(after.step, Step::Upkeep);
+        assert_eq!(after.priority, PlayerId(1));
+    }
+
+    #[test]
+    fn issue_116_draw_step_active_player_draws() {
+        // CR 504.1: the active player draws a card as the draw step's turn-based
+        // action.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.active_player = PlayerId(1);
+        state.priority = PlayerId(1);
+        state.step = Step::Upkeep;
+        let card = state.new_instance(CardId(1));
+        state.players[1].library = vec![card];
+
+        let after = pass_full_round(&state, &db);
+
+        assert_eq!(after.step, Step::Draw);
+        assert!(
+            after.players[1].hand.contains(&card),
+            "the active player drew the top card (CR 504.1)"
+        );
+        assert!(after.players[1].library.is_empty());
+    }
+
+    #[test]
+    fn issue_116_starting_player_skips_first_turn_draw() {
+        // CR 103.8b: in a two-player game the player who plays first skips the draw
+        // step of their first turn. Turn 1 is that first turn, so the library is
+        // untouched even though the draw step is entered.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::Upkeep; // turn 1, player 0 (the starting player).
+        let card = state.new_instance(CardId(1));
+        state.players[0].library = vec![card];
+
+        let after = pass_full_round(&state, &db);
+
+        assert_eq!(after.step, Step::Draw);
+        assert_eq!(
+            after.players[0].library,
+            vec![card],
+            "the first-turn draw is skipped (CR 103.8)"
+        );
+        assert!(after.players[0].hand.is_empty());
+    }
+
+    #[test]
+    fn issue_116_cleanup_discards_down_to_max_hand_size_via_a_choice() {
+        // CR 514.1: with more than the maximum hand size, the active player
+        // discards down to it during cleanup. CR 514.3: no priority is granted, so
+        // the only thing offered is the discard — a select-from-zone choice, one
+        // Discard per card in hand, never an automatic discard.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1.
+        let hand: Vec<CardInstance> = (0..9).map(|_| state.new_instance(CardId(1))).collect();
+        state.players[0].hand = hand.clone();
+
+        // Ending the turn walks into cleanup and stops for the discard.
+        let at_cleanup = pass_full_round(&state, &db);
+        assert_eq!(at_cleanup.step, Step::Cleanup);
+        assert_eq!(at_cleanup.active_player, PlayerId(0));
+        assert_eq!(at_cleanup.priority, PlayerId(0));
+        let choices = valid_actions(&at_cleanup, &db);
+        assert!(
+            !choices.contains(&Action::PassPriority),
+            "cleanup grants no priority (CR 514.3)"
+        );
+        assert_eq!(choices.len(), 9, "one discard choice per card in hand");
+        assert!(choices.iter().all(|a| matches!(a, Action::Discard { .. })));
+
+        // Discard two specific cards; the second brings the hand to the maximum,
+        // so cleanup completes and the turn advances to player 1.
+        let s = apply_action(&at_cleanup, &Action::Discard { card: hand[0] }, &db);
+        assert_eq!(
+            s.step,
+            Step::Cleanup,
+            "still over the limit after one discard"
+        );
+        assert_eq!(s.players[0].hand.len(), 8);
+        let s = apply_action(&s, &Action::Discard { card: hand[1] }, &db);
+
+        assert_eq!(
+            s.players[0].hand.len(),
+            MAX_HAND_SIZE,
+            "discarded to the max (CR 514.1)"
+        );
+        assert_eq!(s.players[0].graveyard.len(), 2);
+        assert!(s.players[0].graveyard.contains(&hand[0]));
+        assert!(s.players[0].graveyard.contains(&hand[1]));
+        // Cleanup finished with no priority granted; the next turn has begun.
+        assert_eq!(s.turn, 2);
+        assert_eq!(s.active_player, PlayerId(1));
+        assert_eq!(s.step, Step::Upkeep);
+    }
+
+    #[test]
+    fn issue_116_cleanup_at_or_under_max_hand_size_needs_no_discard() {
+        // CR 514.1 applies only when over the maximum: a hand at the limit walks
+        // straight through cleanup with no discard offered.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1.
+        let hand: Vec<CardInstance> = (0..MAX_HAND_SIZE)
+            .map(|_| state.new_instance(CardId(1)))
+            .collect();
+        state.players[0].hand = hand;
+
+        let after = pass_full_round(&state, &db);
+
+        // No discard: the turn advanced with the hand intact.
+        assert_eq!(after.players[0].hand.len(), MAX_HAND_SIZE);
+        assert!(after.players[0].graveyard.is_empty());
+        assert_eq!(after.turn, 2);
+        assert_eq!(after.active_player, PlayerId(1));
+        assert_eq!(after.step, Step::Upkeep);
+    }
+
+    #[test]
+    fn issue_116_cleanup_removes_marked_damage() {
+        // CR 514.2: all damage marked on permanents is removed during cleanup.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1; hand empty so no discard.
+        let perm = place_permanent(&mut state, CardId(5), PlayerId(0), false, 3);
+
+        let after = pass_full_round(&state, &db);
+
+        assert_eq!(
+            find_perm(&after, perm).damage,
+            0,
+            "marked damage is wiped at cleanup (CR 514.2)"
+        );
     }
 }

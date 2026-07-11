@@ -100,6 +100,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
                     card: card.card,
                     controller: object.controller,
                     tapped: false,
+                    damage: 0,
                     counters: Default::default(),
                 });
             } else if let Some(player) = state.players.get_mut(object.controller.0) {
@@ -226,6 +227,7 @@ mod tests {
             card: CardId(6),
             controller: PlayerId(0),
             tapped: false,
+            damage: 0,
             counters: Default::default(),
         });
         PermanentId(id)

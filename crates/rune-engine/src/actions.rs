@@ -12,6 +12,7 @@ use crate::card_type::CardType;
 use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::phase::Step;
+use crate::player::MAX_HAND_SIZE;
 use crate::resolve::target_is_legal;
 use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
@@ -54,6 +55,15 @@ pub enum Action {
         /// copy, so two identical cards in hand are distinguishable.
         card: CardInstance,
     },
+    /// Discard one card from hand to satisfy the cleanup step's maximum-hand-size
+    /// turn-based action (CR 514.1). Offered — one per card in the active
+    /// player's hand, a select-from-zone choice — only while that player is over
+    /// [`MAX_HAND_SIZE`](crate::MAX_HAND_SIZE) during [`Step::Cleanup`]. Names the
+    /// physical copy, so identical cards stay individually addressable.
+    Discard {
+        /// The specific card in the active player's hand to discard.
+        card: CardInstance,
+    },
 }
 
 impl Action {
@@ -62,7 +72,10 @@ impl Action {
     fn targets(&self) -> &[Target] {
         match self {
             Action::ActivateAbility { targets, .. } => targets,
-            Action::PassPriority | Action::PlayLand { .. } | Action::CastSpell { .. } => &[],
+            Action::PassPriority
+            | Action::PlayLand { .. }
+            | Action::CastSpell { .. }
+            | Action::Discard { .. } => &[],
         }
     }
 
@@ -116,6 +129,26 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         return Vec::new();
     }
     let priority = state.priority;
+
+    // Cleanup step: no player receives priority (CR 514.3). The only choice is
+    // the active player discarding down to the maximum hand size (CR 514.1),
+    // offered as a select-from-zone choice — one [`Action::Discard`] per card in
+    // hand — and only while they are over the limit. Everything else (passing,
+    // lands, spells, abilities) is unavailable here.
+    if state.step == Step::Cleanup {
+        let mut actions = Vec::new();
+        if priority == state.active_player {
+            if let Some(player) = state.players.get(priority.0) {
+                if player.hand.len() > MAX_HAND_SIZE {
+                    for &card in &player.hand {
+                        actions.push(Action::Discard { card });
+                    }
+                }
+            }
+        }
+        return actions;
+    }
+
     let mut actions = vec![Action::PassPriority];
 
     // Sorcery-speed: the active player, in a main phase, with an empty stack.
@@ -340,6 +373,7 @@ mod tests {
             card,
             controller: PlayerId(0),
             tapped: false,
+            damage: 0,
             counters: Default::default(),
         });
         PermanentId(id)

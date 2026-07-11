@@ -39,7 +39,7 @@ pub use characteristics::{characteristics, Characteristics};
 pub use id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use phase::Step;
-pub use player::{Player, STARTING_LIFE};
+pub use player::{Player, MAX_HAND_SIZE, STARTING_LIFE};
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
 };
