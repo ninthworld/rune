@@ -48,6 +48,11 @@ pub struct CardView {
     /// Displayed toughness; see [`CardView::power`]. Present only for creatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toughness: Option<String>,
+    /// The card's keyword abilities as lowercase wire names (e.g. `"flying"`,
+    /// `"first_strike"`), server-computed for display; the client renders badges
+    /// and never derives them. Omitted from the wire when the card has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
 }
 
 /// What the receiving player is allowed to know about an opponent: hidden zones
@@ -956,6 +961,7 @@ mod tests {
                 oracle_text: "{T}: Add {G}.".into(),
                 power: Some("1".into()),
                 toughness: Some("1".into()),
+                keywords: vec![],
             }],
             opponents: vec![OpponentView {
                 player_id: "p2".into(),
@@ -977,6 +983,7 @@ mod tests {
                     oracle_text: String::new(),
                     power: Some("2".into()),
                     toughness: Some("2".into()),
+                    keywords: vec!["flying".into()],
                 },
                 tapped: true,
                 attacking: false,
@@ -1213,6 +1220,7 @@ mod tests {
                 oracle_text: String::new(),
                 power: Some("2".into()),
                 toughness: Some("2".into()),
+                keywords: vec![],
             },
             tapped: false,
             attacking: false,
@@ -1266,6 +1274,34 @@ mod tests {
             serde_json::from_value::<Permanent>(damaged_json).unwrap(),
             damaged
         );
+    }
+
+    #[test]
+    fn issue_153_card_keywords_round_trip_and_elide_when_absent() {
+        // Keyword abilities (issue #153) surface on a CardView as lowercase wire
+        // names for display; the list round-trips when present and elides from the
+        // JSON when the card has none, so a keyword-less card keeps its terse shape.
+        let base = CardView {
+            id: "c1".into(),
+            name: "Skywhisker Drake".into(),
+            type_line: "Creature — Drake".into(),
+            mana_cost: Some("{2}{U}".into()),
+            oracle_text: "Flying".into(),
+            power: Some("2".into()),
+            toughness: Some("2".into()),
+            keywords: vec!["flying".into()],
+        };
+        let json = serde_json::to_value(&base).unwrap();
+        assert_eq!(json.get("keywords"), Some(&serde_json::json!(["flying"])));
+        assert_eq!(serde_json::from_value::<CardView>(json).unwrap(), base);
+
+        // A card with no keywords omits the field entirely.
+        let vanilla = CardView {
+            keywords: vec![],
+            ..base.clone()
+        };
+        let vanilla_json = serde_json::to_value(&vanilla).unwrap();
+        assert!(vanilla_json.get("keywords").is_none());
     }
 
     #[test]

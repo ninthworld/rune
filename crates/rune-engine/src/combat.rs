@@ -11,6 +11,7 @@
 //! function here is a pure predicate/enumeration over an immutable [`GameState`]
 //! — no I/O, no mutation — consistent with the engine's rules.
 
+use crate::card::Keyword;
 use crate::card_type::CardType;
 use crate::characteristics::characteristics;
 use crate::id::{PermanentId, PlayerId};
@@ -56,14 +57,53 @@ fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
         .is_some_and(|c| c.has_type(CardType::Creature))
 }
 
+/// Whether `perm` has printed keyword `keyword` (CR 702). Reads the printed card
+/// data; keyword-granting continuous effects are future work, so the printed
+/// keywords are authoritative here (as printed types are in [`is_creature`]).
+#[must_use]
+pub(crate) fn has_keyword(perm: &Permanent, keyword: Keyword, db: &CardDatabase) -> bool {
+    db.card(perm.card).is_some_and(|c| c.has_keyword(keyword))
+}
+
+/// Whether the creature `blocker` may legally be assigned to block `attacker`
+/// given evasion keywords (CR 509.1b): a creature with flying can be blocked only
+/// by creatures with flying or reach (CR 702.9c, CR 702.17b). Any creature can
+/// block a non-flying attacker.
+///
+/// Both ids are looked up on the battlefield; a missing permanent (a stale id)
+/// yields `false`, so the caller rejects the assignment. This is a per-pair
+/// predicate the block-legality check applies on top of the candidate-set
+/// membership tests, so partial blocks of mixed flying/ground attackers stay
+/// expressible — evasion is enforced in legality, not by hiding candidates.
+#[must_use]
+pub(crate) fn blocker_can_block_attacker(
+    state: &GameState,
+    attacker: PermanentId,
+    blocker: PermanentId,
+    db: &CardDatabase,
+) -> bool {
+    let Some(atk) = state.battlefield.iter().find(|p| p.id == attacker) else {
+        return false;
+    };
+    // A non-flying attacker imposes no evasion constraint.
+    if !has_keyword(atk, Keyword::Flying, db) {
+        return true;
+    }
+    let Some(blk) = state.battlefield.iter().find(|p| p.id == blocker) else {
+        return false;
+    };
+    // CR 702.9c / 702.17b: only flying or reach may block a flyer.
+    has_keyword(blk, Keyword::Flying, db) || has_keyword(blk, Keyword::Reach, db)
+}
+
 /// The permanents the active player may legally declare as attackers right now
 /// (CR 508.1a): creatures they control that are untapped and free of summoning
 /// sickness (CR 302.6). In stable battlefield order.
 ///
 /// This is the multi-select candidate set for the declare-attackers action — one
-/// O(N) scan of the battlefield, never a product over selections. Vigilance,
-/// defender, and "can't attack" restrictions beyond summoning sickness are not
-/// modeled yet.
+/// O(N) scan of the battlefield, never a product over selections. Haste (CR
+/// 702.10b) exempts a creature from the summoning-sickness restriction; defender
+/// and "can't attack" restrictions are not modeled yet.
 #[must_use]
 pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> {
     let active = state.active_player;
@@ -74,7 +114,9 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
             perm.controller == active
                 && is_creature(perm, db)
                 && !perm.tapped
-                && !has_summoning_sickness(perm, state)
+                // CR 302.6, with the CR 702.10b haste exemption: a hasty creature
+                // ignores the summoning-sickness attack restriction.
+                && (!has_summoning_sickness(perm, state) || has_keyword(perm, Keyword::Haste, db))
         })
         .map(|perm| perm.id)
         .collect()
@@ -349,5 +391,88 @@ mod tests {
         let state = GameState::new_two_player();
         assert_eq!(defending_player(&state), Some(PlayerId(1)));
         assert_eq!(defending_player(&GameState::default()), None);
+    }
+
+    /// Put a creature of printed card `card` on the battlefield under `controller`,
+    /// untapped, entered on turn `entered_turn`; returns its fresh id. Used to
+    /// place the keyword fixtures (flying id 18, reach 19, vigilance 20, haste 21).
+    fn creature_card(
+        state: &mut GameState,
+        card: CardId,
+        controller: PlayerId,
+        entered_turn: u32,
+    ) -> PermanentId {
+        let inst = state.new_instance(card);
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(Permanent {
+            id,
+            instance: inst.id,
+            card,
+            controller,
+            tapped: false,
+            entered_turn,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+        });
+        id
+    }
+
+    #[test]
+    fn issue_153_flying_can_be_blocked_only_by_flying_or_reach_cr_702_9c() {
+        // CR 702.9c / 702.17b: a flyer can be blocked only by flying or reach.
+        // Tested both directions: a ground creature cannot, flying and reach can.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let flyer = creature_card(&mut state, CardId(18), PlayerId(0), 0); // flying
+        let ground = creature_card(&mut state, CardId(6), PlayerId(1), 0); // no keyword
+        let other_flyer = creature_card(&mut state, CardId(18), PlayerId(1), 0);
+        let reacher = creature_card(&mut state, CardId(19), PlayerId(1), 0); // reach
+
+        assert!(
+            !blocker_can_block_attacker(&state, flyer, ground, &db),
+            "a ground creature cannot block a flyer (CR 702.9c)"
+        );
+        assert!(
+            blocker_can_block_attacker(&state, flyer, other_flyer, &db),
+            "a flyer can block a flyer (CR 702.9c)"
+        );
+        assert!(
+            blocker_can_block_attacker(&state, flyer, reacher, &db),
+            "a reach creature can block a flyer (CR 702.17b)"
+        );
+
+        // A non-flying attacker imposes no evasion constraint: the ground creature
+        // can block a ground attacker.
+        let ground_attacker = creature_card(&mut state, CardId(6), PlayerId(0), 0);
+        assert!(blocker_can_block_attacker(
+            &state,
+            ground_attacker,
+            ground,
+            &db
+        ));
+    }
+
+    #[test]
+    fn issue_153_haste_creature_is_an_attacker_candidate_cr_702_10b() {
+        // CR 702.10b: haste exempts a creature from the summoning-sickness attack
+        // restriction, so one that entered this very turn may still attack. A
+        // vanilla creature that entered this turn stays ineligible (CR 302.6).
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        let hasty = creature_card(&mut state, CardId(21), PlayerId(0), 2); // entered this turn
+        let sick = creature_card(&mut state, CardId(6), PlayerId(0), 2); // entered this turn
+
+        let candidates = attacker_candidates(&state, &db);
+        assert!(
+            candidates.contains(&hasty),
+            "a hasty creature attacks the turn it enters (CR 702.10b)"
+        );
+        assert!(
+            !candidates.contains(&sick),
+            "a non-hasty creature that entered this turn cannot attack (CR 302.6)"
+        );
     }
 }

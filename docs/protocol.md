@@ -42,6 +42,19 @@ never receives what its player may not know). The concrete types live in the
 Empty collections and absent optionals are omitted from the JSON; clients must
 treat a missing field as its empty/`null` default.
 
+### CardView
+
+A `CardView` carries a card's server-computed characteristics for display: `id`,
+`name`, `type_line`, optional `mana_cost`, `oracle_text`, `power`/`toughness`
+(strings, present only for creatures), and `keywords`.
+
+- `keywords` — the card's keyword abilities (CR 702) as an array of lowercase wire
+  names, e.g. `["flying"]` or `["first_strike", "trample"]`. Server-computed and
+  display-only; the client renders badges and never derives combat behavior from
+  them (which creatures may block, and how damage is dealt, is decided by the
+  engine and surfaced through `valid_actions` and the battlefield). Omitted from
+  the JSON when the card has no keywords.
+
 ### Game over: result
 
 When the game ends (CR 104.2a), the view carries a `result` object and

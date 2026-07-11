@@ -35,7 +35,7 @@ mod zone;
 pub use ability::{is_mana_ability, Ability, Cost, Effect, Target, TargetSpec, TriggerCondition};
 pub use actions::{target_requirements, valid_actions, Action, Block, TargetRequirement};
 pub use apply::apply_action;
-pub use card::{abilities_of, CardData, CardDatabase, Printing, PrintingDatabase, Rarity};
+pub use card::{abilities_of, CardData, CardDatabase, Keyword, Printing, PrintingDatabase, Rarity};
 pub use card_type::{CardType, Supertype};
 pub use characteristics::{characteristics, Characteristics};
 pub use combat::{attacker_candidates, blocker_candidates, declared_attackers};
