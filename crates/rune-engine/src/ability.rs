@@ -14,6 +14,7 @@ use serde::Deserialize;
 
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
+use crate::stack::StackId;
 
 /// One ability of a card.
 ///
@@ -85,6 +86,19 @@ pub enum Effect {
         /// What this effect is allowed to target.
         target: TargetSpec,
     },
+    /// Counter the single spell on the stack this effect targets (CR 701.5a):
+    /// on resolution the targeted spell is removed from the stack without
+    /// resolving and put into its owner's graveyard. The first counterspell.
+    ///
+    /// Like [`Effect::Tap`], the subject is an explicit target rather than the
+    /// controller: `target` is the [`TargetSpec`] (a [`TargetSpec::SpellOnStack`])
+    /// constraining what may be chosen, the *chosen* value is a [`Target::Spell`]
+    /// recorded on the [`crate::StackObject`] at cast (CR 601.2c) and re-checked on
+    /// resolution (CR 608.2b) — a spell whose target already resolved fizzles.
+    CounterSpell {
+        /// What this effect is allowed to target (a spell on the stack).
+        target: TargetSpec,
+    },
 }
 
 impl Effect {
@@ -99,7 +113,7 @@ impl Effect {
     #[must_use]
     pub fn target_spec(&self) -> Option<TargetSpec> {
         match self {
-            Effect::Tap { target } => Some(*target),
+            Effect::Tap { target } | Effect::CounterSpell { target } => Some(*target),
             Effect::AddMana { .. } | Effect::DrawCard { .. } => None,
         }
     }
@@ -127,6 +141,11 @@ pub enum TargetSpec {
     /// Any creature on the battlefield (a permanent whose printed types include
     /// [`crate::CardType::Creature`]).
     AnyCreature,
+    /// Any spell on the stack — a [`crate::StackObjectKind::Spell`] object (CR
+    /// 701.5, "counter target spell"). Abilities on the stack are not spells and
+    /// are never candidates; a mana ability never uses the stack at all (CR
+    /// 605.3), so it can never be countered.
+    SpellOnStack,
 }
 
 /// A **chosen target**: a resolved reference to one specific game object the
@@ -150,6 +169,9 @@ pub enum Target {
     /// A specific physical card, by its per-game instance identity (for targets
     /// that name a card in a zone rather than a permanent).
     Card(CardInstanceId),
+    /// A specific object on the stack, by its [`StackId`] (for targets that name
+    /// a spell on the stack, e.g. a counterspell — CR 701.5).
+    Spell(StackId),
 }
 
 /// The condition under which a [`Ability::Triggered`] triggers.
@@ -266,6 +288,25 @@ mod tests {
             }
             .target_spec(),
             None
+        );
+    }
+
+    #[test]
+    fn counter_spell_effect_round_trips_with_its_target_spec() {
+        // The counterspell effect authors its spec as a bare string tag, and only
+        // it (a targeting effect) reports a spec (CR 701.5).
+        let json = r#"{"kind":"counter_spell","target":"spell_on_stack"}"#;
+        let effect: Effect = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            effect,
+            Effect::CounterSpell {
+                target: TargetSpec::SpellOnStack,
+            }
+        );
+        assert_eq!(effect.target_spec(), Some(TargetSpec::SpellOnStack));
+        assert_eq!(
+            serde_json::from_str::<TargetSpec>(r#""spell_on_stack""#).unwrap(),
+            TargetSpec::SpellOnStack
         );
     }
 

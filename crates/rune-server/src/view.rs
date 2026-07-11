@@ -144,6 +144,7 @@ fn ability_description(effects: &[Effect]) -> String {
             Effect::AddMana { color, amount } => format!("Add {} {}", amount, color.pip()),
             Effect::DrawCard { count } => format!("Draw {count} card(s)"),
             Effect::Tap { .. } => "Tap target".to_string(),
+            Effect::CounterSpell { .. } => "Counter target spell".to_string(),
         })
         .collect();
     if parts.is_empty() {
@@ -465,6 +466,7 @@ fn target_entity_id(target: Target) -> String {
         Target::Player(seat) => player_id(seat),
         Target::Permanent(id) => permanent_entity_id(id),
         Target::Card(id) => card_entity_id(id),
+        Target::Spell(id) => stack_entity_id(id),
     }
 }
 
@@ -475,6 +477,7 @@ fn target_spec_prompt(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyPlayer => "Choose target player",
         TargetSpec::AnyPermanent => "Choose target permanent",
         TargetSpec::AnyCreature => "Choose target creature",
+        TargetSpec::SpellOnStack => "Choose target spell",
     }
 }
 
@@ -615,11 +618,16 @@ fn valid_action_view(
             vec![card_entity_id(card.id)],
             Vec::new(),
         ),
-        Action::CastSpell { card } => (
+        // A cast's target requirements (CR 601.2c) come from the same per-slot
+        // enumeration abilities use ([`target_requirements`]); an untargeted spell
+        // projects none. Wiring the returned selection back into a targeted cast is
+        // a later server slice (ADR 0009 §Client / #73) — the engine already
+        // records and re-checks the targets.
+        Action::CastSpell { card, .. } => (
             "cast_spell".to_string(),
             format!("Cast {}", card_name(card.card, db)),
             vec![card_entity_id(card.id)],
-            Vec::new(),
+            ability_requirements(state, db, action),
         ),
         Action::Discard { card } => (
             "discard".to_string(),
@@ -913,11 +921,13 @@ fn bind_blockers(state: &GameState, db: &CardDatabase, targets: &[TargetChoice])
     Some(Action::DeclareBlockers { blocks })
 }
 
-/// Map a returned ability-target selection onto the concrete
-/// [`Action::ActivateAbility`] (ADR 0009 §Enumeration): one target per slot, in
-/// slot order, each drawn from that slot's freshly recomputed legal candidate set.
-/// `None` if a slot is unanswered, answered with other than a single id, or answered
-/// with an id outside its candidates.
+/// Map a returned target selection onto the concrete targeted engine action (ADR
+/// 0009 §Enumeration): one target per slot, in slot order, each drawn from that
+/// slot's freshly recomputed legal candidate set. Handles both an
+/// [`Action::ActivateAbility`] and a targeted [`Action::CastSpell`] (CR 601.2c —
+/// targets chosen as part of casting), since the two share the same effect-IR
+/// requirement machinery. `None` if a slot is unanswered, answered with other than
+/// a single id, or answered with an id outside its candidates.
 fn bind_ability_targets(
     state: &GameState,
     db: &CardDatabase,
@@ -937,17 +947,20 @@ fn bind_ability_targets(
             .find(|&candidate| target_entity_id(candidate) == *id)?;
         chosen.push(target);
     }
-    let Action::ActivateAbility {
-        permanent, index, ..
-    } = action
-    else {
-        return None;
-    };
-    Some(Action::ActivateAbility {
-        permanent: *permanent,
-        index: *index,
-        targets: chosen,
-    })
+    match action {
+        Action::ActivateAbility {
+            permanent, index, ..
+        } => Some(Action::ActivateAbility {
+            permanent: *permanent,
+            index: *index,
+            targets: chosen,
+        }),
+        Action::CastSpell { card, .. } => Some(Action::CastSpell {
+            card: *card,
+            targets: chosen,
+        }),
+        _ => None,
+    }
 }
 
 /// The [`PermanentId`] a chosen entity id names within `candidates`, or `None` when
@@ -1033,7 +1046,7 @@ pub(crate) fn resolve_action(
                 bind_attackers(state, db, &offered.requirements, &choice.targets)
             }
             Action::DeclareBlockers { .. } => bind_blockers(state, db, &choice.targets),
-            Action::ActivateAbility { .. } => {
+            Action::ActivateAbility { .. } | Action::CastSpell { .. } => {
                 if !targets_fill_requirements(&choice.targets, &offered.requirements) {
                     return None;
                 }

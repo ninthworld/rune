@@ -7,7 +7,7 @@
 
 use crate::ability::{Effect, Target, TargetSpec};
 use crate::apply::{apply_effect, apply_targeted_effect};
-use crate::card::CardData;
+use crate::card::{spell_effects_of, CardData};
 use crate::card_type::CardType;
 use crate::id::PermanentId;
 use crate::stack::{StackObject, StackObjectKind};
@@ -46,6 +46,14 @@ pub(crate) fn target_is_legal(
                     .card(p.card)
                     .is_some_and(|c| c.has_type(CardType::Creature))
         }),
+        // A spell target is legal while that exact spell is still on the stack
+        // (CR 701.5): once it has resolved (or been countered) it is gone, so a
+        // counterspell aimed at it fizzles (CR 608.2b). An ability on the stack is
+        // not a spell and is never a legal "counter target spell" target.
+        (TargetSpec::SpellOnStack, Target::Spell(id)) => state
+            .stack
+            .iter()
+            .any(|o| o.id == id && matches!(o.kind, StackObjectKind::Spell { .. })),
         // Any other spec/value pairing names the wrong kind of object and is
         // never legal.
         _ => false,
@@ -58,77 +66,92 @@ pub(crate) fn target_is_legal(
 /// an object all of whose chosen targets are now illegal does not resolve at all
 /// — it is removed from the stack with no effect (CR 608.2b, "fizzle").
 pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, db: &CardDatabase) {
-    // The specs the stored targets were chosen for, in the same order the
-    // targeting effects consume them. A spell carries no engine-modeled effects
-    // yet, so it exposes no specs (its recorded targets are inert until spell
-    // effects exist).
-    let specs: Vec<TargetSpec> = match &object.kind {
-        StackObjectKind::Ability { effects, .. } => {
-            effects.iter().filter_map(Effect::target_spec).collect()
-        }
-        StackObjectKind::Spell { .. } => Vec::new(),
+    // The effects this object resolves, and the specs the stored targets were
+    // chosen for (same order the targeting effects consume them). An ability
+    // carries its effects on the stack object; a spell's effects are read from
+    // its card's spell IR ([`spell_effects_of`], CR 601.2c/608.2c).
+    let effects: Vec<Effect> = match &object.kind {
+        StackObjectKind::Ability { effects, .. } => effects.clone(),
+        StackObjectKind::Spell { card } => spell_effects_of(db, card.card),
     };
+    let specs: Vec<TargetSpec> = effects.iter().filter_map(Effect::target_spec).collect();
 
     // CR 608.2b: if the object chose targets and *every* one is now illegal, it
-    // is removed from the stack without resolving — it simply ceases to exist,
-    // producing no effect. Only abilities expose specs today (see above), so a
-    // fizzle can only befall an ability; once spell effects carry specs, a
-    // fizzled spell must additionally be put into its owner's graveyard here.
+    // is removed from the stack without resolving — none of its effects occur. A
+    // fizzled *spell* still leaves the stack for its owner's graveyard (it is a
+    // card that failed to resolve); a fizzled ability simply ceases to exist.
     if !specs.is_empty()
         && specs
             .iter()
             .zip(&object.targets)
             .all(|(&spec, &target)| !target_is_legal(spec, target, state, db))
     {
-        return;
-    }
-
-    match object.kind {
-        StackObjectKind::Spell { card } => {
-            // Route by the resolving card's types (CR 608.3). A permanent spell
-            // enters the battlefield with a fresh id (its instance id carries
-            // over); an instant/sorcery creates no Permanent and instead goes to
-            // its owner's graveyard as the same instance (CR 608.2m). The engine
-            // does not yet track ownership apart from control, so we use the
-            // controller's graveyard on the owner == controller assumption —
-            // ownership tracking is future work.
-            if db.card(card.card).is_some_and(CardData::is_permanent) {
-                let id = state.mint_id();
-                let entered_turn = state.turn;
-                state.battlefield.push(Permanent {
-                    id: PermanentId(id),
-                    instance: card.id,
-                    card: card.card,
-                    controller: object.controller,
-                    tapped: false,
-                    entered_turn,
-                    attacking: false,
-                    blocking: None,
-                    damage: 0,
-                    counters: Default::default(),
-                });
-            } else if let Some(player) = state.players.get_mut(object.controller.0) {
+        if let StackObjectKind::Spell { card } = object.kind {
+            if let Some(player) = state.players.get_mut(object.controller.0) {
                 player.graveyard.push(card);
             }
         }
-        StackObjectKind::Ability { effects, .. } => {
-            // Pair each targeting effect with the next stored target, applying
-            // it only if that target is still legal; individually-illegal
-            // targets are skipped (CR 608.2c) while legal ones resolve. Effects
-            // with an implicit subject apply unconditionally.
-            let mut targets = object.targets.iter();
-            for effect in &effects {
-                match effect.target_spec() {
-                    Some(spec) => {
-                        if let Some(&target) = targets.next() {
-                            if target_is_legal(spec, target, state, db) {
-                                apply_targeted_effect(state, effect, target, object.controller);
-                            }
-                        }
+        return;
+    }
+
+    // Apply the object's effects, pairing each targeting effect with the next
+    // stored target and applying it only while that target is still legal;
+    // individually-illegal targets are skipped (CR 608.2c) while legal ones
+    // resolve. Effects with an implicit subject apply unconditionally.
+    apply_effects_with_targets(state, &effects, &object.targets, object.controller, db);
+
+    // A spell additionally leaves the stack for its final zone (CR 608.3). A
+    // permanent spell enters the battlefield with a fresh id (its instance id
+    // carries over); an instant/sorcery creates no Permanent and instead goes to
+    // its owner's graveyard as the same instance (CR 608.2m). Ownership apart from
+    // control is not tracked yet, so the controller's graveyard stands in on the
+    // owner == controller assumption. An ability has no card to move.
+    if let StackObjectKind::Spell { card } = object.kind {
+        if db.card(card.card).is_some_and(CardData::is_permanent) {
+            let id = state.mint_id();
+            let entered_turn = state.turn;
+            state.battlefield.push(Permanent {
+                id: PermanentId(id),
+                instance: card.id,
+                card: card.card,
+                controller: object.controller,
+                tapped: false,
+                entered_turn,
+                attacking: false,
+                blocking: None,
+                damage: 0,
+                counters: Default::default(),
+            });
+        } else if let Some(player) = state.players.get_mut(object.controller.0) {
+            player.graveyard.push(card);
+        }
+    }
+}
+
+/// Apply `effects` in order on behalf of `controller`, pairing each targeting
+/// effect with the next entry of `stored` targets. A targeting effect applies
+/// only while its chosen target is still legal against current state (CR 608.2c —
+/// individually-illegal targets are skipped); an implicit-subject effect always
+/// applies. Shared by spell and ability resolution so both walk targets the same
+/// way.
+fn apply_effects_with_targets(
+    state: &mut GameState,
+    effects: &[Effect],
+    stored: &[Target],
+    controller: crate::id::PlayerId,
+    db: &CardDatabase,
+) {
+    let mut targets = stored.iter();
+    for effect in effects {
+        match effect.target_spec() {
+            Some(spec) => {
+                if let Some(&target) = targets.next() {
+                    if target_is_legal(spec, target, state, db) {
+                        apply_targeted_effect(state, effect, target, controller);
                     }
-                    None => apply_effect(state, effect, object.controller),
                 }
             }
+            None => apply_effect(state, effect, controller),
         }
     }
 }
@@ -179,7 +202,14 @@ mod tests {
         let mut state = slice_state();
         state.players[0].mana_pool.add(Color::Green, 1);
         let scout = hand_instance(&state, 0, CardId(6));
-        let state = apply_action(&state, &Action::CastSpell { card: scout }, &db);
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: scout,
+                targets: Vec::new(),
+            },
+            &db,
+        );
         let state = apply_action(&state, &Action::PassPriority, &db);
         let state = apply_action(&state, &Action::PassPriority, &db);
         // The permanent that resolves carries the same instance the spell had.
@@ -362,6 +392,54 @@ mod tests {
         assert!(!target_is_legal(
             TargetSpec::AnyCreature,
             target,
+            &state,
+            &db
+        ));
+    }
+
+    #[test]
+    fn issue_148_spell_on_stack_target_is_legal_only_while_the_spell_is_on_the_stack() {
+        // CR 701.5: a "counter target spell" target is legal while that exact spell
+        // is on the stack and illegal once it has left (resolved/countered). An
+        // ability on the stack is not a spell and is never a legal target.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let spell = state.new_instance(CardId(1));
+        let sid = StackId(state.mint_id());
+        state.stack.push(StackObject {
+            id: sid,
+            controller: PlayerId(0),
+            kind: StackObjectKind::Spell { card: spell },
+            targets: Vec::new(),
+        });
+        // An ability sharing the stack is not a spell target.
+        let aid = StackId(state.mint_id());
+        state.stack.push(StackObject {
+            id: aid,
+            controller: PlayerId(0),
+            kind: StackObjectKind::Ability {
+                source: crate::id::PermanentId(1),
+                effects: vec![Effect::DrawCard { count: 1 }],
+            },
+            targets: Vec::new(),
+        });
+
+        assert!(target_is_legal(
+            TargetSpec::SpellOnStack,
+            Target::Spell(sid),
+            &state,
+            &db
+        ));
+        assert!(
+            !target_is_legal(TargetSpec::SpellOnStack, Target::Spell(aid), &state, &db),
+            "an ability on the stack is not a spell"
+        );
+
+        // Once the spell leaves the stack it is no longer a legal target.
+        state.stack.retain(|o| o.id != sid);
+        assert!(!target_is_legal(
+            TargetSpec::SpellOnStack,
+            Target::Spell(sid),
             &state,
             &db
         ));

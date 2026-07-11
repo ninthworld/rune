@@ -99,5 +99,15 @@
     "types": ["enchantment"],
     "mana_cost": "{G}",
     "oracle_text": ""
+  },
+  {
+    "id": 11,
+    "name": "Runic Negation",
+    "types": ["instant"],
+    "mana_cost": "{U}",
+    "oracle_text": "Counter target spell.",
+    "spell_effects": [
+      { "kind": "counter_spell", "target": "spell_on_stack" }
+    ]
   }
 ]

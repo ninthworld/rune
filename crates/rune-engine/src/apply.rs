@@ -53,7 +53,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         } => {
             apply_activate_ability(&mut next, *permanent, *index, targets, db);
         }
-        Action::CastSpell { card } => apply_cast_spell(&mut next, *card, db),
+        Action::CastSpell { card, targets } => apply_cast_spell(&mut next, *card, targets, db),
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
@@ -503,7 +503,12 @@ fn apply_activate_ability(
 /// (a permanent enters the battlefield, an instant/sorcery goes to the graveyard,
 /// CR 608.3), routed in [`resolve_stack_object`]; timing legality (instant vs.
 /// sorcery speed, CR 117.1a) is enforced upstream in [`crate::valid_actions`].
-fn apply_cast_spell(state: &mut GameState, card: CardInstance, db: &CardDatabase) {
+fn apply_cast_spell(
+    state: &mut GameState,
+    card: CardInstance,
+    targets: &[Target],
+    db: &CardDatabase,
+) {
     let controller = state.priority;
     let Some(data) = db.card(card.card) else {
         return;
@@ -527,8 +532,11 @@ fn apply_cast_spell(state: &mut GameState, card: CardInstance, db: &CardDatabase
         id: StackId(id),
         controller,
         kind: StackObjectKind::Spell { card },
-        // Choosing targets when casting is issue #71; none for now.
-        targets: Vec::new(),
+        // The targets chosen as part of casting this spell (CR 601.2c), already
+        // validated against freshly computed legal sets in `action_is_legal` and
+        // re-checked once more on resolution (CR 608.2b). Empty for a spell that
+        // targets nothing.
+        targets: targets.to_vec(),
     });
     state.consecutive_passes = 0;
 }
@@ -549,7 +557,7 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
         }
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
-        Effect::Tap { .. } => {}
+        Effect::Tap { .. } | Effect::CounterSpell { .. } => {}
     }
 }
 
@@ -572,6 +580,23 @@ pub(crate) fn apply_targeted_effect(
             if let Target::Permanent(id) = target {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
                     perm.tapped = true;
+                }
+            }
+        }
+        // Counter the targeted spell (CR 701.5a): remove it from the stack without
+        // resolving and put its card into its owner's graveyard. The caller has
+        // already re-checked that the target is still a spell on the stack (CR
+        // 608.2b); ownership apart from control is not tracked yet, so the countered
+        // spell's controller stands in as its owner.
+        Effect::CounterSpell { .. } => {
+            if let Target::Spell(id) = target {
+                if let Some(pos) = state.stack.iter().position(|o| o.id == id) {
+                    let countered = state.stack.remove(pos);
+                    if let StackObjectKind::Spell { card } = countered.kind {
+                        if let Some(player) = state.players.get_mut(countered.controller.0) {
+                            player.graveyard.push(card);
+                        }
+                    }
                 }
             }
         }
@@ -745,7 +770,14 @@ mod tests {
         let mut state = slice_state();
         state.players[0].mana_pool.add(Color::Green, 1);
         let scout = hand_instance(&state, 0, CardId(6));
-        let after = apply_action(&state, &Action::CastSpell { card: scout }, &db);
+        let after = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: scout,
+                targets: Vec::new(),
+            },
+            &db,
+        );
         assert_eq!(after.stack.len(), 1);
         assert_eq!(after.players[0].mana_pool.green, 0);
         assert!(!after.players[0].hand.iter().any(|c| c.id == scout.id));
@@ -785,7 +817,14 @@ mod tests {
         assert_eq!(state.priority, PlayerId(0));
 
         // Cast Verdant Scout.
-        let state = apply_action(&state, &Action::CastSpell { card: scout_card }, &db);
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: scout_card,
+                targets: Vec::new(),
+            },
+            &db,
+        );
         assert_eq!(state.stack.len(), 1);
         assert_eq!(state.players[0].mana_pool.green, 0);
 
@@ -1693,5 +1732,131 @@ mod tests {
         let result = after.result().unwrap();
         assert_eq!(result.winner, Some(PlayerId(0)));
         assert_eq!(result.reason, LossReason::ZeroLife);
+    }
+
+    // ----- Spell targets at cast + the first counterspell (issue #148) -----
+
+    #[test]
+    fn issue_148_counterspell_counters_a_creature_spell_end_to_end_cr_701_5() {
+        // A creature spell (player 1) waits on the stack; player 0, holding
+        // priority, casts Runic Negation ({U} instant, id 11) targeting it. The
+        // counterspell records its target at cast (CR 601.2c) and, resolving first
+        // (LIFO), removes the creature spell to its owner's graveyard without
+        // resolving (CR 701.5a) — the creature never enters the battlefield.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+
+        // Player 1's Thornback Boar (vanilla creature, id 1) on the stack.
+        let boar = state.new_instance(CardId(1));
+        let boar_sid = StackId(state.mint_id());
+        state.stack.push(StackObject {
+            id: boar_sid,
+            controller: PlayerId(1),
+            kind: StackObjectKind::Spell { card: boar },
+            targets: Vec::new(),
+        });
+
+        // Player 0 holds priority with the counterspell and {U}.
+        let negation = state.new_instance(CardId(11));
+        state.players[0].hand = vec![negation];
+        state.players[0].mana_pool.add(Color::Blue, 1);
+        state.priority = PlayerId(0);
+
+        // Cast the counterspell targeting the creature spell (CR 601.2c).
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: negation,
+                targets: vec![Target::Spell(boar_sid)],
+            },
+            &db,
+        );
+        assert_eq!(
+            state.stack.len(),
+            2,
+            "counterspell stacked over the creature"
+        );
+        assert_eq!(
+            state.stack[1].targets,
+            vec![Target::Spell(boar_sid)],
+            "the chosen target is recorded on the stack at cast (CR 601.2c)"
+        );
+        assert_eq!(state.players[0].mana_pool.blue, 0, "the {{U}} was paid");
+
+        // Both pass: the counterspell resolves first and counters the creature.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+
+        assert!(state.stack.is_empty(), "both spells have left the stack");
+        assert!(
+            state.battlefield.iter().all(|p| p.card != CardId(1)),
+            "the countered creature never entered the battlefield (CR 701.5a)"
+        );
+        assert!(
+            state.players[1].graveyard.contains(&boar),
+            "the countered spell went to its owner's graveyard (CR 701.5a)"
+        );
+        assert!(
+            state.players[0]
+                .graveyard
+                .iter()
+                .any(|c| c.id == negation.id),
+            "the resolved counterspell went to its owner's graveyard (CR 608.2m)"
+        );
+    }
+
+    #[test]
+    fn issue_148_counterspell_fizzles_when_its_target_resolves_first_cr_608_2b() {
+        // If the targeted spell resolves before the counterspell (the counterspell
+        // sits *beneath* it), the counterspell's only target is gone at resolution,
+        // so it fizzles (CR 608.2b): no spell is countered, and the counterspell
+        // still goes to its owner's graveyard.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+
+        // Bottom of the stack: player 0's counterspell aimed at the creature above.
+        let negation = state.new_instance(CardId(11));
+        let neg_sid = StackId(state.mint_id());
+        let boar = state.new_instance(CardId(1));
+        let boar_sid = StackId(state.mint_id());
+        state.stack.push(StackObject {
+            id: neg_sid,
+            controller: PlayerId(0),
+            kind: StackObjectKind::Spell { card: negation },
+            targets: vec![Target::Spell(boar_sid)],
+        });
+        // Top of the stack: player 1's vanilla creature spell, resolves first.
+        state.stack.push(StackObject {
+            id: boar_sid,
+            controller: PlayerId(1),
+            kind: StackObjectKind::Spell { card: boar },
+            targets: Vec::new(),
+        });
+
+        // Resolve the top (the creature): it enters the battlefield.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(
+            state.battlefield.iter().any(|p| p.card == CardId(1)),
+            "the creature spell resolved onto the battlefield"
+        );
+
+        // Resolve the counterspell: its target is gone, so it fizzles (CR 608.2b).
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(state.stack.is_empty());
+        assert!(
+            state.battlefield.iter().any(|p| p.card == CardId(1)),
+            "the creature survives — nothing was countered"
+        );
+        assert!(
+            state.players[0]
+                .graveyard
+                .iter()
+                .any(|c| c.id == negation.id),
+            "a fizzled spell still goes to its owner's graveyard (CR 608.2b)"
+        );
     }
 }
