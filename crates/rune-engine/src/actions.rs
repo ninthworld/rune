@@ -523,6 +523,18 @@ fn legal_targets_for_spec(spec: TargetSpec, state: &GameState, db: &CardDatabase
             .iter()
             .map(|perm| Target::Permanent(perm.id))
             .collect(),
+        // "Any target" (CR 115.4): players and battlefield permanents together;
+        // the `target_is_legal` filter below keeps only creatures and in-game
+        // players, so a non-creature permanent never survives it.
+        TargetSpec::AnyTarget => (0..state.players.len())
+            .map(|seat| Target::Player(PlayerId(seat)))
+            .chain(
+                state
+                    .battlefield
+                    .iter()
+                    .map(|perm| Target::Permanent(perm.id)),
+            )
+            .collect(),
         // Only spells on the stack are candidates — abilities are not spells, and
         // mana abilities never use the stack (CR 605.3), so neither can be a
         // "counter target spell" candidate.

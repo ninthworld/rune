@@ -404,7 +404,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 11);
+        assert_eq!(db.len(), 17);
     }
 
     #[test]
@@ -541,10 +541,73 @@ mod tests {
     }
 
     #[test]
+    fn issue_149_effect_ir_wave_fixtures_carry_their_verbs() {
+        use crate::ability::{Ability, PlayerRef, TargetSpec, TriggerCondition};
+        use crate::state::CounterKind;
+        let db = CardDatabase::bundled().unwrap();
+
+        // A burn instant: deal 2 to any target.
+        let shock = db.card(CardId(12)).unwrap();
+        assert_eq!(shock.name, "Cinder Shock");
+        assert_eq!(
+            shock.spell_effects,
+            vec![Effect::DealDamage {
+                target: TargetSpec::AnyTarget,
+                amount: 2
+            }]
+        );
+        // A destroy sorcery.
+        let ray = db.card(CardId(13)).unwrap();
+        assert_eq!(
+            ray.spell_effects,
+            vec![Effect::Destroy {
+                target: TargetSpec::AnyCreature
+            }]
+        );
+        // A counters-ETB creature: its ETB trigger puts a +1/+1 counter on a
+        // target creature.
+        let sprite = db.card(CardId(14)).unwrap();
+        assert_eq!(
+            sprite.abilities,
+            vec![Ability::Triggered {
+                event: TriggerCondition::SelfEntersBattlefield,
+                effects: vec![Effect::PutCounters {
+                    target: TargetSpec::AnyCreature,
+                    counter: CounterKind::PlusOnePlusOne,
+                    count: 1,
+                }],
+            }]
+        );
+        // Life gain/loss instants and a -1/-1 sorcery.
+        assert_eq!(
+            db.card(CardId(15)).unwrap().spell_effects,
+            vec![Effect::GainLife {
+                player_ref: PlayerRef::Controller,
+                amount: 3
+            }]
+        );
+        assert_eq!(
+            db.card(CardId(16)).unwrap().spell_effects,
+            vec![Effect::LoseLife {
+                player_ref: PlayerRef::Controller,
+                amount: 2
+            }]
+        );
+        assert_eq!(
+            db.card(CardId(17)).unwrap().spell_effects,
+            vec![Effect::PutCounters {
+                target: TargetSpec::AnyCreature,
+                counter: CounterKind::MinusOneMinusOne,
+                count: 1,
+            }]
+        );
+    }
+
+    #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the eleven fixtures; FIX2 reprints one — twelve printings total.
-        assert_eq!(printings.len(), 12);
+        // FIX prints the seventeen fixtures; FIX2 reprints one — eighteen printings total.
+        assert_eq!(printings.len(), 18);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));

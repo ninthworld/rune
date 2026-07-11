@@ -145,6 +145,15 @@ fn ability_description(effects: &[Effect]) -> String {
             Effect::DrawCard { count } => format!("Draw {count} card(s)"),
             Effect::Tap { .. } => "Tap target".to_string(),
             Effect::CounterSpell { .. } => "Counter target spell".to_string(),
+            Effect::DealDamage { amount, .. } => format!("Deal {amount} damage to target"),
+            Effect::Destroy { .. } => "Destroy target".to_string(),
+            Effect::GainLife { amount, .. } => format!("Gain {amount} life"),
+            Effect::LoseLife { amount, .. } => format!("Lose {amount} life"),
+            Effect::PutCounters { counter, count, .. } => format!(
+                "Put {} {} counter(s) on target",
+                count,
+                counter_kind_str(*counter)
+            ),
         })
         .collect();
     if parts.is_empty() {
@@ -478,6 +487,7 @@ fn target_spec_prompt(spec: TargetSpec) -> &'static str {
         TargetSpec::AnyPermanent => "Choose target permanent",
         TargetSpec::AnyCreature => "Choose target creature",
         TargetSpec::SpellOnStack => "Choose target spell",
+        TargetSpec::AnyTarget => "Choose any target",
     }
 }
 

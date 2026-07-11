@@ -5,7 +5,7 @@
 //! runs replacement effects, state-based actions, and trigger collection, and
 //! returns the new state. Pure over an immutable [`crate::GameState`].
 
-use crate::ability::{is_mana_ability, Ability, Cost, Effect, Target};
+use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
 use crate::actions::{action_is_legal, Action, Block};
 use crate::card::abilities_of;
 use crate::combat::{combat_damage, priority_after_step_change, CombatDamage};
@@ -555,9 +555,29 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
                 player.draw();
             }
         }
+        // CR 119.3: the referenced player gains life. `Controller` is "you", the
+        // one player fetched above; other refs are added as effects need them.
+        Effect::GainLife {
+            player_ref: PlayerRef::Controller,
+            amount,
+        } => {
+            player.life += i32::try_from(*amount).unwrap_or(i32::MAX);
+        }
+        // CR 119.3: the referenced player loses life; a drop to 0 or less feeds
+        // the zero-life state-based action (CR 704.5a) in the SBA loop.
+        Effect::LoseLife {
+            player_ref: PlayerRef::Controller,
+            amount,
+        } => {
+            player.life -= i32::try_from(*amount).unwrap_or(i32::MAX);
+        }
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
-        Effect::Tap { .. } | Effect::CounterSpell { .. } => {}
+        Effect::Tap { .. }
+        | Effect::CounterSpell { .. }
+        | Effect::DealDamage { .. }
+        | Effect::Destroy { .. }
+        | Effect::PutCounters { .. } => {}
     }
 }
 
@@ -600,8 +620,55 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // Deal damage to the chosen target (CR 120.3): to a creature it is marked
+        // (CR 120.3d) for the lethal-damage SBA (CR 704.5g); to a player it is
+        // life loss (CR 120.3a) feeding the zero-life SBA (CR 704.5a).
+        Effect::DealDamage { amount, .. } => match target {
+            Target::Permanent(id) => {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    perm.damage = perm.damage.saturating_add(*amount);
+                }
+            }
+            Target::Player(seat) => {
+                if let Some(p) = state.players.get_mut(seat.0) {
+                    p.life -= i32::try_from(*amount).unwrap_or(i32::MAX);
+                }
+            }
+            Target::Card(_) | Target::Spell(_) => {}
+        },
+        // Destroy the targeted permanent (CR 701.7): move it to its owner's
+        // graveyard, the same path lethal damage uses in the SBA loop. Ownership
+        // apart from control is not tracked yet, so the controller stands in as
+        // the owner (mirrors [`crate::sba`]). Regeneration is out of scope.
+        Effect::Destroy { .. } => {
+            if let Target::Permanent(id) = target {
+                if let Some(pos) = state.battlefield.iter().position(|p| p.id == id) {
+                    let perm = state.battlefield.remove(pos);
+                    if let Some(owner) = state.players.get_mut(perm.controller.0) {
+                        owner.graveyard.push(CardInstance {
+                            id: perm.instance,
+                            card: perm.card,
+                        });
+                    }
+                }
+            }
+        }
+        // Put counters on the targeted permanent (CR 122). Current power/toughness
+        // folds `+1/+1` / `-1/-1` counters in on demand (CR 613.7c), so a `-1/-1`
+        // counter can turn lethal by lowering toughness to at or below marked
+        // damage; the SBA loop then destroys it (CR 704.5g).
+        Effect::PutCounters { counter, count, .. } => {
+            if let Target::Permanent(id) = target {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    *perm.counters.entry(*counter).or_insert(0) += *count;
+                }
+            }
+        }
         // Implicit-subject effects do not target; they never reach here.
-        Effect::AddMana { .. } | Effect::DrawCard { .. } => {}
+        Effect::AddMana { .. }
+        | Effect::DrawCard { .. }
+        | Effect::GainLife { .. }
+        | Effect::LoseLife { .. } => {}
     }
 }
 
@@ -1858,5 +1925,212 @@ mod tests {
                 .any(|c| c.id == negation.id),
             "a fizzled spell still goes to its owner's graveyard (CR 608.2b)"
         );
+    }
+
+    // ----- Effect IR wave: damage, destroy, life, counters (issue #149) -----
+
+    /// A precombat-main two-player game with player 0 the active player holding
+    /// priority — so player 0 may cast at both instant and sorcery speed, an empty
+    /// stack in front of it. Player 0 is the caster in the tests below.
+    fn main_phase_p0() -> GameState {
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        state
+    }
+
+    #[test]
+    fn issue_149_burn_spell_kills_a_creature_via_lethal_damage_sba_cr_704_5g() {
+        // A burn spell that deals damage equal to a creature's toughness marks
+        // lethal damage; the CR 704.5g state-based action then destroys it.
+        let db = db();
+        let mut state = main_phase_p0();
+        // Thornback Boar is a 3/2; Cinder Shock deals exactly 2 → lethal.
+        let boar = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+        let shock = state.new_instance(CardId(12));
+        state.players[0].hand = vec![shock];
+        state.players[0].mana_pool.add(Color::Red, 1);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: shock,
+                targets: vec![Target::Permanent(boar)],
+            },
+            &db,
+        );
+        assert_eq!(state.stack.len(), 1, "the burn spell is on the stack");
+        let state = pass_full_round(&state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == boar),
+            "the burned creature is destroyed (CR 704.5g)"
+        );
+        assert_eq!(
+            state.players[1].graveyard.len(),
+            1,
+            "it went to its owner's graveyard"
+        );
+    }
+
+    #[test]
+    fn issue_149_burn_spell_to_a_player_drops_life_and_loses_at_zero_cr_704_5a() {
+        // The same burn verb aimed at a player is life loss (CR 120.3a); dropping a
+        // player to 0 feeds the zero-life loss (CR 704.5a).
+        let db = db();
+        let mut state = main_phase_p0();
+        state.players[1].life = 2;
+        let shock = state.new_instance(CardId(12));
+        state.players[0].hand = vec![shock];
+        state.players[0].mana_pool.add(Color::Red, 1);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: shock,
+                targets: vec![Target::Player(PlayerId(1))],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert_eq!(state.players[1].life, 0);
+        assert!(state.players[1].has_lost);
+        assert_eq!(state.players[1].loss_reason, Some(LossReason::ZeroLife));
+    }
+
+    #[test]
+    fn issue_149_destroy_puts_a_creature_in_its_owners_graveyard_cr_701_7() {
+        let db = db();
+        let mut state = main_phase_p0();
+        let boar = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+        // Sunder Ray is a {2}{W} sorcery: white for the pip, green covers the {2}.
+        let ray = state.new_instance(CardId(13));
+        state.players[0].hand = vec![ray];
+        state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.add(Color::Green, 2);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: ray,
+                targets: vec![Target::Permanent(boar)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == boar),
+            "the targeted creature is destroyed (CR 701.7)"
+        );
+        assert!(state.players[1]
+            .graveyard
+            .iter()
+            .any(|c| c.card == CardId(1)));
+    }
+
+    #[test]
+    fn issue_149_destroy_fizzles_if_its_target_left_first_cr_608_2b() {
+        let db = db();
+        let mut state = main_phase_p0();
+        let boar = place_permanent(&mut state, CardId(1), PlayerId(1), false, 0);
+        let ray = state.new_instance(CardId(13));
+        state.players[0].hand = vec![ray];
+        state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.add(Color::Green, 2);
+
+        let mut state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: ray,
+                targets: vec![Target::Permanent(boar)],
+            },
+            &db,
+        );
+        // The target leaves the battlefield before the sorcery resolves.
+        state.battlefield.retain(|p| p.id != boar);
+
+        let state = pass_full_round(&state, &db);
+        assert!(state.stack.is_empty());
+        assert!(
+            state.players[0].graveyard.iter().any(|c| c.id == ray.id),
+            "a fizzled spell still goes to its owner's graveyard (CR 608.2b)"
+        );
+    }
+
+    #[test]
+    fn issue_149_minus_one_counter_lowers_toughness_to_lethal_cr_704_5g() {
+        // A -1/-1 counter folds into computed toughness (CR 613.7c). A 3/2 with 1
+        // marked damage is not lethal (1 < 2); after a -1/-1 counter it is a 2/1
+        // and 1 damage is lethal (1 ≥ 1), so the SBA destroys it.
+        let db = db();
+        let mut state = main_phase_p0();
+        let boar = place_permanent(&mut state, CardId(1), PlayerId(1), false, 1);
+        let touch = state.new_instance(CardId(17)); // Withering Touch {B}, -1/-1
+        state.players[0].hand = vec![touch];
+        state.players[0].mana_pool.add(Color::Black, 1);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: touch,
+                targets: vec![Target::Permanent(boar)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == boar),
+            "a -1/-1 counter made toughness ≤ marked damage → destroyed (CR 704.5g)"
+        );
+        assert_eq!(state.players[1].graveyard.len(), 1);
+    }
+
+    #[test]
+    fn issue_149_life_gain_adds_to_a_low_life_total_cr_119() {
+        let db = db();
+        let mut state = main_phase_p0();
+        state.players[0].life = 1;
+        let balm = state.new_instance(CardId(15)); // Soothing Balm {W}, gain 3
+        state.players[0].hand = vec![balm];
+        state.players[0].mana_pool.add(Color::White, 1);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: balm,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert_eq!(state.players[0].life, 4);
+        assert!(!state.players[0].has_lost);
+    }
+
+    #[test]
+    fn issue_149_life_loss_to_exactly_zero_triggers_the_loss_cr_704_5a() {
+        let db = db();
+        let mut state = main_phase_p0();
+        state.players[0].life = 2;
+        let ordeal = state.new_instance(CardId(16)); // Vexing Ordeal {B}, lose 2
+        state.players[0].hand = vec![ordeal];
+        state.players[0].mana_pool.add(Color::Black, 1);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: ordeal,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert_eq!(state.players[0].life, 0);
+        assert!(state.players[0].has_lost);
+        assert_eq!(state.players[0].loss_reason, Some(LossReason::ZeroLife));
     }
 }

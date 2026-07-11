@@ -16,6 +16,8 @@
 
 use std::collections::BTreeMap;
 
+use serde::Deserialize;
+
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mulligan::MulliganState;
 use crate::phase::Step;
@@ -48,7 +50,11 @@ pub struct GameResult {
 /// (loyalty, charge, …) are deferred until an effect needs them, at which point
 /// a variant is added here. Used as a [`BTreeMap`] key in
 /// [`Permanent::counters`], so ordering is derived and replay-stable.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+///
+/// Deserialized from a bare `snake_case` tag so the effect IR can name a counter
+/// kind as card data (e.g. `{"kind": "put_counters", "counter": "plus_one_plus_one"}`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CounterKind {
     /// A `+1/+1` counter: adds 1 to power and 1 to toughness (CR 122, CR 613.7c).
     PlusOnePlusOne,

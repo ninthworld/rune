@@ -109,5 +109,84 @@
     "spell_effects": [
       { "kind": "counter_spell", "target": "spell_on_stack" }
     ]
+  },
+  {
+    "id": 12,
+    "name": "Cinder Shock",
+    "types": ["instant"],
+    "mana_cost": "{R}",
+    "oracle_text": "Cinder Shock deals 2 damage to any target.",
+    "spell_effects": [
+      { "kind": "deal_damage", "target": "any_target", "amount": 2 }
+    ]
+  },
+  {
+    "id": 13,
+    "name": "Sunder Ray",
+    "types": ["sorcery"],
+    "mana_cost": "{2}{W}",
+    "oracle_text": "Destroy target creature.",
+    "spell_effects": [
+      { "kind": "destroy", "target": "any_creature" }
+    ]
+  },
+  {
+    "id": 14,
+    "name": "Thornweft Sprite",
+    "types": ["creature"],
+    "subtypes": ["Faerie"],
+    "mana_cost": "{1}{G}",
+    "oracle_text": "When Thornweft Sprite enters the battlefield, put a +1/+1 counter on target creature.",
+    "power": 1,
+    "toughness": 1,
+    "abilities": [
+      {
+        "type": "triggered",
+        "event": "self_enters_battlefield",
+        "effects": [
+          {
+            "kind": "put_counters",
+            "target": "any_creature",
+            "counter": "plus_one_plus_one",
+            "count": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "name": "Soothing Balm",
+    "types": ["instant"],
+    "mana_cost": "{W}",
+    "oracle_text": "You gain 3 life.",
+    "spell_effects": [
+      { "kind": "gain_life", "player_ref": "controller", "amount": 3 }
+    ]
+  },
+  {
+    "id": 16,
+    "name": "Vexing Ordeal",
+    "types": ["instant"],
+    "mana_cost": "{B}",
+    "oracle_text": "You lose 2 life.",
+    "spell_effects": [
+      { "kind": "lose_life", "player_ref": "controller", "amount": 2 }
+    ]
+  },
+  {
+    "id": 17,
+    "name": "Withering Touch",
+    "types": ["sorcery"],
+    "mana_cost": "{B}",
+    "oracle_text": "Put a -1/-1 counter on target creature.",
+    "spell_effects": [
+      {
+        "kind": "put_counters",
+        "target": "any_creature",
+        "counter": "minus_one_minus_one",
+        "count": 1
+      }
+    ]
   }
 ]
