@@ -1,0 +1,8 @@
+[
+  { "oracle_id": 1, "collector_number": "1", "rarity": "common" },
+  { "oracle_id": 2, "collector_number": "2", "rarity": "common" },
+  { "oracle_id": 3, "collector_number": "3", "rarity": "common" },
+  { "oracle_id": 4, "collector_number": "4", "rarity": "uncommon" },
+  { "oracle_id": 5, "collector_number": "5", "rarity": "common" },
+  { "oracle_id": 6, "collector_number": "6", "rarity": "uncommon" }
+]
