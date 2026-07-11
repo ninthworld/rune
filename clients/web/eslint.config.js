@@ -9,7 +9,10 @@ import prettier from 'eslint-config-prettier';
 // recommended type/JS rules + React hooks correctness, with Prettier owning
 // formatting (eslint-config-prettier is last so it disables conflicting rules).
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules'] },
+  // The browser e2e suite (ADR 0011) is a separate runtime with its own toolchain
+  // and tsconfig; it is linted/typechecked under `make e2e`, not the unit gate, so
+  // `make check` stays fast and browser-free.
+  { ignores: ['dist', 'node_modules', 'e2e', 'playwright-report', 'test-results'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
