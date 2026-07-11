@@ -210,6 +210,30 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
     expect(a).toEqual(b);
   });
 
+  it('marks a chosen multi-select candidate as selected (issue #143)', () => {
+    // A candidate already toggled into the answer is `chosen` and draws the
+    // selection ring; a candidate not yet chosen stays merely targetable.
+    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, {
+      candidates: ['perm_xyz'],
+      selected: ['perm_xyz'],
+    });
+    const bear = scene.bands.at(-1)?.cards[0];
+    expect(bear?.targetable).toBe(true);
+    expect(bear?.chosen).toBe(true);
+    expect(bear?.data.selected).toBe(true);
+    expect(bear?.data.targeting).toBe(true);
+  });
+
+  it('does not mark an unchosen candidate as selected', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, {
+      candidates: ['perm_xyz'],
+      selected: [],
+    });
+    const bear = scene.bands.at(-1)?.cards[0];
+    expect(bear?.chosen).toBe(false);
+    expect(bear?.data.selected).toBe(false);
+  });
+
   it('lays a single small band as one row (no wrapping when everything fits)', () => {
     const scene = buildTableScene(boardView(['p1'], 3), undefined, 1280);
     const ys = new Set(scene.bands[0]?.cards.map((c) => c.rect.y));

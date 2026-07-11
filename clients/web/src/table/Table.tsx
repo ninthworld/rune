@@ -34,6 +34,7 @@ import {
   DEFAULT_VIEWPORT_WIDTH,
   type RenderedCard,
   type TableScene,
+  type TargetingScene,
 } from './scene';
 import {
   activeCandidates,
@@ -44,6 +45,21 @@ import {
   requiresTargets,
   type TargetingSession,
 } from './targeting';
+import {
+  activeCandidates as msActiveCandidates,
+  activeChosen as msActiveChosen,
+  activeSlot as msActiveSlot,
+  advance as msAdvance,
+  allSlotsSatisfied,
+  assembleChoices,
+  beginMultiSelect,
+  hasOptions,
+  isLastSlot,
+  isMultiSelect,
+  optionsSubmittable,
+  toggle as msToggle,
+  type MultiSelectSession,
+} from './multiSelect';
 import { boardWrap, button, main, muted, waitingBar } from './styles';
 
 /**
@@ -81,13 +97,16 @@ export function Table() {
   const disconnect = useGameStore((state) => state.disconnect);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
   const [targeting, setTargeting] = useState<TargetingSession | null>(null);
+  const [multiSelect, setMultiSelect] = useState<MultiSelectSession | null>(null);
 
-  // A fresh view supersedes any in-progress targeting: the answer either landed
-  // (server's response) or is now stale. Discarding it here is what keeps the
-  // targeting UI reconstructable from one GameView + prompt (no load-bearing
-  // state across messages).
+  // A fresh view supersedes any in-progress targeting or multi-select: the answer
+  // either landed (server's response) or is now stale — most importantly, a changed
+  // content-binding `token` invalidates the pending selection. Discarding both here
+  // is what keeps the whole selection UI reconstructable from one GameView + prompt
+  // (no load-bearing state across messages).
   useEffect(() => {
     setTargeting(null);
+    setMultiSelect(null);
   }, [view]);
 
   const viewportWidth = useViewportWidth();
@@ -97,13 +116,22 @@ export function Table() {
   const localId = view?.you || undefined;
   const scene = useMemo(() => {
     if (!view) return null;
-    // In targeting mode the active slot's server candidates drive highlight/dim;
-    // selection is suppressed so the only interaction is picking a target.
-    const activeReq = targeting ? activeRequirement(targeting) : null;
-    const targetingScene = activeReq ? { candidates: activeReq.candidates ?? [] } : undefined;
-    const sel = targeting ? undefined : (selectedId ?? undefined);
+    // In targeting / multi-select mode the active slot's server candidates drive
+    // highlight/dim; a multi-select also marks the already-chosen candidates.
+    // Entity selection is suppressed so the only interaction is picking candidates.
+    let targetingScene: TargetingScene | undefined;
+    if (multiSelect) {
+      targetingScene = {
+        candidates: msActiveCandidates(multiSelect),
+        selected: msActiveChosen(multiSelect),
+      };
+    } else if (targeting) {
+      const activeReq = activeRequirement(targeting);
+      if (activeReq) targetingScene = { candidates: activeReq.candidates ?? [] };
+    }
+    const sel = targeting || multiSelect ? undefined : (selectedId ?? undefined);
     return buildTableScene(view, sel, viewportWidth, targetingScene);
-  }, [view, selectedId, viewportWidth, targeting]);
+  }, [view, selectedId, viewportWidth, targeting, multiSelect]);
 
   // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
   // production builds; the e2e suite reads it to assert what the canvas draws.
@@ -146,18 +174,28 @@ export function Table() {
   }
 
   // The selected entity's actions come straight from what the server offered —
-  // never recomputed. Suppressed during targeting (selection is inactive then).
+  // never recomputed. Suppressed during targeting / multi-select (entity selection
+  // is inactive then; the only interaction is picking candidates).
+  const selecting = targeting !== null || multiSelect !== null;
   const selectedActions =
-    selectedId === null || targeting !== null
+    selectedId === null || selecting
       ? []
       : (prompt?.subjectActions ?? []).filter((action) => action.subject?.includes(selectedId));
   const selectedCard = findCard(scene, selectedId);
 
-  // Fire an action: a multi-step (targeted) action enters targeting mode; a plain
+  // Fire an action: a multi-select declaration (combat / bottoming) opens the
+  // toggle-and-confirm flow; a single-target action opens targeting mode; a plain
   // action is submitted immediately (token echoed, no targets).
   const fire = (action: ValidAction): void => {
+    if (isMultiSelect(action)) {
+      setSelectedId(null);
+      setTargeting(null);
+      setMultiSelect(beginMultiSelect(action));
+      return;
+    }
     if (requiresTargets(action)) {
       setSelectedId(null);
+      setMultiSelect(null);
       setTargeting(beginTargeting(action));
       return;
     }
@@ -179,7 +217,39 @@ export function Table() {
     }
   };
 
+  // Toggle a candidate into (or out of) the active multi-select slot. Nothing is
+  // submitted until the player confirms (or picks an option).
+  const toggleCandidate = (entityId: EntityId): void => {
+    if (!multiSelect) return;
+    setMultiSelect(msToggle(multiSelect, entityId));
+  };
+
+  // Advance to the next walked slot (per-attacker blocker assignment).
+  const advanceSlot = (): void => {
+    if (!multiSelect) return;
+    setMultiSelect(msAdvance(multiSelect));
+  };
+
+  // Confirm the whole selection atomically (used when there is no option prompt).
+  const confirmMultiSelect = (): void => {
+    if (!multiSelect) return;
+    choose(multiSelect.action, assembleChoices(multiSelect));
+    setMultiSelect(null);
+  };
+
+  // Submit an option decision (mulligan keep/take-another) together with the
+  // current per-slot selection (e.g. the bottomed cards) in one atomic answer. The
+  // rich option/order prompt UX is issue #157; here an option is a submit trigger.
+  const chooseOption = (optionId: string): void => {
+    if (!multiSelect) return;
+    const optionSlot = multiSelect.options[0];
+    const extra = optionSlot ? [{ slot: optionSlot.slot, chosen: [optionId] }] : [];
+    choose(multiSelect.action, assembleChoices(multiSelect, extra));
+    setMultiSelect(null);
+  };
+
   const cancelTargeting = (): void => setTargeting(null);
+  const cancelMultiSelect = (): void => setMultiSelect(null);
   const toggleSelect = (id: EntityId): void =>
     setSelectedId((current) => (current === id ? null : id));
 
@@ -194,9 +264,50 @@ export function Table() {
         }
       : null;
 
+  const msSlot = multiSelect ? msActiveSlot(multiSelect) : null;
+  const multiSelectBanner =
+    multiSelect && (msSlot || hasOptions(multiSelect))
+      ? {
+          label: multiSelect.action.label,
+          prompt: msSlot?.prompt ?? multiSelect.options[0]?.prompt ?? '',
+          step: multiSelect.active + 1,
+          total: multiSelect.slots.length,
+          chosen: msActiveChosen(multiSelect).length,
+          required: msSlot?.kind === 'count' ? msSlot.count : undefined,
+        }
+      : null;
+
+  const multiSelectControls = multiSelect
+    ? {
+        canAdvance: multiSelect.slots.length > 1 && !isLastSlot(multiSelect),
+        onAdvance: advanceSlot,
+        confirm: hasOptions(multiSelect)
+          ? undefined
+          : {
+              label: 'Confirm',
+              enabled: allSlotsSatisfied(multiSelect),
+              onConfirm: confirmMultiSelect,
+            },
+        options: hasOptions(multiSelect)
+          ? (multiSelect.options[0]?.options ?? []).map((option) => ({
+              id: option.id,
+              label: option.label,
+            }))
+          : undefined,
+        optionsEnabled: optionsSubmittable(multiSelect),
+        onOption: chooseOption,
+        onCancel: cancelMultiSelect,
+      }
+    : undefined;
+
   return (
     <main style={main}>
-      <PromptBanner view={view} prompt={prompt} targeting={targetingBanner} />
+      <PromptBanner
+        view={view}
+        prompt={prompt}
+        targeting={targetingBanner}
+        multiSelect={multiSelectBanner}
+      />
       <PlayerTiles
         view={view}
         localId={localId}
@@ -215,18 +326,20 @@ export function Table() {
         <EntityOverlay
           scene={scene}
           selectedId={selectedId}
-          targeting={targeting !== null}
+          targeting={selecting}
+          multiSelect={multiSelect !== null}
           onSelect={toggleSelect}
           onChoose={fire}
-          onPickTarget={pickTarget}
+          onPickTarget={multiSelect ? toggleCandidate : pickTarget}
         />
       </div>
       <ActionBar
-        globalActions={targeting ? [] : (prompt?.globalActions ?? [])}
+        globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
         selectedActions={selectedActions}
         selectedName={selectedCard?.name}
         onChoose={fire}
         onCancelTargeting={targeting ? cancelTargeting : undefined}
+        multiSelect={multiSelectControls}
       />
     </main>
   );

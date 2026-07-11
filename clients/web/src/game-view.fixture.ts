@@ -167,6 +167,240 @@ export const TARGETING_GAME_VIEW_JSON = JSON.stringify({
 });
 
 /**
+ * A wire frame in the declare-attackers step (issue #143 / protocol.md, CR 508.1a):
+ * a subject-less `declare_attackers` action carrying ONE multi-select `requirements`
+ * slot (`"attackers"`) whose server-enumerated candidates are the receiver's two
+ * eligible creatures. The answer is any subset of those ids (optional — an empty set
+ * declares no attackers). The action carries a content-binding `token`. A global
+ * `Pass` (`a1`) is also offered.
+ */
+export const DECLARE_ATTACKERS_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [],
+  opponents: [{ player_id: 'p2', hand_size: 3, life: 20, library_size: 40, graveyard_size: 0 }],
+  battlefield: [
+    {
+      id: 'atk_1',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'atk_1',
+        name: 'Grizzly Bears',
+        type_line: 'Creature — Bear',
+        mana_cost: '{1}{G}',
+        power: '2',
+        toughness: '2',
+      },
+    },
+    {
+      id: 'atk_2',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'atk_2',
+        name: 'Craw Wurm',
+        type_line: 'Creature — Wurm',
+        mana_cost: '{4}{G}{G}',
+        power: '6',
+        toughness: '4',
+      },
+    },
+  ],
+  phase: 'declare_attackers',
+  priority_player: 'p1',
+  valid_actions: [
+    {
+      id: 'a5',
+      type: 'declare_attackers',
+      label: 'Declare attackers',
+      token: 'h:atk0',
+      requirements: [
+        { slot: 'attackers', prompt: 'Choose attackers', candidates: ['atk_1', 'atk_2'] },
+      ],
+    },
+    { id: 'a1', type: 'pass_priority', label: 'Pass' },
+  ],
+});
+
+/**
+ * A wire frame in the declare-blockers step (issue #143 / protocol.md, CR 509.1a):
+ * a subject-less `declare_blockers` action with ONE `requirements` slot **per
+ * declared attacker** (`"block_<id>"`), each listing the defender's eligible
+ * blockers to assign to that attacker — the per-attacker two-level pick. Here the
+ * first attacker can be blocked by either of the receiver's creatures and the
+ * second only by one, so the two slots have different candidate sets.
+ */
+export const DECLARE_BLOCKERS_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [],
+  opponents: [{ player_id: 'p2', hand_size: 2, life: 20, library_size: 38, graveyard_size: 0 }],
+  battlefield: [
+    {
+      id: 'atk_1',
+      controller: 'p2',
+      owner: 'p2',
+      card: {
+        id: 'atk_1',
+        name: 'Verdant Scout',
+        type_line: 'Creature — Elf Scout',
+        power: '2',
+        toughness: '2',
+      },
+    },
+    {
+      id: 'atk_2',
+      controller: 'p2',
+      owner: 'p2',
+      card: {
+        id: 'atk_2',
+        name: 'Hill Giant',
+        type_line: 'Creature — Giant',
+        power: '3',
+        toughness: '3',
+      },
+    },
+    {
+      id: 'blk_1',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'blk_1',
+        name: 'Wall of Wood',
+        type_line: 'Creature — Wall',
+        power: '0',
+        toughness: '3',
+      },
+    },
+    {
+      id: 'blk_2',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'blk_2',
+        name: 'Grizzly Bears',
+        type_line: 'Creature — Bear',
+        power: '2',
+        toughness: '2',
+      },
+    },
+  ],
+  phase: 'declare_blockers',
+  priority_player: 'p1',
+  valid_actions: [
+    {
+      id: 'a6',
+      type: 'declare_blockers',
+      label: 'Declare blockers',
+      token: 'h:blk0',
+      requirements: [
+        {
+          slot: 'block_atk_1',
+          prompt: 'Choose blockers for Verdant Scout',
+          candidates: ['blk_1', 'blk_2'],
+        },
+        { slot: 'block_atk_2', prompt: 'Choose blockers for Hill Giant', candidates: ['blk_1'] },
+      ],
+    },
+    { id: 'a1', type: 'pass_priority', label: 'Pass' },
+  ],
+});
+
+/**
+ * A wire frame owing mulligan bottoming (issue #143/#156, CR 103.5 London): the
+ * subject-less `mulligan_decision` action carries an `option` prompt (keep /
+ * take-another) AND a `select_from_zone` bottoming prompt (`count: 1`) over the
+ * receiver's hand. The client renders the option minimally as a submit trigger
+ * (rich option UX is #157) and enforces the bottoming `count` client-side only as a
+ * UX affordance — the option buttons are blocked while the bottom pick is partial.
+ */
+export const MULLIGAN_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [
+    { id: 'card_a', name: 'Forest', type_line: 'Basic Land — Forest' },
+    {
+      id: 'card_b',
+      name: 'Llanowar Elves',
+      type_line: 'Creature — Elf Druid',
+      mana_cost: '{G}',
+      power: '1',
+      toughness: '1',
+    },
+  ],
+  opponents: [{ player_id: 'p2', hand_size: 7, life: 20, library_size: 53, graveyard_size: 0 }],
+  battlefield: [],
+  phase: 'precombat_main',
+  priority_player: 'p1',
+  valid_actions: [
+    {
+      id: 'a0',
+      type: 'mulligan_decision',
+      label: 'Keep or mulligan',
+      token: 'h:mull',
+      prompts: [
+        {
+          kind: 'option',
+          slot: 'decision',
+          prompt: 'Keep this hand or take a mulligan?',
+          options: [
+            { id: 'keep', label: 'Keep this hand' },
+            { id: 'mulligan', label: 'Mulligan' },
+          ],
+        },
+        {
+          kind: 'select_from_zone',
+          slot: 'bottom',
+          prompt: 'Put 1 card(s) on the bottom of your library',
+          zone: 'hand',
+          owner: 'p1',
+          count: 1,
+          candidates: ['card_a', 'card_b'],
+        },
+      ],
+    },
+  ],
+});
+
+/**
+ * A wire frame posing a standalone `select_from_zone` bottoming choice (issue #143):
+ * a `keep` action carrying only a `select_from_zone` prompt with `count: 2` over a
+ * three-card hand, with no `option`. This drives the count-gated **Confirm** control
+ * (disabled until exactly two cards are picked), the cleanest form of the
+ * "enforce the advertised count as UX only" acceptance criterion.
+ */
+export const BOTTOM_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [
+    { id: 'card_a', name: 'Forest', type_line: 'Basic Land — Forest' },
+    { id: 'card_b', name: 'Mountain', type_line: 'Basic Land — Mountain' },
+    { id: 'card_c', name: 'Shock', type_line: 'Instant', mana_cost: '{R}' },
+  ],
+  opponents: [{ player_id: 'p2', hand_size: 7, life: 20, library_size: 53, graveyard_size: 0 }],
+  battlefield: [],
+  phase: 'precombat_main',
+  priority_player: 'p1',
+  valid_actions: [
+    {
+      id: 'a7',
+      type: 'keep',
+      label: 'Keep hand',
+      token: 'h:keep',
+      prompts: [
+        {
+          kind: 'select_from_zone',
+          slot: 'bottom',
+          prompt: 'Put 2 card(s) on the bottom of your library',
+          zone: 'hand',
+          owner: 'p1',
+          count: 2,
+          candidates: ['card_a', 'card_b', 'card_c'],
+        },
+      ],
+    },
+    { id: 'a1', type: 'pass_priority', label: 'Pass' },
+  ],
+});
+
+/**
  * Build a terminal server→client `GameView` frame (issue #141): the game is over,
  * so `result` is present and `valid_actions` is empty (CR 104.2a). The `you` seat
  * lets the client phrase the verdict from the receiver's perspective. Mirrors the

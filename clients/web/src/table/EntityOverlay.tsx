@@ -30,6 +30,13 @@ interface Props {
   selectedId: EntityId | null;
   /** Whether targeting mode is active — picks a target instead of an action. */
   targeting: boolean;
+  /**
+   * Whether the active targeting slot is a **multi-select** (issue #143): a
+   * candidate click toggles it into the answer (staying in the slot) rather than
+   * picking-and-submitting. The chosen cards render pressed. `false` for the
+   * single-target flow, where a click picks exactly one and submits.
+   */
+  multiSelect?: boolean;
   /** Toggle selection of an entity (the select step). */
   onSelect: (id: EntityId) => void;
   /** Confirm one of the entity's offered actions (echoes the `ValidAction`). */
@@ -42,6 +49,7 @@ export function EntityOverlay({
   scene,
   selectedId,
   targeting,
+  multiSelect = false,
   onSelect,
   onChoose,
   onPickTarget,
@@ -58,14 +66,18 @@ export function EntityOverlay({
     <div style={overlay(scene.width, scene.height)}>
       {interactive.map((card) => {
         if (targeting) {
+          // A multi-select candidate toggles (pressed when chosen); a single-target
+          // candidate picks-and-submits. Both only ever fire on server candidates.
+          const verb = multiSelect ? 'Toggle' : 'Target';
           return (
             <button
               key={card.entityId}
               type="button"
               data-testid={`target-${card.entityId}`}
-              aria-label={`Target ${card.name}`}
+              aria-label={`${verb} ${card.name}`}
+              aria-pressed={multiSelect ? card.chosen : undefined}
               onClick={() => onPickTarget(card.entityId)}
-              style={targetHotspot(card.rect)}
+              style={targetHotspot(card.rect, card.chosen)}
             />
           );
         }

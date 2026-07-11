@@ -141,12 +141,16 @@ export function hotspot(rect: Rect, selected: boolean): CSSProperties {
  * selection {@link hotspot}, ringed and faintly filled in the shared targeting
  * color so a legal target reads as pickable. Ineligible cards get no hotspot at
  * all (they are dimmed in the canvas), so only candidates catch a click.
+ *
+ * In a multi-select an already-chosen candidate is `chosen`: it fills more solidly
+ * (in the shared selection accent) so a toggled pick reads as committed, while
+ * unchosen candidates keep the lighter targeting fill.
  */
-export function targetHotspot(rect: Rect): CSSProperties {
+export function targetHotspot(rect: Rect, chosen = false): CSSProperties {
   return {
     ...hotspot(rect, false),
-    border: `2px solid ${SURFACES.targeting}`,
-    background: 'rgba(224, 120, 74, 0.14)',
+    border: `2px solid ${chosen ? SURFACES.selection : SURFACES.targeting}`,
+    background: chosen ? 'rgba(127, 178, 229, 0.24)' : 'rgba(224, 120, 74, 0.14)',
   };
 }
 

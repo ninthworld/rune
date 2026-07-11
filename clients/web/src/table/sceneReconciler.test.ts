@@ -79,6 +79,7 @@ function card(
     rect: { x, y, w: 84, h: 118 },
     actions: [],
     targetable: false,
+    chosen: false,
   };
 }
 
