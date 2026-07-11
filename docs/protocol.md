@@ -1,9 +1,22 @@
 # RUNE protocol
 
-The entire client/server contract is two message types over WebSocket (or an
-in-process call for WASM/FFI deployments). Any client — web UI, CLI, LLM agent —
-speaks exactly this. **Changing any shape here requires updating `rune-protocol`
-and this document in the same PR.**
+A RUNE connection speaks two phases over one WebSocket (or an in-process call for
+WASM/FFI deployments). Before a game exists it speaks a **small lobby message
+set** (`LobbyView` out, `LobbyCommand` in — full lobby state every message, same
+philosophy as `GameView`); the instant a game is constructed it speaks **exactly
+the two in-game message types** (`GameView` out, `ChooseAction` in) for the life
+of that game. Any client — web UI, CLI, LLM agent — speaks exactly this.
+**Changing any shape here requires updating `rune-protocol` and this document in
+the same PR.**
+
+> **On "the entire API is two messages."** The two *in-game* messages
+> (`GameView` / `ChooseAction`) are still the whole contract for a game already in
+> progress. They are now **flanked** by the lobby pair (`LobbyView` /
+> `LobbyCommand`) that governs the pre-game phase and hands off to the in-game
+> contract at game construction (docs/decisions/0012-lobby-protocol.md). Both
+> pairs obey the same discipline: full personalized state pushed every message,
+> the client reconstructs its whole UI from one message, and it computes no
+> legality of its own.
 
 ## Server → client: GameView
 
@@ -128,9 +141,103 @@ For a multi-step action the client submits its whole selection atomically —
   slot's freshly computed legal set; anything else is rejected and the current
   GameView is re-sent.
 
+## Lobby phase
+
+Before a game exists the connection speaks the lobby pair. It is the pre-game
+analogue of the in-game contract: the server pushes a full `LobbyView` on every
+change and the client rebuilds its entire pre-game UI (identity, room, seat
+roster, who is decked/ready) from that one message. `valid_commands` is the only
+source of interactivity, exactly as `valid_actions` is in `GameView`; the client
+computes no legality. Hidden information stays redacted server-side — a
+`LobbyView` never leaks another seat's decklist, only that the seat is decked.
+When every seat is simultaneously filled, decked, and ready the server constructs
+the game and the connection begins receiving `GameView`s; there is no auto-start
+and no game with empty decks. All lobby types live in `rune-protocol`; the wire
+format is their serde JSON, and unknown fields are ignored (forward compat).
+
+### Server → client: LobbyView
+
+| Field | Type | Notes |
+|---|---|---|
+| `session` | `SessionToken` (string) | The connection's opaque session/reconnect token. The client stores it and echoes it on a later `hello`. Always present on the wire; treated as `""` if a payload omits it. **Private** — it is the client's own handle, distinct from the public `you` shown to other seats |
+| `you` | `PlayerId` (string) | The connection's public player identity, used to match itself against a seat's `occupied_by`. `""` if absent |
+| `room` | `RoomView?` | The room the connection is in, if any (see below). Omitted when not in a room |
+| `valid_commands` | `string[]` | The lobby command kinds currently legal for this connection (e.g. `"create_room"`, `"join_room"`, `"submit_deck"`, `"ready"`, `"unready"`, `"leave"`). Free-form strings; clients render exactly these and tolerate unknown kinds. Omitted when empty |
+
+#### RoomView
+
+| Field | Type | Notes |
+|---|---|---|
+| `room_id` | `RoomId` (string) | Opaque room id, shared out-of-band to invite a second player |
+| `config` | `RoomConfig` | The room's configuration (see below) |
+| `seats` | `SeatView[]` | The seat roster, in seat order. Omitted when empty |
+
+#### RoomConfig
+
+| Field | Type | Notes |
+|---|---|---|
+| `seats` | `number` (u8) | Number of seats, validated server-side into the inclusive range `2..=8`. The lobby supports 2–8 seats even while the engine remains two-player |
+| `game_setup` | `GameSetupId` (string) | Opaque game-setup id naming which setup (players, starting life, hand size, …) the room builds its game from. The catalogue is owned by ADR 0013; the server validates the id |
+
+#### SeatView
+
+| Field | Type | Notes |
+|---|---|---|
+| `seat` | `number` (u8) | Zero-based seat index within the room |
+| `occupied_by` | `PlayerId?` | The player occupying this seat; omitted when the seat is empty |
+| `decked` | `bool` | Whether this seat has submitted a server-validated deck. Contents are never exposed to other seats — only this flag. Omitted (false) when not decked |
+| `ready` | `bool` | Whether this seat has declared itself ready. Omitted (false) when not ready |
+
+```json
+{ "session": "s:ab12", "you": "p1",
+  "room": { "room_id": "r:7f3",
+    "config": { "seats": 2, "game_setup": "standard_2p" },
+    "seats": [
+      { "seat": 0, "occupied_by": "p1", "decked": true, "ready": true },
+      { "seat": 1, "occupied_by": "p2", "decked": true } ] },
+  "valid_commands": ["submit_deck", "unready", "leave"] }
+```
+
+Empty collections and absent optionals are omitted from the JSON; clients treat a
+missing field as its empty/`null` default.
+
+### Client → server: LobbyCommand
+
+A single tagged message the client sends to act, structurally parallel to
+`choose_action`. The server validates every command against authoritative state
+and answers with a fresh `LobbyView`; an invalid command is rejected and the
+current `LobbyView` re-sent. The `type` discriminator selects the command:
+
+| `type` | Fields | Notes |
+|---|---|---|
+| `hello` | `token?` (`SessionToken`) | First contact or reconnect. Carries a previously issued session token to reclaim a held-open seat, echoed verbatim; omitted on a fresh connection (server then issues a new identity) |
+| `create_room` | `config` (`RoomConfig`) | Create a new room; the reply's `RoomView` carries the freshly issued `room_id` |
+| `join_room` | `room_id` (`RoomId`) | Join an existing room by id. No matchmaking or discovery — the id must have been shared out-of-band |
+| `submit_deck` | `cards` (`CardIdentity[]`) | Submit a decklist as a flat list of opaque card-identity handles (a card appearing multiple times is repeated). The server validates it authoritatively against the card database; `cards` is omitted when empty |
+| `ready` | `ready` (`bool`) | Declare (`true`) or retract (`false`) readiness. A seat may ready only once it is occupied and decked |
+| `leave` | — | Leave the current room, vacating the seat |
+
+```json
+{ "type": "hello", "token": "s:ab12" }
+{ "type": "create_room", "config": { "seats": 2, "game_setup": "standard_2p" } }
+{ "type": "join_room", "room_id": "r:7f3" }
+{ "type": "submit_deck", "cards": ["ci_bear", "ci_bear", "ci_forest"] }
+{ "type": "ready", "ready": true }
+{ "type": "leave" }
+```
+
+Card identities and the `game_setup` catalogue are opaque here; their
+identity-vs-printing model and values are owned by ADR 0013. Per the project's
+legal rules these are card *identities*, never printings, images, or WotC
+branding.
+
 ## Invariants
 
-- The client is stateless with respect to rules: a fresh GameView must fully
-  reconstruct the UI (reconnect, spectate, resync all depend on this).
+- The client is stateless with respect to rules: a fresh `GameView` (in game) or
+  `LobbyView` (pre-game) must fully reconstruct the UI — reconnect, spectate, and
+  resync all depend on this.
+- `valid_actions` (in game) and `valid_commands` (lobby) are the only sources of
+  interactivity; the client renders exactly what it is given and computes no
+  legality of its own.
 - Displayed values (P/T, counters, costs) are server-computed; clients never derive.
 - Unknown fields must be ignored by clients (forward compatibility).

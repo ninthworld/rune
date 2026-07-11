@@ -1,8 +1,15 @@
 //! RUNE protocol — the entire client/server contract.
 //!
-//! Two message types (docs/protocol.md):
+//! Two *in-game* message types (docs/protocol.md):
 //! - Server -> client: a personalized [`GameView`]
 //! - Client -> server: a [`ClientMessage`] (only variant: [`ChooseAction`])
+//!
+//! These are flanked by a small **lobby** message set that governs the pre-game
+//! phase and hands off to the in-game contract once a game is constructed
+//! (docs/decisions/0012-lobby-protocol.md):
+//! - Server -> client: a [`LobbyView`] (full pre-game state, `GameView`-style)
+//! - Client -> server: a [`LobbyCommand`] (`hello`, `create_room`, `join_room`,
+//!   `submit_deck`, `ready`, `leave`)
 //!
 //! Everything here serializes to the JSON documented in `docs/protocol.md`. Any
 //! change to these shapes must update that document in the same PR. Clients and
@@ -306,6 +313,182 @@ pub struct TargetChoice {
 pub enum ClientMessage {
     /// The player chose one of the issued valid actions.
     ChooseAction(ChooseAction),
+}
+
+// ---------------------------------------------------------------------------
+// Lobby protocol (docs/decisions/0012-lobby-protocol.md)
+//
+// The pre-game analogue of the in-game two-message contract: a full-state
+// `LobbyView` pushed on every change (mirroring `GameView`) and a tagged
+// `LobbyCommand` the client sends to act (mirroring `ChooseAction`). The client
+// reconstructs its entire pre-game UI from one `LobbyView` and computes no
+// legality of its own. Once a game is constructed the connection switches to the
+// in-game `GameView`/`ClientMessage` contract for the life of that game.
+// ---------------------------------------------------------------------------
+
+/// Server-issued opaque session/reconnect token. The client stores it and echoes
+/// it verbatim on a later [`Hello`] (after a refresh or dropped socket) to prove
+/// it is the same connection and be reunited with a held-open seat. Opaque — the
+/// client never parses it. This is an *identity* handle, not authentication of a
+/// human (ADR 0012, Out of scope).
+pub type SessionToken = String;
+
+/// Opaque room identifier, issued by the server on [`CreateRoom`] and shared
+/// out-of-band so a second player can [`JoinRoom`]. The client never parses it.
+pub type RoomId = String;
+
+/// Opaque game-setup identifier carried in a [`RoomConfig`]. It names which setup
+/// (players, starting life, hand size, …) the room builds its game from. The
+/// catalogue of setups and their internal shape are owned by ADR 0013; this crate
+/// treats the id as an opaque value the server validates.
+pub type GameSetupId = String;
+
+/// Opaque card-identity handle used in a submitted [`SubmitDeck`] decklist. The
+/// identity-vs-printing model is owned by ADR 0013 — these are card *identities*,
+/// never printings or images. The server validates each against its card
+/// database; the client never parses them.
+pub type CardIdentity = String;
+
+/// Configuration for a room, supplied by the creator in [`CreateRoom`] and echoed
+/// back in every [`RoomView`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomConfig {
+    /// Number of seats in the room. Validated server-side into the inclusive
+    /// range `2..=8`; the lobby supports 2–8 seats even while the engine remains
+    /// two-player (ADR 0012).
+    pub seats: u8,
+    /// Which game setup the room will build its game from (opaque; see
+    /// [`GameSetupId`]).
+    pub game_setup: GameSetupId,
+}
+
+/// One seat in a room's roster, as seen by any connection. Hidden information
+/// stays redacted: a seat's decklist contents are never exposed, only the fact
+/// that the seat is decked.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeatView {
+    /// Zero-based seat index within the room.
+    pub seat: u8,
+    /// The player occupying this seat, or `None` if it is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub occupied_by: Option<PlayerId>,
+    /// Whether this seat has submitted a server-validated deck.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub decked: bool,
+    /// Whether this seat has declared itself ready.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ready: bool,
+}
+
+/// The room a connection is currently in, with its config and full seat roster.
+/// Absent from a [`LobbyView`] when the connection is not in a room.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomView {
+    /// The room's opaque id, shared to invite a second player.
+    pub room_id: RoomId,
+    /// The room's configuration.
+    pub config: RoomConfig,
+    /// Every seat in the room, in seat order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seats: Vec<SeatView>,
+}
+
+/// The full pre-game state for one connection, pushed on every change — the
+/// pre-game analogue of [`GameView`]. The client rebuilds its entire pre-game UI
+/// from a single `LobbyView` (reconnect-safe by construction) and derives no
+/// legality: [`valid_commands`](LobbyView::valid_commands) is the only source of
+/// interactivity, exactly as `valid_actions` is in `GameView`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LobbyView {
+    /// The connection's session/reconnect token. The client stores it and echoes
+    /// it on a later [`Hello`]. Always present on the wire (like `GameView::you`).
+    #[serde(default)]
+    pub session: SessionToken,
+    /// The connection's public player identity, used to match itself against a
+    /// [`SeatView::occupied_by`]. Distinct from the secret [`session`](LobbyView::session)
+    /// token, which is never shown as a seat occupant. Defaults to `""` for a
+    /// payload that omits it.
+    #[serde(default)]
+    pub you: PlayerId,
+    /// The room the connection is in, if any, with its config and seat roster.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<RoomView>,
+    /// The lobby command kinds currently legal for this connection (e.g.
+    /// `"create_room"`, `"join_room"`, `"submit_deck"`, `"ready"`, `"unready"`,
+    /// `"leave"`). Free-form strings so new command kinds do not break older
+    /// clients; the client renders exactly these and computes no legality.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub valid_commands: Vec<String>,
+}
+
+/// First-contact / reconnect command. Carries a previously issued
+/// [`SessionToken`] when reconnecting; omitted (`None`) on a fresh connection, in
+/// which case the server issues a new identity.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hello {
+    /// A previously issued session token to reclaim a held-open seat, echoed
+    /// verbatim. Omitted on first contact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<SessionToken>,
+}
+
+/// Create a new room with the given [`RoomConfig`]. The server replies with a
+/// [`LobbyView`] whose [`RoomView`] carries the freshly issued room id.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateRoom {
+    /// The configuration for the new room.
+    pub config: RoomConfig,
+}
+
+/// Join an existing room by its id. There is no matchmaking or discovery — the id
+/// must have been shared out-of-band by the room's creator.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinRoom {
+    /// The opaque id of the room to join.
+    pub room_id: RoomId,
+}
+
+/// Submit a decklist for this connection's seat. The list is a flat sequence of
+/// [`CardIdentity`] handles (a card appearing multiple times is repeated). The
+/// server validates it authoritatively against its card database and reflects
+/// only *decked: yes/no* to other seats, never the contents.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmitDeck {
+    /// The card identities that make up the deck, duplicates repeated.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cards: Vec<CardIdentity>,
+}
+
+/// Declare (or retract) readiness for this connection's seat. A seat may ready
+/// only once it is occupied and has a validated deck; the game is constructed the
+/// instant every seat is simultaneously filled, decked, and ready.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ready {
+    /// `true` to ready up, `false` to un-ready.
+    pub ready: bool,
+}
+
+/// Everything a client can send in the lobby phase. Serializes with a `type`
+/// discriminator (`{"type":"create_room", ...}`), structurally parallel to
+/// [`ClientMessage`], so the wire stays self-describing and open to future
+/// commands. The server validates every command against authoritative state and
+/// answers with a fresh [`LobbyView`]; an invalid command is rejected and the
+/// current `LobbyView` re-sent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum LobbyCommand {
+    /// First contact or reconnect; optionally carries a prior session token.
+    Hello(Hello),
+    /// Create a new room with a config.
+    CreateRoom(CreateRoom),
+    /// Join an existing room by id.
+    JoinRoom(JoinRoom),
+    /// Submit a decklist for this connection's seat.
+    SubmitDeck(SubmitDeck),
+    /// Declare or retract readiness.
+    Ready(Ready),
+    /// Leave the current room (vacating the seat).
+    Leave,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -650,6 +833,199 @@ mod tests {
         let json = r#"{ "phase": "draw" }"#;
         let view: GameView = serde_json::from_str(json).unwrap();
         assert_eq!(view.you, "");
+    }
+
+    #[test]
+    fn lobby_command_hello_omits_absent_token() {
+        // First contact carries no token; the minimal `{type}` wire shape must be
+        // preserved so an older/fresh client stays compatible.
+        let msg = LobbyCommand::Hello(Hello { token: None });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "hello" }));
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn lobby_command_hello_round_trips_with_token() {
+        // A reconnect echoes the previously issued session token verbatim.
+        let msg = LobbyCommand::Hello(Hello {
+            token: Some("s:ab12".into()),
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "hello", "token": "s:ab12" })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn lobby_command_create_room_carries_config() {
+        let msg = LobbyCommand::CreateRoom(CreateRoom {
+            config: RoomConfig {
+                seats: 4,
+                game_setup: "standard_2p".into(),
+            },
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "create_room",
+                "config": { "seats": 4, "game_setup": "standard_2p" }
+            })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn lobby_command_join_room_round_trips() {
+        let msg = LobbyCommand::JoinRoom(JoinRoom {
+            room_id: "r:7f3".into(),
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "join_room", "room_id": "r:7f3" })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn lobby_command_submit_deck_round_trips_and_elides_empty() {
+        // A populated decklist round-trips as a flat list of identities.
+        let msg = LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: vec!["ci_bear".into(), "ci_bear".into(), "ci_forest".into()],
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "submit_deck",
+                "cards": ["ci_bear", "ci_bear", "ci_forest"]
+            })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+
+        // An empty decklist elides the `cards` field entirely.
+        let empty = LobbyCommand::SubmitDeck(SubmitDeck { cards: vec![] });
+        let json = serde_json::to_value(&empty).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "submit_deck" }));
+    }
+
+    #[test]
+    fn lobby_command_ready_and_leave_round_trip() {
+        let ready = LobbyCommand::Ready(Ready { ready: true });
+        let json = serde_json::to_value(&ready).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "ready", "ready": true }));
+        assert_eq!(serde_json::from_value::<LobbyCommand>(json).unwrap(), ready);
+
+        let leave = LobbyCommand::Leave;
+        let json = serde_json::to_value(&leave).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "leave" }));
+        assert_eq!(serde_json::from_value::<LobbyCommand>(json).unwrap(), leave);
+    }
+
+    #[test]
+    fn lobby_view_round_trips_populated() {
+        let view = LobbyView {
+            session: "s:ab12".into(),
+            you: "p1".into(),
+            room: Some(RoomView {
+                room_id: "r:7f3".into(),
+                config: RoomConfig {
+                    seats: 2,
+                    game_setup: "standard_2p".into(),
+                },
+                seats: vec![
+                    SeatView {
+                        seat: 0,
+                        occupied_by: Some("p1".into()),
+                        decked: true,
+                        ready: true,
+                    },
+                    SeatView {
+                        seat: 1,
+                        occupied_by: Some("p2".into()),
+                        decked: true,
+                        ready: false,
+                    },
+                ],
+            }),
+            valid_commands: vec!["submit_deck".into(), "unready".into(), "leave".into()],
+        };
+        let json = serde_json::to_string(&view).unwrap();
+        let back: LobbyView = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, view);
+    }
+
+    #[test]
+    fn lobby_view_elides_empties_and_redacts_seat_flags() {
+        // A connection with an identity but not yet in a room: `room` is absent
+        // and a still-empty seat's `decked`/`ready`/`occupied_by` all elide.
+        let view = LobbyView {
+            session: "s:new".into(),
+            you: "p9".into(),
+            room: None,
+            valid_commands: vec!["create_room".into(), "join_room".into()],
+        };
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(json.get("room").is_none());
+        // `session` and `you` are always present on the wire (like `GameView::you`).
+        assert_eq!(json.get("session"), Some(&serde_json::json!("s:new")));
+        assert_eq!(json.get("you"), Some(&serde_json::json!("p9")));
+
+        // An empty seat serializes to just its index.
+        let empty_seat = SeatView {
+            seat: 3,
+            occupied_by: None,
+            decked: false,
+            ready: false,
+        };
+        let seat_json = serde_json::to_value(&empty_seat).unwrap();
+        assert_eq!(seat_json, serde_json::json!({ "seat": 3 }));
+        let back: LobbyView = serde_json::from_value(json).unwrap();
+        assert_eq!(back, view);
+    }
+
+    #[test]
+    fn lobby_view_ignores_unknown_fields() {
+        // Forward-compat invariant: a newer server may add lobby fields; older
+        // clients must still deserialize the message.
+        let json = r#"{ "session": "s:1", "you": "p1", "some_future_field": true }"#;
+        let view: LobbyView = serde_json::from_str(json).unwrap();
+        assert_eq!(view.session, "s:1");
+        assert_eq!(view.you, "p1");
+        assert!(view.room.is_none());
+    }
+
+    #[test]
+    fn lobby_command_ignores_unknown_fields() {
+        // A command from a newer client with extra fields still deserializes.
+        let json = r#"{ "type": "join_room", "room_id": "r:1", "future": 7 }"#;
+        let cmd: LobbyCommand = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            cmd,
+            LobbyCommand::JoinRoom(JoinRoom {
+                room_id: "r:1".into()
+            })
+        );
+    }
+
+    #[test]
+    fn lobby_view_defaults_identity_when_absent() {
+        // A payload that omits `session`/`you` still deserializes, defaulting both
+        // to `""` rather than failing the whole message.
+        let json = r#"{ "valid_commands": ["hello"] }"#;
+        let view: LobbyView = serde_json::from_str(json).unwrap();
+        assert_eq!(view.session, "");
+        assert_eq!(view.you, "");
+        assert_eq!(view.valid_commands, vec!["hello".to_string()]);
     }
 
     #[test]
