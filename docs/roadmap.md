@@ -9,7 +9,9 @@ regardless of what later-milestone work has already landed.
 
 This document supersedes [`docs/agents/backlog.md`](agents/backlog.md) (the
 seed backlog, fully shipped). Granular features for M1–M2 are tracked as
-GitHub issues under matching GitHub milestones; the tables below link them.
+GitHub issues (each body names its milestone); the tables below link them.
+Matching GitHub Milestones can be created in the repo settings and the issues
+bulk-assigned — issue bodies already carry the M1/M2 designation either way.
 
 > Last reconciled against GitHub issues + `main`: 2026-07-11.
 
@@ -77,21 +79,21 @@ seated is interactive.
 
 | Feature | Area | Issue | Depends on |
 |---|---|---|---|
-| ADR 0011: e2e browser test strategy | client | TBD-1 | — |
-| Connection screen: address entry, connect, status | client | TBD-2 | — |
-| Playwright harness + connect-to-battlefield smoke test | client, ci | TBD-3 | TBD-1, TBD-2 |
-| ADR 0012: lobby protocol (identity, rooms, ready, decks) | protocol | TBD-4 | — |
-| ADR 0013: card identity vs printing (sets model) | engine | TBD-5 | — |
-| `docs/rules-coverage.md` + CR citation convention | docs | TBD-6 | — |
-| Lobby message types in `rune-protocol` + protocol.md | protocol | TBD-7 | TBD-4 |
-| Engine: GameSetup, deck loading, seeded shuffle, opening hands | engine | TBD-8 | — |
-| Server: explicit rooms — create with config, join by id | server | TBD-9 | TBD-7 |
-| Engine: London mulligan | engine | TBD-10 | TBD-8 |
-| Server: pre-game gate — deck submission + ready check | server | TBD-11 | TBD-8, TBD-9 |
-| Server: reconnect to a held seat via session token | server | TBD-12 | TBD-9 |
-| Client: lobby UI — create/join, deck select, ready | client | TBD-13 | TBD-7, TBD-9 |
-| CLI: lobby flow (interactive + `--agent`) | cli | TBD-14 | TBD-7, TBD-9, TBD-11 |
-| e2e: full lobby flow test (two clients → first GameView) | client, ci | filed after TBD-3 lands | TBD-3, TBD-11, TBD-13 |
+| ADR 0011: e2e browser test strategy | client | #102 | — |
+| Connection screen: address entry, connect, status | client | #103 | — |
+| Playwright harness + connect-to-battlefield smoke test | client, ci | #104 | #102, #103 |
+| ADR 0012: lobby protocol (identity, rooms, ready, decks) | protocol | #105 | — |
+| ADR 0013: card identity vs printing (sets model) | engine | #106 | — |
+| `docs/rules-coverage.md` + CR citation convention | docs | #107 | — |
+| Lobby message types in `rune-protocol` + protocol.md | protocol | #108 | #105 |
+| Engine: GameSetup, deck loading, seeded shuffle, opening hands | engine | #109 | — |
+| Server: explicit rooms — create with config, join by id | server | #110 | #108 |
+| Engine: London mulligan | engine | #111 | #109 |
+| Server: pre-game gate — deck submission + ready check | server | #112 | #109, #110 |
+| Server: reconnect to a held seat via session token | server | #113 | #110 |
+| Client: lobby UI — create/join, deck select, ready | client | #114 | #108, #110 |
+| CLI: lobby flow (interactive + `--agent`) | cli | #115 | #108, #110, #112 |
+| e2e: full lobby flow test (two clients → first GameView) | client, ci | filed after #104 lands | #104, #112, #114 |
 
 ### M2 — Play to the win
 
@@ -121,13 +123,13 @@ followable.
 
 | Feature | Area | Issue | Depends on |
 |---|---|---|---|
-| Turn-based actions: untap, draw, cleanup | engine | TBD-15 | — |
-| Combat I: declare attackers and blockers | engine | TBD-16 | TBD-15 |
-| Combat II: combat damage + lethal-damage SBA | engine | TBD-17 | TBD-16 |
-| Game over: decking, win detection, GameView result | engine, protocol | TBD-18 | TBD-15 |
+| Turn-based actions: untap, draw, cleanup | engine | #116 | — |
+| Combat I: declare attackers and blockers | engine | #117 | #116 |
+| Combat II: combat damage + lethal-damage SBA | engine | #118 | #117 |
+| Game over: decking, win detection, GameView result | engine, protocol | #119 | #116 |
 | Client: stack panel (spells + synthetic ability render) | client | filed with M2 wave 2 | — |
-| Client: game-over screen | client | filed with M2 wave 2 | TBD-18 |
-| Client: combat affordances via valid_actions | client | filed with M2 wave 2 | TBD-16 |
+| Client: game-over screen | client | filed with M2 wave 2 | #119 |
+| Client: combat affordances via valid_actions | client | filed with M2 wave 2 | #117 |
 | e2e: scripted full game to victory | client, ci | filed with M2 wave 2 | all above |
 
 ### M3 — A real card pool
