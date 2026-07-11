@@ -24,7 +24,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
-use crate::{ConfigError, SessionError};
+use crate::{ConfigError, LobbyConfig, SessionError, WsRead, WsWrite};
 
 /// The `kind` string the server uses for the pass-priority action
 /// (`rune-server`'s `view.rs`). The safe default prefers this action.
@@ -240,30 +240,82 @@ where
     A: Agent,
 {
     let (mut write, mut read) = ws.split();
+    agent_game_loop(&mut write, &mut read, agent, deadline, &mut log, None).await
+}
+
+/// Run the full unattended flow over an already-connected socket: drive the lobby
+/// from `plan` (create/join a room, submit a deck, ready), then play the game with
+/// `agent` once the ready gate passes (ADR 0012, issue #115).
+///
+/// The lobby phase sends only commands the server offered and holds no game logic;
+/// the instant the game is constructed the server pushes the first `GameView` on the
+/// same socket and this hands off to [`agent_game_loop`]. `plan` should name a room
+/// action (`--create`/`--room`) and a `--deck`, or the agent has nothing to do and
+/// waits until the server closes.
+///
+/// # Errors
+/// Returns a [`SessionError`] if a WebSocket read/write, the encoding of a
+/// command/action, or a write to `log` fails.
+pub async fn run_agent_lobby_session<S, W, A>(
+    ws: WebSocketStream<S>,
+    agent: &A,
+    deadline: Duration,
+    mut log: W,
+    plan: &LobbyConfig,
+) -> Result<(), SessionError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin,
+    A: Agent,
+{
+    let (mut write, mut read) = ws.split();
+    match crate::lobby::run_lobby_agent(&mut write, &mut read, &mut log, plan).await? {
+        Some(first_view) => {
+            agent_game_loop(
+                &mut write,
+                &mut read,
+                agent,
+                deadline,
+                &mut log,
+                Some(first_view),
+            )
+            .await
+        }
+        None => {
+            let _ = write.close().await;
+            Ok(())
+        }
+    }
+}
+
+/// The in-game agent loop over a split socket: receive a `GameView`, and — when it
+/// offers actions — ask `agent` to choose, then send the chosen action id, its
+/// content-binding `token` (echoed verbatim), and any targets (ADR 0009).
+/// `first_view` lets the lobby hand off the first game frame it already read.
+pub(crate) async fn agent_game_loop<S, W, A>(
+    write: &mut WsWrite<S>,
+    read: &mut WsRead<S>,
+    agent: &A,
+    deadline: Duration,
+    log: &mut W,
+    first_view: Option<GameView>,
+) -> Result<(), SessionError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin,
+    A: Agent,
+{
+    let mut pending = first_view;
 
     'session: loop {
         // 1. Receive the next personalized view — the whole decision context is
         //    rebuilt from this one message; nothing is carried across frames.
-        let view = loop {
-            match read.next().await {
-                Some(Ok(Message::Text(text))) => {
-                    match serde_json::from_str::<GameView>(text.as_str()) {
-                        Ok(view) => break view,
-                        Err(error) => {
-                            let note =
-                                format!("agent: ignoring undecodable server message: {error}\n");
-                            log_line(&mut log, &note).await?;
-                        }
-                    }
-                }
-                Some(Ok(Message::Close(_))) | None => {
-                    log_line(&mut log, "agent: server closed the connection.\n").await?;
-                    break 'session;
-                }
-                // Ping/pong/binary/raw frames carry no protocol message; ignore.
-                Some(Ok(_)) => {}
-                Some(Err(error)) => return Err(SessionError::WebSocket(error)),
-            }
+        let view = match pending.take() {
+            Some(view) => view,
+            None => match next_agent_view(read, log).await? {
+                Some(view) => view,
+                None => break 'session,
+            },
         };
 
         // 2. No actions offered (we do not hold priority): await the next view.
@@ -271,24 +323,108 @@ where
             continue;
         }
 
-        // 3. Ask the agent, with a hard deadline and a validated, safe fallback.
-        if let Some(action_id) = decide(agent, &view, deadline, &mut log).await? {
-            // Plain action answer: target selection and content-binding token are
-            // not emitted yet (#73 / ADR 0009), so the rest defaults empty.
-            let choose = ClientMessage::ChooseAction(ChooseAction {
-                action_id,
-                ..Default::default()
-            });
-            let json = serde_json::to_string(&choose).map_err(SessionError::Encode)?;
-            write
-                .send(Message::Text(json))
-                .await
-                .map_err(SessionError::WebSocket)?;
+        // 3. Ask the agent, with a hard deadline and a validated, safe fallback, then
+        //    build the answer echoing the action's content-binding token.
+        if let Some(action_id) = decide(agent, &view, deadline, log).await? {
+            if let Some(choose) = agent_choice(&view, &action_id, log).await? {
+                let message = ClientMessage::ChooseAction(choose);
+                let json = serde_json::to_string(&message).map_err(SessionError::Encode)?;
+                write
+                    .send(Message::Text(json))
+                    .await
+                    .map_err(SessionError::WebSocket)?;
+            }
         }
     }
 
     let _ = write.send(Message::Close(None)).await;
     Ok(())
+}
+
+/// Read frames until the next decodable [`GameView`] arrives, returning `None` when
+/// the server closes the connection. Undecodable text frames are logged and skipped.
+async fn next_agent_view<S, W>(
+    read: &mut WsRead<S>,
+    log: &mut W,
+) -> Result<Option<GameView>, SessionError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    loop {
+        match read.next().await {
+            Some(Ok(Message::Text(text))) => {
+                match serde_json::from_str::<GameView>(text.as_str()) {
+                    Ok(view) => return Ok(Some(view)),
+                    Err(error) => {
+                        let note = format!("agent: ignoring undecodable server message: {error}\n");
+                        log_line(log, &note).await?;
+                    }
+                }
+            }
+            Some(Ok(Message::Close(_))) | None => {
+                log_line(log, "agent: server closed the connection.\n").await?;
+                return Ok(None);
+            }
+            // Ping/pong/binary/raw frames carry no protocol message; ignore.
+            Some(Ok(_)) => {}
+            Some(Err(error)) => return Err(SessionError::WebSocket(error)),
+        }
+    }
+}
+
+/// Build the [`ChooseAction`] to send for a chosen action id: echo the offered
+/// action's content-binding `token` verbatim (ADR 0009). The pass-priority agent
+/// only ever picks requirement-less actions; if a chosen action does carry target
+/// requirements the agent has no way to fill, this falls back to a requirement-less
+/// pass rather than send an answer the server would reject and re-offer forever.
+async fn agent_choice<W>(
+    view: &GameView,
+    action_id: &str,
+    log: &mut W,
+) -> Result<Option<ChooseAction>, SessionError>
+where
+    W: AsyncWrite + Unpin,
+{
+    let Some(action) = view.valid_actions.iter().find(|a| a.id == action_id) else {
+        return Ok(None);
+    };
+    if action.requirements.is_empty() {
+        return Ok(Some(ChooseAction {
+            action_id: action.id.clone(),
+            token: action.token.clone(),
+            targets: Vec::new(),
+        }));
+    }
+
+    // The chosen action needs targets the pass agent cannot supply; substitute a
+    // requirement-less pass so the game never stalls on a rejected answer.
+    match view
+        .valid_actions
+        .iter()
+        .find(|a| a.kind == PASS_PRIORITY_KIND && a.requirements.is_empty())
+    {
+        Some(pass) => {
+            let note = format!(
+                "agent: {:?} needs targets it cannot choose — passing instead\n",
+                action.id
+            );
+            log_line(log, &note).await?;
+            Ok(Some(ChooseAction {
+                action_id: pass.id.clone(),
+                token: pass.token.clone(),
+                targets: Vec::new(),
+            }))
+        }
+        None => {
+            log_line(
+                log,
+                "agent: chosen action needs targets and no pass is available — skipping\n",
+            )
+            .await?;
+            Ok(None)
+        }
+    }
 }
 
 /// Resolve one actionable view to the `action_id` to send, applying the deadline

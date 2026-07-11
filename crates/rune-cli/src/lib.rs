@@ -13,18 +13,29 @@
 //! frames the room task pushes and replies with the same `choose_action` message
 //! shape the room accepts (see `rune-server`'s `room.rs`/`view.rs`).
 
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use rune_protocol::{CardView, ChooseAction, ClientMessage, GameView};
+use rune_protocol::{
+    CardView, ChooseAction, ClientMessage, GameView, TargetChoice, TargetRequirement, ValidAction,
+};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
 mod agent;
+mod lobby;
 
 pub use agent::{
-    is_offered, request_payload, run_agent_session, safe_default, Agent, AgentConfig, AgentError,
-    PassPriorityAgent, AGENT_TIMEOUT_ENV_VAR, DEFAULT_AGENT_DEADLINE,
+    is_offered, request_payload, run_agent_lobby_session, run_agent_session, safe_default, Agent,
+    AgentConfig, AgentError, PassPriorityAgent, AGENT_TIMEOUT_ENV_VAR, DEFAULT_AGENT_DEADLINE,
 };
+pub use lobby::{render_lobby, LobbyConfig, RoomAction};
+
+/// The write half of a split WebSocket, shared by the game and lobby loops so the
+/// lobby phase can hand the same socket to the game phase without reconnecting.
+pub(crate) type WsWrite<S> = SplitSink<WebSocketStream<S>, Message>;
+/// The read half of a split WebSocket (see [`WsWrite`]).
+pub(crate) type WsRead<S> = SplitStream<WebSocketStream<S>>;
 
 /// Address the CLI connects to when nothing overrides it. Matches the server's
 /// own default listen address (`rune_server::DEFAULT_ADDR`).
@@ -108,6 +119,19 @@ pub enum ConfigError {
     /// `--agent-timeout` (or [`AGENT_TIMEOUT_ENV_VAR`]) was not a positive,
     /// finite number of seconds. Carries the offending value.
     InvalidAgentTimeout(String),
+    /// `--room` was supplied without a following room id.
+    MissingRoomValue,
+    /// `--seats` was supplied without a following value.
+    MissingSeatsValue,
+    /// `--seats` was not a valid seat count. Carries the offending value.
+    InvalidSeats(String),
+    /// `--game-setup` was supplied without a following value.
+    MissingGameSetupValue,
+    /// `--deck` was supplied without a following value.
+    MissingDeckValue,
+    /// Both `--create` and `--room` were supplied; a connection either creates a
+    /// room or joins one, never both.
+    ConflictingRoomAction,
 }
 
 impl std::fmt::Display for ConfigError {
@@ -126,6 +150,29 @@ impl std::fmt::Display for ConfigError {
                 write!(
                     f,
                     "--agent-timeout must be a positive number of seconds, got {value:?}"
+                )
+            }
+            Self::MissingRoomValue => write!(f, "--room requires a room id, e.g. --room r0"),
+            Self::MissingSeatsValue => {
+                write!(f, "--seats requires a value in 2..=8, e.g. --seats 2")
+            }
+            Self::InvalidSeats(value) => {
+                write!(f, "--seats must be a whole number of seats, got {value:?}")
+            }
+            Self::MissingGameSetupValue => {
+                write!(
+                    f,
+                    "--game-setup requires a value, e.g. --game-setup standard_2p"
+                )
+            }
+            Self::MissingDeckValue => write!(
+                f,
+                "--deck requires a comma-separated list of card identities, e.g. --deck 1,1,2,2"
+            ),
+            Self::ConflictingRoomAction => {
+                write!(
+                    f,
+                    "--create and --room are mutually exclusive: create a room or join one"
                 )
             }
         }
@@ -209,71 +256,120 @@ where
     W: AsyncWrite + Unpin,
 {
     let (mut write, mut read) = ws.split();
+    game_loop(&mut write, &mut read, &mut input, &mut output, None).await
+}
+
+/// Run the full interactive flow over an already-connected socket: the lobby
+/// (create/join a room, submit a deck, ready) rendered as numbered menus, then the
+/// in-game loop once the server constructs the game (ADR 0012).
+///
+/// A single `LobbyView` reconstructs the whole pre-game display; the client renders
+/// exactly the `valid_commands` the server offered and computes no legality. The
+/// instant the ready gate passes the server pushes the first `GameView` on the *same
+/// socket*, and this function hands off to [`game_loop`] with that view.
+///
+/// # Errors
+/// Returns a [`SessionError`] if a WebSocket read/write, a stdout write, or the
+/// encoding of a command/action fails.
+pub async fn run_lobby_session<S, R, W>(
+    ws: WebSocketStream<S>,
+    mut input: R,
+    mut output: W,
+) -> Result<(), SessionError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let (mut write, mut read) = ws.split();
+    match lobby::run_lobby_interactive(&mut write, &mut read, &mut input, &mut output).await? {
+        Some(first_view) => {
+            write_str(&mut output, "\n=== Game starting! ===\n").await?;
+            game_loop(
+                &mut write,
+                &mut read,
+                &mut input,
+                &mut output,
+                Some(first_view),
+            )
+            .await
+        }
+        None => Ok(()),
+    }
+}
+
+/// The in-game loop over a split socket: render each `GameView`, and — when the view
+/// offers actions — prompt for a menu number, fill any target `requirements`, and
+/// send the matching action id, its content-binding `token`, and the chosen
+/// `targets` (ADR 0009). `first_view` lets the lobby hand off the very first game
+/// frame it already read; `None` starts by reading one.
+pub(crate) async fn game_loop<S, R, W>(
+    write: &mut WsWrite<S>,
+    read: &mut WsRead<S>,
+    input: &mut R,
+    output: &mut W,
+    first_view: Option<GameView>,
+) -> Result<(), SessionError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let mut line = String::new();
+    let mut pending = first_view;
 
     'session: loop {
-        // 1. Receive the next personalized view. The entire display is rebuilt
-        //    from this single message — nothing is carried across frames.
-        let view = loop {
-            match read.next().await {
-                Some(Ok(Message::Text(text))) => {
-                    match serde_json::from_str::<GameView>(text.as_str()) {
-                        Ok(view) => break view,
-                        Err(error) => {
-                            let note = format!("! ignoring undecodable server message: {error}\n");
-                            write_str(&mut output, &note).await?;
-                        }
-                    }
-                }
-                Some(Ok(Message::Close(_))) | None => {
-                    write_str(&mut output, "\nServer closed the connection. Goodbye.\n").await?;
-                    break 'session;
-                }
-                // Ping/pong/binary/raw frames carry no protocol message; ignore.
-                Some(Ok(_)) => {}
-                Some(Err(error)) => return Err(SessionError::WebSocket(error)),
-            }
+        // 1. Receive the next personalized view. The entire display is rebuilt from
+        //    this single message — nothing is carried across frames.
+        let view = match pending.take() {
+            Some(view) => view,
+            None => match next_game_view(read, output).await? {
+                Some(view) => view,
+                None => break 'session,
+            },
         };
 
-        write_str(&mut output, &render(&view)).await?;
+        write_str(output, &render(&view)).await?;
 
         // 2. No actions offered (we do not hold priority): await the next view.
         if view.valid_actions.is_empty() {
             continue;
         }
 
-        // 3. Prompt until a valid menu number is entered, or stdin hits EOF.
-        let action_id = loop {
-            write_str(&mut output, &prompt(view.valid_actions.len())).await?;
+        // 3. Prompt until a valid menu number is entered, or stdin hits EOF, then
+        //    fill any target requirements the chosen action carries.
+        let (action_id, token, targets) = loop {
+            write_str(output, &prompt(view.valid_actions.len())).await?;
             output.flush().await.map_err(SessionError::Io)?;
 
             line.clear();
             let read_bytes = input.read_line(&mut line).await.map_err(SessionError::Io)?;
             if read_bytes == 0 {
-                // EOF on stdin: leave cleanly, telling the server we are done.
-                write_str(&mut output, "\nEnd of input. Goodbye.\n").await?;
+                write_str(output, "\nEnd of input. Goodbye.\n").await?;
                 let _ = write.send(Message::Close(None)).await;
                 return Ok(());
             }
 
-            match select_action(&view, &line) {
-                Some(id) => break id.to_string(),
-                None => {
-                    let note = format!(
-                        "  '{}' is not a listed choice — enter a number from the menu.\n",
-                        line.trim()
-                    );
-                    write_str(&mut output, &note).await?;
-                }
+            match selected_action(&view, &line) {
+                Some(action) => match prompt_targets(action, input, output, &mut line).await? {
+                    Some(targets) => break (action.id.clone(), action.token.clone(), targets),
+                    None => {
+                        write_str(output, "\nEnd of input. Goodbye.\n").await?;
+                        let _ = write.send(Message::Close(None)).await;
+                        return Ok(());
+                    }
+                },
+                None => write_str(output, &not_listed(&line)).await?,
             }
         };
 
-        // 4. Echo the chosen action id back; the server decides what happens next.
-        // A plain action answer today: no target selection or content-binding
-        // token yet (both land with #73 / ADR 0009), so the rest defaults empty.
+        // 4. Echo the chosen action id, its content-binding token (verbatim), and the
+        //    atomically chosen targets; the server verifies the token against the
+        //    action it currently offers and checks each target (ADR 0009).
         let choose = ClientMessage::ChooseAction(ChooseAction {
             action_id,
-            ..Default::default()
+            token,
+            targets,
         });
         let json = serde_json::to_string(&choose).map_err(SessionError::Encode)?;
         write
@@ -286,6 +382,79 @@ where
     Ok(())
 }
 
+/// Read frames until the next decodable [`GameView`] arrives, returning `None` when
+/// the server closes the connection. Undecodable text frames are noted and skipped;
+/// ping/pong/binary frames are ignored.
+async fn next_game_view<S, W>(
+    read: &mut WsRead<S>,
+    output: &mut W,
+) -> Result<Option<GameView>, SessionError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    loop {
+        match read.next().await {
+            Some(Ok(Message::Text(text))) => {
+                match serde_json::from_str::<GameView>(text.as_str()) {
+                    Ok(view) => return Ok(Some(view)),
+                    Err(error) => {
+                        let note = format!("! ignoring undecodable server message: {error}\n");
+                        write_str(output, &note).await?;
+                    }
+                }
+            }
+            Some(Ok(Message::Close(_))) | None => {
+                write_str(output, "\nServer closed the connection. Goodbye.\n").await?;
+                return Ok(None);
+            }
+            // Ping/pong/binary/raw frames carry no protocol message; ignore.
+            Some(Ok(_)) => {}
+            Some(Err(error)) => return Err(SessionError::WebSocket(error)),
+        }
+    }
+}
+
+/// Walk a chosen action's target `requirements` as a prompt queue, returning one
+/// [`TargetChoice`] per slot filled from that slot's advertised `candidates`
+/// (ADR 0009). Returns `Ok(None)` if stdin hits EOF mid-selection. An action with no
+/// requirements returns an empty selection without prompting, so plain actions are
+/// unchanged.
+async fn prompt_targets<R, W>(
+    action: &ValidAction,
+    input: &mut R,
+    output: &mut W,
+    line: &mut String,
+) -> Result<Option<Vec<TargetChoice>>, SessionError>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let mut targets = Vec::with_capacity(action.requirements.len());
+    for req in &action.requirements {
+        write_str(output, &render_requirement(req)).await?;
+        let chosen = loop {
+            write_str(output, &target_prompt(req.candidates.len())).await?;
+            output.flush().await.map_err(SessionError::Io)?;
+
+            line.clear();
+            let read_bytes = input.read_line(line).await.map_err(SessionError::Io)?;
+            if read_bytes == 0 {
+                return Ok(None);
+            }
+            match select_target(req, line) {
+                Some(id) => break id.to_string(),
+                None => write_str(output, &not_listed(line)).await?,
+            }
+        };
+        targets.push(TargetChoice {
+            slot: req.slot.clone(),
+            chosen: vec![chosen],
+        });
+    }
+    Ok(Some(targets))
+}
+
 /// Map an operator's raw menu entry to the offered `action_id`, or `None` if it
 /// is not a number naming a listed action.
 ///
@@ -295,11 +464,58 @@ where
 /// indexes into the actions the server already offered.
 #[must_use]
 pub fn select_action<'a>(view: &'a GameView, input: &str) -> Option<&'a str> {
+    selected_action(view, input).map(|action| action.id.as_str())
+}
+
+/// Map an operator's raw menu entry to the offered [`ValidAction`] itself, or `None`
+/// if it is not a number naming a listed action. Like [`select_action`] but returns
+/// the whole action so the caller can read its content-binding `token` and target
+/// `requirements` (ADR 0009). Performs **no** game logic — it only indexes.
+#[must_use]
+pub fn selected_action<'a>(view: &'a GameView, input: &str) -> Option<&'a ValidAction> {
     let choice: usize = input.trim().parse().ok()?;
     let index = choice.checked_sub(1)?;
-    view.valid_actions
-        .get(index)
-        .map(|action| action.id.as_str())
+    view.valid_actions.get(index)
+}
+
+/// Map an operator's raw menu entry to one of a requirement slot's candidate entity
+/// ids, or `None` if it is not a number naming a listed candidate. The menu is
+/// 1-based, exactly like [`select_action`]; the client only indexes into the
+/// candidates the server already advertised for this slot (ADR 0009 §Client).
+#[must_use]
+pub fn select_target<'a>(req: &'a TargetRequirement, input: &str) -> Option<&'a str> {
+    let choice: usize = input.trim().parse().ok()?;
+    let index = choice.checked_sub(1)?;
+    req.candidates.get(index).map(String::as_str)
+}
+
+/// Render one target requirement slot: its prompt and its candidates as a numbered
+/// menu. A pure projection of the slot — the client shows only the candidates the
+/// server listed and derives no legality.
+#[must_use]
+fn render_requirement(req: &TargetRequirement) -> String {
+    let mut out = format!("\n{}:\n", req.prompt);
+    if req.candidates.is_empty() {
+        out.push_str("  (no legal targets)\n");
+    } else {
+        for (index, candidate) in req.candidates.iter().enumerate() {
+            out.push_str(&format!("  {}) {}\n", index + 1, candidate));
+        }
+    }
+    out
+}
+
+/// The prompt shown before reading a target choice.
+fn target_prompt(count: usize) -> String {
+    format!("Choose a target [1-{count}] (Ctrl-D to quit): ")
+}
+
+/// The re-prompt note for an entry that names no listed menu item.
+fn not_listed(line: &str) -> String {
+    format!(
+        "  '{}' is not a listed choice — enter a number from the menu.\n",
+        line.trim()
+    )
 }
 
 /// Render the whole display for one [`GameView`]: a plain-text summary of the
@@ -409,11 +625,24 @@ fn prompt(count: usize) -> String {
 }
 
 /// Write a whole string to `output`, mapping any I/O failure to [`SessionError`].
-async fn write_str<W: AsyncWrite + Unpin>(output: &mut W, text: &str) -> Result<(), SessionError> {
+pub(crate) async fn write_str<W: AsyncWrite + Unpin>(
+    output: &mut W,
+    text: &str,
+) -> Result<(), SessionError> {
     output
         .write_all(text.as_bytes())
         .await
         .map_err(SessionError::Io)
+}
+
+/// Write a whole string and flush it, mapping any I/O failure to [`SessionError`].
+/// Used for log/marker lines that a reader may be waiting on immediately.
+pub(crate) async fn write_flush<W: AsyncWrite + Unpin>(
+    output: &mut W,
+    text: &str,
+) -> Result<(), SessionError> {
+    write_str(output, text).await?;
+    output.flush().await.map_err(SessionError::Io)
 }
 
 #[cfg(test)]
