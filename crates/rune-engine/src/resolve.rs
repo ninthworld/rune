@@ -94,12 +94,16 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
             // ownership tracking is future work.
             if db.card(card.card).is_some_and(CardData::is_permanent) {
                 let id = state.mint_id();
+                let entered_turn = state.turn;
                 state.battlefield.push(Permanent {
                     id: PermanentId(id),
                     instance: card.id,
                     card: card.card,
                     controller: object.controller,
                     tapped: false,
+                    entered_turn,
+                    attacking: false,
+                    blocking: None,
                     damage: 0,
                     counters: Default::default(),
                 });
@@ -227,6 +231,9 @@ mod tests {
             card: CardId(6),
             controller: PlayerId(0),
             tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage: 0,
             counters: Default::default(),
         });

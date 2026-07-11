@@ -29,7 +29,7 @@ never receives what its player may not know). The concrete types live in the
 | `you` | `PlayerId` | The receiver's own seat entity id (same `p{N}` form used for players). Lets a client identify itself directly. A client that receives a payload without it (older server) treats it as `""`/unknown |
 | `my_hand` | `CardView[]` | Full card objects for the receiving player only |
 | `opponents` | `OpponentView[]` | `player_id`, `hand_size`, `life`, `library_size`, `graveyard_size`, `statuses` |
-| `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `counters` (a `Counter[]`, see below) |
+| `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `attacking`, `blocking`, `counters` (a `Counter[]`, see below) |
 | `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |
 | `graveyards`, `exile` | `ZonePile[]` | Public ordered lists per player |
 | `phase` | `Phase` | Current turn step (snake_case enum); drives overview/focus mode |
@@ -40,6 +40,22 @@ never receives what its player may not know). The concrete types live in the
 
 Empty collections and absent optionals are omitted from the JSON; clients must
 treat a missing field as its empty/`null` default.
+
+### Combat state on a Permanent
+
+A permanent carries its combat declaration state (CR 508/509), server-computed
+and display-only like every other characteristic:
+
+- `attacking` — `true` while the permanent is a declared attacker this combat.
+  Omitted (treated as `false`) when it is not attacking.
+- `blocking` — the entity id of the attacker this permanent is blocking, when it
+  is a declared blocker. Omitted (`null`) when it is not blocking. Several
+  blockers may name the same attacker; a blocker names exactly one attacker.
+
+Both are omitted from the JSON in the common not-in-combat case, so a permanent
+outside combat keeps its terse wire shape. The client renders these; it never
+derives combat legality (which creatures may attack or block is decided by the
+engine and surfaced through `valid_actions`).
 
 ### Counter
 
@@ -72,8 +88,11 @@ The whole array is omitted when a permanent has no counters.
   never parse them (the `card_N`/`perm_N` forms are server-internal).
 - `type` is a free-form string. Kinds emitted today: `pass_priority`
   (subject-less); `play_land` and `cast_spell` (subject = the hand card's entity
-  id); `activate_ability` (subject = the source permanent's entity id). Clients
-  key off `type`/`subject`/`label` and tolerate unknown kinds.
+  id); `activate_ability` (subject = the source permanent's entity id);
+  `declare_attackers` and `declare_blockers` (subject-less combat declarations,
+  CR 508/509 — their multi-select candidate `requirements` are a follow-up, as the
+  targeting `requirements` still are). Clients key off `type`/`subject`/`label`
+  and tolerate unknown kinds.
 - `token` is a **content-binding token** (ADR 0009): a server-issued value bound
   to this action's exact content (kind + subject + requirements). The client
   echoes it back verbatim in `ChooseAction`; the server recomputes it from the
