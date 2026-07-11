@@ -29,7 +29,7 @@ mod triggers;
 mod zone;
 
 pub use ability::{is_mana_ability, Ability, Cost, Effect, Target, TargetSpec, TriggerCondition};
-pub use actions::{valid_actions, Action};
+pub use actions::{target_requirements, valid_actions, Action, TargetRequirement};
 pub use apply::apply_action;
 pub use card::{abilities_of, CardData, CardDatabase};
 pub use card_type::{CardType, Supertype};
