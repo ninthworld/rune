@@ -187,6 +187,7 @@ impl GameState {
             land_played: false,
             attackers_declared: false,
             blockers_declared: false,
+            deathtouch_struck: Vec::new(),
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
             rng_seed: setup.rng_seed,

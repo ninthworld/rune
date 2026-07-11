@@ -232,5 +232,60 @@
     "power": 2,
     "toughness": 1,
     "keywords": ["haste"]
+  },
+  {
+    "id": 22,
+    "name": "Dawnblade Duelist",
+    "types": ["creature"],
+    "subtypes": ["Human", "Knight"],
+    "mana_cost": "{1}{W}",
+    "oracle_text": "First strike",
+    "power": 2,
+    "toughness": 2,
+    "keywords": ["first_strike"]
+  },
+  {
+    "id": 23,
+    "name": "Gorehorn Ravager",
+    "types": ["creature"],
+    "subtypes": ["Beast"],
+    "mana_cost": "{3}{G}",
+    "oracle_text": "Trample",
+    "power": 5,
+    "toughness": 4,
+    "keywords": ["trample"]
+  },
+  {
+    "id": 24,
+    "name": "Nettle Adder",
+    "types": ["creature"],
+    "subtypes": ["Snake"],
+    "mana_cost": "{G}",
+    "oracle_text": "Deathtouch",
+    "power": 1,
+    "toughness": 1,
+    "keywords": ["deathtouch"]
+  },
+  {
+    "id": 25,
+    "name": "Cleric of the Sunwell",
+    "types": ["creature"],
+    "subtypes": ["Cleric"],
+    "mana_cost": "{2}{W}",
+    "oracle_text": "Lifelink",
+    "power": 2,
+    "toughness": 3,
+    "keywords": ["lifelink"]
+  },
+  {
+    "id": 26,
+    "name": "Viridian Baneclaw",
+    "types": ["creature"],
+    "subtypes": ["Beast"],
+    "mana_cost": "{2}{B}{G}",
+    "oracle_text": "Trample, deathtouch",
+    "power": 4,
+    "toughness": 4,
+    "keywords": ["trample", "deathtouch"]
   }
 ]

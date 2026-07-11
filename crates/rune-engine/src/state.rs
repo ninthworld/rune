@@ -267,6 +267,17 @@ pub struct GameState {
     /// the defender's declaration is a player choice, and this records that it has
     /// been made so the step advances to its priority round. Reset each turn.
     pub blockers_declared: bool,
+    /// Permanents dealt combat damage this combat by a source with deathtouch
+    /// (CR 702.2b), pending the CR 704.5h state-based action that destroys them.
+    ///
+    /// **Raw stored input, not a derivation** (ADR 0010 §1): the combat-damage
+    /// step records a struck creature here (see `apply.rs :: deal_combat_damage`)
+    /// because "was dealt damage by a deathtouch source" is history a bare
+    /// snapshot cannot recover — the same reasoning as [`Permanent::damage`] and
+    /// [`Player::attempted_draw_from_empty`]. The SBA loop
+    /// ([`crate::sba::run_state_based_actions`]) consumes (drains) it, so it is
+    /// empty between combats; non-combat deathtouch is not modeled yet.
+    pub deathtouch_struck: Vec<PermanentId>,
     /// Extra turns waiting to be taken, as a stack: the entry pushed last is
     /// taken first (MTG rule 720.1 — the most recently created extra turn
     /// happens first). Each entry is the player who takes that turn.
@@ -329,6 +340,7 @@ impl GameState {
             land_played: false,
             attackers_declared: false,
             blockers_declared: false,
+            deathtouch_struck: Vec::new(),
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
             rng_seed,

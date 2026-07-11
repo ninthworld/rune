@@ -58,12 +58,13 @@ const SET_MANIFEST: &[SetSnapshot] = &[
 ///
 /// This is the printed keyword representation the combat and layer systems read;
 /// keyword-granting continuous effects are future work, so a permanent's keywords
-/// are its card's printed [`CardData::keywords`] today. All eight variants of the
-/// first two keyword tranches are modeled as data so the keywords-II work (first
-/// strike / trample / deathtouch / lifelink enforcement) needs no data migration;
-/// only [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
-/// [`Vigilance`](Keyword::Vigilance), and [`Haste`](Keyword::Haste) are enforced
-/// at combat-declaration time so far.
+/// are its card's printed [`CardData::keywords`] today. All eight variants are
+/// enforced: [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
+/// [`Vigilance`](Keyword::Vigilance), and [`Haste`](Keyword::Haste) at
+/// combat-declaration time (keywords I), and
+/// [`FirstStrike`](Keyword::FirstStrike), [`Trample`](Keyword::Trample),
+/// [`Deathtouch`](Keyword::Deathtouch), and [`Lifelink`](Keyword::Lifelink) at
+/// combat-damage time (keywords II — see [`crate::combat::combat_damage`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Keyword {
@@ -76,17 +77,14 @@ pub enum Keyword {
     /// Haste (CR 702.10): ignores the summoning-sickness restriction on attacking.
     Haste,
     /// First strike (CR 702.7): deals combat damage in a first combat-damage step.
-    /// Data only in this tranche; enforcement is keywords II.
     FirstStrike,
-    /// Trample (CR 702.19): assigns excess combat damage to the player or
-    /// planeswalker it is attacking. Data only in this tranche; enforcement is
-    /// keywords II.
+    /// Trample (CR 702.19): a blocked creature assigns excess combat damage to the
+    /// player it is attacking.
     Trample,
-    /// Deathtouch (CR 702.2): any nonzero combat damage it deals is lethal. Data
-    /// only in this tranche; enforcement is keywords II.
+    /// Deathtouch (CR 702.2): any nonzero damage it deals is lethal.
     Deathtouch,
     /// Lifelink (CR 702.15): damage it deals also gains its controller that much
-    /// life. Data only in this tranche; enforcement is keywords II.
+    /// life.
     Lifelink,
 }
 
@@ -455,7 +453,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 21);
+        assert_eq!(db.len(), 26);
     }
 
     #[test]
@@ -676,6 +674,30 @@ mod tests {
     }
 
     #[test]
+    fn issue_154_damage_keyword_fixtures_carry_their_printed_keywords() {
+        // CR 702: the four combat-damage keyword fixtures each print exactly one
+        // keyword, the ones keywords II enforces at combat-damage time.
+        let db = CardDatabase::bundled().unwrap();
+
+        let duelist = db.card(CardId(22)).unwrap();
+        assert_eq!(duelist.name, "Dawnblade Duelist");
+        assert!(duelist.has_keyword(Keyword::FirstStrike));
+        assert!(!duelist.has_keyword(Keyword::Deathtouch));
+
+        assert!(db.card(CardId(23)).unwrap().has_keyword(Keyword::Trample));
+        assert!(db
+            .card(CardId(24))
+            .unwrap()
+            .has_keyword(Keyword::Deathtouch));
+        assert!(db.card(CardId(25)).unwrap().has_keyword(Keyword::Lifelink));
+
+        // A creature can print more than one keyword (trample + deathtouch).
+        let baneclaw = db.card(CardId(26)).unwrap();
+        assert!(baneclaw.has_keyword(Keyword::Trample));
+        assert!(baneclaw.has_keyword(Keyword::Deathtouch));
+    }
+
+    #[test]
     fn all_eight_keyword_variants_deserialize_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
         // four data-only variants keywords II will enforce (CR 702).
@@ -702,8 +724,8 @@ mod tests {
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the twenty-one fixtures; FIX2 reprints one — twenty-two printings total.
-        assert_eq!(printings.len(), 22);
+        // FIX prints the twenty-six fixtures; FIX2 reprints one — twenty-seven printings total.
+        assert_eq!(printings.len(), 27);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));
