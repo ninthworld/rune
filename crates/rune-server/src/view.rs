@@ -11,12 +11,13 @@
 //! already depends on, and adds nothing to the wire contract in `rune-protocol`.
 
 use rune_engine::{
-    valid_actions, Action, CardData, CardDatabase, CardId, CardInstance, CardInstanceId, Effect,
-    GameState, PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step,
+    valid_actions, Action, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
+    CounterKind, Effect, GameState, PermanentId, Player, PlayerId, StackId, StackObject,
+    StackObjectKind, Step,
 };
 use rune_protocol::{
-    CardView, ChooseAction, GameView, OpponentView, Permanent as PermanentView, Phase, StackItem,
-    TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    CardView, ChooseAction, Counter, GameView, OpponentView, Permanent as PermanentView, Phase,
+    StackItem, TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -37,6 +38,32 @@ fn card_entity_id(instance: CardInstanceId) -> String {
 /// The opaque protocol id for a permanent on the battlefield.
 fn permanent_entity_id(id: PermanentId) -> String {
     format!("perm_{}", id.0)
+}
+
+/// The wire name for an engine [`CounterKind`], as the client expects it in
+/// [`Counter::kind`] (e.g. `"+1/+1"`). Kept exhaustive so a new engine variant
+/// forces a matching wire string here rather than silently going unnamed.
+fn counter_kind_str(kind: CounterKind) -> &'static str {
+    match kind {
+        CounterKind::PlusOnePlusOne => "+1/+1",
+        CounterKind::MinusOneMinusOne => "-1/-1",
+    }
+}
+
+/// Projects a permanent's stored engine counters into the wire [`Counter`] list.
+///
+/// Ordering follows the permanent's `BTreeMap<CounterKind, _>` iteration, which
+/// is sorted by [`CounterKind`] and therefore stable across runs. Absent kinds
+/// are simply not emitted, so a permanent with no counters yields an empty
+/// `Vec` (the `skip_serializing_if` wire shape stays unchanged).
+fn permanent_counters(perm: &rune_engine::Permanent) -> Vec<Counter> {
+    perm.counters
+        .iter()
+        .map(|(&kind, &count)| Counter {
+            kind: counter_kind_str(kind).to_owned(),
+            count,
+        })
+        .collect()
 }
 
 /// The opaque protocol id for an object on the stack.
@@ -325,7 +352,7 @@ pub(crate) fn personalized_view(
             owner: player_id(perm.controller),
             card: card_view(permanent_entity_id(perm.id), perm.card, db),
             tapped: perm.tapped,
-            counters: Vec::new(),
+            counters: permanent_counters(perm),
         })
         .collect();
 
@@ -554,6 +581,89 @@ mod tests {
                 personalized_view(&reseeded, &db, viewer),
             );
         }
+    }
+
+    /// A battlefield permanent projects its stored engine counters into
+    /// [`PermanentView::counters`] as `{ kind, count }` wire entries, in a
+    /// deterministic order (sorted by [`CounterKind`], the map's key order), and
+    /// a permanent with no counters projects to an empty list — which
+    /// `skip_serializing_if` then drops from the JSON entirely (issue #68).
+    #[test]
+    fn issue_68_permanent_counters_project_into_the_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+
+        // Seat 0 holds priority so the state is a valid, viewable snapshot.
+        let with_counters = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: with_counters,
+            instance: CardInstanceId(0),
+            card: CardId(5),
+            controller: PlayerId(0),
+            tapped: false,
+            // Insertion order is deliberately reversed from the expected wire
+            // order to prove the projection sorts by kind, not by insertion.
+            counters: [
+                (CounterKind::MinusOneMinusOne, 1),
+                (CounterKind::PlusOnePlusOne, 2),
+            ]
+            .into_iter()
+            .collect(),
+        });
+        let without_counters = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: without_counters,
+            instance: CardInstanceId(1),
+            card: CardId(5),
+            controller: PlayerId(0),
+            tapped: false,
+            counters: std::collections::BTreeMap::new(),
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+
+        let counted = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(with_counters))
+            .expect("permanent with counters must appear in the view");
+        assert_eq!(
+            counted.counters,
+            vec![
+                Counter {
+                    kind: "+1/+1".into(),
+                    count: 2,
+                },
+                Counter {
+                    kind: "-1/-1".into(),
+                    count: 1,
+                },
+            ],
+            "counters must be sorted by kind (+1/+1 before -1/-1), not by insertion order",
+        );
+
+        let bare = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(without_counters))
+            .expect("permanent without counters must appear in the view");
+        assert!(
+            bare.counters.is_empty(),
+            "a permanent with no counters projects to an empty list",
+        );
+
+        // The empty list is dropped from the wire via `skip_serializing_if`, so
+        // the serialized shape is unchanged from the always-empty placeholder.
+        let json = serde_json::to_value(bare).unwrap();
+        assert!(
+            json.get("counters").is_none(),
+            "empty counters must not be serialized (skip_serializing_if wire shape)",
+        );
+        let counted_json = serde_json::to_value(counted).unwrap();
+        assert!(
+            counted_json.get("counters").is_some(),
+            "non-empty counters must be serialized",
+        );
     }
 
     /// Every emitted action carries a non-empty content-binding token, and the
