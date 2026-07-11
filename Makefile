@@ -13,13 +13,13 @@ engine-test:
 	cargo test --workspace
 
 client-install:
-	cd clients/web && npm install
+	cd clients/web && npm ci
 
 client-lint: client-install
 	cd clients/web && npm run lint
 
 client-check: client-install
-	cd clients/web && npm run lint && npm run typecheck && npm run build
+	cd clients/web && npm run lint && npm run typecheck && npm run test && npm run build
 
 setup:
 	scripts/bootstrap.sh
