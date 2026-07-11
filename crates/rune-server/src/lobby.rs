@@ -25,20 +25,31 @@
 //! previous "auto-seat into a game that is already live with one player and empty
 //! decks" behavior (ADR 0012).
 //!
-//! # Reclaiming rooms
-//! A pre-game room's registry entry — and the [`Lobby::max_rooms`] capacity it holds
-//! — is freed once the room is **empty** (every seat vacated by a `Leave` or a
-//! disconnect). Reclamation runs opportunistically on room creation (so freed
-//! capacity is available to the next creator, even at the cap) and after every
-//! disconnect/leave. Migrated from the game-over/abandonment reaping of issue #54,
-//! which reaped *game-task* rooms; a pre-game room has no game task to observe, so
-//! "can no longer make progress" reduces to "no occupants remain".
+//! # Holding seats for reconnect, and reclaiming rooms
+//! A **seated** session is held open across a dropped connection: a disconnect
+//! neither vacates the seat nor reclaims the room, so the session's token can later
+//! reclaim exactly that seat (issue #113). This mirrors the room task's own
+//! seat-holding policy (`room.rs`) and, like it, has no idle timeout yet (turn
+//! clocks are a later milestone). A **roomless** session holds nothing to reconnect
+//! to, so it is dropped outright on disconnect. A room's registry entry — and the
+//! [`Lobby::max_rooms`] capacity it holds — is reclaimed once the room is **empty**,
+//! i.e. every seat has been *explicitly* vacated by a `Leave`. Reclamation runs
+//! opportunistically on room creation (so freed capacity is available to the next
+//! creator, even at the cap) and after every leave. Migrated from the
+//! game-over/abandonment reaping of issue #54, which reaped *game-task* rooms.
 //!
-//! # Identity is minimal for now
-//! The session token is issued fresh on every connection. Reuniting a returning
-//! connection with a held-open seat via an echoed token is the reconnect mechanism
-//! deferred to issue #113; this module issues and tracks the token but treats every
-//! `Hello` as a fresh identity.
+//! # Identity and reconnect (issue #113)
+//! Every connection is issued an **unguessable** per-session token ([`mint_token`])
+//! — a secret, unlike the sequential, public room id — and it is returned in the
+//! connection's [`LobbyView`]. A returning connection echoes it on [`Hello`], and
+//! [`Lobby::hello`] routes a valid token back into the *same* held seat, resyncing
+//! it from one full `LobbyView` (the reconstruct-from-one-view invariant is the
+//! resync mechanism). A token is honored only for the seat it was issued for, so it
+//! can never reach another player's seat or private state (issue #48). A `Hello`
+//! with no token, an unknown one, or one whose room is gone yields a fresh, roomless
+//! identity — never someone else's seat. A newer connection presenting a live token
+//! **supersedes** the older one (stale-duplicate handling): the older connection's
+//! later teardown carries a stale generation and is left inert.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -106,6 +117,20 @@ struct Registry {
     sessions: HashMap<SessionToken, Session>,
 }
 
+/// A connection's grip on its session: the secret token plus the connection
+/// *generation* it was assigned. The generation is bumped every time a new
+/// connection attaches to the session (at connect, and on each token reconnect), so
+/// a superseded connection can be told apart from the current one: only a handle
+/// whose generation still matches the session may tear it down (issue #113
+/// stale-duplicate handling).
+#[derive(Clone, Debug)]
+pub(crate) struct SessionHandle {
+    /// The session's secret [`SessionToken`].
+    token: SessionToken,
+    /// The connection generation this handle was issued for.
+    generation: u64,
+}
+
 /// One live connection's server-side state.
 struct Session {
     /// The public player identity shown to other seats as [`SeatView::occupied_by`].
@@ -114,8 +139,13 @@ struct Session {
     room: Option<RoomId>,
     /// The seat index within [`Session::room`], if seated.
     seat: Option<usize>,
-    /// Where this connection's [`LobbyView`]s are pushed.
+    /// Where this connection's [`LobbyView`]s are pushed. After a disconnect of a
+    /// held (seated) session the receiver is gone, so pushes silently no-op until a
+    /// reconnect installs a fresh outbox here.
     outbox: LobbyOutbox,
+    /// The generation of the connection currently attached to this session. Bumped
+    /// on every (re)attach so a stale, superseded connection's teardown is ignored.
+    generation: u64,
 }
 
 /// One pre-game room: a config plus a per-seat occupancy roster. It holds **no**
@@ -196,16 +226,32 @@ impl Lobby {
         Ok(Self::new(CardDatabase::bundled()?, max_rooms))
     }
 
-    /// Register a freshly accepted connection: issue it a session token and public
-    /// identity, store its `outbox`, and push it its initial [`LobbyView`] (a
-    /// roomless view offering `create_room`/`join_room`). Returns the token so the
-    /// connection can later address the session.
-    pub(crate) async fn connect(&self, outbox: LobbyOutbox) -> SessionToken {
+    /// Register a freshly accepted connection: issue it an unguessable session token
+    /// and a public identity, store its `outbox`, and push it its initial
+    /// [`LobbyView`] (a roomless view offering `create_room`/`join_room`). Returns a
+    /// [`SessionHandle`] the connection uses to address, and later tear down, the
+    /// session.
+    ///
+    /// # Errors
+    /// Returns the underlying [`getrandom::Error`] if the OS CSPRNG is unavailable:
+    /// without unguessable entropy the server cannot safely mint a reconnect token,
+    /// so the connection is refused rather than issued a weak one.
+    pub(crate) async fn connect(
+        &self,
+        outbox: LobbyOutbox,
+    ) -> Result<SessionHandle, getrandom::Error> {
         let mut registry = self.inner.registry.write().await;
+        // The public identity is sequential (it is shown to opponents); the secret
+        // token is not — it authenticates reconnect, so it must be unguessable.
         let n = registry.next_session;
         registry.next_session += 1;
-        let token = format!("s{n}");
         let player = format!("p{n}");
+        let token = loop {
+            let candidate = mint_token()?;
+            if !registry.sessions.contains_key(&candidate) {
+                break candidate;
+            }
+        };
         registry.sessions.insert(
             token.clone(),
             Session {
@@ -213,30 +259,99 @@ impl Lobby {
                 room: None,
                 seat: None,
                 outbox,
+                generation: 0,
             },
         );
         push_view(&registry, &token);
         info!(%token, "connection entered the lobby");
-        token
+        Ok(SessionHandle {
+            token,
+            generation: 0,
+        })
     }
 
-    /// Retire a session when its connection ends: vacate its seat (if any), reclaim
-    /// the room when it becomes empty, and notify any remaining occupants.
-    ///
-    /// A stale token is ignored, so a double disconnect cannot corrupt the registry.
-    pub(crate) async fn disconnect(&self, token: &SessionToken) {
+    /// Route a [`Hello`](rune_protocol::Hello). `current` is the handle the
+    /// connection was issued at [`connect`](Lobby::connect) (a fresh identity). If
+    /// `echoed` names a *different*, still-known session, this connection proves it
+    /// owns that seat by presenting the secret token, so it **supersedes** whatever
+    /// connection last held it: the connection's outbox is moved onto the reclaimed
+    /// session, the fresh identity is discarded, the session's generation is bumped
+    /// (retiring the superseded connection), and the reclaimed session is resynced
+    /// from one full [`LobbyView`]. Any other case — no token, the connection's own
+    /// token, an unknown token, or one whose room has been reclaimed — keeps the
+    /// fresh identity and re-sends its clean, roomless view (the "room gone"
+    /// response). Returns the handle the connection should use henceforth.
+    pub(crate) async fn hello(
+        &self,
+        current: &SessionHandle,
+        echoed: Option<SessionToken>,
+    ) -> SessionHandle {
         let mut registry = self.inner.registry.write().await;
-        let Some(session) = registry.sessions.remove(token) else {
+
+        // Only a *different* token that names a live/held session is a reconnect. An
+        // absent, self, unknown, or reaped token falls through to a fresh identity —
+        // a token can never resolve to a seat that is not the one it was issued for
+        // (issue #48), so a stranger never lands in a held seat.
+        let target = echoed
+            .as_ref()
+            .filter(|t| **t != current.token && registry.sessions.contains_key(*t))
+            .cloned();
+        let Some(target) = target else {
+            push_view(&registry, &current.token);
+            return current.clone();
+        };
+
+        // Move this connection's outbox onto the reclaimed session and drop the fresh
+        // identity `connect` minted, so only the reclaimed session survives.
+        let Some(fresh) = registry.sessions.remove(&current.token) else {
+            // The current session always exists here; defensively fall back to a
+            // no-op reconnect if it somehow does not.
+            push_view(&registry, &current.token);
+            return current.clone();
+        };
+        let Some(session) = registry.sessions.get_mut(&target) else {
+            // Unreachable: presence was checked above under the same lock. Restore
+            // the fresh identity rather than lose the connection's outbox.
+            registry.sessions.insert(current.token.clone(), fresh);
+            push_view(&registry, &current.token);
+            return current.clone();
+        };
+        session.outbox = fresh.outbox;
+        session.generation += 1;
+        let generation = session.generation;
+        push_view(&registry, &target);
+        info!(token = %target, "connection reclaimed a held seat via session token");
+        SessionHandle {
+            token: target,
+            generation,
+        }
+    }
+
+    /// End a connection. A **seated** session is *held open* — neither its seat nor
+    /// its room is touched — so its token can reclaim the seat later (issue #113); a
+    /// **roomless** session holds nothing to reconnect to and is removed. The seat is
+    /// only ever vacated by an explicit `Leave`.
+    ///
+    /// The `handle`'s generation must still match the session's, so a **superseded**
+    /// connection (an older generation retired by a token reconnect) cannot tear down
+    /// the session a newer connection reclaimed. A handle for an already-removed
+    /// session is likewise ignored, so a double disconnect cannot corrupt the
+    /// registry.
+    pub(crate) async fn disconnect(&self, handle: &SessionHandle) {
+        let mut registry = self.inner.registry.write().await;
+        let Some(session) = registry.sessions.get(&handle.token) else {
             return;
         };
-        if let (Some(room_id), Some(seat)) = (session.room, session.seat) {
-            vacate(&mut registry, &room_id, seat);
-            reap_empty(&mut registry);
-            if registry.rooms.contains_key(&room_id) {
-                push_room(&registry, &room_id);
-            }
-            info!(%token, %room_id, seat, "connection left the lobby; seat vacated");
+        if session.generation != handle.generation {
+            // A newer connection has superseded this one; leave its session intact.
+            return;
         }
+        if session.room.is_some() {
+            info!(token = %handle.token, "connection dropped; seat held open for reconnect");
+            return;
+        }
+        registry.sessions.remove(&handle.token);
+        info!(token = %handle.token, "connection left the lobby");
     }
 
     /// Route one [`LobbyCommand`] from `token` against authoritative state. On
@@ -253,9 +368,10 @@ impl Lobby {
             return Err(LobbyError::UnknownSession);
         }
         let result = match command {
-            // First contact / reconnect. Reconnect-by-token is issue #113; for now a
-            // fresh identity is already issued at connect, so acknowledge by
-            // re-sending the current view.
+            // Reconnect-by-token is driven by [`Lobby::hello`] from the serve loop,
+            // which can supersede the connection's identity (a generation change this
+            // token-only router cannot express). A `Hello` reaching here — e.g. a
+            // direct call in a test — is a harmless ack that re-sends the current view.
             LobbyCommand::Hello(_) => Ok(()),
             LobbyCommand::CreateRoom(CreateRoom { config }) => {
                 self.create_room(&mut registry, token, config)
@@ -393,6 +509,29 @@ fn reap_empty(registry: &mut Registry) {
     });
 }
 
+/// Mint an unguessable per-session token from the operating-system CSPRNG.
+///
+/// The token authenticates a reconnect to a held seat (issue #113), so — unlike the
+/// sequential, public room id — it is a **secret** and must be neither guessable nor
+/// derivable from any public value (issue #48). It carries 128 bits of entropy,
+/// hex-encoded behind an `s` tag; the value is opaque to clients (`docs/protocol.md`).
+///
+/// # Errors
+/// Propagates [`getrandom::Error`] if the OS entropy source is unavailable.
+fn mint_token() -> Result<SessionToken, getrandom::Error> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes)?;
+    let mut token = String::with_capacity(1 + bytes.len() * 2);
+    token.push('s');
+    for byte in bytes {
+        // Indices are always < 16, so this never panics.
+        token.push(HEX[usize::from(byte >> 4)] as char);
+        token.push(HEX[usize::from(byte & 0x0f)] as char);
+    }
+    Ok(token)
+}
+
 /// Build the [`LobbyView`] for one session, or `None` if the token is unknown.
 fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
     let session = registry.sessions.get(token)?;
@@ -490,8 +629,18 @@ where
     let (mut write, mut read) = ws.split();
     let (outbox_tx, mut outbox_rx) = watch::channel::<Option<LobbyView>>(None);
     // Registering the session pushes the initial LobbyView onto the outbox, so the
-    // writer arm below sends it as the connection's first frame.
-    let token = lobby.connect(outbox_tx).await;
+    // writer arm below sends it as the connection's first frame. The handle can be
+    // reassigned mid-connection when a `Hello` reconnects to a held seat.
+    let mut handle = match lobby.connect(outbox_tx).await {
+        Ok(handle) => handle,
+        Err(error) => {
+            // Without OS entropy we cannot mint an unguessable token; refuse rather
+            // than issue a weak one.
+            warn!(%error, "failed to mint a session token; closing connection");
+            let _ = write.close().await;
+            return;
+        }
+    };
 
     tokio::pin!(shutdown);
     loop {
@@ -499,7 +648,7 @@ where
             () = &mut shutdown => break,
             incoming = read.next() => match incoming {
                 Some(Ok(Message::Text(text))) => {
-                    forward_lobby_command(&lobby, &token, text.as_str()).await;
+                    forward_lobby_command(&lobby, &mut handle, text.as_str()).await;
                 }
                 Some(Ok(Message::Ping(payload))) => {
                     if write.send(Message::Pong(payload)).await.is_err() {
@@ -509,7 +658,7 @@ where
                 Some(Ok(Message::Close(_))) | None => break,
                 Some(Ok(_)) => {} // binary/pong/raw frames carry no protocol message
                 Some(Err(error)) => {
-                    warn!(%token, %error, "websocket read error");
+                    warn!(token = %handle.token, %error, "websocket read error");
                     break;
                 }
             },
@@ -528,7 +677,9 @@ where
                                     break;
                                 }
                             }
-                            Err(error) => warn!(%token, %error, "failed to serialize lobby view"),
+                            Err(error) => {
+                                warn!(token = %handle.token, %error, "failed to serialize lobby view");
+                            }
                         }
                     }
                 }
@@ -537,20 +688,27 @@ where
         }
     }
 
-    lobby.disconnect(&token).await;
+    lobby.disconnect(&handle).await;
     let _ = write.close().await;
 }
 
 /// Decode one JSON [`LobbyCommand`] and route it; malformed frames are logged and
 /// dropped rather than closing the connection.
-async fn forward_lobby_command(lobby: &Lobby, token: &SessionToken, text: &str) {
+///
+/// A `Hello` goes to [`Lobby::hello`], which may reconnect this connection to a held
+/// seat and hand back a new identity — so `handle` is updated in place. Every other
+/// command routes through [`Lobby::command`] against the current handle's token.
+async fn forward_lobby_command(lobby: &Lobby, handle: &mut SessionHandle, text: &str) {
     match serde_json::from_str::<LobbyCommand>(text) {
+        Ok(LobbyCommand::Hello(hello)) => {
+            *handle = lobby.hello(handle, hello.token).await;
+        }
         Ok(command) => {
-            if let Err(error) = lobby.command(token, command).await {
-                warn!(%token, %error, "rejected lobby command");
+            if let Err(error) = lobby.command(&handle.token, command).await {
+                warn!(token = %handle.token, %error, "rejected lobby command");
             }
         }
-        Err(error) => warn!(%token, %error, "ignoring undecodable lobby command"),
+        Err(error) => warn!(token = %handle.token, %error, "ignoring undecodable lobby command"),
     }
 }
 
@@ -559,7 +717,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
-    use rune_protocol::{Hello, Ready, SubmitDeck};
+    use rune_protocol::{Ready, SubmitDeck};
 
     fn lobby(max_rooms: usize) -> Lobby {
         Lobby::bundled(max_rooms).expect("bundled cards")
@@ -572,17 +730,46 @@ mod tests {
         }
     }
 
-    /// A test client: a registered session plus its outbox receiver.
+    /// A test client: a registered session plus its outbox receiver. Holds the
+    /// connection `generation` too so it can build a [`SessionHandle`] for disconnect.
     struct Client {
         token: SessionToken,
+        generation: u64,
         rx: watch::Receiver<Option<LobbyView>>,
     }
 
     impl Client {
         async fn connect(lobby: &Lobby) -> Self {
             let (tx, rx) = watch::channel(None);
-            let token = lobby.connect(tx).await;
-            Self { token, rx }
+            let handle = lobby.connect(tx).await.expect("mint a session token");
+            Self {
+                token: handle.token,
+                generation: handle.generation,
+                rx,
+            }
+        }
+
+        /// Simulate a returning connection that echoes `echoed` on `Hello`: a brand
+        /// new socket (fresh outbox + identity) that then reconnects. The resulting
+        /// client carries whatever identity the reconnect resolved to, and its
+        /// receiver holds the resynced view.
+        async fn reconnect(lobby: &Lobby, echoed: Option<SessionToken>) -> Self {
+            let (tx, rx) = watch::channel(None);
+            let fresh = lobby.connect(tx).await.expect("mint a session token");
+            let adopted = lobby.hello(&fresh, echoed).await;
+            Self {
+                token: adopted.token,
+                generation: adopted.generation,
+                rx,
+            }
+        }
+
+        /// The handle a real connection would present on disconnect.
+        fn handle(&self) -> SessionHandle {
+            SessionHandle {
+                token: self.token.clone(),
+                generation: self.generation,
+            }
         }
 
         /// The latest view pushed to this client (awaiting the next change).
@@ -900,7 +1087,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn disconnect_reclaims_a_solo_room_and_notifies_remaining_peers() {
+    async fn a_dropped_connection_holds_its_seat_open_for_token_reconnect() {
+        // Reconnect model (issue #113): a disconnect no longer vacates a seat or
+        // reclaims the room — the seat is held so the token can return to it. Only an
+        // explicit `Leave` vacates (covered by the reclamation tests below).
         let lobby = lobby(4);
         let mut alice = Client::connect(&lobby).await;
         let _ = alice.view().await;
@@ -912,6 +1102,110 @@ mod tests {
             .await
             .unwrap();
         let room_id = alice.view().await.room.unwrap().room_id;
+        let alice_you = alice.current().you.clone();
+        let alice_token = alice.token.clone();
+
+        // Alice's socket drops. Her seat is HELD open and the room is NOT reclaimed.
+        lobby.disconnect(&alice.handle()).await;
+
+        // A brand-new joiner takes the *other* seat — never Alice's held seat 0 — and
+        // the room is proven to still exist (it was not reclaimed on her disconnect).
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::JoinRoom(JoinRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .expect("the held-open room still accepts a joiner");
+        let bob_room = bob
+            .view()
+            .await
+            .room
+            .expect("bob joined the surviving room");
+        assert_eq!(bob_room.room_id, room_id);
+        assert_eq!(
+            bob_room.seats[1].occupied_by.as_deref(),
+            Some(bob.current().you.as_str())
+        );
+        assert_eq!(
+            bob_room.seats[0].occupied_by.as_deref(),
+            Some(alice_you.as_str()),
+            "Alice's seat is still held while she is away",
+        );
+
+        // Alice reconnects with her token and is resynced into the *same* seat 0.
+        let alice2 = Client::reconnect(&lobby, Some(alice_token)).await;
+        let resumed = alice2.current().room.expect("alice reclaims her held room");
+        assert_eq!(resumed.room_id, room_id);
+        assert_eq!(
+            resumed.seats[0].occupied_by.as_deref(),
+            Some(alice_you.as_str())
+        );
+        assert_eq!(
+            alice2.current().you,
+            alice_you,
+            "same identity across reconnect"
+        );
+    }
+
+    #[tokio::test]
+    async fn leaving_the_last_seat_reclaims_the_room() {
+        // The seat is only ever vacated by an explicit `Leave`; once the room is
+        // empty it is reclaimed and its id becomes unknown.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .unwrap();
+        let room_id = alice.view().await.room.unwrap().room_id;
+
+        lobby
+            .command(&alice.token, LobbyCommand::Leave)
+            .await
+            .unwrap();
+
+        let mut carol = Client::connect(&lobby).await;
+        let _ = carol.view().await;
+        let err = lobby
+            .command(&carol.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+            .await
+            .expect_err("the reclaimed room is gone");
+        assert_eq!(err, LobbyError::UnknownRoom);
+    }
+
+    /// Regression for issue #113, referencing issue #48 (the hidden-hand leak the
+    /// one-way seat retirement was guarding against). A held seat is handed back
+    /// **only** to the exact secret token that owns it: a returning stranger — no
+    /// token, a forged token, or another seat's *public* identity — never lands in
+    /// someone else's held seat. That is precisely what stops a reconnect from
+    /// leaking the private state a held seat guards (in game, the absent player's
+    /// hand and library; #48), and the token never resolves to a *different* seat.
+    #[tokio::test]
+    async fn issue_113_reconnect_token_never_leaks_a_held_seat_referencing_48() {
+        let lobby = lobby(4);
+
+        // Alice opens a room (seat 0); Bob joins (seat 1).
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .unwrap();
+        let room_id = alice.view().await.room.unwrap().room_id;
+        let alice_you = alice.current().you.clone();
+        let alice_token = alice.token.clone();
 
         let mut bob = Client::connect(&lobby).await;
         let _ = bob.view().await;
@@ -927,21 +1221,107 @@ mod tests {
         let _ = bob.view().await;
         let _ = alice.view().await;
 
-        // Bob's connection drops: alice sees his seat vacated, room still hers.
-        lobby.disconnect(&bob.token).await;
-        let alice_after = alice.view().await.room.expect("alice keeps the room");
-        assert!(alice_after.seats[1].occupied_by.is_none());
+        // Alice's socket drops; seat 0 is held open, still showing her as occupant.
+        lobby.disconnect(&alice.handle()).await;
 
-        // Now alice drops too: the room is empty and reclaimed. A fresh joiner by the
-        // old id gets an unknown-room error, proving the entry is gone.
-        lobby.disconnect(&alice.token).await;
-        let mut carol = Client::connect(&lobby).await;
-        let _ = carol.view().await;
-        let err = lobby
-            .command(&carol.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+        // A stranger tries every value they might present: no token, a forged token,
+        // and Alice's PUBLIC identity (which other seats legitimately see). None is
+        // her secret session token, so none reclaims her seat — each yields a fresh,
+        // roomless identity that never sees the inside of the room.
+        for forged in [
+            None,
+            Some("s-forged-guess".to_string()),
+            Some(alice_you.clone()),
+        ] {
+            let stranger = Client::reconnect(&lobby, forged).await;
+            let view = stranger.current();
+            assert!(view.room.is_none(), "a stranger never lands in a held seat");
+            assert_ne!(
+                view.session, alice_token,
+                "a stranger is never handed Alice's secret token",
+            );
+            assert_ne!(
+                view.you, alice_you,
+                "a stranger gets its own identity, never Alice's seat",
+            );
+        }
+
+        // Only the real secret token reclaims the seat — and always the SAME seat 0,
+        // never Bob's seat 1.
+        let alice2 = Client::reconnect(&lobby, Some(alice_token)).await;
+        let resumed = alice2
+            .current()
+            .room
+            .expect("the true token reclaims the seat");
+        assert_eq!(resumed.room_id, room_id);
+        assert_eq!(
+            resumed.seats[0].occupied_by.as_deref(),
+            Some(alice_you.as_str()),
+            "reclaimed her own seat 0",
+        );
+        assert_ne!(
+            resumed.seats[1].occupied_by.as_deref(),
+            Some(alice_you.as_str()),
+            "the token never grants a different seat",
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_113_a_new_connection_with_the_token_supersedes_the_old_one() {
+        // Stale-duplicate handling: the new connection supersedes the old. Even while
+        // the old connection is still nominally alive, presenting its token takes the
+        // seat over, and the old connection's later teardown is a no-op (stale
+        // generation) — so it cannot vacate the seat the new connection now holds.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
             .await
-            .expect_err("the reclaimed room is gone");
-        assert_eq!(err, LobbyError::UnknownRoom);
+            .unwrap();
+        let _ = alice.view().await;
+        let alice_token = alice.token.clone();
+        let stale_handle = alice.handle();
+
+        // A new connection presents the same token and reclaims the seat.
+        let alice2 = Client::reconnect(&lobby, Some(alice_token.clone())).await;
+        assert!(
+            alice2.current().room.is_some(),
+            "the superseding connection holds the seat",
+        );
+        assert_eq!(alice2.token, alice_token, "same session, new connection");
+
+        // The OLD connection tears down: its generation is stale, so this is ignored
+        // and the reclaimed session survives.
+        lobby.disconnect(&stale_handle).await;
+
+        // Proof the seat is still held for the new connection: it can reconnect again.
+        let alice3 = Client::reconnect(&lobby, Some(alice_token)).await;
+        assert!(
+            alice3.current().room.is_some(),
+            "the superseding connection still owns the held seat",
+        );
+    }
+
+    #[tokio::test]
+    async fn session_tokens_are_unguessable_and_distinct_from_the_public_identity() {
+        let lobby = lobby(4);
+        let a = Client::connect(&lobby).await;
+        let b = Client::connect(&lobby).await;
+
+        // Per-session and unique.
+        assert_ne!(a.token, b.token);
+        // Real entropy, not the old sequential "s{n}" scheme an attacker could guess.
+        assert!(a.token.len() >= 16, "token carries real entropy");
+        assert!(
+            !matches!(a.token.as_str(), "s0" | "s1" | "s2"),
+            "tokens are not sequential/guessable",
+        );
+        // The secret token is never the public identity shown to opponents.
+        assert_ne!(a.token, a.current().you, "secret token != public identity");
     }
 
     #[tokio::test]
@@ -1006,18 +1386,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hello_is_acknowledged_with_a_fresh_view() {
-        // Reconnect-by-token is issue #113; for now Hello just re-sends the view.
+    async fn hello_without_a_token_keeps_the_fresh_identity() {
+        // A first-contact Hello (no token) has nothing to reclaim: the connection
+        // keeps the identity it was minted at connect and is re-sent its view.
         let lobby = lobby(4);
         let mut alice = Client::connect(&lobby).await;
         let first = alice.view().await;
-        lobby
-            .command(&alice.token, LobbyCommand::Hello(Hello::default()))
-            .await
-            .expect("hello acknowledged");
+        let handle = alice.handle();
+        let after = lobby.hello(&handle, None).await;
+        assert_eq!(after.token, first.session, "identity unchanged");
+        assert_eq!(after.generation, handle.generation, "no supersede");
         let again = alice.view().await;
         assert_eq!(again.session, first.session);
         assert!(again.room.is_none());
+    }
+
+    #[tokio::test]
+    async fn hello_with_an_unknown_token_gets_a_clean_roomless_view() {
+        // A token for a session/room that no longer exists (the "room gone" case)
+        // never resolves to another seat: the connection keeps its fresh, roomless
+        // identity rather than being routed anywhere.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let first = alice.view().await;
+        let handle = alice.handle();
+        let after = lobby
+            .hello(&handle, Some("s-does-not-exist".to_string()))
+            .await;
+        assert_eq!(
+            after.token, first.session,
+            "unknown token grants no other seat"
+        );
+        let again = alice.view().await;
+        assert!(again.room.is_none(), "clean roomless lobby response");
     }
 
     #[tokio::test]
