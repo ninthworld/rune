@@ -11,16 +11,47 @@ use serde::Deserialize;
 
 use crate::ability::Ability;
 use crate::card_type::{CardType, Supertype};
-use crate::id::CardId;
+use crate::id::{CardId, OracleId};
 use crate::scripted::scripted_abilities;
 
-/// The bundled card snapshot, embedded at compile time.
+/// The bundled oracle snapshot, embedded at compile time.
 ///
-/// Deliberately tiny and hand-authored: a handful of vanilla creatures and one
-/// basic land. Only non-infringing data — names, type lines, mana costs, oracle
-/// text, power/toughness — with no card images, official frames, or WotC
-/// branding (crate `AGENTS.md`, `docs/brief.md` Legal Considerations).
-const BUNDLED_SNAPSHOT: &str = include_str!("../data/cards.json");
+/// One record per distinct card — its printing-independent characteristics and
+/// ability IR — regardless of how many sets print it (ADR 0013 §2). Deliberately
+/// tiny and hand-authored: a handful of vanilla creatures and one basic land.
+/// Only non-infringing data — names, type lines, mana costs, oracle text,
+/// power/toughness — with no card images, official frames, or WotC branding
+/// (crate `AGENTS.md`, `docs/brief.md` Legal Considerations).
+const ORACLE_SNAPSHOT: &str = include_str!("../data/oracle.json");
+
+/// One embedded set snapshot: a set code paired with its printing records.
+///
+/// Set files are enumerated in [`SET_MANIFEST`] as a `const` list of
+/// [`include_str!`]ed snapshots, never a directory walk — the engine embeds card
+/// data at compile time and does zero I/O at runtime (crate `AGENTS.md`, ADR 0013
+/// §2). Adding a set means adding one entry here by hand.
+struct SetSnapshot {
+    /// The set's code, used as the first half of every printing key.
+    code: &'static str,
+    /// The embedded JSON: an array of printing records for this set.
+    json: &'static str,
+}
+
+/// The compile-time manifest of embedded set files (ADR 0013 §2).
+///
+/// `FIX` prints the six oracle fixtures; `FIX2` reprints one of them, proving a
+/// reprint is one printing entry and zero rules-logic changes. These are engine
+/// test fixtures, not a shipped set (ADR 0013 §5).
+const SET_MANIFEST: &[SetSnapshot] = &[
+    SetSnapshot {
+        code: "FIX",
+        json: include_str!("../data/sets/FIX.json"),
+    },
+    SetSnapshot {
+        code: "FIX2",
+        json: include_str!("../data/sets/FIX2.json"),
+    },
+];
 
 /// The static, printing-independent characteristics of a card.
 ///
@@ -140,10 +171,10 @@ impl CardDatabase {
     /// expected in practice; it is surfaced rather than panicked on because the
     /// engine forbids panicking APIs.
     pub fn bundled() -> Result<Self, serde_json::Error> {
-        Self::from_json(BUNDLED_SNAPSHOT)
+        Self::from_json(ORACLE_SNAPSHOT)
     }
 
-    /// Parse a JSON snapshot (an array of card entries) into a database.
+    /// Parse a JSON snapshot (an array of oracle-card entries) into a database.
     ///
     /// # Errors
     /// Returns the underlying [`serde_json::Error`] if `json` is not a valid
@@ -174,6 +205,150 @@ impl CardDatabase {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.cards.is_empty()
+    }
+}
+
+/// A card's rarity in a given printing (ADR 0013 §1).
+///
+/// A purely bibliographic property of the printing, not a rule the engine reasons
+/// about. Serialized lowercase to mirror Scryfall's data shape.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Rarity {
+    /// Common.
+    Common,
+    /// Uncommon.
+    Uncommon,
+    /// Rare.
+    Rare,
+    /// Mythic rare.
+    Mythic,
+}
+
+/// A purely bibliographic printing record (ADR 0013 §1).
+///
+/// A printing is a specific appearance of an oracle card in a set: its
+/// [`OracleId`], a collector number, and a rarity. It carries **no** name, cost,
+/// types, or abilities — everything mechanical is read through its [`OracleId`]
+/// against the oracle [`CardDatabase`] — and **no** art, frame, artist, or
+/// branding. That prohibition is structural: the deserializer rejects unknown
+/// fields, so an `image_uris`-style field fails to parse rather than being
+/// silently ignored (ADR 0013 §6, `docs/brief.md` Legal Considerations).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Printing {
+    /// The oracle card this record prints. All rules read through this id.
+    pub oracle: OracleId,
+    /// The collector number within its set (a string, e.g. `"12"` or `"100a"`).
+    pub collector_number: String,
+    /// The printing's rarity.
+    pub rarity: Rarity,
+}
+
+/// The wire form of a [`Printing`]: strictly the bibliographic fields.
+///
+/// `deny_unknown_fields` is what makes the art/branding prohibition structural —
+/// any field beyond these three (e.g. `image_uris`, `artist`, `frame`) is a parse
+/// error (ADR 0013 §1, §6).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrintingEntry {
+    /// The [`OracleId`] this printing references, as its raw integer.
+    oracle_id: u64,
+    /// The collector number within its set.
+    collector_number: String,
+    /// The printing's rarity.
+    rarity: Rarity,
+}
+
+/// The key identifying a single printing: its set code and collector number.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct PrintingKey {
+    /// The set code (the [`SetSnapshot::code`] the printing was loaded from).
+    set_code: String,
+    /// The collector number within that set.
+    collector_number: String,
+}
+
+/// An immutable database of printing records, keyed by set code + collector
+/// number, each referencing an [`OracleId`] (ADR 0013 §2).
+///
+/// The parallel of [`CardDatabase`] for bibliographic data. It holds **no** rules
+/// logic: a printing resolves to characteristics only by looking its
+/// [`Printing::oracle`] up in the oracle [`CardDatabase`]. Built from the
+/// compile-time [`SET_MANIFEST`] via [`PrintingDatabase::bundled`], or from a
+/// single set's JSON via [`PrintingDatabase::from_json`].
+#[derive(Clone, Debug, Default)]
+pub struct PrintingDatabase {
+    printings: HashMap<PrintingKey, Printing>,
+}
+
+impl PrintingDatabase {
+    /// Load every printing in the compile-time-embedded [`SET_MANIFEST`].
+    ///
+    /// # Errors
+    /// Returns the underlying [`serde_json::Error`] if any embedded set file
+    /// fails to parse. The snapshots are committed and tested, so this is not
+    /// expected in practice; it is surfaced rather than panicked on because the
+    /// engine forbids panicking APIs.
+    pub fn bundled() -> Result<Self, serde_json::Error> {
+        let mut db = Self::default();
+        for set in SET_MANIFEST {
+            db.load_set(set.code, set.json)?;
+        }
+        Ok(db)
+    }
+
+    /// Parse one set's JSON (an array of printing records) into a fresh database
+    /// under `set_code`.
+    ///
+    /// # Errors
+    /// Returns the underlying [`serde_json::Error`] if `json` is not a valid set
+    /// snapshot — including when a record carries a field beyond the bibliographic
+    /// three, which is rejected by `deny_unknown_fields`.
+    pub fn from_json(set_code: &str, json: &str) -> Result<Self, serde_json::Error> {
+        let mut db = Self::default();
+        db.load_set(set_code, json)?;
+        Ok(db)
+    }
+
+    /// Parse `json` and insert every printing under `set_code`.
+    fn load_set(&mut self, set_code: &str, json: &str) -> Result<(), serde_json::Error> {
+        let entries: Vec<PrintingEntry> = serde_json::from_str(json)?;
+        for entry in entries {
+            let key = PrintingKey {
+                set_code: set_code.to_string(),
+                collector_number: entry.collector_number.clone(),
+            };
+            let printing = Printing {
+                oracle: CardId(entry.oracle_id),
+                collector_number: entry.collector_number,
+                rarity: entry.rarity,
+            };
+            self.printings.insert(key, printing);
+        }
+        Ok(())
+    }
+
+    /// Resolve a set code + collector number to its [`Printing`], or `None` if no
+    /// such printing is embedded.
+    #[must_use]
+    pub fn printing(&self, set_code: &str, collector_number: &str) -> Option<&Printing> {
+        self.printings.get(&PrintingKey {
+            set_code: set_code.to_string(),
+            collector_number: collector_number.to_string(),
+        })
+    }
+
+    /// The number of printings in the database.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.printings.len()
+    }
+
+    /// Whether the database holds no printings.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.printings.is_empty()
     }
 }
 
@@ -318,6 +493,85 @@ mod tests {
                 effects: vec![Effect::DrawCard { count: 1 }],
             }]
         );
+    }
+
+    #[test]
+    fn bundled_printings_load_from_the_set_manifest() {
+        let printings = PrintingDatabase::bundled().unwrap();
+        // FIX prints the six fixtures; FIX2 reprints one — seven printings total.
+        assert_eq!(printings.len(), 7);
+        assert!(!printings.is_empty());
+        let boar = printings.printing("FIX", "1").unwrap();
+        assert_eq!(boar.oracle, CardId(1));
+        assert_eq!(boar.rarity, Rarity::Common);
+        // A collector number absent from a set does not resolve.
+        assert!(printings.printing("FIX", "999").is_none());
+        // Neither does an unknown set code.
+        assert!(printings.printing("ZZZ", "1").is_none());
+    }
+
+    #[test]
+    fn adding_a_reprint_changes_no_logic() {
+        // Verdant Scout is printed in FIX (#6) and reprinted in FIX2 (#12). The
+        // two printings differ only bibliographically; everything the engine
+        // reasons about is read through the shared OracleId, so it is identical.
+        let cards = CardDatabase::bundled().unwrap();
+        let printings = PrintingDatabase::bundled().unwrap();
+
+        let first = printings.printing("FIX", "6").unwrap();
+        let reprint = printings.printing("FIX2", "12").unwrap();
+
+        // The printings are distinct bibliographic records...
+        assert_ne!(first.collector_number, reprint.collector_number);
+        assert_ne!(first.rarity, reprint.rarity);
+        // ...but they reference the same oracle identity.
+        assert_eq!(first.oracle, reprint.oracle);
+
+        // The oracle record is byte-identical between printings.
+        let oracle_a = cards.card(first.oracle).unwrap();
+        let oracle_b = cards.card(reprint.oracle).unwrap();
+        assert_eq!(oracle_a, oracle_b);
+
+        // The abilities IR (ADR 0007) is identical between printings...
+        assert_eq!(
+            abilities_of(&cards, first.oracle),
+            abilities_of(&cards, reprint.oracle),
+        );
+        // ...and it is the real ETB-draw behavior, not an empty coincidence.
+        assert_eq!(
+            abilities_of(&cards, first.oracle),
+            vec![Ability::Triggered {
+                event: TriggerCondition::SelfEntersBattlefield,
+                effects: vec![Effect::DrawCard { count: 1 }],
+            }],
+        );
+    }
+
+    #[test]
+    fn printing_deserializes_only_bibliographic_fields() {
+        let json = r#"[{"oracle_id":1,"collector_number":"1","rarity":"common"}]"#;
+        let db = PrintingDatabase::from_json("TST", json).unwrap();
+        assert_eq!(db.len(), 1);
+        let p = db.printing("TST", "1").unwrap();
+        assert_eq!(p.oracle, CardId(1));
+        assert_eq!(p.rarity, Rarity::Common);
+    }
+
+    #[test]
+    fn printing_rejects_art_and_branding_fields() {
+        // An image_uris-style field must fail to parse: the art/branding
+        // prohibition is structural via deny_unknown_fields (ADR 0013 §6).
+        let json = r#"[{"oracle_id":1,"collector_number":"1","rarity":"common","image_uris":{"small":"x"}}]"#;
+        assert!(PrintingDatabase::from_json("TST", json).is_err());
+        // An artist credit is likewise rejected.
+        let json =
+            r#"[{"oracle_id":1,"collector_number":"1","rarity":"common","artist":"Someone"}]"#;
+        assert!(PrintingDatabase::from_json("TST", json).is_err());
+    }
+
+    #[test]
+    fn printing_rejects_malformed_input() {
+        assert!(PrintingDatabase::from_json("TST", "not json").is_err());
     }
 
     #[test]

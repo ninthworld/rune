@@ -12,6 +12,15 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct CardId(pub u64);
 
+/// The engine's printing-independent card identity (ADR 0013).
+///
+/// An oracle card owns exactly one of these; every printing references it. The
+/// integer [`CardId`] *is* the oracle id — it keys the oracle
+/// [`crate::CardDatabase`] and every rules read — so `OracleId` is a documentary
+/// alias, not a distinct type. Printings carry no rules; they resolve to their
+/// characteristics through this id.
+pub type OracleId = CardId;
+
 /// Identifies one physical card in a game, distinct from every other copy.
 ///
 /// Minted fresh from [`crate::GameState::mint_id`] when a card first enters a
