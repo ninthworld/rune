@@ -48,7 +48,10 @@ export default defineConfig({
   // Build the client with the scene hook, then serve the production bundle with
   // `vite preview`. `webServer` waits for the URL before any test runs (no sleeps).
   webServer: {
-    command: `npm run build && npm run preview -- --port ${PREVIEW_PORT} --strictPort`,
+    // Bind preview to IPv4 explicitly so it matches the IPv4 poll URL below: on
+    // GitHub-hosted runners `localhost` resolves to `::1` first, so a default
+    // `localhost` bind is never reachable at `127.0.0.1` and webServer times out.
+    command: `npm run build && npm run preview -- --port ${PREVIEW_PORT} --host 127.0.0.1 --strictPort`,
     url: `http://127.0.0.1:${PREVIEW_PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
