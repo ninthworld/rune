@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { SAMPLE_GAME_VIEW_JSON, TARGETING_GAME_VIEW_JSON } from '../game-view.fixture';
+import {
+  GAME_OVER_DRAW_JSON,
+  GAME_OVER_LOSS_JSON,
+  GAME_OVER_WIN_JSON,
+  SAMPLE_GAME_VIEW_JSON,
+  TARGETING_GAME_VIEW_JSON,
+} from '../game-view.fixture';
 import type { TargetChoice, ValidAction } from '../protocol';
 import { useGameStore } from '../store';
 import { Table } from './Table';
@@ -97,6 +103,53 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
       within(screen.getByTestId('action-bar')).getByText('No actions available'),
     ).toBeDefined();
     expect(screen.getByTestId('prompt-banner').textContent).toContain('Waiting');
+  });
+});
+
+describe('Table game-over (issue #141)', () => {
+  it('renders the game-over overlay and suppresses the prompt/action UI on a terminal view', () => {
+    seed(GAME_OVER_WIN_JSON);
+    render(<Table />);
+
+    // The DOM overlay is shown, naming the receiver's victory.
+    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+    expect(screen.getByTestId('game-over-headline').textContent).toBe('Victory');
+    // Prompt banner and action bar are suppressed once the game is over.
+    expect(screen.queryByTestId('prompt-banner')).toBeNull();
+    expect(screen.queryByTestId('action-bar')).toBeNull();
+  });
+
+  it('phrases a loss from the receiver’s seat', () => {
+    seed(GAME_OVER_LOSS_JSON);
+    render(<Table />);
+    expect(screen.getByTestId('game-over-headline').textContent).toBe('Defeat');
+  });
+
+  it('phrases a draw', () => {
+    seed(GAME_OVER_DRAW_JSON);
+    render(<Table />);
+    expect(screen.getByTestId('game-over-headline').textContent).toBe('Draw');
+  });
+
+  it('shows no overlay while the game is live (non-terminal view)', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.queryByTestId('game-over-overlay')).toBeNull();
+    expect(screen.getByTestId('action-bar')).toBeDefined();
+  });
+
+  it('reconstructs the same screen from the terminal view alone (reconnect/replay)', () => {
+    // Drive a live view, then replace it wholesale with the terminal frame — as a
+    // refresh + reconnect that replays the final view would. The overlay is pure
+    // render of the latest view, so the result is identical to seeding it directly.
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.queryByTestId('game-over-overlay')).toBeNull();
+
+    act(() => useGameStore.getState().ingest(GAME_OVER_WIN_JSON));
+    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+    expect(screen.getByTestId('game-over-headline').textContent).toBe('Victory');
+    expect(screen.queryByTestId('action-bar')).toBeNull();
   });
 });
 

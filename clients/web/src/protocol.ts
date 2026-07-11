@@ -186,6 +186,47 @@ export interface ValidAction {
 }
 
 /**
+ * Every {@link GameOverReason} value, mirroring the `GameOverReason` enum's
+ * snake_case serde encoding in `crates/rune-protocol/src/lib.rs`. This is the
+ * single source of truth: the {@link GameOverReason} union is derived from it and
+ * {@link isGameOverReason} validates a wire value against it, so a reason added
+ * here can never drift out of the type (and vice versa).
+ */
+export const GAME_OVER_REASONS = ['life_zero', 'decked', 'concede'] as const;
+
+/**
+ * Why a game ended (CR 104.3 / CR 704.5), a closed snake_case enum; one of
+ * {@link GAME_OVER_REASONS}:
+ * - `life_zero` — a player was reduced to 0 or less life (CR 704.5a).
+ * - `decked` — a player attempted to draw from an empty library (CR 704.5c).
+ * - `concede` — a player conceded (CR 104.3a).
+ */
+export type GameOverReason = (typeof GAME_OVER_REASONS)[number];
+
+/** Whether a wire value is a known {@link GameOverReason}. */
+export function isGameOverReason(value: unknown): value is GameOverReason {
+  return typeof value === 'string' && (GAME_OVER_REASONS as readonly string[]).includes(value);
+}
+
+/**
+ * The terminal outcome of a game (CR 104.2a), present on a {@link GameView} only
+ * once the game is over. While the game is live the field is omitted entirely (the
+ * empty-optional convention), so its mere presence signals game over to a client.
+ * The client renders this; it never decides a winner or terminality itself.
+ */
+export interface GameResult {
+  /**
+   * The winning player (CR 104.2a). Absent for a draw, where every remaining
+   * player lost at once (CR 104.4a).
+   */
+  winner?: PlayerId;
+  /** The players who lost, in seat order. */
+  losers: PlayerId[];
+  /** Why the game ended. */
+  reason: GameOverReason;
+}
+
+/**
  * The personalized state the server sends after every change. A client must be
  * able to fully reconstruct its UI from a single `GameView` — no client state is
  * load-bearing across messages. Optional collections may be omitted on the wire
@@ -221,6 +262,12 @@ export interface GameView {
   valid_actions: ValidAction[];
   /** Seconds remaining for the pending decision, if a clock is running. */
   action_deadline?: number;
+  /**
+   * The terminal result once the game is over (winner/losers/reason, CR 104.2a).
+   * Absent while the game is live (the empty-optional convention), so its presence
+   * alone tells a client the game has ended; when present, `valid_actions` is empty.
+   */
+  result?: GameResult;
 }
 
 /**
