@@ -51,5 +51,7 @@ sized for one PR unless noted.
 15. ✅ **client: port the Pixi card factory from prototypes/ui-battlefield-v3.html**
     into src/, reading src/tokens.ts (reference only — reimplement, don't import) —
     issue #35 (`src/card/cardFactory.ts` + token additions; smoke tests).
-16. ⏳ **client: battlefield bands + hand + action bar** rendering GameView from the
-    store; subject-owned action routing per ADR 0004.
+16. ✅ **client: battlefield bands + hand + action bar** rendering GameView from the
+    store; subject-owned action routing per ADR 0004 — issue #36 (`src/table/*`:
+    pure GameView→scene mapping, Pixi bands/hand, React action bar/tiles/prompt +
+    entity overlay; routing + reconstruct-from-one-GameView tests).
