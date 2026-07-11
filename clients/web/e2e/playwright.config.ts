@@ -32,6 +32,13 @@ export default defineConfig({
   retries: 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   timeout: 60_000,
+  // Now that the real-`rune-server` smoke tier (issue #144) runs two browser
+  // contexts and a native server process alongside the mock tier, give per-step
+  // assertions headroom above Playwright's 5s default so a mock spec's canvas-mount
+  // assertion cannot flake under transient CPU contention on a cold CI runner. The
+  // happy path is unaffected — auto-waiting resolves the instant the element
+  // appears — so this only widens the deadline before a genuinely stuck step fails.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: `http://127.0.0.1:${PREVIEW_PORT}`,
     trace: 'on-first-retry',
