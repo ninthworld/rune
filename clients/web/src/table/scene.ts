@@ -79,9 +79,19 @@ export interface TableScene {
 const LAYOUT = {
   margin: 16,
   cardGap: 12,
+  rowGap: 10,
   bandGap: 18,
   handGap: 28,
 } as const;
+
+/**
+ * Default logical width the layout wraps within when the caller passes none.
+ * Bands wrap to as many rows as needed to stay inside this budget, so a large
+ * board grows downward rather than off the right edge (no horizontal page scroll,
+ * ui-requirements §11 / brief "Dynamic Card Sizing"). Callers that know the real
+ * viewport width (e.g. a resize-aware `Table`) pass it through for responsiveness.
+ */
+export const DEFAULT_VIEWPORT_WIDTH = 1280;
 
 /**
  * The receiver's own seat id, taken straight from `view.you`. An older server
@@ -116,33 +126,67 @@ function actionsFor(entityId: EntityId, actions: ValidAction[]): ValidAction[] {
   return actions.filter((a) => a.subject?.includes(entityId));
 }
 
-/** Lay a row of same-tier cards out left-to-right, returning them + row width. */
-function layRow(
+/**
+ * How many same-width cards fit in one row inside `availWidth` (always ≥ 1, so a
+ * single card never vanishes even in an absurdly narrow viewport). Pure integer
+ * math over the shared gap/margin tokens — the unit under test for wrapping.
+ */
+function cardsPerRow(cardW: number, availWidth: number): number {
+  const usable = availWidth - LAYOUT.margin * 2;
+  return Math.max(1, Math.floor((usable + LAYOUT.cardGap) / (cardW + LAYOUT.cardGap)));
+}
+
+/**
+ * Lay a band of same-tier cards into as many rows as fit within `availWidth`,
+ * wrapping left-to-right then top-to-bottom. Returns the placed cards, the widest
+ * row's width, and the total height the band occupies. An empty band still
+ * reserves one card-height row so its (possibly local) slot stays visible.
+ *
+ * This is the pure wrapping math the whole feature turns on: bounding row width to
+ * the viewport is what keeps a 100-permanent board from growing a horizontal
+ * scrollbar — it grows downward instead.
+ */
+function layBand(
   cards: Omit<RenderedCard, 'rect'>[],
   top: number,
   cardW: number,
-): { placed: RenderedCard[]; width: number } {
-  const placed = cards.map((card, i) => ({
-    ...card,
-    rect: {
-      x: LAYOUT.margin + i * (cardW + LAYOUT.cardGap),
-      y: top,
-      w: cardW,
-      h: TIER[card.tier].h,
-    },
-  }));
-  const width =
-    cards.length === 0
-      ? 0
-      : LAYOUT.margin * 2 + cards.length * cardW + (cards.length - 1) * LAYOUT.cardGap;
-  return { placed, width };
+  cardH: number,
+  availWidth: number,
+): { placed: RenderedCard[]; width: number; height: number } {
+  if (cards.length === 0) return { placed: [], width: 0, height: cardH };
+  const perRow = cardsPerRow(cardW, availWidth);
+  const placed = cards.map((card, i) => {
+    const col = i % perRow;
+    const row = Math.floor(i / perRow);
+    return {
+      ...card,
+      rect: {
+        x: LAYOUT.margin + col * (cardW + LAYOUT.cardGap),
+        y: top + row * (cardH + LAYOUT.rowGap),
+        w: cardW,
+        h: cardH,
+      },
+    };
+  });
+  const rows = Math.ceil(cards.length / perRow);
+  const cols = Math.min(perRow, cards.length);
+  const width = LAYOUT.margin * 2 + cols * cardW + (cols - 1) * LAYOUT.cardGap;
+  const height = rows * cardH + (rows - 1) * LAYOUT.rowGap;
+  return { placed, width, height };
 }
 
 /**
  * Build the full scene from a view. `selectedId` marks the currently selected
  * entity so its card draws a selection ring; it never changes what is offered.
+ * `viewportWidth` is the logical width budget bands wrap within (defaults to
+ * {@link DEFAULT_VIEWPORT_WIDTH}); the returned `width` never exceeds it beyond a
+ * single card, so the board never needs a horizontal page scrollbar.
  */
-export function buildTableScene(view: GameView, selectedId?: EntityId): TableScene {
+export function buildTableScene(
+  view: GameView,
+  selectedId?: EntityId,
+  viewportWidth: number = DEFAULT_VIEWPORT_WIDTH,
+): TableScene {
   const localPlayerId = localPlayerIdOf(view);
   const subjectActions = view.valid_actions.filter((a) => a.subject && a.subject.length > 0);
 
@@ -179,20 +223,31 @@ export function buildTableScene(view: GameView, selectedId?: EntityId): TableSce
   const bands: Band[] = [];
   let top = LAYOUT.margin;
   let maxWidth = LAYOUT.margin * 2;
-  const fieldW = TIER.field.w;
+  const fieldT = TIER.field;
 
   for (const playerId of ordered) {
     const perms = byController.get(playerId) ?? [];
-    const { placed, width } = layRow(perms.map(toRenderable), top, fieldW);
+    const { placed, width, height } = layBand(
+      perms.map(toRenderable),
+      top,
+      fieldT.w,
+      fieldT.h,
+      viewportWidth,
+    );
     bands.push({ playerId, isLocal: playerId === localPlayerId, cards: placed });
     maxWidth = Math.max(maxWidth, width);
-    top += TIER.field.h + LAYOUT.bandGap;
+    top += height + LAYOUT.bandGap;
   }
 
-  // Hand row along the bottom, in the larger hand tier.
+  // Hand along the bottom, in the larger hand tier — wrapping the same way so a
+  // big hand also grows downward instead of off the right edge.
   top += LAYOUT.handGap - LAYOUT.bandGap;
-  const handW = TIER.hand.w;
-  const { placed: hand, width: handWidth } = layRow(
+  const handT = TIER.hand;
+  const {
+    placed: hand,
+    width: handWidth,
+    height: handHeight,
+  } = layBand(
     view.my_hand.map((card) => ({
       entityId: card.id,
       zone: 'hand' as const,
@@ -202,10 +257,12 @@ export function buildTableScene(view: GameView, selectedId?: EntityId): TableSce
       actions: actionsFor(card.id, subjectActions),
     })),
     top,
-    handW,
+    handT.w,
+    handT.h,
+    viewportWidth,
   );
   maxWidth = Math.max(maxWidth, handWidth);
-  const height = top + TIER.hand.h + LAYOUT.margin;
+  const height = top + handHeight + LAYOUT.margin;
 
   return { width: maxWidth, height, bands, hand, localPlayerId };
 }

@@ -21,7 +21,7 @@
  * rather than measuring glyphs, so it constructs a full scene graph without a
  * live canvas/GPU. That keeps it deterministic and headless-testable.
  */
-import { Container, Graphics, Text } from 'pixi.js';
+import { BitmapFont, BitmapText, Container, Graphics, Text } from 'pixi.js';
 import {
   BADGE,
   FONT,
@@ -133,7 +133,72 @@ export function parseManaCost(manaCost: string): ManaPip[] {
   });
 }
 
-function mkText(str: string, size: number, color: string): Text {
+/**
+ * A card text node. In a browser this is a {@link BitmapText} drawing from the
+ * shared cached glyph atlas; where that atlas cannot be rasterized (headless
+ * tests, SSR) it degrades to a plain {@link Text}. Both expose the `position`,
+ * `anchor`, and `alpha` the factory sets.
+ */
+type CardText = Text | BitmapText;
+
+/** The glyphs the card atlas must cover: printable ASCII, Latin-1 + Extended-A
+ * (accented names, `×`), and the general-punctuation dashes/quotes/bullet/`…`. */
+const CARD_FONT_CHARS: string[][] = [
+  [' ', '~'],
+  [' ', 'ɏ'],
+  ['‐', '‧'],
+];
+
+/**
+ * Memoized outcome of installing the shared card {@link BitmapFont}: the font
+ * name once installed, `null` if rasterization is unavailable, `undefined` until
+ * first attempted.
+ */
+let cardFontName: string | null | undefined;
+
+/**
+ * Lazily install (once) the shared white {@link BitmapFont} the factory draws all
+ * card text from, memoizing the result. Building the glyph atlas needs a real 2D
+ * canvas; where none exists (headless CI, SSR) `BitmapFont.from` throws and we
+ * memoize `null` so {@link mkText} falls back to plain `Text`. The atlas is white
+ * so each {@link BitmapText} is tinted to its token color at draw time — glyphs
+ * are rasterized ONCE here rather than per card construction (the old per-build
+ * `Text` at `resolution: 2` re-rasterized a fresh texture every time).
+ */
+function ensureCardFont(): string | null {
+  if (cardFontName !== undefined) return cardFontName;
+  try {
+    BitmapFont.from(
+      FONT.bitmapName,
+      {
+        fontFamily: FONT.family,
+        fontSize: FONT.bitmapBaseSize,
+        fontWeight: FONT.weight,
+        fill: '#ffffff',
+      },
+      { chars: CARD_FONT_CHARS, resolution: 2 },
+    );
+    cardFontName = FONT.bitmapName;
+  } catch {
+    cardFontName = null;
+  }
+  return cardFontName;
+}
+
+/**
+ * Build one text node. Prefers a cached {@link BitmapText} (reusing the shared
+ * atlas' glyph textures, tinted to `color`) and falls back to a plain `Text` only
+ * where no atlas could be rasterized. The two paths are visually equivalent; which
+ * one is used depends solely on the environment, never on the card's data, so the
+ * factory stays deterministic for a given environment.
+ */
+function mkText(str: string, size: number, color: string): CardText {
+  const fontName = ensureCardFont();
+  if (fontName) {
+    const text = new BitmapText(str, { fontName, fontSize: size });
+    text.tint = hexToNumber(color);
+    return text;
+  }
   const text = new Text(str, {
     fontFamily: FONT.family,
     fontSize: size,

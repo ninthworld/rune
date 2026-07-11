@@ -217,7 +217,7 @@ impl Room {
     fn on_message(&mut self, seat: Seat, message: &ClientMessage) {
         match message {
             ClientMessage::ChooseAction(choose) => {
-                match resolve_action(&self.state, &self.db, PlayerId(seat), &choose.action_id) {
+                match resolve_action(&self.state, &self.db, PlayerId(seat), choose) {
                     Some(action) => {
                         self.state = apply_action(&self.state, &action, &self.db);
                         // A terminal result is delivered once by the run loop's final
@@ -690,6 +690,7 @@ mod tests {
             seat: 0,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: pass0.id.clone(),
+                ..Default::default()
             }),
         });
 
@@ -709,6 +710,7 @@ mod tests {
             seat: 1,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: pass1.id.clone(),
+                ..Default::default()
             }),
         });
 
