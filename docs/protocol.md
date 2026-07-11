@@ -13,6 +13,7 @@ never receives what its player may not know). The concrete types live in the
 
 | Field | Type | Notes |
 |---|---|---|
+| `you` | `PlayerId` | The receiver's own seat entity id (same `p{N}` form used for players). Lets a client identify itself directly. A client that receives a payload without it (older server) treats it as `""`/unknown |
 | `my_hand` | `CardView[]` | Full card objects for the receiving player only |
 | `opponents` | `OpponentView[]` | `player_id`, `hand_size`, `life`, `library_size`, `graveyard_size`, `statuses` |
 | `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `counters` |

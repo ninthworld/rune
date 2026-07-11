@@ -8,9 +8,11 @@ describe('parseGameView', () => {
   });
 
   it('treats omitted collections as their empty default', () => {
-    // Only `phase` on the wire — every collection must default to [].
+    // Only `phase` on the wire — every collection must default to [] and the
+    // absent `you` (older server) must normalize to '' rather than crashing.
     const view = parseGameView('{"phase":"upkeep"}');
     expect(view).toEqual({
+      you: '',
       my_hand: [],
       opponents: [],
       battlefield: [],
@@ -23,6 +25,11 @@ describe('parseGameView', () => {
       valid_actions: [],
       action_deadline: undefined,
     });
+  });
+
+  it('carries the receiver id through from view.you', () => {
+    const view = parseGameView('{"phase":"upkeep","you":"p1"}');
+    expect(view.you).toBe('p1');
   });
 
   it('ignores unknown fields for forward compatibility', () => {

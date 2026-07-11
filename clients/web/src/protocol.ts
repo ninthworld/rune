@@ -163,6 +163,13 @@ export interface ValidAction {
  * and MUST be treated as their empty default (see {@link normalizeGameView}).
  */
 export interface GameView {
+  /**
+   * The receiver's own seat entity id (the `p{N}` form used for players
+   * throughout the view). The client uses this to identify itself rather than
+   * inferring it from the zones. An older server may omit it on the wire, in
+   * which case {@link normalizeGameView} defaults it to `''`.
+   */
+  you: PlayerId;
   /** Full card objects for the receiving player only. */
   my_hand: CardView[];
   /** Redacted views of every other player. */
