@@ -13,7 +13,7 @@ use rune_engine::{CardDatabase, GameState};
 use rune_protocol::GameView;
 use rune_server::{serve_connection, Room, RoomHandle, RoomInput, Seat};
 use tokio::io::{duplex, BufReader, DuplexStream};
-use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::WebSocketStream;
 
@@ -88,7 +88,7 @@ async fn chosen_action_routes_through_the_engine_and_passes_priority() {
 
     // Observe seat 1 directly so the test can tell when seat 0's pass — typed
     // into the CLI — has actually been applied by the engine.
-    let (tx1, mut rx1) = mpsc::unbounded_channel::<GameView>();
+    let (tx1, mut rx1) = watch::channel::<Option<GameView>>(None);
     assert!(handle.send(RoomInput::Join {
         seat: 1,
         outbox: tx1,
@@ -104,10 +104,12 @@ async fn chosen_action_routes_through_the_engine_and_passes_priority() {
     // sent and applied before p1 can be observed, so cancelling here is safe.
     let observe_pass = async {
         loop {
-            match rx1.recv().await {
-                Some(view) if view.priority_player.as_deref() == Some("p1") => break true,
-                Some(_) => continue,
-                None => break false,
+            match rx1.changed().await {
+                Ok(()) => match rx1.borrow_and_update().clone() {
+                    Some(view) if view.priority_player.as_deref() == Some("p1") => break true,
+                    _ => continue,
+                },
+                Err(_) => break false,
             }
         }
     };
