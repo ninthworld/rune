@@ -6,7 +6,7 @@
 //! returns the new state. Pure over an immutable [`crate::GameState`].
 
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, Target};
-use crate::actions::{valid_actions, Action};
+use crate::actions::{action_is_legal, Action};
 use crate::card::abilities_of;
 use crate::id::{CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
@@ -26,9 +26,11 @@ use crate::CardDatabase;
 /// way). `db` supplies the immutable oracle data the pipeline reads.
 #[must_use]
 pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> GameState {
-    // 1. Validate against the actions actually on offer. An illegal action is a
-    //    no-op — return the input unchanged rather than erroring.
-    if !valid_actions(state, db).contains(action) {
+    // 1. Validate against the actions actually on offer, including — for a
+    //    targeted action — its chosen targets against freshly computed legal sets
+    //    (ADR 0009 §Enumeration). An illegal action is a no-op: the input is
+    //    returned unchanged rather than erroring.
+    if !action_is_legal(state, action, db) {
         return state.clone();
     }
 
@@ -39,8 +41,12 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
     match action {
         Action::PassPriority => apply_pass_priority(&mut next, db),
         Action::PlayLand { card } => apply_play_land(&mut next, *card),
-        Action::ActivateAbility { permanent, index } => {
-            apply_activate_ability(&mut next, *permanent, *index, db);
+        Action::ActivateAbility {
+            permanent,
+            index,
+            targets,
+        } => {
+            apply_activate_ability(&mut next, *permanent, *index, targets, db);
         }
         Action::CastSpell { card } => apply_cast_spell(&mut next, *card, db),
     }
@@ -126,6 +132,7 @@ fn apply_activate_ability(
     state: &mut GameState,
     permanent: PermanentId,
     index: usize,
+    targets: &[Target],
     db: &CardDatabase,
 ) {
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
@@ -165,8 +172,11 @@ fn apply_activate_ability(
                 source: permanent,
                 effects: effects.clone(),
             },
-            // Choosing targets at activation time is issue #71; none for now.
-            targets: Vec::new(),
+            // The targets chosen for this activation (CR 601.2c), already
+            // validated against freshly computed legal sets in `action_is_legal`
+            // and re-checked once more on resolution (CR 608.2b, the resolve
+            // path). Empty for a non-targeting ability.
+            targets: targets.to_vec(),
         });
         state.consecutive_passes = 0;
     }
@@ -260,6 +270,7 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+    use crate::actions::valid_actions;
     use crate::id::CardId;
     use crate::mana::Color;
     use crate::phase::Step;
@@ -365,6 +376,7 @@ mod tests {
             &Action::ActivateAbility {
                 permanent: PermanentId(id),
                 index: 0,
+                targets: Vec::new(),
             },
             &db,
         );
@@ -392,6 +404,7 @@ mod tests {
             &Action::ActivateAbility {
                 permanent: PermanentId(id),
                 index: 0,
+                targets: Vec::new(),
             },
             &db,
         );
@@ -435,6 +448,7 @@ mod tests {
             &Action::ActivateAbility {
                 permanent: forest,
                 index: 0,
+                targets: Vec::new(),
             },
             &db,
         );
