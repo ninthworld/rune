@@ -202,6 +202,7 @@ mod tests {
             card,
             controller: PlayerId(0),
             tapped: false,
+            damage: 0,
             counters: BTreeMap::new(),
         });
         id

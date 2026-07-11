@@ -7,6 +7,10 @@ use crate::zone::Zone;
 /// Life total every player starts a game with.
 pub const STARTING_LIFE: i32 = 20;
 
+/// Default maximum hand size (CR 402.2). At the cleanup step a player with more
+/// than this many cards discards down to it as a turn-based action (CR 514.1).
+pub const MAX_HAND_SIZE: usize = 7;
+
 /// A single player's state: their life total and the four zones they own.
 ///
 /// Cards are stored as ordered piles of [`CardInstance`]s, so two copies of the
