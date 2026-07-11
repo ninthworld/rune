@@ -280,7 +280,7 @@ mod tests {
 
     use super::*;
     use crate::room::RoomInput;
-    use tokio::sync::mpsc;
+    use tokio::sync::watch;
 
     fn lobby(max_rooms: usize) -> Lobby {
         Lobby::bundled(max_rooms).expect("bundled cards")
@@ -356,12 +356,12 @@ mod tests {
 
         // A player takes a seat and is brought current in the room.
         let departed = lobby.assign().await.expect("departed seat");
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = watch::channel(None);
         assert!(departed.room.send(RoomInput::Join {
             seat: departed.seat,
             outbox: tx,
         }));
-        rx.recv().await.expect("departed view");
+        rx.changed().await.expect("departed view");
 
         // The player disconnects: the lobby retires their seat.
         lobby.release(departed.room_id, departed.seat).await;
@@ -376,12 +376,13 @@ mod tests {
         // On join the room personalizes the view to the newcomer's own seat — a
         // fresh seat in a new game — so its first `GameView` has an empty hand and
         // does not contain the vacated seat's `my_hand`.
-        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = watch::channel(None);
         assert!(newcomer.room.send(RoomInput::Join {
             seat: newcomer.seat,
             outbox: tx2,
         }));
-        let first_view = rx2.recv().await.expect("newcomer view");
+        rx2.changed().await.expect("newcomer view");
+        let first_view = rx2.borrow().clone().expect("newcomer view present");
         assert!(
             first_view.my_hand.is_empty(),
             "newcomer inherited a non-empty hand from a vacated seat",
@@ -449,13 +450,13 @@ mod tests {
 
         // Wait until the room task has actually stopped: a terminal room never enters
         // its input loop, so joining it yields a closed outbox once the task returns.
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = watch::channel(None);
         let _ = handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx,
         });
         assert!(
-            rx.recv().await.is_none(),
+            rx.changed().await.is_err(),
             "terminal room task should stop instead of serving inputs",
         );
 

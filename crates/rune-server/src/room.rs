@@ -10,6 +10,21 @@
 //! The room contains **no game logic**: it routes an `action_id` back to the
 //! engine's own [`valid_actions`](rune_engine::valid_actions)/[`apply_action`](rune_engine::apply_action)
 //! and rejects anything the engine did not offer (see [`crate::view::resolve_action`]).
+//!
+//! # Bounded channels and backpressure (issue #57)
+//! Neither of the room's channels can be grown without bound by a slow or flooding
+//! peer:
+//! - **Per-seat outbox** is a [`watch`] channel that holds only the *latest*
+//!   [`GameView`]. Every view is a complete snapshot that supersedes the previous
+//!   one (`docs/protocol.md`), so a slow reader that falls behind simply skips the
+//!   intermediate views and receives the newest state once it catches up —
+//!   correctness is unaffected by the dropped intermediates. Buffer depth is
+//!   structurally one.
+//! - **Room inbox** is a bounded [`mpsc`] channel ([`ROOM_INBOX_CAPACITY`]). Inputs
+//!   are delivered with `try_send`; once the queue is full, further inputs from a
+//!   flooding client are **dropped** (logged) rather than buffered. The room stays
+//!   alive and keeps serving; a client can only ever hurt its own throughput, never
+//!   the server's memory.
 
 use std::future::Future;
 
@@ -17,13 +32,19 @@ use futures_util::{SinkExt, StreamExt};
 use rune_engine::{apply_action, CardDatabase, GameState, PlayerId};
 use rune_protocol::{ClientMessage, GameView};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
 use crate::view::{personalized_view, resolve_action};
+
+/// Bound on the room's input queue. Inputs beyond this depth from a flooding client
+/// are dropped (see [`RoomHandle::send`]); the value is generous enough that a
+/// well-behaved pair of clients never approaches it, yet fixed so a misbehaving peer
+/// cannot grow server memory.
+const ROOM_INBOX_CAPACITY: usize = 1024;
 
 /// A seat at a room's table, identified by its engine seat index. Seat `0` is the
 /// starting player. The lobby (layer 1) decides which connection occupies which
@@ -44,8 +65,10 @@ pub enum RoomInput {
     Join {
         /// The seat this connection occupies.
         seat: Seat,
-        /// Channel the room pushes this seat's views to.
-        outbox: mpsc::UnboundedSender<GameView>,
+        /// Latest-value channel the room pushes this seat's views to. It is a
+        /// [`watch`] so a slow reader always observes the newest [`GameView`] and
+        /// never accumulates a backlog of superseded snapshots.
+        outbox: watch::Sender<Option<GameView>>,
     },
     /// A connected seat sent a protocol message.
     Message {
@@ -65,14 +88,28 @@ pub enum RoomInput {
 /// A cloneable handle for delivering [`RoomInput`]s to a running [`Room`] task.
 #[derive(Clone, Debug)]
 pub struct RoomHandle {
-    inbox: mpsc::UnboundedSender<RoomInput>,
+    inbox: mpsc::Sender<RoomInput>,
 }
 
 impl RoomHandle {
-    /// Deliver an input to the room. Returns `false` if the room task has already
-    /// stopped (its receiver was dropped), so callers can give up cleanly.
+    /// Deliver an input to the room. Returns `false` only if the room task has
+    /// already stopped (its receiver was dropped), so callers can give up cleanly.
+    ///
+    /// The inbox is bounded ([`ROOM_INBOX_CAPACITY`]); delivery is non-blocking. If
+    /// the queue is momentarily full — a client flooding faster than the room can
+    /// apply actions — the input is **dropped** and a warning is logged, but the
+    /// room is still alive so this returns `true`. Dropping is safe: the client only
+    /// starves its own progress, and every reply is a full-state snapshot, so a
+    /// dropped action is simply one the client can re-send after its next view.
     pub fn send(&self, input: RoomInput) -> bool {
-        self.inbox.send(input).is_ok()
+        match self.inbox.try_send(input) {
+            Ok(()) => true,
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                warn!("room inbox full; dropping input from a slow or flooding client");
+                true
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => false,
+        }
     }
 }
 
@@ -95,8 +132,10 @@ pub struct Room {
     state: GameState,
     db: CardDatabase,
     /// Per-seat outbox, indexed by [`Seat`]. `None` means the seat is currently
-    /// disconnected (held open).
-    seats: Vec<Option<mpsc::UnboundedSender<GameView>>>,
+    /// disconnected (held open). Each present sender is the [`watch`] half of a
+    /// latest-value channel, so pushing a view never blocks the room nor buffers
+    /// superseded snapshots.
+    seats: Vec<Option<watch::Sender<Option<GameView>>>>,
 }
 
 impl Room {
@@ -112,7 +151,7 @@ impl Room {
     /// inputs and the [`JoinHandle`] of the task. The task runs until every sender
     /// half of its input channel has been dropped.
     pub fn spawn(self) -> (RoomHandle, JoinHandle<()>) {
-        let (inbox_tx, inbox_rx) = mpsc::unbounded_channel();
+        let (inbox_tx, inbox_rx) = mpsc::channel(ROOM_INBOX_CAPACITY);
         let handle = tokio::spawn(self.run(inbox_rx));
         (RoomHandle { inbox: inbox_tx }, handle)
     }
@@ -125,7 +164,7 @@ impl Room {
     /// has lost). On game over it pushes one final broadcast so every connected seat
     /// sees the finished board, then stops; the lobby reclaims the room afterward
     /// (issue #54).
-    pub async fn run(mut self, mut inbox: mpsc::UnboundedReceiver<RoomInput>) {
+    pub async fn run(mut self, mut inbox: mpsc::Receiver<RoomInput>) {
         while !self.game_over() {
             let Some(input) = inbox.recv().await else {
                 info!("room input channel closed; room task stopping");
@@ -154,7 +193,7 @@ impl Room {
     }
 
     /// Seat (or re-seat) a connection and bring it current with a full view.
-    fn on_join(&mut self, seat: Seat, outbox: mpsc::UnboundedSender<GameView>) {
+    fn on_join(&mut self, seat: Seat, outbox: watch::Sender<Option<GameView>>) {
         let Some(slot) = self.seats.get_mut(seat) else {
             warn!(seat, "join for a seat that does not exist; ignoring");
             return;
@@ -200,8 +239,10 @@ impl Room {
         }
     }
 
-    /// Push the seat's freshly-personalized view to its outbox. If the receiver is
-    /// gone, treat it as a disconnect and hold the seat open.
+    /// Push the seat's freshly-personalized view to its outbox. Writing to the
+    /// latest-value [`watch`] never blocks and overwrites any view the reader has
+    /// not yet consumed (coalescing to newest). If the receiver is gone, treat it as
+    /// a disconnect and hold the seat open.
     fn send_view(&mut self, seat: Seat) {
         let view = personalized_view(&self.state, &self.db, PlayerId(seat));
         let Some(slot) = self.seats.get_mut(seat) else {
@@ -210,7 +251,7 @@ impl Room {
         let Some(outbox) = slot.as_ref() else {
             return;
         };
-        if outbox.send(view).is_err() {
+        if outbox.send(Some(view)).is_err() {
             *slot = None;
         }
     }
@@ -238,6 +279,12 @@ impl Room {
 /// connection maps to which room and seat is a lobby/matchmaking concern handled
 /// elsewhere.
 ///
+/// **Slow consumer:** the room→connection path is a latest-value [`watch`], so a
+/// client that cannot keep up with the write side never accumulates a backlog; it
+/// simply skips superseded views and always ends up writing the newest state (see
+/// the writer arm below). Neither channel this task holds can be grown without
+/// bound by a slow or flooding peer (issue #57).
+///
 /// `shutdown` lets the layer-1 lobby stop the bridge on server shutdown: when it
 /// resolves, the seat is released and the socket is closed politely, just as if the
 /// peer had hung up. Pass [`std::future::pending`] for a bridge that only ever ends
@@ -252,7 +299,7 @@ pub async fn serve_connection<S, F>(
     F: Future<Output = ()>,
 {
     let (mut write, mut read) = ws.split();
-    let (outbox_tx, mut outbox_rx) = mpsc::unbounded_channel::<GameView>();
+    let (outbox_tx, mut outbox_rx) = watch::channel::<Option<GameView>>(None);
     if !room.send(RoomInput::Join {
         seat,
         outbox: outbox_tx,
@@ -285,17 +332,29 @@ pub async fn serve_connection<S, F>(
                     break;
                 }
             },
-            view = outbox_rx.recv() => match view {
-                Some(view) => match serde_json::to_string(&view) {
-                    Ok(json) => {
-                        if write.send(Message::Text(json)).await.is_err() {
-                            break;
+            // Slow-consumer story: the outbox is a latest-value `watch`. While this
+            // arm is parked on `write.send(...).await` for a slow client, the room
+            // may overwrite the pending view any number of times; when we loop back,
+            // `changed()` fires once and we serialize only the newest snapshot. The
+            // superseded intermediates are simply never sent — safe because each
+            // `GameView` is a complete snapshot (`docs/protocol.md`). The channel
+            // never grows, so a slow reader cannot pressure server memory.
+            changed = outbox_rx.changed() => match changed {
+                Ok(()) => {
+                    let latest = outbox_rx.borrow_and_update().clone();
+                    if let Some(view) = latest {
+                        match serde_json::to_string(&view) {
+                            Ok(json) => {
+                                if write.send(Message::Text(json)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(error) => warn!(seat, %error, "failed to serialize game view"),
                         }
                     }
-                    Err(error) => warn!(seat, %error, "failed to serialize game view"),
-                },
+                }
                 // The room dropped our outbox (task stopped): nothing more to send.
-                None => break,
+                Err(_) => break,
             },
         }
     }
@@ -322,15 +381,27 @@ mod tests {
     use super::*;
     use rune_engine::{CardId, GameState, Step};
     use rune_protocol::ChooseAction;
-    use tokio::sync::mpsc::error::TryRecvError;
 
     fn db() -> CardDatabase {
         CardDatabase::bundled().unwrap()
     }
 
-    /// Receive one view, awaiting the room task rather than busy-polling.
-    async fn wait_for_view(rx: &mut mpsc::UnboundedReceiver<GameView>) -> GameView {
-        rx.recv().await.expect("room should push a view")
+    /// A fresh per-seat outbox pair mirroring what a connection hands the room.
+    fn view_channel() -> (
+        watch::Sender<Option<GameView>>,
+        watch::Receiver<Option<GameView>>,
+    ) {
+        watch::channel(None)
+    }
+
+    /// Receive the next (latest) view, awaiting the room task rather than
+    /// busy-polling. Marks the value seen so a later [`watch::Receiver::has_changed`]
+    /// reflects only views pushed after this call.
+    async fn wait_for_view(rx: &mut watch::Receiver<Option<GameView>>) -> GameView {
+        rx.changed().await.expect("room should push a view");
+        rx.borrow_and_update()
+            .clone()
+            .expect("pushed view is never the initial empty slot")
     }
 
     /// A two-player game in the precombat main phase where player 0 holds a Forest
@@ -362,8 +433,8 @@ mod tests {
     #[tokio::test]
     async fn join_sends_each_seat_a_personalized_view_hiding_opponents_hands() {
         let (handle, task) = Room::new(dealt_state(), db()).spawn();
-        let (tx0, mut rx0) = mpsc::unbounded_channel();
-        let (tx1, mut rx1) = mpsc::unbounded_channel();
+        let (tx0, mut rx0) = view_channel();
+        let (tx1, mut rx1) = view_channel();
         assert!(handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx0
@@ -404,8 +475,8 @@ mod tests {
     #[tokio::test]
     async fn two_players_advance_a_round_of_pass_priority() {
         let (handle, task) = Room::new(GameState::new_two_player(), db()).spawn();
-        let (tx0, mut rx0) = mpsc::unbounded_channel();
-        let (tx1, mut rx1) = mpsc::unbounded_channel();
+        let (tx0, mut rx0) = view_channel();
+        let (tx1, mut rx1) = view_channel();
         handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx0,
@@ -461,7 +532,7 @@ mod tests {
     #[tokio::test]
     async fn unknown_action_id_is_rejected_and_state_is_resent_unchanged() {
         let (handle, task) = Room::new(GameState::new_two_player(), db()).spawn();
-        let (tx0, mut rx0) = mpsc::unbounded_channel();
+        let (tx0, mut rx0) = view_channel();
         handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx0,
@@ -488,8 +559,8 @@ mod tests {
     #[tokio::test]
     async fn action_from_a_seat_without_priority_is_rejected() {
         let (handle, task) = Room::new(GameState::new_two_player(), db()).spawn();
-        let (tx0, mut rx0) = mpsc::unbounded_channel();
-        let (tx1, mut rx1) = mpsc::unbounded_channel();
+        let (tx0, mut rx0) = view_channel();
+        let (tx1, mut rx1) = view_channel();
         handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx0,
@@ -511,8 +582,9 @@ mod tests {
         });
         let resent = wait_for_view(&mut rx1).await;
         assert!(resent.valid_actions.is_empty());
-        // Seat 0 was never re-broadcast because nothing changed.
-        assert!(matches!(rx0.try_recv(), Err(TryRecvError::Empty)));
+        // Seat 0 was never re-broadcast because nothing changed: its latest-value
+        // outbox holds no view newer than the one already observed.
+        assert!(!rx0.has_changed().unwrap());
 
         drop(handle);
         task.await.unwrap();
@@ -521,7 +593,7 @@ mod tests {
     #[tokio::test]
     async fn reconnect_is_brought_current_with_a_full_view() {
         let (handle, task) = Room::new(dealt_state(), db()).spawn();
-        let (tx0, mut rx0) = mpsc::unbounded_channel();
+        let (tx0, mut rx0) = view_channel();
         handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx0,
@@ -532,7 +604,7 @@ mod tests {
         handle.send(RoomInput::Leave { seat: 0 });
 
         // Reconnect with a fresh outbox: the room re-sends the latest full view.
-        let (tx0b, mut rx0b) = mpsc::unbounded_channel();
+        let (tx0b, mut rx0b) = view_channel();
         handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx0b,
@@ -548,7 +620,7 @@ mod tests {
     #[tokio::test]
     async fn issue_54_room_stops_after_the_game_reaches_a_terminal_state() {
         let (handle, task) = Room::new(near_terminal_state(), db()).spawn();
-        let (tx0, mut rx0) = mpsc::unbounded_channel();
+        let (tx0, mut rx0) = view_channel();
         handle.send(RoomInput::Join {
             seat: 0,
             outbox: tx0,
@@ -573,12 +645,132 @@ mod tests {
         // receives the terminal view and its outbox then closes.
         let _final_view = wait_for_view(&mut rx0).await;
         assert!(
-            rx0.recv().await.is_none(),
+            rx0.changed().await.is_err(),
             "the room's outbox should close once the game is over",
         );
 
         // The task terminates on its own, without any handle being dropped.
         task.await
             .expect("room task should terminate after game over");
+    }
+
+    /// A slow reader that pauses while the game advances must, on resuming, observe
+    /// the *latest* view — intermediate superseded views are coalesced away and the
+    /// outbox never accumulates a backlog. Exercises the per-seat `watch` outbox.
+    #[tokio::test]
+    async fn issue_57_slow_reader_coalesces_to_the_latest_view() {
+        let (handle, task) = Room::new(GameState::new_two_player(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        let (tx1, mut rx1) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        handle.send(RoomInput::Join {
+            seat: 1,
+            outbox: tx1,
+        });
+
+        // Seat 0 reads its opening view (holds priority), then becomes a *slow
+        // reader*: it stops draining rx0 for the rest of the exchange. Seat 1 stays
+        // responsive and doubles as our synchronization barrier.
+        let opening0 = wait_for_view(&mut rx0).await;
+        let _ = wait_for_view(&mut rx1).await;
+        let pass0 = opening0
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .expect("pass offered to the priority holder");
+        handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: pass0.id.clone(),
+            }),
+        });
+
+        // Seat 0 now pauses. Seat 1 receives priority and passes in turn; this pushes
+        // *two* fresh views to the paused seat 0 (first "lost priority", then
+        // "regained priority after the step advanced").
+        let mut after0_seat1 = wait_for_view(&mut rx1).await;
+        while after0_seat1.priority_player.as_deref() != Some("p1") {
+            after0_seat1 = wait_for_view(&mut rx1).await;
+        }
+        let pass1 = after0_seat1
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .expect("priority handed to seat 1");
+        handle.send(RoomInput::Message {
+            seat: 1,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: pass1.id.clone(),
+            }),
+        });
+
+        // Barrier: wait until seat 1 observes priority returning to p0. By then the
+        // room has already written the latest view to seat 0's (paused) outbox too.
+        let mut seat1_latest = wait_for_view(&mut rx1).await;
+        while seat1_latest.priority_player.as_deref() != Some("p0") {
+            seat1_latest = wait_for_view(&mut rx1).await;
+        }
+
+        // Seat 0 *resumes*. It must skip the intermediate "lost priority" snapshot
+        // and read exactly the newest state (priority back to p0). If the outbox had
+        // queued views, the first read here would be the stale no-priority view.
+        let resumed0 = wait_for_view(&mut rx0).await;
+        assert_eq!(resumed0.priority_player.as_deref(), Some("p0"));
+        assert!(
+            !resumed0.valid_actions.is_empty(),
+            "coalesced view is the latest, in which seat 0 holds priority again",
+        );
+        // Bounded depth: a single latest value, no backlog left to drain.
+        assert!(
+            !rx0.has_changed().unwrap(),
+            "the outbox coalesces to one latest view, never a queue of superseded ones",
+        );
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    /// A flooding client cannot grow the room inbox without bound: once the bounded
+    /// queue is full, excess inputs are dropped and the room stays alive. Fills the
+    /// inbox directly (no consumer) so exactly [`ROOM_INBOX_CAPACITY`] inputs are
+    /// retained regardless of how many are sent.
+    #[tokio::test]
+    async fn issue_57_flooding_client_inbox_is_bounded_and_excess_is_dropped() {
+        let (inbox_tx, mut inbox_rx) = mpsc::channel::<RoomInput>(ROOM_INBOX_CAPACITY);
+        let handle = RoomHandle { inbox: inbox_tx };
+
+        // No room task drains the inbox: every accepted input stays buffered. Filling
+        // to capacity succeeds and the room (receiver) is still alive throughout.
+        for _ in 0..ROOM_INBOX_CAPACITY {
+            assert!(
+                handle.send(RoomInput::Leave { seat: 0 }),
+                "delivery within capacity keeps the room alive",
+            );
+        }
+        // The queue is now full. A flood of further inputs is dropped rather than
+        // buffered; each still reports the room as alive (not a disconnect).
+        for _ in 0..(ROOM_INBOX_CAPACITY * 4) {
+            assert!(
+                handle.send(RoomInput::Leave { seat: 0 }),
+                "excess inputs are dropped, not treated as a closed room",
+            );
+        }
+
+        // Exactly the capacity was retained — memory is bounded no matter the flood.
+        let mut buffered = 0;
+        while inbox_rx.try_recv().is_ok() {
+            buffered += 1;
+        }
+        assert_eq!(
+            buffered, ROOM_INBOX_CAPACITY,
+            "the inbox never grows past its bound under a flood",
+        );
+
+        // Once the room's receiver is gone, delivery reports the room as stopped.
+        drop(inbox_rx);
+        assert!(!handle.send(RoomInput::Leave { seat: 0 }));
     }
 }
