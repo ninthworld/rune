@@ -112,6 +112,7 @@ fn apply_play_land(state: &mut GameState, card: CardInstance) {
         card: card.card,
         controller,
         tapped: false,
+        counters: Default::default(),
     });
     state.land_played = true;
 }
@@ -321,6 +322,7 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            counters: Default::default(),
         });
         let after = apply_action(
             &state,
@@ -347,6 +349,7 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            counters: Default::default(),
         });
         let after = apply_action(
             &state,
