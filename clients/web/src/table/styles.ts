@@ -219,3 +219,83 @@ export const muted: CSSProperties = {
   fontSize: 13,
   color: SURFACES.typeText,
 };
+
+/** The pre-first-frame waiting row: status text alongside a Disconnect action. */
+export const waitingBar: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 12,
+  padding: '10px 14px',
+  borderRadius: 8,
+  background: '#1E2126',
+};
+
+/**
+ * Connection-screen chrome. Not a card — these read the shared `SURFACES` tokens
+ * the same way the table chrome above does, so the pre-game screen matches the
+ * board's look without ever touching card color/size tokens.
+ */
+export const connectMain: CSSProperties = {
+  ...main,
+  justifyContent: 'center',
+  alignItems: 'center',
+};
+
+export const connectPanel: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 16,
+  width: '100%',
+  maxWidth: 420,
+  padding: 24,
+  borderRadius: 12,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxSizing: 'border-box',
+};
+
+export const connectHeading: CSSProperties = {
+  margin: 0,
+  fontSize: 20,
+  fontWeight: 700,
+};
+
+export const field: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+};
+
+export const fieldLabel: CSSProperties = {
+  fontSize: 13,
+  color: SURFACES.typeText,
+  fontWeight: 600,
+};
+
+export const input: CSSProperties = {
+  minHeight: TOUCH,
+  padding: '0 12px',
+  borderRadius: 8,
+  border: '1px solid #3A4049',
+  background: '#15171A',
+  color: SURFACES.nameText,
+  fontSize: 15,
+  fontFamily: 'inherit',
+  boxSizing: 'border-box',
+  width: '100%',
+};
+
+export const buttonRow: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 8,
+};
+
+/** Emphasized closed/error status, in the shared alert (targeting) color. */
+export const errorText: CSSProperties = {
+  fontSize: 13,
+  color: SURFACES.targeting,
+  fontWeight: 600,
+};
