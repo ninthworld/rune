@@ -1,80 +1,78 @@
-//! Layer 1 lobby — the room registry and connection→room routing.
+//! Layer 1 lobby — session identity plus the explicit-room registry and the
+//! pre-game `LobbyView`/`LobbyCommand` routing (ADR 0012, issue #110).
 //!
 //! The lobby is the connective tissue between the accept loop (issue #30) and the
 //! room task (issue #31). It owns the **room registry** — the shared
-//! `Arc<RwLock<...>>` of active rooms from `docs/brief.md` — and, on each accepted
-//! and handshaken connection, hands it a seat in a room. From there the connection
-//! is driven entirely by [`serve_connection`](crate::serve_connection): the lobby
-//! never reads or writes game state, so it holds **no game logic** (the engine owns
-//! the rules; the room owns the one game).
+//! `Arc<RwLock<...>>` of active rooms from `docs/brief.md` — and the set of live
+//! **sessions**. A new connection lands here in the pre-game phase: it is issued an
+//! opaque session token and a [`LobbyView`], and it drives itself with
+//! [`LobbyCommand`]s ([`serve_lobby_connection`]). The lobby never reads or writes
+//! game state, so it holds **no game logic** (the engine owns the rules; a room's
+//! game — once constructed — owns the one game).
 //!
-//! # Seating policy — auto-pairing, "next open seat"
-//! A new connection takes the first free seat in any existing room; only when no
-//! room has a free seat is a fresh two-player room created. When every room is full
-//! and the registry is already at capacity ([`Lobby::DEFAULT_MAX_ROOMS`], or the
-//! bound passed to [`Lobby::new`]), the connection is rejected (oversubscribed).
-//! There is deliberately no identity, auth, room naming, chat, or matchmaking — all
-//! out of scope for this milestone.
+//! # Explicit rooms — create with config, join by id
+//! There is deliberately **no auto-seating** and no matchmaking (ADR 0012). A
+//! connection either *creates* a room with a [`RoomConfig`] (a seat count in
+//! `2..=8`) — receiving a shareable [`RoomId`] — or *joins* an existing room whose
+//! id it was given. Joining a full or unknown room is a typed [`LobbyError`]; the
+//! connection's current [`LobbyView`] is re-sent, exactly as an illegal
+//! `ChooseAction` re-sends the current `GameView` (`docs/protocol.md`).
 //!
-//! # Disconnect — a vacated seat is retired, never reissued
-//! When a connection ends, its seat is **retired**: [`Lobby::release`] marks it
-//! permanently spent so [`Lobby::assign`] never hands it to another connection. A
-//! seat only ever moves `Open → Taken → Retired`; it never returns to `Open`.
+//! # No game until the pre-game gate passes
+//! Creating or joining a room does **not** construct an engine game or send a
+//! `GameView`. A room stays in the lobby phase — pushing `LobbyView`s — until every
+//! seat is filled, decked, and ready (the ready gate, issue #112). This retires the
+//! previous "auto-seat into a game that is already live with one player and empty
+//! decks" behavior (ADR 0012).
 //!
-//! This closes a hidden-hand leak (issue #48). The room deliberately holds a seat
-//! open across disconnects (issue #31) and, on any join, pushes that seat's *full
-//! personalized* [`GameView`](rune_protocol::GameView) — including its private
-//! `my_hand`. Before this policy, `release` re-opened the seat and `assign` handed
-//! it to the next stranger, who then joined as the departed player and received
-//! their hand. The lobby has **no identity binding**, so it cannot tell a returning
-//! player from a stranger; it must therefore treat every new connection as a
-//! stranger and refuse to seat one into occupied-then-vacated territory.
+//! # Reclaiming rooms
+//! A pre-game room's registry entry — and the [`Lobby::max_rooms`] capacity it holds
+//! — is freed once the room is **empty** (every seat vacated by a `Leave` or a
+//! disconnect). Reclamation runs opportunistically on room creation (so freed
+//! capacity is available to the next creator, even at the cap) and after every
+//! disconnect/leave. Migrated from the game-over/abandonment reaping of issue #54,
+//! which reaped *game-task* rooms; a pre-game room has no game task to observe, so
+//! "can no longer make progress" reduces to "no occupants remain".
 //!
-//! True reconnection — reuniting a returning player with their held-open seat — is
-//! consequently blocked on an identity / reconnect-token mechanism (a future
-//! milestone).
-//!
-//! # Room lifecycle — finished and abandoned rooms are reclaimed (issue #54)
-//! A room's registry entry — and the [`Lobby::max_rooms`] capacity it holds — is
-//! freed once the room can no longer make progress or be joined:
-//!
-//! - **Game over.** The room task detects a terminal [`GameState`] (a player has
-//!   lost), pushes a final broadcast, and stops on its own; the lobby reaps the
-//!   stopped task.
-//! - **Full abandonment.** Every seat is [`SeatState::Retired`] — both players have
-//!   disconnected. Under the retire-never-reissue policy no connection can rejoin,
-//!   so the still-idle room task is aborted and its entry dropped.
-//!
-//! Reclamation runs opportunistically: on every [`Lobby::assign`] (so freed capacity
-//! is available to the next connection, even at the room cap) and after every
-//! [`Lobby::release`] (so an abandoning disconnect frees its room promptly). A
-//! *partially* abandoned room — one seat retired, the other still `Open` or `Taken`
-//! — is deliberately kept: its held-open seat is still live for a first join or a
-//! future reconnect, and only the whole room is ever reclaimed, never an individual
-//! seat.
+//! # Identity is minimal for now
+//! The session token is issued fresh on every connection. Reuniting a returning
+//! connection with a held-open seat via an echoed token is the reconnect mechanism
+//! deferred to issue #113; this module issues and tracks the token but treats every
+//! `Hello` as a fresh identity.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 
-use rune_engine::{CardDatabase, GameState};
-use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
-use tracing::info;
+use futures_util::{SinkExt, StreamExt};
+use rune_engine::CardDatabase;
+use rune_protocol::{
+    CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, RoomConfig, RoomId, RoomView,
+    SeatView, SessionToken,
+};
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::sync::{watch, RwLock};
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::WebSocketStream;
+use tracing::{info, warn};
 
-use crate::room::{Room, RoomHandle, Seat};
+/// Inclusive range of seats a room may be configured with. The lobby and room
+/// plumbing support 2–8 seats even while the engine remains two-player (ADR 0012):
+/// a config the engine cannot yet build a game for is caught later, at the ready
+/// gate (issue #112), not here.
+const SEAT_RANGE: std::ops::RangeInclusive<u8> = 2..=8;
 
-/// Seats in every room the lobby opens. RUNE hosts two-player games only.
-const SEATS_PER_ROOM: usize = 2;
+/// Latest-value outbox the lobby pushes a connection's [`LobbyView`] to. Like the
+/// room's per-seat outbox, it is a [`watch`] so a slow reader always observes the
+/// newest lobby state and never accumulates a backlog of superseded snapshots.
+pub(crate) type LobbyOutbox = watch::Sender<Option<LobbyView>>;
 
-/// A stable identifier for a room within the [`Lobby`] registry.
-type RoomId = u64;
-
-/// The shared room registry (layer 1 of `docs/brief.md`).
+/// The shared session + room registry (layer 1 of `docs/brief.md`).
 ///
 /// Cloning a [`Lobby`] is cheap: every clone shares one registry behind an
 /// `Arc<RwLock<...>>`, so each connection task can hold its own handle. The lobby
-/// owns the [`CardDatabase`] every room is built from and the cap on how many rooms
-/// it will host concurrently.
+/// owns the [`CardDatabase`] a room's game is built from and the cap on how many
+/// rooms it will host concurrently.
 #[derive(Clone)]
 pub struct Lobby {
     inner: Arc<Inner>,
@@ -82,60 +80,93 @@ pub struct Lobby {
 
 /// The `Arc`-shared interior of a [`Lobby`].
 struct Inner {
-    /// The mutable set of active rooms.
+    /// The mutable set of sessions and active rooms.
     registry: RwLock<Registry>,
-    /// The card database every room is built from.
+    /// The card database a room's game is built from and decklists are validated
+    /// against. Not yet consumed here: the ready gate (issue #112) constructs the
+    /// game and validates submitted decks against it. Held now because the lobby
+    /// owns the database every room draws from (ADR 0012).
+    #[allow(dead_code)]
     db: CardDatabase,
     /// The cap on concurrently hosted rooms.
     max_rooms: usize,
 }
 
-/// The registry of active rooms, keyed by a monotonic [`RoomId`].
+/// The registry of live sessions and active rooms.
 #[derive(Default)]
 struct Registry {
-    /// The next id to hand out; only ever increases, so ids are never reused.
-    next_id: RoomId,
-    /// Active rooms by id.
-    rooms: HashMap<RoomId, RoomSlot>,
+    /// The next room id suffix to hand out; only ever increases, so room ids are
+    /// never reused.
+    next_room: u64,
+    /// The next session id suffix to hand out; only ever increases.
+    next_session: u64,
+    /// Active pre-game rooms, keyed by their opaque [`RoomId`].
+    rooms: HashMap<RoomId, RoomEntry>,
+    /// Live sessions, keyed by their secret [`SessionToken`].
+    sessions: HashMap<SessionToken, Session>,
 }
 
-/// One room's registry entry: a handle to its task and its per-seat occupancy.
-struct RoomSlot {
-    /// Handle for delivering inputs to the room task.
-    handle: RoomHandle,
-    /// Lifecycle per seat, indexed by [`Seat`].
-    seats: Vec<SeatState>,
-    /// Join handle for the room's Tokio task, retained so termination can be
-    /// observed ([`JoinHandle::is_finished`]) and, on reclamation, the task can be
-    /// aborted rather than silently dropped.
-    task: JoinHandle<()>,
+/// One live connection's server-side state.
+struct Session {
+    /// The public player identity shown to other seats as [`SeatView::occupied_by`].
+    player: PlayerId,
+    /// The room this session currently occupies, if any.
+    room: Option<RoomId>,
+    /// The seat index within [`Session::room`], if seated.
+    seat: Option<usize>,
+    /// Where this connection's [`LobbyView`]s are pushed.
+    outbox: LobbyOutbox,
 }
 
-/// The lifecycle of one seat in a room.
-///
-/// A seat only ever moves forward — `Open → Taken → Retired` — and never returns
-/// to `Open`. That one-way transition is what keeps a vacated seat (and the private
-/// hand behind it) from being handed to a stranger; see the module docs.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum SeatState {
-    /// Never occupied; free for the next connection to take.
-    Open,
-    /// Currently held by a live connection.
-    Taken,
-    /// Was occupied and then vacated. Held reserved for the rest of the room's
-    /// life and never reissued (no identity binding to authorize a rejoin yet).
-    Retired,
+/// One pre-game room: a config plus a per-seat occupancy roster. It holds **no**
+/// engine game — that is constructed only when the ready gate passes (issue #112).
+struct RoomEntry {
+    /// The room's configuration, echoed in every [`RoomView`].
+    config: RoomConfig,
+    /// Per-seat occupancy: the [`SessionToken`] seated at each index, or `None`.
+    seats: Vec<Option<SessionToken>>,
 }
 
-/// A seat the lobby assigned to a connection, with the handle to reach its room.
-pub(crate) struct SeatAssignment {
-    /// The room the seat belongs to.
-    pub(crate) room_id: RoomId,
-    /// The seat index within that room.
-    pub(crate) seat: Seat,
-    /// A handle for driving the assigned room.
-    pub(crate) room: RoomHandle,
+/// Why a [`LobbyCommand`] was rejected. On any of these the connection's current
+/// [`LobbyView`] is re-sent unchanged (ADR 0012); the typed value lets the server
+/// (and tests) distinguish, e.g., a full room from an unknown one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LobbyError {
+    /// The command came from a session the registry does not know.
+    UnknownSession,
+    /// `create_room`/`join_room` while already seated in a room.
+    AlreadyInRoom,
+    /// A command that requires being in a room (e.g. `leave`) with no room.
+    NotInRoom,
+    /// `create_room` with a seat count outside [`SEAT_RANGE`].
+    InvalidSeatCount(u8),
+    /// `join_room` with an id no active room has.
+    UnknownRoom,
+    /// `join_room` on a room whose every seat is occupied.
+    RoomFull,
+    /// `create_room` while the registry is already at [`Lobby::max_rooms`].
+    AtCapacity,
+    /// A protocol command not yet handled in this phase (`submit_deck`, `ready`):
+    /// the deck/ready gate is issue #112.
+    Unsupported,
 }
+
+impl std::fmt::Display for LobbyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownSession => write!(f, "unknown session"),
+            Self::AlreadyInRoom => write!(f, "already in a room"),
+            Self::NotInRoom => write!(f, "not in a room"),
+            Self::InvalidSeatCount(n) => write!(f, "seat count {n} is outside 2..=8"),
+            Self::UnknownRoom => write!(f, "unknown room id"),
+            Self::RoomFull => write!(f, "room is full"),
+            Self::AtCapacity => write!(f, "lobby is at room capacity"),
+            Self::Unsupported => write!(f, "command not supported in this phase yet"),
+        }
+    }
+}
+
+impl std::error::Error for LobbyError {}
 
 impl Lobby {
     /// The default cap on concurrently hosted rooms. Kept modest and explicit for
@@ -143,8 +174,8 @@ impl Lobby {
     /// targets tens of thousands of games per node).
     pub const DEFAULT_MAX_ROOMS: usize = 1024;
 
-    /// Create an empty lobby that builds every room from `db` and hosts at most
-    /// `max_rooms` rooms at once.
+    /// Create an empty lobby that builds every room's game from `db` and hosts at
+    /// most `max_rooms` rooms at once.
     #[must_use]
     pub fn new(db: CardDatabase, max_rooms: usize) -> Self {
         Self {
@@ -165,112 +196,361 @@ impl Lobby {
         Ok(Self::new(CardDatabase::bundled()?, max_rooms))
     }
 
-    /// Assign the next open seat to a connection, opening a fresh room only when no
-    /// existing room has a free seat (auto-pairing).
-    ///
-    /// Returns `None` when every room is full and the registry is at capacity — the
-    /// oversubscribed case the caller rejects cleanly.
-    pub(crate) async fn assign(&self) -> Option<SeatAssignment> {
+    /// Register a freshly accepted connection: issue it a session token and public
+    /// identity, store its `outbox`, and push it its initial [`LobbyView`] (a
+    /// roomless view offering `create_room`/`join_room`). Returns the token so the
+    /// connection can later address the session.
+    pub(crate) async fn connect(&self, outbox: LobbyOutbox) -> SessionToken {
         let mut registry = self.inner.registry.write().await;
-
-        // Reclaim finished (game-over) and fully abandoned rooms first, so their
-        // capacity is available to this connection even when we are at the cap.
-        Self::reap(&mut registry);
-
-        // Prefer an existing room that still has a never-occupied (`Open`) seat.
-        // A `Retired` seat is deliberately skipped: it is held reserved forever so
-        // its vacated hand can never leak to a newcomer (see module docs).
-        for (&room_id, slot) in registry.rooms.iter_mut() {
-            if let Some(seat) = slot
-                .seats
-                .iter()
-                .position(|state| *state == SeatState::Open)
-            {
-                slot.seats[seat] = SeatState::Taken;
-                return Some(SeatAssignment {
-                    room_id,
-                    seat,
-                    room: slot.handle.clone(),
-                });
-            }
-        }
-
-        // Every room is full: open a new one if capacity allows.
-        if registry.rooms.len() >= self.inner.max_rooms {
-            return None;
-        }
-        let (handle, task) = Room::new(GameState::new_two_player(), self.inner.db.clone()).spawn();
-        // The opener takes seat 0; the room task lives until its game ends or every
-        // seat is vacated, at which point [`Lobby::reap`] reclaims this entry.
-        let mut seats = vec![SeatState::Open; SEATS_PER_ROOM];
-        if let Some(first) = seats.first_mut() {
-            *first = SeatState::Taken;
-        }
-        let room_id = registry.next_id;
-        registry.next_id += 1;
-        registry.rooms.insert(
-            room_id,
-            RoomSlot {
-                handle: handle.clone(),
-                seats,
-                task,
+        let n = registry.next_session;
+        registry.next_session += 1;
+        let token = format!("s{n}");
+        let player = format!("p{n}");
+        registry.sessions.insert(
+            token.clone(),
+            Session {
+                player,
+                room: None,
+                seat: None,
+                outbox,
             },
         );
-        info!(room_id, "opened room");
-        Some(SeatAssignment {
-            room_id,
-            seat: 0,
-            room: handle,
-        })
+        push_view(&registry, &token);
+        info!(%token, "connection entered the lobby");
+        token
     }
 
-    /// Retire a seat when its connection ends so it is never reissued.
+    /// Retire a session when its connection ends: vacate its seat (if any), reclaim
+    /// the room when it becomes empty, and notify any remaining occupants.
     ///
-    /// The room's game state is left untouched (issue #31 holds the seat open); the
-    /// registry marks the seat [`SeatState::Retired`] so [`Lobby::assign`] can never
-    /// hand it — and the departed player's private hand behind it — to a new,
-    /// unidentified connection (issue #48; see the module docs). Rejoining a retired
-    /// seat awaits a reconnect-token mechanism (future milestone).
-    ///
-    /// A stale `room_id`/`seat` is ignored, so a double release cannot corrupt the
-    /// registry.
-    pub(crate) async fn release(&self, room_id: RoomId, seat: Seat) {
+    /// A stale token is ignored, so a double disconnect cannot corrupt the registry.
+    pub(crate) async fn disconnect(&self, token: &SessionToken) {
         let mut registry = self.inner.registry.write().await;
-        if let Some(slot) = registry.rooms.get_mut(&room_id) {
-            if let Some(state) = slot.seats.get_mut(seat) {
-                *state = SeatState::Retired;
+        let Some(session) = registry.sessions.remove(token) else {
+            return;
+        };
+        if let (Some(room_id), Some(seat)) = (session.room, session.seat) {
+            vacate(&mut registry, &room_id, seat);
+            reap_empty(&mut registry);
+            if registry.rooms.contains_key(&room_id) {
+                push_room(&registry, &room_id);
+            }
+            info!(%token, %room_id, seat, "connection left the lobby; seat vacated");
+        }
+    }
+
+    /// Route one [`LobbyCommand`] from `token` against authoritative state. On
+    /// success the affected connections are pushed a fresh [`LobbyView`]; on a typed
+    /// [`LobbyError`] the sender's current view is re-sent unchanged and the error is
+    /// returned (for logging/tests).
+    pub(crate) async fn command(
+        &self,
+        token: &SessionToken,
+        command: LobbyCommand,
+    ) -> Result<(), LobbyError> {
+        let mut registry = self.inner.registry.write().await;
+        if !registry.sessions.contains_key(token) {
+            return Err(LobbyError::UnknownSession);
+        }
+        let result = match command {
+            // First contact / reconnect. Reconnect-by-token is issue #113; for now a
+            // fresh identity is already issued at connect, so acknowledge by
+            // re-sending the current view.
+            LobbyCommand::Hello(_) => Ok(()),
+            LobbyCommand::CreateRoom(CreateRoom { config }) => {
+                self.create_room(&mut registry, token, config)
+            }
+            LobbyCommand::JoinRoom(JoinRoom { room_id }) => {
+                join_room(&mut registry, token, &room_id)
+            }
+            LobbyCommand::Leave => leave_room(&mut registry, token),
+            // The deck-submission and ready gate is issue #112.
+            LobbyCommand::SubmitDeck(_) | LobbyCommand::Ready(_) => Err(LobbyError::Unsupported),
+        };
+        // Whether the command succeeded (and already pushed the affected views) or
+        // was rejected, the sender always ends with a fresh, authoritative view.
+        push_view(&registry, token);
+        result
+    }
+
+    /// Handle `create_room`: validate the config, reap empty rooms, enforce the room
+    /// cap, then open a room and seat the creator at seat 0.
+    fn create_room(
+        &self,
+        registry: &mut Registry,
+        token: &SessionToken,
+        config: RoomConfig,
+    ) -> Result<(), LobbyError> {
+        if registry
+            .sessions
+            .get(token)
+            .is_some_and(|s| s.room.is_some())
+        {
+            return Err(LobbyError::AlreadyInRoom);
+        }
+        if !SEAT_RANGE.contains(&config.seats) {
+            return Err(LobbyError::InvalidSeatCount(config.seats));
+        }
+        // Free capacity held by empty rooms before checking the cap, so a creator is
+        // never refused for a slot no live room still needs.
+        reap_empty(registry);
+        if registry.rooms.len() >= self.inner.max_rooms {
+            return Err(LobbyError::AtCapacity);
+        }
+
+        let n = registry.next_room;
+        registry.next_room += 1;
+        let room_id = format!("r{n}");
+        let mut seats = vec![None; config.seats as usize];
+        seats[0] = Some(token.clone());
+        registry
+            .rooms
+            .insert(room_id.clone(), RoomEntry { config, seats });
+        if let Some(session) = registry.sessions.get_mut(token) {
+            session.room = Some(room_id.clone());
+            session.seat = Some(0);
+        }
+        info!(%token, %room_id, "opened room");
+        Ok(())
+    }
+}
+
+/// Handle `join_room`: seat the joiner in the first free seat of an existing room,
+/// or return a typed error for an unknown or full room.
+fn join_room(
+    registry: &mut Registry,
+    token: &SessionToken,
+    room_id: &RoomId,
+) -> Result<(), LobbyError> {
+    if registry
+        .sessions
+        .get(token)
+        .is_some_and(|s| s.room.is_some())
+    {
+        return Err(LobbyError::AlreadyInRoom);
+    }
+    let room = registry
+        .rooms
+        .get_mut(room_id)
+        .ok_or(LobbyError::UnknownRoom)?;
+    let seat = room
+        .seats
+        .iter()
+        .position(Option::is_none)
+        .ok_or(LobbyError::RoomFull)?;
+    room.seats[seat] = Some(token.clone());
+    if let Some(session) = registry.sessions.get_mut(token) {
+        session.room = Some(room_id.clone());
+        session.seat = Some(seat);
+    }
+    // Every occupant's roster changed: push all of them a fresh view.
+    push_room(registry, room_id);
+    info!(%token, %room_id, seat, "joined room");
+    Ok(())
+}
+
+/// Handle `leave`: vacate the sender's seat, reclaim the room if it is now empty,
+/// otherwise notify the remaining occupants.
+fn leave_room(registry: &mut Registry, token: &SessionToken) -> Result<(), LobbyError> {
+    let (room_id, seat) = match registry.sessions.get(token) {
+        Some(Session {
+            room: Some(room_id),
+            seat: Some(seat),
+            ..
+        }) => (room_id.clone(), *seat),
+        _ => return Err(LobbyError::NotInRoom),
+    };
+    vacate(registry, &room_id, seat);
+    if let Some(session) = registry.sessions.get_mut(token) {
+        session.room = None;
+        session.seat = None;
+    }
+    reap_empty(registry);
+    if registry.rooms.contains_key(&room_id) {
+        push_room(registry, &room_id);
+    }
+    info!(%token, %room_id, seat, "left room");
+    Ok(())
+}
+
+/// Clear a seat's occupant. A stale room id/seat is ignored.
+fn vacate(registry: &mut Registry, room_id: &RoomId, seat: usize) {
+    if let Some(room) = registry.rooms.get_mut(room_id) {
+        if let Some(slot) = room.seats.get_mut(seat) {
+            *slot = None;
+        }
+    }
+}
+
+/// Drop every room with no remaining occupants, freeing the capacity it held.
+fn reap_empty(registry: &mut Registry) {
+    registry.rooms.retain(|room_id, room| {
+        let occupied = room.seats.iter().any(Option::is_some);
+        if !occupied {
+            info!(%room_id, "reclaimed empty room");
+        }
+        occupied
+    });
+}
+
+/// Build the [`LobbyView`] for one session, or `None` if the token is unknown.
+fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
+    let session = registry.sessions.get(token)?;
+    let room = session
+        .room
+        .as_ref()
+        .and_then(|room_id| build_room_view(registry, room_id));
+    // `valid_commands` is the only source of interactivity; advertise exactly what
+    // this phase implements. The deck/ready commands arrive with issue #112.
+    let valid_commands = if session.room.is_some() {
+        vec!["leave".to_string()]
+    } else {
+        vec!["create_room".to_string(), "join_room".to_string()]
+    };
+    Some(LobbyView {
+        session: token.clone(),
+        you: session.player.clone(),
+        room,
+        valid_commands,
+    })
+}
+
+/// Build the [`RoomView`] for a room: its config and full seat roster, with each
+/// occupant resolved to its public [`PlayerId`]. Decklist contents are never
+/// exposed — only `decked`/`ready` flags, both `false` until issue #112.
+fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
+    let room = registry.rooms.get(room_id)?;
+    let seats = room
+        .seats
+        .iter()
+        .enumerate()
+        .map(|(index, occupant)| {
+            let occupied_by = occupant
+                .as_ref()
+                .and_then(|tok| registry.sessions.get(tok))
+                .map(|session| session.player.clone());
+            SeatView {
+                seat: index as u8,
+                occupied_by,
+                decked: false,
+                ready: false,
+            }
+        })
+        .collect();
+    Some(RoomView {
+        room_id: room_id.clone(),
+        config: room.config.clone(),
+        seats,
+    })
+}
+
+/// Push a fresh [`LobbyView`] to one session's outbox. A closed outbox (the reader
+/// is gone) is ignored — the disconnect path cleans the session up.
+fn push_view(registry: &Registry, token: &SessionToken) {
+    if let Some(view) = build_view(registry, token) {
+        if let Some(session) = registry.sessions.get(token) {
+            let _ = session.outbox.send(Some(view));
+        }
+    }
+}
+
+/// Push a fresh [`LobbyView`] to every occupant of a room (their shared roster
+/// changed).
+fn push_room(registry: &Registry, room_id: &RoomId) {
+    let Some(room) = registry.rooms.get(room_id) else {
+        return;
+    };
+    let occupants: Vec<SessionToken> = room.seats.iter().flatten().cloned().collect();
+    for token in &occupants {
+        push_view(registry, token);
+    }
+}
+
+/// Bridge a live WebSocket connection to the lobby for its pre-game phase.
+///
+/// This is the pre-game analogue of [`serve_connection`](crate::serve_connection):
+/// it registers a session (receiving the initial [`LobbyView`]), then pumps the
+/// socket both ways until either side closes. Decoded [`LobbyCommand`]s are routed
+/// through [`Lobby::command`]; every [`LobbyView`] the lobby pushes is serialized to
+/// JSON and written back. On exit the session is disconnected, vacating its seat.
+///
+/// It carries **no game logic** — it only (de)serializes the lobby protocol and
+/// routes commands to the authoritative registry. Construction of the engine game
+/// and the switch to the in-game `GameView` contract happen at the ready gate
+/// (issue #112), not here.
+///
+/// `shutdown` lets the layer-1 server stop the bridge on server shutdown: when it
+/// resolves, the session is released and the socket is closed politely, just as if
+/// the peer had hung up.
+pub async fn serve_lobby_connection<S, F>(lobby: Lobby, ws: WebSocketStream<S>, shutdown: F)
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    F: Future<Output = ()>,
+{
+    let (mut write, mut read) = ws.split();
+    let (outbox_tx, mut outbox_rx) = watch::channel::<Option<LobbyView>>(None);
+    // Registering the session pushes the initial LobbyView onto the outbox, so the
+    // writer arm below sends it as the connection's first frame.
+    let token = lobby.connect(outbox_tx).await;
+
+    tokio::pin!(shutdown);
+    loop {
+        tokio::select! {
+            () = &mut shutdown => break,
+            incoming = read.next() => match incoming {
+                Some(Ok(Message::Text(text))) => {
+                    forward_lobby_command(&lobby, &token, text.as_str()).await;
+                }
+                Some(Ok(Message::Ping(payload))) => {
+                    if write.send(Message::Pong(payload)).await.is_err() {
+                        break;
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None => break,
+                Some(Ok(_)) => {} // binary/pong/raw frames carry no protocol message
+                Some(Err(error)) => {
+                    warn!(%token, %error, "websocket read error");
+                    break;
+                }
+            },
+            // Latest-value outbox: while parked on a slow `write.send`, the lobby may
+            // overwrite the pending view any number of times; we serialize only the
+            // newest snapshot when we loop back. Safe because each `LobbyView` is a
+            // complete snapshot (`docs/protocol.md`), so superseded ones can be
+            // dropped; the channel never grows under a slow reader.
+            changed = outbox_rx.changed() => match changed {
+                Ok(()) => {
+                    let latest = outbox_rx.borrow_and_update().clone();
+                    if let Some(view) = latest {
+                        match serde_json::to_string(&view) {
+                            Ok(json) => {
+                                if write.send(Message::Text(json)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(error) => warn!(%token, %error, "failed to serialize lobby view"),
+                        }
+                    }
+                }
+                Err(_) => break,
+            },
+        }
+    }
+
+    lobby.disconnect(&token).await;
+    let _ = write.close().await;
+}
+
+/// Decode one JSON [`LobbyCommand`] and route it; malformed frames are logged and
+/// dropped rather than closing the connection.
+async fn forward_lobby_command(lobby: &Lobby, token: &SessionToken, text: &str) {
+    match serde_json::from_str::<LobbyCommand>(text) {
+        Ok(command) => {
+            if let Err(error) = lobby.command(token, command).await {
+                warn!(%token, %error, "rejected lobby command");
             }
         }
-        // This disconnect may have fully abandoned the room (all seats retired), or
-        // the game may have ended; reclaim it now rather than waiting for the next
-        // assign.
-        Self::reap(&mut registry);
-    }
-
-    /// Reclaim rooms that are done, freeing the [`Lobby::max_rooms`] slot each holds.
-    ///
-    /// A registry entry is dropped when either:
-    ///
-    /// - its room **task has stopped** — the room detected a terminal [`GameState`]
-    ///   (a player lost) and shut down after its final broadcast; or
-    /// - **every seat is [`SeatState::Retired`]** — the room is fully abandoned (both
-    ///   players disconnected) and, because a released seat is retired and never
-    ///   reissued (issue #48), no connection can ever join it again.
-    ///
-    /// An abandoned room's task is still idle on its input channel, so it is aborted
-    /// before its entry is dropped; a stopped room's `abort` is a harmless no-op.
-    fn reap(registry: &mut Registry) {
-        registry.rooms.retain(|&room_id, slot| {
-            let stopped = slot.task.is_finished();
-            let abandoned = slot.seats.iter().all(|state| *state == SeatState::Retired);
-            if stopped || abandoned {
-                slot.task.abort();
-                info!(room_id, stopped, abandoned, "reclaimed room");
-                false
-            } else {
-                true
-            }
-        });
+        Err(error) => warn!(%token, %error, "ignoring undecodable lobby command"),
     }
 }
 
@@ -279,194 +559,475 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
-    use crate::room::RoomInput;
-    use tokio::sync::watch;
+    use rune_protocol::{Hello, Ready, SubmitDeck};
 
     fn lobby(max_rooms: usize) -> Lobby {
         Lobby::bundled(max_rooms).expect("bundled cards")
     }
 
+    fn config(seats: u8) -> RoomConfig {
+        RoomConfig {
+            seats,
+            game_setup: "standard_2p".to_string(),
+        }
+    }
+
+    /// A test client: a registered session plus its outbox receiver.
+    struct Client {
+        token: SessionToken,
+        rx: watch::Receiver<Option<LobbyView>>,
+    }
+
+    impl Client {
+        async fn connect(lobby: &Lobby) -> Self {
+            let (tx, rx) = watch::channel(None);
+            let token = lobby.connect(tx).await;
+            Self { token, rx }
+        }
+
+        /// The latest view pushed to this client (awaiting the next change).
+        async fn view(&mut self) -> LobbyView {
+            self.rx.changed().await.expect("a view was pushed");
+            self.rx
+                .borrow_and_update()
+                .clone()
+                .expect("pushed view is never the initial empty slot")
+        }
+
+        /// The current view without waiting for a further change.
+        fn current(&self) -> LobbyView {
+            self.rx.borrow().clone().expect("a view is present")
+        }
+    }
+
     #[tokio::test]
-    async fn pairs_two_connections_into_one_room_at_distinct_seats() {
+    async fn a_new_connection_lands_in_the_lobby_with_a_session_and_no_game() {
         let lobby = lobby(4);
-        let first = lobby.assign().await.expect("first seat");
-        let second = lobby.assign().await.expect("second seat");
-        // Auto-pairing: both land in the same room, at different seats.
-        assert_eq!(first.room_id, second.room_id);
-        assert_ne!(first.seat, second.seat);
-    }
+        let mut client = Client::connect(&lobby).await;
+        let view = client.view().await;
 
-    #[tokio::test]
-    async fn opens_a_new_room_once_the_first_is_full() {
-        let lobby = lobby(4);
-        let a = lobby.assign().await.expect("room 0 seat 0");
-        let b = lobby.assign().await.expect("room 0 seat 1");
-        assert_eq!(a.room_id, b.room_id);
-        // The two-seat room is full, so the third connection opens a new room.
-        let c = lobby.assign().await.expect("room 1 seat 0");
-        assert_ne!(c.room_id, a.room_id);
-        assert_eq!(c.seat, 0);
-    }
-
-    #[tokio::test]
-    async fn rejects_when_at_capacity_and_full() {
-        let lobby = lobby(1);
-        lobby.assign().await.expect("seat 0");
-        lobby.assign().await.expect("seat 1");
-        // One room, both seats taken, capacity reached: the next assign is rejected.
-        assert!(lobby.assign().await.is_none());
-    }
-
-    #[tokio::test]
-    async fn releasing_a_seat_retires_it_rather_than_reopening_it() {
-        // New policy (issue #48): a released seat is retired, not reopened. With the
-        // room's only other seat also taken, a released seat leaves no `Open` seat,
-        // so the lobby opens a fresh room rather than reissuing the vacated one.
-        let lobby = lobby(4);
-        let first = lobby.assign().await.expect("room 0 seat 0");
-        let second = lobby.assign().await.expect("room 0 seat 1");
-        assert_eq!(first.room_id, second.room_id);
-
-        lobby.release(first.room_id, first.seat).await;
-
-        // The next connection never gets the vacated (room, seat); it opens a new room.
-        let next = lobby.assign().await.expect("fresh room");
-        assert_ne!(next.room_id, first.room_id);
-        assert!(!(next.room_id == first.room_id && next.seat == first.seat));
-    }
-
-    #[tokio::test]
-    async fn a_retired_seat_is_the_last_seat_at_capacity() {
-        // One room, both seats taken, at capacity. Releasing a seat retires it, so
-        // there is still no `Open` seat and no room budget: the lobby stays full.
-        let lobby = lobby(1);
-        let first = lobby.assign().await.expect("seat 0");
-        lobby.assign().await.expect("seat 1");
-        lobby.release(first.room_id, first.seat).await;
-        assert!(lobby.assign().await.is_none());
-    }
-
-    #[tokio::test]
-    async fn issue_48_a_vacated_seat_never_leaks_its_hand_to_a_new_connection() {
-        // Regression for issue #48: seat a player, disconnect them (`release`), then
-        // open a new connection. It must land on a fresh room/seat — never the
-        // vacated one — so its first `GameView` carries its own (empty) hand and
-        // never the departed player's `my_hand`.
-        let lobby = lobby(4);
-
-        // A player takes a seat and is brought current in the room.
-        let departed = lobby.assign().await.expect("departed seat");
-        let (tx, mut rx) = watch::channel(None);
-        assert!(departed.room.send(RoomInput::Join {
-            seat: departed.seat,
-            outbox: tx,
-        }));
-        rx.changed().await.expect("departed view");
-
-        // The player disconnects: the lobby retires their seat.
-        lobby.release(departed.room_id, departed.seat).await;
-
-        // A brand-new connection arrives. It is never handed the vacated (room, seat).
-        let newcomer = lobby.assign().await.expect("newcomer seat");
-        assert!(
-            !(newcomer.room_id == departed.room_id && newcomer.seat == departed.seat),
-            "assign reissued the vacated seat to a new connection",
-        );
-
-        // On join the room personalizes the view to the newcomer's own seat — a
-        // fresh seat in a new game — so its first `GameView` has an empty hand and
-        // does not contain the vacated seat's `my_hand`.
-        let (tx2, mut rx2) = watch::channel(None);
-        assert!(newcomer.room.send(RoomInput::Join {
-            seat: newcomer.seat,
-            outbox: tx2,
-        }));
-        rx2.changed().await.expect("newcomer view");
-        let first_view = rx2.borrow().clone().expect("newcomer view present");
-        assert!(
-            first_view.my_hand.is_empty(),
-            "newcomer inherited a non-empty hand from a vacated seat",
+        // Issued a session token and a public identity; not in any room.
+        assert!(!view.session.is_empty());
+        assert!(!view.you.is_empty());
+        assert!(view.room.is_none());
+        // Only the create/join commands are legal before a room exists.
+        assert_eq!(
+            view.valid_commands,
+            vec!["create_room".to_string(), "join_room".to_string()]
         );
     }
 
     #[tokio::test]
-    async fn releasing_an_unknown_seat_is_a_no_op() {
-        let lobby = lobby(1);
-        // Never panics or corrupts the registry, even for ids that were never issued.
-        lobby.release(999, 7).await;
-        lobby.release(0, 42).await;
-        // The registry is still fully usable afterwards.
-        assert!(lobby.assign().await.is_some());
-    }
+    async fn create_room_seats_the_creator_and_returns_a_room_id() {
+        let lobby = lobby(4);
+        let mut client = Client::connect(&lobby).await;
+        let initial = client.view().await;
 
-    /// Open a room around `state` with both seats already `Taken`, for tests that
-    /// need to inject a specific game (e.g. an already-terminal one). Returns the new
-    /// room's id and a handle for driving it.
-    async fn open_room_with_state(lobby: &Lobby, state: GameState) -> (RoomId, RoomHandle) {
-        let mut registry = lobby.inner.registry.write().await;
-        let (handle, task) = Room::new(state, lobby.inner.db.clone()).spawn();
-        let room_id = registry.next_id;
-        registry.next_id += 1;
-        registry.rooms.insert(
-            room_id,
-            RoomSlot {
-                handle: handle.clone(),
-                seats: vec![SeatState::Taken; SEATS_PER_ROOM],
-                task,
-            },
-        );
-        (room_id, handle)
-    }
-
-    #[tokio::test]
-    async fn issue_54_a_fully_abandoned_room_is_reclaimed_and_frees_capacity() {
-        // Capacity for exactly one room. Fill both its seats, then disconnect both.
-        let lobby = lobby(1);
-        let a = lobby.assign().await.expect("seat 0");
-        let b = lobby.assign().await.expect("seat 1");
-        assert_eq!(a.room_id, b.room_id);
-        // One room, both seats taken, at capacity: the next assign is refused.
-        assert!(lobby.assign().await.is_none());
-
-        // Both seats disconnect: the room is fully abandoned (all seats retired) and
-        // reclaimed on release, freeing the single room slot.
-        lobby.release(a.room_id, a.seat).await;
-        lobby.release(b.room_id, b.seat).await;
-
-        // A new connection now succeeds at what was previously the cap, in a brand-new
-        // room — the abandoned one is gone, not reissued.
-        let c = lobby.assign().await.expect("capacity freed by reclamation");
-        assert_ne!(c.room_id, a.room_id);
-    }
-
-    #[tokio::test]
-    async fn issue_54_a_finished_game_over_room_is_reclaimed_at_capacity() {
-        let lobby = lobby(1);
-        // Inject a room whose game is already over (player 1 has lost). Its task
-        // detects the terminal state and stops on its own without serving any input.
-        let mut terminal = GameState::new_two_player();
-        terminal.players[1].has_lost = true;
-        let (over_id, handle) = open_room_with_state(&lobby, terminal).await;
-
-        // Wait until the room task has actually stopped: a terminal room never enters
-        // its input loop, so joining it yields a closed outbox once the task returns.
-        let (tx, mut rx) = watch::channel(None);
-        let _ = handle.send(RoomInput::Join {
-            seat: 0,
-            outbox: tx,
-        });
-        assert!(
-            rx.changed().await.is_err(),
-            "terminal room task should stop instead of serving inputs",
-        );
-
-        // The registry is at capacity with that stopped room in its only slot. The
-        // next assign reaps the finished task, frees the slot, and seats the
-        // connection in a brand-new room.
-        let fresh = lobby
-            .assign()
+        lobby
+            .command(
+                &client.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
             .await
-            .expect("assign should reclaim the finished room's capacity");
-        assert_ne!(fresh.room_id, over_id);
+            .expect("create a valid room");
+        let view = client.view().await;
+
+        let room = view.room.expect("creator is now in a room");
+        assert!(!room.room_id.is_empty());
+        assert_eq!(room.config.seats, 2);
+        assert_eq!(room.seats.len(), 2);
+        // The creator holds seat 0; seat 1 is empty.
+        assert_eq!(
+            room.seats[0].occupied_by.as_deref(),
+            Some(initial.you.as_str())
+        );
+        assert!(room.seats[1].occupied_by.is_none());
+        // No game is constructed: the roster reflects nobody decked or ready.
+        assert!(room.seats.iter().all(|s| !s.decked && !s.ready));
+        assert_eq!(view.valid_commands, vec!["leave".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn room_config_supports_two_through_eight_seats() {
+        let lobby = lobby(8);
+        for seats in SEAT_RANGE {
+            let mut client = Client::connect(&lobby).await;
+            let _ = client.view().await;
+            lobby
+                .command(
+                    &client.token,
+                    LobbyCommand::CreateRoom(CreateRoom {
+                        config: config(seats),
+                    }),
+                )
+                .await
+                .unwrap_or_else(|_| panic!("{seats} seats is in range"));
+            let room = client.view().await.room.expect("room created");
+            assert_eq!(room.seats.len(), usize::from(seats));
+        }
+    }
+
+    #[tokio::test]
+    async fn create_room_rejects_seat_counts_outside_the_range() {
+        let lobby = lobby(4);
+        for seats in [0u8, 1, 9, 255] {
+            let mut client = Client::connect(&lobby).await;
+            let _ = client.view().await;
+            let err = lobby
+                .command(
+                    &client.token,
+                    LobbyCommand::CreateRoom(CreateRoom {
+                        config: config(seats),
+                    }),
+                )
+                .await
+                .expect_err("out-of-range seat count is rejected");
+            assert_eq!(err, LobbyError::InvalidSeatCount(seats));
+            // Rejection re-sends the current view: still roomless.
+            assert!(client.current().room.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn join_by_id_seats_the_joiner_and_updates_every_roster() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("alice creates");
+        let alice_room = alice.view().await.room.expect("alice in room");
+        let room_id = alice_room.room_id.clone();
+
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::JoinRoom(JoinRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .expect("bob joins by id");
+
+        // Bob is seated at seat 1 of the same room.
+        let bob_room = bob.view().await.room.expect("bob in room");
+        assert_eq!(bob_room.room_id, room_id);
+        assert_eq!(
+            bob_room.seats[1].occupied_by.as_deref(),
+            Some(bob.current().you.as_str())
+        );
+
+        // Alice was pushed an updated roster showing both seats filled.
+        let alice_after = alice.view().await.room.expect("alice still in room");
+        assert!(alice_after.seats[0].occupied_by.is_some());
+        assert!(alice_after.seats[1].occupied_by.is_some());
+    }
+
+    #[tokio::test]
+    async fn joining_an_unknown_room_is_a_typed_error() {
+        let lobby = lobby(4);
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        let err = lobby
+            .command(
+                &bob.token,
+                LobbyCommand::JoinRoom(JoinRoom {
+                    room_id: "r-nope".to_string(),
+                }),
+            )
+            .await
+            .expect_err("unknown room id is rejected");
+        assert_eq!(err, LobbyError::UnknownRoom);
+        assert!(bob.current().room.is_none());
+    }
+
+    #[tokio::test]
+    async fn joining_a_full_room_is_a_typed_error() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .unwrap();
+        let room_id = alice.view().await.room.unwrap().room_id;
+
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::JoinRoom(JoinRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .expect("bob fills the second seat");
+        let _ = bob.view().await;
+
+        // The two-seat room is full: a third joiner is refused and stays roomless.
+        let mut carol = Client::connect(&lobby).await;
+        let _ = carol.view().await;
+        let err = lobby
+            .command(&carol.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+            .await
+            .expect_err("a full room is rejected");
+        assert_eq!(err, LobbyError::RoomFull);
+        assert!(carol.current().room.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_full_room_stays_in_the_lobby_phase_with_no_game() {
+        // Two seats, both filled — yet with no ready gate (issue #112) nobody starts
+        // a game: both occupants stay in the lobby phase. This is what retires the
+        // old "live with one player and empty decks" behavior.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .unwrap();
+        let room_id = alice.view().await.room.unwrap().room_id;
+
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(&bob.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+            .await
+            .unwrap();
+
+        // Both remain in the lobby: the only interactivity is `leave`, never actions.
+        assert_eq!(bob.view().await.valid_commands, vec!["leave".to_string()]);
+        assert_eq!(alice.view().await.valid_commands, vec!["leave".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn leaving_vacates_the_seat_and_notifies_peers() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .unwrap();
+        let room_id = alice.view().await.room.unwrap().room_id;
+
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(&bob.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+            .await
+            .unwrap();
+        let _ = bob.view().await;
+        let _ = alice.view().await; // roster-updated push from bob's join
+
+        // Bob leaves: his seat empties, he is roomless again, and alice is notified.
+        lobby
+            .command(&bob.token, LobbyCommand::Leave)
+            .await
+            .unwrap();
+        let bob_after = bob.view().await;
+        assert!(bob_after.room.is_none());
+        assert_eq!(
+            bob_after.valid_commands,
+            vec!["create_room".to_string(), "join_room".to_string()]
+        );
+
+        let alice_after = alice.view().await.room.expect("alice still holds the room");
+        assert!(alice_after.seats[0].occupied_by.is_some());
+        assert!(alice_after.seats[1].occupied_by.is_none());
+    }
+
+    #[tokio::test]
+    async fn an_empty_room_is_reclaimed_and_frees_capacity() {
+        // Capacity for exactly one room. Alice creates it, filling the cap; a second
+        // creator is refused. Alice leaves, emptying and reclaiming the room, which
+        // frees the slot for the next creator.
+        let lobby = lobby(1);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .unwrap();
+        let _ = alice.view().await;
+
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        let err = lobby
+            .command(
+                &bob.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect_err("at capacity");
+        assert_eq!(err, LobbyError::AtCapacity);
+
+        // Alice leaves: her room is empty and reclaimed, freeing the single slot.
+        lobby
+            .command(&alice.token, LobbyCommand::Leave)
+            .await
+            .unwrap();
+
+        // Bob can now create a room where he previously could not.
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("capacity freed by reclamation");
+        assert!(bob.view().await.room.is_some());
+    }
+
+    #[tokio::test]
+    async fn disconnect_reclaims_a_solo_room_and_notifies_remaining_peers() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .unwrap();
+        let room_id = alice.view().await.room.unwrap().room_id;
+
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::JoinRoom(JoinRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .unwrap();
+        let _ = bob.view().await;
+        let _ = alice.view().await;
+
+        // Bob's connection drops: alice sees his seat vacated, room still hers.
+        lobby.disconnect(&bob.token).await;
+        let alice_after = alice.view().await.room.expect("alice keeps the room");
+        assert!(alice_after.seats[1].occupied_by.is_none());
+
+        // Now alice drops too: the room is empty and reclaimed. A fresh joiner by the
+        // old id gets an unknown-room error, proving the entry is gone.
+        lobby.disconnect(&alice.token).await;
+        let mut carol = Client::connect(&lobby).await;
+        let _ = carol.view().await;
+        let err = lobby
+            .command(&carol.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+            .await
+            .expect_err("the reclaimed room is gone");
+        assert_eq!(err, LobbyError::UnknownRoom);
+    }
+
+    #[tokio::test]
+    async fn create_or_join_while_already_in_a_room_is_rejected() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(3) }),
+            )
+            .await
+            .unwrap();
+        let room_id = alice.view().await.room.unwrap().room_id;
+
+        // A second create while seated is rejected.
+        assert_eq!(
+            lobby
+                .command(
+                    &alice.token,
+                    LobbyCommand::CreateRoom(CreateRoom { config: config(2) })
+                )
+                .await,
+            Err(LobbyError::AlreadyInRoom)
+        );
+        // As is a join while seated.
+        assert_eq!(
+            lobby
+                .command(&alice.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+                .await,
+            Err(LobbyError::AlreadyInRoom)
+        );
+    }
+
+    #[tokio::test]
+    async fn leave_without_a_room_and_deferred_commands_are_typed_errors() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+
+        assert_eq!(
+            lobby.command(&alice.token, LobbyCommand::Leave).await,
+            Err(LobbyError::NotInRoom)
+        );
+        // The deck/ready gate is issue #112: these commands are not yet handled.
+        assert_eq!(
+            lobby
+                .command(
+                    &alice.token,
+                    LobbyCommand::SubmitDeck(SubmitDeck::default())
+                )
+                .await,
+            Err(LobbyError::Unsupported)
+        );
+        assert_eq!(
+            lobby
+                .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+                .await,
+            Err(LobbyError::Unsupported)
+        );
+    }
+
+    #[tokio::test]
+    async fn hello_is_acknowledged_with_a_fresh_view() {
+        // Reconnect-by-token is issue #113; for now Hello just re-sends the view.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let first = alice.view().await;
+        lobby
+            .command(&alice.token, LobbyCommand::Hello(Hello::default()))
+            .await
+            .expect("hello acknowledged");
+        let again = alice.view().await;
+        assert_eq!(again.session, first.session);
+        assert!(again.room.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_command_from_an_unknown_session_is_rejected() {
+        let lobby = lobby(4);
+        assert_eq!(
+            lobby
+                .command(&"s-nope".to_string(), LobbyCommand::Leave)
+                .await,
+            Err(LobbyError::UnknownSession)
+        );
     }
 }
