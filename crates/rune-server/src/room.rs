@@ -498,6 +498,7 @@ mod tests {
             seat: 0,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: pass0.id.clone(),
+                ..Default::default()
             }),
         });
 
@@ -513,6 +514,7 @@ mod tests {
             seat: 1,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: pass1.id.clone(),
+                ..Default::default()
             }),
         });
 
@@ -544,6 +546,7 @@ mod tests {
             seat: 0,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: "does-not-exist".to_string(),
+                ..Default::default()
             }),
         });
         let resent = wait_for_view(&mut rx0).await;
@@ -578,6 +581,7 @@ mod tests {
             seat: 1,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: "a0".to_string(),
+                ..Default::default()
             }),
         });
         let resent = wait_for_view(&mut rx1).await;
@@ -638,6 +642,7 @@ mod tests {
             seat: 0,
             message: ClientMessage::ChooseAction(ChooseAction {
                 action_id: pass.id.clone(),
+                ..Default::default()
             }),
         });
 

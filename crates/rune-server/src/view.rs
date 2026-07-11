@@ -189,29 +189,40 @@ fn issued_actions(state: &GameState, db: &CardDatabase) -> Vec<(String, Action)>
 /// belongs to (ADR 0004).
 fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAction {
     match action {
+        // No action emits target requirements or a content-binding token yet; the
+        // server-side machinery to compute them lands in #73 (ADR 0009 §Protocol).
+        // Until then every action is unbound: empty `requirements`, empty `token`.
         Action::PassPriority => ValidAction {
             id,
             kind: "pass_priority".to_string(),
             label: "Pass priority".to_string(),
             subject: Vec::new(),
+            requirements: Vec::new(),
+            token: String::new(),
         },
         Action::PlayLand { card } => ValidAction {
             id,
             kind: "play_land".to_string(),
             label: format!("Play {}", card_name(card.card, db)),
             subject: vec![card_entity_id(card.id)],
+            requirements: Vec::new(),
+            token: String::new(),
         },
         Action::CastSpell { card } => ValidAction {
             id,
             kind: "cast_spell".to_string(),
             label: format!("Cast {}", card_name(card.card, db)),
             subject: vec![card_entity_id(card.id)],
+            requirements: Vec::new(),
+            token: String::new(),
         },
         Action::ActivateAbility { permanent, .. } => ValidAction {
             id,
             kind: "activate_ability".to_string(),
             label: "Activate ability".to_string(),
             subject: vec![permanent_entity_id(*permanent)],
+            requirements: Vec::new(),
+            token: String::new(),
         },
     }
 }

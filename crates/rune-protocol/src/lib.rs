@@ -149,7 +149,17 @@ pub enum Phase {
 /// invents its own. `subject` names the entities this action belongs to so the
 /// client can put the action ON the card rather than in a global bar
 /// (docs/decisions/0004-subject-owned-actions.md).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// A multi-step action (a targeted spell, and later a mode/X choice) additionally
+/// carries an ordered [`requirements`](ValidAction::requirements) list the client
+/// walks as a prompt queue, plus a content-binding [`token`](ValidAction::token)
+/// the client echoes verbatim in [`ChooseAction`]. Both are decided in
+/// docs/decisions/0009-targeting-model.md (§Protocol).
+///
+/// `Default` yields an empty, unbound action (no subject, no requirements, empty
+/// token); it exists so callers that build an action field-by-field need not
+/// restate the newer fields, not because an empty action is meaningful.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValidAction {
     /// Opaque id the client echoes back in [`ChooseAction`] to take this action.
     pub id: String,
@@ -163,6 +173,42 @@ pub struct ValidAction {
     /// Entity ids this action belongs to; empty for global actions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subject: Vec<String>,
+    /// Ordered choice steps this action requires before it can be taken — one per
+    /// target slot (modes/X ride the same mechanism later). The client walks them
+    /// as a prompt queue and answers every slot **atomically** in a single
+    /// [`ChooseAction`], never a stateful multi-message handshake
+    /// (docs/protocol.md, two-message philosophy). Empty for a plain action that
+    /// needs no sub-choice; omitted from the wire when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<TargetRequirement>,
+    /// Content-binding token: a server-issued value bound to this action's exact
+    /// content (kind + subject + requirements). The client echoes it verbatim in
+    /// [`ChooseAction::token`]; the server recomputes it from the freshly
+    /// regenerated action and rejects a mismatch, so a stale positional `id` can
+    /// never rebind to a *different* action. Opaque — the client never parses or
+    /// derives it. Omitted only for legacy/unbound actions, where it deserializes
+    /// to `""` (which no real token matches, so such an answer is safely rejected).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub token: String,
+}
+
+/// One choice step of a multi-step [`ValidAction`]: a single target slot the
+/// player must fill, listing exactly the legal candidates the server computed.
+/// The client renders the prompt, highlights the candidates, and computes no
+/// legality of its own (docs/decisions/0009-targeting-model.md §Client).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetRequirement {
+    /// Stable slot id the client echoes back as [`TargetChoice::slot`] to key its
+    /// answer to this step. Opaque; the client never parses it.
+    pub slot: String,
+    /// Human-readable prompt describing what to choose, e.g. `"target creature"`.
+    pub prompt: String,
+    /// The legal candidate entity ids for this slot — the **only** choices the
+    /// client may offer. Enumerated O(N) per slot, never the cartesian product of
+    /// combinations across slots (docs/decisions/0009-targeting-model.md
+    /// §Enumeration).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidates: Vec<EntityId>,
 }
 
 /// The personalized state the server sends after every change (docs/protocol.md).
@@ -212,13 +258,44 @@ pub struct GameView {
     pub action_deadline: Option<f64>,
 }
 
-/// The client's chosen action: just the `id` of one issued `valid_actions` entry.
-/// The server validates it against the actions it issued; anything else is
-/// rejected and the current `GameView` is re-sent.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// The client's chosen action, answered atomically: the `id` of one issued
+/// [`ValidAction`], its content-binding [`token`](ChooseAction::token), and the
+/// full set of [`targets`](ChooseAction::targets) filling that action's
+/// requirement slots. The server validates the id, verifies the token against the
+/// action it currently offers, and checks each chosen target against that slot's
+/// freshly computed legal set; anything else is rejected and the current
+/// `GameView` is re-sent (docs/decisions/0009-targeting-model.md §Protocol).
+///
+/// `Default` yields the minimal no-choice answer (empty token and targets), so a
+/// caller answering a plain action can set only `action_id`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChooseAction {
     /// The `id` of the chosen [`ValidAction`].
     pub action_id: String,
+    /// The chosen action's [`ValidAction::token`], echoed verbatim. Binds this
+    /// answer to the exact action content the client saw, closing the stale-`id`
+    /// rebinding hole. Omitted (`""`) only for a legacy unbound action; a real
+    /// server rejects an answer whose token does not match.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub token: String,
+    /// One entry per [`ValidAction::requirements`] slot, carrying the entity ids
+    /// the player selected. Submitted all at once (never a multi-message
+    /// handshake); empty for an action with no requirements.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<TargetChoice>,
+}
+
+/// The player's answer to one [`TargetRequirement`] slot: the selected entity
+/// ids, keyed back to the slot by `slot`. Each id must be one of that slot's
+/// advertised `candidates` or the server treats the action as a no-op.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetChoice {
+    /// The [`TargetRequirement::slot`] this answers.
+    pub slot: String,
+    /// The entity ids chosen for this slot (one for a single-target slot; the
+    /// list generalizes to multi-select choices the model defers for now).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chosen: Vec<EntityId>,
 }
 
 /// Everything a client can send about the game. Serializes with a `type`
@@ -245,19 +322,51 @@ mod tests {
     fn choose_action_is_just_an_id() {
         let msg = ChooseAction {
             action_id: "a2".into(),
+            token: String::new(),
+            targets: vec![],
         };
         assert_eq!(msg.action_id, "a2");
     }
 
     #[test]
     fn client_message_uses_documented_wire_shape() {
+        // A no-choice action: empty token and targets elide, so the minimal
+        // `{type, action_id}` wire shape is preserved for backward compatibility.
         let msg = ClientMessage::ChooseAction(ChooseAction {
             action_id: "a2".into(),
+            token: String::new(),
+            targets: vec![],
         });
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(
             json,
             serde_json::json!({ "type": "choose_action", "action_id": "a2" })
+        );
+        let back: ClientMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn choose_action_carries_token_and_targets() {
+        // A real targeted answer: id + content-binding token + the atomically
+        // submitted selection, keyed per requirement slot.
+        let msg = ClientMessage::ChooseAction(ChooseAction {
+            action_id: "a3".into(),
+            token: "h:9f2c".into(),
+            targets: vec![TargetChoice {
+                slot: "t0".into(),
+                chosen: vec!["perm_bear".into()],
+            }],
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "choose_action",
+                "action_id": "a3",
+                "token": "h:9f2c",
+                "targets": [{ "slot": "t0", "chosen": ["perm_bear"] }]
+            })
         );
         let back: ClientMessage = serde_json::from_value(json).unwrap();
         assert_eq!(back, msg);
@@ -270,12 +379,61 @@ mod tests {
             kind: "pass_priority".into(),
             label: "Pass".into(),
             subject: vec![],
+            requirements: vec![],
+            token: String::new(),
         };
         let json = serde_json::to_value(&pass).unwrap();
         assert_eq!(
             json,
             serde_json::json!({ "id": "a1", "type": "pass_priority", "label": "Pass" })
         );
+    }
+
+    #[test]
+    fn valid_action_carries_requirements_and_token() {
+        // A targeted spell: subject is the hand card, requirements advertise the
+        // one target slot's legal candidates, and a content-binding token is
+        // present for the client to echo back.
+        let bolt = ValidAction {
+            id: "a3".into(),
+            kind: "cast_spell".into(),
+            label: "Cast Lightning Bolt".into(),
+            subject: vec!["c3".into()],
+            requirements: vec![TargetRequirement {
+                slot: "t0".into(),
+                prompt: "target creature or player".into(),
+                candidates: vec!["perm_bear".into(), "p1".into(), "p2".into()],
+            }],
+            token: "h:9f2c".into(),
+        };
+        let json = serde_json::to_value(&bolt).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "id": "a3",
+                "type": "cast_spell",
+                "label": "Cast Lightning Bolt",
+                "subject": ["c3"],
+                "requirements": [{
+                    "slot": "t0",
+                    "prompt": "target creature or player",
+                    "candidates": ["perm_bear", "p1", "p2"]
+                }],
+                "token": "h:9f2c"
+            })
+        );
+        let back: ValidAction = serde_json::from_value(json).unwrap();
+        assert_eq!(back, bolt);
+    }
+
+    #[test]
+    fn legacy_valid_action_without_token_or_requirements_deserializes() {
+        // A payload from a server that predates this shape omits both new fields;
+        // they must default (empty requirements, empty token) rather than fail.
+        let json = r#"{ "id": "a1", "type": "pass_priority", "label": "Pass" }"#;
+        let action: ValidAction = serde_json::from_str(json).unwrap();
+        assert!(action.requirements.is_empty());
+        assert_eq!(action.token, "");
     }
 
     #[test]
@@ -337,6 +495,8 @@ mod tests {
                 kind: "activate_ability".into(),
                 label: "Tap for mana".into(),
                 subject: vec!["perm_xyz".into()],
+                requirements: vec![],
+                token: "h:00ab".into(),
             }],
             action_deadline: Some(12.5),
         };
