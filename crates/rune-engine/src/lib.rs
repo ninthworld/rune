@@ -151,7 +151,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
 
     // 3. Apply the chosen action.
     match action {
-        Action::PassPriority => apply_pass_priority(&mut next),
+        Action::PassPriority => apply_pass_priority(&mut next, db),
         Action::PlayLand { card } => apply_play_land(&mut next, *card),
         Action::ActivateAbility { permanent, index } => {
             apply_activate_ability(&mut next, *permanent, *index, db);
@@ -186,7 +186,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
 /// player has passed in unbroken succession, the top of the stack resolves (if
 /// any), otherwise the turn structure advances ([`GameState::advance`]); either
 /// way the new active player receives priority.
-fn apply_pass_priority(state: &mut GameState) {
+fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
     let seats = state.players.len();
     if seats == 0 {
         return;
@@ -194,7 +194,7 @@ fn apply_pass_priority(state: &mut GameState) {
     state.consecutive_passes += 1;
     if state.consecutive_passes >= seats {
         if let Some(top) = state.stack.pop() {
-            resolve_stack_object(state, top);
+            resolve_stack_object(state, top, db);
         } else {
             *state = state.advance();
         }
@@ -310,17 +310,26 @@ fn apply_cast_spell(state: &mut GameState, card: CardId, db: &CardDatabase) {
 }
 
 /// Resolve one object popped from the top of the stack.
-fn resolve_stack_object(state: &mut GameState, object: StackObject) {
+fn resolve_stack_object(state: &mut GameState, object: StackObject, db: &CardDatabase) {
     match object.kind {
         StackObjectKind::Spell { card } => {
-            // A permanent spell enters the battlefield with a fresh id.
-            let id = state.mint_id();
-            state.battlefield.push(Permanent {
-                id: PermanentId(id),
-                card,
-                controller: object.controller,
-                tapped: false,
-            });
+            // Route by the resolving card's types (CR 608.3). A permanent spell
+            // enters the battlefield with a fresh id; an instant/sorcery creates
+            // no Permanent and instead goes to its owner's graveyard (CR 608.2m).
+            // The engine does not yet track ownership apart from control, so we
+            // use the controller's graveyard on the owner == controller
+            // assumption — ownership tracking is future work.
+            if db.card(card).is_some_and(CardData::is_permanent) {
+                let id = state.mint_id();
+                state.battlefield.push(Permanent {
+                    id: PermanentId(id),
+                    card,
+                    controller: object.controller,
+                    tapped: false,
+                });
+            } else if let Some(player) = state.players.get_mut(object.controller.0) {
+                player.graveyard.push(card);
+            }
         }
         StackObjectKind::Ability { effects, .. } => {
             for effect in &effects {
@@ -607,6 +616,33 @@ mod tests {
         let state = apply_action(&state, &Action::PassPriority, &db);
         let state = apply_action(&state, &Action::PassPriority, &db);
         assert!(state.battlefield.iter().any(|p| p.card == CardId(6)));
+    }
+
+    #[test]
+    fn issue_47_non_permanent_spell_resolves_to_graveyard_not_battlefield() {
+        // A resolving instant must never create a Permanent; it goes to its
+        // owner's graveyard (CR 608.3 / 608.2m). The casting gate still only
+        // offers creature casts (out of scope for #47), so we seed a synthetic
+        // instant directly on the stack and drive resolution through the public
+        // apply_action path (both players pass → the top of the stack resolves).
+        let json = r#"[{"id":100,"name":"Test Bolt","types":["instant"],"mana_cost":"{R}","oracle_text":""}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let sid = state.mint_id();
+        state.stack.push(StackObject {
+            id: StackId(sid),
+            controller: PlayerId(0),
+            kind: StackObjectKind::Spell { card: CardId(100) },
+        });
+
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+
+        assert!(state.stack.is_empty());
+        assert!(state.battlefield.is_empty());
+        assert_eq!(state.players[0].graveyard, vec![CardId(100)]);
     }
 
     #[test]

@@ -85,6 +85,25 @@ impl CardData {
         self.types.contains(&card_type)
     }
 
+    /// Whether this is a permanent card — one that enters the battlefield when
+    /// it resolves. True when any printed [`CardType`] is a permanent type
+    /// (land, creature, artifact, enchantment, planeswalker, or battle); false
+    /// for an instant/sorcery-only card, which resolves to a graveyard instead
+    /// (CR 608.3). Keyed off the structured types, never a parsed string, and
+    /// matched exhaustively so a new [`CardType`] must be classified here.
+    #[must_use]
+    pub fn is_permanent(&self) -> bool {
+        self.types.iter().any(|t| match t {
+            CardType::Land
+            | CardType::Creature
+            | CardType::Artifact
+            | CardType::Enchantment
+            | CardType::Planeswalker
+            | CardType::Battle => true,
+            CardType::Instant | CardType::Sorcery => false,
+        })
+    }
+
     /// Whether the card has printed subtype `subtype` (case-sensitive, as printed).
     #[must_use]
     pub fn has_subtype(&self, subtype: &str) -> bool {
@@ -260,6 +279,18 @@ mod tests {
         assert!(!scout.has_type(CardType::Land));
         assert!(scout.has_subtype("Elf"));
         assert!(!scout.has_subtype("Goblin"));
+    }
+
+    #[test]
+    fn is_permanent_splits_permanent_types_from_instants_and_sorceries() {
+        let db = CardDatabase::bundled().unwrap();
+        // Creature and land are permanent cards.
+        assert!(db.card(CardId(1)).unwrap().is_permanent());
+        assert!(db.card(CardId(5)).unwrap().is_permanent());
+        // An instant-only card is not.
+        let json = r#"[{"id":100,"name":"Test Bolt","types":["instant"],"mana_cost":"{R}","oracle_text":""}]"#;
+        let bolt = CardDatabase::from_json(json).unwrap();
+        assert!(!bolt.card(CardId(100)).unwrap().is_permanent());
     }
 
     #[test]
