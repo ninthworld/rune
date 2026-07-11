@@ -83,6 +83,16 @@ pub struct Permanent {
     /// Whether the permanent is tapped.
     #[serde(default, skip_serializing_if = "is_false")]
     pub tapped: bool,
+    /// Whether this permanent is currently attacking — declared as an attacker
+    /// this combat (CR 508). Server-computed; the client displays it and never
+    /// derives it. Omitted from the wire when `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub attacking: bool,
+    /// The permanent this one is blocking, if it was declared as a blocker this
+    /// combat (CR 509): the attacker's entity id. `None`/omitted when it is not
+    /// blocking. Several blockers may name the same attacker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking: Option<EntityId>,
     /// Named counters and their quantities, e.g. `{"+1/+1": 2}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub counters: Vec<Counter>,
@@ -654,6 +664,8 @@ mod tests {
                     toughness: Some("2".into()),
                 },
                 tapped: true,
+                attacking: false,
+                blocking: None,
                 counters: vec![Counter {
                     kind: "+1/+1".into(),
                     count: 2,
@@ -813,6 +825,64 @@ mod tests {
         // `pass_priority` is subject-less; the ability action names its permanent.
         assert!(view.valid_actions[0].subject.is_empty());
         assert_eq!(view.valid_actions[3].subject, vec!["perm_bear".to_string()]);
+    }
+
+    #[test]
+    fn permanent_combat_state_round_trips_and_elides_when_absent() {
+        // Attack/block state (issue #117): `attacking` and `blocking` round-trip
+        // when present, and both elide from the wire in the common not-in-combat
+        // case so the serialized shape is unchanged for non-combat permanents.
+        let base = Permanent {
+            id: "perm_1".into(),
+            controller: "p0".into(),
+            owner: "p0".into(),
+            card: CardView {
+                id: "perm_1".into(),
+                name: "Grizzly Bears".into(),
+                type_line: "Creature — Bear".into(),
+                mana_cost: Some("{1}{G}".into()),
+                oracle_text: String::new(),
+                power: Some("2".into()),
+                toughness: Some("2".into()),
+            },
+            tapped: false,
+            attacking: false,
+            blocking: None,
+            counters: vec![],
+        };
+
+        // Not in combat: both fields elide from the JSON.
+        let json = serde_json::to_value(&base).unwrap();
+        assert!(json.get("attacking").is_none());
+        assert!(json.get("blocking").is_none());
+
+        // An attacker and its blocker both round-trip with their state present.
+        let attacker = Permanent {
+            attacking: true,
+            ..base.clone()
+        };
+        let blocker = Permanent {
+            blocking: Some("perm_1".into()),
+            ..base.clone()
+        };
+        let attacker_json = serde_json::to_value(&attacker).unwrap();
+        assert_eq!(
+            attacker_json.get("attacking"),
+            Some(&serde_json::json!(true))
+        );
+        assert_eq!(
+            serde_json::from_value::<Permanent>(attacker_json).unwrap(),
+            attacker
+        );
+        let blocker_json = serde_json::to_value(&blocker).unwrap();
+        assert_eq!(
+            blocker_json.get("blocking"),
+            Some(&serde_json::json!("perm_1"))
+        );
+        assert_eq!(
+            serde_json::from_value::<Permanent>(blocker_json).unwrap(),
+            blocker
+        );
     }
 
     #[test]

@@ -9,6 +9,9 @@
 use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
 use crate::card::abilities_of;
 use crate::card_type::CardType;
+use crate::combat::{
+    attacker_candidates, blocker_candidates, declared_attackers, defending_player,
+};
 use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::phase::Step;
@@ -83,6 +86,45 @@ pub enum Action {
         /// naming a distinct card currently in the deciding seat's hand.
         bottom: Vec<Target>,
     },
+    /// Declare the active player's attackers (CR 508.1), the turn-based player
+    /// choice of the declare-attackers step. Each named permanent must be a legal
+    /// attacker candidate ([`attacker_candidates`]); an **empty** selection is
+    /// legal — declaring no attackers (CR 508.1a). Applying it taps each attacker
+    /// (no vigilance yet) and moves the step into its priority round.
+    ///
+    /// Like [`Action::ActivateAbility`]'s targets, this is a *parameterized*
+    /// multi-select: [`valid_actions`] advertises the action once in its empty
+    /// requirement form, the legal candidates come from [`attacker_candidates`],
+    /// and a filled-in selection is validated against that fresh set in
+    /// [`action_is_legal`] — never pre-expanded into one action per subset.
+    DeclareAttackers {
+        /// The permanents declared as attackers, each attacking the sole opponent.
+        attackers: Vec<PermanentId>,
+    },
+    /// Declare the defending player's blockers (CR 509.1), the turn-based player
+    /// choice of the declare-blockers step. Each [`Block`] assigns one eligible
+    /// blocker ([`blocker_candidates`]) to one attacking creature
+    /// ([`declared_attackers`]); several blockers may share an attacker, but a
+    /// blocker is assigned to exactly one (CR 509.1a). An **empty** selection is
+    /// legal — declaring no blockers.
+    DeclareBlockers {
+        /// The blocker→attacker assignments, one per declared blocker.
+        blocks: Vec<Block>,
+    },
+}
+
+/// One blocker→attacker assignment of a [`Action::DeclareBlockers`] declaration
+/// (CR 509.1a): the `blocker` is declared to block the attacking `attacker`.
+///
+/// Plain `Copy`/`Eq` data (no closures), so an [`Action`] stays a value the
+/// engine can compare and the state machine can carry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Block {
+    /// The creature declared as a blocker (a [`blocker_candidates`] member).
+    pub blocker: PermanentId,
+    /// The attacking creature it is assigned to block (a [`declared_attackers`]
+    /// member).
+    pub attacker: PermanentId,
 }
 
 impl Action {
@@ -98,7 +140,12 @@ impl Action {
             | Action::CastSpell { .. }
             | Action::Discard { .. }
             | Action::Mulligan
-            | Action::Keep { .. } => &[],
+            | Action::Keep { .. }
+            // Combat declarations carry permanent selections, not `Target`s, so
+            // they hold none of the ability-targeting vocabulary; their selection
+            // is validated separately in `action_is_legal`.
+            | Action::DeclareAttackers { .. }
+            | Action::DeclareBlockers { .. } => &[],
         }
     }
 
@@ -117,6 +164,12 @@ impl Action {
             // The mulligan keep's bottom selection is cleared the same way, so its
             // requirement form matches what [`valid_actions`] advertises.
             Action::Keep { .. } => Action::Keep { bottom: Vec::new() },
+            // The requirement form of a combat declaration is the empty selection —
+            // exactly what `valid_actions` advertises during the declare window.
+            Action::DeclareAttackers { .. } => Action::DeclareAttackers {
+                attackers: Vec::new(),
+            },
+            Action::DeclareBlockers { .. } => Action::DeclareBlockers { blocks: Vec::new() },
             other => other.clone(),
         }
     }
@@ -181,6 +234,33 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             }
         }
         return actions;
+    }
+
+    // Combat declarations are turn-based player choices, offered like the cleanup
+    // discard rather than taken with priority: while a declaration is owed, the
+    // declaring player's only action is the declaration itself (no pass, no
+    // spells), and no other player acts. The declaration is advertised once in its
+    // empty requirement form; its multi-select candidates come from
+    // [`attacker_candidates`] / [`blocker_candidates`] (see [`target_requirements`]
+    // for how the requirement is surfaced) and a filled selection is checked in
+    // [`action_is_legal`].
+    if state.step == Step::DeclareAttackers && !state.attackers_declared {
+        // CR 508.1: the active player declares attackers.
+        return if priority == state.active_player {
+            vec![Action::DeclareAttackers {
+                attackers: Vec::new(),
+            }]
+        } else {
+            Vec::new()
+        };
+    }
+    if state.step == Step::DeclareBlockers && !state.blockers_declared {
+        // CR 509.1: the defending player declares blockers.
+        return if Some(priority) == defending_player(state) {
+            vec![Action::DeclareBlockers { blocks: Vec::new() }]
+        } else {
+            Vec::new()
+        };
     }
 
     let mut actions = vec![Action::PassPriority];
@@ -296,6 +376,20 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::mulligan::keep_bottom_is_legal(state, bottom);
     }
 
+    // 1b. Combat declarations carry a permanent multi-select rather than
+    //     ability targets: validate the selection against the freshly computed
+    //     candidate sets (CR 508.1a / 509.1a), the same regenerate-and-check
+    //     discipline the target path uses. An empty selection is always legal.
+    match action {
+        Action::DeclareAttackers { attackers } => {
+            return attackers_selection_is_legal(state, db, attackers);
+        }
+        Action::DeclareBlockers { blocks } => {
+            return blocks_selection_is_legal(state, db, blocks);
+        }
+        _ => {}
+    }
+
     // 2. The carried targets must fill every slot the action declares, each with
     //    a target that is legal *now*. `target_is_legal` is the same predicate the
     //    resolve path re-checks with (CR 608.2b) and the one `legal_targets_for_spec`
@@ -359,6 +453,40 @@ fn legal_targets_for_spec(spec: TargetSpec, state: &GameState, db: &CardDatabase
         .collect()
 }
 
+/// Whether a declared attacker selection is legal (CR 508.1a): every named
+/// permanent is a current attacker candidate ([`attacker_candidates`]) and no
+/// permanent is named twice. An empty selection is legal (declaring no attackers).
+fn attackers_selection_is_legal(
+    state: &GameState,
+    db: &CardDatabase,
+    attackers: &[PermanentId],
+) -> bool {
+    let candidates = attacker_candidates(state, db);
+    all_unique(attackers) && attackers.iter().all(|id| candidates.contains(id))
+}
+
+/// Whether a declared blocker selection is legal (CR 509.1a): every blocker is a
+/// current blocker candidate ([`blocker_candidates`]), every named attacker is
+/// currently attacking ([`declared_attackers`]), and no creature is declared as a
+/// blocker more than once (each blocker is assigned to exactly one attacker). An
+/// empty selection is legal (declaring no blockers).
+fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Block]) -> bool {
+    let blockers = blocker_candidates(state, db);
+    let attackers = declared_attackers(state);
+    let assigned: Vec<PermanentId> = blocks.iter().map(|b| b.blocker).collect();
+    all_unique(&assigned)
+        && blocks
+            .iter()
+            .all(|b| blockers.contains(&b.blocker) && attackers.contains(&b.attacker))
+}
+
+/// Whether every element of `ids` is distinct. O(n²), which is fine for the
+/// handful of creatures a combat declaration ever names and keeps the engine free
+/// of a hashing dependency for a tiny list.
+fn all_unique(ids: &[PermanentId]) -> bool {
+    ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
+}
+
 /// Whether every cost in `cost` is payable given the source `permanent`'s state.
 fn cost_payable(cost: &[Cost], permanent: &Permanent) -> bool {
     cost.iter().all(|c| match c {
@@ -414,6 +542,9 @@ mod tests {
             card,
             controller: PlayerId(0),
             tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage: 0,
             counters: Default::default(),
         });

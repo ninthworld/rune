@@ -308,6 +308,24 @@ fn valid_action_view(id: String, action: &Action, db: &CardDatabase) -> ValidAct
             Vec::new(),
             Vec::new(),
         ),
+        // Combat declarations (CR 508/509) are subject-less choices offered to the
+        // priority holder. Their multi-select candidate `requirements` (from the
+        // engine's `attacker_candidates`/`blocker_candidates`) are projected once
+        // the client-side declaration UX lands (a follow-up, mirroring how ability
+        // target `requirements` are still deferred above); until then the empty
+        // requirement form round-trips as a "no attackers/blockers" declaration.
+        Action::DeclareAttackers { .. } => (
+            "declare_attackers".to_string(),
+            "Declare attackers".to_string(),
+            Vec::new(),
+            Vec::new(),
+        ),
+        Action::DeclareBlockers { .. } => (
+            "declare_blockers".to_string(),
+            "Declare blockers".to_string(),
+            Vec::new(),
+            Vec::new(),
+        ),
     };
     let token = content_token(&kind, &subject, &requirements);
     ValidAction {
@@ -377,6 +395,10 @@ pub(crate) fn personalized_view(
             owner: player_id(perm.controller),
             card: card_view(permanent_entity_id(perm.id), perm.card, db),
             tapped: perm.tapped,
+            // Combat declaration state (CR 508/509): whether this permanent is
+            // attacking, and which attacker it is blocking (as an entity id).
+            attacking: perm.attacking,
+            blocking: perm.blocking.map(permanent_entity_id),
             counters: permanent_counters(perm),
         })
         .collect();
@@ -626,6 +648,9 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage: 0,
             // Insertion order is deliberately reversed from the expected wire
             // order to prove the projection sorts by kind, not by insertion.
@@ -643,6 +668,9 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
         });
@@ -690,6 +718,63 @@ mod tests {
         assert!(
             counted_json.get("counters").is_some(),
             "non-empty counters must be serialized",
+        );
+    }
+
+    /// Combat declaration state is visible in the projected view (issue #117): an
+    /// attacking permanent reports `attacking: true`, and a blocker reports the
+    /// entity id of the attacker it is blocking. A permanent not in combat reports
+    /// neither.
+    #[test]
+    fn issue_117_attack_and_block_state_project_into_the_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+
+        let attacker = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: attacker,
+            instance: CardInstanceId(0),
+            card: CardId(6),
+            controller: PlayerId(0),
+            tapped: true,
+            entered_turn: 0,
+            attacking: true,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+        });
+        let blocker = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: blocker,
+            instance: CardInstanceId(1),
+            card: CardId(6),
+            controller: PlayerId(1),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: Some(attacker),
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let attacker_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(attacker))
+            .expect("attacker in view");
+        assert!(attacker_view.attacking);
+        assert_eq!(attacker_view.blocking, None);
+
+        let blocker_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(blocker))
+            .expect("blocker in view");
+        assert!(!blocker_view.attacking);
+        assert_eq!(
+            blocker_view.blocking.as_deref(),
+            Some(permanent_entity_id(attacker).as_str())
         );
     }
 

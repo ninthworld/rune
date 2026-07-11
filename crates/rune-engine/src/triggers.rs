@@ -94,6 +94,9 @@ mod tests {
             card: CardId(6),
             controller: PlayerId(0),
             tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage: 0,
             counters: Default::default(),
         });

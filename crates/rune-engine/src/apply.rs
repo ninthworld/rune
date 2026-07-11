@@ -6,8 +6,9 @@
 //! returns the new state. Pure over an immutable [`crate::GameState`].
 
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, Target};
-use crate::actions::{action_is_legal, Action};
+use crate::actions::{action_is_legal, Action, Block};
 use crate::card::abilities_of;
+use crate::combat::priority_after_step_change;
 use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::mulligan::advance_after_keep;
@@ -56,6 +57,8 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::Discard { card } => apply_discard(&mut next, *card),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
+        Action::DeclareAttackers { attackers } => apply_declare_attackers(&mut next, attackers),
+        Action::DeclareBlockers { blocks } => apply_declare_blockers(&mut next, blocks),
     }
 
     // 4. Replacement effects. Scaffold: no replacement effects are modeled yet,
@@ -100,7 +103,10 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
             advance_through_turn_based_steps(state);
         }
         state.consecutive_passes = 0;
-        state.priority = state.active_player;
+        // Priority goes to the active player, except that a step whose turn-based
+        // action is a pending combat declaration hands the choice to the declaring
+        // player first (the defender declares blockers, CR 509.1).
+        state.priority = priority_after_step_change(state);
     } else {
         state.priority = PlayerId((state.priority.0 + 1) % seats);
     }
@@ -161,6 +167,7 @@ fn perform_turn_based_actions(state: &mut GameState) {
     match state.step {
         Step::Untap => untap_active_players_permanents(state),
         Step::Draw => draw_for_turn(state),
+        Step::EndCombat => remove_creatures_from_combat(state),
         Step::Cleanup => remove_all_marked_damage(state),
         _ => {}
     }
@@ -230,7 +237,7 @@ fn apply_discard(state: &mut GameState, card: CardInstance) {
     if state.step == Step::Cleanup && !active_player_over_hand_size(state) {
         advance_through_turn_based_steps(state);
         state.consecutive_passes = 0;
-        state.priority = state.active_player;
+        state.priority = priority_after_step_change(state);
     }
 }
 
@@ -312,6 +319,57 @@ fn apply_keep(state: &mut GameState, bottom: &[Target]) {
     advance_after_keep(state);
 }
 
+/// End-of-combat turn-based action: remove every creature from combat (CR 511.3)
+/// by clearing the attacking flag and blocking assignment on every permanent. The
+/// per-turn declaration flags are reset when the next turn begins
+/// ([`GameState::begin_next_turn`]), so a fresh combat starts clean.
+fn remove_creatures_from_combat(state: &mut GameState) {
+    for perm in &mut state.battlefield {
+        perm.attacking = false;
+        perm.blocking = None;
+    }
+}
+
+/// Declare the active player's attackers (CR 508.1): mark each as attacking and
+/// tap it (attacking taps — no vigilance is modeled yet, CR 508.1f), then record
+/// that the declaration is done and open the step's priority round with the active
+/// player. An empty selection is a legal "no attackers" declaration (CR 508.1a).
+///
+/// Only ever reached during the declare-attackers step for the active player (the
+/// action is offered nowhere else — see [`crate::valid_actions`]) and only for a
+/// selection already validated in [`action_is_legal`].
+fn apply_declare_attackers(state: &mut GameState, attackers: &[PermanentId]) {
+    for &id in attackers {
+        if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+            perm.attacking = true;
+            perm.tapped = true;
+        }
+    }
+    state.attackers_declared = true;
+    // The declaration made, the declare-attackers step proceeds to its normal
+    // priority round beginning with the active player (CR 508.2).
+    state.priority = state.active_player;
+    state.consecutive_passes = 0;
+}
+
+/// Declare the defending player's blockers (CR 509.1): record each blocker's
+/// assignment to its attacker, mark the declaration done, and hand priority to the
+/// active player for the step's priority round (CR 509.4). An empty selection is a
+/// legal "no blockers" declaration.
+///
+/// Only ever reached during the declare-blockers step for the defending player,
+/// and only for a selection already validated in [`action_is_legal`].
+fn apply_declare_blockers(state: &mut GameState, blocks: &[Block]) {
+    for block in blocks {
+        if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == block.blocker) {
+            perm.blocking = Some(block.attacker);
+        }
+    }
+    state.blockers_declared = true;
+    state.priority = state.active_player;
+    state.consecutive_passes = 0;
+}
+
 /// Play a land from the active player's hand onto the battlefield. Not via the
 /// stack (CR 116.2a); a fresh [`PermanentId`] is minted on entry while the
 /// card's [`crate::CardInstanceId`] carries over unchanged.
@@ -327,12 +385,16 @@ fn apply_play_land(state: &mut GameState, card: CardInstance) {
         player.hand.remove(pos);
     }
     let id = state.mint_id();
+    let entered_turn = state.turn;
     state.battlefield.push(Permanent {
         id: PermanentId(id),
         instance: card.id,
         card: card.card,
         controller,
         tapped: false,
+        entered_turn,
+        attacking: false,
+        blocking: None,
         damage: 0,
         counters: Default::default(),
     });
@@ -583,6 +645,9 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage: 0,
             counters: Default::default(),
         });
@@ -612,6 +677,9 @@ mod tests {
             card: CardId(5),
             controller: PlayerId(0),
             tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage: 0,
             counters: Default::default(),
         });
@@ -748,6 +816,9 @@ mod tests {
             card,
             controller,
             tapped,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
             damage,
             counters: Default::default(),
         });
@@ -926,5 +997,328 @@ mod tests {
             0,
             "marked damage is wiped at cleanup (CR 514.2)"
         );
+    }
+
+    // ----- Combat I: declare attackers and blockers (issue #117) -----
+
+    use crate::actions::{valid_actions as valid, Block};
+    use crate::combat::{attacker_candidates, blocker_candidates};
+
+    /// A two-player game paused at the declare-attackers step, turn 2 so that
+    /// permanents which entered on turn 0/1 are free of summoning sickness. Player
+    /// 0 is the active/attacking player, player 1 the defender.
+    fn at_declare_attackers() -> GameState {
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.step = Step::DeclareAttackers;
+        state.active_player = PlayerId(0);
+        state.priority = PlayerId(0);
+        state
+    }
+
+    /// Mark the permanent `id` as having entered on turn `turn` (its summoning-
+    /// sickness clock).
+    fn set_entered_turn(state: &mut GameState, id: PermanentId, turn: u32) {
+        if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+            perm.entered_turn = turn;
+        }
+    }
+
+    #[test]
+    fn issue_117_declare_attackers_taps_and_marks_attackers_cr_508_1() {
+        // CR 508.1a: the active player declares as attackers untapped creatures
+        // they have controlled since the turn began. CR 508.1f: attacking taps them
+        // (no vigilance modeled yet).
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+
+        // Before declaring, the only action offered to the active player is the
+        // declaration itself — no pass, no other action (a turn-based choice).
+        let offered = valid(&state, &db);
+        assert_eq!(offered.len(), 1);
+        assert!(matches!(offered[0], Action::DeclareAttackers { .. }));
+        assert_eq!(attacker_candidates(&state, &db), vec![attacker]);
+
+        let after = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![attacker],
+            },
+            &db,
+        );
+
+        let perm = find_perm(&after, attacker);
+        assert!(perm.attacking, "declared creature is attacking (CR 508.1a)");
+        assert!(perm.tapped, "attacking taps the creature (CR 508.1f)");
+        assert!(after.attackers_declared);
+        // The declaration made, the step opens its priority round with the active
+        // player, who may now pass.
+        assert_eq!(after.priority, PlayerId(0));
+        assert!(valid(&after, &db).contains(&Action::PassPriority));
+    }
+
+    #[test]
+    fn issue_117_empty_attacker_declaration_is_legal_cr_508_1a() {
+        // CR 508.1a: declaring no attackers is a legal declaration; it advances the
+        // step past its turn-based action without tapping anything.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let creature = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+
+        let after = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: Vec::new(),
+            },
+            &db,
+        );
+
+        assert!(after.attackers_declared);
+        assert!(!find_perm(&after, creature).attacking);
+        assert!(!find_perm(&after, creature).tapped);
+        assert!(valid(&after, &db).contains(&Action::PassPriority));
+    }
+
+    #[test]
+    fn issue_117_summoning_sick_creature_cannot_attack_cr_302_6() {
+        // CR 302.6: a creature that has not been controlled continuously since the
+        // turn began can't attack. One that entered this very turn is not a
+        // candidate, and naming it is an illegal declaration (a no-op).
+        let db = db();
+        let mut state = at_declare_attackers();
+        let sick = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let this_turn = state.turn;
+        set_entered_turn(&mut state, sick, this_turn);
+
+        assert!(attacker_candidates(&state, &db).is_empty());
+        let after = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![sick],
+            },
+            &db,
+        );
+        assert_eq!(after, state, "declaring a sick attacker is a no-op");
+    }
+
+    #[test]
+    fn issue_117_tapped_creature_cannot_attack_cr_508_1a() {
+        // CR 508.1a: only untapped creatures can be declared as attackers.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let tapped = place_permanent(&mut state, CardId(6), PlayerId(0), true, 0);
+
+        assert!(attacker_candidates(&state, &db).is_empty());
+        let after = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![tapped],
+            },
+            &db,
+        );
+        assert_eq!(after, state, "declaring a tapped attacker is a no-op");
+    }
+
+    #[test]
+    fn issue_117_defender_declares_blockers_multiple_per_attacker_cr_509_1a() {
+        // CR 509.1a: the defending player assigns each blocker to one attacking
+        // creature; several blockers may be assigned to the same attacker.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let blocker_a = place_permanent(&mut state, CardId(6), PlayerId(1), false, 0);
+        let blocker_b = place_permanent(&mut state, CardId(6), PlayerId(1), false, 0);
+
+        // Declare the attacker, then pass to the declare-blockers step.
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![attacker],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        assert_eq!(state.step, Step::DeclareBlockers);
+        // The defender (player 1) is the one who must declare, and is offered the
+        // declaration; both eligible blockers are candidates.
+        assert_eq!(state.priority, PlayerId(1));
+        let offered = valid(&state, &db);
+        assert_eq!(offered.len(), 1);
+        assert!(matches!(offered[0], Action::DeclareBlockers { .. }));
+        let candidates = blocker_candidates(&state, &db);
+        assert!(candidates.contains(&blocker_a) && candidates.contains(&blocker_b));
+
+        // Assign both blockers to the single attacker.
+        let after = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![
+                    Block {
+                        blocker: blocker_a,
+                        attacker,
+                    },
+                    Block {
+                        blocker: blocker_b,
+                        attacker,
+                    },
+                ],
+            },
+            &db,
+        );
+        assert_eq!(find_perm(&after, blocker_a).blocking, Some(attacker));
+        assert_eq!(find_perm(&after, blocker_b).blocking, Some(attacker));
+        assert!(after.blockers_declared);
+        // After blockers are declared the active player receives priority (CR 509.4).
+        assert_eq!(after.priority, PlayerId(0));
+    }
+
+    #[test]
+    fn issue_117_tapped_creature_cannot_block_cr_509_1a() {
+        // CR 509.1a: a tapped creature can't be declared as a blocker.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let tapped_blocker = place_permanent(&mut state, CardId(6), PlayerId(1), true, 0);
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![attacker],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert!(!blocker_candidates(&state, &db).contains(&tapped_blocker));
+        let after = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker: tapped_blocker,
+                    attacker,
+                }],
+            },
+            &db,
+        );
+        assert_eq!(after, state, "declaring a tapped blocker is a no-op");
+    }
+
+    #[test]
+    fn issue_117_blocker_must_be_assigned_to_an_attacking_creature_cr_509_1a() {
+        // CR 509.1a: a blocker is assigned to an *attacking* creature. Assigning it
+        // to a creature that is not attacking is an illegal declaration (a no-op).
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let non_attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(6), PlayerId(1), false, 0);
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![attacker],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let after = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker,
+                    attacker: non_attacker,
+                }],
+            },
+            &db,
+        );
+        assert_eq!(after, state, "blocking a non-attacker is a no-op");
+    }
+
+    #[test]
+    fn issue_117_a_creature_cannot_be_declared_as_two_blocks_cr_509_1a() {
+        // CR 509.1a: each blocker is assigned to *one* attacking creature, so the
+        // same creature cannot appear as a blocker twice in one declaration.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let atk_a = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let atk_b = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(6), PlayerId(1), false, 0);
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![atk_a, atk_b],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let after = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![
+                    Block {
+                        blocker,
+                        attacker: atk_a,
+                    },
+                    Block {
+                        blocker,
+                        attacker: atk_b,
+                    },
+                ],
+            },
+            &db,
+        );
+        assert_eq!(after, state, "one creature blocking twice is a no-op");
+    }
+
+    #[test]
+    fn issue_117_priority_is_withheld_until_attackers_are_declared_cr_508_1() {
+        // CR 508.1: declaring attackers is a turn-based action performed before any
+        // player receives priority in the step. The defender is offered nothing
+        // until the active player has declared.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let _attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+
+        // The non-active player has no actions during the pre-declaration window.
+        let mut defender_view = state.clone();
+        defender_view.priority = PlayerId(1);
+        assert!(valid(&defender_view, &db).is_empty());
+    }
+
+    #[test]
+    fn issue_117_end_of_combat_removes_creatures_from_combat_cr_511_3() {
+        // CR 511.3: at end of combat, all creatures are removed from combat — the
+        // attacking flag and blocking assignments are cleared.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(6), PlayerId(1), false, 0);
+
+        // Declare attackers, pass to declare blockers, declare a block, then pass
+        // through combat-damage into end-of-combat.
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![attacker],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        let state = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block { blocker, attacker }],
+            },
+            &db,
+        );
+        // Passes: declare-blockers round → combat damage → end of combat.
+        let state = pass_full_round(&state, &db); // → CombatDamage
+        assert_eq!(state.step, Step::CombatDamage);
+        let state = pass_full_round(&state, &db); // → EndCombat (turn-based action runs)
+        assert_eq!(state.step, Step::EndCombat);
+
+        assert!(!find_perm(&state, attacker).attacking);
+        assert_eq!(find_perm(&state, blocker).blocking, None);
     }
 }

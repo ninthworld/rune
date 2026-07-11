@@ -56,6 +56,31 @@ pub struct Permanent {
     pub controller: PlayerId,
     /// Whether the permanent is tapped.
     pub tapped: bool,
+    /// The turn number on which this permanent entered the battlefield under its
+    /// current controller (came under their control). Raw stored state, set on
+    /// battlefield entry from [`GameState::turn`]; `0` for the empty [`Default`].
+    ///
+    /// This is the fact "summoning sickness" is derived from (CR 302.6): a
+    /// creature has been controlled continuously since its controller's most
+    /// recent turn began exactly when it entered on an *earlier* turn than the
+    /// current one. The engine cannot derive that from a bare snapshot — it is
+    /// history — so, like [`Self::damage`], it is stored rather than computed.
+    /// Not a zone-change counter: a permanent re-entering the battlefield gets a
+    /// fresh [`PermanentId`] and a fresh `entered_turn`; nothing counts entries.
+    pub entered_turn: u32,
+    /// Whether this permanent is currently attacking, i.e. it was declared as an
+    /// attacker this combat and has not yet been removed from combat (CR 508.1,
+    /// CR 511.3). Raw stored state, set when attackers are declared and cleared at
+    /// the end-of-combat step. `false` for a permanent not in combat.
+    pub attacking: bool,
+    /// The attacker this permanent is blocking, if it was declared as a blocker
+    /// this combat (CR 509.1); `None` for a permanent that is not blocking.
+    ///
+    /// A blocker is assigned to exactly one attacking creature (this field is that
+    /// assignment); several blockers may name the same attacker. Raw stored state,
+    /// set when blockers are declared and cleared at the end-of-combat step
+    /// (CR 511.3).
+    pub blocking: Option<PermanentId>,
     /// Damage marked on this permanent this turn (CR 120.3). Raw stored state,
     /// zeroed as a turn-based action during the cleanup step (CR 514.2) and,
     /// once combat lands (issue #118), compared against toughness by the
@@ -202,6 +227,21 @@ pub struct GameState {
     /// Whether the active player has played a land this turn. Reset when the next
     /// turn begins. Enforces the one-land-per-turn rule.
     pub land_played: bool,
+    /// Whether the active player has declared attackers this combat (CR 508.1).
+    ///
+    /// Declaring attackers is a turn-based action the active player performs as a
+    /// player *choice* (offered through [`crate::valid_actions`], like the cleanup
+    /// discard), so the engine must record that the choice has been made to know
+    /// the declare-attackers step has moved on from it to its priority round. An
+    /// empty declaration still sets this (declaring *no* attackers is legal,
+    /// CR 508.1a). Reset each turn.
+    pub attackers_declared: bool,
+    /// Whether the defending player has declared blockers this combat (CR 509.1).
+    ///
+    /// The mirror of [`Self::attackers_declared`] for the declare-blockers step:
+    /// the defender's declaration is a player choice, and this records that it has
+    /// been made so the step advances to its priority round. Reset each turn.
+    pub blockers_declared: bool,
     /// Extra turns waiting to be taken, as a stack: the entry pushed last is
     /// taken first (MTG rule 720.1 — the most recently created extra turn
     /// happens first). Each entry is the player who takes that turn.
@@ -262,6 +302,8 @@ impl GameState {
             static_effects: Vec::new(),
             next_object_id: 1,
             land_played: false,
+            attackers_declared: false,
+            blockers_declared: false,
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
             rng_seed,
@@ -347,6 +389,10 @@ impl GameState {
         };
         self.step = Step::Untap;
         self.land_played = false;
+        // A new turn is a new combat: the previous turn's declarations no longer
+        // apply (CR 508.1 / 509.1 are performed afresh each combat).
+        self.attackers_declared = false;
+        self.blockers_declared = false;
     }
 
     /// Return a copy with an extra turn granted to `player`. Because extra turns
