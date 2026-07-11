@@ -18,6 +18,8 @@ tokio = { version = "1", features = [
     "macros",
     "io-util",
     "io-std",
+    # Agent mode races the model decision against a deadline (tokio::time::timeout).
+    "time",
 ] }
 # Client-side WebSocket: `connect_async` plus framed message I/O. TLS is out of
 # scope (plain `ws://`), matching ADR-0008 — no native-tls/rustls surface.

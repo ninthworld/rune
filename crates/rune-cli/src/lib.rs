@@ -19,6 +19,13 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWrite
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 
+mod agent;
+
+pub use agent::{
+    is_offered, request_payload, run_agent_session, safe_default, Agent, AgentConfig, AgentError,
+    PassPriorityAgent, AGENT_TIMEOUT_ENV_VAR, DEFAULT_AGENT_DEADLINE,
+};
+
 /// Address the CLI connects to when nothing overrides it. Matches the server's
 /// own default listen address (`rune_server::DEFAULT_ADDR`).
 pub const DEFAULT_ADDR: &str = "127.0.0.1:9000";
@@ -91,11 +98,16 @@ impl CliConfig {
     }
 }
 
-/// Error building a [`CliConfig`].
+/// Error building a [`CliConfig`] or [`AgentConfig`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigError {
     /// `--addr`/`-a` was supplied without a following value.
     MissingAddrValue,
+    /// `--agent-timeout` was supplied without a following value.
+    MissingAgentTimeoutValue,
+    /// `--agent-timeout` (or [`AGENT_TIMEOUT_ENV_VAR`]) was not a positive,
+    /// finite number of seconds. Carries the offending value.
+    InvalidAgentTimeout(String),
 }
 
 impl std::fmt::Display for ConfigError {
@@ -103,6 +115,18 @@ impl std::fmt::Display for ConfigError {
         match self {
             Self::MissingAddrValue => {
                 write!(f, "--addr requires a value, e.g. --addr {DEFAULT_ADDR}")
+            }
+            Self::MissingAgentTimeoutValue => {
+                write!(
+                    f,
+                    "--agent-timeout requires a value in seconds, e.g. --agent-timeout 5"
+                )
+            }
+            Self::InvalidAgentTimeout(value) => {
+                write!(
+                    f,
+                    "--agent-timeout must be a positive number of seconds, got {value:?}"
+                )
             }
         }
     }
