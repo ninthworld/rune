@@ -41,7 +41,8 @@ sized for one PR unless noted.
 ## Client (after protocol serde) — ⏳ needs issues
 14. ✅ **client: WebSocket store** — Zustand store holding latest GameView; reconnect
     resends full state (test the reconstruct-from-one-GameView invariant) — issue #34.
-15. ⏳ **client: port the Pixi card factory from prototypes/ui-battlefield-v3.html**
-    into src/, reading src/tokens.ts (reference only — reimplement, don't import).
+15. ✅ **client: port the Pixi card factory from prototypes/ui-battlefield-v3.html**
+    into src/, reading src/tokens.ts (reference only — reimplement, don't import) —
+    issue #35 (`src/card/cardFactory.ts` + token additions; smoke tests).
 16. ⏳ **client: battlefield bands + hand + action bar** rendering GameView from the
     store; subject-owned action routing per ADR 0004.

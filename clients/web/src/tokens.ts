@@ -28,16 +28,64 @@ export const SURFACES = {
   board: '#15171A',
   cardBody: '#23262B',
   nameText: '#E8E6E1',
+  typeText: '#9BA0A8',
   selection: '#7FB2E5',
   targeting: '#E0784A',
+} as const;
+
+/**
+ * Mana pip swatches: `bg` fills the pip disc, `fg` colors the symbol glyph.
+ * `N` is the neutral swatch used for generic/numeric and any unrecognized symbol
+ * (e.g. `{2}`, `{C}`, hybrid). Colored single-letter symbols use their own key.
+ */
+export const PIP = {
+  W: { bg: '#F1EBD4', fg: '#4A4636' },
+  U: { bg: '#AFCBE9', fg: '#17324E' },
+  B: { bg: '#A79DB5', fg: '#2A2233' },
+  R: { bg: '#E5A192', fg: '#4A170E' },
+  G: { bg: '#A3C095', fg: '#1E3320' },
+  N: { bg: '#CACBCF', fg: '#26262A' },
+} as const;
+
+/** Small chip drawn at a card corner for counters and state (summoning sick). */
+export const BADGE = {
+  bg: '#3A3E45',
+  text: '#D8DBDF',
+  stroke: '#565B63',
+  counterBg: PALETTE.M,
+  counterText: PT_TEXT.M,
+} as const;
+
+/** Vector frame geometry — the look of the card body with no images or WotC art. */
+export const FRAME = {
+  borderWidth: 1.5,
+  radius: 8,
+  chipRadius: 6,
+  headerRadius: 5,
+  headerTintAlpha: 0.16,
+  monogramAlpha: 0.22,
+  selectionWidth: 2,
+  tappedAlpha: 0.55,
+  sickAlpha: 0.85,
+} as const;
+
+/**
+ * Typography tokens. `charWidthRatio` is the average glyph advance as a fraction
+ * of font size; the Pixi factory uses it to estimate text extents for layout so
+ * it never needs a live canvas/GPU text measurement (keeps it headless-testable).
+ */
+export const FONT = {
+  family: 'system-ui, sans-serif',
+  weight: '500',
+  charWidthRatio: 0.55,
 } as const;
 
 /** Card size tiers: digest (opponent chips) / field / support / hand / full (inspect). */
 export const TIER = {
   chip: { w: 44, h: 60 },
-  support: { w: 66, h: 92 },
-  field: { w: 84, h: 118 },
-  hand: { w: 104, h: 146 },
+  support: { w: 66, h: 92, name: 11, mono: 22, pip: 12, header: 30, type: 9 },
+  field: { w: 84, h: 118, name: 11, mono: 30, pip: 13, header: 34, type: 10 },
+  hand: { w: 104, h: 146, name: 12, mono: 38, pip: 15, header: 40, type: 11 },
 } as const;
 
 export type ColorIdentity = keyof typeof PALETTE;
