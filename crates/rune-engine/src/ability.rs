@@ -15,6 +15,7 @@ use serde::Deserialize;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
 use crate::stack::StackId;
+use crate::state::CounterKind;
 
 /// One ability of a card.
 ///
@@ -99,6 +100,83 @@ pub enum Effect {
         /// What this effect is allowed to target (a spell on the stack).
         target: TargetSpec,
     },
+    /// Deal `amount` damage to the single target this effect names (CR 120.3).
+    ///
+    /// The subject is an explicit target (like [`Effect::Tap`]), chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). Damage to a creature
+    /// is *marked* on it (CR 120.3d) for the lethal-damage state-based action to
+    /// read (CR 704.5g); damage to a player is *lost life* (CR 120.3a), feeding
+    /// the zero-life state-based action (CR 704.5a). Damage prevention/replacement
+    /// and deathtouch are not modeled.
+    DealDamage {
+        /// What this effect is allowed to target (a creature, a player, or — for
+        /// a burn spell — [`TargetSpec::AnyTarget`]).
+        target: TargetSpec,
+        /// How much damage is dealt.
+        amount: u32,
+    },
+    /// Destroy the single permanent this effect targets (CR 701.7): it is put
+    /// into its owner's graveyard, the same graveyard path as lethal damage
+    /// (CR 704.5g). Regeneration and other destruction-replacement effects are
+    /// out of scope.
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b) — a destroy whose
+    /// target has already left fizzles.
+    Destroy {
+        /// What this effect is allowed to target (typically a creature).
+        target: TargetSpec,
+    },
+    /// The referenced player gains `amount` life (CR 119.3). The subject is a
+    /// non-targeted [`PlayerRef`] (like [`Effect::DrawCard`]'s implicit
+    /// controller), so this effect chooses no target.
+    GainLife {
+        /// Which player gains the life.
+        player_ref: PlayerRef,
+        /// How much life is gained.
+        amount: u32,
+    },
+    /// The referenced player loses `amount` life (CR 119.3). The subject is a
+    /// non-targeted [`PlayerRef`]; life loss can drive the zero-life state-based
+    /// action (CR 704.5a). This effect chooses no target.
+    LoseLife {
+        /// Which player loses the life.
+        player_ref: PlayerRef,
+        /// How much life is lost.
+        amount: u32,
+    },
+    /// Put `count` counters of `kind` on the single permanent this effect targets
+    /// (CR 122). Both `+1/+1` and `-1/-1` kinds are supported; they fold into the
+    /// permanent's computed power/toughness (CR 613.7c) on demand, so a `-1/-1`
+    /// counter can lower toughness to at or below marked damage and let the
+    /// lethal-damage state-based action destroy it (CR 704.5g).
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b).
+    PutCounters {
+        /// What this effect is allowed to target (a permanent that can bear
+        /// counters).
+        target: TargetSpec,
+        /// The kind of counter to place. Named `counter` on the wire because the
+        /// effect enum already reserves the `kind` tag for its own discriminant.
+        counter: CounterKind,
+        /// How many counters of that kind to place.
+        count: u32,
+    },
+}
+
+/// A **non-targeted player reference**: which player an implicit-subject effect
+/// (e.g. [`Effect::GainLife`]) acts on, without that player being a *target*
+/// (CR 115.1 — no target is chosen, so these effects never fizzle).
+///
+/// A closed, plain-data enum deserialized from a bare `snake_case` tag, e.g.
+/// `{"kind": "gain_life", "player_ref": "controller", "amount": 3}`. It grows by
+/// adding variants (each opponent, target's controller, …) as effects need them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerRef {
+    /// The controller of the spell or ability producing the effect ("you").
+    Controller,
 }
 
 impl Effect {
@@ -113,8 +191,15 @@ impl Effect {
     #[must_use]
     pub fn target_spec(&self) -> Option<TargetSpec> {
         match self {
-            Effect::Tap { target } | Effect::CounterSpell { target } => Some(*target),
-            Effect::AddMana { .. } | Effect::DrawCard { .. } => None,
+            Effect::Tap { target }
+            | Effect::CounterSpell { target }
+            | Effect::DealDamage { target, .. }
+            | Effect::Destroy { target }
+            | Effect::PutCounters { target, .. } => Some(*target),
+            Effect::AddMana { .. }
+            | Effect::DrawCard { .. }
+            | Effect::GainLife { .. }
+            | Effect::LoseLife { .. } => None,
         }
     }
 }
@@ -146,6 +231,11 @@ pub enum TargetSpec {
     /// are never candidates; a mana ability never uses the stack at all (CR
     /// 605.3), so it can never be countered.
     SpellOnStack,
+    /// Any target (CR 115.4): the modern "any target" of a burn spell — any
+    /// creature on the battlefield or any player still in the game. Planeswalkers
+    /// and battles are not modeled, so the legal set is exactly creatures plus
+    /// players.
+    AnyTarget,
 }
 
 /// A **chosen target**: a resolved reference to one specific game object the
@@ -319,5 +409,87 @@ mod tests {
             }],
         };
         assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_149_deal_damage_round_trips_with_its_target_spec() {
+        let json = r#"{"kind":"deal_damage","target":"any_target","amount":2}"#;
+        let effect: Effect = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            effect,
+            Effect::DealDamage {
+                target: TargetSpec::AnyTarget,
+                amount: 2,
+            }
+        );
+        // A targeting effect reports its spec; the "any target" spec deserializes
+        // from its bare string tag.
+        assert_eq!(effect.target_spec(), Some(TargetSpec::AnyTarget));
+        assert_eq!(
+            serde_json::from_str::<TargetSpec>(r#""any_target""#).unwrap(),
+            TargetSpec::AnyTarget
+        );
+    }
+
+    #[test]
+    fn issue_149_destroy_round_trips_with_its_target_spec() {
+        let json = r#"{"kind":"destroy","target":"any_creature"}"#;
+        let effect: Effect = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            effect,
+            Effect::Destroy {
+                target: TargetSpec::AnyCreature,
+            }
+        );
+        assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
+    }
+
+    #[test]
+    fn issue_149_put_counters_round_trips_with_both_kinds() {
+        // The counter kind is authored under `counter` (the enum reserves `kind`
+        // for its own tag) and deserializes from a snake_case string.
+        let plus = r#"{"kind":"put_counters","target":"any_creature","counter":"plus_one_plus_one","count":1}"#;
+        assert_eq!(
+            serde_json::from_str::<Effect>(plus).unwrap(),
+            Effect::PutCounters {
+                target: TargetSpec::AnyCreature,
+                counter: CounterKind::PlusOnePlusOne,
+                count: 1,
+            }
+        );
+        let minus = r#"{"kind":"put_counters","target":"any_creature","counter":"minus_one_minus_one","count":2}"#;
+        assert_eq!(
+            serde_json::from_str::<Effect>(minus).unwrap(),
+            Effect::PutCounters {
+                target: TargetSpec::AnyCreature,
+                counter: CounterKind::MinusOneMinusOne,
+                count: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn issue_149_life_effects_round_trip_and_target_nothing() {
+        let gain = r#"{"kind":"gain_life","player_ref":"controller","amount":3}"#;
+        let gain: Effect = serde_json::from_str(gain).unwrap();
+        assert_eq!(
+            gain,
+            Effect::GainLife {
+                player_ref: PlayerRef::Controller,
+                amount: 3,
+            }
+        );
+        let lose = r#"{"kind":"lose_life","player_ref":"controller","amount":2}"#;
+        let lose: Effect = serde_json::from_str(lose).unwrap();
+        assert_eq!(
+            lose,
+            Effect::LoseLife {
+                player_ref: PlayerRef::Controller,
+                amount: 2,
+            }
+        );
+        // Life gain/loss have an implicit subject, so they choose no target.
+        assert_eq!(gain.target_spec(), None);
+        assert_eq!(lose.target_spec(), None);
     }
 }

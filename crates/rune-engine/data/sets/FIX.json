@@ -9,5 +9,11 @@
   { "oracle_id": 8, "collector_number": "8", "rarity": "common" },
   { "oracle_id": 9, "collector_number": "9", "rarity": "uncommon" },
   { "oracle_id": 10, "collector_number": "10", "rarity": "rare" },
-  { "oracle_id": 11, "collector_number": "11", "rarity": "uncommon" }
+  { "oracle_id": 11, "collector_number": "11", "rarity": "uncommon" },
+  { "oracle_id": 12, "collector_number": "12", "rarity": "common" },
+  { "oracle_id": 13, "collector_number": "13", "rarity": "uncommon" },
+  { "oracle_id": 14, "collector_number": "14", "rarity": "uncommon" },
+  { "oracle_id": 15, "collector_number": "15", "rarity": "common" },
+  { "oracle_id": 16, "collector_number": "16", "rarity": "common" },
+  { "oracle_id": 17, "collector_number": "17", "rarity": "common" }
 ]

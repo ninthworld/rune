@@ -46,6 +46,18 @@ pub(crate) fn target_is_legal(
                     .card(p.card)
                     .is_some_and(|c| c.has_type(CardType::Creature))
         }),
+        // "Any target" (CR 115.4): legal against a player still in the game or a
+        // creature still on the battlefield — the union of the AnyPlayer and
+        // AnyCreature checks above (printed types are authoritative here too).
+        (TargetSpec::AnyTarget, Target::Player(player)) => {
+            state.players.get(player.0).is_some_and(|p| !p.has_lost)
+        }
+        (TargetSpec::AnyTarget, Target::Permanent(id)) => state.battlefield.iter().any(|p| {
+            p.id == id
+                && db
+                    .card(p.card)
+                    .is_some_and(|c| c.has_type(CardType::Creature))
+        }),
         // A spell target is legal while that exact spell is still on the stack
         // (CR 701.5): once it has resolved (or been countered) it is gone, so a
         // counterspell aimed at it fizzles (CR 608.2b). An ability on the stack is
@@ -443,5 +455,89 @@ mod tests {
             &state,
             &db
         ));
+    }
+
+    #[test]
+    fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
+        // CR 115.4: an "any target" is a creature or an in-game player. A player
+        // who has left the game and a non-creature permanent are both illegal.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let creature = creature_on_battlefield(&mut state);
+        assert!(target_is_legal(
+            TargetSpec::AnyTarget,
+            Target::Permanent(creature),
+            &state,
+            &db
+        ));
+        assert!(target_is_legal(
+            TargetSpec::AnyTarget,
+            Target::Player(PlayerId(0)),
+            &state,
+            &db
+        ));
+
+        // A non-creature permanent (a Forest) is not an "any target".
+        let inst = state.new_instance(CardId(5));
+        let forest = PermanentId(state.mint_id());
+        state.battlefield.push(Permanent {
+            id: forest,
+            instance: inst.id,
+            card: CardId(5),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+        });
+        assert!(!target_is_legal(
+            TargetSpec::AnyTarget,
+            Target::Permanent(forest),
+            &state,
+            &db
+        ));
+
+        // A player who has lost is no longer a legal target.
+        state.players[1].has_lost = true;
+        assert!(!target_is_legal(
+            TargetSpec::AnyTarget,
+            Target::Player(PlayerId(1)),
+            &state,
+            &db
+        ));
+    }
+
+    #[test]
+    fn issue_149_put_counters_ability_lands_on_its_target_cr_122() {
+        // The PutCounters verb runs through the *ability* resolution path exactly
+        // as it does through a spell: a "+1/+1 counter on target creature" ability
+        // adds one counter to the chosen creature.
+        use crate::state::CounterKind;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let creature = creature_on_battlefield(&mut state);
+        let sid = state.mint_id();
+        state.stack.push(StackObject {
+            id: StackId(sid),
+            controller: PlayerId(0),
+            kind: StackObjectKind::Ability {
+                source: creature,
+                effects: vec![Effect::PutCounters {
+                    target: TargetSpec::AnyCreature,
+                    counter: CounterKind::PlusOnePlusOne,
+                    count: 1,
+                }],
+            },
+            targets: vec![Target::Permanent(creature)],
+        });
+
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+
+        let perm = state.battlefield.iter().find(|p| p.id == creature).unwrap();
+        assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 1);
     }
 }
