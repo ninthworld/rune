@@ -6,13 +6,26 @@
  * that only stubbed `GitHub.createBranch` would happily pass while the runner labelled an
  * issue it never claimed.
  */
-export function fakeGitHub({ issues = {}, refs = { "heads/main": "base000" }, aheadBy = {}, pulls = {}, checkRuns = {} } = {}) {
+export function fakeGitHub({
+  issues = {},
+  refs = { "heads/main": "base000" },
+  aheadBy = {},
+  pulls = {},
+  checkRuns = {},
+  milestones = [],
+  timelines = {},
+} = {}) {
   const state = {
     issues: structuredClone(issues),
     refs: { ...refs },
     aheadBy: { ...aheadBy },
     pulls: structuredClone(pulls),
     checkRuns: structuredClone(checkRuns),
+    // The read-only surface the ADR 0017 evidence collector walks: milestones, the issues
+    // tagged to one, and each issue's timeline (which is where GitHub records the PR that
+    // actually closed it).
+    milestones: structuredClone(milestones),
+    timelines: structuredClone(timelines),
     comments: [],
     calls: [],
     // The git object store, so audit-branch writes can be asserted as real commits.
@@ -30,11 +43,28 @@ export function fakeGitHub({ issues = {}, refs = { "heads/main": "base000" }, ah
 
   state.fetch = async (url, init = {}) => {
     const method = init.method || "GET";
-    const path = new URL(url).pathname.replace("/repos/ninthworld/rune", "");
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace("/repos/ninthworld/rune", "");
+    const query = parsed.searchParams;
     const body = init.body ? JSON.parse(init.body) : null;
     state.calls.push(`${method} ${path}`);
 
+    // Paginated reads ask for page 2 to learn there is no page 2. A fake that ignored `page`
+    // and kept re-serving page 1 would spin the caller's loop forever.
+    const page = Number(query.get("page") ?? 1);
+
     let m;
+    if (path === "/milestones" && method === "GET") {
+      return json(200, page > 1 ? [] : state.milestones);
+    }
+    if (path === "/issues" && method === "GET") {
+      const milestone = query.get("milestone");
+      const tagged = Object.values(state.issues).filter((i) => String(i.milestone?.number) === milestone);
+      return json(200, page > 1 ? [] : tagged);
+    }
+    if ((m = /^\/issues\/(\d+)\/timeline$/.exec(path)) && method === "GET") {
+      return json(200, page > 1 ? [] : (state.timelines[m[1]] ?? []));
+    }
     if ((m = /^\/issues\/(\d+)$/.exec(path)) && method === "GET") {
       const issue = state.issues[m[1]];
       return issue ? json(200, issue) : json(404, { message: "Not Found" });

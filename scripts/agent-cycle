@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Entry point for the milestone stewardship cycle (ADR 0017).
+#
+# A sibling of `scripts/agent-task`, not a replacement: the cycle is a second consumer of
+# the same dependency-free Node 20 tooling under `tools/agent-task/` — the same GitHub
+# client, redaction, and gate definitions the issue runner uses.
+#
+#   scripts/agent-cycle collect M3
+#   scripts/agent-cycle show <cycle-id>
+#   scripts/agent-cycle list
+set -euo pipefail
+
+exec node "$(dirname "$0")/../tools/agent-task/cycle-cli.js" "$@"

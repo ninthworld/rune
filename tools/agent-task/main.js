@@ -39,7 +39,8 @@ The runner performs every GitHub mutation as \`rune-agent[bot]\`. It never appro
 never merges: a successful run ends at an open, human-reviewable PR.
 Sanitized run summaries are published to the \`${AUDIT_BRANCH}\` branch (append-only).`;
 
-function parseArgs(argv) {
+/** Shared with `cycle-main.js`: one flag grammar across both commands, not two. */
+export function parseArgs(argv) {
   const positional = [];
   const flags = {};
   for (let i = 0; i < argv.length; i++) {
