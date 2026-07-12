@@ -23,7 +23,7 @@ tokio = { version = "1", features = [
 ] }
 # Client-side WebSocket: `connect_async` plus framed message I/O. TLS is out of
 # scope (plain `ws://`), matching ADR-0008 — no native-tls/rustls surface.
-tokio-tungstenite = { version = "0.24", default-features = false, features = [
+tokio-tungstenite = { version = "0.30", default-features = false, features = [
     "connect",
     "handshake",
 ] }
@@ -36,7 +36,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink"] 
 rune-server = { path = "../rune-server" }
 rune-engine = { path = "../rune-engine" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util"] }
-tokio-tungstenite = { version = "0.24", default-features = false, features = [
+tokio-tungstenite = { version = "0.30", default-features = false, features = [
     "handshake",
 ] }
 

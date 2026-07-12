@@ -29,7 +29,7 @@ tokio = { version = "1", features = [
 ] }
 # TLS is out of scope for this milestone: pull only the server handshake, no
 # native-tls/rustls surface (ADR-0008).
-tokio-tungstenite = { version = "0.24", default-features = false, features = [
+tokio-tungstenite = { version = "0.30", default-features = false, features = [
     "handshake",
 ] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
@@ -39,7 +39,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 # The accept-path integration test drives the server with a real WebSocket
 # client; `connect_async` needs the client half of the handshake.
-tokio-tungstenite = { version = "0.24", default-features = false, features = [
+tokio-tungstenite = { version = "0.30", default-features = false, features = [
     "connect",
     "handshake",
 ] }
