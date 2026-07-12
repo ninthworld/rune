@@ -124,10 +124,14 @@ npm run preview        # serve the built bundle locally
 
 This repository is primarily developed by AI coding agents working through GitHub
 issues and pull requests, with humans reviewing and merging. The contract for agents
-lives in [`AGENTS.md`](AGENTS.md); the process lives in
-[`docs/agents/workflow.md`](docs/agents/workflow.md). Every PR must pass CI
-(`Engine`, `Client`, `E2E`, and `cargo-deny` checks — reproduce them all with
-`make verify`) and human review — nothing merges automatically.
+lives in [`AGENTS.md`](AGENTS.md); the end-to-end lifecycle — milestone → issue → PR,
+and the human gates between them — is
+[`docs/agents/continuance.md`](docs/agents/continuance.md); the commands, labels, and
+GitHub settings are in [`docs/agents/workflow.md`](docs/agents/workflow.md). It is
+deliberately provider-neutral: no AI vendor is canonical, and every automated step has a
+manual equivalent. Every PR must pass CI (`Engine`, `Client`, `E2E`, and `cargo-deny`
+checks — reproduce them all with `make verify`) and human review — nothing merges
+automatically.
 
 ## Documentation
 
