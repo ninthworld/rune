@@ -515,6 +515,8 @@ fn apply_play_land(state: &mut GameState, card: CardInstance) {
         blocking: None,
         damage: 0,
         counters: Default::default(),
+        // A land is played directly, never attached to anything (CR 305).
+        attached_to: None,
     });
     state.land_played = true;
 }
@@ -885,6 +887,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         let after = apply_action(
             &state,
@@ -917,6 +920,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         let after = apply_action(
             &state,
@@ -1070,6 +1074,7 @@ mod tests {
             blocking: None,
             damage,
             counters: Default::default(),
+            attached_to: None,
         });
         PermanentId(id)
     }
@@ -1425,6 +1430,56 @@ mod tests {
             1,
             "a while-on-battlefield anthem persists through cleanup (CR 514.2)"
         );
+    }
+
+    // ----- Auras end to end (issue #152) -----
+
+    #[test]
+    fn issue_152_minus_x_aura_cast_kills_its_host_and_follows_it_cr_704_5f() {
+        // Full slice through the real cast path: cast Witherbrand Curse (-2/-2 Aura)
+        // on a 3/2 Boar. On resolution the Aura enters attached, its -2/-2 drops the
+        // host's current toughness to 0, and the pipeline's state-based-actions loop
+        // puts the host into the graveyard (CR 704.5f) and its now-orphaned Aura with
+        // it (CR 704.5m) — both gone in the same fixed point, the modifier vanishing
+        // with the Aura.
+        use crate::ability::Target;
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let host = place_permanent(&mut state, CardId(1), PlayerId(0), false, 0); // 3/2
+        let curse = state.new_instance(CardId(30)); // -2/-2 Aura, {B}
+        state.players[0].hand = vec![curse];
+        state.players[0].mana_pool.add(Color::Black, 1);
+
+        // The host is a healthy 3/2 before the Aura is cast.
+        assert_eq!(characteristics(&state, host, &db).toughness, Some(2));
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: curse,
+                targets: vec![Target::Permanent(host)],
+            },
+            &db,
+        );
+        // Both players pass: the Aura resolves, attaches, and the SBA loop settles.
+        let state = pass_full_round(&state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == host),
+            "the host at 0 toughness is put into the graveyard (CR 704.5f)"
+        );
+        assert!(
+            !state.battlefield.iter().any(|p| p.card == CardId(30)),
+            "the Aura follows its dead host to the graveyard (CR 704.5m)"
+        );
+        assert!(
+            state.static_effects.is_empty(),
+            "the Aura's derived modifier leaves no dangling static effect"
+        );
+        // The Boar and the Curse are both in the graveyard.
+        assert_eq!(state.players[0].graveyard.len(), 2);
     }
 
     // ----- Combat I: declare attackers and blockers (issue #117) -----

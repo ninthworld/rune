@@ -7,7 +7,7 @@
 //! [`action_is_legal`] before applying it.
 
 use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
-use crate::card::{abilities_of, spell_effects_of, CardData};
+use crate::card::{abilities_of, CardData};
 use crate::card_type::CardType;
 use crate::combat::{
     attacker_candidates, blocker_can_block_attacker, blocker_candidates, declared_attackers,
@@ -339,13 +339,13 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             if timing_ok && player.mana_pool.can_pay(&parse_mana_cost(&data.mana_cost)) {
                 // A targeted spell is offered only when *every* target slot has at
                 // least one legal candidate (CR 601.2c — a spell that can't choose
-                // legal targets can't be cast). A slot's candidates come from the
-                // same per-slot enumeration abilities use, so this stays O(N) per
-                // slot and never forms the cartesian product.
+                // legal targets can't be cast; for an Aura this is the CR 303.4c
+                // "no legal object to enchant" rule). A slot's candidates come from
+                // the same per-slot enumeration abilities use, so this stays O(N)
+                // per slot and never forms the cartesian product.
                 let castable = data
-                    .spell_effects
-                    .iter()
-                    .filter_map(Effect::target_spec)
+                    .cast_target_specs()
+                    .into_iter()
                     .all(|spec| !legal_targets_for_spec(spec, state, db).is_empty());
                 if castable {
                     actions.push(Action::CastSpell {
@@ -482,12 +482,12 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
 /// with no targeting effects (or one the state cannot resolve).
 ///
 /// An [`Action::ActivateAbility`] reads its activated ability's effects; an
-/// [`Action::CastSpell`] reads the cast card's spell effects
-/// ([`spell_effects_of`]) — the same effect IR either way, so a spell chooses
-/// targets exactly as an ability does (CR 601.2c). Every other action targets
-/// nothing.
+/// [`Action::CastSpell`] reads the cast card's cast target specs
+/// ([`CardData::cast_target_specs`]) — the spell-effect target slots plus, for an
+/// Aura, its enchant restriction (CR 303.4a) — so a spell chooses targets exactly
+/// as an ability does (CR 601.2c). Every other action targets nothing.
 fn action_target_specs(state: &GameState, db: &CardDatabase, action: &Action) -> Vec<TargetSpec> {
-    let effects = match action {
+    match action {
         Action::ActivateAbility {
             permanent, index, ..
         } => {
@@ -498,12 +498,14 @@ fn action_target_specs(state: &GameState, db: &CardDatabase, action: &Action) ->
             let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
                 return Vec::new();
             };
-            effects.clone()
+            effects.iter().filter_map(Effect::target_spec).collect()
         }
-        Action::CastSpell { card, .. } => spell_effects_of(db, card.card),
-        _ => return Vec::new(),
-    };
-    effects.iter().filter_map(Effect::target_spec).collect()
+        Action::CastSpell { card, .. } => db
+            .card(card.card)
+            .map(CardData::cast_target_specs)
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
 }
 
 /// The set of [`Target`]s legal for `spec` against current `state`, as a single
@@ -611,20 +613,14 @@ fn is_land(db: &CardDatabase, card: CardId) -> bool {
 /// Whether `card` may be cast as a spell from hand today (CR 117.1a).
 ///
 /// A land is never cast — it is played as a special action (CR 116.2a) and is
-/// offered separately. An Aura is a spell, but it must choose a target as it is
-/// cast (CR 601.2c); casting spells with targets is issue #148, so an Aura stays
-/// uncastable until then even when its (sorcery-speed) timing is satisfied.
-/// Every other card type — instant, sorcery, artifact, enchantment, creature —
-/// is castable, subject to timing and cost checked by the caller.
+/// offered separately. Every other card type — instant, sorcery, artifact,
+/// enchantment (Auras included, since issue #152), creature — is castable, subject
+/// to timing and cost checked by the caller. An Aura additionally requires a legal
+/// enchant target to be *offered* (CR 303.4c/601.2c); that is enforced by the
+/// per-slot candidate check in [`valid_actions`] over [`CardData::cast_target_specs`],
+/// not here.
 fn is_castable_spell(data: &CardData) -> bool {
-    !data.has_type(CardType::Land) && !is_aura(data)
-}
-
-/// Whether `card` is an Aura: an Enchantment with the `Aura` subtype (CR 303.4).
-/// Auras need a target chosen as they are cast, which is issue #148, so
-/// [`is_castable_spell`] excludes them until that lands.
-fn is_aura(data: &CardData) -> bool {
-    data.has_type(CardType::Enchantment) && data.has_subtype("Aura")
+    !data.has_type(CardType::Land)
 }
 
 #[cfg(test)]
@@ -671,6 +667,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         PermanentId(id)
     }
@@ -1126,35 +1123,58 @@ mod tests {
     }
 
     #[test]
-    fn issue_147_aura_is_uncastable_until_targets_at_cast_issue_148() {
-        // An Aura's timing (sorcery speed) is satisfiable, but it must choose a
-        // target as it is cast (CR 601.2c); casting spells with targets is issue
-        // #148, so the Aura is gated off entirely until then. A vanilla (non-aura)
-        // enchantment of the same cost is offered, proving the gate is the Aura
-        // subtype and not the enchantment type.
+    fn issue_152_aura_castable_only_with_a_legal_enchant_target_cr_303_4c() {
+        // CR 303.4c/601.2c: an Aura is offered only when a legal object to enchant
+        // exists — its enchant restriction is a target chosen at cast. With a
+        // creature on the battlefield the Aura is castable; with none it is not
+        // (its one slot has zero candidates), even though its sorcery-speed timing
+        // and mana are satisfied. A vanilla (non-Aura) enchantment of the same cost
+        // is always castable, proving the gate is the enchant target, not the type.
         let json = r#"[
             {"id":300,"name":"Test Aura","types":["enchantment"],"subtypes":["Aura"],
-             "mana_cost":"{G}","oracle_text":""},
+             "mana_cost":"{G}","oracle_text":"",
+             "aura":{"enchant":"any_creature","power":1,"toughness":1}},
             {"id":301,"name":"Test Charm","types":["enchantment"],
-             "mana_cost":"{G}","oracle_text":""}
+             "mana_cost":"{G}","oracle_text":""},
+            {"id":302,"name":"Test Bear","types":["creature"],"mana_cost":"",
+             "oracle_text":"","power":2,"toughness":2}
         ]"#;
         let db = CardDatabase::from_json(json).unwrap();
 
+        // No creature to enchant: the Aura is not offered, the charm still is.
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let aura = state.new_instance(CardId(300));
         let charm = state.new_instance(CardId(301));
         state.players[0].hand = vec![aura, charm];
-        state.players[0].mana_pool.add(Color::Green, 1);
-
+        state.players[0].mana_pool.add(Color::Green, 2);
         assert!(
             !cast_offered(&state, &db, aura),
-            "an Aura stays uncastable until spell targets land (issue #148)"
+            "an Aura with no legal object to enchant is not offered (CR 303.4c)"
         );
         assert!(
             cast_offered(&state, &db, charm),
-            "a non-Aura enchantment of the same cost is castable"
+            "a non-Aura enchantment is castable with no creature present"
         );
+
+        // Put a creature on the battlefield: now the Aura is offered, and its one
+        // requirement slot is the enchant restriction listing that creature.
+        let bear = put_on_battlefield(&mut state, CardId(302));
+        assert!(
+            cast_offered(&state, &db, aura),
+            "an Aura is castable once a legal enchant target exists (CR 303.4c)"
+        );
+        let reqs = target_requirements(
+            &state,
+            &db,
+            &Action::CastSpell {
+                card: aura,
+                targets: Vec::new(),
+            },
+        );
+        assert_eq!(reqs.len(), 1, "the Aura's single enchant slot");
+        assert_eq!(reqs[0].spec, TargetSpec::AnyCreature);
+        assert_eq!(reqs[0].candidates, vec![Target::Permanent(bear)]);
     }
 
     // ----- Spell targets at cast + the first counterspell (issue #148) -----

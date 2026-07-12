@@ -314,5 +314,23 @@
         "effects": [{ "kind": "draw_card", "count": 1 }]
       }
     ]
+  },
+  {
+    "id": 29,
+    "name": "Ironbark Aegis",
+    "types": ["enchantment"],
+    "subtypes": ["Aura"],
+    "mana_cost": "{1}{G}",
+    "oracle_text": "Enchant creature. Enchanted creature gets +2/+2.",
+    "aura": { "enchant": "any_creature", "power": 2, "toughness": 2 }
+  },
+  {
+    "id": 30,
+    "name": "Witherbrand Curse",
+    "types": ["enchantment"],
+    "subtypes": ["Aura"],
+    "mana_cost": "{B}",
+    "oracle_text": "Enchant creature. Enchanted creature gets -2/-2.",
+    "aura": { "enchant": "any_creature", "power": -2, "toughness": -2 }
   }
 ]

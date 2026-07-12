@@ -26,5 +26,7 @@
   { "oracle_id": 25, "collector_number": "25", "rarity": "uncommon" },
   { "oracle_id": 26, "collector_number": "26", "rarity": "rare" },
   { "oracle_id": 27, "collector_number": "27", "rarity": "common" },
-  { "oracle_id": 28, "collector_number": "28", "rarity": "uncommon" }
+  { "oracle_id": 28, "collector_number": "28", "rarity": "uncommon" },
+  { "oracle_id": 29, "collector_number": "29", "rarity": "uncommon" },
+  { "oracle_id": 30, "collector_number": "30", "rarity": "common" }
 ]

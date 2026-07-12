@@ -504,6 +504,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         id
     }
@@ -578,6 +579,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         id
     }

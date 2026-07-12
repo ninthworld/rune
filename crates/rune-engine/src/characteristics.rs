@@ -21,7 +21,9 @@ use crate::ability::Ability;
 use crate::card::{abilities_of, CardDatabase};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;
-use crate::state::{CounterKind, EffectAffects, GameState, Modification, Permanent, StaticEffect};
+use crate::state::{
+    CounterKind, Duration, EffectAffects, GameState, Modification, Permanent, StaticEffect,
+};
 
 /// A permanent's *current* characteristics, computed fresh — **never stored on
 /// state**.
@@ -98,7 +100,7 @@ pub fn characteristics(
     // force apply in timestamp order. `is_creature` gates anthem-style selectors;
     // current type equals printed type until the type layers (1–6) land.
     let is_creature = card.types.contains(&CardType::Creature);
-    let (static_power, static_toughness) = static_pt_delta(state, perm, is_creature);
+    let (static_power, static_toughness) = static_pt_delta(state, perm, is_creature, db);
     Characteristics {
         supertypes: card.supertypes.clone(),
         types: card.types.clone(),
@@ -141,10 +143,15 @@ fn pt_counter_delta(perm: &Permanent) -> i32 {
 ///
 /// Overflow saturates rather than panicking, matching
 /// [`pt_counter_delta`] and the engine's no-panic rule.
-fn static_pt_delta(state: &GameState, perm: &Permanent, is_creature: bool) -> (i32, i32) {
+fn static_pt_delta(
+    state: &GameState,
+    perm: &Permanent,
+    is_creature: bool,
+    db: &CardDatabase,
+) -> (i32, i32) {
     let mut power = 0_i32;
     let mut toughness = 0_i32;
-    for effect in ordered_pt_modifiers(state, perm, is_creature) {
+    for effect in ordered_pt_modifiers(state, perm, is_creature, db) {
         let Modification::PowerToughness {
             power: dp,
             toughness: dt,
@@ -158,21 +165,61 @@ fn static_pt_delta(state: &GameState, perm: &Permanent, is_creature: bool) -> (i
 /// The layer-7c static P/T effects that apply to `perm`, sorted by timestamp
 /// (ascending [`StaticEffect::timestamp`], i.e. source object id).
 ///
-/// Isolating the selection and ordering here keeps the "timestamp order"
-/// guarantee explicit and directly testable (ADR 0010 §4). Object ids are
-/// unique, so timestamps do not tie; the sort is stable regardless.
-fn ordered_pt_modifiers<'a>(
-    state: &'a GameState,
+/// Two sources feed this one list, folded through the same timestamp-ordered path
+/// (ADR 0010 §4): the stored [`GameState::static_effects`] (anthems and pumps) and,
+/// synthesized fresh, each Aura currently attached to `perm` (CR 303.4 / 613.7c) —
+/// see [`aura_pt_effect`]. The Aura contributions are **derived, never stored**: an
+/// Aura's P/T grant follows its attachment, so it appears here exactly while the
+/// Aura is attached and vanishes the instant it leaves, with nothing to prune
+/// (unlike a keyed pump, which the SBA loop must clean up). Object ids are unique,
+/// so timestamps do not tie; the sort is stable regardless.
+fn ordered_pt_modifiers(
+    state: &GameState,
     perm: &Permanent,
     is_creature: bool,
-) -> Vec<&'a StaticEffect> {
-    let mut effects: Vec<&StaticEffect> = state
+    db: &CardDatabase,
+) -> Vec<StaticEffect> {
+    let mut effects: Vec<StaticEffect> = state
         .static_effects
         .iter()
         .filter(|effect| affects(effect, perm, is_creature))
+        .copied()
         .collect();
-    effects.sort_by_key(|effect| effect.timestamp());
+    // CR 303.4 / 613.7c: each Aura attached to `perm` contributes its static P/T
+    // modifier, timestamped by the Aura's own object id (CR 613.7).
+    for aura in &state.battlefield {
+        if aura.attached_to == Some(perm.id) {
+            if let Some(effect) = aura_pt_effect(aura, db) {
+                if affects(&effect, perm, is_creature) {
+                    effects.push(effect);
+                }
+            }
+        }
+    }
+    effects.sort_by_key(StaticEffect::timestamp);
     effects
+}
+
+/// The layer-7c power/toughness [`StaticEffect`] a single attached Aura `aura`
+/// contributes to its host (CR 303.4 / 613.7c), or `None` if `aura` is not an
+/// attached Aura (no host, or its card carries no [`AuraGrant`](crate::AuraGrant)).
+///
+/// Synthesized on demand rather than stored (ADR 0010): its `source` is the Aura's
+/// own object id — a strictly increasing, replayable timestamp (CR 613.7) — and it
+/// is keyed to the specific host permanent, so it folds in exactly like a pump
+/// keyed to that permanent, and disappears when the Aura leaves.
+fn aura_pt_effect(aura: &Permanent, db: &CardDatabase) -> Option<StaticEffect> {
+    let host = aura.attached_to?;
+    let grant = db.card(aura.card)?.aura?;
+    Some(StaticEffect {
+        source: aura.id.0,
+        affects: EffectAffects::SpecificPermanent(host),
+        modification: Modification::PowerToughness {
+            power: grant.power,
+            toughness: grant.toughness,
+        },
+        duration: Duration::WhileOnBattlefield,
+    })
 }
 
 /// Whether `effect` applies to `perm`, given whether `perm` is currently a
@@ -212,6 +259,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: BTreeMap::new(),
+            attached_to: None,
         });
         id
     }
@@ -291,7 +339,7 @@ mod tests {
         assert_eq!(ch.toughness, Some(4));
 
         let perm = state.battlefield.iter().find(|p| p.id == boar).unwrap();
-        let ordered: Vec<u64> = ordered_pt_modifiers(&state, perm, true)
+        let ordered: Vec<u64> = ordered_pt_modifiers(&state, perm, true, &db)
             .iter()
             .map(|effect| effect.timestamp())
             .collect();
@@ -495,7 +543,7 @@ mod tests {
         // The ordering is deterministic: ascending timestamp (source id), not the
         // Vec's insertion order.
         let perm = state.battlefield.iter().find(|p| p.id == boar).unwrap();
-        let ordered: Vec<u64> = ordered_pt_modifiers(&state, perm, true)
+        let ordered: Vec<u64> = ordered_pt_modifiers(&state, perm, true, &db)
             .iter()
             .map(|effect| effect.timestamp())
             .collect();

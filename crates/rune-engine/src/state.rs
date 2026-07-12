@@ -122,6 +122,22 @@ pub struct Permanent {
     /// stored. A kind absent from the map means zero of that counter; a present
     /// entry is a positive count.
     pub counters: BTreeMap<CounterKind, u32>,
+    /// The permanent this one is attached to, if any (CR 303.4 / 701.3) — used
+    /// today for an Aura, which enters attached to the object its enchant
+    /// ability chose (CR 303.4d) and stays attached until it leaves the
+    /// battlefield or its host does.
+    ///
+    /// **Raw stored state, not a derivation** (ADR 0010 §1): the attachment is a
+    /// per-object fact nothing else in [`GameState`] determines, like
+    /// [`Self::counters`]. The Aura's continuous power/toughness contribution to
+    /// its host *is* derived from this attachment on demand via
+    /// [`characteristics`](crate::characteristics::characteristics) and is never
+    /// stored, so it vanishes the instant the Aura leaves (nothing to prune).
+    /// `None` for an unattached permanent (every non-Aura today). Only an
+    /// on-battlefield [`PermanentId`] is a legal host; a dangling reference (the
+    /// host having left) is caught by the CR 704.5m state-based action, which
+    /// puts the Aura into its owner's graveyard.
+    pub attached_to: Option<PermanentId>,
 }
 
 impl Permanent {
