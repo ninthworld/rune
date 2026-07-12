@@ -19,9 +19,15 @@ provider, see [`local-ai-setup.md`](local-ai-setup.md).
 
 ## Labels
 
-`agent-task`, `agent` (on PRs), `bug`, `decision`, `dependencies`,
+`agent-task`, `agent` (on PRs), `bug`, `decision`, `dependencies`, `ci-change` (on PRs
+touching CI-governance paths — see below),
 `area:{engine,protocol,server,cli,client,docs,ci}`,
-`status:{ready,blocked,needs-decision}`, `good-first-task`.
+`status:{ready,in-progress,review,blocked,needs-decision}`, `good-first-task`.
+
+`status:in-progress` and `status:review` are the issue-runner lifecycle states from
+[ADR 0016](../decisions/0016-provider-neutral-issue-runner.md): a run claims a
+`status:ready` issue by atomically creating its `agent/<issue>-<slug>` branch, and moves
+it to `status:review` only once the draft PR exists.
 
 ## Definition of done
 
@@ -96,11 +102,17 @@ One-time setup for a new machine — create the app's private key at
 override with `RUNE_BOT_KEY` / `RUNE_BOT_APP_ID`. The key is a credential: never commit
 it (`*.pem` is gitignored) and never paste it into a PR or issue.
 
-The app's granted permissions are `contents`, `issues`, and `pull_requests` (write),
-plus `metadata`, `actions`, and `checks` (read). It deliberately has **no `workflows`
-permission**, so a PR that touches `.github/workflows/` is rejected at push time and
-must be opened by the maintainer instead. Grant `workflows: write` on the app only if
-that tradeoff is revisited.
+The app's granted permissions are `contents`, `issues`, `pull_requests`, and
+`workflows` (write), plus `metadata`, `actions`, and `checks` (read).
+
+`workflows: write` means the bot **can edit the CI that gates its own PR** — including
+hollowing out a required job while keeping its name, which reports green. GitHub does
+not prevent this; the human code-owner review does (CODEOWNERS covers `*`, so every PR
+needs the maintainer's approval). Read any diff touching `.github/workflows/`,
+`.github/actions/`, `.github/rulesets/`, `.github/CODEOWNERS`, `Makefile`, or
+`scripts/bot-*.sh` with that in mind. [ADR 0016](../decisions/0016-provider-neutral-issue-runner.md)
+records the tradeoff and the runner-side containment (an explicit per-run opt-in plus a
+`ci-change` label, so such a change can never arrive unremarked).
 
 Unlike the default `GITHUB_TOKEN` inside Actions (see the recursion caveat below), an
 installation token used from a developer machine **does** trigger the required checks.
@@ -119,7 +131,8 @@ updates it — since the branch is exclusively its own, it may rebase onto curre
 and push with `--force-with-lease` (see the force-push rule in `AGENTS.md`), which
 re-triggers the required checks against the new base. A merge commit from `main` is not
 an option here (linear history is required). Executable worktree/rebase automation is
-out of scope for this contract and lives in the future agent-runner task.
+out of scope for this contract and lives in the issue runner
+([ADR 0016](../decisions/0016-provider-neutral-issue-runner.md), implemented by #186).
 
 ## Other repository settings (apply once on GitHub)
 
