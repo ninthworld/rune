@@ -13,6 +13,9 @@ test-results/
 .env
 .env.*
 !.env.example
+# GitHub App private keys (scripts/bot-token.sh). These live in ~/.config/rune,
+# but never let a stray copy in the worktree become a commit.
+*.pem
 # Editors / OS
 .DS_Store
 .idea/

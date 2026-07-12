@@ -70,6 +70,35 @@ enforces:
   is the repository **Admin** role, reserved for explicit emergencies; every bypass is
   recorded in the repository audit log, so it is auditable after the fact.
 
+### Bot-authored PRs
+
+"Only a human other than the PR author may approve" only holds if agent PRs are not
+authored by the maintainer. A PR is authored by whoever's token calls the API, so a
+local agent session using the maintainer's `gh` login produces a PR **@ninthworld
+cannot approve** — GitHub forbids approving your own PR, leaving the Admin bypass as
+the only way to merge. That is the failure this section exists to prevent.
+
+Agent PRs are therefore opened as **`rune-agent[bot]`**, a GitHub App the maintainer
+owns (App ID 4277040, installed on this repo only). Commits keep their real author;
+only the push and the PR carry the bot identity.
+
+    scripts/bot-token.sh            # mints a 1h installation token
+    scripts/bot-pr.sh "<title>" "<body>"   # pushes the branch, opens the PR as the bot
+
+One-time setup for a new machine — create the app's private key at
+`~/.config/rune/rune-agent.pem` (mode `600`) and its App ID at `~/.config/rune/app-id`;
+override with `RUNE_BOT_KEY` / `RUNE_BOT_APP_ID`. The key is a credential: never commit
+it (`*.pem` is gitignored) and never paste it into a PR or issue.
+
+The app's granted permissions are `contents`, `issues`, and `pull_requests` (write),
+plus `metadata`, `actions`, and `checks` (read). It deliberately has **no `workflows`
+permission**, so a PR that touches `.github/workflows/` is rejected at push time and
+must be opened by the maintainer instead. Grant `workflows: write` on the app only if
+that tradeoff is revisited.
+
+Unlike the default `GITHUB_TOKEN` inside Actions (see the recursion caveat below), an
+installation token used from a developer machine **does** trigger the required checks.
+
 ### Handling stale branches
 
 Because strict status checks are on, an agent PR that has fallen behind `main` is
