@@ -99,6 +99,12 @@ that tradeoff is revisited.
 Unlike the default `GITHUB_TOKEN` inside Actions (see the recursion caveat below), an
 installation token used from a developer machine **does** trigger the required checks.
 
+One coupling to remember: `claude-code-action` skips any run triggered by a bot unless
+that bot is allowlisted, so `.github/workflows/claude-code-review.yml` sets
+`allowed_bots: 'rune-agent[bot]'`. Without it the ADR 0015 review silently no-ops on
+every agent PR — and since `claude-review` is not a required check, nothing would fail
+to tell you. Renaming the app means updating that allowlist.
+
 ### Handling stale branches
 
 Because strict status checks are on, an agent PR that has fallen behind `main` is
