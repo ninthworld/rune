@@ -25,7 +25,17 @@ test("the claude adapter does not use --bare", () => {
   // --bare skips auto-discovery of CLAUDE.md, which is how root and nested AGENTS.md reach the
   // model at all. ADR 0016 requires that behaviour be preserved.
   assert.equal(argv.includes("--bare"), false);
-  assert.deepEqual(argv, ["claude", "-p", "the brief", "--permission-mode", "bypassPermissions"]);
+  assert.deepEqual(argv.slice(0, 5), ["claude", "-p", "the brief", "--permission-mode", "bypassPermissions"]);
+});
+
+test("the claude adapter asks for a streaming event feed, so a run can be watched", () => {
+  // Plain print mode emits nothing until the run is over, which makes a 40-minute run look exactly
+  // like a hung one — and the first thing anyone does with a silent agent is kill it.
+  const argv = adapterFor("claude").argv("brief", { isolation: { mode: "container" } });
+
+  assert.ok(argv.includes("--output-format") && argv.includes("stream-json"));
+  assert.ok(argv.includes("--verbose"), "stream-json requires --verbose in print mode");
+  assert.equal(adapterFor("claude").structured, true, "the raw stream is worth keeping verbatim");
 });
 
 test("the codex adapter runs non-interactively", () => {

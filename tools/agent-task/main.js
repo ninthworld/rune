@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { AUDIT_BRANCH, observePr, publishSummary } from "./audit.js";
@@ -20,12 +20,15 @@ import { GATE_SETS, runGates } from "./verify.js";
 const USAGE = `scripts/agent-task — drive one RUNE issue to a reviewable PR (ADR 0016)
 
   start <issue> --provider <${PROVIDERS.join("|")}> [--allow-ci] [--timeout 45m]
-                [--gates verify|check] [--unsafe-same-uid]
+                [--gates verify|check] [--unsafe-same-uid] [--quiet]
                           claim, run the provider, verify, and open a draft PR
+                          (streams what the provider is doing; --quiet to suppress)
   resume <issue> [--rerun-provider] [--allow-ci]
                           re-enter a failed run; the claim and the work are still there
   report <issue|run-id>   re-observe the PR and whether the ADR 0015 review actually ran,
                           and publish a superseding run summary
+  logs [<issue>|<run-id>] [--follow] [--raw]
+                          watch what the provider is doing, live
   status [<issue>|<run-id>]  show lifecycle state
   list                    active and recent runs (⚠️ STALE marks an abandoned claim)
   release <issue> [--force]  drop the claim; --force takes over a stale one
@@ -162,9 +165,26 @@ async function cmdStart({ positional, flags }) {
   writeFileSync(join(dir, "brief.md"), brief);
 
   run = transition({ ...run, workspace }, "implementing", root);
-  process.stdout.write(`running ${provider} in ${workspace} (isolation: ${isolation.mode}, timeout: ${timeoutMs / 60000}m)\n`);
+  process.stdout.write(
+    [
+      `running ${provider} in ${workspace}`,
+      `  isolation ${isolation.mode}   timeout ${timeoutMs / 60000}m`,
+      `  watch     scripts/agent-task logs ${number} --follow`,
+      "",
+    ].join("\n"),
+  );
 
-  const result = await runProvider({ run, workspace, isolation, root, brief, timeoutMs });
+  const result = await runProvider({
+    run,
+    workspace,
+    isolation,
+    root,
+    brief,
+    timeoutMs,
+    // Live, unless asked not to. A run that prints nothing for forty minutes is indistinguishable
+    // from a run that has hung, and the first thing anyone does with a silent agent is kill it.
+    onLine: flags.quiet === true ? null : (line) => process.stdout.write(`${line}\n`),
+  });
   run = transition({ ...run, ...result }, result.outcome, root);
   process.stdout.write(`\n${provider} exited ${result.exit_code} — ${run.state}\n`);
 
@@ -378,6 +398,54 @@ async function cmdReport({ positional }) {
   );
 }
 
+/**
+ * Watches a run's provider log, live.
+ *
+ * `start` already streams to its own terminal; this is for the other cases — a run you left in
+ * another window, a run you want to re-read after it failed, a run started with `--quiet`.
+ */
+async function cmdLogs({ positional, flags }) {
+  const key = positional[0];
+  const root = runsRoot();
+  const run = (key && loadRun(key, root)) || activeRunForIssue(Number(key), root) || listRuns(root)[0];
+  if (!run) throw new TaskError(key ? `no run found for ${key}` : "no runs");
+
+  const file = join(runDir(run.run_id, root), "logs", flags.raw === true ? "provider.jsonl" : "provider.log");
+  if (!existsSync(file)) throw new TaskError(`${run.run_id} has no log yet (${file})`);
+
+  process.stderr.write(`# ${run.run_id} — #${run.issue} (${run.state})\n`);
+
+  let offset = 0;
+  const drain = () => {
+    const size = statSync(file).size;
+    if (size <= offset) return;
+    const stream = createReadStream(file, { start: offset, end: size - 1, encoding: "utf8" });
+    offset = size;
+    stream.on("data", (chunk) => process.stdout.write(chunk));
+  };
+  drain();
+
+  if (flags.follow !== true && flags.f !== true) return;
+
+  // Poll rather than fs.watch: the writer may be a container on the other side of a bind mount,
+  // where inotify events do not reliably cross.
+  await new Promise((resolve) => {
+    const timer = setInterval(() => {
+      drain();
+      const current = loadRun(run.run_id, root);
+      if (current && !isActive(current)) {
+        clearInterval(timer);
+        process.stderr.write(`# run ended: ${current.state}\n`);
+        resolve();
+      }
+    }, 500);
+    process.on("SIGINT", () => {
+      clearInterval(timer);
+      resolve();
+    });
+  });
+}
+
 async function cmdRelease({ positional, flags }) {
   const number = issueArg(positional, "release");
   await release(connect(), { issue: number, force: flags.force === true, root: runsRoot() });
@@ -447,6 +515,7 @@ function cmdDoctor() {
 const COMMANDS = {
   start: cmdStart,
   resume: cmdResume,
+  logs: cmdLogs,
   report: cmdReport,
   status: cmdStatus,
   list: cmdList,
