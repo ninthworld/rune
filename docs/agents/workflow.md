@@ -17,6 +17,26 @@
 To run this loop locally with a model served by Ollama instead of a cloud
 provider, see [`local-ai-setup.md`](local-ai-setup.md).
 
+## The issue runner
+
+`scripts/agent-task` automates the loop above ([ADR 0016](../decisions/0016-provider-neutral-issue-runner.md)).
+It performs every GitHub mutation as `rune-agent[bot]`, and it never approves or merges.
+
+    scripts/agent-task doctor              # can this machine run agent tasks?
+    scripts/agent-task start 186 --provider claude
+    scripts/agent-task status              # lifecycle state of active runs
+    scripts/agent-task release 186         # drop the claim, return the issue to status:ready
+
+Claiming is **atomic**: the runner creates the issue's `agent/<issue>-<slug>` branch from
+current `main`, and GitHub's 422 on an existing ref means exactly one runner can win. (A
+GitHub App cannot be an issue assignee, so the branch — not an assignment — is the lock.)
+A losing runner mutates nothing. Every preflight check runs before the first mutation, so a
+task that is closed, blocked, dependency-blocked, malformed, or already claimed leaves no
+trace.
+
+Running the provider, verifying, and opening the PR are ADR 0016 slices 2–4 and are not
+implemented yet; today `start` stops once the claim is held.
+
 ## Labels
 
 `agent-task`, `agent` (on PRs), `bug`, `decision`, `dependencies`, `ci-change` (on PRs

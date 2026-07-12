@@ -36,6 +36,8 @@ before writing code.
 - `crates/rune-cli/` — terminal client; proves the protocol without a UI.
 - `clients/web/` — React + Pixi client. Has its own `AGENTS.md`.
 - `docs/` — brief, protocol spec, UI requirements, ADRs (`docs/decisions/`).
+- `tools/agent-task/` — the issue runner (ADR 0016). Dependency-free Node; never add a
+  dependency to it. Entry point is `scripts/agent-task`.
 - `prototypes/` — reference-only HTML prototypes. Never import from here.
 
 Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.

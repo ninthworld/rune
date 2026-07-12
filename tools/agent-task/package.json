@@ -1,0 +1,9 @@
+{
+  "name": "@rune/agent-task",
+  "private": true,
+  "type": "module",
+  "description": "Provider-neutral issue runner (ADR 0016). Dependency-free Node 20 — never add a dependency here.",
+  "engines": {
+    "node": ">=20"
+  }
+}

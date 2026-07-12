@@ -1,4 +1,4 @@
-.PHONY: verify check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit e2e e2e-browser deny setup
+.PHONY: verify check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit runner-test e2e e2e-browser deny setup
 
 # The complete local pre-merge gate: everything required before a PR merges into
 # `main`. Composes the existing targets 1:1 with the four required GitHub checks —
@@ -6,7 +6,7 @@
 # single command whose coverage matches CI. `make check` remains the fast inner loop.
 verify: check e2e deny ## Full pre-merge verification: Engine + Client + E2E + cargo-deny (mirrors every required GitHub check)
 
-check: engine-lint engine-test client-check client-audit ## Fast inner-loop gate: everything the Engine + Client CI jobs run (browser e2e and cargo-deny are separate — see `verify`)
+check: engine-lint engine-test client-check client-audit runner-test ## Fast inner-loop gate: everything the Engine + Client CI jobs run (browser e2e and cargo-deny are separate — see `verify`)
 
 engine-lint:
 	cargo fmt --all -- --check
@@ -31,6 +31,14 @@ client-check: client-install
 # Threshold and escape hatch (package.json "overrides") documented in clients/web/AGENTS.md.
 client-audit: client-install
 	cd clients/web && npm audit --audit-level=high
+
+# Issue-runner tests (ADR 0016). Dependency-free Node 20, so this needs no install step
+# and runs in the `Client` CI job, which is the one that already has a Node toolchain.
+# The shell expands this glob, deliberately: `node --test '<glob>'` needs Node 21+ (CI
+# pins 20), and passing the directory makes Node resolve it as a package via its
+# package.json rather than searching it for tests.
+runner-test:
+	node --test tools/agent-task/*.test.js
 
 # Browser end-to-end suite (ADR 0011). Deliberately OUTSIDE `make check`: it needs
 # a real browser and a built-and-served client, so it runs as its own target and
