@@ -36,9 +36,15 @@ Design principles (full detail in [`docs/brief.md`](docs/brief.md)):
 ## Getting started
 
 ```sh
-scripts/bootstrap.sh   # checks toolchains (Rust stable, Node 20+)
-make check             # everything CI runs: fmt, clippy, tests, client build
+scripts/bootstrap.sh   # checks prerequisites for both gates below
+make check             # fast inner-loop gate: Engine + Client (fmt, clippy, tests, client build)
+make verify            # full pre-merge gate: check + E2E browser suite + cargo-deny
 ```
+
+`make check` is the fast gate you run constantly while working. `make verify` is the
+complete pre-merge surface: it composes `make check`, `make e2e`, and `make deny`, so
+its coverage matches every GitHub check required to merge (`Engine`, `Client`, `E2E`,
+`cargo-deny`). Run `make verify` before requesting final review.
 
 | Directory | What it is |
 |---|---|
@@ -120,7 +126,8 @@ This repository is primarily developed by AI coding agents working through GitHu
 issues and pull requests, with humans reviewing and merging. The contract for agents
 lives in [`AGENTS.md`](AGENTS.md); the process lives in
 [`docs/agents/workflow.md`](docs/agents/workflow.md). Every PR must pass CI
-(`Engine` and `Client` checks) and human review — nothing merges automatically.
+(`Engine`, `Client`, `E2E`, and `cargo-deny` checks — reproduce them all with
+`make verify`) and human review — nothing merges automatically.
 
 ## Documentation
 

@@ -19,19 +19,16 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      # Run through the Make targets so CI and `make check` use identical commands;
+      # the Makefile is the single source of truth for fmt/clippy/test options.
+      - name: Lint (fmt + clippy)
+        run: make engine-lint
       - name: Test
-        run: cargo test --workspace
+        run: make engine-test
 
   client:
     name: Client
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: clients/web
     # The unit gate never needs a browser; skip Playwright's browser download on
     # install so the fast Client job stays browser-free (browsers live in the E2E job).
     env:
@@ -43,20 +40,10 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: clients/web/package-lock.json
-      - name: Install
-        run: npm ci
-      - name: Audit
-        # Fail on new high/critical advisories. Accepted findings are pinned via
-        # package.json "overrides"; threshold documented in clients/web/AGENTS.md.
-        run: npm audit --audit-level=high
-      - name: Lint
-        run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Test
-        run: npm run test
-      - name: Build
-        run: npm run build
+      # `make client-audit client-check` runs `npm ci` once (shared prerequisite),
+      # then audit, lint, typecheck, test, and build — identical to the local gate.
+      - name: Check (audit + lint + typecheck + test + build)
+        run: make client-audit client-check
 
   e2e:
     name: E2E
@@ -65,9 +52,6 @@ jobs:
     # browser suite needs a real browser and a built-and-served client, so it runs
     # as its own job rather than slowing the fast unit gate. Required for the M1
     # exit criterion but governed independently.
-    defaults:
-      run:
-        working-directory: clients/web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -80,19 +64,13 @@ jobs:
       # Engine job so this adds no cold compile on a warm cache.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Build rune-server
-        run: cargo build -p rune-server
-        working-directory: ${{ github.workspace }}
-      - name: Install
-        run: npm ci
-      - name: Typecheck e2e
-        run: npm run e2e:typecheck
-      # Install only the pinned Chromium (+OS deps). On a runner image that already
-      # ships this Chromium revision this is a fast no-op; it never fetches a matrix.
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      # `make e2e-browser` installs only the pinned Chromium (+OS deps); `make e2e`
+      # builds rune-server and runs the typecheck + browser suite. Both go through the
+      # Makefile so the E2E commands match local runs, and the single make invocation
+      # shares one `npm ci`. On a runner image that already ships this Chromium
+      # revision the install is a fast no-op and never fetches a matrix.
       - name: Run e2e
-        run: npm run e2e
+        run: make e2e-browser e2e
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

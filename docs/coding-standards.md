@@ -2,12 +2,14 @@
 
 The rules that always apply. Read this before writing code; agents must load it
 alongside `AGENTS.md`. Everything machine-checkable here is enforced by
-`make check` — the fast unit gate (the `Engine` + `Client` CI jobs); if it isn't
+`make check` — the fast inner-loop gate (the `Engine` + `Client` CI jobs); if it isn't
 green, it isn't done. As of ADR 0011 the browser end-to-end suite runs as a
 **separate `make e2e` target and `E2E` CI job**, deliberately outside `make check`
-(it needs a real browser and a built, served client). So the full CI surface is
-`make check` **plus** the `E2E` job: a green `make check` is necessary but is no
-longer the complete CI picture on its own.
+(it needs a real browser and a built, served client), and supply-chain checks run as
+the **separate `make deny` target and `cargo-deny` CI job**. So a green `make check` is
+necessary but is not the complete CI picture on its own. The one command that reproduces
+the full required surface locally is **`make verify`** (`make check` + `make e2e` +
+`make deny`) — run it before requesting final review.
 
 These standards sit **below** the architectural hard rules in `AGENTS.md`
 (zero game logic in the client, zero I/O in the engine, protocol = contract).
@@ -80,7 +82,9 @@ Enforced by `make client-check` (typecheck + build) and, once wired,
 ## Before you push
 
 ```
-make check
+make check    # fast gate — run constantly while working
+make verify   # full pre-merge gate — check + E2E + cargo-deny, before final review
 ```
 
-Green `make check`, updated tests and docs, no unrelated diffs. That's the bar.
+Green `make check` throughout, green `make verify` before final review, updated tests
+and docs, no unrelated diffs. That's the bar.
