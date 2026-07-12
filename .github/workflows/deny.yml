@@ -15,6 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      # Install a prebuilt cargo-deny, then run it through `make deny` so the set of
+      # checks (advisories licenses bans sources) lives only in the Makefile and CI
+      # cannot drift from the local `make verify` gate.
+      - uses: taiki-e/install-action@v2
         with:
-          command: check advisories licenses bans sources
+          tool: cargo-deny
+      - name: Deny check
+        run: make deny
