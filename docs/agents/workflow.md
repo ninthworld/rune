@@ -82,8 +82,14 @@ Agent PRs are therefore opened as **`rune-agent[bot]`**, a GitHub App the mainta
 owns (App ID 4277040, installed on this repo only). Commits keep their real author;
 only the push and the PR carry the bot identity.
 
-    scripts/bot-token.sh            # mints a 1h installation token
+    scripts/bot-token.sh                   # mints a 1h installation token
+    scripts/bot-push.sh [--force-with-lease]   # pushes the current branch as the bot
     scripts/bot-pr.sh "<title>" "<body>"   # pushes the branch, opens the PR as the bot
+
+Use `bot-push.sh` for the rebase-onto-`main` flow above, so the branch stays bot-owned
+and the lease ref exists. Never `git push` an agent branch directly: pushing to a bare
+URL rather than the named remote creates no remote-tracking ref, and `--force-with-lease`
+then silently has nothing to compare against.
 
 One-time setup for a new machine — create the app's private key at
 `~/.config/rune/rune-agent.pem` (mode `600`) and its App ID at `~/.config/rune/app-id`;
