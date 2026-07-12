@@ -3,7 +3,7 @@
 //! [`run_state_based_actions`] as a pipeline stage.
 
 use crate::characteristics::characteristics;
-use crate::id::{CardInstance, PermanentId};
+use crate::id::PermanentId;
 use crate::player::LossReason;
 use crate::state::{EffectAffects, GameState, Permanent};
 use crate::CardDatabase;
@@ -74,16 +74,10 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             .map(|perm| perm.id)
             .collect();
         for id in doomed {
-            if let Some(pos) = state.battlefield.iter().position(|p| p.id == id) {
-                let perm = state.battlefield.remove(pos);
-                // Ownership is approximated by controller until separate ownership
-                // tracking lands (mirrors the engine→protocol `owner` shim).
-                if let Some(owner) = state.players.get_mut(perm.controller.0) {
-                    owner.graveyard.push(CardInstance {
-                        id: perm.instance,
-                        card: perm.card,
-                    });
-                }
+            // Route through the one leaves-battlefield → graveyard seam (CR 700.4)
+            // so a lethal-damage / deathtouch death and a `Destroy` death are the
+            // same observable zone change for the dies trigger (CR 603.6c).
+            if state.move_permanent_to_graveyard(id) {
                 changed = true;
             }
         }

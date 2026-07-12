@@ -453,7 +453,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 27);
+        assert_eq!(db.len(), 28);
     }
 
     #[test]
@@ -698,6 +698,25 @@ mod tests {
     }
 
     #[test]
+    fn issue_151_dies_fixture_carries_a_self_dies_draw_trigger() {
+        // The dies fixture (id 28) is a creature whose triggered ability fires when
+        // it dies (CR 700.4 / 603.6c) and draws its controller a card.
+        let db = CardDatabase::bundled().unwrap();
+        let lurker = db.card(CardId(28)).unwrap();
+        assert_eq!(lurker.name, "Cryptvine Lurker");
+        assert_eq!(lurker.types, vec![CardType::Creature]);
+        assert_eq!(lurker.power, Some(2));
+        assert_eq!(lurker.toughness, Some(2));
+        assert_eq!(
+            lurker.abilities,
+            vec![Ability::Triggered {
+                event: TriggerCondition::SelfDies,
+                effects: vec![Effect::DrawCard { count: 1 }],
+            }]
+        );
+    }
+
+    #[test]
     fn issue_150_pump_fixture_carries_its_until_end_of_turn_verb() {
         // The Giant-Growth-style fixture (id 27) is a vanilla-abilities instant
         // whose spell effect pumps a target creature +3/+3 until end of turn.
@@ -745,8 +764,8 @@ mod tests {
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the twenty-seven fixtures; FIX2 reprints one — twenty-eight printings total.
-        assert_eq!(printings.len(), 28);
+        // FIX prints the twenty-eight fixtures; FIX2 reprints one — twenty-nine printings total.
+        assert_eq!(printings.len(), 29);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));

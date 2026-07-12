@@ -397,6 +397,34 @@ impl GameState {
         id
     }
 
+    /// Move the permanent `id` from the battlefield to its owner's graveyard —
+    /// the single leaves-battlefield → graveyard seam every death routes through
+    /// (CR 700.4: a creature put into a graveyard from the battlefield; CR 603.6c:
+    /// the resulting "dies" event). Both the lethal-damage / deathtouch
+    /// state-based action (CR 704.5g/h, in [`crate::sba`]) and a `Destroy` effect
+    /// (CR 701.7, in [`crate::apply`]) call this, so a death looks identical no
+    /// matter its cause and is observed uniformly by the diff-based trigger
+    /// collector ([`crate::triggers`]). Returns `true` when a permanent with that
+    /// id was on the battlefield and moved.
+    ///
+    /// Ownership apart from control is not tracked yet, so the controller stands
+    /// in as the owner (mirrors the engine→protocol `owner` shim); the physical
+    /// [`CardInstance`] carries over unchanged while the battlefield
+    /// [`PermanentId`] is dropped, preserving zone-change identity.
+    pub(crate) fn move_permanent_to_graveyard(&mut self, id: PermanentId) -> bool {
+        let Some(pos) = self.battlefield.iter().position(|p| p.id == id) else {
+            return false;
+        };
+        let perm = self.battlefield.remove(pos);
+        if let Some(owner) = self.players.get_mut(perm.controller.0) {
+            owner.graveyard.push(CardInstance {
+                id: perm.instance,
+                card: perm.card,
+            });
+        }
+        true
+    }
+
     /// Mint a fresh [`CardInstance`] for `card`, drawing a unique
     /// [`CardInstanceId`] from the monotonic counter.
     ///
