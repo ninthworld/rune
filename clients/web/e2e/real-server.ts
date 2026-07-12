@@ -32,6 +32,24 @@ export interface RealServer {
 /** How long to wait for the server to announce its listening port before failing. */
 const STARTUP_TIMEOUT_MS = 15_000;
 
+/** Options for {@link startRealServer}. */
+export interface RealServerOptions {
+  /**
+   * A fixed engine shuffle seed to pin **every** game to (ADR 0014), passed as
+   * `--rng-seed`. Left unset for normal, non-deterministic play (the default, so
+   * the existing smoke tier is unaffected); the scripted-full-game spec sets it so
+   * a whole game — decks, draws, and outcome — replays identically every run.
+   */
+  seed?: number;
+  /**
+   * A fixed starting life total for **every** game, passed as `--starting-life`,
+   * overriding the room format's default. Left unset for normal play; the
+   * scripted-full-game spec sets a small value so the game reaches its lethal
+   * `LifeZero` in a few combat turns and finishes inside the CI budget.
+   */
+  startingLife?: number;
+}
+
 /**
  * Resolve the `rune-server` binary path: the `RUNE_SERVER_BIN` override if set,
  * else the workspace debug build at `<repo>/target/debug/rune-server`. The e2e job
@@ -64,10 +82,16 @@ function stripAnsi(text: string): string {
  * comes up within {@link STARTUP_TIMEOUT_MS}. The caller owns the returned handle
  * and must {@link RealServer.close} it.
  */
-export function startRealServer(): Promise<RealServer> {
+export function startRealServer(options: RealServerOptions = {}): Promise<RealServer> {
   const binary = resolveServerBinary();
   // Bind port 0: the OS assigns a free port, which the server logs back to us.
-  const child: ChildProcessWithoutNullStreams = spawn(binary, ['--addr', '127.0.0.1:0'], {
+  // Pin the shuffle seed when asked, so a scripted game is fully reproducible.
+  const args = ['--addr', '127.0.0.1:0'];
+  if (options.seed !== undefined) args.push('--rng-seed', String(options.seed));
+  if (options.startingLife !== undefined) {
+    args.push('--starting-life', String(options.startingLife));
+  }
+  const child: ChildProcessWithoutNullStreams = spawn(binary, args, {
     // `NO_COLOR` keeps the log line ANSI-free (we also strip defensively);
     // `RUST_LOG=info` guarantees the "listening" line the port is parsed from.
     env: { ...process.env, NO_COLOR: '1', RUST_LOG: process.env.RUST_LOG ?? 'info' },

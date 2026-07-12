@@ -144,6 +144,17 @@ struct Inner {
     formats: FormatRegistry,
     /// The cap on concurrently hosted rooms.
     max_rooms: usize,
+    /// A fixed engine shuffle seed to build every game from, when set. `None` for
+    /// normal play, where [`start_game`](Lobby::start_game) generates a distinct
+    /// per-game seed. The seed is server-side state that never reaches a client
+    /// (ADR 0014); pinning it makes a whole game reproducible for the end-to-end
+    /// suite (issue #145). Sourced from [`Config::rng_seed`](crate::Config::rng_seed).
+    seed_override: Option<u64>,
+    /// A fixed starting life total to build every game from, when set, overriding
+    /// the room format's default (ADR 0013 §4). `None` for normal play. A low value
+    /// makes the e2e game reach its lethal `LifeZero` in a few turns (issue #145).
+    /// Sourced from [`Config::starting_life`](crate::Config::starting_life).
+    life_override: Option<i32>,
 }
 
 /// The registry of live sessions and active rooms.
@@ -290,15 +301,35 @@ impl Lobby {
     pub const DEFAULT_MAX_ROOMS: usize = 1024;
 
     /// Create an empty lobby that builds every room's game from `db` and hosts at
-    /// most `max_rooms` rooms at once.
+    /// most `max_rooms` rooms at once. Every game is built from a distinct,
+    /// server-generated seed and each format's own starting life; use
+    /// [`Lobby::with_overrides`] to pin them instead.
     #[must_use]
     pub fn new(db: CardDatabase, max_rooms: usize) -> Self {
+        Self::with_overrides(db, max_rooms, None, None)
+    }
+
+    /// Create an empty lobby, optionally pinning the engine shuffle `seed_override`
+    /// (ADR 0014) and/or a fixed `life_override` starting life every game is built
+    /// from (issue #145). Both `None` behaves exactly like [`Lobby::new`]. These are
+    /// server/operator concerns (neither reaches a client): a pinned seed makes a
+    /// game reproducible, and a low starting life makes it short enough to script
+    /// end-to-end. Driven by [`Config`](crate::Config).
+    #[must_use]
+    pub fn with_overrides(
+        db: CardDatabase,
+        max_rooms: usize,
+        seed_override: Option<u64>,
+        life_override: Option<i32>,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 registry: RwLock::new(Registry::default()),
                 db,
                 formats: FormatRegistry::with_defaults(),
                 max_rooms,
+                seed_override,
+                life_override,
             }),
         }
     }
@@ -309,7 +340,27 @@ impl Lobby {
     /// Returns the underlying [`serde_json::Error`] if the bundled snapshot fails
     /// to parse (see [`CardDatabase::bundled`]).
     pub fn bundled(max_rooms: usize) -> Result<Self, serde_json::Error> {
-        Ok(Self::new(CardDatabase::bundled()?, max_rooms))
+        Self::bundled_with_overrides(max_rooms, None, None)
+    }
+
+    /// Create a bundled-database lobby, optionally pinning the engine shuffle
+    /// `seed_override` and/or a fixed `life_override` (issue #145). See
+    /// [`Lobby::with_overrides`].
+    ///
+    /// # Errors
+    /// Returns the underlying [`serde_json::Error`] if the bundled snapshot fails
+    /// to parse (see [`CardDatabase::bundled`]).
+    pub fn bundled_with_overrides(
+        max_rooms: usize,
+        seed_override: Option<u64>,
+        life_override: Option<i32>,
+    ) -> Result<Self, serde_json::Error> {
+        Ok(Self::with_overrides(
+            CardDatabase::bundled()?,
+            max_rooms,
+            seed_override,
+            life_override,
+        ))
     }
 
     /// Register a freshly accepted connection: issue it an unguessable session token
@@ -652,13 +703,21 @@ impl Lobby {
             .iter()
             .map(|gate| PlayerSetup::new(gate.deck.clone().unwrap_or_default()))
             .collect();
+        // Seed the shuffle: a pinned override (deterministic games for the e2e
+        // suite, ADR 0014 / issue #145) if configured, else a fresh per-game seed.
+        let seed = self.inner.seed_override.unwrap_or_else(generate_seed);
         // The format supplies the engine `GameSetup` parameters (ADR 0013 §4); it is
         // guaranteed present (create_room rejected any unknown id), but fall back to
         // engine defaults rather than panicking if it is somehow absent.
-        let setup: GameSetup = match self.inner.formats.get(&room.config.game_setup) {
-            Some(format) => format.game_setup(players, generate_seed()),
-            None => GameSetup::new(players, generate_seed()),
+        let mut setup: GameSetup = match self.inner.formats.get(&room.config.game_setup) {
+            Some(format) => format.game_setup(players, seed),
+            None => GameSetup::new(players, seed),
         };
+        // A pinned starting life (e2e short game, issue #145) overrides the format's
+        // default; normal play keeps the format's value.
+        if let Some(life) = self.inner.life_override {
+            setup.starting_life = life;
+        }
         let db = self.inner.db.clone();
         let state = match GameState::new(&setup, &db) {
             Ok(state) => state,
@@ -1220,6 +1279,88 @@ mod tests {
                 _ => None,
             }
         }
+
+        /// The room handle carried by a pushed game-start hand-off, if any — the
+        /// grip a determinism test uses to join the constructed game and read its
+        /// first `GameView`.
+        fn start_handle(&self) -> Option<RoomHandle> {
+            match &*self.rx.borrow() {
+                Some(LobbySignal::Start { room, .. }) => Some(room.clone()),
+                _ => None,
+            }
+        }
+    }
+
+    /// Drive two seats to a started game in a lobby pinned to the given overrides,
+    /// then join seat 0 and return its first `GameView` — enough to assert the
+    /// shuffle is (or is not) reproducible and the starting-life override applied,
+    /// without reimplementing the engine.
+    async fn first_game_view_for(
+        seed_override: Option<u64>,
+        life_override: Option<i32>,
+    ) -> rune_protocol::GameView {
+        let lobby =
+            Lobby::bundled_with_overrides(4, seed_override, life_override).expect("bundled cards");
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+        submit_valid_deck(&lobby, &alice).await;
+        submit_valid_deck(&lobby, &bob).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        lobby
+            .command(&bob.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("bob readies");
+
+        let handle = alice.start_handle().expect("game constructed");
+        let (tx, mut rx) = watch::channel::<Option<rune_protocol::GameView>>(None);
+        assert!(handle.send(crate::RoomInput::Join {
+            seat: 0,
+            outbox: tx
+        }));
+        // Await the seat's first personalized GameView.
+        loop {
+            if let Some(view) = rx.borrow_and_update().clone() {
+                return view;
+            }
+            rx.changed().await.expect("first GameView is pushed");
+        }
+    }
+
+    /// Seat 0's opening-hand card names for a pinned seed (no life override).
+    async fn opening_hand_names_for_seed(seed_override: Option<u64>) -> Vec<String> {
+        first_game_view_for(seed_override, None)
+            .await
+            .my_hand
+            .into_iter()
+            .map(|card| card.name)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_pinned_starting_life_overrides_the_format_default() {
+        // Seat 0 sees seat 1 (its only opponent) start at the pinned life, not the
+        // format's 20 — proof the override reaches game construction (issue #145).
+        let view = first_game_view_for(Some(0xABCD), Some(4)).await;
+        let opponent_life = view.opponents.first().expect("one opponent").life;
+        assert_eq!(opponent_life, 4, "the starting-life override applied");
+    }
+
+    #[tokio::test]
+    async fn a_pinned_seed_reproduces_the_same_opening_hand() {
+        // Same override → identical shuffle (ADR 0014), so the opening hand matches.
+        let first = opening_hand_names_for_seed(Some(0xC0FF_EE00_1234_5678)).await;
+        let again = opening_hand_names_for_seed(Some(0xC0FF_EE00_1234_5678)).await;
+        assert!(!first.is_empty(), "the opening hand is non-empty");
+        assert_eq!(first, again, "a pinned seed reproduces the opening hand");
+
+        // A different pinned seed diverges (the shuffle actually depends on it).
+        let other = opening_hand_names_for_seed(Some(0x1111_2222_3333_4444)).await;
+        assert_ne!(
+            first, other,
+            "a different seed shuffles to a different opening hand"
+        );
     }
 
     #[tokio::test]

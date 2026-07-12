@@ -29,6 +29,13 @@ export default defineConfig({
   // the 2-minute budget in the issue.
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // On CI, run one spec at a time. Two of the specs each launch a real `rune-server`
+  // and two Chromium contexts (the smoke tier and the scripted full game, issue
+  // #145); letting those overlap on a small CI runner starves the browser main
+  // thread and slows a whole-game run past its budget. Serial is deterministic and
+  // still finishes the suite comfortably. Local dev keeps Playwright's default
+  // parallelism. Per-test timeouts are unchanged.
+  workers: process.env.CI ? 1 : undefined,
   retries: 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   timeout: 60_000,

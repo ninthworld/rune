@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EntityId, GameView, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
-import { publishScene } from '../testHooks';
+import { publishScene, publishView } from '../testHooks';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { EntityOverlay } from './EntityOverlay';
@@ -186,6 +186,13 @@ export function Table() {
   useEffect(() => {
     publishScene(scene);
   }, [scene]);
+
+  // Publish the raw view alongside the scene (ADR 0011; issue #145): read-only, so
+  // a browser-driven scripted game can read the offered `valid_actions` to decide
+  // its next move, then submit by clicking the real UI. A no-op in production.
+  useEffect(() => {
+    publishView(view);
+  }, [view]);
 
   if (!view || !scene) {
     // Socket is open (App only mounts the table then) but no frame has arrived
