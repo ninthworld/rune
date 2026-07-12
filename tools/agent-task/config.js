@@ -20,6 +20,18 @@ export function runsRoot() {
   return join(stateRoot(), "runs");
 }
 
+/**
+ * Build caches, shared across runs.
+ *
+ * A run's `HOME` is a fresh scratch directory, so without this every run re-downloads the crate
+ * registry, `node_modules`, and a Playwright browser before it can verify anything. The cache is
+ * content-addressed and lives outside the workspace, so sharing it costs nothing in isolation:
+ * it is the one thing a provider may usefully carry between runs.
+ */
+export function cacheRoot() {
+  return join(stateRoot(), "cache");
+}
+
 export function repoSlug() {
   const slug = process.env.RUNE_BOT_REPO || "ninthworld/rune";
   const [owner, repo] = slug.split("/");

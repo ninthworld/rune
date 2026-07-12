@@ -111,7 +111,7 @@ test("uid isolation runs the provider as another user with a reset environment",
   assert.deepEqual(argv.slice(-3), ["claude", "-p", "brief"]);
 });
 
-test("container isolation mounts only the run directory, never the host home", () => {
+test("container isolation mounts only the run directory and the build cache, never the host home", () => {
   const dir = runDir(run.run_id, root);
   const { argv } = wrap(["codex", "exec", "brief"], {
     isolation: { mode: "container", engine: "podman", image: "rune/provider" },
@@ -121,12 +121,59 @@ test("container isolation mounts only the run directory, never the host home", (
   });
 
   const mounts = argv.filter((_, i) => argv[i - 1] === "--volume");
-  assert.deepEqual(mounts, [`${dir}:${dir}`], "the run dir is the only host path exposed");
+  assert.equal(mounts.length, 2, mounts.join(", "));
+  assert.ok(mounts.includes(`${dir}:${dir}`), "the run dir");
   assert.equal(
     argv.some((a) => a.includes(".config/rune")),
     false,
     "the key's directory must never be mounted",
   );
+  assert.equal(
+    argv.some((a) => a.includes("/.claude") || a.includes("/.config/gh")),
+    false,
+    "no provider login or gh login from the host either",
+  );
+});
+
+test("the container does not inherit the host's PATH", () => {
+  // /home/you/.local/bin does not exist inside the image, so passing the host PATH leaves the
+  // engine unable to resolve the provider binary at all — `docker run` fails with "executable
+  // file not found in $PATH" before the provider even starts.
+  const { argv } = wrap(["claude", "-p", "b"], {
+    isolation: { mode: "container", engine: "docker", image: "rune/provider" },
+    env: { PATH: "/home/someone/.local/bin:/usr/bin", HOME: "/h" },
+    workspace: "/w",
+    dir: "/d",
+  });
+
+  assert.equal(
+    argv.some((a) => a.startsWith("PATH=")),
+    false,
+    "the image's own PATH must win",
+  );
+  assert.ok(argv.includes("HOME=/h"), "but the rest of the allowlist still goes in");
+});
+
+test("the container runs as the invoking user, not as root", () => {
+  // As root, every file written into the mounted workspace is root-owned — and the runner, which
+  // is not root, then cannot commit the work or clean the run up.
+  const { argv } = wrap(["claude", "-p", "b"], {
+    isolation: { mode: "container", engine: "docker", image: "rune/provider" },
+    env: { HOME: "/h" },
+    workspace: "/w",
+    dir: "/d",
+  });
+
+  const user = argv[argv.indexOf("--user") + 1];
+  assert.equal(user, `${process.getuid()}:${process.getgid()}`);
+});
+
+test("toolchain caches are shared across runs, since HOME is not", () => {
+  const env = providerEnv({ provider: "claude", workspace: "/w", run, root, scratchHome: "/h", cache: join(root, "cache") });
+
+  assert.equal(env.CARGO_HOME, join(root, "cache", "cargo"));
+  assert.equal(env.NPM_CONFIG_CACHE, join(root, "cache", "npm"));
+  assert.equal(env.PLAYWRIGHT_BROWSERS_PATH, join(root, "cache", "playwright"));
 });
 
 test("same-uid passes the argv through untouched", () => {
