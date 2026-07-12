@@ -65,10 +65,15 @@ async function commitRecord(gh, { branch, path, content, summary }) {
  * Observes the PR and whether the ADR 0015 review actually ran.
  *
  * Both are runner-observed for a reason. The PR's author decides whether a human other than the
- * author can approve it at all (#205/#206), and `claude-review` is *not* a required check — so a
- * skipped review looks exactly like a passing one unless somebody goes and reads the check runs.
+ * author can approve it at all (#205/#206), and a *skipped* review looks exactly like a passing
+ * one unless somebody goes and reads the check runs.
+ *
+ * The check is now `AI Review` (#243), which replaced the interim `claude-review`. It is
+ * required-to-complete, so a skipped review can no longer merge — but this observation is still
+ * worth making rather than assuming: "the check is required" is a repository setting, and the
+ * whole reason this field exists is that settings and beliefs about settings drift apart.
  */
-export async function observePr(gh, prNumber, { reviewCheck = "claude-review" } = {}) {
+export async function observePr(gh, prNumber, { reviewCheck = "AI Review" } = {}) {
   const pr = await gh.request("GET", gh.repoPath(`/pulls/${prNumber}`));
   const checks = await gh.request("GET", gh.repoPath(`/commits/${pr.head.sha}/check-runs`));
 

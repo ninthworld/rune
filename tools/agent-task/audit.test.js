@@ -110,7 +110,7 @@ test("the branch is only ever fast-forwarded", async () => {
 test("observePr records the PR's author and whether the ADR 0015 review actually ran", async () => {
   const state = fakeGitHub({
     pulls: { 300: { number: 300, draft: true, user: { login: "rune-agent[bot]" }, head: { sha: "head1" } } },
-    checkRuns: { head1: [{ name: "claude-review", status: "completed", conclusion: "success" }] },
+    checkRuns: { head1: [{ name: "AI Review", status: "completed", conclusion: "success" }] },
   });
 
   const observed = await observePr(connect(state), 300);
@@ -120,7 +120,7 @@ test("observePr records the PR's author and whether the ADR 0015 review actually
 });
 
 test("a review that never ran is recorded as not-run, not as absent", async () => {
-  // The whole point: claude-review is not a required check, so a silently skipped review looks
+  // The whole point: a silently skipped review looks
   // exactly like a passing one. Green required checks do not imply the PR was reviewed.
   const state = fakeGitHub({
     pulls: { 301: { number: 301, draft: true, user: { login: "rune-agent[bot]" }, head: { sha: "head2" } } },
