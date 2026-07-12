@@ -160,6 +160,60 @@ otherwise) reference a card by `functional_id: String` instead of the current
 unresolvable reference is a build-time validation error (§5), not a runtime
 `None`.
 
+**The four identities, and the mapping among them.** `crates/rune-engine/src/id.rs`
+today documents `CardId` as identifying "a card definition (a specific
+printing/oracle entry)" and aliases `OracleId = CardId` on the grounds that "the
+integer `CardId` *is* the oracle id." That is the conflation #191 asks this ADR
+to resolve: one integer standing in for an authored identity, a printing
+identity, and a build-local handle at once. Under this ADR they are four
+distinct layers, and only two of them are authored by a human:
+
+| Layer | Type | Assigned by | Stable for |
+|---|---|---|---|
+| Functional (oracle) | `FunctionalId` (new) | the card's author, by hand | forever — never reused or renumbered |
+| Interned handle | `CardId(u64)`, aliased `OracleId` | `build.rs` (§4), in sorted order | one build |
+| Printing | `PrintingKey { set_code, collector_number }` | the set file listing it, by hand | forever |
+| Per-game instance | `CardInstanceId(u64)`, `PermanentId(u64)` | `GameState::mint_id`, at runtime | one game; a `PermanentId`, one battlefield stay |
+
+- **Functional → handle** is one-to-one within a build, and is the only mapping
+  `build.rs` invents. `CardId` stays the key every rules read goes through
+  (`db.card(id)`, every `GameState` field); what changes is that it is a *handle
+  to* the authored `FunctionalId` rather than the authored identity itself. The
+  `id.rs` doc comments quoted above say otherwise and are corrected in follow-up
+  A (§12).
+- **Functional → printing** is one-to-many, and is ADR 0013's split, preserved:
+  a printing record names a `functional_id` and carries no rules, so every
+  reprint resolves to the same functional definition. `PrintingKey` remains the
+  printing's identity; it is not an engine id and never enters `GameState`.
+- **Handle → instance** is one-to-many *within a game*. `CardInstance { id:
+  CardInstanceId, card: CardId }` is exactly this pairing: two Forests in hand
+  share one `CardId` and hold distinct `CardInstanceId`s. `PermanentId` is
+  narrower again — reborn on each battlefield entry, which is how the engine has
+  zone-change identity without zone-change counters
+  (`crates/rune-engine/AGENTS.md`).
+- **Instance → wire** is the protocol's `EntityId` (a `String`), minted in
+  `rune-server`'s `view.rs` from an instance, permanent, or seat id (`card_5`,
+  `perm_7`, `p0`). It is per-game and opaque, and it never carries catalog
+  identity: §8's `CardView.functional_id` is a separate field precisely so that
+  a presentation lookup and a game-object reference cannot be mistaken for each
+  other.
+
+**Game state holds no printing identity, and this ADR does not add one.**
+`GameState` stores `CardId`, so the engine cannot tell which printing a copy was
+opened from — deliberate under ADR 0013, since reprints are rules-identical and
+nothing in the rules may depend on the answer. Worth stating plainly, because it
+bounds §9: a future client-local cache can be keyed on `functional_id`, but not
+on a printing, because the server does not know the printing either. Per-printing
+art would require deck construction to carry the printing into the game as
+presentation-only data. That is a new decision, out of scope here, and nothing in
+§9 presumes it.
+
+**Nothing outside the two authored identities is promised to be stable.**
+`FunctionalId` and `PrintingKey` are forever; the interned `CardId` is stable for
+one build and the per-game ids for one game. Persisting or resuming a game would
+have to store `FunctionalId` and re-intern on load — the new ADR already flagged
+above, not an assumption this one licenses.
+
 ### 4. File layout: one functional definition per file, sharded by `FunctionalId`
 
 Replacing the single `oracle.json` array:
@@ -444,7 +498,7 @@ PR-sized, in dependency order — each closes against this ADR:
 
 | # | Feature | Area | Depends on |
 |---|---|---|---|
-| A | `FunctionalId`, `schema_version`, and the tightened functional-definition schema (deny-unknown-fields, `oracle_text` removed) on the existing single-file loader | engine | — |
+| A | `FunctionalId`, `schema_version`, and the tightened functional-definition schema (deny-unknown-fields, `oracle_text` removed) on the existing single-file loader; correct the `CardId`/`OracleId` doc comments in `id.rs` to match §3's four-layer model | engine | — |
 | B | `build.rs`: walk `data/catalog/` + `data/sets/`, validate (§5), intern `CardId`s, generate the embed manifest | engine | A |
 | C | Migrate the 32 fixtures into `data/catalog/<functional_id>.json`; migrate `FIX`/`FIX2` printings to `functional_id` references; delete `SET_MANIFEST` | engine | B |
 | D | `rules_text` formatter in `rune-server` with exhaustive-match coverage of the IR, plus `scripted_rules_text` seam and its bidirectional validation | server | C |
