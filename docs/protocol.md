@@ -45,17 +45,23 @@ treat a missing field as its empty/`null` default.
 ### CardView
 
 A `CardView` carries a card's server-computed characteristics for display: `id`,
-`name`, `type_line`, optional `mana_cost`, `oracle_text`, `power`/`toughness`
-(strings, present only for creatures), and `keywords`.
+`name`, `type_line`, optional `mana_cost`, `rules_text`, `functional_id`,
+`power`/`toughness` (strings, present only for creatures), and `keywords`.
 
-- `oracle_text` — despite the name, this is **not** exact Oracle text and never has
-  been: no exact rules prose is bundled anywhere in the repository. It is a
-  hand-authored string on the card's functional definition, and
-  [ADR 0018](decisions/0018-scalable-functional-card-definitions.md) §7–§8 replaces it
-  with `rules_text`, generated deterministically by the server from the card's ability
-  IR, plus a stable `functional_id` presentation identity. That rename is a contract
-  change and lands with the formatter (#194); until then this field carries the
-  authored string.
+- `rules_text` — the card's rules text, **generated** by the server from the card's
+  ability IR ([ADR 0018](decisions/0018-scalable-functional-card-definitions.md) §7),
+  never a stored string: no rules prose is committed anywhere in the repository, and
+  this is **not** exact Oracle text. It is written to be semantically complete enough
+  to play with; matching official wording is explicitly not a goal. Generation is
+  deterministic (same card, same string) and its coverage of the IR is compiler-
+  enforced. Omitted from the JSON for a card with no rules.
+- `functional_id` — the card's **stable presentation identity**: the authored
+  `functional_id` of the card definition this object is a copy of (ADR 0018 §3, §8).
+  Unlike `id`, which is a per-game entity handle, it is the same string for every copy
+  of a card in every game and survives a server rebuild. It exists so a future
+  *client-local* cache could enrich presentation by identity; the server has no such
+  cache and requires none, and a client that ignores this field renders the card
+  completely from the fields above. Omitted only for a card the server cannot resolve.
 
 - `keywords` — the card's keyword abilities (CR 702) as an array of lowercase wire
   names, e.g. `["flying"]` or `["first_strike", "trample"]`. Server-computed and

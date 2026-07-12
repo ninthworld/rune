@@ -38,9 +38,23 @@ pub struct CardView {
     /// Displayed mana cost string, e.g. `"{1}{G}"`. `None` for cards without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mana_cost: Option<String>,
-    /// Rules text as displayed.
+    /// The card's rules text, **generated** by the server from the card's ability IR
+    /// (ADR 0018 §7) — never a stored or upstream string, and never exact Oracle text.
+    /// Written to be semantically complete for play; matching official wording is not
+    /// a goal. Empty (and omitted from the wire) for a card with no rules.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub oracle_text: String,
+    pub rules_text: String,
+    /// The card's stable **presentation identity**: the `functional_id` of the card
+    /// definition this object is a copy of (ADR 0018 §3, §8).
+    ///
+    /// Unlike [`CardView::id`], which is a per-game entity handle, this is the same
+    /// string for every copy of a card in every game, and it survives a server rebuild.
+    /// It exists so a future *client-local* cache can look a card up by identity to
+    /// enrich its presentation; the server neither has nor requires such a cache, and a
+    /// client that ignores this field renders the card completely from `rules_text`.
+    /// Empty only for a card the server cannot resolve (a defensive placeholder).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub functional_id: String,
     /// Displayed power (a string so `*` and other non-numeric values round-trip).
     /// Present only for creatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -958,7 +972,8 @@ mod tests {
                 name: "Llanowar Elves".into(),
                 type_line: "Creature — Elf Druid".into(),
                 mana_cost: Some("{G}".into()),
-                oracle_text: "{T}: Add {G}.".into(),
+                rules_text: "{T}: Add {G}.".into(),
+                functional_id: "llanowar_elves".into(),
                 power: Some("1".into()),
                 toughness: Some("1".into()),
                 keywords: vec![],
@@ -980,7 +995,8 @@ mod tests {
                     name: "Grizzly Bears".into(),
                     type_line: "Creature — Bear".into(),
                     mana_cost: Some("{1}{G}".into()),
-                    oracle_text: String::new(),
+                    rules_text: String::new(),
+                    functional_id: String::new(),
                     power: Some("2".into()),
                     toughness: Some("2".into()),
                     keywords: vec!["flying".into()],
@@ -1217,7 +1233,8 @@ mod tests {
                 name: "Grizzly Bears".into(),
                 type_line: "Creature — Bear".into(),
                 mana_cost: Some("{1}{G}".into()),
-                oracle_text: String::new(),
+                rules_text: String::new(),
+                functional_id: String::new(),
                 power: Some("2".into()),
                 toughness: Some("2".into()),
                 keywords: vec![],
@@ -1286,7 +1303,8 @@ mod tests {
             name: "Skywhisker Drake".into(),
             type_line: "Creature — Drake".into(),
             mana_cost: Some("{2}{U}".into()),
-            oracle_text: "Flying".into(),
+            rules_text: "Flying".into(),
+            functional_id: "skywhisker_drake".into(),
             power: Some("2".into()),
             toughness: Some("2".into()),
             keywords: vec!["flying".into()],

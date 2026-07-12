@@ -24,6 +24,7 @@
 mod format;
 mod lobby;
 mod room;
+mod rules_text;
 mod view;
 
 pub use lobby::{serve_lobby_connection, Lobby};

@@ -8,7 +8,6 @@
     "subtypes": ["Boar"],
     "mana_cost": "{2}{G}",
     "colors": ["green"],
-    "oracle_text": "",
     "power": 3,
     "toughness": 2
   },
@@ -21,7 +20,6 @@
     "subtypes": ["Otter"],
     "mana_cost": "{1}{U}",
     "colors": ["blue"],
-    "oracle_text": "",
     "power": 1,
     "toughness": 3
   },
@@ -34,7 +32,6 @@
     "subtypes": ["Jackal"],
     "mana_cost": "{1}{R}",
     "colors": ["red"],
-    "oracle_text": "",
     "power": 2,
     "toughness": 1
   },
@@ -47,7 +44,6 @@
     "subtypes": ["Basilisk"],
     "mana_cost": "{4}{G}",
     "colors": ["green"],
-    "oracle_text": "",
     "power": 4,
     "toughness": 5
   },
@@ -61,7 +57,6 @@
     "subtypes": ["Forest"],
     "mana_cost": "",
     "colors": [],
-    "oracle_text": "",
     "abilities": [
       {
         "type": "activated",
@@ -79,7 +74,6 @@
     "subtypes": ["Elf", "Scout"],
     "mana_cost": "{G}",
     "colors": ["green"],
-    "oracle_text": "When Verdant Scout enters the battlefield, draw a card.",
     "power": 1,
     "toughness": 1,
     "abilities": [
@@ -97,8 +91,7 @@
     "functional_id": "quickfire_bolt",
     "types": ["instant"],
     "mana_cost": "{R}",
-    "colors": ["red"],
-    "oracle_text": ""
+    "colors": ["red"]
   },
   {
     "schema_version": 1,
@@ -107,8 +100,7 @@
     "functional_id": "hurried_study",
     "types": ["sorcery"],
     "mana_cost": "{U}",
-    "colors": ["blue"],
-    "oracle_text": ""
+    "colors": ["blue"]
   },
   {
     "schema_version": 1,
@@ -117,8 +109,7 @@
     "functional_id": "copper_lodestone",
     "types": ["artifact"],
     "mana_cost": "{1}",
-    "colors": [],
-    "oracle_text": ""
+    "colors": []
   },
   {
     "schema_version": 1,
@@ -127,8 +118,7 @@
     "functional_id": "verdant_blessing",
     "types": ["enchantment"],
     "mana_cost": "{G}",
-    "colors": ["green"],
-    "oracle_text": ""
+    "colors": ["green"]
   },
   {
     "schema_version": 1,
@@ -138,7 +128,6 @@
     "types": ["instant"],
     "mana_cost": "{U}",
     "colors": ["blue"],
-    "oracle_text": "Counter target spell.",
     "spell_effects": [
       { "kind": "counter_spell", "target": "spell_on_stack" }
     ]
@@ -151,7 +140,6 @@
     "types": ["instant"],
     "mana_cost": "{R}",
     "colors": ["red"],
-    "oracle_text": "Cinder Shock deals 2 damage to any target.",
     "spell_effects": [
       { "kind": "deal_damage", "target": "any_target", "amount": 2 }
     ]
@@ -164,7 +152,6 @@
     "types": ["sorcery"],
     "mana_cost": "{2}{W}",
     "colors": ["white"],
-    "oracle_text": "Destroy target creature.",
     "spell_effects": [
       { "kind": "destroy", "target": "any_creature" }
     ]
@@ -178,7 +165,6 @@
     "subtypes": ["Faerie"],
     "mana_cost": "{1}{G}",
     "colors": ["green"],
-    "oracle_text": "When Thornweft Sprite enters the battlefield, put a +1/+1 counter on target creature.",
     "power": 1,
     "toughness": 1,
     "abilities": [
@@ -204,7 +190,6 @@
     "types": ["instant"],
     "mana_cost": "{W}",
     "colors": ["white"],
-    "oracle_text": "You gain 3 life.",
     "spell_effects": [
       { "kind": "gain_life", "player_ref": "controller", "amount": 3 }
     ]
@@ -217,7 +202,6 @@
     "types": ["instant"],
     "mana_cost": "{B}",
     "colors": ["black"],
-    "oracle_text": "You lose 2 life.",
     "spell_effects": [
       { "kind": "lose_life", "player_ref": "controller", "amount": 2 }
     ]
@@ -230,7 +214,6 @@
     "types": ["sorcery"],
     "mana_cost": "{B}",
     "colors": ["black"],
-    "oracle_text": "Put a -1/-1 counter on target creature.",
     "spell_effects": [
       {
         "kind": "put_counters",
@@ -249,7 +232,6 @@
     "subtypes": ["Drake"],
     "mana_cost": "{2}{U}",
     "colors": ["blue"],
-    "oracle_text": "Flying",
     "power": 2,
     "toughness": 2,
     "keywords": ["flying"]
@@ -263,7 +245,6 @@
     "subtypes": ["Spider"],
     "mana_cost": "{1}{G}",
     "colors": ["green"],
-    "oracle_text": "Reach",
     "power": 1,
     "toughness": 3,
     "keywords": ["reach"]
@@ -277,7 +258,6 @@
     "subtypes": ["Soldier"],
     "mana_cost": "{2}{W}",
     "colors": ["white"],
-    "oracle_text": "Vigilance",
     "power": 2,
     "toughness": 3,
     "keywords": ["vigilance"]
@@ -291,7 +271,6 @@
     "subtypes": ["Goblin"],
     "mana_cost": "{1}{R}",
     "colors": ["red"],
-    "oracle_text": "Haste",
     "power": 2,
     "toughness": 1,
     "keywords": ["haste"]
@@ -305,7 +284,6 @@
     "subtypes": ["Human", "Knight"],
     "mana_cost": "{1}{W}",
     "colors": ["white"],
-    "oracle_text": "First strike",
     "power": 2,
     "toughness": 2,
     "keywords": ["first_strike"]
@@ -319,7 +297,6 @@
     "subtypes": ["Beast"],
     "mana_cost": "{3}{G}",
     "colors": ["green"],
-    "oracle_text": "Trample",
     "power": 5,
     "toughness": 4,
     "keywords": ["trample"]
@@ -333,7 +310,6 @@
     "subtypes": ["Snake"],
     "mana_cost": "{G}",
     "colors": ["green"],
-    "oracle_text": "Deathtouch",
     "power": 1,
     "toughness": 1,
     "keywords": ["deathtouch"]
@@ -347,7 +323,6 @@
     "subtypes": ["Cleric"],
     "mana_cost": "{2}{W}",
     "colors": ["white"],
-    "oracle_text": "Lifelink",
     "power": 2,
     "toughness": 3,
     "keywords": ["lifelink"]
@@ -361,7 +336,6 @@
     "subtypes": ["Beast"],
     "mana_cost": "{2}{B}{G}",
     "colors": ["black", "green"],
-    "oracle_text": "Trample, deathtouch",
     "power": 4,
     "toughness": 4,
     "keywords": ["trample", "deathtouch"]
@@ -374,7 +348,6 @@
     "types": ["instant"],
     "mana_cost": "{G}",
     "colors": ["green"],
-    "oracle_text": "Target creature gets +3/+3 until end of turn.",
     "spell_effects": [
       { "kind": "pump", "target": "any_creature", "power": 3, "toughness": 3 }
     ]
@@ -388,7 +361,6 @@
     "subtypes": ["Horror"],
     "mana_cost": "{1}{B}",
     "colors": ["black"],
-    "oracle_text": "When Cryptvine Lurker dies, draw a card.",
     "power": 2,
     "toughness": 2,
     "abilities": [
@@ -408,7 +380,6 @@
     "subtypes": ["Aura"],
     "mana_cost": "{1}{G}",
     "colors": ["green"],
-    "oracle_text": "Enchant creature. Enchanted creature gets +2/+2.",
     "aura": { "enchant": "any_creature", "power": 2, "toughness": 2 }
   },
   {
@@ -420,7 +391,6 @@
     "subtypes": ["Aura"],
     "mana_cost": "{B}",
     "colors": ["black"],
-    "oracle_text": "Enchant creature. Enchanted creature gets -2/-2.",
     "aura": { "enchant": "any_creature", "power": -2, "toughness": -2 }
   },
   {
@@ -432,7 +402,6 @@
     "subtypes": ["Forest", "Plains"],
     "mana_cost": "",
     "colors": [],
-    "oracle_text": "Verdant Sanctuary enters the battlefield tapped.\n{T}: Add {G} or {W}.",
     "abilities": [
       { "type": "enters_tapped" },
       {
@@ -456,7 +425,6 @@
     "subtypes": ["Insect"],
     "mana_cost": "{1}{G}",
     "colors": ["green"],
-    "oracle_text": "Bramble Hatchling enters the battlefield with two +1/+1 counters on it.",
     "power": 0,
     "toughness": 0,
     "abilities": [
