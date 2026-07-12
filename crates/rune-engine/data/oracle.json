@@ -287,5 +287,15 @@
     "power": 4,
     "toughness": 4,
     "keywords": ["trample", "deathtouch"]
+  },
+  {
+    "id": 27,
+    "name": "Titanroot Surge",
+    "types": ["instant"],
+    "mana_cost": "{G}",
+    "oracle_text": "Target creature gets +3/+3 until end of turn.",
+    "spell_effects": [
+      { "kind": "pump", "target": "any_creature", "power": 3, "toughness": 3 }
+    ]
   }
 ]

@@ -163,6 +163,24 @@ pub enum Effect {
         /// How many counters of that kind to place.
         count: u32,
     },
+    /// Give the single creature this effect targets `+power`/`+toughness`
+    /// **until end of turn** — the pump-spell verb (e.g. `Target creature gets
+    /// +3/+3 until end of turn.`). On resolution it adds a timestamped CR 613
+    /// layer-7c power/toughness modifier that the cleanup step removes (CR 514.2).
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). The amounts are
+    /// signed, so a negative value is a shrink; the modifier folds into computed
+    /// power/toughness on demand (CR 613.7c), after counters and in timestamp
+    /// order, so two pumps in a turn stack and both wear off at cleanup.
+    Pump {
+        /// What this effect is allowed to target (a creature).
+        target: TargetSpec,
+        /// The signed amount added to the target's power until end of turn.
+        power: i32,
+        /// The signed amount added to the target's toughness until end of turn.
+        toughness: i32,
+    },
 }
 
 /// A **non-targeted player reference**: which player an implicit-subject effect
@@ -195,7 +213,8 @@ impl Effect {
             | Effect::CounterSpell { target }
             | Effect::DealDamage { target, .. }
             | Effect::Destroy { target }
-            | Effect::PutCounters { target, .. } => Some(*target),
+            | Effect::PutCounters { target, .. }
+            | Effect::Pump { target, .. } => Some(*target),
             Effect::AddMana { .. }
             | Effect::DrawCard { .. }
             | Effect::GainLife { .. }
@@ -466,6 +485,23 @@ mod tests {
                 count: 2,
             }
         );
+    }
+
+    #[test]
+    fn issue_150_pump_round_trips_with_its_target_spec() {
+        // The pump verb authors its target spec and signed P/T amounts as card
+        // data, and (a targeting effect) reports its spec.
+        let json = r#"{"kind":"pump","target":"any_creature","power":3,"toughness":3}"#;
+        let effect: Effect = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            effect,
+            Effect::Pump {
+                target: TargetSpec::AnyCreature,
+                power: 3,
+                toughness: 3,
+            }
+        );
+        assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
     }
 
     #[test]

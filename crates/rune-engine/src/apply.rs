@@ -21,7 +21,7 @@ use crate::resolve::resolve_stack_object;
 use crate::rng::SplitMix64;
 use crate::sba::run_state_based_actions;
 use crate::stack::{StackId, StackObject, StackObjectKind};
-use crate::state::{GameState, Permanent};
+use crate::state::{Duration, EffectAffects, GameState, Modification, Permanent, StaticEffect};
 use crate::triggers::collect_triggers;
 use crate::CardDatabase;
 
@@ -175,7 +175,7 @@ fn perform_turn_based_actions(state: &mut GameState, db: &CardDatabase) {
         Step::Draw => draw_for_turn(state),
         Step::CombatDamage => deal_combat_damage(state, db),
         Step::EndCombat => remove_creatures_from_combat(state),
-        Step::Cleanup => remove_all_marked_damage(state),
+        Step::Cleanup => cleanup_turn_based_actions(state),
         _ => {}
     }
 }
@@ -294,17 +294,34 @@ fn apply_concede(state: &mut GameState) {
     }
 }
 
-/// Cleanup step turn-based action: remove all damage marked on permanents
-/// (CR 514.2). Runs on entry to the step; the discard (CR 514.1) is a separate
-/// player choice routed through [`apply_discard`].
+/// Cleanup step turn-based action (CR 514.2): **simultaneously** remove all
+/// damage marked on permanents and end every "until end of turn" continuous
+/// effect. Runs on entry to the step; the discard (CR 514.1) is a separate player
+/// choice routed through [`apply_discard`].
+///
+/// CR 514.2 sequences the damage wipe and the ending of "until end of turn"
+/// effects as one simultaneous turn-based action, and — crucially — **no**
+/// state-based actions or priority interrupt it (CR 514.3); the pipeline's SBA
+/// loop runs only *after* this whole action completes. That simultaneity is the
+/// classic pump interaction: a 1/1 pumped to 4/4 that took 3 damage this turn has
+/// its pump wear off and its 3 marked damage removed at the same instant, so
+/// there is never a moment where it is a 1/1 with 3 damage marked — the CR 704.5g
+/// lethal-damage check that follows sees a 1/1 with 0 damage, and the creature
+/// **survives** (it does not die). We therefore clear both here, together, before
+/// returning to the SBA loop.
 ///
 /// Also clears any lingering deathtouch marks (CR 702.2b lasts "this turn"): the
 /// state-based-actions loop normally drains them the moment they are recorded, so
 /// this is a belt-and-suspenders reset at the turn boundary.
-fn remove_all_marked_damage(state: &mut GameState) {
+fn cleanup_turn_based_actions(state: &mut GameState) {
     for perm in &mut state.battlefield {
         perm.damage = 0;
     }
+    // CR 514.2: every "until end of turn" effect ends now, simultaneously with the
+    // damage wipe above. Permanent-lifetime effects (anthems) are untouched.
+    state
+        .static_effects
+        .retain(|effect| effect.duration != Duration::UntilEndOfTurn);
     state.deathtouch_struck.clear();
 }
 
@@ -639,7 +656,8 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
         | Effect::CounterSpell { .. }
         | Effect::DealDamage { .. }
         | Effect::Destroy { .. }
-        | Effect::PutCounters { .. } => {}
+        | Effect::PutCounters { .. }
+        | Effect::Pump { .. } => {}
     }
 }
 
@@ -723,6 +741,33 @@ pub(crate) fn apply_targeted_effect(
             if let Target::Permanent(id) = target {
                 if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
                     *perm.counters.entry(*counter).or_insert(0) += *count;
+                }
+            }
+        }
+        // Pump the targeted creature until end of turn (CR 514.2): add a
+        // timestamped CR 613 layer-7c power/toughness modifier keyed to that one
+        // permanent, with an `UntilEndOfTurn` duration the cleanup step removes.
+        // The timestamp is a freshly minted, strictly increasing object id
+        // (CR 613.7), so a second pump this turn stacks after the first. The
+        // modifier folds into computed P/T on demand — nothing is written onto the
+        // permanent — so removing it at cleanup reverts the value with nothing to
+        // invalidate (ADR 0010). The caller has re-checked the target is still a
+        // creature (CR 608.2b); a permanent that has since left is skipped.
+        Effect::Pump {
+            power, toughness, ..
+        } => {
+            if let Target::Permanent(id) = target {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let source = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::PowerToughness {
+                            power: *power,
+                            toughness: *toughness,
+                        },
+                        duration: Duration::UntilEndOfTurn,
+                    });
                 }
             }
         }
@@ -1213,6 +1258,179 @@ mod tests {
             find_perm(&after, perm).damage,
             0,
             "marked damage is wiped at cleanup (CR 514.2)"
+        );
+    }
+
+    // ----- Until-end-of-turn pump: cleanup expiry (issue #150) -----
+
+    /// Push an "until end of turn" pump of +`power`/+`toughness` onto `target`,
+    /// timestamped by a freshly minted object id, and return that id.
+    fn pump(state: &mut GameState, target: PermanentId, power: i32, toughness: i32) -> u64 {
+        let source = state.mint_id();
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::SpecificPermanent(target),
+            modification: Modification::PowerToughness { power, toughness },
+            duration: Duration::UntilEndOfTurn,
+        });
+        source
+    }
+
+    #[test]
+    fn issue_150_pump_spell_boosts_its_target_until_end_of_turn_end_to_end() {
+        // Cast the Titanroot Surge fixture (+3/+3 until end of turn) on a 1/1
+        // Verdant Scout: on resolution the creature computes as a 4/4 and one
+        // until-end-of-turn layer-7c modifier is in force.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let creature = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let surge = state.new_instance(CardId(27));
+        state.players[0].hand = vec![surge];
+        state.players[0].mana_pool.add(Color::Green, 1);
+
+        // The scout is a printed 1/1 before the pump.
+        assert_eq!(characteristics(&state, creature, &db).power, Some(1));
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: surge,
+                targets: vec![Target::Permanent(creature)],
+            },
+            &db,
+        );
+        // Pass twice: the spell resolves and applies its pump.
+        let state = pass_full_round(&state, &db);
+
+        assert!(state.stack.is_empty());
+        let ch = characteristics(&state, creature, &db);
+        assert_eq!(ch.power, Some(4), "printed 1 + 3 until end of turn");
+        assert_eq!(ch.toughness, Some(4));
+        assert_eq!(state.static_effects.len(), 1);
+        assert_eq!(
+            state.static_effects[0].duration,
+            Duration::UntilEndOfTurn,
+            "the pump is an until-end-of-turn effect"
+        );
+        // The instant itself went to the graveyard (CR 608.2m).
+        assert!(state.players[0].graveyard.iter().any(|c| c.id == surge.id));
+    }
+
+    #[test]
+    fn issue_150_pumped_creature_survives_lethal_to_base_damage_then_expires_at_cleanup_cr_514_2() {
+        // CR 514.2: a 1/1 pumped to 4/4 that has taken 3 marked damage (lethal to
+        // its *base* toughness of 1, but not to 4) survives the turn, and at
+        // cleanup its pump wears off and its damage is removed **simultaneously** —
+        // so the CR 704.5g check that follows never sees a 1/1 with 3 damage and
+        // the creature survives cleanup as a printed 1/1.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1; empty hand so no discard.
+        let creature = place_permanent(&mut state, CardId(6), PlayerId(0), false, 3);
+        pump(&mut state, creature, 3, 3);
+
+        // Mid-turn: 4/4 with 3 marked damage is not lethal, so state-based actions
+        // leave it on the battlefield.
+        let mut mid = state.clone();
+        run_state_based_actions(&mut mid, &db);
+        assert!(
+            mid.battlefield.iter().any(|p| p.id == creature),
+            "3 damage is not lethal to a pumped 4/4"
+        );
+
+        // Walk through the cleanup step into the next turn.
+        let after = pass_full_round(&state, &db);
+        assert!(
+            after.battlefield.iter().any(|p| p.id == creature),
+            "the creature survives cleanup: damage and pump end simultaneously (CR 514.2)"
+        );
+        assert!(
+            after.static_effects.is_empty(),
+            "the until-end-of-turn pump wore off at cleanup"
+        );
+        assert_eq!(
+            find_perm(&after, creature).damage,
+            0,
+            "marked damage was wiped at cleanup"
+        );
+    }
+
+    #[test]
+    fn issue_150_two_pumps_in_one_turn_stack_and_both_expire_at_cleanup() {
+        // CR 613.7 / 514.2: two pumps on one creature this turn both apply (they
+        // stack in timestamp order) and both wear off at cleanup.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1; empty hand.
+        let creature = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let first = pump(&mut state, creature, 2, 2);
+        let second = pump(&mut state, creature, 1, 1);
+        assert!(second > first, "the later pump has the later timestamp");
+
+        // Printed 1/1 + (+2/+2) + (+1/+1) = 4/4 while both are in force.
+        let ch = characteristics(&state, creature, &db);
+        assert_eq!(ch.power, Some(4));
+        assert_eq!(ch.toughness, Some(4));
+
+        let after = pass_full_round(&state, &db);
+        assert!(
+            after.static_effects.is_empty(),
+            "both until-end-of-turn pumps expired at cleanup (CR 514.2)"
+        );
+        let reverted = characteristics(&after, creature, &db);
+        assert_eq!(reverted.power, Some(1), "back to the printed 1/1");
+        assert_eq!(reverted.toughness, Some(1));
+    }
+
+    #[test]
+    fn issue_150_pump_never_outlives_its_permanent() {
+        // A pumped creature that dies mid-turn (here to lethal-to-its-4/4 damage)
+        // leaves no dangling modifier: the state-based-actions loop destroys it and
+        // prunes its now-orphaned pump in the same pass.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let creature = place_permanent(&mut state, CardId(6), PlayerId(0), false, 5);
+        pump(&mut state, creature, 3, 3); // 1/1 -> 4/4, but 5 damage is lethal
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == creature),
+            "5 damage is lethal to the pumped 4/4 (CR 704.5g)"
+        );
+        assert!(
+            state.static_effects.is_empty(),
+            "the pump was pruned when its permanent left — no dangling modifier"
+        );
+    }
+
+    #[test]
+    fn issue_150_while_on_battlefield_effect_is_not_ended_by_cleanup() {
+        // CR 514.2 ends only "until end of turn" effects; a permanent-lifetime
+        // anthem (WhileOnBattlefield) is untouched by the cleanup step.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1; empty hand.
+        let _creature = place_permanent(&mut state, CardId(6), PlayerId(0), false, 0);
+        let source = state.mint_id();
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::CreaturesControlledBy(PlayerId(0)),
+            modification: Modification::PowerToughness {
+                power: 1,
+                toughness: 1,
+            },
+            duration: Duration::WhileOnBattlefield,
+        });
+
+        let after = pass_full_round(&state, &db);
+        assert_eq!(
+            after.static_effects.len(),
+            1,
+            "a while-on-battlefield anthem persists through cleanup (CR 514.2)"
         );
     }
 

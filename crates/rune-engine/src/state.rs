@@ -164,6 +164,35 @@ pub struct StaticEffect {
     /// CR 613 layer; only layer 7c power/toughness modification ships in this
     /// slice.
     pub modification: Modification,
+    /// How long this effect lasts before it wears off (CR 611.2).
+    ///
+    /// A permanent-lifetime anthem is [`Duration::WhileOnBattlefield`]; a pump
+    /// spell's "+X/+Y until end of turn" is [`Duration::UntilEndOfTurn`], which
+    /// the cleanup step ends (CR 514.2). The duration never affects *which*
+    /// permanents an effect touches or its timestamp ordering (CR 613.7) — it
+    /// only governs when the effect is removed from [`GameState::static_effects`].
+    pub duration: Duration,
+}
+
+/// How long a [`StaticEffect`] lasts before it wears off (CR 611.2).
+///
+/// A deliberately small closed set for this slice: only the permanent lifetime an
+/// anthem-style static ability has and the single "until end of turn" duration a
+/// pump spell grants (CR 514.2). Other durations ("until your next turn", "as
+/// long as …") are deferred until a card needs them, at which point a variant is
+/// added here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Duration {
+    /// The effect lasts as long as its source is on the battlefield — the
+    /// lifetime of a static ability's continuous effect (an anthem). It is never
+    /// removed by the cleanup step; it ends only when its source leaves. The
+    /// default, so the pre-existing static-ability effects keep their meaning.
+    #[default]
+    WhileOnBattlefield,
+    /// The effect ends during the cleanup step of the turn it was created in
+    /// (CR 514.2): a "+X/+Y until end of turn" pump. Removed simultaneously with
+    /// the marked-damage wipe as a single cleanup turn-based action.
+    UntilEndOfTurn,
 }
 
 impl StaticEffect {
@@ -190,6 +219,13 @@ pub enum EffectAffects {
     /// you control"). A permanent matches when it is currently a creature and
     /// its controller equals this player.
     CreaturesControlledBy(PlayerId),
+    /// The single permanent with this [`PermanentId`] — a pump spell's chosen
+    /// target (CR 601.2c). Because a [`PermanentId`] is minted fresh on
+    /// battlefield entry and never reused, the effect matches exactly that one
+    /// object; once it leaves the battlefield the effect can never apply again
+    /// (and is pruned by the state-based-actions loop, so no modifier outlives
+    /// its permanent).
+    SpecificPermanent(PermanentId),
 }
 
 /// The continuous modification a [`StaticEffect`] performs. The variant fixes

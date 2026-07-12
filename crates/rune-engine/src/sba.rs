@@ -5,7 +5,7 @@
 use crate::characteristics::characteristics;
 use crate::id::{CardInstance, PermanentId};
 use crate::player::LossReason;
-use crate::state::{GameState, Permanent};
+use crate::state::{EffectAffects, GameState, Permanent};
 use crate::CardDatabase;
 
 /// Run state-based actions to a fixed point: keep applying them until a full
@@ -86,6 +86,23 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                 }
                 changed = true;
             }
+        }
+        // Prune any continuous effect keyed to a specific permanent that has now
+        // left the battlefield (destroyed above, or removed by another effect this
+        // action). A permanent-specific modifier — a pump — has nothing to apply to
+        // once its permanent is gone, and a `PermanentId` is never reused, so the
+        // effect can never match again; removing it keeps a modifier from
+        // outliving its permanent (no dangling static effect). Anthem-style
+        // selectors are left alone — they track a live set, not one object.
+        let before = state.static_effects.len();
+        state.static_effects.retain(|effect| match effect.affects {
+            EffectAffects::SpecificPermanent(id) => {
+                state.battlefield.iter().any(|perm| perm.id == id)
+            }
+            EffectAffects::CreaturesControlledBy(_) => true,
+        });
+        if state.static_effects.len() != before {
+            changed = true;
         }
         if !changed {
             break;
