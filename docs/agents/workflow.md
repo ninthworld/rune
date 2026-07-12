@@ -7,7 +7,8 @@
    work — triage, decomposition, and prioritization happen in issues, not PRs.
 2. **One issue → one branch → one PR.** Branch `agent/<issue>-<slug>`.
 3. **PR is the review gate.** Fill the template, link `Closes #N`, label `agent`.
-   CI (`Engine`, `Client`) must be green. A human reviews and merges — always.
+   All four required checks — `Engine`, `Client`, `E2E`, `cargo-deny` — must be green
+   (reproduce them locally with `make verify`). A human reviews and merges — always.
 4. **CI failure protocol:** the PR author (agent) investigates its own red CI and
    pushes fixes. If the failure is unrelated (flake, infra), say so in a comment
    with evidence rather than retrying blindly.
@@ -25,7 +26,9 @@ provider, see [`local-ai-setup.md`](local-ai-setup.md).
 ## Definition of done
 
 - Acceptance criteria of the linked issue met.
-- `make check` green in CI.
+- `make check` green throughout implementation; `make verify` green before final review
+  (the full `Engine` + `Client` + `E2E` + `cargo-deny` surface) wherever the browser
+  suite can run, and all four checks green in CI.
 - Tests cover the change; rules fixes include a regression test named after the issue.
 - Docs/ADRs updated where behavior or architecture changed.
 - `docs/rules-coverage.md` updated when engine rule behavior was added or changed

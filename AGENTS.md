@@ -42,16 +42,24 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 
 ## Commands
 
-- `make check` — the fast unit gate (Engine + Client CI jobs). Must pass before every PR.
+- `make check` — the fast inner-loop gate (Engine + Client CI jobs). Run it constantly
+  while implementing; it must pass before every PR.
+- `make verify` — the complete pre-merge gate. Composes `make check` + `make e2e` +
+  `make deny`, so its coverage matches every required GitHub check (`Engine`, `Client`,
+  `E2E`, `cargo-deny`). Run it before requesting final review (when the environment can
+  run the browser suite).
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
-- `make client-check` — typecheck + build in `clients/web`
+- `make client-check` — lint + typecheck + test + build in `clients/web`
 - `make e2e` — browser end-to-end suite (its own `E2E` CI job, **not** part of
   `make check`; needs a browser + built client — see `docs/decisions/0011-*.md`)
-- `scripts/bootstrap.sh` — one-time toolchain setup
+- `make deny` — `cargo deny check advisories licenses bans sources` (the `cargo-deny` job)
+- `scripts/bootstrap.sh` — one-time prerequisite check for both gates
+- `make e2e-browser` — install the pinned Playwright Chromium the E2E suite needs
 
-> Full CI = `make check` (Engine + Client) **plus** the separate `E2E` job
-> (ADR 0011). A green `make check` is the unit gate, not the entire CI surface.
+> `make check` is the fast unit gate, **not** the entire CI surface. The full surface is
+> `make check` (Engine + Client) **plus** the separate `E2E` job (ADR 0011) **plus** the
+> `cargo-deny` job — exactly what `make verify` runs locally.
 
 ## Workflow
 
@@ -61,8 +69,10 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 3. Commits: Conventional Commits (`feat(engine): …`, `fix(client): …`, `docs: …`).
 4. Keep PRs small and single-purpose. Fill in the PR template; link the issue with
    `Closes #N`. Add or update tests for everything you change.
-5. Definition of done: `make check` green, docs/ADRs updated if behavior or
-   architecture changed, PR description explains what and why, no unrelated diffs.
+5. Definition of done: `make check` green throughout implementation and `make verify`
+   green before final review (where the browser suite can run), docs/ADRs updated if
+   behavior or architecture changed, PR description explains what and why, no unrelated
+   diffs.
 6. Architectural decisions get an ADR in `docs/decisions/` (copy `0000-template.md`).
 
 Process details and GitHub settings: `docs/agents/workflow.md`.

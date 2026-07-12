@@ -6,7 +6,9 @@ Closes #
 
 ## Checklist
 
-- [ ] `make check` passes locally
+- [ ] `make check` passes locally (fast Engine + Client gate)
+- [ ] `make verify` passes locally before final review (full `Engine` + `Client` +
+      `E2E` + `cargo-deny` surface; note here if the browser suite could not run)
 - [ ] Tests added/updated for the behavior changed
 - [ ] `docs/protocol.md` updated (required if any protocol type changed)
 - [ ] ADR added/updated (required if this changes architecture)

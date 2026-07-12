@@ -21,7 +21,7 @@ together. Only the first is hard to run locally, and you already have it:
 | Layer | What a cloud agent uses | Local equivalent |
 | --- | --- | --- |
 | **Model** | A frontier model over the network | `qwen3-coder:30b` via Ollama |
-| **Agent harness** — clone, branch, edit, run `make check`, commit | A hosted agent runtime | A terminal agent such as [OpenCode](https://opencode.ai) pointed at Ollama |
+| **Agent harness** — clone, branch, edit, run `make check` / `make verify`, commit | A hosted agent runtime | A terminal agent such as [OpenCode](https://opencode.ai) pointed at Ollama |
 | **GitHub glue** — create the issue, open the PR | GitHub API / MCP | the `gh` CLI |
 | **Trigger** — decide *when* an agent runs | A webhook + runner | you run a command (`scripts/local-agent.sh`) |
 
@@ -115,10 +115,14 @@ This is exactly what `scripts/local-agent.sh.example` does. The shape:
 2. Branch `agent/<issue>-<slug>` off `main` (the convention in
    `docs/agents/workflow.md`).
 3. Hand the issue to the harness (`opencode run …`) with instructions to make the
-   smallest change that satisfies the acceptance criteria and to run `make check`.
-4. **Run `make check` yourself** before pushing — this is the real gate and it
-   mirrors the `Engine` and `Client` CI jobs exactly. Never trust the model's word
-   that it passed.
+   smallest change that satisfies the acceptance criteria and to run `make check`
+   (the fast inner-loop gate) as it works.
+4. **Run the gates yourself** before pushing — never trust the model's word that it
+   passed. `make check` mirrors the `Engine` and `Client` CI jobs; `make verify`
+   additionally runs the `E2E` and `cargo-deny` jobs, so it reproduces the full
+   required-check surface locally. Run `make verify` before opening the PR when your
+   machine can run the browser suite (`scripts/bootstrap.sh` confirms the
+   prerequisites).
 5. Push and open a PR with `gh pr create --fill --body "Closes #<n>"`; the PR
    template applies automatically.
 
