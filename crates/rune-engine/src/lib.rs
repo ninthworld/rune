@@ -32,7 +32,9 @@ mod state;
 mod triggers;
 mod zone;
 
-pub use ability::{is_mana_ability, Ability, Cost, Effect, Target, TargetSpec, TriggerCondition};
+pub use ability::{
+    is_mana_ability, Ability, Cost, Effect, PlayerRef, Target, TargetSpec, TriggerCondition,
+};
 pub use actions::{target_requirements, valid_actions, Action, Block, TargetRequirement};
 pub use apply::apply_action;
 pub use card::{
@@ -50,6 +52,7 @@ pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;
 pub use player::{LossReason, Player, MAX_HAND_SIZE, STARTING_LIFE};
+pub use scripted::scripted_rules_text;
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
 };

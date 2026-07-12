@@ -642,10 +642,10 @@ mod tests {
     /// `{T}: Tap target creature.` and a vanilla "Bear" creature to target.
     fn targeting_db() -> CardDatabase {
         let json = r#"[
-            {"schema_version":1,"id":200,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"","oracle_text":"",
+            {"schema_version":1,"id":200,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"",
              "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
                           "effects":[{"kind":"tap","target":"any_creature"}]}]},
-            {"schema_version":1,"id":201,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"","oracle_text":"",
+            {"schema_version":1,"id":201,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
              "power":2,"toughness":2}
         ]"#;
         CardDatabase::from_json(json).unwrap()
@@ -1132,12 +1132,12 @@ mod tests {
         // is always castable, proving the gate is the enchant target, not the type.
         let json = r#"[
             {"schema_version":1,"id":300,"functional_id":"test_aura","name":"Test Aura","types":["enchantment"],"subtypes":["Aura"],
-             "mana_cost":"{G}","oracle_text":"",
+             "mana_cost":"{G}",
              "aura":{"enchant":"any_creature","power":1,"toughness":1}},
             {"schema_version":1,"id":301,"functional_id":"test_charm","name":"Test Charm","types":["enchantment"],
-             "mana_cost":"{G}","oracle_text":""},
+             "mana_cost":"{G}"},
             {"schema_version":1,"id":302,"functional_id":"test_bear","name":"Test Bear","types":["creature"],"mana_cost":"",
-             "oracle_text":"","power":2,"toughness":2}
+             "power":2,"toughness":2}
         ]"#;
         let db = CardDatabase::from_json(json).unwrap();
 

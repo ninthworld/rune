@@ -30,7 +30,6 @@ does no I/O at runtime — see [ADR 0006](decisions/0006-serde-in-engine.md).
   "subtypes": ["Elf", "Scout"],
   "mana_cost": "{G}",
   "colors": ["green"],
-  "oracle_text": "",
   "power": 1,
   "toughness": 1,
   "abilities": [
@@ -54,7 +53,6 @@ does no I/O at runtime — see [ADR 0006](decisions/0006-serde-in-engine.md).
 | `subtypes` | no | Printed subtypes, as printed (`"Elf"`, `"Aura"`). Empty by default. |
 | `mana_cost` | yes | Curly-brace notation (`"{2}{G}"`); empty for a card with no mana cost. |
 | `colors` | no | The card's colors (CR 105.2), authored explicitly — never re-derived from the cost's pips at runtime, so a colorless-cost-but-colored card is representable. Empty (colorless) by default. |
-| `oracle_text` | yes | **Transitional.** Hand-authored prose. Deleted once the server generates fallback rules text from the IR below (ADR 0018 §7, issue #194); no functional definition holds prose after that. |
 | `power` / `toughness` | no | Printed P/T, for creatures. Absent for non-creatures. |
 | `keywords` | no | Printed keyword abilities (CR 702): `flying`, `reach`, `vigilance`, `haste`, `first_strike`, `trample`, `deathtouch`, `lifelink`. |
 | `abilities` | no | The ability IR (ADR 0007): `activated`, `triggered`, `enters_tapped`, `enters_with_counters`. |
@@ -72,6 +70,19 @@ the load fails rather than silently ignoring it. That is how the legal posture i
 enforced structurally rather than by review — no exact Oracle text, flavor text, image
 URI or asset path, official symbol, frame, watermark, or artist credit can enter the
 catalog, by accident or otherwise (`docs/brief.md` Legal Considerations, ADR 0018 §2).
+
+**No rules prose either — not even your own.** A definition has no text field at all.
+The words a player reads are *generated* from `abilities`, `spell_effects`, `aura`, and
+`keywords` by the server's formatter (`crates/rune-server/src/rules_text.rs`, ADR 0018
+§7) and projected as `CardView.rules_text`. A card's displayed text therefore cannot
+drift from its behavior: there is nothing to keep in sync. Author the IR correctly and
+the text follows.
+
+The one exception is a `scripted` card, whose behavior is Rust the formatter cannot
+read: it authors its own text beside its code, in `crates/rune-engine/src/scripted.rs`.
+The loader enforces that pairing in **both** directions — a definition claiming
+`scripted: true` with no code arm fails to load, and so does a card with a code arm
+whose definition does not declare it (ADR 0018 §5).
 
 ## A printing record
 

@@ -419,7 +419,8 @@ For desktop: Tauri (Rust-based shell) wraps the React UI and manages the bundled
 > **Shipped:** this is a card-database wishlist, not the wire shape. The
 > `CardView` the server actually sends (`docs/protocol.md`,
 > `clients/web/src/protocol.ts`) carries `name`, `type_line`, and optional
-> `mana_cost`/`oracle_text`/`power`/`toughness` — and notably **omits**
+> `mana_cost`/`rules_text`/`power`/`toughness`, plus the stable `functional_id` —
+> and notably **omits**
 > `color_identity`. The client derives the display frame color locally from the
 > type line and mana-cost string (`clients/web/src/table/colorIdentity.ts`),
 > which is display glue, not game logic. If the server should own color identity

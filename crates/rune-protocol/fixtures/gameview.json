@@ -6,21 +6,24 @@
       "name": "Llanowar Elves",
       "type_line": "Creature — Elf Druid",
       "mana_cost": "{G}",
-      "oracle_text": "{T}: Add {G}.",
       "power": "1",
-      "toughness": "1"
+      "toughness": "1",
+      "rules_text": "{T}: Add {G}.",
+      "functional_id": "llanowar_elves"
     },
     {
       "id": "c2",
       "name": "Forest",
-      "type_line": "Basic Land — Forest"
+      "type_line": "Basic Land — Forest",
+      "functional_id": "forest"
     },
     {
       "id": "c3",
       "name": "Lightning Bolt",
       "type_line": "Instant",
       "mana_cost": "{R}",
-      "oracle_text": "Lightning Bolt deals 3 damage to any target."
+      "rules_text": "Lightning Bolt deals 3 damage to any target.",
+      "functional_id": "lightning_bolt"
     }
   ],
   "opponents": [
@@ -30,7 +33,9 @@
       "life": 20,
       "library_size": 53,
       "graveyard_size": 1,
-      "statuses": ["monarch"]
+      "statuses": [
+        "monarch"
+      ]
     }
   ],
   "battlefield": [
@@ -44,10 +49,16 @@
         "type_line": "Creature — Bear",
         "mana_cost": "{1}{G}",
         "power": "2",
-        "toughness": "2"
+        "toughness": "2",
+        "functional_id": "grizzly_bears"
       },
       "tapped": true,
-      "counters": [{ "kind": "+1/+1", "count": 2 }]
+      "counters": [
+        {
+          "kind": "+1/+1",
+          "count": 2
+        }
+      ]
     },
     {
       "id": "perm_nissa",
@@ -58,9 +69,15 @@
         "name": "Nissa, Who Shakes the World",
         "type_line": "Legendary Planeswalker — Nissa",
         "mana_cost": "{3}{G}{G}",
-        "oracle_text": "Whenever you tap a Forest for mana, add an additional {G}."
+        "rules_text": "Whenever you tap a Forest for mana, add an additional {G}.",
+        "functional_id": "nissa_who_shakes_the_world"
       },
-      "counters": [{ "kind": "loyalty", "count": 5 }]
+      "counters": [
+        {
+          "kind": "loyalty",
+          "count": 5
+        }
+      ]
     }
   ],
   "stack": [
@@ -85,7 +102,8 @@
           "name": "Opt",
           "type_line": "Instant",
           "mana_cost": "{U}",
-          "oracle_text": "Scry 1. Draw a card."
+          "rules_text": "Scry 1. Draw a card.",
+          "functional_id": "opt"
         }
       ]
     }
@@ -98,23 +116,47 @@
           "id": "x1",
           "name": "Path to Exile",
           "type_line": "Instant",
-          "mana_cost": "{W}"
+          "mana_cost": "{W}",
+          "functional_id": "path_to_exile"
         }
       ]
     }
   ],
   "phase": "precombat_main",
-  "mana_pool": ["{G}", "{G}"],
+  "mana_pool": [
+    "{G}",
+    "{G}"
+  ],
   "priority_player": "p1",
   "valid_actions": [
-    { "id": "a1", "type": "pass_priority", "label": "Pass" },
-    { "id": "a2", "type": "play_land", "label": "Play Forest", "subject": ["c2"] },
-    { "id": "a3", "type": "cast_spell", "label": "Cast Lightning Bolt", "subject": ["c3"] },
+    {
+      "id": "a1",
+      "type": "pass_priority",
+      "label": "Pass"
+    },
+    {
+      "id": "a2",
+      "type": "play_land",
+      "label": "Play Forest",
+      "subject": [
+        "c2"
+      ]
+    },
+    {
+      "id": "a3",
+      "type": "cast_spell",
+      "label": "Cast Lightning Bolt",
+      "subject": [
+        "c3"
+      ]
+    },
     {
       "id": "a4",
       "type": "activate_ability",
       "label": "Tap for mana",
-      "subject": ["perm_bear"]
+      "subject": [
+        "perm_bear"
+      ]
     }
   ],
   "action_deadline": 12.5

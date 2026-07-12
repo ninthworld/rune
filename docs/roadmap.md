@@ -45,8 +45,9 @@ generated rules text a player reads, and the real cards themselves.
   multi-select requirements are projected into the view; prompt types `option`,
   `select_from_zone`, and `order` round-trip; deck validation runs in the pre-game gate
   against the format registry; and `rune-cli --agent` plays a legal, seed-deterministic
-  game to a win. Not yet: the **generated fallback rules text** (#194) — `CardView`
-  still carries the hand-authored `oracle_text` string that ADR 0018 §7 replaces.
+  game to a win. `CardView` carries **server-generated** rules text and the stable
+  `functional_id` presentation identity (#194): no rules prose is stored anywhere, and
+  what a player reads is composed from the same IR the engine executes.
 - **Web client** (`clients/web`): connection screen, lobby UI, battlefield/hand/tiles
   rendering, targeting, the stack panel, the game-over overlay, multi-select UX
   (combat declarations, mulligan bottoming), and the prompt UX for the new prompt

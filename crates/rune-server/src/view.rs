@@ -12,11 +12,13 @@
 
 use rune_engine::{
     attacker_candidates, blocker_candidates, bottom_requirement, characteristics,
-    declared_attackers, target_requirements, valid_actions, Action, Block, CardData, CardDatabase,
-    CardId, CardInstance, CardInstanceId, CounterKind, Effect, GameResult, GameState, Keyword,
-    LossReason, PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
-    TargetSpec,
+    declared_attackers, scripted_rules_text, target_requirements, valid_actions, Action, Block,
+    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, GameResult,
+    GameState, Keyword, LossReason, PermanentId, Player, PlayerId, StackId, StackObject,
+    StackObjectKind, Step, Target, TargetSpec,
 };
+
+use crate::rules_text::{effects_description, rules_text};
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameOverReason, GameResult as GameResultView, GameView,
     OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, StackItem, TargetChoice,
@@ -109,13 +111,14 @@ fn card_name(card: CardId, db: &CardDatabase) -> String {
 /// Build the full [`CardView`] for a card the viewer is entitled to see.
 fn card_view(entity_id: String, card: CardId, db: &CardDatabase) -> CardView {
     match db.card(card) {
-        Some(data) => full_card_view(entity_id, data),
+        Some(data) => full_card_view(entity_id, card, data),
         None => CardView {
             id: entity_id,
             name: format!("Unknown card {}", card.0),
             type_line: String::new(),
             mana_cost: None,
-            oracle_text: String::new(),
+            rules_text: String::new(),
+            functional_id: String::new(),
             power: None,
             toughness: None,
             keywords: Vec::new(),
@@ -144,13 +147,21 @@ fn keyword_str(keyword: Keyword) -> &'static str {
 /// strings so non-numeric values round-trip (`rune-protocol`); an empty mana cost
 /// is elided rather than sent as `""`; printed keywords project to their lowercase
 /// wire names for display.
-fn full_card_view(entity_id: String, data: &CardData) -> CardView {
+///
+/// The card's rules text is **generated** here from its ability IR
+/// ([`crate::rules_text`], ADR 0018 §7) rather than read from a stored string — the
+/// catalog holds no prose — and its authored `functional_id` rides along as the stable
+/// presentation identity (ADR 0018 §8). A scripted card's hand-authored text comes from
+/// the engine's escape hatch, which the catalog loader guarantees exists whenever the
+/// definition declares `scripted: true`.
+fn full_card_view(entity_id: String, card: CardId, data: &CardData) -> CardView {
     CardView {
         id: entity_id,
         name: data.name.clone(),
         type_line: data.type_line(),
         mana_cost: (!data.mana_cost.is_empty()).then(|| data.mana_cost.clone()),
-        oracle_text: data.oracle_text.clone(),
+        rules_text: rules_text(data, scripted_rules_text(card)),
+        functional_id: data.functional_id.to_string(),
         power: data.power.map(|p| p.to_string()),
         toughness: data.toughness.map(|t| t.to_string()),
         keywords: data
@@ -180,38 +191,12 @@ fn permanent_card_view(
     view
 }
 
-/// A short human description of an ability's effects, for the stack view.
-fn ability_description(effects: &[Effect]) -> String {
-    let parts: Vec<String> = effects
-        .iter()
-        .map(|effect| match effect {
-            Effect::AddMana { color, amount } => format!("Add {} {}", amount, color.pip()),
-            Effect::DrawCard { count } => format!("Draw {count} card(s)"),
-            Effect::Tap { .. } => "Tap target".to_string(),
-            Effect::CounterSpell { .. } => "Counter target spell".to_string(),
-            Effect::DealDamage { amount, .. } => format!("Deal {amount} damage to target"),
-            Effect::Destroy { .. } => "Destroy target".to_string(),
-            Effect::GainLife { amount, .. } => format!("Gain {amount} life"),
-            Effect::LoseLife { amount, .. } => format!("Lose {amount} life"),
-            Effect::PutCounters { counter, count, .. } => format!(
-                "Put {} {} counter(s) on target",
-                count,
-                counter_kind_str(*counter)
-            ),
-            Effect::Pump {
-                power, toughness, ..
-            } => format!("Target gets {power:+}/{toughness:+} until end of turn"),
-        })
-        .collect();
-    if parts.is_empty() {
-        "Ability".to_string()
-    } else {
-        parts.join(", ")
-    }
-}
-
 /// Project one engine [`StackObject`] onto its wire [`StackItem`].
-fn stack_item(object: &StackObject, db: &CardDatabase) -> StackItem {
+///
+/// An ability's description is composed by the same formatter that writes a card's
+/// rules text ([`crate::rules_text::effects_description`]), so the stack and the card
+/// never describe one effect two different ways.
+fn stack_item(state: &GameState, object: &StackObject, db: &CardDatabase) -> StackItem {
     match &object.kind {
         StackObjectKind::Spell { card } => StackItem {
             id: stack_entity_id(object.id),
@@ -222,10 +207,24 @@ fn stack_item(object: &StackObject, db: &CardDatabase) -> StackItem {
         StackObjectKind::Ability { source, effects } => StackItem {
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
-            description: ability_description(effects),
+            description: effects_description(&source_name(state, *source, db), effects),
             source: Some(permanent_entity_id(*source)),
         },
     }
+}
+
+/// The name of the permanent an ability on the stack came from — what its sentences
+/// call themselves. A permanent that has already left the battlefield (its ability
+/// outlives it on the stack, CR 608.2) has no name left to give.
+fn source_name(state: &GameState, source: PermanentId, db: &CardDatabase) -> String {
+    state
+        .battlefield
+        .iter()
+        .find(|perm| perm.id == source)
+        .map_or_else(
+            || "This ability's source".to_string(),
+            |perm| card_name(perm.card, db),
+        )
 }
 
 /// Build the [`ZonePile`]s for a public per-player pile (graveyard or exile),
@@ -827,7 +826,11 @@ pub(crate) fn personalized_view(
         })
         .collect();
 
-    let stack = state.stack.iter().map(|o| stack_item(o, db)).collect();
+    let stack = state
+        .stack
+        .iter()
+        .map(|o| stack_item(state, o, db))
+        .collect();
     let graveyards = zone_piles(state, |p| &p.graveyard, db);
     let exile = zone_piles(state, |p| &p.exile, db);
 
@@ -2230,13 +2233,72 @@ mod tests {
     /// target slot with the legal creature candidates, and a returned target
     /// resolves to an `ActivateAbility` carrying exactly that chosen target.
     #[test]
+    fn issue_194_cards_project_generated_rules_text_and_their_stable_identity() {
+        // ADR 0018 §7-§8: the catalog stores no prose, so what the player reads is
+        // composed from the card's IR at projection time — and rides the same view as
+        // the card's authored identity, which a future client-local cache could key on.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+
+        // Verdant Scout (an ETB-draw creature) in hand, a Forest on the battlefield.
+        let scout = state.new_instance(CardId(6));
+        state.players[0].hand = vec![scout];
+        let forest = put_permanent(&mut state, CardId(5), PlayerId(0), false, false);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+
+        let scout_view = view
+            .my_hand
+            .iter()
+            .find(|c| c.name == "Verdant Scout")
+            .expect("the scout is in hand");
+        assert_eq!(
+            scout_view.rules_text, "When Verdant Scout enters the battlefield, draw a card.",
+            "the trigger's words are generated from its IR, not stored"
+        );
+        assert_eq!(scout_view.functional_id, "verdant_scout");
+
+        let forest_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(forest))
+            .map(|p| &p.card)
+            .expect("the forest is on the battlefield");
+        assert_eq!(forest_view.rules_text, "{T}: Add {G}.");
+        assert_eq!(forest_view.functional_id, "forest");
+
+        // A vanilla card claims no rules — and the field is omitted from the wire
+        // rather than sent as an empty string.
+        let boar = full_card_view("c9".to_string(), CardId(1), db.card(CardId(1)).unwrap());
+        assert_eq!(boar.rules_text, "");
+        let json = serde_json::to_string(&boar).expect("a card view serializes");
+        assert!(!json.contains("rules_text"), "{json}");
+        assert!(
+            json.contains(r#""functional_id":"thornback_boar""#),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn issue_194_an_unresolvable_card_projects_no_text_and_no_identity() {
+        // The defensive placeholder: an id the catalog does not hold has nothing to
+        // generate from and no authored identity to claim — it must not invent either.
+        let db = CardDatabase::bundled().unwrap();
+        let view = card_view("c1".to_string(), CardId(9999), &db);
+        assert_eq!(view.name, "Unknown card 9999");
+        assert_eq!(view.rules_text, "");
+        assert_eq!(view.functional_id, "");
+    }
+
+    #[test]
     fn issue_140_ability_target_requirements_project_and_a_selection_resolves() {
         // A Tapper artifact ({T}: Tap target creature) and a Bear to target.
         let json = r#"[
-            {"schema_version":1,"id":200,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"","oracle_text":"",
+            {"schema_version":1,"id":200,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"",
              "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
                           "effects":[{"kind":"tap","target":"any_creature"}]}]},
-            {"schema_version":1,"id":201,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"","oracle_text":"",
+            {"schema_version":1,"id":201,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
              "power":2,"toughness":2}
         ]"#;
         let db = CardDatabase::from_json(json).unwrap();
