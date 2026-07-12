@@ -32,13 +32,57 @@ provider, see [`local-ai-setup.md`](local-ai-setup.md).
   (the CR-citation convention in `docs/coding-standards.md`).
 - No unrelated diffs.
 
-## Repository settings (apply once on GitHub — cannot be committed)
+## `main` branch ruleset (GitHub settings — not enforceable from a file)
 
-- Branch protection on `main`: require PRs; required checks `Engine` and `Client`;
-  require 1 human approval; dismiss stale approvals; no force pushes; authors
-  cannot approve their own PRs. Enable merge queue when PR volume warrants it.
-- Squash-merge only; PR title becomes the commit (enforce Conventional Commits).
+The protection contract for `main` is defined as an importable ruleset at
+[`.github/rulesets/main.json`](../../.github/rulesets/main.json) and applied once via
+**Settings → Rules → Rulesets → Import** (steps in
+[`.github/rulesets/README.md`](../../.github/rulesets/README.md)). Keeping the JSON in
+the repo makes the applied settings reviewable and reproducible even though GitHub can
+only enforce them from repository settings, not from the file. The active ruleset
+enforces:
+
+- **Pull requests required.** No direct pushes to `main`; every change arrives via PR.
+- **≥ 1 recorded approval**, and **stale approvals are dismissed** when new commits are
+  pushed, so the approval always reflects the merged code.
+- **Code-owner review** for the protected paths in `.github/CODEOWNERS`
+  (`/crates/rune-engine/`, `/docs/protocol.md`, `/docs/decisions/`, and `*`).
+- **Review-conversation resolution** required before merge.
+- **Required status checks** `Engine`, `Client`, `E2E`, and `cargo-deny`, with
+  **strict** "Require branches to be up to date before merging" enabled — a PR that is
+  behind `main` cannot merge until it is updated onto current `main` and the checks
+  re-run against that base. (The complete local verification contract that mirrors
+  these checks is #184's `make verify` gate.)
+- **Linear history** and **squash-only** merging (`allowed_merge_methods: ["squash"]`);
+  the squashed PR title becomes the commit — keep it Conventional Commits.
+- **No force pushes** and **no deletion** of `main`.
+
+### Who may approve, and bypass
+
+- **Only a human other than the PR author may approve.** Agents never approve or merge —
+  not their own PRs and not another agent's. For RUNE that approver is the maintainer,
+  **@ninthworld** (the sole code owner). An agent's job ends at "green CI + PR ready for
+  review"; the recorded approval and the merge click are the maintainer's.
+- Normal agent/author credentials **cannot bypass** the ruleset. The only bypass actor
+  is the repository **Admin** role, reserved for explicit emergencies; every bypass is
+  recorded in the repository audit log, so it is auditable after the fact.
+
+### Handling stale branches
+
+Because strict status checks are on, an agent PR that has fallen behind `main` is
+blocked from merging until it is brought current. The agent that owns the branch
+updates it — since the branch is exclusively its own, it may rebase onto current `main`
+and push with `--force-with-lease` (see the force-push rule in `AGENTS.md`), which
+re-triggers the required checks against the new base. A merge commit from `main` is not
+an option here (linear history is required). Executable worktree/rebase automation is
+out of scope for this contract and lives in the future agent-runner task.
+
+## Other repository settings (apply once on GitHub)
+
 - Actions → Workflow permissions: read-only default token.
+- Merge queue is unavailable while RUNE is a user-owned public repository; the strict
+  "up to date before merging" rule above is the stale-branch guard in its place. Adopt a
+  merge queue if the repo moves under an organization and PR volume warrants it.
 - Known caveat: PRs created by `github-actions[bot]` / the default `GITHUB_TOKEN`
   do **not** trigger CI (recursion protection). Agent PRs must be opened with the
   agent's own credentials (GitHub App or PAT), or a human approves workflow runs

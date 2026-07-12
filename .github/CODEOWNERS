@@ -1,6 +1,7 @@
-# Humans who review and merge. Replace OWNER with the maintainer's GitHub handle.
-# Agents never merge; every path requires a human owner's review.
-*                   @OWNER
-/crates/rune-engine/ @OWNER
-/docs/protocol.md    @OWNER
-/docs/decisions/     @OWNER
+# Humans who review and merge. Agents never merge; every path requires a
+# human owner's review. The `main` ruleset requires code-owner review for the
+# protected paths below (see docs/agents/workflow.md).
+*                    @ninthworld
+/crates/rune-engine/ @ninthworld
+/docs/protocol.md    @ninthworld
+/docs/decisions/     @ninthworld

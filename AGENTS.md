@@ -20,7 +20,13 @@ before writing code.
 - **No card images, no official frames, no WotC branding, no monetization paths.**
   See `docs/brief.md` (Legal Considerations) before touching card data or rendering.
 - Never commit secrets, `.env` files, `node_modules/`, or `target/`.
-- Never force-push shared branches. Never merge your own PR.
+- Only a branch you exclusively own — your own `agent/<issue>-<slug>` branch that no
+  one else is committing to — may be rebased and force-pushed, and only with
+  `git push --force-with-lease` (never `--force`). This is how you bring a stale PR
+  current onto `main` (see "Handling stale branches" in `docs/agents/workflow.md`).
+  Never rewrite or force-push a shared branch — `main`, or any branch another agent or
+  human has commits on. Never merge your own PR; the `main` ruleset requires a separate
+  human approval.
 
 ## Repository map
 
