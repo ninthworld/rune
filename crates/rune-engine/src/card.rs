@@ -4,25 +4,45 @@
 //! compile time with [`include_str!`] and parsed in memory; there is no
 //! filesystem or network access here. serde is permitted for exactly this
 //! purpose — see `docs/decisions/0006-serde-in-engine.md`.
+//!
+//! A card is a **functional definition** ([`CardData`], ADR 0018 §2): the
+//! printing-independent rules object for one card, authored by hand under a stable
+//! [`FunctionalId`] and versioned by [`SCHEMA_VERSION`]. It holds only what the
+//! engine executes or a presentation layer derives from — never an upstream
+//! presentation asset (flavor text, image URI, artist, frame). That prohibition is
+//! structural, not a convention: [`CardData`] and [`PrintingEntry`] both reject
+//! unknown fields, so such a field fails the load instead of being ignored.
+//! The authored schema is documented in `docs/card-schema.md`.
 
 use std::collections::HashMap;
+use std::fmt;
 
 use serde::Deserialize;
 
 use crate::ability::{Ability, Effect, TargetSpec};
 use crate::card_type::{CardType, Supertype};
-use crate::id::{CardId, OracleId};
+use crate::id::{CardId, FunctionalId, OracleId};
+use crate::mana::Color;
 use crate::scripted::scripted_abilities;
 use crate::state::Permanent;
 
-/// The bundled oracle snapshot, embedded at compile time.
+/// The functional-definition schema version this engine understands (ADR 0018 §2).
 ///
-/// One record per distinct card — its printing-independent characteristics and
-/// ability IR — regardless of how many sets print it (ADR 0013 §2). Deliberately
-/// tiny and hand-authored: a handful of vanilla creatures and one basic land.
-/// Only non-infringing data — names, type lines, mana costs, oracle text,
-/// power/toughness — with no card images, official frames, or WotC branding
-/// (crate `AGENTS.md`, `docs/brief.md` Legal Considerations).
+/// Every definition declares the version it is authored against, and a version this
+/// engine does not recognize is a hard load error ([`CatalogError::UnsupportedSchemaVersion`]),
+/// never a silent skip. A breaking change to the schema's shape — a renamed field, a
+/// restructured `abilities` encoding — bumps this, so the whole catalog is migrated
+/// under one forcing function rather than half-loading at runtime.
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// The bundled catalog snapshot, embedded at compile time.
+///
+/// One functional definition per distinct card — its printing-independent
+/// characteristics and ability IR — regardless of how many sets print it (ADR 0013
+/// §1). Deliberately tiny and hand-authored: a handful of vanilla creatures and one
+/// basic land. Only non-infringing data — names, type lines, mana costs,
+/// power/toughness — with no card images, official frames, or WotC branding (crate
+/// `AGENTS.md`, `docs/brief.md` Legal Considerations).
 const ORACLE_SNAPSHOT: &str = include_str!("../data/oracle.json");
 
 /// One embedded set snapshot: a set code paired with its printing records.
@@ -121,14 +141,31 @@ pub struct AuraGrant {
     pub toughness: i32,
 }
 
-/// The static, printing-independent characteristics of a card.
+/// One functional definition: the static, printing-independent rules object for a
+/// card (ADR 0018 §2).
 ///
-/// This is the immutable "oracle" data the engine reasons about today. It holds
-/// no zone, no battlefield identity, and no per-game state — those live on
+/// This is the immutable data the engine reasons about. It holds no zone, no
+/// battlefield identity, and no per-game state — those live on
 /// [`crate::GameState`]. Current characteristics (after continuous effects) are
 /// computed by the layer system, never stored here.
+///
+/// `deny_unknown_fields` is what keeps the schema *functional*: an upstream
+/// presentation asset — `flavor_text`, `image_uris`, `artist`, a frame or watermark
+/// — is a parse error rather than a silently ignored field, so no such data can
+/// enter the catalog by accident (ADR 0018 §2, `docs/brief.md` Legal
+/// Considerations). It is also why this type, not a wrapper, is the direct
+/// deserialization target: serde does not enforce `deny_unknown_fields` through a
+/// `flatten`ed field.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CardData {
+    /// The schema version this definition is authored against; must be
+    /// [`SCHEMA_VERSION`] (ADR 0018 §2).
+    pub schema_version: u32,
+    /// This definition's authored, stable identity (ADR 0018 §3) — what printings
+    /// and decklists reference, and what survives a rebuild, unlike the [`CardId`]
+    /// it is interned to.
+    pub functional_id: FunctionalId,
     /// The card's name (e.g. `"Thornback Boar"`).
     pub name: String,
     /// Printed supertypes (e.g. `Basic`, `Legendary`); empty for most cards. Part
@@ -145,7 +182,19 @@ pub struct CardData {
     /// The mana cost in curly-brace notation (e.g. `"{2}{G}"`); empty for cards
     /// with no mana cost, such as basic lands.
     pub mana_cost: String,
+    /// The card's colors (CR 105.2); empty for a colorless card.
+    ///
+    /// Authored explicitly rather than re-derived by parsing [`Self::mana_cost`]'s
+    /// pips (ADR 0018 §2) — the same "structured, never parsed back" discipline
+    /// [`CardData::type_line`] uses. A colorless-cost-but-colored card is therefore
+    /// representable without the cost string having to imply it.
+    #[serde(default)]
+    pub colors: Vec<Color>,
     /// The rules text as printed. Empty for vanilla cards.
+    ///
+    /// Transitional: no functional definition holds authored rules prose once the
+    /// server generates fallback rules text from the IR below (ADR 0018 §7); this
+    /// field is deleted in the same change that supplies the generated text.
     pub oracle_text: String,
     /// Printed power, for creatures; `None` for non-creatures.
     #[serde(default)]
@@ -179,6 +228,15 @@ pub struct CardData {
     /// continuous effects are not modeled yet.
     #[serde(default)]
     pub keywords: Vec<Keyword>,
+    /// Whether this card's behavior is (also) defined in code rather than data
+    /// (ADR 0018 §2; the escape hatch of ADR 0007).
+    ///
+    /// `true` means [`crate::scripted`] carries an arm for this definition's
+    /// interned [`CardId`]. Authored explicitly so the two tiers are declared, not
+    /// inferred: today the flag is `false` on every bundled card, and no card's
+    /// behavior lives in code.
+    #[serde(default)]
+    pub scripted: bool,
 }
 
 impl CardData {
@@ -256,50 +314,163 @@ impl CardData {
     }
 }
 
-/// One entry in the JSON snapshot: a [`CardId`] paired with its [`CardData`].
-#[derive(Deserialize)]
-struct CardEntry {
-    /// The id this entry is keyed by.
-    id: u64,
-    /// The card's characteristics.
-    #[serde(flatten)]
-    data: CardData,
+/// Everything that can go wrong loading the catalog or a set (ADR 0018 §2, §5).
+///
+/// Every variant is a *load-time* failure: a malformed or inconsistent catalog
+/// never half-loads into a database the engine would then query and find `None` in
+/// mid-game. Errors are returned, not panicked on — the engine forbids panicking
+/// APIs (`docs/coding-standards.md`).
+#[derive(Debug)]
+pub enum CatalogError {
+    /// The snapshot is not valid JSON, or an entry violates the schema — including
+    /// an unknown field (a presentation asset) rejected by `deny_unknown_fields`,
+    /// and an ill-formed [`FunctionalId`] slug.
+    Json(serde_json::Error),
+    /// A catalog entry carries no integer `id` to intern it under.
+    MissingInternedId {
+        /// The entry's position in the snapshot, counting from zero.
+        index: usize,
+    },
+    /// A definition declares a `schema_version` this engine does not understand.
+    UnsupportedSchemaVersion {
+        /// The definition that declared it.
+        functional_id: FunctionalId,
+        /// The version it declared.
+        found: u32,
+    },
+    /// Two definitions claim the same [`FunctionalId`]; an authored identity is
+    /// never reused (ADR 0018 §3).
+    DuplicateFunctionalId {
+        /// The identity claimed twice.
+        functional_id: FunctionalId,
+    },
+    /// Two definitions intern to the same [`CardId`], so one would shadow the other.
+    DuplicateCardId {
+        /// The handle claimed twice.
+        id: CardId,
+    },
+    /// A printing references a functional definition the catalog does not contain.
+    UnknownFunctionalId {
+        /// The set the printing was loaded from.
+        set_code: String,
+        /// The printing's collector number within that set.
+        collector_number: String,
+        /// The identity it references.
+        functional_id: FunctionalId,
+    },
 }
 
-/// An immutable, `CardId`-keyed database of card characteristics.
+impl fmt::Display for CatalogError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Json(err) => write!(f, "card data does not match the schema: {err}"),
+            Self::MissingInternedId { index } => {
+                write!(f, "catalog entry {index} has no integer `id`")
+            }
+            Self::UnsupportedSchemaVersion {
+                functional_id,
+                found,
+            } => write!(
+                f,
+                "{functional_id} declares schema_version {found}; this engine understands {SCHEMA_VERSION}"
+            ),
+            Self::DuplicateFunctionalId { functional_id } => {
+                write!(f, "two definitions claim the functional id {functional_id}")
+            }
+            Self::DuplicateCardId { id } => {
+                write!(f, "two definitions intern to {id:?}")
+            }
+            Self::UnknownFunctionalId {
+                set_code,
+                collector_number,
+                functional_id,
+            } => write!(
+                f,
+                "printing {set_code} #{collector_number} references {functional_id}, \
+                 which is not in the catalog"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CatalogError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Json(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<serde_json::Error> for CatalogError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Json(err)
+    }
+}
+
+/// An immutable, `CardId`-keyed database of functional definitions.
 ///
 /// Built from a JSON snapshot (the bundled one via [`CardDatabase::bundled`], or
 /// any snapshot via [`CardDatabase::from_json`]). Lookups are pure: the database
-/// never mutates and holds no game state.
+/// never mutates and holds no game state. It also indexes each definition's
+/// authored [`FunctionalId`], which is how a printing (and, later, a decklist)
+/// resolves to the interned [`CardId`] every rules read goes through.
 #[derive(Clone, Debug, Default)]
 pub struct CardDatabase {
     cards: HashMap<CardId, CardData>,
+    interned: HashMap<FunctionalId, CardId>,
 }
 
 impl CardDatabase {
     /// Load the database from the compile-time-embedded snapshot.
     ///
     /// # Errors
-    /// Returns the underlying [`serde_json::Error`] if the embedded snapshot
-    /// fails to parse. The snapshot is committed and tested, so this is not
-    /// expected in practice; it is surfaced rather than panicked on because the
-    /// engine forbids panicking APIs.
-    pub fn bundled() -> Result<Self, serde_json::Error> {
+    /// Returns a [`CatalogError`] if the embedded snapshot does not parse or does
+    /// not validate. The snapshot is committed and tested, so this is not expected
+    /// in practice; it is surfaced rather than panicked on because the engine
+    /// forbids panicking APIs.
+    pub fn bundled() -> Result<Self, CatalogError> {
         Self::from_json(ORACLE_SNAPSHOT)
     }
 
-    /// Parse a JSON snapshot (an array of oracle-card entries) into a database.
+    /// Parse a JSON snapshot (an array of functional definitions) into a database,
+    /// validating each one (ADR 0018 §2).
     ///
     /// # Errors
-    /// Returns the underlying [`serde_json::Error`] if `json` is not a valid
-    /// snapshot.
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        let entries: Vec<CardEntry> = serde_json::from_str(json)?;
-        let cards = entries
-            .into_iter()
-            .map(|entry| (CardId(entry.id), entry.data))
-            .collect();
-        Ok(Self { cards })
+    /// Returns a [`CatalogError`] if `json` is not a valid snapshot: malformed
+    /// JSON, an unknown (presentation) field, a schema version this engine does not
+    /// understand, or a duplicated identity.
+    pub fn from_json(json: &str) -> Result<Self, CatalogError> {
+        let entries: Vec<serde_json::Value> = serde_json::from_str(json)?;
+        let mut db = Self::default();
+        for (index, mut entry) in entries.into_iter().enumerate() {
+            let id = CardId(take_interned_id(&mut entry, index)?);
+            let data: CardData = serde_json::from_value(entry)?;
+            db.insert(id, data)?;
+        }
+        Ok(db)
+    }
+
+    /// Validate one definition and index it under both its handle and its authored
+    /// identity.
+    fn insert(&mut self, id: CardId, data: CardData) -> Result<(), CatalogError> {
+        if data.schema_version != SCHEMA_VERSION {
+            return Err(CatalogError::UnsupportedSchemaVersion {
+                functional_id: data.functional_id,
+                found: data.schema_version,
+            });
+        }
+        if self.cards.contains_key(&id) {
+            return Err(CatalogError::DuplicateCardId { id });
+        }
+        if self.interned.contains_key(&data.functional_id) {
+            return Err(CatalogError::DuplicateFunctionalId {
+                functional_id: data.functional_id,
+            });
+        }
+        self.interned.insert(data.functional_id.clone(), id);
+        self.cards.insert(id, data);
+        Ok(())
     }
 
     /// Resolve a [`CardId`] to its characteristics, or `None` if the id is not
@@ -307,6 +478,17 @@ impl CardDatabase {
     #[must_use]
     pub fn card(&self, id: CardId) -> Option<&CardData> {
         self.cards.get(&id)
+    }
+
+    /// Resolve an authored [`FunctionalId`] to the [`CardId`] it is interned under
+    /// in this build, or `None` if the catalog holds no such definition.
+    ///
+    /// The one direction that crosses from authored identity to engine handle:
+    /// printings resolve through it at load time, so no runtime lookup can find a
+    /// dangling reference.
+    #[must_use]
+    pub fn card_id(&self, functional_id: &FunctionalId) -> Option<CardId> {
+        self.interned.get(functional_id).copied()
     }
 
     /// The number of cards in the database.
@@ -320,6 +502,23 @@ impl CardDatabase {
     pub fn is_empty(&self) -> bool {
         self.cards.is_empty()
     }
+}
+
+/// Take the integer `id` a catalog entry is interned under out of the entry, leaving
+/// a bare functional definition behind for [`CardData`] to deserialize.
+///
+/// The handle is hand-written in the snapshot today and is the one part of an entry
+/// that is *not* authored card data (ADR 0018 §3): it is assigned by the catalog,
+/// not by the card. Splitting it off here — rather than modelling it as a field of a
+/// wrapper struct — is what lets [`CardData`] be the direct deserialization target,
+/// which is required for its `deny_unknown_fields` to actually reject presentation
+/// assets: serde does not enforce that attribute through a `flatten`ed field.
+fn take_interned_id(entry: &mut serde_json::Value, index: usize) -> Result<u64, CatalogError> {
+    entry
+        .as_object_mut()
+        .and_then(|fields| fields.remove("id"))
+        .and_then(|id| id.as_u64())
+        .ok_or(CatalogError::MissingInternedId { index })
 }
 
 /// A card's rarity in a given printing (ADR 0013 §1).
@@ -341,16 +540,19 @@ pub enum Rarity {
 
 /// A purely bibliographic printing record (ADR 0013 §1).
 ///
-/// A printing is a specific appearance of an oracle card in a set: its
-/// [`OracleId`], a collector number, and a rarity. It carries **no** name, cost,
-/// types, or abilities — everything mechanical is read through its [`OracleId`]
-/// against the oracle [`CardDatabase`] — and **no** art, frame, artist, or
+/// A printing is a specific appearance of a card in a set: the functional
+/// definition it prints, a collector number, and a rarity. It carries **no** name,
+/// cost, types, or abilities — everything mechanical is read through its
+/// [`OracleId`] against the [`CardDatabase`] — and **no** art, frame, artist, or
 /// branding. That prohibition is structural: the deserializer rejects unknown
 /// fields, so an `image_uris`-style field fails to parse rather than being
 /// silently ignored (ADR 0013 §6, `docs/brief.md` Legal Considerations).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Printing {
-    /// The oracle card this record prints. All rules read through this id.
+    /// The card this record prints, as the handle it interned to. All rules read
+    /// through this id. The record itself names the card by [`FunctionalId`]; the
+    /// loader resolves that to this handle, so an unresolvable reference fails the
+    /// load rather than surfacing as a `None` mid-game.
     pub oracle: OracleId,
     /// The collector number within its set (a string, e.g. `"12"` or `"100a"`).
     pub collector_number: String,
@@ -366,8 +568,9 @@ pub struct Printing {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PrintingEntry {
-    /// The [`OracleId`] this printing references, as its raw integer.
-    oracle_id: u64,
+    /// The functional definition this printing prints, by its authored identity —
+    /// the identity that survives a rebuild, unlike the interned handle (ADR 0018 §3).
+    functional_id: FunctionalId,
     /// The collector number within its set.
     collector_number: String,
     /// The printing's rarity.
@@ -397,44 +600,63 @@ pub struct PrintingDatabase {
 }
 
 impl PrintingDatabase {
-    /// Load every printing in the compile-time-embedded [`SET_MANIFEST`].
+    /// Load every printing in the compile-time-embedded [`SET_MANIFEST`], resolving
+    /// each record's [`FunctionalId`] against `cards`.
     ///
     /// # Errors
-    /// Returns the underlying [`serde_json::Error`] if any embedded set file
-    /// fails to parse. The snapshots are committed and tested, so this is not
-    /// expected in practice; it is surfaced rather than panicked on because the
-    /// engine forbids panicking APIs.
-    pub fn bundled() -> Result<Self, serde_json::Error> {
+    /// Returns a [`CatalogError`] if any embedded set file fails to parse or
+    /// references a definition `cards` does not hold. The snapshots are committed
+    /// and tested, so this is not expected in practice; it is surfaced rather than
+    /// panicked on because the engine forbids panicking APIs.
+    pub fn bundled(cards: &CardDatabase) -> Result<Self, CatalogError> {
         let mut db = Self::default();
         for set in SET_MANIFEST {
-            db.load_set(set.code, set.json)?;
+            db.load_set(set.code, set.json, cards)?;
         }
         Ok(db)
     }
 
     /// Parse one set's JSON (an array of printing records) into a fresh database
-    /// under `set_code`.
+    /// under `set_code`, resolving each record's [`FunctionalId`] against `cards`.
     ///
     /// # Errors
-    /// Returns the underlying [`serde_json::Error`] if `json` is not a valid set
-    /// snapshot — including when a record carries a field beyond the bibliographic
-    /// three, which is rejected by `deny_unknown_fields`.
-    pub fn from_json(set_code: &str, json: &str) -> Result<Self, serde_json::Error> {
+    /// Returns a [`CatalogError`] if `json` is not a valid set snapshot — including
+    /// when a record carries a field beyond the bibliographic three, which is
+    /// rejected by `deny_unknown_fields` — or when a record references a functional
+    /// definition the catalog does not contain.
+    pub fn from_json(
+        set_code: &str,
+        json: &str,
+        cards: &CardDatabase,
+    ) -> Result<Self, CatalogError> {
         let mut db = Self::default();
-        db.load_set(set_code, json)?;
+        db.load_set(set_code, json, cards)?;
         Ok(db)
     }
 
-    /// Parse `json` and insert every printing under `set_code`.
-    fn load_set(&mut self, set_code: &str, json: &str) -> Result<(), serde_json::Error> {
+    /// Parse `json` and insert every printing under `set_code`, resolving authored
+    /// identities to this build's interned handles.
+    fn load_set(
+        &mut self,
+        set_code: &str,
+        json: &str,
+        cards: &CardDatabase,
+    ) -> Result<(), CatalogError> {
         let entries: Vec<PrintingEntry> = serde_json::from_str(json)?;
         for entry in entries {
+            let oracle = cards.card_id(&entry.functional_id).ok_or_else(|| {
+                CatalogError::UnknownFunctionalId {
+                    set_code: set_code.to_string(),
+                    collector_number: entry.collector_number.clone(),
+                    functional_id: entry.functional_id.clone(),
+                }
+            })?;
             let key = PrintingKey {
                 set_code: set_code.to_string(),
                 collector_number: entry.collector_number.clone(),
             };
             let printing = Printing {
-                oracle: CardId(entry.oracle_id),
+                oracle,
                 collector_number: entry.collector_number,
                 rarity: entry.rarity,
             };
@@ -582,7 +804,7 @@ mod tests {
 
     #[test]
     fn from_json_parses_a_minimal_snapshot() {
-        let json = r#"[{"id":42,"name":"Test Wisp","types":["creature"],"subtypes":["Spirit"],"mana_cost":"{U}","oracle_text":"","power":1,"toughness":1}]"#;
+        let json = r#"[{"schema_version":1,"id":42,"functional_id":"test_wisp","name":"Test Wisp","types":["creature"],"subtypes":["Spirit"],"mana_cost":"{U}","oracle_text":"","power":1,"toughness":1}]"#;
         let db = CardDatabase::from_json(json).unwrap();
         assert_eq!(db.len(), 1);
         let wisp = db.card(CardId(42)).unwrap();
@@ -622,7 +844,7 @@ mod tests {
         assert!(db.card(CardId(1)).unwrap().is_permanent());
         assert!(db.card(CardId(5)).unwrap().is_permanent());
         // An instant-only card is not.
-        let json = r#"[{"id":100,"name":"Test Bolt","types":["instant"],"mana_cost":"{R}","oracle_text":""}]"#;
+        let json = r#"[{"schema_version":1,"id":100,"functional_id":"test_bolt","name":"Test Bolt","types":["instant"],"mana_cost":"{R}","oracle_text":""}]"#;
         let bolt = CardDatabase::from_json(json).unwrap();
         assert!(!bolt.card(CardId(100)).unwrap().is_permanent());
     }
@@ -909,7 +1131,7 @@ mod tests {
     fn all_eight_keyword_variants_deserialize_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
         // four data-only variants keywords II will enforce (CR 702).
-        let json = r#"[{"id":900,"name":"Every Keyword","types":["creature"],
+        let json = r#"[{"schema_version":1,"id":900,"functional_id":"every_keyword","name":"Every Keyword","types":["creature"],
             "mana_cost":"","oracle_text":"","power":1,"toughness":1,
             "keywords":["flying","reach","vigilance","haste","first_strike",
                         "trample","deathtouch","lifelink"]}]"#;
@@ -931,11 +1153,13 @@ mod tests {
 
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
-        let printings = PrintingDatabase::bundled().unwrap();
+        let cards = CardDatabase::bundled().unwrap();
+        let printings = PrintingDatabase::bundled(&cards).unwrap();
         // FIX prints the thirty-two fixtures; FIX2 reprints one — thirty-three printings total.
         assert_eq!(printings.len(), 33);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
+        // The record names thornback_boar; the loader resolved that to its handle.
         assert_eq!(boar.oracle, CardId(1));
         assert_eq!(boar.rarity, Rarity::Common);
         // A collector number absent from a set does not resolve.
@@ -950,7 +1174,7 @@ mod tests {
         // two printings differ only bibliographically; everything the engine
         // reasons about is read through the shared OracleId, so it is identical.
         let cards = CardDatabase::bundled().unwrap();
-        let printings = PrintingDatabase::bundled().unwrap();
+        let printings = PrintingDatabase::bundled(&cards).unwrap();
 
         let first = printings.printing("FIX", "6").unwrap();
         let reprint = printings.printing("FIX2", "12").unwrap();
@@ -983,8 +1207,10 @@ mod tests {
 
     #[test]
     fn printing_deserializes_only_bibliographic_fields() {
-        let json = r#"[{"oracle_id":1,"collector_number":"1","rarity":"common"}]"#;
-        let db = PrintingDatabase::from_json("TST", json).unwrap();
+        let cards = CardDatabase::bundled().unwrap();
+        let json =
+            r#"[{"functional_id":"thornback_boar","collector_number":"1","rarity":"common"}]"#;
+        let db = PrintingDatabase::from_json("TST", json, &cards).unwrap();
         assert_eq!(db.len(), 1);
         let p = db.printing("TST", "1").unwrap();
         assert_eq!(p.oracle, CardId(1));
@@ -995,17 +1221,215 @@ mod tests {
     fn printing_rejects_art_and_branding_fields() {
         // An image_uris-style field must fail to parse: the art/branding
         // prohibition is structural via deny_unknown_fields (ADR 0013 §6).
-        let json = r#"[{"oracle_id":1,"collector_number":"1","rarity":"common","image_uris":{"small":"x"}}]"#;
-        assert!(PrintingDatabase::from_json("TST", json).is_err());
+        let cards = CardDatabase::bundled().unwrap();
+        let json = r#"[{"functional_id":"thornback_boar","collector_number":"1","rarity":"common","image_uris":{"small":"x"}}]"#;
+        assert!(PrintingDatabase::from_json("TST", json, &cards).is_err());
         // An artist credit is likewise rejected.
-        let json =
-            r#"[{"oracle_id":1,"collector_number":"1","rarity":"common","artist":"Someone"}]"#;
-        assert!(PrintingDatabase::from_json("TST", json).is_err());
+        let json = r#"[{"functional_id":"thornback_boar","collector_number":"1","rarity":"common","artist":"Someone"}]"#;
+        assert!(PrintingDatabase::from_json("TST", json, &cards).is_err());
     }
 
     #[test]
     fn printing_rejects_malformed_input() {
-        assert!(PrintingDatabase::from_json("TST", "not json").is_err());
+        let cards = CardDatabase::bundled().unwrap();
+        assert!(PrintingDatabase::from_json("TST", "not json", &cards).is_err());
+    }
+
+    #[test]
+    fn printing_referencing_an_absent_card_fails_the_load() {
+        // ADR 0018 §3: a printing names a card by its authored identity, and an
+        // unresolvable reference is a load-time error — never a database that
+        // resolves to None mid-game.
+        let cards = CardDatabase::bundled().unwrap();
+        let json = r#"[{"functional_id":"no_such_card","collector_number":"1","rarity":"common"}]"#;
+        let err = PrintingDatabase::from_json("TST", json, &cards).unwrap_err();
+        assert!(
+            matches!(&err, CatalogError::UnknownFunctionalId { functional_id, set_code, .. }
+                if functional_id.as_str() == "no_such_card" && set_code == "TST"),
+            "expected an unresolved-reference error, got {err:?}"
+        );
+        assert!(err.to_string().contains("not in the catalog"), "{err}");
+    }
+
+    #[test]
+    fn every_fixture_carries_a_unique_functional_id_matching_its_name() {
+        // ADR 0018 §3: each definition's authored identity is a lowercase snake_case
+        // slug of its name, unique across the catalog, and resolves back to the
+        // handle the engine interned it under.
+        let db = CardDatabase::bundled().unwrap();
+        let mut seen = std::collections::HashSet::new();
+        for id in (1..=32).map(CardId) {
+            let card = db.card(id).unwrap();
+            let expected: String = card
+                .name
+                .to_lowercase()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            assert_eq!(
+                card.functional_id.as_str(),
+                expected,
+                "{} should be slugged from its name",
+                card.name
+            );
+            assert!(
+                seen.insert(card.functional_id.clone()),
+                "{} is claimed twice",
+                card.functional_id
+            );
+            assert_eq!(db.card_id(&card.functional_id), Some(id));
+        }
+        assert_eq!(seen.len(), 32);
+        // An identity no definition claims resolves to nothing.
+        let absent = FunctionalId::try_from("nonexistent_card".to_string()).unwrap();
+        assert!(db.card_id(&absent).is_none());
+    }
+
+    #[test]
+    fn definition_rejects_presentation_assets() {
+        // ADR 0018 §2: the functional schema is closed. Upstream presentation data
+        // is structurally rejected, so it cannot enter the catalog by accident.
+        for field in [
+            r#""flavor_text":"A boar with a bad temper.""#,
+            r#""image_uris":{"small":"https://example.test/boar.png"}"#,
+            r#""artist":"Someone""#,
+            r#""frame":"2015""#,
+            r#""watermark":"guild""#,
+        ] {
+            let json = format!(
+                r#"[{{"schema_version":1,"id":1,"functional_id":"test_boar","name":"Test Boar",
+                     "types":["creature"],"mana_cost":"{{G}}","colors":["green"],"oracle_text":"",
+                     "power":1,"toughness":1,{field}}}]"#
+            );
+            let err = CardDatabase::from_json(&json).unwrap_err();
+            assert!(
+                matches!(err, CatalogError::Json(_)),
+                "{field} should be rejected as an unknown field, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unrecognized_schema_version_fails_loudly() {
+        // ADR 0018 §2: an unknown version is a hard error naming the offender, not a
+        // silent skip that would leave the card missing from a running game.
+        let json = r#"[{"schema_version":99,"id":1,"functional_id":"test_boar","name":"Test Boar",
+                        "types":["creature"],"mana_cost":"{G}","colors":["green"],"oracle_text":"",
+                        "power":1,"toughness":1}]"#;
+        let err = CardDatabase::from_json(json).unwrap_err();
+        assert!(
+            matches!(&err, CatalogError::UnsupportedSchemaVersion { functional_id, found }
+                if functional_id.as_str() == "test_boar" && *found == 99),
+            "expected an unsupported-version error, got {err:?}"
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("test_boar") && message.contains("99"),
+            "{message}"
+        );
+        // Every bundled definition declares the version this engine understands.
+        let db = CardDatabase::bundled().unwrap();
+        assert!((1..=32)
+            .map(CardId)
+            .all(|id| db.card(id).unwrap().schema_version == SCHEMA_VERSION));
+    }
+
+    #[test]
+    fn a_duplicated_identity_fails_the_load() {
+        // Two definitions claiming one authored identity would make the catalog
+        // ambiguous; the second is an error, not a silent overwrite.
+        let entry = |id: u64, functional_id: &str| {
+            format!(
+                r#"{{"schema_version":1,"id":{id},"functional_id":"{functional_id}","name":"Test Boar",
+                    "types":["creature"],"mana_cost":"{{G}}","colors":["green"],"oracle_text":"",
+                    "power":1,"toughness":1}}"#
+            )
+        };
+        let json = format!("[{},{}]", entry(1, "test_boar"), entry(2, "test_boar"));
+        assert!(matches!(
+            CardDatabase::from_json(&json).unwrap_err(),
+            CatalogError::DuplicateFunctionalId { .. }
+        ));
+        // The same is true of the interned handle they are keyed by.
+        let json = format!("[{},{}]", entry(1, "test_boar"), entry(1, "other_boar"));
+        assert!(matches!(
+            CardDatabase::from_json(&json).unwrap_err(),
+            CatalogError::DuplicateCardId { .. }
+        ));
+    }
+
+    #[test]
+    fn an_ill_formed_functional_id_fails_the_load() {
+        let json = r#"[{"schema_version":1,"id":1,"functional_id":"Thornback Boar","name":"Test Boar",
+                        "types":["creature"],"mana_cost":"{G}","colors":["green"],"oracle_text":"",
+                        "power":1,"toughness":1}]"#;
+        assert!(CardDatabase::from_json(json).is_err());
+    }
+
+    #[test]
+    fn colors_are_authored_not_derived_from_the_cost() {
+        // ADR 0018 §2: colors are an explicit field. For the current fixtures they
+        // agree with the pips of their cost (this test is that authoring check), but
+        // nothing derives them at runtime — so a card whose colors do not follow from
+        // its cost is representable.
+        let db = CardDatabase::bundled().unwrap();
+        for id in (1..=32).map(CardId) {
+            let card = db.card(id).unwrap();
+            let cost = crate::mana::parse_mana_cost(&card.mana_cost);
+            let from_pips: Vec<Color> = [
+                (cost.white, Color::White),
+                (cost.blue, Color::Blue),
+                (cost.black, Color::Black),
+                (cost.red, Color::Red),
+                (cost.green, Color::Green),
+            ]
+            .into_iter()
+            .filter(|(pips, _)| *pips > 0)
+            .map(|(_, color)| color)
+            .collect();
+            assert_eq!(
+                card.colors, from_pips,
+                "{}'s authored colors disagree with its cost",
+                card.name
+            );
+        }
+
+        // A colorless cost with an authored color — the case pip-parsing could not
+        // express — round-trips.
+        let json = r#"[{"schema_version":1,"id":1,"functional_id":"void_thing","name":"Void Thing",
+                        "types":["creature"],"mana_cost":"{2}","colors":["black"],"oracle_text":"",
+                        "power":2,"toughness":2}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+        assert_eq!(db.card(CardId(1)).unwrap().colors, vec![Color::Black]);
+    }
+
+    #[test]
+    fn scripted_is_an_explicit_flag_defaulting_to_false() {
+        // ADR 0018 §2: the escape hatch is declared on the card, not inferred. No
+        // bundled card is scripted today.
+        let db = CardDatabase::bundled().unwrap();
+        assert!((1..=32)
+            .map(CardId)
+            .all(|id| !db.card(id).unwrap().scripted));
+
+        let json = r#"[{"schema_version":1,"id":1,"functional_id":"bespoke_thing","name":"Bespoke Thing",
+                        "types":["creature"],"mana_cost":"{B}","colors":["black"],"oracle_text":"",
+                        "power":1,"toughness":1,"scripted":true}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+        assert!(db.card(CardId(1)).unwrap().scripted);
+    }
+
+    #[test]
+    fn a_catalog_entry_without_a_handle_fails_the_load() {
+        // The interned handle is not authored card data; it is what the catalog keys
+        // the definition by, and an entry missing it cannot be interned at all.
+        let json = r#"[{"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
+                        "types":["creature"],"mana_cost":"{G}","colors":["green"],"oracle_text":"",
+                        "power":1,"toughness":1}]"#;
+        assert!(matches!(
+            CardDatabase::from_json(json).unwrap_err(),
+            CatalogError::MissingInternedId { index: 0 }
+        ));
     }
 
     #[test]

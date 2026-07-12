@@ -63,7 +63,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
-use rune_engine::{CardDatabase, CardId, GameSetup, GameState, PlayerSetup};
+use rune_engine::{CardDatabase, CardId, CatalogError, GameSetup, GameState, PlayerSetup};
 use rune_protocol::{
     CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomView,
     SeatView, SessionToken, SubmitDeck,
@@ -337,9 +337,9 @@ impl Lobby {
     /// Create a lobby whose rooms use the engine's bundled card database.
     ///
     /// # Errors
-    /// Returns the underlying [`serde_json::Error`] if the bundled snapshot fails
-    /// to parse (see [`CardDatabase::bundled`]).
-    pub fn bundled(max_rooms: usize) -> Result<Self, serde_json::Error> {
+    /// Returns a [`CatalogError`] if the bundled snapshot fails to parse or
+    /// validate (see [`CardDatabase::bundled`]).
+    pub fn bundled(max_rooms: usize) -> Result<Self, CatalogError> {
         Self::bundled_with_overrides(max_rooms, None, None)
     }
 
@@ -348,13 +348,13 @@ impl Lobby {
     /// [`Lobby::with_overrides`].
     ///
     /// # Errors
-    /// Returns the underlying [`serde_json::Error`] if the bundled snapshot fails
-    /// to parse (see [`CardDatabase::bundled`]).
+    /// Returns a [`CatalogError`] if the bundled snapshot fails to parse or
+    /// validate (see [`CardDatabase::bundled`]).
     pub fn bundled_with_overrides(
         max_rooms: usize,
         seed_override: Option<u64>,
         life_override: Option<i32>,
-    ) -> Result<Self, serde_json::Error> {
+    ) -> Result<Self, CatalogError> {
         Ok(Self::with_overrides(
             CardDatabase::bundled()?,
             max_rooms,

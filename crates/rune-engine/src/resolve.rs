@@ -270,7 +270,7 @@ mod tests {
         // offers creature casts (out of scope for #47), so we seed a synthetic
         // instant directly on the stack and drive resolution through the public
         // apply_action path (both players pass → the top of the stack resolves).
-        let json = r#"[{"id":100,"name":"Test Bolt","types":["instant"],"mana_cost":"{R}","oracle_text":""}]"#;
+        let json = r#"[{"schema_version":1,"id":100,"functional_id":"test_bolt","name":"Test Bolt","types":["instant"],"mana_cost":"{R}","oracle_text":""}]"#;
         let db = CardDatabase::from_json(json).unwrap();
 
         let mut state = GameState::new_two_player();
@@ -714,7 +714,7 @@ mod tests {
         // an ETB "draw a card" trigger: on resolution it is already a 2/2 with the two
         // counters AND its ETB trigger is on the stack — both from the one entry event.
         use crate::state::CounterKind;
-        let json = r#"[{"id":200,"name":"Test Broodling","types":["creature"],"mana_cost":"","oracle_text":"","power":0,"toughness":0,"abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2},{"type":"triggered","event":"self_enters_battlefield","effects":[{"kind":"draw_card","count":1}]}]}]"#;
+        let json = r#"[{"schema_version":1,"id":200,"functional_id":"test_broodling","name":"Test Broodling","types":["creature"],"mana_cost":"","oracle_text":"","power":0,"toughness":0,"abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2},{"type":"triggered","event":"self_enters_battlefield","effects":[{"kind":"draw_card","count":1}]}]}]"#;
         let db = CardDatabase::from_json(json).unwrap();
 
         let mut state = GameState::new_two_player();

@@ -13,6 +13,10 @@ The rules engine. Layer 3 of docs/brief.md. Read that section before any change 
   is the mechanism, do not add zone-change counters.
 - Every rules behavior change ships with tests in the same PR. Rules bugs get a
   regression test named after the issue (`issue_123_...`).
+- Cards are **data**, authored against the schema in `docs/card-schema.md` (ADR 0018):
+  a functional definition per card under a stable `functional_id`, no presentation
+  assets (the schema rejects them structurally), and code-defined behavior only via the
+  declared `scripted` escape hatch.
 
 ## Commands
 - `cargo test -p rune-engine`
