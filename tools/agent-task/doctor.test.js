@@ -21,7 +21,7 @@ test("doctor reports the node version as a required check", () => {
 });
 
 test("provider CLIs and isolation are advisory, not required", () => {
-  for (const name of ["provider isolation backend", "provider CLI: claude", "provider CLI: codex"]) {
+  for (const name of ["provider isolation backend", "provider: claude", "provider: codex"]) {
     assert.equal(find(name).required, false);
   }
 });

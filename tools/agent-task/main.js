@@ -8,7 +8,7 @@ import { buildBrief } from "./brief.js";
 import { inspect } from "./diff.js";
 import { diagnose } from "./doctor.js";
 import { GitHub, mintToken } from "./github.js";
-import { providerEnv, resolveIsolation, scratchHomeFor } from "./isolation.js";
+import { hasCredential, providerEnv, resolveIsolation, scratchHomeFor } from "./isolation.js";
 import { buildPrBody } from "./prbody.js";
 import { DEFAULT_TIMEOUT_MS, runProvider } from "./provider.js";
 import { commitWork, openDraftPr, pushFromMirror, rebaseOntoMain } from "./publish.js";
@@ -102,6 +102,23 @@ async function cmdStart({ positional, flags }) {
   const gateSet = flags.gates ?? "verify";
   if (!GATE_SETS[gateSet]) {
     throw new TaskError(`--gates must be one of ${Object.keys(GATE_SETS).join(", ")} (got ${gateSet})`);
+  }
+
+  // The sandbox replaces HOME, so a provider that was only ever logged in interactively cannot
+  // see its own session and will sit asking for `/login` with nobody there to answer. Checked
+  // before the claim, like everything else that can be known in advance.
+  if (!hasCredential(provider)) {
+    throw new TaskError(
+      `the ${provider} provider has no credential in the environment.\n\n` +
+        `Its interactive login lives under your real HOME, which the sandbox deliberately puts out\n` +
+        `of reach — the same isolation that stops a provider reading the rune-agent private key.\n` +
+        `A headless run needs a token instead:\n\n` +
+        (provider === "claude"
+          ? "  claude setup-token          # once; mints a long-lived token for subscription users\n  export CLAUDE_CODE_OAUTH_TOKEN=…\n"
+          : provider === "codex"
+            ? "  export OPENAI_API_KEY=…\n"
+            : "  export RUNE_LOCAL_ENV=VAR1,VAR2   # names of the env vars your harness needs\n"),
+    );
   }
 
   // Resolved before the claim: a host that cannot contain a provider should fail while the
