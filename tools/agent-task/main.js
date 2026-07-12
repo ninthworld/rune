@@ -1,13 +1,21 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { PROVIDERS, actor, repoSlug, runsRoot } from "./config.js";
 import { TaskError, claim, release } from "./claim.js";
+import { buildBrief } from "./brief.js";
 import { diagnose } from "./doctor.js";
 import { GitHub, mintToken } from "./github.js";
-import { activeRunForIssue, isActive, listRuns, loadRun, removeRun, runDir } from "./runs.js";
+import { resolveIsolation, scratchHomeFor } from "./isolation.js";
+import { DEFAULT_TIMEOUT_MS, runProvider } from "./provider.js";
+import { activeRunForIssue, isActive, listRuns, loadRun, removeRun, runDir, transition } from "./runs.js";
+import { createWorkspace, ensureMirror } from "./sandbox.js";
 
 const USAGE = `scripts/agent-task — drive one RUNE issue to a reviewable PR (ADR 0016)
 
-  start <issue> --provider <${PROVIDERS.join("|")}> [--allow-ci]
-                          claim the issue and prepare a run
+  start <issue> --provider <${PROVIDERS.join("|")}> [--allow-ci] [--timeout 45m]
+                [--unsafe-same-uid]
+                          claim the issue and run the provider in a sandbox
   status [<issue>|<run-id>]  show lifecycle state
   list                    active and recent runs
   release <issue> [--force]  drop the claim; --force takes over a stale one
@@ -51,34 +59,80 @@ function describe(run) {
   return `${run.run_id}  #${run.issue}  ${run.state.padEnd(10)}  ${run.provider.padEnd(6)}  ${run.title}`;
 }
 
+function parseTimeout(value) {
+  if (value === undefined) return DEFAULT_TIMEOUT_MS;
+  const match = /^(\d+)(s|m|h)?$/.exec(String(value));
+  if (!match) throw new TaskError(`--timeout must look like 45m, 2h, or 900s (got ${value})`);
+  const scale = { s: 1000, m: 60_000, h: 3_600_000 }[match[2] ?? "m"];
+  return Number(match[1]) * scale;
+}
+
 async function cmdStart({ positional, flags }) {
   const number = issueArg(positional, "start");
   const provider = flags.provider;
   if (!PROVIDERS.includes(provider)) {
     throw new TaskError(`--provider must be one of ${PROVIDERS.join(", ")} (got ${provider ?? "nothing"})`);
   }
+  const timeoutMs = parseTimeout(flags.timeout);
 
-  const run = await claim(connect(), {
+  // Resolved before the claim: a host that cannot contain a provider should fail while the
+  // issue is still untouched, not after it has been claimed and labelled.
+  let isolation;
+  try {
+    isolation = resolveIsolation({ unsafeSameUid: flags["unsafe-same-uid"] === true });
+  } catch (err) {
+    throw new TaskError(err.message);
+  }
+  if (isolation.mode === "same-uid") {
+    process.stderr.write(
+      "warning: --unsafe-same-uid — the provider runs as you and can read the rune-agent\n" +
+        "         private key. Recorded as isolation=same-uid in the run summary.\n\n",
+    );
+  }
+
+  const gh = connect();
+  const root = runsRoot();
+  const issue = await gh.issue(number);
+
+  let run = await claim(gh, {
     issue: number,
     provider,
     allowCi: flags["allow-ci"] === true,
     actor: actor(),
-    root: runsRoot(),
+    root,
   });
+  run = { ...run, isolation: isolation.mode };
+
+  const dir = runDir(run.run_id, root);
+  process.stdout.write(`claimed #${number} — run ${run.run_id}\n  branch    ${run.branch}\n  state     ${dir}\n\n`);
+
+  ensureMirror();
+  const workspace = createWorkspace(run, { root });
+  scratchHomeFor(run, root);
+
+  // Written to a file *outside* the working copy (so it can never land in the diff) and also
+  // handed to the adapter as text, because the CLIs take the prompt as an argument.
+  const brief = buildBrief({ issue, run });
+  writeFileSync(join(dir, "brief.md"), brief);
+
+  run = transition({ ...run, workspace }, "implementing", root);
+  process.stdout.write(`running ${provider} in ${workspace} (isolation: ${isolation.mode}, timeout: ${timeoutMs / 60000}m)\n`);
+
+  const result = await runProvider({ run, workspace, isolation, root, brief, timeoutMs });
+  run = transition({ ...run, ...result }, result.outcome, root);
 
   process.stdout.write(
     [
-      `claimed #${number} — run ${run.run_id}`,
-      `  branch    ${run.branch} (at ${run.base_sha.slice(0, 7)})`,
-      `  provider  ${run.provider}`,
-      `  state     ${runDir(run.run_id)}`,
       "",
-      // Slices 2-4 of ADR 0016 add the sandbox, the provider adapters, the verification
-      // gates, and publication. Until they land, `start` stops at the claim rather than
-      // pretending to have done work it cannot yet do.
-      "The claim is held. Running the provider, verifying, and opening the PR are not",
-      "implemented yet (ADR 0016 slices 2-4). Release the claim when you are done:",
-      `  scripts/agent-task release ${number}`,
+      `${provider} exited ${result.exit_code} — run is ${run.state}`,
+      `  logs      ${join(dir, "logs", "provider.log")}`,
+      `  diff      git -C ${workspace} status`,
+      "",
+      // Slices 3-4 add diff inspection, the verification gates, publication, and run
+      // summaries. Until they land, `start` stops here rather than pretending to have done
+      // work it cannot yet do. The claim is held either way, so the run stays resumable.
+      "Verifying, committing, and opening the PR are not implemented yet (ADR 0016 slices 3-4).",
+      `Release the claim when you are done:  scripts/agent-task release ${number}`,
       "",
     ].join("\n"),
   );

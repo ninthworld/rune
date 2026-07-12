@@ -6,8 +6,23 @@ import { runsRoot } from "./config.js";
 
 export const RUN_SCHEMA_VERSION = 1;
 
-/** Lifecycle states a run can be resumed from. Terminal states are everything else. */
-const ACTIVE = new Set(["claiming", "claimed"]);
+/**
+ * States in which the run still holds its claim — the branch exists and the issue is
+ * `status:in-progress`, so something must eventually `release` it.
+ *
+ * Provider failures are in here on purpose (ADR 0016): a failed run keeps its claim, its
+ * worktree, and its diff, because that is what makes it resumable. Only `release` and a lost
+ * claim end a run.
+ */
+const ACTIVE = new Set([
+  "claiming",
+  "claimed",
+  "implementing",
+  "implemented",
+  "provider_failed",
+  "provider_timeout",
+  "cancelled",
+]);
 
 export function isActive(run) {
   return ACTIVE.has(run.state);

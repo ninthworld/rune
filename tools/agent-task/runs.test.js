@@ -53,10 +53,13 @@ test("transition appends an event and preserves history", () => {
   );
 });
 
-test("only claiming and claimed runs are active", () => {
-  assert.equal(isActive(aRun({ state: "claimed" })), true);
-  assert.equal(isActive(aRun({ state: "claiming" })), true);
-  for (const state of ["released", "claim_lost"]) assert.equal(isActive(aRun({ state })), false);
+test("a run holds its claim until it is released or lost — including after a provider failure", () => {
+  // ADR 0016: a failed run keeps its claim, its worktree, and its diff, because that is what
+  // makes it resumable. Only release and a lost claim end a run.
+  for (const state of ["claiming", "claimed", "implementing", "implemented", "provider_failed", "provider_timeout", "cancelled"]) {
+    assert.equal(isActive(aRun({ state })), true, state);
+  }
+  for (const state of ["released", "claim_lost"]) assert.equal(isActive(aRun({ state })), false, state);
 });
 
 test("activeRunForIssue ignores finished runs on the same issue", () => {
