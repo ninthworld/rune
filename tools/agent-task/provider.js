@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { adapterFor } from "./adapters.js";
 import { providerEnv, wrap } from "./isolation.js";
 import { redactor } from "./redact.js";
-import { runDir } from "./runs.js";
+import { heartbeat, runDir } from "./runs.js";
 
 export const DEFAULT_TIMEOUT_MS = 45 * 60 * 1000;
 const GRACE_MS = 30 * 1000;
@@ -72,6 +72,9 @@ export async function runProvider({
   process.on("SIGINT", cancel);
   process.on("SIGTERM", cancel);
 
+  // A 45-minute provider run must not look like an abandoned claim.
+  const stopHeartbeat = heartbeat(run, root);
+
   try {
     const code = await new Promise((resolve, reject) => {
       child.on("error", reject);
@@ -92,6 +95,7 @@ export async function runProvider({
     };
   } finally {
     clearTimeout(deadline);
+    stopHeartbeat();
     process.off("SIGINT", cancel);
     process.off("SIGTERM", cancel);
   }

@@ -14,8 +14,10 @@
    with evidence rather than retrying blindly.
 5. **Conflicts between agents are resolved by humans**, not by other agents.
 
-To run this loop locally with a model served by Ollama instead of a cloud
-provider, see [`local-ai-setup.md`](local-ai-setup.md).
+To run the loop with a local model instead of a cloud provider, use the runner's `local`
+adapter (below): `RUNE_LOCAL_CMD='<your harness> "$(cat "$RUNE_BRIEF")"'`. It prescribes no
+model, harness, or vendor — and unlike the old `local-agent.sh` example it replaced, it does
+not push or open the PR as you.
 
 ## The issue runner
 
@@ -25,6 +27,8 @@ It performs every GitHub mutation as `rune-agent[bot]`, and it never approves or
     scripts/agent-task doctor              # can this machine run agent tasks?
     scripts/agent-task start 186 --provider claude
     scripts/agent-task status              # lifecycle state of active runs
+    scripts/agent-task resume 186          # re-enter a failed run; the claim and the work survive
+    scripts/agent-task report 186          # record what CI actually did, once it settles
     scripts/agent-task release 186         # drop the claim, return the issue to status:ready
 
 Claiming is **atomic**: the runner creates the issue's `agent/<issue>-<slug>` branch from
@@ -45,7 +49,26 @@ unless the run was started with `--allow-ci`. The bot holds `workflows: write`, 
 there can weaken the checks reporting green on that very PR; a permitted one is labelled
 `ci-change` and called out at the top of the PR body.
 
-Run summaries and `resume` are ADR 0016 slice 4 and are not implemented yet.
+A **failed run keeps its claim**, its branch, and its working copy, so it is resumable rather
+than lost: `resume` picks up whatever is in the workspace now — what the provider left, or what
+you fixed by hand after reading the gate output — and `resume --rerun-provider` hands it back to
+the provider first. A claim whose run stopped heartbeating shows as `⚠️ STALE` in `list`;
+taking one over is `release --force`, which is a human's call, never the runner's.
+
+### Run summaries
+
+Every run that ends — success *or* failure — publishes a sanitized, versioned summary to the
+**`agent-runs`** orphan branch (one JSON file per run, append-only; a correction is a new record
+that `supersedes` an earlier one, never a rewrite). This is the audit surface #200 consumes.
+
+Summaries record **runner-observed** facts (terminal outcome, normalized failure stage, per-gate
+results, PR author, whether the ADR 0015 review actually ran) separately from **provider-reported**
+usage, which is advisory and not comparable across providers. They never contain prompts, briefs,
+diffs, logs, environment values, or secrets.
+
+`report <issue>` re-observes a finished run once CI has settled. It exists because at the moment
+a PR opens, its checks have not run yet — and `claude-review` is **not** a required check, so a
+silently skipped review is indistinguishable from a passing one unless somebody looks.
 
 ## Labels
 
