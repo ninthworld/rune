@@ -25,6 +25,8 @@ mod format;
 mod lobby;
 mod room;
 mod rules_text;
+#[cfg(test)]
+mod test_support;
 mod view;
 
 pub use lobby::{serve_lobby_connection, Lobby};

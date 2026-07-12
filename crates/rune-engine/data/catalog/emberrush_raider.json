@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "functional_id": "emberrush_raider",
+  "name": "Emberrush Raider",
+  "types": ["creature"],
+  "subtypes": ["Goblin"],
+  "mana_cost": "{1}{R}",
+  "colors": ["red"],
+  "power": 2,
+  "toughness": 1,
+  "keywords": ["haste"]
+}

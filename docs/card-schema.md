@@ -5,25 +5,34 @@ How a card is authored. The model is [ADR 0018](decisions/0018-scalable-function
 [ADR 0013](decisions/0013-card-identity-and-set-model.md)'s oracle-vs-printing split.
 The types are `CardData` and `Printing` in `crates/rune-engine/src/card.rs`.
 
-## The two files
+## Where cards live
 
-- **`crates/rune-engine/data/oracle.json`** — an array of **functional definitions**:
-  the printing-independent rules object for each card, one per distinct card no matter
-  how many sets print it. (ADR 0018 §4 shards this into one file per card; that is
-  issue #193, and it changes the layout, not the schema below.)
+- **`crates/rune-engine/data/catalog/<functional_id>.json`** — one **functional
+  definition** per file: the printing-independent rules object for one card, no matter
+  how many sets print it. The file name *is* the card's identity, and the build rejects
+  a file whose `functional_id` disagrees with it (ADR 0018 §4).
 - **`crates/rune-engine/data/sets/<SET>.json`** — an array of **printing records**: the
   bibliographic appearances of those cards in a set. A printing carries no rules, so a
-  reprint is one new record here and zero changes anywhere else.
+  reprint is one new record here and zero changes anywhere else. The set code comes from
+  the file name.
 
-Both are embedded at compile time with `include_str!` and parsed in memory. The engine
-does no I/O at runtime — see [ADR 0006](decisions/0006-serde-in-engine.md).
+One card per file is what makes the catalog scale: **adding a card edits zero existing
+lines**, in data or in Rust, so two people authoring different cards never touch the
+same file.
+
+Nothing enumerates these files by hand. `crates/rune-engine/build.rs` walks both
+directories at compile time, validates every file, interns a `CardId` for each
+definition, and generates the `include_str!` manifest that `card.rs` includes. The
+engine still does **no I/O at runtime** — the build script runs on the machine doing the
+building, and all the shipped binary sees is `&'static str` constants, exactly as
+[ADR 0006](decisions/0006-serde-in-engine.md) sanctioned. Only *who writes the
+`include_str!` list* changed: a build script, not a human.
 
 ## A functional definition
 
 ```json
 {
   "schema_version": 1,
-  "id": 6,
   "functional_id": "verdant_scout",
   "name": "Verdant Scout",
   "types": ["creature"],
@@ -45,8 +54,7 @@ does no I/O at runtime — see [ADR 0006](decisions/0006-serde-in-engine.md).
 | Field | Required | What it is |
 |---|---|---|
 | `schema_version` | yes | The schema this definition is authored against. Must equal `rune_engine::SCHEMA_VERSION` (currently `1`); anything else fails the load. |
-| `functional_id` | yes | The card's authored, stable identity: a lowercase `snake_case` slug, unique across the catalog, conventionally the slug of its name (`"Thornback Boar"` → `thornback_boar`). Assign it once; never reuse or renumber it. |
-| `id` | yes | **Transitional.** The integer handle the loader interns this definition under. It is not authored card data, and it goes away when `build.rs` assigns handles (issue #193). Nothing outside the engine may depend on its value. |
+| `functional_id` | yes | The card's authored, stable identity: a lowercase `snake_case` slug, unique across the catalog, conventionally the slug of its name (`"Thornback Boar"` → `thornback_boar`), and **matching the file name**. Assign it once; never reuse or renumber it. |
 | `name` | yes | The card's name. |
 | `types` | yes | Printed card types (`creature`, `land`, `instant`, …). At least one. |
 | `supertypes` | no | Printed supertypes (`basic`, `legendary`). Empty by default. |
@@ -104,25 +112,54 @@ Four layers, only two of them authored by hand (ADR 0018 §3, and the module doc
 | Layer | Type | Assigned by | Stable for |
 |---|---|---|---|
 | Functional | `FunctionalId` | the card's author | forever |
-| Interned handle | `CardId` (aliased `OracleId`) | the catalog loader | one build |
+| Interned handle | `CardId` (aliased `OracleId`) | `build.rs` | one build |
 | Printing | set code + collector number | the set file | forever |
 | Per-game instance | `CardInstanceId`, `PermanentId` | the engine, at runtime | one game |
 
-Reference a card from a printing (or, later, a decklist) by its `FunctionalId`. The
-`CardId` is a handle the engine keys rules reads on; it is stable only within a build,
-and a catalog change may reassign it.
+**Never write a `CardId` down.** `build.rs` sorts every `FunctionalId` by byte value and
+interns `CardId(0)`, `CardId(1)`, … in that order, so authoring one new card renumbers
+its neighbours — an integer that means Thornback Boar today means something else
+tomorrow. Two authors adding cards in the same PR wave therefore cannot collide on an
+id, because nobody assigns one. Reference a card from a printing, a decklist, or a test
+by its `FunctionalId` and resolve the handle with `CardDatabase::card_id`. This is also
+why `scripted.rs` keys its escape-hatch arms on `FunctionalId` rather than `CardId`.
 
 ## Adding a card
 
-1. Add one entry to `oracle.json`: a fresh `functional_id` and a fresh `id`, with
-   `schema_version: 1`.
+1. Create `data/catalog/<functional_id>.json` with `schema_version: 1` and a
+   `functional_id` matching the file name. No `id` — the handle is interned for you.
 2. Add a printing record to a set file if the card should be printed somewhere.
 3. Add tests for the behavior in the same PR (`crates/rune-engine/AGENTS.md`).
 4. Run `make check`.
 
-Every failure mode above — an unknown field, an unrecognized `schema_version`, a
-duplicated identity, a malformed slug, a printing that references nothing — is a
-`CatalogError` at load, with a message naming the offender.
+You will not edit an existing line to do this.
+
+## Where each rule is enforced
+
+Every rule below is checked, and the check runs where it can fail earliest. The
+validators themselves live in one file, `crates/rune-engine/src/catalog.rs`, which
+`build.rs` and the engine both compile — so a rule cannot pass at build time and fail at
+load time, or vice versa.
+
+| Rule | Enforced by |
+|---|---|
+| Unknown field (a presentation asset, or a hand-written `id`) | `deny_unknown_fields`, at parse |
+| An effect that needs a `TargetSpec` and has none | the type system — `target` is a required field, so it is unrepresentable |
+| Unrecognized `schema_version` | `build.rs`, and the loader |
+| Malformed slug; `functional_id` ≠ file name; duplicate identity | `build.rs`, and the loader |
+| A `Creature` without power/toughness (or a non-creature with them) | `build.rs`, and the loader |
+| An `aura` grant on a card that is not an Aura | `build.rs`, and the loader |
+| A printing referencing a card that does not exist; two printings sharing a collector number | `build.rs`, and the loader |
+| A `scripted` flag that disagrees with `scripted.rs`, **in either direction** | the loader only |
+
+The last row is the one exception, and it is a structural one: the code tier is compiled
+Rust, which does not exist yet when `build.rs` runs, so the build script cannot see it.
+`CardDatabase::bundled()` owns that check instead — which means a mismatch fails
+`cargo test` and the server's startup, never a game already in progress.
+
+A build-time failure names the file and the problem
+(`data/catalog/no_pt.json: no_pt is a Creature with no power/toughness`). A load-time
+failure is a `CatalogError` naming the offender.
 
 ## Versioning
 

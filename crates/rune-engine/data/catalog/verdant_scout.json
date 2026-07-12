@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "verdant_scout",
+  "name": "Verdant Scout",
+  "types": ["creature"],
+  "subtypes": ["Elf", "Scout"],
+  "mana_cost": "{G}",
+  "colors": ["green"],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

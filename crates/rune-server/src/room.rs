@@ -381,7 +381,8 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
-    use rune_engine::{CardId, GameState, Step};
+    use crate::test_support::fixture;
+    use rune_engine::{GameState, Step};
     use rune_protocol::ChooseAction;
 
     fn db() -> CardDatabase {
@@ -412,10 +413,16 @@ mod tests {
     fn dealt_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let p0_hand = vec![state.new_instance(CardId(5)), state.new_instance(CardId(6))];
-        let p0_lib = vec![state.new_instance(CardId(1))];
-        let p1_hand = vec![state.new_instance(CardId(1))];
-        let p1_lib = vec![state.new_instance(CardId(1)), state.new_instance(CardId(1))];
+        let p0_hand = vec![
+            state.new_instance(fixture("forest")),
+            state.new_instance(fixture("verdant_scout")),
+        ];
+        let p0_lib = vec![state.new_instance(fixture("thornback_boar"))];
+        let p1_hand = vec![state.new_instance(fixture("thornback_boar"))];
+        let p1_lib = vec![
+            state.new_instance(fixture("thornback_boar")),
+            state.new_instance(fixture("thornback_boar")),
+        ];
         state.players[0].hand = p0_hand;
         state.players[0].library = p0_lib;
         state.players[1].hand = p1_hand;

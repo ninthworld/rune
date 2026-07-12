@@ -475,6 +475,7 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+    use crate::fixtures::fixture;
     use crate::id::CardId;
     use crate::state::Permanent;
 
@@ -491,12 +492,12 @@ mod tests {
         tapped: bool,
         entered_turn: u32,
     ) -> PermanentId {
-        let inst = state.new_instance(CardId(6));
+        let inst = state.new_instance(fixture("verdant_scout"));
         let id = PermanentId(state.mint_id());
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
-            card: CardId(6),
+            card: fixture("verdant_scout"),
             controller,
             tapped,
             entered_turn,
@@ -590,10 +591,10 @@ mod tests {
         // Tested both directions: a ground creature cannot, flying and reach can.
         let db = db();
         let mut state = GameState::new_two_player();
-        let flyer = creature_card(&mut state, CardId(18), PlayerId(0), 0); // flying
-        let ground = creature_card(&mut state, CardId(6), PlayerId(1), 0); // no keyword
-        let other_flyer = creature_card(&mut state, CardId(18), PlayerId(1), 0);
-        let reacher = creature_card(&mut state, CardId(19), PlayerId(1), 0); // reach
+        let flyer = creature_card(&mut state, fixture("skywhisker_drake"), PlayerId(0), 0); // flying
+        let ground = creature_card(&mut state, fixture("verdant_scout"), PlayerId(1), 0); // no keyword
+        let other_flyer = creature_card(&mut state, fixture("skywhisker_drake"), PlayerId(1), 0);
+        let reacher = creature_card(&mut state, fixture("bramblefang_spider"), PlayerId(1), 0); // reach
 
         assert!(
             !blocker_can_block_attacker(&state, flyer, ground, &db),
@@ -610,7 +611,7 @@ mod tests {
 
         // A non-flying attacker imposes no evasion constraint: the ground creature
         // can block a ground attacker.
-        let ground_attacker = creature_card(&mut state, CardId(6), PlayerId(0), 0);
+        let ground_attacker = creature_card(&mut state, fixture("verdant_scout"), PlayerId(0), 0);
         assert!(blocker_can_block_attacker(
             &state,
             ground_attacker,
@@ -627,8 +628,8 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.turn = 2;
-        let hasty = creature_card(&mut state, CardId(21), PlayerId(0), 2); // entered this turn
-        let sick = creature_card(&mut state, CardId(6), PlayerId(0), 2); // entered this turn
+        let hasty = creature_card(&mut state, fixture("emberrush_raider"), PlayerId(0), 2); // entered this turn
+        let sick = creature_card(&mut state, fixture("verdant_scout"), PlayerId(0), 2); // entered this turn
 
         let candidates = attacker_candidates(&state, &db);
         assert!(
@@ -675,13 +676,13 @@ mod tests {
         // a single step suffices.
         let db = db();
         let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, CardId(22), PlayerId(0)); // first strike
-        let _blk = blocker(&mut state, CardId(1), PlayerId(1), atk);
+        let atk = attacker(&mut state, fixture("dawnblade_duelist"), PlayerId(0)); // first strike
+        let _blk = blocker(&mut state, fixture("thornback_boar"), PlayerId(1), atk);
         assert!(combat_has_first_strike(&state, &db));
 
         let mut plain = GameState::new_two_player();
-        let a = attacker(&mut plain, CardId(1), PlayerId(0));
-        let _b = blocker(&mut plain, CardId(1), PlayerId(1), a);
+        let a = attacker(&mut plain, fixture("thornback_boar"), PlayerId(0));
+        let _b = blocker(&mut plain, fixture("thornback_boar"), PlayerId(1), a);
         assert!(!combat_has_first_strike(&plain, &db));
     }
 
@@ -691,8 +692,8 @@ mod tests {
         // vanilla blocker deals in the regular step. `deals_in_step` gates each.
         let db = db();
         let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, CardId(22), PlayerId(0)); // first strike 2/2
-        let blk = blocker(&mut state, CardId(1), PlayerId(1), atk); // vanilla 3/2
+        let atk = attacker(&mut state, fixture("dawnblade_duelist"), PlayerId(0)); // first strike 2/2
+        let blk = blocker(&mut state, fixture("thornback_boar"), PlayerId(1), atk); // vanilla 3/2
         let blocked = blocked_attackers(&state);
 
         // First-strike step: only the attacker deals (2 to the blocker).
@@ -724,8 +725,8 @@ mod tests {
         // flagged deathtouch; the assignment records the deathtouch flag.
         let db = db();
         let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, CardId(24), PlayerId(0)); // deathtouch 1/1
-        let blk = blocker(&mut state, CardId(4), PlayerId(1), atk); // 4/5
+        let atk = attacker(&mut state, fixture("nettle_adder"), PlayerId(0)); // deathtouch 1/1
+        let blk = blocker(&mut state, fixture("stonehide_basilisk"), PlayerId(1), atk); // 4/5
         let blocked = blocked_attackers(&state);
 
         let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
@@ -749,8 +750,8 @@ mod tests {
         // (lethal) to the Boar and 3 to player 1.
         let db = db();
         let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, CardId(23), PlayerId(0)); // trample 5/4
-        let blk = blocker(&mut state, CardId(1), PlayerId(1), atk); // 3/2
+        let atk = attacker(&mut state, fixture("gorehorn_ravager"), PlayerId(0)); // trample 5/4
+        let blk = blocker(&mut state, fixture("thornback_boar"), PlayerId(1), atk); // 3/2
         let blocked = blocked_attackers(&state);
 
         let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
@@ -776,7 +777,7 @@ mod tests {
         // fixture, so grant trample fixture (23) the deathtouch case via a 24-style
         // check instead — here we verify the assignment math with the trample
         // fixture assuming deathtouch by exercising lethal_needed directly.
-        let blk = creature_card(&mut state, CardId(4), PlayerId(1), 0); // 4/5
+        let blk = creature_card(&mut state, fixture("stonehide_basilisk"), PlayerId(1), 0); // 4/5
         assert_eq!(
             lethal_needed(&state, blk, &db, true),
             1,
@@ -796,7 +797,7 @@ mod tests {
         // unblocked 2/3 lifelinker attacking player 1 hits for 2 and gains 2.
         let db = db();
         let mut state = GameState::new_two_player();
-        let _atk = attacker(&mut state, CardId(25), PlayerId(0)); // lifelink 2/3
+        let _atk = attacker(&mut state, fixture("cleric_of_the_sunwell"), PlayerId(0)); // lifelink 2/3
         let blocked = blocked_attackers(&state);
 
         let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
@@ -817,8 +818,8 @@ mod tests {
         // capturing the blocked set leaves the attacker dealing nothing.
         let db = db();
         let mut state = GameState::new_two_player();
-        let atk = attacker(&mut state, CardId(1), PlayerId(0)); // vanilla 3/2, no trample
-        let blk = blocker(&mut state, CardId(1), PlayerId(1), atk);
+        let atk = attacker(&mut state, fixture("thornback_boar"), PlayerId(0)); // vanilla 3/2, no trample
+        let blk = blocker(&mut state, fixture("thornback_boar"), PlayerId(1), atk);
         let blocked = blocked_attackers(&state);
         assert_eq!(blocked, vec![atk]);
 

@@ -393,7 +393,7 @@ current `LobbyView` re-sent. The `type` discriminator selects the command:
 | `hello` | `token?` (`SessionToken`) | First contact or reconnect. Carries a previously issued session token to reclaim a held-open seat, echoed verbatim; omitted on a fresh connection (server then issues a new identity) |
 | `create_room` | `config` (`RoomConfig`) | Create a new room; the reply's `RoomView` carries the freshly issued `room_id` |
 | `join_room` | `room_id` (`RoomId`) | Join an existing room by id. No matchmaking or discovery — the id must have been shared out-of-band |
-| `submit_deck` | `cards` (`CardIdentity[]`) | Submit a decklist as a flat list of opaque card-identity handles (a card appearing multiple times is repeated). The server validates it authoritatively: every identity must resolve against the card database, and the whole decklist must be legal for the room's format (deck size and per-card copy limit, basic lands exempt — deck legality is server/format policy, never an engine rule, ADR 0013 §4). An illegal deck is rejected and the seat left undecked; `cards` is omitted when empty |
+| `submit_deck` | `cards` (`CardIdentity[]`) | Submit a decklist as a flat list of opaque card-identity handles (a card appearing multiple times is repeated). An identity is a card's authored `functional_id` — a lowercase `snake_case` slug like `thornback_boar` (ADR 0018 §3), **not** the engine's `CardId`, which is interned per build and shifts as cards are added. The server validates it authoritatively: every identity must resolve against the card database, and the whole decklist must be legal for the room's format (deck size and per-card copy limit, basic lands exempt — deck legality is server/format policy, never an engine rule, ADR 0013 §4). An illegal deck is rejected and the seat left undecked; `cards` is omitted when empty |
 | `ready` | `ready` (`bool`) | Declare (`true`) or retract (`false`) readiness. A seat may ready only once it is occupied and decked |
 | `leave` | — | Leave the current room, vacating the seat |
 
@@ -401,7 +401,7 @@ current `LobbyView` re-sent. The `type` discriminator selects the command:
 { "type": "hello", "token": "s:ab12" }
 { "type": "create_room", "config": { "seats": 2, "game_setup": "standard_2p" } }
 { "type": "join_room", "room_id": "r:7f3" }
-{ "type": "submit_deck", "cards": ["ci_bear", "ci_bear", "ci_forest"] }
+{ "type": "submit_deck", "cards": ["thornback_boar", "thornback_boar", "forest"] }
 { "type": "ready", "ready": true }
 { "type": "leave" }
 ```

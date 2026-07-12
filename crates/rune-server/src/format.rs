@@ -268,23 +268,33 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
+    use crate::test_support::fixture;
 
-    /// The bundled database: ids 1..=6, where id 5 (Forest) is the only basic.
+    /// The bundled database. Forest is its only basic land.
     fn db() -> CardDatabase {
         CardDatabase::bundled().expect("bundled cards")
     }
 
-    /// A legal 40-card starter deck: four copies each of the five non-basics
-    /// (1,2,3,4,6) plus twenty basic Forests (id 5).
+    /// The five non-basic cards these deck tests build with.
+    const NON_BASICS: [&str; 5] = [
+        "thornback_boar",
+        "riverbank_otter",
+        "emberfang_jackal",
+        "stonehide_basilisk",
+        "verdant_scout",
+    ];
+
+    /// A legal 40-card starter deck: four copies each of the five non-basics plus
+    /// twenty basic Forests.
     fn legal_deck() -> Vec<CardId> {
         let mut deck = Vec::new();
-        for id in [1u64, 2, 3, 4, 6] {
+        for slug in NON_BASICS {
             for _ in 0..4 {
-                deck.push(CardId(id));
+                deck.push(fixture(slug));
             }
         }
         for _ in 0..20 {
-            deck.push(CardId(5));
+            deck.push(fixture("forest"));
         }
         deck
     }
@@ -328,7 +338,7 @@ mod tests {
     #[test]
     fn a_deck_under_the_minimum_size_is_rejected() {
         let format = Format::starter();
-        let small = vec![CardId(5); 39];
+        let small = vec![fixture("forest"); 39];
         assert_eq!(
             format.validate_deck(&small, &db()),
             Err(DeckError::BelowMinimum { have: 39, min: 40 }),
@@ -337,21 +347,21 @@ mod tests {
 
     #[test]
     fn over_the_copy_limit_for_a_non_basic_is_rejected() {
-        // Five copies of a non-basic (id 1) with an otherwise legal 40-card deck.
-        let mut deck = vec![CardId(1); 5];
-        for id in [2u64, 3, 4, 6] {
+        // Five copies of one non-basic with an otherwise legal 40-card deck.
+        let mut deck = vec![fixture("thornback_boar"); 5];
+        for slug in &NON_BASICS[1..] {
             for _ in 0..4 {
-                deck.push(CardId(id));
+                deck.push(fixture(slug));
             }
         }
         for _ in 0..19 {
-            deck.push(CardId(5));
+            deck.push(fixture("forest"));
         }
         assert_eq!(deck.len(), 40);
         assert_eq!(
             Format::starter().validate_deck(&deck, &db()),
             Err(DeckError::CopyLimit {
-                card: CardId(1),
+                card: fixture("thornback_boar"),
                 count: 5,
                 limit: 4,
             }),
@@ -374,7 +384,7 @@ mod tests {
         assert_eq!(
             strict.validate_deck(&legal_deck(), &db()),
             Err(DeckError::CopyLimit {
-                card: CardId(5),
+                card: fixture("forest"),
                 count: 20,
                 limit: 4,
             }),
@@ -393,7 +403,7 @@ mod tests {
                 basic_land_exempt: true,
             },
         };
-        let big = vec![CardId(5); 61];
+        let big = vec![fixture("forest"); 61];
         assert_eq!(
             capped.validate_deck(&big, &db()),
             Err(DeckError::AboveMaximum { have: 61, max: 60 }),

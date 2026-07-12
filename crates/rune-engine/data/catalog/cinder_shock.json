@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "functional_id": "cinder_shock",
+  "name": "Cinder Shock",
+  "types": ["instant"],
+  "mana_cost": "{R}",
+  "colors": ["red"],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_target",
+      "amount": 2
+    }
+  ]
+}

@@ -127,7 +127,8 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
-    use crate::id::{CardId, CardInstanceId};
+    use crate::fixtures::fixture;
+    use crate::id::CardInstanceId;
     use crate::state::Permanent;
 
     /// The bundled card database, for tests that need oracle data.
@@ -150,7 +151,7 @@ mod tests {
         after.battlefield.push(Permanent {
             id: PermanentId(1),
             instance: CardInstanceId(1),
-            card: CardId(6),
+            card: fixture("verdant_scout"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -176,7 +177,7 @@ mod tests {
         before.battlefield.push(Permanent {
             id,
             instance,
-            card: CardId(28),
+            card: fixture("cryptvine_lurker"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -200,7 +201,7 @@ mod tests {
         after.battlefield.clear();
         after.players[0].graveyard.push(crate::id::CardInstance {
             id: instance,
-            card: CardId(28),
+            card: fixture("cryptvine_lurker"),
         });
 
         let triggers = collect_triggers(&before, &after, &db);

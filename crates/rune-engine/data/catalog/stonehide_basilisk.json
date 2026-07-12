@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "functional_id": "stonehide_basilisk",
+  "name": "Stonehide Basilisk",
+  "types": ["creature"],
+  "subtypes": ["Basilisk"],
+  "mana_cost": "{4}{G}",
+  "colors": ["green"],
+  "power": 4,
+  "toughness": 5
+}

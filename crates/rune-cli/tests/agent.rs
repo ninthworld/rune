@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use rune_cli::{run_agent_session, Agent, AgentError, RuleBasedAgent};
-use rune_engine::{CardDatabase, CardId, GameSetup, GameState};
+use rune_engine::{CardDatabase, CardId, FunctionalId, GameSetup, GameState};
 use rune_protocol::GameView;
 use rune_server::{serve_connection, Room, RoomHandle, RoomInput, Seat};
 use tokio::io::{duplex, DuplexStream};
@@ -100,9 +100,29 @@ async fn fake_agent_completes_a_pass_priority_round() {
     let _ = room_task.await;
 }
 
-/// A 40-card starter deck over the bundled ids 1..=6 (green creatures + Forest).
-fn decklist() -> Vec<CardId> {
-    (0..40u64).map(|i| CardId((i % 6) + 1)).collect()
+/// The six bundled cards these decks are built from: five green creatures and a Forest
+/// to cast them with. Named by authored `functional_id` (ADR 0018 §3) — a `CardId` is
+/// interned from the catalog's sort order, so an integer deck would silently become a
+/// different (and, with no land in it, unplayable) deck the next time a card is added.
+const STARTER_CARDS: [&str; 6] = [
+    "thornback_boar",
+    "riverbank_otter",
+    "emberfang_jackal",
+    "stonehide_basilisk",
+    "forest",
+    "verdant_scout",
+];
+
+/// A 40-card starter deck (green creatures + Forest), resolved from the catalog by
+/// authored identity.
+fn decklist(db: &CardDatabase) -> Vec<CardId> {
+    (0..40)
+        .map(|i| {
+            let slug = FunctionalId::try_from(STARTER_CARDS[i % 6].to_string())
+                .expect("a well-formed identity");
+            db.card_id(&slug).expect("a bundled card")
+        })
+        .collect()
 }
 
 /// Two [`RuleBasedAgent`]s play a **full game to completion over the real socket
@@ -116,7 +136,7 @@ fn decklist() -> Vec<CardId> {
 #[tokio::test]
 async fn two_rule_based_agents_play_a_full_game_over_the_socket_loop() {
     let db = CardDatabase::bundled().expect("bundled cards");
-    let setup = GameSetup::two_player(decklist(), decklist(), 0x5EED_0000_0000_1959);
+    let setup = GameSetup::two_player(decklist(&db), decklist(&db), 0x5EED_0000_0000_1959);
     let state = GameState::new(&setup, &db).expect("valid setup");
     let (handle, room_task) = Room::new(state, db).spawn();
 

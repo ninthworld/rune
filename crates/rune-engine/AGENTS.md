@@ -17,6 +17,15 @@ The rules engine. Layer 3 of docs/brief.md. Read that section before any change 
   a functional definition per card under a stable `functional_id`, no presentation
   assets (the schema rejects them structurally), and code-defined behavior only via the
   declared `scripted` escape hatch.
+- **Never write a `CardId` down.** `build.rs` assembles `data/catalog/` + `data/sets/`
+  at compile time and interns `CardId(0..n)` from the sorted `FunctionalId`s (ADR 0018
+  §3), so authoring one card renumbers its neighbours. Name a card by its
+  `functional_id` and resolve the handle (`CardDatabase::card_id`) — in decklists, in
+  `scripted.rs`, and in tests (`crate::fixtures::fixture`).
+- `build.rs` is the **only** place the engine touches the filesystem, and it is
+  compile-time tooling, not the shipped binary — the running engine still does zero I/O
+  (ADR 0018 §4). Its validators live in `src/catalog.rs`, which the build script and the
+  crate both compile, so build-time and load-time checks cannot drift apart.
 
 ## Commands
 - `cargo test -p rune-engine`

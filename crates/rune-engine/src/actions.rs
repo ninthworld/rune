@@ -629,6 +629,7 @@ mod tests {
 
     use super::*;
     use crate::apply_action;
+    use crate::fixtures::{fixture, id_in};
     use crate::id::CardInstanceId;
     use crate::mana::{Color, ManaPool};
     use crate::stack::{StackId, StackObject, StackObjectKind};
@@ -642,10 +643,10 @@ mod tests {
     /// `{T}: Tap target creature.` and a vanilla "Bear" creature to target.
     fn targeting_db() -> CardDatabase {
         let json = r#"[
-            {"schema_version":1,"id":200,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"",
+            {"schema_version":1,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"",
              "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
                           "effects":[{"kind":"tap","target":"any_creature"}]}]},
-            {"schema_version":1,"id":201,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
+            {"schema_version":1,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
              "power":2,"toughness":2}
         ]"#;
         CardDatabase::from_json(json).unwrap()
@@ -676,11 +677,12 @@ mod tests {
     /// the battlefield under player 0. Returns the state, the Tapper's id, and the
     /// Bears' ids.
     fn tapper_and_creatures(creatures: usize) -> (GameState, PermanentId, Vec<PermanentId>) {
+        let db = targeting_db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let tapper = put_on_battlefield(&mut state, CardId(200));
+        let tapper = put_on_battlefield(&mut state, id_in(&db, "tapper"));
         let bears = (0..creatures)
-            .map(|_| put_on_battlefield(&mut state, CardId(201)))
+            .map(|_| put_on_battlefield(&mut state, id_in(&db, "bear")))
             .collect();
         (state, tapper, bears)
     }
@@ -888,7 +890,7 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let forest = put_on_battlefield(&mut state, CardId(5));
+        let forest = put_on_battlefield(&mut state, fixture("forest"));
 
         assert!(target_requirements(
             &state,
@@ -915,13 +917,22 @@ mod tests {
 
     // ----- Cast every card type with real timing (issue #147) -----
     //
-    // Fixture oracle ids (see `data/oracle.json`): 7 Quickfire Bolt (instant,
-    // {R}), 8 Hurried Study (sorcery, {U}), 9 Copper Lodestone (artifact, {1}),
-    // 10 Verdant Blessing (enchantment, {G}), 6 Verdant Scout (creature, {G}).
-    const INSTANT: CardId = CardId(7);
-    const SORCERY: CardId = CardId(8);
-    const ARTIFACT: CardId = CardId(9);
-    const ENCHANTMENT: CardId = CardId(10);
+    // One bundled card of each castable type: Quickfire Bolt (instant, {R}),
+    // Hurried Study (sorcery, {U}), Copper Lodestone (artifact, {1}), Verdant
+    // Blessing (enchantment, {G}), Verdant Scout (creature, {G}). Named by authored
+    // identity, not by handle — the handle is interned at build time (ADR 0018 §3).
+    fn instant_id() -> CardId {
+        fixture("quickfire_bolt")
+    }
+    fn sorcery_id() -> CardId {
+        fixture("hurried_study")
+    }
+    fn artifact_id() -> CardId {
+        fixture("copper_lodestone")
+    }
+    fn enchantment_id() -> CardId {
+        fixture("verdant_blessing")
+    }
 
     /// Whether `card` is offered as a [`Action::CastSpell`] for the hand instance
     /// `inst`.
@@ -956,9 +967,9 @@ mod tests {
         let db = db();
 
         // Another object already on the stack, player 0 holding priority.
-        let (mut mid_stack, bolt) = hand_with(INSTANT);
+        let (mut mid_stack, bolt) = hand_with(instant_id());
         let sid = mid_stack.mint_id();
-        let other = mid_stack.new_instance(INSTANT);
+        let other = mid_stack.new_instance(instant_id());
         mid_stack.stack.push(StackObject {
             id: StackId(sid),
             controller: PlayerId(0),
@@ -972,7 +983,7 @@ mod tests {
         );
 
         // Opponent's turn: player 1 is active, player 0 holds priority.
-        let (mut off_turn, bolt) = hand_with(INSTANT);
+        let (mut off_turn, bolt) = hand_with(instant_id());
         off_turn.active_player = PlayerId(1);
         off_turn.priority = PlayerId(0);
         assert!(
@@ -989,19 +1000,19 @@ mod tests {
         let db = db();
 
         // Positive control: on-turn, empty stack, main phase — offered.
-        let (on_turn, sorcery) = hand_with(SORCERY);
+        let (on_turn, sorcery) = hand_with(sorcery_id());
         assert!(cast_offered(&on_turn, &db, sorcery));
 
         // Off-turn (player 0 holds priority on player 1's turn) — not offered.
-        let (mut off_turn, sorcery) = hand_with(SORCERY);
+        let (mut off_turn, sorcery) = hand_with(sorcery_id());
         off_turn.active_player = PlayerId(1);
         off_turn.priority = PlayerId(0);
         assert!(!cast_offered(&off_turn, &db, sorcery));
 
         // Mid-stack (own turn, but a spell is on the stack) — not offered.
-        let (mut mid_stack, sorcery) = hand_with(SORCERY);
+        let (mut mid_stack, sorcery) = hand_with(sorcery_id());
         let sid = mid_stack.mint_id();
-        let other = mid_stack.new_instance(INSTANT);
+        let other = mid_stack.new_instance(instant_id());
         mid_stack.stack.push(StackObject {
             id: StackId(sid),
             controller: PlayerId(0),
@@ -1016,7 +1027,7 @@ mod tests {
         // CR 307.1 (enchantments) / artifacts are permanent spells cast at
         // sorcery speed; on resolution they enter the battlefield (CR 608.3).
         let db = db();
-        for card in [ARTIFACT, ENCHANTMENT] {
+        for card in [artifact_id(), enchantment_id()] {
             let (state, inst) = hand_with(card);
 
             // Offered at sorcery speed...
@@ -1027,7 +1038,7 @@ mod tests {
             // ...but not while a spell is on the stack (sorcery-speed gate).
             let mut mid_stack = state.clone();
             let sid = mid_stack.mint_id();
-            let other = mid_stack.new_instance(INSTANT);
+            let other = mid_stack.new_instance(instant_id());
             mid_stack.stack.push(StackObject {
                 id: StackId(sid),
                 controller: PlayerId(0),
@@ -1064,8 +1075,8 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let a = state.new_instance(INSTANT);
-        let b = state.new_instance(INSTANT);
+        let a = state.new_instance(instant_id());
+        let b = state.new_instance(instant_id());
         state.players[0].hand = vec![a, b];
         state.players[0].mana_pool.add(Color::Red, 2);
 
@@ -1107,7 +1118,7 @@ mod tests {
         // empty pool, no instant/sorcery/artifact/enchantment is offered; with the
         // exact mana it is (sorcery-speed types on-turn with an empty stack).
         let db = db();
-        for card in [INSTANT, SORCERY, ARTIFACT, ENCHANTMENT] {
+        for card in [instant_id(), sorcery_id(), artifact_id(), enchantment_id()] {
             let (state, inst) = hand_with(card);
 
             // Drain the pool: nothing is payable, so nothing is offered.
@@ -1131,12 +1142,12 @@ mod tests {
         // and mana are satisfied. A vanilla (non-Aura) enchantment of the same cost
         // is always castable, proving the gate is the enchant target, not the type.
         let json = r#"[
-            {"schema_version":1,"id":300,"functional_id":"test_aura","name":"Test Aura","types":["enchantment"],"subtypes":["Aura"],
+            {"schema_version":1,"functional_id":"test_aura","name":"Test Aura","types":["enchantment"],"subtypes":["Aura"],
              "mana_cost":"{G}",
              "aura":{"enchant":"any_creature","power":1,"toughness":1}},
-            {"schema_version":1,"id":301,"functional_id":"test_charm","name":"Test Charm","types":["enchantment"],
+            {"schema_version":1,"functional_id":"test_charm","name":"Test Charm","types":["enchantment"],
              "mana_cost":"{G}"},
-            {"schema_version":1,"id":302,"functional_id":"test_bear","name":"Test Bear","types":["creature"],"mana_cost":"",
+            {"schema_version":1,"functional_id":"test_bear","name":"Test Bear","types":["creature"],"mana_cost":"",
              "power":2,"toughness":2}
         ]"#;
         let db = CardDatabase::from_json(json).unwrap();
@@ -1144,8 +1155,8 @@ mod tests {
         // No creature to enchant: the Aura is not offered, the charm still is.
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let aura = state.new_instance(CardId(300));
-        let charm = state.new_instance(CardId(301));
+        let aura = state.new_instance(id_in(&db, "test_aura"));
+        let charm = state.new_instance(id_in(&db, "test_charm"));
         state.players[0].hand = vec![aura, charm];
         state.players[0].mana_pool.add(Color::Green, 2);
         assert!(
@@ -1159,7 +1170,7 @@ mod tests {
 
         // Put a creature on the battlefield: now the Aura is offered, and its one
         // requirement slot is the enchant restriction listing that creature.
-        let bear = put_on_battlefield(&mut state, CardId(302));
+        let bear = put_on_battlefield(&mut state, id_in(&db, "test_bear"));
         assert!(
             cast_offered(&state, &db, aura),
             "an Aura is castable once a legal enchant target exists (CR 303.4c)"
@@ -1179,11 +1190,15 @@ mod tests {
 
     // ----- Spell targets at cast + the first counterspell (issue #148) -----
     //
-    // Fixture oracle id 11 is Runic Negation ({U} instant, "Counter target
-    // spell." — a `CounterSpell { SpellOnStack }` spell effect). A vanilla
-    // Thornback Boar (id 1) is the creature spell it counters.
-    const COUNTERSPELL: CardId = CardId(11);
-    const CREATURE: CardId = CardId(1);
+    // Runic Negation ({U} instant, "Counter target spell." — a
+    // `CounterSpell { SpellOnStack }` spell effect); a vanilla Thornback Boar is the
+    // creature spell it counters.
+    fn counterspell_id() -> CardId {
+        fixture("runic_negation")
+    }
+    fn creature_id() -> CardId {
+        fixture("thornback_boar")
+    }
 
     /// A two-player game at player 0's precombat main with a Runic Negation in
     /// hand and `{U}` in pool, and a creature spell (controlled by player 1) on
@@ -1192,7 +1207,7 @@ mod tests {
     fn counterspell_over_a_creature_spell() -> (GameState, CardInstance, StackId) {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let boar = state.new_instance(CREATURE);
+        let boar = state.new_instance(creature_id());
         let sid = StackId(state.mint_id());
         state.stack.push(StackObject {
             id: sid,
@@ -1200,7 +1215,7 @@ mod tests {
             kind: StackObjectKind::Spell { card: boar },
             targets: Vec::new(),
         });
-        let negation = state.new_instance(COUNTERSPELL);
+        let negation = state.new_instance(counterspell_id());
         state.players[0].hand = vec![negation];
         state.players[0].mana_pool.add(Color::Blue, 1);
         (state, negation, sid)
@@ -1233,7 +1248,7 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let negation = state.new_instance(COUNTERSPELL);
+        let negation = state.new_instance(counterspell_id());
         state.players[0].hand = vec![negation];
         state.players[0].mana_pool.add(Color::Blue, 1);
 
@@ -1264,7 +1279,7 @@ mod tests {
             },
             targets: Vec::new(),
         });
-        let negation = state.new_instance(COUNTERSPELL);
+        let negation = state.new_instance(counterspell_id());
         state.players[0].hand = vec![negation];
         state.players[0].mana_pool.add(Color::Blue, 1);
 

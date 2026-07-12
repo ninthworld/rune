@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "functional_id": "skywhisker_drake",
+  "name": "Skywhisker Drake",
+  "types": ["creature"],
+  "subtypes": ["Drake"],
+  "mana_cost": "{2}{U}",
+  "colors": ["blue"],
+  "power": 2,
+  "toughness": 2,
+  "keywords": ["flying"]
+}

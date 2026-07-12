@@ -10,10 +10,15 @@
  *
  * A decklist is expressed as `(card, count)` rows for readable display; the wire
  * form is a flat list of {@link CardIdentity} handles (a card repeated `count`
- * times), assembled by {@link decklistCards}. The card identities reference the
- * engine's existing oracle fixtures by their stable ids (ADR 0013 §5), so a
- * submission is at least well-formed; the server remains the sole authority on
- * whether a given deck is legal for a given `game_setup`.
+ * times), assembled by {@link decklistCards}. An identity is a card's authored
+ * `functional_id` (ADR 0018 §3) — the only card identity that is stable across
+ * builds. It is *not* the engine's `CardId`: that handle is interned from the
+ * catalog's sort order, so authoring one new card renumbers its neighbours, and a
+ * decklist pinned to an integer would quietly come to mean different cards.
+ *
+ * The client still never parses an identity — it is an opaque string it echoes back.
+ * The server remains the sole authority on whether a given deck is legal for a given
+ * `game_setup`.
  */
 import type { CardIdentity } from './protocol';
 
@@ -40,9 +45,9 @@ export interface Decklist {
 }
 
 /**
- * The two bundled starter decks. Built from the engine's oracle fixtures
- * (`crates/rune-engine/data/cards.json`) referenced by identity only — this is
- * static data, not a card database, and encodes no rules.
+ * The two bundled starter decks. Built from the engine's catalog
+ * (`crates/rune-engine/data/catalog/<functional_id>.json`) referenced by identity
+ * only — this is static data, not a card database, and encodes no rules.
  */
 export const STARTER_DECKLISTS: readonly Decklist[] = [
   {
@@ -50,10 +55,10 @@ export const STARTER_DECKLISTS: readonly Decklist[] = [
     name: 'Green Stompy',
     summary: 'A straightforward green creature deck.',
     entries: [
-      { identity: '1', name: 'Thornback Boar', count: 8 },
-      { identity: '4', name: 'Stonehide Basilisk', count: 6 },
-      { identity: '6', name: 'Verdant Scout', count: 6 },
-      { identity: '5', name: 'Forest', count: 20 },
+      { identity: 'thornback_boar', name: 'Thornback Boar', count: 8 },
+      { identity: 'stonehide_basilisk', name: 'Stonehide Basilisk', count: 6 },
+      { identity: 'verdant_scout', name: 'Verdant Scout', count: 6 },
+      { identity: 'forest', name: 'Forest', count: 20 },
     ],
   },
   {
@@ -61,10 +66,10 @@ export const STARTER_DECKLISTS: readonly Decklist[] = [
     name: 'Temur Tempo',
     summary: 'Aggressive creatures across green, blue, and red.',
     entries: [
-      { identity: '3', name: 'Emberfang Jackal', count: 8 },
-      { identity: '2', name: 'Riverbank Otter', count: 6 },
-      { identity: '6', name: 'Verdant Scout', count: 6 },
-      { identity: '5', name: 'Forest', count: 20 },
+      { identity: 'emberfang_jackal', name: 'Emberfang Jackal', count: 8 },
+      { identity: 'riverbank_otter', name: 'Riverbank Otter', count: 6 },
+      { identity: 'verdant_scout', name: 'Verdant Scout', count: 6 },
+      { identity: 'forest', name: 'Forest', count: 20 },
     ],
   },
 ];

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "bramble_hatchling",
+  "name": "Bramble Hatchling",
+  "types": ["creature"],
+  "subtypes": ["Insect"],
+  "mana_cost": "{1}{G}",
+  "colors": ["green"],
+  "power": 0,
+  "toughness": 0,
+  "abilities": [
+    {
+      "type": "enters_with_counters",
+      "counter": "plus_one_plus_one",
+      "count": 2
+    }
+  ]
+}

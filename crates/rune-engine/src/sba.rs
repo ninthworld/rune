@@ -182,6 +182,7 @@ mod tests {
     use super::*;
     use crate::actions::Action;
     use crate::apply_action;
+    use crate::fixtures::fixture;
     use crate::id::{CardId, PlayerId};
     use crate::state::{CounterKind, Permanent};
     use crate::CardDatabase;
@@ -224,7 +225,7 @@ mod tests {
         // Boar is a 3/2; two marked damage is lethal.
         let db = db();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1), PlayerId(0), 2);
+        let boar = place(&mut state, fixture("thornback_boar"), PlayerId(0), 2);
 
         run_state_based_actions(&mut state, &db);
 
@@ -245,7 +246,7 @@ mod tests {
         // marked damage stays on the battlefield.
         let db = db();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1), PlayerId(0), 1);
+        let boar = place(&mut state, fixture("thornback_boar"), PlayerId(0), 1);
 
         run_state_based_actions(&mut state, &db);
 
@@ -260,7 +261,7 @@ mod tests {
         // is. This proves the SBA folds counters in, not the printed toughness.
         let db = db();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1), PlayerId(0), 2);
+        let boar = place(&mut state, fixture("thornback_boar"), PlayerId(0), 2);
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == boar) {
             perm.counters.insert(CounterKind::PlusOnePlusOne, 1);
         }
@@ -288,7 +289,7 @@ mod tests {
         // Basilisk (4/5) survives 1 marked damage by CR 704.5g but not the flag.
         let db = db();
         let mut state = GameState::new_two_player();
-        let basilisk = place(&mut state, CardId(4), PlayerId(0), 1); // 1 marked damage
+        let basilisk = place(&mut state, fixture("stonehide_basilisk"), PlayerId(0), 1); // 1 marked damage
         state.deathtouch_struck.push(basilisk);
 
         run_state_based_actions(&mut state, &db);
@@ -391,8 +392,8 @@ mod tests {
         use crate::characteristics::characteristics;
         let db = db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, CardId(1), PlayerId(0), 4); // 3/2 with 4 damage
-        let aura = place_aura(&mut state, CardId(29), host); // +2/+2
+        let host = place(&mut state, fixture("thornback_boar"), PlayerId(0), 4); // 3/2 with 4 damage
+        let aura = place_aura(&mut state, fixture("ironbark_aegis"), host); // +2/+2
 
         // Before SBAs the Aura buffs the host to a 5/4; 4 marked damage is lethal.
         assert_eq!(characteristics(&state, host, &db).toughness, Some(4));
@@ -417,7 +418,7 @@ mod tests {
         // `None`) is put into its owner's graveyard.
         let db = db();
         let mut state = GameState::new_two_player();
-        let aura = place(&mut state, CardId(29), PlayerId(0), 0); // unattached
+        let aura = place(&mut state, fixture("ironbark_aegis"), PlayerId(0), 0); // unattached
 
         run_state_based_actions(&mut state, &db);
 
@@ -437,8 +438,8 @@ mod tests {
         use crate::characteristics::characteristics;
         let db = db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, CardId(1), PlayerId(0), 0); // 3/2, no damage
-        let aura = place_aura(&mut state, CardId(30), host); // -2/-2
+        let host = place(&mut state, fixture("thornback_boar"), PlayerId(0), 0); // 3/2, no damage
+        let aura = place_aura(&mut state, fixture("witherbrand_curse"), host); // -2/-2
 
         // Current toughness is 2 + (-2) = 0 before the SBA runs.
         assert_eq!(characteristics(&state, host, &db).toughness, Some(0));
@@ -463,8 +464,8 @@ mod tests {
         use crate::characteristics::characteristics;
         let db = db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, CardId(6), PlayerId(0), 0); // 1/1 Scout
-        let aura = place_aura(&mut state, CardId(29), host); // +2/+2
+        let host = place(&mut state, fixture("verdant_scout"), PlayerId(0), 0); // 1/1 Scout
+        let aura = place_aura(&mut state, fixture("ironbark_aegis"), host); // +2/+2
 
         run_state_based_actions(&mut state, &db);
 

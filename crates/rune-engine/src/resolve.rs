@@ -205,6 +205,7 @@ mod tests {
     use super::*;
     use crate::actions::Action;
     use crate::apply_action;
+    use crate::fixtures::{fixture, id_in};
     use crate::id::{CardId, CardInstance, PlayerId};
     use crate::mana::Color;
     use crate::phase::Step;
@@ -221,9 +222,9 @@ mod tests {
     fn slice_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let forest = state.new_instance(CardId(5));
-        let scout = state.new_instance(CardId(6));
-        let draw = state.new_instance(CardId(1));
+        let forest = state.new_instance(fixture("forest"));
+        let scout = state.new_instance(fixture("verdant_scout"));
+        let draw = state.new_instance(fixture("thornback_boar"));
         state.players[0].hand = vec![forest, scout];
         state.players[0].library = vec![draw];
         state
@@ -243,7 +244,7 @@ mod tests {
         let db = db();
         let mut state = slice_state();
         state.players[0].mana_pool.add(Color::Green, 1);
-        let scout = hand_instance(&state, 0, CardId(6));
+        let scout = hand_instance(&state, 0, fixture("verdant_scout"));
         let state = apply_action(
             &state,
             &Action::CastSpell {
@@ -258,7 +259,7 @@ mod tests {
         let perm = state
             .battlefield
             .iter()
-            .find(|p| p.card == CardId(6))
+            .find(|p| p.card == fixture("verdant_scout"))
             .unwrap();
         assert_eq!(perm.instance, scout.id);
     }
@@ -270,12 +271,12 @@ mod tests {
         // offers creature casts (out of scope for #47), so we seed a synthetic
         // instant directly on the stack and drive resolution through the public
         // apply_action path (both players pass → the top of the stack resolves).
-        let json = r#"[{"schema_version":1,"id":100,"functional_id":"test_bolt","name":"Test Bolt","types":["instant"],"mana_cost":"{R}"}]"#;
+        let json = r#"[{"schema_version":1,"functional_id":"test_bolt","name":"Test Bolt","types":["instant"],"mana_cost":"{R}"}]"#;
         let db = CardDatabase::from_json(json).unwrap();
 
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let bolt = state.new_instance(CardId(100));
+        let bolt = state.new_instance(id_in(&db, "test_bolt"));
         let sid = state.mint_id();
         state.stack.push(StackObject {
             id: StackId(sid),
@@ -292,15 +293,15 @@ mod tests {
         assert_eq!(state.players[0].graveyard, vec![bolt]);
     }
 
-    /// Put a creature (Verdant Scout, [`CardId(6)`]) onto the battlefield under
+    /// Put a creature (Verdant Scout, [`fixture("verdant_scout")`]) onto the battlefield under
     /// player 0's control and return its fresh [`PermanentId`].
     fn creature_on_battlefield(state: &mut GameState) -> PermanentId {
-        let inst = state.new_instance(CardId(6));
+        let inst = state.new_instance(fixture("verdant_scout"));
         let id = state.mint_id();
         state.battlefield.push(Permanent {
             id: PermanentId(id),
             instance: inst.id,
-            card: CardId(6),
+            card: fixture("verdant_scout"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -447,7 +448,7 @@ mod tests {
         // ability on the stack is not a spell and is never a legal target.
         let db = db();
         let mut state = GameState::new_two_player();
-        let spell = state.new_instance(CardId(1));
+        let spell = state.new_instance(fixture("thornback_boar"));
         let sid = StackId(state.mint_id());
         state.stack.push(StackObject {
             id: sid,
@@ -509,12 +510,12 @@ mod tests {
         ));
 
         // A non-creature permanent (a Forest) is not an "any target".
-        let inst = state.new_instance(CardId(5));
+        let inst = state.new_instance(fixture("forest"));
         let forest = PermanentId(state.mint_id());
         state.battlefield.push(Permanent {
             id: forest,
             instance: inst.id,
-            card: CardId(5),
+            card: fixture("forest"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -575,9 +576,11 @@ mod tests {
 
     // ----- Auras: enchant, attachment, and fizzle (issue #152) -----
     //
-    // Fixture oracle ids: 29 Ironbark Aegis ({1}{G} Aura, "+2/+2, enchant
-    // creature"), 6 Verdant Scout (1/1 creature).
-    const AURA_BUFF: CardId = CardId(29);
+    // Ironbark Aegis ({1}{G} Aura, "+2/+2, enchant creature") and Verdant Scout
+    // (1/1 creature), named by authored identity rather than interned handle.
+    fn aura_buff() -> CardId {
+        fixture("ironbark_aegis")
+    }
 
     #[test]
     fn issue_152_aura_resolves_attached_to_its_target_and_boosts_it_cr_303_4d() {
@@ -589,7 +592,7 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let host = creature_on_battlefield(&mut state); // Verdant Scout, 1/1
-        let aura = state.new_instance(AURA_BUFF);
+        let aura = state.new_instance(aura_buff());
         state.players[0].hand = vec![aura];
         state.players[0].mana_pool.add(Color::Green, 1);
         state.players[0].mana_pool.colorless = 1;
@@ -609,7 +612,7 @@ mod tests {
         let aura_perm = state
             .battlefield
             .iter()
-            .find(|p| p.card == AURA_BUFF)
+            .find(|p| p.card == aura_buff())
             .unwrap();
         assert_eq!(
             aura_perm.attached_to,
@@ -630,7 +633,7 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let host = creature_on_battlefield(&mut state);
-        let aura = state.new_instance(AURA_BUFF);
+        let aura = state.new_instance(aura_buff());
         state.players[0].hand = vec![aura];
         state.players[0].mana_pool.add(Color::Green, 1);
         state.players[0].mana_pool.colorless = 1;
@@ -651,7 +654,7 @@ mod tests {
 
         assert!(state.stack.is_empty());
         assert!(
-            !state.battlefield.iter().any(|p| p.card == AURA_BUFF),
+            !state.battlefield.iter().any(|p| p.card == aura_buff()),
             "a fizzled Aura never enters the battlefield (CR 608.2b)"
         );
         assert!(
@@ -673,7 +676,7 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let hatchling = state.new_instance(CardId(32));
+        let hatchling = state.new_instance(fixture("bramble_hatchling"));
         state.players[0].hand = vec![hatchling];
         // Pay {1}{G}.
         state.players[0].mana_pool.add(Color::Green, 1);
@@ -695,7 +698,7 @@ mod tests {
         let perm = state
             .battlefield
             .iter()
-            .find(|p| p.card == CardId(32))
+            .find(|p| p.card == fixture("bramble_hatchling"))
             .unwrap(); // the 0/0 survives entry with two +1/+1 counters (CR 614.12/704.5f)
         assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 2);
         let ch = characteristics(&state, perm.id, &db);
@@ -714,14 +717,14 @@ mod tests {
         // an ETB "draw a card" trigger: on resolution it is already a 2/2 with the two
         // counters AND its ETB trigger is on the stack — both from the one entry event.
         use crate::state::CounterKind;
-        let json = r#"[{"schema_version":1,"id":200,"functional_id":"test_broodling","name":"Test Broodling","types":["creature"],"mana_cost":"","power":0,"toughness":0,"abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2},{"type":"triggered","event":"self_enters_battlefield","effects":[{"kind":"draw_card","count":1}]}]}]"#;
+        let json = r#"[{"schema_version":1,"functional_id":"test_broodling","name":"Test Broodling","types":["creature"],"mana_cost":"","power":0,"toughness":0,"abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2},{"type":"triggered","event":"self_enters_battlefield","effects":[{"kind":"draw_card","count":1}]}]}]"#;
         let db = CardDatabase::from_json(json).unwrap();
 
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let broodling = state.new_instance(CardId(200));
+        let broodling = state.new_instance(id_in(&db, "test_broodling"));
         // A card to draw so the ETB trigger's effect has something to fetch.
-        let draw = state.new_instance(CardId(200));
+        let draw = state.new_instance(id_in(&db, "test_broodling"));
         state.players[0].library = vec![draw];
         let sid = state.mint_id();
         state.stack.push(StackObject {
@@ -739,7 +742,7 @@ mod tests {
         let perm = state
             .battlefield
             .iter()
-            .find(|p| p.card == CardId(200))
+            .find(|p| p.card == id_in(&db, "test_broodling"))
             .unwrap(); // the creature entered the battlefield
         assert_eq!(
             perm.counter_count(CounterKind::PlusOnePlusOne),
