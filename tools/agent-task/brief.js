@@ -45,6 +45,19 @@ export function buildBrief({ issue, run, dependencies = [] }) {
     "Edit the working tree to satisfy the issue. That is the whole job; the runner verifies",
     "the result independently and publishes it.",
     "",
+    "## Report what you did",
+    "",
+    "Before you finish, write `$RUNE_RESULT` (a path in your environment) as JSON, mapping each",
+    "acceptance criterion below to the evidence for it — the files, the tests, the behaviour:",
+    "",
+    "```json",
+    '{ "criteria": [{ "criterion": "<the criterion, copied exactly>", "evidence": "<what satisfies it>" }] }',
+    "```",
+    "",
+    "This goes into the PR body for the human reviewer, labelled as your claim rather than a",
+    "verified fact. A criterion you cannot honestly map, leave out: it is listed as unmapped,",
+    "which is far more useful to the reviewer than a confident sentence that is not true.",
+    "",
   ];
 
   if (dependencies.length > 0) {

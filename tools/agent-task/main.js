@@ -1,21 +1,25 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { PROVIDERS, actor, repoSlug, runsRoot } from "./config.js";
+import { LABELS, PROVIDERS, actor, repoSlug, runsRoot } from "./config.js";
 import { TaskError, claim, release } from "./claim.js";
 import { buildBrief } from "./brief.js";
+import { inspect } from "./diff.js";
 import { diagnose } from "./doctor.js";
 import { GitHub, mintToken } from "./github.js";
-import { resolveIsolation, scratchHomeFor } from "./isolation.js";
+import { providerEnv, resolveIsolation, scratchHomeFor } from "./isolation.js";
+import { buildPrBody } from "./prbody.js";
 import { DEFAULT_TIMEOUT_MS, runProvider } from "./provider.js";
+import { commitWork, openDraftPr, pushFromMirror, rebaseOntoMain } from "./publish.js";
 import { activeRunForIssue, isActive, listRuns, loadRun, removeRun, runDir, transition } from "./runs.js";
 import { createWorkspace, ensureMirror } from "./sandbox.js";
+import { GATE_SETS, runGates } from "./verify.js";
 
 const USAGE = `scripts/agent-task — drive one RUNE issue to a reviewable PR (ADR 0016)
 
   start <issue> --provider <${PROVIDERS.join("|")}> [--allow-ci] [--timeout 45m]
-                [--unsafe-same-uid]
-                          claim the issue and run the provider in a sandbox
+                [--gates verify|check] [--unsafe-same-uid]
+                          claim, run the provider, verify, and open a draft PR
   status [<issue>|<run-id>]  show lifecycle state
   list                    active and recent runs
   release <issue> [--force]  drop the claim; --force takes over a stale one
@@ -74,6 +78,10 @@ async function cmdStart({ positional, flags }) {
     throw new TaskError(`--provider must be one of ${PROVIDERS.join(", ")} (got ${provider ?? "nothing"})`);
   }
   const timeoutMs = parseTimeout(flags.timeout);
+  const gateSet = flags.gates ?? "verify";
+  if (!GATE_SETS[gateSet]) {
+    throw new TaskError(`--gates must be one of ${Object.keys(GATE_SETS).join(", ")} (got ${gateSet})`);
+  }
 
   // Resolved before the claim: a host that cannot contain a provider should fail while the
   // issue is still untouched, not after it has been claimed and labelled.
@@ -101,7 +109,7 @@ async function cmdStart({ positional, flags }) {
     actor: actor(),
     root,
   });
-  run = { ...run, isolation: isolation.mode };
+  run = { ...run, isolation: isolation.mode, gate_set: gateSet };
 
   const dir = runDir(run.run_id, root);
   process.stdout.write(`claimed #${number} — run ${run.run_id}\n  branch    ${run.branch}\n  state     ${dir}\n\n`);
@@ -120,22 +128,93 @@ async function cmdStart({ positional, flags }) {
 
   const result = await runProvider({ run, workspace, isolation, root, brief, timeoutMs });
   run = transition({ ...run, ...result }, result.outcome, root);
+  process.stdout.write(`\n${provider} exited ${result.exit_code} — ${run.state}\n`);
 
-  process.stdout.write(
-    [
-      "",
-      `${provider} exited ${result.exit_code} — run is ${run.state}`,
-      `  logs      ${join(dir, "logs", "provider.log")}`,
-      `  diff      git -C ${workspace} status`,
-      "",
-      // Slices 3-4 add diff inspection, the verification gates, publication, and run
-      // summaries. Until they land, `start` stops here rather than pretending to have done
-      // work it cannot yet do. The claim is held either way, so the run stays resumable.
-      "Verifying, committing, and opening the PR are not implemented yet (ADR 0016 slices 3-4).",
-      `Release the claim when you are done:  scripts/agent-task release ${number}`,
-      "",
-    ].join("\n"),
-  );
+  if (result.outcome !== "implemented") {
+    // The claim, the branch, and the diff all survive: a failed run is resumable, not lost.
+    throw new TaskError(
+      `provider did not finish (${run.state}). Logs: ${join(dir, "logs", "provider.log")}\n` +
+        `The claim is held — inspect ${workspace}, then re-run or release #${number}.`,
+    );
+  }
+
+  await publishRun({ gh, run, issue, workspace, isolation, root, number });
+}
+
+/**
+ * Everything between "the provider stopped" and "a human has something to review".
+ *
+ * None of it trusts the provider's account of what it did: the diff is inspected, the gates
+ * are run, and the commit, the push, and the PR are the runner's own.
+ */
+async function publishRun({ gh, run: claimed, issue, workspace, isolation, root, number }) {
+  let run = claimed;
+  const dir = runDir(run.run_id, root);
+  const env = providerEnv({ provider: run.provider, workspace, run, root, scratchHome: join(dir, "home") });
+
+  const found = inspect(workspace, { allowCi: run.allow_ci, baseSha: run.base_sha });
+  if (!found.ok) {
+    const first = found.violations[0];
+    run = transition({ ...run, violations: found.violations }, first.outcome, root);
+    throw new TaskError(
+      `${first.outcome}: ${found.violations.map((v) => v.detail).join("\n")}\n\n` +
+        `The work is preserved in ${workspace} and the claim is held.`,
+    );
+  }
+  process.stdout.write(`diff ok — ${found.files.length} file(s)${found.ciPaths.length ? `, ${found.ciPaths.length} CI-governance` : ""}\n`);
+
+  commitWork(workspace, { issue });
+
+  const set = flagsGateSet(run);
+  process.stdout.write(`verifying (${set})…\n`);
+  let verification = await runGates({ run, workspace, isolation, root, env, set });
+  if (!verification.ok) {
+    const failed = verification.gates.find((g) => !g.ok);
+    run = transition({ ...run, gates: verification.gates }, "verification_failed", root);
+    throw new TaskError(
+      `verification failed at gate ${failed.gate}. Logs: ${join(dir, "logs", "verify.log")}\n` +
+        `The claim is held — fix it in ${workspace}, or release #${number}.`,
+    );
+  }
+
+  // `main` requires branches to be up to date, and a run takes long enough to go stale.
+  const rebase = rebaseOntoMain(workspace);
+  if (rebase.moved) {
+    process.stdout.write("main moved — rebased; re-verifying against the new base…\n");
+    verification = await runGates({ run, workspace, isolation, root, env, set });
+    if (!verification.ok) {
+      run = transition({ ...run, gates: verification.gates }, "verification_failed", root);
+      throw new TaskError("verification failed after rebasing onto current main — the change conflicts semantically with new work on main.");
+    }
+  }
+
+  const remoteSha = await gh.branchSha(run.branch);
+  pushFromMirror({ workspace, branch: run.branch, remoteSha });
+
+  const body = buildPrBody({
+    issue,
+    run,
+    gates: verification.gates,
+    files: found.files,
+    ciPaths: found.ciPaths,
+    providerUsage: run.provider_usage,
+  });
+  const pr = openDraftPr({ branch: run.branch, title: issue.title, body });
+
+  // `agent` and `ci-change` belong on the PR (the thing being reviewed); the lifecycle label
+  // belongs on the issue. `status:review` is set only now, so the label always means "there is
+  // something to review", never "a run intends to produce something".
+  await gh.addLabels(pr.number, found.ciPaths.length > 0 ? ["agent", "ci-change"] : ["agent"]);
+  await gh.removeLabel(number, LABELS.inProgress);
+  await gh.addLabels(number, [LABELS.review]);
+
+  run = transition({ ...run, gates: verification.gates, pr: pr.number, pr_url: pr.url }, "review", root);
+  process.stdout.write(`\ndraft PR opened: ${pr.url}\n#${number} is now ${LABELS.review}. A human reviews and merges — always.\n`);
+}
+
+/** `--gates check` trades the full required surface for a fast loop; the default is the whole thing. */
+function flagsGateSet(run) {
+  return run.gate_set ?? "verify";
 }
 
 async function cmdRelease({ positional, flags }) {
