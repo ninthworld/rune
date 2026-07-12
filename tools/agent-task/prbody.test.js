@@ -39,6 +39,78 @@ test("criteria the provider did not map are called out, not quietly dropped", ()
   assert.match(body, /Never merge a PR.*unmapped — no evidence reported/);
 });
 
+// The bug behind #221: the join was byte equality, and a provider copying a criterion into JSON
+// drops the markdown. On #191 every criterion carrying an inline code span — 6 of 27 — reported
+// as unmapped while its evidence sat in the result file, matching nothing.
+test("a criterion is matched even when the provider reformats it copying it back", () => {
+  const issue = anIssue({
+    body: "- [ ] `GameView` round-trips through serde_json\n- [ ] `make check` green\n",
+  });
+  const body = build({
+    issue,
+    providerUsage: {
+      criteria: [
+        { criterion: "GameView round-trips through serde_json", evidence: "view.rs + a round-trip test" },
+        { criterion: "**make check**   GREEN.", evidence: "ran it; Engine and Client pass" },
+      ],
+    },
+  });
+
+  assert.match(body, /All 2 criteria have reported evidence/);
+  assert.match(body, /`GameView` round-trips through serde_json \| view\.rs \+ a round-trip test/);
+  assert.match(body, /`make check` green \| ran it; Engine and Client pass/);
+  assert.doesNotMatch(body, /unmapped/);
+});
+
+test("the criterion column keeps the issue's own wording, not the provider's copy of it", () => {
+  const body = build({
+    issue: anIssue({ body: "- [ ] `make check` green\n" }),
+    providerUsage: { criteria: [{ criterion: "make check green", evidence: "ran it" }] },
+  });
+  assert.match(body, /\| `make check` green \|/);
+});
+
+test("a reported claim matching no criterion is surfaced, not dropped", () => {
+  const body = build({
+    providerUsage: {
+      criteria: [
+        { criterion: "Claim the issue atomically.", evidence: "claim.js" },
+        { criterion: "Never merge a PR.", evidence: "the runner cannot approve" },
+        { criterion: "Rewrite the scheduler.", evidence: "scheduler.js, rewritten" },
+      ],
+    },
+  });
+
+  assert.match(body, /1 reported claim matches no criterion in this issue/);
+  assert.match(body, /> - _Rewrite the scheduler\._ — scheduler\.js, rewritten/);
+  assert.match(body, /All 2 criteria have reported evidence/);
+});
+
+test("one claim satisfies at most one criterion", () => {
+  const body = build({
+    providerUsage: {
+      criteria: [
+        { criterion: "Claim the issue atomically.", evidence: "first claim" },
+        { criterion: "claim the issue atomically", evidence: "same criterion, said twice" },
+      ],
+    },
+  });
+
+  // The duplicate must not be spent on the *other* criterion, which nobody reported evidence for.
+  assert.match(body, /1 of 2 criteria have no reported evidence/);
+  assert.match(body, /Never merge a PR.*unmapped — no evidence reported/);
+  assert.match(body, /1 reported claim matches no criterion/);
+  assert.match(body, /same criterion, said twice/);
+});
+
+test("an entry reported with no evidence leaves its criterion unmapped", () => {
+  const body = build({
+    providerUsage: { criteria: [{ criterion: "Claim the issue atomically.", evidence: "" }] },
+  });
+  assert.match(body, /2 of 2 criteria have no reported evidence/);
+  assert.doesNotMatch(body, /matches no criterion/);
+});
+
 test("the criteria mapping is labelled as the provider's claim, not the runner's finding", () => {
   const body = build({
     providerUsage: {
