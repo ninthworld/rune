@@ -142,9 +142,37 @@ collection, an AI audit with an independently reviewed second opinion, a human
 closeout gate, next-milestone-only planning with its own independent review, and a
 human approval gate before any issue is created — reusing the ADR 0016 adapter
 boundary for every AI role and the `agent-runs` branch for the cycle's sanitized
-telemetry. Building the command that runs this cycle is a separate, not-yet-landed
-`agent-task`; until then, milestone reconciliation in `docs/roadmap.md` is done by
-hand, by a human, reading the same evidence this cycle will eventually gather for them.
+telemetry.
+
+### Evidence collection
+
+The cycle's first stage is built (#224); the rest of it (#225–#228) is not. What exists
+today gathers the evidence and hands it to a human:
+
+    scripts/agent-cycle collect M3      # snapshot one commit; build the Evidence Bundle
+    scripts/agent-cycle show <cycle-id> # summarize a collected bundle
+    scripts/agent-cycle list            # cycles collected on this machine
+
+`collect` pins the cycle to current `origin/main`, clones *that commit*, and reads it:
+the milestone's exit criteria **verbatim** out of `docs/roadmap.md`, its issues (from
+GitHub's milestone tag and the roadmap's own tables, with the drift between them
+recorded rather than resolved), the PRs that closed them with their merge SHAs, the
+required checks each of those PRs got, **a fresh gate run against the audited commit
+itself**, test counts, the `docs/rules-coverage.md` rows in the milestone's CR scope,
+the status of every ADR the criteria name, `TODO`/`unimplemented!` locations under the
+paths they name, and the "Partial: …" gaps a human already wrote down.
+
+It **reads only** — no label, comment, branch, PR, or model call — and the bundle it
+writes lives outside the repository, under `$XDG_STATE_HOME/rune/cycles/<cycle-id>/`,
+so a bundle can never land in a diff. Nothing in it is a verdict: a closed issue is
+recorded as a closed issue, never as a satisfied criterion, because an issue can close
+without its acceptance criteria being met. Two facts it deliberately keeps apart: the
+green checks on a milestone's merged PRs prove those PRs passed *then*; only the fresh
+gate run says anything about `main` *now*.
+
+Until the audit and the gates that follow it land, milestone reconciliation in
+`docs/roadmap.md` is still done by hand, by a human — reading, now, the same evidence
+the Auditor will eventually be handed.
 
 ## Labels
 

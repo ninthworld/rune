@@ -2,7 +2,7 @@
   "name": "@rune/agent-task",
   "private": true,
   "type": "module",
-  "description": "Provider-neutral issue runner (ADR 0016). Dependency-free Node 20 — never add a dependency here.",
+  "description": "Provider-neutral issue runner (ADR 0016) and milestone stewardship cycle (ADR 0017). Dependency-free Node 20 — never add a dependency here.",
   "engines": {
     "node": ">=20"
   }
