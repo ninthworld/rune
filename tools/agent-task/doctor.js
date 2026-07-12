@@ -3,6 +3,8 @@ import { accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { hasCredential } from "./isolation.js";
+
 /**
  * Resolves a command on PATH, or null.
  *
@@ -69,8 +71,23 @@ export function diagnose() {
     required: false,
   });
 
+  // A provider's interactive `/login` lives under the real HOME, which the sandbox replaces — so
+  // an installed CLI that has only ever been logged in interactively will sit there asking for
+  // `/login` with nobody to answer. Checked here, because the alternative is discovering it after
+  // an issue has been claimed.
+  const advice = {
+    claude: "run `claude setup-token` once, then export CLAUDE_CODE_OAUTH_TOKEN",
+    codex: "export OPENAI_API_KEY",
+  };
   for (const cli of ["claude", "codex"]) {
-    checks.push({ name: `provider CLI: ${cli}`, ok: Boolean(which(cli)), detail: which(cli) || "not installed", required: false });
+    const installed = which(cli);
+    const authed = hasCredential(cli);
+    checks.push({
+      name: `provider: ${cli}`,
+      ok: Boolean(installed) && authed,
+      detail: !installed ? "not installed" : authed ? `${installed} (token in env)` : `installed, but NO TOKEN — ${advice[cli]}`,
+      required: false,
+    });
   }
 
   return checks;

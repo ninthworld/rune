@@ -39,7 +39,7 @@ export async function runProvider({
 }) {
   const dir = runDir(run.run_id, root);
   const env = providerEnv({ provider: run.provider, workspace, run, root, scratchHome: join(dir, "home") });
-  const { argv, env: spawnEnv } = wrap(adapterFor(run.provider).argv(brief), { isolation, env, workspace, dir });
+  const { argv, env: spawnEnv } = wrap(adapterFor(run.provider).argv(brief, { isolation }), { isolation, env, workspace, dir });
 
   const log = createWriteStream(join(dir, "logs", "provider.log"), { flags: "a" });
   const logClosed = new Promise((resolve) => log.on("close", resolve));

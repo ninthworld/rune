@@ -13,12 +13,28 @@ import { runDir } from "./runs.js";
  */
 export const FORBIDDEN_ENV = ["BOT_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "RUNE_BOT_KEY", "RUNE_BOT_APP_ID"];
 
-/** Model credentials a provider legitimately needs. Nothing else from the host is passed. */
-const PROVIDER_CREDENTIALS = {
-  claude: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
+/**
+ * Model credentials a provider legitimately needs. Nothing else from the host is passed.
+ *
+ * A provider's *interactive* login lives in its config directory under the real `HOME` — which
+ * the scratch `HOME` deliberately puts out of reach, along with the app key and the maintainer's
+ * `gh` login. So a headless run cannot inherit a `/login` session and must be given a token
+ * instead: `claude setup-token` mints a long-lived one for subscription users
+ * (`CLAUDE_CODE_OAUTH_TOKEN`), and an API key works for either provider.
+ *
+ * This is the cost of the boundary, and it is the right cost: the same isolation that stops the
+ * provider reading `~/.config/rune/rune-agent.pem` also stops it reading `~/.claude`.
+ */
+export const PROVIDER_CREDENTIALS = {
+  claude: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
   codex: ["OPENAI_API_KEY"],
   local: (process.env.RUNE_LOCAL_ENV || "").split(",").filter(Boolean),
 };
+
+/** True when the host can actually authenticate this provider headlessly. */
+export function hasCredential(provider) {
+  return (PROVIDER_CREDENTIALS[provider] ?? []).some((name) => Boolean(process.env[name]));
+}
 
 function have(cmd) {
   try {
