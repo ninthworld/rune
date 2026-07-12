@@ -12,7 +12,7 @@ rune-protocol = { path = "../rune-protocol" }
 # getrandom is the minimal, foundational entropy crate and is already in the
 # dependency graph transitively (via the WebSocket stack), so this only promotes it
 # to a direct dependency — no new crates, and it stays MIT/Apache (deny.toml).
-getrandom = "0.2"
+getrandom = "0.4"
 # Serialize the JSON protocol at the transport boundary. serde_json is already the
 # workspace's wire codec (rune-protocol, rune-engine); the server speaks the same
 # JSON, so this is not a materially new dependency (ADR-0008 covers the stack).
