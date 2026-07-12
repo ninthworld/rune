@@ -1,6 +1,9 @@
 # ADR 0013: Card identity vs printing — a scalable set model
 
-- Status: accepted
+- Status: accepted (§2 file layout, and the sequential-integer/`oracle_text`
+  framing in §1/§6, superseded by
+  [ADR 0018](0018-scalable-functional-card-definitions.md); §1's core
+  oracle-vs-printing split stands)
 - Date: 2026-07-11
 - Issue: #106
 
