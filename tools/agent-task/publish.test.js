@@ -7,6 +7,8 @@ import { afterEach, beforeEach, test } from "node:test";
 import { git } from "./git.js";
 import { commitWork, openDraftPr, pushFromMirror, rebaseOntoMain } from "./publish.js";
 
+const AUTHOR = { name: "Dev", email: "dev@example.com" };
+
 let dir;
 let mirror;
 let workspace;
@@ -43,7 +45,7 @@ afterEach(() => {
 
 test("the commit keeps a Conventional Commits subject and links the issue", () => {
   writeFileSync(join(workspace, "f.rs"), "work\n");
-  commitWork(workspace, { issue: { number: 42, title: "feat(engine): do the thing" } });
+  commitWork(workspace, { issue: { number: 42, title: "feat(engine): do the thing" }, author: AUTHOR });
 
   const message = git(["log", "-1", "--format=%B"], { cwd: workspace });
   assert.match(message, /^feat\(engine\): do the thing/);
@@ -52,13 +54,13 @@ test("the commit keeps a Conventional Commits subject and links the issue", () =
 
 test("an issue title that is not conventional gets a type prefix", () => {
   writeFileSync(join(workspace, "f.rs"), "work\n");
-  commitWork(workspace, { issue: { number: 7, title: "Make the thing faster" } });
+  commitWork(workspace, { issue: { number: 7, title: "Make the thing faster" }, author: AUTHOR });
   assert.match(git(["log", "-1", "--format=%s"], { cwd: workspace }), /^feat: Make the thing faster/);
 });
 
 test("the commit is authored by the human, not the bot — only the push carries the bot identity", () => {
   writeFileSync(join(workspace, "f.rs"), "work\n");
-  commitWork(workspace, { issue: { number: 1, title: "fix: x" }, author: { name: "Dev", email: "dev@example.com" } });
+  commitWork(workspace, { issue: { number: 1, title: "fix: x" }, author: AUTHOR });
   assert.match(git(["log", "-1", "--format=%an <%ae>"], { cwd: workspace }), /Dev <dev@example\.com>/);
 });
 
@@ -80,13 +82,13 @@ test("the author is passed explicitly, because a fresh clone inherits no identit
 
 test("untracked files are included in the commit", () => {
   writeFileSync(join(workspace, "brand-new.rs"), "new\n");
-  commitWork(workspace, { issue: { number: 1, title: "feat: x" } });
+  commitWork(workspace, { issue: { number: 1, title: "feat: x" }, author: AUTHOR });
   assert.match(git(["show", "--stat", "--format=", "HEAD"], { cwd: workspace }), /brand-new\.rs/);
 });
 
 test("push goes out from the mirror, never from the provider's workspace", () => {
   writeFileSync(join(workspace, "f.rs"), "work\n");
-  commitWork(workspace, { issue: { number: 1, title: "feat: x" } });
+  commitWork(workspace, { issue: { number: 1, title: "feat: x" }, author: AUTHOR });
 
   const calls = [];
   pushFromMirror({
@@ -110,7 +112,7 @@ test("the lease names the SHA it expects to overwrite", () => {
   // A bare mirror has no remote-tracking ref, so a bare `--force-with-lease` would have nothing
   // to compare against and would silently degrade to a force push (the #208 failure, again).
   writeFileSync(join(workspace, "f.rs"), "w\n");
-  commitWork(workspace, { issue: { number: 1, title: "feat: x" } });
+  commitWork(workspace, { issue: { number: 1, title: "feat: x" }, author: AUTHOR });
 
   const calls = [];
   const push = (remoteSha) =>
@@ -143,7 +145,7 @@ test("the draft PR is opened for an explicit head, and never pushes again", () =
 
 test("rebase brings the branch onto current main and reports whether it moved", () => {
   writeFileSync(join(workspace, "mine.rs"), "mine\n");
-  commitWork(workspace, { issue: { number: 1, title: "feat: mine" } });
+  commitWork(workspace, { issue: { number: 1, title: "feat: mine" }, author: AUTHOR });
 
   assert.equal(rebaseOntoMain(workspace, { mirror }).moved, false, "nothing moved on main yet");
 
@@ -165,7 +167,7 @@ test("rebase brings the branch onto current main and reports whether it moved", 
 
 test("a conflicting rebase aborts cleanly and is reported as rebase_conflict", () => {
   writeFileSync(join(workspace, "same.rs"), "ours\n");
-  commitWork(workspace, { issue: { number: 1, title: "feat: ours" } });
+  commitWork(workspace, { issue: { number: 1, title: "feat: ours" }, author: AUTHOR });
 
   const other = join(dir, "other2");
   git(["clone", "--quiet", mirror, other]);
