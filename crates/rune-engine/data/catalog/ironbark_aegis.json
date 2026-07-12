@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "functional_id": "ironbark_aegis",
+  "name": "Ironbark Aegis",
+  "types": ["enchantment"],
+  "subtypes": ["Aura"],
+  "mana_cost": "{1}{G}",
+  "colors": ["green"],
+  "aura": {
+    "enchant": "any_creature",
+    "power": 2,
+    "toughness": 2
+  }
+}

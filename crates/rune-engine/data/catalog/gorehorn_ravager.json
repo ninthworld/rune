@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "functional_id": "gorehorn_ravager",
+  "name": "Gorehorn Ravager",
+  "types": ["creature"],
+  "subtypes": ["Beast"],
+  "mana_cost": "{3}{G}",
+  "colors": ["green"],
+  "power": 5,
+  "toughness": 4,
+  "keywords": ["trample"]
+}

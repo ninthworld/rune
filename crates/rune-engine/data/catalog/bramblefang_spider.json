@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "functional_id": "bramblefang_spider",
+  "name": "Bramblefang Spider",
+  "types": ["creature"],
+  "subtypes": ["Spider"],
+  "mana_cost": "{1}{G}",
+  "colors": ["green"],
+  "power": 1,
+  "toughness": 3,
+  "keywords": ["reach"]
+}

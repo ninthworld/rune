@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "functional_id": "hurried_study",
+  "name": "Hurried Study",
+  "types": ["sorcery"],
+  "mana_cost": "{U}",
+  "colors": ["blue"]
+}

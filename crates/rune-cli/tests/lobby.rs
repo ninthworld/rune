@@ -25,10 +25,23 @@ use tokio::io::{AsyncReadExt, BufReader, DuplexStream};
 use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::WebSocketStream;
 
-/// A 40-card decklist over the bundled ids 1..=6, as wire card identities — the same
-/// shape the server's pre-game test submits.
+/// The six bundled cards these decks are built from: five green creatures and a Forest
+/// to cast them with. Named by authored `functional_id` (ADR 0018 §3) — a `CardId` is
+/// interned from the catalog's sort order, so an integer deck would silently become a
+/// different (and, with no land in it, unplayable) deck the next time a card is added.
+const STARTER_CARDS: [&str; 6] = [
+    "thornback_boar",
+    "riverbank_otter",
+    "emberfang_jackal",
+    "stonehide_basilisk",
+    "forest",
+    "verdant_scout",
+];
+
+/// A 40-card decklist as wire card identities — the same shape the server's pre-game
+/// test submits.
 fn decklist() -> Vec<String> {
-    (0..40).map(|i| ((i % 6) + 1).to_string()).collect()
+    (0..40).map(|i| STARTER_CARDS[i % 6].to_string()).collect()
 }
 
 /// Attach a fresh CLI-facing socket to `lobby`, spawning its server-side bridge, and

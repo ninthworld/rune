@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "functional_id": "thornweft_sprite",
+  "name": "Thornweft Sprite",
+  "types": ["creature"],
+  "subtypes": ["Faerie"],
+  "mana_cost": "{1}{G}",
+  "colors": ["green"],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "put_counters",
+          "target": "any_creature",
+          "counter": "plus_one_plus_one",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

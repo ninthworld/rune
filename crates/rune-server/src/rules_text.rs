@@ -297,7 +297,7 @@ mod tests {
             .card_id(&FunctionalId::try_from(functional_id.to_string()).unwrap())
             .unwrap();
         let data = db.card(id).unwrap();
-        rules_text(data, rune_engine::scripted_rules_text(id))
+        rules_text(data, rune_engine::scripted_rules_text(&data.functional_id))
     }
 
     #[test]
@@ -396,13 +396,13 @@ mod tests {
         // any keyword, ability, spell effect, or Aura grant must produce text — the
         // formatter never silently emits nothing for a card that does something.
         let db = bundled();
-        for id in (1..=32).map(CardId) {
+        for id in (0..db.len() as u64).map(CardId) {
             let card = db.card(id).unwrap();
             let has_rules = !card.keywords.is_empty()
                 || !card.abilities.is_empty()
                 || !card.spell_effects.is_empty()
                 || card.aura.is_some();
-            let text = rules_text(card, rune_engine::scripted_rules_text(id));
+            let text = rules_text(card, rune_engine::scripted_rules_text(&card.functional_id));
             assert_eq!(
                 has_rules,
                 !text.is_empty(),
@@ -418,10 +418,10 @@ mod tests {
         // Same definition in, same string out — the property the whole approach rests
         // on, since nothing stores the text to compare against.
         let db = bundled();
-        for id in (1..=32).map(CardId) {
+        for id in (0..db.len() as u64).map(CardId) {
             let card = db.card(id).unwrap();
-            let once = rules_text(card, rune_engine::scripted_rules_text(id));
-            let twice = rules_text(card, rune_engine::scripted_rules_text(id));
+            let once = rules_text(card, rune_engine::scripted_rules_text(&card.functional_id));
+            let twice = rules_text(card, rune_engine::scripted_rules_text(&card.functional_id));
             assert_eq!(once, twice);
         }
     }

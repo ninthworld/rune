@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "cryptvine_lurker",
+  "name": "Cryptvine Lurker",
+  "types": ["creature"],
+  "subtypes": ["Horror"],
+  "mana_cost": "{1}{B}",
+  "colors": ["black"],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_dies",
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -15,8 +15,11 @@ mod actions;
 mod apply;
 mod card;
 mod card_type;
+mod catalog;
 mod characteristics;
 mod combat;
+#[cfg(test)]
+mod fixtures;
 mod id;
 mod mana;
 mod mulligan;
@@ -42,6 +45,7 @@ pub use card::{
     PrintingDatabase, Rarity, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
+pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
 pub use combat::{attacker_candidates, blocker_candidates, declared_attackers};
 pub use id::{

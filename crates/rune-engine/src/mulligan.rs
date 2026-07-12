@@ -235,6 +235,7 @@ mod tests {
     use super::*;
     use crate::apply_action;
     use crate::card::CardDatabase;
+    use crate::fixtures::fixture;
     use crate::id::CardId;
     use crate::phase::Step;
     use crate::setup::GameSetup;
@@ -245,9 +246,21 @@ mod tests {
         CardDatabase::bundled().unwrap()
     }
 
-    /// A 40-card decklist cycling through the bundled ids 1..=6.
+    /// A 40-card decklist cycling through six bundled cards.
+    ///
+    /// Named by authored identity, not by handle: a `CardId` is interned from the
+    /// catalog's sort order (ADR 0018 §3), so `CardId(1)` means a different card the
+    /// moment one is authored ahead of it.
     fn sample_decklist() -> Vec<CardId> {
-        (0..40).map(|i| CardId((i % 6) + 1)).collect()
+        const CARDS: [&str; 6] = [
+            "thornback_boar",
+            "riverbank_otter",
+            "emberfang_jackal",
+            "stonehide_basilisk",
+            "forest",
+            "verdant_scout",
+        ];
+        (0..40).map(|i| fixture(CARDS[i % 6])).collect()
     }
 
     /// A fresh two-player game (seed `seed`) sitting in the opening London

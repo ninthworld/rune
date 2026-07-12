@@ -241,6 +241,7 @@ mod tests {
 
     use super::*;
     use crate::ability::is_mana_ability;
+    use crate::fixtures::fixture;
     use crate::id::{CardId, CardInstanceId, PlayerId};
     use crate::state::{Duration, Permanent};
     use std::collections::BTreeMap;
@@ -311,8 +312,8 @@ mod tests {
         // to a specific permanent id, not a controller-wide selector).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let pumped = place(&mut state, CardId(1));
-        let bystander = place(&mut state, CardId(1));
+        let pumped = place(&mut state, fixture("thornback_boar"));
+        let bystander = place(&mut state, fixture("thornback_boar"));
         add_pump(&mut state, 100, pumped, 3, 3);
 
         let ch = characteristics(&state, pumped, &db);
@@ -330,7 +331,7 @@ mod tests {
         // (+2/+0) + (+1/+2) = 6/4.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         add_pump(&mut state, 200, boar, 1, 2); // later timestamp, inserted first
         add_pump(&mut state, 100, boar, 2, 0);
 
@@ -352,7 +353,7 @@ mod tests {
         // Forest (no printed P/T) leaves it without any.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let forest = place(&mut state, CardId(5));
+        let forest = place(&mut state, fixture("forest"));
         add_pump(&mut state, 100, forest, 3, 3);
 
         let ch = characteristics(&state, forest, &db);
@@ -366,10 +367,10 @@ mod tests {
         // its current characteristics are exactly its printed ones.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
 
         let ch = characteristics(&state, boar, &db);
-        let printed = db.card(CardId(1)).unwrap();
+        let printed = db.card(fixture("thornback_boar")).unwrap();
         assert_eq!(ch.power, Some(3));
         assert_eq!(ch.toughness, Some(2));
         assert_eq!(ch.types, vec![CardType::Creature]);
@@ -387,7 +388,7 @@ mod tests {
         // Thornback Boar is a printed 3/2. Three +1/+1 counters make it a 6/5.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 3);
 
         let ch = characteristics(&state, boar, &db);
@@ -402,7 +403,7 @@ mod tests {
         // 3/2 Boar with two +1/+1 and one -1/-1 nets +1/+1 overall -> 4/3.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 2);
         set_counters(&mut state, boar, CounterKind::MinusOneMinusOne, 1);
 
@@ -418,7 +419,7 @@ mod tests {
         // so three -1/-1 on a 3/2 computes a raw 0/-1.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         set_counters(&mut state, boar, CounterKind::MinusOneMinusOne, 3);
 
         let ch = characteristics(&state, boar, &db);
@@ -432,7 +433,7 @@ mod tests {
         // (layer 7c only adjusts an existing power/toughness).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let forest = place(&mut state, CardId(5));
+        let forest = place(&mut state, fixture("forest"));
         set_counters(&mut state, forest, CounterKind::PlusOnePlusOne, 2);
 
         let ch = characteristics(&state, forest, &db);
@@ -443,7 +444,7 @@ mod tests {
     #[test]
     fn counter_count_defaults_to_zero_and_reports_stored_counts() {
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         let find = |state: &GameState| {
             state
                 .battlefield
@@ -464,7 +465,7 @@ mod tests {
         // route through abilities_of, so the land's {T}: Add {G} is present.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let forest = place(&mut state, CardId(5));
+        let forest = place(&mut state, fixture("forest"));
 
         let ch = characteristics(&state, forest, &db);
         assert_eq!(ch.types, vec![CardType::Land]);
@@ -472,7 +473,7 @@ mod tests {
         assert_eq!(ch.power, None);
         assert_eq!(ch.toughness, None);
         assert_eq!(ch.mana_cost, "");
-        assert_eq!(ch.abilities, abilities_of(&db, CardId(5)));
+        assert_eq!(ch.abilities, abilities_of(&db, fixture("forest")));
         assert_eq!(ch.abilities.len(), 1);
         assert!(is_mana_ability(&ch.abilities[0]));
     }
@@ -511,7 +512,7 @@ mod tests {
         // exercising "printed + counters + modifier" together (ADR 0010 §3).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 1);
         add_anthem(&mut state, 100, PlayerId(0), 2, 2);
 
@@ -529,7 +530,7 @@ mod tests {
         // them in ascending-timestamp order regardless of insertion order.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         // Inserted later-timestamp first to prove the pipeline sorts, not reads
         // insertion order.
         add_anthem(&mut state, 200, PlayerId(0), 0, 3); // +0/+3
@@ -556,7 +557,7 @@ mod tests {
         // source leaving) reverts to the printed 3/2 with nothing cached to stale.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         add_anthem(&mut state, 100, PlayerId(0), 2, 2);
 
         let boosted = characteristics(&state, boar, &db);
@@ -574,7 +575,7 @@ mod tests {
         // An anthem for player 1 does not touch player 0's creature.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1)); // controlled by player 0
+        let boar = place(&mut state, fixture("thornback_boar")); // controlled by player 0
         add_anthem(&mut state, 100, PlayerId(1), 5, 5);
 
         let ch = characteristics(&state, boar, &db);
@@ -588,7 +589,7 @@ mod tests {
         // it without power/toughness (layer 7c only adjusts an existing P/T).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let forest = place(&mut state, CardId(5));
+        let forest = place(&mut state, fixture("forest"));
         add_anthem(&mut state, 100, PlayerId(0), 2, 2);
 
         let ch = characteristics(&state, forest, &db);
@@ -601,7 +602,7 @@ mod tests {
         // Two calls agree and the state is untouched — the function is a pure query.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, CardId(1));
+        let boar = place(&mut state, fixture("thornback_boar"));
         let before = state.clone();
 
         let first = characteristics(&state, boar, &db);

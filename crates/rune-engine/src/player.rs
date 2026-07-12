@@ -106,17 +106,18 @@ impl Player {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::id::{CardId, CardInstanceId};
+    use crate::fixtures::fixture;
+    use crate::id::CardInstanceId;
 
     #[test]
     fn player_zone_accessor_matches_fields() {
         let hand_card = CardInstance {
             id: CardInstanceId(7),
-            card: CardId(7),
+            card: fixture("quickfire_bolt"),
         };
         let grave_card = CardInstance {
             id: CardInstanceId(9),
-            card: CardId(9),
+            card: fixture("copper_lodestone"),
         };
         let mut player = Player::new();
         player.hand.push(hand_card);

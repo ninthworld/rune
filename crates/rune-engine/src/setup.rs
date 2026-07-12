@@ -239,15 +239,28 @@ mod tests {
 
     use super::*;
     use crate::card::CardDatabase;
+    use crate::fixtures::fixture;
 
     /// The bundled database used across these tests.
     fn db() -> CardDatabase {
         CardDatabase::bundled().unwrap()
     }
 
-    /// A 40-card decklist cycling through the bundled ids 1..=6.
+    /// A 40-card decklist cycling through six bundled cards.
+    ///
+    /// Named by authored identity, not by handle: a `CardId` is interned from the
+    /// catalog's sort order (ADR 0018 §3), so `CardId(1)` means a different card the
+    /// moment one is authored ahead of it.
     fn sample_decklist() -> Vec<CardId> {
-        (0..40).map(|i| CardId((i % 6) + 1)).collect()
+        const CARDS: [&str; 6] = [
+            "thornback_boar",
+            "riverbank_otter",
+            "emberfang_jackal",
+            "stonehide_basilisk",
+            "forest",
+            "verdant_scout",
+        ];
+        (0..40).map(|i| fixture(CARDS[i % 6])).collect()
     }
 
     #[test]
@@ -340,7 +353,7 @@ mod tests {
     fn unknown_card_id_is_rejected() {
         // The one validation this constructor performs: unknown ids (CardId(9999)
         // is absent from the bundled database) fail with the offending seat/id.
-        let bad = vec![CardId(1), CardId(9999)];
+        let bad = vec![fixture("thornback_boar"), CardId(9999)];
         let setup = GameSetup::two_player(bad, sample_decklist(), 0);
         let err = GameState::new(&setup, &db()).unwrap_err();
         assert_eq!(
@@ -366,7 +379,11 @@ mod tests {
         // A deck smaller than the opening-hand size draws the whole library and
         // leaves it empty rather than erroring (deck-size legality is out of
         // scope; #111 handles mulligans).
-        let setup = GameSetup::two_player(vec![CardId(1), CardId(2)], vec![CardId(1)], 3);
+        let setup = GameSetup::two_player(
+            vec![fixture("thornback_boar"), fixture("riverbank_otter")],
+            vec![fixture("thornback_boar")],
+            3,
+        );
         let state = GameState::new(&setup, &db()).unwrap();
         assert_eq!(state.players[0].hand.len(), 2);
         assert!(state.players[0].library.is_empty());

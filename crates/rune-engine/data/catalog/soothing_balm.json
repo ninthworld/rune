@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "functional_id": "soothing_balm",
+  "name": "Soothing Balm",
+  "types": ["instant"],
+  "mana_cost": "{W}",
+  "colors": ["white"],
+  "spell_effects": [
+    {
+      "kind": "gain_life",
+      "player_ref": "controller",
+      "amount": 3
+    }
+  ]
+}

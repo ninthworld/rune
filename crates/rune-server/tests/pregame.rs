@@ -91,9 +91,22 @@ fn config(seats: u8) -> RoomConfig {
     }
 }
 
-/// A 40-card decklist over the bundled ids 1..=6, as wire card identities.
+/// The six bundled cards these decks are built from: five green creatures and a Forest
+/// to cast them with. A decklist names cards by authored `functional_id` (ADR 0018 §3),
+/// never by `CardId` — that handle is interned from the catalog's sort order, so an
+/// integer deck would come to mean different cards as soon as one is added.
+const STARTER_CARDS: [&str; 6] = [
+    "thornback_boar",
+    "riverbank_otter",
+    "emberfang_jackal",
+    "stonehide_basilisk",
+    "forest",
+    "verdant_scout",
+];
+
+/// A legal 40-card decklist as the wire carries it.
 fn decklist() -> Vec<String> {
-    (0..40).map(|i| ((i % 6) + 1).to_string()).collect()
+    (0..40).map(|i| STARTER_CARDS[i % 6].to_string()).collect()
 }
 
 async fn create_two_seat_room(alice: &mut Client) -> RoomId {

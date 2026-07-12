@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "functional_id": "copper_lodestone",
+  "name": "Copper Lodestone",
+  "types": ["artifact"],
+  "mana_cost": "{1}",
+  "colors": []
+}

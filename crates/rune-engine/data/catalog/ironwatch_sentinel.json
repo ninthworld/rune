@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "functional_id": "ironwatch_sentinel",
+  "name": "Ironwatch Sentinel",
+  "types": ["creature"],
+  "subtypes": ["Soldier"],
+  "mana_cost": "{2}{W}",
+  "colors": ["white"],
+  "power": 2,
+  "toughness": 3,
+  "keywords": ["vigilance"]
+}

@@ -46,14 +46,9 @@ impl TryFrom<String> for FunctionalId {
     type Error = FunctionalIdError;
 
     fn try_from(slug: String) -> Result<Self, Self::Error> {
-        let well_formed = !slug.is_empty()
-            && slug.starts_with(|c: char| c.is_ascii_lowercase())
-            && !slug.ends_with('_')
-            && !slug.contains("__")
-            && slug
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
-        if well_formed {
+        // The rule itself lives in `crate::catalog`, which `build.rs` compiles too, so
+        // a slug the catalog assembler accepts is exactly one this type accepts.
+        if crate::catalog::is_well_formed_slug(&slug) {
             Ok(Self(slug))
         } else {
             Err(FunctionalIdError(slug))

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "functional_id": "forest",
+  "name": "Forest",
+  "supertypes": ["basic"],
+  "types": ["land"],
+  "subtypes": ["Forest"],
+  "mana_cost": "",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana",
+          "color": "green",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

@@ -111,7 +111,7 @@ fn card_name(card: CardId, db: &CardDatabase) -> String {
 /// Build the full [`CardView`] for a card the viewer is entitled to see.
 fn card_view(entity_id: String, card: CardId, db: &CardDatabase) -> CardView {
     match db.card(card) {
-        Some(data) => full_card_view(entity_id, card, data),
+        Some(data) => full_card_view(entity_id, data),
         None => CardView {
             id: entity_id,
             name: format!("Unknown card {}", card.0),
@@ -152,15 +152,16 @@ fn keyword_str(keyword: Keyword) -> &'static str {
 /// ([`crate::rules_text`], ADR 0018 §7) rather than read from a stored string — the
 /// catalog holds no prose — and its authored `functional_id` rides along as the stable
 /// presentation identity (ADR 0018 §8). A scripted card's hand-authored text comes from
-/// the engine's escape hatch, which the catalog loader guarantees exists whenever the
-/// definition declares `scripted: true`.
-fn full_card_view(entity_id: String, card: CardId, data: &CardData) -> CardView {
+/// the engine's escape hatch — keyed, like the catalog itself, on the card's authored
+/// `functional_id` rather than its build-interned handle (ADR 0018 §3), and guaranteed
+/// by the loader to exist whenever the definition declares `scripted: true`.
+fn full_card_view(entity_id: String, data: &CardData) -> CardView {
     CardView {
         id: entity_id,
         name: data.name.clone(),
         type_line: data.type_line(),
         mana_cost: (!data.mana_cost.is_empty()).then(|| data.mana_cost.clone()),
-        rules_text: rules_text(data, scripted_rules_text(card)),
+        rules_text: rules_text(data, scripted_rules_text(&data.functional_id)),
         functional_id: data.functional_id.to_string(),
         power: data.power.map(|p| p.to_string()),
         toughness: data.toughness.map(|t| t.to_string()),
@@ -1192,6 +1193,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
+    use crate::test_support::{fixture, id_in};
 
     /// A terminal game (issue #119) projects its result onto the view: the winner,
     /// losers, and reason are named, and `valid_actions` is empty (CR 104.2a).
@@ -1247,8 +1249,8 @@ mod tests {
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let forest_a = state.new_instance(CardId(5));
-        let forest_b = state.new_instance(CardId(5));
+        let forest_a = state.new_instance(fixture("forest"));
+        let forest_b = state.new_instance(fixture("forest"));
         state.players[0].hand = vec![forest_a, forest_b];
 
         let view = personalized_view(&state, &db, PlayerId(0));
@@ -1326,7 +1328,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: host,
             instance: CardInstanceId(0),
-            card: CardId(6),
+            card: fixture("verdant_scout"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1340,7 +1342,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: aura,
             instance: CardInstanceId(1),
-            card: CardId(29),
+            card: fixture("ironbark_aegis"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1380,7 +1382,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: with_counters,
             instance: CardInstanceId(0),
-            card: CardId(5),
+            card: fixture("forest"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1401,7 +1403,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: without_counters,
             instance: CardInstanceId(1),
-            card: CardId(5),
+            card: fixture("forest"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1471,7 +1473,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: attacker,
             instance: CardInstanceId(0),
-            card: CardId(6),
+            card: fixture("verdant_scout"),
             controller: PlayerId(0),
             tapped: true,
             entered_turn: 0,
@@ -1485,7 +1487,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: blocker,
             instance: CardInstanceId(1),
-            card: CardId(6),
+            card: fixture("verdant_scout"),
             controller: PlayerId(1),
             tapped: false,
             entered_turn: 0,
@@ -1529,7 +1531,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: damaged,
             instance: CardInstanceId(0),
-            card: CardId(1),
+            card: fixture("thornback_boar"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1567,7 +1569,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: flyer,
             instance: CardInstanceId(0),
-            card: CardId(18),
+            card: fixture("skywhisker_drake"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1581,7 +1583,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: vanilla,
             instance: CardInstanceId(1),
-            card: CardId(1),
+            card: fixture("thornback_boar"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1618,7 +1620,7 @@ mod tests {
     #[test]
     fn every_action_carries_a_content_bound_token() {
         let db = CardDatabase::bundled().unwrap();
-        let (state, _) = state_with_hand(&[CardId(5), CardId(5)]);
+        let (state, _) = state_with_hand(&[fixture("forest"), fixture("forest")]);
 
         let view = personalized_view(&state, &db, PlayerId(0));
         assert!(view.valid_actions.iter().all(|a| !a.token.is_empty()));
@@ -1648,7 +1650,7 @@ mod tests {
     #[test]
     fn token_bound_action_round_trips_to_the_engine() {
         let db = CardDatabase::bundled().unwrap();
-        let (state, hand) = state_with_hand(&[CardId(5)]);
+        let (state, hand) = state_with_hand(&[fixture("forest")]);
 
         let view = personalized_view(&state, &db, PlayerId(0));
         let land = view
@@ -1671,7 +1673,7 @@ mod tests {
     #[test]
     fn mismatched_token_is_rejected() {
         let db = CardDatabase::bundled().unwrap();
-        let (state, _) = state_with_hand(&[CardId(5)]);
+        let (state, _) = state_with_hand(&[fixture("forest")]);
 
         let view = personalized_view(&state, &db, PlayerId(0));
         let land = view
@@ -1697,7 +1699,7 @@ mod tests {
     #[test]
     fn redirected_id_cannot_resolve_to_a_different_action() {
         let db = CardDatabase::bundled().unwrap();
-        let (mut state, hand) = state_with_hand(&[CardId(5), CardId(5)]);
+        let (mut state, hand) = state_with_hand(&[fixture("forest"), fixture("forest")]);
         let (forest_a, forest_b) = (hand[0], hand[1]);
 
         // Capture the answer the client would send for the first land action (a1).
@@ -1738,7 +1740,7 @@ mod tests {
     #[test]
     fn empty_token_resolves_a_plain_action() {
         let db = CardDatabase::bundled().unwrap();
-        let (state, _) = state_with_hand(&[CardId(5)]);
+        let (state, _) = state_with_hand(&[fixture("forest")]);
 
         let view = personalized_view(&state, &db, PlayerId(0));
         let pass = view
@@ -1764,7 +1766,7 @@ mod tests {
     #[test]
     fn unexpected_targets_are_rejected() {
         let db = CardDatabase::bundled().unwrap();
-        let (state, _) = state_with_hand(&[CardId(5)]);
+        let (state, _) = state_with_hand(&[fixture("forest")]);
 
         let view = personalized_view(&state, &db, PlayerId(0));
         let pass = view
@@ -1794,8 +1796,11 @@ mod tests {
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
         // Enter the mulligan phase with seat 0 deciding; give both seats hands.
-        state.players[0].hand = vec![state.new_instance(CardId(5))];
-        state.players[1].hand = vec![state.new_instance(CardId(6)), state.new_instance(CardId(1))];
+        state.players[0].hand = vec![state.new_instance(fixture("forest"))];
+        state.players[1].hand = vec![
+            state.new_instance(fixture("verdant_scout")),
+            state.new_instance(fixture("thornback_boar")),
+        ];
         state.mulligan = Some(rune_engine::MulliganState::new(2, 7));
 
         let view = personalized_view(&state, &db, PlayerId(0));
@@ -1914,10 +1919,10 @@ mod tests {
     fn mulligan_decision_keep_projects_bottoming_as_select_from_zone_and_resolves() {
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let c0 = state.new_instance(CardId(5));
-        let c1 = state.new_instance(CardId(6));
+        let c0 = state.new_instance(fixture("forest"));
+        let c1 = state.new_instance(fixture("verdant_scout"));
         state.players[0].hand = vec![c0, c1];
-        state.players[1].hand = vec![state.new_instance(CardId(1))];
+        state.players[1].hand = vec![state.new_instance(fixture("thornback_boar"))];
         // Seat 0 has taken one mulligan, so a keep now owes one bottomed card.
         let mut mull = rune_engine::MulliganState::new(2, 7);
         mull.decisions[0].taken = 1;
@@ -1984,7 +1989,9 @@ mod tests {
         state.priority = state.active_player;
         // Nine cards in hand — over the seven-card maximum (CR 514.1), with room to
         // shed one and still be over the limit (used by the stale-token test).
-        let hand: Vec<CardInstance> = (0..9).map(|_| state.new_instance(CardId(5))).collect();
+        let hand: Vec<CardInstance> = (0..9)
+            .map(|_| state.new_instance(fixture("forest")))
+            .collect();
         state.players[state.active_player.0].hand = hand.clone();
         (state, hand)
     }
@@ -2130,8 +2137,20 @@ mod tests {
         state.step = Step::DeclareAttackers;
         // An eligible attacker (untapped, non-sick creature) for the active player,
         // plus a tapped one that is not a candidate.
-        let attacker = put_permanent(&mut state, CardId(6), PlayerId(0), false, false);
-        let _tapped = put_permanent(&mut state, CardId(6), PlayerId(0), true, false);
+        let attacker = put_permanent(
+            &mut state,
+            fixture("verdant_scout"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let _tapped = put_permanent(
+            &mut state,
+            fixture("verdant_scout"),
+            PlayerId(0),
+            true,
+            false,
+        );
 
         let view = personalized_view(&state, &db, PlayerId(0));
         let declare = view
@@ -2190,8 +2209,20 @@ mod tests {
         state.step = Step::DeclareBlockers;
         // The defending player (seat 1) is deciding.
         state.priority = PlayerId(1);
-        let attacker = put_permanent(&mut state, CardId(6), PlayerId(0), true, true);
-        let blocker = put_permanent(&mut state, CardId(6), PlayerId(1), false, false);
+        let attacker = put_permanent(
+            &mut state,
+            fixture("verdant_scout"),
+            PlayerId(0),
+            true,
+            true,
+        );
+        let blocker = put_permanent(
+            &mut state,
+            fixture("verdant_scout"),
+            PlayerId(1),
+            false,
+            false,
+        );
 
         let view = personalized_view(&state, &db, PlayerId(1));
         let declare = view
@@ -2242,9 +2273,9 @@ mod tests {
         state.step = Step::PrecombatMain;
 
         // Verdant Scout (an ETB-draw creature) in hand, a Forest on the battlefield.
-        let scout = state.new_instance(CardId(6));
+        let scout = state.new_instance(fixture("verdant_scout"));
         state.players[0].hand = vec![scout];
-        let forest = put_permanent(&mut state, CardId(5), PlayerId(0), false, false);
+        let forest = put_permanent(&mut state, fixture("forest"), PlayerId(0), false, false);
 
         let view = personalized_view(&state, &db, PlayerId(0));
 
@@ -2270,7 +2301,10 @@ mod tests {
 
         // A vanilla card claims no rules — and the field is omitted from the wire
         // rather than sent as an empty string.
-        let boar = full_card_view("c9".to_string(), CardId(1), db.card(CardId(1)).unwrap());
+        let boar = full_card_view(
+            "c9".to_string(),
+            db.card(fixture("thornback_boar")).unwrap(),
+        );
         assert_eq!(boar.rules_text, "");
         let json = serde_json::to_string(&boar).expect("a card view serializes");
         assert!(!json.contains("rules_text"), "{json}");
@@ -2295,17 +2329,17 @@ mod tests {
     fn issue_140_ability_target_requirements_project_and_a_selection_resolves() {
         // A Tapper artifact ({T}: Tap target creature) and a Bear to target.
         let json = r#"[
-            {"schema_version":1,"id":200,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"",
+            {"schema_version":1,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"",
              "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
                           "effects":[{"kind":"tap","target":"any_creature"}]}]},
-            {"schema_version":1,"id":201,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
+            {"schema_version":1,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
              "power":2,"toughness":2}
         ]"#;
         let db = CardDatabase::from_json(json).unwrap();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let tapper = put_permanent(&mut state, CardId(200), PlayerId(0), false, false);
-        let bear = put_permanent(&mut state, CardId(201), PlayerId(0), false, false);
+        let tapper = put_permanent(&mut state, id_in(&db, "tapper"), PlayerId(0), false, false);
+        let bear = put_permanent(&mut state, id_in(&db, "bear"), PlayerId(0), false, false);
 
         let view = personalized_view(&state, &db, PlayerId(0));
         let activate = view

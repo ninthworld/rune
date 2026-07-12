@@ -63,7 +63,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures_util::{SinkExt, StreamExt};
-use rune_engine::{CardDatabase, CardId, CatalogError, GameSetup, GameState, PlayerSetup};
+use rune_engine::{
+    CardDatabase, CardId, CatalogError, FunctionalId, GameSetup, GameState, PlayerSetup,
+};
 use rune_protocol::{
     CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomView,
     SeatView, SessionToken, SubmitDeck,
@@ -857,14 +859,20 @@ fn seat_of(registry: &Registry, token: &SessionToken) -> Result<(RoomId, usize),
 /// Resolve a wire [`CardIdentity`] to an engine [`CardId`], or `None` if it does not
 /// name a card in `db`.
 ///
-/// ADR 0013 owns the eventual card-identity vocabulary; until it lands the server
-/// interprets an identity as the decimal [`CardId`] key of the card database, so a
-/// non-numeric or out-of-database identity is simply unknown.
+/// A decklist names cards by their authored `functional_id` (ADR 0018 §3) — the identity
+/// vocabulary ADR 0013 deferred and ADR 0018 settled. It cannot name them by `CardId`:
+/// that handle is interned by `build.rs` from the catalog's sort order, so authoring one
+/// new card renumbers its neighbours, and a decklist written against an integer would
+/// silently come to mean different cards. The `functional_id` is the only card identity
+/// stable across builds, which is exactly why it is what crosses the wire.
+///
+/// The wire *shape* is unchanged: [`CardIdentity`] is an opaque string the client never
+/// parses, and the server remains the sole authority on what it resolves to.
 ///
 /// [`CardIdentity`]: rune_protocol::CardIdentity
 fn resolve_card(db: &CardDatabase, identity: &str) -> Option<CardId> {
-    let id = CardId(identity.parse::<u64>().ok()?);
-    db.card(id).is_some().then_some(id)
+    let functional_id = FunctionalId::try_from(identity.to_string()).ok()?;
+    db.card_id(&functional_id)
 }
 
 /// A server-generated shuffle seed for a starting game (ADR 0012). The engine is
@@ -1151,6 +1159,8 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
     use super::*;
+    use crate::test_support::fixture;
+
     use rune_protocol::Hello;
 
     fn lobby(max_rooms: usize) -> Lobby {
@@ -1177,15 +1187,29 @@ mod tests {
     /// which are exempt from the copy limit.
     fn decklist() -> Vec<String> {
         let mut cards = Vec::new();
-        for id in [1, 2, 3, 4, 6] {
+        for slug in NON_BASICS {
             for _ in 0..4 {
-                cards.push(id.to_string());
+                cards.push(wire_id(slug));
             }
         }
         for _ in 0..20 {
-            cards.push("5".to_string());
+            cards.push(wire_id("forest"));
         }
         cards
+    }
+
+    /// The five non-basic cards these deck tests build with.
+    const NON_BASICS: [&str; 5] = [
+        "thornback_boar",
+        "riverbank_otter",
+        "emberfang_jackal",
+        "stonehide_basilisk",
+        "verdant_scout",
+    ];
+
+    /// A card as `SubmitDeck` carries it: its authored `functional_id` (ADR 0018 §3).
+    fn wire_id(slug: &str) -> String {
+        slug.to_string()
     }
 
     /// Submit a valid deck for `client`. `command` pushes synchronously, so the
@@ -2099,12 +2123,12 @@ mod tests {
             .command(
                 &alice.token,
                 LobbyCommand::SubmitDeck(SubmitDeck {
-                    cards: vec!["1".to_string(), "9999".to_string()],
+                    cards: vec![wire_id("forest"), "no_such_card".to_string()],
                 }),
             )
             .await
             .expect_err("unknown card id is rejected");
-        assert_eq!(err, LobbyError::UnknownCard("9999".to_string()));
+        assert_eq!(err, LobbyError::UnknownCard("no_such_card".to_string()));
         // The seat stays undecked; the rejection re-sent the current view.
         assert!(!alice.current().room.expect("in room").seats[0].decked);
     }
@@ -2120,7 +2144,7 @@ mod tests {
             .command(
                 &alice.token,
                 LobbyCommand::SubmitDeck(SubmitDeck {
-                    cards: vec!["1".to_string(); 10],
+                    cards: vec![wire_id("forest"); 10],
                 }),
             )
             .await
@@ -2139,14 +2163,14 @@ mod tests {
         let lobby = lobby(4);
         let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
 
-        let mut cards = vec!["1".to_string(); 5];
-        for id in [2, 3, 4, 6] {
+        let mut cards = vec![wire_id("thornback_boar"); 5];
+        for slug in &NON_BASICS[1..] {
             for _ in 0..4 {
-                cards.push(id.to_string());
+                cards.push(wire_id(slug));
             }
         }
         for _ in 0..19 {
-            cards.push("5".to_string());
+            cards.push(wire_id("forest"));
         }
         assert_eq!(cards.len(), 40);
 
@@ -2157,7 +2181,7 @@ mod tests {
         assert_eq!(
             err,
             LobbyError::IllegalDeck(DeckError::CopyLimit {
-                card: CardId(1),
+                card: fixture("thornback_boar"),
                 count: 5,
                 limit: 4,
             })
@@ -2167,7 +2191,7 @@ mod tests {
 
     #[tokio::test]
     async fn submit_deck_accepts_a_legal_deck_with_many_basics() {
-        // The shared `decklist()` holds twenty basic Forests (id 5), far over the
+        // The shared `decklist()` holds twenty basic Forests, far over the
         // four-copy limit, yet basics are exempt (ADR 0013 §4): the deck is accepted.
         let lobby = lobby(4);
         let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;

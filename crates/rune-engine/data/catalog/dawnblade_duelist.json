@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "functional_id": "dawnblade_duelist",
+  "name": "Dawnblade Duelist",
+  "types": ["creature"],
+  "subtypes": ["Human", "Knight"],
+  "mana_cost": "{1}{W}",
+  "colors": ["white"],
+  "power": 2,
+  "toughness": 2,
+  "keywords": ["first_strike"]
+}
