@@ -36,12 +36,16 @@ pub use ability::{is_mana_ability, Ability, Cost, Effect, Target, TargetSpec, Tr
 pub use actions::{target_requirements, valid_actions, Action, Block, TargetRequirement};
 pub use apply::apply_action;
 pub use card::{
-    abilities_of, AuraGrant, CardData, CardDatabase, Keyword, Printing, PrintingDatabase, Rarity,
+    abilities_of, AuraGrant, CardData, CardDatabase, CatalogError, Keyword, Printing,
+    PrintingDatabase, Rarity, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
 pub use characteristics::{characteristics, Characteristics};
 pub use combat::{attacker_candidates, blocker_candidates, declared_attackers};
-pub use id::{CardId, CardInstance, CardInstanceId, OracleId, PermanentId, PlayerId};
+pub use id::{
+    CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
+    PlayerId,
+};
 pub use mana::{parse_mana_cost, Color, ManaCost, ManaPool};
 pub use mulligan::{bottom_requirement, BottomRequirement, MulliganState, PlayerMulligan};
 pub use phase::Step;

@@ -2233,10 +2233,10 @@ mod tests {
     fn issue_140_ability_target_requirements_project_and_a_selection_resolves() {
         // A Tapper artifact ({T}: Tap target creature) and a Bear to target.
         let json = r#"[
-            {"id":200,"name":"Tapper","types":["artifact"],"mana_cost":"","oracle_text":"",
+            {"schema_version":1,"id":200,"functional_id":"tapper","name":"Tapper","types":["artifact"],"mana_cost":"","oracle_text":"",
              "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
                           "effects":[{"kind":"tap","target":"any_creature"}]}]},
-            {"id":201,"name":"Bear","types":["creature"],"mana_cost":"","oracle_text":"",
+            {"schema_version":1,"id":201,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"","oracle_text":"",
              "power":2,"toughness":2}
         ]"#;
         let db = CardDatabase::from_json(json).unwrap();

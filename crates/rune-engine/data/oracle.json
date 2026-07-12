@@ -1,51 +1,66 @@
 [
   {
+    "schema_version": 1,
     "id": 1,
     "name": "Thornback Boar",
+    "functional_id": "thornback_boar",
     "types": ["creature"],
     "subtypes": ["Boar"],
     "mana_cost": "{2}{G}",
+    "colors": ["green"],
     "oracle_text": "",
     "power": 3,
     "toughness": 2
   },
   {
+    "schema_version": 1,
     "id": 2,
     "name": "Riverbank Otter",
+    "functional_id": "riverbank_otter",
     "types": ["creature"],
     "subtypes": ["Otter"],
     "mana_cost": "{1}{U}",
+    "colors": ["blue"],
     "oracle_text": "",
     "power": 1,
     "toughness": 3
   },
   {
+    "schema_version": 1,
     "id": 3,
     "name": "Emberfang Jackal",
+    "functional_id": "emberfang_jackal",
     "types": ["creature"],
     "subtypes": ["Jackal"],
     "mana_cost": "{1}{R}",
+    "colors": ["red"],
     "oracle_text": "",
     "power": 2,
     "toughness": 1
   },
   {
+    "schema_version": 1,
     "id": 4,
     "name": "Stonehide Basilisk",
+    "functional_id": "stonehide_basilisk",
     "types": ["creature"],
     "subtypes": ["Basilisk"],
     "mana_cost": "{4}{G}",
+    "colors": ["green"],
     "oracle_text": "",
     "power": 4,
     "toughness": 5
   },
   {
+    "schema_version": 1,
     "id": 5,
     "name": "Forest",
+    "functional_id": "forest",
     "supertypes": ["basic"],
     "types": ["land"],
     "subtypes": ["Forest"],
     "mana_cost": "",
+    "colors": [],
     "oracle_text": "",
     "abilities": [
       {
@@ -56,11 +71,14 @@
     ]
   },
   {
+    "schema_version": 1,
     "id": 6,
     "name": "Verdant Scout",
+    "functional_id": "verdant_scout",
     "types": ["creature"],
     "subtypes": ["Elf", "Scout"],
     "mana_cost": "{G}",
+    "colors": ["green"],
     "oracle_text": "When Verdant Scout enters the battlefield, draw a card.",
     "power": 1,
     "toughness": 1,
@@ -73,69 +91,93 @@
     ]
   },
   {
+    "schema_version": 1,
     "id": 7,
     "name": "Quickfire Bolt",
+    "functional_id": "quickfire_bolt",
     "types": ["instant"],
     "mana_cost": "{R}",
+    "colors": ["red"],
     "oracle_text": ""
   },
   {
+    "schema_version": 1,
     "id": 8,
     "name": "Hurried Study",
+    "functional_id": "hurried_study",
     "types": ["sorcery"],
     "mana_cost": "{U}",
+    "colors": ["blue"],
     "oracle_text": ""
   },
   {
+    "schema_version": 1,
     "id": 9,
     "name": "Copper Lodestone",
+    "functional_id": "copper_lodestone",
     "types": ["artifact"],
     "mana_cost": "{1}",
+    "colors": [],
     "oracle_text": ""
   },
   {
+    "schema_version": 1,
     "id": 10,
     "name": "Verdant Blessing",
+    "functional_id": "verdant_blessing",
     "types": ["enchantment"],
     "mana_cost": "{G}",
+    "colors": ["green"],
     "oracle_text": ""
   },
   {
+    "schema_version": 1,
     "id": 11,
     "name": "Runic Negation",
+    "functional_id": "runic_negation",
     "types": ["instant"],
     "mana_cost": "{U}",
+    "colors": ["blue"],
     "oracle_text": "Counter target spell.",
     "spell_effects": [
       { "kind": "counter_spell", "target": "spell_on_stack" }
     ]
   },
   {
+    "schema_version": 1,
     "id": 12,
     "name": "Cinder Shock",
+    "functional_id": "cinder_shock",
     "types": ["instant"],
     "mana_cost": "{R}",
+    "colors": ["red"],
     "oracle_text": "Cinder Shock deals 2 damage to any target.",
     "spell_effects": [
       { "kind": "deal_damage", "target": "any_target", "amount": 2 }
     ]
   },
   {
+    "schema_version": 1,
     "id": 13,
     "name": "Sunder Ray",
+    "functional_id": "sunder_ray",
     "types": ["sorcery"],
     "mana_cost": "{2}{W}",
+    "colors": ["white"],
     "oracle_text": "Destroy target creature.",
     "spell_effects": [
       { "kind": "destroy", "target": "any_creature" }
     ]
   },
   {
+    "schema_version": 1,
     "id": 14,
     "name": "Thornweft Sprite",
+    "functional_id": "thornweft_sprite",
     "types": ["creature"],
     "subtypes": ["Faerie"],
     "mana_cost": "{1}{G}",
+    "colors": ["green"],
     "oracle_text": "When Thornweft Sprite enters the battlefield, put a +1/+1 counter on target creature.",
     "power": 1,
     "toughness": 1,
@@ -155,30 +197,39 @@
     ]
   },
   {
+    "schema_version": 1,
     "id": 15,
     "name": "Soothing Balm",
+    "functional_id": "soothing_balm",
     "types": ["instant"],
     "mana_cost": "{W}",
+    "colors": ["white"],
     "oracle_text": "You gain 3 life.",
     "spell_effects": [
       { "kind": "gain_life", "player_ref": "controller", "amount": 3 }
     ]
   },
   {
+    "schema_version": 1,
     "id": 16,
     "name": "Vexing Ordeal",
+    "functional_id": "vexing_ordeal",
     "types": ["instant"],
     "mana_cost": "{B}",
+    "colors": ["black"],
     "oracle_text": "You lose 2 life.",
     "spell_effects": [
       { "kind": "lose_life", "player_ref": "controller", "amount": 2 }
     ]
   },
   {
+    "schema_version": 1,
     "id": 17,
     "name": "Withering Touch",
+    "functional_id": "withering_touch",
     "types": ["sorcery"],
     "mana_cost": "{B}",
+    "colors": ["black"],
     "oracle_text": "Put a -1/-1 counter on target creature.",
     "spell_effects": [
       {
@@ -190,120 +241,153 @@
     ]
   },
   {
+    "schema_version": 1,
     "id": 18,
     "name": "Skywhisker Drake",
+    "functional_id": "skywhisker_drake",
     "types": ["creature"],
     "subtypes": ["Drake"],
     "mana_cost": "{2}{U}",
+    "colors": ["blue"],
     "oracle_text": "Flying",
     "power": 2,
     "toughness": 2,
     "keywords": ["flying"]
   },
   {
+    "schema_version": 1,
     "id": 19,
     "name": "Bramblefang Spider",
+    "functional_id": "bramblefang_spider",
     "types": ["creature"],
     "subtypes": ["Spider"],
     "mana_cost": "{1}{G}",
+    "colors": ["green"],
     "oracle_text": "Reach",
     "power": 1,
     "toughness": 3,
     "keywords": ["reach"]
   },
   {
+    "schema_version": 1,
     "id": 20,
     "name": "Ironwatch Sentinel",
+    "functional_id": "ironwatch_sentinel",
     "types": ["creature"],
     "subtypes": ["Soldier"],
     "mana_cost": "{2}{W}",
+    "colors": ["white"],
     "oracle_text": "Vigilance",
     "power": 2,
     "toughness": 3,
     "keywords": ["vigilance"]
   },
   {
+    "schema_version": 1,
     "id": 21,
     "name": "Emberrush Raider",
+    "functional_id": "emberrush_raider",
     "types": ["creature"],
     "subtypes": ["Goblin"],
     "mana_cost": "{1}{R}",
+    "colors": ["red"],
     "oracle_text": "Haste",
     "power": 2,
     "toughness": 1,
     "keywords": ["haste"]
   },
   {
+    "schema_version": 1,
     "id": 22,
     "name": "Dawnblade Duelist",
+    "functional_id": "dawnblade_duelist",
     "types": ["creature"],
     "subtypes": ["Human", "Knight"],
     "mana_cost": "{1}{W}",
+    "colors": ["white"],
     "oracle_text": "First strike",
     "power": 2,
     "toughness": 2,
     "keywords": ["first_strike"]
   },
   {
+    "schema_version": 1,
     "id": 23,
     "name": "Gorehorn Ravager",
+    "functional_id": "gorehorn_ravager",
     "types": ["creature"],
     "subtypes": ["Beast"],
     "mana_cost": "{3}{G}",
+    "colors": ["green"],
     "oracle_text": "Trample",
     "power": 5,
     "toughness": 4,
     "keywords": ["trample"]
   },
   {
+    "schema_version": 1,
     "id": 24,
     "name": "Nettle Adder",
+    "functional_id": "nettle_adder",
     "types": ["creature"],
     "subtypes": ["Snake"],
     "mana_cost": "{G}",
+    "colors": ["green"],
     "oracle_text": "Deathtouch",
     "power": 1,
     "toughness": 1,
     "keywords": ["deathtouch"]
   },
   {
+    "schema_version": 1,
     "id": 25,
     "name": "Cleric of the Sunwell",
+    "functional_id": "cleric_of_the_sunwell",
     "types": ["creature"],
     "subtypes": ["Cleric"],
     "mana_cost": "{2}{W}",
+    "colors": ["white"],
     "oracle_text": "Lifelink",
     "power": 2,
     "toughness": 3,
     "keywords": ["lifelink"]
   },
   {
+    "schema_version": 1,
     "id": 26,
     "name": "Viridian Baneclaw",
+    "functional_id": "viridian_baneclaw",
     "types": ["creature"],
     "subtypes": ["Beast"],
     "mana_cost": "{2}{B}{G}",
+    "colors": ["black", "green"],
     "oracle_text": "Trample, deathtouch",
     "power": 4,
     "toughness": 4,
     "keywords": ["trample", "deathtouch"]
   },
   {
+    "schema_version": 1,
     "id": 27,
     "name": "Titanroot Surge",
+    "functional_id": "titanroot_surge",
     "types": ["instant"],
     "mana_cost": "{G}",
+    "colors": ["green"],
     "oracle_text": "Target creature gets +3/+3 until end of turn.",
     "spell_effects": [
       { "kind": "pump", "target": "any_creature", "power": 3, "toughness": 3 }
     ]
   },
   {
+    "schema_version": 1,
     "id": 28,
     "name": "Cryptvine Lurker",
+    "functional_id": "cryptvine_lurker",
     "types": ["creature"],
     "subtypes": ["Horror"],
     "mana_cost": "{1}{B}",
+    "colors": ["black"],
     "oracle_text": "When Cryptvine Lurker dies, draw a card.",
     "power": 2,
     "toughness": 2,
@@ -316,29 +400,38 @@
     ]
   },
   {
+    "schema_version": 1,
     "id": 29,
     "name": "Ironbark Aegis",
+    "functional_id": "ironbark_aegis",
     "types": ["enchantment"],
     "subtypes": ["Aura"],
     "mana_cost": "{1}{G}",
+    "colors": ["green"],
     "oracle_text": "Enchant creature. Enchanted creature gets +2/+2.",
     "aura": { "enchant": "any_creature", "power": 2, "toughness": 2 }
   },
   {
+    "schema_version": 1,
     "id": 30,
     "name": "Witherbrand Curse",
+    "functional_id": "witherbrand_curse",
     "types": ["enchantment"],
     "subtypes": ["Aura"],
     "mana_cost": "{B}",
+    "colors": ["black"],
     "oracle_text": "Enchant creature. Enchanted creature gets -2/-2.",
     "aura": { "enchant": "any_creature", "power": -2, "toughness": -2 }
   },
   {
+    "schema_version": 1,
     "id": 31,
     "name": "Verdant Sanctuary",
+    "functional_id": "verdant_sanctuary",
     "types": ["land"],
     "subtypes": ["Forest", "Plains"],
     "mana_cost": "",
+    "colors": [],
     "oracle_text": "Verdant Sanctuary enters the battlefield tapped.\n{T}: Add {G} or {W}.",
     "abilities": [
       { "type": "enters_tapped" },
@@ -355,11 +448,14 @@
     ]
   },
   {
+    "schema_version": 1,
     "id": 32,
     "name": "Bramble Hatchling",
+    "functional_id": "bramble_hatchling",
     "types": ["creature"],
     "subtypes": ["Insect"],
     "mana_cost": "{1}{G}",
+    "colors": ["green"],
     "oracle_text": "Bramble Hatchling enters the battlefield with two +1/+1 counters on it.",
     "power": 0,
     "toughness": 0,
