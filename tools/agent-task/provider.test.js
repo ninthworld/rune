@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -78,6 +79,39 @@ test("credentials the provider prints are redacted before they reach the log", a
 
   assert.doesNotMatch(log(), /ghs_/, "the token must not be in the log");
   assert.match(log(), /stole: \[redacted\]/);
+});
+
+test("provider activity is streamed live, not held until the run ends", async () => {
+  // A run that prints nothing for forty minutes is indistinguishable from a run that has hung, and
+  // the first thing anyone does with a silent agent is kill it.
+  process.env.RUNE_LOCAL_CMD = 'echo "step one"; echo "step two"';
+  const seen = [];
+
+  await run({ onLine: (line) => seen.push(line) });
+
+  assert.deepEqual(
+    seen.map((l) => l.trim()),
+    ["step one", "step two"],
+  );
+});
+
+test("a streaming provider keeps its raw events alongside the rendered log", async () => {
+  // Rendering is best-effort — a provider's event schema is not ours — so the unrendered truth has
+  // to survive somewhere.
+  const event = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "make check" } }] } });
+  process.env.RUNE_LOCAL_CMD = `echo '${event}'`;
+
+  await runProvider({
+    run: { ...RUN, provider: "claude" },
+    workspace: dir,
+    isolation: SAME_UID,
+    root,
+    brief: "b",
+    spawnImpl: (_cmd, _args, opts) => spawn("bash", ["-c", process.env.RUNE_LOCAL_CMD], opts),
+  });
+
+  assert.match(readFileSync(join(dir, "logs", "provider.log"), "utf8"), /▸ Bash: make check/);
+  assert.match(readFileSync(join(dir, "logs", "provider.jsonl"), "utf8"), /"tool_use"/);
 });
 
 test("the brief reaches the provider by path, outside the working copy", async () => {

@@ -35,15 +35,32 @@ export async function runProvider({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   graceMs = GRACE_MS,
   secrets = [],
+  onLine = null,
   spawnImpl = spawn,
 }) {
   const dir = runDir(run.run_id, root);
   const env = providerEnv({ provider: run.provider, workspace, run, root, scratchHome: join(dir, "home") });
-  const { argv, env: spawnEnv } = wrap(adapterFor(run.provider).argv(brief, { isolation }), { isolation, env, workspace, dir });
+  const adapter = adapterFor(run.provider);
+  const { argv, env: spawnEnv } = wrap(adapter.argv(brief, { isolation }), { isolation, env, workspace, dir });
 
   const log = createWriteStream(join(dir, "logs", "provider.log"), { flags: "a" });
   const logClosed = new Promise((resolve) => log.on("close", resolve));
-  const sink = redactor((line) => log.write(line), secrets);
+
+  // The raw event stream is kept verbatim, separately. Rendering is best-effort — a provider's
+  // event schema is not ours — so the unrendered truth has to survive somewhere.
+  const raw = adapter.structured ? createWriteStream(join(dir, "logs", "provider.jsonl"), { flags: "a" }) : null;
+  const rawClosed = raw ? new Promise((resolve) => raw.on("close", resolve)) : Promise.resolve();
+
+  const sink = redactor((line) => {
+    raw?.write(line);
+    const rendered = (adapter.render ?? ((l) => l))(line);
+    if (rendered === null || rendered === undefined) return;
+
+    const text = `${rendered}\n`;
+    log.write(text);
+    // Live, so a long run is legible as work rather than as a hang.
+    onLine?.(rendered);
+  }, secrets);
 
   const child = spawnImpl(argv[0], argv.slice(1), {
     cwd: workspace,
@@ -82,10 +99,11 @@ export async function runProvider({
     });
     sink.flush();
     log.end();
-    // The log must be on disk before the run is reported: a caller that transitions the run
+    raw?.end();
+    // The logs must be on disk before the run is reported: a caller that transitions the run
     // (or a test that tears the directory down) the instant this resolves would otherwise
-    // race the stream's final flush.
-    await logClosed;
+    // race the streams' final flush.
+    await Promise.all([logClosed, rawClosed]);
 
     return {
       outcome: outcome ?? (code === 0 ? "implemented" : "provider_failed"),
