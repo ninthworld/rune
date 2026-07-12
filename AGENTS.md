@@ -40,6 +40,8 @@ before writing code.
   milestone stewardship cycle (ADR 0017, `scripts/agent-cycle`, `cycle-*.js`), which is a
   second consumer of the runner's own primitives rather than a parallel toolchain.
   Dependency-free Node; never add a dependency to it.
+- `tools/ci-policy/` — the workflow gate (`make ci-lint`): immutable Action pins,
+  least-privilege tokens, no untrusted interpolation. Dependency-free Node; same rule.
 - `prototypes/` — reference-only HTML prototypes. Never import from here.
 
 Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
@@ -58,6 +60,8 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 - `make e2e` — browser end-to-end suite (its own `E2E` CI job, **not** part of
   `make check`; needs a browser + built client — see `docs/decisions/0011-*.md`)
 - `make deny` — `cargo deny check advisories licenses bans sources` (the `cargo-deny` job)
+- `make ci-lint` — workflow gate: actionlint + `tools/ci-policy` (immutable Action pins,
+  least-privilege tokens). Runs in the `cargo-deny` job; needs `actionlint` on `PATH`.
 - `scripts/bootstrap.sh` — one-time prerequisite check for both gates
 - `make e2e-browser` — install the pinned Playwright Chromium the E2E suite needs
 

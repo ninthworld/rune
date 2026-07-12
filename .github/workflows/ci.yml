@@ -9,16 +9,32 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege, declared rather than inherited: an undeclared token takes the repository
+# default, which can be widened in Settings without touching this file. These jobs build and
+# test a checkout and talk to nobody, so read is all they get, and no job below raises it.
+# (#199 — enforced by `make ci-lint`.)
+permissions:
+  contents: read
+
+# Every `uses:` below is pinned to a full-length commit SHA: a tag is mutable, and whoever
+# can move `v4` can change what runs in CI — which is where the credentials are. The trailing
+# comment is the release that SHA belongs to, so the pin stays reviewable and Dependabot can
+# bump it. Each pin is the newest release *within the major this workflow already used*, so
+# this is a hardening change and not a silent upgrade.
 jobs:
   engine:
     name: Engine
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # Pinned by SHA, `dtolnay/rust-toolchain` can no longer read the toolchain off the ref
+      # — `@stable` *was* the input — so it must be named explicitly. Without this the
+      # install fails rather than quietly defaulting to stable.
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       # Run through the Make targets so CI and `make check` use identical commands;
       # the Makefile is the single source of truth for fmt/clippy/test options.
       - name: Lint (fmt + clippy)
@@ -34,8 +50,8 @@ jobs:
     env:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -50,6 +66,11 @@ jobs:
       # one that would not block merges until the ruleset was re-imported by hand.
       - name: Runner tests
         run: make runner-test
+      # Same reasoning for the workflow-policy rules (#199): dependency-free Node unit tests,
+      # so they ride the required `Client` check. The gate they enforce (`make ci-lint`) needs
+      # actionlint and runs in the `cargo-deny` job instead.
+      - name: Workflow-policy tests
+        run: make ci-policy-test
 
   e2e:
     name: E2E
@@ -59,8 +80,8 @@ jobs:
     # as its own job rather than slowing the fast unit gate. Required for the M1
     # exit criterion but governed independently.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -68,8 +89,10 @@ jobs:
       # The real-server smoke tier (issue #144) launches the actual `rune-server`
       # binary, so the E2E job needs the Rust toolchain to build it. Cached like the
       # Engine job so this adds no cold compile on a warm cache.
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       # `make e2e-browser` installs only the pinned Chromium (+OS deps); `make e2e`
       # builds rune-server and runs the typecheck + browser suite. Both go through the
       # Makefile so the E2E commands match local runs, and the single make invocation
@@ -79,7 +102,7 @@ jobs:
         run: make e2e-browser e2e
       - name: Upload report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
           path: clients/web/playwright-report/

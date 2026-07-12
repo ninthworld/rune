@@ -34,6 +34,17 @@ RUN rustup component add rustfmt clippy
 # The `cargo-deny` gate. Installed at build time so a run never pays for it.
 RUN cargo install --locked cargo-deny && rm -rf "$CARGO_HOME"/registry
 
+# actionlint, for the workflow gate `make verify` now runs (#199). Pinned by version and
+# verified against its published checksum: an image that installs a hardening tool over an
+# unauthenticated pipe would be undoing the point of the tool.
+ARG ACTIONLINT_VERSION=1.7.12
+ARG ACTIONLINT_SHA256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+RUN curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+ && echo "${ACTIONLINT_SHA256}  actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" | sha256sum -c - \
+ && tar -xzf "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" actionlint \
+ && install -m 0755 actionlint /usr/local/bin/actionlint \
+ && rm -f actionlint "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+
 # The provider CLIs. Neither is authenticated here: the runner passes a token
 # (CLAUDE_CODE_OAUTH_TOKEN / OPENAI_API_KEY) into the container's environment at run time.
 # Baking a credential into an image is how credentials end up in a registry.

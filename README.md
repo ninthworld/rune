@@ -42,9 +42,10 @@ make verify            # full pre-merge gate: check + E2E browser suite + cargo-
 ```
 
 `make check` is the fast gate you run constantly while working. `make verify` is the
-complete pre-merge surface: it composes `make check`, `make e2e`, and `make deny`, so
-its coverage matches every GitHub check required to merge (`Engine`, `Client`, `E2E`,
-`cargo-deny`). Run `make verify` before requesting final review.
+complete pre-merge surface: it composes `make check`, `make e2e`, `make deny`, and
+`make ci-lint` (the workflow gate), so its coverage matches every GitHub check required to
+merge (`Engine`, `Client`, `E2E`, `cargo-deny`). Run `make verify` before requesting final
+review.
 
 | Directory | What it is |
 |---|---|

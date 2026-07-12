@@ -1,12 +1,12 @@
-.PHONY: verify check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit runner-test e2e e2e-browser deny setup
+.PHONY: verify check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit runner-test ci-policy-test ci-lint e2e e2e-browser deny setup
 
 # The complete local pre-merge gate: everything required before a PR merges into
 # `main`. Composes the existing targets 1:1 with the four required GitHub checks —
-# `check` (Engine + Client), `e2e` (E2E), and `deny` (cargo-deny) — so there is a
-# single command whose coverage matches CI. `make check` remains the fast inner loop.
-verify: check e2e deny ## Full pre-merge verification: Engine + Client + E2E + cargo-deny (mirrors every required GitHub check)
+# `check` (Engine + Client), `e2e` (E2E), and `deny` + `ci-lint` (cargo-deny) — so there
+# is a single command whose coverage matches CI. `make check` remains the fast inner loop.
+verify: check e2e deny ci-lint ## Full pre-merge verification: Engine + Client + E2E + cargo-deny (mirrors every required GitHub check)
 
-check: engine-lint engine-test client-check client-audit runner-test ## Fast inner-loop gate: everything the Engine + Client CI jobs run (browser e2e and cargo-deny are separate — see `verify`)
+check: engine-lint engine-test client-check client-audit runner-test ci-policy-test ## Fast inner-loop gate: everything the Engine + Client CI jobs run (browser e2e and cargo-deny are separate — see `verify`)
 
 engine-lint:
 	cargo fmt --all -- --check
@@ -40,6 +40,12 @@ client-audit: client-install
 runner-test:
 	node --test tools/agent-task/*.test.js
 
+# The workflow-policy rules (#199). Unit tests, so they ride in the fast gate and the
+# `Client` job next to the runner's — the gate they *enforce* is `ci-lint`, which needs
+# actionlint and therefore lives in `verify` instead.
+ci-policy-test:
+	node --test tools/ci-policy/*.test.js
+
 # Browser end-to-end suite (ADR 0011). Deliberately OUTSIDE `make check`: it needs
 # a real browser and a built-and-served client, so it runs as its own target and
 # its own CI job to keep the fast unit gate browser-free. Drives the preinstalled
@@ -60,6 +66,21 @@ e2e-browser: client-install
 # deny.yml workflow runs, kept here so the command lives in exactly one place.
 deny:
 	cargo deny check advisories licenses bans sources
+
+# Workflow gate (#199), the second half of the `cargo-deny` CI job — CI is supply chain too.
+# Two layers, in order: actionlint answers "is this a valid workflow?" (schema, expressions,
+# shellcheck), and tools/ci-policy answers "is it allowed here?" (immutable SHA pins,
+# declared least-privilege tokens, no `pull_request_target`, no untrusted event data
+# interpolated into a shell). Lives in `verify` and not `check` so the fast inner-loop gate
+# keeps needing nothing but cargo and node.
+ci-lint:
+	@command -v actionlint > /dev/null 2>&1 || { \
+	  echo "missing: actionlint — install with 'go install github.com/rhysd/actionlint/cmd/actionlint@latest'"; \
+	  echo "         or 'brew install actionlint'. CI installs it via taiki-e/install-action."; \
+	  exit 1; \
+	}
+	actionlint
+	node tools/ci-policy/check.js
 
 setup:
 	scripts/bootstrap.sh
