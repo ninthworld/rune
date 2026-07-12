@@ -7,7 +7,7 @@
 
 use crate::ability::{Effect, Target, TargetSpec};
 use crate::apply::{apply_effect, apply_targeted_effect};
-use crate::card::{spell_effects_of, CardData};
+use crate::card::{apply_enters_replacements, spell_effects_of, CardData};
 use crate::card_type::CardType;
 use crate::id::PermanentId;
 use crate::stack::{StackObject, StackObjectKind};
@@ -145,7 +145,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
             } else {
                 None
             };
-            state.battlefield.push(Permanent {
+            let mut permanent = Permanent {
                 id: PermanentId(id),
                 instance: card.id,
                 card: card.card,
@@ -157,7 +157,13 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
                 damage: 0,
                 counters: Default::default(),
                 attached_to,
-            });
+            };
+            // CR 614.1c/614.12: apply the permanent's own enters-the-battlefield
+            // replacements (e.g. "enters tapped", "enters with N +1/+1 counters") as
+            // it enters — before the SBA loop and before ETB triggers are collected —
+            // so a 0/0 that enters with two +1/+1 counters is a 2/2 and lives.
+            apply_enters_replacements(db, &mut permanent);
+            state.battlefield.push(permanent);
         } else if let Some(player) = state.players.get_mut(object.controller.0) {
             player.graveyard.push(card);
         }
@@ -652,5 +658,102 @@ mod tests {
             state.players[0].graveyard.iter().any(|c| c.id == aura.id),
             "the fizzled Aura spell goes to its owner's graveyard"
         );
+    }
+
+    // ----- ETB replacements: enters with counters (issue #155) -----
+
+    #[test]
+    fn issue_155_zero_zero_entering_with_two_counters_lives_cr_614_12() {
+        // CR 614.12 / 704.5f: a 0/0 that enters with two +1/+1 counters has the
+        // counters as part of *entering* — so it is a 2/2 by the time the SBA loop
+        // runs and is never put into the graveyard for 0 toughness. Bramble Hatchling
+        // (id 32) is a printed 0/0 that enters with two +1/+1 counters.
+        use crate::characteristics::characteristics;
+        use crate::state::CounterKind;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let hatchling = state.new_instance(CardId(32));
+        state.players[0].hand = vec![hatchling];
+        // Pay {1}{G}.
+        state.players[0].mana_pool.add(Color::Green, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: hatchling,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        // Both players pass: the creature resolves onto the battlefield. The SBA loop
+        // runs in this same transition; the counters must already be present.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+
+        let perm = state
+            .battlefield
+            .iter()
+            .find(|p| p.card == CardId(32))
+            .unwrap(); // the 0/0 survives entry with two +1/+1 counters (CR 614.12/704.5f)
+        assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 2);
+        let ch = characteristics(&state, perm.id, &db);
+        assert_eq!(ch.power, Some(2), "0 base + two +1/+1 counters");
+        assert_eq!(ch.toughness, Some(2));
+        assert!(
+            state.players[0].graveyard.is_empty(),
+            "no 0-toughness state-based death — it entered as a 2/2"
+        );
+    }
+
+    #[test]
+    fn issue_155_etb_trigger_observes_the_replaced_counters_state_cr_614_12() {
+        // CR 614.12: a co-entering enters-the-battlefield trigger observes the replaced
+        // state. A synthetic creature that both enters with two +1/+1 counters and has
+        // an ETB "draw a card" trigger: on resolution it is already a 2/2 with the two
+        // counters AND its ETB trigger is on the stack — both from the one entry event.
+        use crate::state::CounterKind;
+        let json = r#"[{"id":200,"name":"Test Broodling","types":["creature"],"mana_cost":"","oracle_text":"","power":0,"toughness":0,"abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2},{"type":"triggered","event":"self_enters_battlefield","effects":[{"kind":"draw_card","count":1}]}]}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let broodling = state.new_instance(CardId(200));
+        // A card to draw so the ETB trigger's effect has something to fetch.
+        let draw = state.new_instance(CardId(200));
+        state.players[0].library = vec![draw];
+        let sid = state.mint_id();
+        state.stack.push(StackObject {
+            id: StackId(sid),
+            controller: PlayerId(0),
+            kind: StackObjectKind::Spell { card: broodling },
+            targets: Vec::new(),
+        });
+
+        // Both players pass: the spell resolves — the permanent enters with its
+        // counters (the replacement) and its ETB trigger is collected onto the stack.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+
+        let perm = state
+            .battlefield
+            .iter()
+            .find(|p| p.card == CardId(200))
+            .unwrap(); // the creature entered the battlefield
+        assert_eq!(
+            perm.counter_count(CounterKind::PlusOnePlusOne),
+            2,
+            "the replaced 'enters with counters' state is present"
+        );
+        assert_eq!(
+            state.stack.len(),
+            1,
+            "the co-entering ETB trigger was collected against the replaced state"
+        );
+        assert!(matches!(
+            state.stack[0].kind,
+            StackObjectKind::Ability { .. }
+        ));
     }
 }

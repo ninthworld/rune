@@ -42,6 +42,30 @@ pub enum Ability {
         /// Effects produced when the triggered ability resolves.
         effects: Vec<Effect>,
     },
+    /// A **self-replacement** (CR 614.1c): this permanent enters the battlefield
+    /// **tapped** (e.g. a tapped dual land). Unlike a triggered ability it changes
+    /// nothing after the fact — it modifies the enters-the-battlefield event itself,
+    /// so the permanent is tapped the instant it is on the battlefield, before any
+    /// state-based action or enters-the-battlefield trigger is observed (CR 614.12).
+    /// Applied at the battlefield-entry seam ([`crate::card::apply_enters_replacements`]),
+    /// not as a post-action pipeline stage. Deserialized as `{"type":"enters_tapped"}`.
+    EntersTapped,
+    /// A **self-replacement** (CR 614.1c): this permanent enters the battlefield
+    /// with `count` counters of `counter` already on it (CR 614.12) — e.g. a 0/0 that
+    /// enters with two `+1/+1` counters. The counters are part of *entering*: they are
+    /// present before state-based actions run, so such a creature is never a 0/0 on the
+    /// battlefield and survives the CR 704.5f toughness check. Like [`Self::EntersTapped`]
+    /// it is applied at the entry seam, and the co-entering ETB trigger observes the
+    /// replaced state (CR 614.12). Deserialized as
+    /// `{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2}`.
+    EntersWithCounters {
+        /// The kind of counter placed as the permanent enters. Named `counter` on
+        /// the wire because the enum already reserves the `type` tag for its own
+        /// discriminant.
+        counter: CounterKind,
+        /// How many counters of that kind the permanent enters with.
+        count: u32,
+    },
 }
 
 /// A cost paid to activate an ability.
@@ -365,6 +389,33 @@ mod tests {
             Ability::Triggered {
                 event: TriggerCondition::SelfDies,
                 effects: vec![Effect::DrawCard { count: 1 }],
+            }
+        );
+        assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_155_enters_tapped_replacement_round_trips() {
+        // The "enters tapped" self-replacement (CR 614.1c) authors as the bare
+        // `enters_tapped` type tag and is not a mana ability.
+        let json = r#"{"type":"enters_tapped"}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(ability, Ability::EntersTapped);
+        assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_155_enters_with_counters_replacement_round_trips() {
+        // The "enters with N counters" self-replacement (CR 614.12) authors its
+        // counter kind under `counter` (the enum reserves `type` for its tag) and
+        // its count as data.
+        let json = r#"{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ability,
+            Ability::EntersWithCounters {
+                counter: CounterKind::PlusOnePlusOne,
+                count: 2,
             }
         );
         assert!(!is_mana_ability(&ability));
