@@ -31,6 +31,38 @@ It performs every GitHub mutation as `rune-agent[bot]`, and it never approves or
     scripts/agent-task report 186          # record what CI actually did, once it settles
     scripts/agent-task release 186         # drop the claim, return the issue to status:ready
 
+### Setting up the sandbox (one-time)
+
+The runner refuses to start a provider it cannot contain, because the `rune-agent` private key is
+readable by whatever UID runs the provider — without a boundary, a provider can mint its own token
+and open its own PRs ([ADR 0016](../decisions/0016-provider-neutral-issue-runner.md)). A container
+is the easiest boundary to get:
+
+    docker build -t rune/provider tools/agent-task    # Rust + Node + the provider CLIs
+    export RUNE_PROVIDER_IMAGE=rune/provider
+
+The image carries the **whole toolchain**, not just the model CLI, because verification runs inside
+the same boundary: `make verify` executes provider-controlled code by construction (a doctored
+`Makefile` or `build.rs` runs right there), which is exactly why it must not run as you.
+
+Then give the provider a token. Its interactive login lives under your real `HOME`, which the
+sandbox deliberately replaces — the same isolation that hides the app key also hides `~/.claude` —
+so a headless run needs a token rather than a `/login` session:
+
+    claude setup-token                  # once; works for Pro/Max subscribers
+    export CLAUDE_CODE_OAUTH_TOKEN=…    # or ANTHROPIC_API_KEY / OPENAI_API_KEY for codex
+
+`scripts/agent-task doctor` tells you which of these is missing. The alternative to a container is
+a second UID (`RUNE_PROVIDER_USER=<user>`, needs passwordless sudo). The last resort is
+`--unsafe-same-uid`, which runs the provider **as you, with the key readable** — it warns, and it
+is recorded as `isolation: same-uid` in the run summary so a run made without the boundary is never
+mistaken for one made with it.
+
+What the container gets: the run directory (workspace, scratch `HOME`, brief, logs) and a shared
+build cache. That is all. No `~/.config/rune`, no `~/.config/gh`, no `~/.claude`, no host `PATH`,
+and no credential beyond its own model token. It runs as your UID rather than root, so the files it
+writes are yours, and its `origin` is a local path, so it has no remote to push to.
+
 Claiming is **atomic**: the runner creates the issue's `agent/<issue>-<slug>` branch from
 current `main`, and GitHub's 422 on an existing ref means exactly one runner can win. (A
 GitHub App cannot be an issue assignee, so the branch — not an assignment — is the lock.)

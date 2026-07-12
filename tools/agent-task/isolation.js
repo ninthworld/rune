@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { cacheRoot } from "./config.js";
 import { runDir } from "./runs.js";
 
 /**
@@ -87,13 +88,22 @@ export function resolveIsolation({ unsafeSameUid = false, providerUser = process
  * a scratch directory inside the run, which is what keeps `~/.config/rune` (the key) and
  * `~/.config/gh` (the maintainer's login) out of reach.
  */
-export function providerEnv({ provider, workspace, run, root, scratchHome }) {
+export function providerEnv({ provider, workspace, run, root, scratchHome, cache = cacheRoot() }) {
   const dir = runDir(run.run_id, root);
+  for (const sub of ["cargo", "npm", "playwright"]) mkdirSync(join(cache, sub), { recursive: true });
+
   const env = {
     PATH: process.env.PATH,
     LANG: process.env.LANG ?? "C.UTF-8",
     TERM: "dumb",
     HOME: scratchHome,
+
+    // Point the toolchains at the shared cache. Without these they default to $HOME, which is a
+    // fresh scratch directory every run — so `make verify` would re-download the crate registry
+    // and a browser before it could tell you anything.
+    CARGO_HOME: join(cache, "cargo"),
+    NPM_CONFIG_CACHE: join(cache, "npm"),
+    PLAYWRIGHT_BROWSERS_PATH: join(cache, "playwright"),
     RUNE_RUN_ID: run.run_id,
     RUNE_ISSUE: String(run.issue),
     RUNE_BRIEF: join(dir, "brief.md"),
@@ -136,17 +146,31 @@ export function wrap(argv, { isolation, env, workspace, dir }) {
     };
   }
 
-  const flags = Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]);
+  // The host's PATH is meaningless inside the image — /home/you/.local/bin does not exist there,
+  // and passing it would leave the engine unable to resolve the provider binary at all. The
+  // image's own PATH is the right one, so this is the one allowlisted variable that is dropped.
+  const { PATH: _hostPath, ...containerEnv } = env;
+  const flags = Object.entries(containerEnv).flatMap(([k, v]) => ["--env", `${k}=${v}`]);
+  const cache = cacheRoot();
+
   return {
     argv: [
       isolation.engine,
       "run",
       "--rm",
+      // Without this the container runs as root and every file it writes into the mounted
+      // workspace is root-owned — after which the runner, which is not root, cannot commit the
+      // work or clean the run up.
+      "--user",
+      `${process.getuid()}:${process.getgid()}`,
       // The run directory holds the workspace, the scratch HOME, the brief, and the logs —
-      // everything the provider is entitled to. It is the *only* host path mounted: the key
-      // lives in the host's ~/.config/rune, and nothing in the container can reach it.
+      // everything the provider is entitled to. With the cache, these are the *only* host paths
+      // mounted: the key lives in the host's ~/.config/rune, and nothing in the container can
+      // reach it.
       "--volume",
       `${dir}:${dir}`,
+      "--volume",
+      `${cache}:${cache}`,
       "--workdir",
       workspace,
       ...flags,
