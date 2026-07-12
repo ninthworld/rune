@@ -2,12 +2,15 @@
 //!
 //! [`apply_action`] is the single entry point of the engine. It validates the
 //! chosen action against [`crate::valid_actions`], clones, applies the action,
-//! runs replacement effects, state-based actions, and trigger collection, and
-//! returns the new state. Pure over an immutable [`crate::GameState`].
+//! runs state-based actions, and collects triggers, and returns the new state.
+//! Enters-the-battlefield self-replacements (CR 614.1c/614.12) are not a stage of
+//! this pipeline — they modify the entry event itself and so run at the
+//! battlefield-entry seam ([`crate::card::apply_enters_replacements`]). Pure over
+//! an immutable [`crate::GameState`].
 
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
 use crate::actions::{action_is_legal, Action, Block};
-use crate::card::{abilities_of, Keyword};
+use crate::card::{abilities_of, apply_enters_replacements, Keyword};
 use crate::combat::{
     blocked_attackers, combat_damage, combat_has_first_strike, has_keyword,
     priority_after_step_change, CombatDamage, DamageStep,
@@ -27,11 +30,12 @@ use crate::CardDatabase;
 
 /// The single entry point of the engine: a pure state transition.
 ///
-/// Pipeline: validate `action` against [`crate::valid_actions`] → clone → apply →
-/// replacement effects (scaffold) → state-based-actions loop → collect triggers
-/// and put them on the stack → return. An action that is not currently legal is
-/// rejected as a no-op: the input is returned unchanged (never mutated either
-/// way). `db` supplies the immutable oracle data the pipeline reads.
+/// Pipeline: validate `action` against [`crate::valid_actions`] → clone → apply
+/// (a battlefield entry applies the entering card's own CR 614 self-replacements at
+/// its seam) → state-based-actions loop → collect triggers and put them on the stack
+/// → return. An action that is not currently legal is rejected as a no-op: the input
+/// is returned unchanged (never mutated either way). `db` supplies the immutable
+/// oracle data the pipeline reads.
 #[must_use]
 pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> GameState {
     // 1. Validate against the actions actually on offer, including — for a
@@ -48,7 +52,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
     // 3. Apply the chosen action.
     match action {
         Action::PassPriority => apply_pass_priority(&mut next, db),
-        Action::PlayLand { card } => apply_play_land(&mut next, *card),
+        Action::PlayLand { card } => apply_play_land(&mut next, *card, db),
         Action::ActivateAbility {
             permanent,
             index,
@@ -67,14 +71,19 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::Concede => apply_concede(&mut next),
     }
 
-    // 4. Replacement effects. Scaffold: no replacement effects are modeled yet,
-    //    so this is a documented no-op, wired in for later.
-    apply_replacements(&mut next);
+    // Enters-the-battlefield self-replacements (CR 614.1c/614.12 — "enters tapped",
+    // "enters with counters") are NOT a stage here: a replacement modifies the entry
+    // event itself, so it is applied at the battlefield-entry seam inside step 3
+    // (`apply_enters_replacements`), before the state-based-action loop and before any
+    // ETB trigger below. That ordering is load-bearing — a 0/0 entering with two +1/+1
+    // counters must already be a 2/2 when the SBA loop runs (CR 704.5f).
 
-    // 5. State-based actions, run to a fixed point.
+    // 4. State-based actions, run to a fixed point.
     run_state_based_actions(&mut next, db);
 
-    // 6. Collect triggers by diffing before/after and put each on the stack.
+    // 5. Collect triggers by diffing before/after and put each on the stack. They
+    //    observe the post-replacement state (the entered permanent already carries
+    //    its "as enters" tapped state / counters, CR 614.12).
     for trigger in collect_triggers(state, &next, db) {
         let id = next.mint_id();
         next.stack.push(StackObject {
@@ -491,7 +500,7 @@ fn apply_declare_blockers(state: &mut GameState, blocks: &[Block]) {
 /// Play a land from the active player's hand onto the battlefield. Not via the
 /// stack (CR 116.2a); a fresh [`PermanentId`] is minted on entry while the
 /// card's [`crate::CardInstanceId`] carries over unchanged.
-fn apply_play_land(state: &mut GameState, card: CardInstance) {
+fn apply_play_land(state: &mut GameState, card: CardInstance, db: &CardDatabase) {
     let controller = state.priority;
     {
         let Some(player) = state.players.get_mut(controller.0) else {
@@ -504,7 +513,7 @@ fn apply_play_land(state: &mut GameState, card: CardInstance) {
     }
     let id = state.mint_id();
     let entered_turn = state.turn;
-    state.battlefield.push(Permanent {
+    let mut permanent = Permanent {
         id: PermanentId(id),
         instance: card.id,
         card: card.card,
@@ -517,7 +526,12 @@ fn apply_play_land(state: &mut GameState, card: CardInstance) {
         counters: Default::default(),
         // A land is played directly, never attached to anything (CR 305).
         attached_to: None,
-    });
+    };
+    // CR 614.1c/614.12: apply the land's own enters-the-battlefield replacements
+    // (e.g. a tapland's "enters tapped") as it enters, so it is tapped the instant
+    // it is on the battlefield — no untapped window to tap for mana this turn.
+    apply_enters_replacements(db, &mut permanent);
+    state.battlefield.push(permanent);
     state.land_played = true;
 }
 
@@ -774,10 +788,6 @@ pub(crate) fn apply_targeted_effect(
     }
 }
 
-/// Apply replacement effects. Scaffold: no replacement effects exist yet, so
-/// this is intentionally a no-op. It marks where the pipeline stage lives.
-fn apply_replacements(_state: &mut GameState) {}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -1011,6 +1021,37 @@ mod tests {
         assert!(state.stack.is_empty());
         assert!(state.players[0].hand.contains(&draw_card));
         assert!(state.players[0].library.is_empty());
+    }
+
+    #[test]
+    fn issue_155_tapland_enters_tapped_with_no_untapped_window_cr_614_1c() {
+        // CR 614.1c/614.12: a land with an "enters tapped" self-replacement is tapped
+        // the instant it is on the battlefield. Verdant Sanctuary (id 31) is played as
+        // a land (CR 116.2a): the resulting permanent is already tapped, and because a
+        // {T} mana ability is unpayable while tapped, no action to tap it for mana is
+        // offered this same priority window — there is no observable untapped state.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let land = state.new_instance(CardId(31));
+        state.players[0].hand = vec![land];
+
+        let after = apply_action(&state, &Action::PlayLand { card: land }, &db);
+
+        assert_eq!(after.battlefield.len(), 1);
+        let perm = &after.battlefield[0];
+        assert!(
+            perm.tapped,
+            "the tapland is tapped the moment it enters (CR 614.1c/614.12)"
+        );
+        // No ActivateAbility for the tapland is on offer: its {T} abilities can't be
+        // paid while it is tapped, so it cannot be tapped for mana this turn.
+        assert!(
+            !valid_actions(&after, &db).iter().any(
+                |a| matches!(a, Action::ActivateAbility { permanent, .. } if *permanent == perm.id)
+            ),
+            "a tapland offers no mana ability the turn it enters — no untapped window"
+        );
     }
 
     #[test]

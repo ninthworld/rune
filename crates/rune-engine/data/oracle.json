@@ -332,5 +332,43 @@
     "mana_cost": "{B}",
     "oracle_text": "Enchant creature. Enchanted creature gets -2/-2.",
     "aura": { "enchant": "any_creature", "power": -2, "toughness": -2 }
+  },
+  {
+    "id": 31,
+    "name": "Verdant Sanctuary",
+    "types": ["land"],
+    "subtypes": ["Forest", "Plains"],
+    "mana_cost": "",
+    "oracle_text": "Verdant Sanctuary enters the battlefield tapped.\n{T}: Add {G} or {W}.",
+    "abilities": [
+      { "type": "enters_tapped" },
+      {
+        "type": "activated",
+        "cost": [{ "kind": "tap" }],
+        "effects": [{ "kind": "add_mana", "color": "green", "amount": 1 }]
+      },
+      {
+        "type": "activated",
+        "cost": [{ "kind": "tap" }],
+        "effects": [{ "kind": "add_mana", "color": "white", "amount": 1 }]
+      }
+    ]
+  },
+  {
+    "id": 32,
+    "name": "Bramble Hatchling",
+    "types": ["creature"],
+    "subtypes": ["Insect"],
+    "mana_cost": "{1}{G}",
+    "oracle_text": "Bramble Hatchling enters the battlefield with two +1/+1 counters on it.",
+    "power": 0,
+    "toughness": 0,
+    "abilities": [
+      {
+        "type": "enters_with_counters",
+        "counter": "plus_one_plus_one",
+        "count": 2
+      }
+    ]
   }
 ]

@@ -13,6 +13,7 @@ use crate::ability::{Ability, Effect, TargetSpec};
 use crate::card_type::{CardType, Supertype};
 use crate::id::{CardId, OracleId};
 use crate::scripted::scripted_abilities;
+use crate::state::Permanent;
 
 /// The bundled oracle snapshot, embedded at compile time.
 ///
@@ -497,6 +498,35 @@ pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
         .unwrap_or_default()
 }
 
+/// Apply `perm`'s own **enters-the-battlefield self-replacement effects**
+/// (CR 614.1c) to the freshly built [`Permanent`] as it enters, *before* it is
+/// placed on the battlefield.
+///
+/// This is the replacement seam for [`Ability::EntersTapped`] and
+/// [`Ability::EntersWithCounters`]: because a replacement modifies the entry
+/// *event* rather than acting after it (CR 614.12), the tapped state and counters
+/// must already be on `perm` at the moment it joins the battlefield — before the
+/// state-based-action loop (so a 0/0 entering with two `+1/+1` counters is a 2/2
+/// and survives CR 704.5f) and before any enters-the-battlefield trigger is
+/// collected (so the trigger observes the replaced state). It is therefore called
+/// at every battlefield-entry site (a land played, [`crate::apply_action`]; a
+/// permanent spell resolving, [`crate::resolve::resolve_stack_object`]), never as
+/// a post-action pipeline stage. Only the permanent's *own* replacements apply
+/// here (CR 614.13 ordering among multiple external replacements is out of scope).
+/// Both authoring tiers are honored via [`abilities_of`]; non-replacement
+/// abilities are ignored.
+pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent) {
+    for ability in abilities_of(db, perm.card) {
+        match ability {
+            Ability::EntersTapped => perm.tapped = true,
+            Ability::EntersWithCounters { counter, count } => {
+                *perm.counters.entry(counter).or_insert(0) += count;
+            }
+            Ability::Activated { .. } | Ability::Triggered { .. } => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -509,7 +539,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 30);
+        assert_eq!(db.len(), 32);
     }
 
     #[test]
@@ -620,6 +650,48 @@ mod tests {
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::DrawCard { count: 1 }],
+            }]
+        );
+    }
+
+    #[test]
+    fn issue_155_etb_replacement_fixtures_carry_their_self_replacements() {
+        // The tapland (id 31) authors an `enters_tapped` self-replacement (CR 614.1c)
+        // alongside its two mana abilities; the 0/0 (id 32) authors an
+        // `enters_with_counters` self-replacement of two +1/+1 counters (CR 614.12).
+        use crate::ability::Ability;
+        use crate::state::CounterKind;
+        let db = CardDatabase::bundled().unwrap();
+
+        let land = db.card(CardId(31)).unwrap();
+        assert_eq!(land.name, "Verdant Sanctuary");
+        assert_eq!(land.types, vec![CardType::Land]);
+        assert_eq!(
+            land.abilities
+                .iter()
+                .filter(|a| matches!(a, Ability::EntersTapped))
+                .count(),
+            1,
+            "the tapland enters tapped (CR 614.1c)"
+        );
+        // Its two tap-for-mana abilities are still present and activatable.
+        assert_eq!(
+            land.abilities
+                .iter()
+                .filter(|a| crate::ability::is_mana_ability(a))
+                .count(),
+            2
+        );
+
+        let hatchling = db.card(CardId(32)).unwrap();
+        assert_eq!(hatchling.name, "Bramble Hatchling");
+        assert_eq!(hatchling.power, Some(0));
+        assert_eq!(hatchling.toughness, Some(0));
+        assert_eq!(
+            hatchling.abilities,
+            vec![Ability::EntersWithCounters {
+                counter: CounterKind::PlusOnePlusOne,
+                count: 2,
             }]
         );
     }
@@ -860,8 +932,8 @@ mod tests {
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the thirty fixtures; FIX2 reprints one — thirty-one printings total.
-        assert_eq!(printings.len(), 31);
+        // FIX prints the thirty-two fixtures; FIX2 reprints one — thirty-three printings total.
+        assert_eq!(printings.len(), 33);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));
