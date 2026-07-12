@@ -26,6 +26,7 @@ It performs every GitHub mutation as `rune-agent[bot]`, and it never approves or
 
     scripts/agent-task doctor              # can this machine run agent tasks?
     scripts/agent-task start 186 --provider claude
+    scripts/agent-task logs 186 --follow   # watch what the provider is doing, from another window
     scripts/agent-task status              # lifecycle state of active runs
     scripts/agent-task resume 186          # re-enter a failed run; the claim and the work survive
     scripts/agent-task report 186          # record what CI actually did, once it settles
@@ -70,6 +71,28 @@ What the container gets: the run directory (workspace, scratch `HOME`, brief, lo
 build cache. That is all. No `~/.config/rune`, no `~/.config/gh`, no `~/.claude`, no host `PATH`,
 and no credential beyond its own model token. It runs as your UID rather than root, so the files it
 writes are yours, and its `origin` is a local path, so it has no remote to push to.
+
+### Watching a run
+
+`start` streams what the provider is doing as it does it — one line per tool call, per decision,
+per result:
+
+    ▸ session started (claude-opus-4-8)
+      Reading the engine to find where damage is applied.
+    ▸ Grep: fn apply_damage
+    ▸ Edit: crates/rune-engine/src/combat.rs
+    ▸ Bash: make check
+    ▸ finished: success, 14 turns, $0.37
+
+This is not decoration. Claude Code's print mode emits **nothing at all** until the run is over, so
+a forty-minute run looks exactly like a hung one — and the first thing anyone does with a silent
+agent is kill it. The runner asks for `--output-format stream-json` and renders the events.
+
+From another window, or after the fact: `scripts/agent-task logs <issue> --follow`. The rendered
+log is `logs/provider.log` in the run directory; the raw event stream is kept verbatim next to it in
+`logs/provider.jsonl` (`logs --raw`), because rendering is best-effort and a provider's event schema
+is not something the runner controls. Both are redaction-scrubbed. `start --quiet` turns the live
+stream off.
 
 Claiming is **atomic**: the runner creates the issue's `agent/<issue>-<slug>` branch from
 current `main`, and GitHub's 422 on an existing ref means exactly one runner can win. (A

@@ -5,7 +5,11 @@
  * exits. No adapter gets to touch GitHub, and none reports its own outcome — the runner
  * observes that for itself. A provider that needs more than this is one RUNE does not
  * support, which is the point: the adapter is the only thing that changes between providers.
+ *
+ * `render` turns one line of the provider's output into one line a human can watch. `structured`
+ * says the raw stream is machine-readable and worth keeping verbatim alongside the rendered log.
  */
+import { renderClaudeEvent, renderRaw } from "./events.js";
 /**
  * How much rope the provider gets, derived from how well it is contained.
  *
@@ -30,11 +34,27 @@ const ADAPTERS = {
     // Deliberately NOT `--bare`: bare mode skips auto-discovery of CLAUDE.md, which is how the
     // root and nested `AGENTS.md` reach the model at all. ADR 0016 requires that behaviour be
     // preserved, and the brief points at those files rather than inlining them.
-    argv: (brief, { isolation } = {}) => ["claude", "-p", brief, "--permission-mode", permissionMode(isolation)],
+    //
+    // `stream-json` (which requires `--verbose` in print mode) is what makes a run watchable:
+    // plain print mode emits nothing until the very end, so a long run is indistinguishable from
+    // a hung one. The runner renders the events into readable lines and keeps the raw stream.
+    argv: (brief, { isolation } = {}) => [
+      "claude",
+      "-p",
+      brief,
+      "--permission-mode",
+      permissionMode(isolation),
+      "--output-format",
+      "stream-json",
+      "--verbose",
+    ],
+    render: renderClaudeEvent,
+    structured: true,
   },
   codex: {
     command: "codex",
     argv: (brief) => ["codex", "exec", "--full-auto", brief],
+    render: renderRaw,
   },
   local: {
     // No model, harness, or vendor prescribed (ADR 0016). The command reads the brief from
@@ -50,6 +70,7 @@ const ADAPTERS = {
       }
       return ["bash", "-c", cmd];
     },
+    render: renderRaw,
   },
 };
 
