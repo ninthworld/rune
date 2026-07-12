@@ -141,8 +141,12 @@ lives in [`AGENTS.md`](AGENTS.md); the process lives in
 
 RUNE is a free fan project, not affiliated with or endorsed by Wizards of the Coast.
 It implements game rules (not copyrightable), uses no card images or official frame
-designs, and must never be monetized. Card oracle text is used under the same
-tolerated-fan-project posture as long-standing prior art (XMage, Forge).
+designs, and must never be monetized. It also bundles **no exact Oracle text**: cards
+are authored as structured functional definitions and the server generates the rules
+text a player reads from them, so the project does not rely on the oracle-text grey
+zone that prior art (XMage, Forge) operates in. See
+[ADR 0018](docs/decisions/0018-scalable-functional-card-definitions.md) and the schema
+in [`docs/card-schema.md`](docs/card-schema.md).
 
 The source code is licensed under the [MIT License](LICENSE); see
 [`docs/decisions/0005-license.md`](docs/decisions/0005-license.md) for the rationale.
