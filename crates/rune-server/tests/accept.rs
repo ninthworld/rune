@@ -16,6 +16,8 @@ async fn client_lands_in_the_lobby_then_server_shuts_down_gracefully() {
     // Bind to port 0 so the OS picks a free port; learn it before serving.
     let config = Config {
         addr: "127.0.0.1:0".to_string(),
+        rng_seed: None,
+        starting_life: None,
     };
     let server = Server::bind(&config).await.expect("bind");
     let addr = server.local_addr();

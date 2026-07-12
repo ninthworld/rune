@@ -24,8 +24,21 @@ async fn main() -> ExitCode {
     };
 
     // The lobby owns the room registry and the card database every room is built
-    // from. A snapshot that fails to parse means we cannot host games at all.
-    let lobby = match Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS) {
+    // from. A snapshot that fails to parse means we cannot host games at all. A
+    // pinned `--rng-seed` (ADR 0014) and/or `--starting-life` make every game
+    // reproducible and short for the deterministic e2e suite; normal play leaves
+    // both unset.
+    if let Some(seed) = config.rng_seed {
+        info!(seed, "pinning a fixed engine shuffle seed for every game");
+    }
+    if let Some(life) = config.starting_life {
+        info!(life, "pinning a fixed starting life total for every game");
+    }
+    let lobby = match Lobby::bundled_with_overrides(
+        Lobby::DEFAULT_MAX_ROOMS,
+        config.rng_seed,
+        config.starting_life,
+    ) {
         Ok(lobby) => lobby,
         Err(error) => {
             error!(%error, "failed to load bundled card database");

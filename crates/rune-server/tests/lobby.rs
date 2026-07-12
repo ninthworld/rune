@@ -27,6 +27,8 @@ impl RunningServer {
     async fn start(max_rooms: usize) -> Self {
         let config = Config {
             addr: "127.0.0.1:0".to_string(),
+            rng_seed: None,
+            starting_life: None,
         };
         let server = Server::bind(&config).await.expect("bind");
         let addr = server.local_addr();
