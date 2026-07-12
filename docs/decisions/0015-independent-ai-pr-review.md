@@ -116,9 +116,16 @@ noise. Each finding must name a concrete location and a concrete risk.
 
 ### Security boundary: a two-stage split so secrets never meet untrusted code
 
-The workflow is split into two jobs so that **the job holding credentials never
+The work is split into two **workflows** so that **the job holding credentials never
 executes PR-controlled code**, which is the only robust defense against the
 `pull_request_target` exfiltration class:
+
+> **Corrected during implementation (#243).** This section originally said "two jobs".
+> That is not implementable: a GitHub event trigger applies to a *workflow*, not to a job
+> within one, so Prepare (`pull_request`) and Review (`workflow_run`) cannot be two jobs of
+> one workflow. They are `.github/workflows/ai-review-prepare.yml` and
+> `.github/workflows/ai-review.yml`. The security model below is unchanged and unweakened —
+> the two-stage trust boundary is exactly as decided; only the word "jobs" was wrong.
 
 1. **Prepare (trigger: `pull_request`, `permissions: contents: read`, no secrets).**
    Runs in the untrusted context with a **read-only token and no secrets whatsoever**.

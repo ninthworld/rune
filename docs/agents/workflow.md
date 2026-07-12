@@ -128,8 +128,10 @@ usage, which is advisory and not comparable across providers. They never contain
 diffs, logs, environment values, or secrets.
 
 `report <issue>` re-observes a finished run once CI has settled. It exists because at the moment
-a PR opens, its checks have not run yet — and `claude-review` is **not** a required check, so a
-silently skipped review is indistinguishable from a passing one unless somebody looks.
+a PR opens, its checks have not run yet — and a silently skipped AI review is indistinguishable
+from a passing one unless somebody looks. `AI Review` is required-to-complete as of #243, so a
+skipped review can no longer merge; the observation stays, because "the check is required" is a
+repository *setting*, and settings drift away from what everyone believes about them.
 
 ## Milestone stewardship
 
@@ -277,11 +279,11 @@ records the tradeoff and the runner-side containment (an explicit per-run opt-in
 Unlike the default `GITHUB_TOKEN` inside Actions (see the recursion caveat below), an
 installation token used from a developer machine **does** trigger the required checks.
 
-One coupling to remember: `claude-code-action` skips any run triggered by a bot unless
-that bot is allowlisted, so `.github/workflows/claude-code-review.yml` sets
-`allowed_bots: 'rune-agent[bot],dependabot[bot]'`. Without it the ADR 0015 review silently
-no-ops on every agent PR — and since `claude-review` is not a required check, nothing would
-fail to tell you. Renaming the app means updating that allowlist.
+A coupling that used to matter here is gone: the interim `claude-code-review.yml` needed an
+`allowed_bots` allowlist, because `claude-code-action` silently skips bot-triggered runs — and
+since it was not a required check, nothing failed to tell you. The AI reviewer (#243) is a
+repository-owned workflow with no such behaviour: it reviews every PR regardless of who opened
+it, and it is required to complete. See [`ai-review.md`](ai-review.md).
 
 ### Handling stale branches
 

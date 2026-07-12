@@ -42,6 +42,10 @@ before writing code.
   Dependency-free Node; never add a dependency to it.
 - `tools/ci-policy/` — the workflow gate (`make ci-lint`): immutable Action pins,
   least-privilege tokens, no untrusted interpolation. Dependency-free Node; same rule.
+- `tools/ai-review/` — the independent AI reviewer (ADR 0015): an untrusted prepare stage and
+  a trusted review stage that never executes PR code. Dependency-free Node; same rule.
+  Before editing either workflow, read `docs/agents/ai-review.md` — the security property is
+  in the *split*, and it is one careless edit away.
 - `prototypes/` — reference-only HTML prototypes. Never import from here.
 
 Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.

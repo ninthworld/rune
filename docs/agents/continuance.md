@@ -360,13 +360,16 @@ Two rules constrain the choice rather than the vendor:
 | **≥ 1 human approval, from someone other than the author** | human | **yes** | @ninthworld (sole code owner) |
 | Squash merge | human | — | @ninthworld |
 
-> **AI review status today:** the interim `claude-review` workflow runs on agent PRs but
-> is **not a required check**, so a silently skipped review is indistinguishable from a
-> passing one — which is why the runner *observes* whether it actually ran rather than
-> assuming it. ADR 0015's required-to-complete `AI Review` check lands with
-> [#202](https://github.com/ninthworld/rune/issues/202). Its findings are advisory by
-> design until calibrated, and no AI review — positive or negative — can approve a PR,
-> dismiss a human's review, or substitute for the human approval.
+> **AI review.** `AI Review` is **required to complete** and its findings are **advisory**
+> ([ADR 0015](../decisions/0015-independent-ai-pr-review.md), implemented in
+> [#243](https://github.com/ninthworld/rune/issues/243)). Read that pairing carefully: a
+> completed review full of findings **passes** the check, and an infrastructure failure
+> **fails** it. The check is a verdict on whether the review *happened*, never on the code.
+> Findings stay advisory until ADR 0015's measurement window closes
+> ([#244](https://github.com/ninthworld/rune/issues/244)) and a **new human-approved ADR**
+> promotes a category — it cannot happen by configuration drift. No AI review, positive or
+> negative, can approve a PR, dismiss a human's review, or substitute for human approval.
+> Operating it: [`ai-review.md`](ai-review.md).
 
 ### The evidence a PR body must carry
 

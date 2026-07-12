@@ -1,0 +1,9 @@
+{
+  "name": "@rune/ai-review",
+  "private": true,
+  "type": "module",
+  "description": "Independent AI PR review (ADR 0015): an untrusted prepare stage and a trusted review stage that never executes PR code. Dependency-free Node 20 — never add a dependency here.",
+  "engines": {
+    "node": ">=20"
+  }
+}

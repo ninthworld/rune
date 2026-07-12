@@ -1,4 +1,4 @@
-.PHONY: verify check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit runner-test ci-policy-test ci-lint e2e e2e-browser deny setup
+.PHONY: verify check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit runner-test ci-policy-test ai-review-test ci-lint e2e e2e-browser deny setup
 
 # The complete local pre-merge gate: everything required before a PR merges into
 # `main`. Composes the existing targets 1:1 with the four required GitHub checks —
@@ -6,7 +6,7 @@
 # is a single command whose coverage matches CI. `make check` remains the fast inner loop.
 verify: check e2e deny ci-lint ## Full pre-merge verification: Engine + Client + E2E + cargo-deny (mirrors every required GitHub check)
 
-check: engine-lint engine-test client-check client-audit runner-test ci-policy-test ## Fast inner-loop gate: everything the Engine + Client CI jobs run (browser e2e and cargo-deny are separate — see `verify`)
+check: engine-lint engine-test client-check client-audit runner-test ci-policy-test ai-review-test ## Fast inner-loop gate: everything the Engine + Client CI jobs run (browser e2e and cargo-deny are separate — see `verify`)
 
 engine-lint:
 	cargo fmt --all -- --check
@@ -45,6 +45,12 @@ runner-test:
 # actionlint and therefore lives in `verify` instead.
 ci-policy-test:
 	node --test tools/ci-policy/*.test.js
+
+# The AI reviewer (ADR 0015, #243). Dependency-free Node, so it rides the fast gate and the
+# `Client` job like the runner's tests. No test here calls a paid model or mutates a repository:
+# GitHub is faked at the `fetch` boundary and the provider is faked at the adapter boundary.
+ai-review-test:
+	node --test tools/ai-review/*.test.js
 
 # Browser end-to-end suite (ADR 0011). Deliberately OUTSIDE `make check`: it needs
 # a real browser and a built-and-served client, so it runs as its own target and
