@@ -1,28 +1,18 @@
 # Agent workflow and GitHub configuration
 
-## The loop
-
-1. **Issues are the queue.** Agents pick up issues labeled `agent-task` +
-   `status:ready`, or create new ones (agent-task template) when they identify
-   work — triage, decomposition, and prioritization happen in issues, not PRs.
-2. **One issue → one branch → one PR.** Branch `agent/<issue>-<slug>`.
-3. **PR is the review gate.** Fill the template, link `Closes #N`, label `agent`.
-   All four required checks — `Engine`, `Client`, `E2E`, `cargo-deny` — must be green
-   (reproduce them locally with `make verify`). A human reviews and merges — always.
-4. **CI failure protocol:** the PR author (agent) investigates its own red CI and
-   pushes fixes. If the failure is unrelated (flake, infra), say so in a comment
-   with evidence rather than retrying blindly.
-5. **Conflicts between agents are resolved by humans**, not by other agents.
-
-To run the loop with a local model instead of a cloud provider, use the runner's `local`
-adapter (below): `RUNE_LOCAL_CMD='<your harness> "$(cat "$RUNE_BRIEF")"'`. It prescribes no
-model, harness, or vendor — and unlike the old `local-agent.sh` example it replaced, it does
-not push or open the PR as you.
+**This file is the *how*: commands, labels, and GitHub settings.** The *what* and the
+*why* — the lifecycle from a milestone outcome to a merged PR, its state transitions, the
+evidence each handoff requires, and the human gates between them — are the
+[continuance playbook](continuance.md), which is the authority when the two appear to
+disagree. In one paragraph: issues are the queue; a `status:ready` leaf issue becomes one
+branch and one PR; every required check must be green against current `main`; a human
+other than the author approves and merges — always.
 
 ## The issue runner
 
-`scripts/agent-task` automates the loop above ([ADR 0016](../decisions/0016-provider-neutral-issue-runner.md)).
-It performs every GitHub mutation as `rune-agent[bot]`, and it never approves or merges.
+`scripts/agent-task` runs one issue through that lifecycle
+([ADR 0016](../decisions/0016-provider-neutral-issue-runner.md)). It performs every GitHub
+mutation as `rune-agent[bot]`, and it never approves or merges.
 
     scripts/agent-task doctor              # can this machine run agent tasks?
     scripts/agent-task start 186 --provider claude
@@ -31,6 +21,14 @@ It performs every GitHub mutation as `rune-agent[bot]`, and it never approves or
     scripts/agent-task resume 186          # re-enter a failed run; the claim and the work survive
     scripts/agent-task report 186          # record what CI actually did, once it settles
     scripts/agent-task release 186         # drop the claim, return the issue to status:ready
+
+`--provider` selects the implementation agent and is the only thing that differs between
+them; no provider is canonical. To drive a run with a local model instead of a cloud one,
+use the `local` adapter: `RUNE_LOCAL_CMD='<your harness> "$(cat "$RUNE_BRIEF")"'`. It
+prescribes no model, harness, or vendor — and unlike the old `local-agent.sh` example it
+replaced, it does not push or open the PR as you. Running the loop **without** the runner
+at all is the manual path in the [playbook](continuance.md#doing-the-work); it produces
+the same artifacts and passes the same gates.
 
 ### Setting up the sandbox (one-time)
 
@@ -135,14 +133,12 @@ silently skipped review is indistinguishable from a passing one unless somebody 
 
 ## Milestone stewardship
 
-When a milestone runs out of `status:ready` issues, its closeout and the next
-milestone's decomposition follow the state machine in
-[ADR 0017](../decisions/0017-milestone-stewardship-cycle.md): deterministic evidence
-collection, an AI audit with an independently reviewed second opinion, a human
-closeout gate, next-milestone-only planning with its own independent review, and a
-human approval gate before any issue is created — reusing the ADR 0016 adapter
-boundary for every AI role and the `agent-runs` branch for the cycle's sanitized
-telemetry.
+When a milestone runs out of `status:ready` issues, its closeout and the next milestone's
+decomposition follow the state machine in
+[ADR 0017](../decisions/0017-milestone-stewardship-cycle.md). The phases, the two human
+gates, what counts as evidence, and the manual procedure for the stages that are not built
+yet are the [playbook's milestone loop](continuance.md#3-the-milestone-loop); the commands
+are here.
 
 ### Evidence collection
 
@@ -176,22 +172,29 @@ the Auditor will eventually be handed.
 
 ## Labels
 
-`agent-task`, `agent` (on PRs), `bug`, `decision`, `dependencies`, `ci-change` (on PRs
-touching CI-governance paths — see below),
+`agent-task`, `agent` (on PRs), `bug`, `decision`, `dependencies` (Dependabot),
+`ci-change` (on PRs touching CI-governance paths — see below),
 `area:{engine,protocol,server,cli,client,docs,ci}`,
-`status:{ready,in-progress,review,blocked,needs-decision}`, `good-first-task`.
+`status:{ready,in-progress,review,blocked}`, `good-first-task`.
 
-`status:in-progress` and `status:review` are the issue-runner lifecycle states from
-[ADR 0016](../decisions/0016-provider-neutral-issue-runner.md): a run claims a
-`status:ready` issue by atomically creating its `agent/<issue>-<slug>` branch, and moves
-it to `status:review` only once the draft PR exists.
+The `status:*` labels **are** the issue lifecycle, so they are not decoration:
+[ADR 0016](../decisions/0016-provider-neutral-issue-runner.md) has a run claim a
+`status:ready` issue by atomically creating its `agent/<issue>-<slug>` branch, move it to
+`status:in-progress`, and move it to `status:review` only once the draft PR exists. What
+each state means and when it may change is the
+[playbook's issue loop](continuance.md#lifecycle). Work blocked on an open decision is
+`status:blocked` like any other blocked work — there is no separate "needs decision" state.
 
 ## Definition of done
 
-- Acceptance criteria of the linked issue met.
+The full exit contract — including the evidence a PR body must carry and what must follow
+a merge — is the [playbook's PR loop](continuance.md#5-the-pull-request-loop). The short
+form:
+
+- Acceptance criteria of the linked issue met, each mapped to its evidence in the PR body.
 - `make check` green throughout implementation; `make verify` green before final review
   (the full `Engine` + `Client` + `E2E` + `cargo-deny` surface) wherever the browser
-  suite can run, and all four checks green in CI.
+  suite can run, and all four checks green in CI against current `main`.
 - Tests cover the change; rules fixes include a regression test named after the issue.
 - Docs/ADRs updated where behavior or architecture changed.
 - `docs/rules-coverage.md` updated when engine rule behavior was added or changed

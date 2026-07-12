@@ -67,16 +67,23 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 
 ## Workflow
 
-1. Work from a GitHub issue. If none exists for your task, create one using the
-   agent-task template with acceptance criteria before writing code.
+1. Work from a GitHub issue — a `status:ready` **leaf** issue whose `Blocked by:` list is
+   closed, and nothing else. If none exists for your task, create one using the agent-task
+   template with acceptance criteria before writing code.
 2. Branch: `agent/<issue-number>-<short-slug>`.
 3. Commits: Conventional Commits (`feat(engine): …`, `fix(client): …`, `docs: …`).
-4. Keep PRs small and single-purpose. Fill in the PR template; link the issue with
-   `Closes #N`. Add or update tests for everything you change.
+4. **One leaf issue → one PR**, in both directions. Keep PRs small and single-purpose;
+   fill in the PR template; link the issue with `Closes #N` (exactly one). An outcome too
+   big for one PR is a parent issue that needs decomposing, not a second PR against the
+   same issue. Add or update tests for everything you change.
 5. Definition of done: `make check` green throughout implementation and `make verify`
    green before final review (where the browser suite can run), docs/ADRs updated if
    behavior or architecture changed, PR description explains what and why, no unrelated
    diffs.
 6. Architectural decisions get an ADR in `docs/decisions/` (copy `0000-template.md`).
+7. Your job ends at "green checks + a PR ready for review." Agents never approve and
+   never merge — not their own PRs and not another agent's.
 
-Process details and GitHub settings: `docs/agents/workflow.md`.
+The end-to-end lifecycle (milestone → issue → PR, and the human gates between them):
+`docs/agents/continuance.md`. Commands, labels, and GitHub settings:
+`docs/agents/workflow.md`.
