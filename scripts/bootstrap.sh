@@ -43,7 +43,16 @@ fi
 if command -v actionlint > /dev/null 2>&1; then
   echo "ok: actionlint $(actionlint --version | head -1)"
 else
-  echo "missing: actionlint — install with 'go install github.com/rhysd/actionlint/cmd/actionlint@latest' or 'brew install actionlint' (needed by 'make ci-lint'/'make verify' and the cargo-deny CI job)"
+  echo "missing: actionlint — run 'scripts/install-actionlint.sh' (pinned + checksum-verified; needed by 'make ci-lint'/'make verify' and the cargo-deny CI job)"
+  fail=1
+fi
+
+# actionlint runs shellcheck over `run:` bodies when it can find it, and the CI runners ship
+# it — without it locally, `make ci-lint` is a weaker gate than the one that blocks the merge.
+if command -v shellcheck > /dev/null 2>&1; then
+  echo "ok: shellcheck $(shellcheck --version | awk '/^version:/ {print $2}')"
+else
+  echo "missing: shellcheck — install it from your package manager (actionlint uses it to check 'run:' steps; without it 'make ci-lint' checks less than CI does)"
   fail=1
 fi
 
