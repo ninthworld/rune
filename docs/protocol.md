@@ -48,6 +48,15 @@ A `CardView` carries a card's server-computed characteristics for display: `id`,
 `name`, `type_line`, optional `mana_cost`, `oracle_text`, `power`/`toughness`
 (strings, present only for creatures), and `keywords`.
 
+- `oracle_text` — despite the name, this is **not** exact Oracle text and never has
+  been: no exact rules prose is bundled anywhere in the repository. It is a
+  hand-authored string on the card's functional definition, and
+  [ADR 0018](decisions/0018-scalable-functional-card-definitions.md) §7–§8 replaces it
+  with `rules_text`, generated deterministically by the server from the card's ability
+  IR, plus a stable `functional_id` presentation identity. That rename is a contract
+  change and lands with the formatter (#194); until then this field carries the
+  authored string.
+
 - `keywords` — the card's keyword abilities (CR 702) as an array of lowercase wire
   names, e.g. `["flying"]` or `["first_strike", "trample"]`. Server-computed and
   display-only; the client renders badges and never derives combat behavior from

@@ -13,47 +13,48 @@ GitHub issues (each body names its milestone); the tables below link them.
 Matching GitHub Milestones can be created in the repo settings and the issues
 bulk-assigned — issue bodies already carry the milestone designation either way.
 
-> Last reconciled against GitHub issues + `main`: 2026-07-11 (second pass, after
-> the M1/M2 wave #102–#119 merged; follow-up issues #140–#160 filed).
+> Last reconciled against GitHub issues + `main`: 2026-07-12 (third pass, audited
+> against `main` @ `4f1514b`, after ADR 0018 replaced the invented-set content
+> strategy and #223 landed its schema).
+>
+> **Exit-criterion status is not settled here.** Ticking M1–M3 boxes is the job of
+> the structured milestone audit (#188, [ADR 0017](decisions/0017-milestone-stewardship-cycle.md)),
+> which requires executable evidence per criterion — a closed issue is not evidence.
+> This pass updates the narrative below and M3's content strategy; the boxes are left
+> as the audit finds them.
 
-## Where we are (2026-07-11, second reconciliation)
+## Where we are (2026-07-12, third reconciliation)
 
-The M1 lobby track and the M2 engine track have both shipped; what's missing is
-the client half of M2 and everything M3 names:
+M1 and M2 have shipped end to end, and M3's engine, server, and client waves are in.
+What M3 still owes is the **card-data track**: the catalog's file layout, the
+generated rules text a player reads, and the real cards themselves.
 
-- **Engine** (`crates/rune-engine`): turn-based actions are real — untap, draw,
-  cleanup discard-to-7 and damage wipe (CR 502/504/514, #116); combat works end
-  to end — declare attackers/blockers with multi-block, combat damage,
-  lethal-damage SBA (CR 508–510, 704.5g, #117/#118); game over is a first-class
-  result (life, decking, concede) surfaced on `GameView.result` (#119); plus
-  `GameSetup`, deck loading, seeded shuffle (ADR 0014), opening hands, and the
-  London mulligan (#109/#111). Still true: the effect vocabulary is
-  AddMana/DrawCard/Tap, only creatures are castable (sorcery speed only), there
-  are **no keywords**, the replacement pipeline is a no-op scaffold, and the
-  card pool is six fixture cards in a flat `cards.json` — ADR 0013's
-  oracle/printing model is accepted but unimplemented.
-- **Server/CLI** (`crates/rune-server`, `rune-cli`): the full ADR 0012 lobby is
-  live — explicit rooms with config (2–8 seat plumbing), join by id, deck
-  submission + ready gate, and session-token reconnect closing #48's one-way
-  retirement (#110/#112/#113); rooms stop and are reclaimed on game over. The
-  CLI speaks the lobby interactively and via `--agent` (#115), but the built-in
-  agent only passes priority — it cannot fill requirements or win a game. Known
-  gap: the engine's multi-select candidate sets (mulligan bottoming, combat
-  declarations) are projected into the view **empty** (#140), so only the
-  empty/first-choice forms round-trip today.
-- **Web client** (`clients/web`): connection screen (#103), lobby UI
-  (create/join/deck/ready, #114), battlefield/hand/tiles rendering, and
-  targeting mode all work — a game genuinely runs. But `GameView.stack` is
-  never rendered, there is no combat or mulligan-bottoming UX (blocked on
-  #140), and the client neither mirrors `GameView.result` nor shows a game-over
-  screen — the table just sits there after the final frame.
-- **e2e** (ADR 0011): Playwright drives real Chromium in CI against the
-  production bundle, asserting on the pure `TableScene` hook — but only the
-  **mock-WS tier** exists (single client, canned frames). The ADR's
-  real-`rune-server` smoke tier, any two-client test, and the scripted
-  full-game run are still to be built.
-- **Docs**: `protocol.md` covers the lobby and game phases (the "two messages"
-  framing is amended); ADRs 0001–0014 accepted; `rules-coverage.md` is live and
+- **Engine** (`crates/rune-engine`): the M2 rules surface is complete (turn-based
+  actions, combat with multi-block and lethal-damage SBA, game over as a first-class
+  result), and so is the M3 engine wave — casting timing for every card type, spells
+  targeting at cast with the resolution re-check and counterspells, the effect IR
+  (damage, destroy, life gain/loss, counters, until-end-of-turn pump expiring at
+  cleanup), dies triggers, Auras with their state-based actions, all eight combat
+  keywords, and the replacement pipeline's first real customers (enters tapped, enters
+  with counters). Card data is 32 cards in `data/oracle.json` with printings in
+  `data/sets/{FIX,FIX2}.json`, now authored as ADR 0018 **functional definitions**: a
+  stable `functional_id`, a required `schema_version`, explicit `colors`, and a closed
+  schema that structurally rejects presentation assets (#223, `docs/card-schema.md`).
+- **Server/CLI** (`crates/rune-server`, `rune-cli`): the ADR 0012 lobby is live
+  (explicit rooms, join by id, deck submission + ready gate, session-token reconnect);
+  multi-select requirements are projected into the view; prompt types `option`,
+  `select_from_zone`, and `order` round-trip; deck validation runs in the pre-game gate
+  against the format registry; and `rune-cli --agent` plays a legal, seed-deterministic
+  game to a win. Not yet: the **generated fallback rules text** (#194) — `CardView`
+  still carries the hand-authored `oracle_text` string that ADR 0018 §7 replaces.
+- **Web client** (`clients/web`): connection screen, lobby UI, battlefield/hand/tiles
+  rendering, targeting, the stack panel, the game-over overlay, multi-select UX
+  (combat declarations, mulligan bottoming), and the prompt UX for the new prompt
+  types.
+- **e2e** (ADR 0011): the mock-WS tier, the real-`rune-server` smoke tier, and a
+  scripted full-game run all exist as specs under `clients/web/e2e/`.
+- **Docs**: ADRs 0001–0018 accepted; `protocol.md` covers the lobby and game phases;
+  the authored card schema is `docs/card-schema.md`; `rules-coverage.md` is live and
   enforced by the definition of done.
 
 ## Milestones
@@ -157,32 +158,57 @@ the client/e2e wave is filed and open.
 
 ### M3 — A real card pool
 
-**Outcome:** you can build different decks from a starter set and they play
-differently. The card-identity/printing model from ADR 0013 is implemented
-(oracle card vs printing, set files; a reprint in a second set requires zero
-logic changes — the model is designed to be compatible with real Scryfall-style
-oracle data, while card images, frames, and WotC branding stay forbidden). A
-legal-safe invented starter set (~100–150 cards) ships. The effect IR grows to
-cover it: damage, destroy, counters placement, pump, counterspells; instants,
-sorceries, auras, artifacts; ETB/dies triggers; core keywords. Spells can
-target (extending ADR 0009 beyond abilities); the replacement-effect pipeline
-gets its first real customers; deck validation runs against a format config;
-prompt types `option`, `select_from_zone`, `order` land; a rule-based CLI
-agent plays legally to a win.
+**Outcome:** you can build different decks from **real** cards and they play
+differently — and the card model scales past the slice they come from. Cards are
+authored as structured **functional definitions** ([ADR 0018](decisions/0018-scalable-functional-card-definitions.md)):
+one per card, under a stable `functional_id`, versioned by `schema_version`, holding
+only what the engine executes. The rules text a player reads is **generated by the
+server** from that definition, so no prose is stored and what is displayed cannot
+drift from what the card does. ADR 0013's oracle-vs-printing split stands underneath
+(a reprint is one printing record and zero rules-logic changes). The effect IR covers
+the cards in scope: damage, destroy, counters placement, pump, counterspells;
+instants, sorceries, auras, artifacts; ETB/dies triggers; core keywords. Spells can
+target (extending ADR 0009 beyond abilities); the replacement-effect pipeline gets its
+first real customers; deck validation runs against a format config; prompt types
+`option`, `select_from_zone`, `order` land; a rule-based CLI agent plays legally to a
+win.
+
+What ships as content is a **human-approved compatibility slice of real cards**, every
+card in it verified — not an invented set (that plan is retired: #160 is superseded by
+#191, not completed), and never a claim that a full set is supported. **Support is
+claimed for the slice.** A selected set counts as complete only when every card in it
+is verified; short of that, the project says "these cards work," names the excluded
+ones, and says why.
+
+**Not in this milestone, and not implied by it:** exact Oracle text, flavor text, and
+official images/frames/branding are **not bundled** — the schema rejects them
+structurally, not by review — and the no-card-images/no-official-frames hard rule
+(`AGENTS.md`, `docs/brief.md` Legal Considerations) stays in force until an explicit
+future decision changes it. A future *client-local* cache that enriches a card with
+exact text or art is recorded as a coarse deferred capability only (ADR 0018 §9);
+nothing in this milestone builds, promises, or depends on it, and the server and
+engine never fetch, store, or require such data.
 
 **Exit criteria:**
 
-- [ ] ADR 0013 implemented: `data/oracle.json` + `data/sets/<SET>.json` with a
-      static embed manifest and a printing lookup; the six fixtures migrated;
-      a CI test proves adding a reprint to a second set file changes zero
-      rules logic. (#146; exercised on real content by #160)
+- [ ] The card model is ADR 0013's oracle/printing split with ADR 0018's functional
+      definitions on top: a stable `FunctionalId`, a versioned schema that rejects
+      presentation assets, printings that reference cards by that identity (#146,
+      #223), and a catalog sharded one file per card behind a generated manifest
+      (#193). A CI test proves adding a reprint to a second set file changes zero
+      rules logic; the authored schema is documented in
+      [`docs/card-schema.md`](card-schema.md).
+- [ ] The server **generates** deterministic fallback rules text from the functional
+      definition, with compiler-enforced coverage of the IR, and projects it on
+      `CardView` alongside the stable `functional_id` presentation identity — with no
+      authored prose left anywhere in the catalog. (#194)
 - [ ] Every card type casts with correct timing: instants at instant speed,
       sorceries/artifacts/enchantments/creatures at sorcery speed
       (CR 117.1a, 304.1, 307.1). (#147)
 - [ ] Spells target at cast (CR 601.2c) with the existing resolution re-check
       and fizzle (CR 608.2b), including stack-object targets — a counterspell
       (CR 701.5) works end to end. (#148)
-- [ ] The effect IR covers the starter set: `DealDamage`, `Destroy`,
+- [ ] The effect IR covers the cards in scope: `DealDamage`, `Destroy`,
       `GainLife`/`LoseLife`, `PutCounters` (#149); until-end-of-turn pump
       expiring at cleanup per CR 514.2 (#150); `CounterSpell` (#148).
 - [ ] Triggers grow beyond ETB: dies triggers fire from every death path
@@ -204,9 +230,16 @@ agent plays legally to a win.
 - [ ] `rune-cli --agent` plays a legal, seed-deterministic full game to a win
       with a rule-based policy — never submitting an id the view didn't
       offer. (#159)
-- [ ] The starter set ships: ~100–150 invented oracle cards across two set
-      files with at least one reprint and ≥4 preconstructed decks; two
-      different starter decks play a complete, correct game. (#160)
+- [ ] A human-approved **real-card compatibility slice** is playable (#195): the slice,
+      its selection rationale, and its explicit non-goals are approved; every committed
+      card is expressed in the versioned schema or a reviewed scripted exception; a
+      deterministic compatibility report names every excluded card and the mechanic or
+      engine capability blocking it; and two approved decks built only from the
+      supported slice play a complete, correct game. No full-set support is claimed
+      unless every card in that set passes.
+- [ ] No exact Oracle text, flavor text, official image, frame, watermark, or artist
+      credit is committed anywhere — enforced by the schema, not by review. (#191,
+      #223)
 - [ ] `docs/rules-coverage.md` covers every CR section named above.
 
 **Features (PR-sized, dependency order):**
@@ -227,7 +260,12 @@ agent plays legally to a win.
 | Client prompt UX for the new prompt types | client | #157 | #156, #143 |
 | Format registry + deck validation in the pre-game gate | server | #158 | — |
 | Rule-based CLI agent plays to a win | cli | #159 | #156 |
-| Invented starter set + preconstructed decks | engine | #160 | #146–#155 |
+| ADR 0018: functional card definitions + generated rules text | engine, protocol, server | #191 ✅ | #146 |
+| Engine: `FunctionalId`, `schema_version`, tightened card schema | engine | #223 ✅ | #191 |
+| Engine: shard the catalog into per-card files + generated manifest | engine | #193 | #223 |
+| Protocol/server: generated `rules_text` + `functional_id` on `CardView` | protocol, server, client | #194 | #223 |
+| First real-card compatibility slice (tracking) | engine, server, client | #195 | #193, #194 |
+| ~~Invented starter set + preconstructed decks~~ | engine | #160 — **superseded** by #191, closed unimplemented; replaced by #223 → #193 → #194 → #195 | — |
 
 ### M4 — Readable games
 
@@ -272,14 +310,18 @@ deck builder, monetization.
 - **Issues are the queue** (see [`agents/workflow.md`](agents/workflow.md)):
   roadmap features become `agent-task` issues with `area:*` labels;
   `status:ready` means unblocked, `status:blocked` names the blocker.
-- The open queue right now: **#140–#145** finish M1/M2 (server projection,
-  client game-over/stack/multi-select, the two e2e tiers), and **#146–#160**
-  are the full M3 breakdown. M4+ milestones get issues when they come into
-  range.
-- The tracks stay parallel and mostly disjoint: client (#141 → #142/#143 →
-  #157), server/protocol (#140 → #156 → #158), engine (#146–#155 in the
-  table's dependency order), with content (#160) and the agent (#159) closing
-  the milestone.
+- The open queue right now is the **M3 card-data chain** — #193 (shard the catalog)
+  → #194 (generate the rules text and project the presentation identity) → #195
+  (the approved real-card slice, a tracking issue whose children are planned only
+  once #193 and #194 land). Alongside it: the milestone-stewardship tooling wave
+  #224–#228 (ADR 0017) with its first audit #188 in review, and the docs/CI queue
+  (#190, #197–#202). M4+ milestones get issues when they come into range.
+- **Deferred, deliberately unplanned:** a client-local cache that enriches a card with
+  exact Oracle text or official art (ADR 0018 §9). It is recorded here as a coarse
+  capability so it is not re-litigated, not as work in any milestone — it would need
+  its own decision, and the no-card-images/no-official-frames hard rule holds until
+  one is made.
 - When a milestone's exit criteria pass, tick them here, reconcile against
-  GitHub (update the "last reconciled" date), and break the next milestone
-  into issues.
+  GitHub (update the "last reconciled" date and the audited `main` SHA), and break the
+  next milestone into issues. **Criterion-level status comes from the structured audit
+  (#188, ADR 0017) — executable evidence per criterion, not issue closure.**

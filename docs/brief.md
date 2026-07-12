@@ -240,6 +240,12 @@ Cards are procedurally rendered from card data. No image downloads. Benefits:
 - Set symbol
 - Everything visible on the physical card
 
+> **Shipped:** the rules text a card shows — here, in the popover, and at minimum
+> board size — is the **server-generated** text of
+> [ADR 0018](decisions/0018-scalable-functional-card-definitions.md) §7, derived from
+> the card's functional definition. It is not exact Oracle text, which is bundled
+> nowhere in the repository, and no set symbol or other official asset is rendered.
+
 **Color identity fills:**
 - White: `#F9FAF4`, Blue: `#0E68AB`, Black: `#150B00`
 - Red: `#D3202A`, Green: `#00733E`, Gold (multicolor): gradient
