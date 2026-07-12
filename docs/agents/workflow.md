@@ -110,6 +110,19 @@ diffs, logs, environment values, or secrets.
 a PR opens, its checks have not run yet — and `claude-review` is **not** a required check, so a
 silently skipped review is indistinguishable from a passing one unless somebody looks.
 
+## Milestone stewardship
+
+When a milestone runs out of `status:ready` issues, its closeout and the next
+milestone's decomposition follow the state machine in
+[ADR 0017](../decisions/0017-milestone-stewardship-cycle.md): deterministic evidence
+collection, an AI audit with an independently reviewed second opinion, a human
+closeout gate, next-milestone-only planning with its own independent review, and a
+human approval gate before any issue is created — reusing the ADR 0016 adapter
+boundary for every AI role and the `agent-runs` branch for the cycle's sanitized
+telemetry. Building the command that runs this cycle is a separate, not-yet-landed
+`agent-task`; until then, milestone reconciliation in `docs/roadmap.md` is done by
+hand, by a human, reading the same evidence this cycle will eventually gather for them.
+
 ## Labels
 
 `agent-task`, `agent` (on PRs), `bug`, `decision`, `dependencies`, `ci-change` (on PRs
