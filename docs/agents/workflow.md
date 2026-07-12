@@ -34,8 +34,18 @@ A losing runner mutates nothing. Every preflight check runs before the first mut
 task that is closed, blocked, dependency-blocked, malformed, or already claimed leaves no
 trace.
 
-Running the provider, verifying, and opening the PR are ADR 0016 slices 2–4 and are not
-implemented yet; today `start` stops once the claim is held.
+After the provider stops, nothing it says is taken on trust. The runner inspects the diff
+itself (no-op, out-of-scope paths, secrets, generated directories, provider-created commits),
+runs the verification gates, rebases onto current `main` and re-verifies, then makes the
+commit, pushes, and opens the **draft PR** — and only then moves the issue to `status:review`.
+
+A diff touching **CI-governance paths** (`.github/workflows/`, `.github/actions/`,
+`.github/rulesets/`, `.github/CODEOWNERS`, `Makefile`, `scripts/bot-*.sh`) is **refused**
+unless the run was started with `--allow-ci`. The bot holds `workflows: write`, so a change
+there can weaken the checks reporting green on that very PR; a permitted one is labelled
+`ci-change` and called out at the top of the PR body.
+
+Run summaries and `resume` are ADR 0016 slice 4 and are not implemented yet.
 
 ## Labels
 

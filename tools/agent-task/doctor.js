@@ -41,9 +41,19 @@ export function diagnose() {
   const appId = process.env.RUNE_BOT_APP_ID || (readable(join(homedir(), ".config", "rune", "app-id")) ? "set" : null);
   const major = Number(process.versions.node.split(".")[0]);
 
+  // A run clone inherits no identity, so the runner passes the author explicitly — but it has
+  // to have one to pass. Better to say so here than to die at `git commit` after a 40-minute run.
+  let identity = "";
+  try {
+    identity = execFileSync("git", ["config", "--get", "user.email"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    identity = "";
+  }
+
   const checks = [
     { name: "node >= 20", ok: major >= 20, detail: process.versions.node, required: true },
     { name: "git", ok: Boolean(which("git")), detail: which("git") || "not found", required: true },
+    { name: "git commit identity", ok: Boolean(identity), detail: identity || "unset — run `git config --global user.email ...`", required: true },
     { name: "gh", ok: Boolean(which("gh")), detail: which("gh") || "not found", required: true },
     { name: "app private key", ok: readable(keyPath), detail: keyPath, required: true },
     { name: "app id", ok: Boolean(appId), detail: appId ? "configured" : "set RUNE_BOT_APP_ID or ~/.config/rune/app-id", required: true },
