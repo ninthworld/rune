@@ -1,6 +1,7 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { AUDIT_BRANCH, observePr, publishSummary } from "./audit.js";
 import { LABELS, PROVIDERS, actor, repoSlug, runsRoot } from "./config.js";
 import { TaskError, claim, release } from "./claim.js";
 import { buildBrief } from "./brief.js";
@@ -11,8 +12,9 @@ import { providerEnv, resolveIsolation, scratchHomeFor } from "./isolation.js";
 import { buildPrBody } from "./prbody.js";
 import { DEFAULT_TIMEOUT_MS, runProvider } from "./provider.js";
 import { commitWork, openDraftPr, pushFromMirror, rebaseOntoMain } from "./publish.js";
-import { activeRunForIssue, isActive, listRuns, loadRun, removeRun, runDir, transition } from "./runs.js";
+import { activeRunForIssue, isActive, listRuns, loadRun, newRunId, removeRun, runDir, saveRun, transition } from "./runs.js";
 import { createWorkspace, ensureMirror } from "./sandbox.js";
+import { buildSummary } from "./summary.js";
 import { GATE_SETS, runGates } from "./verify.js";
 
 const USAGE = `scripts/agent-task — drive one RUNE issue to a reviewable PR (ADR 0016)
@@ -20,14 +22,19 @@ const USAGE = `scripts/agent-task — drive one RUNE issue to a reviewable PR (A
   start <issue> --provider <${PROVIDERS.join("|")}> [--allow-ci] [--timeout 45m]
                 [--gates verify|check] [--unsafe-same-uid]
                           claim, run the provider, verify, and open a draft PR
+  resume <issue> [--rerun-provider] [--allow-ci]
+                          re-enter a failed run; the claim and the work are still there
+  report <issue|run-id>   re-observe the PR and whether the ADR 0015 review actually ran,
+                          and publish a superseding run summary
   status [<issue>|<run-id>]  show lifecycle state
-  list                    active and recent runs
+  list                    active and recent runs (⚠️ STALE marks an abandoned claim)
   release <issue> [--force]  drop the claim; --force takes over a stale one
   cleanup [<issue>|--all]    remove finished run directories
   doctor                  check this machine can run agent tasks
 
 The runner performs every GitHub mutation as \`rune-agent[bot]\`. It never approves and
-never merges: a successful run ends at an open, human-reviewable PR.`;
+never merges: a successful run ends at an open, human-reviewable PR.
+Sanitized run summaries are published to the \`${AUDIT_BRANCH}\` branch (append-only).`;
 
 function parseArgs(argv) {
   const positional = [];
@@ -59,8 +66,22 @@ function issueArg(positional, command) {
   return number;
 }
 
+/**
+ * A claim whose run stopped heartbeating.
+ *
+ * The machine that made the claim may have been closed, killed, or rebooted; nothing on GitHub
+ * expires. A stale claim is surfaced rather than reclaimed automatically — taking a claim over
+ * is `release --force`, and that is a human's call (ADR 0016).
+ */
+const STALE_AFTER_MS = 4 * 60 * 60 * 1000;
+
+export function isStale(run, now = Date.now()) {
+  return isActive(run) && now - Date.parse(run.updated_at ?? run.created_at) > STALE_AFTER_MS;
+}
+
 function describe(run) {
-  return `${run.run_id}  #${run.issue}  ${run.state.padEnd(10)}  ${run.provider.padEnd(6)}  ${run.title}`;
+  const stale = isStale(run) ? "  ⚠️ STALE" : "";
+  return `${run.run_id}  #${run.issue}  ${run.state.padEnd(14)}  ${run.provider.padEnd(6)}  ${run.title}${stale}`;
 }
 
 function parseTimeout(value) {
@@ -132,13 +153,33 @@ async function cmdStart({ positional, flags }) {
 
   if (result.outcome !== "implemented") {
     // The claim, the branch, and the diff all survive: a failed run is resumable, not lost.
-    throw new TaskError(
-      `provider did not finish (${run.state}). Logs: ${join(dir, "logs", "provider.log")}\n` +
-        `The claim is held — inspect ${workspace}, then re-run or release #${number}.`,
-    );
+    await stop({ gh, run, issue, root }, `provider did not finish (${run.state}). Logs: ${join(dir, "logs", "provider.log")}\nResume with: scripts/agent-task resume ${number}`);
   }
 
   await publishRun({ gh, run, issue, workspace, isolation, root, number });
+}
+
+/**
+ * Ends a run at a failure: record it, publish the summary, and say what to do next.
+ *
+ * The claim, the branch, and the work all survive — a failed run is resumable, not lost — but
+ * it is *terminal for this attempt*, and #200 only sees runs that end. A run that dies without
+ * a summary is a run that never happened as far as the report is concerned, which is exactly
+ * how "our agents mostly work" becomes an unfalsifiable claim.
+ */
+async function stop({ gh, run, issue, root }, message) {
+  await recordSummary(gh, run, { issue });
+  throw new TaskError(message);
+}
+
+/** Telemetry must never be the reason a run fails: a summary that cannot be published warns. */
+async function recordSummary(gh, run, { issue, pr = null, review = null }) {
+  try {
+    const record = await publishSummary(gh, buildSummary(run, { issue, pr, review }));
+    process.stdout.write(`summary: ${AUDIT_BRANCH}:${record.path}\n`);
+  } catch (err) {
+    process.stderr.write(`warning: could not publish the run summary (${err.message})\n`);
+  }
 }
 
 /**
@@ -153,10 +194,12 @@ async function publishRun({ gh, run: claimed, issue, workspace, isolation, root,
   const env = providerEnv({ provider: run.provider, workspace, run, root, scratchHome: join(dir, "home") });
 
   const found = inspect(workspace, { allowCi: run.allow_ci, baseSha: run.base_sha });
+  run = { ...run, files: found.files, ci_paths: found.ciPaths };
   if (!found.ok) {
     const first = found.violations[0];
-    run = transition({ ...run, violations: found.violations }, first.outcome, root);
-    throw new TaskError(
+    run = transition(run, first.outcome, root);
+    await stop(
+      { gh, run, issue, root },
       `${first.outcome}: ${found.violations.map((v) => v.detail).join("\n")}\n\n` +
         `The work is preserved in ${workspace} and the claim is held.`,
     );
@@ -165,28 +208,36 @@ async function publishRun({ gh, run: claimed, issue, workspace, isolation, root,
 
   commitWork(workspace, { issue });
 
-  const set = flagsGateSet(run);
+  const set = run.gate_set ?? "verify";
   process.stdout.write(`verifying (${set})…\n`);
   let verification = await runGates({ run, workspace, isolation, root, env, set });
   if (!verification.ok) {
     const failed = verification.gates.find((g) => !g.ok);
     run = transition({ ...run, gates: verification.gates }, "verification_failed", root);
-    throw new TaskError(
+    await stop(
+      { gh, run, issue, root },
       `verification failed at gate ${failed.gate}. Logs: ${join(dir, "logs", "verify.log")}\n` +
-        `The claim is held — fix it in ${workspace}, or release #${number}.`,
+        `Fix it in ${workspace} and \`resume ${number}\`, or release the claim.`,
     );
   }
 
   // `main` requires branches to be up to date, and a run takes long enough to go stale.
-  const rebase = rebaseOntoMain(workspace);
+  let rebase;
+  try {
+    rebase = rebaseOntoMain(workspace);
+  } catch (err) {
+    run = transition(run, err.outcome ?? "rebase_conflict", root);
+    await stop({ gh, run, issue, root }, `${err.message}\nResolve it in ${workspace} and \`resume ${number}\`.`);
+  }
   if (rebase.moved) {
     process.stdout.write("main moved — rebased; re-verifying against the new base…\n");
     verification = await runGates({ run, workspace, isolation, root, env, set });
     if (!verification.ok) {
       run = transition({ ...run, gates: verification.gates }, "verification_failed", root);
-      throw new TaskError("verification failed after rebasing onto current main — the change conflicts semantically with new work on main.");
+      await stop({ gh, run, issue, root }, "verification failed after rebasing onto current main — the change conflicts semantically with new work on main.");
     }
   }
+  run = { ...run, gates: verification.gates, head_sha: rebase.head };
 
   const remoteSha = await gh.branchSha(run.branch);
   pushFromMirror({ workspace, branch: run.branch, remoteSha });
@@ -208,13 +259,106 @@ async function publishRun({ gh, run: claimed, issue, workspace, isolation, root,
   await gh.removeLabel(number, LABELS.inProgress);
   await gh.addLabels(number, [LABELS.review]);
 
-  run = transition({ ...run, gates: verification.gates, pr: pr.number, pr_url: pr.url }, "review", root);
+  run = transition({ ...run, pr: pr.number, pr_url: pr.url }, "review", root);
   process.stdout.write(`\ndraft PR opened: ${pr.url}\n#${number} is now ${LABELS.review}. A human reviews and merges — always.\n`);
+
+  // The ADR 0015 review has not run yet — it was triggered by the push a moment ago. The summary
+  // records that it has not been observed; `report` supersedes it once there is something to see.
+  await recordSummary(gh, run, { issue, pr: { number: pr.number, author: null, draft: true } });
+  process.stdout.write(`Once CI settles, record what actually ran:  scripts/agent-task report ${number}\n`);
 }
 
-/** `--gates check` trades the full required surface for a fast loop; the default is the whole thing. */
-function flagsGateSet(run) {
-  return run.gate_set ?? "verify";
+/**
+ * Re-enters a failed run.
+ *
+ * The claim, the branch, and the workspace are all still there, so resuming picks up whatever is
+ * in the working copy *now* — which may be what the provider left, or what a human fixed by hand
+ * after reading the gate output. `--rerun-provider` hands it back to the provider first.
+ *
+ * Resumption is recorded (`resume_of`), so #200 can tell "worked first time" from "worked on the
+ * third attempt" instead of counting both as a success.
+ */
+async function cmdResume({ positional, flags }) {
+  const number = issueArg(positional, "resume");
+  const root = runsRoot();
+  const previous = activeRunForIssue(number, root);
+
+  if (!previous) throw new TaskError(`#${number} has no active run on this machine to resume.`);
+  if (previous.state === "review") throw new TaskError(`#${number} already has a PR (${previous.pr_url}). Nothing to resume.`);
+  if (!existsSync(previous.workspace ?? "")) {
+    throw new TaskError(`the workspace for run ${previous.run_id} is gone (${previous.workspace}).\nRelease #${number} and start again.`);
+  }
+
+  const gh = connect();
+  const issue = await gh.issue(number);
+  const isolation = resolveIsolation({ unsafeSameUid: flags["unsafe-same-uid"] === true });
+
+  let run = saveRun(
+    {
+      ...previous,
+      run_id: newRunId(number),
+      resume_of: previous.run_id,
+      // A ci_change_refused run is resumed *with* the flag, or it is refused again.
+      allow_ci: flags["allow-ci"] === true || previous.allow_ci,
+      state: "implementing",
+      events: [...(previous.events ?? []), { state: "resumed", at: new Date().toISOString() }],
+    },
+    root,
+  );
+  // The old run is closed out so nothing thinks two runs hold the same claim.
+  transition(previous, "resumed", root);
+  process.stdout.write(`resuming #${number} as ${run.run_id} (was ${previous.run_id}, ${previous.state})\n`);
+
+  if (flags["rerun-provider"] === true) {
+    const dir = runDir(run.run_id, root);
+    mkdirSync(join(dir, "logs"), { recursive: true });
+    scratchHomeFor(run, root);
+    const brief = buildBrief({ issue, run });
+    writeFileSync(join(dir, "brief.md"), brief);
+
+    const result = await runProvider({ run, workspace: run.workspace, isolation, root, brief, timeoutMs: parseTimeout(flags.timeout) });
+    run = transition({ ...run, ...result }, result.outcome, root);
+    if (result.outcome !== "implemented") {
+      await stop({ gh, run, issue, root }, `provider did not finish again (${run.state}).`);
+    }
+  }
+
+  await publishRun({ gh, run, issue, workspace: run.workspace, isolation, root, number });
+}
+
+/**
+ * Re-observes a finished run and publishes a superseding summary.
+ *
+ * At the moment the PR opens, CI has not run yet — so the first summary cannot know who authored
+ * the PR or whether the ADR 0015 review actually happened. Rather than guess, or block the run
+ * waiting for CI, the correction mechanism does the job it exists for.
+ */
+async function cmdReport({ positional }) {
+  const key = positional[0];
+  if (!key) throw new TaskError("report needs an issue number or a run id");
+
+  const root = runsRoot();
+  const run = loadRun(key, root) ?? activeRunForIssue(Number(key), root) ?? listRuns(root).find((r) => r.issue === Number(key) && r.pr);
+  if (!run) throw new TaskError(`no run found for ${key}`);
+  if (!run.pr) throw new TaskError(`run ${run.run_id} never opened a PR — there is nothing further to observe.`);
+
+  const gh = connect();
+  const observed = await observePr(gh, run.pr);
+  const issue = await gh.issue(run.issue);
+
+  const summary = buildSummary({ ...run, supersedes: run.run_id }, { issue, pr: observed.pr, review: observed.review });
+  const record = await publishSummary(gh, summary);
+
+  process.stdout.write(
+    [
+      `PR #${observed.pr.number} by ${observed.pr.author}${observed.pr.draft ? " (draft)" : ""}`,
+      observed.review.ran
+        ? `ADR 0015 review: ran, ${observed.review.conclusion}`
+        : "ADR 0015 review: DID NOT RUN — it is not a required check, so nothing else would have told you",
+      `summary: ${AUDIT_BRANCH}:${record.path} (supersedes ${run.run_id})`,
+      "",
+    ].join("\n"),
+  );
 }
 
 async function cmdRelease({ positional, flags }) {
@@ -285,6 +429,8 @@ function cmdDoctor() {
 
 const COMMANDS = {
   start: cmdStart,
+  resume: cmdResume,
+  report: cmdReport,
   status: cmdStatus,
   list: cmdList,
   release: cmdRelease,

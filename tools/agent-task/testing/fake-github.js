@@ -6,13 +6,19 @@
  * that only stubbed `GitHub.createBranch` would happily pass while the runner labelled an
  * issue it never claimed.
  */
-export function fakeGitHub({ issues = {}, refs = { "heads/main": "base000" }, aheadBy = {} } = {}) {
+export function fakeGitHub({ issues = {}, refs = { "heads/main": "base000" }, aheadBy = {}, pulls = {}, checkRuns = {} } = {}) {
   const state = {
     issues: structuredClone(issues),
     refs: { ...refs },
     aheadBy: { ...aheadBy },
+    pulls: structuredClone(pulls),
+    checkRuns: structuredClone(checkRuns),
     comments: [],
     calls: [],
+    // The git object store, so audit-branch writes can be asserted as real commits.
+    blobs: {},
+    trees: {},
+    commits: {},
   };
 
   // 204 must carry no body at all — `new Response("", {status: 204})` throws.
@@ -67,6 +73,50 @@ export function fakeGitHub({ issues = {}, refs = { "heads/main": "base000" }, ah
     }
     if ((m = /^\/compare\/main\.\.\.(.+)$/.exec(path)) && method === "GET") {
       return json(200, { ahead_by: state.aheadBy[decodeURIComponent(m[1])] || 0 });
+    }
+    if ((m = /^\/pulls\/(\d+)$/.exec(path)) && method === "GET") {
+      const pull = state.pulls[m[1]];
+      return pull ? json(200, pull) : json(404, { message: "Not Found" });
+    }
+    if ((m = /^\/commits\/(.+)\/check-runs$/.exec(path)) && method === "GET") {
+      return json(200, { check_runs: state.checkRuns[m[1]] ?? [] });
+    }
+
+    // The Git Data API the audit branch is written through.
+    if (path === "/git/blobs" && method === "POST") {
+      const sha = `blob${Object.keys(state.blobs).length}`;
+      state.blobs[sha] = body.content;
+      return json(201, { sha });
+    }
+    if (path === "/git/trees" && method === "POST") {
+      const sha = `tree${Object.keys(state.trees).length}`;
+      const base = body.base_tree ? state.trees[body.base_tree] : {};
+      state.trees[sha] = { ...base };
+      for (const entry of body.tree) state.trees[sha][entry.path] = entry.sha;
+      return json(201, { sha });
+    }
+    if (path === "/git/commits" && method === "POST") {
+      const sha = `commit${Object.keys(state.commits).length}`;
+      state.commits[sha] = { tree: body.tree, parents: body.parents, message: body.message };
+      return json(201, { sha });
+    }
+    if ((m = /^\/git\/commits\/(.+)$/.exec(path)) && method === "GET") {
+      const commit = state.commits[m[1]];
+      return commit ? json(200, { sha: m[1], tree: { sha: commit.tree }, parents: commit.parents }) : json(404, {});
+    }
+    if ((m = /^\/git\/refs\/(.+)$/.exec(path)) && method === "PATCH") {
+      const ref = decodeURIComponent(m[1]);
+      if (state.onRefUpdate?.(ref)) return json(422, { message: "Update is not a fast forward" });
+      // GitHub rejects a non-fast-forward update when `force` is false. The fake must too: a
+      // lenient fake would let a concurrent write silently clobber another run's record, which is
+      // precisely the bug the retry exists to prevent.
+      const current = state.refs[ref];
+      const parents = state.commits[body.sha]?.parents ?? [];
+      if (current && !body.force && !parents.includes(current)) {
+        return json(422, { message: "Update is not a fast forward" });
+      }
+      state.refs[ref] = body.sha;
+      return json(200, { object: { sha: body.sha } });
     }
     return json(404, { message: `fake-github: unrouted ${method} ${path}` });
   };

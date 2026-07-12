@@ -56,6 +56,26 @@ export function transition(run, state, root = runsRoot()) {
   return saveRun({ ...run, state, events: [...(run.events || []), { state, at }] }, root);
 }
 
+/**
+ * Keeps `updated_at` fresh while something long is running.
+ *
+ * Staleness is what tells a human that a claim was abandoned — a machine that was closed, killed,
+ * or rebooted leaves the branch and the labels behind, and nothing on GitHub expires. Without a
+ * heartbeat, a legitimately long provider run would look abandoned; with one, only an actually
+ * dead run does.
+ */
+export function heartbeat(run, root = runsRoot(), intervalMs = 60_000) {
+  const timer = setInterval(() => {
+    try {
+      saveRun(run, root);
+    } catch {
+      // A run directory that vanished mid-run is not worth crashing the run over.
+    }
+  }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
 export function loadRun(runId, root = runsRoot()) {
   try {
     return JSON.parse(readFileSync(join(runDir(runId, root), "run.json"), "utf8"));
