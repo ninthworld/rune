@@ -86,7 +86,18 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         StackObjectKind::Ability { effects, .. } => effects.clone(),
         StackObjectKind::Spell { card } => spell_effects_of(db, card.card),
     };
-    let specs: Vec<TargetSpec> = effects.iter().filter_map(Effect::target_spec).collect();
+    // The specs the stored targets were chosen for (CR 601.2c), in slot order.
+    // An ability's specs come from its effects; a spell's include any spell-effect
+    // targets **and** an Aura's enchant restriction (CR 303.4a), which is chosen as
+    // a target at cast though it produces no `Effect` — so a fizzled Aura target is
+    // re-checked on the same path as any other (CR 608.2b).
+    let specs: Vec<TargetSpec> = match &object.kind {
+        StackObjectKind::Ability { .. } => effects.iter().filter_map(Effect::target_spec).collect(),
+        StackObjectKind::Spell { card } => db
+            .card(card.card)
+            .map(CardData::cast_target_specs)
+            .unwrap_or_default(),
+    };
 
     // CR 608.2b: if the object chose targets and *every* one is now illegal, it
     // is removed from the stack without resolving — none of its effects occur. A
@@ -122,6 +133,18 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         if db.card(card.card).is_some_and(CardData::is_permanent) {
             let id = state.mint_id();
             let entered_turn = state.turn;
+            // An Aura enters attached to the object its enchant ability chose
+            // (CR 303.4d). That target was picked at cast (CR 601.2c) and re-checked
+            // just above (CR 608.2b), so an already-illegal one has fizzled and only
+            // a legal host remains; a non-Aura permanent enters attached to nothing.
+            let attached_to = if db.card(card.card).is_some_and(|c| c.aura.is_some()) {
+                object.targets.iter().find_map(|t| match t {
+                    crate::ability::Target::Permanent(host) => Some(*host),
+                    _ => None,
+                })
+            } else {
+                None
+            };
             state.battlefield.push(Permanent {
                 id: PermanentId(id),
                 instance: card.id,
@@ -133,6 +156,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
                 blocking: None,
                 damage: 0,
                 counters: Default::default(),
+                attached_to,
             });
         } else if let Some(player) = state.players.get_mut(object.controller.0) {
             player.graveyard.push(card);
@@ -278,6 +302,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         PermanentId(id)
     }
@@ -491,6 +516,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         assert!(!target_is_legal(
             TargetSpec::AnyTarget,
@@ -539,5 +565,92 @@ mod tests {
 
         let perm = state.battlefield.iter().find(|p| p.id == creature).unwrap();
         assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 1);
+    }
+
+    // ----- Auras: enchant, attachment, and fizzle (issue #152) -----
+    //
+    // Fixture oracle ids: 29 Ironbark Aegis ({1}{G} Aura, "+2/+2, enchant
+    // creature"), 6 Verdant Scout (1/1 creature).
+    const AURA_BUFF: CardId = CardId(29);
+
+    #[test]
+    fn issue_152_aura_resolves_attached_to_its_target_and_boosts_it_cr_303_4d() {
+        // CR 303.4d: a resolving Aura enters the battlefield attached to the object
+        // its enchant ability chose, and its +2/+2 grant folds into the host's
+        // current P/T (CR 613.7c). Verdant Scout is a printed 1/1 -> 3/3 enchanted.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let host = creature_on_battlefield(&mut state); // Verdant Scout, 1/1
+        let aura = state.new_instance(AURA_BUFF);
+        state.players[0].hand = vec![aura];
+        state.players[0].mana_pool.add(Color::Green, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: aura,
+                targets: vec![Target::Permanent(host)],
+            },
+            &db,
+        );
+        // Both players pass: the Aura resolves onto the battlefield attached.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+
+        let aura_perm = state
+            .battlefield
+            .iter()
+            .find(|p| p.card == AURA_BUFF)
+            .unwrap();
+        assert_eq!(
+            aura_perm.attached_to,
+            Some(host),
+            "the Aura entered attached to its cast-time target (CR 303.4d)"
+        );
+        let ch = characteristics(&state, host, &db);
+        assert_eq!(ch.power, Some(3), "printed 1 + Aura's +2");
+        assert_eq!(ch.toughness, Some(3));
+    }
+
+    #[test]
+    fn issue_152_aura_fizzles_when_its_target_left_before_resolution_cr_608_2b() {
+        // CR 608.2b: with its only target (the enchant object) now illegal, the Aura
+        // spell is removed from the stack without resolving — it never enters the
+        // battlefield, and (a card that failed to resolve) goes to the graveyard.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let host = creature_on_battlefield(&mut state);
+        let aura = state.new_instance(AURA_BUFF);
+        state.players[0].hand = vec![aura];
+        state.players[0].mana_pool.add(Color::Green, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        let mut state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: aura,
+                targets: vec![Target::Permanent(host)],
+            },
+            &db,
+        );
+        // The chosen host is killed in response, before the Aura resolves.
+        state.battlefield.retain(|p| p.id != host);
+
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+
+        assert!(state.stack.is_empty());
+        assert!(
+            !state.battlefield.iter().any(|p| p.card == AURA_BUFF),
+            "a fizzled Aura never enters the battlefield (CR 608.2b)"
+        );
+        assert!(
+            state.players[0].graveyard.iter().any(|c| c.id == aura.id),
+            "the fizzled Aura spell goes to its owner's graveyard"
+        );
     }
 }

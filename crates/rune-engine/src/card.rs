@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::ability::{Ability, Effect};
+use crate::ability::{Ability, Effect, TargetSpec};
 use crate::card_type::{CardType, Supertype};
 use crate::id::{CardId, OracleId};
 use crate::scripted::scripted_abilities;
@@ -88,6 +88,38 @@ pub enum Keyword {
     Lifelink,
 }
 
+/// The enchant ability and static power/toughness grant of an Aura (CR 303.4).
+///
+/// An Aura is an Enchantment that enters the battlefield attached to another
+/// object (CR 303.4). This value bundles the two things the engine needs to model
+/// one at the scope of issue #152: its **enchant restriction** (CR 303.4a) — the
+/// [`TargetSpec`] the Aura chooses a target for as it is cast (CR 601.2c) and the
+/// class of object it may legally stay attached to — and the continuous
+/// power/toughness modification it applies to that object at CR 613 layer 7c.
+///
+/// The modification is stored as raw signed printed data; the *contribution* to a
+/// host's current P/T is derived on demand from the attachment via
+/// [`characteristics`](crate::characteristics::characteristics), never stored
+/// (ADR 0010). Only P/T-granting, enchant-creature Auras are modeled here;
+/// keyword-granting Auras, enchant-player/land, and Aura movement are out of scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub struct AuraGrant {
+    /// The enchant restriction (CR 303.4a): what this Aura may be attached to,
+    /// expressed as the [`TargetSpec`] a target is chosen for at cast (CR 601.2c)
+    /// and re-checked by the CR 704.5m state-based action while it stays attached.
+    pub enchant: TargetSpec,
+    /// The signed amount this Aura adds to the enchanted object's power at CR 613
+    /// layer 7c. Negative shrinks (e.g. a `-2/-2` Aura). Defaults to `0`.
+    #[serde(default)]
+    pub power: i32,
+    /// The signed amount this Aura adds to the enchanted object's toughness at CR
+    /// 613 layer 7c. Negative shrinks — enough can drop toughness to 0 or less and
+    /// let the CR 704.5f state-based action put the host into its graveyard.
+    /// Defaults to `0`.
+    #[serde(default)]
+    pub toughness: i32,
+}
+
 /// The static, printing-independent characteristics of a card.
 ///
 /// This is the immutable "oracle" data the engine reasons about today. It holds
@@ -133,6 +165,13 @@ pub struct CardData {
     /// is cast (CR 601.2c); read them with [`spell_effects_of`].
     #[serde(default)]
     pub spell_effects: Vec<Effect>,
+    /// The Aura ability of an Aura card (CR 303.4): its enchant restriction and
+    /// static power/toughness grant. `None` for every non-Aura card. When present,
+    /// the card is castable only with a legal enchant target (CR 303.4c/601.2c),
+    /// enters attached to that target (CR 303.4d), and contributes its P/T grant to
+    /// the host while attached (CR 613.7c) — see [`AuraGrant`].
+    #[serde(default)]
+    pub aura: Option<AuraGrant>,
     /// The card's printed keyword abilities (CR 702), e.g. flying or haste. Empty
     /// for a card with none. Read with [`CardData::has_keyword`]; the combat and
     /// summoning-sickness code consults these directly, since keyword-granting
@@ -188,6 +227,23 @@ impl CardData {
     #[must_use]
     pub fn has_subtype(&self, subtype: &str) -> bool {
         self.subtypes.iter().any(|s| s == subtype)
+    }
+
+    /// The ordered [`TargetSpec`]s a player chooses a target for when **casting**
+    /// this card as a spell (CR 601.2c), in slot order.
+    ///
+    /// An Aura contributes its enchant restriction (CR 303.4a) as the first slot —
+    /// the object it will be attached to — and every card contributes the target
+    /// specs of its spell-ability effects ([`Self::spell_effects`]). The two are
+    /// disjoint in practice (an Aura has no spell effects), but both are honored so
+    /// a single accessor drives casting legality ([`crate::valid_actions`]), the
+    /// per-slot candidate enumeration, and the on-resolution fizzle re-check
+    /// (CR 608.2b). Empty for a spell that chooses no targets.
+    #[must_use]
+    pub fn cast_target_specs(&self) -> Vec<TargetSpec> {
+        let mut specs: Vec<TargetSpec> = self.aura.map(|a| a.enchant).into_iter().collect();
+        specs.extend(self.spell_effects.iter().filter_map(Effect::target_spec));
+        specs
     }
 
     /// Whether the card has printed keyword ability `keyword` (CR 702). Reads the
@@ -453,7 +509,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 28);
+        assert_eq!(db.len(), 30);
     }
 
     #[test]
@@ -738,6 +794,46 @@ mod tests {
     }
 
     #[test]
+    fn issue_152_aura_fixtures_carry_their_enchant_and_pt_grant() {
+        // CR 303.4: the two Aura fixtures are Enchantment — Aura cards carrying an
+        // enchant-creature restriction and a static P/T grant. One buffs (+2/+2),
+        // one shrinks (-2/-2); both surface their enchant slot via cast_target_specs.
+        use crate::ability::TargetSpec;
+        let db = CardDatabase::bundled().unwrap();
+
+        let aegis = db.card(CardId(29)).unwrap();
+        assert_eq!(aegis.name, "Ironbark Aegis");
+        assert_eq!(aegis.types, vec![CardType::Enchantment]);
+        assert!(aegis.has_subtype("Aura"));
+        assert_eq!(
+            aegis.aura,
+            Some(AuraGrant {
+                enchant: TargetSpec::AnyCreature,
+                power: 2,
+                toughness: 2,
+            })
+        );
+        // An Aura chooses its enchant target as it is cast (CR 601.2c): one slot.
+        assert_eq!(aegis.cast_target_specs(), vec![TargetSpec::AnyCreature]);
+
+        let curse = db.card(CardId(30)).unwrap();
+        assert_eq!(curse.name, "Witherbrand Curse");
+        assert!(curse.has_subtype("Aura"));
+        assert_eq!(
+            curse.aura,
+            Some(AuraGrant {
+                enchant: TargetSpec::AnyCreature,
+                power: -2,
+                toughness: -2,
+            })
+        );
+
+        // A non-Aura card has no aura ability and no cast target slots.
+        assert!(db.card(CardId(1)).unwrap().aura.is_none());
+        assert!(db.card(CardId(1)).unwrap().cast_target_specs().is_empty());
+    }
+
+    #[test]
     fn all_eight_keyword_variants_deserialize_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
         // four data-only variants keywords II will enforce (CR 702).
@@ -764,8 +860,8 @@ mod tests {
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the twenty-eight fixtures; FIX2 reprints one — twenty-nine printings total.
-        assert_eq!(printings.len(), 29);
+        // FIX prints the thirty fixtures; FIX2 reprints one — thirty-one printings total.
+        assert_eq!(printings.len(), 31);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));

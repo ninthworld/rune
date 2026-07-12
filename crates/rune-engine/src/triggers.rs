@@ -158,6 +158,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         let triggers = collect_triggers(&before, &after, &db);
         assert_eq!(triggers.len(), 1);
@@ -183,6 +184,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: Default::default(),
+            attached_to: None,
         });
         (before, id, instance)
     }

@@ -2,9 +2,11 @@
 //! every action (CR 704). [`crate::apply_action`] calls
 //! [`run_state_based_actions`] as a pipeline stage.
 
+use crate::ability::Target;
 use crate::characteristics::characteristics;
 use crate::id::PermanentId;
 use crate::player::LossReason;
+use crate::resolve::target_is_legal;
 use crate::state::{EffectAffects, GameState, Permanent};
 use crate::CardDatabase;
 
@@ -18,8 +20,15 @@ use crate::CardDatabase;
 /// - **CR 704.5c** — a player who attempted to draw from an empty library since
 ///   the last check loses the game (decking); the attempt is flagged on the
 ///   player by [`crate::Player::draw`] and consumed here.
+/// - **CR 704.5f** — a creature with toughness 0 or less is put into its owner's
+///   graveyard. Unlike CR 704.5g this is not "destruction" (regeneration can't
+///   save it), but it routes through the same leaves-battlefield seam. A `-X/-X`
+///   Aura or `-1/-1` counters that drop current toughness to 0 trigger it.
 /// - **CR 704.5g** — a creature with lethal marked damage (damage ≥ its
 ///   toughness, toughness > 0) is destroyed and put into its owner's graveyard.
+/// - **CR 704.5m** — an Aura attached to an illegal object, or whose host has left
+///   the battlefield, is put into its owner's graveyard.
+/// - **CR 704.5n** — an Aura attached to nothing is put into its owner's graveyard.
 /// - **CR 704.5h** — a creature dealt any nonzero damage this turn by a source
 ///   with deathtouch is destroyed, regardless of whether that damage is lethal by
 ///   toughness. The struck creatures are recorded in
@@ -63,20 +72,43 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
         if !struck.is_empty() {
             changed = true;
         }
-        // CR 704.5g/704.5h: destroy every creature with lethal marked damage or
-        // flagged as struck by deathtouch. Collected before mutating so the whole
-        // set is judged against one snapshot (the checks are simultaneous,
+        // CR 704.5f/704.5g/704.5h: put into the graveyard every creature with 0-or-
+        // less toughness (CR 704.5f), with lethal marked damage (CR 704.5g), or
+        // flagged as struck by deathtouch (CR 704.5h). Collected before mutating so
+        // the whole set is judged against one snapshot (the checks are simultaneous,
         // CR 704.3), then each is moved to its owner's graveyard.
         let doomed: Vec<PermanentId> = state
             .battlefield
             .iter()
-            .filter(|perm| has_lethal_damage(perm, state, db) || struck.contains(&perm.id))
+            .filter(|perm| {
+                has_zero_toughness(perm, state, db)
+                    || has_lethal_damage(perm, state, db)
+                    || struck.contains(&perm.id)
+            })
             .map(|perm| perm.id)
             .collect();
         for id in doomed {
             // Route through the one leaves-battlefield → graveyard seam (CR 700.4)
             // so a lethal-damage / deathtouch death and a `Destroy` death are the
             // same observable zone change for the dies trigger (CR 603.6c).
+            if state.move_permanent_to_graveyard(id) {
+                changed = true;
+            }
+        }
+        // CR 704.5m/704.5n: put into the graveyard every Aura that is illegally
+        // attached — attached to nothing (CR 704.5n) or to an object it can no
+        // longer legally enchant, including a host that has just left the
+        // battlefield above (CR 704.5m). Judged after the creature deaths so a host
+        // dying this same check orphans its Aura; the outer loop re-runs to a fixed
+        // point regardless. The Aura's derived P/T contribution disappears with it —
+        // nothing keyed in `static_effects` to prune (see `characteristics.rs`).
+        let doomed_auras: Vec<PermanentId> = state
+            .battlefield
+            .iter()
+            .filter(|perm| aura_is_illegally_attached(perm, state, db))
+            .map(|perm| perm.id)
+            .collect();
+        for id in doomed_auras {
             if state.move_permanent_to_graveyard(id) {
                 changed = true;
             }
@@ -117,6 +149,32 @@ fn has_lethal_damage(perm: &Permanent, state: &GameState, db: &CardDatabase) -> 
     }
 }
 
+/// Whether `perm` is a creature whose *current* toughness is 0 or less (CR 704.5f).
+/// Current toughness is read through [`characteristics`], so `-1/-1` counters and a
+/// `-X/-X` Aura are folded in — a Boar reduced to 0 toughness by a `-2/-2` Aura is
+/// put into its graveyard even with no marked damage. A non-creature (no toughness)
+/// never qualifies.
+fn has_zero_toughness(perm: &Permanent, state: &GameState, db: &CardDatabase) -> bool {
+    matches!(characteristics(state, perm.id, db).toughness, Some(t) if t <= 0)
+}
+
+/// Whether `perm` is an Aura that is now illegally attached and so must go to its
+/// owner's graveyard (CR 704.5m/n). `false` for a non-Aura permanent.
+///
+/// An Aura is illegal when it is attached to nothing (CR 704.5n) or when its host is
+/// no longer a legal object for its enchant restriction (CR 704.5m) — which
+/// [`target_is_legal`] reports `false` for once the host has left the battlefield or
+/// stopped matching (e.g. a creature Aura on something no longer a creature).
+fn aura_is_illegally_attached(perm: &Permanent, state: &GameState, db: &CardDatabase) -> bool {
+    let Some(grant) = db.card(perm.card).and_then(|card| card.aura) else {
+        return false;
+    };
+    match perm.attached_to {
+        None => true,
+        Some(host) => !target_is_legal(grant.enchant, Target::Permanent(host), state, db),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -154,6 +212,7 @@ mod tests {
             blocking: None,
             damage,
             counters: Default::default(),
+            attached_to: None,
         });
         id
     }
@@ -306,5 +365,111 @@ mod tests {
         let twice = apply_action(&once, &Action::PassPriority, &db);
         assert!(once.players[0].has_lost);
         assert_eq!(once.players[0].has_lost, twice.players[0].has_lost);
+    }
+
+    // ----- Aura state-based actions (issue #152) -----
+    //
+    // Fixtures: 29 Ironbark Aegis (+2/+2 Aura), 30 Witherbrand Curse (-2/-2 Aura),
+    // 1 Thornback Boar (3/2), 6 Verdant Scout (1/1).
+
+    /// Place an Aura of `card` attached to `host` under player 0's control, and
+    /// return its fresh id.
+    fn place_aura(state: &mut GameState, card: CardId, host: PermanentId) -> PermanentId {
+        let id = place(state, card, PlayerId(0), 0);
+        if let Some(aura) = state.battlefield.iter_mut().find(|p| p.id == id) {
+            aura.attached_to = Some(host);
+        }
+        id
+    }
+
+    #[test]
+    fn cr_704_5m_aura_follows_its_host_to_the_graveyard_in_one_fixed_point() {
+        // CR 704.5m: when an Aura's host leaves the battlefield the Aura is put into
+        // its owner's graveyard. Here the host (a 3/2 Boar) dies to lethal marked
+        // damage; the same state-based-actions fixed point moves the host and then
+        // its now-orphaned Aura, and the Aura's +2/+2 modifier is gone.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, CardId(1), PlayerId(0), 4); // 3/2 with 4 damage
+        let aura = place_aura(&mut state, CardId(29), host); // +2/+2
+
+        // Before SBAs the Aura buffs the host to a 5/4; 4 marked damage is lethal.
+        assert_eq!(characteristics(&state, host, &db).toughness, Some(4));
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == host),
+            "the host died to lethal damage (CR 704.5g)"
+        );
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == aura),
+            "the Aura followed its host to the graveyard (CR 704.5m)"
+        );
+        // Both the host and the Aura are now in the graveyard.
+        assert_eq!(state.players[0].graveyard.len(), 2);
+    }
+
+    #[test]
+    fn cr_704_5n_aura_attached_to_nothing_is_put_into_the_graveyard() {
+        // CR 704.5n: an Aura that is not attached to anything (its `attached_to` is
+        // `None`) is put into its owner's graveyard.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let aura = place(&mut state, CardId(29), PlayerId(0), 0); // unattached
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == aura),
+            "an unattached Aura goes to the graveyard (CR 704.5n)"
+        );
+        assert_eq!(state.players[0].graveyard.len(), 1);
+    }
+
+    #[test]
+    fn cr_704_5f_minus_x_aura_reduces_toughness_to_zero_and_kills_the_host() {
+        // CR 704.5f (with CR 613.7c and CR 704.5m): a -2/-2 Aura on a 3/2 Boar drops
+        // its current toughness to 0, so the creature is put into the graveyard as a
+        // state-based action (CR 704.5f — no marked damage, no "destruction"), and
+        // its now-orphaned Aura follows (CR 704.5m) in the same fixed point.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, CardId(1), PlayerId(0), 0); // 3/2, no damage
+        let aura = place_aura(&mut state, CardId(30), host); // -2/-2
+
+        // Current toughness is 2 + (-2) = 0 before the SBA runs.
+        assert_eq!(characteristics(&state, host, &db).toughness, Some(0));
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == host),
+            "a creature at 0 toughness is put into the graveyard (CR 704.5f)"
+        );
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == aura),
+            "the Aura on the dead host follows it (CR 704.5m)"
+        );
+        assert_eq!(state.players[0].graveyard.len(), 2);
+    }
+
+    #[test]
+    fn issue_152_aura_on_a_live_host_is_not_a_state_based_action() {
+        // A legally-attached Aura on a healthy creature is left alone: neither the
+        // host nor the Aura is a state-based action, and the buff persists.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, CardId(6), PlayerId(0), 0); // 1/1 Scout
+        let aura = place_aura(&mut state, CardId(29), host); // +2/+2
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(state.battlefield.iter().any(|p| p.id == host));
+        assert!(state.battlefield.iter().any(|p| p.id == aura));
+        assert_eq!(characteristics(&state, host, &db).power, Some(3));
     }
 }

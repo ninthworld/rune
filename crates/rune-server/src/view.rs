@@ -11,10 +11,11 @@
 //! already depends on, and adds nothing to the wire contract in `rune-protocol`.
 
 use rune_engine::{
-    attacker_candidates, blocker_candidates, bottom_requirement, declared_attackers,
-    target_requirements, valid_actions, Action, Block, CardData, CardDatabase, CardId,
-    CardInstance, CardInstanceId, CounterKind, Effect, GameResult, GameState, Keyword, LossReason,
-    PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    attacker_candidates, blocker_candidates, bottom_requirement, characteristics,
+    declared_attackers, target_requirements, valid_actions, Action, Block, CardData, CardDatabase,
+    CardId, CardInstance, CardInstanceId, CounterKind, Effect, GameResult, GameState, Keyword,
+    LossReason, PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
+    TargetSpec,
 };
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameOverReason, GameResult as GameResultView, GameView,
@@ -158,6 +159,25 @@ fn full_card_view(entity_id: String, data: &CardData) -> CardView {
             .map(|&kw| keyword_str(kw).to_owned())
             .collect(),
     }
+}
+
+/// Build the [`CardView`] for a battlefield permanent, projecting its **current**
+/// power/toughness from the engine's computed [`characteristics`] rather than the
+/// printed card (CR 613 layer 7c). This is what makes counters, until-end-of-turn
+/// pumps, and an attached Aura's P/T grant (CR 303.4) visible on the wire: a Boar
+/// enchanted with a `+2/+2` Aura projects as a 5/4, its host P/T reflecting the
+/// modifier. Every other field is the printed projection ([`card_view`]); a
+/// non-creature keeps its absent P/T.
+fn permanent_card_view(
+    state: &GameState,
+    perm: &rune_engine::Permanent,
+    db: &CardDatabase,
+) -> CardView {
+    let mut view = card_view(permanent_entity_id(perm.id), perm.card, db);
+    let current = characteristics(state, perm.id, db);
+    view.power = current.power.map(|p| p.to_string());
+    view.toughness = current.toughness.map(|t| t.to_string());
+    view
 }
 
 /// A short human description of an ability's effects, for the stack view.
@@ -793,7 +813,9 @@ pub(crate) fn personalized_view(
             // The engine models control but not separate ownership yet, so owner
             // mirrors controller until zone-ownership lands.
             owner: player_id(perm.controller),
-            card: card_view(permanent_entity_id(perm.id), perm.card, db),
+            // Current (computed) characteristics, so counters/pumps/Auras show on
+            // the host's P/T (CR 613.7c), not the printed values.
+            card: permanent_card_view(state, perm, db),
             tapped: perm.tapped,
             // Combat declaration state (CR 508/509): whether this permanent is
             // attacking, and which attacker it is blocking (as an entity id).
@@ -1288,6 +1310,58 @@ mod tests {
         }
     }
 
+    /// A battlefield permanent enchanted with an Aura projects its **current**
+    /// (computed) power/toughness on the wire, so the host's P/T reflects the Aura's
+    /// layer-7c grant (CR 303.4 / 613.7c, issue #152) rather than the printed value.
+    #[test]
+    fn issue_152_aura_boosted_host_projects_current_pt() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+
+        // A 1/1 Verdant Scout (id 6) enchanted with Ironbark Aegis (+2/+2 Aura, 29).
+        let host = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: host,
+            instance: CardInstanceId(0),
+            card: CardId(6),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: None,
+        });
+        let aura = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: aura,
+            instance: CardInstanceId(1),
+            card: CardId(29),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: Some(host),
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let host_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(host))
+            .expect("the enchanted host must appear in the view");
+        assert_eq!(
+            host_view.card.power.as_deref(),
+            Some("3"),
+            "printed 1 + Aura's +2 projects as current power 3"
+        );
+        assert_eq!(host_view.card.toughness.as_deref(), Some("3"));
+    }
+
     /// A battlefield permanent projects its stored engine counters into
     /// [`PermanentView::counters`] as `{ kind, count }` wire entries, in a
     /// deterministic order (sorted by [`CounterKind`], the map's key order), and
@@ -1318,6 +1392,7 @@ mod tests {
             ]
             .into_iter()
             .collect(),
+            attached_to: None,
         });
         let without_counters = PermanentId(state.mint_id());
         state.battlefield.push(rune_engine::Permanent {
@@ -1331,6 +1406,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
+            attached_to: None,
         });
 
         let view = personalized_view(&state, &db, PlayerId(0));
@@ -1400,6 +1476,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
+            attached_to: None,
         });
         let blocker = PermanentId(state.mint_id());
         state.battlefield.push(rune_engine::Permanent {
@@ -1413,6 +1490,7 @@ mod tests {
             blocking: Some(attacker),
             damage: 0,
             counters: std::collections::BTreeMap::new(),
+            attached_to: None,
         });
 
         let view = personalized_view(&state, &db, PlayerId(0));
@@ -1456,6 +1534,7 @@ mod tests {
             blocking: None,
             damage: 2,
             counters: std::collections::BTreeMap::new(),
+            attached_to: None,
         });
 
         let view = personalized_view(&state, &db, PlayerId(0));
@@ -1493,6 +1572,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
+            attached_to: None,
         });
         let vanilla = PermanentId(state.mint_id());
         state.battlefield.push(rune_engine::Permanent {
@@ -1506,6 +1586,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
+            attached_to: None,
         });
 
         let view = personalized_view(&state, &db, PlayerId(0));
@@ -1816,6 +1897,7 @@ mod tests {
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
+            attached_to: None,
         });
         id
     }
