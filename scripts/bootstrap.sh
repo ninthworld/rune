@@ -37,6 +37,25 @@ else
   fail=1
 fi
 
+# actionlint validates the committed workflow YAML; `make ci-lint` runs it, then applies
+# RUNE's own policy rules (tools/ci-policy: immutable Action pins, least-privilege tokens).
+# Needed by `make verify` and the `cargo-deny` CI job, which is where that gate runs (#199).
+if command -v actionlint > /dev/null 2>&1; then
+  echo "ok: actionlint $(actionlint --version | head -1)"
+else
+  echo "missing: actionlint — run 'scripts/install-actionlint.sh' (pinned + checksum-verified; needed by 'make ci-lint'/'make verify' and the cargo-deny CI job)"
+  fail=1
+fi
+
+# actionlint runs shellcheck over `run:` bodies when it can find it, and the CI runners ship
+# it — without it locally, `make ci-lint` is a weaker gate than the one that blocks the merge.
+if command -v shellcheck > /dev/null 2>&1; then
+  echo "ok: shellcheck $(shellcheck --version | awk '/^version:/ {print $2}')"
+else
+  echo "missing: shellcheck — install it from your package manager (actionlint uses it to check 'run:' steps; without it 'make ci-lint' checks less than CI does)"
+  fail=1
+fi
+
 # Playwright's pinned Chromium for the browser E2E suite. Browsers live under
 # PLAYWRIGHT_BROWSERS_PATH when set, otherwise Playwright's default cache dir.
 pw_path="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
@@ -50,6 +69,6 @@ fi
 if [ "$fail" -eq 0 ]; then
   echo "prerequisites ready — 'make check' is the fast gate; run 'make verify' before requesting final review"
 else
-  echo "one or more prerequisites are missing (see above): 'make check' needs cargo + node; 'make verify' needs all four"
+  echo "one or more prerequisites are missing (see above): 'make check' needs cargo + node; 'make verify' needs all five"
   exit 1
 fi

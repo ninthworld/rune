@@ -1,23 +1,57 @@
+# Controlled dependency maintenance (#199).
+#
+# This file previously set `open-pull-requests-limit: 0` on every ecosystem — routine version
+# updates off entirely — with a comment asserting that security updates were unaffected. The
+# first half worked. The second half was **not true of this repository**: Dependabot security
+# updates are a separate repo-level feature, and they are *disabled* here, so RUNE has been
+# receiving no dependency updates at all — neither routine nor security. Turning them on is a
+# repository setting and cannot be committed; the exact steps and the verification command are
+# in `docs/agents/workflow.md` ("Dependency and Actions security settings"), and they are the
+# half of this issue that a merged PR alone does not fix.
+#
+# The shape below is chosen to make updates *reviewable*, not merely to make them exist:
+#   - monthly, not weekly — a PR stream nobody reads is the same as no PRs, minus the quiet;
+#   - grouped minor+patch, one PR per ecosystem — the routine, boring bump;
+#   - majors ungrouped and unignored — each arrives as its own PR, because a major is a
+#     behavior change that deserves the review a group would hide it inside of;
+#   - low limits — a hard ceiling on how much of the queue this can ever occupy.
+#
+# Every Dependabot PR takes the normal path: required checks, AI review, human approval
+# (`docs/agents/continuance.md` §5). Nothing here auto-merges.
 version: 2
 updates:
-  # open-pull-requests-limit: 0 disables routine version-update PRs for the
-  # ecosystem. Dependabot *security* updates are a separate repo feature and are
-  # unaffected, so security patches still open PRs.
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 0
+      interval: monthly
+    open-pull-requests-limit: 3
     labels: [dependencies, area:engine]
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
   - package-ecosystem: npm
     directory: /clients/web
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 0
+      interval: monthly
+    open-pull-requests-limit: 3
     labels: [dependencies, area:client]
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  # Dependabot understands a SHA-pinned `uses:` with a version comment and updates both
+  # together, so pinning (#199) does not cost us Action updates — it only means the diff
+  # shows a new SHA next to a new tag, which is exactly what a reviewer should be looking at.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 0
-    labels: [dependencies]
+      interval: monthly
+    open-pull-requests-limit: 3
+    labels: [dependencies, area:ci]
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]

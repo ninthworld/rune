@@ -1,0 +1,9 @@
+{
+  "name": "@rune/ci-policy",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic workflow policy gate (#199): immutable Action pins, least-privilege tokens, no untrusted interpolation. Dependency-free Node 20 — never add a dependency here.",
+  "engines": {
+    "node": ">=20"
+  }
+}

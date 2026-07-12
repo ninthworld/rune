@@ -279,9 +279,9 @@ installation token used from a developer machine **does** trigger the required c
 
 One coupling to remember: `claude-code-action` skips any run triggered by a bot unless
 that bot is allowlisted, so `.github/workflows/claude-code-review.yml` sets
-`allowed_bots: 'rune-agent[bot]'`. Without it the ADR 0015 review silently no-ops on
-every agent PR — and since `claude-review` is not a required check, nothing would fail
-to tell you. Renaming the app means updating that allowlist.
+`allowed_bots: 'rune-agent[bot],dependabot[bot]'`. Without it the ADR 0015 review silently
+no-ops on every agent PR — and since `claude-review` is not a required check, nothing would
+fail to tell you. Renaming the app means updating that allowlist.
 
 ### Handling stale branches
 
@@ -294,9 +294,44 @@ an option here (linear history is required). Executable worktree/rebase automati
 out of scope for this contract and lives in the issue runner
 ([ADR 0016](../decisions/0016-provider-neutral-issue-runner.md), implemented by #186).
 
+## CI hardening
+
+Workflows are held to a policy that `make ci-lint` enforces — it runs in the `cargo-deny`
+job, so it is merge-blocking without adding a fifth required check (#199):
+
+- **Every external `uses:` is pinned to a full-length commit SHA**, with the release tag in
+  a trailing comment (`# v4.3.1`). A tag is mutable, and whoever can move `v4` chooses what
+  runs in CI. The comment is what keeps the pin reviewable and lets Dependabot bump it.
+  A local action (`./…`) is exempt: a repository SHA is the wrong reference for it.
+- **Every workflow declares `permissions:`**, starting from `contents: read`. A write scope
+  must state its reason in a comment beside it — an unexplained `write` fails the gate.
+- **No `pull_request_target`**, and **no `${{ github.event… }}` interpolated into a `run:`
+  step** (event text is attacker-controlled; interpolation happens before the shell sees it).
+
+Two layers, in order: [actionlint](https://github.com/rhysd/actionlint) for workflow
+validity, then `tools/ci-policy` for the rules above. Install actionlint via
+`scripts/bootstrap.sh`'s instructions; CI installs it with `taiki-e/install-action`.
+
+## Repository settings (apply once on GitHub — not enforceable from a file)
+
+These are the controls a merged PR **cannot** apply. Each one below carries the command that
+*verifies* it, because a documented recommendation is not an applied setting.
+
+| Setting | Where | Verify |
+|---|---|---|
+| **Actions → Workflow permissions: read-only** default token | Settings → Actions → General | `gh api repos/ninthworld/rune/actions/permissions/workflow` → `"default_workflow_permissions": "read"` |
+| **Require actions to be pinned to a full-length commit SHA** | Settings → Actions → General | `gh api repos/ninthworld/rune/actions/permissions` → `"sha_pinning_required": true`. **Turn this on only after the pinning change (#199) has merged** — enabling it against tag-pinned workflows fails every run. |
+| **Dependabot alerts** | Settings → Code security | `gh api repos/ninthworld/rune/vulnerability-alerts -i \| head -1` → `204`. Enable: `gh api -X PUT repos/ninthworld/rune/vulnerability-alerts` |
+| **Dependabot security updates** | Settings → Code security | `gh api repos/ninthworld/rune --jq .security_and_analysis.dependabot_security_updates.status` → `enabled`. Enable: `gh api -X PUT repos/ninthworld/rune/automated-security-fixes` |
+| **`CLAUDE_CODE_OAUTH_TOKEN` as a *Dependabot* secret** | Settings → Secrets → Dependabot | Without it, the ADR 0015 review no-ops on Dependabot PRs: a Dependabot-triggered run cannot read *Actions* secrets. Adding the same value under Dependabot secrets is what gives dependency PRs the same review path as any other PR. |
+
+`.github/dependabot.yml` governs only the **version-update** stream (monthly, grouped
+minor+patch, majors as their own PRs, low limits). **Security** updates are the separate
+repository feature in the table above and are not throttled by that file's schedule or
+limits — but they also do not exist until it is switched on.
+
 ## Other repository settings (apply once on GitHub)
 
-- Actions → Workflow permissions: read-only default token.
 - Merge queue is unavailable while RUNE is a user-owned public repository; the strict
   "up to date before merging" rule above is the stale-branch guard in its place. Adopt a
   merge queue if the repo moves under an organization and PR volume warrants it.

@@ -1,5 +1,7 @@
 name: Claude Code
 
+# Responds to an explicit `@claude` mention from a human on an issue or PR. Not part of any
+# gate: it neither reviews nor approves, and nothing merges on its output.
 on:
   issue_comment:
     types: [created]
@@ -12,6 +14,10 @@ on:
 
 jobs:
   claude:
+    # The `@claude` mention is read inside a GitHub *expression*, never interpolated into a
+    # shell — `contains(...)` compares the text, it does not execute it. That distinction is
+    # the whole of script-injection safety here, and `make ci-lint` enforces it: comment
+    # bodies are attacker-controlled, so a `run:` step may never interpolate one (#199).
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
@@ -22,17 +28,17 @@ jobs:
       contents: read
       pull-requests: read
       issues: read
-      id-token: write
+      id-token: write # OIDC: how claude-code-action authenticates to Anthropic without a long-lived key
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 1
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -47,4 +53,3 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr *)'
-

@@ -34,6 +34,18 @@ RUN rustup component add rustfmt clippy
 # The `cargo-deny` gate. Installed at build time so a run never pays for it.
 RUN cargo install --locked cargo-deny && rm -rf "$CARGO_HOME"/registry
 
+# actionlint + shellcheck, for the workflow gate `make verify` now runs (#199). actionlint
+# shells out to shellcheck for `run:` bodies when it is present, and the CI runners ship it —
+# so the image needs it too, or the sandbox would run a *weaker* gate than CI and a run could
+# pass here and fail there. Same pinned, checksum-verified script the `cargo-deny` job uses,
+# so the version lives in exactly one place.
+COPY scripts/install-actionlint.sh /tmp/install-actionlint.sh
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends shellcheck \
+ && rm -rf /var/lib/apt/lists/* \
+ && sh /tmp/install-actionlint.sh /usr/local/bin \
+ && rm -f /tmp/install-actionlint.sh
+
 # The provider CLIs. Neither is authenticated here: the runner passes a token
 # (CLAUDE_CODE_OAUTH_TOKEN / OPENAI_API_KEY) into the container's environment at run time.
 # Baking a credential into an image is how credentials end up in a registry.

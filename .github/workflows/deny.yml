@@ -9,17 +9,36 @@ concurrency:
   group: deny-${{ github.ref }}
   cancel-in-progress: true
 
+# Supply-chain gates only read the tree they audit. (#199 — enforced by `make ci-lint`.)
+permissions:
+  contents: read
+
 jobs:
   cargo-deny:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      # Install a prebuilt cargo-deny, then run it through `make deny` so the set of
-      # checks (advisories licenses bans sources) lives only in the Makefile and CI
-      # cannot drift from the local `make verify` gate.
-      - uses: taiki-e/install-action@v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # Prebuilt binaries, then both gates run through the Makefile so the set of checks
+      # lives only there and CI cannot drift from the local `make verify`.
+      - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2.83.2
         with:
           tool: cargo-deny
+      # actionlint is a Go tool, and install-action does not carry it — asked for it anyway,
+      # it falls back to cargo-binstall, which hunts for a Rust crate by that name and fails.
+      # So it comes from its own pinned release, checksum-verified by the same script the
+      # provider image uses, which is where the version lives (`scripts/install-actionlint.sh`).
+      - name: Install actionlint
+        run: |
+          scripts/install-actionlint.sh "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Deny check
         run: make deny
+      # The workflow gate rides in this job rather than becoming a fifth CI job, for the
+      # reason ci.yml already gives about the runner tests: a new job is not a *required*
+      # check until the `main` ruleset is re-imported by hand, so it would not block a
+      # merge. `cargo-deny` is already required, and this is the same kind of gate — a
+      # supply-chain one. `make ci-lint` is actionlint (validity) plus tools/ci-policy
+      # (immutable pins, least privilege, no untrusted interpolation).
+      - name: Workflow policy (actionlint + ci-policy)
+        run: make ci-lint
