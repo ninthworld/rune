@@ -293,6 +293,15 @@ pub enum TriggerCondition {
     /// The source permanent entered the battlefield this transition (its
     /// [`crate::PermanentId`] is present after but not before).
     SelfEntersBattlefield,
+    /// The source permanent **died** this transition: it left the battlefield for
+    /// a graveyard (CR 700.4, the "dies" event of CR 603.6c). Observed by diff —
+    /// its [`crate::PermanentId`] is present before but not after, and its physical
+    /// instance is now in a graveyard it was not in before. A leave to any
+    /// non-graveyard zone does not satisfy this, so a future bounce or exile never
+    /// fires it. Fires from any cause (lethal damage, `Destroy`, or combat), all
+    /// through the one leaves-battlefield seam
+    /// ([`crate::GameState::move_permanent_to_graveyard`]).
+    SelfDies,
 }
 
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated
@@ -339,6 +348,22 @@ mod tests {
             ability,
             Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
+                effects: vec![Effect::DrawCard { count: 1 }],
+            }
+        );
+        assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_151_triggered_dies_draw_round_trips() {
+        // The dies trigger authors its condition as the bare `self_dies` tag
+        // (CR 700.4 / 603.6c) and reuses the draw effect.
+        let json = r#"{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ability,
+            Ability::Triggered {
+                event: TriggerCondition::SelfDies,
                 effects: vec![Effect::DrawCard { count: 1 }],
             }
         );

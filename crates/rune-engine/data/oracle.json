@@ -297,5 +297,22 @@
     "spell_effects": [
       { "kind": "pump", "target": "any_creature", "power": 3, "toughness": 3 }
     ]
+  },
+  {
+    "id": 28,
+    "name": "Cryptvine Lurker",
+    "types": ["creature"],
+    "subtypes": ["Horror"],
+    "mana_cost": "{1}{B}",
+    "oracle_text": "When Cryptvine Lurker dies, draw a card.",
+    "power": 2,
+    "toughness": 2,
+    "abilities": [
+      {
+        "type": "triggered",
+        "event": "self_dies",
+        "effects": [{ "kind": "draw_card", "count": 1 }]
+      }
+    ]
   }
 ]

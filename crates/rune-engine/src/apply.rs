@@ -717,20 +717,13 @@ pub(crate) fn apply_targeted_effect(
             Target::Card(_) | Target::Spell(_) => {}
         },
         // Destroy the targeted permanent (CR 701.7): move it to its owner's
-        // graveyard, the same path lethal damage uses in the SBA loop. Ownership
-        // apart from control is not tracked yet, so the controller stands in as
-        // the owner (mirrors [`crate::sba`]). Regeneration is out of scope.
+        // graveyard through the one leaves-battlefield seam
+        // ([`GameState::move_permanent_to_graveyard`], CR 700.4) — the same path
+        // lethal damage uses in the SBA loop, so this death fires the dies trigger
+        // (CR 603.6c) identically. Regeneration is out of scope.
         Effect::Destroy { .. } => {
             if let Target::Permanent(id) = target {
-                if let Some(pos) = state.battlefield.iter().position(|p| p.id == id) {
-                    let perm = state.battlefield.remove(pos);
-                    if let Some(owner) = state.players.get_mut(perm.controller.0) {
-                        owner.graveyard.push(CardInstance {
-                            id: perm.instance,
-                            card: perm.card,
-                        });
-                    }
-                }
+                state.move_permanent_to_graveyard(id);
             }
         }
         // Put counters on the targeted permanent (CR 122). Current power/toughness
@@ -2808,5 +2801,188 @@ mod tests {
             def_life + 2,
             "the lifelink blocker's controller gains 2 from its combat damage"
         );
+    }
+
+    // ----- Dies / leaves-battlefield triggers (issue #151, CR 603.6c / 700.4) -----
+
+    /// Push a player-0-controlled ability with `effects` (aimed at `targets`) onto
+    /// the stack, one full priority round from resolving. Mirrors how a real cast
+    /// or activation seats an ability, so the whole death-then-trigger pipeline is
+    /// driven through the public `apply_action` path.
+    fn push_ability(
+        state: &mut GameState,
+        source: PermanentId,
+        effects: Vec<Effect>,
+        targets: Vec<Target>,
+    ) {
+        let id = state.mint_id();
+        state.stack.push(StackObject {
+            id: StackId(id),
+            controller: PlayerId(0),
+            kind: StackObjectKind::Ability { source, effects },
+            targets,
+        });
+    }
+
+    /// A precombat-main two-player game with the dies fixture (Cryptvine Lurker,
+    /// id 28, a 2/2) on the battlefield under player 0 with `damage` marked, and a
+    /// single card in player 0's library to draw. Returns the state and the
+    /// lurker's id.
+    fn state_with_lurker(damage: u32) -> (GameState, PermanentId, CardInstance) {
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let lurker = place_permanent(&mut state, CardId(28), PlayerId(0), false, damage);
+        let draw = state.new_instance(CardId(1));
+        state.players[0].library = vec![draw];
+        (state, lurker, draw)
+    }
+
+    #[test]
+    fn issue_151_dies_trigger_fires_from_lethal_combat_damage_cr_700_4() {
+        // CR 700.4 / 603.6c: a creature put into a graveyard by lethal combat
+        // damage (CR 704.5g) dies, firing its dies trigger. The 2/2 Lurker attacks
+        // into a 4/5 Basilisk blocker, takes 4, and dies; its controller then draws.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let lurker = place_permanent(&mut state, CardId(28), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, CardId(4), PlayerId(1), false, 0);
+        let draw = state.new_instance(CardId(1));
+        state.players[0].library = vec![draw];
+
+        let after = run_combat(
+            &state,
+            vec![lurker],
+            vec![Block {
+                blocker,
+                attacker: lurker,
+            }],
+            &db,
+        );
+
+        // The lurker died through the leaves-battlefield seam; its dies trigger is a
+        // synthetic stack entry that has not resolved yet (CR 603.3b).
+        assert!(
+            !alive(&after, lurker),
+            "the 2/2 took 4 combat damage and died"
+        );
+        assert_eq!(after.stack.len(), 1, "the dies trigger is on the stack");
+        assert!(after.players[0].hand.is_empty(), "it has not resolved yet");
+
+        // A full priority round resolves it: player 0 draws.
+        let after = pass_full_round(&after, &db);
+        assert!(after.stack.is_empty());
+        assert!(
+            after.players[0].hand.contains(&draw),
+            "the dies trigger drew its controller a card (CR 700.4)"
+        );
+    }
+
+    #[test]
+    fn issue_151_dies_trigger_fires_from_a_destroy_effect_cr_701_7() {
+        // CR 701.7 → 700.4: a `Destroy` effect routes the creature to its graveyard
+        // through the same seam, so the dies trigger fires exactly as it does for a
+        // combat death.
+        use crate::ability::TargetSpec;
+        let db = db();
+        let (mut state, lurker, draw) = state_with_lurker(0);
+        push_ability(
+            &mut state,
+            lurker,
+            vec![Effect::Destroy {
+                target: TargetSpec::AnyCreature,
+            }],
+            vec![Target::Permanent(lurker)],
+        );
+
+        // Resolve the destroy: the lurker dies and its dies trigger replaces it.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(!alive(&state, lurker), "the Destroy killed the lurker");
+        assert_eq!(state.stack.len(), 1, "the dies trigger is on the stack");
+        assert!(state.players[0].hand.is_empty(), "it has not resolved yet");
+
+        // Resolve the dies trigger: player 0 draws.
+        let state = pass_full_round(&state, &db);
+        assert!(state.stack.is_empty());
+        assert!(state.players[0].hand.contains(&draw));
+    }
+
+    #[test]
+    fn issue_151_dies_trigger_fires_from_a_minus_one_counter_toughness_drop() {
+        // CR 704.5g → 700.4: a `-1/-1` counter drops the 2/2 Lurker to a 2/1, making
+        // its 1 marked damage lethal; the SBA loop destroys it through the seam and
+        // the dies trigger fires.
+        use crate::ability::TargetSpec;
+        use crate::state::CounterKind;
+        let db = db();
+        let (mut state, lurker, draw) = state_with_lurker(1);
+        push_ability(
+            &mut state,
+            lurker,
+            vec![Effect::PutCounters {
+                target: TargetSpec::AnyCreature,
+                counter: CounterKind::MinusOneMinusOne,
+                count: 1,
+            }],
+            vec![Target::Permanent(lurker)],
+        );
+
+        // Resolve the counter: toughness 2→1, 1 marked damage is now lethal, the
+        // lurker dies, and its dies trigger lands on the stack.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(
+            !alive(&state, lurker),
+            "the -1/-1 toughness drop made the marked damage lethal (CR 704.5g)"
+        );
+        assert_eq!(state.stack.len(), 1, "the dies trigger is on the stack");
+
+        // Resolve the dies trigger: player 0 draws.
+        let state = pass_full_round(&state, &db);
+        assert!(state.stack.is_empty());
+        assert!(state.players[0].hand.contains(&draw));
+    }
+
+    #[test]
+    fn issue_151_dies_trigger_is_a_synthetic_stack_entry_resolving_after_priority_cr_603_3b() {
+        // CR 603.3b: an ability that triggers during the state-based-action check is
+        // put on the stack the next time a player would receive priority, not
+        // resolved immediately. After the death-causing action, the trigger sits on
+        // the stack with a player holding priority and the draw has not happened; it
+        // resolves only once priority passes around.
+        use crate::ability::TargetSpec;
+        let db = db();
+        let (mut state, lurker, draw) = state_with_lurker(0);
+        push_ability(
+            &mut state,
+            lurker,
+            vec![Effect::Destroy {
+                target: TargetSpec::AnyCreature,
+            }],
+            vec![Target::Permanent(lurker)],
+        );
+
+        // The action that kills the lurker leaves its dies trigger on the stack —
+        // one synthetic ability entry, unresolved, with priority handed to a player.
+        let paused = apply_action(&state, &Action::PassPriority, &db);
+        let paused = apply_action(&paused, &Action::PassPriority, &db);
+        assert_eq!(paused.stack.len(), 1);
+        assert!(matches!(
+            paused.stack[0].kind,
+            StackObjectKind::Ability { source, .. } if source == lurker
+        ));
+        assert_eq!(
+            paused.consecutive_passes, 0,
+            "priority was handed out fresh with the trigger on the stack (CR 603.3b)"
+        );
+        assert!(
+            paused.players[0].library.contains(&draw),
+            "the trigger has not resolved, so nothing is drawn yet"
+        );
+
+        // Only a full priority round resolves the synthetic entry.
+        let resolved = pass_full_round(&paused, &db);
+        assert!(resolved.stack.is_empty());
+        assert!(resolved.players[0].hand.contains(&draw));
     }
 }
