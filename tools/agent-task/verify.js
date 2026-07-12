@@ -15,7 +15,12 @@ import { runDir } from "./runs.js";
 export const GATES = [
   { name: "Engine", targets: ["engine-lint", "engine-test"] },
   { name: "Client", targets: ["client-audit", "client-check", "runner-test"] },
-  { name: "E2E", targets: ["e2e-browser", "e2e"] },
+  // Deliberately not `e2e-browser`: that target is *provisioning*, not a gate, and it runs
+  // `playwright install --with-deps`, whose `--with-deps` shells out to apt-get as root. The
+  // sandbox runs as an unprivileged user by design, so it would sit there failing to `su`.
+  // The browser is provided instead — baked into the provider image, or installed once on the
+  // host with `make e2e-browser` for the non-container isolation modes.
+  { name: "E2E", targets: ["e2e"] },
   { name: "cargo-deny", targets: ["deny"] },
 ];
 

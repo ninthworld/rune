@@ -146,10 +146,13 @@ export function wrap(argv, { isolation, env, workspace, dir }) {
     };
   }
 
-  // The host's PATH is meaningless inside the image — /home/you/.local/bin does not exist there,
-  // and passing it would leave the engine unable to resolve the provider binary at all. The
-  // image's own PATH is the right one, so this is the one allowlisted variable that is dropped.
-  const { PATH: _hostPath, ...containerEnv } = env;
+  // Two host values are meaningless inside the image and are dropped on the way in:
+  //
+  //   PATH — /home/you/.local/bin does not exist there, and passing it leaves the engine unable to
+  //          resolve the provider binary at all. The image's own PATH is the right one.
+  //   PLAYWRIGHT_BROWSERS_PATH — the image bakes the pinned Chromium in (it cannot be installed at
+  //          run time: `--with-deps` needs root, and the sandbox is unprivileged by design).
+  const { PATH: _hostPath, PLAYWRIGHT_BROWSERS_PATH: _hostBrowsers, ...containerEnv } = env;
   const flags = Object.entries(containerEnv).flatMap(([k, v]) => ["--env", `${k}=${v}`]);
   const cache = cacheRoot();
 
