@@ -178,6 +178,9 @@ fn ability_description(effects: &[Effect]) -> String {
                 count,
                 counter_kind_str(*counter)
             ),
+            Effect::Pump {
+                power, toughness, ..
+            } => format!("Target gets {power:+}/{toughness:+} until end of turn"),
         })
         .collect();
     if parts.is_empty() {

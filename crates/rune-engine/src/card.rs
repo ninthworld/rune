@@ -453,7 +453,7 @@ mod tests {
     fn bundled_snapshot_parses() {
         let db = CardDatabase::bundled().unwrap();
         assert!(!db.is_empty());
-        assert_eq!(db.len(), 26);
+        assert_eq!(db.len(), 27);
     }
 
     #[test]
@@ -698,6 +698,27 @@ mod tests {
     }
 
     #[test]
+    fn issue_150_pump_fixture_carries_its_until_end_of_turn_verb() {
+        // The Giant-Growth-style fixture (id 27) is a vanilla-abilities instant
+        // whose spell effect pumps a target creature +3/+3 until end of turn.
+        use crate::ability::TargetSpec;
+        let db = CardDatabase::bundled().unwrap();
+        let surge = db.card(CardId(27)).unwrap();
+        assert_eq!(surge.name, "Titanroot Surge");
+        assert_eq!(surge.types, vec![CardType::Instant]);
+        assert!(surge.abilities.is_empty());
+        assert_eq!(
+            surge.spell_effects,
+            vec![Effect::Pump {
+                target: TargetSpec::AnyCreature,
+                power: 3,
+                toughness: 3,
+            }]
+        );
+        assert_eq!(spell_effects_of(&db, CardId(27)), surge.spell_effects);
+    }
+
+    #[test]
     fn all_eight_keyword_variants_deserialize_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
         // four data-only variants keywords II will enforce (CR 702).
@@ -724,8 +745,8 @@ mod tests {
     #[test]
     fn bundled_printings_load_from_the_set_manifest() {
         let printings = PrintingDatabase::bundled().unwrap();
-        // FIX prints the twenty-six fixtures; FIX2 reprints one — twenty-seven printings total.
-        assert_eq!(printings.len(), 27);
+        // FIX prints the twenty-seven fixtures; FIX2 reprints one — twenty-eight printings total.
+        assert_eq!(printings.len(), 28);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         assert_eq!(boar.oracle, CardId(1));

@@ -180,6 +180,11 @@ fn ordered_pt_modifiers<'a>(
 fn affects(effect: &StaticEffect, perm: &Permanent, is_creature: bool) -> bool {
     match effect.affects {
         EffectAffects::CreaturesControlledBy(player) => is_creature && perm.controller == player,
+        // A pump targets one specific permanent by its battlefield identity
+        // (CR 601.2c). Layer 7c only adjusts an existing power/toughness, so a
+        // pump landed on a non-creature (which has none) is folded into `None`
+        // and has no visible effect — no `is_creature` gate is needed here.
+        EffectAffects::SpecificPermanent(id) => perm.id == id,
     }
 }
 
@@ -190,7 +195,7 @@ mod tests {
     use super::*;
     use crate::ability::is_mana_ability;
     use crate::id::{CardId, CardInstanceId, PlayerId};
-    use crate::state::Permanent;
+    use crate::state::{Duration, Permanent};
     use std::collections::BTreeMap;
 
     /// Put a permanent for `card` on the battlefield and return its id.
@@ -230,7 +235,81 @@ mod tests {
             source,
             affects: EffectAffects::CreaturesControlledBy(controller),
             modification: Modification::PowerToughness { power, toughness },
+            duration: Duration::WhileOnBattlefield,
         });
+    }
+
+    /// Add an "until end of turn" pump of +`power`/+`toughness` aimed at the
+    /// single permanent `target`, timestamped by `source` (its object id).
+    fn add_pump(
+        state: &mut GameState,
+        source: u64,
+        target: PermanentId,
+        power: i32,
+        toughness: i32,
+    ) {
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::SpecificPermanent(target),
+            modification: Modification::PowerToughness { power, toughness },
+            duration: Duration::UntilEndOfTurn,
+        });
+    }
+
+    #[test]
+    fn issue_150_pump_boosts_only_its_specific_target() {
+        // A "+3/+3 until end of turn" pump aimed at one Boar makes it a 6/5 and
+        // leaves a second, unpumped Boar at its printed 3/2 (the effect is keyed
+        // to a specific permanent id, not a controller-wide selector).
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let pumped = place(&mut state, CardId(1));
+        let bystander = place(&mut state, CardId(1));
+        add_pump(&mut state, 100, pumped, 3, 3);
+
+        let ch = characteristics(&state, pumped, &db);
+        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.toughness, Some(5));
+        let other = characteristics(&state, bystander, &db);
+        assert_eq!(other.power, Some(3));
+        assert_eq!(other.toughness, Some(2));
+    }
+
+    #[test]
+    fn issue_150_two_pumps_on_one_target_stack_in_timestamp_order() {
+        // Two pumps on the same Boar sum (they are additive) and fold in ascending
+        // timestamp order (CR 613.7) regardless of insertion order — printed 3/2 +
+        // (+2/+0) + (+1/+2) = 6/4.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar = place(&mut state, CardId(1));
+        add_pump(&mut state, 200, boar, 1, 2); // later timestamp, inserted first
+        add_pump(&mut state, 100, boar, 2, 0);
+
+        let ch = characteristics(&state, boar, &db);
+        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.toughness, Some(4));
+
+        let perm = state.battlefield.iter().find(|p| p.id == boar).unwrap();
+        let ordered: Vec<u64> = ordered_pt_modifiers(&state, perm, true)
+            .iter()
+            .map(|effect| effect.timestamp())
+            .collect();
+        assert_eq!(ordered, vec![100, 200]);
+    }
+
+    #[test]
+    fn issue_150_pump_on_a_noncreature_has_no_visible_effect() {
+        // Layer 7c only adjusts an existing power/toughness: a pump keyed to a
+        // Forest (no printed P/T) leaves it without any.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let forest = place(&mut state, CardId(5));
+        add_pump(&mut state, 100, forest, 3, 3);
+
+        let ch = characteristics(&state, forest, &db);
+        assert_eq!(ch.power, None);
+        assert_eq!(ch.toughness, None);
     }
 
     #[test]
