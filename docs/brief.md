@@ -174,6 +174,14 @@ Two-tier AI:
 - Project name must not imply WotC affiliation
 - Prior art: XMage and Forge have operated in this grey zone for 15+ years without legal action
 
+> **Shipped:** RUNE does not rely on the oracle-text grey zone at all. Per
+> [ADR 0018](decisions/0018-scalable-functional-card-definitions.md), no exact
+> Oracle text is bundled anywhere in the repository — cards are authored as
+> structured functional definitions and the server generates readable fallback
+> rules text from them. Exact-text (and image) sync is deferred to a future,
+> optional, client-only enrichment feature that the server and engine never
+> fetch, store, or require.
+
 ---
 
 ## Component 2: React Web Client
@@ -410,6 +418,17 @@ For desktop: Tauri (Rust-based shell) wraps the React UI and manages the bundled
 > type line and mana-cost string (`clients/web/src/table/colorIdentity.ts`),
 > which is display glue, not game logic. If the server should own color identity
 > instead, that is a protocol change and belongs in a separate issue.
+
+> **Shipped:** the `oracle_text` field named above and the "Bundled JSON
+> snapshot" sourcing are supplanted by
+> [ADR 0018](decisions/0018-scalable-functional-card-definitions.md): the
+> engine's card data is authored as structured **functional definitions** that
+> exclude exact Oracle text entirely (rejected structurally, not just
+> omitted), and `CardView`'s display field is server-**generated** fallback
+> rules text (`rules_text`), not a bundled snapshot value. A card's stable
+> identity for authoring, printings, and protocol lookup is a `FunctionalId`
+> string slug, not a bundled integer/UUID — `CardId` (below) stays an
+> engine-internal handle interned from it at build time.
 
 **Card database in the Rust engine:** Loaded at startup from JSON. Cards are immutable data. The engine references cards by `CardId` (a stable integer or UUID) and looks them up in a static map.
 
