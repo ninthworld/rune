@@ -38,12 +38,20 @@ readable by whatever UID runs the provider — without a boundary, a provider ca
 and open its own PRs ([ADR 0016](../decisions/0016-provider-neutral-issue-runner.md)). A container
 is the easiest boundary to get:
 
-    docker build -t rune/provider tools/agent-task    # Rust + Node + the provider CLIs
+    docker build -t rune/provider -f tools/agent-task/Dockerfile .
     export RUNE_PROVIDER_IMAGE=rune/provider
 
-The image carries the **whole toolchain**, not just the model CLI, because verification runs inside
-the same boundary: `make verify` executes provider-controlled code by construction (a doctored
-`Makefile` or `build.rs` runs right there), which is exactly why it must not run as you.
+It builds from the **repository root**, not from `tools/agent-task/`, because it needs
+`clients/web/package-lock.json` to pin the E2E browser to the Playwright the client actually uses.
+Rebuild the image when that lockfile changes.
+
+The image carries the **whole toolchain** — Rust, Node, `cargo-deny`, and the pinned Chromium — not
+just the model CLI, because verification runs inside the same boundary: `make verify` executes
+provider-controlled code by construction (a doctored `Makefile` or `build.rs` runs right there),
+which is exactly why it must not run as you. The browser is **baked into the image** rather than
+installed per run: `make e2e-browser` runs `playwright install --with-deps`, which needs root to
+`apt-get` its system libraries, and the sandbox is unprivileged by design. For the non-container
+isolation modes, run `make e2e-browser` once on the host instead.
 
 Then give the provider a token. Its interactive login lives under your real `HOME`, which the
 sandbox deliberately replaces — the same isolation that hides the app key also hides `~/.claude` —

@@ -57,6 +57,18 @@ test("the gate set mirrors the four required CI checks", () => {
   assert.deepEqual(GATE_SETS.check, ["Engine", "Client"]);
 });
 
+test("the gates never try to provision a browser", () => {
+  // `make e2e-browser` runs `playwright install --with-deps`, which shells out to apt-get as root.
+  // The sandbox is unprivileged, so it would fail to `su` and take the E2E gate down with it. The
+  // browser is provided (baked into the image), not installed by the gate.
+  const e2e = GATES.find((g) => g.name === "E2E");
+  assert.deepEqual(e2e.targets, ["e2e"]);
+  assert.equal(
+    GATES.some((g) => g.targets.includes("e2e-browser")),
+    false,
+  );
+});
+
 test("every gate is run and timed, and all-pass is ok", async () => {
   const result = await run([0, 0, 0, 0]);
 

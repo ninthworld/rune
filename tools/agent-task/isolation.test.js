@@ -135,6 +135,23 @@ test("container isolation mounts only the run directory and the build cache, nev
   );
 });
 
+test("the container uses the browser baked into the image, not a host path", () => {
+  // `playwright install --with-deps` needs root to apt-get its system libraries, and the sandbox
+  // is unprivileged by design — so the browser cannot be provisioned at run time. The image bakes
+  // it in at /ms-playwright, and the host's PLAYWRIGHT_BROWSERS_PATH must not shadow it.
+  const { argv } = wrap(["claude", "-p", "b"], {
+    isolation: { mode: "container", engine: "docker", image: "rune/provider" },
+    env: { HOME: "/h", PLAYWRIGHT_BROWSERS_PATH: "/home/someone/.cache/playwright" },
+    workspace: "/w",
+    dir: "/d",
+  });
+
+  assert.equal(
+    argv.some((a) => a.startsWith("PLAYWRIGHT_BROWSERS_PATH=")),
+    false,
+  );
+});
+
 test("the container does not inherit the host's PATH", () => {
   // /home/you/.local/bin does not exist inside the image, so passing the host PATH leaves the
   // engine unable to resolve the provider binary at all — `docker run` fails with "executable
