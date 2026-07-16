@@ -4,5 +4,18 @@
   "name": "Verdant Blessing",
   "types": ["enchantment"],
   "mana_cost": "{G}",
-  "colors": ["green"]
+  "colors": ["green"],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 4
+        }
+      ]
+    }
+  ]
 }

@@ -643,6 +643,7 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
     };
     match effect {
         Effect::AddMana { color, amount } => player.mana_pool.add(*color, *amount),
+        Effect::AddColorlessMana { amount } => player.mana_pool.add_colorless(*amount),
         Effect::DrawCard { count } => {
             for _ in 0..*count {
                 // Routes through `draw`, so a card-draw effect that empties the
@@ -782,6 +783,7 @@ pub(crate) fn apply_targeted_effect(
         }
         // Implicit-subject effects do not target; they never reach here.
         Effect::AddMana { .. }
+        | Effect::AddColorlessMana { .. }
         | Effect::DrawCard { .. }
         | Effect::GainLife { .. }
         | Effect::LoseLife { .. } => {}
@@ -2612,6 +2614,124 @@ mod tests {
         assert_eq!(state.players[1].life, 0);
         assert!(state.players[1].has_lost);
         assert_eq!(state.players[1].loss_reason, Some(LossReason::ZeroLife));
+    }
+
+    // ----- Wiring the four functionless cards (issue #256) -----
+
+    #[test]
+    fn issue_256_quickfire_bolt_deals_three_to_any_target() {
+        // Quickfire Bolt is a {R} bolt — 3 damage to any target, distinct from Cinder
+        // Shock's 2. Aimed at a player on 3 life, it drops them to 0 (CR 704.5a).
+        let db = db();
+        let mut state = main_phase_p0();
+        state.players[1].life = 3;
+        let bolt = state.new_instance(fixture("quickfire_bolt"));
+        state.players[0].hand = vec![bolt];
+        state.players[0].mana_pool.add(Color::Red, 1);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: bolt,
+                targets: vec![Target::Player(PlayerId(1))],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert_eq!(state.players[1].life, 0);
+        assert!(state.players[1].has_lost);
+    }
+
+    #[test]
+    fn issue_256_hurried_study_draws_two_cards() {
+        // Hurried Study is a {U} sorcery that draws two — DrawCard flowing through the
+        // spell-resolution path (until now it was only ever a triggered-ability effect,
+        // so this proves the cast → resolve routing).
+        let db = db();
+        let mut state = main_phase_p0();
+        let study = state.new_instance(fixture("hurried_study"));
+        state.players[0].hand = vec![study];
+        let first = state.new_instance(fixture("forest"));
+        let second = state.new_instance(fixture("forest"));
+        state.players[0].library = vec![first, second];
+        state.players[0].mana_pool.add(Color::Blue, 1);
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: study,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert!(state.players[0].hand.contains(&first));
+        assert!(state.players[0].hand.contains(&second));
+        assert!(state.players[0].library.is_empty());
+    }
+
+    #[test]
+    fn issue_256_verdant_blessing_gains_life_when_it_enters() {
+        // Verdant Blessing is a {G} enchantment whose enters-the-battlefield trigger
+        // gains its controller 4 life — an ETB trigger on a *non-creature* permanent,
+        // and GainLife as an ability effect rather than a spell effect.
+        let db = db();
+        let mut state = main_phase_p0();
+        let life_before = state.players[0].life;
+        let blessing = state.new_instance(fixture("verdant_blessing"));
+        state.players[0].hand = vec![blessing];
+        state.players[0].mana_pool.add(Color::Green, 1);
+
+        // Cast it; pass twice so it resolves and its ETB trigger goes on the stack.
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: blessing,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        assert!(state
+            .battlefield
+            .iter()
+            .any(|p| p.card == fixture("verdant_blessing")));
+        assert_eq!(state.stack.len(), 1, "its ETB trigger is on the stack");
+
+        // Pass twice more: the trigger resolves and the controller gains 4 life.
+        let state = pass_full_round(&state, &db);
+        assert!(state.stack.is_empty());
+        assert_eq!(state.players[0].life, life_before + 4);
+    }
+
+    #[test]
+    fn issue_256_copper_lodestone_taps_for_colorless_mana() {
+        // Copper Lodestone is a {1} mana rock — {T}: Add {C}. Its ability is a mana
+        // ability, so it resolves immediately without using the stack (CR 605.3).
+        let db = db();
+        let mut state = main_phase_p0();
+        let lodestone = place_permanent(
+            &mut state,
+            fixture("copper_lodestone"),
+            PlayerId(0),
+            false,
+            0,
+        );
+
+        let after = apply_action(
+            &state,
+            &Action::ActivateAbility {
+                permanent: lodestone,
+                index: 0,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        assert_eq!(after.players[0].mana_pool.colorless, 1);
+        assert!(find_perm(&after, lodestone).tapped);
+        assert!(after.stack.is_empty());
     }
 
     #[test]
