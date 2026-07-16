@@ -21,6 +21,8 @@ function viewWith(stack: StackItem[], battlefield: Permanent[] = []): GameView {
     graveyards: [],
     exile: [],
     phase: 'precombat_main',
+    turn: 1,
+    active_player: 'p1',
     mana_pool: [],
     valid_actions: [],
   };

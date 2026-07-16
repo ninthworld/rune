@@ -875,6 +875,11 @@ pub(crate) fn personalized_view(
         graveyards,
         exile,
         phase: phase_of(state.step),
+        // Turn structure (issue #267): the engine owns turn counting and whose turn
+        // it is; the view carries them so the client's phase/turn ribbon renders
+        // without counting anything itself.
+        turn: state.turn,
+        active_player: player_id(state.active_player),
         mana_pool,
         priority_player,
         valid_actions,
@@ -1256,6 +1261,23 @@ mod tests {
         // per-viewer, so `me` is always the receiver.
         let other = personalized_view(&state, &db, PlayerId(1));
         assert_eq!(other.me.life, 12);
+    }
+
+    #[test]
+    fn issue_267_turn_number_and_active_player_project_onto_the_view() {
+        // The phase/turn ribbon reads the turn number and whose turn it is straight
+        // from the view; the engine owns both, so the projection just carries them.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.turn = 4;
+        state.active_player = PlayerId(1);
+
+        // Every viewer sees the same public turn structure (it is not redacted).
+        for viewer in [PlayerId(0), PlayerId(1)] {
+            let view = personalized_view(&state, &db, viewer);
+            assert_eq!(view.turn, 4);
+            assert_eq!(view.active_player, "p1");
+        }
     }
 
     /// Build the [`ChooseAction`] a well-behaved client sends for `action`:

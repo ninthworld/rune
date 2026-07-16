@@ -293,6 +293,62 @@ describe('Table card inspect (issue #261)', () => {
   });
 });
 
+describe('Table phase/turn ribbon and modes (issue #267)', () => {
+  it('always shows the ribbon with turn, active player, and current phase', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    const ribbon = screen.getByTestId('phase-ribbon');
+    expect(within(ribbon).getByTestId('ribbon-turn').textContent).toBe('Turn 5');
+    // p1 is the receiver and the active player → "Your turn".
+    expect(within(ribbon).getByTestId('ribbon-active').textContent).toBe('Your turn');
+    expect(
+      within(ribbon).getByTestId('ribbon-step-precombat_main').getAttribute('aria-current'),
+    ).toBe('step');
+  });
+
+  it('sits in overview mode on a normal view and shifts to focus when targeting opens', () => {
+    seed(TARGETING_GAME_VIEW_JSON);
+    render(<Table />);
+    // A castable-but-optional spell is not a forced decision → overview on mount.
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('overview');
+    expect(screen.queryByTestId('ribbon-focus')).toBeNull();
+
+    // Entering targeting visibly shifts to focus treatment...
+    fireEvent.click(screen.getByTestId('entity-c3'));
+    fireEvent.click(
+      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+        name: 'Cast Lightning Bolt',
+      }),
+    );
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('focus');
+    expect(screen.getByTestId('ribbon-focus')).toBeDefined();
+
+    // ...and cancelling it returns to overview.
+    fireEvent.click(
+      within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Cancel targeting' }),
+    );
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('overview');
+  });
+
+  it('renders focus treatment directly from a fresh mid-prompt GameView (no history)', () => {
+    // A declare-attackers view poses a forced, subject-less decision, so a fresh
+    // mount lands in focus mode without any prior interaction.
+    seed(DECLARE_ATTACKERS_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('focus');
+    expect(screen.getByTestId('ribbon-focus')).toBeDefined();
+  });
+
+  it('renders the game-over state in overview treatment beneath the overlay', () => {
+    seed(GAME_OVER_WIN_JSON);
+    render(<Table />);
+    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+    expect(screen.getByTestId('table-game-over').getAttribute('data-mode')).toBe('overview');
+    // The ribbon is still visible in the terminal state.
+    expect(screen.getByTestId('phase-ribbon')).toBeDefined();
+  });
+});
+
 describe('Table zone browsers (issue #262)', () => {
   it('opens the local graveyard from the tile and lists it in order', () => {
     seed(ZONES_GAME_VIEW_JSON);

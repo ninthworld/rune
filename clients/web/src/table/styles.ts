@@ -26,6 +26,88 @@ export const main: CSSProperties = {
   boxSizing: 'border-box',
 };
 
+/**
+ * The phase/turn ribbon (issue #267): a persistent HUD row carrying the turn
+ * number, active player, and the phase/step sequence with the current step marked.
+ * Reads the shared `SURFACES` palette like the rest of the table chrome; the
+ * `data-mode` attribute (not these styles) is the source of truth for the mode.
+ */
+export const ribbon: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 12,
+  padding: '8px 14px',
+  borderRadius: 8,
+  background: '#1B1E23',
+  border: '1px solid #2C313A',
+  fontSize: 13,
+};
+
+/** The turn-number lead, emphasized. */
+export const ribbonTurn: CSSProperties = {
+  fontWeight: 700,
+  color: SURFACES.nameText,
+  letterSpacing: 0.3,
+};
+
+/** The active-player label, in the shared selection accent. */
+export const ribbonActive: CSSProperties = {
+  fontWeight: 600,
+  color: SURFACES.selection,
+};
+
+/** The horizontal phase/step strip. */
+export const ribbonSteps: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+};
+
+/** One step pill in the strip (non-current). */
+export const ribbonStep: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  padding: '2px 7px',
+  borderRadius: 999,
+  background: 'transparent',
+  color: SURFACES.typeText,
+  border: '1px solid transparent',
+};
+
+/** The current step pill, ringed and filled in the accent. */
+export const ribbonStepCurrent: CSSProperties = {
+  color: SURFACES.nameText,
+  background: '#2A2F37',
+  borderColor: SURFACES.selection,
+};
+
+/** The focus-mode "Decision" badge, in the shared alert (targeting) accent. */
+export const ribbonFocusBadge: CSSProperties = {
+  marginLeft: 'auto',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+  padding: '2px 9px',
+  borderRadius: 999,
+  color: SURFACES.targeting,
+  border: `1px solid ${SURFACES.targeting}`,
+};
+
+/**
+ * Focus-mode de-emphasis (issue #267): applied to the non-decision chrome (player
+ * tiles, stack, board) when a decision is pending, so attention lands on the
+ * ribbon and prompt. A light, reduced-motion-safe dim — never a hard hide, so the
+ * table stays scannable. Overview mode applies nothing.
+ */
+export const focusDimmed: CSSProperties = {
+  opacity: 0.7,
+};
+
 export const banner: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',

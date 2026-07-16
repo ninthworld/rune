@@ -376,6 +376,20 @@ export interface GameView {
   exile: ZonePile[];
   /** The current turn step. */
   phase: Phase;
+  /**
+   * The current turn number (1-based; `0` only in an empty/pre-game state). The
+   * server owns turn counting — the client renders this and never counts turns
+   * itself. Defaulted to `0` by {@link normalizeGameView} when an older server
+   * omits it.
+   */
+  turn: number;
+  /**
+   * The player whose turn it is (the active player), as a `p{N}` id. Distinct from
+   * {@link GameView.priority_player}: the active player owns the turn even while an
+   * opponent holds priority. Defaulted to `''` (unknown) when an older server omits
+   * it.
+   */
+  active_player: PlayerId;
   /** The receiving player's unspent mana, as pip strings (e.g. `["{G}"]`). */
   mana_pool: string[];
   /** The player who currently holds priority, if any. */

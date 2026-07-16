@@ -34,6 +34,8 @@ never receives what its player may not know). The concrete types live in the
 | `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |
 | `graveyards`, `exile` | `ZonePile[]` | Public ordered lists per player |
 | `phase` | `Phase` | Current turn step (snake_case enum); drives overview/focus mode |
+| `turn` | `number` | Current turn number (1-based; `0` only in an empty state). The server owns turn counting — the client renders this, it never counts turns itself. A payload without it (older server) is treated as `0` |
+| `active_player` | `PlayerId` | Whose turn it is (the active player), as a `p{N}` id. Distinct from `priority_player`: the active player owns the turn even while an opponent holds priority. Omitted when empty; a payload without it (older server) is treated as `""`/unknown |
 | `mana_pool` | `string[]` | The receiving player's unspent mana as pip strings (e.g. `["{G}"]`); server-computed, display-only. Omitted when empty |
 | `priority_player` | `PlayerId?` | Who holds priority now, if anyone |
 | `valid_actions` | `ValidAction[]` | See below — the only source of interactivity |

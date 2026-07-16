@@ -27,6 +27,7 @@ import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
+import { PhaseRibbon, type TableMode } from './PhaseRibbon';
 import { PlayerTiles, type BrowsableZone } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
 import { StackPanel } from './StackPanel';
@@ -64,7 +65,7 @@ import {
   type MultiSelectSession,
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
-import { boardWrap, button, main, muted, waitingBar } from './styles';
+import { boardWrap, button, focusDimmed, main, muted, waitingBar } from './styles';
 
 /**
  * The current logical width the board may wrap within, tracking the window so the
@@ -114,6 +115,23 @@ function cardNameOf(view: GameView, id: EntityId): string {
 /** Whether an id is rendered as a canvas card (hand or battlefield) in this view. */
 function isOnCanvas(view: GameView, id: EntityId): boolean {
   return view.my_hand.some((card) => card.id === id) || view.battlefield.some((p) => p.id === id);
+}
+
+/**
+ * Whether the view itself poses a forced decision (issue #267): a subject-less
+ * action carrying target requirements or non-target prompts — a mulligan, discard,
+ * order, mode choice, or a combat declaration the server is asking the receiver to
+ * resolve. These land the table in focus mode straight from the view (so a fresh
+ * mount is in the right mode), independent of any in-progress client selection. A
+ * subject action (e.g. casting a targeted spell from a card) is the player's
+ * optional move, not a forced decision, so it does not by itself force focus.
+ */
+function demandsDecision(view: GameView): boolean {
+  return view.valid_actions.some(
+    (action) =>
+      (action.subject === undefined || action.subject.length === 0) &&
+      ((action.requirements?.length ?? 0) > 0 || (action.prompts?.length ?? 0) > 0),
+  );
 }
 
 /**
@@ -297,7 +315,9 @@ export function Table() {
   // across messages, so a reconnect that replays this view shows the same screen.
   if (view.result) {
     return (
-      <main style={main} data-testid="table-game-over">
+      <main style={main} data-testid="table-game-over" data-mode="overview">
+        {/* The final board renders in overview treatment beneath the overlay. */}
+        <PhaseRibbon view={view} mode="overview" localId={localId} />
         <PlayerTiles view={view} localId={localId} onOpenZone={openZone} />
         <StackPanel view={view} onInspect={setInspectedId} />
         <div style={boardWrap(scene.width, scene.height)}>
@@ -332,6 +352,14 @@ export function Table() {
       ? []
       : (prompt?.subjectActions ?? []).filter((action) => action.subject?.includes(selectedId));
   const selectedCard = findCard(scene, selectedId);
+
+  // The presentation mode (issue #267), derived purely from the current view +
+  // whether a decision is being resolved — never from history. Focus when the
+  // player has drilled into a targeting/multi-select flow, or when the view itself
+  // poses a forced decision (so a fresh mid-prompt mount is already in focus);
+  // overview otherwise. Drives only presentation (the ribbon emphasis + a light
+  // de-emphasis of the standings chrome).
+  const mode: TableMode = selecting || demandsDecision(view) ? 'focus' : 'overview';
 
   // Fire an action: a multi-select declaration (combat / bottoming) opens the
   // toggle-and-confirm flow; a single-target action opens targeting mode; a plain
@@ -473,7 +501,8 @@ export function Table() {
       : [];
 
   return (
-    <main style={main}>
+    <main style={main} data-mode={mode}>
+      <PhaseRibbon view={view} mode={mode} localId={localId} />
       <PromptBanner
         view={view}
         prompt={prompt}
@@ -481,14 +510,21 @@ export function Table() {
         multiSelect={multiSelectBanner}
         onOption={chooseOption}
       />
-      <PlayerTiles
-        view={view}
-        localId={localId}
-        targeting={
-          targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-        }
-        onOpenZone={openZone}
-      />
+      {/*
+       * In focus mode the standings chrome (player tiles) is lightly de-emphasized
+       * so attention lands on the ribbon and the pending decision — presentation
+       * only, derived from `mode` (issue #267).
+       */}
+      <div style={mode === 'focus' ? focusDimmed : undefined}>
+        <PlayerTiles
+          view={view}
+          localId={localId}
+          targeting={
+            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+          }
+          onOpenZone={openZone}
+        />
+      </div>
       <StackPanel
         view={view}
         targeting={

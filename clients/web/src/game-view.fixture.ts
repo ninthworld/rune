@@ -53,6 +53,8 @@ export const SAMPLE_GAME_VIEW_JSON = JSON.stringify({
   graveyards: [{ player_id: 'p1', cards: [] }],
   // `exile` intentionally omitted — the server elides empty collections.
   phase: 'precombat_main',
+  turn: 5,
+  active_player: 'p1',
   mana_pool: ['{G}'],
   priority_player: 'p1',
   valid_actions: [
@@ -109,6 +111,8 @@ export const SAMPLE_GAME_VIEW: GameView = {
   graveyards: [{ player_id: 'p1', cards: [] }],
   exile: [], // filled in by normalization from the omitted wire field
   phase: 'precombat_main',
+  turn: 5,
+  active_player: 'p1',
   mana_pool: ['{G}'],
   priority_player: 'p1',
   valid_actions: [

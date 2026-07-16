@@ -948,6 +948,8 @@ mod tests {
             graveyards: vec![],
             exile: vec![],
             phase: Phase::PrecombatMain,
+            turn: 1,
+            active_player: "p0".into(),
             mana_pool: vec![],
             priority_player: Some("p0".into()),
             valid_actions: actions,
