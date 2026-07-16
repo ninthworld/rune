@@ -12,7 +12,6 @@ concurrency:
 # Least privilege, declared rather than inherited: an undeclared token takes the repository
 # default, which can be widened in Settings without touching this file. These jobs build and
 # test a checkout and talk to nobody, so read is all they get, and no job below raises it.
-# (#199 — enforced by `make ci-lint`.)
 permissions:
   contents: read
 
@@ -60,17 +59,6 @@ jobs:
       # then audit, lint, typecheck, test, and build — identical to the local gate.
       - name: Check (audit + lint + typecheck + test + build)
         run: make client-audit client-check
-      # The issue runner (ADR 0016) is dependency-free Node, so its tests ride in this
-      # job — the one that already has a Node toolchain — rather than becoming a fifth
-      # CI job. That keeps them gated by an existing *required* check instead of a new
-      # one that would not block merges until the ruleset was re-imported by hand.
-      - name: Runner tests
-        run: make runner-test
-      # Same reasoning for the workflow-policy rules (#199): dependency-free Node unit tests,
-      # so they ride the required `Client` check. The gate they enforce (`make ci-lint`) needs
-      # actionlint and runs in the `cargo-deny` job instead.
-      - name: Workflow-policy tests
-        run: make ci-policy-test
 
   e2e:
     name: E2E

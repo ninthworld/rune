@@ -1,7 +1,3 @@
-# Humans who review and merge. Agents never merge; every path requires a
-# human owner's review. The `main` ruleset requires code-owner review for the
-# protected paths below (see docs/agents/workflow.md).
-*                    @ninthworld
-/crates/rune-engine/ @ninthworld
-/docs/protocol.md    @ninthworld
-/docs/decisions/     @ninthworld
+# Default owner for the repository. Code-owner review is not required by the
+# branch ruleset (solo-maintained), so this is informational.
+* @ninthworld

@@ -92,5 +92,4 @@ When you add or change engine behavior that implements a CR rule:
    status, code anchor, and test anchor — in the **same PR**. Mark anything
    incomplete `partial` and name the gap.
 
-This is part of the definition of done; see
-[`agents/workflow.md`](agents/workflow.md).
+This is part of the definition of done (see [`../AGENTS.md`](../AGENTS.md)).
