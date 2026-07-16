@@ -76,6 +76,21 @@ export interface OpponentView {
   statuses?: string[];
 }
 
+/**
+ * The receiver's own public stats — the self-counterpart of {@link OpponentView}.
+ * Hand contents ride in {@link GameView.my_hand} and mana in
+ * {@link GameView.mana_pool}; this carries the two public numbers those omit — the
+ * receiver's life total and library size — so a player can read their own life, not
+ * only their opponents'. No hidden information (a player's own life and library size
+ * are public). An older server may omit it; {@link normalizeGameView} defaults it.
+ */
+export interface SelfView {
+  /** The receiver's current life total. */
+  life: number;
+  /** Number of cards left in the receiver's library. */
+  library_size: number;
+}
+
 /** A named counter on a permanent. */
 export interface Counter {
   /** Counter name, e.g. `"+1/+1"` or `"loyalty"`. */
@@ -343,6 +358,12 @@ export interface GameView {
   you: PlayerId;
   /** Full card objects for the receiving player only. */
   my_hand: CardView[];
+  /**
+   * The receiver's own public stats (life total, library size) — see
+   * {@link SelfView}. An older server may omit it; {@link normalizeGameView}
+   * defaults it to a zero placeholder.
+   */
+  me: SelfView;
   /** Redacted views of every other player. */
   opponents: OpponentView[];
   /** All permanents in play. */

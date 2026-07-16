@@ -88,6 +88,22 @@ pub struct OpponentView {
     pub statuses: Vec<String>,
 }
 
+/// The receiver's own public stats — the self-counterpart of [`OpponentView`].
+///
+/// A player is entitled to see their own public state, but [`GameView`] historically
+/// carried none of it: hand *contents* ride in `my_hand` and unspent mana in
+/// `mana_pool`, yet the two public numbers every opponent already sees about this
+/// player — life total and library size — had no home, so a player could see everyone's
+/// life but their own. This is that home; it exposes no hidden information (a player's
+/// own life and library size are public).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelfView {
+    /// The receiver's current life total.
+    pub life: i32,
+    /// Number of cards left in the receiver's library.
+    pub library_size: u32,
+}
+
 /// A permanent on the battlefield with its server-computed characteristics.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Permanent {
@@ -392,6 +408,11 @@ pub struct GameView {
     /// Full card objects for the receiving player only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub my_hand: Vec<CardView>,
+    /// The receiver's own public stats (life total, library size) — see [`SelfView`].
+    /// `#[serde(default)]` so a payload from an older server that omits it still
+    /// deserializes (to a zero placeholder).
+    #[serde(default)]
+    pub me: SelfView,
     /// Redacted views of every other player.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub opponents: Vec<OpponentView>,
@@ -984,6 +1005,10 @@ mod tests {
                 toughness: Some("1".into()),
                 keywords: vec![],
             }],
+            me: SelfView {
+                life: 18,
+                library_size: 52,
+            },
             opponents: vec![OpponentView {
                 player_id: "p2".into(),
                 hand_size: 7,
@@ -1046,6 +1071,27 @@ mod tests {
         let json = serde_json::to_string(&view).unwrap();
         let back: GameView = serde_json::from_str(&json).unwrap();
         assert_eq!(back, view);
+        // The receiver's own stats survive the round trip (issue #255).
+        assert_eq!(back.me.life, 18);
+        assert_eq!(back.me.library_size, 52);
+    }
+
+    #[test]
+    fn issue_255_self_view_round_trips_and_defaults_when_omitted() {
+        // The receiver's own public stats round-trip on their own...
+        let me = SelfView {
+            life: 15,
+            library_size: 40,
+        };
+        let back: SelfView = serde_json::from_str(&serde_json::to_string(&me).unwrap()).unwrap();
+        assert_eq!(back, me);
+
+        // ...and a GameView from an older server that omits `me` still deserializes,
+        // defaulting to a zero placeholder rather than failing (the `you`-field pattern).
+        let view: GameView =
+            serde_json::from_str(r#"{"you":"p0","phase":"precombat_main"}"#).unwrap();
+        assert_eq!(view.me, SelfView::default());
+        assert_eq!(view.me.life, 0);
     }
 
     #[test]
@@ -1053,6 +1099,7 @@ mod tests {
         let view = GameView {
             you: "p0".into(),
             my_hand: vec![],
+            me: SelfView::default(),
             opponents: vec![],
             battlefield: vec![],
             stack: vec![],
@@ -1075,6 +1122,7 @@ mod tests {
         let mut view = GameView {
             you: "p0".into(),
             my_hand: vec![],
+            me: SelfView::default(),
             opponents: vec![],
             battlefield: vec![],
             stack: vec![],
@@ -1548,6 +1596,7 @@ mod tests {
         let mut view = GameView {
             you: "p0".into(),
             my_hand: vec![],
+            me: SelfView::default(),
             opponents: vec![],
             battlefield: vec![],
             stack: vec![],
@@ -1598,6 +1647,7 @@ mod tests {
         let view = GameView {
             you: "p1".into(),
             my_hand: vec![],
+            me: SelfView::default(),
             opponents: vec![],
             battlefield: vec![],
             stack: vec![],

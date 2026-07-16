@@ -28,6 +28,7 @@ never receives what its player may not know). The concrete types live in the
 |---|---|---|
 | `you` | `PlayerId` | The receiver's own seat entity id (same `p{N}` form used for players). Lets a client identify itself directly. A client that receives a payload without it (older server) treats it as `""`/unknown |
 | `my_hand` | `CardView[]` | Full card objects for the receiving player only |
+| `me` | `SelfView` | The receiver's own public stats: `life`, `library_size`. The self-counterpart of an `OpponentView` — a player's own life and library size are public, so this exposes no hidden information. A client that receives a payload without it (older server) treats it as a zero placeholder |
 | `opponents` | `OpponentView[]` | `player_id`, `hand_size`, `life`, `library_size`, `graveyard_size`, `statuses` |
 | `battlefield` | `Permanent[]` | Permanents with `controller`, `owner`, computed `card`, `tapped`, `attacking`, `blocking`, `damage`, `counters` (a `Counter[]`, see below) |
 | `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |

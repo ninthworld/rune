@@ -941,6 +941,7 @@ mod tests {
         GameView {
             you: "p0".into(),
             my_hand: vec![],
+            me: rune_protocol::SelfView::default(),
             opponents: vec![],
             battlefield: vec![],
             stack: vec![],

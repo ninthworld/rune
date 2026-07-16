@@ -93,6 +93,11 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
     expect(within(screen.getByTestId('tile-p2')).getByText(/Life 20/)).toBeDefined();
     expect(screen.getByTestId('entity-perm_xyz')).toBeDefined();
 
+    // Our own tile shows our own life and library size (issue #255) — a player can
+    // read their own life, not only their opponents'.
+    expect(within(screen.getByTestId('tile-p1')).getByText(/Life 18/)).toBeDefined();
+    expect(within(screen.getByTestId('tile-p1')).getByText(/Library 52/)).toBeDefined();
+
     // A fresh frame replaces everything — as a reconnect would.
     const next = JSON.stringify({
       my_hand: [],
