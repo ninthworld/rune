@@ -16,8 +16,8 @@ jobs:
   claude:
     # The `@claude` mention is read inside a GitHub *expression*, never interpolated into a
     # shell — `contains(...)` compares the text, it does not execute it. That distinction is
-    # the whole of script-injection safety here, and `make ci-lint` enforces it: comment
-    # bodies are attacker-controlled, so a `run:` step may never interpolate one (#199).
+    # the whole of script-injection safety here: comment bodies are attacker-controlled, so a
+    # `run:` step must never interpolate one.
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||

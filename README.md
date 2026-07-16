@@ -5,9 +5,12 @@ owns every rule of the game; a React + Pixi.js web client renders what the serve
 and nothing more. Any client — web UI, terminal, or an LLM agent — speaks the same
 two-message protocol.
 
-> **Status: pre-alpha scaffold.** Structure, contracts, and CI exist; the engine and
-> client are stubs. See [`docs/roadmap.md`](docs/roadmap.md) for the milestones and
-> what's next.
+> **Status: early, playable at the engine level.** The Rust engine plays a complete,
+> legal, deterministic game of a creature-combat MTG subset to a win — proven by an
+> agent-vs-agent game driven through the real server and protocol
+> (`crates/rune-cli/tests/agent_game.rs`). The web client renders and drives games but is
+> still being brought up to a full-game UI, and the card pool is a small hand-authored
+> slice. See [`docs/roadmap.md`](docs/roadmap.md) for what's next.
 
 ## Architecture
 
@@ -42,10 +45,9 @@ make verify            # full pre-merge gate: check + E2E browser suite + cargo-
 ```
 
 `make check` is the fast gate you run constantly while working. `make verify` is the
-complete pre-merge surface: it composes `make check`, `make e2e`, `make deny`, and
-`make ci-lint` (the workflow gate), so its coverage matches every GitHub check required to
-merge (`Engine`, `Client`, `E2E`, `cargo-deny`). Run `make verify` before requesting final
-review.
+complete pre-merge surface: it composes `make check`, `make e2e`, and `make deny`, so its
+coverage matches every GitHub check required to merge (`Engine`, `Client`, `E2E`,
+`cargo-deny`). Run `make verify` before opening a PR.
 
 | Directory | What it is |
 |---|---|
@@ -60,8 +62,8 @@ review.
 ## Running the project
 
 The server owns the game; every client connects to it over WebSocket. Start the
-server first, then attach a client. (Pre-alpha: the engine and client are still
-stubs, so these run but don't yet play a full game.)
+server first, then attach a client. The `rune-cli` agent mode plays a full game today;
+the web client is still being brought up to a complete-game UI.
 
 ### Server
 
@@ -123,16 +125,13 @@ npm run preview        # serve the built bundle locally
 
 ## Development model
 
-This repository is primarily developed by AI coding agents working through GitHub
-issues and pull requests, with humans reviewing and merging. The contract for agents
-lives in [`AGENTS.md`](AGENTS.md); the end-to-end lifecycle — milestone → issue → PR,
-and the human gates between them — is
-[`docs/agents/continuance.md`](docs/agents/continuance.md); the commands, labels, and
-GitHub settings are in [`docs/agents/workflow.md`](docs/agents/workflow.md). It is
-deliberately provider-neutral: no AI vendor is canonical, and every automated step has a
-manual equivalent. Every PR must pass CI (`Engine`, `Client`, `E2E`, and `cargo-deny`
-checks — reproduce them all with `make verify`) and human review — nothing merges
-automatically.
+RUNE is solo-maintained, with Claude as the coding assistant. The loop is light: branch
+off `main`, keep changes small and single-purpose, run `make check` while working and
+`make verify` before opening a PR, and merge once CI is green. The rules that matter — zero
+game logic in the client, zero I/O in the engine, protocol changes are contract changes —
+live in [`AGENTS.md`](AGENTS.md); the contributor loop is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Every PR must pass CI (`Engine`, `Client`, `E2E`, and
+`cargo-deny` — reproduce them with `make verify`).
 
 ## Documentation
 

@@ -20,13 +20,9 @@ before writing code.
 - **No card images, no official frames, no WotC branding, no monetization paths.**
   See `docs/brief.md` (Legal Considerations) before touching card data or rendering.
 - Never commit secrets, `.env` files, `node_modules/`, or `target/`.
-- Only a branch you exclusively own — your own `agent/<issue>-<slug>` branch that no
-  one else is committing to — may be rebased and force-pushed, and only with
-  `git push --force-with-lease` (never `--force`). This is how you bring a stale PR
-  current onto `main` (see "Handling stale branches" in `docs/agents/workflow.md`).
-  Never rewrite or force-push a shared branch — `main`, or any branch another agent or
-  human has commits on. Never merge your own PR; the `main` ruleset requires a separate
-  human approval.
+- Only force-push a branch you exclusively own, and only with
+  `git push --force-with-lease` (never `--force`). Never rewrite or force-push `main` or
+  any branch someone else has commits on.
 
 ## Repository map
 
@@ -36,16 +32,6 @@ before writing code.
 - `crates/rune-cli/` — terminal client; proves the protocol without a UI.
 - `clients/web/` — React + Pixi client. Has its own `AGENTS.md`.
 - `docs/` — brief, protocol spec, card schema, UI requirements, ADRs (`docs/decisions/`).
-- `tools/agent-task/` — the issue runner (ADR 0016, `scripts/agent-task`) and the
-  milestone stewardship cycle (ADR 0017, `scripts/agent-cycle`, `cycle-*.js`), which is a
-  second consumer of the runner's own primitives rather than a parallel toolchain.
-  Dependency-free Node; never add a dependency to it.
-- `tools/ci-policy/` — the workflow gate (`make ci-lint`): immutable Action pins,
-  least-privilege tokens, no untrusted interpolation. Dependency-free Node; same rule.
-- `tools/ai-review/` — the independent AI reviewer (ADR 0015): an untrusted prepare stage and
-  a trusted review stage that never executes PR code. Dependency-free Node; same rule.
-  Before editing either workflow, read `docs/agents/ai-review.md` — the security property is
-  in the *split*, and it is one careless edit away.
 - `prototypes/` — reference-only HTML prototypes. Never import from here.
 
 Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
@@ -56,16 +42,14 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
   while implementing; it must pass before every PR.
 - `make verify` — the complete pre-merge gate. Composes `make check` + `make e2e` +
   `make deny`, so its coverage matches every required GitHub check (`Engine`, `Client`,
-  `E2E`, `cargo-deny`). Run it before requesting final review (when the environment can
-  run the browser suite).
+  `E2E`, `cargo-deny`). Run it before requesting review (when the environment can run the
+  browser suite).
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make client-check` — lint + typecheck + test + build in `clients/web`
 - `make e2e` — browser end-to-end suite (its own `E2E` CI job, **not** part of
   `make check`; needs a browser + built client — see `docs/decisions/0011-*.md`)
 - `make deny` — `cargo deny check advisories licenses bans sources` (the `cargo-deny` job)
-- `make ci-lint` — workflow gate: actionlint + `tools/ci-policy` (immutable Action pins,
-  least-privilege tokens). Runs in the `cargo-deny` job; needs `actionlint` on `PATH`.
 - `scripts/bootstrap.sh` — one-time prerequisite check for both gates
 - `make e2e-browser` — install the pinned Playwright Chromium the E2E suite needs
 
@@ -75,23 +59,13 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 
 ## Workflow
 
-1. Work from a GitHub issue — a `status:ready` **leaf** issue whose `Blocked by:` list is
-   closed, and nothing else. If none exists for your task, create one using the agent-task
-   template with acceptance criteria before writing code.
-2. Branch: `agent/<issue-number>-<short-slug>`.
-3. Commits: Conventional Commits (`feat(engine): …`, `fix(client): …`, `docs: …`).
-4. **One leaf issue → one PR**, in both directions. Keep PRs small and single-purpose;
-   fill in the PR template; link the issue with `Closes #N` (exactly one). An outcome too
-   big for one PR is a parent issue that needs decomposing, not a second PR against the
-   same issue. Add or update tests for everything you change.
-5. Definition of done: `make check` green throughout implementation and `make verify`
-   green before final review (where the browser suite can run), docs/ADRs updated if
-   behavior or architecture changed, PR description explains what and why, no unrelated
-   diffs.
-6. Architectural decisions get an ADR in `docs/decisions/` (copy `0000-template.md`).
-7. Your job ends at "green checks + a PR ready for review." Agents never approve and
-   never merge — not their own PRs and not another agent's.
+Solo-maintained (one maintainer + Claude). Keep it light:
 
-The end-to-end lifecycle (milestone → issue → PR, and the human gates between them):
-`docs/agents/continuance.md`. Commands, labels, and GitHub settings:
-`docs/agents/workflow.md`.
+1. Branch off `main` with a short descriptive name (`feat/…`, `fix/…`, `docs/…`).
+2. Commits: Conventional Commits (`feat(engine): …`, `fix(client): …`, `docs: …`).
+3. Keep changes small and single-purpose. Add or update tests for everything you change.
+4. Definition of done: `make check` green throughout, `make verify` green before opening a
+   PR (where the browser suite can run), docs/ADRs updated if behavior or architecture
+   changed, no unrelated diffs.
+5. Architectural decisions get an ADR in `docs/decisions/` (copy `0000-template.md`).
+6. Open a PR when checks are green; merge it once CI passes.

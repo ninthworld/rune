@@ -67,9 +67,9 @@ The hard rules constrain the design exactly as they did for ADR 0013
 - **The entire client UI must be reconstructable from one `GameView`.** Any new
   projected field must not require a second round trip.
 
-This ADR is a **decision only** — like ADR 0017, "this ADR's implementation is
-out of scope here." It ships no engine/server/protocol/client code; it defines
-the model and ends with the PR-sized follow-up issues that implement it.
+This ADR is a **decision only**: its implementation is out of scope here. It ships
+no engine/server/protocol/client code; it defines the model and ends with the
+PR-sized follow-up work that implements it.
 
 ## Decision
 
