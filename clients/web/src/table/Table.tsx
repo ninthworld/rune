@@ -24,6 +24,7 @@ import { selectPendingPrompt, useGameStore } from '../store';
 import { publishScene, publishView } from '../testHooks';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
+import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
 import { PlayerTiles } from './PlayerTiles';
@@ -114,6 +115,31 @@ function isOnCanvas(view: GameView, id: EntityId): boolean {
   return view.my_hand.some((card) => card.id === id) || view.battlefield.some((p) => p.id === id);
 }
 
+/**
+ * Resolve an entity id to what the inspect popover should show (issue #261),
+ * searching every zone whose objects the view carries: the receiver's hand, the
+ * battlefield (a permanent contributes its current face plus dynamic state), the
+ * public graveyard/exile piles, and the stack. Presentation-only lookup over data
+ * already in the view — it derives nothing. Returns `null` for an id that is not
+ * inspectable in this view (e.g. it left its zone on a fresh frame).
+ */
+function resolveInspect(view: GameView, id: EntityId): InspectTarget | null {
+  for (const card of view.my_hand) if (card.id === id) return { kind: 'card', card };
+  for (const perm of view.battlefield) {
+    if (perm.id === id) {
+      return { kind: 'card', card: perm.card, tapped: perm.tapped, counters: perm.counters };
+    }
+  }
+  for (const pile of view.graveyards) {
+    for (const card of pile.cards) if (card.id === id) return { kind: 'card', card };
+  }
+  for (const pile of view.exile) {
+    for (const card of pile.cards) if (card.id === id) return { kind: 'card', card };
+  }
+  for (const item of view.stack) if (item.id === id) return { kind: 'stack', item };
+  return null;
+}
+
 export function Table() {
   const view = useGameStore((state) => state.view);
   const choose = useGameStore((state) => state.choose);
@@ -121,29 +147,36 @@ export function Table() {
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
   const [targeting, setTargeting] = useState<TargetingSession | null>(null);
   const [multiSelect, setMultiSelect] = useState<MultiSelectSession | null>(null);
+  // The entity whose inspect popover is open, if any (issue #261). Ephemeral
+  // presentation state like every selection here — never load-bearing across
+  // messages (dropped on the next view below).
+  const [inspectedId, setInspectedId] = useState<EntityId | null>(null);
 
   // A fresh view supersedes any in-progress targeting or multi-select: the answer
   // either landed (server's response) or is now stale — most importantly, a changed
   // content-binding `token` invalidates the pending selection. Discarding both here
-  // is what keeps the whole selection UI reconstructable from one GameView + prompt
-  // (no load-bearing state across messages).
+  // (and any open inspect popover) is what keeps the whole selection UI
+  // reconstructable from one GameView + prompt (no load-bearing state across messages).
   useEffect(() => {
     setTargeting(null);
     setMultiSelect(null);
+    setInspectedId(null);
   }, [view]);
 
-  // Escape abandons the in-progress selection, mirroring the targeting-mode Cancel
-  // affordance (keyboard parity across both prompt modes). Multi-select takes
-  // precedence when both somehow coexist; a plain view ignores the key.
+  // Escape abandons the topmost ephemeral surface, mirroring the targeting-mode
+  // Cancel affordance (keyboard parity). An open inspect popover closes first (it
+  // is a transient overlay above everything); otherwise a multi-select, then a
+  // targeting session; a plain view ignores the key.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
-      if (multiSelect) setMultiSelect(null);
+      if (inspectedId !== null) setInspectedId(null);
+      else if (multiSelect) setMultiSelect(null);
       else if (targeting) setTargeting(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [multiSelect, targeting]);
+  }, [inspectedId, multiSelect, targeting]);
 
   const viewportWidth = useViewportWidth();
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
@@ -210,6 +243,12 @@ export function Table() {
     );
   }
 
+  // The card the inspect popover shows, resolved from the latest view (issue #261).
+  // Null when nothing is inspected or the id is no longer present — the popover is
+  // pure render of the current view, so a stale id simply shows nothing.
+  const inspectTarget = inspectedId !== null ? resolveInspect(view, inspectedId) : null;
+  const closeInspect = (): void => setInspectedId(null);
+
   // Game over (issue #141): a terminal view carries `result`. The whole screen is
   // pure render of that latest view — the DOM overlay names the verdict/reason and
   // the interactive prompt/action UI is suppressed (the server sends no actions
@@ -220,10 +259,26 @@ export function Table() {
     return (
       <main style={main} data-testid="table-game-over">
         <PlayerTiles view={view} localId={localId} />
+        <StackPanel view={view} onInspect={setInspectedId} />
         <div style={boardWrap(scene.width, scene.height)}>
           <BattlefieldCanvas scene={scene} />
+          {/*
+           * Read-only game-over board: no select/target interaction (the server
+           * offers no actions once the game is over), but every card stays
+           * inspectable, so the overlay renders inspect handles only (issue #261).
+           */}
+          <EntityOverlay
+            scene={scene}
+            selectedId={null}
+            targeting={false}
+            onSelect={() => {}}
+            onChoose={() => {}}
+            onPickTarget={() => {}}
+            onInspect={setInspectedId}
+          />
         </div>
         <GameOverOverlay result={view.result} you={view.you} />
+        {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
       </main>
     );
   }
@@ -398,6 +453,7 @@ export function Table() {
         targeting={
           targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
         }
+        onInspect={setInspectedId}
       />
       <div style={boardWrap(scene.width, scene.height)}>
         <BattlefieldCanvas scene={scene} />
@@ -409,6 +465,7 @@ export function Table() {
           onSelect={toggleSelect}
           onChoose={fire}
           onPickTarget={multiSelect ? toggleCandidate : pickTarget}
+          onInspect={setInspectedId}
         />
       </div>
       {overlayMode && msSlot && (
@@ -429,6 +486,7 @@ export function Table() {
         onCancelTargeting={targeting ? cancelTargeting : undefined}
         multiSelect={multiSelectControls}
       />
+      {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
     </main>
   );
 }

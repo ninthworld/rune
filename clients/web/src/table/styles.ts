@@ -290,6 +290,185 @@ export function entityActions(rect: Rect): CSSProperties {
   };
 }
 
+/**
+ * Card inspect popover (issue #261, React DOM per ADR 0003 — oracle text a user
+ * reads is DOM, never the Pixi canvas). A universal, reusable surface that reads
+ * only `CardView`/`StackItem` fields the server already sent; it never touches the
+ * card color/size tokens (that is the renderers' job) and reads the shared
+ * `SURFACES` palette like the rest of the table chrome.
+ */
+export const inspectBackdrop: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(9, 10, 12, 0.66)',
+  zIndex: 20,
+};
+
+export const inspectPanel: CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  width: '100%',
+  maxWidth: 340,
+  maxHeight: '80vh',
+  overflowY: 'auto',
+  padding: 20,
+  borderRadius: 12,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  boxSizing: 'border-box',
+};
+
+/** The close (×) control, anchored top-right of the panel. */
+export const inspectClose: CSSProperties = {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  minWidth: TOUCH,
+  minHeight: TOUCH,
+  padding: 0,
+  borderRadius: 8,
+  border: 'none',
+  background: 'transparent',
+  color: SURFACES.typeText,
+  fontSize: 22,
+  lineHeight: 1,
+  cursor: 'pointer',
+};
+
+export const inspectName: CSSProperties = {
+  margin: 0,
+  paddingRight: TOUCH,
+  fontSize: 18,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+/** The mana cost line, in the muted secondary color (rendered verbatim). */
+export const inspectCost: CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: SURFACES.typeText,
+};
+
+export const inspectTypeLine: CSSProperties = {
+  fontSize: 13,
+  color: SURFACES.typeText,
+};
+
+/** The current (effective) power/toughness line. */
+export const inspectPt: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+/** The keyword badge row. */
+export const inspectKeywords: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+};
+
+/** One keyword badge. */
+export const inspectKeyword: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  padding: '2px 8px',
+  borderRadius: 999,
+  background: '#2A2F37',
+  color: SURFACES.nameText,
+  border: '1px solid #3A4049',
+};
+
+/** The oracle/rules text block, wrapping across lines. */
+export const inspectRules: CSSProperties = {
+  margin: '4px 0 0',
+  fontSize: 14,
+  lineHeight: 1.5,
+  color: SURFACES.nameText,
+  whiteSpace: 'pre-wrap',
+};
+
+/** The placeholder shown when a card has no rules text. */
+export const inspectNoText: CSSProperties = {
+  ...inspectRules,
+  fontStyle: 'italic',
+  color: SURFACES.typeText,
+};
+
+/** The row of dynamic-state badges (tapped, counters, controller). */
+export const inspectStateRow: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  marginTop: 4,
+};
+
+/** One dynamic-state badge. */
+export const inspectState: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  padding: '2px 8px',
+  borderRadius: 6,
+  background: '#15171A',
+  color: SURFACES.typeText,
+  border: '1px solid #2C313A',
+};
+
+/**
+ * The inspect handle drawn ON a card (issue #261): a small, touch-sized affordance
+ * anchored at the card's top-right corner that opens the inspect popover. It is a
+ * DISTINCT control from the select/target hotspot beneath it (its own testid and a
+ * higher stacking context), so a card can be inspected without disturbing its
+ * select/target interaction — the two coexist (a card stays both inspectable and
+ * toggleable in targeting/multi-select).
+ */
+export function inspectHandle(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x + rect.w - TOUCH + 6,
+    top: rect.y - 6,
+    width: TOUCH,
+    height: TOUCH,
+    padding: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    border: `1px solid ${SURFACES.selection}`,
+    background: 'rgba(21, 23, 26, 0.9)',
+    color: SURFACES.nameText,
+    fontSize: 15,
+    fontWeight: 700,
+    lineHeight: 1,
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    zIndex: 3,
+  };
+}
+
+/** A compact inspect handle for a DOM row (stack entry): inline, not absolute. */
+export const inspectRowHandle: CSSProperties = {
+  minWidth: TOUCH,
+  minHeight: TOUCH,
+  padding: 0,
+  borderRadius: 999,
+  border: `1px solid ${SURFACES.selection}`,
+  background: '#2A2F37',
+  color: SURFACES.nameText,
+  fontSize: 15,
+  fontWeight: 700,
+  cursor: 'pointer',
+  flexShrink: 0,
+};
+
 export const bar: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -447,6 +626,16 @@ export const stackList: CSSProperties = {
   margin: 0,
   padding: 0,
   listStyle: 'none',
+};
+
+/**
+ * A stack list row: lays the entry (or its target button) beside its inspect
+ * handle. The entry grows to fill; the handle stays a fixed touch-sized control.
+ */
+export const stackItemRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  gap: 6,
 };
 
 /** One stack entry (spell or ability). */

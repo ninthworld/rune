@@ -192,6 +192,106 @@ describe('Table stack panel (issue #142)', () => {
   });
 });
 
+describe('Table card inspect (issue #261)', () => {
+  it('opens the inspect popover for a hand card and shows its CardView content', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    // The hand card c1 (Llanowar Elves) has no action, yet it is inspectable.
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+    fireEvent.click(screen.getByTestId('inspect-c1'));
+    const panel = screen.getByTestId('card-inspect');
+    expect(within(panel).getByTestId('card-inspect-name').textContent).toBe('Llanowar Elves');
+    expect(within(panel).getByTestId('card-inspect-rules').textContent).toContain('Add {G}');
+  });
+
+  it('inspects an own permanent including its dynamic state, and closes again', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    const panel = screen.getByTestId('card-inspect');
+    expect(within(panel).getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+    expect(within(panel).getByTestId('card-inspect-state').textContent).toContain('Tapped');
+    // Close via the explicit control.
+    fireEvent.click(screen.getByTestId('card-inspect-close'));
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+  });
+
+  it('inspects a stack object', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('inspect-s1'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Lightning Bolt');
+  });
+
+  it('is keyboard accessible: the handle is a focusable button and Escape closes', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    const handle = screen.getByTestId('inspect-c1');
+    // The handle is a real button (focusable, Enter/Space activate it natively).
+    expect(handle.tagName).toBe('BUTTON');
+    fireEvent.click(handle);
+    expect(screen.getByTestId('card-inspect')).toBeDefined();
+    // Escape dismisses the popover (keyboard parity with the other overlays).
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+  });
+
+  it('drops an open popover when a fresh GameView arrives (no state across messages)', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    expect(screen.getByTestId('card-inspect')).toBeDefined();
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+  });
+
+  it('keeps a card both inspectable and targetable during targeting mode', () => {
+    const choose = seed(TARGETING_GAME_VIEW_JSON);
+    render(<Table />);
+    // Enter targeting on the bolt.
+    fireEvent.click(screen.getByTestId('entity-c3'));
+    fireEvent.click(
+      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+        name: 'Cast Lightning Bolt',
+      }),
+    );
+    // The candidate permanent is targetable AND carries an inspect handle.
+    expect(screen.getByTestId('target-perm_xyz')).toBeDefined();
+    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+    // Inspecting did not submit the target; targeting is still live underneath.
+    expect(choose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('card-inspect-close'));
+    fireEvent.click(screen.getByTestId('target-perm_xyz'));
+    expect(choose).toHaveBeenCalledTimes(1);
+  });
+
+  it('inspects in the read-only game-over state', () => {
+    // A terminal frame that still carries a permanent to inspect.
+    const terminal = JSON.stringify({
+      you: 'p1',
+      my_hand: [],
+      opponents: [{ player_id: 'p2', hand_size: 0, life: 0, library_size: 40, graveyard_size: 0 }],
+      battlefield: [
+        {
+          id: 'perm_win',
+          controller: 'p1',
+          owner: 'p1',
+          card: { id: 'perm_win', name: 'Grizzly Bears', type_line: 'Creature — Bear' },
+        },
+      ],
+      phase: 'end',
+      valid_actions: [],
+      result: { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+    });
+    seed(terminal);
+    render(<Table />);
+    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+    fireEvent.click(screen.getByTestId('inspect-perm_win'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+  });
+});
+
 describe('Table targeting mode (ADR 0009 §Client)', () => {
   let choose: ReturnType<typeof vi.fn>;
 

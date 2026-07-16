@@ -21,7 +21,7 @@
 import { Fragment } from 'react';
 import type { EntityId, ValidAction } from '../protocol';
 import type { RenderedCard, TableScene } from './scene';
-import { chip, entityActions, hotspot, overlay, targetHotspot } from './styles';
+import { chip, entityActions, hotspot, inspectHandle, overlay, targetHotspot } from './styles';
 
 interface Props {
   /** The scene whose actionable (or targetable) cards get overlay affordances. */
@@ -43,6 +43,13 @@ interface Props {
   onChoose: (action: ValidAction) => void;
   /** Pick an entity as the current target slot's answer (targeting mode). */
   onPickTarget: (id: EntityId) => void;
+  /**
+   * Open the inspect popover for a card (issue #261). When provided, every card in
+   * the scene gets an inspect handle — a distinct control from its select/target
+   * hotspot, so inspect works on any card (own, opponent's, actionable or not) and
+   * coexists with targeting/multi-select. Absent ⇒ no handles are drawn.
+   */
+  onInspect?: (id: EntityId) => void;
 }
 
 export function EntityOverlay({
@@ -53,6 +60,7 @@ export function EntityOverlay({
   onSelect,
   onChoose,
   onPickTarget,
+  onInspect,
 }: Props) {
   const allCards: RenderedCard[] = [...scene.bands.flatMap((band) => band.cards), ...scene.hand];
 
@@ -64,6 +72,25 @@ export function EntityOverlay({
 
   return (
     <div style={overlay(scene.width, scene.height)}>
+      {/*
+       * Inspect handles for every card (issue #261). Rendered first but stacked
+       * above via z-index, so inspect is reachable on any card — including cards
+       * with no action (opponent permanents) that carry no select hotspot — without
+       * changing what the select/target hotspots below offer.
+       */}
+      {onInspect &&
+        allCards.map((card) => (
+          <button
+            key={`inspect-${card.entityId}`}
+            type="button"
+            data-testid={`inspect-${card.entityId}`}
+            aria-label={`Inspect ${card.name}`}
+            onClick={() => onInspect(card.entityId)}
+            style={inspectHandle(card.rect)}
+          >
+            i
+          </button>
+        ))}
       {interactive.map((card) => {
         if (targeting) {
           // A multi-select candidate toggles (pressed when chosen); a single-target
