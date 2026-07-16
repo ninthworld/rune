@@ -125,6 +125,15 @@ export const banner: CSSProperties = {
 
 export const bannerAccent: CSSProperties = { color: SURFACES.selection, fontWeight: 600 };
 
+/** The live decision countdown appended to "Your move" (issue #263). */
+export const deadlineCountdown: CSSProperties = { color: SURFACES.nameText, fontWeight: 600 };
+
+/** The countdown in its low-time warning state, in the shared alert accent. */
+export const deadlineCountdownLow: CSSProperties = {
+  color: SURFACES.targeting,
+  fontWeight: 700,
+};
+
 /** The lead span of the targeting-mode banner, in the shared targeting color. */
 export const bannerTargeting: CSSProperties = { color: SURFACES.targeting, fontWeight: 600 };
 

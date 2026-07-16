@@ -6,9 +6,50 @@
  * provides, displayed verbatim). When nothing is offered, input is gated: the
  * banner reads "Waiting", entities carry no hotspots, and the bar is empty.
  */
+import { useEffect, useState } from 'react';
 import type { GameView, Phase } from '../protocol';
 import type { PendingPrompt } from '../store';
-import { banner, bannerAccent, bannerOptions, bannerTargeting, optionButton } from './styles';
+import {
+  banner,
+  bannerAccent,
+  bannerOptions,
+  bannerTargeting,
+  deadlineCountdown,
+  deadlineCountdownLow,
+  optionButton,
+} from './styles';
+
+/** Below this many seconds the countdown enters its low-time warning state. */
+const LOW_TIME_SECONDS = 10;
+
+/**
+ * A live decision countdown (issue #263). Seeds from the server-sent seconds
+ * remaining ({@link GameView.action_deadline}) and ticks down locally once per
+ * second; a fresh view re-seeds it (the server re-sends the real remaining time,
+ * so nothing here is load-bearing across messages — a reconnect shows the right
+ * value). Enters a warning state under {@link LOW_TIME_SECONDS}. The server, not
+ * the client, enforces the deadline — this is display only.
+ */
+function DeadlineCountdown({ seconds }: { seconds: number }) {
+  const [remaining, setRemaining] = useState(seconds);
+  useEffect(() => {
+    setRemaining(seconds);
+    const id = setInterval(() => setRemaining((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(id);
+  }, [seconds]);
+  const display = Math.max(0, Math.ceil(remaining));
+  const low = display <= LOW_TIME_SECONDS;
+  return (
+    <span
+      data-testid="deadline-countdown"
+      data-low={low || undefined}
+      style={low ? deadlineCountdownLow : deadlineCountdown}
+    >
+      {' '}
+      — {display}s
+    </span>
+  );
+}
 
 /** One named choice offered in the banner's modal option picker (issue #157). */
 export interface PromptOptionControl {
@@ -159,7 +200,7 @@ export function PromptBanner({ view, prompt, targeting, multiSelect, onOption }:
       {prompt ? (
         <span style={bannerAccent}>
           Your move
-          {prompt.deadline !== undefined ? ` — ${prompt.deadline}s` : ''}
+          {prompt.deadline !== undefined && <DeadlineCountdown seconds={prompt.deadline} />}
         </span>
       ) : (
         <span>Waiting…</span>

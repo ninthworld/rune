@@ -37,6 +37,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
+# The decision-timer tests (issue #263) drive the room's clock on a paused Tokio
+# runtime (`start_paused`, `tokio::time::advance`), which live behind `test-util`.
+tokio = { version = "1", features = ["test-util"] }
 # The accept-path integration test drives the server with a real WebSocket
 # client; `connect_async` needs the client half of the handshake.
 tokio-tungstenite = { version = "0.24", default-features = false, features = [

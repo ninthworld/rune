@@ -27,13 +27,15 @@
 //!   the server's memory.
 
 use std::future::Future;
+use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use rune_engine::{apply_action, CardDatabase, GameState, PlayerId};
+use rune_engine::{apply_action, valid_actions, Action, CardDatabase, GameState, PlayerId};
 use rune_protocol::{ClientMessage, GameView};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
@@ -113,6 +115,65 @@ impl RoomHandle {
     }
 }
 
+/// A room's decision-timer policy (issue #263).
+///
+/// The engine is pure and timer-free (ADR 0002); deadline policy and enforcement
+/// live here in the room layer, which already owns tokio time. Timers are **off by
+/// default** — an off policy reproduces exactly the pre-timer behavior, so existing
+/// flows and tests are unchanged — and, when on, apply only to in-game decisions;
+/// the lobby/deck-submission phase is explicitly out of scope (a room only exists
+/// once a game has been constructed).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TimerPolicy {
+    /// No decision clock: a seat may take as long as it likes (the default, and the
+    /// behavior before timers existed).
+    #[default]
+    Off,
+    /// Each in-game decision must be answered within `limit`; on expiry the room
+    /// takes a conservative default action on the deciding player's behalf (see
+    /// [`timeout_default_action`]).
+    PerDecision {
+        /// How long the deciding player has before the default action fires.
+        limit: Duration,
+    },
+}
+
+/// The conservative default action the room takes when a decision times out
+/// (issue #263). This is deliberately a *safe no-op-ish* choice, never a
+/// game-losing one — a single missed prompt must not concede (CR 104.3a is reserved
+/// for an explicit concession or a future idle-escalation policy):
+///
+/// - In an ordinary priority window, **pass priority** — the universal safe default.
+/// - For a forced combat declaration, declare **no** attackers/blockers (CR 508.1a /
+///   509.1a both allow the empty declaration).
+/// - Any other forced decision (mulligan keep/mulligan, cleanup discard) has no safe
+///   auto-answer, so the timer does not force it — the room stops the clock for that
+///   decision rather than guess (idle-escalation is future work). Returns `None`.
+///
+/// All legality is still enforced by [`apply_action`]; this only picks *which*
+/// offered action to take, reading the engine's own [`valid_actions`].
+fn timeout_default_action(state: &GameState, db: &CardDatabase) -> Option<Action> {
+    let actions = valid_actions(state, db);
+    if actions.iter().any(|a| matches!(a, Action::PassPriority)) {
+        return Some(Action::PassPriority);
+    }
+    if actions
+        .iter()
+        .any(|a| matches!(a, Action::DeclareAttackers { .. }))
+    {
+        return Some(Action::DeclareAttackers {
+            attackers: Vec::new(),
+        });
+    }
+    if actions
+        .iter()
+        .any(|a| matches!(a, Action::DeclareBlockers { .. }))
+    {
+        return Some(Action::DeclareBlockers { blocks: Vec::new() });
+    }
+    None
+}
+
 /// One game room: a single-writer async task around one [`GameState`].
 ///
 /// The room owns exactly one engine game and one [`CardDatabase`] and is the only
@@ -127,7 +188,14 @@ impl RoomHandle {
 /// game effectively pauses on whoever must act next. On reconnect the client sends
 /// a fresh [`RoomInput::Join`] and the room re-sends that seat's latest
 /// [`GameView`] in full, honoring the full-state invariant (`docs/protocol.md`).
-/// There is no per-seat timeout here; turn clocks are a later milestone.
+///
+/// # Decision timer (issue #263)
+/// A room optionally runs a per-decision clock ([`TimerPolicy`], off by default).
+/// The deadline is an **absolute** instant, so a reconnecting client is re-sent the
+/// correct seconds-remaining rather than a fresh clock — the timer does not reset on
+/// reconnect. On expiry the room applies a conservative default action on the
+/// deciding player's behalf ([`timeout_default_action`]); a single missed prompt
+/// never concedes.
 pub struct Room {
     state: GameState,
     db: CardDatabase,
@@ -136,15 +204,37 @@ pub struct Room {
     /// latest-value channel, so pushing a view never blocks the room nor buffers
     /// superseded snapshots.
     seats: Vec<Option<watch::Sender<Option<GameView>>>>,
+    /// The decision-timer policy (issue #263). [`TimerPolicy::Off`] by default.
+    timer: TimerPolicy,
+    /// The absolute deadline for the current decision, if a clock is running. Set
+    /// when a fresh decision is presented (after any applied action) and read to
+    /// project `action_deadline` into the deciding seat's view. Absolute, so a
+    /// reconnect re-send reflects the real remaining time rather than restarting it.
+    deadline: Option<Instant>,
 }
 
 impl Room {
     /// Create a room around an initial `state` and card `db`. The number of seats
-    /// is fixed by `state.players`; each seat starts disconnected.
+    /// is fixed by `state.players`; each seat starts disconnected. Timers are off;
+    /// use [`Room::with_timer_policy`] to enable a decision clock.
     #[must_use]
     pub fn new(state: GameState, db: CardDatabase) -> Self {
         let seats = state.players.iter().map(|_| None).collect();
-        Self { state, db, seats }
+        Self {
+            state,
+            db,
+            seats,
+            timer: TimerPolicy::Off,
+            deadline: None,
+        }
+    }
+
+    /// Set this room's decision-timer policy (issue #263). Chainable on
+    /// [`Room::new`]; the default is [`TimerPolicy::Off`].
+    #[must_use]
+    pub fn with_timer_policy(mut self, policy: TimerPolicy) -> Self {
+        self.timer = policy;
+        self
     }
 
     /// Spawn the room on a Tokio task, returning a [`RoomHandle`] for delivering
@@ -165,15 +255,33 @@ impl Room {
     /// sees the finished board, then stops; the lobby reclaims the room afterward
     /// (issue #54).
     pub async fn run(mut self, mut inbox: mpsc::Receiver<RoomInput>) {
+        // Start the clock on the opening decision (a no-op when timers are off).
+        self.arm_deadline();
         while !self.game_over() {
-            let Some(input) = inbox.recv().await else {
-                info!("room input channel closed; room task stopping");
-                return;
-            };
-            match input {
-                RoomInput::Join { seat, outbox } => self.on_join(seat, outbox),
-                RoomInput::Message { seat, message } => self.on_message(seat, &message),
-                RoomInput::Leave { seat } => self.on_leave(seat),
+            // Copy the deadline out so the timer future borrows nothing of `self`
+            // (the input arm needs `&mut self`). A `None` deadline parks forever, so
+            // the timer arm simply never fires when no clock is running.
+            let deadline = self.deadline;
+            tokio::select! {
+                maybe = inbox.recv() => {
+                    let Some(input) = maybe else {
+                        info!("room input channel closed; room task stopping");
+                        return;
+                    };
+                    match input {
+                        RoomInput::Join { seat, outbox } => self.on_join(seat, outbox),
+                        RoomInput::Message { seat, message } => self.on_message(seat, &message),
+                        RoomInput::Leave { seat } => self.on_leave(seat),
+                    }
+                }
+                () = async move {
+                    match deadline {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => {
+                    self.on_timeout();
+                }
             }
         }
         // A player has lost: the game is over. Push the terminal state to every
@@ -222,6 +330,9 @@ impl Room {
                 match resolve_action(&self.state, &self.db, PlayerId(seat), choose) {
                     Some(action) => {
                         self.state = apply_action(&self.state, &action, &self.db);
+                        // The decision advanced: restart the clock for whatever the
+                        // new state presents next (a no-op when timers are off).
+                        self.arm_deadline();
                         // A terminal result is delivered once by the run loop's final
                         // broadcast; don't re-send the same full-state view here.
                         if !self.game_over() {
@@ -241,12 +352,67 @@ impl Room {
         }
     }
 
+    /// (Re)arm the decision clock for the state the room now presents (issue #263).
+    ///
+    /// Sets an absolute deadline `limit` from now when a timer policy is active and a
+    /// decision is actually pending; clears it otherwise. Called after every applied
+    /// action (a fresh decision) and at room start — but never on join/leave, so a
+    /// reconnect observes the real remaining time rather than restarting the clock.
+    fn arm_deadline(&mut self) {
+        self.deadline = match self.timer {
+            TimerPolicy::PerDecision { limit } if self.decision_pending() => {
+                Some(Instant::now() + limit)
+            }
+            _ => None,
+        };
+    }
+
+    /// Whether a live in-game decision is pending — the game is not over and some
+    /// seat holds priority (and so has actions to take). The clock only runs while
+    /// this holds.
+    fn decision_pending(&self) -> bool {
+        !self.game_over() && self.state.priority_holder().is_some()
+    }
+
+    /// The decision clock expired (issue #263): apply the conservative default action
+    /// on the deciding player's behalf, then restart the clock for the next decision.
+    ///
+    /// If there is no safe default (mulligan/discard) or the default would be a
+    /// no-op, the clock is left cleared for this decision rather than hot-looping —
+    /// the decision then waits for the player (or a future idle-escalation policy).
+    fn on_timeout(&mut self) {
+        if let Some(action) = timeout_default_action(&self.state, &self.db) {
+            let next = apply_action(&self.state, &action, &self.db);
+            if next != self.state {
+                self.state = next;
+                self.arm_deadline();
+                if !self.game_over() {
+                    self.broadcast();
+                }
+                return;
+            }
+        }
+        // Nothing safe to do automatically: stop timing this decision.
+        self.deadline = None;
+    }
+
     /// Push the seat's freshly-personalized view to its outbox. Writing to the
     /// latest-value [`watch`] never blocks and overwrites any view the reader has
     /// not yet consumed (coalescing to newest). If the receiver is gone, treat it as
     /// a disconnect and hold the seat open.
+    ///
+    /// When a decision clock is running (issue #263), the deciding seat's view — the
+    /// one with actions on offer — carries `action_deadline` as the seconds remaining
+    /// until the default action fires, computed from the absolute deadline so a
+    /// reconnect sees the true remaining time.
     fn send_view(&mut self, seat: Seat) {
-        let view = personalized_view(&self.state, &self.db, PlayerId(seat));
+        let mut view = personalized_view(&self.state, &self.db, PlayerId(seat));
+        if let Some(at) = self.deadline {
+            if !view.valid_actions.is_empty() {
+                view.action_deadline =
+                    Some(at.saturating_duration_since(Instant::now()).as_secs_f64());
+            }
+        }
         let Some(slot) = self.seats.get_mut(seat) else {
             return;
         };
@@ -832,5 +998,120 @@ mod tests {
         // Once the room's receiver is gone, delivery reports the room as stopped.
         drop(inbox_rx);
         assert!(!handle.send(RoomInput::Leave { seat: 0 }));
+    }
+
+    // ----- Decision timers (issue #263) -----
+
+    /// A [`dealt_state`] whose player 1 sits at 0 life, so the very next applied
+    /// action (a timeout's default pass) runs state-based actions that end the game —
+    /// giving the auto-advancing test clock a terminal state to stop at.
+    fn near_terminal_dealt_state() -> GameState {
+        let mut state = dealt_state();
+        state.players[1].life = 0;
+        state
+    }
+
+    #[tokio::test]
+    async fn issue_263_timers_off_by_default_leave_no_deadline() {
+        // The default policy reproduces the pre-timer behavior: no `action_deadline`
+        // rides the view, so existing flows are unchanged.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let view0 = wait_for_view(&mut rx0).await;
+        assert!(!view0.valid_actions.is_empty(), "seat 0 is the decider");
+        assert!(
+            view0.action_deadline.is_none(),
+            "no clock runs under the default (off) policy"
+        );
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn issue_263_timer_projects_a_deadline_that_survives_reconnect() {
+        // With a per-decision clock, the deciding seat's view carries the seconds
+        // remaining. The deadline is absolute, so a reconnect midway through sees the
+        // reduced remaining time rather than a fresh clock.
+        let policy = TimerPolicy::PerDecision {
+            limit: Duration::from_secs(30),
+        };
+        let (handle, task) = Room::new(dealt_state(), db())
+            .with_timer_policy(policy)
+            .spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let view0 = wait_for_view(&mut rx0).await;
+        let first = view0.action_deadline.expect("the decider is on the clock");
+        assert!(
+            (29.0..=30.0).contains(&first),
+            "roughly the full limit remains at the start: {first}"
+        );
+
+        // Ten seconds pass without an action, then seat 0 reconnects. The re-sent
+        // view reflects ~20s left — the clock did not restart.
+        tokio::time::advance(Duration::from_secs(10)).await;
+        let (tx0b, mut rx0b) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0b,
+        });
+        let reconnect = wait_for_view(&mut rx0b).await;
+        let remaining = reconnect.action_deadline.expect("still on the clock");
+        assert!(
+            (19.0..=21.0).contains(&remaining),
+            "reconnect keeps the absolute deadline, ~20s left: {remaining}"
+        );
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn issue_263_timer_expiry_takes_the_default_action() {
+        // Nobody acts; when the clock runs out the room takes the safe default
+        // (pass priority) on the deciding seat's behalf. Here that pass runs
+        // state-based actions that finish the game (player 1 was at 0 life), so the
+        // effect is observable as the terminal result on the final broadcast — and
+        // the auto-advancing paused clock has a terminal state to stop at.
+        let policy = TimerPolicy::PerDecision {
+            limit: Duration::from_secs(30),
+        };
+        let (handle, task) = Room::new(near_terminal_dealt_state(), db())
+            .with_timer_policy(policy)
+            .spawn();
+        let (tx0, mut rx0) = view_channel();
+        let (tx1, mut rx1) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        handle.send(RoomInput::Join {
+            seat: 1,
+            outbox: tx1,
+        });
+        let view0 = wait_for_view(&mut rx0).await;
+        let _view1 = wait_for_view(&mut rx1).await;
+        assert!(
+            view0.action_deadline.is_some(),
+            "seat 0 is on the clock and no one has acted"
+        );
+
+        // The paused runtime auto-advances to the deadline; the default pass fires,
+        // the game ends, and the room's final broadcast carries the result.
+        let terminal = wait_for_view(&mut rx0).await;
+        assert!(
+            terminal.result.is_some(),
+            "the timed-out default action drove the game to a terminal state"
+        );
+        // The task stops on its own once terminal.
+        task.await.unwrap();
+        drop(handle);
     }
 }
