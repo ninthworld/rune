@@ -31,6 +31,7 @@ describe('parseGameView', () => {
     expect(view).toEqual({
       you: '',
       my_hand: [],
+      me: { life: 0, library_size: 0 },
       opponents: [],
       battlefield: [],
       stack: [],

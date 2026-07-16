@@ -18,6 +18,7 @@ import {
   type RoomConfig,
   type RoomView,
   type SeatView,
+  type SelfView,
 } from './protocol';
 
 /** Raised when a server payload is not a decodable {@link GameView}. */
@@ -47,6 +48,19 @@ function asArray<T>(value: unknown, field: string): T[] {
     throw new ProtocolError(`GameView.${field} must be an array`);
   }
   return value as T[];
+}
+
+/**
+ * Normalize the receiver's own {@link SelfView} stats. An older server may omit the
+ * whole object, or a field; each missing value defaults to `0`, so the client always
+ * has a number to display and never invents anything the server did not send.
+ */
+function normalizeSelfView(payload: unknown): SelfView {
+  if (!isRecord(payload)) return { life: 0, library_size: 0 };
+  return {
+    life: typeof payload.life === 'number' ? payload.life : 0,
+    library_size: typeof payload.library_size === 'number' ? payload.library_size : 0,
+  };
 }
 
 /**
@@ -88,6 +102,7 @@ export function normalizeGameView(payload: unknown): GameView {
     // normalizes rather than crashing (forward/backward compatibility).
     you: typeof payload.you === 'string' ? payload.you : '',
     my_hand: asArray(payload.my_hand, 'my_hand'),
+    me: normalizeSelfView(payload.me),
     opponents: asArray(payload.opponents, 'opponents'),
     battlefield: asArray(payload.battlefield, 'battlefield'),
     stack: asArray(payload.stack, 'stack'),
