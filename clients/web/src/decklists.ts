@@ -20,6 +20,7 @@
  * The server remains the sole authority on whether a given deck is legal for a given
  * `game_setup`.
  */
+import starterDecks from './starter-decks.json';
 import type { CardIdentity } from './protocol';
 
 /** One line of a decklist: a card identity, its display name, and a count. */
@@ -45,34 +46,17 @@ export interface Decklist {
 }
 
 /**
- * The two bundled starter decks. Built from the engine's catalog
+ * The bundled starter decks. Built from the engine's catalog
  * (`crates/rune-engine/data/catalog/<functional_id>.json`) referenced by identity
  * only — this is static data, not a card database, and encodes no rules.
+ *
+ * The list is loaded from `starter-decks.json`, the **single source of truth** shared
+ * with the engine's agent-vs-agent wire test (`crates/rune-cli/tests/agent_game.rs`),
+ * which reads that same file and plays every deck to completion through the real
+ * server. Keeping the client's decks and the test's decks in one file is what stops
+ * them from silently drifting apart (issue #257). Edit the decks there, not here.
  */
-export const STARTER_DECKLISTS: readonly Decklist[] = [
-  {
-    id: 'green-stompy',
-    name: 'Green Stompy',
-    summary: 'A straightforward green creature deck.',
-    entries: [
-      { identity: 'thornback_boar', name: 'Thornback Boar', count: 8 },
-      { identity: 'stonehide_basilisk', name: 'Stonehide Basilisk', count: 6 },
-      { identity: 'verdant_scout', name: 'Verdant Scout', count: 6 },
-      { identity: 'forest', name: 'Forest', count: 20 },
-    ],
-  },
-  {
-    id: 'temur-tempo',
-    name: 'Temur Tempo',
-    summary: 'Aggressive creatures across green, blue, and red.',
-    entries: [
-      { identity: 'emberfang_jackal', name: 'Emberfang Jackal', count: 8 },
-      { identity: 'riverbank_otter', name: 'Riverbank Otter', count: 6 },
-      { identity: 'verdant_scout', name: 'Verdant Scout', count: 6 },
-      { identity: 'forest', name: 'Forest', count: 20 },
-    ],
-  },
-];
+export const STARTER_DECKLISTS: readonly Decklist[] = starterDecks.decks;
 
 /** Look a bundled decklist up by its local id, or `undefined` if unknown. */
 export function decklistById(id: string): Decklist | undefined {
