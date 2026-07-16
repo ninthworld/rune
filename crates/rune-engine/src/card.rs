@@ -819,7 +819,7 @@ mod tests {
     use crate::card_type::{CardType, Supertype};
 
     /// The number of functional definitions in `data/catalog/`.
-    const CATALOG_SIZE: usize = 32;
+    const CATALOG_SIZE: usize = 36;
 
     /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0018 §3).
     fn every_id() -> impl Iterator<Item = CardId> {
@@ -1282,8 +1282,8 @@ mod tests {
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // FIX prints the thirty-two fixtures; FIX2 reprints one — thirty-three printings total.
-        assert_eq!(printings.len(), 33);
+        // FIX prints the thirty-six fixtures; FIX2 reprints one — thirty-seven printings total.
+        assert_eq!(printings.len(), 37);
         assert!(!printings.is_empty());
         let boar = printings.printing("FIX", "1").unwrap();
         // The record names thornback_boar; the loader resolved that to its handle.
@@ -1612,8 +1612,8 @@ mod tests {
     #[test]
     fn catalog_parsing_meets_its_startup_budget_at_catalog_scale() {
         // ADR 0018 §6: `CardDatabase::bundled()` must parse a 10,000-card catalog well
-        // under 200ms on CI hardware. The bundled catalog is 32 cards, far too small to
-        // measure that, so the budget is exercised against a synthetic catalog of the
+        // under 200ms on CI hardware. The bundled catalog is a few dozen cards, far too
+        // small to measure that, so the budget is exercised against a synthetic catalog of the
         // size the target actually names.
         //
         // Measured when this landed: 53ms for 10,000 definitions in release, 206ms

@@ -30,5 +30,9 @@
   { "functional_id": "ironbark_aegis", "collector_number": "29", "rarity": "uncommon" },
   { "functional_id": "witherbrand_curse", "collector_number": "30", "rarity": "common" },
   { "functional_id": "verdant_sanctuary", "collector_number": "31", "rarity": "uncommon" },
-  { "functional_id": "bramble_hatchling", "collector_number": "32", "rarity": "common" }
+  { "functional_id": "bramble_hatchling", "collector_number": "32", "rarity": "common" },
+  { "functional_id": "island", "collector_number": "33", "rarity": "common" },
+  { "functional_id": "mountain", "collector_number": "34", "rarity": "common" },
+  { "functional_id": "plains", "collector_number": "35", "rarity": "common" },
+  { "functional_id": "swamp", "collector_number": "36", "rarity": "common" }
 ]

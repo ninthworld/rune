@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "functional_id": "plains",
+  "name": "Plains",
+  "supertypes": ["basic"],
+  "types": ["land"],
+  "subtypes": ["Plains"],
+  "mana_cost": "",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana",
+          "color": "white",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

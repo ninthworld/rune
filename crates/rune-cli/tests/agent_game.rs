@@ -21,8 +21,13 @@
 //! surfaces as a bounded failure rather than a hang.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use std::collections::{HashMap, HashSet};
+
 use rune_cli::{choose_action, fill_answers};
-use rune_engine::{CardDatabase, CardId, FunctionalId, GameSetup, GameState};
+use rune_engine::{
+    Ability, CardDatabase, CardId, CardType, Color, Effect, FunctionalId, GameSetup, GameState,
+    Supertype,
+};
 use rune_protocol::{ChooseAction, ClientMessage, GameView};
 use rune_server::{Room, RoomInput};
 use tokio::sync::watch;
@@ -60,7 +65,20 @@ fn decklist(db: &CardDatabase) -> Vec<CardId> {
 /// both completion and reproducibility.
 async fn play_seeded_game(seed: u64) -> (GameView, Vec<(usize, String)>) {
     let db = CardDatabase::bundled().expect("bundled cards");
-    let setup = GameSetup::two_player(decklist(&db), decklist(&db), seed);
+    let deck = decklist(&db);
+    play_seeded_game_with(seed, deck.clone(), deck).await
+}
+
+/// Drive a seeded [`Room`] to completion with an explicit deck per seat — the
+/// generalization of [`play_seeded_game`] used to play the bundled starter decks
+/// (issue #257) rather than only the green mirror.
+async fn play_seeded_game_with(
+    seed: u64,
+    deck0: Vec<CardId>,
+    deck1: Vec<CardId>,
+) -> (GameView, Vec<(usize, String)>) {
+    let db = CardDatabase::bundled().expect("bundled cards");
+    let setup = GameSetup::two_player(deck0, deck1, seed);
     let state = GameState::new(&setup, &db).expect("valid setup");
     let (handle, task) = Room::new(state, db).spawn();
 
@@ -174,4 +192,170 @@ async fn agent_vs_agent_with_the_same_seed_reproduces_the_same_game() {
         first_terminal.result, second_terminal.result,
         "the same seed reproduces the same winner, losers, and reason",
     );
+}
+
+// ----- The bundled starter decks play for real (issue #257) -----
+
+/// One bundled starter deck: its display name and the flat list of authored
+/// `functional_id`s it runs (each card repeated `count` times).
+struct StarterDeck {
+    name: String,
+    identities: Vec<String>,
+}
+
+/// Read the bundled starter decks from the **single source of truth** the web client
+/// also imports: `clients/web/src/starter-decks.json`. Reading that exact file here —
+/// rather than re-listing the cards in Rust — is what keeps the client's decks and
+/// this wire test's decks from silently drifting apart (issue #257). The client owns
+/// which decks the lobby offers; the engine merely validates and plays them.
+fn bundled_decklists() -> Vec<StarterDeck> {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../clients/web/src/starter-decks.json"
+    );
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("reading the shared starter decks at {path}: {e}"));
+    let json: serde_json::Value = serde_json::from_str(&text).expect("starter-decks.json parses");
+    json["decks"]
+        .as_array()
+        .expect("a `decks` array")
+        .iter()
+        .map(|deck| {
+            let name = deck["name"].as_str().expect("a deck name").to_string();
+            let mut identities = Vec::new();
+            for entry in deck["entries"].as_array().expect("deck entries") {
+                let identity = entry["identity"].as_str().expect("an identity");
+                let count = entry["count"].as_u64().expect("a count");
+                for _ in 0..count {
+                    identities.push(identity.to_string());
+                }
+            }
+            StarterDeck { name, identities }
+        })
+        .collect()
+}
+
+/// Resolve a decklist of authored identities to this build's interned handles.
+fn resolve_deck(db: &CardDatabase, identities: &[String]) -> Vec<CardId> {
+    identities
+        .iter()
+        .map(|slug| {
+            let fid = FunctionalId::try_from(slug.clone()).expect("a well-formed identity");
+            db.card_id(&fid)
+                .unwrap_or_else(|| panic!("`{slug}` is not in the bundled catalog"))
+        })
+        .collect()
+}
+
+/// The set of colors a decklist's basic lands can produce.
+fn producible_colors(db: &CardDatabase, ids: &[CardId]) -> HashSet<Color> {
+    let mut colors = HashSet::new();
+    for &id in ids {
+        let card = db.card(id).expect("a bundled card");
+        if !card.has_type(CardType::Land) {
+            continue;
+        }
+        for ability in &card.abilities {
+            if let Ability::Activated { effects, .. } = ability {
+                for effect in effects {
+                    if let Effect::AddMana { color, .. } = effect {
+                        colors.insert(*color);
+                    }
+                }
+            }
+        }
+    }
+    colors
+}
+
+#[test]
+fn every_bundled_decklist_is_legal_and_castable_from_its_own_mana_base() {
+    // The exact bug that shipped as "Temur Tempo": blue and red cards over an
+    // all-Forest mana base, uncastable. For every bundled deck, prove from catalog
+    // data — not by eyeball — that it is format-legal and self-castable: at least 40
+    // cards, at most four copies of any non-basic, every nonland card's colors
+    // producible by its own lands, and at least one instant or sorcery so the stack
+    // and targeting flows are reachable.
+    let db = CardDatabase::bundled().unwrap();
+    let decks = bundled_decklists();
+    assert!(decks.len() >= 2, "there are multiple bundled decks");
+
+    for deck in &decks {
+        let ids = resolve_deck(&db, &deck.identities);
+        let name = &deck.name;
+        assert!(
+            ids.len() >= 40,
+            "{name} has {} cards, under the 40-card minimum",
+            ids.len()
+        );
+
+        // Copy limit: at most four of any non-basic card (basic lands exempt).
+        let mut counts: HashMap<CardId, usize> = HashMap::new();
+        for &id in &ids {
+            *counts.entry(id).or_default() += 1;
+        }
+        for (&id, &n) in &counts {
+            let card = db.card(id).unwrap();
+            let is_basic = card.supertypes.contains(&Supertype::Basic);
+            assert!(
+                is_basic || n <= 4,
+                "{name}: {} appears {n} times (copy limit is 4)",
+                card.name
+            );
+        }
+
+        // Castability: the deck's own lands must produce every color it asks for.
+        let producible = producible_colors(&db, &ids);
+        for &id in &ids {
+            let card = db.card(id).unwrap();
+            if card.has_type(CardType::Land) {
+                continue;
+            }
+            for color in &card.colors {
+                assert!(
+                    producible.contains(color),
+                    "{name}: {} needs {color:?}, but the deck's mana base cannot produce it",
+                    card.name
+                );
+            }
+        }
+
+        // Spells present: the stack/targeting/counter flows must be reachable.
+        let has_spell = ids.iter().any(|&id| {
+            let c = db.card(id).unwrap();
+            c.has_type(CardType::Instant) || c.has_type(CardType::Sorcery)
+        });
+        assert!(has_spell, "{name} contains no instants or sorceries");
+    }
+}
+
+#[tokio::test]
+async fn bundled_decklists_play_to_a_deterministic_completion() {
+    // The M3 exit-criterion proof: the *actual bundled decklists* (the same file the
+    // client submits) play full games through the real layer-2 room and wire protocol
+    // to a decisive winner. Round-robin so every deck is exercised and every pairing
+    // interacts — including the archetype clashes (aggro vs midrange vs tempo).
+    let db = CardDatabase::bundled().unwrap();
+    let decks: Vec<Vec<CardId>> = bundled_decklists()
+        .iter()
+        .map(|deck| resolve_deck(&db, &deck.identities))
+        .collect();
+    assert!(decks.len() >= 2, "need at least two decks to pair");
+
+    for i in 0..decks.len() {
+        let j = (i + 1) % decks.len();
+        let seed = 0x5EED_D0D0_0000_0000 ^ (((i as u64) << 8) | j as u64);
+        let (terminal, transcript) =
+            play_seeded_game_with(seed, decks[i].clone(), decks[j].clone()).await;
+        let result = terminal.result.expect("a finished game carries a result");
+        assert!(
+            result.winner.is_some(),
+            "decks {i} vs {j} ended in a draw: {result:?}"
+        );
+        assert_eq!(result.losers.len(), 1, "decks {i} vs {j}: {result:?}");
+        assert!(
+            !transcript.is_empty(),
+            "decks {i} vs {j}: the agents played no actions"
+        );
+    }
 }
