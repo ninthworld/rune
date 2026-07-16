@@ -11,7 +11,7 @@ deliberately light — see [`AGENTS.md`](AGENTS.md) for the hard rules and repos
    follow-up.
 3. **Commit** — Conventional Commits (`feat(engine): add phase FSM`, `fix(client): …`).
 4. **Verify** — `make check` throughout; `make verify` before opening a PR (reproduces the
-   `Engine`, `Client`, `E2E`, and `cargo-deny` checks). Red CI is never merged.
+   `Engine`, `Client`, and `cargo-deny` checks). Red CI is never merged.
 5. **PR & merge** — open a PR; merge once CI is green.
 
 ## Standards

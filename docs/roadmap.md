@@ -48,8 +48,11 @@ its seat.
 A full game plays end to end and someone wins. **Done:** turn-based actions (untap, draw,
 cleanup), combat (declare attackers/blockers, damage, lethal SBAs), game over as a
 first-class engine outcome. **Remaining (the near-term UI work above):** the web client
-renders the stack and a combat flow from `valid_actions`, shows a game-over screen, and an
-e2e test plays a scripted full game to the victory screen.
+renders the stack and a combat flow from `valid_actions` and shows a game-over screen, so a
+full game is playable and followable in the browser.
+
+> The browser end-to-end suite (ADR 0011) is removed for now to keep the loop fast; it
+> returns once the in-game UI settles.
 
 ### M3 — A real card pool  *(engine shipped; card-data track in progress)*
 

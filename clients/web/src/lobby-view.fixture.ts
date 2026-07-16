@@ -4,8 +4,7 @@
  * Written as raw wire JSON — empty collections and false flags are elided exactly
  * as the server elides them, so tests exercise the client's normalization.
  *
- * The scripted browser e2e (`e2e/lobby.spec.ts`) and the unit suites share these
- * so the client, the mock server, and the real server cannot silently disagree
+ * Shared by the unit suites so the client and the server cannot silently disagree
  * about the lobby wire shape.
  */
 import type { LobbyView } from './protocol';

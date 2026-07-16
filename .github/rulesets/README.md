@@ -18,7 +18,7 @@ What it enforces:
 - All changes arrive through a pull request (solo-maintained: **0 required approvals**,
   so the maintainer can merge their own PRs; stale approvals are still dismissed on push).
 - Review conversations resolved before merge.
-- Required status checks `Engine`, `Client`, `E2E`, `cargo-deny`, with **strict**
+- Required status checks `Engine`, `Client`, `cargo-deny`, with **strict**
   (branch-up-to-date) enforcement.
 - Linear history; squash is the only allowed merge method.
 - No force pushes and no deletion of `main`.
