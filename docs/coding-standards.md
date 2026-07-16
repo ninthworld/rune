@@ -72,11 +72,12 @@ Enforced by `make client-check` (typecheck + build) and, once wired,
   architectural changes get an ADR in `docs/decisions/`.
 - **Cite the CR for rule behavior.** Engine code that implements a
   Comprehensive Rules rule cites it as `CR NNN.Nx` (e.g. `CR 605.3`) in the
-  doc comment of the item that implements it, so the rule and its code stay
-  traceable both ways. Any PR that adds or changes rule behavior updates
-  `docs/rules-coverage.md` in the **same PR** — add or amend the row (rule
-  number, one-line summary, status, code anchor, test anchor), marking anything
-  incomplete `partial` and naming the gap.
+  doc comment of the item that implements it, and the test that exercises it is
+  named for the same rule (e.g. `cr_605_3_…`), so the rule, its code, and its
+  test stay traceable both ways without a separate ledger. When a rule is only
+  partially modeled, note the gap in a `// NOTE:` comment next to the code — not
+  in a doc that drifts from it. The living coverage record is the CR-cited tests;
+  list them with `rg 'cr_\d' crates/rune-engine/src`.
 - **No secrets, no vendored non-MIT code**, no `target/`, no `node_modules/`.
 
 ## Before you push
