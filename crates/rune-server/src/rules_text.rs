@@ -292,7 +292,7 @@ mod tests {
     use super::*;
     use rune_engine::{CardDatabase, CardId, FunctionalId};
 
-    /// The bundled catalog, whose 32 definitions cover every IR construct the engine
+    /// The bundled catalog, whose definitions cover every IR construct the engine
     /// has: the generated text is asserted against real cards, not toy structs.
     fn bundled() -> CardDatabase {
         CardDatabase::bundled().unwrap()

@@ -1,0 +1,53 @@
+{
+  "$comment": "SINGLE SOURCE OF TRUTH for the bundled starter decks. Consumed by two sides that must never drift: the web client (clients/web/src/decklists.ts imports this to populate the lobby) and the engine's agent-vs-agent wire test (crates/rune-cli/tests/agent_game.rs reads this file verbatim and plays every deck to a deterministic completion through the real server). Cards are referenced by authored functional_id only (ADR 0018 §3) — this file encodes no rules, costs, or legality; the server validates every submitted deck against its catalog. Format: 40-card minimum, at most four copies of any non-basic card, basic lands exempt. Every non-land card is castable from its deck's own basic-land base.",
+  "decks": [
+    {
+      "id": "ashenvault-raiders",
+      "name": "Ashenvault Raiders",
+      "summary": "Red-black aggression: fast creatures backed by burn and removal.",
+      "entries": [
+        { "identity": "emberfang_jackal", "name": "Emberfang Jackal", "count": 4 },
+        { "identity": "emberrush_raider", "name": "Emberrush Raider", "count": 4 },
+        { "identity": "cryptvine_lurker", "name": "Cryptvine Lurker", "count": 4 },
+        { "identity": "quickfire_bolt", "name": "Quickfire Bolt", "count": 4 },
+        { "identity": "cinder_shock", "name": "Cinder Shock", "count": 4 },
+        { "identity": "withering_touch", "name": "Withering Touch", "count": 2 },
+        { "identity": "vexing_ordeal", "name": "Vexing Ordeal", "count": 2 },
+        { "identity": "mountain", "name": "Mountain", "count": 8 },
+        { "identity": "swamp", "name": "Swamp", "count": 8 }
+      ]
+    },
+    {
+      "id": "sunwreath-vanguard",
+      "name": "Sunwreath Vanguard",
+      "summary": "Green-white midrange: sturdy creatures with lifegain and removal.",
+      "entries": [
+        { "identity": "thornback_boar", "name": "Thornback Boar", "count": 4 },
+        { "identity": "gorehorn_ravager", "name": "Gorehorn Ravager", "count": 2 },
+        { "identity": "verdant_scout", "name": "Verdant Scout", "count": 4 },
+        { "identity": "nettle_adder", "name": "Nettle Adder", "count": 2 },
+        { "identity": "cleric_of_the_sunwell", "name": "Cleric of the Sunwell", "count": 4 },
+        { "identity": "dawnblade_duelist", "name": "Dawnblade Duelist", "count": 3 },
+        { "identity": "ironwatch_sentinel", "name": "Ironwatch Sentinel", "count": 2 },
+        { "identity": "sunder_ray", "name": "Sunder Ray", "count": 2 },
+        { "identity": "soothing_balm", "name": "Soothing Balm", "count": 2 },
+        { "identity": "titanroot_surge", "name": "Titanroot Surge", "count": 2 },
+        { "identity": "forest", "name": "Forest", "count": 7 },
+        { "identity": "plains", "name": "Plains", "count": 6 }
+      ]
+    },
+    {
+      "id": "tidewatch-adepts",
+      "name": "Tidewatch Adepts",
+      "summary": "Mono-blue tempo: flyers and card draw behind counters and a mana rock.",
+      "entries": [
+        { "identity": "skywhisker_drake", "name": "Skywhisker Drake", "count": 4 },
+        { "identity": "riverbank_otter", "name": "Riverbank Otter", "count": 4 },
+        { "identity": "hurried_study", "name": "Hurried Study", "count": 4 },
+        { "identity": "runic_negation", "name": "Runic Negation", "count": 4 },
+        { "identity": "copper_lodestone", "name": "Copper Lodestone", "count": 4 },
+        { "identity": "island", "name": "Island", "count": 20 }
+      ]
+    }
+  ]
+}
