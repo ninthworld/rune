@@ -469,6 +469,132 @@ export const inspectRowHandle: CSSProperties = {
   flexShrink: 0,
 };
 
+/**
+ * Zone browser overlay (issue #262, React DOM per ADR 0003 — a scrollable list of
+ * card text is DOM, not the Pixi canvas). Reads the shared `SURFACES` palette like
+ * the rest of the table chrome and never touches card color/size tokens.
+ */
+export const zoneBrowserBackdrop: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(9, 10, 12, 0.66)',
+  zIndex: 15,
+};
+
+export const zoneBrowserPanel: CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  width: '100%',
+  maxWidth: 380,
+  maxHeight: '80vh',
+  padding: 20,
+  borderRadius: 12,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  boxSizing: 'border-box',
+};
+
+export const zoneBrowserClose: CSSProperties = {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  minWidth: TOUCH,
+  minHeight: TOUCH,
+  padding: 0,
+  borderRadius: 8,
+  border: 'none',
+  background: 'transparent',
+  color: SURFACES.typeText,
+  fontSize: 22,
+  lineHeight: 1,
+  cursor: 'pointer',
+};
+
+export const zoneBrowserTitle: CSSProperties = {
+  margin: 0,
+  paddingRight: TOUCH,
+  fontSize: 16,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+/** The scrollable card list (grows within the panel's max-height, then scrolls). */
+export const zoneBrowserList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+  overflowY: 'auto',
+};
+
+/** One card row — a full-width button that opens inspect. */
+export const zoneBrowserCard: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  width: '100%',
+  minHeight: TOUCH,
+  padding: '8px 10px',
+  borderRadius: 8,
+  background: '#15171A',
+  border: '1px solid #2C313A',
+  color: SURFACES.nameText,
+  font: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer',
+};
+
+export const zoneBrowserCardName: CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  color: SURFACES.nameText,
+};
+
+export const zoneBrowserCardType: CSSProperties = {
+  fontSize: 12,
+  color: SURFACES.typeText,
+};
+
+/** The empty-zone placeholder. */
+export const zoneBrowserEmpty: CSSProperties = {
+  margin: 0,
+  fontSize: 14,
+  fontStyle: 'italic',
+  color: SURFACES.typeText,
+};
+
+/**
+ * A player-tile zone count rendered as an affordance (issue #262): the graveyard /
+ * exile line becomes a button that opens the zone browser. Styled to read as the
+ * tile's own text (not a chunky button) while staying a real, focusable control.
+ */
+export const zoneOpenButton: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: TOUCH,
+  padding: '2px 6px',
+  margin: '-2px -6px',
+  borderRadius: 6,
+  border: '1px solid transparent',
+  background: 'none',
+  color: 'inherit',
+  font: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  textUnderlineOffset: 2,
+  textDecorationColor: SURFACES.typeText,
+};
+
 export const bar: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',

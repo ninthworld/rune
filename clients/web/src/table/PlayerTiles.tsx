@@ -23,7 +23,11 @@ import {
   tileButtonReset,
   tileName,
   tiles,
+  zoneOpenButton,
 } from './styles';
+
+/** A browsable public zone that a tile count can open (issue #262). */
+export type BrowsableZone = 'graveyard' | 'exile';
 
 /** The active target slot's player candidates plus the pick handler. */
 interface TargetingTiles {
@@ -38,11 +42,55 @@ interface Props {
   localId?: PlayerId;
   /** Present only in targeting mode; makes candidate players pickable. */
   targeting?: TargetingTiles;
+  /**
+   * Open a player's graveyard/exile browser (issue #262). When provided, the
+   * graveyard and exile counts on each tile become affordances; absent ⇒ they
+   * render as plain text (the pre-browser behavior).
+   */
+  onOpenZone?: (playerId: PlayerId, zone: BrowsableZone) => void;
 }
 
-export function PlayerTiles({ view, localId, targeting }: Props) {
+export function PlayerTiles({ view, localId, targeting, onOpenZone }: Props) {
   const localGraveyard = view.graveyards.find((pile) => pile.player_id === localId);
   const candidateSet = targeting ? new Set(targeting.candidates) : null;
+
+  /** The exile pile size for a player (0 when they have none). */
+  const exileCount = (playerId: PlayerId): number =>
+    view.exile.find((pile) => pile.player_id === playerId)?.cards.length ?? 0;
+
+  /**
+   * A zone count line: an underlined button that opens the browser when
+   * {@link Props.onOpenZone} is wired, else plain text (issue #262). A zone stays
+   * openable even when empty so a player can confirm it is empty.
+   */
+  const zoneLine = (playerId: PlayerId, zone: BrowsableZone, count: number): ReactNode => {
+    const label = zone === 'graveyard' ? 'Graveyard' : 'Exile';
+    // A candidate tile is itself a <button> in targeting mode; nesting a zone-open
+    // <button> inside it is invalid HTML, so such a tile shows the count as plain
+    // text (its whole surface is the target pick). Non-candidate/local tiles keep
+    // the browse affordance.
+    const insideTargetButton = candidateSet?.has(playerId) ?? false;
+    if (!onOpenZone || insideTargetButton) {
+      return (
+        <div>
+          {label} {count}
+        </div>
+      );
+    }
+    return (
+      <div>
+        <button
+          type="button"
+          data-testid={`open-${zone}-${playerId}`}
+          aria-label={`Browse ${playerId} ${label.toLowerCase()} (${count})`}
+          onClick={() => onOpenZone(playerId, zone)}
+          style={zoneOpenButton}
+        >
+          {label} {count}
+        </button>
+      </div>
+    );
+  };
 
   /**
    * Wrap a tile's content. Outside targeting mode it is a plain `<div>`. Inside
@@ -90,7 +138,8 @@ export function PlayerTiles({ view, localId, targeting }: Props) {
             <div>Life {opponent.life}</div>
             <div>Hand {opponent.hand_size}</div>
             <div>Library {opponent.library_size}</div>
-            <div>Graveyard {opponent.graveyard_size}</div>
+            {zoneLine(opponent.player_id, 'graveyard', opponent.graveyard_size)}
+            {zoneLine(opponent.player_id, 'exile', exileCount(opponent.player_id))}
             {opponent.statuses && opponent.statuses.length > 0 && (
               <div>{opponent.statuses.join(', ')}</div>
             )}
@@ -106,7 +155,8 @@ export function PlayerTiles({ view, localId, targeting }: Props) {
           <div>Life {view.me.life}</div>
           <div>Hand {view.my_hand.length}</div>
           <div>Library {view.me.library_size}</div>
-          <div>Graveyard {localGraveyard?.cards.length ?? 0}</div>
+          {zoneLine(localId ?? 'local', 'graveyard', localGraveyard?.cards.length ?? 0)}
+          {zoneLine(localId ?? 'local', 'exile', exileCount(localId ?? 'local'))}
           {view.mana_pool.length > 0 && <div>Mana {view.mana_pool.join(' ')}</div>}
         </>,
       )}

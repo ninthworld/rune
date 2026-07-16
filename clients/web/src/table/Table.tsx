@@ -19,7 +19,7 @@
  * on the next view, so the UI stays reconstructable from one GameView + prompt.
  */
 import { useEffect, useMemo, useState } from 'react';
-import type { EntityId, GameView, ValidAction } from '../protocol';
+import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { publishScene, publishView } from '../testHooks';
 import { ActionBar } from './ActionBar';
@@ -27,9 +27,10 @@ import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
-import { PlayerTiles } from './PlayerTiles';
+import { PlayerTiles, type BrowsableZone } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
 import { StackPanel } from './StackPanel';
+import { ZoneBrowser } from './ZoneBrowser';
 import {
   buildTableScene,
   DEFAULT_VIEWPORT_WIDTH,
@@ -151,6 +152,11 @@ export function Table() {
   // presentation state like every selection here — never load-bearing across
   // messages (dropped on the next view below).
   const [inspectedId, setInspectedId] = useState<EntityId | null>(null);
+  // The public zone whose browser is open, if any (issue #262) — a player's
+  // graveyard or exile pile. Ephemeral like the inspect popover above.
+  const [browsing, setBrowsing] = useState<{ playerId: PlayerId; zone: BrowsableZone } | null>(
+    null,
+  );
 
   // A fresh view supersedes any in-progress targeting or multi-select: the answer
   // either landed (server's response) or is now stale — most importantly, a changed
@@ -161,22 +167,24 @@ export function Table() {
     setTargeting(null);
     setMultiSelect(null);
     setInspectedId(null);
+    setBrowsing(null);
   }, [view]);
 
   // Escape abandons the topmost ephemeral surface, mirroring the targeting-mode
   // Cancel affordance (keyboard parity). An open inspect popover closes first (it
-  // is a transient overlay above everything); otherwise a multi-select, then a
-  // targeting session; a plain view ignores the key.
+  // sits above everything, including an open zone browser), then the zone browser,
+  // then a multi-select, then a targeting session; a plain view ignores the key.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       if (inspectedId !== null) setInspectedId(null);
+      else if (browsing) setBrowsing(null);
       else if (multiSelect) setMultiSelect(null);
       else if (targeting) setTargeting(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [inspectedId, multiSelect, targeting]);
+  }, [inspectedId, browsing, multiSelect, targeting]);
 
   const viewportWidth = useViewportWidth();
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
@@ -249,6 +257,38 @@ export function Table() {
   const inspectTarget = inspectedId !== null ? resolveInspect(view, inspectedId) : null;
   const closeInspect = (): void => setInspectedId(null);
 
+  // The open zone browser's contents, resolved from the view's public piles (issue
+  // #262). Graveyard/exile are public, so any player's pile is browsable straight
+  // from the view — the client derives nothing. Absent/unknown piles browse empty.
+  const openZone = (playerId: PlayerId, zone: BrowsableZone): void =>
+    setBrowsing({ playerId, zone });
+  const closeBrowser = (): void => setBrowsing(null);
+  const browserData = browsing
+    ? {
+        title: `${browsing.playerId} — ${browsing.zone === 'graveyard' ? 'Graveyard' : 'Exile'}`,
+        cards:
+          (browsing.zone === 'graveyard' ? view.graveyards : view.exile).find(
+            (pile) => pile.player_id === browsing.playerId,
+          )?.cards ?? [],
+      }
+    : null;
+
+  // The inspect popover and zone browser share one render across both the live and
+  // game-over branches; extracted here so each branch mounts the same overlays.
+  const overlays = (
+    <>
+      {browserData && (
+        <ZoneBrowser
+          title={browserData.title}
+          cards={browserData.cards}
+          onInspect={setInspectedId}
+          onClose={closeBrowser}
+        />
+      )}
+      {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
+    </>
+  );
+
   // Game over (issue #141): a terminal view carries `result`. The whole screen is
   // pure render of that latest view — the DOM overlay names the verdict/reason and
   // the interactive prompt/action UI is suppressed (the server sends no actions
@@ -258,7 +298,7 @@ export function Table() {
   if (view.result) {
     return (
       <main style={main} data-testid="table-game-over">
-        <PlayerTiles view={view} localId={localId} />
+        <PlayerTiles view={view} localId={localId} onOpenZone={openZone} />
         <StackPanel view={view} onInspect={setInspectedId} />
         <div style={boardWrap(scene.width, scene.height)}>
           <BattlefieldCanvas scene={scene} />
@@ -278,7 +318,7 @@ export function Table() {
           />
         </div>
         <GameOverOverlay result={view.result} you={view.you} />
-        {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
+        {overlays}
       </main>
     );
   }
@@ -447,6 +487,7 @@ export function Table() {
         targeting={
           targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
         }
+        onOpenZone={openZone}
       />
       <StackPanel
         view={view}
@@ -486,7 +527,7 @@ export function Table() {
         onCancelTargeting={targeting ? cancelTargeting : undefined}
         multiSelect={multiSelectControls}
       />
-      {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
+      {overlays}
     </main>
   );
 }

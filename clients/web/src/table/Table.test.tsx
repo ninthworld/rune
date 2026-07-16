@@ -14,6 +14,7 @@ import {
   SAMPLE_GAME_VIEW_JSON,
   TARGETING_GAME_VIEW_JSON,
   ZONE_SELECT_GAME_VIEW_JSON,
+  ZONES_GAME_VIEW_JSON,
 } from '../game-view.fixture';
 import type { TargetChoice, ValidAction } from '../protocol';
 import { useGameStore } from '../store';
@@ -289,6 +290,80 @@ describe('Table card inspect (issue #261)', () => {
     expect(screen.getByTestId('game-over-overlay')).toBeDefined();
     fireEvent.click(screen.getByTestId('inspect-perm_win'));
     expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+  });
+});
+
+describe('Table zone browsers (issue #262)', () => {
+  it('opens the local graveyard from the tile and lists it in order', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.queryByTestId('zone-browser')).toBeNull();
+    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    const browser = screen.getByTestId('zone-browser');
+    expect(within(browser).getByTestId('zone-browser-title').textContent).toContain(
+      'p1 — Graveyard',
+    );
+    expect(within(browser).getByTestId('browser-card-gy_p1_a')).toBeDefined();
+    expect(within(browser).getByTestId('browser-card-gy_p1_b')).toBeDefined();
+  });
+
+  it("opens an opponent's graveyard (public zone) from their tile", () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-graveyard-p2'));
+    expect(screen.getByTestId('browser-card-gy_p2_a').textContent).toContain('Lightning Bolt');
+  });
+
+  it('opens the exile browser and inspects a card inside it', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-exile-p1'));
+    expect(screen.getByTestId('zone-browser-title').textContent).toContain('p1 — Exile');
+    // A card inside the browser opens the shared inspect popover (issue #261 reuse).
+    fireEvent.click(screen.getByTestId('browser-card-ex_p1_a'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Forest');
+    // Closing inspect leaves the browser open beneath it.
+    fireEvent.click(screen.getByTestId('card-inspect-close'));
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+    expect(screen.getByTestId('zone-browser')).toBeDefined();
+  });
+
+  it('shows the empty-zone state for a player with no exile, and closes on Escape', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    // p2 has no exile pile in the view → browses empty.
+    fireEvent.click(screen.getByTestId('open-exile-p2'));
+    expect(screen.getByTestId('zone-browser-empty')).toBeDefined();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('zone-browser')).toBeNull();
+  });
+
+  it('drops an open browser when a fresh GameView arrives (no state across messages)', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    expect(screen.getByTestId('zone-browser')).toBeDefined();
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
+    expect(screen.queryByTestId('zone-browser')).toBeNull();
+  });
+
+  it('browses zones in the read-only game-over state', () => {
+    const terminal = JSON.stringify({
+      you: 'p1',
+      my_hand: [],
+      opponents: [{ player_id: 'p2', hand_size: 0, life: 0, library_size: 40, graveyard_size: 0 }],
+      battlefield: [],
+      graveyards: [
+        { player_id: 'p1', cards: [{ id: 'gy_end', name: 'Shock', type_line: 'Instant' }] },
+      ],
+      phase: 'end',
+      valid_actions: [],
+      result: { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+    });
+    seed(terminal);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    expect(screen.getByTestId('browser-card-gy_end').textContent).toContain('Shock');
   });
 });
 

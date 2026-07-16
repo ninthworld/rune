@@ -574,6 +574,43 @@ export const DISCARD_GAME_VIEW_JSON = JSON.stringify({
 });
 
 /**
+ * A wire frame carrying populated public zones (issue #262): the receiver's
+ * graveyard holds two cards and their exile one; the opponent's graveyard holds one.
+ * Used to exercise the graveyard/exile browsers opened from the player tiles — the
+ * client browses whatever the view carries, deriving nothing.
+ */
+export const ZONES_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [],
+  me: { life: 20, library_size: 40 },
+  opponents: [{ player_id: 'p2', hand_size: 3, life: 20, library_size: 40, graveyard_size: 1 }],
+  battlefield: [],
+  stack: [],
+  graveyards: [
+    {
+      player_id: 'p1',
+      cards: [
+        { id: 'gy_p1_a', name: 'Llanowar Elves', type_line: 'Creature — Elf Druid' },
+        { id: 'gy_p1_b', name: 'Giant Growth', type_line: 'Instant', rules_text: '+3/+3.' },
+      ],
+    },
+    {
+      player_id: 'p2',
+      cards: [{ id: 'gy_p2_a', name: 'Lightning Bolt', type_line: 'Instant' }],
+    },
+  ],
+  exile: [
+    {
+      player_id: 'p1',
+      cards: [{ id: 'ex_p1_a', name: 'Forest', type_line: 'Basic Land — Forest' }],
+    },
+  ],
+  phase: 'precombat_main',
+  priority_player: 'p1',
+  valid_actions: [{ id: 'a1', type: 'pass_priority', label: 'Pass' }],
+});
+
+/**
  * Build a terminal server→client `GameView` frame (issue #141): the game is over,
  * so `result` is present and `valid_actions` is empty (CR 104.2a). The `you` seat
  * lets the client phrase the verdict from the receiver's perspective. Mirrors the
