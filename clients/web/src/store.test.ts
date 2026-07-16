@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGameStore, selectPendingPrompt, type SocketFactory } from './store';
 import { normalizeGameView } from './wire';
-import { createRoomCommand, joinRoomCommand, readyCommand, submitDeckCommand } from './protocol';
+import {
+  createRoomCommand,
+  joinRoomCommand,
+  leaveCommand,
+  readyCommand,
+  submitDeckCommand,
+} from './protocol';
 import { SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
 import {
   LOBBY_ROOMLESS_JSON,
@@ -340,5 +346,97 @@ describe('game store', () => {
 
     expect(setItem).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  describe('session persistence across reload (issue #254)', () => {
+    const TOKEN_KEY = 'rune.session.token';
+    const URL_KEY = 'rune.session.url';
+    beforeEach(() => sessionStorage.clear());
+    afterEach(() => sessionStorage.clear());
+
+    /** Connect a fresh store and receive the first LobbyView (which issues the token). */
+    function connectAndSeat(url = 'ws://seat'): {
+      store: ReturnType<typeof createGameStore>;
+      sockets: FakeSocket[];
+    } {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect(url, { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      sockets[0].emitMessage(LOBBY_ROOMLESS_JSON); // issues session s:ab12
+      return { store, sockets };
+    }
+
+    it('persists the session token and server URL after the first LobbyView', () => {
+      connectAndSeat('ws://seat');
+      expect(sessionStorage.getItem(TOKEN_KEY)).toBe('s:ab12');
+      expect(sessionStorage.getItem(URL_KEY)).toBe('ws://seat');
+    });
+
+    it('reclaims the seat from a fresh store instance (a hard reload)', () => {
+      // First "page load": connect and receive the token, persisting it per-tab.
+      connectAndSeat('ws://seat');
+
+      // The reload: a brand-new store with no in-memory token restores from
+      // sessionStorage and re-greets the server echoing the token to reclaim its seat.
+      const reloaded = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      const attempted = reloaded.getState().restoreSession({ createSocket: factory });
+
+      expect(attempted).toBe(true);
+      sockets[0].emitOpen();
+      expect(sockets[0].sent).toEqual([JSON.stringify({ type: 'hello', token: 's:ab12' })]);
+    });
+
+    it('restoreSession is a no-op when nothing is persisted', () => {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      expect(store.getState().restoreSession({ createSocket: factory })).toBe(false);
+      expect(sockets).toHaveLength(0);
+    });
+
+    it('a fresh connect takes a new seat rather than reclaiming (two tabs, two seats)', () => {
+      // A token is persisted this tab...
+      sessionStorage.setItem(TOKEN_KEY, 's:ab12');
+      sessionStorage.setItem(URL_KEY, 'ws://seat');
+      // ...but connect() greets WITHOUT a token, so a manually-opened second tab gets
+      // its own seat. Only restoreSession reclaims — this is why two tabs stay distinct.
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://seat', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      expect(sockets[0].sent).toEqual([JSON.stringify({ type: 'hello' })]);
+    });
+
+    it('clears the persisted credential on intentional disconnect', () => {
+      const { store } = connectAndSeat();
+      expect(sessionStorage.getItem(TOKEN_KEY)).toBe('s:ab12');
+
+      store.getState().disconnect();
+      expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull();
+      expect(sessionStorage.getItem(URL_KEY)).toBeNull();
+      // A later reload then has nothing to restore.
+      expect(createGameStore().getState().restoreSession()).toBe(false);
+    });
+
+    it('clears the persisted credential on leaving a room', () => {
+      const { store } = connectAndSeat();
+      expect(sessionStorage.getItem(TOKEN_KEY)).toBe('s:ab12');
+
+      store.getState().sendLobby(leaveCommand());
+      expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull();
+      expect(sessionStorage.getItem(URL_KEY)).toBeNull();
+    });
+
+    it('persists only the credential and URL — never game or UI state', () => {
+      const { sockets } = connectAndSeat();
+      // A full game view arrives; none of it is persisted.
+      sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
+
+      expect(sessionStorage.length).toBe(2);
+      expect([sessionStorage.key(0), sessionStorage.key(1)].sort()).toEqual(
+        [TOKEN_KEY, URL_KEY].sort(),
+      );
+    });
   });
 });

@@ -22,6 +22,7 @@
  * load-bearing state, and a disconnect from either screen falls back to an
  * interactive screen (the connection screen), never a dead one.
  */
+import { useEffect } from 'react';
 import { ConnectionScreen } from './ConnectionScreen';
 import { LobbyScreen } from './LobbyScreen';
 import { useGameStore } from './store';
@@ -31,6 +32,14 @@ export function App() {
   const status = useGameStore((state) => state.status);
   const view = useGameStore((state) => state.view);
   const lobby = useGameStore((state) => state.lobby);
+
+  // On mount — including a hard page reload — try to reclaim a held seat from a
+  // persisted session token before falling back to the connection screen (issue #254).
+  // A no-op when there is nothing stored or a socket is already live, so it is safe to
+  // run once per mount.
+  useEffect(() => {
+    useGameStore.getState().restoreSession();
+  }, []);
 
   // A GameView means the game has been constructed: mount the table (in-game
   // contract for the life of the game).

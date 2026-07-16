@@ -11,7 +11,13 @@
  * - The whole UI must be reconstructable from a single `GameView` — so a new
  *   view **replaces** the prior one wholesale (no diff/merge). Reconnect relies
  *   on the server re-sending full state; there is nothing to reconcile.
- * - No game state in `localStorage`; the server is the source of truth.
+ * - No game state or UI state is persisted; the server is the source of truth.
+ *   The one exception is the **session token** (and the server URL to reconnect
+ *   to), kept in `sessionStorage` — see {@link persistSession}. That is a reconnect
+ *   *credential*, not game or UI state: it is never rendered, nothing is
+ *   reconstructed from it, and it does not survive the tab. It exists solely so a
+ *   hard page reload can reclaim the held-open seat (ADR 0012, M1 exit criterion),
+ *   which is why it does not violate the reconstruct-from-one-`GameView` rule.
  *
  * The "pending prompt" is not stored separately — it is a pure derivation of the
  * latest `GameView` (see {@link selectPendingPrompt}), which keeps the GameView
@@ -142,6 +148,14 @@ export interface GameStore {
   status: ConnectionStatus;
   /** Open (or replace) the connection to `url`. */
   connect: (url: string, options?: ConnectOptions) => void;
+  /**
+   * If a session token + URL were persisted this tab (see {@link persistSession}),
+   * reconnect to that URL and echo the token on `Hello` to reclaim the held seat —
+   * the hard-page-reload path of the M1 exit criterion. Returns `true` when a
+   * reconnect was attempted, `false` when there was nothing to restore (so the caller
+   * shows the connection screen). A no-op if a socket is already live.
+   */
+  restoreSession: (options?: ConnectOptions) => boolean;
   /** Close the connection intentionally; suppresses auto-reconnect. */
   disconnect: () => void;
   /**
@@ -168,6 +182,51 @@ export interface GameStore {
 }
 
 const defaultSocketFactory: SocketFactory = (url) => new WebSocket(url);
+
+/** `sessionStorage` key for the reconnect session token (ADR 0012). */
+const SESSION_TOKEN_KEY = 'rune.session.token';
+/** `sessionStorage` key for the server URL to reconnect the token against. */
+const SESSION_URL_KEY = 'rune.session.url';
+
+/**
+ * The persisted reconnect credential: a session `token` and the `url` it was issued
+ * against, or `null` if none is stored (or storage is unavailable). `sessionStorage`
+ * is deliberate — **per tab**: it survives a reload but dies with the tab, so two tabs
+ * keep two distinct seats and a closed tab leaves nothing behind. Not `localStorage`
+ * (which would share one seat across tabs) and not the state tree (it is a credential,
+ * not reconstructable UI). All access is guarded so a storage-less environment (SSR,
+ * privacy mode) degrades to "no reconnect" rather than throwing.
+ */
+function readPersistedSession(): { token: string; url: string } | null {
+  try {
+    const token = sessionStorage.getItem(SESSION_TOKEN_KEY);
+    const url = sessionStorage.getItem(SESSION_URL_KEY);
+    if (token && url) return { token, url };
+  } catch {
+    // storage unavailable — treat as no persisted session.
+  }
+  return null;
+}
+
+/** Persist the reconnect credential (token + the URL it was issued against). */
+function persistSession(token: string, url: string): void {
+  try {
+    sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+    sessionStorage.setItem(SESSION_URL_KEY, url);
+  } catch {
+    // storage unavailable — reconnect-after-reload simply won't be offered.
+  }
+}
+
+/** Clear the persisted credential so a finished session cannot haunt the next one. */
+function clearPersistedSession(): void {
+  try {
+    sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    sessionStorage.removeItem(SESSION_URL_KEY);
+  } catch {
+    // storage unavailable — nothing to clear.
+  }
+}
 
 const initializer: StateCreator<GameStore> = (set, get) => {
   // Transport handles live in this per-store closure, never in the state tree —
@@ -257,6 +316,20 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       open(url, options);
     },
 
+    restoreSession(options = {}): boolean {
+      // Reload path: nothing to do if we are already connected this tab.
+      if (socket !== null) return false;
+      const persisted = readPersistedSession();
+      if (persisted === null) return false;
+      // Prime the token so the reconnecting `Hello` reclaims the held seat, then open
+      // the same URL exactly as `connect` would (Hello → first LobbyView/GameView).
+      lastSession = persisted.token;
+      pendingLobby = null;
+      set({ lobby: null, lobbyError: null });
+      open(persisted.url, options);
+      return true;
+    },
+
     disconnect(): void {
       intentionalClose = true;
       clearReconnect();
@@ -265,12 +338,23 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         socket = null;
       }
       pendingLobby = null;
+      // An intentional disconnect ends the session: drop the persisted credential so a
+      // later reload starts fresh at the connection screen (issue #254).
+      lastSession = null;
+      clearPersistedSession();
       set({ status: 'closed', lobby: null, lobbyError: null });
     },
 
     sendLobby(command): void {
       if (!socket) return;
       pendingLobby = pendingKindOf(command);
+      // Leaving the room gives up the seat, so the reconnect credential is spent:
+      // drop it (the live socket keeps working via the in-closure token; only a hard
+      // reload is affected, which should then start fresh — issue #254).
+      if (pendingLobby === 'leave') {
+        lastSession = null;
+        clearPersistedSession();
+      }
       socket.send(JSON.stringify(command));
     },
 
@@ -295,8 +379,13 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       }
 
       const lobby = frame.lobby;
-      // Remember the session token to echo on a later reconnecting `Hello`.
-      if (lobby.session) lastSession = lobby.session;
+      // Remember the session token to echo on a later reconnecting `Hello`, both
+      // in-closure (in-page auto-reconnect) and, paired with the server URL, in
+      // sessionStorage so a hard page reload can reclaim the same seat (issue #254).
+      if (lobby.session) {
+        lastSession = lobby.session;
+        if (lastUrl !== null) persistSession(lobby.session, lastUrl);
+      }
 
       // Reconcile a pending command into a non-fatal error: a rejected command
       // re-sends the current `LobbyView` unchanged (ADR 0012), so if the expected
