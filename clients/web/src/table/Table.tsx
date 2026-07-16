@@ -18,7 +18,7 @@
  * a multi-message handshake. The in-progress selection is ephemeral and discarded
  * on the next view, so the UI stays reconstructable from one GameView + prompt.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { publishScene, publishView } from '../testHooks';
@@ -30,6 +30,7 @@ import { GameOverOverlay } from './GameOverOverlay';
 import { PhaseRibbon, type TableMode } from './PhaseRibbon';
 import { PlayerTiles, type BrowsableZone } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
+import { ShortcutHelp, type Binding } from './ShortcutHelp';
 import { StackPanel } from './StackPanel';
 import { ZoneBrowser } from './ZoneBrowser';
 import {
@@ -175,6 +176,12 @@ export function Table() {
   const [browsing, setBrowsing] = useState<{ playerId: PlayerId; zone: BrowsableZone } | null>(
     null,
   );
+  // Whether the keyboard shortcut reference overlay is open (issue #266). Ephemeral
+  // UI, not game state — toggled with `?`.
+  const [showHelp, setShowHelp] = useState(false);
+  // The live table's root, for keyboard focus navigation and activation (issue
+  // #266): the keyboard layer moves focus among and activates the buttons within it.
+  const mainRef = useRef<HTMLElement>(null);
 
   // A fresh view supersedes any in-progress targeting or multi-select: the answer
   // either landed (server's response) or is now stale — most importantly, a changed
@@ -195,14 +202,124 @@ export function Table() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
-      if (inspectedId !== null) setInspectedId(null);
+      if (showHelp) setShowHelp(false);
+      else if (inspectedId !== null) setInspectedId(null);
       else if (browsing) setBrowsing(null);
       else if (multiSelect) setMultiSelect(null);
       else if (targeting) setTargeting(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [inspectedId, browsing, multiSelect, targeting]);
+  }, [showHelp, inspectedId, browsing, multiSelect, targeting]);
+
+  // Keyboard parity for core play (issue #266). Every binding maps to an
+  // interaction the pointer already has — no new game semantics, all client-side:
+  //
+  // - Arrows move focus among the table's controls (never trapped: plain DOM focus,
+  //   Tab still works natively); Enter/Space activate the focused control, reusing
+  //   its own click handler (select, target-pick, multi-select toggle, confirm, …).
+  // - Enter with nothing focused confirms an enabled multi-select (the primary
+  //   pending action). `P` passes priority when that action is offered and no
+  //   selection is in progress. `I` inspects the focused card. `?` toggles help.
+  //
+  // Shortcuts are inert when no matching action exists — the handlers only ever act
+  // on what is actually on screen / in `valid_actions`.
+  useEffect(() => {
+    const moveFocus = (dir: 1 | -1, event: KeyboardEvent): void => {
+      const root = mainRef.current;
+      if (!root) return;
+      const buttons = Array.from(
+        root.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
+      );
+      if (buttons.length === 0) return;
+      event.preventDefault();
+      const active = document.activeElement;
+      const index = active instanceof HTMLButtonElement ? buttons.indexOf(active) : -1;
+      const next =
+        index === -1
+          ? dir === 1
+            ? 0
+            : buttons.length - 1
+          : (index + dir + buttons.length) % buttons.length;
+      buttons[next].focus();
+    };
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const targetTag = (event.target as HTMLElement | null)?.tagName;
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') return;
+
+      // `?` toggles the shortcut reference regardless of context.
+      if (event.key === '?') {
+        event.preventDefault();
+        setShowHelp((open) => !open);
+        return;
+      }
+      // While the help overlay is open, other shortcuts are inert (Escape closes it,
+      // handled above); the native focus ring keeps the overlay usable.
+      if (showHelp || !view) return;
+
+      const root = mainRef.current;
+      const active = document.activeElement;
+      const focusedButton =
+        active instanceof HTMLButtonElement && root?.contains(active) ? active : null;
+
+      switch (event.key) {
+        case 'Enter':
+        case ' ':
+        case 'Spacebar': {
+          if (focusedButton) {
+            event.preventDefault();
+            focusedButton.click();
+            return;
+          }
+          // Nothing focused: activate the primary pending action — an enabled
+          // multi-select confirm (the ubiquitous "commit this decision").
+          const confirm = root?.querySelector<HTMLButtonElement>(
+            '[data-testid="multiselect-confirm"]:not([disabled])',
+          );
+          if (confirm) {
+            event.preventDefault();
+            confirm.click();
+          }
+          return;
+        }
+        case 'ArrowRight':
+        case 'ArrowDown':
+          moveFocus(1, event);
+          return;
+        case 'ArrowLeft':
+        case 'ArrowUp':
+          moveFocus(-1, event);
+          return;
+        case 'p':
+        case 'P': {
+          // Pass/decline: only when the action is offered and no target/multi-select
+          // pick is mid-flight (Escape backs out of those first).
+          const selecting = targeting !== null || multiSelect !== null;
+          const pass = view.valid_actions.find((action) => action.type === 'pass_priority');
+          if (pass && !selecting) {
+            event.preventDefault();
+            choose(pass);
+          }
+          return;
+        }
+        case 'i':
+        case 'I': {
+          const id = active instanceof HTMLElement ? active.getAttribute('data-entity') : null;
+          if (id) {
+            event.preventDefault();
+            setInspectedId(id);
+          }
+          return;
+        }
+        default:
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [view, choose, targeting, multiSelect, showHelp]);
 
   const viewportWidth = useViewportWidth();
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
@@ -291,8 +408,36 @@ export function Table() {
       }
     : null;
 
-  // The inspect popover and zone browser share one render across both the live and
-  // game-over branches; extracted here so each branch mounts the same overlays.
+  // The live keyboard bindings shown in the shortcut reference (issue #266): Pass is
+  // marked available only when the action is actually offered and no pick is
+  // in-flight, so the reference reflects the current view, not a static cheat-sheet.
+  const passOffered =
+    view.valid_actions.some((action) => action.type === 'pass_priority') &&
+    targeting === null &&
+    multiSelect === null;
+  const shortcutBindings: Binding[] = [
+    { id: 'arrows', keys: '← → ↑ ↓', description: 'Move focus between controls', available: true },
+    {
+      id: 'enter',
+      keys: 'Enter',
+      description: 'Activate focused control / confirm',
+      available: true,
+    },
+    {
+      id: 'space',
+      keys: 'Space',
+      description: 'Toggle / activate focused control',
+      available: true,
+    },
+    { id: 'pass', keys: 'P', description: 'Pass priority', available: passOffered },
+    { id: 'inspect', keys: 'I', description: 'Inspect the focused card', available: true },
+    { id: 'escape', keys: 'Esc', description: 'Cancel or close', available: true },
+    { id: 'toggle-help', keys: '?', description: 'Toggle this help', available: true },
+  ];
+
+  // The inspect popover, zone browser, and shortcut help share one render across both
+  // the live and game-over branches; extracted here so each branch mounts the same
+  // overlays.
   const overlays = (
     <>
       {browserData && (
@@ -304,6 +449,7 @@ export function Table() {
         />
       )}
       {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
+      {showHelp && <ShortcutHelp bindings={shortcutBindings} onClose={() => setShowHelp(false)} />}
     </>
   );
 
@@ -501,7 +647,7 @@ export function Table() {
       : [];
 
   return (
-    <main style={main} data-mode={mode}>
+    <main ref={mainRef} style={main} data-mode={mode}>
       <PhaseRibbon view={view} mode={mode} localId={localId} />
       <PromptBanner
         view={view}

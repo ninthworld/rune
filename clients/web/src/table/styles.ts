@@ -78,11 +78,15 @@ export const ribbonStep: CSSProperties = {
   border: '1px solid transparent',
 };
 
-/** The current step pill, ringed and filled in the accent. */
+/**
+ * The current step pill, ringed and filled in the accent. Uses the full `border`
+ * shorthand (not `borderColor`) so toggling current state on rerender never mixes
+ * shorthand and longhand for the same property (a React styling-bug warning).
+ */
 export const ribbonStepCurrent: CSSProperties = {
   color: SURFACES.nameText,
   background: '#2A2F37',
-  borderColor: SURFACES.selection,
+  border: `1px solid ${SURFACES.selection}`,
 };
 
 /** The focus-mode "Decision" badge, in the shared alert (targeting) accent. */
@@ -675,6 +679,72 @@ export const zoneOpenButton: CSSProperties = {
   textDecoration: 'underline',
   textUnderlineOffset: 2,
   textDecorationColor: SURFACES.typeText,
+};
+
+/**
+ * Keyboard shortcut reference overlay (issue #266, React DOM per ADR 0003). Reads
+ * the shared `SURFACES` palette like the rest of the table chrome.
+ */
+export const shortcutBackdrop: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(9, 10, 12, 0.66)',
+  zIndex: 25,
+};
+
+export const shortcutPanel: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  width: '100%',
+  maxWidth: 360,
+  maxHeight: '80vh',
+  overflowY: 'auto',
+  padding: 20,
+  borderRadius: 12,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  boxSizing: 'border-box',
+};
+
+export const shortcutTitle: CSSProperties = {
+  margin: '0 0 4px',
+  fontSize: 16,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+export const shortcutRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '6px 0',
+  fontSize: 13,
+  color: SURFACES.nameText,
+};
+
+/** A binding with no matching action right now: dimmed. */
+export const shortcutRowOff: CSSProperties = {
+  opacity: 0.45,
+};
+
+/** The keycap for a binding. */
+export const shortcutKey: CSSProperties = {
+  minWidth: 56,
+  padding: '3px 8px',
+  borderRadius: 6,
+  background: '#15171A',
+  border: '1px solid #3A4049',
+  color: SURFACES.nameText,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 12,
+  fontWeight: 700,
+  textAlign: 'center',
 };
 
 export const bar: CSSProperties = {

@@ -84,6 +84,7 @@ export function EntityOverlay({
             key={`inspect-${card.entityId}`}
             type="button"
             data-testid={`inspect-${card.entityId}`}
+            data-entity={card.entityId}
             aria-label={`Inspect ${card.name}`}
             onClick={() => onInspect(card.entityId)}
             style={inspectHandle(card.rect)}
@@ -101,6 +102,7 @@ export function EntityOverlay({
               key={card.entityId}
               type="button"
               data-testid={`target-${card.entityId}`}
+              data-entity={card.entityId}
               aria-label={`${verb} ${card.name}`}
               aria-pressed={multiSelect ? card.chosen : undefined}
               onClick={() => onPickTarget(card.entityId)}
@@ -114,6 +116,7 @@ export function EntityOverlay({
             <button
               type="button"
               data-testid={`entity-${card.entityId}`}
+              data-entity={card.entityId}
               aria-pressed={selected}
               aria-label={`Select ${card.name}`}
               onClick={() => onSelect(card.entityId)}
