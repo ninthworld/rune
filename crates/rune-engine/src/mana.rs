@@ -72,6 +72,13 @@ impl ManaPool {
         *slot = slot.saturating_add(amount);
     }
 
+    /// Add `amount` colorless mana (`{C}`) to the pool — colorless is not one of the
+    /// five [`Color`]s (CR 105.1), so it has its own adder rather than a slot in
+    /// [`Self::add`].
+    pub fn add_colorless(&mut self, amount: u8) {
+        self.colorless = self.colorless.saturating_add(amount);
+    }
+
     /// Total mana of every color and colorless currently in the pool.
     #[must_use]
     pub fn total(&self) -> u16 {
