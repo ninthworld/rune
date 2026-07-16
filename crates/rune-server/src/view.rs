@@ -21,8 +21,8 @@ use rune_engine::{
 use crate::rules_text::{effects_description, rules_text};
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameOverReason, GameResult as GameResultView, GameView,
-    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, StackItem, TargetChoice,
-    TargetRequirement, ValidAction, ZonePile,
+    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, StackItem,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -841,6 +841,18 @@ pub(crate) fn personalized_view(
         .map(|player| player.mana_pool.pips())
         .unwrap_or_default();
 
+    // The receiver's own public stats — the same life and library-size numbers every
+    // opponent already sees about this player (CR 104.3a / public information), which
+    // the view previously carried for opponents but not for the receiver themself.
+    let me = state
+        .players
+        .get(viewer.0)
+        .map(|player| SelfView {
+            life: player.life,
+            library_size: count(player.library.len()),
+        })
+        .unwrap_or_default();
+
     let holds_priority = state.priority_holder().is_some();
     let priority_player = holds_priority.then(|| player_id(state.priority));
 
@@ -856,6 +868,7 @@ pub(crate) fn personalized_view(
     GameView {
         you: player_id(viewer),
         my_hand,
+        me,
         opponents,
         battlefield,
         stack,
@@ -1217,6 +1230,32 @@ mod tests {
         // A live game omits the result entirely.
         let live = personalized_view(&GameState::new_two_player(), &db, PlayerId(0));
         assert!(live.result.is_none());
+    }
+
+    #[test]
+    fn issue_255_own_life_and_library_project_onto_the_view() {
+        // The receiver sees their own public stats — the gap that let a player read
+        // every opponent's life but not their own.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.players[0].life = 17;
+        state.players[1].life = 12;
+        state.players[0].library = (0..30)
+            .map(|_| state.new_instance(fixture("forest")))
+            .collect();
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        // Own stats present and correct...
+        assert_eq!(view.me.life, 17);
+        assert_eq!(view.me.library_size, 30);
+        // ...while the opponent's public life is still projected, and distinct.
+        assert_eq!(view.opponents.len(), 1);
+        assert_eq!(view.opponents[0].life, 12);
+
+        // Seat 1's own view shows *their* life, never seat 0's — the projection is
+        // per-viewer, so `me` is always the receiver.
+        let other = personalized_view(&state, &db, PlayerId(1));
+        assert_eq!(other.me.life, 12);
     }
 
     /// Build the [`ChooseAction`] a well-behaved client sends for `action`:

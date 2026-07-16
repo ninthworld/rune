@@ -1680,4 +1680,96 @@ mod tests {
         // An unknown id with no scripted abilities yields nothing.
         assert!(abilities_of(&db, CardId(9999)).is_empty());
     }
+
+    #[test]
+    fn issue_256_the_four_wired_cards_carry_their_functions() {
+        use crate::ability::{Ability, Cost, Effect, PlayerRef, TargetSpec, TriggerCondition};
+        let db = CardDatabase::bundled().unwrap();
+
+        // Quickfire Bolt: a {R} bolt dealing 3 to any target — distinct from Cinder
+        // Shock's 2, so it is its own definition rather than a reprint of one identity.
+        let bolt = card_named(&db, "quickfire_bolt");
+        assert_eq!(bolt.types, vec![CardType::Instant]);
+        assert_eq!(
+            bolt.spell_effects,
+            vec![Effect::DealDamage {
+                target: TargetSpec::AnyTarget,
+                amount: 3,
+            }]
+        );
+        assert_ne!(
+            bolt.spell_effects,
+            card_named(&db, "cinder_shock").spell_effects,
+            "a byte-identical twin should be a reprint, not a second definition"
+        );
+
+        // Hurried Study: a {U} sorcery drawing two.
+        let study = card_named(&db, "hurried_study");
+        assert_eq!(study.types, vec![CardType::Sorcery]);
+        assert_eq!(study.spell_effects, vec![Effect::DrawCard { count: 2 }]);
+
+        // Verdant Blessing: a {G} enchantment whose ETB trigger gains 4 life.
+        let blessing = card_named(&db, "verdant_blessing");
+        assert_eq!(blessing.types, vec![CardType::Enchantment]);
+        assert_eq!(
+            blessing.abilities,
+            vec![Ability::Triggered {
+                event: TriggerCondition::SelfEntersBattlefield,
+                effects: vec![Effect::GainLife {
+                    player_ref: PlayerRef::Controller,
+                    amount: 4,
+                }],
+            }]
+        );
+
+        // Copper Lodestone: a {1} artifact mana rock — {T}: Add {C}.
+        let lodestone = card_named(&db, "copper_lodestone");
+        assert_eq!(lodestone.types, vec![CardType::Artifact]);
+        assert_eq!(
+            lodestone.abilities,
+            vec![Ability::Activated {
+                cost: vec![Cost::Tap],
+                effects: vec![Effect::AddColorlessMana { amount: 1 }],
+            }]
+        );
+        assert!(crate::ability::is_mana_ability(&lodestone.abilities[0]));
+    }
+
+    #[test]
+    fn issue_256_no_bundled_card_is_a_functionless_shell() {
+        // A castable *spell* that resolves doing nothing renders as blank generated
+        // rules text (ADR 0018 §7) — the exact failure mode issue #256 fixed. This guard
+        // keeps every bundled card meaningful and fails on any future functionless one:
+        //
+        // - a land must have an ability (its mana ability);
+        // - an instant, sorcery, or noncreature permanent (artifact/enchantment) must
+        //   have at least one of spell_effects / abilities / aura;
+        // - a creature is inherently functional — a body with power/toughness — so a
+        //   vanilla creature is not a shell, and needs no IR to prove it.
+        //
+        // The `scripted` escape hatch (behavior in code) also counts as function.
+        let db = CardDatabase::bundled().unwrap();
+        for id in every_id() {
+            let card = db.card(id).unwrap();
+            let has_ir = !card.spell_effects.is_empty()
+                || !abilities_of(&db, id).is_empty()
+                || card.aura.is_some()
+                || !card.keywords.is_empty()
+                || card.scripted;
+
+            if card.has_type(CardType::Land) {
+                assert!(
+                    !abilities_of(&db, id).is_empty(),
+                    "the land {} has no ability",
+                    card.name
+                );
+            } else if !card.has_type(CardType::Creature) {
+                assert!(
+                    has_ir,
+                    "{} is a functionless shell — no spell effect, ability, or aura",
+                    card.name
+                );
+            }
+        }
+    }
 }

@@ -21,6 +21,7 @@ export const SAMPLE_GAME_VIEW_JSON = JSON.stringify({
       toughness: '1',
     },
   ],
+  me: { life: 18, library_size: 52 },
   opponents: [
     {
       player_id: 'p2',
@@ -76,6 +77,7 @@ export const SAMPLE_GAME_VIEW: GameView = {
       toughness: '1',
     },
   ],
+  me: { life: 18, library_size: 52 },
   opponents: [
     {
       player_id: 'p2',

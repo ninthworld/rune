@@ -126,6 +126,7 @@ fn clauses(source: &str, effects: &[Effect]) -> String {
 fn effect_clause(source: &str, effect: &Effect) -> String {
     match effect {
         Effect::AddMana { color, amount } => format!("add {}", pips(*color, *amount)),
+        Effect::AddColorlessMana { amount } => format!("add {}", colorless_pips(*amount)),
         Effect::DrawCard { count } => match count {
             1 => "draw a card".to_string(),
             n => format!("draw {} cards", number(u32::from(*n))),
@@ -187,6 +188,12 @@ fn cost_symbol(cost: &Cost) -> &'static str {
 /// written, rather than a count a player has to turn back into pips.
 fn pips(color: Color, amount: u8) -> String {
     color.pip().repeat(usize::from(amount))
+}
+
+/// `amount` colorless mana pips, e.g. `{C}{C}` — the colorless counterpart of
+/// [`pips`], written the same repeated-symbol way.
+fn colorless_pips(amount: u8) -> String {
+    "{C}".repeat(usize::from(amount))
 }
 
 /// `count` counters of `kind`, e.g. `a +1/+1 counter` or `two -1/-1 counters`.
@@ -356,6 +363,32 @@ mod tests {
             text_of(&db, "titanroot_surge"),
             "Target creature gets +3/+3 until end of turn."
         );
+    }
+
+    #[test]
+    fn issue_256_the_four_wired_cards_generate_non_empty_text() {
+        // The four formerly functionless cards now render real rules text from their IR
+        // (ADR 0018 §7) — no more blank cards.
+        let db = bundled();
+        assert_eq!(
+            text_of(&db, "quickfire_bolt"),
+            "Quickfire Bolt deals 3 damage to any target."
+        );
+        assert_eq!(text_of(&db, "hurried_study"), "Draw two cards.");
+        assert_eq!(
+            text_of(&db, "verdant_blessing"),
+            "When Verdant Blessing enters the battlefield, you gain 4 life."
+        );
+        // A mana rock: colorless mana reads as {C}, the colorless counterpart of {G}.
+        assert_eq!(text_of(&db, "copper_lodestone"), "{T}: Add {C}.");
+        for card in [
+            "quickfire_bolt",
+            "hurried_study",
+            "verdant_blessing",
+            "copper_lodestone",
+        ] {
+            assert!(!text_of(&db, card).is_empty(), "{card} generated no text");
+        }
     }
 
     #[test]

@@ -92,6 +92,20 @@ pub enum Effect {
         /// How much mana of that color is produced.
         amount: u8,
     },
+    /// Add **colorless** mana (`{C}`) to the controller's mana pool — the mana-rock
+    /// verb (e.g. an artifact's `{T}: Add {C}`).
+    ///
+    /// Colorless is not one of the five [`Color`]s (CR 105.1), so it is a distinct
+    /// effect rather than an [`Effect::AddMana`] over a sixth color: keeping it out of
+    /// [`Color`] stops a colorless value from ever standing in for a card's color
+    /// ([`crate::CardData::colors`]). Like [`Effect::AddMana`] it has an implicit
+    /// subject (the controller) and needs no target, and an activated ability whose
+    /// every effect is one of the two mana verbs is a mana ability
+    /// ([`is_mana_ability`]).
+    AddColorlessMana {
+        /// How much colorless mana is produced.
+        amount: u8,
+    },
     /// The controller draws `count` cards. The subject is implicit (the
     /// controller), so this effect needs no target.
     DrawCard {
@@ -240,6 +254,7 @@ impl Effect {
             | Effect::PutCounters { target, .. }
             | Effect::Pump { target, .. } => Some(*target),
             Effect::AddMana { .. }
+            | Effect::AddColorlessMana { .. }
             | Effect::DrawCard { .. }
             | Effect::GainLife { .. }
             | Effect::LoseLife { .. } => None,
@@ -337,7 +352,10 @@ pub fn is_mana_ability(ability: &Ability) -> bool {
         ability,
         Ability::Activated { effects, .. }
             if !effects.is_empty()
-                && effects.iter().all(|e| matches!(e, Effect::AddMana { .. }))
+                && effects.iter().all(|e| matches!(
+                    e,
+                    Effect::AddMana { .. } | Effect::AddColorlessMana { .. }
+                ))
     )
 }
 
@@ -362,6 +380,24 @@ mod tests {
             }
         );
         assert!(is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_256_activated_colorless_mana_ability_round_trips() {
+        // A mana rock's {T}: Add {C} — an activated ability whose only effect is
+        // colorless mana production. It round-trips and is recognized as a mana ability.
+        let json = r#"{"type":"activated","cost":[{"kind":"tap"}],"effects":[{"kind":"add_colorless_mana","amount":1}]}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ability,
+            Ability::Activated {
+                cost: vec![Cost::Tap],
+                effects: vec![Effect::AddColorlessMana { amount: 1 }],
+            }
+        );
+        assert!(is_mana_ability(&ability));
+        // Colorless mana production has an implicit subject, so it targets nothing.
+        assert_eq!(Effect::AddColorlessMana { amount: 1 }.target_spec(), None);
     }
 
     #[test]

@@ -2,10 +2,10 @@
  * Player tiles (React DOM, ADR 0003).
  *
  * Opponent tiles show exactly what the redacted {@link OpponentView} exposes
- * (life, hidden-zone counts, status labels). The local player's tile shows only
- * what the GameView carries for the receiver — hand size, graveyard size, and
- * floating mana. The server never sends the receiver's own life total, so the
- * client does not invent one (values are displayed exactly as provided).
+ * (life, hidden-zone counts, status labels). The local player's tile shows what
+ * the GameView carries for the receiver — own life and library size (from
+ * {@link SelfView} `me`), hand size, graveyard size, and floating mana. Every
+ * value is displayed exactly as the server provides it; the client invents none.
  *
  * In **targeting mode** a player can be a legal target (ADR 0009 §Client /
  * `docs/brief.md` "Targeting Mode": click the player portrait). Each tile whose
@@ -103,7 +103,9 @@ export function PlayerTiles({ view, localId, targeting }: Props) {
         { ...tile, ...localTile },
         <>
           <div style={tileName}>{localId ?? 'You'} (you)</div>
+          <div>Life {view.me.life}</div>
           <div>Hand {view.my_hand.length}</div>
+          <div>Library {view.me.library_size}</div>
           <div>Graveyard {localGraveyard?.cards.length ?? 0}</div>
           {view.mana_pool.length > 0 && <div>Mana {view.mana_pool.join(' ')}</div>}
         </>,

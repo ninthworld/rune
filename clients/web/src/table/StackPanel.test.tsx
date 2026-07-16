@@ -14,6 +14,7 @@ function viewWith(stack: StackItem[], battlefield: Permanent[] = []): GameView {
   return {
     you: 'p1',
     my_hand: [],
+    me: { life: 20, library_size: 40 },
     opponents: [],
     battlefield,
     stack,

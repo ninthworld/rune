@@ -676,6 +676,14 @@ pub fn render(view: &GameView) -> String {
         out.push_str(&format!("Mana pool: {}\n", view.mana_pool.join(" ")));
     }
 
+    // The receiver's own public stats — life and library size — the same numbers shown
+    // for each opponent below, so a player can read their own life in the terminal too
+    // (issue #255). Graveyards are listed separately for every player.
+    out.push_str(&format!(
+        "You ({}): life {}, library {}\n",
+        view.you, view.me.life, view.me.library_size,
+    ));
+
     out.push_str(&format!("Your hand ({}):\n", view.my_hand.len()));
     if view.my_hand.is_empty() {
         out.push_str("  (empty)\n");
@@ -795,6 +803,7 @@ mod tests {
         GameView {
             you: "p0".into(),
             my_hand: vec![],
+            me: rune_protocol::SelfView::default(),
             opponents: vec![],
             battlefield: vec![],
             stack: vec![],
@@ -904,5 +913,21 @@ mod tests {
         let text = render(&view);
         assert!(text.contains("No actions available"));
         assert!(!text.contains("Actions:"));
+    }
+
+    #[test]
+    fn issue_255_render_shows_the_receivers_own_life_and_library() {
+        // The terminal client shows the player their own life and library size, the
+        // same public numbers it already prints for each opponent.
+        let mut view = view_with_actions(vec![]);
+        view.me = rune_protocol::SelfView {
+            life: 15,
+            library_size: 30,
+        };
+        let text = render(&view);
+        assert!(
+            text.contains("You (p0): life 15, library 30"),
+            "own stats missing from:\n{text}"
+        );
     }
 }
