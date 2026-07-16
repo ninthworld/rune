@@ -4,5 +4,12 @@
   "name": "Quickfire Bolt",
   "types": ["instant"],
   "mana_cost": "{R}",
-  "colors": ["red"]
+  "colors": ["red"],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_target",
+      "amount": 3
+    }
+  ]
 }

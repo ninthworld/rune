@@ -4,5 +4,11 @@
   "name": "Hurried Study",
   "types": ["sorcery"],
   "mana_cost": "{U}",
-  "colors": ["blue"]
+  "colors": ["blue"],
+  "spell_effects": [
+    {
+      "kind": "draw_card",
+      "count": 2
+    }
+  ]
 }

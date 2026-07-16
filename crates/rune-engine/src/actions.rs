@@ -917,21 +917,33 @@ mod tests {
 
     // ----- Cast every card type with real timing (issue #147) -----
     //
-    // One bundled card of each castable type: Quickfire Bolt (instant, {R}),
-    // Hurried Study (sorcery, {U}), Copper Lodestone (artifact, {1}), Verdant
-    // Blessing (enchantment, {G}), Verdant Scout (creature, {G}). Named by authored
-    // identity, not by handle — the handle is interned at build time (ADR 0018 §3).
-    fn instant_id() -> CardId {
-        fixture("quickfire_bolt")
+    // These tests exercise casting *timing* and stack mechanics per card type, so they
+    // must not depend on any bundled card's behavior. Bundled cards gain real effects
+    // over time (e.g. issue #256 wired the four formerly-functionless cards these once
+    // borrowed), which would silently change what a "generic instant" does — or, for a
+    // now-targeted spell, make it uncastable with no target. A minimal synthetic catalog
+    // gives one no-effect card of each castable type, immune to that drift.
+    fn probe_db() -> CardDatabase {
+        let json = r#"[
+            {"schema_version":1,"functional_id":"probe_instant","name":"Probe Instant","types":["instant"],"mana_cost":"{R}","colors":["red"]},
+            {"schema_version":1,"functional_id":"probe_sorcery","name":"Probe Sorcery","types":["sorcery"],"mana_cost":"{U}","colors":["blue"]},
+            {"schema_version":1,"functional_id":"probe_artifact","name":"Probe Artifact","types":["artifact"],"mana_cost":"{1}"},
+            {"schema_version":1,"functional_id":"probe_enchantment","name":"Probe Enchantment","types":["enchantment"],"mana_cost":"{G}","colors":["green"]},
+            {"schema_version":1,"functional_id":"probe_creature","name":"Probe Creature","types":["creature"],"mana_cost":"{G}","colors":["green"],"power":2,"toughness":2}
+        ]"#;
+        CardDatabase::from_json(json).unwrap()
     }
-    fn sorcery_id() -> CardId {
-        fixture("hurried_study")
+    fn instant_id(db: &CardDatabase) -> CardId {
+        id_in(db, "probe_instant")
     }
-    fn artifact_id() -> CardId {
-        fixture("copper_lodestone")
+    fn sorcery_id(db: &CardDatabase) -> CardId {
+        id_in(db, "probe_sorcery")
     }
-    fn enchantment_id() -> CardId {
-        fixture("verdant_blessing")
+    fn artifact_id(db: &CardDatabase) -> CardId {
+        id_in(db, "probe_artifact")
+    }
+    fn enchantment_id(db: &CardDatabase) -> CardId {
+        id_in(db, "probe_enchantment")
     }
 
     /// Whether `card` is offered as a [`Action::CastSpell`] for the hand instance
@@ -964,12 +976,12 @@ mod tests {
         // CR 117.1a: a player may cast an instant any time they have priority —
         // including while another spell waits on the stack (the first "respond to
         // a spell" path) and during an opponent's turn.
-        let db = db();
+        let db = probe_db();
 
         // Another object already on the stack, player 0 holding priority.
-        let (mut mid_stack, bolt) = hand_with(instant_id());
+        let (mut mid_stack, bolt) = hand_with(instant_id(&db));
         let sid = mid_stack.mint_id();
-        let other = mid_stack.new_instance(instant_id());
+        let other = mid_stack.new_instance(instant_id(&db));
         mid_stack.stack.push(StackObject {
             id: StackId(sid),
             controller: PlayerId(0),
@@ -983,7 +995,7 @@ mod tests {
         );
 
         // Opponent's turn: player 1 is active, player 0 holds priority.
-        let (mut off_turn, bolt) = hand_with(instant_id());
+        let (mut off_turn, bolt) = hand_with(instant_id(&db));
         off_turn.active_player = PlayerId(1);
         off_turn.priority = PlayerId(0);
         assert!(
@@ -997,22 +1009,22 @@ mod tests {
         // CR 304.1: a sorcery may be cast only at sorcery speed — the active
         // player, a main phase, an empty stack. It is offered in none of the
         // windows an instant is, only in that one.
-        let db = db();
+        let db = probe_db();
 
         // Positive control: on-turn, empty stack, main phase — offered.
-        let (on_turn, sorcery) = hand_with(sorcery_id());
+        let (on_turn, sorcery) = hand_with(sorcery_id(&db));
         assert!(cast_offered(&on_turn, &db, sorcery));
 
         // Off-turn (player 0 holds priority on player 1's turn) — not offered.
-        let (mut off_turn, sorcery) = hand_with(sorcery_id());
+        let (mut off_turn, sorcery) = hand_with(sorcery_id(&db));
         off_turn.active_player = PlayerId(1);
         off_turn.priority = PlayerId(0);
         assert!(!cast_offered(&off_turn, &db, sorcery));
 
         // Mid-stack (own turn, but a spell is on the stack) — not offered.
-        let (mut mid_stack, sorcery) = hand_with(sorcery_id());
+        let (mut mid_stack, sorcery) = hand_with(sorcery_id(&db));
         let sid = mid_stack.mint_id();
-        let other = mid_stack.new_instance(instant_id());
+        let other = mid_stack.new_instance(instant_id(&db));
         mid_stack.stack.push(StackObject {
             id: StackId(sid),
             controller: PlayerId(0),
@@ -1026,8 +1038,8 @@ mod tests {
     fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefield() {
         // CR 307.1 (enchantments) / artifacts are permanent spells cast at
         // sorcery speed; on resolution they enter the battlefield (CR 608.3).
-        let db = db();
-        for card in [artifact_id(), enchantment_id()] {
+        let db = probe_db();
+        for card in [artifact_id(&db), enchantment_id(&db)] {
             let (state, inst) = hand_with(card);
 
             // Offered at sorcery speed...
@@ -1038,7 +1050,7 @@ mod tests {
             // ...but not while a spell is on the stack (sorcery-speed gate).
             let mut mid_stack = state.clone();
             let sid = mid_stack.mint_id();
-            let other = mid_stack.new_instance(instant_id());
+            let other = mid_stack.new_instance(instant_id(&db));
             mid_stack.stack.push(StackObject {
                 id: StackId(sid),
                 controller: PlayerId(0),
@@ -1072,11 +1084,11 @@ mod tests {
         // with A still on the stack — cast instant B. B is on top, so it resolves
         // first: the two non-permanent spells reach the graveyard in the order
         // B, A, the reverse of the order they were cast.
-        let db = db();
+        let db = probe_db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let a = state.new_instance(instant_id());
-        let b = state.new_instance(instant_id());
+        let a = state.new_instance(instant_id(&db));
+        let b = state.new_instance(instant_id(&db));
         state.players[0].hand = vec![a, b];
         state.players[0].mana_pool.add(Color::Red, 2);
 
@@ -1117,8 +1129,13 @@ mod tests {
         // The unpayable-cost invariant extends to every new castable type: with an
         // empty pool, no instant/sorcery/artifact/enchantment is offered; with the
         // exact mana it is (sorcery-speed types on-turn with an empty stack).
-        let db = db();
-        for card in [instant_id(), sorcery_id(), artifact_id(), enchantment_id()] {
+        let db = probe_db();
+        for card in [
+            instant_id(&db),
+            sorcery_id(&db),
+            artifact_id(&db),
+            enchantment_id(&db),
+        ] {
             let (state, inst) = hand_with(card);
 
             // Drain the pool: nothing is payable, so nothing is offered.

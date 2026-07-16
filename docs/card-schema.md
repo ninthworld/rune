@@ -69,7 +69,11 @@ building, and all the shipped binary sees is `&'static str` constants, exactly a
 | `scripted` | no | `false` by default. `true` declares that this card's behavior is (also) defined in code, in `crates/rune-engine/src/scripted.rs` — the ADR 0007 escape hatch. No bundled card is scripted today. |
 
 The `abilities`, `spell_effects`, and `aura` shapes are the engine's IR and are
-documented where they are defined: `crates/rune-engine/src/ability.rs`.
+documented where they are defined: `crates/rune-engine/src/ability.rs`. Mana
+production is authored as an effect: `add_mana` (one of the five colors, e.g.
+`{ "kind": "add_mana", "color": "green", "amount": 1 }`) or `add_colorless_mana`
+for a mana rock's `{C}` (e.g. `{ "kind": "add_colorless_mana", "amount": 1 }` —
+colorless is not a `Color`, so it is a distinct effect).
 
 ## What a definition may not contain
 
