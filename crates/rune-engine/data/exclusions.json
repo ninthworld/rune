@@ -1,0 +1,10 @@
+[
+  { "name": "Planeswalkers", "blocker": "no loyalty or planeswalker-type system" },
+  { "name": "Battles", "blocker": "no battle-type or siege/defense model" },
+  { "name": "Variable {X} costs", "blocker": "no variable-cost payment during casting" },
+  { "name": "Modal spells", "blocker": "no choose-one-or-more spell modes" },
+  { "name": "Double-faced cards", "blocker": "no transform or multi-face card model" },
+  { "name": "Fetch and search effects", "blocker": "no library search or shuffle-from-play" },
+  { "name": "Mana-producing creatures", "blocker": "creatures carry no activated mana abilities yet" },
+  { "name": "Regeneration", "blocker": "no destruction-replacement (regeneration shield) effect" }
+]

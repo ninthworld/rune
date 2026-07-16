@@ -18,6 +18,7 @@ mod card_type;
 mod catalog;
 mod characteristics;
 mod combat;
+mod compat;
 #[cfg(test)]
 mod fixtures;
 mod id;
@@ -48,6 +49,7 @@ pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
 pub use combat::{attacker_candidates, blocker_candidates, declared_attackers};
+pub use compat::{compatibility_report, CompatError, Exclusion};
 pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
     PlayerId,
