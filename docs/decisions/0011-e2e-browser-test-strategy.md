@@ -1,8 +1,12 @@
 # ADR 0011: End-to-end browser test strategy for the web client
 
-- Status: accepted
+- Status: accepted (suite paused — see note)
 - Date: 2026-07-11
 - Issue: #102
+
+> **Note (paused):** the browser E2E suite, its `E2E` CI job, and the `make e2e` targets
+> were removed to keep the inner loop fast while the in-game UI is still in flux. This ADR
+> is retained as the blueprint for reinstating them later; the strategy below is unchanged.
 
 ## Context
 

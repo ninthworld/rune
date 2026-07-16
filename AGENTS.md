@@ -40,22 +40,18 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 
 - `make check` — the fast inner-loop gate (Engine + Client CI jobs). Run it constantly
   while implementing; it must pass before every PR.
-- `make verify` — the complete pre-merge gate. Composes `make check` + `make e2e` +
-  `make deny`, so its coverage matches every required GitHub check (`Engine`, `Client`,
-  `E2E`, `cargo-deny`). Run it before requesting review (when the environment can run the
-  browser suite).
+- `make verify` — the complete pre-merge gate. Composes `make check` + `make deny`, so its
+  coverage matches every required GitHub check (`Engine`, `Client`, `cargo-deny`). Run it
+  before opening a PR.
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make client-check` — lint + typecheck + test + build in `clients/web`
-- `make e2e` — browser end-to-end suite (its own `E2E` CI job, **not** part of
-  `make check`; needs a browser + built client — see `docs/decisions/0011-*.md`)
 - `make deny` — `cargo deny check advisories licenses bans sources` (the `cargo-deny` job)
 - `scripts/bootstrap.sh` — one-time prerequisite check for both gates
-- `make e2e-browser` — install the pinned Playwright Chromium the E2E suite needs
 
 > `make check` is the fast unit gate, **not** the entire CI surface. The full surface is
-> `make check` (Engine + Client) **plus** the separate `E2E` job (ADR 0011) **plus** the
-> `cargo-deny` job — exactly what `make verify` runs locally.
+> `make check` (Engine + Client) **plus** the `cargo-deny` job — exactly what `make verify`
+> runs locally. (The browser E2E suite of ADR 0011 is removed for now; it will return.)
 
 ## Workflow
 
