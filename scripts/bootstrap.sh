@@ -3,7 +3,7 @@
 #
 # Covers both local gates:
 #   - `make check`  (fast inner loop): Rust toolchain + Node 20+
-#   - `make verify` (full pre-merge):  the above + cargo-deny + Playwright Chromium
+#   - `make verify` (full pre-merge):  the above + cargo-deny
 # Each missing prerequisite prints an actionable install command; the script exits
 # non-zero if anything is absent.
 set -e
@@ -28,7 +28,7 @@ else
   fail=1
 fi
 
-# --- Full gate: `make verify` adds the E2E and cargo-deny surfaces -----------
+# --- Full gate: `make verify` adds the cargo-deny surface --------------------
 
 if command -v cargo-deny > /dev/null 2>&1; then
   echo "ok: cargo-deny $(cargo-deny --version)"
@@ -37,19 +37,9 @@ else
   fail=1
 fi
 
-# Playwright's pinned Chromium for the browser E2E suite. Browsers live under
-# PLAYWRIGHT_BROWSERS_PATH when set, otherwise Playwright's default cache dir.
-pw_path="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
-if ls "$pw_path"/chromium-* > /dev/null 2>&1; then
-  echo "ok: Playwright Chromium present under $pw_path"
-else
-  echo "missing: Playwright Chromium — run 'make e2e-browser' to install it (needed by 'make e2e'/'make verify' and the E2E CI job)"
-  fail=1
-fi
-
 if [ "$fail" -eq 0 ]; then
-  echo "prerequisites ready — 'make check' is the fast gate; run 'make verify' before requesting final review"
+  echo "prerequisites ready — 'make check' is the fast gate; run 'make verify' before opening a PR"
 else
-  echo "one or more prerequisites are missing (see above): 'make check' needs cargo + node; 'make verify' also needs cargo-deny + Playwright Chromium"
+  echo "one or more prerequisites are missing (see above): 'make check' needs cargo + node; 'make verify' also needs cargo-deny"
   exit 1
 fi

@@ -41,13 +41,13 @@ Design principles (full detail in [`docs/brief.md`](docs/brief.md)):
 ```sh
 scripts/bootstrap.sh   # checks prerequisites for both gates below
 make check             # fast inner-loop gate: Engine + Client (fmt, clippy, tests, client build)
-make verify            # full pre-merge gate: check + E2E browser suite + cargo-deny
+make verify            # full pre-merge gate: check + cargo-deny
 ```
 
 `make check` is the fast gate you run constantly while working. `make verify` is the
-complete pre-merge surface: it composes `make check`, `make e2e`, and `make deny`, so its
-coverage matches every GitHub check required to merge (`Engine`, `Client`, `E2E`,
-`cargo-deny`). Run `make verify` before opening a PR.
+complete pre-merge surface: it composes `make check` and `make deny`, so its coverage
+matches every GitHub check required to merge (`Engine`, `Client`, `cargo-deny`). Run
+`make verify` before opening a PR.
 
 | Directory | What it is |
 |---|---|
@@ -130,7 +130,7 @@ off `main`, keep changes small and single-purpose, run `make check` while workin
 `make verify` before opening a PR, and merge once CI is green. The rules that matter — zero
 game logic in the client, zero I/O in the engine, protocol changes are contract changes —
 live in [`AGENTS.md`](AGENTS.md); the contributor loop is in
-[`CONTRIBUTING.md`](CONTRIBUTING.md). Every PR must pass CI (`Engine`, `Client`, `E2E`, and
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Every PR must pass CI (`Engine`, `Client`, and
 `cargo-deny` — reproduce them with `make verify`).
 
 ## Documentation

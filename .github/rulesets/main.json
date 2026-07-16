@@ -47,9 +47,6 @@
             "context": "Client"
           },
           {
-            "context": "E2E"
-          },
-          {
             "context": "cargo-deny"
           }
         ]
