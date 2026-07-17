@@ -1,11 +1,12 @@
 /**
  * A tiny, dependency-free PNG reader — just enough to prove a canvas screenshot is
- * **non-blank** (issue #279). Playwright's `locator.screenshot()` returns an 8-bit
- * RGBA, non-interlaced PNG; rather than pull in an image library we decode it with
- * Node's built-in `zlib` and count how many distinct colors it contains. A blank
- * board is a single flat fill (one color); a board that actually painted its cards
- * has many. This is the pixel-level half of the "attached AND non-blank" assertion
- * that the StrictMode detach bug (#276) must fail.
+ * **non-blank** (issue #279). Playwright's `locator.screenshot()` returns an 8-bit,
+ * non-interlaced PNG that is RGBA (colorType 6) or, for an opaque canvas, RGB
+ * (colorType 2); rather than pull in an image library we decode either with Node's
+ * built-in `zlib` and count how many distinct colors it contains. A blank board is
+ * a single flat fill (one color); a board that actually painted its cards has many.
+ * This is the pixel-level half of the "renders, not blank" assertion that the
+ * StrictMode canvas bug (#276) must fail.
  */
 import { inflateSync } from 'node:zlib';
 
@@ -81,11 +82,13 @@ export function countDistinctColors(png: Buffer): number {
     }
     pos += 12 + len;
   }
-  if (bitDepth !== 8 || colorType !== 6) {
-    throw new Error(`expected 8-bit RGBA PNG, got bitDepth=${bitDepth} colorType=${colorType}`);
+  // colorType 6 = RGBA (4 channels), 2 = RGB (3 channels). Playwright emits either
+  // depending on whether the captured surface has an alpha channel.
+  if (bitDepth !== 8 || (colorType !== 6 && colorType !== 2)) {
+    throw new Error(`expected 8-bit RGB/RGBA PNG, got bitDepth=${bitDepth} colorType=${colorType}`);
   }
 
-  const channels = 4;
+  const channels = colorType === 6 ? 4 : 3;
   const stride = width * channels;
   const raw = inflateSync(Buffer.concat(idat));
   const pixels = Buffer.alloc(height * stride);
@@ -99,7 +102,9 @@ export function countDistinctColors(png: Buffer): number {
 
   const seen = new Set<number>();
   for (let i = 0; i < pixels.length; i += channels) {
-    const key = (pixels[i] << 24) | (pixels[i + 1] << 16) | (pixels[i + 2] << 8) | pixels[i + 3];
+    // Key on RGB only — enough to tell a flat fill from a real render, and
+    // identical across the RGB and RGBA layouts.
+    const key = (pixels[i] << 16) | (pixels[i + 1] << 8) | pixels[i + 2];
     seen.add(key >>> 0);
     if (seen.size > 8) break; // early out: plenty of variance, definitely not blank
   }

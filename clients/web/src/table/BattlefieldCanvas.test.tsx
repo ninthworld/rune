@@ -1,13 +1,13 @@
 /**
- * Regression tests for the two invariants that made the board vanish in dev
- * (issue #276): the React-owned `<canvas>` must survive a StrictMode
- * mount→cleanup→mount cycle, and a GL-capable client that still fails must show
- * a visible fallback rather than a silently blank board.
+ * Regression tests for the canvas that vanished / failed to paint in the dev
+ * client (issue #276). The load-bearing invariant: Pixi owns its own canvas
+ * inside a React-owned host `<div>`, so a StrictMode mount→cleanup→mount cycle
+ * disposes the first canvas (and its GL context) and mounts a *fresh* one — never
+ * reusing a context-less canvas (which is what made the board fail to paint).
  *
  * Pixi and the reconciler are mocked so the test is deterministic in jsdom: the
- * fake `Application` mirrors Pixi v7's `destroy(removeView)` contract — it
- * detaches its view from the DOM iff `removeView` is truthy — which is exactly
- * the behavior the fix must avoid triggering.
+ * fake `Application` creates its own canvas (as Pixi does when no `view` is
+ * passed) and `destroy(removeView=true)` removes that canvas from the DOM.
  */
 import { StrictMode } from 'react';
 import { render, cleanup } from '@testing-library/react';
@@ -15,18 +15,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import type { TableScene } from './scene';
 
+const createdViews: HTMLCanvasElement[] = [];
 const destroyCalls: (boolean | undefined)[] = [];
 let constructShouldThrow = false;
 
 vi.mock('pixi.js', () => ({
-  // Mirrors Pixi v7: destroy(removeView=true) removes the canvas from the DOM.
+  // Mirrors Pixi v7 with no `view` passed: the Application creates its own canvas,
+  // and destroy(removeView=true) removes that canvas from the DOM.
   Application: class {
     view: HTMLCanvasElement;
     stage = { addChild: () => {} };
     renderer = { resize: () => {} };
-    constructor(opts: { view: HTMLCanvasElement }) {
+    constructor() {
       if (constructShouldThrow) throw new Error('no GL');
-      this.view = opts.view;
+      this.view = document.createElement('canvas');
+      this.view.width = 200;
+      createdViews.push(this.view);
     }
     destroy(removeView?: boolean) {
       destroyCalls.push(removeView);
@@ -57,32 +61,40 @@ function stubWebgl(supported: boolean) {
 
 afterEach(() => {
   cleanup();
+  createdViews.length = 0;
   destroyCalls.length = 0;
   constructShouldThrow = false;
   vi.restoreAllMocks();
 });
 
 describe('BattlefieldCanvas', () => {
-  it('keeps its canvas attached across a StrictMode mount→cleanup→mount cycle', () => {
+  it('mounts a fresh canvas after a StrictMode mount→cleanup→mount cycle', () => {
     const { container } = render(
       <StrictMode>
         <BattlefieldCanvas scene={makeScene()} />
       </StrictMode>,
     );
 
-    // The element React owns must still be in the DOM after StrictMode's
-    // double-invoke ran a full cleanup between the two mounts.
-    expect(container.querySelector('canvas')).not.toBeNull();
-    // And cleanup must never have asked Pixi to remove the view.
-    expect(destroyCalls.length).toBeGreaterThan(0);
-    expect(destroyCalls.every((removeView) => removeView === false)).toBe(true);
+    // The React-owned host survives the cycle and holds exactly one canvas.
+    const host = container.querySelector<HTMLElement>('[data-testid="battlefield-canvas-host"]');
+    expect(host).not.toBeNull();
+    const canvases = host!.querySelectorAll('canvas');
+    expect(canvases).toHaveLength(1);
+
+    // That canvas is the *most recently* created one — the stale first canvas was
+    // destroyed with its context, not reused (the #276 failure mode).
+    expect(canvases[0]).toBe(createdViews.at(-1));
+    expect(createdViews[0]?.isConnected).toBe(false);
+    // Cleanup disposed the app's own canvas (removeView = true).
+    expect(destroyCalls).toContain(true);
   });
 
-  it('passes removeView=false to destroy on unmount', () => {
-    const { unmount } = render(<BattlefieldCanvas scene={makeScene()} />);
+  it('disposes the Pixi app and its canvas on unmount', () => {
+    const { container, unmount } = render(<BattlefieldCanvas scene={makeScene()} />);
+    const host = container.querySelector('[data-testid="battlefield-canvas-host"]')!;
+    expect(host.querySelector('canvas')).not.toBeNull();
     unmount();
-    expect(destroyCalls).toContain(false);
-    expect(destroyCalls).not.toContain(true);
+    expect(destroyCalls).toContain(true);
   });
 
   it('shows a visible fallback when a GL-capable client cannot start the canvas', () => {
