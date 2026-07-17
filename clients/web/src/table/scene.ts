@@ -267,7 +267,23 @@ function toDisplayData(
     // A basic-land chip draws this glyph instead of a name (issue #318); absent for
     // any other render. Derived from the server type line, not a rules lookup.
     landGlyph: opts.landGlyph,
+    // Card-face information budget (issue #320): keyword glyphs from the server's
+    // keyword list, and a latent activated-ability marker read off the printed text.
+    keywords: card.keywords,
+    hasActivatedAbility: hasActivatedAbilityText(card.rules_text),
   };
+}
+
+/**
+ * Whether a card's printed rules text describes a **latent activated ability** (issue
+ * #320). This is a display heuristic over the server-generated rules text (ADR 0018),
+ * **not** rules computation: an activated ability is printed as `"cost: effect"`, so a
+ * cost/effect colon marks one — independently of whether the ability is payable right
+ * now (that "live" state is the gold edge bar's job, driven by `valid_actions`). If a
+ * dedicated view field for this ever ships, this heuristic is the swap point.
+ */
+function hasActivatedAbilityText(rulesText?: string): boolean {
+  return rulesText !== undefined && /:\s/.test(rulesText);
 }
 
 /** The subject-actions from `valid_actions[]` that name a given entity. */
