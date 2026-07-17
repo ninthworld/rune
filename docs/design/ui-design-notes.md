@@ -209,6 +209,16 @@ of the ×N grouping key, so "four Plains, one tapped" reads as an untapped ×3
 stack beside a tapped single — the tapped count stays legible at the size where
 it matters most.
 
+Delivered by issue #318 in the pure `buildTableScene` layout (`clients/web/src/table/scene.ts`)
+plus a chip renderer (`buildChipDisplay`) and the `×N` badge in the card factory.
+Two spec points are intentionally deferred, since neither is achievable under the
+current contract without new work: **aura clustering** waits on an attachment field
+in the view (`Permanent` carries no `attached_to` today, and the client derives no
+rules), and the **row-migration transition** waits on the reconciler's animate-the-diff
+layer (`sceneReconciler.ts` is the documented attachment point, and animations ship
+separately). Row *membership* already follows the server type line, so a permanent
+moves rows the instant its types change; only the tween is pending.
+
 ## Action routing
 
 Every entity-owned action has a `subject`. Entity-subject actions render as the entity's

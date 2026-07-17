@@ -21,7 +21,8 @@ import type {
   PlayerId,
   ValidAction,
 } from '../protocol';
-import type { CardDisplayData, CardTier } from '../card/cardFactory';
+import { cardVisualSignature, type CardDisplayData, type RenderTier } from '../card/cardFactory';
+import type { GlyphName } from '../chrome/glyphs';
 import { TIER } from '../tokens';
 import { deriveColorIdentity } from './colorIdentity';
 
@@ -35,18 +36,32 @@ export interface Rect {
 
 /** One card the scene renders, with its factory data, position, and actions. */
 export interface RenderedCard {
-  /** Entity id (permanent or hand card). */
+  /**
+   * Entity id (permanent or hand card). For a collapsed `×N` stack (issue #318) this
+   * is the representative — the first member in server order — kept stable so the
+   * reconciler reuses one display object across frames; {@link RenderedCard.memberIds}
+   * carries the full set.
+   */
   entityId: EntityId;
   /** Which zone it lives in — drives its tier and layout row. */
   zone: 'battlefield' | 'hand';
-  /** Size tier passed to the card factory. */
-  tier: CardTier;
+  /** Size tier passed to the card factory (`'chip'` for a land at the back). */
+  tier: RenderTier;
   /** Convenience copy of the display name for labels/aria. */
   name: string;
   /** Everything the Pixi factory needs to draw the card. */
   data: CardDisplayData;
-  /** Logical position of the card. */
+  /** Logical position of the card — the visible footprint (rotated, if tapped). */
   rect: Rect;
+  /**
+   * Every permanent this render stands for (issue #318). Length 1 for a normal card;
+   * `> 1` for an `×N` stack of identical-state permanents. A prompt that must address
+   * an individual permanent expands stacks (targeting mode never collapses), so each
+   * member stays choosable.
+   */
+  memberIds: EntityId[];
+  /** How many permanents this render collapses (`memberIds.length`); `1` if not a stack. */
+  stackCount: number;
   /**
    * The subject-actions bound to this entity (empty ⇒ not interactive). During
    * targeting mode this is forced empty: the only interaction is picking a target.
@@ -64,6 +79,27 @@ export interface RenderedCard {
    * multi-select toggles a subset; drives the pressed/ringed affordance.
    */
   chosen: boolean;
+}
+
+/**
+ * A type-grouped row within a band (issue #318). The rows are a **sorting
+ * convention, not zones** (see `docs/design/ui-design-notes.md` §Battlefield bands):
+ * they order a board so it reads at a glance and never carry rule-implying labels —
+ * only the lands row earns the honest `"Lands"` label. Row membership is derived
+ * from the server-computed type line alone; the client knows no rules.
+ */
+export type BandRowKind = 'creatures' | 'support' | 'lands';
+
+/** One type-grouped row's placement + optional (lands-only) label. */
+export interface BandRow {
+  /** Which type group this row holds. */
+  kind: BandRowKind;
+  /** The tier its cards render at (creatures→field, support→support, lands→chip). */
+  tier: RenderTier;
+  /** The row's bounding region in scene coordinates (spans the band width). */
+  rect: Rect;
+  /** The row label — set only for the lands row (`"Lands"`); rows are not zones. */
+  label?: string;
 }
 
 /**
@@ -116,6 +152,13 @@ export interface Band {
   isEmpty: boolean;
   /** The controller's library/graveyard/exile pile counts, straight from the view. */
   zones: ZoneCounts;
+  /**
+   * The type-grouped rows in this band (issue #318), ordered toward the center line:
+   * for the local band, creatures are nearest the center (first) and lands at the
+   * back; an opponent's band mirrors this so their creatures sit nearest the center
+   * too. Empty rows are omitted. The DOM geography layer labels only the lands row.
+   */
+  rows: BandRow[];
 }
 
 /** The local player's hand row as a labeled, bounded region (issue #278). */
@@ -199,7 +242,13 @@ function zoneCountsOf(view: GameView, playerId: PlayerId, isLocal: boolean): Zon
 /** Map a server card + permanent state onto the factory's display data. */
 function toDisplayData(
   card: CardView,
-  opts: { tapped?: boolean; counters?: Counter[]; selected: boolean; actionable: boolean },
+  opts: {
+    tapped?: boolean;
+    counters?: Counter[];
+    selected: boolean;
+    actionable: boolean;
+    landGlyph?: GlyphName;
+  },
 ): CardDisplayData {
   return {
     name: card.name,
@@ -215,6 +264,9 @@ function toDisplayData(
     // Purely presentational: the card has ≥1 offered subject-action. No legality
     // is computed here (the server already decided what is offered, issue #277).
     actionable: opts.actionable,
+    // A basic-land chip draws this glyph instead of a name (issue #318); absent for
+    // any other render. Derived from the server type line, not a rules lookup.
+    landGlyph: opts.landGlyph,
   };
 }
 
@@ -224,52 +276,123 @@ function actionsFor(entityId: EntityId, actions: ValidAction[]): ValidAction[] {
 }
 
 /**
- * How many same-width cards fit in one row inside `availWidth` (always ≥ 1, so a
- * single card never vanishes even in an absurdly narrow viewport). Pure integer
- * math over the shared gap/margin tokens — the unit under test for wrapping.
+ * Which type-grouped row a permanent belongs to (issue #318), derived from the
+ * **server-computed type line** alone — the client knows no rules. A permanent that
+ * is any kind of creature/planeswalker/battle goes to the front row (so an animated
+ * land or crewed Vehicle migrates up when its types change); a land goes to the back
+ * chip row; everything else (artifacts, enchantments/auras) is support. The creature
+ * test comes first so an "Artifact Creature" or "Land Creature" reads as a creature.
  */
-function cardsPerRow(cardW: number, availWidth: number): number {
-  const usable = availWidth - LAYOUT.margin * 2;
-  return Math.max(1, Math.floor((usable + LAYOUT.cardGap) / (cardW + LAYOUT.cardGap)));
+export function rowKindForType(typeLine: string): BandRowKind {
+  if (/\b(Creature|Planeswalker|Battle)\b/.test(typeLine)) return 'creatures';
+  if (/\bLand\b/.test(typeLine)) return 'lands';
+  return 'support';
+}
+
+/** The glyph for a basic land's chip, or `undefined` for a nonbasic land / non-land. */
+export function basicLandGlyph(typeLine: string): GlyphName | undefined {
+  if (!/\bBasic\b/.test(typeLine)) return undefined;
+  if (/\bPlains\b/.test(typeLine)) return 'land-plains';
+  if (/\bIsland\b/.test(typeLine)) return 'land-island';
+  if (/\bSwamp\b/.test(typeLine)) return 'land-swamp';
+  if (/\bMountain\b/.test(typeLine)) return 'land-mountain';
+  if (/\bForest\b/.test(typeLine)) return 'land-forest';
+  return undefined;
+}
+
+/** The render tier each type-grouped row uses. */
+const TIER_FOR_ROW: Record<BandRowKind, RenderTier> = {
+  creatures: 'field',
+  support: 'support',
+  lands: 'chip',
+};
+
+/**
+ * A permanent's on-board footprint at its tier. A tapped **field/support** card
+ * rotates 90°, so its reserved cell is `h × w` (swapped) — this is exactly what
+ * keeps a tapped card from overlapping its neighbors (issue #318). A **chip** never
+ * rotates (dim + corner tap glyph instead), so its footprint is constant.
+ */
+function cellSize(tier: RenderTier, tapped: boolean): { w: number; h: number } {
+  if (tier === 'chip') return { w: TIER.chip.w, h: TIER.chip.h };
+  const t = TIER[tier];
+  return tapped ? { w: t.h, h: t.w } : { w: t.w, h: t.h };
 }
 
 /**
- * Lay a band of same-tier cards into as many rows as fit within `availWidth`,
- * wrapping left-to-right then top-to-bottom. Returns the placed cards, the widest
- * row's width, and the total height the band occupies. An empty band still
- * reserves one card-height row so its (possibly local) slot stays visible.
- *
- * This is the pure wrapping math the whole feature turns on: bounding row width to
- * the viewport is what keeps a 100-permanent board from growing a horizontal
- * scrollbar — it grows downward instead.
+ * Collapse identical-state permanents in one row into `×N` stacks (issue #318). The
+ * grouping key is the card's **full visual signature** (tap state, counters, and all
+ * interactive flags included), so a stack never hides a differing card — "four
+ * Plains, one tapped" reads as an untapped ×3 beside a tapped single. A card that
+ * carries any individual affordance (an offered action, target candidacy, a
+ * multi-select pick, or the current selection) is never folded in, so every
+ * individually-addressable permanent stays its own render for prompts and clicks.
  */
-function layBand(
+function groupStacks(
+  cards: Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds'>[],
+): Omit<RenderedCard, 'rect'>[] {
+  const result: Omit<RenderedCard, 'rect'>[] = [];
+  const stackAt = new Map<string, number>();
+  for (const card of cards) {
+    const individual =
+      card.actions.length > 0 || card.targetable || card.chosen || card.data.selected === true;
+    if (individual) {
+      result.push({ ...card, stackCount: 1, memberIds: [card.entityId] });
+      continue;
+    }
+    const key = cardVisualSignature(card.data, card.tier);
+    const at = stackAt.get(key);
+    if (at === undefined) {
+      stackAt.set(key, result.length);
+      result.push({ ...card, stackCount: 1, memberIds: [card.entityId] });
+    } else {
+      const group = result[at]!;
+      group.memberIds.push(card.entityId);
+      group.stackCount += 1;
+      group.data = { ...group.data, stackCount: group.stackCount };
+    }
+  }
+  return result;
+}
+
+/**
+ * Flow a row of (possibly mixed-footprint) cards left-to-right, wrapping to a new
+ * line when the next card would cross `availWidth`. Returns the placed cards, the
+ * widest extent reached, and the total height the row occupies. Each card's `rect`
+ * is its **visible footprint** (rotated dimensions for a tapped field/support card),
+ * so both the reconciler's placement and the DOM hotspot cover the drawn card.
+ *
+ * This is the pure wrapping math the feature turns on: bounding line width to the
+ * viewport keeps a 100-permanent board growing downward, never off the right edge
+ * (ui-requirements §11 / brief "Dynamic Card Sizing").
+ */
+function flowRow(
   cards: Omit<RenderedCard, 'rect'>[],
   top: number,
-  cardW: number,
-  cardH: number,
   availWidth: number,
 ): { placed: RenderedCard[]; width: number; height: number } {
-  if (cards.length === 0) return { placed: [], width: 0, height: cardH };
-  const perRow = cardsPerRow(cardW, availWidth);
-  const placed = cards.map((card, i) => {
-    const col = i % perRow;
-    const row = Math.floor(i / perRow);
-    return {
-      ...card,
-      rect: {
-        x: LAYOUT.margin + col * (cardW + LAYOUT.cardGap),
-        y: top + row * (cardH + LAYOUT.rowGap),
-        w: cardW,
-        h: cardH,
-      },
-    };
-  });
-  const rows = Math.ceil(cards.length / perRow);
-  const cols = Math.min(perRow, cards.length);
-  const width = LAYOUT.margin * 2 + cols * cardW + (cols - 1) * LAYOUT.cardGap;
-  const height = rows * cardH + (rows - 1) * LAYOUT.rowGap;
-  return { placed, width, height };
+  if (cards.length === 0) return { placed: [], width: 0, height: 0 };
+  const limit = availWidth - LAYOUT.margin;
+  const placed: RenderedCard[] = [];
+  let x: number = LAYOUT.margin;
+  let y = top;
+  let lineHeight = 0;
+  let maxRight: number = LAYOUT.margin;
+  for (const card of cards) {
+    const size = cellSize(card.tier, card.data.tapped ?? false);
+    // Wrap when this card would cross the right edge — but never wrap the first card
+    // of a line, so an over-wide card still gets its own line (≥ 1 per line).
+    if (x !== LAYOUT.margin && x + size.w > limit) {
+      x = LAYOUT.margin;
+      y += lineHeight + LAYOUT.rowGap;
+      lineHeight = 0;
+    }
+    placed.push({ ...card, rect: { x, y, w: size.w, h: size.h } });
+    maxRight = Math.max(maxRight, x + size.w);
+    x += size.w + LAYOUT.cardGap;
+    lineHeight = Math.max(lineHeight, size.h);
+  }
+  return { placed, width: maxRight + LAYOUT.margin, height: y - top + lineHeight };
 }
 
 /**
@@ -303,8 +426,8 @@ export function buildTableScene(
   // candidate already toggled into the answer is additionally marked `chosen`
   // (ringed), reusing the selection ring so the pick reads as committed.
   const withTargeting = (
-    card: Omit<RenderedCard, 'rect' | 'targetable' | 'chosen'>,
-  ): Omit<RenderedCard, 'rect'> => {
+    card: Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds' | 'targetable' | 'chosen'>,
+  ): Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds'> => {
     if (candidateSet === null) return { ...card, targetable: false, chosen: false };
     const targetable = candidateSet.has(card.entityId);
     const chosen = targetable && (chosenSet?.has(card.entityId) ?? false);
@@ -344,30 +467,36 @@ export function buildTableScene(
   }
   if (localPlayerId !== undefined) ordered.push(localPlayerId);
 
-  const toRenderable = (perm: Permanent): Omit<RenderedCard, 'rect'> => {
+  const toRenderable = (
+    perm: Permanent,
+  ): Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds'> => {
     const actions = actionsFor(perm.id, subjectActions);
+    const rowKind = rowKindForType(perm.card.type_line);
+    const landGlyph = rowKind === 'lands' ? basicLandGlyph(perm.card.type_line) : undefined;
     return withTargeting({
       entityId: perm.id,
       zone: 'battlefield',
-      tier: 'field',
+      tier: TIER_FOR_ROW[rowKind],
       name: perm.card.name,
       data: toDisplayData(perm.card, {
         tapped: perm.tapped,
         counters: perm.counters,
         selected: perm.id === selectedId,
         actionable: actions.length > 0,
+        landGlyph,
       }),
       actions,
     });
   };
 
-  // Lay each band, reserving a header strip at its top for the DOM geography
-  // layer's label + zone piles (issue #278). Band regions are finalized after the
-  // full width is known so every lane spans the board edge-to-edge.
+  // Lay each band as type-grouped rows (issue #318), reserving a header strip at its
+  // top for the DOM geography layer's label + zone piles (issue #278). Band regions
+  // are finalized after the full width is known so every lane spans edge-to-edge.
   interface BandMeta {
     playerId: PlayerId;
     isLocal: boolean;
     cards: RenderedCard[];
+    rows: BandRow[];
     isEmpty: boolean;
     top: number;
     height: number;
@@ -375,72 +504,109 @@ export function buildTableScene(
   const bandMetas: BandMeta[] = [];
   let top = LAYOUT.margin;
   let maxWidth = LAYOUT.margin * 2;
-  const fieldT = TIER.field;
 
   for (const playerId of ordered) {
     const perms = byController.get(playerId) ?? [];
+    const isLocal = playerId === localPlayerId;
     const bandTop = top;
-    const { placed, width, height } = layBand(
-      perms.map(toRenderable),
-      bandTop + LAYOUT.bandHeader,
-      fieldT.w,
-      fieldT.h,
-      viewportWidth,
-    );
-    const bandHeight = LAYOUT.bandHeader + height;
+
+    // Split into type-grouped rows in server order, then collapse identical-state
+    // permanents in each row into ×N stacks.
+    const inRow = (kind: BandRowKind) =>
+      groupStacks(perms.filter((p) => rowKindForType(p.card.type_line) === kind).map(toRenderable));
+    const grouped: Record<BandRowKind, Omit<RenderedCard, 'rect'>[]> = {
+      creatures: inRow('creatures'),
+      support: inRow('support'),
+      lands: inRow('lands'),
+    };
+
+    // Vertical order toward the center line: the local band leads with creatures
+    // (nearest center) and lands at the back; an opponent mirrors it so their
+    // creatures also sit nearest the center. Empty rows are omitted.
+    const order: BandRowKind[] = isLocal
+      ? ['creatures', 'support', 'lands']
+      : ['lands', 'support', 'creatures'];
+
+    const rows: BandRow[] = [];
+    const placedByKind: Record<BandRowKind, RenderedCard[]> = {
+      creatures: [],
+      support: [],
+      lands: [],
+    };
+    let rowTop = bandTop + LAYOUT.bandHeader;
+    for (const kind of order) {
+      const cards = grouped[kind];
+      if (cards.length === 0) continue;
+      const { placed, width, height } = flowRow(cards, rowTop, viewportWidth);
+      placedByKind[kind] = placed;
+      rows.push({
+        kind,
+        tier: TIER_FOR_ROW[kind],
+        rect: { x: 0, y: rowTop, w: 0, h: height },
+        // Only the lands row is labeled — rows are a sorting convention, not zones.
+        label: kind === 'lands' ? 'Lands' : undefined,
+      });
+      maxWidth = Math.max(maxWidth, width);
+      rowTop += height + LAYOUT.rowGap;
+    }
+
+    // Band cards in a stable order (creatures, support, lands) regardless of the
+    // mirrored vertical layout, so the reconciler's draw order stays deterministic.
+    const cards = [...placedByKind.creatures, ...placedByKind.support, ...placedByKind.lands];
+    const contentHeight = rows.length > 0 ? rowTop - LAYOUT.rowGap - bandTop : LAYOUT.bandHeader;
+    // An empty band still reserves a card-height slot so its "invite play" hint fits.
+    const bandHeight = rows.length > 0 ? contentHeight : LAYOUT.bandHeader + TIER.field.h;
+
     bandMetas.push({
       playerId,
-      isLocal: playerId === localPlayerId,
-      cards: placed,
+      isLocal,
+      cards,
+      rows,
       isEmpty: perms.length === 0,
       top: bandTop,
       height: bandHeight,
     });
-    maxWidth = Math.max(maxWidth, width);
     top = bandTop + bandHeight + LAYOUT.bandGap;
   }
 
-  // Hand along the bottom, in the larger hand tier — wrapping the same way so a
-  // big hand also grows downward instead of off the right edge. Its own header
-  // strip separates "my hand" from "my battlefield" (issue #278).
+  // Hand along the bottom, in the larger hand tier — wrapping the same way so a big
+  // hand also grows downward instead of off the right edge. The hand is never
+  // stacked: every card stays individually playable. Its own header strip separates
+  // "my hand" from "my battlefield" (issue #278).
   top += LAYOUT.handGap - LAYOUT.bandGap;
   const handTop = top;
-  const handT = TIER.hand;
+  const handCards: Omit<RenderedCard, 'rect'>[] = view.my_hand.map((card) => {
+    const actions = actionsFor(card.id, subjectActions);
+    const base = withTargeting({
+      entityId: card.id,
+      zone: 'hand' as const,
+      tier: 'hand' as const,
+      name: card.name,
+      data: toDisplayData(card, {
+        selected: card.id === selectedId,
+        actionable: actions.length > 0,
+      }),
+      actions,
+    });
+    return { ...base, stackCount: 1, memberIds: [card.id] };
+  });
   const {
     placed: hand,
     width: handWidth,
     height: handHeight,
-  } = layBand(
-    view.my_hand.map((card) => {
-      const actions = actionsFor(card.id, subjectActions);
-      return withTargeting({
-        entityId: card.id,
-        zone: 'hand' as const,
-        tier: 'hand' as const,
-        name: card.name,
-        data: toDisplayData(card, {
-          selected: card.id === selectedId,
-          actionable: actions.length > 0,
-        }),
-        actions,
-      });
-    }),
-    handTop + LAYOUT.handHeader,
-    handT.w,
-    handT.h,
-    viewportWidth,
-  );
+  } = flowRow(handCards, handTop + LAYOUT.handHeader, viewportWidth);
   maxWidth = Math.max(maxWidth, handWidth);
   const handRegionHeight = LAYOUT.handHeader + handHeight;
   const height = handTop + handRegionHeight + LAYOUT.margin;
 
-  // Finalize band regions now that the board width is known: every lane spans the
-  // full width, is labeled by its controller, and carries that controller's pile
-  // counts (all straight from the view — no layout state persists across messages).
+  // Finalize band regions now that the board width is known: every lane (and each of
+  // its rows) spans the full width, is labeled by its controller, and carries that
+  // controller's pile counts (all straight from the view — no layout state persists).
   const bands: Band[] = bandMetas.map((meta) => ({
     playerId: meta.playerId,
     isLocal: meta.isLocal,
     cards: meta.cards,
+    rows: meta.rows.map((row) => ({ ...row, rect: { ...row.rect, w: maxWidth } })),
     isEmpty: meta.isEmpty,
     label: bandLabel(meta.playerId, meta.isLocal),
     zones: zoneCountsOf(view, meta.playerId, meta.isLocal),

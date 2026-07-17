@@ -62,4 +62,37 @@ describe('TableGeography (issue #278)', () => {
     const hint = screen.getByTestId('empty-band-p1');
     expect(hint.textContent).toContain('Your battlefield');
   });
+
+  it('labels only the lands row — rows are a sorting convention (issue #318)', () => {
+    const view = normalizeGameView({
+      you: 'p1',
+      my_hand: [],
+      opponents: [],
+      battlefield: [
+        {
+          id: 'bear',
+          controller: 'p1',
+          owner: 'p1',
+          card: {
+            id: 'bear',
+            name: 'Bear',
+            type_line: 'Creature — Bear',
+            power: '2',
+            toughness: '2',
+          },
+        },
+        {
+          id: 'forest',
+          controller: 'p1',
+          owner: 'p1',
+          card: { id: 'forest', name: 'Forest', type_line: 'Basic Land — Forest' },
+        },
+      ],
+      phase: 'precombat_main',
+      valid_actions: [],
+    });
+    render(<TableGeography scene={buildTableScene(view)} />);
+    expect(screen.getByTestId('row-label-p1-lands').textContent).toBe('Lands');
+    expect(screen.queryByTestId('row-label-p1-creatures')).toBeNull();
+  });
 });

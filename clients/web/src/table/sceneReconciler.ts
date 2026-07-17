@@ -19,9 +19,16 @@
  * scene already describes. Legality, cost, and effect are never computed here.
  */
 import type { Container } from 'pixi.js';
-import { buildCardDisplay, cardVisualSignature } from '../card/cardFactory';
+import { buildCardDisplay, buildChipDisplay, cardVisualSignature } from '../card/cardFactory';
 import type { EntityId } from '../protocol';
 import type { RenderedCard, TableScene } from './scene';
+
+/** Build a card's display object, dispatching a land chip to the chip renderer. */
+function buildDisplay(card: RenderedCard): Container {
+  return card.tier === 'chip'
+    ? buildChipDisplay(card.data)
+    : buildCardDisplay(card.data, card.tier);
+}
 
 /** A cached card: the display object plus the signature it was built from. */
 interface CachedCard {
@@ -77,7 +84,7 @@ export class SceneReconciler {
         display = cached.display;
       } else {
         // New entity, or its look changed: build fresh and drop any stale one.
-        display = buildCardDisplay(card.data, card.tier);
+        display = buildDisplay(card);
         if (cached) {
           this.root.removeChild(cached.display);
           cached.display.destroy({ children: true });

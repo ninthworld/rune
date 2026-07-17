@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Container, Graphics, Text } from 'pixi.js';
 import {
   buildCardDisplay,
+  buildChipDisplay,
   cardVisualSignature,
   parseManaCost,
   type CardDisplayData,
@@ -185,5 +186,48 @@ describe('buildCardDisplay', () => {
         expect(buildCardDisplay({ ...forest, colorIdentity: id }, tier)).toBeInstanceOf(Container);
       }
     }
+  });
+
+  it('draws an ×N stack badge only when the render stands for more than one (issue #318)', () => {
+    expect(texts(buildCardDisplay(grizzlyBears))).not.toContain('×3');
+    expect(texts(buildCardDisplay({ ...grizzlyBears, stackCount: 3 }))).toContain('×3');
+  });
+
+  it('keeps stack count and land glyph in the visual signature (issue #318)', () => {
+    expect(cardVisualSignature(forest)).not.toBe(cardVisualSignature({ ...forest, stackCount: 4 }));
+    expect(cardVisualSignature(forest, 'chip')).not.toBe(
+      cardVisualSignature({ ...forest, landGlyph: 'land-forest' }, 'chip'),
+    );
+  });
+});
+
+describe('buildChipDisplay (issue #318)', () => {
+  it('draws a basic land as a glyph chip — no name text', () => {
+    const chip = buildChipDisplay({ ...forest, landGlyph: 'land-forest' });
+    expect(chip).toBeInstanceOf(Container);
+    // A glyph chip renders no card name; identity is carried by the glyph geometry.
+    expect(texts(chip)).not.toContain('Forest');
+    expect(countGraphics(chip)).toBeGreaterThan(1);
+  });
+
+  it('draws a nonbasic land as a named chip', () => {
+    const chip = buildChipDisplay({
+      name: 'Windswept Heath',
+      typeLine: 'Land',
+      colorIdentity: 'L',
+    });
+    expect(texts(chip).some((t) => t.startsWith('Wind'))).toBe(true);
+  });
+
+  it('dims a tapped chip without rotating it (chip tier has no room to rotate)', () => {
+    const inner = buildChipDisplay({ ...forest, landGlyph: 'land-forest', tapped: true })
+      .children[0] as Container;
+    expect(inner.rotation).toBe(0);
+    expect(inner.alpha).toBeLessThan(1);
+  });
+
+  it('shows the ×N badge on a stacked chip', () => {
+    const chip = buildChipDisplay({ ...forest, landGlyph: 'land-forest', stackCount: 3 });
+    expect(texts(chip)).toContain('×3');
   });
 });

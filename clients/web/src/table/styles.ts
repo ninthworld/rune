@@ -302,6 +302,25 @@ export function regionHeader(rect: Rect): CSSProperties {
   };
 }
 
+/**
+ * The single honest row label — only the lands row earns one (issue #318). Placed
+ * at the row's left edge, faint and small, so it names the sorting convention
+ * without reading as a rule-implying zone header.
+ */
+export function rowLabel(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x + 12,
+    top: rect.y - 2,
+    color: 'var(--rune-text-muted)',
+    opacity: 0.6,
+    fontSize: 10,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    pointerEvents: 'none',
+  };
+}
+
 /** Faint centered prompt filling an empty band so the lane invites play. */
 export function emptyBandHint(rect: Rect): CSSProperties {
   return {

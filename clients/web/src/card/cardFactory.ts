@@ -34,9 +34,17 @@ import {
   TIER,
   type ColorIdentity,
 } from '../tokens';
+import { buildGlyphDisplay, type GlyphName } from '../chrome/glyphs';
 
 /** Tiers that render a full card face (chips are a separate digest representation). */
 export type CardTier = 'support' | 'field' | 'hand';
+
+/**
+ * The full set of size tiers a battlefield object can render at, including the
+ * digest **chip** (issue #318) used for lands at the back of a band. A chip is not
+ * a full face — it renders through {@link buildChipDisplay}, not {@link buildCardDisplay}.
+ */
+export type RenderTier = CardTier | 'chip';
 
 /** A named counter and its quantity, mirroring the protocol `Counter` shape. */
 export interface CounterData {
@@ -93,6 +101,19 @@ export interface CardDisplayData {
    * `RenderedCard.actions.length > 0` upstream; the factory computes no legality.
    */
   actionable?: boolean;
+  /**
+   * How many identical-state permanents this one render stands for (issue #318). A
+   * value `> 1` draws an `×N` badge; the caller collapses only permanents whose full
+   * display state is identical (tap state included), so the badge never hides a
+   * differing card. Absent/`1` renders a single permanent with no badge.
+   */
+  stackCount?: number;
+  /**
+   * For a basic-land **chip** (issue #318), the basic-land glyph to draw in place of
+   * a name (e.g. `'land-forest'`). Derived from the server type line by the caller;
+   * absent for a nonbasic land (which shows its name) or any non-chip render.
+   */
+  landGlyph?: GlyphName;
 }
 
 /**
@@ -106,7 +127,7 @@ export interface CardDisplayData {
  * it is the single definition of "same-looking card" for the reconcile layer
  * (issue #58). It is a cache key only, never load-bearing game state.
  */
-export function cardVisualSignature(data: CardDisplayData, tier: CardTier = 'field'): string {
+export function cardVisualSignature(data: CardDisplayData, tier: RenderTier = 'field'): string {
   return JSON.stringify({
     tier,
     name: data.name,
@@ -121,6 +142,8 @@ export function cardVisualSignature(data: CardDisplayData, tier: CardTier = 'fie
     targeting: data.targeting ?? false,
     dimmed: data.dimmed ?? false,
     actionable: data.actionable ?? false,
+    stackCount: data.stackCount ?? 1,
+    landGlyph: data.landGlyph ?? null,
     counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
   });
 }
@@ -346,6 +369,12 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   if (data.summoningSick) {
     addBadge('zz', BADGE.bg, BADGE.text);
   }
+  // Stacking badge (issue #318): identical-state permanents collapse to one render
+  // carrying an `×N`. The caller groups only on full state identity, so the badge
+  // never hides a differing card.
+  if ((data.stackCount ?? 1) > 1) {
+    addBadge(`×${data.stackCount}`, BADGE.bg, BADGE.text);
+  }
 
   // Playable affordance (issue #277): an always-on solid bar hugging the bottom
   // edge whenever the card carries an offered action. Deliberately a different
@@ -394,6 +423,98 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   } else {
     inner.position.set(t.w / 2, t.h / 2);
   }
+
+  return outer;
+}
+
+/**
+ * Build the digest **chip** for a land at the back of a band (issue #318). Chips are
+ * the smallest tier (`TIER.chip`, 44×60): the information budget is frame color, a
+ * name **or** a basic-land glyph, and tap state — nothing else (see
+ * `docs/design/ui-design-notes.md` §Card render). Unlike a full face, a chip has no
+ * room to rotate, so tapped state is **dim + a corner tap glyph** rather than a 90°
+ * rotation; the caller reserves the chip's un-rotated footprint accordingly.
+ *
+ * Basic lands draw their glyph ({@link CardDisplayData.landGlyph}); nonbasics draw a
+ * truncated name. Selection/targeting rings, the playable edge bar, and the `×N`
+ * stack badge all read the same as on a full face so a chip stays a first-class,
+ * selectable object. No game logic: every input is server-supplied display state.
+ */
+export function buildChipDisplay(data: CardDisplayData): Container {
+  const t = TIER.chip;
+  const accent = PALETTE[data.colorIdentity];
+  const accentNum = hexToNumber(accent);
+
+  const outer = new Container();
+  const inner = new Container();
+  outer.addChild(inner);
+
+  // Frame: bordered body with a faint accent header tint, mirroring the full face.
+  const frame = new Graphics();
+  frame.lineStyle({ width: FRAME.borderWidth, color: accentNum, alpha: 1, alignment: 1 });
+  frame.beginFill(hexToNumber(SURFACES.cardBody));
+  frame.drawRoundedRect(0, 0, t.w, t.h, FRAME.chipRadius);
+  frame.endFill();
+  inner.addChild(frame);
+
+  if (data.landGlyph) {
+    // Basic land: the glyph carries identity in place of a name.
+    const glyph = buildGlyphDisplay(data.landGlyph, { size: 26, color: accent });
+    glyph.position.set((t.w - 26) / 2, (t.h - 26) / 2);
+    inner.addChild(glyph);
+  } else {
+    // Nonbasic land (or any named chip): a small truncated name, centered.
+    const label = fitName(data.name, t.w - 8, 9);
+    const name = mkText(label, 9, SURFACES.nameText);
+    name.anchor.set(0.5);
+    name.position.set(t.w / 2, t.h / 2);
+    inner.addChild(name);
+  }
+
+  // Playable edge bar (issue #277) — same shape/meaning as the full face.
+  if (data.actionable) {
+    const edge = new Graphics();
+    edge.beginFill(hexToNumber(AFFORDANCE.actionable));
+    edge.drawRoundedRect(
+      2,
+      t.h - AFFORDANCE.edgeHeight,
+      t.w - 4,
+      AFFORDANCE.edgeHeight,
+      AFFORDANCE.edgeHeight / 2,
+    );
+    edge.endFill();
+    inner.addChild(edge);
+  }
+
+  // Tapped chip: no rotation (no room) — dim the body and mark a corner tap glyph so
+  // "tapped" still reads at chip scale (issue #318). Drawn top-left to leave the
+  // top-right corner for the ×N stack badge.
+  if (data.tapped) {
+    const tapMark = buildGlyphDisplay('tap', { size: 14, color: SURFACES.typeText });
+    tapMark.position.set(3, 3);
+    inner.addChild(tapMark);
+  }
+
+  // Stack badge (issue #318): identical tapped/untapped chips collapse to one ×N.
+  if ((data.stackCount ?? 1) > 1) {
+    const badge = makePill(`×${data.stackCount}`, 10, BADGE.bg, BADGE.text, 7);
+    const width = estTextWidth(`×${data.stackCount}`, 10) + 12;
+    badge.position.set(t.w - width - 1, -6);
+    inner.addChild(badge);
+  }
+
+  // Selection / targeting ring, same channels as a full face.
+  const ringColor = data.targeting ? SURFACES.targeting : data.selected ? SURFACES.selection : null;
+  if (ringColor !== null) {
+    const ring = new Graphics();
+    ring.lineStyle({ width: FRAME.selectionWidth, color: hexToNumber(ringColor), alignment: 0 });
+    ring.drawRoundedRect(-2, -2, t.w + 4, t.h + 4, FRAME.chipRadius + 2);
+    inner.addChild(ring);
+  }
+
+  // Dim for tapped or ineligible-target state (chips never carry summoning sickness).
+  const baseAlpha = data.tapped ? FRAME.tappedAlpha : 1;
+  inner.alpha = data.dimmed ? baseAlpha * FRAME.dimmedAlpha : baseAlpha;
 
   return outer;
 }
