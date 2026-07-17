@@ -26,6 +26,8 @@ vi.mock('pixi.js', () => ({
     view: HTMLCanvasElement;
     stage = { addChild: () => {} };
     renderer = { resize: () => {} };
+    // The animate-the-diff layer (issue #334) drives transitions off the ticker.
+    ticker = { add: () => {} };
     constructor() {
       if (constructShouldThrow) throw new Error('no GL');
       this.view = document.createElement('canvas');
@@ -45,6 +47,7 @@ vi.mock('pixi.js', () => ({
 vi.mock('./sceneReconciler', () => ({
   SceneReconciler: class {
     reconcile() {}
+    advance() {}
   },
 }));
 

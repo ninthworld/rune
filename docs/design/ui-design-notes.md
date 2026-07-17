@@ -250,10 +250,17 @@ object stays individually addressable in prompts; the inspector names the relati
 from either side. An attachment whose host is not in the same band (e.g. an aura on an
 opponent-controlled creature, or a host the viewer cannot see) degrades to its own row.
 
-The **row-migration transition** waits on the reconciler's animate-the-diff layer
-(`sceneReconciler.ts` is the documented attachment point, and animations ship
-separately). Row *membership* already follows the server type line, so a permanent
-moves rows the instant its types change; only the tween is pending.
+The **row-migration transition** delivered by issue #334 as the reconciler's opt-in
+animate-the-diff layer (`sceneReconciler.ts`): a card that migrates rows/positions
+eases to its new spot, an entering card fades up, and a leaving card fades out before
+it is destroyed. Row *membership* already follows the server type line, so a permanent
+moves rows the instant its types change; the layer now tweens that move. The layer
+interpolates strictly between two authoritative scenes and never gates input — hit
+targets come from the `TableScene` rects the DOM overlay reads, so a card is
+addressable the instant its scene arrives, whatever its pixels are doing. It is
+opt-in and honors `prefers-reduced-motion` (which snaps, with no layout or state
+difference), so the reconnect/replay determinism invariant and every existing test
+hold unchanged.
 
 ## Action routing
 
