@@ -100,6 +100,14 @@ function normalizePermanent(payload: unknown): Permanent {
     card: record.card as CardView,
   };
   if (record.tapped === true) perm.tapped = true;
+  // Combat declaration state (issue #332, CR 508/509): whether this permanent is
+  // attacking, and which attacker it is blocking. Present only mid-combat; a view
+  // that omits them (not in combat, or an older server) defaults to not-in-combat.
+  if (record.attacking === true) perm.attacking = true;
+  if (typeof record.blocking === 'string') perm.blocking = record.blocking;
+  // Marked combat damage (issue #332, CR 120.3): a non-negative number, present only
+  // while damage is marked; an omitted or non-positive value defaults to undamaged.
+  if (typeof record.damage === 'number' && record.damage > 0) perm.damage = record.damage;
   // Aura attachment (issue #333): the host's entity id, present only when attached;
   // a view that omits it (older server) degrades to an unattached permanent.
   if (typeof record.attached_to === 'string') perm.attached_to = record.attached_to;

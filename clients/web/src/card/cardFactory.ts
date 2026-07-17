@@ -130,11 +130,34 @@ export interface CardDisplayData {
    */
   hasActivatedAbility?: boolean;
   /**
-   * Marked combat damage on the permanent (issue #320), drawn as a corner badge when
-   * `> 0`. Rendered verbatim from view data — never computed. (No protocol field
-   * carries this today; the renderer is ready for the follow-up contract change.)
+   * Marked combat damage on the permanent (issue #320/#332), drawn as a corner badge
+   * when `> 0`. Rendered verbatim from the view's `damage` field — never computed or
+   * predicted.
    */
   markedDamage?: number;
+  /**
+   * Whether this permanent is a **declared attacker** this combat (issue #332, CR
+   * 508). Draws a bar on the *top* edge — deliberately a different edge from the gold
+   * playable bar on the bottom, so an attacker reads as distinct from a merely tapped
+   * or playable permanent without relying on hue. An attacker also keeps full opacity
+   * rather than dimming when tapped, so it stands out from inert tapped lands. Derived
+   * purely from the view; the factory computes no combat.
+   */
+  attacking?: boolean;
+  /**
+   * Whether this permanent is a **declared blocker** this combat (issue #332, CR 509).
+   * Draws a bar on the *left* edge — a distinct edge again — marking it as defending.
+   * Which attacker it blocks is carried by the scene's combat links, not the face.
+   */
+  blocking?: boolean;
+  /**
+   * How many blockers are assigned to this permanent as an attacker (issue #332): the
+   * count of permanents whose `blocking` names this one. Draws a `blocked ×N` badge so
+   * a defended attacker reads at a glance and several blockers on one attacker stay
+   * legible. `0`/absent for an unblocked or non-attacking permanent. A pure count of
+   * server-supplied references — never a combat prediction.
+   */
+  blockedBy?: number;
 }
 
 /**
@@ -168,6 +191,9 @@ export function cardVisualSignature(data: CardDisplayData, tier: RenderTier = 'f
     keywords: data.keywords ?? [],
     hasActivatedAbility: data.hasActivatedAbility ?? false,
     markedDamage: data.markedDamage ?? 0,
+    attacking: data.attacking ?? false,
+    blocking: data.blocking ?? false,
+    blockedBy: data.blockedBy ?? 0,
     counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
   });
 }
@@ -434,15 +460,40 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   if (data.summoningSick) {
     addBadge('zz', BADGE.bg, BADGE.text);
   }
-  // Marked-damage badge (issue #320): rendered verbatim from view data when present.
+  // Marked-damage badge (issue #320/#332): rendered verbatim from view data.
   if ((data.markedDamage ?? 0) > 0) {
     addBadge(`${data.markedDamage} dmg`, INDICATORS.damageBg, INDICATORS.damageText);
+  }
+  // Blocked-by badge (issue #332): how many blockers this attacker faces, so a
+  // defended attacker reads at a glance. A pure count of server references.
+  if ((data.blockedBy ?? 0) > 0) {
+    addBadge(`blocked ×${data.blockedBy}`, INDICATORS.blockingBar, BADGE.text);
   }
   // Stacking badge (issue #318): identical-state permanents collapse to one render
   // carrying an `×N`. The caller groups only on full state identity, so the badge
   // never hides a differing card.
   if ((data.stackCount ?? 1) > 1) {
     addBadge(`×${data.stackCount}`, BADGE.bg, BADGE.text);
+  }
+
+  // Combat-declaration bars (issue #332): an attacker wears a bar on the TOP edge,
+  // a blocker one on the LEFT edge — each a different edge from the gold playable bar
+  // (bottom) and from the full-perimeter rings, so combat state stays distinct by
+  // shape alone (ui-requirements §Combat / §10). Inside `inner`, so they rotate with a
+  // tapped attacker. Rendered straight from the view — the client declares no combat.
+  if (data.attacking) {
+    const bar = new Graphics();
+    bar.beginFill(hexToNumber(INDICATORS.attackingBar));
+    bar.drawRoundedRect(2, 0, t.w - 4, AFFORDANCE.edgeHeight, AFFORDANCE.edgeHeight / 2);
+    bar.endFill();
+    inner.addChild(bar);
+  }
+  if (data.blocking) {
+    const bar = new Graphics();
+    bar.beginFill(hexToNumber(INDICATORS.blockingBar));
+    bar.drawRoundedRect(0, 2, AFFORDANCE.edgeHeight, t.h - 4, AFFORDANCE.edgeHeight / 2);
+    bar.endFill();
+    inner.addChild(bar);
   }
 
   // Playable affordance (issue #277): an always-on solid bar hugging the bottom
@@ -482,9 +533,12 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   }
 
   // Tapped: rotate 90° about the card center and dim. A dimmed card (ineligible
-  // during targeting mode) recedes further, multiplying its base alpha.
+  // during targeting mode) recedes further, multiplying its base alpha. A declared
+  // attacker keeps full opacity even while tapped (issue #332) — it is actively in
+  // combat, not inert like a tapped land — so it never recedes below its neighbors.
   inner.pivot.set(t.w / 2, t.h / 2);
-  const baseAlpha = data.tapped ? FRAME.tappedAlpha : data.summoningSick ? FRAME.sickAlpha : 1;
+  const baseAlpha =
+    data.tapped && !data.attacking ? FRAME.tappedAlpha : data.summoningSick ? FRAME.sickAlpha : 1;
   inner.alpha = data.dimmed ? baseAlpha * FRAME.dimmedAlpha : baseAlpha;
   if (data.tapped) {
     inner.rotation = Math.PI / 2;

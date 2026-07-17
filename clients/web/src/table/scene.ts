@@ -184,6 +184,20 @@ export interface HandRegion {
   label: string;
 }
 
+/**
+ * One declared blocker→attacker relationship (issue #332), both as entity ids the
+ * scene also renders as cards. Carried on the scene so a focus overlay can draw the
+ * link between the two objects (or isolate one object's links on a crowded board)
+ * without the client deriving any combat legality — the pair is exactly the server's
+ * `blocking` reference. Several links may name the same attacker (multi-block).
+ */
+export interface CombatLink {
+  /** The blocking permanent's entity id. */
+  blocker: EntityId;
+  /** The attacker it was declared to block. */
+  attacker: EntityId;
+}
+
 /** The full scene: opponents' bands (top), the local band, and the hand. */
 export interface TableScene {
   /** Logical width the canvas + DOM overlay share. */
@@ -198,6 +212,12 @@ export interface TableScene {
   handRegion: HandRegion;
   /** The resolved local player id, if it could be identified. */
   localPlayerId?: PlayerId;
+  /**
+   * The declared blocker→attacker relationships this combat (issue #332), in server
+   * order. Empty outside combat. Reconstructed from the view alone, so a client that
+   * mounts mid-combat shows the same links as one that watched them being declared.
+   */
+  combatLinks: CombatLink[];
 }
 
 /** Layout geometry (logical px). Card sizes come from the shared TIER tokens. */
@@ -263,6 +283,10 @@ function toDisplayData(
     selected: boolean;
     actionable: boolean;
     landGlyph?: GlyphName;
+    attacking?: boolean;
+    blocking?: boolean;
+    blockedBy?: number;
+    markedDamage?: number;
   },
 ): CardDisplayData {
   return {
@@ -276,6 +300,12 @@ function toDisplayData(
     counters: opts.counters,
     tapped: opts.tapped,
     selected: opts.selected,
+    // Combat-declaration state and marked damage (issue #332), all straight from the
+    // view — the client renders exactly what the server declared and predicts nothing.
+    attacking: opts.attacking,
+    blocking: opts.blocking,
+    blockedBy: opts.blockedBy,
+    markedDamage: opts.markedDamage,
     // Purely presentational: the card has ≥1 offered subject-action. No legality
     // is computed here (the server already decided what is offered, issue #277).
     actionable: opts.actionable,
@@ -370,6 +400,11 @@ function groupStacks(
       card.targetable ||
       card.chosen ||
       card.data.selected === true ||
+      // A combat participant (attacker or blocker) stays its own render so its
+      // treatment and its blocker→attacker link stay attached to one object, and
+      // several blockers on one attacker remain distinguishable (issue #332).
+      card.data.attacking === true ||
+      card.data.blocking === true ||
       // An attachment, and any host that carries one, stay their own render so the
       // cluster stays coherent and every attached object remains addressable (#333).
       card.attachedTo !== undefined ||
@@ -457,6 +492,18 @@ export function buildTableScene(
   const candidateSet = targeting ? new Set(targeting.candidates) : null;
   const chosenSet = targeting ? new Set(targeting.selected ?? []) : null;
 
+  // Combat relationships (issue #332), all read straight from the view: how many
+  // blockers each attacker faces (for the attacker's "blocked ×N" readout) and the
+  // flat list of blocker→attacker links. Reconstructed from the view alone, so a
+  // client mounting mid-combat derives the same state as one that watched declaration.
+  const blockerCountByAttacker = new Map<EntityId, number>();
+  const combatLinks: CombatLink[] = [];
+  for (const perm of view.battlefield) {
+    if (perm.blocking === undefined) continue;
+    blockerCountByAttacker.set(perm.blocking, (blockerCountByAttacker.get(perm.blocking) ?? 0) + 1);
+    combatLinks.push({ blocker: perm.id, attacker: perm.blocking });
+  }
+
   // Fold targeting state into a card's display data + interactivity. Outside
   // targeting mode this is a no-op; inside it, the server's candidate list is the
   // only thing deciding highlight (targetable) vs dim, and all subject-actions are
@@ -523,6 +570,10 @@ export function buildTableScene(
         selected: perm.id === selectedId,
         actionable: actions.length > 0,
         landGlyph,
+        attacking: perm.attacking,
+        blocking: perm.blocking !== undefined,
+        blockedBy: blockerCountByAttacker.get(perm.id),
+        markedDamage: perm.damage,
       }),
       actions,
       attachedTo: cluster?.attachedTo,
@@ -694,5 +745,5 @@ export function buildTableScene(
     label: 'Your hand',
   };
 
-  return { width: maxWidth, height, bands, hand, handRegion, localPlayerId };
+  return { width: maxWidth, height, bands, hand, handRegion, localPlayerId, combatLinks };
 }

@@ -105,6 +105,7 @@ function scene(cards: RenderedCard[], hand: RenderedCard[] = []): TableScene {
     hand,
     handRegion: { rect: { x: 0, y: 160, w: 600, h: 140 }, label: 'Your hand' },
     localPlayerId: 'p1',
+    combatLinks: [],
   };
 }
 

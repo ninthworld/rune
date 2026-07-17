@@ -198,10 +198,20 @@ Delivered by issue #320 in the card factory: a capped keyword-glyph strip (from
 the latent-ability marker dot (distinct in *shape* from the gold playable bar; read
 off the printed rules text as a presentation heuristic — the swap point for a future
 `has_activated_ability` view field), and the existing counter badge, all at
-support/field/hand and never on chips. The **marked-damage badge** renders when a
-`markedDamage` value is present, but no protocol field carries combat damage today —
-so populating it is a follow-up contract change (the renderer is ready), exactly the
-"needed fact not view-derivable → follow-up" path the issue calls for.
+support/field/hand and never on chips.
+
+**Combat indicators** delivered by issue #332, all straight from the view (the
+`Permanent` contract already carried `attacking`, `blocking`, and `damage`; only the
+TS mirror lacked them). A declared **attacker** wears a bar on the *top* edge and
+keeps full opacity even while tapped (it is in combat, not inert); a declared
+**blocker** wears a bar on the *left* edge; a defended attacker shows a `blocked ×N`
+badge counting the blockers that name it; and the **marked-damage badge** now renders
+from `damage`. Each indicator is a distinct *edge/shape*, so combat state stays legible
+apart from selection (ring), targeting (ring), and playable (bottom bar) without hue.
+The blocker→attacker relationship is carried as `TableScene.combatLinks` — reconstructed
+from the view alone, so a client that mounts mid-combat shows the same links as one that
+watched declaration — for a focus overlay to draw or isolate on a crowded board. Combat
+participants never fold into an ×N stack, so each keeps its own treatment and link.
 
 ## Battlefield bands
 
