@@ -120,6 +120,9 @@ export const SAMPLE_GAME_VIEW: GameView = {
     { id: 'a1', type: 'pass_priority', label: 'Pass' },
   ],
   action_deadline: 12.5,
+  // The game-history window is optional on older frames and normalizes to empty.
+  log: [],
+  result: undefined,
   // No names in the sample wire frame; normalization defaults player_names to `{}`.
   player_names: {},
 };

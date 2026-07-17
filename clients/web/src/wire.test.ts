@@ -49,6 +49,7 @@ describe('parseGameView', () => {
       valid_actions: [],
       action_deadline: undefined,
       result: undefined,
+      log: [],
       player_names: {},
     });
   });
