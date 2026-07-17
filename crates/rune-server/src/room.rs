@@ -221,6 +221,12 @@ pub struct Room {
     /// project `action_deadline` into the deciding seat's view. Absolute, so a
     /// reconnect re-send reflects the real remaining time rather than restarting it.
     deadline: Option<Instant>,
+    /// Each seat's public display name in seat order (issue #294), or `None` for an
+    /// unnamed seat. Names are a *session*/lobby concern, not engine state, so the
+    /// room carries them here and projects them into every seat's
+    /// [`GameView::player_names`] rather than the pure [`personalized_view`] shim.
+    /// Empty (all-`None`) when no name was ever set, so the map elides from the wire.
+    player_names: Vec<Option<String>>,
 }
 
 impl Room {
@@ -236,6 +242,7 @@ impl Room {
             seats,
             timer: TimerPolicy::Off,
             deadline: None,
+            player_names: Vec::new(),
         }
     }
 
@@ -245,6 +252,27 @@ impl Room {
     pub fn with_timer_policy(mut self, policy: TimerPolicy) -> Self {
         self.timer = policy;
         self
+    }
+
+    /// Set the per-seat display names this room labels players with (issue #294),
+    /// indexed by seat. Chainable on [`Room::new`]; the default is no names (every
+    /// seat unnamed), so `GameView::player_names` stays empty and elides from the wire.
+    /// A seat with `None`, or an index past the end of `names`, simply has no name.
+    #[must_use]
+    pub fn with_player_names(mut self, names: Vec<Option<String>>) -> Self {
+        self.player_names = names;
+        self
+    }
+
+    /// The public display-name map for a `GameView` (issue #294): every seat that has
+    /// a name, keyed by its `p{N}` player id. Empty when no seat is named, so the field
+    /// elides from the wire and older-server behavior is preserved.
+    fn player_names_map(&self) -> std::collections::BTreeMap<String, String> {
+        self.player_names
+            .iter()
+            .enumerate()
+            .filter_map(|(seat, name)| name.as_ref().map(|n| (format!("p{seat}"), n.clone())))
+            .collect()
     }
 
     /// Spawn the room on a Tokio task, returning a [`RoomHandle`] for delivering
@@ -417,6 +445,9 @@ impl Room {
     /// reconnect sees the true remaining time.
     fn send_view(&mut self, seat: Seat) {
         let mut view = personalized_view(&self.state, &self.db, PlayerId(seat));
+        // Names are a lobby/session concern, not engine state, so the room labels
+        // players here rather than in the pure projection shim (issue #294).
+        view.player_names = self.player_names_map();
         if let Some(at) = self.deadline {
             if !view.valid_actions.is_empty() {
                 view.action_deadline =

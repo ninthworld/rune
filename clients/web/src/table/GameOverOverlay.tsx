@@ -19,6 +19,11 @@ interface Props {
   result: GameResult;
   /** The receiver's own seat id (`GameView.you`), used to phrase the verdict. */
   you: PlayerId;
+  /**
+   * Public display names keyed by player id (`GameView.player_names`, issue #294),
+   * used to name the winner. A player with no entry falls back to their raw id.
+   */
+  names: Record<PlayerId, string>;
 }
 
 /** The three outcomes the overlay phrases, from the receiving player's seat. */
@@ -48,9 +53,10 @@ function headlineText(outcome: Outcome): string {
 }
 
 /** A human sentence naming who won (or that the game was drawn). */
-function winnerText(result: GameResult): string {
+function winnerText(result: GameResult, names: Record<PlayerId, string>): string {
   if (result.winner === undefined) return 'The game is a draw.';
-  return `${result.winner} wins the game.`;
+  const winner = names[result.winner] ?? result.winner;
+  return `${winner} wins the game.`;
 }
 
 /**
@@ -71,7 +77,7 @@ function reasonText(reason: GameOverReason): string {
   }
 }
 
-export function GameOverOverlay({ result, you }: Props) {
+export function GameOverOverlay({ result, you, names }: Props) {
   const outcome = outcomeFor(result, you);
   const headlineTint =
     outcome === 'win' ? s.gameOverWin : outcome === 'loss' ? s.gameOverLoss : s.gameOverNeutral;
@@ -88,7 +94,7 @@ export function GameOverOverlay({ result, you }: Props) {
           {headlineText(outcome)}
         </h2>
         <p id="game-over-winner" className={s.gameOverWinner} data-testid="game-over-winner">
-          {winnerText(result)}
+          {winnerText(result, names)}
         </p>
         <p className={s.gameOverReason} data-testid="game-over-reason">
           {reasonText(result.reason)}

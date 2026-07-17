@@ -46,6 +46,16 @@ redacted before serialization.
 | `valid_actions` | `ValidAction[]` | Only actions available to the receiver |
 | `action_deadline` | `number?` | Seconds remaining for the receiver’s current decision |
 | `result` | `GameResult?` | Terminal result; absent during a live game |
+| `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
+
+`player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
+any in-game surface — the turn indicator, player tiles, zone-browser titles, the
+game-over verdict — can label `you`, an opponent, the active/priority player, or a winner
+without a lobby round-trip. Names are public (no redaction beyond the validation applied
+when they are set) and never replace the `p{N}` id an action echoes back. A player with no
+name has no entry; the field is omitted from the wire when empty, and a client treats a
+missing key as “unnamed”, falling back to a seat-derived label — so an older server that
+never sends names keeps working.
 
 `Phase` is a snake-case enum:
 
@@ -223,6 +233,7 @@ Further submitted actions are rejected and the final view is re-sent.
 | --- | --- | --- |
 | `session` | `SessionToken` | Private reconnect token |
 | `you` | `PlayerId` | Public player identity |
+| `name` | `string?` | The connection’s own display name, if set; omitted when unset |
 | `room` | `RoomView?` | Current room, if joined |
 | `directory` | `RoomSummary[]` | Public rooms available to browse |
 | `valid_commands` | `string[]` | Only commands currently available |
@@ -239,10 +250,14 @@ Each seat contains:
 
 - zero-based `seat` index;
 - optional public `occupied_by` player id;
+- optional public `name`, the occupant’s chosen display name (issue #294), omitted for
+  an empty or unnamed seat;
 - `decked`, indicating a validated deck was submitted; and
 - `ready`.
 
-Deck contents are private and never appear in another connection’s view.
+Deck contents are private and never appear in another connection’s view. A seat’s `name`
+is public and un-redacted; when it is absent a client falls back to a seat-derived label
+(e.g. `"Player 2"`, using the real `seat` index — never by parsing the opaque id).
 
 ### `RoomSummary`
 
@@ -271,6 +286,7 @@ Lobby commands are tagged by `type`:
 | `join_room` | `room_id` | Join a listed room or a room identified out of band |
 | `submit_deck` | `cards` | Submit functional card identities |
 | `ready` | `ready` | Set or clear readiness |
+| `set_name` | `name` | Set or change this connection’s public display name |
 | `leave` | none | Vacate the current room |
 
 ```json
@@ -279,8 +295,20 @@ Lobby commands are tagged by `type`:
 { "type": "join_room", "room_id": "r:7f3" }
 { "type": "submit_deck", "cards": ["forest", "verdant_scout"] }
 { "type": "ready", "ready": true }
+{ "type": "set_name", "name": "Alice" }
 { "type": "leave" }
 ```
+
+`set_name` sets the connection’s public display name (issue #294). The server validates it
+authoritatively — it trims surrounding whitespace and rejects a name that is empty, longer
+than 32 characters, or holds a control (non-printable) character; an invalid name is
+rejected with the lobby’s non-fatal error pattern (the current `LobbyView` is re-sent
+unchanged), exactly like an illegal deck. Names need not be unique — the seat’s `PlayerId`
+remains the identity, so a collision is allowed rather than rejected. The name is bound to
+the session, so it survives a per-tab reconnect, and it is projected into the lobby roster
+(`SeatView.name`) and, once a game starts, into every `GameView.player_names`. `set_name`
+is available throughout the pre-game phase (before joining a room and while seated, up to
+game start).
 
 Deck entries are stable `functional_id` strings, repeated once per physical card. The server
 resolves every identity and applies the selected format’s deck policy. A player may ready only

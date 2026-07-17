@@ -6,8 +6,8 @@ import { GameOverOverlay } from './GameOverOverlay';
 afterEach(cleanup);
 
 /** Render the overlay for a result from the `you` seat's perspective. */
-function renderOverlay(you: string, result: GameResult): void {
-  render(<GameOverOverlay result={result} you={you} />);
+function renderOverlay(you: string, result: GameResult, names: Record<string, string> = {}): void {
+  render(<GameOverOverlay result={result} you={you} names={names} />);
 }
 
 describe('GameOverOverlay verdict from the receiver’s seat (issue #141)', () => {
@@ -32,6 +32,11 @@ describe('GameOverOverlay verdict from the receiver’s seat (issue #141)', () =
   it('exposes the result as an alertdialog for assistive tech', () => {
     renderOverlay('p1', { winner: 'p1', losers: ['p2'], reason: 'decked' });
     expect(screen.getByRole('alertdialog', { name: 'Game over' })).toBeDefined();
+  });
+
+  it('names the winner by display name when the server sent one (issue #294)', () => {
+    renderOverlay('p1', { winner: 'p2', losers: ['p1'], reason: 'life_zero' }, { p2: 'Bob' });
+    expect(screen.getByTestId('game-over-winner').textContent).toContain('Bob wins');
   });
 });
 

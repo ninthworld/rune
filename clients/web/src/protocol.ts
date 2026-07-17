@@ -404,6 +404,16 @@ export interface GameView {
    * alone tells a client the game has ended; when present, `valid_actions` is empty.
    */
   result?: GameResult;
+  /**
+   * Public display names keyed by {@link PlayerId} (issue #294): every player who has
+   * chosen a name maps to it, so any in-game surface (turn indicator, player tiles,
+   * zone-browser titles, game-over verdict) can label any player — `you`, an opponent,
+   * the active/priority player, a winner — without a lobby round-trip. Names never
+   * replace the `p{N}` id an action echoes back. A player with no name has no entry;
+   * the server omits the field entirely when empty and {@link normalizeGameView}
+   * defaults it to `{}`, so an older server that never sends names keeps working.
+   */
+  player_names: Record<PlayerId, string>;
 }
 
 /**
@@ -511,6 +521,13 @@ export interface SeatView {
   seat: number;
   /** The player occupying this seat; absent when the seat is empty. */
   occupied_by?: PlayerId;
+  /**
+   * The occupant's chosen display name (issue #294), if set — public, display-only
+   * text. The seat's identity is still its {@link SeatView.occupied_by} id. Absent for
+   * an empty or unnamed seat, in which case the client falls back to a seat-derived
+   * label (e.g. `"Player 2"`), so an older server that omits names keeps working.
+   */
+  name?: string;
   /** Whether this seat has submitted a server-validated deck (defaults `false`). */
   decked?: boolean;
   /** Whether this seat has declared itself ready (defaults `false`). */
@@ -570,6 +587,13 @@ export interface LobbyView {
    * {@link SeatView.occupied_by}. Defaults to `''` when absent.
    */
   you: PlayerId;
+  /**
+   * The connection's own chosen display name (issue #294), if set via a
+   * {@link SetNameCommand}. Lets the pre-game UI show the local player's name before a
+   * seat exists; once seated, the same name also rides in the roster's
+   * {@link SeatView.name}. Absent when unset.
+   */
+  name?: string;
   /** The room the connection is in, if any. Absent when not in a room. */
   room?: RoomView;
   /**
@@ -630,6 +654,19 @@ export interface ReadyCommand {
   ready: boolean;
 }
 
+/**
+ * Set (or change) this connection's public display name (issue #294). The server
+ * validates it (length bounds, printable characters) and rejects an invalid value
+ * with the lobby's non-fatal error pattern (the current {@link LobbyView} is
+ * re-sent). The name is bound to the session, so it survives a per-tab reconnect.
+ */
+export interface SetNameCommand {
+  /** Discriminator. */
+  type: 'set_name';
+  /** The requested display name; the server trims and validates before storing. */
+  name: string;
+}
+
 /** Leave the current room, vacating the seat. */
 export interface LeaveCommand {
   /** Discriminator. */
@@ -648,6 +685,7 @@ export type LobbyCommand =
   | JoinRoomCommand
   | SubmitDeckCommand
   | ReadyCommand
+  | SetNameCommand
   | LeaveCommand;
 
 /** Build a `hello` command, including a prior token only when present. */
@@ -677,6 +715,11 @@ export function submitDeckCommand(cards: CardIdentity[]): SubmitDeckCommand {
 /** Build a `ready` command declaring (`true`) or retracting (`false`) readiness. */
 export function readyCommand(ready: boolean): ReadyCommand {
   return { type: 'ready', ready };
+}
+
+/** Build a `set_name` command requesting the given display name (issue #294). */
+export function setNameCommand(name: string): SetNameCommand {
+  return { type: 'set_name', name };
 }
 
 /** Build a `leave` command. */

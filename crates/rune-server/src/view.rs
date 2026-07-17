@@ -887,6 +887,10 @@ pub(crate) fn personalized_view(
         // The terminal result once the game is over (CR 104.2a); `None` — and so
         // omitted from the wire — while the game is live.
         result: state.result().map(result_view),
+        // Player display names are a lobby/session concern, not engine state; the room
+        // fills this in after projection (issue #294). Empty here so this pure shim
+        // stays name-agnostic and the field elides from the wire by default.
+        player_names: std::collections::BTreeMap::new(),
     }
 }
 

@@ -122,6 +122,11 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
       return command.ready ? 'ready' : 'unready';
     case 'leave':
       return 'leave';
+    case 'set_name':
+      // The requested name is not echoed back for comparison, and a rejected name is
+      // simply not stored (the server re-sends the view unchanged, per the non-fatal
+      // pattern); there is nothing to reconcile into a retry hint here (issue #294).
+      return null;
     case 'hello':
       // Identity always succeeds; nothing to reconcile.
       return null;

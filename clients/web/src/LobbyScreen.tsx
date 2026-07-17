@@ -12,9 +12,9 @@
  * Identity (docs/design/ui-design-notes.md §Identity): the pre-game screens share
  * the table's visual system and RUNE's procedural motif — the {@link RuneMark} and
  * the display-face wordmark, geometry only, never a card image or WotC branding.
- * Players read as people: display names ride the protocol as a later contract
- * change (issue #294); {@link seatDisplayName} reads that field defensively and
- * falls back to a seat-derived "Player N" until it lands.
+ * Players read as people: display names ride the protocol (issue #294);
+ * {@link seatDisplayName} reads the seat's `name` field and falls back to a
+ * seat-derived "Player N" when a seat has no chosen name.
  *
  * Hard rules (AGENTS.md, ADR 0012):
  * - **Reconstruct from one `LobbyView`.** Every control here is derived from the
@@ -36,11 +36,12 @@ import {
   joinRoomCommand,
   leaveCommand,
   readyCommand,
+  setNameCommand,
   submitDeckCommand,
   type LobbyView,
   type RoomSummary,
-  type SeatView,
 } from './protocol';
+import { seatDisplayName } from './playerNames';
 import { useGameStore } from './store';
 import { cx } from './chrome/cx';
 import { RuneMark } from './chrome/RuneMark';
@@ -84,20 +85,6 @@ function setupLabel(gameSetup: string): string {
   return GAME_SETUPS.find((option) => option.id === gameSetup)?.label ?? gameSetup;
 }
 
-/**
- * The presentation name for an occupied seat. Display names ride the protocol as a
- * later contract change (issue #294); until the field lands we read it defensively
- * so real names light up automatically the moment #294 adds it to `SeatView`,
- * falling back to a seat-derived "Player N" today. Presentation only — never a game
- * or legality input.
- */
-function seatDisplayName(seat: SeatView): string {
-  const named = seat as SeatView & { display_name?: string };
-  const name = named.display_name?.trim();
-  if (name !== undefined && name.length > 0) return name;
-  return `Player ${seat.seat + 1}`;
-}
-
 /** The RUNE brand lockup: the procedural mark, the wordmark, and a tagline. */
 function Brand({ tagline }: { tagline: string }) {
   return (
@@ -108,6 +95,56 @@ function Brand({ tagline }: { tagline: string }) {
       </div>
       <p className={l.tagline}>{tagline}</p>
     </div>
+  );
+}
+
+/**
+ * The display-name field (issue #294): set or change the public name other players
+ * read for this connection. Offered only when the server advertises `set_name`
+ * (`valid_commands` is the sole source of interactivity). The input seeds from the
+ * server's current `name` — the one load-bearing value — while what is being typed is
+ * ephemeral local form state, cleared to the server's truth whenever it changes.
+ */
+function DisplayNameField({ view }: { view: LobbyView }) {
+  const sendLobby = useGameStore((state) => state.sendLobby);
+  const current = view.name ?? '';
+  const [draft, setDraft] = useState(current);
+
+  // Re-seed the draft when the server's accepted name changes (e.g. after a
+  // reconnect re-sends it), so the field always reflects server truth at rest.
+  useEffect(() => {
+    setDraft(current);
+  }, [current]);
+
+  const save = (): void => {
+    const next = draft.trim();
+    if (next.length === 0) return;
+    sendLobby(setNameCommand(next));
+  };
+
+  return (
+    <section className={s.lobbySection} aria-label="Display name" data-testid="display-name">
+      <h2 className={s.lobbySectionTitle}>Display name</h2>
+      <label className={s.field}>
+        <span className={s.fieldLabel}>Your name</span>
+        <input
+          className={s.select}
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={32}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          data-testid="display-name-input"
+          aria-label="Display name"
+        />
+      </label>
+      <div className={s.buttonRow}>
+        <button type="button" className={s.button} onClick={save} data-testid="set-name-button">
+          {current.length > 0 ? 'Change name' : 'Set name'}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -532,6 +569,7 @@ export function LobbyScreen() {
             {lobbyError}
           </span>
         )}
+        {can(lobby, 'set_name') && <DisplayNameField view={lobby} />}
         {lobby.room === undefined ? <RoomEntry view={lobby} /> : <RoomPanel view={lobby} />}
         <div className={s.buttonRow}>
           <button

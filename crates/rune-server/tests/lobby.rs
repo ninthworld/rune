@@ -181,7 +181,11 @@ async fn two_clients_create_and_join_a_room_by_id_end_to_end() {
     // Seated but undecked: bob may submit a deck or leave (the ready gate, #112).
     assert_eq!(
         bob_room.valid_commands,
-        vec!["submit_deck".to_string(), "leave".to_string()]
+        vec![
+            "set_name".to_string(),
+            "submit_deck".to_string(),
+            "leave".to_string()
+        ]
     );
 
     // Alice is pushed an updated roster showing both seats filled.

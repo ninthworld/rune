@@ -16,6 +16,7 @@
 import type { GameView, Phase, PlayerId } from '../protocol';
 import { PHASES } from '../protocol';
 import { cx } from '../chrome/cx';
+import { playerName } from '../playerNames';
 import s from './chrome.module.css';
 
 /** The table's presentation mode (issue #267). */
@@ -60,7 +61,7 @@ export function PhaseRibbon({ view, mode, localId }: Props) {
       ? 'Active player —'
       : isLocalTurn
         ? 'Your turn'
-        : `${view.active_player}'s turn`;
+        : `${playerName(view, view.active_player)}'s turn`;
 
   return (
     <div

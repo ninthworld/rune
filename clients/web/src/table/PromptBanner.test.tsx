@@ -23,6 +23,7 @@ function view(): GameView {
     mana_pool: [],
     priority_player: 'p1',
     valid_actions: [],
+    player_names: {},
   };
 }
 

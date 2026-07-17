@@ -23,7 +23,7 @@
 
 use futures_util::{SinkExt, StreamExt};
 use rune_protocol::{
-    CreateRoom, GameView, JoinRoom, LobbyCommand, LobbyView, Ready, RoomConfig, SubmitDeck,
+    CreateRoom, GameView, JoinRoom, LobbyCommand, LobbyView, Ready, RoomConfig, SetName, SubmitDeck,
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
@@ -389,7 +389,10 @@ where
 pub fn render_lobby(view: &LobbyView) -> String {
     let mut out = String::new();
     out.push_str("\n============== LOBBY ==============\n");
-    out.push_str(&format!("You: {}\n", view.you));
+    match &view.name {
+        Some(name) => out.push_str(&format!("You: {} ({})\n", name, view.you)),
+        None => out.push_str(&format!("You: {}\n", view.you)),
+    }
     match &view.room {
         None => out.push_str("Room: (none) — create a room or join one by id.\n"),
         Some(room) => {
@@ -398,7 +401,13 @@ pub fn render_lobby(view: &LobbyView) -> String {
                 room.room_id, room.config.seats, room.config.game_setup
             ));
             for seat in &room.seats {
-                let occupant = seat.occupied_by.as_deref().unwrap_or("(empty)");
+                // Prefer the occupant's display name (issue #294), falling back to the
+                // player id, then "(empty)" for an open seat.
+                let occupant = match (&seat.name, &seat.occupied_by) {
+                    (Some(name), Some(id)) => format!("{name} ({id})"),
+                    (_, Some(id)) => id.clone(),
+                    (_, None) => "(empty)".to_string(),
+                };
                 let decked = if seat.decked { "decked" } else { "no deck" };
                 let ready = if seat.ready { "ready" } else { "not ready" };
                 out.push_str(&format!(
@@ -494,6 +503,19 @@ where
                 cards: parse_deck(&raw),
             })))
         }
+        "set_name" => {
+            let Some(name) = prompt_line(input, output, line, "Display name: ").await? else {
+                return Ok(None);
+            };
+            if name.is_empty() {
+                // Cancelled: leave `line` non-empty so the caller re-renders rather
+                // than treating a blank entry as EOF.
+                line.clear();
+                line.push('\n');
+                return Ok(None);
+            }
+            Ok(Some(LobbyCommand::SetName(SetName { name })))
+        }
         "ready" => Ok(Some(LobbyCommand::Ready(Ready { ready: true }))),
         "unready" => Ok(Some(LobbyCommand::Ready(Ready { ready: false }))),
         "leave" => Ok(Some(LobbyCommand::Leave)),
@@ -587,6 +609,7 @@ fn command_label(kind: &str) -> &str {
     match kind {
         "create_room" => "Create a room",
         "join_room" => "Join a room by id",
+        "set_name" => "Set your display name",
         "submit_deck" => "Submit a deck",
         "ready" => "Ready up",
         "unready" => "Cancel ready",
@@ -610,6 +633,7 @@ fn describe_command(command: &LobbyCommand) -> String {
         }
         LobbyCommand::Ready(Ready { ready: true }) => "readying up".to_string(),
         LobbyCommand::Ready(Ready { ready: false }) => "cancelling ready".to_string(),
+        LobbyCommand::SetName(SetName { name }) => format!("setting display name to {name:?}"),
         LobbyCommand::Leave => "leaving the room".to_string(),
         LobbyCommand::Hello(_) => "saying hello".to_string(),
     }
@@ -626,6 +650,7 @@ mod tests {
         LobbyView {
             session: "s:secret".into(),
             you: "p0".into(),
+            name: None,
             room: None,
             directory: vec![],
             valid_commands: commands.iter().map(|c| c.to_string()).collect(),
@@ -636,6 +661,7 @@ mod tests {
         SeatView {
             seat: index,
             occupied_by: occupant.map(str::to_string),
+            name: None,
             decked,
             ready,
         }
@@ -645,6 +671,7 @@ mod tests {
         LobbyView {
             session: "s:secret".into(),
             you: you.into(),
+            name: None,
             room: Some(RoomView {
                 room_id: "r0".into(),
                 config: RoomConfig {

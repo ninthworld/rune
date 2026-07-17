@@ -49,6 +49,7 @@ describe('parseGameView', () => {
       valid_actions: [],
       action_deadline: undefined,
       result: undefined,
+      player_names: {},
     });
   });
 
@@ -335,5 +336,53 @@ describe('lobby wire (issue #114)', () => {
 
   it('rejects malformed JSON when routing a frame', () => {
     expect(() => parseServerFrame('not json')).toThrow(ProtocolError);
+  });
+});
+
+describe('display names (issue #294)', () => {
+  it('normalizes GameView.player_names, dropping non-string entries', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'upkeep',
+        you: 'p0',
+        player_names: { p0: 'Alice', p1: 'Bob', p2: 42 },
+      }),
+    );
+    // Well-formed string entries survive; a non-string value is dropped.
+    expect(view.player_names).toEqual({ p0: 'Alice', p1: 'Bob' });
+  });
+
+  it('defaults player_names to an empty map when the server omits it', () => {
+    const view = parseGameView('{"phase":"upkeep","you":"p0"}');
+    expect(view.player_names).toEqual({});
+  });
+
+  it('carries a seat display name in the roster, absent when unset', () => {
+    const view = normalizeLobbyView(
+      JSON.parse(
+        JSON.stringify({
+          session: 's:1',
+          you: 'p1',
+          room: {
+            room_id: 'r0',
+            config: { seats: 2, game_setup: '1v1' },
+            seats: [
+              { seat: 0, occupied_by: 'p1', name: 'Alice' },
+              { seat: 1, occupied_by: 'p2' },
+            ],
+          },
+          valid_commands: ['set_name'],
+        }),
+      ),
+    );
+    expect(view.room?.seats[0].name).toBe('Alice');
+    expect(view.room?.seats[1].name).toBeUndefined();
+  });
+
+  it('carries the connection’s own display name on the LobbyView, absent when unset', () => {
+    const named = normalizeLobbyView({ session: 's:1', you: 'p1', name: 'Alice' });
+    expect(named.name).toBe('Alice');
+    const unnamed = normalizeLobbyView({ session: 's:1', you: 'p1' });
+    expect(unnamed.name).toBeUndefined();
   });
 });
