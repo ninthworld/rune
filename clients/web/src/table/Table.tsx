@@ -67,7 +67,8 @@ import {
   type MultiSelectSession,
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
-import { boardWrap, button, focusDimmed, main, muted, waitingBar } from './styles';
+import { boardWrap } from './styles';
+import s from './chrome.module.css';
 
 /**
  * The current logical width the board may wrap within, tracking the window so the
@@ -376,10 +377,15 @@ export function Table() {
     // yet. Show a live status plus a Disconnect action so this is never a dead
     // screen; it resolves the instant the first GameView lands.
     return (
-      <main style={main} data-testid="table-waiting">
-        <div style={waitingBar}>
-          <span style={muted}>Connected — waiting for first game state…</span>
-          <button type="button" style={button} onClick={disconnect} data-testid="disconnect-button">
+      <main className={s.main} data-testid="table-waiting">
+        <div className={s.waitingBar}>
+          <span className={s.muted}>Connected — waiting for first game state…</span>
+          <button
+            type="button"
+            className={s.button}
+            onClick={disconnect}
+            data-testid="disconnect-button"
+          >
             Disconnect
           </button>
         </div>
@@ -462,7 +468,7 @@ export function Table() {
   // across messages, so a reconnect that replays this view shows the same screen.
   if (view.result) {
     return (
-      <main style={main} data-testid="table-game-over" data-mode="overview">
+      <main className={s.main} data-testid="table-game-over" data-mode="overview">
         {/* The final board renders in overview treatment beneath the overlay. */}
         <PhaseRibbon view={view} mode="overview" localId={localId} />
         <PlayerTiles view={view} localId={localId} onOpenZone={openZone} />
@@ -652,7 +658,7 @@ export function Table() {
       : [];
 
   return (
-    <main ref={mainRef} style={main} data-mode={mode}>
+    <main ref={mainRef} className={s.main} data-mode={mode}>
       <PhaseRibbon view={view} mode={mode} localId={localId} />
       <PromptBanner
         view={view}
@@ -666,7 +672,7 @@ export function Table() {
        * so attention lands on the ribbon and the pending decision — presentation
        * only, derived from `mode` (issue #267).
        */}
-      <div style={mode === 'focus' ? focusDimmed : undefined}>
+      <div className={mode === 'focus' ? s.focusDimmed : undefined}>
         <PlayerTiles
           view={view}
           localId={localId}

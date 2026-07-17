@@ -34,35 +34,8 @@ import {
   type SeatView,
 } from './protocol';
 import { useGameStore } from './store';
-import {
-  button,
-  buttonRow,
-  connectHeading,
-  connectMain,
-  errorText,
-  field,
-  fieldLabel,
-  joinByIdSummary,
-  lobbyPanel,
-  lobbySection,
-  lobbySectionTitle,
-  muted,
-  roomIdCode,
-  roomIdRow,
-  roomList,
-  roomListEmpty,
-  roomRow,
-  roomRowActions,
-  roomRowInfo,
-  seatBadge,
-  seatBadgeOn,
-  seatBadges,
-  seatList,
-  seatRow,
-  seatRowLocal,
-  select,
-  waitingBar,
-} from './table/styles';
+import { cx } from './chrome/cx';
+import s from './table/chrome.module.css';
 
 /** A game-setup option offered by the create-room form. */
 interface GameSetupOption {
@@ -111,14 +84,14 @@ function occupantLabel(seat: SeatView, you: string): string {
 /** The pre-first-frame lobby fallback: a live status plus a Disconnect action. */
 function LobbyWaiting({ onDisconnect }: { onDisconnect: () => void }) {
   return (
-    <main style={connectMain}>
-      <section style={lobbyPanel} aria-label="Entering lobby" data-testid="lobby-waiting">
-        <h1 style={connectHeading}>RUNE</h1>
-        <div style={waitingBar}>
-          <span style={muted}>Connected — entering the lobby…</span>
+    <main className={s.connectMain}>
+      <section className={s.lobbyPanel} aria-label="Entering lobby" data-testid="lobby-waiting">
+        <h1 className={s.connectHeading}>RUNE</h1>
+        <div className={s.waitingBar}>
+          <span className={s.muted}>Connected — entering the lobby…</span>
           <button
             type="button"
-            style={button}
+            className={s.button}
             onClick={onDisconnect}
             data-testid="lobby-disconnect-button"
           >
@@ -153,17 +126,17 @@ function RoomDirectoryRow({
   // Priority: a started room is un-joinable; a full gathering room is Full; an open
   // gathering room offers Join only when the server advertised `join_room`.
   const action = started ? (
-    <span style={seatBadge} data-testid={`room-${room.room_id}-in-progress`}>
+    <span className={s.seatBadge} data-testid={`room-${room.room_id}-in-progress`}>
       In progress
     </span>
   ) : full ? (
-    <span style={seatBadge} data-testid={`room-${room.room_id}-full`}>
+    <span className={s.seatBadge} data-testid={`room-${room.room_id}-full`}>
       Full
     </span>
   ) : canJoin ? (
     <button
       type="button"
-      style={button}
+      className={s.button}
       onClick={() => onJoin(room.room_id)}
       data-testid={`join-directory-${room.room_id}`}
     >
@@ -172,16 +145,16 @@ function RoomDirectoryRow({
   ) : null;
 
   return (
-    <li style={roomRow} data-testid={`room-row-${room.room_id}`}>
-      <span style={roomRowInfo}>
+    <li className={s.roomRow} data-testid={`room-row-${room.room_id}`}>
+      <span className={s.roomRowInfo}>
         <span>
           {setupLabel(room.config.game_setup)} · {total} seats
         </span>
-        <span style={muted} data-testid={`room-${room.room_id}-occupancy`}>
+        <span className={s.muted} data-testid={`room-${room.room_id}-occupancy`}>
           {room.filled}/{total} filled
         </span>
       </span>
-      <span style={roomRowActions}>{action}</span>
+      <span className={s.roomRowActions}>{action}</span>
     </li>
   );
 }
@@ -195,14 +168,14 @@ function RoomDirectory({ view }: { view: LobbyView }) {
   };
 
   return (
-    <section style={lobbySection} aria-label="Open games" data-testid="room-directory">
-      <h2 style={lobbySectionTitle}>Open games</h2>
+    <section className={s.lobbySection} aria-label="Open games" data-testid="room-directory">
+      <h2 className={s.lobbySectionTitle}>Open games</h2>
       {view.directory.length === 0 ? (
-        <span style={roomListEmpty} data-testid="room-directory-empty">
+        <span className={s.roomListEmpty} data-testid="room-directory-empty">
           No open games — create one.
         </span>
       ) : (
-        <ul style={roomList} data-testid="room-directory-list">
+        <ul className={s.roomList} data-testid="room-directory-list">
           {view.directory.map((room) => (
             <RoomDirectoryRow key={room.room_id} room={room} canJoin={canJoin} onJoin={join} />
           ))}
@@ -237,12 +210,12 @@ function RoomEntry({ view }: { view: LobbyView }) {
   return (
     <>
       {can(view, 'create_room') && (
-        <section style={lobbySection} aria-label="Create a room" data-testid="create-room">
-          <h2 style={lobbySectionTitle}>Create a room</h2>
-          <label style={field}>
-            <span style={fieldLabel}>Game setup</span>
+        <section className={s.lobbySection} aria-label="Create a room" data-testid="create-room">
+          <h2 className={s.lobbySectionTitle}>Create a room</h2>
+          <label className={s.field}>
+            <span className={s.fieldLabel}>Game setup</span>
             <select
-              style={select}
+              className={s.select}
               value={setupId}
               data-testid="game-setup-select"
               onChange={(event) => {
@@ -259,10 +232,10 @@ function RoomEntry({ view }: { view: LobbyView }) {
               ))}
             </select>
           </label>
-          <label style={field}>
-            <span style={fieldLabel}>Seats</span>
+          <label className={s.field}>
+            <span className={s.fieldLabel}>Seats</span>
             <select
-              style={select}
+              className={s.select}
               value={seats}
               data-testid="seat-count-select"
               onChange={(event) => setSeats(Number(event.target.value))}
@@ -274,8 +247,13 @@ function RoomEntry({ view }: { view: LobbyView }) {
               ))}
             </select>
           </label>
-          <div style={buttonRow}>
-            <button type="button" style={button} onClick={create} data-testid="create-room-button">
+          <div className={s.buttonRow}>
+            <button
+              type="button"
+              className={s.button}
+              onClick={create}
+              data-testid="create-room-button"
+            >
               Create room
             </button>
           </div>
@@ -285,12 +263,12 @@ function RoomEntry({ view }: { view: LobbyView }) {
       <RoomDirectory view={view} />
 
       {can(view, 'join_room') && (
-        <details style={lobbySection} data-testid="join-room">
-          <summary style={joinByIdSummary}>Join by room id</summary>
-          <label style={field}>
-            <span style={fieldLabel}>Room id</span>
+        <details className={s.lobbySection} data-testid="join-room">
+          <summary className={s.joinByIdSummary}>Join by room id</summary>
+          <label className={s.field}>
+            <span className={s.fieldLabel}>Room id</span>
             <input
-              style={select}
+              className={s.select}
               type="text"
               autoComplete="off"
               spellCheck={false}
@@ -301,12 +279,17 @@ function RoomEntry({ view }: { view: LobbyView }) {
             />
           </label>
           {joinError !== null && (
-            <span style={errorText} role="alert" data-testid="join-room-error">
+            <span className={s.errorText} role="alert" data-testid="join-room-error">
               {joinError}
             </span>
           )}
-          <div style={buttonRow}>
-            <button type="button" style={button} onClick={join} data-testid="join-room-button">
+          <div className={s.buttonRow}>
+            <button
+              type="button"
+              className={s.button}
+              onClick={join}
+              data-testid="join-room-button"
+            >
               Join room
             </button>
           </div>
@@ -354,16 +337,16 @@ function RoomPanel({ view }: { view: LobbyView }) {
 
   return (
     <>
-      <section style={lobbySection} aria-label="Room" data-testid="room-panel">
-        <h2 style={lobbySectionTitle}>Room</h2>
-        <div style={roomIdRow}>
-          <span style={fieldLabel}>Room id</span>
-          <code style={roomIdCode} data-testid="room-id">
+      <section className={s.lobbySection} aria-label="Room" data-testid="room-panel">
+        <h2 className={s.lobbySectionTitle}>Room</h2>
+        <div className={s.roomIdRow}>
+          <span className={s.fieldLabel}>Room id</span>
+          <code className={s.roomIdCode} data-testid="room-id">
             {room.room_id}
           </code>
           <button
             type="button"
-            style={button}
+            className={s.button}
             onClick={copyRoomId}
             data-testid="copy-room-id-button"
             aria-label="Copy room id"
@@ -371,30 +354,30 @@ function RoomPanel({ view }: { view: LobbyView }) {
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
-        <span style={muted}>Share this id so another player can join.</span>
+        <span className={s.muted}>Share this id so another player can join.</span>
 
-        <ul style={seatList} data-testid="seat-list">
+        <ul className={s.seatList} data-testid="seat-list">
           {room.seats.map((seat) => {
             const isLocal = seat.occupied_by !== undefined && seat.occupied_by === view.you;
             return (
               <li
                 key={seat.seat}
-                style={isLocal ? { ...seatRow, ...seatRowLocal } : seatRow}
+                className={isLocal ? cx(s.seatRow, s.seatRowLocal) : s.seatRow}
                 data-testid={`seat-${seat.seat}`}
               >
                 <span>Seat {seat.seat + 1}</span>
-                <span style={muted}>{occupantLabel(seat, view.you)}</span>
-                <span style={seatBadges}>
-                  <span style={seat.occupied_by !== undefined ? seatBadgeOn : seatBadge}>
+                <span className={s.muted}>{occupantLabel(seat, view.you)}</span>
+                <span className={s.seatBadges}>
+                  <span className={seat.occupied_by !== undefined ? s.seatBadgeOn : s.seatBadge}>
                     {seat.occupied_by !== undefined ? 'Filled' : 'Open'}
                   </span>
                   {seat.decked === true && (
-                    <span style={seatBadgeOn} data-testid={`seat-${seat.seat}-decked`}>
+                    <span className={s.seatBadgeOn} data-testid={`seat-${seat.seat}-decked`}>
                       Decked
                     </span>
                   )}
                   {seat.ready === true && (
-                    <span style={seatBadgeOn} data-testid={`seat-${seat.seat}-ready`}>
+                    <span className={s.seatBadgeOn} data-testid={`seat-${seat.seat}-ready`}>
                       Ready
                     </span>
                   )}
@@ -406,12 +389,16 @@ function RoomPanel({ view }: { view: LobbyView }) {
       </section>
 
       {can(view, 'submit_deck') && (
-        <section style={lobbySection} aria-label="Choose a deck" data-testid="deck-select-section">
-          <h2 style={lobbySectionTitle}>Choose a deck</h2>
-          <label style={field}>
-            <span style={fieldLabel}>Starter deck</span>
+        <section
+          className={s.lobbySection}
+          aria-label="Choose a deck"
+          data-testid="deck-select-section"
+        >
+          <h2 className={s.lobbySectionTitle}>Choose a deck</h2>
+          <label className={s.field}>
+            <span className={s.fieldLabel}>Starter deck</span>
             <select
-              style={select}
+              className={s.select}
               value={deckId}
               data-testid="deck-select"
               onChange={(event) => setDeckId(event.target.value)}
@@ -423,11 +410,11 @@ function RoomPanel({ view }: { view: LobbyView }) {
               ))}
             </select>
           </label>
-          <span style={muted}>{decklistById(deckId)?.summary}</span>
-          <div style={buttonRow}>
+          <span className={s.muted}>{decklistById(deckId)?.summary}</span>
+          <div className={s.buttonRow}>
             <button
               type="button"
-              style={button}
+              className={s.button}
               onClick={submitDeck}
               data-testid="submit-deck-button"
             >
@@ -437,11 +424,11 @@ function RoomPanel({ view }: { view: LobbyView }) {
         </section>
       )}
 
-      <div style={buttonRow}>
+      <div className={s.buttonRow}>
         {can(view, 'ready') && (
           <button
             type="button"
-            style={button}
+            className={s.button}
             onClick={() => sendLobby(readyCommand(true))}
             data-testid="ready-button"
           >
@@ -451,7 +438,7 @@ function RoomPanel({ view }: { view: LobbyView }) {
         {can(view, 'unready') && (
           <button
             type="button"
-            style={button}
+            className={s.button}
             onClick={() => sendLobby(readyCommand(false))}
             data-testid="unready-button"
           >
@@ -461,7 +448,7 @@ function RoomPanel({ view }: { view: LobbyView }) {
         {can(view, 'leave') && (
           <button
             type="button"
-            style={button}
+            className={s.button}
             onClick={() => sendLobby(leaveCommand())}
             data-testid="leave-room-button"
           >
@@ -485,19 +472,19 @@ export function LobbyScreen() {
   }
 
   return (
-    <main style={connectMain}>
-      <section style={lobbyPanel} aria-label="Lobby" data-testid="lobby-screen">
-        <h1 style={connectHeading}>RUNE Lobby</h1>
+    <main className={s.connectMain}>
+      <section className={s.lobbyPanel} aria-label="Lobby" data-testid="lobby-screen">
+        <h1 className={s.connectHeading}>RUNE Lobby</h1>
         {lobbyError !== null && (
-          <span style={errorText} role="alert" data-testid="lobby-error">
+          <span className={s.errorText} role="alert" data-testid="lobby-error">
             {lobbyError}
           </span>
         )}
         {lobby.room === undefined ? <RoomEntry view={lobby} /> : <RoomPanel view={lobby} />}
-        <div style={buttonRow}>
+        <div className={s.buttonRow}>
           <button
             type="button"
-            style={button}
+            className={s.button}
             onClick={disconnect}
             data-testid="lobby-disconnect-button"
           >

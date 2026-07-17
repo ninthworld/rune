@@ -1,0 +1,43 @@
+/*
+ * RUNE chrome base layer (ADR 0019).
+ *
+ * Global, element-level concerns the CSS-module component styles build on:
+ * document defaults, the shared focus-visible treatment, and the single
+ * reduced-motion mechanism every later animation reuses. Component look lives in
+ * co-located `*.module.css`; this file owns only what must be global.
+ */
+
+html,
+body {
+  margin: 0;
+  background: var(--rune-table);
+  color: var(--rune-text);
+  font-family: var(--rune-font-body);
+  /* Kept in sync with `SURFACES.board` (card token) so the page behind the Pixi
+   * canvas matches the board the renderer paints — the one place chrome must
+   * agree with a card value. */
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/*
+ * One reduced-motion mechanism for the whole app. Every transition/animation
+ * reads short, easing motion by default; when the OS asks for reduced motion we
+ * neutralize duration globally here, so animation work added later (card motion,
+ * overlays) is honored without each feature re-implementing the check.
+ * ui-requirements §Accessibility: "reduced-motion mode can skip every animation
+ * without changing state."
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

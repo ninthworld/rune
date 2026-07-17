@@ -1,0 +1,1061 @@
+/*
+ * Chrome component styles (ADR 0019) — the CSS-module styling layer that replaces
+ * the per-element inline `CSSProperties` objects that used to live in `styles.ts`.
+ *
+ * Every value here reads a chrome token (`src/chrome/tokens.css`); there are no
+ * chrome hex literals. Class names mirror the old style-object names so the
+ * migration is mechanical (`style={s.button}` → `className={s.button}`). Real
+ * state selectors (hover / focus-visible / active / disabled), impossible with
+ * inline styles, live at the bottom of this file. Canvas-anchored geometry (rects
+ * positioned over the Pixi scene) stays in `styles.ts`; only the shared focus/hover
+ * treatment for those canvas buttons is here (`.canvasControl`).
+ */
+
+/* ── Root / shell ──────────────────────────────────────────────────────────── */
+.main {
+  min-height: 100vh;
+  background: var(--rune-table);
+  color: var(--rune-text);
+  font-family: var(--rune-font-body);
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+  padding: var(--rune-space-4);
+  box-sizing: border-box;
+}
+
+/* ── Phase ribbon ──────────────────────────────────────────────────────────── */
+.ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-6);
+  padding: 8px 14px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg-alt);
+  border: 1px solid var(--rune-border);
+  font-size: var(--rune-type-body);
+}
+.ribbonTurn {
+  font-weight: 700;
+  color: var(--rune-text);
+  letter-spacing: 0.3px;
+  font-family: var(--rune-font-display);
+}
+.ribbonActive {
+  font-weight: 600;
+  color: var(--rune-selection);
+}
+.ribbonSteps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ribbonStep {
+  font-size: var(--rune-type-micro);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--rune-radius-pill);
+  background: transparent;
+  color: var(--rune-text-muted);
+  border: 1px solid transparent;
+}
+.ribbonStepCurrent {
+  color: var(--rune-text);
+  background: var(--rune-raised-bg);
+  border: 1px solid var(--rune-selection);
+  /* Phase name is an identity moment (§Identity): carry the display face. */
+  font-family: var(--rune-font-display);
+}
+.ribbonFocusBadge {
+  margin-left: auto;
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 9px;
+  border-radius: var(--rune-radius-pill);
+  color: var(--rune-targeting);
+  border: 1px solid var(--rune-targeting);
+}
+.focusDimmed {
+  opacity: 0.7;
+}
+
+/* ── Prompt banner ─────────────────────────────────────────────────────────── */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-7);
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg);
+  font-size: var(--rune-type-body-lg);
+}
+.bannerAccent {
+  color: var(--rune-selection);
+  font-weight: 600;
+}
+.deadlineCountdown {
+  color: var(--rune-text);
+  font-weight: 600;
+}
+.deadlineCountdownLow {
+  color: var(--rune-targeting);
+  font-weight: 700;
+}
+.bannerTargeting {
+  color: var(--rune-targeting);
+  font-weight: 600;
+}
+.bannerOptions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+  margin-left: auto;
+  padding-left: var(--rune-space-6);
+  border-left: 1px solid var(--rune-border-strong);
+}
+.optionButton {
+  min-height: var(--rune-touch);
+  padding: 0 16px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-selection);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── Prompt surface (select / order list overlay) ──────────────────────────── */
+.promptSurface {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+  padding: 12px 14px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-targeting);
+  align-self: center;
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+}
+.promptSurfaceTitle {
+  margin: 0;
+  font-size: var(--rune-type-body-lg);
+  font-weight: 700;
+  color: var(--rune-text);
+}
+.promptSurfaceZone {
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+  text-transform: capitalize;
+}
+.promptSurfaceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.promptSurfaceRow {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  padding: 6px 8px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-sunken-bg);
+  border: 1px solid var(--rune-border);
+  min-height: var(--rune-touch);
+  box-sizing: border-box;
+}
+.promptSurfaceRowChosen {
+  border-color: var(--rune-selection);
+  box-shadow: 0 0 0 1px var(--rune-selection);
+}
+.promptSurfaceName {
+  flex: 1;
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  color: var(--rune-text);
+}
+.promptSurfaceIndex {
+  font-size: var(--rune-type-caption);
+  font-weight: 700;
+  color: var(--rune-text-muted);
+  min-width: 18px;
+  text-align: right;
+}
+.promptSurfaceControl {
+  min-height: var(--rune-touch);
+  min-width: var(--rune-touch);
+  padding: 0 10px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── Player tiles ──────────────────────────────────────────────────────────── */
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-4);
+}
+.tileButtonReset {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+}
+.tile {
+  min-width: 140px;
+  padding: 8px 12px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg);
+  border: 1px solid var(--rune-border);
+  font-size: var(--rune-type-body);
+  line-height: 1.5;
+}
+.localTile {
+  border-color: var(--rune-selection);
+}
+.targetTile {
+  border-color: var(--rune-targeting);
+  box-shadow: 0 0 0 1px var(--rune-targeting);
+  cursor: pointer;
+}
+.dimmedTile {
+  opacity: 0.32;
+}
+.tileName {
+  font-weight: 600;
+  font-size: var(--rune-type-body-lg);
+  margin-bottom: 2px;
+}
+
+/* ── Card inspect popover ──────────────────────────────────────────────────── */
+.inspectBackdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--rune-scrim);
+  z-index: 20;
+}
+.inspectPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+  width: 100%;
+  max-width: 340px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-2);
+  box-sizing: border-box;
+}
+.inspectClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0;
+  border-radius: var(--rune-radius-md);
+  border: none;
+  background: transparent;
+  color: var(--rune-text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.inspectName {
+  margin: 0;
+  padding-right: var(--rune-touch);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--rune-text);
+}
+.inspectCost {
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  color: var(--rune-text-muted);
+}
+.inspectTypeLine {
+  font-size: var(--rune-type-body);
+  color: var(--rune-text-muted);
+}
+.inspectPt {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--rune-text);
+}
+.inspectKeywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-3);
+}
+.inspectKeyword {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  border: 1px solid var(--rune-border-strong);
+}
+.inspectRules {
+  margin: 4px 0 0;
+  font-size: var(--rune-type-body-lg);
+  line-height: 1.5;
+  color: var(--rune-text);
+  white-space: pre-wrap;
+}
+.inspectNoText {
+  composes: inspectRules;
+  font-style: italic;
+  color: var(--rune-text-muted);
+}
+.inspectStateRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-3);
+  margin-top: 4px;
+}
+.inspectState {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--rune-radius-sm);
+  background: var(--rune-sunken-bg);
+  color: var(--rune-text-muted);
+  border: 1px solid var(--rune-border);
+}
+.inspectRowHandle {
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0;
+  border-radius: var(--rune-radius-pill);
+  border: 1px solid var(--rune-selection);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Zone browser ──────────────────────────────────────────────────────────── */
+.zoneBrowserBackdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--rune-scrim);
+  z-index: 15;
+}
+.zoneBrowserPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-5);
+  width: 100%;
+  max-width: 380px;
+  max-height: 80vh;
+  padding: 20px;
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-2);
+  box-sizing: border-box;
+}
+.zoneBrowserClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0;
+  border-radius: var(--rune-radius-md);
+  border: none;
+  background: transparent;
+  color: var(--rune-text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.zoneBrowserTitle {
+  margin: 0;
+  padding-right: var(--rune-touch);
+  font-size: var(--rune-type-heading);
+  font-weight: 700;
+  color: var(--rune-text);
+}
+.zoneBrowserList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.zoneBrowserCard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--rune-touch);
+  padding: 8px 10px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-sunken-bg);
+  border: 1px solid var(--rune-border);
+  color: var(--rune-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.zoneBrowserCardName {
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  color: var(--rune-text);
+}
+.zoneBrowserCardType {
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+}
+.zoneBrowserEmpty {
+  margin: 0;
+  font-size: var(--rune-type-body-lg);
+  font-style: italic;
+  color: var(--rune-text-muted);
+}
+.zoneOpenButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--rune-touch);
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: var(--rune-radius-sm);
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--rune-text-muted);
+}
+
+/* ── Shortcut help ─────────────────────────────────────────────────────────── */
+.shortcutBackdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--rune-scrim);
+  z-index: 25;
+}
+.shortcutPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+  width: 100%;
+  max-width: 360px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-2);
+  box-sizing: border-box;
+}
+.shortcutTitle {
+  margin: 0 0 4px;
+  font-size: var(--rune-type-heading);
+  font-weight: 700;
+  color: var(--rune-text);
+}
+.plainList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.shortcutRow {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-5);
+  padding: 6px 0;
+  font-size: var(--rune-type-body);
+  color: var(--rune-text);
+}
+.shortcutRowOff {
+  opacity: 0.45;
+}
+.shortcutKey {
+  min-width: 56px;
+  padding: 3px 8px;
+  border-radius: var(--rune-radius-sm);
+  background: var(--rune-sunken-bg);
+  border: 1px solid var(--rune-border-strong);
+  color: var(--rune-text);
+  font-family: var(--rune-font-mono);
+  font-size: var(--rune-type-caption);
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ── Action bar ────────────────────────────────────────────────────────────── */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+  padding: 8px 12px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg);
+  min-height: calc(var(--rune-touch) + 12px);
+}
+.button {
+  min-height: var(--rune-touch);
+  min-width: var(--rune-touch);
+  padding: 0 16px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  cursor: pointer;
+}
+.chip {
+  min-height: var(--rune-touch);
+  padding: 0 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-selection);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--rune-elevation-1);
+}
+.echo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--rune-space-4);
+  margin-left: auto;
+  padding-left: var(--rune-space-6);
+  border-left: 1px solid var(--rune-border-strong);
+}
+.echoLabel {
+  font-size: var(--rune-type-body);
+  color: var(--rune-text-muted);
+}
+.muted {
+  font-size: var(--rune-type-body);
+  color: var(--rune-text-muted);
+}
+
+/* ── Game over overlay ─────────────────────────────────────────────────────── */
+.gameOverBackdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--rune-scrim-strong);
+  z-index: 10;
+}
+.gameOverPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rune-space-5);
+  width: 100%;
+  max-width: 420px;
+  padding: 28px;
+  border-radius: var(--rune-radius-xl);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-2);
+  text-align: center;
+  box-sizing: border-box;
+}
+.gameOverHeadline {
+  margin: 0;
+  font-size: var(--rune-type-display);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  /* Victory / Defeat is an identity moment (§Identity): carry the display face. */
+  font-family: var(--rune-font-display);
+}
+.gameOverWin {
+  color: var(--rune-selection);
+}
+.gameOverLoss {
+  color: var(--rune-targeting);
+}
+.gameOverNeutral {
+  color: var(--rune-text);
+}
+.gameOverWinner {
+  margin: 0;
+  font-size: var(--rune-type-heading);
+  font-weight: 600;
+  color: var(--rune-text);
+}
+.gameOverReason {
+  margin: 0;
+  font-size: var(--rune-type-body-lg);
+  color: var(--rune-text-muted);
+}
+
+/* ── Stack panel ───────────────────────────────────────────────────────────── */
+.stackPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  padding: 10px 12px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg);
+  border: 1px solid var(--rune-border);
+  max-width: 360px;
+}
+.stackTitle {
+  margin: 0;
+  font-size: var(--rune-type-body);
+  font-weight: 700;
+  color: var(--rune-text-muted);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.stackList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stackItemRow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--rune-space-3);
+}
+.stackItemButtonReset {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  margin: 0;
+}
+.stackItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-sunken-bg);
+  border: 1px solid var(--rune-border);
+  font-size: var(--rune-type-body);
+  line-height: 1.4;
+}
+.stackItemFill {
+  flex: 1;
+}
+.stackItemTop {
+  border-color: var(--rune-selection);
+  box-shadow: 0 0 0 1px var(--rune-selection);
+}
+.stackTargetItem {
+  border-color: var(--rune-targeting);
+  box-shadow: 0 0 0 1px var(--rune-targeting);
+  background: var(--rune-targeting-fill);
+  cursor: pointer;
+}
+.stackItemName {
+  font-weight: 600;
+  color: var(--rune-text);
+}
+.stackItemMeta {
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+}
+.stackBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-3);
+  align-items: center;
+}
+.stackKindBadge {
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text-muted);
+  border: 1px solid var(--rune-border-strong);
+}
+.stackTopBadge {
+  composes: stackKindBadge;
+  color: var(--rune-selection);
+  border-color: var(--rune-selection);
+}
+
+/* ── Waiting / connection / lobby chrome ───────────────────────────────────── */
+.waitingBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-6);
+  padding: 10px 14px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg);
+}
+.connectMain {
+  composes: main;
+  justify-content: center;
+  align-items: center;
+}
+.connectPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-7);
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-sizing: border-box;
+}
+.connectHeading {
+  margin: 0;
+  font-size: var(--rune-type-title);
+  font-weight: 700;
+  /* The RUNE wordmark — the product's front door identity moment (§Identity). */
+  font-family: var(--rune-font-display);
+  letter-spacing: 0.5px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+.fieldLabel {
+  font-size: var(--rune-type-body);
+  color: var(--rune-text-muted);
+  font-weight: 600;
+}
+.input {
+  min-height: var(--rune-touch);
+  padding: 0 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-sunken-bg);
+  color: var(--rune-text);
+  font-size: 15px;
+  font-family: inherit;
+  box-sizing: border-box;
+  width: 100%;
+}
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+.errorText {
+  font-size: var(--rune-type-body);
+  color: var(--rune-targeting);
+  font-weight: 600;
+}
+.lobbyPanel {
+  composes: connectPanel;
+  max-width: 560px;
+}
+.select {
+  composes: input;
+  cursor: pointer;
+}
+.lobbySection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-6);
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--rune-sunken-bg);
+  border: 1px solid var(--rune-border);
+}
+.lobbySectionTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.roomIdRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+.roomIdCode {
+  font-family: var(--rune-font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-sunken-bg-deep);
+  border: 1px solid var(--rune-border-strong);
+  user-select: all;
+  word-break: break-all;
+}
+.seatList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.seatRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+  padding: 8px 12px;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg);
+  border: 1px solid var(--rune-border);
+  font-size: var(--rune-type-body);
+}
+.seatRowLocal {
+  border-color: var(--rune-selection);
+}
+.seatBadge {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text-muted);
+  border: 1px solid var(--rune-border-strong);
+}
+.seatBadgeOn {
+  composes: seatBadge;
+  color: var(--rune-selection);
+  border-color: var(--rune-selection);
+}
+.seatBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-3);
+  margin-left: auto;
+}
+.roomList {
+  composes: seatList;
+  gap: var(--rune-space-4);
+}
+.roomRow {
+  composes: seatRow;
+  gap: var(--rune-space-5);
+}
+.roomRowInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.roomRowActions {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  margin-left: auto;
+}
+.roomListEmpty {
+  composes: muted;
+  padding: 8px 4px;
+}
+.joinByIdSummary {
+  composes: muted;
+  cursor: pointer;
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  user-select: none;
+}
+
+/* ── Table geography (labels, boundaries, zone piles) ──────────────────────── */
+.zonePiles {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-6);
+  pointer-events: auto;
+}
+.libraryPile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-3);
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text);
+}
+.cardBack {
+  width: 18px;
+  height: 25px;
+  border-radius: var(--rune-radius-xs);
+  border: 1px solid var(--rune-cardback-border);
+  background: var(--rune-cardback);
+}
+.pileButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-3);
+  min-height: 44px;
+  padding: 4px 10px;
+  border-radius: var(--rune-radius-sm);
+  border: 1px solid var(--rune-border);
+  background: var(--rune-region-bg-soft);
+  color: var(--rune-text);
+  font: inherit;
+  font-size: var(--rune-type-caption);
+  cursor: pointer;
+}
+.regionLabel {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--rune-text-muted);
+  text-transform: uppercase;
+}
+
+/*
+ * Canvas-anchored interactive buttons (entity select/target hotspots, inspect
+ * handles). Their box geometry is positioned inline over the Pixi scene from a
+ * reported rect (`styles.ts`); this class only adds the shared keyboard/hover
+ * treatment inline styles cannot express, using outline/box-shadow so it never
+ * fights the inline `border` the geometry sets for selected/target state.
+ */
+.canvasControl {
+  transition: box-shadow var(--rune-transition);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Interactive states — the reason chrome moved off inline styles (ADR 0019).
+ * Every control gains visible hover, keyboard focus-visible, active, and disabled
+ * treatments from this shared layer.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* Solid-surface controls: brighten on hover, press on active. */
+.button,
+.chip,
+.optionButton,
+.promptSurfaceControl,
+.inspectRowHandle,
+.zoneBrowserCard,
+.pileButton {
+  transition:
+    filter var(--rune-transition),
+    box-shadow var(--rune-transition);
+}
+.button:hover,
+.chip:hover,
+.optionButton:hover,
+.promptSurfaceControl:hover,
+.inspectRowHandle:hover,
+.zoneBrowserCard:hover,
+.pileButton:hover {
+  filter: brightness(1.15);
+}
+.button:active,
+.chip:active,
+.optionButton:active,
+.promptSurfaceControl:active,
+.inspectRowHandle:active,
+.zoneBrowserCard:active,
+.pileButton:active {
+  filter: brightness(0.92);
+}
+
+/* Ghost (transparent) controls: reveal a surface on hover. */
+.inspectClose:hover,
+.zoneBrowserClose:hover,
+.zoneOpenButton:hover {
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+}
+
+/* Summary disclosure. */
+.joinByIdSummary:hover {
+  color: var(--rune-text);
+}
+
+/* Text inputs / selects: accent the border and ring on focus. */
+.input:focus-visible,
+.select:focus-visible {
+  outline: none;
+  border-color: var(--rune-selection);
+  box-shadow: 0 0 0 1px var(--rune-selection);
+}
+
+/* Keyboard focus for every control — a single visible focus-visible ring. */
+.button:focus-visible,
+.chip:focus-visible,
+.optionButton:focus-visible,
+.promptSurfaceControl:focus-visible,
+.inspectRowHandle:focus-visible,
+.zoneBrowserCard:focus-visible,
+.pileButton:focus-visible,
+.inspectClose:focus-visible,
+.zoneBrowserClose:focus-visible,
+.zoneOpenButton:focus-visible,
+.joinByIdSummary:focus-visible,
+.canvasControl:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+.canvasControl:hover {
+  box-shadow: 0 0 0 2px var(--rune-selection-fill);
+}
+
+/* Disabled: dim and lock every button-like control. */
+.button:disabled,
+.chip:disabled,
+.optionButton:disabled,
+.promptSurfaceControl:disabled,
+.inspectRowHandle:disabled,
+.zoneBrowserCard:disabled,
+.pileButton:disabled,
+.inspectClose:disabled,
+.zoneBrowserClose:disabled,
+.zoneOpenButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}

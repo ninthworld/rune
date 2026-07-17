@@ -15,15 +15,8 @@
  */
 import type { GameView, Phase, PlayerId } from '../protocol';
 import { PHASES } from '../protocol';
-import {
-  ribbon,
-  ribbonActive,
-  ribbonFocusBadge,
-  ribbonSteps,
-  ribbonStep,
-  ribbonStepCurrent,
-  ribbonTurn,
-} from './styles';
+import { cx } from '../chrome/cx';
+import s from './chrome.module.css';
 
 /** The table's presentation mode (issue #267). */
 export type TableMode = 'overview' | 'focus';
@@ -70,14 +63,20 @@ export function PhaseRibbon({ view, mode, localId }: Props) {
         : `${view.active_player}'s turn`;
 
   return (
-    <div data-testid="phase-ribbon" data-mode={mode} style={ribbon} role="status" aria-label="Turn">
-      <span style={ribbonTurn} data-testid="ribbon-turn">
+    <div
+      data-testid="phase-ribbon"
+      data-mode={mode}
+      className={s.ribbon}
+      role="status"
+      aria-label="Turn"
+    >
+      <span className={s.ribbonTurn} data-testid="ribbon-turn">
         Turn {view.turn > 0 ? view.turn : '—'}
       </span>
-      <span style={ribbonActive} data-testid="ribbon-active">
+      <span className={s.ribbonActive} data-testid="ribbon-active">
         {activeLabel}
       </span>
-      <ol style={ribbonSteps} data-testid="ribbon-steps">
+      <ol className={s.ribbonSteps} data-testid="ribbon-steps">
         {PHASES.map((phase) => {
           const current = phase === view.phase;
           return (
@@ -87,7 +86,7 @@ export function PhaseRibbon({ view, mode, localId }: Props) {
               data-current={current || undefined}
               aria-current={current ? 'step' : undefined}
               title={fullPhase(phase)}
-              style={current ? { ...ribbonStep, ...ribbonStepCurrent } : ribbonStep}
+              className={current ? cx(s.ribbonStep, s.ribbonStepCurrent) : s.ribbonStep}
             >
               {STEP_LABEL[phase]}
             </li>
@@ -95,7 +94,7 @@ export function PhaseRibbon({ view, mode, localId }: Props) {
         })}
       </ol>
       {mode === 'focus' && (
-        <span style={ribbonFocusBadge} data-testid="ribbon-focus">
+        <span className={s.ribbonFocusBadge} data-testid="ribbon-focus">
           Decision
         </span>
       )}

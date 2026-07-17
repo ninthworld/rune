@@ -7,14 +7,8 @@
  * matching action right now are shown dimmed as "unavailable", so the reference
  * reflects the current view rather than a static cheat-sheet.
  */
-import {
-  shortcutBackdrop,
-  shortcutKey,
-  shortcutPanel,
-  shortcutRow,
-  shortcutRowOff,
-  shortcutTitle,
-} from './styles';
+import { cx } from '../chrome/cx';
+import s from './chrome.module.css';
 
 /** One binding row: a stable id, the key(s), what it does, and whether it applies. */
 export interface Binding {
@@ -34,28 +28,28 @@ export function ShortcutHelp({ bindings, onClose }: Props) {
   return (
     <div
       data-testid="shortcut-help-backdrop"
-      style={shortcutBackdrop}
+      className={s.shortcutBackdrop}
       onClick={onClose}
       role="presentation"
     >
       <div
         data-testid="shortcut-help"
-        style={shortcutPanel}
+        className={s.shortcutPanel}
         role="dialog"
         aria-modal="true"
         aria-label="Keyboard shortcuts"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 style={shortcutTitle}>Keyboard shortcuts</h2>
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        <h2 className={s.shortcutTitle}>Keyboard shortcuts</h2>
+        <ul className={s.plainList}>
           {bindings.map((binding) => (
             <li
               key={binding.id}
               data-testid={`shortcut-${binding.id}`}
               data-available={binding.available || undefined}
-              style={binding.available ? shortcutRow : { ...shortcutRow, ...shortcutRowOff }}
+              className={binding.available ? s.shortcutRow : cx(s.shortcutRow, s.shortcutRowOff)}
             >
-              <kbd style={shortcutKey}>{binding.keys}</kbd>
+              <kbd className={s.shortcutKey}>{binding.keys}</kbd>
               <span>{binding.description}</span>
             </li>
           ))}

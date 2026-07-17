@@ -14,17 +14,9 @@
  * derives no legality.
  */
 import type { EntityId, GameView, PlayerId } from '../protocol';
-import type { CSSProperties, ReactNode } from 'react';
-import {
-  dimmedTile,
-  localTile,
-  targetTile,
-  tile,
-  tileButtonReset,
-  tileName,
-  tiles,
-  zoneOpenButton,
-} from './styles';
+import type { ReactNode } from 'react';
+import { cx } from '../chrome/cx';
+import s from './chrome.module.css';
 
 /** A browsable public zone that a tile count can open (issue #262). */
 export type BrowsableZone = 'graveyard' | 'exile';
@@ -84,7 +76,7 @@ export function PlayerTiles({ view, localId, targeting, onOpenZone }: Props) {
           data-testid={`open-${zone}-${playerId}`}
           aria-label={`Browse ${playerId} ${label.toLowerCase()} (${count})`}
           onClick={() => onOpenZone(playerId, zone)}
-          style={zoneOpenButton}
+          className={s.zoneOpenButton}
         >
           {label} {count}
         </button>
@@ -97,11 +89,11 @@ export function PlayerTiles({ view, localId, targeting, onOpenZone }: Props) {
    * it, a candidate player becomes a `<button>` (pickable, ringed); a non-candidate
    * is dimmed and inert.
    */
-  const renderTile = (playerId: PlayerId, style: CSSProperties, content: ReactNode): ReactNode => {
+  const renderTile = (playerId: PlayerId, className: string, content: ReactNode): ReactNode => {
     const testId = `tile-${playerId}`;
     if (candidateSet === null) {
       return (
-        <div key={playerId} data-testid={testId} style={style}>
+        <div key={playerId} data-testid={testId} className={className}>
           {content}
         </div>
       );
@@ -114,27 +106,27 @@ export function PlayerTiles({ view, localId, targeting, onOpenZone }: Props) {
           data-testid={`target-player-${playerId}`}
           aria-label={`Target player ${playerId}`}
           onClick={() => targeting.onPick(playerId)}
-          style={{ ...tileButtonReset, ...style, ...targetTile }}
+          className={cx(s.tileButtonReset, className, s.targetTile)}
         >
           {content}
         </button>
       );
     }
     return (
-      <div key={playerId} data-testid={testId} style={{ ...style, ...dimmedTile }}>
+      <div key={playerId} data-testid={testId} className={cx(className, s.dimmedTile)}>
         {content}
       </div>
     );
   };
 
   return (
-    <div data-testid="player-tiles" style={tiles}>
+    <div data-testid="player-tiles" className={s.tiles}>
       {view.opponents.map((opponent) =>
         renderTile(
           opponent.player_id,
-          tile,
+          s.tile,
           <>
-            <div style={tileName}>{opponent.player_id}</div>
+            <div className={s.tileName}>{opponent.player_id}</div>
             <div>Life {opponent.life}</div>
             <div>Hand {opponent.hand_size}</div>
             <div>Library {opponent.library_size}</div>
@@ -149,9 +141,9 @@ export function PlayerTiles({ view, localId, targeting, onOpenZone }: Props) {
 
       {renderTile(
         localId ?? 'local',
-        { ...tile, ...localTile },
+        cx(s.tile, s.localTile),
         <>
-          <div style={tileName}>{localId ?? 'You'} (you)</div>
+          <div className={s.tileName}>{localId ?? 'You'} (you)</div>
           <div>Life {view.me.life}</div>
           <div>Hand {view.my_hand.length}</div>
           <div>Library {view.me.library_size}</div>

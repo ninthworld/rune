@@ -23,22 +23,8 @@
  * legality.
  */
 import type { EntityId, GameView, StackItem } from '../protocol';
-import {
-  inspectRowHandle,
-  stackBadges,
-  stackItem,
-  stackItemButtonReset,
-  stackItemMeta,
-  stackItemName,
-  stackItemTop,
-  stackKindBadge,
-  stackItemRow,
-  stackList,
-  stackPanel,
-  stackTargetItem,
-  stackTitle,
-  stackTopBadge,
-} from './styles';
+import { cx } from '../chrome/cx';
+import s from './chrome.module.css';
 
 /** The active target slot's stack-object candidates plus the pick handler. */
 interface TargetingStack {
@@ -83,18 +69,18 @@ export function StackPanel({ view, targeting, onInspect }: Props) {
     const isAbility = item.source !== undefined;
     return (
       <>
-        <div style={stackBadges}>
-          <span style={stackKindBadge}>{isAbility ? 'Ability' : 'Spell'}</span>
+        <div className={s.stackBadges}>
+          <span className={s.stackKindBadge}>{isAbility ? 'Ability' : 'Spell'}</span>
           {isTop && (
-            <span style={stackTopBadge} data-testid={`stack-top-${item.id}`}>
+            <span className={s.stackTopBadge} data-testid={`stack-top-${item.id}`}>
               Resolves next
             </span>
           )}
         </div>
-        <div style={stackItemName}>{item.description}</div>
-        <div style={stackItemMeta}>Controller {item.controller}</div>
+        <div className={s.stackItemName}>{item.description}</div>
+        <div className={s.stackItemMeta}>Controller {item.controller}</div>
         {isAbility && item.source !== undefined && (
-          <div style={stackItemMeta} data-testid={`stack-source-${item.id}`}>
+          <div className={s.stackItemMeta} data-testid={`stack-source-${item.id}`}>
             Source: {sourceName(view, item.source)}
           </div>
         )}
@@ -112,28 +98,28 @@ export function StackPanel({ view, targeting, onInspect }: Props) {
         data-testid={`inspect-${item.id}`}
         aria-label={`Inspect ${item.description}`}
         onClick={() => onInspect(item.id)}
-        style={inspectRowHandle}
+        className={s.inspectRowHandle}
       >
         i
       </button>
     );
 
   return (
-    <section data-testid="stack-panel" style={stackPanel} aria-label="Stack">
-      <h2 style={stackTitle}>Stack ({view.stack.length})</h2>
-      <ol style={stackList}>
+    <section data-testid="stack-panel" className={s.stackPanel} aria-label="Stack">
+      <h2 className={s.stackTitle}>Stack ({view.stack.length})</h2>
+      <ol className={s.stackList}>
         {ordered.map(({ item, isTop }) => {
-          const style = isTop ? { ...stackItem, ...stackItemTop } : stackItem;
+          const itemClass = cx(s.stackItem, isTop && s.stackItemTop);
           const isCandidate = candidateSet?.has(item.id) ?? false;
           if (isCandidate && targeting) {
             return (
-              <li key={item.id} style={stackItemRow}>
+              <li key={item.id} className={s.stackItemRow}>
                 <button
                   type="button"
                   data-testid={`target-${item.id}`}
                   aria-label={`Target ${item.description}`}
                   onClick={() => targeting.onPick(item.id)}
-                  style={{ ...stackItemButtonReset, ...style, ...stackTargetItem }}
+                  className={cx(s.stackItemButtonReset, itemClass, s.stackTargetItem)}
                 >
                   {renderEntry(item, isTop)}
                 </button>
@@ -142,8 +128,8 @@ export function StackPanel({ view, targeting, onInspect }: Props) {
             );
           }
           return (
-            <li key={item.id} style={stackItemRow}>
-              <div data-testid={`stack-item-${item.id}`} style={{ ...style, flex: 1 }}>
+            <li key={item.id} className={s.stackItemRow}>
+              <div data-testid={`stack-item-${item.id}`} className={cx(itemClass, s.stackItemFill)}>
                 {renderEntry(item, isTop)}
               </div>
               {inspectButton(item)}
