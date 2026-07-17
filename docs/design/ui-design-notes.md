@@ -15,6 +15,10 @@ invisible on a dark board), R `#C05B4D`, G `#57935F`, multicolor `#C9A84C`,
 colorless `#8C949C`, land `#A08A6E`. Header tint = accent at 14–18% alpha; art
 monogram = accent at ~22%. Selection `#7FB2E5` (blue); targeting `#E0784A`
 (orange). The two never share a hue — they co-occur on screen.
+Playable affordance (a card with an offered action) `#F2C94C` (gold), drawn as a
+solid bottom-**edge bar**, not a ring — a different *shape* from selection/
+targeting so it stays legible without color vision (ui-requirements §10). It is
+suppressed in targeting mode (the only interaction there is picking a target).
 
 ## Card render
 

@@ -111,14 +111,20 @@ export function EntityOverlay({
           );
         }
         const selected = selectedId === card.entityId;
+        // The select hotspot is only rendered on cards that carry an action, so
+        // this list is always non-empty. Naming the offered action(s) gives the
+        // canvas's visual "playable" edge bar an accessible-tree equivalent for a
+        // screen-reader / no-color-vision user (issue #277, ui-requirements §10).
+        const actionHint = card.actions.map((action) => action.label).join(', ');
         return (
           <Fragment key={card.entityId}>
             <button
               type="button"
               data-testid={`entity-${card.entityId}`}
               data-entity={card.entityId}
+              data-actionable="true"
               aria-pressed={selected}
-              aria-label={`Select ${card.name}`}
+              aria-label={`${card.name} — playable: ${actionHint}`}
               onClick={() => onSelect(card.entityId)}
               style={hotspot(card.rect, selected)}
             />
