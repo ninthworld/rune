@@ -33,7 +33,7 @@ import { PhaseIndicator, type TableMode } from './PhaseIndicator';
 import { PlayerTiles, type BrowsableZone } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
 import { ShortcutHelp, type Binding } from './ShortcutHelp';
-import { StackPanel } from './StackPanel';
+import { Rail } from './Rail';
 import { ZoneBrowser } from './ZoneBrowser';
 import {
   buildTableScene,
@@ -69,7 +69,7 @@ import {
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
 import { layout, type Viewport } from './layout';
-import { railFloat, regionBox, sceneBox, shellBox } from './styles';
+import { regionBox, sceneBox, shellBox } from './styles';
 import { cx } from '../chrome/cx';
 import s from './chrome.module.css';
 
@@ -493,7 +493,6 @@ export function Table() {
   // across messages, so a reconnect that replays this view shows the same screen.
   if (view.result) {
     const r = shell.regions;
-    const railDocked = r.rail.layer === 'docked';
     return (
       <main
         className={s.shell}
@@ -533,12 +532,15 @@ export function Table() {
             />
           </div>
         </div>
-        <div
-          className={cx(s.regionRail, railDocked ? s.regionRailDocked : s.regionRailFloating)}
-          style={railDocked ? regionBox(r.rail.rect) : railFloat(r.rail.rect)}
-        >
-          <StackPanel view={view} onInspect={setInspectedId} />
-        </div>
+        {/* Stack & activity rail — right edge. On the terminal frame it is read-only
+            (no targeting), but the stack stays inspectable and the rail collapses to
+            its badge on narrow geometry exactly as during play (issue #299). */}
+        <Rail
+          view={view}
+          rect={r.rail.rect}
+          collapsed={shell.railCollapsed}
+          onInspect={setInspectedId}
+        />
         <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
         {overlays}
       </main>
@@ -703,7 +705,6 @@ export function Table() {
       : [];
 
   const r = shell.regions;
-  const railDocked = r.rail.layer === 'docked';
   // The floating bottom decision cluster (prompt banner, prompt surface, action
   // tray) spans the battlefield width above the hand, clear of the docked rail.
   const bottomRect = {
@@ -764,19 +765,18 @@ export function Table() {
           />
         </div>
       </div>
-      {/* Stack & activity rail — right edge (issue #299 redesigns/collapses it). */}
-      <div
-        className={cx(s.regionRail, railDocked ? s.regionRailDocked : s.regionRailFloating)}
-        style={railDocked ? regionBox(r.rail.rect) : railFloat(r.rail.rect)}
-      >
-        <StackPanel
-          view={view}
-          targeting={
-            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-          }
-          onInspect={setInspectedId}
-        />
-      </div>
+      {/* Stack & activity rail — right edge: a collapsible panel that auto-expands
+          while the stack is populated and collapses to a count badge on narrow
+          geometry, reserving a slot for the game log (issue #299 / #260). */}
+      <Rail
+        view={view}
+        rect={r.rail.rect}
+        collapsed={shell.railCollapsed}
+        targeting={
+          targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+        }
+        onInspect={setInspectedId}
+      />
       {/* Floating decision cluster above the hand: prompt banner, prompt surface, and
           the action tray (issue #298 splits the tray from the prompt overlay). */}
       <div className={s.regionBottom} style={regionBox(bottomRect)}>
