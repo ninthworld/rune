@@ -63,6 +63,21 @@
   border-top: 1px solid var(--rune-border);
 }
 
+/* Floating local-player dock (bottom-left). It overlays the battlefield's lower-left
+ * corner (the board still owns that space), so it is a self-sized elevated surface,
+ * not a docked column. Content that outgrows the region scrolls inside it rather than
+ * pushing the board (large life totals / long names stay contained). */
+.regionLocalDock {
+  display: flex;
+  align-items: flex-end;
+  overflow: auto;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.regionLocalDock > * {
+  pointer-events: auto;
+}
+
 /* Tier 3 — the stack & activity rail on the right edge (issue #299). The expanded
  * panel frames the stack section and the reserved log slot; it either docks in the
  * rail column (wide) or floats over the board's right edge (narrow). Scrolls
@@ -433,11 +448,22 @@
   cursor: pointer;
 }
 
-/* ── Player tiles ──────────────────────────────────────────────────────────── */
-.tiles {
+/* ── Player HUDs — opponent strip + local dock (issue #296) ──────────────────── */
+
+/* The opponent strip: tiles reflow purely by count. Each tile grows to share the
+ * width, so a single opponent fills the strip (one wide tile at 2p) while many
+ * condense and wrap into a compact grid toward 8p — the local player is never pulled
+ * up from the bottom (they live in the dock). */
+.hudStrip {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: var(--rune-space-4);
+  width: 100%;
+}
+.dock {
+  display: flex;
+  width: 100%;
 }
 .tileButtonReset {
   font: inherit;
@@ -448,30 +474,92 @@
   background: none;
   border: none;
 }
-.tile {
-  min-width: 140px;
-  padding: 8px 12px;
+
+/* A player surface (opponent tile or the dock). Flexes to share the strip's width so
+ * the strip reflows by count; a min-width keeps it legible before it wraps. */
+.hudTile {
+  flex: 1 1 160px;
+  min-width: 150px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+  padding: var(--rune-space-4) var(--rune-space-6);
   border-radius: var(--rune-radius-md);
   background: var(--rune-chrome-bg);
   border: 1px solid var(--rune-border);
   font-size: var(--rune-type-body);
-  line-height: 1.5;
+  line-height: 1.4;
+  box-sizing: border-box;
 }
-.localTile {
+/* The dock's single surface is not part of a growing strip; the region already caps
+ * its width, so it simply fills the dock. */
+.dock .hudTile {
+  flex: 1 1 auto;
   border-color: var(--rune-selection);
 }
 .targetTile {
   border-color: var(--rune-targeting);
   box-shadow: 0 0 0 1px var(--rune-targeting);
   cursor: pointer;
+  /* Targeting makes the whole surface a pick target — never let it fall below the
+   * 44px minimum touch target (AGENTS.md), even in a dense many-player strip. */
+  min-height: 44px;
 }
 .dimmedTile {
   opacity: 0.32;
 }
-.tileName {
+
+/* Identity — the primary label. Truncates before it can widen a tile past the strip. */
+.hudName {
   font-weight: 600;
   font-size: var(--rune-type-body-lg);
-  margin-bottom: 2px;
+  font-family: var(--rune-font-display);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hudYou {
+  color: var(--rune-text-muted);
+  font-weight: 400;
+  font-size: var(--rune-type-caption);
+}
+
+/* Life — the prominent value. Tabular figures keep hundreds from jittering the layout,
+ * and the value is free to grow without breaking the row (it wraps under the label). */
+.hudLife {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--rune-space-2);
+}
+.hudLifeLabel {
+  font-size: var(--rune-type-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--rune-text-muted);
+}
+.hudLifeValue {
+  font-size: var(--rune-type-title);
+  font-weight: 700;
+  font-family: var(--rune-font-display);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Secondary meta — hand count and statuses, quieter than identity/life. */
+.hudMeta,
+.hudStatuses,
+.hudMana {
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+}
+.hudMana {
+  color: var(--rune-text);
+  font-variant-numeric: tabular-nums;
+}
+.hudStatuses {
+  overflow-wrap: anywhere;
 }
 
 /* ── Card inspect popover ──────────────────────────────────────────────────── */

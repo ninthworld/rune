@@ -22,10 +22,16 @@
  */
 import { Fragment } from 'react';
 import type { PlayerId } from '../protocol';
-import type { BrowsableZone } from './PlayerTiles';
 import type { TableScene } from './scene';
 import { bandRegion, emptyBandHint, geographyLayer, regionHeader } from './styles';
 import s from './chrome.module.css';
+
+/**
+ * A browsable public zone a board pile can open (issue #262). The zone piles are the
+ * single home for library/graveyard/exile — the player HUDs (issue #296) no longer
+ * repeat these counts, so this type lives here with the piles that own them.
+ */
+export type BrowsableZone = 'graveyard' | 'exile';
 
 interface Props {
   /** The scene whose band/hand rects anchor the labels, boundaries, and piles. */
