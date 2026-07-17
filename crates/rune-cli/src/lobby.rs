@@ -627,6 +627,7 @@ mod tests {
             session: "s:secret".into(),
             you: "p0".into(),
             room: None,
+            directory: vec![],
             valid_commands: commands.iter().map(|c| c.to_string()).collect(),
         }
     }
@@ -652,6 +653,7 @@ mod tests {
                 },
                 seats,
             }),
+            directory: vec![],
             valid_commands: commands.iter().map(|c| c.to_string()).collect(),
         }
     }

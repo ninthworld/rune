@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { LobbyScreen } from './LobbyScreen';
 import { useGameStore, type SocketFactory } from './store';
 import {
+  LOBBY_DIRECTORY_JSON,
   LOBBY_ROOMLESS_JSON,
   LOBBY_ROOM_ALL_READY_JSON,
   LOBBY_ROOM_DECKED_JSON,
@@ -154,6 +155,48 @@ describe('LobbyScreen (issue #114)', () => {
 
     expect(writeText).toHaveBeenCalledWith('r:7f3');
     expect(screen.getByTestId('copy-room-id-button').textContent).toBe('Copied');
+  });
+
+  it('shows the empty room-directory state when there are no open games (issue #280)', () => {
+    mountLobby(LOBBY_ROOMLESS_JSON);
+    expect(screen.getByTestId('room-directory')).toBeDefined();
+    expect(screen.getByTestId('room-directory-empty').textContent).toContain('No open games');
+    // No rows are rendered.
+    expect(screen.queryByTestId('room-directory-list')).toBeNull();
+  });
+
+  it('lists open games: a joinable gathering room and an un-joinable in-progress one', () => {
+    mountLobby(LOBBY_DIRECTORY_JSON);
+
+    // r0 is gathering with an open seat: a Join button and its occupancy show.
+    expect(screen.getByTestId('room-row-r0')).toBeDefined();
+    expect(screen.getByTestId('room-r0-occupancy').textContent).toBe('1/2 filled');
+    expect(screen.getByTestId('join-directory-r0')).toBeDefined();
+    expect(screen.queryByTestId('room-r0-in-progress')).toBeNull();
+
+    // r1 is in progress: visible but never a Join.
+    expect(screen.getByTestId('room-row-r1')).toBeDefined();
+    expect(screen.getByTestId('room-r1-in-progress')).toBeDefined();
+    expect(screen.queryByTestId('join-directory-r1')).toBeNull();
+  });
+
+  it('joins straight from the directory row (issue #280)', () => {
+    const socket = mountLobby(LOBBY_DIRECTORY_JSON);
+    fireEvent.click(screen.getByTestId('join-directory-r0'));
+    expect(lastSent(socket)).toEqual({ type: 'join_room', room_id: 'r0' });
+  });
+
+  it('hides directory Join buttons when join_room is not offered', () => {
+    // A directory can ride any view, but Join only renders when the server offers
+    // `join_room` (valid_commands gates interactivity). Strip it and the gathering
+    // room falls back to a non-interactive "Full"/status cell.
+    const noJoin = JSON.stringify({
+      ...JSON.parse(LOBBY_DIRECTORY_JSON),
+      valid_commands: ['create_room'],
+    });
+    mountLobby(noJoin);
+    expect(screen.getByTestId('room-row-r0')).toBeDefined();
+    expect(screen.queryByTestId('join-directory-r0')).toBeNull();
   });
 
   it('renders a non-fatal lobby error with the form still interactive', () => {

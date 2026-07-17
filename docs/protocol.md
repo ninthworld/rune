@@ -345,6 +345,7 @@ format is their serde JSON, and unknown fields are ignored (forward compat).
 | `session` | `SessionToken` (string) | The connection's opaque session/reconnect token. The client stores it and echoes it on a later `hello`. Always present on the wire; treated as `""` if a payload omits it. **Private** — it is the client's own handle, distinct from the public `you` shown to other seats |
 | `you` | `PlayerId` (string) | The connection's public player identity, used to match itself against a seat's `occupied_by`. `""` if absent |
 | `room` | `RoomView?` | The room the connection is in, if any (see below). Omitted when not in a room |
+| `directory` | `RoomSummary[]` | The public **room directory** (see below): every browsable room in the lobby, so a player can discover and join an open game without an out-of-band id. Re-projected and pushed on every room lifecycle change like the rest of the view. Omitted from the wire when empty; a missing field is an empty list |
 | `valid_commands` | `string[]` | The lobby command kinds currently legal for this connection (e.g. `"create_room"`, `"join_room"`, `"submit_deck"`, `"ready"`, `"unready"`, `"leave"`). Free-form strings; clients render exactly these and tolerate unknown kinds. Omitted when empty |
 
 #### RoomView
@@ -371,6 +372,20 @@ format is their serde JSON, and unknown fields are ignored (forward compat).
 | `decked` | `bool` | Whether this seat has submitted a server-validated deck. Contents are never exposed to other seats — only this flag. Omitted (false) when not decked |
 | `ready` | `bool` | Whether this seat has declared itself ready. Omitted (false) when not ready |
 
+#### RoomSummary (directory entry)
+
+One `directory` entry: a room as it appears in the public room browser. It carries
+**only** what discovery needs — the id, the config summary, an occupancy count, and
+the lifecycle state — and never a seat roster, a decklist, or any game state (a
+browser, not a spectator feed; spectating a live game is out of scope).
+
+| Field | Type | Notes |
+|---|---|---|
+| `room_id` | `RoomId` (string) | The room's opaque id — the same id a `join_room` command carries, so a client joins straight from the listing |
+| `config` | `RoomConfig` | The room's configuration (`seats`, `game_setup`): the config summary the browser shows |
+| `filled` | `number` (u8) | How many of the room's seats are occupied. The total is `config.seats`; a `gathering` room with `filled` below that has an open seat to join |
+| `state` | `RoomState` (string) | The room's lifecycle state, a snake_case enum: `gathering` (pre-game, joinable while it has an open seat) or `in_progress` (its game has started — visible for context but **not** joinable). A finished or emptied room simply leaves the directory |
+
 ```json
 { "session": "s:ab12", "you": "p1",
   "room": { "room_id": "r:7f3",
@@ -378,6 +393,11 @@ format is their serde JSON, and unknown fields are ignored (forward compat).
     "seats": [
       { "seat": 0, "occupied_by": "p1", "decked": true, "ready": true },
       { "seat": 1, "occupied_by": "p2", "decked": true } ] },
+  "directory": [
+    { "room_id": "r:7f3", "config": { "seats": 2, "game_setup": "standard_2p" },
+      "filled": 2, "state": "gathering" },
+    { "room_id": "r:9a1", "config": { "seats": 4, "game_setup": "ffa-4" },
+      "filled": 4, "state": "in_progress" } ],
   "valid_commands": ["submit_deck", "unready", "leave"] }
 ```
 
@@ -395,7 +415,7 @@ current `LobbyView` re-sent. The `type` discriminator selects the command:
 |---|---|---|
 | `hello` | `token?` (`SessionToken`) | First contact or reconnect. Carries a previously issued session token to reclaim a held-open seat, echoed verbatim; omitted on a fresh connection (server then issues a new identity) |
 | `create_room` | `config` (`RoomConfig`) | Create a new room; the reply's `RoomView` carries the freshly issued `room_id` |
-| `join_room` | `room_id` (`RoomId`) | Join an existing room by id. No matchmaking or discovery — the id must have been shared out-of-band |
+| `join_room` | `room_id` (`RoomId`) | Join an existing room by id. The id may come from the `LobbyView` room `directory` (browse and join in-band) or be shared out-of-band; there is still no matchmaking (nothing auto-pairs players) |
 | `submit_deck` | `cards` (`CardIdentity[]`) | Submit a decklist as a flat list of opaque card-identity handles (a card appearing multiple times is repeated). An identity is a card's authored `functional_id` — a lowercase `snake_case` slug like `thornback_boar` (ADR 0018 §3), **not** the engine's `CardId`, which is interned per build and shifts as cards are added. The server validates it authoritatively: every identity must resolve against the card database, and the whole decklist must be legal for the room's format (deck size and per-card copy limit, basic lands exempt — deck legality is server/format policy, never an engine rule, ADR 0013 §4). An illegal deck is rejected and the seat left undecked; `cards` is omitted when empty |
 | `ready` | `ready` (`bool`) | Declare (`true`) or retract (`false`) readiness. A seat may ready only once it is occupied and decked |
 | `leave` | — | Leave the current room, vacating the seat |

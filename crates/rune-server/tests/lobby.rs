@@ -7,7 +7,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use futures_util::{SinkExt, StreamExt};
-use rune_protocol::{CreateRoom, Hello, JoinRoom, LobbyCommand, LobbyView, RoomConfig};
+use rune_protocol::{
+    CreateRoom, Hello, JoinRoom, LobbyCommand, LobbyView, Ready, RoomConfig, RoomState, SubmitDeck,
+};
 use rune_server::{Config, Lobby, Server};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::oneshot;
@@ -107,6 +109,28 @@ fn config(seats: u8) -> RoomConfig {
         seats,
         game_setup: "standard_2p".to_string(),
     }
+}
+
+/// A legal 40-card decklist expressed as wire card identities (four copies each of
+/// the five non-basics, plus twenty basic Forests) — enough for the ready gate to
+/// construct a real game so the directory can flip a room to `in_progress`.
+fn decklist() -> Vec<String> {
+    let mut cards = Vec::new();
+    for slug in [
+        "thornback_boar",
+        "riverbank_otter",
+        "emberfang_jackal",
+        "stonehide_basilisk",
+        "verdant_scout",
+    ] {
+        for _ in 0..4 {
+            cards.push(slug.to_string());
+        }
+    }
+    for _ in 0..20 {
+        cards.push("forest".to_string());
+    }
+    cards
 }
 
 #[tokio::test]
@@ -284,6 +308,120 @@ async fn a_returning_socket_reconnects_to_its_held_seat_by_token_end_to_end() {
         room.seats[0].occupied_by.as_deref(),
         Some(you.as_str()),
         "routed back into the original seat 0",
+    );
+
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn a_browser_discovers_a_room_joins_it_and_sees_it_start_end_to_end() {
+    // Issue #280: the room directory lets a second connection discover an open game
+    // without an out-of-band id — see it appear, its occupancy change, and it flip to
+    // `in_progress` at game start — and join straight from the listed id (zero copy
+    // paste). Carol is a roomless *browser* that watches the directory throughout.
+    let server = RunningServer::start(Lobby::DEFAULT_MAX_ROOMS).await;
+
+    // Carol connects first and browses: no rooms exist yet.
+    let mut carol = connect(&server).await;
+    let carol_initial = next_view(&mut carol).await;
+    assert!(carol_initial.room.is_none());
+    assert!(carol_initial.directory.is_empty(), "no rooms to browse yet");
+
+    // Alice creates a two-seat room.
+    let mut alice = connect(&server).await;
+    let _ = next_view(&mut alice).await;
+    send(
+        &mut alice,
+        LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+    )
+    .await;
+    let room_id = view_where(&mut alice, |v| v.room.is_some())
+        .await
+        .room
+        .expect("alice in room")
+        .room_id;
+
+    // Carol sees the room appear in her directory with NO action on her part:
+    // one of two seats filled, gathering, and joinable by the listed id.
+    let carol_sees = view_where(&mut carol, |v| !v.directory.is_empty()).await;
+    let entry = carol_sees
+        .directory
+        .iter()
+        .find(|r| r.room_id == room_id)
+        .expect("the created room is listed");
+    assert_eq!(entry.config.seats, 2);
+    assert_eq!(entry.filled, 1);
+    assert_eq!(entry.state, RoomState::Gathering);
+
+    // Bob joins straight from the directory id — the same id Carol can see, no
+    // out-of-band sharing.
+    let mut bob = connect(&server).await;
+    let _ = next_view(&mut bob).await;
+    send(
+        &mut bob,
+        LobbyCommand::JoinRoom(JoinRoom {
+            room_id: room_id.clone(),
+        }),
+    )
+    .await;
+    let _ = view_where(&mut bob, |v| v.room.is_some()).await;
+
+    // Carol sees the occupancy tick to 2/2, still gathering.
+    let carol_full = view_where(&mut carol, |v| {
+        v.directory
+            .iter()
+            .any(|r| r.room_id == room_id && r.filled == 2)
+    })
+    .await;
+    let entry = carol_full
+        .directory
+        .iter()
+        .find(|r| r.room_id == room_id)
+        .expect("still listed");
+    assert_eq!(entry.state, RoomState::Gathering);
+
+    // Both seats submit a deck and ready up, passing the gate and constructing a game.
+    send(
+        &mut alice,
+        LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+    )
+    .await;
+    let _ = view_where(&mut alice, |v| {
+        v.room.as_ref().is_some_and(|r| r.seats[0].decked)
+    })
+    .await;
+    send(&mut alice, LobbyCommand::Ready(Ready { ready: true })).await;
+    let _ = view_where(&mut alice, |v| {
+        v.room.as_ref().is_some_and(|r| r.seats[0].ready)
+    })
+    .await;
+
+    send(
+        &mut bob,
+        LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+    )
+    .await;
+    let _ = view_where(&mut bob, |v| {
+        v.room.as_ref().is_some_and(|r| r.seats[1].decked)
+    })
+    .await;
+    // Bob readies last: the gate passes and the room's game starts.
+    send(&mut bob, LobbyCommand::Ready(Ready { ready: true })).await;
+
+    // Carol — never in the room — sees it flip to `in_progress` in her directory,
+    // visible but no longer joinable.
+    let carol_started = view_where(&mut carol, |v| {
+        v.directory
+            .iter()
+            .any(|r| r.room_id == room_id && r.state == RoomState::InProgress)
+    })
+    .await;
+    assert!(
+        carol_started
+            .directory
+            .iter()
+            .any(|r| r.room_id == room_id && r.state == RoomState::InProgress),
+        "the started room shows as in_progress to a browser",
     );
 
     server.stop().await;

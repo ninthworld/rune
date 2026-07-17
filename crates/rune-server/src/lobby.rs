@@ -12,13 +12,22 @@
 //! game state, so it holds **no game logic** (the engine owns the rules; a room's
 //! game — once constructed — owns the one game).
 //!
-//! # Explicit rooms — create with config, join by id
+//! # Explicit rooms — create with config, join from the directory or by id
 //! There is deliberately **no auto-seating** and no matchmaking (ADR 0012). A
 //! connection either *creates* a room with a [`RoomConfig`] (a seat count in
-//! `2..=8`) — receiving a shareable [`RoomId`] — or *joins* an existing room whose
-//! id it was given. Joining a full or unknown room is a typed [`LobbyError`]; the
-//! connection's current [`LobbyView`] is re-sent, exactly as an illegal
-//! `ChooseAction` re-sends the current `GameView` (`docs/protocol.md`).
+//! `2..=8`) — receiving a shareable [`RoomId`] — or *joins* an existing room. Joining
+//! a full or unknown room is a typed [`LobbyError`]; the connection's current
+//! [`LobbyView`] is re-sent, exactly as an illegal `ChooseAction` re-sends the current
+//! `GameView` (`docs/protocol.md`).
+//!
+//! A room to join no longer has to be discovered out-of-band: every [`LobbyView`]
+//! carries a **room directory** ([`LobbyView::directory`], issue #280) — a
+//! [`RoomSummary`] per browsable room (id, config, occupancy count, lifecycle state),
+//! projected by [`build_directory`] and pushed to every connection on any room
+//! lifecycle change ([`broadcast_views`]). It exposes no seat roster, no decklist, and
+//! no game state; a started room shows as `in_progress` (visible but not joinable —
+//! spectating is out of scope), and a finished room simply leaves the list. This is
+//! room *discovery*, still not matchmaking: nothing auto-pairs players.
 //!
 //! # No game until the pre-game gate passes
 //! Creating or joining a room does **not** construct an engine game or send a
@@ -67,8 +76,8 @@ use rune_engine::{
     CardDatabase, CardId, CatalogError, FunctionalId, GameSetup, GameState, PlayerSetup,
 };
 use rune_protocol::{
-    CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomView,
-    SeatView, SessionToken, SubmitDeck,
+    CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomState,
+    RoomSummary, RoomView, SeatView, SessionToken, SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -580,6 +589,8 @@ impl Lobby {
             session.room = Some(room_id.clone());
             session.seat = Some(0);
         }
+        // A new room appeared in the directory: re-project it to everyone browsing.
+        broadcast_views(registry);
         info!(%token, %room_id, "opened room");
         Ok(())
     }
@@ -752,6 +763,10 @@ impl Lobby {
         if let Some(room) = registry.rooms.get_mut(room_id) {
             room.game = Some(handle);
         }
+        // The room flipped to `in_progress` in the directory: re-project to everyone
+        // browsing (the room's own seats are on the in-game contract now and are
+        // skipped by `push_view`, so their terminal `Start` hand-off is preserved).
+        broadcast_views(registry);
         info!(%room_id, seats = occupants.len(), "ready gate passed; game constructed");
     }
 }
@@ -784,8 +799,9 @@ fn join_room(
         session.room = Some(room_id.clone());
         session.seat = Some(seat);
     }
-    // Every occupant's roster changed: push all of them a fresh view.
-    push_room(registry, room_id);
+    // Every occupant's roster changed, and the room's occupancy changed in the
+    // directory: re-project to occupants and to everyone browsing.
+    broadcast_views(registry);
     info!(%token, %room_id, seat, "joined room");
     Ok(())
 }
@@ -807,9 +823,9 @@ fn leave_room(registry: &mut Registry, token: &SessionToken) -> Result<(), Lobby
         session.seat = None;
     }
     reap_empty(registry);
-    if registry.rooms.contains_key(&room_id) {
-        push_room(registry, &room_id);
-    }
+    // The room's occupancy changed (or it was reclaimed and left the directory):
+    // re-project to its remaining occupants and to everyone browsing.
+    broadcast_views(registry);
     info!(%token, %room_id, seat, "left room");
     Ok(())
 }
@@ -827,19 +843,32 @@ fn vacate(registry: &mut Registry, room_id: &RoomId, seat: usize) {
     }
 }
 
-/// Drop every **pre-game** room with no remaining occupants, freeing the capacity it
-/// held. A started room ([`RoomEntry::game`] is `Some`) is left alone: its game task
-/// owns the seats' lifecycle now, so it is not an empty pre-game room to reclaim.
+/// Reclaim rooms the lobby no longer needs to hold, freeing the capacity they held:
+///
+/// - a **pre-game** room ([`RoomEntry::game`] is `None`) with no remaining occupants
+///   (every seat explicitly vacated); and
+/// - a **finished** started room, whose game task has stopped so its
+///   [`RoomHandle`](crate::room::RoomHandle) is no longer active (issue #280) — a live
+///   game's room is kept, since its task still owns the seats' lifecycle.
 fn reap_empty(registry: &mut Registry) {
     registry.rooms.retain(|room_id, room| {
-        if room.game.is_some() {
-            return true;
+        match &room.game {
+            // A live game: keep it (its task owns the seats now).
+            Some(handle) if handle.is_active() => true,
+            // A finished game: its task has stopped, so reclaim the room.
+            Some(_) => {
+                info!(%room_id, "reclaimed finished room");
+                false
+            }
+            // Pre-game: keep only while at least one seat is still occupied.
+            None => {
+                let occupied = room.seats.iter().any(Option::is_some);
+                if !occupied {
+                    info!(%room_id, "reclaimed empty room");
+                }
+                occupied
+            }
         }
-        let occupied = room.seats.iter().any(Option::is_some);
-        if !occupied {
-            info!(%room_id, "reclaimed empty room");
-        }
-        occupied
     });
 }
 
@@ -924,8 +953,43 @@ fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
         session: token.clone(),
         you: session.player.clone(),
         room,
+        directory: build_directory(registry),
         valid_commands,
     })
+}
+
+/// Project the room registry into the public room directory (issue #280): one
+/// [`RoomSummary`] per browsable room, so a connection can discover and join an open
+/// game without an out-of-band id. Only the config summary, the occupancy count, and
+/// the lifecycle state are exposed — never a seat roster, a decklist, or any game
+/// state. The list is the same for every connection (a global browser) and sorted by
+/// room id for a stable, deterministic order.
+///
+/// A room is `gathering` while pre-game, `in_progress` once its game has started, and
+/// **omitted** once that game has ended (the room task has stopped, so its handle is
+/// no longer active) — a finished room simply leaves the list.
+fn build_directory(registry: &Registry) -> Vec<RoomSummary> {
+    let mut directory: Vec<RoomSummary> = registry
+        .rooms
+        .iter()
+        .filter_map(|(room_id, room)| {
+            let state = match &room.game {
+                None => RoomState::Gathering,
+                Some(handle) if handle.is_active() => RoomState::InProgress,
+                // A finished game's task has stopped: drop it from the directory.
+                Some(_) => return None,
+            };
+            let filled = room.seats.iter().filter(|seat| seat.is_some()).count();
+            Some(RoomSummary {
+                room_id: room_id.clone(),
+                config: room.config.clone(),
+                filled: u8::try_from(filled).unwrap_or(u8::MAX),
+                state,
+            })
+        })
+        .collect();
+    directory.sort_by(|a, b| a.room_id.cmp(&b.room_id));
+    directory
 }
 
 /// The lobby commands legal for a session right now — the only source of
@@ -1015,6 +1079,20 @@ fn push_room(registry: &Registry, room_id: &RoomId) {
     };
     let occupants: Vec<SessionToken> = room.seats.iter().flatten().cloned().collect();
     for token in &occupants {
+        push_view(registry, token);
+    }
+}
+
+/// Push a fresh [`LobbyView`] to **every** session, so a change to the room directory
+/// (a room created, joined, left, or started — issue #280) reaches connections that
+/// are browsing the room list, not just the affected room's own occupants. A session
+/// seated in a started room is skipped by [`push_view`] (it is on the in-game
+/// contract), so this only re-projects the directory to connections still in the
+/// lobby phase.
+fn broadcast_views(registry: &Registry) {
+    // All borrows here are shared, so iterating the session keys while `push_view`
+    // reads the registry is fine.
+    for token in registry.sessions.keys() {
         push_view(registry, token);
     }
 }
