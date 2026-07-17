@@ -46,6 +46,7 @@ redacted before serialization.
 | `valid_actions` | `ValidAction[]` | Only actions available to the receiver |
 | `action_deadline` | `number?` | Seconds remaining for the receiver’s current decision |
 | `result` | `GameResult?` | Terminal result; absent during a live game |
+| `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent public game history |
 | `stops` | `Phase[]` | Receiver’s own priority-stop preferences; omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
@@ -58,6 +59,32 @@ when they are set) and never replace the `p{N}` id an action echoes back. A play
 name has no entry; the field is omitted from the wire when empty, and a client treats a
 missing key as “unnamed”, falling back to a seat-derived label — so an older server that
 never sends names keeps working.
+
+### Game log
+
+`log` is a bounded window of `GameLogEntry` values. Every entry has a monotonically
+increasing `sequence` and a tagged `event`; a window can start after sequence one, so
+clients render the carried entries and do not invent missing history. It is included in
+each complete `GameView`, which means reconnecting clients never need an accumulated
+local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
+`spell_fizzled`, `attackers_declared`, `blockers_declared`, `mulligan`, `hand_kept`,
+`life_changed`, `damage_dealt`, `cards_drawn`, `permanent_died`, `step_changed`, and
+`game_over`. Named `LogEntity` references have an opaque `id` and server-supplied
+`name`; the id may be used for presentational highlighting only. The `name` on every
+reference is fixed at the moment the event was recorded, so an entry naming a permanent
+stays stable after that permanent leaves play (dies, is bounced) — the server does not
+re-resolve names against the current board.
+
+A `cards_drawn` event contains only player and count, never a hidden card identity.
+`damage_dealt` reports both lethal and nonlethal damage; its `target` is tagged by
+`kind` — `player` (with a `player` id) or `permanent` (with a `LogEntity`). Damage to a
+player is a `damage_dealt` event, not a `life_changed` one; `life_changed` carries only
+non-damage life movement (life gain, life paid or lost), so the two never double-report
+a hit. Events are ordered so a step change precedes the consequences of entering that
+step (a `step_changed: draw` precedes its `cards_drawn`; entering combat damage precedes
+the `damage_dealt` and `permanent_died` it causes), and `game_over` closes the sequence
+after every fact that produced it. Only creatures produce `permanent_died`; an Aura or
+other permanent moving to a graveyard is a zone change, not a death.
 
 `Phase` is a snake-case enum:
 

@@ -88,10 +88,12 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             .map(|perm| perm.id)
             .collect();
         for id in doomed {
-            // Route through the one leaves-battlefield → graveyard seam (CR 700.4)
-            // so a lethal-damage / deathtouch death and a `Destroy` death are the
-            // same observable zone change for the dies trigger (CR 603.6c).
-            if state.move_permanent_to_graveyard(id) {
+            // Route through the one creature-death seam (CR 700.4) so a lethal-damage
+            // / deathtouch / zero-toughness death and a `Destroy` death are the same
+            // observable zone change for the dies trigger (CR 603.6c) and log a single
+            // `permanent_died` — every id in `doomed` is a creature (the checks read
+            // toughness or a combat strike), so each is a genuine death.
+            if state.destroy_permanent(id, db) {
                 changed = true;
             }
         }
@@ -109,7 +111,10 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             .map(|perm| perm.id)
             .collect();
         for id in doomed_auras {
-            if state.move_permanent_to_graveyard(id) {
+            // An Aura leaving for the graveyard is a zone change, not a death (CR
+            // 700.4 — only creatures "die"), so it uses the bare zone move and logs
+            // no `permanent_died`.
+            if state.move_permanent_to_graveyard(id).is_some() {
                 changed = true;
             }
         }

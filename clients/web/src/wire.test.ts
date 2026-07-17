@@ -49,6 +49,7 @@ describe('parseGameView', () => {
       valid_actions: [],
       action_deadline: undefined,
       result: undefined,
+      log: [],
       stops: [],
       auto_passed: false,
       player_names: {},

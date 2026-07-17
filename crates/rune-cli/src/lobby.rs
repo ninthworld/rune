@@ -227,7 +227,9 @@ enum LobbyFrame {
     /// A fresh full [`LobbyView`] to render/drive.
     Lobby(LobbyView),
     /// The hand-off: the server switched this socket to the in-game contract.
-    Game(GameView),
+    /// Boxed: a full [`GameView`] is much larger than a [`LobbyView`], so keeping it
+    /// behind a pointer keeps the enum small (clippy `large_enum_variant`).
+    Game(Box<GameView>),
 }
 
 /// Read frames until a decodable pre-game frame arrives, returning `None` when the
@@ -247,7 +249,7 @@ where
                 };
                 if value.get("phase").is_some() {
                     if let Ok(view) = serde_json::from_value::<GameView>(value) {
-                        return Ok(Some(LobbyFrame::Game(view)));
+                        return Ok(Some(LobbyFrame::Game(Box::new(view))));
                     }
                 } else if let Ok(view) = serde_json::from_value::<LobbyView>(value) {
                     return Ok(Some(LobbyFrame::Lobby(view)));
@@ -294,7 +296,7 @@ where
     let mut line = String::new();
     loop {
         let view = match read_lobby_frame(read).await? {
-            Some(LobbyFrame::Game(view)) => return Ok(Some(view)),
+            Some(LobbyFrame::Game(view)) => return Ok(Some(*view)),
             Some(LobbyFrame::Lobby(view)) => view,
             None => {
                 write_str(output, "\nServer closed the connection. Goodbye.\n").await?;
@@ -365,7 +367,7 @@ where
         match read_lobby_frame(read).await? {
             Some(LobbyFrame::Game(view)) => {
                 write_flush(log, "agent: game started; entering play.\n").await?;
-                return Ok(Some(view));
+                return Ok(Some(*view));
             }
             Some(LobbyFrame::Lobby(view)) => {
                 if let Some(command) = plan.next_command(&view) {

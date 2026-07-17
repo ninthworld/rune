@@ -194,6 +194,8 @@ impl GameState {
             // Populated below once seat count is known: the game opens in the
             // London mulligan decision phase (CR 103.5), not on turn 1.
             mulligan: None,
+            log: Vec::new(),
+            next_log_sequence: 1,
         };
 
         let mut rng = SplitMix64::new(setup.rng_seed);

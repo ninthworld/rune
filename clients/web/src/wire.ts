@@ -137,6 +137,7 @@ export function normalizeGameView(payload: unknown): GameView {
     action_deadline:
       typeof payload.action_deadline === 'number' ? payload.action_deadline : undefined,
     result: normalizeGameResult(payload.result),
+    log: asArray(payload.log, 'log'),
     // Priority-stop preferences (issue #264): a list of phase names the server elides
     // when empty; keep only recognized phases so an unknown future value never breaks
     // rendering, defaulting to `[]` (stop nowhere).
