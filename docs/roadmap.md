@@ -30,44 +30,68 @@ display names (#294), and the capability-aware spatial focus model (#301). On th
 ships the comprehension layer — the game-log panel with clickable references and collapsed
 step runs (#260) over structured, redacted log events carried in `GameView` (#259), per-phase
 stop toggles with an auto-pass indicator (#264), and non-blaming rejected-action toasts with
-distinct fizzle log entries (#265) — and the battlefield-legibility batch: the procedural
+distinct fizzle log entries (#265) — the battlefield-legibility batch: the procedural
 rune glyph language (#317), type-grouped battlefield bands with land chips, ×N stacking, and
 tapped-footprint reservation (#318), zone piles as findable spatial objects (#319), the
 card-face information budget — keyword glyphs and activated-ability markers at battlefield
 scale (#320), inspect without per-card chrome (#321), and a bundled OFL display face behind
-`--rune-font-display` (#322).
+`--rune-font-display` (#322) — and the state-visibility batch: declared attackers, blockers,
+and marked damage rendered from the view contract, with combat participants never folding
+into stacks (#332); aura attachment carried on `Permanent` and clustered with its host on
+the board and in inspect (#333); and the reconciler's opt-in animate-the-diff layer — row
+migrations, enters, exits, and tap transitions that honor reduced motion and never gate
+input (#334).
 
-The presentation gap has moved from drawing the board to showing true game state on it. The
-view contract already carries combat facts the board never renders: `Permanent.attacking`,
-`blocking`, and marked `damage` are projected by the server and documented in the protocol,
-but the client's TypeScript mirror drops them, so declared combat and marked damage are
-invisible outside the log (#332). Aura attachment is engine state the view does not carry at
-all, so an aura renders as a free-standing card with no visible host (#333). And board
-changes teleport: the scene reconciler has no animate-the-diff layer, so row migrations and
-zone transitions snap into place (#334). The targets are specified in
-[`design/ui-design-notes.md`](design/ui-design-notes.md).
+Two presentation gaps remain from that batch's neighborhood. The scene computes
+blocker→attacker relationships as `TableScene.combatLinks`, but no renderer consumes them,
+so who-blocks-whom is still read from badges and the log rather than seen (#339). And a
+player returning to a backgrounded tab gets no unread-activity signal, although server-owned
+auto-pass means the game legitimately advances while they are away (#340). One rules-slice
+deviation is now owned by an issue: combat damage among multiple blockers is assigned in
+battlefield order with no player choice, though CR 510.1 grants the attacker's controller
+that ordering (#346).
 
 ## Immediate priorities
 
-With the battlefield-legibility batch (#317–#322) and the M3 compatibility report (#258)
-landed, priorities move from board layout to state visibility:
+With the state-visibility batch (#332–#334) landed, M4 is down to two residual gaps and the
+project's weight shifts to M5 — the multiplayer engine, protocol, and client work. Ordered
+by dependency and impact:
 
-1. Combat visibility: render declared attackers, blockers, and marked damage from the
-   already-shipped view contract, closing the TypeScript-mirror drift
-   ([#332](https://github.com/ninthworld/rune/issues/332)).
-2. Attachment visibility: carry `attached_to` on `Permanent` (a contract change) and
-   cluster auras with their hosts on the board and in inspect
-   ([#333](https://github.com/ninthworld/rune/issues/333)) — may run in parallel with #332.
-3. Motion: the reconciler's animate-the-diff layer — row migrations and board transitions
-   that honor reduced motion and never block input
-   ([#334](https://github.com/ninthworld/rune/issues/334)); preferably after #332 so combat
-   transitions animate too.
+1. Combat-link rendering: draw the blocker→attacker relationships the scene already
+   computes, with focus isolation on crowded boards
+   ([#339](https://github.com/ninthworld/rune/issues/339)) — independent, and #347 builds
+   on its treatment.
+2. The M5 engine roots, in parallel: per-attacker attack targets
+   ([#341](https://github.com/ninthworld/rune/issues/341)) and the elimination lifecycle
+   ([#342](https://github.com/ninthworld/rune/issues/342)); then multi-defender blocker
+   declaration in APNAP order ([#344](https://github.com/ninthworld/rune/issues/344),
+   blocked by #341).
+3. The multiplayer view contract: attack targets, eliminated state, and seat order carried
+   in `GameView`, with per-attacker defender requirements
+   ([#345](https://github.com/ninthworld/rune/issues/345), blocked by #341/#342).
+4. Client multiplayer: the declare-and-render combat flow
+   ([#347](https://github.com/ninthworld/rune/issues/347), blocked by #345) and the 3–4
+   player table layout ([#348](https://github.com/ninthworld/rune/issues/348), fixtures
+   from #345) — parallel tracks.
+5. Free-for-all formats and rooms ([#349](https://github.com/ninthworld/rune/issues/349),
+   blocked by #341/#344/#342), then the deterministic 4-player full-game test through the
+   real server ([#350](https://github.com/ninthworld/rune/issues/350)).
+6. Spectators: the view-model decision
+   ([#343](https://github.com/ninthworld/rune/issues/343), ADR — can start any time) and
+   its implementation ([#351](https://github.com/ninthworld/rune/issues/351), blocked by
+   #343). #350 plus #351 together satisfy the M5 exit criterion.
+7. Damage assignment order for multi-blocked attackers
+   ([#346](https://github.com/ninthworld/rune/issues/346)) — after #341/#344 to avoid
+   reworking the same combat code twice.
+8. Unread-activity surfacing after returning to the tab
+   ([#340](https://github.com/ninthworld/rune/issues/340)) — small and independent; any
+   time.
 
 Real-browser coverage (a smoke path through rendered turns,
 [#279](https://github.com/ninthworld/rune/issues/279), reopened because the #290 canary was
-reverted in #292) stays **deferred** with the rest of the E2E suite (ADR 0011) while the
-in-game UI is still in flux; the canvas render path is guarded by component-level tests in
-the meantime.
+reverted in #292) stays **deferred** with the rest of the E2E suite (ADR 0011): the M5
+client batch (#347, #348, #351) keeps the in-game UI in flux, and the canvas render path
+remains guarded by component-level tests in the meantime.
 
 ## Milestones
 
@@ -143,29 +167,58 @@ Shipped foundations:
   and counter badges at battlefield scale, plus a marked-damage badge that lights up once
   #332 feeds it (#320);
 - the inspect affordance redesign — no permanently visible per-card handles; hover-dwell
-  peek, long-press, selection-surfaced preview, and focusable inspect surfaces (#321); and
+  peek, long-press, selection-surfaced preview, and focusable inspect surfaces (#321);
 - the identity layer — the procedural rune glyph language (#317) and the bundled OFL
-  display face behind `--rune-font-display` (#322).
+  display face behind `--rune-font-display` (#322);
+- combat-state visibility — declared attackers, blockers, marked damage, and
+  blocker→attacker relationships reconstructed from any single `GameView`, with combat
+  participants never folded into ×N stacks (#332);
+- attachment visibility — `attached_to` carried on `Permanent` (contract change), auras
+  clustered with their hosts and never stack-folded, and the relationship inspectable from
+  either side (#333); and
+- the view-diff animation layer — row migrations, enters, exits, and tap transitions that
+  honor reduced motion and never gate input on a live prompt (#334).
 
 Remaining:
 
-- combat-state visibility: declared attackers, blockers, and marked damage rendered from
-  the `Permanent` fields the server already sends
-  ([#332](https://github.com/ninthworld/rune/issues/332));
-- attachment visibility: `attached_to` carried on `Permanent` (contract change) and auras
-  clustered with their hosts on the board and in inspect
-  ([#333](https://github.com/ninthworld/rune/issues/333)); and
-- the view-diff animation layer: row migrations and board transitions that honor reduced
-  motion and never block input ([#334](https://github.com/ninthworld/rune/issues/334)).
+- combat-link rendering: the blocker→attacker links the scene computes as
+  `TableScene.combatLinks`, drawn with focus isolation on crowded boards
+  ([#339](https://github.com/ninthworld/rune/issues/339)); and
+- unread activity: a visible signal for log entries that arrived while the tab was
+  backgrounded ([#340](https://github.com/ninthworld/rune/issues/340)).
 
 ### M5 — More than two
 
 **Outcome:** 3–4 players and spectators can complete free-for-all games.
 
-Required work includes multiplayer turn and priority ordering, per-attacker defenders,
-elimination, multiplayer room formats, redacted spectator views, and responsive player-area
-layouts. The lobby’s 2–8-seat shape is only preparation; it does not imply multiplayer engine
-support.
+**Exit:** a 4-player free-for-all plays to a single winner with a spectator watching
+([#350](https://github.com/ninthworld/rune/issues/350) +
+[#351](https://github.com/ninthworld/rune/issues/351)).
+
+The groundwork is further along than the milestone label suggests: `GameState` players,
+turn and priority rotation, mulligans, `GameResult`'s last-player-standing rule, the
+opponent-list view projection, the 2–8-seat lobby (ADR 0012), and the client's per-opponent
+HUD and battlefield bands are already seat-count-generic. The batch closes what is genuinely
+two-player-bound:
+
+- engine: per-attacker attack targets ([#341](https://github.com/ninthworld/rune/issues/341))
+  and multi-defender blocker declaration in APNAP order
+  ([#344](https://github.com/ninthworld/rune/issues/344));
+- engine: the elimination lifecycle — turn/priority skip and CR 800.4a object cleanup
+  ([#342](https://github.com/ninthworld/rune/issues/342));
+- protocol/server: attack targets, eliminated state, and seat order in the view contract
+  ([#345](https://github.com/ninthworld/rune/issues/345));
+- client: multiplayer combat declaration and rendering
+  ([#347](https://github.com/ninthworld/rune/issues/347)) and the 3–4 player table layout
+  ([#348](https://github.com/ninthworld/rune/issues/348));
+- server: free-for-all formats over the existing 2–8-seat rooms
+  ([#349](https://github.com/ninthworld/rune/issues/349)) and the deterministic 4-player
+  full-game test ([#350](https://github.com/ninthworld/rune/issues/350));
+- spectators: the view-model ADR ([#343](https://github.com/ninthworld/rune/issues/343))
+  and the redacted spectator implementation
+  ([#351](https://github.com/ninthworld/rune/issues/351)); and
+- combat completeness while the same code is open: player-chosen damage assignment order
+  ([#346](https://github.com/ninthworld/rune/issues/346)).
 
 ### M6 — Formats at scale
 

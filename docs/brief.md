@@ -113,8 +113,9 @@ the stack, attackers and blockers, combat damage, common combat keywords, counte
 triggers, initial replacement effects, mulligans, concessions, and loss by life or decking.
 
 The project intentionally grows by verified rule slices rather than claiming broad card or
-format compatibility. Tests are the current evidence for support; a generated compatibility
-report remains planned. See the [roadmap](roadmap.md) for remaining work.
+format compatibility. Tests and the generated, CI-checked compatibility report
+([`generated/compatibility.md`](generated/compatibility.md)) are the evidence for support.
+See the [roadmap](roadmap.md) for remaining work.
 
 ## Future direction
 
