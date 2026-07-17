@@ -29,7 +29,7 @@ import { TableGeography } from './TableGeography';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
-import { PhaseRibbon, type TableMode } from './PhaseRibbon';
+import { PhaseIndicator, type TableMode } from './PhaseIndicator';
 import { PlayerTiles, type BrowsableZone } from './PlayerTiles';
 import { PromptBanner } from './PromptBanner';
 import { ShortcutHelp, type Binding } from './ShortcutHelp';
@@ -505,7 +505,7 @@ export function Table() {
             overlay; every region docks in exactly the place it does during play
             (regions never reorder between states). */}
         <div className={s.regionIndicator} style={regionBox(r.indicator.rect)}>
-          <PhaseRibbon view={view} mode="overview" localId={localId} />
+          <PhaseIndicator view={view} mode="overview" localId={localId} />
         </div>
         <div className={s.regionHud} style={regionBox(r.opponentHud.rect)}>
           <PlayerTiles view={view} localId={localId} onOpenZone={openZone} />
@@ -722,7 +722,7 @@ export function Table() {
     >
       {/* Turn/phase indicator — top (issue #297 redesigns its internals). */}
       <div className={s.regionIndicator} style={regionBox(r.indicator.rect)}>
-        <PhaseRibbon view={view} mode={mode} localId={localId} />
+        <PhaseIndicator view={view} mode={mode} localId={localId} />
       </div>
       {/*
        * Opponent HUD strip — top. Carries every player tile as-is until #296 splits

@@ -98,29 +98,101 @@
   pointer-events: auto;
 }
 
-/* ── Phase ribbon ──────────────────────────────────────────────────────────── */
-.ribbon {
+/* ── Turn/phase indicator (issue #297) ──────────────────────────────────────── */
+/* Compact, top-center: turn, whose turn, current step, phase-group progress; the
+ * full twelve-step sequence expands on demand. The always-on twelve-pill ribbon is
+ * retired. */
+.indicator {
+  align-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+  max-width: 100%;
+}
+.indicatorSummary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--rune-space-6);
-  padding: 8px 14px;
+  /* Comfortable touch target (AGENTS.md 44px) for the expand/collapse affordance. */
+  min-height: var(--rune-touch);
+  padding: var(--rune-space-3) var(--rune-space-7);
   border-radius: var(--rune-radius-md);
   background: var(--rune-chrome-bg-alt);
   border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-1);
+  color: var(--rune-text);
+  font-family: var(--rune-font-body);
   font-size: var(--rune-type-body);
+  text-align: left;
+  cursor: pointer;
 }
-.ribbonTurn {
+.indicatorSummary:hover {
+  border-color: var(--rune-border-strong);
+}
+.indicatorTurn {
   font-weight: 700;
   color: var(--rune-text);
   letter-spacing: 0.3px;
   font-family: var(--rune-font-display);
 }
-.ribbonActive {
+.indicatorActive {
   font-weight: 600;
   color: var(--rune-selection);
 }
-.ribbonSteps {
+.indicatorStep {
+  font-weight: 600;
+  color: var(--rune-text);
+  /* The current step name is an identity moment (§Identity): carry the display face. */
+  font-family: var(--rune-font-display);
+}
+.indicatorGroups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-2);
+}
+.indicatorGroup {
+  font-size: var(--rune-type-micro);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: var(--rune-space-1) var(--rune-space-4);
+  border-radius: var(--rune-radius-pill);
+  color: var(--rune-text-muted);
+  border: 1px solid transparent;
+  opacity: 0.55;
+}
+.indicatorGroup[data-passed] {
+  opacity: 0.8;
+}
+.indicatorGroup[data-current] {
+  opacity: 1;
+  color: var(--rune-text);
+  background: var(--rune-raised-bg);
+  border-color: var(--rune-selection);
+}
+.indicatorChevron {
+  margin-left: auto;
+  color: var(--rune-text-muted);
+  transition: transform var(--rune-transition);
+}
+.indicatorChevron[data-expanded] {
+  transform: rotate(180deg);
+}
+.indicatorDecision {
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: var(--rune-space-1) var(--rune-space-5);
+  border-radius: var(--rune-radius-pill);
+  color: var(--rune-targeting);
+  border: 1px solid var(--rune-targeting);
+}
+.indicatorSteps {
+  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: var(--rune-space-2);
@@ -128,7 +200,7 @@
   padding: 0;
   list-style: none;
 }
-.ribbonStep {
+.indicatorFullStep {
   font-size: var(--rune-type-micro);
   font-weight: 600;
   padding: 2px 7px;
@@ -137,23 +209,12 @@
   color: var(--rune-text-muted);
   border: 1px solid transparent;
 }
-.ribbonStepCurrent {
+.indicatorFullStepCurrent {
   color: var(--rune-text);
   background: var(--rune-raised-bg);
   border: 1px solid var(--rune-selection);
   /* Phase name is an identity moment (§Identity): carry the display face. */
   font-family: var(--rune-font-display);
-}
-.ribbonFocusBadge {
-  margin-left: auto;
-  font-size: var(--rune-type-micro);
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  padding: 2px 9px;
-  border-radius: var(--rune-radius-pill);
-  color: var(--rune-targeting);
-  border: 1px solid var(--rune-targeting);
 }
 .focusDimmed {
   opacity: 0.7;
