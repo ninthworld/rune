@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Planeswalkers",
+    "blocker": "no loyalty counter system or loyalty abilities"
+  },
+  {
+    "name": "Continuous keyword-granting effects",
+    "blocker": "only printed keywords are modeled; effects that grant keywords are not"
+  },
+  {
+    "name": "Auras that enchant a player or land, or move between hosts",
+    "blocker": "only P/T-granting enchant-creature Auras are modeled"
+  },
+  {
+    "name": "Multi-face cards (transform, modal double-faced)",
+    "blocker": "the card model has a single face"
+  },
+  {
+    "name": "Replacement effects",
+    "blocker": "no replacement-effect layer in the rules engine"
+  }
+]

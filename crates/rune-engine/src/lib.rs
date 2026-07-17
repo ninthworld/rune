@@ -19,6 +19,7 @@ mod card_type;
 mod catalog;
 mod characteristics;
 mod combat;
+pub mod compat;
 #[cfg(test)]
 mod fixtures;
 mod id;

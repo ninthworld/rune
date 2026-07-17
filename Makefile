@@ -1,4 +1,4 @@
-.PHONY: verify check engine-test engine-lint engine-fmt client-check client-lint client-install client-audit deny setup
+.PHONY: verify check engine-test engine-lint engine-fmt compat client-check client-lint client-install client-audit deny setup
 
 # The complete local pre-merge gate: everything required before a PR merges into
 # `main`. Composes the existing targets 1:1 with the required GitHub checks —
@@ -14,6 +14,11 @@ engine-lint:
 
 engine-fmt:
 	cargo fmt --all
+
+# Regenerate the deterministic card-compatibility report (issue #258) from the
+# catalog + data/exclusions.json. Commit the result; `make check` fails if it drifts.
+compat:
+	cargo run -q -p rune-engine --bin gen-compat
 
 engine-test:
 	cargo test --workspace
