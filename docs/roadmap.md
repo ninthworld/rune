@@ -9,12 +9,14 @@ does not prove an outcome is complete.
 The engine can play a deterministic two-player creature-combat game through the real server
 protocol to a win. It includes the turn and priority loops, mana and casting, targets and the
 stack, attackers and blockers, combat damage, common combat keywords, counters, auras,
-triggers, initial replacement effects, mulligans, and terminal results.
+triggers, initial replacement effects, mulligans, terminal results, and a structured game log
+recorded in `GameState` (ADR 0021).
 
 The server provides explicit rooms, validated deck submission, a ready gate, per-tab reconnect,
-and optional decision timers. The catalog contains 36 functional definitions and a complete
-basic-land cycle; the bundled starter decks are shared by the web client and the full-game
-agent test.
+optional decision timers, and server-owned priority automation — auto-pass of idle priority
+holds with per-phase stop preferences that survive reconnect (ADR 0020). The catalog contains
+36 functional definitions and a complete basic-land cycle; the bundled starter decks are shared
+by the web client and the full-game agent test.
 
 The web client implements the lobby and game flow, targeting, combat selection, stack, game
 over, card inspection, public-zone browsers, keyboard controls, and timer display, and has
@@ -22,7 +24,11 @@ shipped the tabletop overhaul's shell: the chrome visual system and tokens (#293
 full-bleed adaptive table shell with its pure layout function (#295), player HUDs (#296),
 the compact turn/phase indicator (#297), anchored decision staging (#298), the collapsible
 stack/activity rail (#299), connection and lobby identity screens (#300), protocol-carried
-display names (#294), and the capability-aware spatial focus model (#301).
+display names (#294), and the capability-aware spatial focus model (#301). On that shell it
+now ships the comprehension layer: the game-log panel with clickable references and collapsed
+step runs (#260) over structured, redacted log events carried in `GameView` (#259), per-phase
+stop toggles with an auto-pass indicator (#264), and non-blaming rejected-action toasts with
+distinct fizzle log entries (#265).
 
 The presentation gap has moved from the shell to the surfaces on it. Inside each player's
 lane the battlefield is still one undifferentiated row of same-size cards: no type-grouped
@@ -35,24 +41,30 @@ built. The targets for all of these are specified in
 
 ## Immediate priorities
 
-With the shell landed (#293–#301), priorities move inside the battlefield and toward
-comprehension:
+With the shell (#293–#301) and the comprehension layer (#259, #260, #264, #265) landed,
+priorities move inside the battlefield. The glyph language leads the batch because two of
+the surfaces consume it:
 
-1. Board legibility: implement the battlefield-band interior specified in
+1. Glyph foundation: the procedural rune glyph language for zones, phases, keywords, and
+   tap state ([#317](https://github.com/ninthworld/rune/issues/317)) — blocks the two
+   items below.
+2. Board legibility: the battlefield-band interior specified in
    [`design/ui-design-notes.md`](design/ui-design-notes.md) — type-grouped rows with land
-   chips, ×N stacking of identical permanents, tier-dependent tapped treatment that
-   reserves the rotated footprint, and zone piles as findable spatial objects.
-2. Card-face information budget: keyword glyphs and the activated-ability marker at
-   battlefield scale, so reading the board doesn't require serial inspection.
-3. Inspect without clutter: retire the permanent per-card inspect handles in favor of
-   selection-surfaced preview, hover-dwell peek, and long-press.
-4. Comprehension: structured game events in `GameView`
-   ([#259](https://github.com/ninthworld/rune/issues/259)), the client game-log panel
-   ([#260](https://github.com/ninthworld/rune/issues/260)), server-owned priority
-   automation and stops ([#264](https://github.com/ninthworld/rune/issues/264)), and
-   rejection/fizzle feedback ([#265](https://github.com/ninthworld/rune/issues/265)).
-5. Identity: the bundled OFL display face behind `--rune-font-display` and the procedural
-   rune glyph language for zones, phases, keywords, and tap state.
+   chips, ×N stacking of identical permanents, and tier-dependent tapped treatment that
+   reserves the rotated footprint ([#318](https://github.com/ninthworld/rune/issues/318)),
+   then zone piles as findable spatial objects
+   ([#319](https://github.com/ninthworld/rune/issues/319)).
+3. Card-face information budget: keyword glyphs and the activated-ability marker at
+   battlefield scale, so reading the board doesn't require serial inspection
+   ([#320](https://github.com/ninthworld/rune/issues/320)).
+4. Inspect without clutter: retire the permanent per-card inspect handles in favor of
+   selection-surfaced preview, hover-dwell peek, and long-press
+   ([#321](https://github.com/ninthworld/rune/issues/321)).
+5. Identity: the bundled OFL display face behind `--rune-font-display`
+   ([#322](https://github.com/ninthworld/rune/issues/322)).
+6. M3 evidence closeout: the deterministic, CI-checked card-compatibility report
+   ([#258](https://github.com/ninthworld/rune/issues/258), reopened — it was closed
+   without an implementation landing).
 
 Real-browser coverage (a smoke path through rendered turns,
 [#279](https://github.com/ninthworld/rune/issues/279)) stays **deferred** with the rest of the
@@ -94,7 +106,8 @@ Shipped:
 - a deterministic full-game test using the bundled deck data through the real server.
 
 Remaining: add a deterministic, CI-checked compatibility report before claiming catalog
-compatibility beyond tested behavior.
+compatibility beyond tested behavior
+([#258](https://github.com/ninthworld/rune/issues/258)).
 
 ### M4 — Readable games
 
@@ -111,26 +124,31 @@ Shipped foundations:
 - visible action affordances and table geography (#277–#278); and
 - the client UI overhaul shell — visual system and tokens, full-bleed tabletop shell,
   player HUDs, decision staging, stack/activity rail, identity screens, display names, and
-  the spatial focus model (#293–#301, #294); and
+  the spatial focus model (#293–#301, #294);
+- structured, redacted game events carried in `GameView`, recorded by the engine and
+  projected per viewer (#259, ADR 0021);
 - the client game-log panel — a readable, scrollable history composed client-side from the
   structured `GameView` log, with clickable entity/player references and collapsible step
-  runs ([#260](https://github.com/ninthworld/rune/issues/260)).
+  runs (#260);
+- server-owned priority automation — auto-pass of idle priority holds with per-phase stop
+  preferences, an auto-pass indicator, and reconnect-safe settings (#264, ADR 0020); and
+- rejection and fizzle feedback — non-blaming toasts for rejected in-game actions and
+  distinct countered-versus-fizzled log entries (#265).
 
 Remaining:
 
 - battlefield-band legibility: type-grouped rows, land chips, ×N stacking of
-  identical permanents, tier-dependent tapped treatment without overlap, and findable
-  zone piles;
+  identical permanents, and tier-dependent tapped treatment without overlap
+  ([#318](https://github.com/ninthworld/rune/issues/318));
+- zone piles as findable spatial objects
+  ([#319](https://github.com/ninthworld/rune/issues/319));
 - the card-face information budget: keyword glyphs and activated-ability markers at
-  battlefield scale;
-- the inspect affordance redesign: no permanently visible per-card handles;
-- the identity layer: a bundled OFL display face and the procedural rune glyph language;
-- structured, redacted game events in `GameView`
-  ([#259](https://github.com/ninthworld/rune/issues/259));
-- server-owned priority automation and stops
-  ([#264](https://github.com/ninthworld/rune/issues/264)); and
-- action rejection and fizzle explanations
-  ([#265](https://github.com/ninthworld/rune/issues/265)).
+  battlefield scale ([#320](https://github.com/ninthworld/rune/issues/320));
+- the inspect affordance redesign: no permanently visible per-card handles
+  ([#321](https://github.com/ninthworld/rune/issues/321)); and
+- the identity layer: the procedural rune glyph language
+  ([#317](https://github.com/ninthworld/rune/issues/317)) and a bundled OFL display face
+  ([#322](https://github.com/ninthworld/rune/issues/322)).
 
 ### M5 — More than two
 
