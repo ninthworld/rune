@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Container, Text } from 'pixi.js';
-import { buildCardDisplay, parseManaCost, type CardDisplayData } from './cardFactory';
+import { Container, Graphics, Text } from 'pixi.js';
+import {
+  buildCardDisplay,
+  cardVisualSignature,
+  parseManaCost,
+  type CardDisplayData,
+} from './cardFactory';
 import { BADGE, PALETTE, PIP, PT_TEXT, SURFACES } from '../tokens';
 
 /** Collect every `Text` node in a display object, depth first. */
@@ -14,6 +19,19 @@ function collectText(node: Container): Text[] {
   };
   walk(node);
   return found;
+}
+
+/** Count every `Graphics` node in a display object, depth first. */
+function countGraphics(node: Container): number {
+  let count = 0;
+  const walk = (n: Container): void => {
+    for (const child of n.children) {
+      if (child instanceof Graphics) count += 1;
+      if (child instanceof Container) walk(child);
+    }
+  };
+  walk(node);
+  return count;
 }
 
 const texts = (node: Container): string[] => collectText(node).map((t) => t.text);
@@ -134,6 +152,22 @@ describe('buildCardDisplay', () => {
     // A highlighted candidate is NOT dimmed: it stays fully opaque.
     const lit = buildCardDisplay({ ...grizzlyBears, targeting: true }).children[0] as Container;
     expect(lit.alpha).toBe(1);
+  });
+
+  it('draws an always-on playable edge only when the card is actionable (issue #277)', () => {
+    const inert = countGraphics(buildCardDisplay(grizzlyBears).children[0] as Container);
+    const playable = countGraphics(
+      buildCardDisplay({ ...grizzlyBears, actionable: true }).children[0] as Container,
+    );
+    // The playable card carries exactly one extra Graphics — the bottom edge bar —
+    // over its otherwise-identical inert twin.
+    expect(playable).toBe(inert + 1);
+  });
+
+  it('keeps the actionable state in the visual signature so the reconciler rebuilds', () => {
+    expect(cardVisualSignature({ ...grizzlyBears, actionable: true })).not.toBe(
+      cardVisualSignature(grizzlyBears),
+    );
   });
 
   it('accepts the color identity from the caller (no derivation)', () => {

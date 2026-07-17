@@ -137,7 +137,7 @@ function localPlayerIdOf(view: GameView): PlayerId | undefined {
 /** Map a server card + permanent state onto the factory's display data. */
 function toDisplayData(
   card: CardView,
-  opts: { tapped?: boolean; counters?: Counter[]; selected: boolean },
+  opts: { tapped?: boolean; counters?: Counter[]; selected: boolean; actionable: boolean },
 ): CardDisplayData {
   return {
     name: card.name,
@@ -150,6 +150,9 @@ function toDisplayData(
     counters: opts.counters,
     tapped: opts.tapped,
     selected: opts.selected,
+    // Purely presentational: the card has ≥1 offered subject-action. No legality
+    // is computed here (the server already decided what is offered, issue #277).
+    actionable: opts.actionable,
   };
 }
 
@@ -246,8 +249,16 @@ export function buildTableScene(
     return {
       ...card,
       // A chosen multi-select candidate draws the selection ring; a not-yet-chosen
-      // candidate shows only the targeting highlight.
-      data: { ...card.data, selected: chosen, targeting: targetable, dimmed: !targetable },
+      // candidate shows only the targeting highlight. The play affordance is
+      // suppressed in targeting mode — the sole interaction is picking a target,
+      // so no card should advertise a subject-action (issue #277).
+      data: {
+        ...card.data,
+        selected: chosen,
+        targeting: targetable,
+        dimmed: !targetable,
+        actionable: false,
+      },
       actions: [],
       targetable,
       chosen,
@@ -271,8 +282,9 @@ export function buildTableScene(
   }
   if (localPlayerId !== undefined) ordered.push(localPlayerId);
 
-  const toRenderable = (perm: Permanent): Omit<RenderedCard, 'rect'> =>
-    withTargeting({
+  const toRenderable = (perm: Permanent): Omit<RenderedCard, 'rect'> => {
+    const actions = actionsFor(perm.id, subjectActions);
+    return withTargeting({
       entityId: perm.id,
       zone: 'battlefield',
       tier: 'field',
@@ -281,9 +293,11 @@ export function buildTableScene(
         tapped: perm.tapped,
         counters: perm.counters,
         selected: perm.id === selectedId,
+        actionable: actions.length > 0,
       }),
-      actions: actionsFor(perm.id, subjectActions),
+      actions,
     });
+  };
 
   const bands: Band[] = [];
   let top = LAYOUT.margin;
@@ -313,16 +327,20 @@ export function buildTableScene(
     width: handWidth,
     height: handHeight,
   } = layBand(
-    view.my_hand.map((card) =>
-      withTargeting({
+    view.my_hand.map((card) => {
+      const actions = actionsFor(card.id, subjectActions);
+      return withTargeting({
         entityId: card.id,
         zone: 'hand' as const,
         tier: 'hand' as const,
         name: card.name,
-        data: toDisplayData(card, { selected: card.id === selectedId }),
-        actions: actionsFor(card.id, subjectActions),
-      }),
-    ),
+        data: toDisplayData(card, {
+          selected: card.id === selectedId,
+          actionable: actions.length > 0,
+        }),
+        actions,
+      });
+    }),
     top,
     handT.w,
     handT.h,

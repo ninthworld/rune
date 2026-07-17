@@ -34,6 +34,23 @@ export const SURFACES = {
 } as const;
 
 /**
+ * The always-on "this card has an offered action" affordance (issue #277) —
+ * playable hand cards and permanents with an activatable ability. It must read as
+ * distinct from the selection ring (`SURFACES.selection`) and the targeting ring
+ * (`SURFACES.targeting`) WITHOUT relying on hue, per ui-requirements §10: it is a
+ * solid **bottom-edge bar**, a different *shape* than the full-perimeter rings, so
+ * it stays legible to a colorblind player who cannot separate the accent colors.
+ * Purely presentational — driven only by `RenderedCard.actions.length > 0`, never
+ * by any client-side legality.
+ */
+export const AFFORDANCE = {
+  /** Accent color of the playable edge bar (warm gold — distinct hue as a bonus). */
+  actionable: '#F2C94C',
+  /** Height of the bottom edge bar in logical px (the weight that reads at a glance). */
+  edgeHeight: 5,
+} as const;
+
+/**
  * Mana pip swatches: `bg` fills the pip disc, `fg` colors the symbol glyph.
  * `N` is the neutral swatch used for generic/numeric and any unrecognized symbol
  * (e.g. `{2}`, `{C}`, hybrid). Colored single-letter symbols use their own key.
