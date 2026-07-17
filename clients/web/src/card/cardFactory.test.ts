@@ -230,4 +230,88 @@ describe('buildChipDisplay (issue #318)', () => {
     const chip = buildChipDisplay({ ...forest, landGlyph: 'land-forest', stackCount: 3 });
     expect(texts(chip)).toContain('×3');
   });
+
+  it('never draws a keyword strip on a chip (chip tier stays minimal, issue #320)', () => {
+    const plain = countGraphics(buildChipDisplay({ ...forest, landGlyph: 'land-forest' }));
+    const withKw = countGraphics(
+      buildChipDisplay({ ...forest, landGlyph: 'land-forest', keywords: ['flying', 'trample'] }),
+    );
+    expect(withKw).toBe(plain);
+  });
+});
+
+describe('card-face information budget (issue #320)', () => {
+  const flyer: CardDisplayData = {
+    ...grizzlyBears,
+    keywords: ['flying', 'deathtouch'],
+  };
+
+  it('draws one keyword glyph per server-supplied keyword at field tier', () => {
+    // Each glyph is one extra Graphics over the same card with no keywords.
+    const plain = countGraphics(buildCardDisplay(grizzlyBears, 'field'));
+    const withKw = countGraphics(buildCardDisplay(flyer, 'field'));
+    expect(withKw).toBe(plain + 2);
+  });
+
+  it('renders keyword glyphs at support, field, and hand tiers alike', () => {
+    for (const tier of ['support', 'field', 'hand'] as const) {
+      const plain = countGraphics(buildCardDisplay(grizzlyBears, tier));
+      const withKw = countGraphics(buildCardDisplay(flyer, tier));
+      expect(withKw).toBeGreaterThan(plain);
+    }
+  });
+
+  it('caps the strip and overflows to +N rather than shrinking below legibility', () => {
+    const many: CardDisplayData = {
+      ...grizzlyBears,
+      keywords: ['flying', 'first_strike', 'deathtouch', 'trample', 'vigilance', 'lifelink'],
+    };
+    // Field tier fits four glyphs; six keywords overflow to a "+N" tag.
+    expect(texts(buildCardDisplay(many, 'field')).some((t) => /^\+\d+$/.test(t))).toBe(true);
+  });
+
+  it('drops a keyword with no glyph rather than leaving a gap', () => {
+    const plain = countGraphics(buildCardDisplay(grizzlyBears, 'field'));
+    const unknown = countGraphics(
+      buildCardDisplay({ ...grizzlyBears, keywords: ['not_a_real_keyword'] }, 'field'),
+    );
+    expect(unknown).toBe(plain);
+  });
+
+  it('draws a latent activated-ability marker distinct from the gold playable bar', () => {
+    const plain = countGraphics(buildCardDisplay(grizzlyBears, 'field').children[0] as Container);
+    const marked = countGraphics(
+      buildCardDisplay({ ...grizzlyBears, hasActivatedAbility: true }, 'field')
+        .children[0] as Container,
+    );
+    // Exactly one extra Graphics — the marker dot.
+    expect(marked).toBe(plain + 1);
+  });
+
+  it('shows the ability marker and the gold bar together (latent + live)', () => {
+    const plain = countGraphics(buildCardDisplay(grizzlyBears, 'field').children[0] as Container);
+    const both = countGraphics(
+      buildCardDisplay({ ...grizzlyBears, hasActivatedAbility: true, actionable: true }, 'field')
+        .children[0] as Container,
+    );
+    // The dot and the edge bar are two separate extra Graphics.
+    expect(both).toBe(plain + 2);
+  });
+
+  it('renders a marked-damage badge from view data (issue #320)', () => {
+    expect(texts(buildCardDisplay(grizzlyBears, 'field'))).not.toContain('3 dmg');
+    expect(texts(buildCardDisplay({ ...grizzlyBears, markedDamage: 3 }, 'field'))).toContain(
+      '3 dmg',
+    );
+  });
+
+  it('keeps keywords, the ability marker, and damage in the visual signature', () => {
+    expect(cardVisualSignature(grizzlyBears)).not.toBe(cardVisualSignature(flyer));
+    expect(cardVisualSignature(grizzlyBears)).not.toBe(
+      cardVisualSignature({ ...grizzlyBears, hasActivatedAbility: true }),
+    );
+    expect(cardVisualSignature(grizzlyBears)).not.toBe(
+      cardVisualSignature({ ...grizzlyBears, markedDamage: 2 }),
+    );
+  });
 });
