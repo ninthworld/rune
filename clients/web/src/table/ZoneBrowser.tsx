@@ -14,17 +14,7 @@
  * client derives nothing — it only formats the {@link CardView}s the server sent.
  */
 import type { CardView, EntityId } from '../protocol';
-import {
-  zoneBrowserBackdrop,
-  zoneBrowserCard,
-  zoneBrowserCardName,
-  zoneBrowserCardType,
-  zoneBrowserClose,
-  zoneBrowserEmpty,
-  zoneBrowserList,
-  zoneBrowserPanel,
-  zoneBrowserTitle,
-} from './styles';
+import s from './chrome.module.css';
 
 interface Props {
   /** The heading, e.g. `"p2 — Graveyard"` (composed by the caller from the view). */
@@ -41,13 +31,13 @@ export function ZoneBrowser({ title, cards, onInspect, onClose }: Props) {
   return (
     <div
       data-testid="zone-browser-backdrop"
-      style={zoneBrowserBackdrop}
+      className={s.zoneBrowserBackdrop}
       onClick={onClose}
       role="presentation"
     >
       <div
         data-testid="zone-browser"
-        style={zoneBrowserPanel}
+        className={s.zoneBrowserPanel}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -58,19 +48,19 @@ export function ZoneBrowser({ title, cards, onInspect, onClose }: Props) {
           data-testid="zone-browser-close"
           aria-label="Close browser"
           onClick={onClose}
-          style={zoneBrowserClose}
+          className={s.zoneBrowserClose}
         >
           ×
         </button>
-        <h2 style={zoneBrowserTitle} data-testid="zone-browser-title">
+        <h2 className={s.zoneBrowserTitle} data-testid="zone-browser-title">
           {title} ({cards.length})
         </h2>
         {cards.length === 0 ? (
-          <p style={zoneBrowserEmpty} data-testid="zone-browser-empty">
+          <p className={s.zoneBrowserEmpty} data-testid="zone-browser-empty">
             No cards.
           </p>
         ) : (
-          <ol style={zoneBrowserList}>
+          <ol className={s.zoneBrowserList}>
             {cards.map((card, index) => (
               // A zone can legally hold duplicate identities; the entity id is unique,
               // and index guards against any repeated id in a single render.
@@ -80,10 +70,10 @@ export function ZoneBrowser({ title, cards, onInspect, onClose }: Props) {
                   data-testid={`browser-card-${card.id}`}
                   aria-label={`Inspect ${card.name}`}
                   onClick={() => onInspect(card.id)}
-                  style={zoneBrowserCard}
+                  className={s.zoneBrowserCard}
                 >
-                  <span style={zoneBrowserCardName}>{card.name}</span>
-                  <span style={zoneBrowserCardType}>{card.type_line}</span>
+                  <span className={s.zoneBrowserCardName}>{card.name}</span>
+                  <span className={s.zoneBrowserCardType}>{card.type_line}</span>
                 </button>
               </li>
             ))}

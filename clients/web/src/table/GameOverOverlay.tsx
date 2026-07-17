@@ -11,16 +11,8 @@
  * already-decided result (zero game logic, AGENTS.md hard rule).
  */
 import type { GameResult, GameOverReason, PlayerId } from '../protocol';
-import {
-  gameOverBackdrop,
-  gameOverHeadline,
-  gameOverLoss,
-  gameOverNeutral,
-  gameOverPanel,
-  gameOverReason,
-  gameOverWin,
-  gameOverWinner,
-} from './styles';
+import { cx } from '../chrome/cx';
+import s from './chrome.module.css';
 
 interface Props {
   /** The server-decided terminal result. */
@@ -82,23 +74,23 @@ function reasonText(reason: GameOverReason): string {
 export function GameOverOverlay({ result, you }: Props) {
   const outcome = outcomeFor(result, you);
   const headlineTint =
-    outcome === 'win' ? gameOverWin : outcome === 'loss' ? gameOverLoss : gameOverNeutral;
+    outcome === 'win' ? s.gameOverWin : outcome === 'loss' ? s.gameOverLoss : s.gameOverNeutral;
 
   return (
-    <div style={gameOverBackdrop} data-testid="game-over-overlay">
+    <div className={s.gameOverBackdrop} data-testid="game-over-overlay">
       <div
         role="alertdialog"
         aria-label="Game over"
         aria-describedby="game-over-winner"
-        style={gameOverPanel}
+        className={s.gameOverPanel}
       >
-        <h2 style={{ ...gameOverHeadline, ...headlineTint }} data-testid="game-over-headline">
+        <h2 className={cx(s.gameOverHeadline, headlineTint)} data-testid="game-over-headline">
           {headlineText(outcome)}
         </h2>
-        <p id="game-over-winner" style={gameOverWinner} data-testid="game-over-winner">
+        <p id="game-over-winner" className={s.gameOverWinner} data-testid="game-over-winner">
           {winnerText(result)}
         </p>
-        <p style={gameOverReason} data-testid="game-over-reason">
+        <p className={s.gameOverReason} data-testid="game-over-reason">
           {reasonText(result.reason)}
         </p>
       </div>

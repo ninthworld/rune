@@ -9,15 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { GameView, Phase } from '../protocol';
 import type { PendingPrompt } from '../store';
-import {
-  banner,
-  bannerAccent,
-  bannerOptions,
-  bannerTargeting,
-  deadlineCountdown,
-  deadlineCountdownLow,
-  optionButton,
-} from './styles';
+import s from './chrome.module.css';
 
 /** Below this many seconds the countdown enters its low-time warning state. */
 const LOW_TIME_SECONDS = 10;
@@ -43,7 +35,7 @@ function DeadlineCountdown({ seconds }: { seconds: number }) {
     <span
       data-testid="deadline-countdown"
       data-low={low || undefined}
-      style={low ? deadlineCountdownLow : deadlineCountdown}
+      className={low ? s.deadlineCountdownLow : s.deadlineCountdown}
     >
       {' '}
       — {display}s
@@ -141,8 +133,8 @@ export function PromptBanner({ view, prompt, targeting, multiSelect, onOption }:
         : `${multiSelect.chosen} selected`;
     const options = multiSelect.options ?? [];
     return (
-      <div data-testid="prompt-banner" role="status" style={banner}>
-        <span style={bannerTargeting} data-testid="multiselect-prompt">
+      <div data-testid="prompt-banner" role="status" className={s.banner}>
+        <span className={s.bannerTargeting} data-testid="multiselect-prompt">
           Select: {multiSelect.prompt}
         </span>
         <span>{multiSelect.label}</span>
@@ -153,7 +145,7 @@ export function PromptBanner({ view, prompt, targeting, multiSelect, onOption }:
           </span>
         )}
         {options.length > 0 && (
-          <div style={bannerOptions} data-testid="multiselect-options">
+          <div className={s.bannerOptions} data-testid="multiselect-options">
             {multiSelect.optionPrompt !== undefined && <span>{multiSelect.optionPrompt}</span>}
             {options.map((option) => (
               <button
@@ -162,7 +154,7 @@ export function PromptBanner({ view, prompt, targeting, multiSelect, onOption }:
                 onClick={() => onOption?.(option.id)}
                 disabled={multiSelect.optionsEnabled === false}
                 data-testid={`multiselect-option-${option.id}`}
-                style={optionButton}
+                className={s.optionButton}
               >
                 {option.label}
               </button>
@@ -177,8 +169,8 @@ export function PromptBanner({ view, prompt, targeting, multiSelect, onOption }:
   // target"), the server's slot prompt, and a multi-target counter when relevant.
   if (targeting) {
     return (
-      <div data-testid="prompt-banner" role="status" style={banner}>
-        <span style={bannerTargeting} data-testid="targeting-prompt">
+      <div data-testid="prompt-banner" role="status" className={s.banner}>
+        <span className={s.bannerTargeting} data-testid="targeting-prompt">
           Choose target: {targeting.prompt}
         </span>
         <span>{targeting.label}</span>
@@ -192,13 +184,13 @@ export function PromptBanner({ view, prompt, targeting, multiSelect, onOption }:
   }
 
   return (
-    <div data-testid="prompt-banner" role="status" style={banner}>
+    <div data-testid="prompt-banner" role="status" className={s.banner}>
       <span>
-        Phase: <span style={bannerAccent}>{formatPhase(view.phase)}</span>
+        Phase: <span className={s.bannerAccent}>{formatPhase(view.phase)}</span>
       </span>
       {view.priority_player !== undefined && <span>Priority: {view.priority_player}</span>}
       {prompt ? (
-        <span style={bannerAccent}>
+        <span className={s.bannerAccent}>
           Your move
           {prompt.deadline !== undefined && <DeadlineCountdown seconds={prompt.deadline} />}
         </span>

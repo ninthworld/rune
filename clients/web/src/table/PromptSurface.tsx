@@ -16,17 +16,8 @@
  * renders them and reports toggles/moves back; it never derives what is legal.
  */
 import type { EntityId } from '../protocol';
-import {
-  promptSurface,
-  promptSurfaceControl,
-  promptSurfaceIndex,
-  promptSurfaceList,
-  promptSurfaceName,
-  promptSurfaceRow,
-  promptSurfaceRowChosen,
-  promptSurfaceTitle,
-  promptSurfaceZone,
-} from './styles';
+import { cx } from '../chrome/cx';
+import s from './chrome.module.css';
 
 /** One row the surface renders: an entity id with its display label. */
 export interface PromptSurfaceItem {
@@ -58,26 +49,28 @@ interface Props {
 
 export function PromptSurface({ mode, prompt, zone, items, onToggle, onMove }: Props) {
   return (
-    <section data-testid="prompt-surface" style={promptSurface} aria-label={prompt}>
-      <h2 style={promptSurfaceTitle}>{prompt}</h2>
-      {mode === 'select' && zone !== undefined && <span style={promptSurfaceZone}>{zone}</span>}
-      <ul style={promptSurfaceList}>
+    <section data-testid="prompt-surface" className={s.promptSurface} aria-label={prompt}>
+      <h2 className={s.promptSurfaceTitle}>{prompt}</h2>
+      {mode === 'select' && zone !== undefined && (
+        <span className={s.promptSurfaceZone}>{zone}</span>
+      )}
+      <ul className={s.promptSurfaceList}>
         {items.map((item, index) => {
-          const rowStyle =
+          const rowClass =
             mode === 'select' && item.chosen
-              ? { ...promptSurfaceRow, ...promptSurfaceRowChosen }
-              : promptSurfaceRow;
+              ? cx(s.promptSurfaceRow, s.promptSurfaceRowChosen)
+              : s.promptSurfaceRow;
           return (
-            <li key={item.id} style={rowStyle}>
-              {mode === 'order' && <span style={promptSurfaceIndex}>{index + 1}</span>}
-              <span style={promptSurfaceName}>{item.label}</span>
+            <li key={item.id} className={rowClass}>
+              {mode === 'order' && <span className={s.promptSurfaceIndex}>{index + 1}</span>}
+              <span className={s.promptSurfaceName}>{item.label}</span>
               {mode === 'select' ? (
                 <button
                   type="button"
                   onClick={() => onToggle?.(item.id)}
                   aria-pressed={item.chosen}
                   data-testid={`zone-select-${item.id}`}
-                  style={promptSurfaceControl}
+                  className={s.promptSurfaceControl}
                 >
                   {item.chosen ? 'Chosen' : 'Choose'}
                 </button>
@@ -89,7 +82,7 @@ export function PromptSurface({ mode, prompt, zone, items, onToggle, onMove }: P
                     disabled={index === 0}
                     aria-label={`Move ${item.label} up`}
                     data-testid={`order-up-${item.id}`}
-                    style={promptSurfaceControl}
+                    className={s.promptSurfaceControl}
                   >
                     ↑
                   </button>
@@ -99,7 +92,7 @@ export function PromptSurface({ mode, prompt, zone, items, onToggle, onMove }: P
                     disabled={index === items.length - 1}
                     aria-label={`Move ${item.label} down`}
                     data-testid={`order-down-${item.id}`}
-                    style={promptSurfaceControl}
+                    className={s.promptSurfaceControl}
                   >
                     ↓
                   </button>

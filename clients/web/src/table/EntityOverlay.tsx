@@ -21,7 +21,8 @@
 import { Fragment } from 'react';
 import type { EntityId, ValidAction } from '../protocol';
 import type { RenderedCard, TableScene } from './scene';
-import { chip, entityActions, hotspot, inspectHandle, overlay, targetHotspot } from './styles';
+import { entityActions, hotspot, inspectHandle, overlay, targetHotspot } from './styles';
+import s from './chrome.module.css';
 
 interface Props {
   /** The scene whose actionable (or targetable) cards get overlay affordances. */
@@ -87,6 +88,7 @@ export function EntityOverlay({
             data-entity={card.entityId}
             aria-label={`Inspect ${card.name}`}
             onClick={() => onInspect(card.entityId)}
+            className={s.canvasControl}
             style={inspectHandle(card.rect)}
           >
             i
@@ -106,6 +108,7 @@ export function EntityOverlay({
               aria-label={`${verb} ${card.name}`}
               aria-pressed={multiSelect ? card.chosen : undefined}
               onClick={() => onPickTarget(card.entityId)}
+              className={s.canvasControl}
               style={targetHotspot(card.rect, card.chosen)}
             />
           );
@@ -126,6 +129,7 @@ export function EntityOverlay({
               aria-pressed={selected}
               aria-label={`${card.name} — playable: ${actionHint}`}
               onClick={() => onSelect(card.entityId)}
+              className={s.canvasControl}
               style={hotspot(card.rect, selected)}
             />
             {selected && (
@@ -135,7 +139,7 @@ export function EntityOverlay({
                     key={action.id}
                     type="button"
                     onClick={() => onChoose(action)}
-                    style={chip}
+                    className={s.chip}
                   >
                     {action.label}
                   </button>

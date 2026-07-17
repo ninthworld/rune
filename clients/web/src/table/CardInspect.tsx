@@ -15,21 +15,7 @@
  * ephemeral selection state owned by {@link Table}, discarded on the next view.
  */
 import type { CardView, Counter, StackItem } from '../protocol';
-import {
-  inspectBackdrop,
-  inspectClose,
-  inspectCost,
-  inspectKeyword,
-  inspectKeywords,
-  inspectName,
-  inspectNoText,
-  inspectPanel,
-  inspectPt,
-  inspectRules,
-  inspectState,
-  inspectStateRow,
-  inspectTypeLine,
-} from './styles';
+import s from './chrome.module.css';
 
 /**
  * What the popover is inspecting. A `card` target is any {@link CardView} (hand,
@@ -70,14 +56,14 @@ export function CardInspect({ target, onClose }: Props) {
   return (
     <div
       data-testid="card-inspect-backdrop"
-      style={inspectBackdrop}
+      className={s.inspectBackdrop}
       onClick={onClose}
       role="presentation"
     >
       {/* Stop propagation so a click inside the panel does not dismiss it. */}
       <div
         data-testid="card-inspect"
-        style={inspectPanel}
+        className={s.inspectPanel}
         role="dialog"
         aria-modal="true"
         aria-label={`Inspect ${name}`}
@@ -88,11 +74,11 @@ export function CardInspect({ target, onClose }: Props) {
           data-testid="card-inspect-close"
           aria-label="Close inspect"
           onClick={onClose}
-          style={inspectClose}
+          className={s.inspectClose}
         >
           ×
         </button>
-        <h2 style={inspectName} data-testid="card-inspect-name">
+        <h2 className={s.inspectName} data-testid="card-inspect-name">
           {name}
         </h2>
         {target.kind === 'card' ? (
@@ -121,41 +107,41 @@ function CardBody({
   return (
     <>
       {card.mana_cost !== undefined && (
-        <div style={inspectCost} data-testid="card-inspect-cost">
+        <div className={s.inspectCost} data-testid="card-inspect-cost">
           {card.mana_cost}
         </div>
       )}
-      <div style={inspectTypeLine} data-testid="card-inspect-type">
+      <div className={s.inspectTypeLine} data-testid="card-inspect-type">
         {card.type_line}
       </div>
       {hasPt && (
-        <div style={inspectPt} data-testid="card-inspect-pt">
+        <div className={s.inspectPt} data-testid="card-inspect-pt">
           {card.power}/{card.toughness}
         </div>
       )}
       {keywords.length > 0 && (
-        <div style={inspectKeywords} data-testid="card-inspect-keywords">
+        <div className={s.inspectKeywords} data-testid="card-inspect-keywords">
           {keywords.map((keyword) => (
-            <span key={keyword} style={inspectKeyword}>
+            <span key={keyword} className={s.inspectKeyword}>
               {formatKeyword(keyword)}
             </span>
           ))}
         </div>
       )}
       {rules ? (
-        <p style={inspectRules} data-testid="card-inspect-rules">
+        <p className={s.inspectRules} data-testid="card-inspect-rules">
           {rules}
         </p>
       ) : (
-        <p style={inspectNoText} data-testid="card-inspect-rules">
+        <p className={s.inspectNoText} data-testid="card-inspect-rules">
           No rules text.
         </p>
       )}
       {(tapped || (counters && counters.length > 0)) && (
-        <div style={inspectStateRow} data-testid="card-inspect-state">
-          {tapped && <span style={inspectState}>Tapped</span>}
+        <div className={s.inspectStateRow} data-testid="card-inspect-state">
+          {tapped && <span className={s.inspectState}>Tapped</span>}
           {(counters ?? []).map((counter) => (
-            <span key={counter.kind} style={inspectState}>
+            <span key={counter.kind} className={s.inspectState}>
               {counter.count}× {counter.kind}
             </span>
           ))}
@@ -169,14 +155,14 @@ function CardBody({
 function StackBody({ item }: { item: StackItem }) {
   return (
     <>
-      <div style={inspectTypeLine} data-testid="card-inspect-type">
+      <div className={s.inspectTypeLine} data-testid="card-inspect-type">
         {item.source !== undefined ? 'Ability on the stack' : 'Spell on the stack'}
       </div>
-      <p style={inspectRules} data-testid="card-inspect-rules">
+      <p className={s.inspectRules} data-testid="card-inspect-rules">
         {item.description}
       </p>
-      <div style={inspectStateRow} data-testid="card-inspect-state">
-        <span style={inspectState}>Controller {item.controller}</span>
+      <div className={s.inspectStateRow} data-testid="card-inspect-state">
+        <span className={s.inspectState}>Controller {item.controller}</span>
       </div>
     </>
   );

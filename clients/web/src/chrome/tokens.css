@@ -1,0 +1,105 @@
+/*
+ * RUNE chrome tokens (ADR 0019).
+ *
+ * The single source of truth for every UI-chrome value — surfaces, borders,
+ * elevation, spacing, radius, typography, accents, and motion. These live
+ * ALONGSIDE the card tokens in `src/tokens.ts` (color/size constants the Pixi and
+ * HTML card renderers share) and never overlap with them: card tokens describe a
+ * card's identity; these describe the frame around the table. Per
+ * `docs/design/ui-design-notes.md` (§Visual hierarchy, §Palette), chrome values
+ * stop living as ad-hoc hex literals in per-element inline styles — every chrome
+ * color/shape is a custom property here, consumed by the CSS-module styling layer
+ * (and by the canvas-anchored geometry helpers in `table/styles.ts` via `var()`).
+ *
+ * A handful of values (the board color, the selection/targeting accents, the
+ * muted/primary text) intentionally MIRROR shared card tokens so the DOM chrome
+ * stays in lockstep with the Pixi renderer; they are duplicated as their own
+ * chrome tokens rather than importing the card set, keeping the two systems
+ * decoupled (change a card token without disturbing chrome, and vice versa).
+ */
+:root {
+  /* ── Surface tiers (§Visual hierarchy) ──────────────────────────────────── */
+  /* Tier 1 — the table: the deepest board surface everything sits on. */
+  --rune-table: #15171a;
+  --rune-table-strong: rgba(21, 23, 26, 0.9);
+  /* Tier 2 — board regions: bounded areas ON the table, tint not chrome box. */
+  --rune-region-bg: rgba(255, 255, 255, 0.02);
+  --rune-region-bg-local: rgba(127, 178, 229, 0.05);
+  --rune-region-bg-soft: rgba(255, 255, 255, 0.03);
+  /* Tier 3 — floating chrome: HUDs, tray, rail, panels, elevated over the table. */
+  --rune-chrome-bg: #1e2126;
+  --rune-chrome-bg-alt: #1b1e23;
+  --rune-raised-bg: #2a2f37;
+  --rune-sunken-bg: #15171a;
+  --rune-sunken-bg-deep: #0f1114;
+  /* Tier 4 — overlays: topmost panels, laid over a dimmed table. */
+  --rune-overlay-bg: #1e2126;
+  --rune-scrim: rgba(9, 10, 12, 0.66);
+  --rune-scrim-strong: rgba(9, 10, 12, 0.72);
+
+  /* ── Borders ─────────────────────────────────────────────────────────────── */
+  --rune-border: #2c313a;
+  --rune-border-strong: #3a4049;
+  --rune-cardback-border: #453d5c;
+
+  /* ── Text ────────────────────────────────────────────────────────────────── */
+  --rune-text: #e8e6e1;
+  --rune-text-muted: #9ba0a8;
+
+  /* ── Accents (mirror the shared interaction tokens for chrome use) ─────────── */
+  --rune-selection: #7fb2e5;
+  --rune-targeting: #e0784a;
+  --rune-selection-fill: rgba(127, 178, 229, 0.24);
+  --rune-targeting-fill: rgba(224, 120, 74, 0.14);
+  /* The hidden-info deck back (procedural geometry, never a card identity). */
+  --rune-cardback: linear-gradient(135deg, #3a3350, #211c30);
+
+  /* ── Elevation ─────────────────────────────────────────────────────────────*/
+  --rune-elevation-1: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --rune-elevation-2: 0 12px 40px rgba(0, 0, 0, 0.5);
+
+  /* ── Radius scale ──────────────────────────────────────────────────────────*/
+  --rune-radius-xs: 3px;
+  --rune-radius-sm: 6px;
+  --rune-radius-md: 8px;
+  --rune-radius-lg: 12px;
+  --rune-radius-xl: 14px;
+  --rune-radius-pill: 999px;
+
+  /* ── Spacing scale ─────────────────────────────────────────────────────────*/
+  --rune-space-1: 2px;
+  --rune-space-2: 4px;
+  --rune-space-3: 6px;
+  --rune-space-4: 8px;
+  --rune-space-5: 10px;
+  --rune-space-6: 12px;
+  --rune-space-7: 16px;
+  --rune-space-8: 20px;
+  --rune-space-9: 24px;
+  --rune-space-10: 28px;
+
+  /* ── Typography ────────────────────────────────────────────────────────────*/
+  /* Body text stays a legible system stack; the display face carries identity
+   * moments only (wordmark, victory/defeat, phase names). No font binary is
+   * bundled (ADR 0019): a geometric system stack is the lowest-risk "distinctive"
+   * face and this single token is the swap point for a future OFL face. */
+  --rune-font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --rune-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --rune-font-display: 'Avenir Next', 'Century Gothic', 'Futura', system-ui, sans-serif;
+
+  /* Type scale — display / heading / body / caption. */
+  --rune-type-display: 30px;
+  --rune-type-title: 20px;
+  --rune-type-heading: 16px;
+  --rune-type-body-lg: 14px;
+  --rune-type-body: 13px;
+  --rune-type-caption: 12px;
+  --rune-type-micro: 11px;
+
+  /* ── Interaction ───────────────────────────────────────────────────────────*/
+  /* Minimum touch target per AGENTS.md (44px), applied to every affordance. */
+  --rune-touch: 44px;
+  /* A single motion token every transition reads, so `prefers-reduced-motion`
+   * (see base.css) can neutralize animation globally in one place. */
+  --rune-transition: 140ms ease;
+}

@@ -17,3 +17,15 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/**
+ * CSS-module imports (ADR 0019 chrome styling layer): the default export maps each
+ * authored class name to its build-time-scoped class string. Global `.css` imports
+ * (tokens/base) are side-effecting and carry no exports.
+ */
+declare module '*.module.css' {
+  const classes: { readonly [key: string]: string };
+  export default classes;
+}
+
+declare module '*.css';

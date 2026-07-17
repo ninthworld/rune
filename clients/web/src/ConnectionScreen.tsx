@@ -20,18 +20,7 @@
  */
 import { useState } from 'react';
 import { useGameStore } from './store';
-import {
-  button,
-  buttonRow,
-  connectHeading,
-  connectMain,
-  connectPanel,
-  errorText,
-  field,
-  fieldLabel,
-  input,
-  muted,
-} from './table/styles';
+import s from './table/chrome.module.css';
 
 /** Compile-time fallback when no `VITE_RUNE_SERVER_URL` is configured. */
 export const DEFAULT_SERVER_URL = 'ws://localhost:9000';
@@ -57,14 +46,14 @@ export function ConnectionScreen() {
 
   if (status === 'connecting') {
     return (
-      <main style={connectMain}>
-        <section style={connectPanel} aria-label="Connecting" data-testid="connection-screen">
-          <h1 style={connectHeading}>Connecting…</h1>
-          <span style={muted} data-testid="connection-status">
+      <main className={s.connectMain}>
+        <section className={s.connectPanel} aria-label="Connecting" data-testid="connection-screen">
+          <h1 className={s.connectHeading}>Connecting…</h1>
+          <span className={s.muted} data-testid="connection-status">
             Opening a connection to {url}
           </span>
-          <div style={buttonRow}>
-            <button type="button" style={button} onClick={disconnect}>
+          <div className={s.buttonRow}>
+            <button type="button" className={s.button} onClick={disconnect}>
               Cancel
             </button>
           </div>
@@ -78,26 +67,26 @@ export function ConnectionScreen() {
   // treat `closed` as the retryable error/closed state (see store.ts).
   const isClosed = status === 'closed';
   return (
-    <main style={connectMain}>
+    <main className={s.connectMain}>
       <section
-        style={connectPanel}
+        className={s.connectPanel}
         aria-label="Connect to a server"
         data-testid="connection-screen"
       >
-        <h1 style={connectHeading}>RUNE</h1>
+        <h1 className={s.connectHeading}>RUNE</h1>
         {isClosed ? (
-          <span style={errorText} data-testid="connection-status" role="alert">
+          <span className={s.errorText} data-testid="connection-status" role="alert">
             Connection closed. Check the server address and try again.
           </span>
         ) : (
-          <span style={muted} data-testid="connection-status">
+          <span className={s.muted} data-testid="connection-status">
             Enter a server address to connect.
           </span>
         )}
-        <label style={field}>
-          <span style={fieldLabel}>Server address</span>
+        <label className={s.field}>
+          <span className={s.fieldLabel}>Server address</span>
           <input
-            style={input}
+            className={s.input}
             type="text"
             inputMode="url"
             autoComplete="off"
@@ -108,8 +97,8 @@ export function ConnectionScreen() {
             aria-label="Server address"
           />
         </label>
-        <div style={buttonRow}>
-          <button type="button" style={button} onClick={attempt} data-testid="connect-button">
+        <div className={s.buttonRow}>
+          <button type="button" className={s.button} onClick={attempt} data-testid="connect-button">
             {isClosed ? 'Retry' : 'Connect'}
           </button>
         </div>

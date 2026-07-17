@@ -24,17 +24,8 @@ import { Fragment } from 'react';
 import type { PlayerId } from '../protocol';
 import type { BrowsableZone } from './PlayerTiles';
 import type { TableScene } from './scene';
-import {
-  bandRegion,
-  cardBack,
-  emptyBandHint,
-  geographyLayer,
-  libraryPile,
-  pileButton,
-  regionHeader,
-  regionLabel,
-  zonePiles,
-} from './styles';
+import { bandRegion, emptyBandHint, geographyLayer, regionHeader } from './styles';
+import s from './chrome.module.css';
 
 interface Props {
   /** The scene whose band/hand rects anchor the labels, boundaries, and piles. */
@@ -61,12 +52,12 @@ export function TableGeography({ scene, onOpenZone }: Props) {
             </div>
           )}
           <div style={regionHeader(band.rect)}>
-            <span data-testid={`band-label-${band.playerId}`} style={regionLabel}>
+            <span data-testid={`band-label-${band.playerId}`} className={s.regionLabel}>
               {band.label}
             </span>
-            <div style={zonePiles}>
-              <span data-testid={`library-pile-${band.playerId}`} style={libraryPile}>
-                <span style={cardBack} aria-hidden="true" />
+            <div className={s.zonePiles}>
+              <span data-testid={`library-pile-${band.playerId}`} className={s.libraryPile}>
+                <span className={s.cardBack} aria-hidden="true" />
                 Library {band.zones.library}
               </span>
               {onOpenZone && (
@@ -75,7 +66,7 @@ export function TableGeography({ scene, onOpenZone }: Props) {
                     type="button"
                     data-testid={`table-graveyard-${band.playerId}`}
                     aria-label={`Browse ${band.label} graveyard (${band.zones.graveyard})`}
-                    style={pileButton}
+                    className={s.pileButton}
                     onClick={() => onOpenZone(band.playerId, 'graveyard')}
                   >
                     Graveyard {band.zones.graveyard}
@@ -84,7 +75,7 @@ export function TableGeography({ scene, onOpenZone }: Props) {
                     type="button"
                     data-testid={`table-exile-${band.playerId}`}
                     aria-label={`Browse ${band.label} exile (${band.zones.exile})`}
-                    style={pileButton}
+                    className={s.pileButton}
                     onClick={() => onOpenZone(band.playerId, 'exile')}
                   >
                     Exile {band.zones.exile}
@@ -100,7 +91,7 @@ export function TableGeography({ scene, onOpenZone }: Props) {
           Its cards render on the canvas; only the label/boundary live here. */}
       <div style={bandRegion(scene.handRegion.rect, true)} aria-hidden="true" />
       <div style={regionHeader(scene.handRegion.rect)}>
-        <span data-testid="hand-label" style={regionLabel}>
+        <span data-testid="hand-label" className={s.regionLabel}>
           {scene.handRegion.label}
         </span>
       </div>

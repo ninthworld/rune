@@ -107,7 +107,10 @@ suppressed in targeting mode (the only interaction there is picking a target).
 Chrome (surfaces, borders, elevation, spacing, typography scale) gets its own
 token set alongside the card tokens, consumed by whatever styling layer the
 implementation ADR selects — chrome values stop living as ad-hoc hex literals in
-per-element inline styles.
+per-element inline styles. Delivered by [ADR 0019](../decisions/0019-chrome-styling-layer.md):
+the chrome tokens live in [`clients/web/src/chrome/tokens.css`](../../clients/web/src/chrome/tokens.css)
+as CSS custom properties, consumed by a CSS-module styling layer; the card tokens
+in `src/tokens.ts` stay separate and untouched.
 
 ## Card render
 

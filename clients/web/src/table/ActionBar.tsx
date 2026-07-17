@@ -8,7 +8,7 @@
  * `valid_actions[]`; the bar computes no legality.
  */
 import type { ValidAction } from '../protocol';
-import { bar, button, echo, echoLabel, muted } from './styles';
+import s from './chrome.module.css';
 
 /**
  * The multi-select toolbar's controls (issues #143/#157). While building a
@@ -60,9 +60,9 @@ export function ActionBar({
   // selection is confirmed or abandoned.
   if (multiSelect) {
     return (
-      <div role="toolbar" aria-label="Actions" data-testid="action-bar" style={bar}>
+      <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.bar}>
         {multiSelect.canAdvance && (
-          <button type="button" onClick={multiSelect.onAdvance} style={button}>
+          <button type="button" onClick={multiSelect.onAdvance} className={s.button}>
             Next
           </button>
         )}
@@ -72,7 +72,7 @@ export function ActionBar({
             onClick={multiSelect.confirm.onConfirm}
             disabled={!multiSelect.confirm.enabled}
             data-testid="multiselect-confirm"
-            style={button}
+            className={s.button}
           >
             {multiSelect.confirm.label}
           </button>
@@ -81,7 +81,7 @@ export function ActionBar({
           type="button"
           onClick={multiSelect.onCancel}
           data-testid="multiselect-cancel"
-          style={button}
+          className={s.button}
         >
           Cancel
         </button>
@@ -93,8 +93,8 @@ export function ActionBar({
   // no other global action is offered until the target is chosen or abandoned.
   if (onCancelTargeting) {
     return (
-      <div role="toolbar" aria-label="Actions" data-testid="action-bar" style={bar}>
-        <button type="button" onClick={onCancelTargeting} style={button}>
+      <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.bar}>
+        <button type="button" onClick={onCancelTargeting} className={s.button}>
           Cancel targeting
         </button>
       </div>
@@ -105,25 +105,30 @@ export function ActionBar({
   const empty = globalActions.length === 0 && !hasEcho;
 
   return (
-    <div role="toolbar" aria-label="Actions" data-testid="action-bar" style={bar}>
+    <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.bar}>
       {globalActions.map((action) => (
-        <button key={action.id} type="button" onClick={() => onChoose(action)} style={button}>
+        <button key={action.id} type="button" onClick={() => onChoose(action)} className={s.button}>
           {action.label}
         </button>
       ))}
 
       {hasEcho && (
-        <div data-testid="selection-echo" style={echo}>
-          <span style={echoLabel}>{selectedName}</span>
+        <div data-testid="selection-echo" className={s.echo}>
+          <span className={s.echoLabel}>{selectedName}</span>
           {selectedActions.map((action) => (
-            <button key={action.id} type="button" onClick={() => onChoose(action)} style={button}>
+            <button
+              key={action.id}
+              type="button"
+              onClick={() => onChoose(action)}
+              className={s.button}
+            >
               {action.label}
             </button>
           ))}
         </div>
       )}
 
-      {empty && <span style={muted}>No actions available</span>}
+      {empty && <span className={s.muted}>No actions available</span>}
     </div>
   );
 }
