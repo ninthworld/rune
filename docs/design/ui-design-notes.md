@@ -25,6 +25,17 @@ Two constraints shape every layout decision:
   focus drive the same abstract verbs: move focus / select, confirm, inspect,
   back or cancel, pass.
 
+Personality is a stated goal, but it is carried by tokens and procedural
+geometry, never by surface weight. The concept boards that informed this
+direction lean on painted texture, engraved panels, and ornamental corners; RUNE
+takes their *mood* — a near-black table, jewel-tone identity accents, thin-line
+framing, gold reserved for "you can act" — and rejects the ornament. Heavy
+texture ages badly against future card art, eats space at small card tiers, and
+hard-codes a look that tokens could otherwise re-theme. The shipped danger is the
+opposite failure: structure without identity, a functional table that reads as a
+gray dashboard. The target is the intersection — restrained surfaces with a real
+display face, a glyph language, and disciplined accent color.
+
 ## Tabletop shell
 
 Full-bleed regions replace the stacked column. Regions never reorder; they scale,
@@ -52,7 +63,13 @@ condense, or collapse.
   board, not as a detached banner row. Focus mode dims non-decision chrome.
 - **Zone piles** — library / graveyard / exile live once, in each player's board
   region (lanes keep their labeled geography). HUD surfaces do not repeat pile
-  counts they merely summarize; a count appears in exactly one home.
+  counts they merely summarize; a count appears in exactly one home. Piles are
+  card-shaped spatial objects with a count, parked in a consistent corner of every
+  player's region — findable at a glance, not text chips in a header row. Zones
+  are *places where cards can be shown*: a server-revealed library top card
+  renders face-up on the library pile. (The protocol carries no such reveal
+  today; adding one is a contract change, but the layout assumes the pile can
+  host it.)
 
 One pure function `layout(viewport, mode, playerCount)` positions every region for
 both renderers. It keys on measured geometry (width, height, aspect) and input
@@ -60,6 +77,12 @@ capabilities (pointer precision, hover availability) — not user-agent sniffing
 desktop/mobile breakpoints. Portrait, landscape, and ultrawide all resolve from
 the same function. Two modes — **overview** and **focus** — differ in emphasis and
 density only; regions never move between modes.
+
+Adaptation runs in both directions. Small screens condense and collapse; large
+screens are *spent*, not left over — card tiers and region breathing room scale
+up and the table stays centered, rather than content anchoring to one corner of a
+mostly empty viewport. A 27-inch monitor should feel like a bigger table, not a
+phone layout with margins.
 
 ## Visual hierarchy
 
@@ -77,8 +100,11 @@ is replaced by explicit surface tiers:
 
 Typography gets a scale (display / heading / body / caption) and a distinctive
 display face for identity moments — the wordmark, victory/defeat, phase names.
-Body text stays a legible system stack. Effects remain restrained per the brief
-(no 3D, no particle noise): elevation, tint, and motion that always honors
+Body text stays a legible system stack. `--rune-font-display` is the swap point:
+ADR 0019 ships it as a geometric system stack with no bundled binary, and
+bundling a single OFL-licensed display face is the intended next step — a token
+change plus one asset, no new architecture. Effects remain restrained per the
+brief (no 3D, no particle noise): elevation, tint, and motion that always honors
 `prefers-reduced-motion`.
 
 ## Identity
@@ -88,7 +114,19 @@ renderer extends to the pre-game screens and sparse table accents. Connection an
 lobby are the product's front door and share the table's visual system — not
 generic dark forms. Players read as people, not seat ids: display names ride the
 protocol (a contract change, issue #294; seat-derived fallbacks like "Player 2"
-until then).
+until then). Never compass directions or seat numbers as headers.
+
+Each player gets an identity color accent — on their region border, nameplate,
+and HUD tile, **never on their cards**. A permanent's frame color is game
+information (protection, devotion, and targeting restrictions all read it), so
+identity accents and card frames are separate channels; the WUBRG frame tokens in
+`src/tokens.ts` stay owner-independent. At a glance, the region answers "whose
+stuff" and the card answers "what stuff".
+
+The monogram motif grows into a small procedural **glyph language** — inline SVG
+in the `RuneMark` mold, no raster assets — for the places a repeated symbol beats
+a repeated word: zone piles, phase names, keyword badges (flying, deathtouch, …),
+tap state, and seat/ready markers.
 Still: no card images, official frames, symbols, or WotC branding, anywhere.
 
 ## Palette (dark board)
@@ -114,10 +152,32 @@ in `src/tokens.ts` stay separate and untouched.
 
 ## Card render
 
-No images. Frame color + oversized initial monogram stand in for art. Battlefield
-size shows name, cost pips, computed P/T (never printed values; pill only).
+No images today — but the frame is designed around an **art window** so original,
+licensed artwork can arrive in a later milestone without a frame redesign. The
+window is a reserved region of the face that holds procedural fill (the
+accent-tinted initial monogram) now and an image eventually; the name band, cost
+pips, type line, and P/T pill keep their positions either way. The monogram is a
+placeholder for the art box, not the card's identity. Official imagery stays
+excluded regardless (see the brief).
+
 Size tiers: chip 44×60 (lands/digest), support 66×92, field 84×118, hand 104×146,
 plus a "full" inspect tier with type line and rules text.
+
+Each tier carries a fixed **information budget** — what a card must answer at
+that size without opening an inspector. Cost + P/T alone is not a playable card
+face; a player has to see the board's keywords and latent abilities without
+twenty inspect round-trips.
+
+- **chip** — frame color, name or basic-land glyph, tap state.
+- **support / field** — adds cost pips, computed P/T (never printed values; pill
+  only), counter and damage badges, keyword glyphs from the identity glyph
+  language, and an **ability marker**: a quiet persistent dot for "this permanent
+  has an activated ability". The marker is deliberately distinct from the gold
+  edge bar, which keeps its exact meaning of "the server is offering an action
+  *right now*" — one says latent, the other says live.
+- **hand** — the field set at a size where names stay readable.
+- **inspect** — everything the server supplies: full rules text, keywords,
+  current-vs-printed, counters, attachments, linked objects.
 
 ## Battlefield bands
 
@@ -126,6 +186,23 @@ Per player, ordered toward the center line: creatures/planeswalkers/battles
 lands as chips at the back. Basics render as glyph chips; nonbasics as small named
 cards. Identical-state permanents collapse to one render with an ×N badge
 (grouping key = full state identity). Attachments cluster with their host.
+
+The rows are a **sorting convention, not zones**. The game has one battlefield;
+the grouping exists purely so a board reads at a glance, and it never earns
+rule-implying labels ("frontline", "support" — rejected, see Concept-board
+decisions). "Lands" is the only honest row label. Row membership derives from the
+server-computed type line, so a permanent migrates rows when its types change —
+an animated land moves up among the creatures, a crewed Vehicle likewise — and a
+migration gets a subtle transition (honoring reduced motion) so the card doesn't
+appear to teleport.
+
+Tapping is **tier-dependent**. At field and support tiers, tapped is the classic
+90° rotation plus dim — and the row layout reserves the *rotated* footprint, so a
+tapped card never overlaps its neighbors. At chip tier there is no room to
+rotate: tapped chips dim and carry a corner tap glyph instead. Tap state is part
+of the ×N grouping key, so "four Plains, one tapped" reads as an untapped ×3
+stack beside a tapped single — the tapped count stays legible at the size where
+it matters most.
 
 ## Action routing
 
@@ -166,3 +243,43 @@ Inspect has two intensities: transient peek (hover dwell) and pinned panel
 (right-click / long-press / select+I) showing current-vs-printed state and
 related cards. The library is never present client-side beyond counts and
 server-revealed subsets.
+
+**No card carries a permanently visible inspect button.** An always-on overlay
+control on every object is board noise that scales with the board (the per-card
+handles shipped under issue #261 are retired by this model). Inspect rides
+interactions the player is already making: selecting a card also surfaces its
+preview in one consistent home, hover dwell peeks on precise pointers, long-press
+peeks on touch — each satisfying the pointer/keyboard/touch requirement without
+adding chrome per card.
+
+## Concept-board decisions
+
+The 2026 concept boards (pre-game screens, menus, table, multiplayer
+overview/focus, mobile portrait) were mined for direction. Recording what was
+adopted and what was rejected so the reasoning isn't relitigated:
+
+Adopted: the dark-tabletop composition (it matches the shell region-for-region);
+the right-edge stack / activity / phase rail; a state legend built on the
+existing selected / targeting / playable accents; compressed opponent rows at
+portrait geometry; the overview/focus mode pair (#301); an identity built on
+runes, a display face, and disciplined gold.
+
+Rejected:
+
+- **Labeled pseudo-zones ("FRONTLINE", "SUPPORT").** No basis in the game's
+  rules; the type-grouped rows stay a sorting convention (see Battlefield bands)
+  and only "Lands" earns a label.
+- **A fixed verb bar (PLAY LAND / CAST SPELL / ATTACK / ABILITIES / PASS).**
+  Hard-coding a verb vocabulary reintroduces client-side assumptions about what
+  actions exist. ADR 0004 stands: entity actions render on entities; the tray is
+  O(1), server-labeled, and never enumerates categories.
+- **Owner-colored cards.** The boards paint every card in its owner's color,
+  erasing the permanent's own color identity — game information. Identity color
+  lives on regions and nameplates only (see Identity).
+- **Painted texture and engraved ornament.** Mood is carried by tokens and
+  geometry (see Design stance).
+- **Compass-direction player headers ("OPPONENT NORTH").** Players are names;
+  seat position is a layout concern, not a label.
+- **Card faces without state.** The boards show cost + P/T only, never tap
+  rotation, keywords, or ability markers; the information budget in Card render
+  is the corrective.
