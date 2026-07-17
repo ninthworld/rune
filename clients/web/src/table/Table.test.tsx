@@ -201,28 +201,58 @@ describe('Table stack panel (issue #142)', () => {
   });
 });
 
-describe('Table card inspect (issue #261)', () => {
-  it('opens the inspect popover for a hand card and shows its CardView content', () => {
+describe('Table card inspect (issues #261/#321)', () => {
+  it('has no permanently visible per-card inspect handle (issue #321)', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<Table />);
-    // The hand card c1 (Llanowar Elves) has no action, yet it is inspectable.
+    // The retired per-card "i" handles are gone; inert cards carry only a transparent
+    // inspect surface, and nothing paints a visible inspect control on a card.
+    expect(screen.queryByTestId('inspect-c1')).toBeNull();
+    expect(screen.queryByTestId('inspect-perm_xyz')).toBeNull();
+    expect(screen.getByTestId('inspect-surface-c1')).toBeDefined();
+  });
+
+  it('pins a hand card via its inspect surface and shows its CardView content', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    // The hand card c1 (Llanowar Elves) has no action, yet it is inspectable via its
+    // transparent surface (invisible, but a real focusable button).
     expect(screen.queryByTestId('card-inspect')).toBeNull();
-    fireEvent.click(screen.getByTestId('inspect-c1'));
+    const surface = screen.getByTestId('inspect-surface-c1');
+    expect(surface.tagName).toBe('BUTTON');
+    fireEvent.click(surface);
     const panel = screen.getByTestId('card-inspect');
     expect(within(panel).getByTestId('card-inspect-name').textContent).toBe('Llanowar Elves');
     expect(within(panel).getByTestId('card-inspect-rules').textContent).toContain('Add {G}');
+    // Pinned, not a transient peek: it carries the close control and blocks the modal.
+    expect(panel.getAttribute('data-transient')).toBeNull();
   });
 
-  it('inspects an own permanent including its dynamic state, and closes again', () => {
+  it('right-clicks an actionable permanent to pin its inspect, and closes again', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<Table />);
-    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    // perm_xyz carries an action, so it has a select hotspot (no surface); right-click
+    // pins its inspect without disturbing the offered action.
+    fireEvent.contextMenu(screen.getByTestId('entity-perm_xyz'));
     const panel = screen.getByTestId('card-inspect');
     expect(within(panel).getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
     expect(within(panel).getByTestId('card-inspect-state').textContent).toContain('Tapped');
-    // Close via the explicit control.
     fireEvent.click(screen.getByTestId('card-inspect-close'));
     expect(screen.queryByTestId('card-inspect')).toBeNull();
+  });
+
+  it('surfaces a transient preview when a card is selected (issue #321)', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    // Selecting an actionable card also surfaces its preview in the consistent home —
+    // as a non-blocking peek (data-transient), not the pinned modal.
+    fireEvent.click(screen.getByTestId('entity-perm_xyz'));
+    const preview = screen.getByTestId('card-inspect');
+    expect(preview.getAttribute('data-transient')).toBe('true');
+    expect(within(preview).getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+    // The peek adds no close control and never blocks (no backdrop).
+    expect(screen.queryByTestId('card-inspect-close')).toBeNull();
+    expect(screen.queryByTestId('card-inspect-backdrop')).toBeNull();
   });
 
   it('inspects a stack object', () => {
@@ -232,23 +262,23 @@ describe('Table card inspect (issue #261)', () => {
     expect(screen.getByTestId('card-inspect-name').textContent).toBe('Lightning Bolt');
   });
 
-  it('is keyboard accessible: the handle is a focusable button and Escape closes', () => {
+  it('is keyboard accessible: the inspect surface is a focusable button, Escape closes', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<Table />);
-    const handle = screen.getByTestId('inspect-c1');
-    // The handle is a real button (focusable, Enter/Space activate it natively).
-    expect(handle.tagName).toBe('BUTTON');
-    fireEvent.click(handle);
+    const surface = screen.getByTestId('inspect-surface-c1');
+    // A real button: focusable, Enter/Space activate it natively → pins the panel.
+    expect(surface.tagName).toBe('BUTTON');
+    fireEvent.click(surface);
     expect(screen.getByTestId('card-inspect')).toBeDefined();
-    // Escape dismisses the popover (keyboard parity with the other overlays).
+    // Escape dismisses the pinned panel (keyboard parity with the other overlays).
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('card-inspect')).toBeNull();
   });
 
-  it('drops an open popover when a fresh GameView arrives (no state across messages)', () => {
+  it('drops an open panel when a fresh GameView arrives (no state across messages)', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<Table />);
-    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    fireEvent.contextMenu(screen.getByTestId('entity-perm_xyz'));
     expect(screen.getByTestId('card-inspect')).toBeDefined();
     act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
     expect(screen.queryByTestId('card-inspect')).toBeNull();
@@ -264,9 +294,10 @@ describe('Table card inspect (issue #261)', () => {
         name: 'Cast Lightning Bolt',
       }),
     );
-    // The candidate permanent is targetable AND carries an inspect handle.
+    // The candidate permanent is targetable AND still inspectable (right-click pins,
+    // even mid-pick — only the hover/long-press peeks are suppressed while targeting).
     expect(screen.getByTestId('target-perm_xyz')).toBeDefined();
-    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    fireEvent.contextMenu(screen.getByTestId('target-perm_xyz'));
     expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
     // Inspecting did not submit the target; targeting is still live underneath.
     expect(choose).not.toHaveBeenCalled();
@@ -296,7 +327,8 @@ describe('Table card inspect (issue #261)', () => {
     seed(terminal);
     render(<Table />);
     expect(screen.getByTestId('game-over-overlay')).toBeDefined();
-    fireEvent.click(screen.getByTestId('inspect-perm_win'));
+    // No actions in the terminal frame → every card is inert and carries a surface.
+    fireEvent.click(screen.getByTestId('inspect-surface-perm_win'));
     expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
   });
 });

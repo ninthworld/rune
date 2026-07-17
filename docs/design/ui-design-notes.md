@@ -279,7 +279,14 @@ handles shipped under issue #261 are retired by this model). Inspect rides
 interactions the player is already making: selecting a card also surfaces its
 preview in one consistent home, hover dwell peeks on precise pointers, long-press
 peeks on touch — each satisfying the pointer/keyboard/touch requirement without
-adding chrome per card.
+adding chrome per card. Delivered by issue #321: the per-card handles are gone;
+an actionable card hosts the inspect gestures on its select/target hotspot, and any
+other card (an opponent's permanent, an inert hand card) on a transparent, focusable
+**inspect surface** — invisible, but keyboard/AT-reachable, so no visible control
+scales with the board. A peek renders as a non-blocking, `pointer-events: none`
+preview (the transient `CardInspect`) in a fixed home, honoring `prefers-reduced-motion`;
+right-click / select+I / activating a surface pins the full panel. Hover and
+long-press are suppressed mid-pick (targeting); pinning stays reachable.
 
 ## Concept-board decisions
 

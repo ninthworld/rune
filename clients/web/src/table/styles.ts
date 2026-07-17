@@ -229,27 +229,28 @@ export function entityActions(rect: Rect): CSSProperties {
  * select/target interaction — the two coexist (a card stays both inspectable and
  * toggleable in targeting/multi-select).
  */
-export function inspectHandle(rect: Rect): CSSProperties {
+/**
+ * A per-card **inspect surface** (issue #321): a transparent, chrome-less layer over
+ * an otherwise non-interactive card (an opponent's permanent, an inert hand card),
+ * carrying the inspect gestures — hover-dwell, long-press, right-click, and keyboard
+ * focus + activate — without a permanently visible handle. It covers the card's rect
+ * and is focusable for the keyboard/AT path, but paints nothing, so the board stays
+ * quiet. Cards that already carry a select/target hotspot host the same gestures on
+ * that hotspot instead, so no card ever stacks two interactive layers.
+ */
+export function inspectSurface(rect: Rect): CSSProperties {
   return {
     position: 'absolute',
-    left: rect.x + rect.w - TOUCH + 6,
-    top: rect.y - 6,
-    width: TOUCH,
-    height: TOUCH,
+    left: rect.x,
+    top: rect.y,
+    width: rect.w,
+    height: rect.h,
     padding: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 999,
-    border: `1px solid ${SURFACES.selection}`,
-    background: 'var(--rune-table-strong)',
-    color: 'var(--rune-text)',
-    fontSize: 15,
-    fontWeight: 700,
-    lineHeight: 1,
-    cursor: 'pointer',
+    margin: 0,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'default',
     pointerEvents: 'auto',
-    zIndex: 3,
   };
 }
 
