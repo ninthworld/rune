@@ -69,7 +69,11 @@ condense, or collapse.
   are *places where cards can be shown*: a server-revealed library top card
   renders face-up on the library pile. (The protocol carries no such reveal
   today; adding one is a contract change, but the layout assumes the pile can
-  host it.)
+  host it.) Delivered by issue #319: the `ZonePile` component
+  (`clients/web/src/table/ZonePile.tsx`) renders each zone as a card-shaped pile
+  identified by its zone glyph (#317), with a `faceUp` slot the future reveal drops
+  into without a layout change; the count lives only here (the HUD stopped repeating
+  it in #296).
 
 One pure function `layout(viewport, mode, playerCount)` positions every region for
 both renderers. It keys on measured geometry (width, height, aspect) and input
@@ -101,9 +105,14 @@ is replaced by explicit surface tiers:
 Typography gets a scale (display / heading / body / caption) and a distinctive
 display face for identity moments — the wordmark, victory/defeat, phase names.
 Body text stays a legible system stack. `--rune-font-display` is the swap point:
-ADR 0019 ships it as a geometric system stack with no bundled binary, and
-bundling a single OFL-licensed display face is the intended next step — a token
-change plus one asset, no new architecture. Effects remain restrained per the
+ADR 0019 shipped it as a geometric system stack with no bundled binary, and issue
+#322 made the anticipated swap — a bundled **OFL display face** now leads the token,
+with that system stack kept as the fallback. The bundled face is "RUNE Display" (a
+subset of Rajdhani, SIL OFL 1.1; angular, geometric, rune-adjacent), served with the
+client bundle as a ~14 KB WOFF2 (no network fetch), `font-display: swap` so identity
+text is never invisible and there is no blocking layout shift. The asset, its OFL
+license text, and a provenance note live in
+[`clients/web/src/chrome/fonts/`](../../clients/web/src/chrome/fonts/). Effects remain restrained per the
 brief (no 3D, no particle noise): elevation, tint, and motion that always honors
 `prefers-reduced-motion`.
 
@@ -183,6 +192,16 @@ twenty inspect round-trips.
 - **hand** — the field set at a size where names stay readable.
 - **inspect** — everything the server supplies: full rules text, keywords,
   current-vs-printed, counters, attachments, linked objects.
+
+Delivered by issue #320 in the card factory: a capped keyword-glyph strip (from
+`CardView.keywords`, overflowing to `+N` rather than shrinking below legibility),
+the latent-ability marker dot (distinct in *shape* from the gold playable bar; read
+off the printed rules text as a presentation heuristic — the swap point for a future
+`has_activated_ability` view field), and the existing counter badge, all at
+support/field/hand and never on chips. The **marked-damage badge** renders when a
+`markedDamage` value is present, but no protocol field carries combat damage today —
+so populating it is a follow-up contract change (the renderer is ready), exactly the
+"needed fact not view-derivable → follow-up" path the issue calls for.
 
 ## Battlefield bands
 
@@ -265,7 +284,14 @@ handles shipped under issue #261 are retired by this model). Inspect rides
 interactions the player is already making: selecting a card also surfaces its
 preview in one consistent home, hover dwell peeks on precise pointers, long-press
 peeks on touch — each satisfying the pointer/keyboard/touch requirement without
-adding chrome per card.
+adding chrome per card. Delivered by issue #321: the per-card handles are gone;
+an actionable card hosts the inspect gestures on its select/target hotspot, and any
+other card (an opponent's permanent, an inert hand card) on a transparent, focusable
+**inspect surface** — invisible, but keyboard/AT-reachable, so no visible control
+scales with the board. A peek renders as a non-blocking, `pointer-events: none`
+preview (the transient `CardInspect`) in a fixed home, honoring `prefers-reduced-motion`;
+right-click / select+I / activating a surface pins the full panel. Hover and
+long-press are suppressed mid-pick (targeting); pinning stays reachable.
 
 ## Concept-board decisions
 

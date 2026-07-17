@@ -64,6 +64,27 @@ export const PIP = {
   N: { bg: '#CACBCF', fg: '#26262A' },
 } as const;
 
+/**
+ * Card-face state indicators (issue #320): the keyword-glyph strip color, the
+ * latent activated-ability marker dot, and the marked-damage badge. These read
+ * against the card body and, per ui-requirements §10, stay distinct from the
+ * selection (blue ring), targeting (orange ring), and playable (gold edge bar)
+ * accents by **shape** — a glyph strip, a small dot, a corner badge — not hue, so a
+ * colorblind player separates them without color vision. The ability marker's hue is
+ * deliberately a muted violet, well away from the gold playable bar it must never be
+ * confused with (latent vs live).
+ */
+export const INDICATORS = {
+  /** Keyword-glyph stroke color — a legible neutral on the dark card body. */
+  keyword: '#C6CBD2',
+  /** The latent activated-ability marker dot (muted violet — not the gold bar). */
+  abilityMarker: '#A99BC4',
+  /** Marked combat damage badge fill. */
+  damageBg: '#B0413A',
+  /** Marked combat damage badge text. */
+  damageText: '#F6E7E4',
+} as const;
+
 /** Small chip drawn at a card corner for counters and state (summoning sick). */
 export const BADGE = {
   bg: '#3A3E45',

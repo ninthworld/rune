@@ -222,10 +222,14 @@ export function Table() {
   const [highlightedId, setHighlightedId] = useState<EntityId | null>(null);
   const [targeting, setTargeting] = useState<TargetingSession | null>(null);
   const [multiSelect, setMultiSelect] = useState<MultiSelectSession | null>(null);
-  // The entity whose inspect popover is open, if any (issue #261). Ephemeral
+  // The entity whose **pinned** inspect panel is open, if any (issue #261). Ephemeral
   // presentation state like every selection here — never load-bearing across
   // messages (dropped on the next view below).
   const [inspectedId, setInspectedId] = useState<EntityId | null>(null);
+  // The entity whose **transient peek** is showing (issue #321) — a hover-dwell /
+  // long-press preview. Distinct from the pinned panel: it never blocks input and is
+  // cleared as soon as the pointer leaves. Also ephemeral, dropped on the next view.
+  const [peekId, setPeekId] = useState<EntityId | null>(null);
   // The public zone whose browser is open, if any (issue #262) — a player's
   // graveyard or exile pile. Ephemeral like the inspect popover above.
   const [browsing, setBrowsing] = useState<{ playerId: PlayerId; zone: BrowsableZone } | null>(
@@ -252,6 +256,7 @@ export function Table() {
     setTargeting(null);
     setMultiSelect(null);
     setInspectedId(null);
+    setPeekId(null);
     setBrowsing(null);
     setHighlightedId(null);
   }, [view]);
@@ -265,13 +270,14 @@ export function Table() {
       if (event.key !== 'Escape') return;
       if (showHelp) setShowHelp(false);
       else if (inspectedId !== null) setInspectedId(null);
+      else if (peekId !== null) setPeekId(null);
       else if (browsing) setBrowsing(null);
       else if (multiSelect) setMultiSelect(null);
       else if (targeting) setTargeting(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showHelp, inspectedId, browsing, multiSelect, targeting]);
+  }, [showHelp, inspectedId, peekId, browsing, multiSelect, targeting]);
 
   // Keyboard parity for core play (issue #266). Every binding maps to an
   // interaction the pointer already has — no new game semantics, all client-side:
@@ -490,11 +496,18 @@ export function Table() {
     );
   }
 
-  // The card the inspect popover shows, resolved from the latest view (issue #261).
-  // Null when nothing is inspected or the id is no longer present — the popover is
-  // pure render of the current view, so a stale id simply shows nothing.
-  const inspectTarget = inspectedId !== null ? resolveInspect(view, inspectedId) : null;
-  const closeInspect = (): void => setInspectedId(null);
+  // The inspect preview's target and intensity (issues #261/#321), resolved from the
+  // latest view. Priority: a pinned panel wins; else a transient peek; else the
+  // current selection surfaces its preview in the same consistent home. A pinned
+  // target renders the dismissible modal; everything else renders a non-blocking
+  // peek. A stale id simply shows nothing — the preview is pure render of the view.
+  const previewId = inspectedId ?? peekId ?? selectedId;
+  const inspectTarget = previewId !== null ? resolveInspect(view, previewId) : null;
+  const inspectTransient = inspectedId === null;
+  const closeInspect = (): void => {
+    setInspectedId(null);
+    setPeekId(null);
+  };
 
   // The open zone browser's contents, resolved from the view's public piles (issue
   // #262). Graveyard/exile are public, so any player's pile is browsable straight
@@ -557,7 +570,9 @@ export function Table() {
           onClose={closeBrowser}
         />
       )}
-      {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
+      {inspectTarget && (
+        <CardInspect target={inspectTarget} onClose={closeInspect} transient={inspectTransient} />
+      )}
       {showHelp && <ShortcutHelp bindings={shortcutBindings} onClose={() => setShowHelp(false)} />}
       <RejectionToast nonce={rejectionNonce} />
     </>
@@ -613,10 +628,12 @@ export function Table() {
               scene={scene}
               selectedId={null}
               targeting={false}
+              pointer={viewport.pointer}
               onSelect={() => {}}
               onChoose={() => {}}
               onPickTarget={() => {}}
-              onInspect={setInspectedId}
+              onPeek={setPeekId}
+              onPinInspect={setInspectedId}
             />
           </div>
         </div>
@@ -909,10 +926,12 @@ export function Table() {
             selectedId={selectedId}
             targeting={selecting}
             multiSelect={multiSelect !== null}
+            pointer={viewport.pointer}
             onSelect={toggleSelect}
             onChoose={fire}
             onPickTarget={multiSelect ? toggleCandidate : pickTarget}
-            onInspect={setInspectedId}
+            onPeek={setPeekId}
+            onPinInspect={setInspectedId}
           />
         </div>
       </div>

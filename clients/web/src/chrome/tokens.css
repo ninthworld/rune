@@ -17,6 +17,25 @@
  * chrome tokens rather than importing the card set, keeping the two systems
  * decoupled (change a card token without disturbing chrome, and vice versa).
  */
+
+/*
+ * The bundled OFL display face (issue #322). "RUNE Display" is a subset of Rajdhani
+ * (SIL Open Font License 1.1, Indian Type Foundry) — angular, geometric, and
+ * rune-adjacent — cut down to Basic Latin + common Latin-1/punctuation and renamed
+ * so the subset is never mistaken for the upstream family. The binary ships with the
+ * client bundle (no network fetch); its OFL license text lives beside the asset in
+ * `fonts/OFL.txt`, and `fonts/README.md` records the choice and modifications.
+ * `font-display: swap` renders the fallback stack immediately and swaps the face in
+ * on load, so identity text is never invisible and there is no blocking layout shift.
+ */
+@font-face {
+  font-family: 'RUNE Display';
+  src: url('./fonts/rune-display.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* ── Surface tiers (§Visual hierarchy) ──────────────────────────────────── */
   /* Tier 1 — the table: the deepest board surface everything sits on. */
@@ -80,12 +99,14 @@
 
   /* ── Typography ────────────────────────────────────────────────────────────*/
   /* Body text stays a legible system stack; the display face carries identity
-   * moments only (wordmark, victory/defeat, phase names). No font binary is
-   * bundled (ADR 0019): a geometric system stack is the lowest-risk "distinctive"
-   * face and this single token is the swap point for a future OFL face. */
+   * moments only (wordmark, victory/defeat, phase names). The bundled OFL face
+   * "RUNE Display" (issue #322, @font-face above) leads the stack; the former
+   * geometric system stack stays as the fallback, rendered until the face loads and
+   * if it ever fails to. */
   --rune-font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --rune-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --rune-font-display: 'Avenir Next', 'Century Gothic', 'Futura', system-ui, sans-serif;
+  --rune-font-display:
+    'RUNE Display', 'Avenir Next', 'Century Gothic', 'Futura', system-ui, sans-serif;
 
   /* Type scale — display / heading / body / caption. */
   --rune-type-display: 30px;
