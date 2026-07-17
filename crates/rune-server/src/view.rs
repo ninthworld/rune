@@ -992,6 +992,10 @@ fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEntry> {
                     active_player: player_id(*active_player),
                     phase: phase_of(*step),
                 },
+                GameEvent::PlayerEliminated { player, reason } => GameLogEvent::PlayerEliminated {
+                    player: player_id(*player),
+                    reason: game_over_reason(*reason),
+                },
                 GameEvent::GameOver { result } => GameLogEvent::GameOver {
                     result: result_view(result.clone()),
                 },
@@ -2737,5 +2741,29 @@ mod tests {
             view.log[0].event,
             GameLogEvent::CardsDrawn { count: 2, .. }
         ));
+    }
+
+    #[test]
+    fn issue_342_elimination_projects_a_player_eliminated_log_event() {
+        // A player leaving a 3-seat game under CR 800.4a projects as a
+        // `player_eliminated` log event carrying the seat and the loss reason. The
+        // engine records it in the state's log window; the projection maps it 1:1.
+        use rune_engine::{GameEvent, GameLogEntry};
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_multiplayer(3);
+        state.log.push(GameLogEntry {
+            sequence: 1,
+            event: GameEvent::PlayerEliminated {
+                player: PlayerId(1),
+                reason: LossReason::ZeroLife,
+            },
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let GameLogEvent::PlayerEliminated { player, reason } = &view.log[0].event else {
+            panic!("expected a player_eliminated event");
+        };
+        assert_eq!(player, &player_id(PlayerId(1)));
+        assert_eq!(reason, &GameOverReason::LifeZero);
     }
 }

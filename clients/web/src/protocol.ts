@@ -199,6 +199,7 @@ export type GameLogEvent =
   | { type: 'cards_drawn'; player: PlayerId; count: number }
   | { type: 'permanent_died'; permanent: LogEntity }
   | { type: 'step_changed'; turn: number; active_player: PlayerId; phase: Phase }
+  | { type: 'player_eliminated'; player: PlayerId; reason: GameOverReason }
   | { type: 'game_over'; result: GameResult };
 
 /** One sequence-numbered entry in the authoritative recent game-history window. */
