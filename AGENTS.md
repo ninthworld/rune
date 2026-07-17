@@ -47,11 +47,19 @@ Nested instructions: `crates/rune-engine/AGENTS.md`, `clients/web/AGENTS.md`.
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make client-check` — lint + typecheck + test + build in `clients/web`
 - `make deny` — `cargo deny check advisories licenses bans sources` (the `cargo-deny` job)
+- `make smoke` — the browser smoke canary (ADR 0011): one Playwright spec, a real
+  Chromium, a real seeded server (the `Smoke` CI job). Part of `make verify`, not
+  `make check`. Needs a Chromium; locally it uses a pre-installed one when present,
+  else run `cd clients/web && npx playwright install chromium` once.
 - `scripts/bootstrap.sh` — one-time prerequisite check for both gates
 
 > `make check` is the fast unit gate, **not** the entire CI surface. The full surface is
-> `make check` (Engine + Client) **plus** the `cargo-deny` job — exactly what `make verify`
-> runs locally. (The browser E2E suite of ADR 0011 is removed for now; it will return.)
+> `make check` (Engine + Client) **plus** the `cargo-deny` job **plus** the browser
+> `Smoke` canary (ADR 0011) — exactly what `make verify` runs locally. The smoke canary
+> (`make smoke`, issue #279) is one Playwright spec that drives a real Chromium against a
+> real seeded `rune-server` and plays real turns through the rendered UI (the StrictMode
+> canvas-attach guard, #276). It is deliberately outside `make check`, which stays fast
+> and browser-free.
 
 ## Workflow
 

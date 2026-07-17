@@ -84,12 +84,14 @@ jsdom test suite cannot see this class of failure, and the browser E2E suite was
 - [x] #255 — carry the receiver's own life (and library size) in `GameView` and render it.
 - [ ] #276 — the table renders card faces in the dev client: fix the StrictMode canvas
       detach, and make any canvas failure visible instead of a silent blank board.
-- [ ] #279 — a minimal real-browser smoke test (two contexts, real server) asserts the
-      canvas is attached and non-blank and plays a land through the rendered UI, wired
-      into `make verify`/CI.
+- [x] #279 — a minimal real-browser smoke canary (two contexts, real seeded server)
+      asserts the battlefield canvas stays attached and shows content, plays a land
+      through the rendered UI, and passes priority across a turn boundary — wired into
+      `make smoke` (part of `make verify`) and the `Smoke` CI job.
 
-> The full browser E2E suite (ADR 0011) stays parked; #279 restores only a one-spec
-> canary, which is what would have caught #276.
+> The full browser E2E suite (ADR 0011) stays parked; #279 restored only a one-spec
+> canary (`make smoke`), which is what would have caught #276. It guards the canvas-attach
+> fix directly: reverting #276 turns it red.
 
 ### M3 — A real card pool  *(shipped, with one criterion to verify)*
 

@@ -3,3 +3,8 @@ node_modules
 
 # Markdown docs are prose-formatted by hand, not Prettier.
 *.md
+
+# Playwright e2e run artifacts (ADR 0011)
+test-results
+playwright-report
+.playwright
