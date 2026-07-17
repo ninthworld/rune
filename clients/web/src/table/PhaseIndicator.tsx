@@ -42,6 +42,13 @@ interface Props {
   mode: TableMode;
   /** The receiver's own seat id, to phrase the active player as "Your turn". */
   localId?: PlayerId;
+  /**
+   * Set the receiver's priority-stop preferences (issue #264). When provided, the
+   * expanded step list renders a per-step stop toggle; the answer is the full new set,
+   * which the server stores and echoes back in `view.stops` (the toggles' only source
+   * of truth — nothing is kept client-side). Omitted on the read-only game-over board.
+   */
+  onSetStops?: (stops: Phase[]) => void;
 }
 
 /** Readable name of each step, shown compact (current step) and expanded. */
@@ -84,11 +91,19 @@ const PHASE_GROUPS: ReadonlyArray<{ id: string; label: string; phases: readonly 
   { id: 'ending', label: 'Ending', phases: ['end', 'cleanup'] },
 ];
 
-export function PhaseIndicator({ view, mode, localId }: Props) {
+export function PhaseIndicator({ view, mode, localId, onSetStops }: Props) {
   // Expansion is ephemeral presentation, defaulting collapsed — a fresh mount from
   // one GameView renders compact (nothing load-bearing across messages).
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
+
+  // The current stop set is the server's echo (issue #264) — the only source of the
+  // toggles' state; the client stores nothing. Toggling a step sends the full new set.
+  const stops = view.stops ?? [];
+  const toggleStop = (phase: Phase): void => {
+    if (!onSetStops) return;
+    onSetStops(stops.includes(phase) ? stops.filter((p) => p !== phase) : [...stops, phase]);
+  };
 
   const isLocalTurn = view.active_player !== '' && view.active_player === localId;
   const activeLabel =
@@ -153,16 +168,25 @@ export function PhaseIndicator({ view, mode, localId }: Props) {
           Decision
         </span>
       )}
+      {/* Auto-pass indicator (issue #264): reaching this state passed priority on the
+          receiver's behalf. Display-only and transient — a plain status badge. */}
+      {view.auto_passed && (
+        <span className={s.indicatorAutoPassed} data-testid="auto-passed-indicator" role="status">
+          Auto-passed
+        </span>
+      )}
       {expanded && (
         <ol id={listId} className={s.indicatorSteps} data-testid="indicator-steps">
           {PHASES.map((phase) => {
             const current = phase === view.phase;
+            const stopped = stops.includes(phase);
             return (
               <li
                 key={phase}
                 data-testid={`indicator-step-${phase}`}
                 data-phase={phase}
                 data-current={current || undefined}
+                data-stop={stopped || undefined}
                 aria-current={current ? 'step' : undefined}
                 className={
                   current
@@ -170,7 +194,23 @@ export function PhaseIndicator({ view, mode, localId }: Props) {
                     : s.indicatorFullStep
                 }
               >
-                {STEP_NAME[phase]}
+                <span className={s.indicatorFullStepName}>{STEP_NAME[phase]}</span>
+                {/* Per-step stop toggle (issue #264): opt into stopping here even when
+                    idle. Rendered only when a setter is wired (never on the read-only
+                    game-over board). `aria-pressed` reflects the server's current set. */}
+                {onSetStops && (
+                  <button
+                    type="button"
+                    className={s.stopToggle}
+                    data-testid={`stop-toggle-${phase}`}
+                    data-stop={stopped || undefined}
+                    aria-pressed={stopped}
+                    aria-label={`Stop at ${STEP_NAME[phase]}`}
+                    onClick={() => toggleStop(phase)}
+                  >
+                    {stopped ? 'Stop' : 'Auto'}
+                  </button>
+                )}
               </li>
             );
           })}

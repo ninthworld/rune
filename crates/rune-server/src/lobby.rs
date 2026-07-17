@@ -86,7 +86,7 @@ use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
 use crate::format::{DeckError, FormatRegistry};
-use crate::room::{serve_connection, Room, RoomHandle, Seat};
+use crate::room::{serve_connection, AutoPassPolicy, Room, RoomHandle, Seat};
 
 /// Inclusive range of seats a room may be configured with. The lobby and room
 /// plumbing support 2–8 seats even while the engine remains two-player (ADR 0012):
@@ -801,7 +801,14 @@ impl Lobby {
                 return;
             }
         };
-        let (handle, _task) = Room::new(state, db).with_player_names(player_names).spawn();
+        // Basic priority automation is on for real games (issue #264): an idle seat's
+        // priority auto-passes so a spell-less turn does not cost a click per step,
+        // gated by each seat's own `set_stops` preferences. Off only in unit tests
+        // that drive priority pass-by-pass.
+        let (handle, _task) = Room::new(state, db)
+            .with_player_names(player_names)
+            .with_auto_pass(AutoPassPolicy::On)
+            .spawn();
 
         // Hand every seated session off to the in-game contract.
         let occupants: Vec<(Seat, SessionToken)> = room

@@ -133,3 +133,69 @@ describe('PhaseIndicator (issue #297)', () => {
     expect(screen.getByTestId('indicator-active').textContent).toBe('Active player —');
   });
 });
+
+describe('PhaseIndicator priority stops and auto-pass (issue #264)', () => {
+  it('shows the auto-pass indicator only when the view flags it', () => {
+    const base = viewWith(2, 'p1', 'precombat_main');
+    const { rerender } = render(<PhaseIndicator view={base} mode="overview" localId="p1" />);
+    expect(screen.queryByTestId('auto-passed-indicator')).toBeNull();
+
+    rerender(<PhaseIndicator view={{ ...base, auto_passed: true }} mode="overview" localId="p1" />);
+    expect(screen.getByTestId('auto-passed-indicator')).toBeDefined();
+  });
+
+  it('renders a per-step stop toggle in the expanded list, reflecting the current set', () => {
+    const view = { ...viewWith(2, 'p1', 'upkeep'), stops: ['end'] as Phase[] };
+    render(<PhaseIndicator view={view} mode="overview" localId="p1" onSetStops={() => {}} />);
+    fireEvent.click(screen.getByTestId('indicator-toggle'));
+
+    // Every step has a toggle; the one in the current set reads pressed, others not.
+    for (const phase of PHASES) {
+      expect(screen.getByTestId(`stop-toggle-${phase}`)).toBeDefined();
+    }
+    expect(screen.getByTestId('stop-toggle-end').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('stop-toggle-upkeep').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('toggling an unset step sends the full new set including it', () => {
+    let sent: Phase[] | null = null;
+    const view = { ...viewWith(2, 'p1', 'upkeep'), stops: ['end'] as Phase[] };
+    render(
+      <PhaseIndicator
+        view={view}
+        mode="overview"
+        localId="p1"
+        onSetStops={(s) => {
+          sent = s;
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('indicator-toggle'));
+    fireEvent.click(screen.getByTestId('stop-toggle-upkeep'));
+    expect(sent).toEqual(['end', 'upkeep']);
+  });
+
+  it('toggling a set step removes it from the set', () => {
+    let sent: Phase[] | null = null;
+    const view = { ...viewWith(2, 'p1', 'upkeep'), stops: ['end', 'upkeep'] as Phase[] };
+    render(
+      <PhaseIndicator
+        view={view}
+        mode="overview"
+        localId="p1"
+        onSetStops={(s) => {
+          sent = s;
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('indicator-toggle'));
+    fireEvent.click(screen.getByTestId('stop-toggle-end'));
+    expect(sent).toEqual(['upkeep']);
+  });
+
+  it('renders no stop toggles when no setter is wired (read-only game-over board)', () => {
+    render(<PhaseIndicator view={viewWith(2, 'p1', 'upkeep')} mode="overview" localId="p1" />);
+    fireEvent.click(screen.getByTestId('indicator-toggle'));
+    expect(screen.queryByTestId('stop-toggle-upkeep')).toBeNull();
+  });
+});

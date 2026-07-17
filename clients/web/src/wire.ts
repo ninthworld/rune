@@ -137,11 +137,29 @@ export function normalizeGameView(payload: unknown): GameView {
     action_deadline:
       typeof payload.action_deadline === 'number' ? payload.action_deadline : undefined,
     result: normalizeGameResult(payload.result),
+    // Priority-stop preferences (issue #264): a list of phase names the server elides
+    // when empty; keep only recognized phases so an unknown future value never breaks
+    // rendering, defaulting to `[]` (stop nowhere).
+    stops: normalizePhaseList(payload.stops),
+    // The auto-pass indicator (issue #264): display-only, defaults to `false` when the
+    // seat was not auto-passed (or an older server omits it).
+    auto_passed: payload.auto_passed === true,
     // Public display names (issue #294): a string→string map the server elides when
     // empty; default to `{}` so every surface can look a name up and fall back when
     // absent (older servers never send it).
     player_names: normalizeStringMap(payload.player_names),
   };
+}
+
+/**
+ * Coerce a wire value into a list of known {@link Phase} values, dropping any
+ * non-phase entry. Used for `GameView.stops` (issue #264): the server elides it when
+ * empty, so a missing or malformed value degrades to `[]` and an unrecognized future
+ * phase is simply ignored rather than throwing.
+ */
+function normalizePhaseList(value: unknown): Phase[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isPhase);
 }
 
 /**

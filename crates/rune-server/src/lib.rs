@@ -30,7 +30,7 @@ mod test_support;
 mod view;
 
 pub use lobby::{serve_lobby_connection, Lobby};
-pub use room::{serve_connection, Room, RoomHandle, RoomInput, Seat};
+pub use room::{serve_connection, AutoPassPolicy, Room, RoomHandle, RoomInput, Seat};
 
 use std::future::Future;
 use std::net::SocketAddr;

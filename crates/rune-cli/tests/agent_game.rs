@@ -29,7 +29,7 @@ use rune_engine::{
     Supertype,
 };
 use rune_protocol::{ChooseAction, ClientMessage, GameView};
-use rune_server::{Room, RoomInput};
+use rune_server::{AutoPassPolicy, Room, RoomInput};
 use tokio::sync::watch;
 
 /// A 40-card starter deck over the bundled ids 1..=6 (green creatures + Forest), the
@@ -66,7 +66,7 @@ fn decklist(db: &CardDatabase) -> Vec<CardId> {
 async fn play_seeded_game(seed: u64) -> (GameView, Vec<(usize, String)>) {
     let db = CardDatabase::bundled().expect("bundled cards");
     let deck = decklist(&db);
-    play_seeded_game_with(seed, deck.clone(), deck).await
+    play_seeded_game_with(seed, deck.clone(), deck, AutoPassPolicy::Off).await
 }
 
 /// Drive a seeded [`Room`] to completion with an explicit deck per seat — the
@@ -76,11 +76,12 @@ async fn play_seeded_game_with(
     seed: u64,
     deck0: Vec<CardId>,
     deck1: Vec<CardId>,
+    auto_pass: AutoPassPolicy,
 ) -> (GameView, Vec<(usize, String)>) {
     let db = CardDatabase::bundled().expect("bundled cards");
     let setup = GameSetup::two_player(deck0, deck1, seed);
     let state = GameState::new(&setup, &db).expect("valid setup");
-    let (handle, task) = Room::new(state, db).spawn();
+    let (handle, task) = Room::new(state, db).with_auto_pass(auto_pass).spawn();
 
     let (tx0, mut rx0) = watch::channel::<Option<GameView>>(None);
     let (tx1, mut rx1) = watch::channel::<Option<GameView>>(None);
@@ -191,6 +192,63 @@ async fn agent_vs_agent_with_the_same_seed_reproduces_the_same_game() {
     assert_eq!(
         first_terminal.result, second_terminal.result,
         "the same seed reproduces the same winner, losers, and reason",
+    );
+}
+
+/// Play a full seeded game with basic priority automation on (issue #264).
+async fn play_seeded_game_auto(seed: u64) -> (GameView, Vec<(usize, String)>) {
+    let db = CardDatabase::bundled().expect("bundled cards");
+    let deck = decklist(&db);
+    play_seeded_game_with(seed, deck.clone(), deck, AutoPassPolicy::On).await
+}
+
+#[tokio::test]
+async fn issue_264_agent_vs_agent_is_deterministic_with_automation_on() {
+    // The replay stays deterministic with automation on: the same seed reproduces the
+    // same action-by-action transcript and the same terminal result. (Automation only
+    // relieves the agents of idle passes the room now applies — a pure function of the
+    // state — so nothing about the game becomes nondeterministic.)
+    let seed = 0x5EED_264A_0000_0001;
+    let (first_terminal, first_transcript) = play_seeded_game_auto(seed).await;
+    let (second_terminal, second_transcript) = play_seeded_game_auto(seed).await;
+
+    assert_eq!(
+        first_transcript, second_transcript,
+        "with automation on, the same seed reproduces the same transcript",
+    );
+    assert_eq!(
+        first_terminal.result, second_terminal.result,
+        "with automation on, the same seed reproduces the same result",
+    );
+    assert!(
+        first_terminal.result.is_some_and(|r| r.winner.is_some()),
+        "the automated game still finishes with a decisive winner",
+    );
+}
+
+#[tokio::test]
+async fn issue_264_automation_finishes_a_game_with_fewer_agent_decisions() {
+    // Automation makes the agents click far fewer times to finish the same game: the
+    // room auto-passes their idle priority, so their transcript is a strict, much
+    // smaller subset of moves than the manual baseline — while still reaching a
+    // decisive result.
+    let seed = 0x5EED_264A_0000_0002;
+    let (auto_terminal, auto_transcript) = play_seeded_game_auto(seed).await;
+    let (manual_terminal, manual_transcript) = play_seeded_game(seed).await;
+
+    assert!(
+        auto_terminal.result.is_some_and(|r| r.winner.is_some()),
+        "the automated game finishes with a winner",
+    );
+    assert!(
+        manual_terminal.result.is_some(),
+        "the manual baseline also finishes",
+    );
+    assert!(
+        auto_transcript.len() < manual_transcript.len(),
+        "automation costs the agents fewer decisions: auto={} manual={}",
+        auto_transcript.len(),
+        manual_transcript.len(),
     );
 }
 
@@ -345,8 +403,13 @@ async fn bundled_decklists_play_to_a_deterministic_completion() {
     for i in 0..decks.len() {
         let j = (i + 1) % decks.len();
         let seed = 0x5EED_D0D0_0000_0000 ^ (((i as u64) << 8) | j as u64);
-        let (terminal, transcript) =
-            play_seeded_game_with(seed, decks[i].clone(), decks[j].clone()).await;
+        let (terminal, transcript) = play_seeded_game_with(
+            seed,
+            decks[i].clone(),
+            decks[j].clone(),
+            AutoPassPolicy::Off,
+        )
+        .await;
         let result = terminal.result.expect("a finished game carries a result");
         assert!(
             result.winner.is_some(),

@@ -955,6 +955,8 @@ mod tests {
             valid_actions: actions,
             action_deadline: None,
             result: None,
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: std::collections::BTreeMap::new(),
         }
     }

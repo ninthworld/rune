@@ -325,6 +325,47 @@
   /* Phase name is an identity moment (§Identity): carry the display face. */
   font-family: var(--rune-font-display);
 }
+/* Each expanded step becomes a name + its per-step stop toggle (issue #264). */
+.indicatorFullStep {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-2);
+}
+.indicatorFullStepName {
+  white-space: nowrap;
+}
+/* A step the receiver has opted to stop at is marked so it reads at a glance. */
+.indicatorFullStep[data-stop] {
+  border-color: var(--rune-targeting);
+  color: var(--rune-text);
+}
+.stopToggle {
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 0 6px;
+  border-radius: var(--rune-radius-pill);
+  cursor: pointer;
+  background: transparent;
+  color: var(--rune-text-muted);
+  border: 1px solid var(--rune-border);
+}
+.stopToggle[data-stop] {
+  color: var(--rune-targeting);
+  border-color: var(--rune-targeting);
+}
+/* Auto-pass indicator (issue #264): a quiet, transient "we passed for you" badge. */
+.indicatorAutoPassed {
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: var(--rune-space-1) var(--rune-space-5);
+  border-radius: var(--rune-radius-pill);
+  color: var(--rune-text-muted);
+  border: 1px solid var(--rune-border);
+}
 .focusDimmed {
   opacity: 0.7;
 }

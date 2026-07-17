@@ -12,7 +12,7 @@ mirror in `clients/web/src/protocol.ts` and this document must change with them.
 | Phase | Server to client | Client to server |
 | --- | --- | --- |
 | Lobby | `LobbyView` | tagged `LobbyCommand` |
-| Game | `GameView` | `{"type":"choose_action", ...}` |
+| Game | `GameView` | `{"type":"choose_action", ...}` or `{"type":"set_stops", ...}` |
 
 The server sends a complete personalized view after every accepted state change and after
 rejected or stale input. There is no patch or event-stream protocol. The client reconstructs
@@ -46,6 +46,8 @@ redacted before serialization.
 | `valid_actions` | `ValidAction[]` | Only actions available to the receiver |
 | `action_deadline` | `number?` | Seconds remaining for the receiver’s current decision |
 | `result` | `GameResult?` | Terminal result; absent during a live game |
+| `stops` | `Phase[]` | Receiver’s own priority-stop preferences; omitted when empty |
+| `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 
 `player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
@@ -69,6 +71,19 @@ player’s view. It is calculated from an absolute server deadline, so reconnect
 restart the clock. The client displays the countdown but does not enforce it. On expiry the
 server may pass priority or submit an empty combat declaration; it does not concede for the
 player.
+
+`stops` and `auto_passed` carry basic priority automation (issue #264, ADR 0020). `stops`
+is the receiver’s own set of steps at which they want to receive priority even when the
+engine reports they have no meaningful action — the per-phase opt-in that keeps automation
+from skipping past a step they care about. It is set with the `set_stops` message (below),
+stored server-side, and reflected here so the stops UI is reconstructable from a single
+view and survives reconnect; it is omitted when empty (“stop nowhere”, the default), and a
+client treats a missing field as an empty set. `auto_passed` is a display-only flag set on
+the broadcast that follows a settle in which the server passed priority on this receiver’s
+behalf, so a client can show a transient “passed for you” indicator; it is advisory (the UI
+reconstructs without it) and omitted when `false`. The decision of whether a player has “no
+meaningful action” is the server’s alone — the client never computes it and never
+auto-passes on its own.
 
 ### Card and zone views
 
@@ -207,6 +222,25 @@ The shared `targets` name is historical; it carries answers for target requireme
 prompt kinds. The server regenerates the action, checks the content token, and validates each
 choice against the fresh legal set. Invalid input is a no-op followed by the current
 `GameView`.
+
+### `SetStops`
+
+The second in-game client message sets the receiver’s priority-stop preferences (issue #264,
+ADR 0020): the steps at which they want priority even when they have no meaningful action, so
+basic auto-pass does not skip them there.
+
+```json
+{ "type": "set_stops", "stops": ["upkeep", "end"] }
+```
+
+`stops` is a list of `Phase` values and replaces the seat’s current set wholesale; an empty
+set clears all stops and is omitted from the wire (`{"type":"set_stops"}`). The server is
+authoritative: it stores the set per seat — so it survives reconnect — and reflects the
+accepted set back in `GameView.stops`, which is the sole source of the client’s toggle state
+(nothing is stored client-side). An unparseable message is ignored and the current `GameView`
+re-sent, the same non-fatal pattern the lobby uses. Automation itself (whether an idle seat’s
+priority is auto-passed) is a server decision; the client only configures where to stop and
+renders the `auto_passed` indicator.
 
 ### Game result
 
