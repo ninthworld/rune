@@ -186,22 +186,25 @@
   text-transform: uppercase;
 }
 
-/* Tier 3 — the floating bottom decision cluster (prompt banner, prompt surface,
- * and the action tray), anchored over the battlefield's lower edge above the hand
- * rather than stacked as detached document rows (§Tabletop shell). The container
- * overlays the board, so it passes pointer events through and only its actual chrome
- * (its children) catches them — empty space never blocks a card click. Its rows hug
- * the bottom and grow upward. (#298 splits the tray from the prompt overlay.) */
-.regionBottom {
+/* Tier 3 — the floating action tray region (issue #298): it overlays the board's
+ * lower edge above the hand, so the box passes pointer events through and only the
+ * tray content (its child) catches them — empty space never blocks a card click. */
+.regionTray > * {
+  pointer-events: auto;
+}
+
+/* The anchored prompt overlay (issue #298): the focused decision surface, positioned
+ * (inline, from reported rects) relative to the subjects a decision concerns. A tier-4
+ * elevated group holding the prompt banner, the option picker, and — for order/zone
+ * decisions — the prompt surface list. It always catches its own pointer events even
+ * though it floats over the board. */
+.promptOverlay {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  justify-content: flex-end;
   gap: var(--rune-space-4);
-  pointer-events: none;
-}
-.regionBottom > * {
   pointer-events: auto;
+  filter: drop-shadow(var(--rune-elevation-2));
 }
 
 /* ── Turn/phase indicator (issue #297) ──────────────────────────────────────── */
@@ -846,8 +849,10 @@
   text-align: center;
 }
 
-/* ── Action bar ────────────────────────────────────────────────────────────── */
-.bar {
+/* ── Action tray (issue #298) ──────────────────────────────────────────────── */
+/* Floats above the hand: an elevated tier-3 surface (shadow/border) so it reads as
+ * chrome resting on the board, not a detached document row. */
+.tray {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -855,7 +860,26 @@
   padding: 8px 12px;
   border-radius: var(--rune-radius-md);
   background: var(--rune-chrome-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-1);
   min-height: calc(var(--rune-touch) + 12px);
+}
+/* Quiet "waiting" copy shown when the server offers nothing — replaces the old
+ * empty-bar placeholder text (issue #298). */
+.trayWaiting {
+  font-size: var(--rune-type-body);
+  font-style: italic;
+  color: var(--rune-text-muted);
+  opacity: 0.8;
+}
+/* The bare priority-window clock label sitting beside the offered actions. */
+.trayClock {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-2);
+  font-size: var(--rune-type-body);
+  color: var(--rune-text-muted);
+  font-weight: 600;
 }
 .button {
   min-height: var(--rune-touch);

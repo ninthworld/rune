@@ -20,6 +20,11 @@ import type { Rect } from './scene';
 /** Minimum touch target per AGENTS.md (44px), applied to every affordance. */
 const TOUCH = 44;
 
+/** Clamp helper (min ≤ value ≤ max). */
+function clampTo(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 /**
  * The full-bleed tabletop shell root (issue #295): a positioned box the size of
  * the measured viewport, clipping its own overflow so no region can push the page
@@ -50,6 +55,57 @@ export function regionBox(rect: Rect): CSSProperties {
     width: rect.w,
     height: rect.h,
     boxSizing: 'border-box',
+  };
+}
+
+/**
+ * The floating action tray (issue #298): pinned by its BOTTOM edge to the tray
+ * region's lower edge so it grows upward as its content (decision controls) wraps,
+ * clearing the hand below. Only geometry lives here; the tray's elevated look is a
+ * `chrome.module.css` class. The outer box passes pointer events through (so empty
+ * space above the hand never blocks a card); only the tray content catches them.
+ */
+export function trayBox(rect: Rect, viewportHeight: number): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x,
+    bottom: Math.max(0, viewportHeight - (rect.y + rect.h)),
+    width: rect.w,
+    boxSizing: 'border-box',
+    display: 'flex',
+    justifyContent: 'flex-start',
+    // Pass-through container; the tray content (its child) opts back in via CSS.
+    pointerEvents: 'none',
+  };
+}
+
+/**
+ * The anchored prompt overlay (issue #298): a focused decision surface positioned
+ * relative to the subjects a decision concerns, using the scene's REPORTED RECTS
+ * (ADR 0003 — never by reaching into Pixi). The caller supplies the anchor point in
+ * shell (viewport) coordinates — the horizontal center of the subject span and the
+ * y just above (or below) it — plus the battlefield region the overlay must stay
+ * within. `place` decides whether the surface grows upward from the anchor (subject
+ * lower on the board) or downward (subject near the top), so it never runs off an
+ * edge; a `translate` keeps it centered/edge-anchored without measuring its height.
+ */
+export function promptOverlayBox(
+  anchor: { centerX: number; y: number; place: 'above' | 'below' },
+  region: Rect,
+): CSSProperties {
+  const margin = 8;
+  const centerX = clampTo(anchor.centerX, region.x + margin, region.x + region.w - margin);
+  return {
+    position: 'absolute',
+    left: centerX,
+    top: anchor.y,
+    transform: anchor.place === 'above' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
+    width: 'max-content',
+    maxWidth: Math.max(TOUCH, Math.min(460, region.w - margin * 2)),
+    maxHeight: Math.max(TOUCH, region.h - margin * 2),
+    overflowY: 'auto',
+    boxSizing: 'border-box',
+    zIndex: 6,
   };
 }
 

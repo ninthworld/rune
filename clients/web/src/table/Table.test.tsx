@@ -111,14 +111,16 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
     });
     act(() => useGameStore.getState().ingest(next));
 
-    // The UI reflects only the new frame: updated life, no stale entity, and the
-    // action bar is empty (input gated: no valid_actions).
+    // The UI reflects only the new frame: updated life, no stale entity, and input is
+    // gated (no valid_actions): the tray reads "waiting" quietly (issue #298) and no
+    // anchored prompt overlay is staged.
     expect(screen.getByTestId('hud-life-p2').textContent).toBe('7');
     expect(screen.queryByTestId('entity-perm_xyz')).toBeNull();
     expect(
-      within(screen.getByTestId('action-bar')).getByText('No actions available'),
-    ).toBeDefined();
-    expect(screen.getByTestId('prompt-banner').textContent).toContain('Waiting');
+      within(screen.getByTestId('action-bar')).getByTestId('tray-waiting').textContent,
+    ).toContain('Waiting');
+    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+    expect(screen.queryByTestId('prompt-banner')).toBeNull();
   });
 });
 
@@ -348,6 +350,100 @@ describe('Table phase/turn indicator and modes (issue #267, #297)', () => {
     expect(screen.getByTestId('table-game-over').getAttribute('data-mode')).toBe('overview');
     // The indicator is still visible in the terminal state.
     expect(screen.getByTestId('phase-indicator')).toBeDefined();
+  });
+});
+
+describe('Table decision staging (issue #298)', () => {
+  it('stages an anchored prompt overlay for a decision and tears it down on cancel', () => {
+    seed(TARGETING_GAME_VIEW_JSON);
+    render(<Table />);
+    // No decision yet → no staged overlay; the tray carries the global actions.
+    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+
+    // Enter targeting: the anchored overlay stages, carrying the prompt banner.
+    fireEvent.click(screen.getByTestId('entity-c3'));
+    fireEvent.click(
+      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+        name: 'Cast Lightning Bolt',
+      }),
+    );
+    const overlay = screen.getByTestId('prompt-overlay');
+    // The overlay is anchored (a placement was resolved from reported rects) and holds
+    // the decision banner, not the tray.
+    expect(overlay.getAttribute('data-placement')).toMatch(/above|below/);
+    expect(within(overlay).getByTestId('prompt-banner')).toBeDefined();
+    expect(within(overlay).getByTestId('targeting-prompt')).toBeDefined();
+    // The decision controls (cancel) live in the tray, adjacent to the overlay.
+    fireEvent.click(
+      within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Cancel targeting' }),
+    );
+    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+  });
+
+  it('stages the order/zone prompt surface inside the anchored overlay', () => {
+    seed(ORDER_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(
+      within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Order triggers' }),
+    );
+    const overlay = screen.getByTestId('prompt-overlay');
+    // The reorder list rides the same staged overlay as the banner.
+    expect(within(overlay).getByTestId('prompt-surface')).toBeDefined();
+  });
+
+  it('renders the deadline countdown within the staged prompt overlay (issue #263)', () => {
+    // A targeting view that also carries a server clock: the countdown rides the
+    // anchored decision surface, not a detached banner row.
+    const withDeadline = JSON.stringify({
+      ...JSON.parse(TARGETING_GAME_VIEW_JSON),
+      action_deadline: 8,
+    });
+    seed(withDeadline);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('entity-c3'));
+    fireEvent.click(
+      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+        name: 'Cast Lightning Bolt',
+      }),
+    );
+    const countdown = within(screen.getByTestId('prompt-overlay')).getByTestId(
+      'deadline-countdown',
+    );
+    // Seeded under the 10s low-time threshold → the warning state is shown.
+    expect(countdown.textContent).toContain('8s');
+    expect(countdown.getAttribute('data-low')).toBe('true');
+  });
+
+  it('shows the priority-window countdown quietly in the tray when no decision is staged', () => {
+    // The sample view carries a clock and a bare priority window (no forced decision).
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+    const countdown = within(screen.getByTestId('action-bar')).getByTestId('deadline-countdown');
+    expect(countdown.textContent).toContain('13s');
+  });
+
+  it('reconstructs the staged overlay from a replayed mid-prompt view (rehydration)', () => {
+    seed(DECLARE_ATTACKERS_GAME_VIEW_JSON);
+    render(<Table />);
+    const enter = (): void => {
+      fireEvent.click(
+        within(screen.getByTestId('action-bar')).getByRole('button', {
+          name: 'Declare attackers',
+        }),
+      );
+    };
+    enter();
+    expect(screen.getByTestId('prompt-overlay')).toBeDefined();
+    // Replaying the same view drops the ephemeral session (no state across messages)…
+    act(() => useGameStore.getState().ingest(DECLARE_ATTACKERS_GAME_VIEW_JSON));
+    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+    // …and re-entering stages the identical overlay again.
+    enter();
+    expect(screen.getByTestId('prompt-overlay')).toBeDefined();
+    expect(
+      within(screen.getByTestId('prompt-overlay')).getByTestId('multiselect-prompt').textContent,
+    ).toContain('Choose attackers');
   });
 });
 
