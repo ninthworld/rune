@@ -24,7 +24,9 @@ use crate::resolve::resolve_stack_object;
 use crate::rng::SplitMix64;
 use crate::sba::run_state_based_actions;
 use crate::stack::{StackId, StackObject, StackObjectKind};
-use crate::state::{Duration, EffectAffects, GameState, Modification, Permanent, StaticEffect};
+use crate::state::{
+    Duration, EffectAffects, GameEvent, GameState, Modification, Permanent, StaticEffect,
+};
 use crate::triggers::collect_triggers;
 use crate::CardDatabase;
 
@@ -98,7 +100,78 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         });
     }
 
+    record_transition_events(state, &mut next, action);
+
     next
+}
+
+/// Record public transition facts after a legal action. This remains a pure
+/// before/after comparison; no listener, clock, or side channel is involved.
+fn record_transition_events(before: &GameState, after: &mut GameState, action: &Action) {
+    let actor = before.priority;
+    match action {
+        Action::CastSpell { card, .. } => after.record_event(GameEvent::SpellCast {
+            player: actor,
+            card: *card,
+        }),
+        Action::DeclareAttackers { attackers } => {
+            after.record_event(GameEvent::AttackersDeclared {
+                player: actor,
+                attackers: attackers.clone(),
+            })
+        }
+        Action::DeclareBlockers { blocks } => after.record_event(GameEvent::BlockersDeclared {
+            player: actor,
+            blocks: blocks
+                .iter()
+                .map(|block| (block.blocker, block.attacker))
+                .collect(),
+        }),
+        Action::Mulligan => after.record_event(GameEvent::Mulligan { player: actor }),
+        _ => {}
+    }
+
+    let mut observed = Vec::new();
+    for (seat, (old, new)) in before.players.iter().zip(&after.players).enumerate() {
+        let player = PlayerId(seat);
+        let life_delta = new.life - old.life;
+        if life_delta != 0 {
+            observed.push(GameEvent::LifeChanged {
+                player,
+                amount: life_delta,
+            });
+        }
+        let drawn = new.hand.len().saturating_sub(old.hand.len());
+        if drawn > 0 {
+            observed.push(GameEvent::CardsDrawn {
+                player,
+                count: u32::try_from(drawn).unwrap_or(u32::MAX),
+            });
+        }
+    }
+    for event in observed {
+        after.record_event(event);
+    }
+    for permanent in &before.battlefield {
+        if !after.battlefield.iter().any(|now| now.id == permanent.id) {
+            after.record_event(GameEvent::PermanentDied {
+                permanent: permanent.id,
+                card: permanent.card,
+            });
+        }
+    }
+    if before.turn != after.turn || before.step != after.step {
+        after.record_event(GameEvent::StepChanged {
+            turn: after.turn,
+            active_player: after.active_player,
+            step: after.step,
+        });
+    }
+    if before.result().is_none() {
+        if let Some(result) = after.result() {
+            after.record_event(GameEvent::GameOver { result });
+        }
+    }
 }
 
 /// Resolve a pass of priority. Priority moves to the next seat; once every
@@ -3402,5 +3475,24 @@ mod tests {
         let resolved = pass_full_round(&paused, &db);
         assert!(resolved.stack.is_empty());
         assert!(resolved.players[0].hand.contains(&draw));
+    }
+
+    #[test]
+    fn issue_259_step_transition_is_recorded_in_authoritative_log() {
+        let database = db();
+        let state = GameState::new_two_player();
+        let state = apply_action(&state, &Action::PassPriority, &database);
+        let state = apply_action(&state, &Action::PassPriority, &database);
+
+        assert_eq!(state.log.len(), 1);
+        assert_eq!(state.log[0].sequence, 1);
+        assert!(matches!(
+            state.log[0].event,
+            GameEvent::StepChanged {
+                turn: 1,
+                active_player: PlayerId(0),
+                step: Step::Upkeep,
+            }
+        ));
     }
 }

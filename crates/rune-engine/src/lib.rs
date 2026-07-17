@@ -62,8 +62,8 @@ pub use setup::{
 };
 pub use stack::{StackId, StackObject, StackObjectKind};
 pub use state::{
-    CounterKind, Duration, EffectAffects, GameResult, GameState, Modification, Permanent,
-    StaticEffect,
+    CounterKind, Duration, EffectAffects, GameEvent, GameLogEntry, GameResult, GameState,
+    Modification, Permanent, StaticEffect,
 };
 pub use triggers::{collect_triggers, Trigger};
 pub use zone::Zone;

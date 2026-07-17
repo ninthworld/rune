@@ -13,16 +13,17 @@
 use rune_engine::{
     attacker_candidates, blocker_candidates, bottom_requirement, characteristics,
     declared_attackers, scripted_rules_text, target_requirements, valid_actions, Action, Block,
-    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, GameResult,
-    GameState, Keyword, LossReason, PermanentId, Player, PlayerId, StackId, StackObject,
-    StackObjectKind, Step, Target, TargetSpec,
+    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, GameEvent,
+    GameResult, GameState, Keyword, LossReason, PermanentId, Player, PlayerId, StackId,
+    StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{effects_description, rules_text};
 use rune_protocol::{
-    CardView, ChooseAction, Counter, GameOverReason, GameResult as GameResultView, GameView,
-    OpponentView, Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, StackItem,
-    TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    CardView, ChooseAction, Counter, GameLogEntry, GameLogEvent, GameOverReason,
+    GameResult as GameResultView, GameView, LogBlock, LogEntity, OpponentView,
+    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, StackItem, TargetChoice,
+    TargetRequirement, ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -887,10 +888,102 @@ pub(crate) fn personalized_view(
         // The terminal result once the game is over (CR 104.2a); `None` — and so
         // omitted from the wire — while the game is live.
         result: state.result().map(result_view),
+        log: log_entries(state, db),
         // Player display names are a lobby/session concern, not engine state; the room
         // fills this in after projection (issue #294). Empty here so this pure shim
         // stays name-agnostic and the field elides from the wire by default.
         player_names: std::collections::BTreeMap::new(),
+    }
+}
+
+/// Project the bounded engine history into receiver-safe structured protocol events.
+/// Every referenced card here was already public at the event boundary; hidden draws
+/// are represented only by a count in the engine event and reveal no identity.
+fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEntry> {
+    state
+        .log
+        .iter()
+        .map(|entry| GameLogEntry {
+            sequence: entry.sequence,
+            event: match &entry.event {
+                GameEvent::SpellCast { player, card } => GameLogEvent::SpellCast {
+                    player: player_id(*player),
+                    card: log_card(card.id, card.card, db),
+                },
+                GameEvent::AttackersDeclared { player, attackers } => {
+                    GameLogEvent::AttackersDeclared {
+                        player: player_id(*player),
+                        attackers: attackers
+                            .iter()
+                            .map(|id| log_permanent(state, *id, db))
+                            .collect(),
+                    }
+                }
+                GameEvent::BlockersDeclared { player, blocks } => GameLogEvent::BlockersDeclared {
+                    player: player_id(*player),
+                    blocks: blocks
+                        .iter()
+                        .map(|(blocker, attacker)| LogBlock {
+                            blocker: log_permanent(state, *blocker, db),
+                            attacker: log_permanent(state, *attacker, db),
+                        })
+                        .collect(),
+                },
+                GameEvent::Mulligan { player } => GameLogEvent::Mulligan {
+                    player: player_id(*player),
+                },
+                GameEvent::LifeChanged { player, amount } => GameLogEvent::LifeChanged {
+                    player: player_id(*player),
+                    amount: *amount,
+                },
+                GameEvent::CardsDrawn { player, count } => GameLogEvent::CardsDrawn {
+                    player: player_id(*player),
+                    count: *count,
+                },
+                GameEvent::PermanentDied { permanent, card } => GameLogEvent::PermanentDied {
+                    permanent: LogEntity {
+                        id: permanent_entity_id(*permanent),
+                        name: db
+                            .card(*card)
+                            .map_or_else(|| "Unknown permanent".into(), |c| c.name.clone()),
+                    },
+                },
+                GameEvent::StepChanged {
+                    turn,
+                    active_player,
+                    step,
+                } => GameLogEvent::StepChanged {
+                    turn: *turn,
+                    active_player: player_id(*active_player),
+                    phase: phase_of(*step),
+                },
+                GameEvent::GameOver { result } => GameLogEvent::GameOver {
+                    result: result_view(result.clone()),
+                },
+            },
+        })
+        .collect()
+}
+
+fn log_card(instance: CardInstanceId, card: CardId, db: &CardDatabase) -> LogEntity {
+    LogEntity {
+        id: card_entity_id(instance),
+        name: db
+            .card(card)
+            .map_or_else(|| "Unknown card".into(), |c| c.name.clone()),
+    }
+}
+
+fn log_permanent(state: &GameState, id: PermanentId, db: &CardDatabase) -> LogEntity {
+    let name = state
+        .battlefield
+        .iter()
+        .find(|permanent| permanent.id == id)
+        .and_then(|permanent| db.card(permanent.card))
+        .map_or_else(|| "Unknown permanent".into(), |card| card.name.clone());
+    LogEntity {
+        id: permanent_entity_id(id),
+        name,
     }
 }
 

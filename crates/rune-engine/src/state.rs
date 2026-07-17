@@ -43,6 +43,86 @@ pub struct GameResult {
     pub reason: LossReason,
 }
 
+/// A stable, bounded-history entry emitted by the pure engine transition pipeline.
+///
+/// Entries are values on [`GameState`], not notifications: projecting them into a
+/// view therefore preserves replayability and lets a reconnect reconstruct the
+/// same recent history without client-side accumulation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GameLogEntry {
+    /// Monotonically increasing sequence number, starting at one.
+    pub sequence: u64,
+    /// Structured event payload. The server supplies presentation names and
+    /// redacts hidden information while projecting this value.
+    pub event: GameEvent,
+}
+
+/// Engine-level facts suitable for a public game log.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GameEvent {
+    /// A player cast a spell represented by this physical card instance.
+    SpellCast {
+        /// The spell's controller.
+        player: PlayerId,
+        /// The physical card cast.
+        card: CardInstance,
+    },
+    /// A player declared these battlefield objects as attackers.
+    AttackersDeclared {
+        /// The attacking player.
+        player: PlayerId,
+        /// The attacking permanents.
+        attackers: Vec<PermanentId>,
+    },
+    /// A player declared these blocker/attacker pairs.
+    BlockersDeclared {
+        /// The defending player.
+        player: PlayerId,
+        /// `(blocker, attacker)` assignments.
+        blocks: Vec<(PermanentId, PermanentId)>,
+    },
+    /// A player took another London mulligan.
+    Mulligan {
+        /// The player taking a mulligan.
+        player: PlayerId,
+    },
+    /// A player's life total changed by this signed amount.
+    LifeChanged {
+        /// The affected player.
+        player: PlayerId,
+        /// Signed life-total delta.
+        amount: i32,
+    },
+    /// A player drew cards; individual hidden cards are deliberately not recorded.
+    CardsDrawn {
+        /// The player who drew.
+        player: PlayerId,
+        /// Number of cards drawn.
+        count: u32,
+    },
+    /// A permanent left the battlefield for its controller's graveyard.
+    PermanentDied {
+        /// Battlefield identity before it left.
+        permanent: PermanentId,
+        /// Card definition needed for public naming during projection.
+        card: CardId,
+    },
+    /// The turn structure reached a new step.
+    StepChanged {
+        /// Current turn number.
+        turn: u32,
+        /// Active player for that turn.
+        active_player: PlayerId,
+        /// Newly entered turn step.
+        step: Step,
+    },
+    /// The game reached its terminal result.
+    GameOver {
+        /// Already-derived terminal result.
+        result: GameResult,
+    },
+}
+
 /// A kind of counter that can sit on a [`Permanent`].
 ///
 /// Only the power/toughness counters the layer system folds into computed
@@ -356,6 +436,11 @@ pub struct GameState {
     /// and the turn structure does not advance; cleared to `None` — the value in
     /// every test-scaffold and post-mulligan state — once the game has begun.
     pub mulligan: Option<MulliganState>,
+    /// Most recent deterministic engine events, in sequence order. This bounded
+    /// window is authoritative history carried into every projected game view.
+    pub log: Vec<GameLogEntry>,
+    /// Next sequence number for [`Self::log`].
+    pub next_log_sequence: u64,
 }
 
 impl GameState {
@@ -400,6 +485,21 @@ impl GameState {
             // mulligan; the London mulligan phase is entered only by [`Self::new`]
             // from a real [`GameSetup`](crate::GameSetup).
             mulligan: None,
+            log: Vec::new(),
+            next_log_sequence: 1,
+        }
+    }
+
+    /// Append an event to the authoritative recent-history window.
+    pub(crate) fn record_event(&mut self, event: GameEvent) {
+        const LOG_WINDOW: usize = 200;
+        self.log.push(GameLogEntry {
+            sequence: self.next_log_sequence,
+            event,
+        });
+        self.next_log_sequence += 1;
+        if self.log.len() > LOG_WINDOW {
+            self.log.remove(0);
         }
     }
 

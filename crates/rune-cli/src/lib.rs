@@ -836,6 +836,7 @@ mod tests {
             valid_actions: actions,
             action_deadline: None,
             result: None,
+            log: vec![],
             player_names: std::collections::BTreeMap::new(),
         }
     }

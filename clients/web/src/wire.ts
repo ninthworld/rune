@@ -137,6 +137,7 @@ export function normalizeGameView(payload: unknown): GameView {
     action_deadline:
       typeof payload.action_deadline === 'number' ? payload.action_deadline : undefined,
     result: normalizeGameResult(payload.result),
+    log: asArray(payload.log, 'log'),
     // Public display names (issue #294): a string→string map the server elides when
     // empty; default to `{}` so every surface can look a name up and fall back when
     // absent (older servers never send it).

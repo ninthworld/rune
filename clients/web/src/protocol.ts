@@ -138,6 +138,42 @@ export interface ZonePile {
   cards: CardView[];
 }
 
+/** A named entity reference carried by a structured log event. */
+export interface LogEntity {
+  /** Opaque entity id. */
+  id: EntityId;
+  /** Server-supplied display name. */
+  name: string;
+}
+
+/** One declared blocker assignment. */
+export interface LogBlock {
+  /** Blocking permanent. */
+  blocker: LogEntity;
+  /** Attacked permanent. */
+  attacker: LogEntity;
+}
+
+/** A structured, receiver-safe game-history event. */
+export type GameLogEvent =
+  | { type: 'spell_cast'; player: PlayerId; card: LogEntity }
+  | { type: 'attackers_declared'; player: PlayerId; attackers: LogEntity[] }
+  | { type: 'blockers_declared'; player: PlayerId; blocks: LogBlock[] }
+  | { type: 'mulligan'; player: PlayerId }
+  | { type: 'life_changed'; player: PlayerId; amount: number }
+  | { type: 'cards_drawn'; player: PlayerId; count: number }
+  | { type: 'permanent_died'; permanent: LogEntity }
+  | { type: 'step_changed'; turn: number; active_player: PlayerId; phase: Phase }
+  | { type: 'game_over'; result: GameResult };
+
+/** One sequence-numbered entry in the authoritative recent game-history window. */
+export interface GameLogEntry {
+  /** Monotonically increasing server sequence number. */
+  sequence: number;
+  /** Event payload rendered as client-local prose. */
+  event: GameLogEvent;
+}
+
 /**
  * Every `Phase` value in turn order, for runtime validation of the wire. This is
  * the single source of truth: the {@link Phase} union is derived from it, so a
@@ -404,6 +440,8 @@ export interface GameView {
    * alone tells a client the game has ended; when present, `valid_actions` is empty.
    */
   result?: GameResult;
+  /** Bounded structured log window; older servers may omit it. */
+  log?: GameLogEntry[];
   /**
    * Public display names keyed by {@link PlayerId} (issue #294): every player who has
    * chosen a name maps to it, so any in-game surface (turn indicator, player tiles,

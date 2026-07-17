@@ -26,6 +26,100 @@ pub type PlayerId = String;
 /// Opaque per-game entity id: a card, permanent, or stack object.
 pub type EntityId = String;
 
+/// One structured, receiver-safe entry in the authoritative recent game history.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameLogEntry {
+    /// Monotonically increasing sequence number. A bounded window may start after
+    /// sequence one; clients must render the entries it carries without filling gaps.
+    pub sequence: u64,
+    /// The event to render as local prose.
+    pub event: GameLogEvent,
+}
+
+/// A structured game-log event. Entity ids are opaque references for presentation
+/// only; a client may highlight one but never infer legality from it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum GameLogEvent {
+    /// A player cast a publicly identified spell.
+    SpellCast {
+        /// The caster.
+        player: PlayerId,
+        /// The cast card.
+        card: LogEntity,
+    },
+    /// A player declared attackers (possibly none).
+    AttackersDeclared {
+        /// The attacking player.
+        player: PlayerId,
+        /// The declared attackers.
+        attackers: Vec<LogEntity>,
+    },
+    /// A player declared blocker-to-attacker assignments.
+    BlockersDeclared {
+        /// The defending player.
+        player: PlayerId,
+        /// The assignments they declared.
+        blocks: Vec<LogBlock>,
+    },
+    /// A player took a London mulligan.
+    Mulligan {
+        /// The player taking the mulligan.
+        player: PlayerId,
+    },
+    /// A player's life total changed by this signed amount.
+    LifeChanged {
+        /// The affected player.
+        player: PlayerId,
+        /// Signed life-total delta.
+        amount: i32,
+    },
+    /// A player drew cards. Card identities are intentionally absent.
+    CardsDrawn {
+        /// The player who drew.
+        player: PlayerId,
+        /// Number of cards drawn.
+        count: u32,
+    },
+    /// A permanent died; it may no longer be present on the battlefield.
+    PermanentDied {
+        /// The permanent that died.
+        permanent: LogEntity,
+    },
+    /// The game reached this turn/step.
+    StepChanged {
+        /// New turn number.
+        turn: u32,
+        /// Player taking that turn.
+        active_player: PlayerId,
+        /// Entered phase.
+        phase: Phase,
+    },
+    /// The game ended with this already-decided result.
+    GameOver {
+        /// The terminal result.
+        result: GameResult,
+    },
+}
+
+/// A clickable named entity reference in a game log event.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogEntity {
+    /// Opaque object or player id.
+    pub id: EntityId,
+    /// Server-supplied display name; clients do not look it up from hidden state.
+    pub name: String,
+}
+
+/// One blocker assignment in a declaration event.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogBlock {
+    /// The declared blocker.
+    pub blocker: LogEntity,
+    /// The attacker it blocks.
+    pub attacker: LogEntity,
+}
+
 /// A card object, shown only to a player entitled to see it (`my_hand`, public
 /// zones, revealed cards). Characteristics are server-computed; the client never
 /// derives them. Grows alongside the card database (backlog: engine card loader).
@@ -464,6 +558,11 @@ pub struct GameView {
     /// `valid_actions` is empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<GameResult>,
+    /// A bounded, sequence-numbered window of structured public game history.
+    /// It is carried in every full view so reconnecting clients need no accumulated
+    /// local log state.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub log: Vec<GameLogEntry>,
     /// Public display names, keyed by [`PlayerId`] (issue #294): every player who has
     /// chosen a name maps to it, so any in-game surface — the turn indicator, player
     /// tiles, zone-browser titles, the game-over verdict — can label any player
@@ -1168,6 +1267,13 @@ mod tests {
             }],
             action_deadline: Some(12.5),
             result: None,
+            log: vec![GameLogEntry {
+                sequence: 41,
+                event: GameLogEvent::CardsDrawn {
+                    player: "p1".into(),
+                    count: 1,
+                },
+            }],
             player_names: BTreeMap::new(),
         };
 
@@ -1216,6 +1322,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            log: vec![],
             player_names: BTreeMap::new(),
         };
         let json = serde_json::to_string(&view).unwrap();
@@ -1242,6 +1349,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            log: vec![],
             player_names: BTreeMap::new(),
         };
         // Empty pool is elided from the wire.
@@ -1818,6 +1926,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            log: vec![],
             player_names: BTreeMap::new(),
         };
         // Live game: the field elides entirely.
@@ -1872,6 +1981,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            log: vec![],
             player_names: BTreeMap::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
@@ -1964,6 +2074,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            log: vec![],
             player_names: BTreeMap::new(),
         };
         // Empty map elides from the wire.

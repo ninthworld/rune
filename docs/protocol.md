@@ -46,6 +46,7 @@ redacted before serialization.
 | `valid_actions` | `ValidAction[]` | Only actions available to the receiver |
 | `action_deadline` | `number?` | Seconds remaining for the receiver’s current decision |
 | `result` | `GameResult?` | Terminal result; absent during a live game |
+| `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent public game history |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 
 `player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
@@ -56,6 +57,18 @@ when they are set) and never replace the `p{N}` id an action echoes back. A play
 name has no entry; the field is omitted from the wire when empty, and a client treats a
 missing key as “unnamed”, falling back to a seat-derived label — so an older server that
 never sends names keeps working.
+
+### Game log
+
+`log` is a bounded window of `GameLogEntry` values. Every entry has a monotonically
+increasing `sequence` and a tagged `event`; a window can start after sequence one, so
+clients render the carried entries and do not invent missing history. It is included in
+each complete `GameView`, which means reconnecting clients never need an accumulated
+local log. Event names are `spell_cast`, `attackers_declared`, `blockers_declared`,
+`mulligan`, `life_changed`, `cards_drawn`, `permanent_died`, `step_changed`, and
+`game_over`. Named `LogEntity` references have an opaque `id` and server-supplied
+`name`; the id may be used for presentational highlighting only. A `cards_drawn` event
+contains only player and count, never a hidden card identity.
 
 `Phase` is a snake-case enum:
 
