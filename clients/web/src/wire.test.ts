@@ -93,6 +93,41 @@ describe('parseGameView', () => {
     expect(view.you).toBe('p1');
   });
 
+  it('normalizes a permanent’s combat state, defaulting omitted fields (issue #332)', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'combat_damage',
+        battlefield: [
+          {
+            id: 'atk',
+            controller: 'p2',
+            owner: 'p2',
+            attacking: true,
+            damage: 2,
+            card: { id: 'atk', name: 'Hill Giant', type_line: 'Creature — Giant' },
+          },
+          {
+            id: 'blk',
+            controller: 'p1',
+            owner: 'p1',
+            blocking: 'atk',
+            card: { id: 'blk', name: 'Grizzly Bears', type_line: 'Creature — Bear' },
+          },
+        ],
+      }),
+    );
+    const [atk, blk] = view.battlefield;
+    // Present combat state round-trips; the attacker is not blocking, the blocker
+    // names its attacker, and marked damage carries through as a number.
+    expect(atk!.attacking).toBe(true);
+    expect(atk!.blocking).toBeUndefined();
+    expect(atk!.damage).toBe(2);
+    expect(blk!.attacking).toBeUndefined();
+    expect(blk!.blocking).toBe('atk');
+    // An omitted/zero `damage` on the blocker defaults to undamaged (elided from wire).
+    expect(blk!.damage).toBeUndefined();
+  });
+
   it('normalizes a permanent’s attachment, defaulting an omitted host to unattached (issue #333)', () => {
     const view = parseGameView(
       JSON.stringify({

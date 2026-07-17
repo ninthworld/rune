@@ -112,6 +112,25 @@ export interface Permanent {
   /** Whether the permanent is tapped. Omitted (defaults to `false`) when untapped. */
   tapped?: boolean;
   /**
+   * Whether this permanent is currently attacking — declared as an attacker this
+   * combat (CR 508). Server-computed; the client displays it and never derives it.
+   * Omitted (treated as `false`) when it is not attacking.
+   */
+  attacking?: boolean;
+  /**
+   * The permanent this one is blocking, if it was declared as a blocker this combat
+   * (CR 509): the attacker's {@link EntityId}. Omitted when it is not blocking.
+   * Several blockers may name the same attacker. Server-computed; the client renders
+   * the relationship and derives no legality from it.
+   */
+  blocking?: EntityId;
+  /**
+   * Marked combat damage on this permanent this turn (CR 120.3), the value the
+   * server compares against toughness. Server-computed; the client displays it
+   * verbatim and never predicts it. Omitted (treated as `0`) when none is marked.
+   */
+  damage?: number;
+  /**
    * The host permanent this one is attached to, if any (CR 303.4): an Aura names
    * the object it enchants, as that host's {@link EntityId} — the same reference
    * shape {@link Permanent.blocking} uses. Omitted for an unattached permanent.

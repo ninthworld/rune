@@ -305,6 +305,52 @@ describe('card-face information budget (issue #320)', () => {
     );
   });
 
+  it('marks a declared attacker distinctly from a merely tapped permanent (issue #332)', () => {
+    const plain = countGraphics(buildCardDisplay(grizzlyBears).children[0] as Container);
+    const attacking = countGraphics(
+      buildCardDisplay({ ...grizzlyBears, attacking: true }).children[0] as Container,
+    );
+    // The attacker gains exactly one extra Graphics — the top-edge combat bar.
+    expect(attacking).toBe(plain + 1);
+
+    // A merely-tapped permanent dims; a tapped attacker stays at full opacity, so an
+    // attacker never recedes the way an inert tapped land does.
+    const tapped = buildCardDisplay({ ...grizzlyBears, tapped: true }).children[0] as Container;
+    expect(tapped.alpha).toBeLessThan(1);
+    const tappedAttacker = buildCardDisplay({
+      ...grizzlyBears,
+      tapped: true,
+      attacking: true,
+    }).children[0] as Container;
+    expect(tappedAttacker.alpha).toBe(1);
+  });
+
+  it('marks a declared blocker and shows the blocked count on the attacker (issue #332)', () => {
+    const plain = countGraphics(buildCardDisplay(grizzlyBears).children[0] as Container);
+    const blocking = countGraphics(
+      buildCardDisplay({ ...grizzlyBears, blocking: true }).children[0] as Container,
+    );
+    // The blocker gains exactly one extra Graphics — the left-edge defender bar.
+    expect(blocking).toBe(plain + 1);
+    // A defended attacker shows a "blocked ×N" badge from the server-supplied count.
+    expect(texts(buildCardDisplay(grizzlyBears, 'field'))).not.toContain('blocked ×2');
+    expect(texts(buildCardDisplay({ ...grizzlyBears, blockedBy: 2 }, 'field'))).toContain(
+      'blocked ×2',
+    );
+  });
+
+  it('keeps combat state in the visual signature so the reconciler rebuilds (issue #332)', () => {
+    expect(cardVisualSignature(grizzlyBears)).not.toBe(
+      cardVisualSignature({ ...grizzlyBears, attacking: true }),
+    );
+    expect(cardVisualSignature(grizzlyBears)).not.toBe(
+      cardVisualSignature({ ...grizzlyBears, blocking: true }),
+    );
+    expect(cardVisualSignature(grizzlyBears)).not.toBe(
+      cardVisualSignature({ ...grizzlyBears, blockedBy: 1 }),
+    );
+  });
+
   it('keeps keywords, the ability marker, and damage in the visual signature', () => {
     expect(cardVisualSignature(grizzlyBears)).not.toBe(cardVisualSignature(flyer));
     expect(cardVisualSignature(grizzlyBears)).not.toBe(

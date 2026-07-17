@@ -358,6 +358,98 @@ export const DECLARE_BLOCKERS_GAME_VIEW_JSON = JSON.stringify({
 });
 
 /**
+ * A wire frame mid-combat (issue #332, CR 508/509/510), after attackers and blockers
+ * have been declared and combat damage marked — the state a client must reconstruct
+ * from one `GameView`, whether it watched declaration or mounted just now. The
+ * opponent (`p2`) is attacking with two creatures: `atk_1` is blocked by one of the
+ * receiver's creatures (`blk_1`) and has taken 2 marked damage; `atk_2` is blocked by
+ * two (`blk_2`, `blk_3`). Attackers are tapped (they attacked); blockers name the
+ * attacker each blocks via `blocking`. No `valid_actions` beyond a pass — the point is
+ * the rendered combat state, not interactivity.
+ */
+export const COMBAT_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [],
+  me: { life: 20, library_size: 40 },
+  opponents: [{ player_id: 'p2', hand_size: 2, life: 20, library_size: 38, graveyard_size: 0 }],
+  battlefield: [
+    {
+      id: 'atk_1',
+      controller: 'p2',
+      owner: 'p2',
+      card: {
+        id: 'atk_1',
+        name: 'Hill Giant',
+        type_line: 'Creature — Giant',
+        power: '3',
+        toughness: '3',
+      },
+      tapped: true,
+      attacking: true,
+      damage: 2,
+    },
+    {
+      id: 'atk_2',
+      controller: 'p2',
+      owner: 'p2',
+      card: {
+        id: 'atk_2',
+        name: 'Craw Wurm',
+        type_line: 'Creature — Wurm',
+        power: '6',
+        toughness: '4',
+      },
+      tapped: true,
+      attacking: true,
+    },
+    {
+      id: 'blk_1',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'blk_1',
+        name: 'Grizzly Bears',
+        type_line: 'Creature — Bear',
+        power: '2',
+        toughness: '2',
+      },
+      blocking: 'atk_1',
+    },
+    {
+      id: 'blk_2',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'blk_2',
+        name: 'Wall of Wood',
+        type_line: 'Creature — Wall',
+        power: '0',
+        toughness: '3',
+      },
+      blocking: 'atk_2',
+    },
+    {
+      id: 'blk_3',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'blk_3',
+        name: 'Elvish Warrior',
+        type_line: 'Creature — Elf Warrior',
+        power: '2',
+        toughness: '3',
+      },
+      blocking: 'atk_2',
+    },
+  ],
+  phase: 'combat_damage',
+  turn: 6,
+  active_player: 'p2',
+  priority_player: 'p1',
+  valid_actions: [{ id: 'a1', type: 'pass_priority', label: 'Pass' }],
+});
+
+/**
  * A wire frame owing mulligan bottoming (issue #143/#156, CR 103.5 London): the
  * subject-less `mulligan_decision` action carries an `option` prompt (keep /
  * take-another) AND a `select_from_zone` bottoming prompt (`count: 1`) over the

@@ -83,6 +83,15 @@ export const INDICATORS = {
   damageBg: '#B0413A',
   /** Marked combat damage badge text. */
   damageText: '#F6E7E4',
+  /**
+   * Combat-declaration indicators (issue #332). Like the other card-face accents
+   * these stay distinct from selection (ring), targeting (ring), and playable (bottom
+   * edge bar) by **shape** — an attacker wears a bar on the *top* edge, a blocker a
+   * bar on the *left* edge — so a colorblind player separates them without hue. Hues
+   * are combat-warm (attacker) and defender-cool (blocker) as a bonus, not the signal.
+   */
+  attackingBar: '#E4572E',
+  blockingBar: '#3F7FC4',
 } as const;
 
 /** Small chip drawn at a card corner for counters and state (summoning sick). */
