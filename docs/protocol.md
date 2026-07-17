@@ -69,8 +69,9 @@ clients render the carried entries and do not invent missing history. It is incl
 each complete `GameView`, which means reconnecting clients never need an accumulated
 local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
 `spell_fizzled`, `attackers_declared`, `blockers_declared`, `mulligan`, `hand_kept`,
-`life_changed`, `damage_dealt`, `cards_drawn`, `permanent_died`, `step_changed`, and
-`game_over`. Named `LogEntity` references have an opaque `id` and server-supplied
+`life_changed`, `damage_dealt`, `cards_drawn`, `permanent_died`, `step_changed`,
+`player_eliminated`, and `game_over`. Named `LogEntity` references have an opaque `id`
+and server-supplied
 `name`; the id may be used for presentational highlighting only. The `name` on every
 reference is fixed at the moment the event was recorded, so an entry naming a permanent
 stays stable after that permanent leaves play (dies, is bounced) — the server does not
@@ -86,6 +87,12 @@ step (a `step_changed: draw` precedes its `cards_drawn`; entering combat damage 
 the `damage_dealt` and `permanent_died` it causes), and `game_over` closes the sequence
 after every fact that produced it. Only creatures produce `permanent_died`; an Aura or
 other permanent moving to a graveyard is a zone change, not a death.
+
+`player_eliminated` (with a `player` id and a `reason`, the same `GameOverReason` enum
+`game_over` carries) marks a player *leaving the game* mid-game under CR 800.4a — they
+lost while two or more players remained, so play continues without them and their
+objects are removed. It is distinct from `game_over`, which fires only once one player
+is left: a two-player loss produces `game_over` alone, never `player_eliminated`.
 
 `Phase` is a snake-case enum:
 

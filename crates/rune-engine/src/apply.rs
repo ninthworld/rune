@@ -125,7 +125,9 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
         return;
     }
     state.consecutive_passes += 1;
-    if state.consecutive_passes >= seats {
+    // A full round is one pass from each player still in the game: an eliminated
+    // seat neither receives nor passes priority (CR 800.4a), so it is not counted.
+    if state.consecutive_passes >= state.living_player_count() {
         if let Some(top) = state.stack.pop() {
             resolve_stack_object(state, top, db);
         } else {
@@ -137,7 +139,10 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
         // player first (the defender declares blockers, CR 509.1).
         state.priority = priority_after_step_change(state);
     } else {
-        state.priority = PlayerId((state.priority.0 + 1) % seats);
+        // Skip every eliminated seat when passing priority (CR 800.4a).
+        state.priority = state
+            .next_living_seat(state.priority)
+            .unwrap_or(state.priority);
     }
 }
 
