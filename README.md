@@ -1,158 +1,114 @@
 # RUNE
 
-An open-source Magic: The Gathering engine and client. A high-performance Rust server
-owns every rule of the game; a React + Pixi.js web client renders what the server says
-and nothing more. Any client — web UI, terminal, or an LLM agent — speaks the same
-two-message protocol.
+RUNE is an open-source, server-authoritative Magic: The Gathering implementation. A
+pure Rust engine owns the rules, a WebSocket server owns sessions and rooms, and React,
+Pixi, terminal, or automated clients render personalized server views and return issued
+action identifiers.
 
-> **Status: early, playable at the engine level.** The Rust engine plays a complete,
-> legal, deterministic game of a creature-combat MTG subset to a win — proven by an
-> agent-vs-agent game driven through the real server and protocol
-> (`crates/rune-cli/tests/agent_game.rs`). The web client renders and drives games but is
-> still being brought up to a full-game UI, and the card pool is a small hand-authored
-> slice. See [`docs/roadmap.md`](docs/roadmap.md) for what's next.
+The project is in active development. The engine can play a deterministic two-player
+creature-combat game to a win, including casting, targeting, the stack, combat, common
+keywords, triggers, auras, and initial replacement effects. The server supports rooms,
+validated decks, reconnect tokens, and decision timers. The web client covers the game
+loop, but its table presentation and interaction affordances still have open usability
+issues. See the [roadmap](docs/roadmap.md) for current work.
 
 ## Architecture
 
-```
-┌─────────────────────────── rune-server ───────────────────────────┐
-│  Layer 1  Matchmaking / lobby      (connections, identity, rooms) │
-│  Layer 2  Room / session           (one task per room, timers)    │
-│  Layer 3  rune-engine              (pure, immutable rules engine) │
-└──────────────────────────────┬─────────────────────────────────────┘
-                     GameView ↓ │ ↑ { action_id }        (rune-protocol)
-        ┌──────────────┬────────┴───────┬────────────────┐
-        │ clients/web  │   rune-cli     │   LLM agent    │
-        │ React + Pixi │   terminal     │   (any client) │
-        └──────────────┴────────────────┴────────────────┘
+```text
+┌────────────────────────── rune-server ──────────────────────────┐
+│ Lobby and rooms       WebSocket sessions and server policy     │
+│ rune-engine           Pure, immutable rules state machine      │
+└─────────────────────────────┬───────────────────────────────────┘
+                  LobbyView / GameView ↓  ↑ command / action id
+          ┌───────────────────┼───────────────────┐
+          │ React + Pixi web  │ terminal client   │ automated agent
+          └───────────────────┴───────────────────┘
 ```
 
-Design principles (full detail in [`docs/brief.md`](docs/brief.md)):
+- The engine has no runtime I/O and produces a new `GameState` for each action.
+- The server redacts hidden information and sends a complete personalized view after
+  each change.
+- Clients derive interactivity only from `valid_commands` or `valid_actions`; they do
+  not compute rules or legality.
+- Card definitions are structured data. The server generates display rules text from
+  the same data the engine executes.
 
-- **Server-authoritative.** The client only renders `GameView` and picks from
-  `valid_actions[]`. Zero rules knowledge lives client-side.
-- **Immutable engine.** `apply_action(state, action) -> GameState`. Undo, replay,
-  resync, and AI tree search fall out of this for free.
-- **No card images.** Cards are procedurally rendered from data — legal clarity and
-  crisp scaling at every size.
+See the [project brief](docs/brief.md) for scope and the
+[protocol specification](docs/protocol.md) for the wire contract.
 
-## Getting started
+## Repository
+
+| Path | Purpose |
+| --- | --- |
+| `crates/rune-engine` | Pure rules engine and embedded card catalog |
+| `crates/rune-protocol` | Shared Rust wire types |
+| `crates/rune-server` | WebSocket lobby, rooms, and view projection |
+| `crates/rune-cli` | Interactive terminal and deterministic-agent client |
+| `clients/web` | React and Pixi web client |
+| `docs` | Specifications, design requirements, roadmap, and ADRs |
+| `prototypes` | Historical UI references; never imported by production code |
+
+## Set up and verify
 
 ```sh
-scripts/bootstrap.sh   # checks prerequisites for both gates below
-make check             # fast inner-loop gate: Engine + Client (fmt, clippy, tests, client build)
-make verify            # full pre-merge gate: check + cargo-deny
+scripts/bootstrap.sh
+make check
+make verify
 ```
 
-`make check` is the fast gate you run constantly while working. `make verify` is the
-complete pre-merge surface: it composes `make check` and `make deny`, so its coverage
-matches every GitHub check required to merge (`Engine`, `Client`, `cargo-deny`). Run
-`make verify` before opening a PR.
+`make check` is the fast Engine and Client gate. `make verify` adds dependency-policy
+checks and matches the required pre-merge CI surface.
 
-| Directory | What it is |
-|---|---|
-| `crates/rune-engine` | Rules engine — pure functions, immutable state |
-| `crates/rune-protocol` | Shared GameView / Action types |
-| `crates/rune-server` | WebSocket server: lobby, rooms, sessions |
-| `crates/rune-cli` | Terminal client for protocol testing |
-| `clients/web` | React + Pixi.js web client |
-| `docs` | Brief, protocol, UI requirements, ADRs |
-| `prototypes` | Standalone HTML UI prototypes (reference only) |
+## Run locally
 
-## Running the project
-
-The server owns the game; every client connects to it over WebSocket. Start the
-server first, then attach a client. The `rune-cli` agent mode plays a full game today;
-the web client is still being brought up to a complete-game UI.
-
-### Server
+Start the server:
 
 ```sh
 cargo run -p rune-server
 ```
 
-Binds `127.0.0.1:9000` by default. Override the listen address with the `--addr`
-flag or the `RUNE_SERVER_ADDR` environment variable:
+It listens on `127.0.0.1:9000` by default. Use `--addr` or `RUNE_SERVER_ADDR` to
+override it:
 
 ```sh
 cargo run -p rune-server -- --addr 0.0.0.0:9000
-RUNE_SERVER_ADDR=0.0.0.0:9000 cargo run -p rune-server
 ```
 
-The server logs to stderr and serves until Ctrl-C.
-
-### Terminal client (`rune-cli`)
-
-With a server running, connect the terminal client. Interactive mode renders each
-`GameView` as a numbered list of legal actions and reads your choice from stdin:
+In another terminal, start an interactive terminal client or the deterministic agent:
 
 ```sh
 cargo run -p rune-cli
-```
-
-Agent mode (`--agent`) hands each view to the built-in deterministic agent instead
-of prompting — useful for smoke-testing AI opponents:
-
-```sh
 cargo run -p rune-cli -- --agent
 ```
 
-Flags (each has an environment-variable fallback):
+The CLI accepts `--addr`, `--agent`, and `--agent-timeout`; corresponding environment
+fallbacks are documented by `--help`.
 
-| Flag | Env fallback | Default | Purpose |
-|---|---|---|---|
-| `--addr`, `-a` `<host:port \| ws://…>` | `RUNE_SERVER_ADDR` | `127.0.0.1:9000` | Server to connect to |
-| `--agent` | — | off | Drive with the built-in agent instead of stdin |
-| `--agent-timeout <seconds>` | `RUNE_AGENT_TIMEOUT` | `5` | Per-decision deadline in agent mode |
-
-### Web client (`clients/web`)
-
-The React + Pixi.js client is a Vite app. Install dependencies once, then run the
-dev server:
+To run the web client:
 
 ```sh
 cd clients/web
 npm install
-npm run dev            # Vite dev server with hot reload (default http://localhost:5173)
+npm run dev
 ```
 
-Build and preview a production bundle:
-
-```sh
-npm run build          # type-check, then emit a production build to dist/
-npm run preview        # serve the built bundle locally
-```
-
-## Development model
-
-RUNE is solo-maintained, with Claude as the coding assistant. The loop is light: branch
-off `main`, keep changes small and single-purpose, run `make check` while working and
-`make verify` before opening a PR, and merge once CI is green. The rules that matter — zero
-game logic in the client, zero I/O in the engine, protocol changes are contract changes —
-live in [`AGENTS.md`](AGENTS.md); the contributor loop is in
-[`CONTRIBUTING.md`](CONTRIBUTING.md). Every PR must pass CI (`Engine`, `Client`, and
-`cargo-deny` — reproduce them with `make verify`).
+Vite serves the development client at `http://localhost:5173` by default. Use
+`npm run build` and `npm run preview` to test a production bundle.
 
 ## Documentation
 
-- [`docs/brief.md`](docs/brief.md) — the project brief (architecture, scope, legal)
-- [`docs/protocol.md`](docs/protocol.md) — the two-message client/server protocol
-- [`docs/design/ui-requirements.md`](docs/design/ui-requirements.md) — everything the UI must support
-- [`docs/design/ui-design-notes.md`](docs/design/ui-design-notes.md) — locked UI design decisions
-- [`docs/decisions/`](docs/decisions/) — architecture decision records
+- [Project brief](docs/brief.md) — purpose, architecture, scope, and legal constraints
+- [Protocol](docs/protocol.md) — current lobby and in-game wire contract
+- [Card schema](docs/card-schema.md) — authoring and validation of card definitions
+- [UI requirements](docs/design/ui-requirements.md) — current and future UI capabilities
+- [Roadmap](docs/roadmap.md) — shipped outcomes and remaining milestones
+- [ADRs](docs/decisions/) — architectural decisions and their rationale
 
 ## Legal
 
-RUNE is a free fan project, not affiliated with or endorsed by Wizards of the Coast.
-It implements game rules (not copyrightable), uses no card images or official frame
-designs, and must never be monetized. It also bundles **no exact Oracle text**: cards
-are authored as structured functional definitions and the server generates the rules
-text a player reads from them, so the project does not rely on the oracle-text grey
-zone that prior art (XMage, Forge) operates in. See
-[ADR 0018](docs/decisions/0018-scalable-functional-card-definitions.md) and the schema
-in [`docs/card-schema.md`](docs/card-schema.md).
+RUNE is a free fan project and is not affiliated with or endorsed by Wizards of the
+Coast. It includes no card images, official frames, Wizards branding, or exact Oracle
+text and must not be monetized. Cards use structured functional definitions and
+server-generated rules text. See the [legal constraints](docs/brief.md#legal-constraints).
 
-The source code is licensed under the [MIT License](LICENSE); see
-[`docs/decisions/0005-license.md`](docs/decisions/0005-license.md) for the rationale.
-The MIT license governs the code only — the non-monetization and no-card-images
-posture above still applies to how the project is distributed.
+The source code is licensed under the [MIT License](LICENSE).
