@@ -20,14 +20,69 @@ import type { Rect } from './scene';
 /** Minimum touch target per AGENTS.md (44px), applied to every affordance. */
 const TOUCH = 44;
 
-export function boardWrap(width: number, height: number): CSSProperties {
+/**
+ * The full-bleed tabletop shell root (issue #295): a positioned box the size of
+ * the measured viewport, clipping its own overflow so no region can push the page
+ * into a scroll. Every region below is absolutely positioned within it from a
+ * layout rect (`table/layout.ts`), and fixed-position overlays (inspect, zone
+ * browser, game over) escape it as before.
+ */
+export function shellBox(width: number, height: number): CSSProperties {
   return {
     position: 'relative',
     width,
     height,
-    maxWidth: '100%',
-    overflowX: 'auto',
-    alignSelf: 'center',
+    overflow: 'hidden',
+  };
+}
+
+/**
+ * Absolutely position a shell region from its {@link Rect} (issue #295). The
+ * region's *look* (surface tier, tint, elevation) is a `chrome.module.css` class
+ * spread on top; this helper carries only the runtime geometry, which — being
+ * viewport-derived — cannot be a static class (ADR 0019 keeps geometry inline).
+ */
+export function regionBox(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x,
+    top: rect.y,
+    width: rect.w,
+    height: rect.h,
+    boxSizing: 'border-box',
+  };
+}
+
+/**
+ * The collapsed stack/activity rail on narrow geometry (issue #295): instead of
+ * docking (which would eat board width), it floats a content-sized panel pinned to
+ * the right edge at its badge anchor, overlaying the board. #299 redesigns this
+ * into an on-demand expand from a badge; for now the panel floats so the stack
+ * stays reachable without carving the battlefield.
+ */
+export function railFloat(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    top: rect.y,
+    right: 8,
+    maxWidth: 320,
+    maxHeight: '60vh',
+    overflow: 'auto',
+    boxSizing: 'border-box',
+  };
+}
+
+/**
+ * The Pixi scene box inside the battlefield region: sized to exactly what the
+ * scene reports. Its width never exceeds the battlefield region's width (the scene
+ * wraps within that budget), so it never scrolls horizontally; a board taller than
+ * the region scrolls vertically within the region instead (§Battlefield bands).
+ */
+export function sceneBox(width: number, height: number): CSSProperties {
+  return {
+    position: 'relative',
+    width,
+    height,
   };
 }
 
