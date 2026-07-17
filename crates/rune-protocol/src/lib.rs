@@ -244,6 +244,13 @@ pub struct OpponentView {
     /// Free-form status labels (e.g. `"monarch"`, `"hexproof"`) for display only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub statuses: Vec<String>,
+    /// Whether this opponent has been eliminated — they lost while the game
+    /// continued and left it (CR 800.4a, issue #342/#345). Additive: omitted (and
+    /// defaults to `false`) so a two-player view is unchanged; the client shows an
+    /// eliminated opponent as out of the game. Server-computed from the player's
+    /// stored loss state; never derived by the client.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub eliminated: bool,
 }
 
 /// The receiver's own public stats — the self-counterpart of [`OpponentView`].
@@ -281,6 +288,16 @@ pub struct Permanent {
     /// derives it. Omitted from the wire when `false`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub attacking: bool,
+    /// The defending player this permanent is attacking (CR 508.1a), as their
+    /// entity id — the multiplayer generalization of [`Self::attacking`] (issue
+    /// #341/#345). Additive: omitted (and defaults to `None`) when the permanent is
+    /// not attacking, and in a two-player game a client may ignore it since the sole
+    /// opponent is the only possible defender; with more seats it names *whom* the
+    /// attacker attacks so the board can render split attacks. Follows the
+    /// `blocking`/`attached_to` precedent of projecting one object's reference to
+    /// another. Server-computed; never derived by the client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attacking_player: Option<EntityId>,
     /// The permanent this one is blocking, if it was declared as a blocker this
     /// combat (CR 509): the attacker's entity id. `None`/omitted when it is not
     /// blocking. Several blockers may name the same attacker.
@@ -608,6 +625,15 @@ pub struct GameView {
     /// deserializes to `""` (unknown), and it is elided from the wire when empty.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub active_player: PlayerId,
+    /// The table's seat order: every player's id (`p0`, `p1`, …) in seat order,
+    /// including the receiver and any eliminated players (issue #345). The explicit
+    /// promise the multiplayer table layout relies on to place opponents in a stable
+    /// arrangement around the receiver — opponents were only ever *happened* to be
+    /// projected in seat order before, which no client could rely on. Additive:
+    /// omitted (and defaults to empty) so a client that ignores it sees no change;
+    /// a two-player client can continue to infer the arrangement.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seat_order: Vec<PlayerId>,
     /// The receiving player's unspent mana, as pip strings (e.g. `["{G}", "{G}"]`).
     /// Server-computed; the client only displays it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1203,6 +1229,7 @@ mod tests {
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p0".into(),
+            seat_order: Vec::new(),
             mana_pool: vec![],
             priority_player: Some("p0".into()),
             valid_actions: vec![],
@@ -1235,6 +1262,77 @@ mod tests {
         let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
         assert!(legacy.stops.is_empty());
         assert!(!legacy.auto_passed);
+    }
+
+    #[test]
+    fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
+        // The multiplayer contract fields — a permanent's `attacking_player`, an
+        // opponent's `eliminated`, and the view's `seat_order` — round-trip and elide
+        // from the wire at their two-player defaults, so an older-shaped view renders
+        // exactly as today.
+        let card: CardView =
+            serde_json::from_str(r#"{"id":"perm_1","name":"Raider","type_line":"Creature — Orc"}"#)
+                .unwrap();
+        let attacker = Permanent {
+            id: "perm_1".into(),
+            controller: "p0".into(),
+            owner: "p0".into(),
+            card,
+            tapped: false,
+            attacking: true,
+            attacking_player: Some("p2".into()),
+            blocking: None,
+            damage: 0,
+            attached_to: None,
+            counters: vec![],
+        };
+        let json = serde_json::to_value(&attacker).unwrap();
+        assert_eq!(json["attacking_player"], serde_json::json!("p2"));
+        assert_eq!(serde_json::from_value::<Permanent>(json).unwrap(), attacker);
+
+        // A not-attacking permanent omits `attacking_player`.
+        let idle = Permanent {
+            attacking: false,
+            attacking_player: None,
+            ..attacker.clone()
+        };
+        assert!(serde_json::to_value(&idle)
+            .unwrap()
+            .get("attacking_player")
+            .is_none());
+
+        // `eliminated` rides the opponent and elides when false.
+        let out = OpponentView {
+            player_id: "p1".into(),
+            hand_size: 0,
+            life: 0,
+            library_size: 0,
+            graveyard_size: 0,
+            statuses: vec![],
+            eliminated: true,
+        };
+        assert_eq!(serde_json::to_value(&out).unwrap()["eliminated"], true);
+        let alive = OpponentView {
+            eliminated: false,
+            ..out.clone()
+        };
+        assert!(serde_json::to_value(&alive)
+            .unwrap()
+            .get("eliminated")
+            .is_none());
+
+        // An older opponent/permanent that omits the new fields deserializes to the
+        // two-player defaults.
+        let legacy_perm: Permanent = serde_json::from_str(
+            r#"{"id":"perm_1","controller":"p0","owner":"p0","card":{"id":"perm_1","name":"","type_line":""},"attacking":true}"#,
+        )
+        .unwrap();
+        assert!(legacy_perm.attacking_player.is_none());
+        let legacy_opp: OpponentView = serde_json::from_str(
+            r#"{"player_id":"p1","hand_size":0,"life":0,"library_size":0,"graveyard_size":0}"#,
+        )
+        .unwrap();
+        assert!(!legacy_opp.eliminated);
     }
 
     #[test]
@@ -1498,6 +1596,7 @@ mod tests {
                 library_size: 53,
                 graveyard_size: 0,
                 statuses: vec!["monarch".into()],
+                eliminated: false,
             }],
             battlefield: vec![Permanent {
                 id: "perm_xyz".into(),
@@ -1516,6 +1615,7 @@ mod tests {
                 },
                 tapped: true,
                 attacking: false,
+                attacking_player: None,
                 blocking: None,
                 damage: 0,
                 attached_to: None,
@@ -1538,6 +1638,7 @@ mod tests {
             phase: Phase::PrecombatMain,
             turn: 3,
             active_player: "p1".into(),
+            seat_order: Vec::new(),
             mana_pool: vec!["{G}".into()],
             priority_player: Some("p1".into()),
             valid_actions: vec![ValidAction {
@@ -1604,6 +1705,7 @@ mod tests {
             phase: Phase::Upkeep,
             turn: 0,
             active_player: String::new(),
+            seat_order: Vec::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -1634,6 +1736,7 @@ mod tests {
             phase: Phase::PrecombatMain,
             turn: 0,
             active_player: String::new(),
+            seat_order: Vec::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -1807,6 +1910,7 @@ mod tests {
             },
             tapped: false,
             attacking: false,
+            attacking_player: None,
             blocking: None,
             damage: 0,
             attached_to: None,
@@ -1822,6 +1926,7 @@ mod tests {
         // An attacker and its blocker both round-trip with their state present.
         let attacker = Permanent {
             attacking: true,
+            attacking_player: None,
             ..base.clone()
         };
         let blocker = Permanent {
@@ -1883,6 +1988,7 @@ mod tests {
             },
             tapped: false,
             attacking: false,
+            attacking_player: None,
             blocking: None,
             damage: 0,
             attached_to: None,
@@ -2264,6 +2370,7 @@ mod tests {
             phase: Phase::End,
             turn: 0,
             active_player: String::new(),
+            seat_order: Vec::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -2322,6 +2429,7 @@ mod tests {
             phase: Phase::Upkeep,
             turn: 0,
             active_player: String::new(),
+            seat_order: Vec::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -2418,6 +2526,7 @@ mod tests {
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p1".into(),
+            seat_order: Vec::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -2468,6 +2577,7 @@ mod tests {
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p1".into(),
+            seat_order: Vec::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],

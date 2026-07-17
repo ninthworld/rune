@@ -23,6 +23,7 @@ function viewWith(stack: StackItem[], battlefield: Permanent[] = []): GameView {
     phase: 'precombat_main',
     turn: 1,
     active_player: 'p1',
+    seat_order: [],
     mana_pool: [],
     valid_actions: [],
     player_names: {},

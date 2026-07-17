@@ -86,6 +86,7 @@ export const SAMPLE_GAME_VIEW_JSON = JSON.stringify({
   phase: 'precombat_main',
   turn: 5,
   active_player: 'p1',
+  seat_order: ['p1', 'p2'],
   mana_pool: ['{G}'],
   priority_player: 'p1',
   valid_actions: [
@@ -145,6 +146,7 @@ export const SAMPLE_GAME_VIEW: GameView = {
   phase: 'precombat_main',
   turn: 5,
   active_player: 'p1',
+  seat_order: ['p1', 'p2'],
   mana_pool: ['{G}'],
   priority_player: 'p1',
   valid_actions: [
@@ -445,6 +447,7 @@ export const COMBAT_GAME_VIEW_JSON = JSON.stringify({
   phase: 'combat_damage',
   turn: 6,
   active_player: 'p2',
+  seat_order: ['p1', 'p2'],
   priority_player: 'p1',
   valid_actions: [{ id: 'a1', type: 'pass_priority', label: 'Pass' }],
 });
