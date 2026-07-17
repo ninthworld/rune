@@ -18,18 +18,29 @@ agent test.
 
 The web client implements the lobby and game flow, targeting, combat selection, stack, game
 over, card inspection, public-zone browsers, a turn ribbon, keyboard controls, and timer
-display. The battlefield canvas now survives StrictMode remounts and exposes a visible fallback
-if rendering fails. Remaining affordance and table-layout gaps still prevent the experience
-from being reliably understandable to a new player.
+display. The battlefield canvas survives StrictMode remounts and exposes a visible fallback if
+rendering fails; action affordances (#277) and labeled table geography (#278) have shipped.
+The remaining gap is presentation: the table renders as a vertically stacked dashboard of
+uniform panels rather than a tabletop, with weak hierarchy and identity. The redesign target
+is specified in [`design/ui-design-notes.md`](design/ui-design-notes.md).
 
 ## Immediate priorities
 
-Stabilize the existing two-player experience before expanding the rules surface:
+Deliver the client UI overhaul on the existing protocol and interaction flows:
 
-1. Make issued hand and battlefield actions visibly discoverable
-   ([#277](https://github.com/ninthworld/rune/issues/277)).
-2. Give the table clear player areas and visible zone geography
-   ([#278](https://github.com/ninthworld/rune/issues/278)).
+1. Foundations: the chrome visual system and styling layer
+   ([#293](https://github.com/ninthworld/rune/issues/293)), then the full-bleed adaptive
+   table shell ([#295](https://github.com/ninthworld/rune/issues/295)).
+2. Rebuild the table surfaces on the shell: player HUDs
+   ([#296](https://github.com/ninthworld/rune/issues/296)), the compact turn/phase indicator
+   ([#297](https://github.com/ninthworld/rune/issues/297)), anchored decision staging
+   ([#298](https://github.com/ninthworld/rune/issues/298)), and the stack/activity rail
+   ([#299](https://github.com/ninthworld/rune/issues/299)).
+3. Identity: connection and lobby screens
+   ([#300](https://github.com/ninthworld/rune/issues/300)) and protocol-carried player
+   display names ([#294](https://github.com/ninthworld/rune/issues/294)).
+4. The capability-aware spatial focus model
+   ([#301](https://github.com/ninthworld/rune/issues/301)).
 
 Real-browser coverage (a smoke path through rendered turns,
 [#279](https://github.com/ninthworld/rune/issues/279)) stays **deferred** with the rest of the
@@ -83,12 +94,15 @@ Shipped foundations:
 - universal card inspection;
 - graveyard and exile browsers;
 - decision timers with server enforcement and client countdowns;
-- keyboard access for the core play flow; and
-- turn, phase, active-player, and priority presentation.
+- keyboard access for the core play flow;
+- turn, phase, active-player, and priority presentation; and
+- visible action affordances and table geography (#277–#278).
 
 Remaining:
 
-- visible action affordances and table geography (#277–#278);
+- the client UI overhaul — visual system, tabletop shell, HUDs, decision staging, and the
+  spatial focus model (#293, #295–#301) with player display names
+  ([#294](https://github.com/ninthworld/rune/issues/294));
 - structured, redacted game events in `GameView`
   ([#259](https://github.com/ninthworld/rune/issues/259));
 - a client game-log panel ([#260](https://github.com/ninthworld/rune/issues/260));
