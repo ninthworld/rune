@@ -156,8 +156,7 @@ export interface LogBlock {
 
 /** What a `damage_dealt` event was dealt to: a player or a permanent. */
 export type LogDamageTarget =
-  | { kind: 'player'; player: PlayerId }
-  | { kind: 'permanent'; permanent: LogEntity };
+  { kind: 'player'; player: PlayerId } | { kind: 'permanent'; permanent: LogEntity };
 
 /** A structured, receiver-safe game-history event. */
 export type GameLogEvent =
