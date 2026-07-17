@@ -26,9 +26,10 @@ describe('TableGeography (issue #278)', () => {
     const scene = buildTableScene(SAMPLE_GAME_VIEW);
     render(<TableGeography scene={scene} />);
     const local = scene.bands.at(-1)!;
-    expect(screen.getByTestId(`library-pile-${local.playerId}`).textContent).toContain(
-      `Library ${local.zones.library}`,
-    );
+    const pile = screen.getByTestId(`library-pile-${local.playerId}`);
+    // The count is the pile's single home; the zone name rides its accessible label.
+    expect(pile.textContent).toContain(`${local.zones.library}`);
+    expect(pile.getAttribute('aria-label')).toContain(`library (${local.zones.library})`);
   });
 
   it('opens the graveyard and exile browsers from the table piles', () => {
