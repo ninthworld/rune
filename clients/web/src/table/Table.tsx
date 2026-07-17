@@ -25,12 +25,12 @@ import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
-import { TableGeography } from './TableGeography';
+import { TableGeography, type BrowsableZone } from './TableGeography';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
 import { PhaseIndicator, type TableMode } from './PhaseIndicator';
-import { PlayerTiles, type BrowsableZone } from './PlayerTiles';
+import { OpponentHud, LocalDock } from './PlayerHud';
 import { PromptBanner } from './PromptBanner';
 import { ShortcutHelp, type Binding } from './ShortcutHelp';
 import { Rail } from './Rail';
@@ -507,7 +507,10 @@ export function Table() {
           <PhaseIndicator view={view} mode="overview" localId={localId} />
         </div>
         <div className={s.regionHud} style={regionBox(r.opponentHud.rect)}>
-          <PlayerTiles view={view} localId={localId} onOpenZone={openZone} />
+          <OpponentHud view={view} />
+        </div>
+        <div className={s.regionLocalDock} style={regionBox(r.localDock.rect)}>
+          <LocalDock view={view} localId={localId} />
         </div>
         <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
           <div style={sceneBox(scene.width, scene.height)}>
@@ -726,22 +729,35 @@ export function Table() {
         <PhaseIndicator view={view} mode={mode} localId={localId} />
       </div>
       {/*
-       * Opponent HUD strip — top. Carries every player tile as-is until #296 splits
-       * the local dock out. In focus mode the standings chrome is lightly
-       * de-emphasized so attention lands on the pending decision — presentation
+       * Opponent HUD strip — top: identity + life prominent, hand/statuses secondary
+       * (issue #296). It reflows purely by opponent count and never pulls the local
+       * player up (they live in the dock below). In focus mode the standings chrome is
+       * lightly de-emphasized so attention lands on the pending decision — presentation
        * only, derived from `mode` (issue #267).
        */}
       <div
         className={cx(s.regionHud, mode === 'focus' && s.focusDimmed)}
         style={regionBox(r.opponentHud.rect)}
       >
-        <PlayerTiles
+        <OpponentHud
+          view={view}
+          targeting={
+            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+          }
+        />
+      </div>
+      {/* Local player dock — bottom-left: identity, life, floating mana (issue #296).
+          A self-target candidate is pickable here with the same ring/dim contract. */}
+      <div
+        className={cx(s.regionLocalDock, mode === 'focus' && s.focusDimmed)}
+        style={regionBox(r.localDock.rect)}
+      >
+        <LocalDock
           view={view}
           localId={localId}
           targeting={
             targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
           }
-          onOpenZone={openZone}
         />
       </div>
       {/* Battlefield — the center, owning most of the viewport. The Pixi scene sizes

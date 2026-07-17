@@ -90,14 +90,16 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<Table />);
 
-    // First frame: opponent p2 at 20 life, our Grizzly Bears is interactive.
-    expect(within(screen.getByTestId('tile-p2')).getByText(/Life 20/)).toBeDefined();
+    // First frame: opponent p2 at 20 life (HUD strip), our Grizzly Bears interactive.
+    expect(screen.getByTestId('hud-life-p2').textContent).toBe('20');
     expect(screen.getByTestId('entity-perm_xyz')).toBeDefined();
 
-    // Our own tile shows our own life and library size (issue #255) — a player can
-    // read their own life, not only their opponents'.
-    expect(within(screen.getByTestId('tile-p1')).getByText(/Life 18/)).toBeDefined();
-    expect(within(screen.getByTestId('tile-p1')).getByText(/Library 52/)).toBeDefined();
+    // Our own dock shows our own life (issue #255/#296) — a player can read their own
+    // life, not only their opponents'. The library count lives ONCE, on the board's
+    // zone pile (issue #296); the dock no longer repeats it.
+    expect(screen.getByTestId('hud-life-p1').textContent).toBe('18');
+    expect(within(screen.getByTestId('library-pile-p1')).getByText(/Library 52/)).toBeDefined();
+    expect(within(screen.getByTestId('local-dock')).queryByText(/Library/)).toBeNull();
 
     // A fresh frame replaces everything — as a reconnect would.
     const next = JSON.stringify({
@@ -111,7 +113,7 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
 
     // The UI reflects only the new frame: updated life, no stale entity, and the
     // action bar is empty (input gated: no valid_actions).
-    expect(within(screen.getByTestId('tile-p2')).getByText(/Life 7/)).toBeDefined();
+    expect(screen.getByTestId('hud-life-p2').textContent).toBe('7');
     expect(screen.queryByTestId('entity-perm_xyz')).toBeNull();
     expect(
       within(screen.getByTestId('action-bar')).getByText('No actions available'),
@@ -463,11 +465,11 @@ describe('Table keyboard parity (issue #266)', () => {
 });
 
 describe('Table zone browsers (issue #262)', () => {
-  it('opens the local graveyard from the tile and lists it in order', () => {
+  it('opens the local graveyard from the board pile and lists it in order', () => {
     seed(ZONES_GAME_VIEW_JSON);
     render(<Table />);
     expect(screen.queryByTestId('zone-browser')).toBeNull();
-    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    fireEvent.click(screen.getByTestId('table-graveyard-p1'));
     const browser = screen.getByTestId('zone-browser');
     expect(within(browser).getByTestId('zone-browser-title').textContent).toContain(
       'p1 — Graveyard',
@@ -476,17 +478,17 @@ describe('Table zone browsers (issue #262)', () => {
     expect(within(browser).getByTestId('browser-card-gy_p1_b')).toBeDefined();
   });
 
-  it("opens an opponent's graveyard (public zone) from their tile", () => {
+  it("opens an opponent's graveyard (public zone) from their board pile", () => {
     seed(ZONES_GAME_VIEW_JSON);
     render(<Table />);
-    fireEvent.click(screen.getByTestId('open-graveyard-p2'));
+    fireEvent.click(screen.getByTestId('table-graveyard-p2'));
     expect(screen.getByTestId('browser-card-gy_p2_a').textContent).toContain('Lightning Bolt');
   });
 
   it('opens the exile browser and inspects a card inside it', () => {
     seed(ZONES_GAME_VIEW_JSON);
     render(<Table />);
-    fireEvent.click(screen.getByTestId('open-exile-p1'));
+    fireEvent.click(screen.getByTestId('table-exile-p1'));
     expect(screen.getByTestId('zone-browser-title').textContent).toContain('p1 — Exile');
     // A card inside the browser opens the shared inspect popover (issue #261 reuse).
     fireEvent.click(screen.getByTestId('browser-card-ex_p1_a'));
@@ -501,7 +503,7 @@ describe('Table zone browsers (issue #262)', () => {
     seed(ZONES_GAME_VIEW_JSON);
     render(<Table />);
     // p2 has no exile pile in the view → browses empty.
-    fireEvent.click(screen.getByTestId('open-exile-p2'));
+    fireEvent.click(screen.getByTestId('table-exile-p2'));
     expect(screen.getByTestId('zone-browser-empty')).toBeDefined();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('zone-browser')).toBeNull();
@@ -510,7 +512,7 @@ describe('Table zone browsers (issue #262)', () => {
   it('drops an open browser when a fresh GameView arrives (no state across messages)', () => {
     seed(ZONES_GAME_VIEW_JSON);
     render(<Table />);
-    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    fireEvent.click(screen.getByTestId('table-graveyard-p1'));
     expect(screen.getByTestId('zone-browser')).toBeDefined();
     act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
     expect(screen.queryByTestId('zone-browser')).toBeNull();
@@ -531,7 +533,7 @@ describe('Table zone browsers (issue #262)', () => {
     });
     seed(terminal);
     render(<Table />);
-    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    fireEvent.click(screen.getByTestId('table-graveyard-p1'));
     expect(screen.getByTestId('browser-card-gy_end').textContent).toContain('Shock');
   });
 });
