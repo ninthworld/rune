@@ -17,6 +17,23 @@ one is implemented. Current delivery status belongs in [`../roadmap.md`](../road
   drag or hover.
 - Current characteristics, counters, damage, statuses, and results are displayed exactly as
   the server supplies them.
+- Because `valid_actions` enumerates every legal interaction, only currently offered
+  interactions receive controls and visual emphasis. The UI never renders speculative
+  controls for actions the server has not issued.
+
+## Layout and devices
+
+No screen size, aspect ratio, or orientation is guaranteed. Layout derives from measured
+viewport geometry and detected input capabilities (pointer precision, hover, keyboard,
+gamepad), not from an enumerated device or breakpoint list. The same abstract interaction
+verbs — focus or select, confirm, inspect, back or cancel, pass — must be reachable by
+pointer, touch, and keyboard today, and by controller focus without redesign.
+
+At every supported geometry the battlefield and the receiver's hand are the primary
+surfaces and claim most of the viewport; persistent chrome docks around the board and may
+condense or collapse, but never displaces the board into a scrolled document flow.
+Information regions keep stable positions across states so play does not require visually
+re-locating controls; density and emphasis, not region order, are what vary.
 
 ## Table and zones
 
