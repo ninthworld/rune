@@ -2,13 +2,7 @@
 
 These standards apply to all code. The architectural rules in [`AGENTS.md`](../AGENTS.md)
 take precedence. `make check` runs the fast Engine and Client checks; `make verify` adds
-the required dependency-policy checks and the browser smoke canary, and is the pre-merge gate.
-
-> The browser end-to-end **smoke canary** (ADR 0011) is `make smoke` and the `Smoke` CI job
-> (issue #279): one Playwright spec that drives a real Chromium against a real seeded
-> `rune-server` and plays real turns through the rendered UI — the StrictMode canvas-attach
-> guard (#276). It is part of `make verify`, **not** `make check`, so the fast inner loop
-> stays browser-free. The full ADR 0011 matrix is still future work; this is just the canary.
+the required dependency-policy checks and is the pre-merge gate.
 
 ## Baseline
 

@@ -30,8 +30,11 @@ Stabilize the existing two-player experience before expanding the rules surface:
    ([#277](https://github.com/ninthworld/rune/issues/277)).
 2. Give the table clear player areas and visible zone geography
    ([#278](https://github.com/ninthworld/rune/issues/278)).
-3. Add a minimal real-browser smoke path through rendered turns
-   ([#279](https://github.com/ninthworld/rune/issues/279)).
+
+Real-browser coverage (a smoke path through rendered turns,
+[#279](https://github.com/ninthworld/rune/issues/279)) stays **deferred** with the rest of the
+E2E suite (ADR 0011) while the in-game UI is still in flux; the canvas render path is guarded by
+component-level tests in the meantime.
 
 ## Milestones
 
@@ -49,9 +52,9 @@ enter an id directly.
 **Outcome:** two players can complete a legal game in the browser and understand the result.
 
 The engine, protocol, and UI flows are implemented and covered by unit and integration tests.
-Reliable canvas attachment and a visible failure state are shipped. Action discoverability,
-table geography, and the browser smoke path (#277–#279) remain before this outcome is reliable
-for a new player.
+Reliable canvas rendering and a visible failure state are shipped, as are action
+discoverability and table geography (#277, #278). A real-browser smoke path (#279) stays
+deferred with the E2E suite (ADR 0011).
 
 ### M3 — A real card pool
 

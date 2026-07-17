@@ -1,22 +1,12 @@
 # ADR 0011: End-to-end browser test strategy for the web client
 
-- Status: accepted (smoke canary reinstated — see note)
+- Status: accepted (suite paused — see note)
 - Date: 2026-07-11
 - Issue: #102
 
-> **Note (smoke canary back, #279):** the minimal browser **smoke canary** is reinstated
-> as `make smoke` and the `Smoke` CI job — one Playwright spec that drives a real Chromium
-> against a real seeded `rune-server` and plays real turns through the rendered UI, guarding
-> the StrictMode canvas-attach fix (#276). It lives in `clients/web/e2e/` and reads the
-> read-only `window.__RUNE_TEST__` scene/view hook described below, but it is intentionally
-> **one canary spec, not the full matrix**: the mock-WS fixture tier, the screenshot
-> baselines, and the connection/lobby breadth in the "Decision" section remain future work.
-> The `make smoke` target is part of `make verify` (not `make check`). One environment
-> caveat learned wiring it up: headless Chromium's software WebGL cannot recreate Pixi's GL
-> context on StrictMode's remount, so in CI the board shows the #276 "loud fallback" rather
-> than painted pixels — the canary asserts the canvas stays **attached** (the exact #276
-> guard) and that the board shows content (real pixels where the GL stack allows, else the
-> fallback listing the cards).
+> **Note (paused):** the browser E2E suite, its `E2E` CI job, and the `make e2e` targets
+> were removed to keep the inner loop fast while the in-game UI is still in flux. This ADR
+> is retained as the blueprint for reinstating them later; the strategy below is unchanged.
 
 ## Context
 
