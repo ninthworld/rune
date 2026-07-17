@@ -106,6 +106,23 @@ describe('game store', () => {
     expect(sockets[0].sent).toContain(JSON.stringify({ type: 'choose_action', action_id: 'a2' }));
   });
 
+  it('sends a set_stops message with the chosen phases (issue #264)', () => {
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0].emitOpen();
+    sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
+
+    store.getState().setStops(['upkeep', 'end']);
+    expect(sockets[0].sent).toContain(
+      JSON.stringify({ type: 'set_stops', stops: ['upkeep', 'end'] }),
+    );
+
+    // Clearing all stops elides the list — the minimal "stop nowhere" message.
+    store.getState().setStops([]);
+    expect(sockets[0].sent).toContain(JSON.stringify({ type: 'set_stops' }));
+  });
+
   it('answers a targeted action atomically: echoes the token and per-slot targets', () => {
     const store = createGameStore();
     const { factory, sockets } = recordingFactory();

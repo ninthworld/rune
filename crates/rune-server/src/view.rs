@@ -85,7 +85,7 @@ fn count(n: usize) -> u32 {
 /// Map the engine's turn [`Step`] onto the protocol [`Phase`]. The two enums are
 /// deliberately decoupled (`rune-engine` never depends on `rune-protocol`), so the
 /// mapping is written out here.
-fn phase_of(step: Step) -> Phase {
+pub(crate) fn phase_of(step: Step) -> Phase {
     match step {
         Step::Untap => Phase::Untap,
         Step::Upkeep => Phase::Upkeep,
@@ -889,6 +889,12 @@ pub(crate) fn personalized_view(
         // omitted from the wire — while the game is live.
         result: state.result().map(result_view),
         log: log_entries(state, db),
+        // Priority-stop preferences and the auto-pass indicator are room/session
+        // state, not engine state; the room fills them in after projection (issue
+        // #264), exactly as it does the player names. Defaults here (no stops, not
+        // auto-passed) keep this pure shim automation-agnostic and elide from the wire.
+        stops: Vec::new(),
+        auto_passed: false,
         // Player display names are a lobby/session concern, not engine state; the room
         // fills this in after projection (issue #294). Empty here so this pure shim
         // stays name-agnostic and the field elides from the wire by default.

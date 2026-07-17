@@ -453,6 +453,25 @@ export interface GameView {
   /** Bounded structured log window; older servers may omit it. */
   log?: GameLogEntry[];
   /**
+   * The receiver's own current **priority-stop preferences** (issue #264, ADR 0020):
+   * the steps at which they want priority even when the engine reports no meaningful
+   * action, so basic auto-pass does not skip them there. Carried on the view so the
+   * per-phase stops UI is reconstructable from a single message and survives reconnect
+   * (the preferences live on the server, not in client memory). The client renders
+   * toggles from this and answers with a {@link SetStopsMessage}. Omitted (treated as
+   * empty — "stop nowhere", the default) by the server when empty;
+   * {@link normalizeGameView} defaults it to `[]`.
+   */
+  stops?: Phase[];
+  /**
+   * Whether reaching this state **auto-passed** priority on the receiver's behalf
+   * (issue #264, ADR 0020): set on the broadcast that follows a settle in which the
+   * server passed priority for this seat, so the client can show a display-only
+   * "passed for you" indicator. Advisory and transient — the UI reconstructs fully
+   * without it. Omitted (treated as `false`) when the seat was not auto-passed.
+   */
+  auto_passed?: boolean;
+  /**
    * Public display names keyed by {@link PlayerId} (issue #294): every player who has
    * chosen a name maps to it, so any in-game surface (turn indicator, player tiles,
    * zone-browser titles, game-over verdict) can label any player — `you`, an opponent,
@@ -514,6 +533,30 @@ export function chooseAction(
   const message: ChooseAction = { type: 'choose_action', action_id: actionId };
   if (token !== undefined && token !== '') message.token = token;
   if (targets !== undefined && targets.length > 0) message.targets = targets;
+  return message;
+}
+
+/**
+ * Set (or replace) this connection's **priority-stop preferences** (issue #264): the
+ * steps at which the seat wants priority even when it has no meaningful action, so
+ * basic auto-pass does not skip it there. Serializes with the same tagged envelope as
+ * {@link ChooseAction} (`{"type":"set_stops", ...}`), matching the
+ * `ClientMessage::SetStops` variant. The set replaces the seat's current one wholesale;
+ * an empty set (omitted `stops`) clears all stops. Server-authoritative and
+ * reconnect-durable — the server stores it per seat and reflects it in
+ * {@link GameView.stops}; the client computes no legality here.
+ */
+export interface SetStopsMessage {
+  /** Discriminator for the client→server message envelope. */
+  type: 'set_stops';
+  /** The steps to stop at; omitted when clearing all stops. */
+  stops?: Phase[];
+}
+
+/** Build a `set_stops` message, eliding `stops` when the set is empty (clear all). */
+export function setStopsMessage(stops: Phase[]): SetStopsMessage {
+  const message: SetStopsMessage = { type: 'set_stops' };
+  if (stops.length > 0) message.stops = stops;
   return message;
 }
 

@@ -837,6 +837,8 @@ mod tests {
             action_deadline: None,
             result: None,
             log: vec![],
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: std::collections::BTreeMap::new(),
         }
     }

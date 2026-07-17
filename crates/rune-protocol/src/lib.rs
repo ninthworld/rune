@@ -614,6 +614,25 @@ pub struct GameView {
     /// local log state.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log: Vec<GameLogEntry>,
+    /// The receiver's own current **priority-stop preferences** (issue #264): the
+    /// steps at which they want to receive priority even when the engine reports
+    /// they have no meaningful action, so basic auto-pass (ADR 0020) does not skip
+    /// them there. Carried on the view so the per-phase stops UI is reconstructable
+    /// from a single message and survives reconnect (the preferences live on the
+    /// room, like `player_names`, not in client memory). Per-viewer, not secret;
+    /// the client renders toggles from this and answers with the `set_stops`
+    /// message. Omitted from the wire when empty (stop nowhere — the default); a
+    /// client treats a missing field as "no stops".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stops: Vec<Phase>,
+    /// Whether reaching this state **auto-passed** priority on the receiver's behalf
+    /// (issue #264, ADR 0020): set on the broadcast that follows a settle in which
+    /// the room passed priority for this seat, so the client can show a display-only
+    /// "passed for you" indicator. Advisory and transient — the UI reconstructs
+    /// fully without it, and a reconnect re-send need not preserve it. Omitted from
+    /// the wire when `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub auto_passed: bool,
     /// Public display names, keyed by [`PlayerId`] (issue #294): every player who has
     /// chosen a name maps to it, so any in-game surface — the turn indicator, player
     /// tiles, zone-browser titles, the game-over verdict — can label any player
@@ -670,6 +689,20 @@ pub struct TargetChoice {
     pub chosen: Vec<EntityId>,
 }
 
+/// Set (or replace) this connection's **priority-stop preferences** (issue #264,
+/// ADR 0020): the steps at which the seat wants priority even when it has no
+/// meaningful action, so basic auto-pass does not skip it there. Server-authoritative
+/// and reconnect-durable — the room stores the set per seat (like a display name) and
+/// reflects it back in [`GameView::stops`]. An unparseable message is ignored and the
+/// current view re-sent (the non-fatal pattern); the empty set means "stop nowhere".
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetStops {
+    /// The steps to stop at, as [`Phase`] values. Replaces the seat's current set
+    /// wholesale (not additive). Empty (and omitted from the wire) to clear all stops.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stops: Vec<Phase>,
+}
+
 /// Everything a client can send about the game. Serializes with a `type`
 /// discriminator (`{"type":"choose_action", ...}`) so the wire stays
 /// self-describing and open to future message types.
@@ -678,6 +711,8 @@ pub struct TargetChoice {
 pub enum ClientMessage {
     /// The player chose one of the issued valid actions.
     ChooseAction(ChooseAction),
+    /// The player set their priority-stop preferences (issue #264).
+    SetStops(SetStops),
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,6 +1110,81 @@ mod tests {
     }
 
     #[test]
+    fn issue_264_set_stops_message_uses_documented_wire_shape() {
+        // The stops-preference message rides the same tagged `ClientMessage` envelope
+        // as `choose_action`, carrying the stop phases as snake_case `Phase` names.
+        let msg = ClientMessage::SetStops(SetStops {
+            stops: vec![Phase::Upkeep, Phase::End],
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "set_stops", "stops": ["upkeep", "end"] })
+        );
+        let back: ClientMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_264_empty_set_stops_elides_the_list() {
+        // Clearing all stops sends an empty list, which elides — the minimal wire shape.
+        let msg = ClientMessage::SetStops(SetStops { stops: vec![] });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "set_stops" }));
+        let back: ClientMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_264_game_view_stops_and_auto_passed_round_trip_and_elide() {
+        // `stops` and `auto_passed` ride the view; both elide from the wire at their
+        // defaults (empty / false) and round-trip when present.
+        let mut view = GameView {
+            you: "p0".into(),
+            my_hand: vec![],
+            me: SelfView::default(),
+            opponents: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            graveyards: vec![],
+            exile: vec![],
+            phase: Phase::Upkeep,
+            turn: 1,
+            active_player: "p0".into(),
+            mana_pool: vec![],
+            priority_player: Some("p0".into()),
+            valid_actions: vec![],
+            action_deadline: None,
+            result: None,
+            log: vec![],
+            stops: vec![],
+            auto_passed: false,
+            player_names: BTreeMap::new(),
+        };
+        // Defaults elide.
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(json.get("stops").is_none());
+        assert!(json.get("auto_passed").is_none());
+
+        // Present values round-trip.
+        view.stops = vec![Phase::Upkeep, Phase::PostcombatMain];
+        view.auto_passed = true;
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(
+            json["stops"],
+            serde_json::json!(["upkeep", "postcombat_main"])
+        );
+        assert_eq!(json["auto_passed"], serde_json::json!(true));
+        let back: GameView = serde_json::from_value(json).unwrap();
+        assert_eq!(back, view);
+
+        // An older server that omits both still deserializes to the defaults.
+        let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
+        assert!(legacy.stops.is_empty());
+        assert!(!legacy.auto_passed);
+    }
+
+    #[test]
     fn valid_action_serializes_type_and_omits_empty_subject() {
         let pass = ValidAction {
             id: "a1".into(),
@@ -1394,6 +1504,8 @@ mod tests {
                     count: 1,
                 },
             }],
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: BTreeMap::new(),
         };
 
@@ -1443,6 +1555,8 @@ mod tests {
             action_deadline: None,
             result: None,
             log: vec![],
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: BTreeMap::new(),
         };
         let json = serde_json::to_string(&view).unwrap();
@@ -1470,6 +1584,8 @@ mod tests {
             action_deadline: None,
             result: None,
             log: vec![],
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: BTreeMap::new(),
         };
         // Empty pool is elided from the wire.
@@ -2047,6 +2163,8 @@ mod tests {
             action_deadline: None,
             result: None,
             log: vec![],
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: BTreeMap::new(),
         };
         // Live game: the field elides entirely.
@@ -2102,6 +2220,8 @@ mod tests {
             action_deadline: None,
             result: None,
             log: vec![],
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: BTreeMap::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
@@ -2195,6 +2315,8 @@ mod tests {
             action_deadline: None,
             result: None,
             log: vec![],
+            stops: Vec::new(),
+            auto_passed: false,
             player_names: BTreeMap::new(),
         };
         // Empty map elides from the wire.

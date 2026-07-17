@@ -207,6 +207,7 @@ function resolveInspect(view: GameView, id: EntityId): InspectTarget | null {
 export function Table() {
   const view = useGameStore((state) => state.view);
   const choose = useGameStore((state) => state.choose);
+  const setStops = useGameStore((state) => state.setStops);
   const disconnect = useGameStore((state) => state.disconnect);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
   const [targeting, setTargeting] = useState<TargetingSession | null>(null);
@@ -828,7 +829,7 @@ export function Table() {
         style={regionBox(r.indicator.rect)}
         data-focus-region="indicator"
       >
-        <PhaseIndicator view={view} mode={mode} localId={localId} />
+        <PhaseIndicator view={view} mode={mode} localId={localId} onSetStops={setStops} />
       </div>
       {/*
        * Opponent HUD strip — top: identity + life prominent, hand/statuses secondary

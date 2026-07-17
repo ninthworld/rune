@@ -1,4 +1,4 @@
-# ADR 0020: Structured game-log history
+# ADR 0021: Structured game-log history
 
 - Status: accepted
 - Date: 2026-07-17

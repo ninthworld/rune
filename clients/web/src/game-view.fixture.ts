@@ -123,6 +123,9 @@ export const SAMPLE_GAME_VIEW: GameView = {
   // The game-history window is optional on older frames and normalizes to empty.
   log: [],
   result: undefined,
+  // No stops or auto-pass in the sample frame; normalization defaults them (issue #264).
+  stops: [],
+  auto_passed: false,
   // No names in the sample wire frame; normalization defaults player_names to `{}`.
   player_names: {},
 };
