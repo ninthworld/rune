@@ -54,11 +54,11 @@ export function regionBox(rect: Rect): CSSProperties {
 }
 
 /**
- * The collapsed stack/activity rail on narrow geometry (issue #295): instead of
- * docking (which would eat board width), it floats a content-sized panel pinned to
- * the right edge at its badge anchor, overlaying the board. #299 redesigns this
- * into an on-demand expand from a badge; for now the panel floats so the stack
- * stays reachable without carving the battlefield.
+ * The expanded stack/activity rail when the geometry is narrow (issue #299): rather
+ * than docking (which would eat board width), the on-demand expanded panel floats a
+ * content-sized surface pinned to the right edge at the rail's badge anchor,
+ * overlaying the board so the stack stays reachable without carving the
+ * battlefield. On wide geometry the rail docks instead (see {@link regionBox}).
  */
 export function railFloat(rect: Rect): CSSProperties {
   return {
@@ -68,6 +68,24 @@ export function railFloat(rect: Rect): CSSProperties {
     maxWidth: 320,
     maxHeight: '60vh',
     overflow: 'auto',
+    boxSizing: 'border-box',
+  };
+}
+
+/**
+ * The collapsed rail badge (issue #299): a single {@link TOUCH}-sized target pinned
+ * to the top-right corner of the rail's region rect. On narrow geometry that rect
+ * IS the 44px badge anchor (`layout.ts`), so the badge lands exactly on it; on wide
+ * geometry (a user who manually collapsed the docked column) it tucks into the
+ * column's top-right corner. Geometry only — the look is a `chrome.module.css` class.
+ */
+export function railBadgeBox(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x + rect.w - TOUCH,
+    top: rect.y,
+    width: TOUCH,
+    height: TOUCH,
     boxSizing: 'border-box',
   };
 }

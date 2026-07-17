@@ -63,21 +63,112 @@
   border-top: 1px solid var(--rune-border);
 }
 
-/* Tier 3 — the stack/activity rail on the right edge. Docked it carries a dividing
- * border; collapsed it is a floating badge (elevated). Scrolls internally. */
-.regionRail {
+/* Tier 3 — the stack & activity rail on the right edge (issue #299). The expanded
+ * panel frames the stack section and the reserved log slot; it either docks in the
+ * rail column (wide) or floats over the board's right edge (narrow). Scrolls
+ * internally rather than pushing the board. */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
   overflow: auto;
   padding: var(--rune-space-4);
   box-sizing: border-box;
+  background: var(--rune-chrome-bg);
 }
-.regionRailDocked {
+.railDocked {
   border-left: 1px solid var(--rune-border);
 }
-/* Collapsed on narrow geometry: a floating, elevated content-sized panel rather
- * than a docked column (it overlays the board instead of carving it). */
-.regionRailFloating {
+/* Floated over the board on narrow geometry: an elevated, rounded content-sized
+ * panel rather than a docked column (it overlays the board instead of carving it). */
+.railFloating {
   border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
   box-shadow: var(--rune-elevation-2);
+}
+
+/* The rail header: a title for the whole surface plus the collapse-to-badge control. */
+.railHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--rune-space-4);
+}
+.railHeaderTitle {
+  font-size: var(--rune-type-body);
+  font-weight: 700;
+  color: var(--rune-text-muted);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.railCollapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0;
+  border-radius: var(--rune-radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-title);
+  line-height: 1;
+  cursor: pointer;
+  transition: var(--rune-transition);
+}
+.railCollapse:hover {
+  color: var(--rune-text);
+  border-color: var(--rune-border-strong);
+}
+
+/* The collapsed rail badge: a single touch target carrying the live object count.
+ * Elevated so it reads as floating chrome; never disappears while the stack is
+ * populated (the count itself signals there is something to expand). */
+.railBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0;
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-chrome-bg);
+  border: 1px solid var(--rune-selection);
+  box-shadow: var(--rune-elevation-1);
+  color: var(--rune-text);
+  cursor: pointer;
+  transition: var(--rune-transition);
+}
+.railBadge:hover {
+  background: var(--rune-raised-bg);
+}
+.railBadgeCount {
+  font-size: var(--rune-type-heading);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* The reserved game-log dock (issue #260): a clearly-marked, deliberately empty
+ * section so the log panel has a stable home. Sunken tier so it reads as an
+ * awaiting slot, not a populated panel. */
+.railLog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  padding: var(--rune-space-4);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-region-bg-soft);
+  border: 1px dashed var(--rune-border);
+  min-height: 48px;
+}
+.railLogLabel {
+  margin: 0;
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  color: var(--rune-text-muted);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
 }
 
 /* Tier 3 — the floating bottom decision cluster (prompt banner, prompt surface,
@@ -714,16 +805,14 @@
   color: var(--rune-text-muted);
 }
 
-/* ── Stack panel ───────────────────────────────────────────────────────────── */
+/* ── Stack panel ───────────────────────────────────────────────────────────────
+ * A section WITHIN the stack & activity rail (issue #299): the rail wrapper owns the
+ * surface tier, elevation, and padding, so the panel itself is a transparent, full-
+ * width titled list rather than its own framed box (no double-framing in the rail). */
 .stackPanel {
   display: flex;
   flex-direction: column;
   gap: var(--rune-space-3);
-  padding: 10px 12px;
-  border-radius: var(--rune-radius-md);
-  background: var(--rune-chrome-bg);
-  border: 1px solid var(--rune-border);
-  max-width: 360px;
 }
 .stackTitle {
   margin: 0;
