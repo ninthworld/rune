@@ -23,6 +23,7 @@
  */
 import { BitmapFont, BitmapText, Container, Graphics, Text } from 'pixi.js';
 import {
+  AFFORDANCE,
   BADGE,
   FONT,
   FRAME,
@@ -84,6 +85,14 @@ export interface CardDisplayData {
    * server's candidate list; reduces alpha so ineligible cards recede.
    */
   dimmed?: boolean;
+  /**
+   * Whether the card carries an offered action (issue #277) — a playable hand
+   * card (`play_land`/`cast_spell`) or a permanent with an activatable ability.
+   * Draws the always-on "playable" edge bar so an actionable card reads as
+   * playable before any pointer interaction. Derived purely from
+   * `RenderedCard.actions.length > 0` upstream; the factory computes no legality.
+   */
+  actionable?: boolean;
 }
 
 /**
@@ -111,6 +120,7 @@ export function cardVisualSignature(data: CardDisplayData, tier: CardTier = 'fie
     selected: data.selected ?? false,
     targeting: data.targeting ?? false,
     dimmed: data.dimmed ?? false,
+    actionable: data.actionable ?? false,
     counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
   });
 }
@@ -335,6 +345,26 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   });
   if (data.summoningSick) {
     addBadge('zz', BADGE.bg, BADGE.text);
+  }
+
+  // Playable affordance (issue #277): an always-on solid bar hugging the bottom
+  // edge whenever the card carries an offered action. Deliberately a different
+  // *shape* than the full-perimeter selection/targeting rings below (and drawn
+  // under them, so selection still reads on top of a playable card), so it stays
+  // distinguishable without color vision (ui-requirements §10). Inside `inner`,
+  // so it rotates with a tapped-but-activatable permanent.
+  if (data.actionable) {
+    const edge = new Graphics();
+    edge.beginFill(hexToNumber(AFFORDANCE.actionable));
+    edge.drawRoundedRect(
+      2,
+      t.h - AFFORDANCE.edgeHeight,
+      t.w - 4,
+      AFFORDANCE.edgeHeight,
+      AFFORDANCE.edgeHeight / 2,
+    );
+    edge.endFill();
+    inner.addChild(edge);
   }
 
   // Selection / targeting ring (drawn inside `inner` so it rotates with a tapped

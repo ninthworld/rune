@@ -159,6 +159,14 @@ describe('buildTableScene', () => {
     expect(scene.hand[0]?.data.selected).toBe(false);
   });
 
+  it('marks a card with offered actions as actionable and inert cards not (issue #277)', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    // perm_xyz carries the activate-ability action → the playable affordance.
+    expect(scene.bands.at(-1)?.cards[0]?.data.actionable).toBe(true);
+    // The hand card has no subject-action → no affordance, purely from the view.
+    expect(scene.hand[0]?.data.actionable).toBe(false);
+  });
+
   it('is a pure function of its inputs: identical view → identical scene', () => {
     const a = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
     const b = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
@@ -196,6 +204,16 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
     expect(handCard?.data.targeting).toBe(false);
     expect(handCard?.data.dimmed).toBe(true);
     expect(handCard?.actions).toEqual([]);
+  });
+
+  it('suppresses the play affordance in targeting mode (issue #277)', () => {
+    // Even a card that would otherwise be actionable advertises no play affordance
+    // while a target is being picked — the sole interaction is choosing a target.
+    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, {
+      candidates: ['perm_xyz'],
+    });
+    const all = [...scene.bands.flatMap((b) => b.cards), ...scene.hand];
+    expect(all.every((c) => c.data.actionable === false)).toBe(true);
   });
 
   it('suppresses the selection ring while targeting (a target is not a selection)', () => {
