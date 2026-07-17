@@ -69,7 +69,11 @@ condense, or collapse.
   are *places where cards can be shown*: a server-revealed library top card
   renders face-up on the library pile. (The protocol carries no such reveal
   today; adding one is a contract change, but the layout assumes the pile can
-  host it.)
+  host it.) Delivered by issue #319: the `ZonePile` component
+  (`clients/web/src/table/ZonePile.tsx`) renders each zone as a card-shaped pile
+  identified by its zone glyph (#317), with a `faceUp` slot the future reveal drops
+  into without a layout change; the count lives only here (the HUD stopped repeating
+  it in #296).
 
 One pure function `layout(viewport, mode, playerCount)` positions every region for
 both renderers. It keys on measured geometry (width, height, aspect) and input

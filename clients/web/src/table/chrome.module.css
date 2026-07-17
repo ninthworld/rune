@@ -1395,23 +1395,68 @@
 /* ── Table geography (labels, boundaries, zone piles) ──────────────────────── */
 .zonePiles {
   display: flex;
-  align-items: center;
-  gap: var(--rune-space-6);
+  align-items: flex-start;
+  gap: var(--rune-space-4);
   pointer-events: auto;
 }
-.libraryPile {
+/*
+ * A card-shaped zone pile (issue #319): library / graveyard / exile as findable
+ * objects, not text chips. The glyph (or a revealed face-up card) sits in a
+ * card-proportioned frame with the count below; the whole thing is one 44px-tall
+ * touch target whether it is a button (graveyard/exile) or a static pile (library).
+ */
+.zonePile {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--rune-space-3);
-  font-size: var(--rune-type-caption);
+  gap: 2px;
+  width: 34px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--rune-text-muted);
+  font: inherit;
+  cursor: default;
+}
+button.zonePile {
+  cursor: pointer;
+  transition: filter var(--rune-transition);
+}
+button.zonePile:hover {
+  filter: brightness(1.2);
+}
+button.zonePile:active {
+  filter: brightness(0.92);
+}
+button.zonePile:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+  border-radius: var(--rune-radius-sm);
+}
+/* The card-proportioned frame the glyph or a revealed top card renders inside. */
+.zonePileFace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 44px;
+  border-radius: var(--rune-radius-xs);
+  border: 1px solid var(--rune-border);
+  background: var(--rune-region-bg-soft);
+  color: var(--rune-text-muted);
+  overflow: hidden;
+}
+/* The library reads as hidden information — a card back behind its glyph. */
+.zonePileFace[data-zone='library'] {
+  border-color: var(--rune-cardback-border);
+  background: var(--rune-cardback);
   color: var(--rune-text);
 }
-.cardBack {
-  width: 18px;
-  height: 25px;
-  border-radius: var(--rune-radius-xs);
-  border: 1px solid var(--rune-cardback-border);
-  background: var(--rune-cardback);
+.zonePileCount {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  color: var(--rune-text);
+  line-height: 1;
 }
 .pileButton {
   display: inline-flex;
