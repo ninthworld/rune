@@ -1,27 +1,104 @@
 name: Task
-description: A scoped unit of work
+description: A verified, scoped unit of implementation work
 body:
   - type: input
     id: goal
     attributes:
       label: Goal
-      description: One sentence. What exists after this that does not exist now?
-      placeholder: rune-protocol serializes GameView to/from JSON with serde
+      description: One sentence describing the user-visible or architectural outcome.
+      placeholder: Players can discover and join open rooms without exchanging an id out of band.
     validations:
       required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and evidence
+      description: Describe current behavior, why the gap matters, and the code, tests, issues, or decisions that demonstrate it.
+      placeholder: |
+        Current behavior:
+        Evidence:
+        Related issues or decisions:
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Identify the behavior, layers, and contracts included. Avoid prescribing incidental implementation details.
+      placeholder: |
+        - Server projects a public room summary.
+        - Protocol and clients carry the summary.
+        - Lobby UI renders joinable rooms.
+    validations:
+      required: true
+
   - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Checkable statements. CI-verifiable wherever possible.
+      description: Observable, checkable conditions that prove the outcome, including material failure paths and edge cases.
       placeholder: |
-        - [ ] `GameView` round-trips through serde_json in a unit test
-        - [ ] docs/protocol.md field table matches the struct
-        - [ ] `make check` green
+        - [ ] Open rooms appear with occupancy and format information.
+        - [ ] Full and in-progress rooms cannot be joined.
+        - [ ] Empty directories render a clear empty state.
     validations:
       required: true
+
   - type: textarea
-    id: context
+    id: validation
     attributes:
-      label: Context and references
-      placeholder: docs/brief.md "The API", docs/decisions/0004
+      label: Test and validation evidence
+      description: State the minimum test boundary capable of proving the outcome and the required repository gates.
+      placeholder: |
+        - Protocol round-trip tests for the new shape.
+        - Server integration test covering discovery and join.
+        - Client interaction test for populated and empty directories.
+        - `make verify`
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and sequencing
+      description: Link prerequisites and follow-ups, and state what may run in parallel. Write "None" when independent.
+      placeholder: "Blocked by #123. May run in parallel with #124."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: estimated_scope
+    attributes:
+      label: Estimated scope
+      description: Estimate review and implementation breadth; large tasks should explain why they cannot be split coherently.
+      options:
+        - Small — localized change
+        - Medium — focused cross-file or cross-layer change
+        - Large — broad change requiring a split assessment
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and constraints
+      description: Identify the main correctness, compatibility, privacy, performance, accessibility, or review risks.
+      placeholder: Room summaries must not expose seat identities, deck contents, or game state.
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: List only adjacent work excluded from this issue. This section does not redefine the project's long-term scope.
+      placeholder: Automatic matchmaking is not part of this issue.
+
+  - type: textarea
+    id: documentation
+    attributes:
+      label: Documentation impact
+      description: Name specifications, ADRs, or agent instructions that must change. Write "None" when no documentation change is needed.
+      placeholder: Update docs/protocol.md; no ADR required because the existing lobby decision already owns this shape.
+    validations:
+      required: true

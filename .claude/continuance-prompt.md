@@ -144,26 +144,21 @@ outcome is still correct; create a new issue when the outcome is distinct or the
 closed around genuinely completed scope.
 
 Each issue must be small enough for one focused pull request and detailed enough that another
-agent can implement it without reconstructing this continuance session. Include:
+agent can implement it without reconstructing this continuance session.
 
-### Issue format
+### Canonical issue formats
 
-- **Title:** concise, scoped, and phrased as an outcome or defect.
-- **Context:** what currently happens, why it matters, and the evidence that exposed the gap.
-- **Outcome:** the user-visible or architectural result required.
-- **Scope:** the layers and contracts expected to change, without prescribing incidental code
-  structure unless architecture requires it.
-- **Acceptance criteria:** observable, testable conditions. Include relevant failure paths,
-  redaction rules, reconnect behavior, accessibility, or performance bounds.
-- **Test evidence:** the minimum test boundary that can prove the outcome and the repository
-  gates that must remain green.
-- **Dependencies:** prerequisite issues, contracts, or decisions; state whether work may run in
-  parallel.
-- **Estimated scope and risk:** a rough size and the primary source of implementation or review
-  risk. Use this for batching, not as a substitute for acceptance criteria.
-- **Non-goals:** only genuinely adjacent work excluded from this issue. Never list established
-  roadmap capabilities as project-wide exclusions.
-- **Documentation:** specifications, ADRs, or agent instructions that must change with the code.
+The forms under `.github/ISSUE_TEMPLATE/` own issue structure and required fields:
+
+- use `task.yml` for scoped implementation work;
+- use `bug.yml` for incorrect existing behavior; and
+- use `design-decision.yml` when implementation is blocked on an architectural choice.
+
+Read the appropriate form before drafting. When creating an issue through the GitHub API or
+another path that bypasses the form UI, mirror its field labels as Markdown headings in the
+same order and satisfy every required field. The template descriptions are requirements, not
+placeholder suggestions. Keep the issue title concise, scoped, and phrased as an outcome or
+defect.
 
 Use labels, milestone assignments, and cross-links consistently with the existing tracker.
 Create as many issues as the natural batch requires—possibly none, and never an arbitrary
