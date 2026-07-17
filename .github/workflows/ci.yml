@@ -55,3 +55,38 @@ jobs:
       # then audit, lint, typecheck, test, and build — identical to the local gate.
       - name: Check (audit + lint + typecheck + test + build)
         run: make client-audit client-check
+
+  # Browser smoke canary (ADR 0011, issue #279): the one Playwright spec that drives a
+  # real Chromium against a real seeded rune-server and plays real turns through the
+  # rendered UI — most importantly the StrictMode canvas-attach guard (#276). Kept a
+  # separate job (not folded into Engine/Client) because it needs a browser, a dev
+  # server, and the server binary; `make check` stays fast and browser-free.
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    # Only skip the auto browser download during `npm ci`; the explicit
+    # `playwright install` below still fetches the browser this job actually needs.
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # Install the client deps first so the Playwright CLI exists, then fetch just the
+      # Chromium this job needs (plus its OS libs). No pre-installed browser here, so
+      # `RUNE_PW_EXECUTABLE` stays empty and the config uses Playwright's managed one.
+      - name: Install client deps
+        run: cd clients/web && npm ci
+      - name: Install Playwright Chromium
+        run: cd clients/web && npx playwright install --with-deps chromium
+      # `make smoke` builds the server binary and runs the spec — the exact target
+      # `make verify` runs locally, so CI and the local gate stay in lockstep.
+      - name: Smoke (browser canary)
+        run: make smoke
