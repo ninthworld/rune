@@ -1,163 +1,125 @@
 # RUNE roadmap
 
-Milestones from the current playable-engine state toward the finished product described in
-[`docs/brief.md`](brief.md). Each milestone is an **outcome checkpoint** — "you can now do
-X" — with exit criteria, not a work phase. A milestone is done when its exit criteria pass,
-regardless of what later-milestone work has already landed.
+RUNE is progressing from a deterministic two-player rules implementation toward a clear,
+reliable multiplayer product. Milestones describe user-visible outcomes; issue state alone
+does not prove an outcome is complete.
 
-## Where we are
+## Current state
 
-The engine plays a **complete, legal, deterministic game to a win** for a creature-combat
-subset of Magic — proven by an agent-vs-agent game through the real server and wire
-protocol (`crates/rune-cli/tests/agent_game.rs`) — and that game is now **playable and
-followable in the browser**. Concretely shipped:
+The engine can play a deterministic two-player creature-combat game through the real server
+protocol to a win. It includes the turn and priority loops, mana and casting, targets and the
+stack, attackers and blockers, combat damage, common combat keywords, counters, auras,
+triggers, initial replacement effects, mulligans, and terminal results.
 
-- **Engine** (`crates/rune-engine`): zones, the full turn FSM, priority, the stack,
-  mana/casting, deep combat (all 8 core keywords, multi-block, lethal-damage SBAs), win
-  conditions (life ≤ 0, decking, concede), seeded-deterministic replay, and an effect IR
-  covering damage / destroy / life / counters / pump / counterspell, ETB and dies triggers,
-  auras, and the first replacement effects (enters tapped / with counters).
-- **Server/CLI** (`crates/rune-server`, `rune-cli`): the lobby (rooms, deck submission,
-  ready gate, session-token reconnect), and `rune-cli` playing a full game interactively or
-  with `--agent`.
-- **Web client** (`clients/web`): connection screen, lobby, battlefield/hand rendering,
-  targeting, mulligans, the stack panel, combat multi-select (attackers, and blockers
-  per-attacker), and the game-over overlay — the complete two-player in-game loop, all
-  driven purely by `valid_actions`.
-- **Cards**: a small hand-authored slice (32) as functional definitions
-  ([ADR 0018](decisions/0018-scalable-functional-card-definitions.md)); the server generates
-  the rules text a player reads, so no Oracle prose is stored.
+The server provides explicit rooms, validated deck submission, a ready gate, per-tab reconnect,
+and optional decision timers. The catalog contains 36 functional definitions and a complete
+basic-land cycle; the bundled starter decks are shared by the web client and the full-game
+agent test.
 
-**Near-term focus** — finish M3's content deliverables, then start M4:
+The web client implements the lobby and game flow, targeting, combat selection, stack, game
+over, card inspection, public-zone browsers, a turn ribbon, keyboard controls, and timer
+display. Current table-rendering and affordance defects still prevent that feature list from
+being a reliably understandable player experience.
 
-1. **Give every card a function** (#256): four catalog cards are castable shells that
-   resolve doing nothing and render blank generated rules text.
-2. **Make the bundled decks real** (#257): the starter decks carry zero spells, and one
-   can't cast most of its own creatures (blue/red cards over an all-Forest mana base);
-   the catalog is missing four of the five basic lands.
-3. **The compatibility report** (#258): M3's support-claim artifact doesn't exist yet —
-   and the hand-maintained coverage ledger was removed (#252) without a generated
-   replacement.
+## Immediate priorities
 
-Two small closeout fixes are also open against shipped milestones: a refreshed browser
-loses its seat because the session token lives only in memory (#254, M1), and a player
-cannot see their own life total (#255, M2).
+Stabilize the existing two-player experience before expanding the rules surface:
+
+1. Restore reliable Pixi table rendering in development and StrictMode ([#276](https://github.com/ninthworld/rune/issues/276)).
+2. Make issued hand and battlefield actions visibly discoverable ([#277](https://github.com/ninthworld/rune/issues/277)).
+3. Give the table clear player areas and visible zone geography ([#278](https://github.com/ninthworld/rune/issues/278)).
+4. Add a minimal real-browser smoke path through rendered turns ([#279](https://github.com/ninthworld/rune/issues/279)).
+5. Let players discover and join open rooms without exchanging an id out of band ([#280](https://github.com/ninthworld/rune/issues/280)).
 
 ## Milestones
 
-### M1 — Take a seat  *(shipped; one closeout fix open)*
+### M1 — Take a seat
 
-Two people find each other and start a real game: launch the server, connect, create a room
-with a config, a second player joins, both submit decks and ready up, and the game begins
-with shuffled libraries, opening hands, and mulligans. A refreshed browser reconnects to
-its seat.
+**Outcome:** two players can connect, find or create a room, submit decks, ready, begin a game,
+and reclaim their seats after a page refresh.
 
-All of this is landed and test-proven at every layer, with one literal gap: seat
-reclamation by session token works over the wire
-(`crates/rune-server/tests/lobby.rs`) and across in-page socket drops, but the web client
-deliberately keeps the token only in memory, so a **hard page refresh** gets a fresh
-identity instead of its seat.
+The server and clients implement identity, explicit rooms, deck submission, readiness, and
+session-token reconnect. The remaining product gap is room discovery: joining currently
+requires an out-of-band room id (#280).
 
-- [ ] #254 — persist the session token (per-tab) so a refreshed browser reconnects.
+### M2 — Play to the win
 
-### M2 — Play to the win  *(shipped; one closeout fix open)*
+**Outcome:** two players can complete a legal game in the browser and understand the result.
 
-A full game plays end to end and someone wins — **in the browser**. Turn-based actions
-(untap, draw, cleanup), combat (declare attackers/blockers, damage, lethal SBAs), and game
-over as a first-class engine outcome were already in; the web client now renders the stack
-(`StackPanel`), drives the full combat flow from `valid_actions` (attacker multi-select,
-per-attacker blocker assignment), and shows a game-over overlay with winner and reason,
-leaving the final board readable underneath. All three are component- and
-integration-tested.
+The engine, protocol, and UI flows are implemented and covered by unit and integration tests.
+The current table regression and missing action/geography affordances (#276–#279) must be
+resolved before this outcome is considered reliable for a new player.
 
-One followability gap survived the milestone: `GameView` redacts opponents down to stats
-that include their life, but carries no life total for the receiver — so players can see
-everyone's life except their own.
+### M3 — A real card pool
 
-- [ ] #255 — carry the receiver's own life (and library size) in `GameView` and render it.
+**Outcome:** bundled decks contain cards with distinct, tested functions, and support claims
+are generated from evidence rather than prose.
 
-> The browser end-to-end suite (ADR 0011) is removed for now to keep the loop fast; it
-> returns once the in-game UI settles.
+Shipped:
 
-### M3 — A real card pool  *(engine shipped; content and reporting remain)*
+- versioned, per-card functional definitions with stable `FunctionalId` values;
+- generated catalog assembly and shared validation;
+- server-generated rules text with exhaustive formatter coverage;
+- functional effects for every bundled nonland card;
+- all five basic lands and two legal, mechanically distinct starter decks; and
+- a deterministic full-game test using the bundled deck data through the real server.
 
-Build different decks from real cards that play differently, with a card model that scales
-past the slice.
+Remaining: add a deterministic, CI-checked compatibility report before claiming catalog
+compatibility beyond tested behavior.
 
-**Done:** casting timing per card type, spells targeting at cast with resolution re-check
-and counterspells, the effect IR (all ten opcodes wired end-to-end), dies triggers, auras,
-all eight combat keywords, the replacement pipeline's first customers, and the entire
-ADR 0018 infrastructure: versioned functional definitions (`schema_version`,
-`FunctionalId`, `deny_unknown_fields`), the sharded per-card catalog with build-generated
-manifest, shared build/loader/test validation, and server-generated rules text with
-compiler-enforced exhaustiveness.
+### M4 — Readable games
 
-**Exit criteria:**
+**Outcome:** a newcomer can follow decisions and state changes, inspect public information,
+and complete a game without hidden interaction knowledge.
 
-- [ ] Every bundled card has an observable, tested function — no castable shells — and a
-      catalog guard test keeps it that way. Today four cards fail this (Quickfire Bolt,
-      Hurried Study, Verdant Blessing, Copper Lodestone). → #256
-- [ ] The catalog carries the full basic-land cycle, and the bundled starter decks are
-      real decks: every card castable from its own mana base, instants/sorceries present,
-      archetypes mechanically distinct — proven by a deterministic agent-vs-agent game
-      through the real server using the bundled lists verbatim. → #257
-- [ ] A deterministic, generated compatibility report names every supported card and every
-      considered-but-excluded card with its blocker; CI fails if it goes stale. Support is
-      claimed only for the verified slice — never a claim that a full set works. → #258
+Shipped foundations:
 
-No exact Oracle text, flavor text, official image, frame, or branding is bundled anywhere;
-the schema rejects them structurally, and the no-card-images / no-official-frames rule
-(`AGENTS.md`, `docs/brief.md` Legal Considerations) holds until an explicit future decision.
+- universal card inspection;
+- graveyard and exile browsers;
+- decision timers with server enforcement and client countdowns;
+- keyboard access for the core play flow; and
+- turn, phase, active-player, and priority presentation.
 
-### M4 — Readable games  *(decomposed; not started)*
+Remaining:
 
-A newcomer can follow and finish a game without asking what happened. The wire contract
-already anticipates much of this — `CardView.rules_text`/`keywords`, full public
-`graveyards`/`exile` piles, `phase` "for overview/focus rendering", and `action_deadline`
-are all carried today — but almost nothing consumes it: there is no log, no inspect UI, no
-zone browsers, the server never sets a deadline, and keyboard support is a single Escape
-binding. Specified throughout [`docs/design/ui-requirements.md`](design/ui-requirements.md).
+- structured, redacted game events in `GameView` ([#259](https://github.com/ninthworld/rune/issues/259));
+- a client game-log panel ([#260](https://github.com/ninthworld/rune/issues/260));
+- server-owned priority automation and stops ([#264](https://github.com/ninthworld/rune/issues/264)); and
+- action rejection and fizzle explanations ([#265](https://github.com/ninthworld/rune/issues/265)).
 
-**Exit criteria:**
-
-- [ ] A structured, redacted game log rides `GameView` (engine events → protocol → server
-      projection, with an ADR for the shape). → #259
-- [ ] The client renders the log: collapsible, entity references click-to-highlight,
-      reconstructable from a single view. → #260
-- [ ] Any card in any zone can be inspected — name, cost, type line, generated rules text,
-      keywords, dynamic state — with keyboard access. → #261
-- [ ] Graveyard and exile browsers exist for every player, integrated with inspect. → #262
-- [ ] Decision timers work when a room enables them: the server emits `action_deadline`,
-      enforces a default action on expiry, and the client shows a live countdown (default
-      remains off). → #263
-- [ ] Basic priority automation exists behind an accepted ADR: auto-pass with per-phase
-      stops, never skipping a decision the rules entitle a player to, deterministic under
-      replay. → #264
-- [ ] Illegality and fizzle feedback: a fizzled spell explains itself in the log, and a
-      rejected action produces a non-blaming toast instead of silence. → #265
-- [ ] Keyboard parity: a full turn — cast, target, combat multi-select, mulligan — is
-      playable without a pointer, with visible focus and a shortcut reference. → #266
-- [ ] Overview/focus modes and a persistent turn/phase/active-player indicator, derived
-      purely from the current view + prompt. → #267
-
-Suggested order: #259 → #260 unlock #265 and give every other feature a place to explain
-itself; #261/#262 and #266/#267 are independent client tracks; #263 and #264 each start
-with a design note.
+The immediate table work (#276–#279) is part of this milestone’s readability outcome even
+though it repairs already-landed features.
 
 ### M5 — More than two
 
-3–4 players and spectators: engine multiplayer (APNAP priority, turn order, per-attacker
-targets, elimination), FFA lobby, multiplayer client layouts, and spectator mode fed by
-fully redacted GameViews.
+**Outcome:** 3–4 players and spectators can complete free-for-all games.
+
+Required work includes multiplayer turn and priority ordering, per-attacker defenders,
+elimination, multiplayer room formats, redacted spectator views, and responsive player-area
+layouts. The lobby’s 2–8-seat shape is only preparation; it does not imply multiplayer engine
+support.
 
 ### M6 — Formats at scale
 
-Commander night: command zone with cast tax, commander-damage matrix, 5–8 player
-hub-and-spoke layouts, the full automation suite, more prompt types, controller input, and
-an expanded card pool.
+**Outcome:** players can build decks and play format-specific games on the multiplayer
+foundation.
+
+Expected capabilities include deck construction with server-validated format rules, saved
+deck lists, Commander’s command zone, commander tax and damage, team seating and shared-team
+state for formats such as Two-Headed Giant, larger player layouts, more prompt types, expanded
+automation, and a substantially larger verified card catalog.
 
 ### M7 — Beyond the browser
 
-Same game, more places: Tauri desktop bundle (client + server child process), WASM
-in-browser offline engine, LLM agents as polished opponents, mobile last. Non-goals stay
-non-goals: 2HG/teams, Archenemy/Planechase, deck builder, monetization.
+**Outcome:** the same engine and protocol support additional shells without forking rules.
+
+Potential targets are a desktop bundle, an offline browser engine, and polished automated
+opponents. Mobile comes after the desktop and multiplayer interaction models stabilize.
+
+## Persistent exclusions
+
+- Collection ownership, trading, and marketplace features
+- Official card images, frames, branding, or exact Oracle text
+- Monetization
+- Ante, subgames, and novelty mechanics until explicitly added through an architectural
+  decision

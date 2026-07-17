@@ -4,17 +4,19 @@
 - Date: 2026-07-10
 
 ## Context
-MTG rules are enormous and stateful. Splitting rules knowledge across client and
-server multiplies bugs and enables cheating. See docs/brief.md for full rationale.
+
+Magic rules are stateful and hidden information matters. Splitting rules knowledge across
+clients and the server would create inconsistent outcomes and expose authority to clients.
 
 ## Decision
-All rules live in rune-engine behind `apply_action(&GameState, Action) ->
-GameState` with immutable state. Clients receive personalized GameViews and may
-only submit an `action_id` from `valid_actions[]`. The engine has no I/O
-dependencies; the server (layers 1-2) owns all networking and timing.
+
+All rules live in `rune-engine`. `apply_action(&GameState, &Action, &CardDatabase) ->
+GameState` returns a new state. Clients receive personalized `GameView` values and may submit
+only issued actions and server-enumerated choices. The engine performs no runtime I/O; the
+server owns networking, rooms, policy, and time.
 
 ## Consequences
-Undo, replay, resync, spectating, and AI tree search are structural freebies.
-Clients are simple and unable to cheat. Cost: every interaction is a round trip,
-and the engine must generate exhaustive valid_actions — that generator is the
-project's core complexity.
+
+Replay, resync, simulation, and testing are deterministic. Clients stay replaceable and do
+not become rules authorities. Every decision requires a server round trip, and exhaustive
+legal-action generation remains core engine complexity.

@@ -6,10 +6,9 @@ Closes #
 
 ## Checklist
 
-- [ ] `make check` passes locally (fast Engine + Client gate)
-- [ ] `make verify` passes locally (full `Engine` + `Client` + `cargo-deny` surface)
+- [ ] `make verify` passes locally
 - [ ] Tests added/updated for the behavior changed
-- [ ] `docs/protocol.md` updated if any protocol type changed; ADR added if architecture changed
+- [ ] Protocol documentation/types updated together; ADR added or amended for architecture
 - [ ] No unrelated diffs
 
 ## Notes

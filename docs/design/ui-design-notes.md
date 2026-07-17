@@ -1,9 +1,11 @@
-# UI design notes — locked decisions
+# UI design decisions
 
-Condensed from the design phase. The working reference implementation is
-`prototypes/ui-battlefield-v3.html`. Full capability list and stress analysis:
-`design/ui-requirements.md`. Change tokens in `clients/web/src/tokens.ts` only
-in lockstep with this document.
+Condensed from the design phase. The historical reference implementation is
+[`prototypes/ui-battlefield-v3.html`](../../prototypes/ui-battlefield-v3.html). The full
+capability list is in
+[`ui-requirements.md`](ui-requirements.md). Change tokens in
+[`clients/web/src/tokens.ts`](../../clients/web/src/tokens.ts) only in lockstep with this
+document.
 
 ## Palette (dark board)
 
@@ -31,7 +33,7 @@ cards. Identical-state permanents collapse to one render with an ×N badge
 
 ## Action routing
 
-Every action has a `subject`. Entity-subject actions render as the entity's
+Every entity-owned action has a `subject`. Entity-subject actions render as the entity's
 interactivity (the card is the button); the bar holds only global actions plus a
 contextual echo of the selected entity's actions. The bar is O(1) regardless of
 hand size. Interaction is select-then-confirm everywhere (tap/click twice, or
@@ -45,18 +47,19 @@ attention rules (turn change, being targeted). Two modes — overview and focus 
 differ only in density; regions never reorder. One `layout(viewport, mode,
 playerCount)` function positions both layers.
 
-## DOM/canvas split (ADR 0003)
+## DOM/canvas split ([ADR 0003](../decisions/0003-dom-canvas-split.md))
 
 Pixi canvas: battlefield, hand, stack cards, targeting arrows, animations.
 React DOM: prompt banners, action bar, player tiles + zone rail (library /
 graveyard / exile chips), log, zone browsers, inspect. Rule of thumb: text you
-read or click is DOM; things that move are canvas. DOM anchors to canvas objects
-only via reported rects, never by reaching into the scene.
+read or click outside a rendered card is DOM; things that move are canvas. DOM anchors to
+canvas objects only via reported rects, never by reaching into the scene.
 
 ## Prompts, zones, inspect
 
-All choices (targets, modes, X, ordering, searches) are one uniform prompt queue
-with banner + spotlight + progress, answered client-side and submitted atomically.
+All choices (targets, modes, X, ordering, searches) use one prompt queue with a banner,
+spotlight, and progress. The client collects server-supplied choices and submits them
+atomically.
 One zone-browser component serves graveyard/exile/search/reveal/select-from-zone.
 Inspect has two intensities: transient peek (hover dwell) and pinned panel
 (right-click / long-press / select+I) showing current-vs-printed state and

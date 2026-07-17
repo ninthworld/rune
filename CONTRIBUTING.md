@@ -1,33 +1,30 @@
 # Contributing to RUNE
 
-RUNE is solo-maintained (one maintainer, with Claude as the coding assistant). The loop is
-deliberately light — see [`AGENTS.md`](AGENTS.md) for the hard rules and repository map.
+RUNE is solo-maintained. Keep changes focused, tested, and consistent with the architectural
+rules in [`AGENTS.md`](AGENTS.md) and the standards in
+[`docs/coding-standards.md`](docs/coding-standards.md).
 
 ## The loop
 
-1. **Branch** off `main` with a short descriptive name (`feat/<slug>`, `fix/<slug>`,
-   `docs/<slug>`).
-2. **Change** — keep it small and single-purpose. Tests are part of the change, not a
-   follow-up.
-3. **Commit** — Conventional Commits (`feat(engine): add phase FSM`, `fix(client): …`).
-4. **Verify** — `make check` throughout; `make verify` before opening a PR (reproduces the
-   `Engine`, `Client`, and `cargo-deny` checks). Red CI is never merged.
-5. **PR & merge** — open a PR; merge once CI is green.
+1. Branch from `main` with `feat/<slug>`, `fix/<slug>`, or `docs/<slug>`.
+2. Make one coherent change and include its tests and documentation.
+3. Commit with a Conventional Commit message, such as `feat(engine): add phase FSM`.
+4. Run `make check` while working and `make verify` before opening the PR.
+5. Open a focused PR and merge only after required CI passes.
 
 ## Standards
 
-- Rust: `cargo fmt` clean, `clippy -D warnings` clean, tests for all rules behavior.
-- TypeScript: strict mode, typecheck clean, no game logic (see hard rules in `AGENTS.md`).
-- Docs: behavior changes update `docs/`; architecture changes get an ADR in
-  `docs/decisions/`.
+- Rust changes must pass formatting, Clippy with warnings denied, and relevant tests.
+- TypeScript changes must pass lint, strict type checking, tests, and build.
+- Protocol changes update the Rust types, TypeScript mirror, and `docs/protocol.md` together.
+- Architectural changes add or amend an ADR in `docs/decisions/`.
 
 ## Scope discipline
 
-Don't refactor or reformat unrelated code in the same change. If you spot something worth
-fixing, note it and do it in its own change.
+Do not refactor or reformat unrelated code in the same change.
 
 ## Legal constraints
 
-Read the Legal Considerations section of `docs/brief.md` before contributing anything
-touching card data, card rendering, names, or distribution. Non-negotiables: no card
-images, no official frame designs, no WotC branding, no monetization.
+Read the [legal constraints](docs/brief.md#legal-constraints) before changing card data,
+rendering, or distribution. Do not add card images, official frame designs, Wizards of the
+Coast branding, exact Oracle text, or monetization.

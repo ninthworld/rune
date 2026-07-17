@@ -1,26 +1,14 @@
 # RUNE coding standards
 
-The rules that always apply. Read this before writing code; agents must load it
-alongside `AGENTS.md`. Everything machine-checkable here is enforced by
-`make check` — the fast inner-loop gate (the `Engine` + `Client` CI jobs); if it isn't
-green, it isn't done. Supply-chain checks run as the **separate `make deny` target and
-`cargo-deny` CI job**. So a green `make check` is necessary but is not the complete CI
-picture on its own. The one command that reproduces the full required surface locally is
-**`make verify`** (`make check` + `make deny`) — run it before opening a PR.
-
-> The browser end-to-end suite (ADR 0011) has been removed for now to keep the loop fast;
-> it will return later. Until then there is no `E2E` job or `make e2e` target.
-
-These standards sit **below** the architectural hard rules in `AGENTS.md`
-(zero game logic in the client, zero I/O in the engine, protocol = contract).
-When they appear to conflict, the hard rules win.
+These standards apply to all code. The architectural rules in [`AGENTS.md`](../AGENTS.md)
+take precedence. `make check` runs the fast Engine and Client checks; `make verify` adds
+the required dependency-policy checks and is the pre-merge gate.
 
 ## Baseline
 
-Enforcement level is **practical-strict**: deny compiler/clippy warnings, forbid
-panicking APIs outside tests, and require docs on public items. We deliberately
-do **not** enable `clippy::pedantic` or `clippy::nursery` — they add more noise
-than signal at this stage.
+Compiler and Clippy warnings are denied. Panicking APIs are forbidden outside tests,
+public items require documentation, and unsafe Rust is forbidden. The workspace does not
+enable `clippy::pedantic` or `clippy::nursery`.
 
 ## Rust
 
@@ -28,8 +16,7 @@ Enforced by `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -
 (see the `[workspace.lints]` table in the root `Cargo.toml`). Every crate opts in
 with `[lints] workspace = true`.
 
-- **Formatting.** Default `rustfmt`, no local overrides. Run `make engine-fmt`
-  before committing; CI fails on any diff.
+- **Formatting.** Use default `rustfmt`; do not add local overrides.
 - **No panicking APIs in non-test code.** `unwrap()`, `expect()`, `panic!`,
   `todo!`, `unimplemented!`, and `dbg!` are denied. Return `Result`/`Option` and
   handle the `None`/`Err` path. In the engine, an impossible state is a bug —
@@ -40,22 +27,18 @@ with `[lints] workspace = true`.
 - **Docs on public items.** `missing_docs` is on: every public item — modules,
   types, fields, enum variants, functions — needs a `///` (or `//!`) comment.
   Keep them short; say what the reader can't infer from the name.
-- **No `unsafe`.** `unsafe_code` is `forbid` workspace-wide. This is a pure,
-  safe codebase; there is no performance case that justifies it here.
+- **No `unsafe`.** `unsafe_code` is forbidden workspace-wide.
 - **Prefer `pub(crate)`.** `unreachable_pub` warns when a `pub` item isn't
   reachable from the crate root — tighten it unless it's genuinely part of the
   crate's public API.
-- **Naming & layout.** Standard Rust conventions (`snake_case` items,
-  `CamelCase` types, `SCREAMING_SNAKE_CASE` consts). Keep modules small and
-  cohesive; everything derivable is computed on demand, never cached on state
-  (see `crates/rune-engine/AGENTS.md`).
+- **Naming and layout.** Follow Rust conventions and keep modules cohesive. Engine
+  derivations are computed on demand, never cached in game state.
 
 ## TypeScript / web client
 
-Enforced by `make client-check` (typecheck + build) and, once wired,
-`npm run lint`. See `clients/web/AGENTS.md`.
+Enforced by `make client-check`. See [`clients/web/AGENTS.md`](../clients/web/AGENTS.md).
 
-- **Formatting.** Prettier, no local overrides; CI fails on any diff.
+- **Formatting.** Use Prettier with no local overrides.
 - **Linting.** ESLint with `typescript-eslint` and `react-hooks` rules; no
   disables without an inline justification comment.
 - **`strict` TypeScript.** No implicit `any`; prefer precise protocol types.
@@ -64,28 +47,24 @@ Enforced by `make client-check` (typecheck + build) and, once wired,
 
 ## Cross-cutting
 
-- **Tests.** Add or update tests for everything you change. Protocol shape
-  changes get round-trip tests; engine changes get state-transition tests.
+- **Tests.** Test every behavior change. Protocol shapes need round-trip tests; engine
+  rules need state-transition tests.
 - **Commits.** Conventional Commits (`feat(engine): …`, `fix(client): …`,
   `docs: …`, `chore: …`).
-- **Docs stay in sync.** Protocol changes update `docs/protocol.md`;
-  architectural changes get an ADR in `docs/decisions/`.
-- **Cite the CR for rule behavior.** Engine code that implements a
-  Comprehensive Rules rule cites it as `CR NNN.Nx` (e.g. `CR 605.3`) in the
-  doc comment of the item that implements it, and the test that exercises it is
-  named for the same rule (e.g. `cr_605_3_…`), so the rule, its code, and its
-  test stay traceable both ways without a separate ledger. When a rule is only
-  partially modeled, note the gap in a `// NOTE:` comment next to the code — not
-  in a doc that drifts from it. The living coverage record is the CR-cited tests;
-  list them with `rg 'cr_\d' crates/rune-engine/src`.
+- **Docs stay in sync.** Protocol changes update the Rust and TypeScript types plus
+  `docs/protocol.md`; architectural changes update `docs/decisions/`.
+- **Cite the Comprehensive Rules.** Engine implementations cite `CR NNN.Nx` in the
+  relevant doc comment, and their tests use the same rule number in names such as
+  `cr_605_3_…`. Record partial support in a nearby `// NOTE:` comment. List the living
+  coverage with `rg 'cr_\d' crates/rune-engine/src`.
 - **No secrets, no vendored non-MIT code**, no `target/`, no `node_modules/`.
 
-## Before you push
+## Verification
 
 ```
 make check    # fast gate — run constantly while working
 make verify   # full pre-merge gate — check + cargo-deny, before opening a PR
 ```
 
-Green `make check` throughout, green `make verify` before final review, updated tests
-and docs, no unrelated diffs. That's the bar.
+Before review, ensure `make verify` passes, documentation matches behavior, and the diff
+contains no unrelated changes.
