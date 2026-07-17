@@ -18,11 +18,13 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::card_type::CardType;
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mulligan::MulliganState;
 use crate::phase::Step;
 use crate::player::{LossReason, Player};
 use crate::stack::StackObject;
+use crate::CardDatabase;
 
 /// The terminal outcome of a game (CR 104.2a / CR 104.4a), derived on demand from
 /// player state — never stored on [`GameState`], in keeping with the engine's
@@ -57,6 +59,32 @@ pub struct GameLogEntry {
     pub event: GameEvent,
 }
 
+/// A permanent as referenced by a log event, paired with the immutable card
+/// identity needed to name it during projection.
+///
+/// Combatant and death events carry this rather than a bare [`PermanentId`] so a
+/// snapshot's history stays stable: the server names the object from the recorded
+/// [`card`](Self::card) instead of re-resolving it against the *current*
+/// battlefield, which would degrade to "unknown" the instant the permanent leaves
+/// (dies, is bounced, …). A [`PermanentId`] is never reused, so the id is still a
+/// stable presentation handle a client may highlight.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LoggedPermanent {
+    /// Battlefield identity at the moment the event was recorded.
+    pub permanent: PermanentId,
+    /// The card the permanent represented, for public naming during projection.
+    pub card: CardId,
+}
+
+/// What a [`GameEvent::DamageDealt`] was dealt to (CR 120.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DamageTarget {
+    /// Damage dealt to a player — life loss (CR 120.3a).
+    Player(PlayerId),
+    /// Damage marked on a permanent (CR 120.3d), named from its recorded identity.
+    Permanent(LoggedPermanent),
+}
+
 /// Engine-level facts suitable for a public game log.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GameEvent {
@@ -67,31 +95,68 @@ pub enum GameEvent {
         /// The physical card cast.
         card: CardInstance,
     },
+    /// A spell finished resolving (CR 608.3) — it was neither countered nor fizzled.
+    SpellResolved {
+        /// The spell's controller.
+        player: PlayerId,
+        /// The physical card that resolved.
+        card: CardInstance,
+    },
+    /// A spell was countered and put into its owner's graveyard (CR 701.5a).
+    SpellCountered {
+        /// The countered spell's controller.
+        player: PlayerId,
+        /// The physical card that was countered.
+        card: CardInstance,
+    },
+    /// A spell left the stack without resolving because every one of its targets
+    /// became illegal (CR 608.2b, "fizzle").
+    SpellFizzled {
+        /// The fizzled spell's controller.
+        player: PlayerId,
+        /// The physical card that fizzled.
+        card: CardInstance,
+    },
     /// A player declared these battlefield objects as attackers.
     AttackersDeclared {
         /// The attacking player.
         player: PlayerId,
-        /// The attacking permanents.
-        attackers: Vec<PermanentId>,
+        /// The attacking permanents, each with the identity needed to name it later.
+        attackers: Vec<LoggedPermanent>,
     },
     /// A player declared these blocker/attacker pairs.
     BlockersDeclared {
         /// The defending player.
         player: PlayerId,
-        /// `(blocker, attacker)` assignments.
-        blocks: Vec<(PermanentId, PermanentId)>,
+        /// `(blocker, attacker)` assignments, each carrying naming identity.
+        blocks: Vec<(LoggedPermanent, LoggedPermanent)>,
     },
     /// A player took another London mulligan.
     Mulligan {
         /// The player taking a mulligan.
         player: PlayerId,
     },
-    /// A player's life total changed by this signed amount.
+    /// A player kept their opening hand, ending their mulligan decisions (CR 103.5).
+    HandKept {
+        /// The player who kept.
+        player: PlayerId,
+    },
+    /// A player's life total changed by this signed amount from a non-damage source
+    /// (life gain, or life paid/lost). Damage to a player is a [`Self::DamageDealt`]
+    /// event instead, so the log never double-reports combat or burn as life change.
     LifeChanged {
         /// The affected player.
         player: PlayerId,
         /// Signed life-total delta.
         amount: i32,
+    },
+    /// A source dealt this much damage to a player or permanent (CR 120), including
+    /// nonlethal damage a client can report before any death.
+    DamageDealt {
+        /// What the damage was dealt to.
+        target: DamageTarget,
+        /// How much damage.
+        amount: u32,
     },
     /// A player drew cards; individual hidden cards are deliberately not recorded.
     CardsDrawn {
@@ -100,12 +165,12 @@ pub enum GameEvent {
         /// Number of cards drawn.
         count: u32,
     },
-    /// A permanent left the battlefield for its controller's graveyard.
+    /// A creature left the battlefield for a graveyard (CR 700.4 — a creature
+    /// "dies"). Only creatures produce this; an Aura or other permanent moving to a
+    /// graveyard is a zone change, not a death.
     PermanentDied {
-        /// Battlefield identity before it left.
-        permanent: PermanentId,
-        /// Card definition needed for public naming during projection.
-        card: CardId,
+        /// Battlefield identity before it left, with the identity needed to name it.
+        permanent: LoggedPermanent,
     },
     /// The turn structure reached a new step.
     StepChanged {
@@ -527,15 +592,104 @@ impl GameState {
     /// in as the owner (mirrors the engine→protocol `owner` shim); the physical
     /// [`CardInstance`] carries over unchanged while the battlefield
     /// [`PermanentId`] is dropped, preserving zone-change identity.
-    pub(crate) fn move_permanent_to_graveyard(&mut self, id: PermanentId) -> bool {
-        let Some(pos) = self.battlefield.iter().position(|p| p.id == id) else {
-            return false;
-        };
+    ///
+    /// Returns the permanent that moved (so a caller can inspect its identity, e.g.
+    /// to log a creature death), or `None` when no permanent with that id was on the
+    /// battlefield. This is a bare zone move and records no log event; a creature
+    /// death is logged by [`Self::destroy_permanent`], which routes through here.
+    pub(crate) fn move_permanent_to_graveyard(&mut self, id: PermanentId) -> Option<Permanent> {
+        let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
         if let Some(owner) = self.players.get_mut(perm.controller.0) {
             owner.graveyard.push(CardInstance {
                 id: perm.instance,
                 card: perm.card,
+            });
+        }
+        Some(perm)
+    }
+
+    /// Move `id` to its owner's graveyard and, if it was a **creature**, record a
+    /// [`GameEvent::PermanentDied`] (CR 700.4 — only a creature "dies").
+    ///
+    /// This is the single creature-death seam: both the lethal-damage / zero-
+    /// toughness / deathtouch state-based actions (CR 704.5f/g/h) and a `Destroy`
+    /// effect (CR 701.7) route deaths through here, so a death is logged once, in
+    /// order, no matter its cause — and an Aura or other noncreature moving to a
+    /// graveyard (e.g. the CR 704.5m orphaned-Aura action) is *not* mislabeled as a
+    /// death (it should call [`Self::move_permanent_to_graveyard`] directly).
+    /// Creature-ness is read from printed types, consistent with the rest of the
+    /// engine (type-changing effects are unmodeled). Returns whether a permanent
+    /// moved.
+    pub(crate) fn destroy_permanent(&mut self, id: PermanentId, db: &CardDatabase) -> bool {
+        let Some(perm) = self.move_permanent_to_graveyard(id) else {
+            return false;
+        };
+        if db
+            .card(perm.card)
+            .is_some_and(|c| c.has_type(CardType::Creature))
+        {
+            self.record_event(GameEvent::PermanentDied {
+                permanent: LoggedPermanent {
+                    permanent: perm.id,
+                    card: perm.card,
+                },
+            });
+        }
+        true
+    }
+
+    /// Adjust a player's life by `delta` and record a [`GameEvent::LifeChanged`]
+    /// when the change is nonzero. The seam every **non-damage** life movement
+    /// (life gain, life paid or lost) routes through, so the log observes it in
+    /// order. Damage to a player uses [`Self::deal_damage_to_player`] instead, which
+    /// records a [`GameEvent::DamageDealt`] rather than a life change.
+    pub(crate) fn change_life(&mut self, player: PlayerId, delta: i32) {
+        let Some(p) = self.players.get_mut(player.0) else {
+            return;
+        };
+        p.life += delta;
+        if delta != 0 {
+            self.record_event(GameEvent::LifeChanged {
+                player,
+                amount: delta,
+            });
+        }
+    }
+
+    /// Deal `amount` damage to a player: reduce their life (CR 120.3a) and record a
+    /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Zero-life is settled by
+    /// the state-based-actions loop (CR 704.5a).
+    pub(crate) fn deal_damage_to_player(&mut self, player: PlayerId, amount: u32) {
+        let Some(p) = self.players.get_mut(player.0) else {
+            return;
+        };
+        p.life -= i32::try_from(amount).unwrap_or(i32::MAX);
+        if amount > 0 {
+            self.record_event(GameEvent::DamageDealt {
+                target: DamageTarget::Player(player),
+                amount,
+            });
+        }
+    }
+
+    /// Mark `amount` damage on the permanent `id` (CR 120.3d) and record a
+    /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Returns whether a
+    /// permanent with that id was present (so a combat caller can then apply a
+    /// deathtouch flag). Marked damage feeds the lethal-damage SBA (CR 704.5g).
+    pub(crate) fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> bool {
+        let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
+            return false;
+        };
+        perm.damage = perm.damage.saturating_add(amount);
+        let card = perm.card;
+        if amount > 0 {
+            self.record_event(GameEvent::DamageDealt {
+                target: DamageTarget::Permanent(LoggedPermanent {
+                    permanent: id,
+                    card,
+                }),
+                amount,
             });
         }
         true
@@ -695,6 +849,31 @@ mod tests {
 
     use super::*;
     use crate::player::STARTING_LIFE;
+
+    #[test]
+    fn log_window_is_bounded_but_sequence_numbers_keep_climbing() {
+        // The window retains only the most recent 200 entries (dropping the oldest),
+        // yet sequence numbers continue monotonically — so a client can tell the
+        // window starts partway through the history and never sees a reused number.
+        let mut state = GameState::new_two_player();
+        for _ in 0..250 {
+            state.record_event(GameEvent::Mulligan {
+                player: PlayerId(0),
+            });
+        }
+        assert_eq!(state.log.len(), 200, "the window is capped at 200 entries");
+        assert_eq!(state.next_log_sequence, 251, "every event took a number");
+        assert_eq!(
+            state.log.first().unwrap().sequence,
+            51,
+            "the oldest retained entry is the 51st (entries 1..=50 were dropped)"
+        );
+        assert_eq!(state.log.last().unwrap().sequence, 250);
+        // The retained window is a contiguous run of sequence numbers.
+        for pair in state.log.windows(2) {
+            assert_eq!(pair[1].sequence, pair[0].sequence + 1);
+        }
+    }
 
     #[test]
     fn new_two_player_initial_invariants() {

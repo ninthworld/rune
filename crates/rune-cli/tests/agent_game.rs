@@ -28,7 +28,7 @@ use rune_engine::{
     Ability, CardDatabase, CardId, CardType, Color, Effect, FunctionalId, GameSetup, GameState,
     Supertype,
 };
-use rune_protocol::{ChooseAction, ClientMessage, GameView};
+use rune_protocol::{ChooseAction, ClientMessage, GameLogEvent, GameView};
 use rune_server::{Room, RoomInput};
 use tokio::sync::watch;
 
@@ -192,6 +192,154 @@ async fn agent_vs_agent_with_the_same_seed_reproduces_the_same_game() {
         first_terminal.result, second_terminal.result,
         "the same seed reproduces the same winner, losers, and reason",
     );
+}
+
+/// Drive a seeded game to completion, accumulating the **full** structured game log
+/// (issue #259) across every broadcast — merged by sequence number, since each seat's
+/// view carries the same bounded window and the numbers are identical across seats.
+/// Returns the log as a contiguous `(sequence, event)` list in sequence order.
+async fn play_seeded_game_collecting_log(seed: u64) -> Vec<(u64, GameLogEvent)> {
+    let db = CardDatabase::bundled().expect("bundled cards");
+    let deck = decklist(&db);
+    let setup = GameSetup::two_player(deck.clone(), deck, seed);
+    let state = GameState::new(&setup, &db).expect("valid setup");
+    let (handle, task) = Room::new(state, db).spawn();
+
+    let (tx0, mut rx0) = watch::channel::<Option<GameView>>(None);
+    let (tx1, mut rx1) = watch::channel::<Option<GameView>>(None);
+    assert!(handle.send(RoomInput::Join {
+        seat: 0,
+        outbox: tx0
+    }));
+    assert!(handle.send(RoomInput::Join {
+        seat: 1,
+        outbox: tx1
+    }));
+
+    // A sequence→event map so a window that scrolls between captures still merges into
+    // one gap-free history; both seats agree on sequence numbers and event structure.
+    let mut log: std::collections::BTreeMap<u64, GameLogEvent> = std::collections::BTreeMap::new();
+    let mut capture = |view: &GameView| {
+        for entry in &view.log {
+            log.entry(entry.sequence)
+                .or_insert_with(|| entry.event.clone());
+        }
+    };
+
+    for _ in 0..2_000_000usize {
+        let v0 = rx0.borrow_and_update().clone();
+        let v1 = rx1.borrow_and_update().clone();
+        if let Some(view) = v0.as_ref() {
+            capture(view);
+        }
+        if let Some(view) = v1.as_ref() {
+            capture(view);
+        }
+
+        if let Some(view) = v0.as_ref().or(v1.as_ref()) {
+            if view.result.is_some() {
+                break;
+            }
+        }
+
+        let actor = if v0.as_ref().is_some_and(|v| !v.valid_actions.is_empty()) {
+            v0.map(|view| (0usize, view))
+        } else if v1.as_ref().is_some_and(|v| !v.valid_actions.is_empty()) {
+            v1.map(|view| (1usize, view))
+        } else {
+            None
+        };
+
+        match actor {
+            Some((seat, view)) => {
+                let action = choose_action(&view).expect("the agent always has a move");
+                let targets = fill_answers(&view, action).expect("the agent fills every slot");
+                let choose = ChooseAction {
+                    action_id: action.id.clone(),
+                    token: action.token.clone(),
+                    targets,
+                };
+                assert!(handle.send(RoomInput::Message {
+                    seat,
+                    message: ClientMessage::ChooseAction(choose),
+                }));
+                tokio::select! {
+                    _ = rx0.changed() => {}
+                    _ = rx1.changed() => {}
+                }
+            }
+            None => {
+                tokio::select! {
+                    r0 = rx0.changed() => { if r0.is_err() { break; } }
+                    r1 = rx1.changed() => { if r1.is_err() { break; } }
+                }
+            }
+        }
+    }
+
+    drop(handle);
+    let _ = task.await;
+    log.into_iter().collect()
+}
+
+#[tokio::test]
+async fn issue_259_a_full_agent_game_produces_a_coherent_event_sequence() {
+    let log = play_seeded_game_collecting_log(0x5EED_1234_ABCD_0259).await;
+    assert!(!log.is_empty(), "a real game emits structured events");
+
+    // The accumulated window is gap-free and its sequence numbers climb monotonically.
+    for pair in log.windows(2) {
+        assert_eq!(
+            pair[1].0,
+            pair[0].0 + 1,
+            "sequence numbers are contiguous across the whole game"
+        );
+    }
+
+    // `game_over` closes the sequence exactly once, after all its causes.
+    let game_over_positions: Vec<usize> = log
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, e))| matches!(e, GameLogEvent::GameOver { .. }))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(
+        game_over_positions,
+        vec![log.len() - 1],
+        "game_over is last, and unique"
+    );
+
+    // The game actually walked its turn structure and drew cards.
+    assert!(
+        log.iter()
+            .any(|(_, e)| matches!(e, GameLogEvent::StepChanged { .. })),
+        "step transitions are logged"
+    );
+
+    // Ordering: nothing but the pre-game mulligan decisions precedes the first step
+    // transition — a step change is never logged after the consequences of entering
+    // it, so the first consequence-bearing event cannot come before any step.
+    let first_step = log
+        .iter()
+        .position(|(_, e)| matches!(e, GameLogEvent::StepChanged { .. }))
+        .expect("a game enters at least one step");
+    for (_, event) in &log[..first_step] {
+        assert!(
+            matches!(
+                event,
+                GameLogEvent::Mulligan { .. } | GameLogEvent::HandKept { .. }
+            ),
+            "only mulligan decisions precede the first step_changed, got {event:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn issue_259_the_logged_sequence_is_deterministic_for_a_seed() {
+    let seed = 0x5EED_1234_ABCD_025A;
+    let first = play_seeded_game_collecting_log(seed).await;
+    let second = play_seeded_game_collecting_log(seed).await;
+    assert_eq!(first, second, "the same seed reproduces the same event log");
 }
 
 // ----- The bundled starter decks play for real (issue #257) -----

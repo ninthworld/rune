@@ -13,15 +13,15 @@
 use rune_engine::{
     attacker_candidates, blocker_candidates, bottom_requirement, characteristics,
     declared_attackers, scripted_rules_text, target_requirements, valid_actions, Action, Block,
-    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, GameEvent,
-    GameResult, GameState, Keyword, LossReason, PermanentId, Player, PlayerId, StackId,
-    StackObject, StackObjectKind, Step, Target, TargetSpec,
+    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, DamageTarget,
+    GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player,
+    PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{effects_description, rules_text};
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameLogEntry, GameLogEvent, GameOverReason,
-    GameResult as GameResultView, GameView, LogBlock, LogEntity, OpponentView,
+    GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
     Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, StackItem, TargetChoice,
     TargetRequirement, ValidAction, ZonePile,
 };
@@ -899,6 +899,11 @@ pub(crate) fn personalized_view(
 /// Project the bounded engine history into receiver-safe structured protocol events.
 /// Every referenced card here was already public at the event boundary; hidden draws
 /// are represented only by a count in the engine event and reveal no identity.
+///
+/// Names come from the identity **recorded in each event**, never re-resolved against
+/// the current battlefield, so a snapshot's history stays stable even after a
+/// referenced permanent has left play (died, bounced): a combatant or dead creature
+/// keeps its name for the life of the window.
 fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEntry> {
     state
         .log
@@ -910,13 +915,22 @@ fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEntry> {
                     player: player_id(*player),
                     card: log_card(card.id, card.card, db),
                 },
+                GameEvent::SpellResolved { player, card } => GameLogEvent::SpellResolved {
+                    player: player_id(*player),
+                    card: log_card(card.id, card.card, db),
+                },
+                GameEvent::SpellCountered { player, card } => GameLogEvent::SpellCountered {
+                    player: player_id(*player),
+                    card: log_card(card.id, card.card, db),
+                },
+                GameEvent::SpellFizzled { player, card } => GameLogEvent::SpellFizzled {
+                    player: player_id(*player),
+                    card: log_card(card.id, card.card, db),
+                },
                 GameEvent::AttackersDeclared { player, attackers } => {
                     GameLogEvent::AttackersDeclared {
                         player: player_id(*player),
-                        attackers: attackers
-                            .iter()
-                            .map(|id| log_permanent(state, *id, db))
-                            .collect(),
+                        attackers: attackers.iter().map(|lp| log_permanent(lp, db)).collect(),
                     }
                 }
                 GameEvent::BlockersDeclared { player, blocks } => GameLogEvent::BlockersDeclared {
@@ -924,29 +938,31 @@ fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEntry> {
                     blocks: blocks
                         .iter()
                         .map(|(blocker, attacker)| LogBlock {
-                            blocker: log_permanent(state, *blocker, db),
-                            attacker: log_permanent(state, *attacker, db),
+                            blocker: log_permanent(blocker, db),
+                            attacker: log_permanent(attacker, db),
                         })
                         .collect(),
                 },
                 GameEvent::Mulligan { player } => GameLogEvent::Mulligan {
                     player: player_id(*player),
                 },
+                GameEvent::HandKept { player } => GameLogEvent::HandKept {
+                    player: player_id(*player),
+                },
                 GameEvent::LifeChanged { player, amount } => GameLogEvent::LifeChanged {
                     player: player_id(*player),
+                    amount: *amount,
+                },
+                GameEvent::DamageDealt { target, amount } => GameLogEvent::DamageDealt {
+                    target: log_damage_target(target, db),
                     amount: *amount,
                 },
                 GameEvent::CardsDrawn { player, count } => GameLogEvent::CardsDrawn {
                     player: player_id(*player),
                     count: *count,
                 },
-                GameEvent::PermanentDied { permanent, card } => GameLogEvent::PermanentDied {
-                    permanent: LogEntity {
-                        id: permanent_entity_id(*permanent),
-                        name: db
-                            .card(*card)
-                            .map_or_else(|| "Unknown permanent".into(), |c| c.name.clone()),
-                    },
+                GameEvent::PermanentDied { permanent } => GameLogEvent::PermanentDied {
+                    permanent: log_permanent(permanent, db),
                 },
                 GameEvent::StepChanged {
                     turn,
@@ -974,16 +990,25 @@ fn log_card(instance: CardInstanceId, card: CardId, db: &CardDatabase) -> LogEnt
     }
 }
 
-fn log_permanent(state: &GameState, id: PermanentId, db: &CardDatabase) -> LogEntity {
-    let name = state
-        .battlefield
-        .iter()
-        .find(|permanent| permanent.id == id)
-        .and_then(|permanent| db.card(permanent.card))
-        .map_or_else(|| "Unknown permanent".into(), |card| card.name.clone());
+/// Name a logged permanent from the **card identity recorded in the event**, not the
+/// current battlefield — so the entry stays stable once the permanent has left play.
+fn log_permanent(logged: &LoggedPermanent, db: &CardDatabase) -> LogEntity {
     LogEntity {
-        id: permanent_entity_id(id),
-        name,
+        id: permanent_entity_id(logged.permanent),
+        name: db
+            .card(logged.card)
+            .map_or_else(|| "Unknown permanent".into(), |card| card.name.clone()),
+    }
+}
+
+fn log_damage_target(target: &DamageTarget, db: &CardDatabase) -> LogDamageTarget {
+    match target {
+        DamageTarget::Player(player) => LogDamageTarget::Player {
+            player: player_id(*player),
+        },
+        DamageTarget::Permanent(logged) => LogDamageTarget::Permanent {
+            permanent: log_permanent(logged, db),
+        },
     }
 }
 
@@ -2543,5 +2568,70 @@ mod tests {
             }],
         };
         assert!(resolve_action(&state, &db, PlayerId(0), &illegal).is_none());
+    }
+
+    // ----- Game-log projection (issue #259) -----
+
+    #[test]
+    fn issue_259_a_dead_combatant_keeps_its_name_in_the_projected_history() {
+        // Review P2: an attacker/blocker event names its permanents from the identity
+        // recorded in the event, not the current battlefield — so the entry stays
+        // stable after the creature has died and is no longer on the battlefield. A
+        // re-resolving projection would show "Unknown permanent" here.
+        use rune_engine::{GameEvent, GameLogEntry, LoggedPermanent};
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let boar_card = fixture("thornback_boar");
+        let attacker = PermanentId(7);
+        // The event records the combatant's identity; the permanent itself is *not* on
+        // the battlefield (it has already left play).
+        state.log.push(GameLogEntry {
+            sequence: 1,
+            event: GameEvent::AttackersDeclared {
+                player: PlayerId(0),
+                attackers: vec![LoggedPermanent {
+                    permanent: attacker,
+                    card: boar_card,
+                }],
+            },
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let GameLogEvent::AttackersDeclared { attackers, .. } = &view.log[0].event else {
+            panic!("expected an attackers_declared event");
+        };
+        assert_eq!(attackers.len(), 1);
+        assert_eq!(
+            attackers[0].id,
+            permanent_entity_id(attacker),
+            "the id is the (never-reused) permanent handle"
+        );
+        assert_eq!(
+            attackers[0].name,
+            db.card(boar_card).unwrap().name,
+            "the name comes from the recorded identity, not a battlefield lookup"
+        );
+    }
+
+    #[test]
+    fn issue_259_a_hidden_draw_projects_a_count_with_no_card_identity() {
+        // Redaction: a draw is a player + count in the engine event, so the projected
+        // event can carry no card identity to leak.
+        use rune_engine::{GameEvent, GameLogEntry};
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.log.push(GameLogEntry {
+            sequence: 1,
+            event: GameEvent::CardsDrawn {
+                player: PlayerId(1),
+                count: 2,
+            },
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        assert!(matches!(
+            view.log[0].event,
+            GameLogEvent::CardsDrawn { count: 2, .. }
+        ));
     }
 }

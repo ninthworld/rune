@@ -154,13 +154,23 @@ export interface LogBlock {
   attacker: LogEntity;
 }
 
+/** What a `damage_dealt` event was dealt to: a player or a permanent. */
+export type LogDamageTarget =
+  | { kind: 'player'; player: PlayerId }
+  | { kind: 'permanent'; permanent: LogEntity };
+
 /** A structured, receiver-safe game-history event. */
 export type GameLogEvent =
   | { type: 'spell_cast'; player: PlayerId; card: LogEntity }
+  | { type: 'spell_resolved'; player: PlayerId; card: LogEntity }
+  | { type: 'spell_countered'; player: PlayerId; card: LogEntity }
+  | { type: 'spell_fizzled'; player: PlayerId; card: LogEntity }
   | { type: 'attackers_declared'; player: PlayerId; attackers: LogEntity[] }
   | { type: 'blockers_declared'; player: PlayerId; blocks: LogBlock[] }
   | { type: 'mulligan'; player: PlayerId }
+  | { type: 'hand_kept'; player: PlayerId }
   | { type: 'life_changed'; player: PlayerId; amount: number }
+  | { type: 'damage_dealt'; target: LogDamageTarget; amount: number }
   | { type: 'cards_drawn'; player: PlayerId; count: number }
   | { type: 'permanent_died'; permanent: LogEntity }
   | { type: 'step_changed'; turn: number; active_player: PlayerId; phase: Phase }

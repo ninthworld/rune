@@ -11,7 +11,7 @@ use crate::card::{apply_enters_replacements, spell_effects_of, CardData};
 use crate::card_type::CardType;
 use crate::id::PermanentId;
 use crate::stack::{StackObject, StackObjectKind};
-use crate::state::{GameState, Permanent};
+use crate::state::{GameEvent, GameState, Permanent};
 use crate::CardDatabase;
 
 /// Whether `target` is a legal choice for `spec` against the *current* `state`
@@ -113,8 +113,24 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
             if let Some(player) = state.players.get_mut(object.controller.0) {
                 player.graveyard.push(card);
             }
+            // CR 608.2b: a spell removed for all-targets-illegal fizzled; log it so a
+            // client can distinguish it from a spell that resolved or was countered.
+            state.record_event(GameEvent::SpellFizzled {
+                player: object.controller,
+                card,
+            });
         }
         return;
+    }
+
+    // A spell begins resolving (CR 608.2): log it before its effects so the history
+    // reads header-then-consequences (`spell_resolved` precedes any damage/draw/death
+    // the spell causes). An ability on the stack is not a "spell" and is not logged.
+    if let StackObjectKind::Spell { card } = object.kind {
+        state.record_event(GameEvent::SpellResolved {
+            player: object.controller,
+            card,
+        });
     }
 
     // Apply the object's effects, pairing each targeting effect with the next
@@ -189,7 +205,7 @@ fn apply_effects_with_targets(
             Some(spec) => {
                 if let Some(&target) = targets.next() {
                     if target_is_legal(spec, target, state, db) {
-                        apply_targeted_effect(state, effect, target, controller);
+                        apply_targeted_effect(state, effect, target, controller, db);
                     }
                 }
             }

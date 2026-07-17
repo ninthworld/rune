@@ -15,7 +15,7 @@ use crate::combat::{
     blocked_attackers, combat_damage, combat_has_first_strike, has_keyword,
     priority_after_step_change, CombatDamage, DamageStep,
 };
-use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
+use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::mulligan::advance_after_keep;
 use crate::phase::Step;
@@ -25,7 +25,8 @@ use crate::rng::SplitMix64;
 use crate::sba::run_state_based_actions;
 use crate::stack::{StackId, StackObject, StackObjectKind};
 use crate::state::{
-    Duration, EffectAffects, GameEvent, GameState, Modification, Permanent, StaticEffect,
+    Duration, EffectAffects, GameEvent, GameState, LoggedPermanent, Modification, Permanent,
+    StaticEffect,
 };
 use crate::triggers::collect_triggers;
 use crate::CardDatabase;
@@ -100,78 +101,18 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         });
     }
 
-    record_transition_events(state, &mut next, action);
+    // The terminal-result event closes the sequence. Every fact that could end the
+    // game — a death, damage, a decking draw — has already been recorded at its own
+    // seam above, so a `GameOver` recorded here lands last, after its causes. It is
+    // derived (never stored, CR 104.2a) and emitted once, the transition it becomes
+    // true.
+    if state.result().is_none() {
+        if let Some(result) = next.result() {
+            next.record_event(GameEvent::GameOver { result });
+        }
+    }
 
     next
-}
-
-/// Record public transition facts after a legal action. This remains a pure
-/// before/after comparison; no listener, clock, or side channel is involved.
-fn record_transition_events(before: &GameState, after: &mut GameState, action: &Action) {
-    let actor = before.priority;
-    match action {
-        Action::CastSpell { card, .. } => after.record_event(GameEvent::SpellCast {
-            player: actor,
-            card: *card,
-        }),
-        Action::DeclareAttackers { attackers } => {
-            after.record_event(GameEvent::AttackersDeclared {
-                player: actor,
-                attackers: attackers.clone(),
-            })
-        }
-        Action::DeclareBlockers { blocks } => after.record_event(GameEvent::BlockersDeclared {
-            player: actor,
-            blocks: blocks
-                .iter()
-                .map(|block| (block.blocker, block.attacker))
-                .collect(),
-        }),
-        Action::Mulligan => after.record_event(GameEvent::Mulligan { player: actor }),
-        _ => {}
-    }
-
-    let mut observed = Vec::new();
-    for (seat, (old, new)) in before.players.iter().zip(&after.players).enumerate() {
-        let player = PlayerId(seat);
-        let life_delta = new.life - old.life;
-        if life_delta != 0 {
-            observed.push(GameEvent::LifeChanged {
-                player,
-                amount: life_delta,
-            });
-        }
-        let drawn = new.hand.len().saturating_sub(old.hand.len());
-        if drawn > 0 {
-            observed.push(GameEvent::CardsDrawn {
-                player,
-                count: u32::try_from(drawn).unwrap_or(u32::MAX),
-            });
-        }
-    }
-    for event in observed {
-        after.record_event(event);
-    }
-    for permanent in &before.battlefield {
-        if !after.battlefield.iter().any(|now| now.id == permanent.id) {
-            after.record_event(GameEvent::PermanentDied {
-                permanent: permanent.id,
-                card: permanent.card,
-            });
-        }
-    }
-    if before.turn != after.turn || before.step != after.step {
-        after.record_event(GameEvent::StepChanged {
-            turn: after.turn,
-            active_player: after.active_player,
-            step: after.step,
-        });
-    }
-    if before.result().is_none() {
-        if let Some(result) = after.result() {
-            after.record_event(GameEvent::GameOver { result });
-        }
-    }
 }
 
 /// Resolve a pass of priority. Priority moves to the next seat; once every
@@ -215,6 +156,16 @@ fn apply_pass_priority(state: &mut GameState, db: &CardDatabase) {
 fn advance_through_turn_based_steps(state: &mut GameState, db: &CardDatabase) {
     loop {
         *state = state.advance();
+        // The step is entered *before* its turn-based actions run, so the log reads
+        // in causal order — `step_changed: draw` precedes the `cards_drawn` the draw
+        // step performs, and entering combat damage precedes the damage and deaths
+        // it causes. Each iteration records its own transition, so a walk that skips
+        // straight through several no-priority steps still logs each one.
+        state.record_event(GameEvent::StepChanged {
+            turn: state.turn,
+            active_player: state.active_player,
+            step: state.step,
+        });
         perform_turn_based_actions(state, db);
         if step_pauses_for_players(state) {
             break;
@@ -303,20 +254,17 @@ fn apply_combat_batch(state: &mut GameState, batch: Vec<CombatDamage>) {
     for assignment in batch {
         match assignment {
             CombatDamage::ToPlayer { player, amount } => {
-                if let Some(p) = state.players.get_mut(player.0) {
-                    p.life -= i32::try_from(amount).unwrap_or(i32::MAX);
-                }
+                // Damage to a player is life loss recorded as a `DamageDealt` event
+                // (not a bare life change), so a client can report the hit.
+                state.deal_damage_to_player(player, amount);
             }
             CombatDamage::ToPermanent {
                 permanent,
                 amount,
                 deathtouch,
             } => {
-                let mut marked = false;
-                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == permanent) {
-                    perm.damage = perm.damage.saturating_add(amount);
-                    marked = true;
-                }
+                // Marks the damage and records the `DamageDealt` event in one seam.
+                let marked = state.mark_damage_on_permanent(permanent, amount);
                 // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source
                 // makes the recipient a candidate for destruction.
                 if marked
@@ -328,9 +276,8 @@ fn apply_combat_batch(state: &mut GameState, batch: Vec<CombatDamage>) {
                 }
             }
             CombatDamage::GainLife { player, amount } => {
-                if let Some(p) = state.players.get_mut(player.0) {
-                    p.life += i32::try_from(amount).unwrap_or(i32::MAX);
-                }
+                // Lifelink life gain is a non-damage life change (CR 702.15e).
+                state.change_life(player, i32::try_from(amount).unwrap_or(i32::MAX));
             }
         }
     }
@@ -359,8 +306,17 @@ fn draw_for_turn(state: &mut GameState) {
         return;
     }
     let active = state.active_player;
-    if let Some(player) = state.players.get_mut(active.0) {
-        player.draw();
+    let drew = state
+        .players
+        .get_mut(active.0)
+        .is_some_and(|player| player.draw());
+    // Only an actual card moved is logged; a draw from an empty library flags the
+    // decking loss (handled in `Player::draw`) but adds no card to report.
+    if drew {
+        state.record_event(GameEvent::CardsDrawn {
+            player: active,
+            count: 1,
+        });
     }
 }
 
@@ -471,6 +427,7 @@ fn apply_mulligan(state: &mut GameState) {
     {
         decision.taken += 1;
     }
+    state.record_event(GameEvent::Mulligan { player: seat });
 }
 
 /// Keep the current hand during the pre-game London mulligan phase (CR 103.5).
@@ -511,6 +468,7 @@ fn apply_keep(state: &mut GameState, bottom: &[Target]) {
     {
         decision.kept = true;
     }
+    state.record_event(GameEvent::HandKept { player: seat });
     advance_after_keep(state);
 }
 
@@ -546,10 +504,36 @@ fn apply_declare_attackers(state: &mut GameState, attackers: &[PermanentId], db:
         }
     }
     state.attackers_declared = true;
+    // Record the declaration with each attacker's card identity, so the log can name
+    // it even after it has left combat or the battlefield (CR 508.1).
+    let declared: Vec<LoggedPermanent> = attackers
+        .iter()
+        .map(|&id| logged_permanent(state, id))
+        .collect();
+    state.record_event(GameEvent::AttackersDeclared {
+        player: state.active_player,
+        attackers: declared,
+    });
     // The declaration made, the declare-attackers step proceeds to its normal
     // priority round beginning with the active player (CR 508.2).
     state.priority = state.active_player;
     state.consecutive_passes = 0;
+}
+
+/// Pair a battlefield permanent's id with its current card identity for a log
+/// event, so the name is projectable later even once the permanent has left the
+/// battlefield. A missing permanent falls back to a default [`CardId`] — the
+/// callers pass ids validated to be on the battlefield, so this is defensive only.
+fn logged_permanent(state: &GameState, id: PermanentId) -> LoggedPermanent {
+    let card = state
+        .battlefield
+        .iter()
+        .find(|p| p.id == id)
+        .map_or_else(CardId::default, |p| p.card);
+    LoggedPermanent {
+        permanent: id,
+        card,
+    }
 }
 
 /// Declare the defending player's blockers (CR 509.1): record each blocker's
@@ -566,6 +550,20 @@ fn apply_declare_blockers(state: &mut GameState, blocks: &[Block]) {
         }
     }
     state.blockers_declared = true;
+    // Record the assignments with both creatures' card identity for stable naming.
+    let declared: Vec<(LoggedPermanent, LoggedPermanent)> = blocks
+        .iter()
+        .map(|block| {
+            (
+                logged_permanent(state, block.blocker),
+                logged_permanent(state, block.attacker),
+            )
+        })
+        .collect();
+    state.record_event(GameEvent::BlockersDeclared {
+        player: state.active_player,
+        blocks: declared,
+    });
     state.priority = state.active_player;
     state.consecutive_passes = 0;
 }
@@ -706,22 +704,48 @@ fn apply_cast_spell(
         // targets nothing.
         targets: targets.to_vec(),
     });
+    state.record_event(GameEvent::SpellCast {
+        player: controller,
+        card,
+    });
     state.consecutive_passes = 0;
 }
 
 /// Apply a single [`Effect`] to `state` on behalf of `controller`.
 pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: PlayerId) {
-    let Some(player) = state.players.get_mut(controller.0) else {
+    if state.players.get(controller.0).is_none() {
         return;
-    };
+    }
     match effect {
-        Effect::AddMana { color, amount } => player.mana_pool.add(*color, *amount),
-        Effect::AddColorlessMana { amount } => player.mana_pool.add_colorless(*amount),
+        Effect::AddMana { color, amount } => {
+            if let Some(player) = state.players.get_mut(controller.0) {
+                player.mana_pool.add(*color, *amount);
+            }
+        }
+        Effect::AddColorlessMana { amount } => {
+            if let Some(player) = state.players.get_mut(controller.0) {
+                player.mana_pool.add_colorless(*amount);
+            }
+        }
         Effect::DrawCard { count } => {
+            // Routes each draw through `Player::draw`, so a card-draw effect that
+            // empties the library also flags the decking loss (CR 704.5c). Only the
+            // cards that actually moved are logged (an empty-library draw adds none).
+            let mut drawn = 0u32;
             for _ in 0..*count {
-                // Routes through `draw`, so a card-draw effect that empties the
-                // library also triggers the decking loss (CR 704.5c).
-                player.draw();
+                let moved = state
+                    .players
+                    .get_mut(controller.0)
+                    .is_some_and(|player| player.draw());
+                if moved {
+                    drawn += 1;
+                }
+            }
+            if drawn > 0 {
+                state.record_event(GameEvent::CardsDrawn {
+                    player: controller,
+                    count: drawn,
+                });
             }
         }
         // CR 119.3: the referenced player gains life. `Controller` is "you", the
@@ -730,7 +754,7 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
             player_ref: PlayerRef::Controller,
             amount,
         } => {
-            player.life += i32::try_from(*amount).unwrap_or(i32::MAX);
+            state.change_life(controller, i32::try_from(*amount).unwrap_or(i32::MAX));
         }
         // CR 119.3: the referenced player loses life; a drop to 0 or less feeds
         // the zero-life state-based action (CR 704.5a) in the SBA loop.
@@ -738,7 +762,7 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
             player_ref: PlayerRef::Controller,
             amount,
         } => {
-            player.life -= i32::try_from(*amount).unwrap_or(i32::MAX);
+            state.change_life(controller, -i32::try_from(*amount).unwrap_or(i32::MAX));
         }
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
@@ -764,6 +788,7 @@ pub(crate) fn apply_targeted_effect(
     effect: &Effect,
     target: Target,
     _controller: PlayerId,
+    db: &CardDatabase,
 ) {
     match effect {
         Effect::Tap { .. } => {
@@ -783,37 +808,39 @@ pub(crate) fn apply_targeted_effect(
                 if let Some(pos) = state.stack.iter().position(|o| o.id == id) {
                     let countered = state.stack.remove(pos);
                     if let StackObjectKind::Spell { card } = countered.kind {
-                        if let Some(player) = state.players.get_mut(countered.controller.0) {
+                        let owner = countered.controller;
+                        if let Some(player) = state.players.get_mut(owner.0) {
                             player.graveyard.push(card);
                         }
+                        state.record_event(GameEvent::SpellCountered {
+                            player: owner,
+                            card,
+                        });
                     }
                 }
             }
         }
         // Deal damage to the chosen target (CR 120.3): to a creature it is marked
         // (CR 120.3d) for the lethal-damage SBA (CR 704.5g); to a player it is
-        // life loss (CR 120.3a) feeding the zero-life SBA (CR 704.5a).
+        // life loss (CR 120.3a) feeding the zero-life SBA (CR 704.5a). Both seams
+        // record the damage (including nonlethal) as a `DamageDealt` event.
         Effect::DealDamage { amount, .. } => match target {
             Target::Permanent(id) => {
-                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-                    perm.damage = perm.damage.saturating_add(*amount);
-                }
+                state.mark_damage_on_permanent(id, *amount);
             }
             Target::Player(seat) => {
-                if let Some(p) = state.players.get_mut(seat.0) {
-                    p.life -= i32::try_from(*amount).unwrap_or(i32::MAX);
-                }
+                state.deal_damage_to_player(seat, *amount);
             }
             Target::Card(_) | Target::Spell(_) => {}
         },
         // Destroy the targeted permanent (CR 701.7): move it to its owner's
-        // graveyard through the one leaves-battlefield seam
-        // ([`GameState::move_permanent_to_graveyard`], CR 700.4) — the same path
-        // lethal damage uses in the SBA loop, so this death fires the dies trigger
-        // (CR 603.6c) identically. Regeneration is out of scope.
+        // graveyard through the one creature-death seam
+        // ([`GameState::destroy_permanent`], CR 700.4) — the same path lethal damage
+        // uses in the SBA loop, so this death fires the dies trigger (CR 603.6c) and
+        // logs a `permanent_died` identically. Regeneration is out of scope.
         Effect::Destroy { .. } => {
             if let Target::Permanent(id) = target {
-                state.move_permanent_to_graveyard(id);
+                state.destroy_permanent(id, db);
             }
         }
         // Put counters on the targeted permanent (CR 122). Current power/toughness

@@ -48,6 +48,28 @@ pub enum GameLogEvent {
         /// The cast card.
         card: LogEntity,
     },
+    /// A spell finished resolving (it was neither countered nor fizzled).
+    SpellResolved {
+        /// The spell's controller.
+        player: PlayerId,
+        /// The card that resolved.
+        card: LogEntity,
+    },
+    /// A spell was countered and put into its owner's graveyard.
+    SpellCountered {
+        /// The countered spell's controller.
+        player: PlayerId,
+        /// The card that was countered.
+        card: LogEntity,
+    },
+    /// A spell left the stack without resolving because all of its targets became
+    /// illegal (a "fizzle").
+    SpellFizzled {
+        /// The fizzled spell's controller.
+        player: PlayerId,
+        /// The card that fizzled.
+        card: LogEntity,
+    },
     /// A player declared attackers (possibly none).
     AttackersDeclared {
         /// The attacking player.
@@ -67,12 +89,25 @@ pub enum GameLogEvent {
         /// The player taking the mulligan.
         player: PlayerId,
     },
-    /// A player's life total changed by this signed amount.
+    /// A player kept their opening hand, ending their mulligan decisions.
+    HandKept {
+        /// The player who kept.
+        player: PlayerId,
+    },
+    /// A player's life total changed by this signed amount from a non-damage source
+    /// (life gain, or life paid/lost). Damage is reported as [`Self::DamageDealt`].
     LifeChanged {
         /// The affected player.
         player: PlayerId,
         /// Signed life-total delta.
         amount: i32,
+    },
+    /// A source dealt damage to a player or permanent (including nonlethal damage).
+    DamageDealt {
+        /// What the damage was dealt to.
+        target: LogDamageTarget,
+        /// How much damage.
+        amount: u32,
     },
     /// A player drew cards. Card identities are intentionally absent.
     CardsDrawn {
@@ -81,7 +116,7 @@ pub enum GameLogEvent {
         /// Number of cards drawn.
         count: u32,
     },
-    /// A permanent died; it may no longer be present on the battlefield.
+    /// A creature died; it may no longer be present on the battlefield.
     PermanentDied {
         /// The permanent that died.
         permanent: LogEntity,
@@ -109,6 +144,22 @@ pub struct LogEntity {
     pub id: EntityId,
     /// Server-supplied display name; clients do not look it up from hidden state.
     pub name: String,
+}
+
+/// What a [`GameLogEvent::DamageDealt`] was dealt to: a player or a permanent.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LogDamageTarget {
+    /// Damage dealt to a player.
+    Player {
+        /// The player who took the damage.
+        player: PlayerId,
+    },
+    /// Damage marked on a permanent.
+    Permanent {
+        /// The permanent the damage was dealt to.
+        permanent: LogEntity,
+    },
 }
 
 /// One blocker assignment in a declaration event.
@@ -899,6 +950,75 @@ fn is_zero(n: &u32) -> bool {
 #[allow(clippy::unwrap_used, clippy::panic)] // panics are the failure signal in tests
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_log_events_tag_their_type_and_round_trip() {
+        // The new #259 vocabulary is a contract: each event serializes under its
+        // snake_case `type`, and `damage_dealt` nests a `kind`-tagged target.
+        let resolved = GameLogEvent::SpellResolved {
+            player: "p0".into(),
+            card: LogEntity {
+                id: "card_3".into(),
+                name: "Quickfire Bolt".into(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(&resolved).unwrap(),
+            serde_json::json!({
+                "type": "spell_resolved",
+                "player": "p0",
+                "card": { "id": "card_3", "name": "Quickfire Bolt" },
+            })
+        );
+
+        let damage = GameLogEvent::DamageDealt {
+            target: LogDamageTarget::Permanent {
+                permanent: LogEntity {
+                    id: "perm_7".into(),
+                    name: "Thornback Boar".into(),
+                },
+            },
+            amount: 3,
+        };
+        let json = serde_json::to_value(&damage).unwrap();
+        assert_eq!(json["type"], "damage_dealt");
+        assert_eq!(json["amount"], 3);
+        assert_eq!(json["target"]["kind"], "permanent");
+        assert_eq!(json["target"]["permanent"]["name"], "Thornback Boar");
+
+        // Every new variant survives a JSON round trip.
+        for event in [
+            resolved,
+            damage,
+            GameLogEvent::SpellCountered {
+                player: "p1".into(),
+                card: LogEntity {
+                    id: "card_9".into(),
+                    name: "Runic Negation".into(),
+                },
+            },
+            GameLogEvent::SpellFizzled {
+                player: "p0".into(),
+                card: LogEntity {
+                    id: "card_3".into(),
+                    name: "Quickfire Bolt".into(),
+                },
+            },
+            GameLogEvent::HandKept {
+                player: "p0".into(),
+            },
+            GameLogEvent::DamageDealt {
+                target: LogDamageTarget::Player {
+                    player: "p1".into(),
+                },
+                amount: 2,
+            },
+        ] {
+            let text = serde_json::to_string(&event).unwrap();
+            let back: GameLogEvent = serde_json::from_str(&text).unwrap();
+            assert_eq!(event, back);
+        }
+    }
 
     #[test]
     fn choose_action_is_just_an_id() {
