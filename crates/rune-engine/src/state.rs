@@ -181,6 +181,16 @@ pub enum GameEvent {
         /// Newly entered turn step.
         step: Step,
     },
+    /// A player left the game under CR 800.4a — they lost while two or more
+    /// players remained, so the game continues without them and their objects are
+    /// removed. Distinct from [`Self::GameOver`], which fires only once one player
+    /// is left; a two-player loss produces `GameOver`, not this.
+    PlayerEliminated {
+        /// The player who left the game.
+        player: PlayerId,
+        /// Why they lost (CR 104.3 / 704.5).
+        reason: LossReason,
+    },
     /// The game reached its terminal result.
     GameOver {
         /// Already-derived terminal result.
@@ -752,6 +762,91 @@ impl GameState {
         self.players.get(self.priority.0)
     }
 
+    /// How many players are still in the game (CR 104.2a): those who have not lost.
+    #[must_use]
+    pub fn living_player_count(&self) -> usize {
+        self.players.iter().filter(|p| !p.has_lost).count()
+    }
+
+    /// The next seat after `from` in seating order that is still in the game,
+    /// wrapping around and skipping every eliminated seat (CR 800.4a — a player who
+    /// has left takes no turns and receives no priority). Considers the other seats
+    /// before `from` itself, so it returns `from` only when `from` is the sole
+    /// survivor; `None` on a seatless state or when no seat is still in the game.
+    #[must_use]
+    pub fn next_living_seat(&self, from: PlayerId) -> Option<PlayerId> {
+        let n = self.players.len();
+        if n == 0 {
+            return None;
+        }
+        (1..=n)
+            .map(|offset| PlayerId((from.0 + offset) % n))
+            .find(|seat| self.players.get(seat.0).is_some_and(|p| !p.has_lost))
+    }
+
+    /// Remove every object owned by the eliminated player `seat` from the game
+    /// (CR 800.4a), and take that player out of combat. Idempotent: it removes only
+    /// what is still present and reports whether anything changed, so the
+    /// state-based-actions loop reaches a fixed point.
+    ///
+    /// Scoped to the currently modeled slice. Ownership is not tracked separately
+    /// from control yet (a permanent's owner mirrors its controller), so "objects
+    /// the player owns" is read as the objects they control: their battlefield
+    /// permanents (including Auras they control attached to others' permanents) and
+    /// their stack objects leave the game, and their private/graveyard/exile zones
+    /// are emptied. A surviving player's Aura left dangling on a departed permanent
+    /// is handled by the CR 704.5m state-based action in the same fixed point. The
+    /// full CR 800.4a treatment of control-changing effects, foreign-owned objects,
+    /// and delayed triggers is future work, gated on an ownership model.
+    pub(crate) fn remove_player_from_game(&mut self, seat: PlayerId) -> bool {
+        let mut changed = false;
+        // The permanents leaving the battlefield — captured so continuous effects
+        // sourced from them can be pruned (they can never match again; ids are not
+        // reused). They leave the game entirely (CR 800.4a), not to a graveyard.
+        let departing: Vec<PermanentId> = self
+            .battlefield
+            .iter()
+            .filter(|perm| perm.controller == seat)
+            .map(|perm| perm.id)
+            .collect();
+        if !departing.is_empty() {
+            self.battlefield.retain(|perm| perm.controller != seat);
+            self.static_effects
+                .retain(|effect| !departing.iter().any(|id| id.0 == effect.source));
+            changed = true;
+        }
+        // Take the departed player out of combat: any surviving attacker declared
+        // against them is removed from combat (CR 508 no longer has a defender), so
+        // it deals no combat damage to a player.
+        for perm in &mut self.battlefield {
+            if perm.attacking == Some(seat) {
+                perm.attacking = None;
+                changed = true;
+            }
+        }
+        // Their spells and abilities on the stack cease to exist (CR 800.4a).
+        let before = self.stack.len();
+        self.stack.retain(|obj| obj.controller != seat);
+        if self.stack.len() != before {
+            changed = true;
+        }
+        // Their hand, library, graveyard, and exile are no longer part of the game.
+        if let Some(player) = self.players.get_mut(seat.0) {
+            for zone in [
+                &mut player.hand,
+                &mut player.library,
+                &mut player.graveyard,
+                &mut player.exile,
+            ] {
+                if !zone.is_empty() {
+                    zone.clear();
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
+
     /// The game's terminal result if it is over, else `None` (CR 104.2a).
     ///
     /// A game with at least two seats ends the moment at most one player has not
@@ -847,9 +942,20 @@ impl GameState {
             return;
         }
         self.turn += 1;
-        self.active_player = match self.extra_turns.pop() {
-            Some(taker) => taker,
-            None => PlayerId((self.active_player.0 + 1) % self.players.len()),
+        self.active_player = loop {
+            match self.extra_turns.pop() {
+                // CR 800.4a: an extra turn owed to an eliminated player is discarded,
+                // and the search continues for the real next turn.
+                Some(taker) if self.players.get(taker.0).is_some_and(|p| p.has_lost) => continue,
+                Some(taker) => break taker,
+                // No extra turn owed to a living player: the next seat still in the
+                // game takes the turn, skipping every eliminated seat (CR 800.4a).
+                None => {
+                    break self
+                        .next_living_seat(self.active_player)
+                        .unwrap_or(self.active_player)
+                }
+            }
         };
         self.step = Step::Untap;
         self.land_played = false;
@@ -1121,5 +1227,53 @@ mod tests {
         let next = state.advance();
         assert_eq!(next.turn, 0);
         assert_eq!(next.step, Step::Cleanup);
+    }
+
+    // ----- Elimination rotation (issue #342) -----
+
+    #[test]
+    fn issue_342_next_living_seat_skips_eliminated_seats() {
+        let mut state = GameState::new_multiplayer(4);
+        state.players[1].has_lost = true;
+        // From seat 0 the next living seat is 2 (1 is out); from 2 it is 3; from 3
+        // it wraps past the dead 1 to 0.
+        assert_eq!(state.next_living_seat(PlayerId(0)), Some(PlayerId(2)));
+        assert_eq!(state.next_living_seat(PlayerId(2)), Some(PlayerId(3)));
+        assert_eq!(state.next_living_seat(PlayerId(3)), Some(PlayerId(0)));
+        assert_eq!(state.living_player_count(), 3);
+    }
+
+    #[test]
+    fn issue_342_turn_rotation_skips_an_eliminated_seat_across_full_turns() {
+        // In a 3-seat game with seat 1 eliminated, turns walk 0 → 2 → 0 → 2, never
+        // handing the eliminated seat a turn.
+        let mut state = GameState::new_multiplayer(3);
+        state.players[1].has_lost = true;
+        state.active_player = PlayerId(0);
+
+        state.begin_next_turn();
+        assert_eq!(state.active_player, PlayerId(2), "seat 1 is skipped");
+        state.begin_next_turn();
+        assert_eq!(state.active_player, PlayerId(0), "wraps past seat 1");
+        state.begin_next_turn();
+        assert_eq!(state.active_player, PlayerId(2));
+    }
+
+    #[test]
+    fn issue_342_extra_turn_owed_to_an_eliminated_player_is_discarded() {
+        // CR 800.4a: an extra turn queued for a player who has since been eliminated
+        // is discarded; the turn goes to the next living seat instead.
+        let mut state = GameState::new_multiplayer(3);
+        state.active_player = PlayerId(0);
+        state.players[1].has_lost = true;
+        state.extra_turns.push(PlayerId(1)); // owed to the now-eliminated seat 1
+
+        state.begin_next_turn();
+        assert_eq!(
+            state.active_player,
+            PlayerId(2),
+            "the discarded extra turn does not resurrect seat 1; seat 2 acts"
+        );
+        assert!(state.extra_turns.is_empty());
     }
 }
