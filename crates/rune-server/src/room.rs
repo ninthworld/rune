@@ -31,8 +31,8 @@ use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use rune_engine::{
-    apply_action, priority_has_no_meaningful_action, valid_actions, Action, CardDatabase,
-    GameState, PlayerId,
+    apply_action, attackers_needing_damage_order, priority_has_no_meaningful_action, valid_actions,
+    Action, CardDatabase, DamageOrder, GameState, PlayerId,
 };
 use rune_protocol::{ClientMessage, GameView, Phase, SetStops};
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -183,6 +183,27 @@ fn timeout_default_action(state: &GameState, db: &CardDatabase) -> Option<Action
         .any(|a| matches!(a, Action::DeclareBlockers { .. }))
     {
         return Some(Action::DeclareBlockers { blocks: Vec::new() });
+    }
+    if actions
+        .iter()
+        .any(|a| matches!(a, Action::OrderCombatDamage { .. }))
+    {
+        // Combat-damage assignment order (issue #346): resolve to the deterministic
+        // battlefield-order default — the exact assignment used before player choice
+        // existed — so an unattended game never stalls and never concedes.
+        let orders = attackers_needing_damage_order(state)
+            .into_iter()
+            .map(|attacker| DamageOrder {
+                attacker,
+                blockers: state
+                    .battlefield
+                    .iter()
+                    .filter(|p| p.blocking == Some(attacker))
+                    .map(|p| p.id)
+                    .collect(),
+            })
+            .collect();
+        return Some(Action::OrderCombatDamage { orders });
     }
     None
 }

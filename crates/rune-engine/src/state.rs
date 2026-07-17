@@ -482,6 +482,14 @@ pub struct GameState {
     /// attacked player has declared (see [`Self::blockers_declared_by`]). Reset each
     /// turn.
     pub blockers_declared: bool,
+    /// Each multi-blocked attacker's chosen combat-damage assignment order (CR 510.1,
+    /// issue #346): `(attacker, blockers-in-chosen-order)` pairs. The attacking
+    /// player picks the order for every attacker blocked by two or more creatures;
+    /// combat damage is then assigned just-lethal along that order. An attacker
+    /// absent here (never multi-blocked, or not yet ordered) falls back to stable
+    /// battlefield order. Raw stored state, set by the order-damage decision and
+    /// cleared each turn with the other combat declarations.
+    pub damage_orders: Vec<(PermanentId, Vec<PermanentId>)>,
     /// The attacked players who have already declared blockers this combat, in the
     /// order they declared (issue #344). When attackers are split across several
     /// defenders each attacked player gets their own declare-blockers decision,
@@ -568,6 +576,7 @@ impl GameState {
             land_played: false,
             attackers_declared: false,
             blockers_declared: false,
+            damage_orders: Vec::new(),
             blockers_declared_by: Vec::new(),
             deathtouch_struck: Vec::new(),
             extra_turns: Vec::new(),
@@ -963,6 +972,7 @@ impl GameState {
         // apply (CR 508.1 / 509.1 are performed afresh each combat).
         self.attackers_declared = false;
         self.blockers_declared = false;
+        self.damage_orders.clear();
         self.blockers_declared_by.clear();
     }
 

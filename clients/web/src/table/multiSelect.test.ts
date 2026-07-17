@@ -263,4 +263,32 @@ describe('order: arrange N items into a permutation (issue #157)', () => {
     const s = beginMultiSelect(attackers);
     expect(moveInActiveSlot(s, 'atk_1', 1)).toBe(s);
   });
+
+  it('drives the combat-damage assignment order for a multi-blocked attacker (issue #346)', () => {
+    // An `order_combat_damage` action carries one `order` prompt over an attacker's
+    // blockers; the client reorders them and returns the chosen permutation, which
+    // the server assigns lethal damage along. Same machinery as any order prompt.
+    const orderCombatDamage: ValidAction = {
+      id: 'a12',
+      type: 'order_combat_damage',
+      label: 'Order combat damage',
+      token: 'h:dmg0',
+      prompts: [
+        {
+          kind: 'order',
+          slot: 'order_7',
+          prompt: 'Order damage assignment for Thornback Boar',
+          items: ['perm_11', 'perm_12'],
+        },
+      ],
+    };
+    let s = beginMultiSelect(orderCombatDamage);
+    expect(activeSlot(s)?.kind).toBe('order');
+    // Pre-filled with the server's battlefield order and confirmable immediately.
+    expect(assembleChoices(s)).toEqual([{ slot: 'order_7', chosen: ['perm_11', 'perm_12'] }]);
+    // Reorder to kill the second blocker first.
+    s = moveInActiveSlot(s, 'perm_12', -1);
+    expect(assembleChoices(s)).toEqual([{ slot: 'order_7', chosen: ['perm_12', 'perm_11'] }]);
+    expect(allSlotsSatisfied(s)).toBe(true);
+  });
 });

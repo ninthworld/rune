@@ -10,8 +10,9 @@ use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
 use crate::card::{abilities_of, CardData};
 use crate::card_type::CardType;
 use crate::combat::{
-    attacker_candidates, attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for,
-    declared_attackers, defender_candidates, pending_blocker_declarer,
+    attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
+    blocker_can_block_attacker, blocker_candidates_for, declared_attackers, defender_candidates,
+    pending_blocker_declarer, pending_damage_order,
 };
 use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
@@ -127,6 +128,17 @@ pub enum Action {
         /// The blocker→attacker assignments, one per declared blocker.
         blocks: Vec<Block>,
     },
+    /// The attacking player's combat-damage assignment order (CR 510.1, issue #346),
+    /// the turn-based choice owed once blockers are declared and some attacker is
+    /// blocked by two or more creatures. One [`DamageOrder`] per such attacker, each
+    /// a permutation of that attacker's blockers; combat damage is then assigned
+    /// just-lethal along the chosen order. An attacker with 0–1 blockers is never
+    /// ordered. Advertised in its empty requirement form; a filled selection is
+    /// validated in [`action_is_legal`].
+    OrderCombatDamage {
+        /// One blocker ordering per multi-blocked attacker.
+        orders: Vec<DamageOrder>,
+    },
     /// Concede the game (CR 104.3a). Always offered to the acting seat, in every
     /// phase and step, so a player may leave at any time. Applying it marks the
     /// conceding player as having lost; the game then becomes terminal with the
@@ -148,6 +160,18 @@ pub struct Attack {
     pub attacker: PermanentId,
     /// The defending player it attacks (a [`defender_candidates`] member).
     pub defender: PlayerId,
+}
+
+/// One attacker's combat-damage assignment order (CR 510.1, issue #346): the
+/// `attacker`'s blockers listed in the order its controller chose to assign lethal
+/// damage along. `blockers` is a permutation of exactly that attacker's declared
+/// blockers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DamageOrder {
+    /// The multi-blocked attacker whose damage order this is.
+    pub attacker: PermanentId,
+    /// Its blockers, in the chosen assignment order.
+    pub blockers: Vec<PermanentId>,
 }
 
 /// One blocker→attacker assignment of a [`Action::DeclareBlockers`] declaration
@@ -182,6 +206,7 @@ impl Action {
             // is validated separately in `action_is_legal`.
             | Action::DeclareAttackers { .. }
             | Action::DeclareBlockers { .. }
+            | Action::OrderCombatDamage { .. }
             // Concede carries no selection.
             | Action::Concede => &[],
         }
@@ -214,6 +239,7 @@ impl Action {
                 attackers: Vec::new(),
             },
             Action::DeclareBlockers { .. } => Action::DeclareBlockers { blocks: Vec::new() },
+            Action::OrderCombatDamage { .. } => Action::OrderCombatDamage { orders: Vec::new() },
             other => other.clone(),
         }
     }
@@ -316,6 +342,17 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         // next declaration is offered it.
         return if Some(priority) == pending_blocker_declarer(state) {
             let mut actions = vec![Action::DeclareBlockers { blocks: Vec::new() }];
+            offer_concede(&mut actions);
+            actions
+        } else {
+            Vec::new()
+        };
+    }
+    if state.step == Step::DeclareBlockers && pending_damage_order(state).is_some() {
+        // CR 510.1 (issue #346): once every blocker declaration is in, the attacking
+        // player orders each multi-blocked attacker's blockers before combat damage.
+        return if Some(priority) == pending_damage_order(state) {
+            let mut actions = vec![Action::OrderCombatDamage { orders: Vec::new() }];
             offer_concede(&mut actions);
             actions
         } else {
@@ -480,6 +517,9 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         Action::DeclareBlockers { blocks } => {
             return blocks_selection_is_legal(state, db, blocks);
         }
+        Action::OrderCombatDamage { orders } => {
+            return damage_orders_are_legal(state, orders);
+        }
         _ => {}
     }
 
@@ -631,6 +671,39 @@ fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Blo
                 && attacking_defender_of(state, b.attacker) == Some(declarer)
                 && blocker_can_block_attacker(state, b.attacker, b.blocker, db)
         })
+}
+
+/// Whether a combat-damage assignment order selection is legal (CR 510.1, issue
+/// #346): it names exactly the attackers that owe an order
+/// ([`attackers_needing_damage_order`]), each with a permutation of that attacker's
+/// own blockers — no missing, extra, duplicated, or foreign blocker. An empty
+/// selection is legal only when no attacker owes an order (the choice-free case).
+fn damage_orders_are_legal(state: &GameState, orders: &[DamageOrder]) -> bool {
+    let mut owed = attackers_needing_damage_order(state);
+    // Exactly the owed attackers, once each.
+    let named: Vec<PermanentId> = orders.iter().map(|o| o.attacker).collect();
+    if !all_unique(&named) {
+        return false;
+    }
+    let mut named_sorted = named.clone();
+    named_sorted.sort_by_key(|id| id.0);
+    owed.sort_by_key(|id| id.0);
+    if named_sorted != owed {
+        return false;
+    }
+    // Each order is a permutation of exactly that attacker's blockers.
+    orders.iter().all(|order| {
+        let mut declared: Vec<PermanentId> = state
+            .battlefield
+            .iter()
+            .filter(|p| p.blocking == Some(order.attacker))
+            .map(|p| p.id)
+            .collect();
+        let mut chosen = order.blockers.clone();
+        declared.sort_by_key(|id| id.0);
+        chosen.sort_by_key(|id| id.0);
+        all_unique(&order.blockers) && chosen == declared
+    })
 }
 
 /// Whether every element of `ids` is distinct. O(n²), which is fine for the

@@ -193,7 +193,8 @@ for an ability originating from a permanent.
 
 Current action categories include `pass_priority`, `play_land`, `cast_spell`,
 `activate_ability`, `mulligan_decision`, `discard`, `declare_attackers`,
-`declare_blockers`, and `concede`. Clients must tolerate unknown categories.
+`declare_blockers`, `order_combat_damage`, and `concede`. Clients must tolerate unknown
+categories.
 
 Entity ids are opaque and identify physical game instances. Clients must not parse naming
 patterns such as `card_`, `perm_`, or `p`.
@@ -235,8 +236,11 @@ Non-target choices use tagged `prompts`:
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
 
 `option` is used for choices such as keep or mulligan. `select_from_zone` supports choices
-such as discarding or bottoming cards. `order` is part of the contract for ordering effects,
-although current engine gameplay does not emit it.
+such as discarding or bottoming cards. `order` requests a permutation of its `items`; the
+`order_combat_damage` action emits one `order` prompt per attacker blocked by two or more
+creatures, so its controller chooses the combat-damage assignment order (CR 510.1, issue
+#346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
+with 0–1 blockers produces no ordering prompt.
 
 Combat declarations also use requirements. The attackers slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. Empty selections are legal

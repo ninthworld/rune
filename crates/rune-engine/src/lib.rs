@@ -40,7 +40,9 @@ mod zone;
 pub use ability::{
     is_mana_ability, Ability, Cost, Effect, PlayerRef, Target, TargetSpec, TriggerCondition,
 };
-pub use actions::{target_requirements, valid_actions, Action, Attack, Block, TargetRequirement};
+pub use actions::{
+    target_requirements, valid_actions, Action, Attack, Block, DamageOrder, TargetRequirement,
+};
 pub use apply::apply_action;
 pub use automation::priority_has_no_meaningful_action;
 pub use card::{
@@ -51,9 +53,9 @@ pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
 pub use combat::{
-    attacked_players, attacker_candidates, attacking_defender_of, blocker_candidates,
-    blocker_candidates_for, declared_attackers, defender_candidates, defending_player,
-    pending_blocker_declarer,
+    attacked_players, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
+    blocker_candidates, blocker_candidates_for, declared_attackers, defender_candidates,
+    defending_player, pending_blocker_declarer, pending_damage_order,
 };
 pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
