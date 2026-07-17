@@ -18,18 +18,22 @@ agent test.
 
 The web client implements the lobby and game flow, targeting, combat selection, stack, game
 over, card inspection, public-zone browsers, a turn ribbon, keyboard controls, and timer
-display. Current table-rendering and affordance defects still prevent that feature list from
-being a reliably understandable player experience.
+display. The battlefield canvas now survives StrictMode remounts and exposes a visible fallback
+if rendering fails. Remaining affordance and table-layout gaps still prevent the experience
+from being reliably understandable to a new player.
 
 ## Immediate priorities
 
 Stabilize the existing two-player experience before expanding the rules surface:
 
-1. Restore reliable Pixi table rendering in development and StrictMode ([#276](https://github.com/ninthworld/rune/issues/276)).
-2. Make issued hand and battlefield actions visibly discoverable ([#277](https://github.com/ninthworld/rune/issues/277)).
-3. Give the table clear player areas and visible zone geography ([#278](https://github.com/ninthworld/rune/issues/278)).
-4. Add a minimal real-browser smoke path through rendered turns ([#279](https://github.com/ninthworld/rune/issues/279)).
-5. Let players discover and join open rooms without exchanging an id out of band ([#280](https://github.com/ninthworld/rune/issues/280)).
+1. Make issued hand and battlefield actions visibly discoverable
+   ([#277](https://github.com/ninthworld/rune/issues/277)).
+2. Give the table clear player areas and visible zone geography
+   ([#278](https://github.com/ninthworld/rune/issues/278)).
+3. Add a minimal real-browser smoke path through rendered turns
+   ([#279](https://github.com/ninthworld/rune/issues/279)).
+4. Let players discover and join open rooms without exchanging an id out of band
+   ([#280](https://github.com/ninthworld/rune/issues/280)).
 
 ## Milestones
 
@@ -47,8 +51,9 @@ requires an out-of-band room id (#280).
 **Outcome:** two players can complete a legal game in the browser and understand the result.
 
 The engine, protocol, and UI flows are implemented and covered by unit and integration tests.
-The current table regression and missing action/geography affordances (#276–#279) must be
-resolved before this outcome is considered reliable for a new player.
+Reliable canvas attachment and a visible failure state are shipped. Action discoverability,
+table geography, and the browser smoke path (#277–#279) remain before this outcome is reliable
+for a new player.
 
 ### M3 — A real card pool
 
@@ -82,13 +87,14 @@ Shipped foundations:
 
 Remaining:
 
-- structured, redacted game events in `GameView` ([#259](https://github.com/ninthworld/rune/issues/259));
+- visible action affordances and table geography (#277–#278);
+- structured, redacted game events in `GameView`
+  ([#259](https://github.com/ninthworld/rune/issues/259));
 - a client game-log panel ([#260](https://github.com/ninthworld/rune/issues/260));
-- server-owned priority automation and stops ([#264](https://github.com/ninthworld/rune/issues/264)); and
-- action rejection and fizzle explanations ([#265](https://github.com/ninthworld/rune/issues/265)).
-
-The immediate table work (#276–#279) is part of this milestone’s readability outcome even
-though it repairs already-landed features.
+- server-owned priority automation and stops
+  ([#264](https://github.com/ninthworld/rune/issues/264)); and
+- action rejection and fizzle explanations
+  ([#265](https://github.com/ninthworld/rune/issues/265)).
 
 ### M5 — More than two
 
