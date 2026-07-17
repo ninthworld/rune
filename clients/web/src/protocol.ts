@@ -471,6 +471,16 @@ export interface GameView {
    */
   auto_passed?: boolean;
   /**
+   * Whether this view answers a **rejected in-game action** by the receiver (issue
+   * #265): a stale-view race meant the chosen action was no longer on offer, so the
+   * server re-sent the current state unchanged and flagged that one re-send. Advisory
+   * and transient like {@link auto_passed} — `valid_actions` already reflects the true
+   * legal set, so the client shows only a brief, non-blaming "the game moved on" toast
+   * (ephemeral presentation, never load-bearing). Omitted (treated as `false`) on every
+   * normal broadcast and resync; {@link normalizeGameView} defaults it to `false`.
+   */
+  action_rejected?: boolean;
+  /**
    * Public display names keyed by {@link PlayerId} (issue #294): every player who has
    * chosen a name maps to it, so any in-game surface (turn indicator, player tiles,
    * zone-browser titles, game-over verdict) can label any player — `you`, an opponent,

@@ -145,6 +145,10 @@ export function normalizeGameView(payload: unknown): GameView {
     // The auto-pass indicator (issue #264): display-only, defaults to `false` when the
     // seat was not auto-passed (or an older server omits it).
     auto_passed: payload.auto_passed === true,
+    // Rejected-action feedback (issue #265): display-only, defaults to `false` on every
+    // normal broadcast/resync (or when an older server omits it). Only the one re-send
+    // answering a rejected action sets it, driving a transient toast.
+    action_rejected: payload.action_rejected === true,
     // Public display names (issue #294): a string→string map the server elides when
     // empty; default to `{}` so every surface can look a name up and fall back when
     // absent (older servers never send it).

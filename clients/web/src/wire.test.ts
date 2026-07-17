@@ -52,6 +52,7 @@ describe('parseGameView', () => {
       log: [],
       stops: [],
       auto_passed: false,
+      action_rejected: false,
       player_names: {},
     });
   });

@@ -159,6 +159,8 @@ export const SAMPLE_GAME_VIEW: GameView = {
   // No stops or auto-pass in the sample frame; normalization defaults them (issue #264).
   stops: [],
   auto_passed: false,
+  // Not a rejection re-send; normalization defaults action_rejected to `false` (issue #265).
+  action_rejected: false,
   // No names in the sample wire frame; normalization defaults player_names to `{}`.
   player_names: {},
 };

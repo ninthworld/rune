@@ -49,6 +49,7 @@ redacted before serialization.
 | `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent public game history |
 | `stops` | `Phase[]` | Receiver’s own priority-stop preferences; omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
+| `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 
 `player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
@@ -111,6 +112,17 @@ behalf, so a client can show a transient “passed for you” indicator; it is a
 reconstructs without it) and omitted when `false`. The decision of whether a player has “no
 meaningful action” is the server’s alone — the client never computes it and never
 auto-passes on its own.
+
+`action_rejected` is the in-game counterpart of the lobby’s non-fatal error pattern (issue
+#265). A rejected `choose_action` is answered by re-sending the receiver’s current, unchanged
+`GameView` (below); that one re-send carries `action_rejected: true` so the client can show a
+brief, non-blaming “the game moved on” notice. Because a `valid_actions`-driven client only
+ever offers actions the server issued, a rejection means a stale-view race (the offered
+action was superseded before it arrived), not a user error — the tone is informational, not
+blaming. Like `auto_passed`, it is advisory and transient: `valid_actions` already reflects
+the true current legal set, the UI reconstructs fully without it, and it is omitted when
+`false` (so every normal broadcast and every resync clears it). A client renders it as
+ephemeral presentation only (an auto-dismissing toast) — never load-bearing state.
 
 ### Card and zone views
 
@@ -248,7 +260,8 @@ slot:
 The shared `targets` name is historical; it carries answers for target requirements and all
 prompt kinds. The server regenerates the action, checks the content token, and validates each
 choice against the fresh legal set. Invalid input is a no-op followed by the current
-`GameView`.
+`GameView`, and that re-send sets `action_rejected: true` (above) so the receiver gets a
+brief, non-blaming notice rather than a silently unchanged screen.
 
 ### `SetStops`
 

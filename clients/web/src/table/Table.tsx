@@ -32,6 +32,7 @@ import { GameOverOverlay } from './GameOverOverlay';
 import { PhaseIndicator, type TableMode } from './PhaseIndicator';
 import { OpponentHud, LocalDock } from './PlayerHud';
 import { PromptBanner } from './PromptBanner';
+import { RejectionToast } from './RejectionToast';
 import { ShortcutHelp, type Binding } from './ShortcutHelp';
 import { Rail } from './Rail';
 import { ZoneBrowser } from './ZoneBrowser';
@@ -209,6 +210,10 @@ export function Table() {
   const choose = useGameStore((state) => state.choose);
   const setStops = useGameStore((state) => state.setStops);
   const disconnect = useGameStore((state) => state.disconnect);
+  // The rejected-action trigger (issue #265): a counter the store bumps whenever the
+  // server flags a view as answering a rejected action. Feeds the transient toast below;
+  // purely ephemeral presentation, nothing the table reconstructs from.
+  const rejectionNonce = useGameStore((state) => state.rejectionNonce);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
   // The entity a game-log reference last highlighted, if any (issue #260): a permanent
   // rings on the canvas and a player's tile lights up. Purely presentational — it opens
@@ -554,6 +559,7 @@ export function Table() {
       )}
       {inspectTarget && <CardInspect target={inspectTarget} onClose={closeInspect} />}
       {showHelp && <ShortcutHelp bindings={shortcutBindings} onClose={() => setShowHelp(false)} />}
+      <RejectionToast nonce={rejectionNonce} />
     </>
   );
 
