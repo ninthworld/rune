@@ -24,6 +24,7 @@ import { selectPendingPrompt, useGameStore } from '../store';
 import { publishScene, publishView } from '../testHooks';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
+import { TableGeography } from './TableGeography';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
@@ -468,6 +469,10 @@ export function Table() {
         <StackPanel view={view} onInspect={setInspectedId} />
         <div style={boardWrap(scene.width, scene.height)}>
           <BattlefieldCanvas scene={scene} />
+          {/* Labeled lanes + zone piles stay on the final board. Card actions are
+              gone (no EntityOverlay select), but graveyard/exile stay browsable
+              here exactly as they do on the tiles above (issue #262). */}
+          <TableGeography scene={scene} onOpenZone={openZone} />
           {/*
            * Read-only game-over board: no select/target interaction (the server
            * offers no actions once the game is over), but every card stays
@@ -680,6 +685,10 @@ export function Table() {
       />
       <div style={boardWrap(scene.width, scene.height)}>
         <BattlefieldCanvas scene={scene} />
+        {/* Labeled, bounded player lanes + zone piles (issue #278), anchored to the
+            scene's band/hand rects and stacked under the interactive overlay so it
+            never intercepts a card click. */}
+        <TableGeography scene={scene} onOpenZone={openZone} />
         <EntityOverlay
           scene={scene}
           selectedId={selectedId}

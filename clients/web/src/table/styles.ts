@@ -1192,3 +1192,126 @@ export const seatBadges: CSSProperties = {
   gap: 6,
   marginLeft: 'auto',
 };
+
+/* ── Table geography (issue #278) ─────────────────────────────────────────────
+ * Labeled, bounded per-player battlefield lanes + the hand row, plus the zone
+ * piles (library/graveyard/exile) that sit in each player's area. This is a DOM
+ * layer anchored over the canvas by the scene's band/hand rects: boundaries are
+ * transparent-filled boxes (they never occlude a card), the header strip lives in
+ * the reserved empty space above the cards, and only the graveyard/exile pile
+ * buttons opt back into pointer events. All colors are UI chrome, not card tokens.
+ */
+
+const BAND_BORDER = '#2C313A';
+const BAND_LOCAL_BG = 'rgba(127, 178, 229, 0.05)';
+const BAND_OPP_BG = 'rgba(255, 255, 255, 0.02)';
+
+/** The geography overlay: same coordinate space as the canvas, non-interactive. */
+export function geographyLayer(width: number, height: number): CSSProperties {
+  return {
+    position: 'absolute',
+    inset: 0,
+    width,
+    height,
+    // Chrome only; the zone-pile buttons below opt back into pointer events.
+    pointerEvents: 'none',
+  };
+}
+
+/** A player's bounded battlefield lane. The local lane is ringed like its tile. */
+export function bandRegion(rect: Rect, isLocal: boolean): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x,
+    top: rect.y,
+    width: rect.w,
+    height: rect.h,
+    boxSizing: 'border-box',
+    border: `1px solid ${isLocal ? SURFACES.selection : BAND_BORDER}`,
+    borderRadius: 8,
+    background: isLocal ? BAND_LOCAL_BG : BAND_OPP_BG,
+  };
+}
+
+/** The label + zone-pile strip pinned to the top of a band (or the hand row). */
+export function regionHeader(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x + 12,
+    top: rect.y + 6,
+    width: rect.w - 24,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  };
+}
+
+/** The controller/hand label text inside a region header. */
+export const regionLabel: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: 0.3,
+  color: SURFACES.typeText,
+  textTransform: 'uppercase',
+};
+
+/** Faint centered prompt filling an empty band so the lane invites play. */
+export function emptyBandHint(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x,
+    top: rect.y,
+    width: rect.w,
+    height: rect.h,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: SURFACES.typeText,
+    opacity: 0.45,
+    fontSize: 13,
+    fontStyle: 'italic',
+  };
+}
+
+/** Horizontal cluster of a player's zone piles; interactive (opts into clicks). */
+export const zonePiles: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  pointerEvents: 'auto',
+};
+
+/** The library pile: a card-back vector + live count (hidden info, no identity). */
+export const libraryPile: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  fontSize: 12,
+  color: SURFACES.nameText,
+};
+
+/** A small card back standing in for the deck — no card identity, ever. */
+export const cardBack: CSSProperties = {
+  width: 18,
+  height: 25,
+  borderRadius: 3,
+  border: '1px solid #453d5c',
+  background: 'linear-gradient(135deg, #3a3350, #211c30)',
+};
+
+/** A graveyard/exile pile affordance in the band header — opens its browser. */
+export const pileButton: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  minHeight: 44,
+  padding: '4px 10px',
+  borderRadius: 6,
+  border: `1px solid ${BAND_BORDER}`,
+  background: 'rgba(255, 255, 255, 0.03)',
+  color: SURFACES.nameText,
+  font: 'inherit',
+  fontSize: 12,
+  cursor: 'pointer',
+};
