@@ -27,5 +27,18 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  {
+    // The Playwright smoke canary (ADR 0011, issue #279) is Node-hosted test code:
+    // it spawns the server, reads files, and drives a browser. Give it Node globals
+    // (alongside the browser globals used inside `page.evaluate` callbacks) and drop
+    // the component-only react-refresh rule that does not apply to test helpers.
+    files: ['e2e/**/*.ts'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   prettier,
 );

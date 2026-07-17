@@ -38,7 +38,17 @@ before changing code; [`docs/brief.md`](docs/brief.md) defines the product and a
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make client-check` — lint + typecheck + test + build in `clients/web`
 - `make deny` — dependency policy and advisory checks.
+- `make smoke` — browser smoke canary (ADR 0011): one Playwright spec drives a real
+  Chromium against a real seeded `rune-server` and plays real turns through the rendered
+  UI (the StrictMode canvas-attach guard, #276). The `Smoke` CI job; part of `make verify`,
+  not `make check`. Needs a Chromium — locally it uses a pre-installed one when present,
+  else run `cd clients/web && npx playwright install chromium` once.
 - `scripts/bootstrap.sh` — verify local prerequisites.
+
+> `make check` is the fast unit gate, **not** the whole CI surface — that is `make check`
+> (Engine + Client) **plus** the `cargo-deny` job **plus** the browser `Smoke` canary (ADR
+> 0011), exactly what `make verify` runs locally. The smoke canary stays outside
+> `make check`, which stays fast and browser-free.
 
 ## Workflow
 
