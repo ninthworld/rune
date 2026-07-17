@@ -430,6 +430,19 @@ pub struct GameView {
     pub exile: Vec<ZonePile>,
     /// The current turn step.
     pub phase: Phase,
+    /// The current turn number (1-based; `0` only in an empty/default state). The
+    /// server owns turn counting — the client never counts turns itself, it renders
+    /// this. `#[serde(default)]` so a payload from an older server that omits it
+    /// still deserializes (to `0`).
+    #[serde(default)]
+    pub turn: u32,
+    /// The player whose turn it is (the *active player*), as the `p{N}` id used
+    /// throughout the view. Distinct from [`Self::priority_player`]: the active
+    /// player owns the turn even while priority sits with an opponent (e.g. during
+    /// their response). `#[serde(default)]` so an older payload that omits it
+    /// deserializes to `""` (unknown), and it is elided from the wire when empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub active_player: PlayerId,
     /// The receiving player's unspent mana, as pip strings (e.g. `["{G}", "{G}"]`).
     /// Server-computed; the client only displays it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1053,6 +1066,8 @@ mod tests {
             }],
             exile: vec![],
             phase: Phase::PrecombatMain,
+            turn: 3,
+            active_player: "p1".into(),
             mana_pool: vec!["{G}".into()],
             priority_player: Some("p1".into()),
             valid_actions: vec![ValidAction {
@@ -1106,6 +1121,8 @@ mod tests {
             graveyards: vec![],
             exile: vec![],
             phase: Phase::Upkeep,
+            turn: 0,
+            active_player: String::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -1129,6 +1146,8 @@ mod tests {
             graveyards: vec![],
             exile: vec![],
             phase: Phase::PrecombatMain,
+            turn: 0,
+            active_player: String::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -1164,6 +1183,8 @@ mod tests {
         // these (or the deserialize above) rather than passing silently.
         assert_eq!(view.you, "p1");
         assert_eq!(view.phase, Phase::PrecombatMain);
+        assert_eq!(view.turn, 3);
+        assert_eq!(view.active_player, "p1");
         assert_eq!(view.mana_pool, vec!["{G}".to_string(), "{G}".to_string()]);
         assert_eq!(view.priority_player.as_deref(), Some("p1"));
         assert_eq!(view.action_deadline, Some(12.5));
@@ -1603,6 +1624,8 @@ mod tests {
             graveyards: vec![],
             exile: vec![],
             phase: Phase::End,
+            turn: 0,
+            active_player: String::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],
@@ -1654,6 +1677,8 @@ mod tests {
             graveyards: vec![],
             exile: vec![],
             phase: Phase::Upkeep,
+            turn: 0,
+            active_player: String::new(),
             mana_pool: vec![],
             priority_player: None,
             valid_actions: vec![],

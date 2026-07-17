@@ -34,10 +34,12 @@ never receives what its player may not know). The concrete types live in the
 | `stack` | `StackItem[]` | Spells and abilities; ability entries carry `source` + display text |
 | `graveyards`, `exile` | `ZonePile[]` | Public ordered lists per player |
 | `phase` | `Phase` | Current turn step (snake_case enum); drives overview/focus mode |
+| `turn` | `number` | Current turn number (1-based; `0` only in an empty state). The server owns turn counting — the client renders this, it never counts turns itself. A payload without it (older server) is treated as `0` |
+| `active_player` | `PlayerId` | Whose turn it is (the active player), as a `p{N}` id. Distinct from `priority_player`: the active player owns the turn even while an opponent holds priority. Omitted when empty; a payload without it (older server) is treated as `""`/unknown |
 | `mana_pool` | `string[]` | The receiving player's unspent mana as pip strings (e.g. `["{G}"]`); server-computed, display-only. Omitted when empty |
 | `priority_player` | `PlayerId?` | Who holds priority now, if anyone |
 | `valid_actions` | `ValidAction[]` | See below — the only source of interactivity |
-| `action_deadline` | `number?` | Seconds remaining for the pending decision |
+| `action_deadline` | `number?` | Seconds remaining for the pending decision, present only for the deciding seat when the room runs a decision clock (issue #263). Server-authoritative and derived from an **absolute** deadline, so each re-send (including a reconnect) carries the true remaining time rather than restarting the clock; the client displays a live countdown but never enforces it. The timer policy is a room setting, **off by default** (unchanged behavior); when on, an expired decision has the server take a conservative default action (pass priority, or an empty combat declaration) on the player's behalf — never a concession. In-game decisions only; the lobby/deck-submission phase is out of scope |
 | `result` | `GameResult?` | The terminal outcome once the game is over (CR 104.2a). Omitted while the game is live; when present, `valid_actions` is empty. See [Game over](#game-over-result) |
 
 Empty collections and absent optionals are omitted from the JSON; clients must

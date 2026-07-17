@@ -123,6 +123,8 @@
     }
   ],
   "phase": "precombat_main",
+  "turn": 3,
+  "active_player": "p1",
   "mana_pool": [
     "{G}",
     "{G}"

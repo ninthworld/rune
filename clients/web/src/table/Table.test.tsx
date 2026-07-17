@@ -14,6 +14,7 @@ import {
   SAMPLE_GAME_VIEW_JSON,
   TARGETING_GAME_VIEW_JSON,
   ZONE_SELECT_GAME_VIEW_JSON,
+  ZONES_GAME_VIEW_JSON,
 } from '../game-view.fixture';
 import type { TargetChoice, ValidAction } from '../protocol';
 import { useGameStore } from '../store';
@@ -189,6 +190,349 @@ describe('Table stack panel (issue #142)', () => {
     seed(emptyStack);
     render(<Table />);
     expect(screen.queryByTestId('stack-panel')).toBeNull();
+  });
+});
+
+describe('Table card inspect (issue #261)', () => {
+  it('opens the inspect popover for a hand card and shows its CardView content', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    // The hand card c1 (Llanowar Elves) has no action, yet it is inspectable.
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+    fireEvent.click(screen.getByTestId('inspect-c1'));
+    const panel = screen.getByTestId('card-inspect');
+    expect(within(panel).getByTestId('card-inspect-name').textContent).toBe('Llanowar Elves');
+    expect(within(panel).getByTestId('card-inspect-rules').textContent).toContain('Add {G}');
+  });
+
+  it('inspects an own permanent including its dynamic state, and closes again', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    const panel = screen.getByTestId('card-inspect');
+    expect(within(panel).getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+    expect(within(panel).getByTestId('card-inspect-state').textContent).toContain('Tapped');
+    // Close via the explicit control.
+    fireEvent.click(screen.getByTestId('card-inspect-close'));
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+  });
+
+  it('inspects a stack object', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('inspect-s1'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Lightning Bolt');
+  });
+
+  it('is keyboard accessible: the handle is a focusable button and Escape closes', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    const handle = screen.getByTestId('inspect-c1');
+    // The handle is a real button (focusable, Enter/Space activate it natively).
+    expect(handle.tagName).toBe('BUTTON');
+    fireEvent.click(handle);
+    expect(screen.getByTestId('card-inspect')).toBeDefined();
+    // Escape dismisses the popover (keyboard parity with the other overlays).
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+  });
+
+  it('drops an open popover when a fresh GameView arrives (no state across messages)', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    expect(screen.getByTestId('card-inspect')).toBeDefined();
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+  });
+
+  it('keeps a card both inspectable and targetable during targeting mode', () => {
+    const choose = seed(TARGETING_GAME_VIEW_JSON);
+    render(<Table />);
+    // Enter targeting on the bolt.
+    fireEvent.click(screen.getByTestId('entity-c3'));
+    fireEvent.click(
+      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+        name: 'Cast Lightning Bolt',
+      }),
+    );
+    // The candidate permanent is targetable AND carries an inspect handle.
+    expect(screen.getByTestId('target-perm_xyz')).toBeDefined();
+    fireEvent.click(screen.getByTestId('inspect-perm_xyz'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+    // Inspecting did not submit the target; targeting is still live underneath.
+    expect(choose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('card-inspect-close'));
+    fireEvent.click(screen.getByTestId('target-perm_xyz'));
+    expect(choose).toHaveBeenCalledTimes(1);
+  });
+
+  it('inspects in the read-only game-over state', () => {
+    // A terminal frame that still carries a permanent to inspect.
+    const terminal = JSON.stringify({
+      you: 'p1',
+      my_hand: [],
+      opponents: [{ player_id: 'p2', hand_size: 0, life: 0, library_size: 40, graveyard_size: 0 }],
+      battlefield: [
+        {
+          id: 'perm_win',
+          controller: 'p1',
+          owner: 'p1',
+          card: { id: 'perm_win', name: 'Grizzly Bears', type_line: 'Creature — Bear' },
+        },
+      ],
+      phase: 'end',
+      valid_actions: [],
+      result: { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+    });
+    seed(terminal);
+    render(<Table />);
+    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+    fireEvent.click(screen.getByTestId('inspect-perm_win'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+  });
+});
+
+describe('Table phase/turn ribbon and modes (issue #267)', () => {
+  it('always shows the ribbon with turn, active player, and current phase', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    const ribbon = screen.getByTestId('phase-ribbon');
+    expect(within(ribbon).getByTestId('ribbon-turn').textContent).toBe('Turn 5');
+    // p1 is the receiver and the active player → "Your turn".
+    expect(within(ribbon).getByTestId('ribbon-active').textContent).toBe('Your turn');
+    expect(
+      within(ribbon).getByTestId('ribbon-step-precombat_main').getAttribute('aria-current'),
+    ).toBe('step');
+  });
+
+  it('sits in overview mode on a normal view and shifts to focus when targeting opens', () => {
+    seed(TARGETING_GAME_VIEW_JSON);
+    render(<Table />);
+    // A castable-but-optional spell is not a forced decision → overview on mount.
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('overview');
+    expect(screen.queryByTestId('ribbon-focus')).toBeNull();
+
+    // Entering targeting visibly shifts to focus treatment...
+    fireEvent.click(screen.getByTestId('entity-c3'));
+    fireEvent.click(
+      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+        name: 'Cast Lightning Bolt',
+      }),
+    );
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('focus');
+    expect(screen.getByTestId('ribbon-focus')).toBeDefined();
+
+    // ...and cancelling it returns to overview.
+    fireEvent.click(
+      within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Cancel targeting' }),
+    );
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('overview');
+  });
+
+  it('renders focus treatment directly from a fresh mid-prompt GameView (no history)', () => {
+    // A declare-attackers view poses a forced, subject-less decision, so a fresh
+    // mount lands in focus mode without any prior interaction.
+    seed(DECLARE_ATTACKERS_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.getByTestId('phase-ribbon').getAttribute('data-mode')).toBe('focus');
+    expect(screen.getByTestId('ribbon-focus')).toBeDefined();
+  });
+
+  it('renders the game-over state in overview treatment beneath the overlay', () => {
+    seed(GAME_OVER_WIN_JSON);
+    render(<Table />);
+    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+    expect(screen.getByTestId('table-game-over').getAttribute('data-mode')).toBe('overview');
+    // The ribbon is still visible in the terminal state.
+    expect(screen.getByTestId('phase-ribbon')).toBeDefined();
+  });
+});
+
+describe('Table keyboard parity (issue #266)', () => {
+  it('toggles the shortcut reference with "?" and closes it with Escape', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.queryByTestId('shortcut-help')).toBeNull();
+    fireEvent.keyDown(window, { key: '?' });
+    const help = screen.getByTestId('shortcut-help');
+    // Pass is offered in the sample view, so its binding reads as available.
+    expect(within(help).getByTestId('shortcut-pass').getAttribute('data-available')).toBe('true');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('shortcut-help')).toBeNull();
+  });
+
+  it('passes priority with "P" when the action is offered', () => {
+    const choose = seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect((choose.mock.calls[0][0] as ValidAction).id).toBe('a1');
+  });
+
+  it('leaves "P" inert when no pass action exists', () => {
+    // A view whose only action is a subject action — no pass on offer.
+    const noPass = JSON.stringify({
+      you: 'p1',
+      my_hand: [],
+      opponents: [{ player_id: 'p2', hand_size: 2, life: 20, library_size: 40, graveyard_size: 0 }],
+      battlefield: [
+        {
+          id: 'perm_x',
+          controller: 'p1',
+          owner: 'p1',
+          card: { id: 'perm_x', name: 'Elf', type_line: 'Creature' },
+        },
+      ],
+      phase: 'precombat_main',
+      valid_actions: [{ id: 'aX', type: 'activate_ability', label: 'Tap', subject: ['perm_x'] }],
+    });
+    const choose = seed(noPass);
+    render(<Table />);
+    fireEvent.keyDown(window, { key: 'p' });
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('activates the focused control with Enter (reusing its click handler)', () => {
+    const choose = seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    const pass = within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Pass' });
+    pass.focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect((choose.mock.calls[0][0] as ValidAction).id).toBe('a1');
+  });
+
+  it('moves focus between controls with the arrow keys (never trapped)', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    const first = document.activeElement;
+    expect(first).toBeInstanceOf(HTMLButtonElement);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(document.activeElement).toBeInstanceOf(HTMLButtonElement);
+    expect(document.activeElement).not.toBe(first);
+  });
+
+  it('inspects the focused card with "I"', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    screen.getByTestId('entity-perm_xyz').focus();
+    fireEvent.keyDown(window, { key: 'i' });
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+  });
+
+  it('drives a targeting pick entirely by keyboard', () => {
+    const choose = seed(TARGETING_GAME_VIEW_JSON);
+    render(<Table />);
+    // Open targeting via the entity + its cast action (focus + Enter, no pointer).
+    screen.getByTestId('entity-c3').focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    within(screen.getByTestId('entity-actions-c3'))
+      .getByRole('button', { name: 'Cast Lightning Bolt' })
+      .focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    // Now in targeting: focus a candidate and submit with Enter.
+    expect(choose).not.toHaveBeenCalled();
+    screen.getByTestId('target-perm_xyz').focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose).toHaveBeenCalledTimes(1);
+    const [, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(targets).toEqual([{ slot: 't0', chosen: ['perm_xyz'] }]);
+  });
+
+  it('toggles a multi-select candidate with Space and confirms with Enter', () => {
+    const choose = seed(DECLARE_ATTACKERS_GAME_VIEW_JSON);
+    render(<Table />);
+    within(screen.getByTestId('action-bar'))
+      .getByRole('button', { name: 'Declare attackers' })
+      .focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    // Space toggles the focused candidate into the selection.
+    screen.getByTestId('target-atk_1').focus();
+    fireEvent.keyDown(window, { key: ' ' });
+    expect(screen.getByTestId('multiselect-count').textContent).toContain('1 selected');
+    // Enter with nothing focused confirms the primary (the enabled multi-select).
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose).toHaveBeenCalledTimes(1);
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action.id).toBe('a5');
+    expect(targets).toEqual([{ slot: 'attackers', chosen: ['atk_1'] }]);
+  });
+});
+
+describe('Table zone browsers (issue #262)', () => {
+  it('opens the local graveyard from the tile and lists it in order', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.queryByTestId('zone-browser')).toBeNull();
+    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    const browser = screen.getByTestId('zone-browser');
+    expect(within(browser).getByTestId('zone-browser-title').textContent).toContain(
+      'p1 — Graveyard',
+    );
+    expect(within(browser).getByTestId('browser-card-gy_p1_a')).toBeDefined();
+    expect(within(browser).getByTestId('browser-card-gy_p1_b')).toBeDefined();
+  });
+
+  it("opens an opponent's graveyard (public zone) from their tile", () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-graveyard-p2'));
+    expect(screen.getByTestId('browser-card-gy_p2_a').textContent).toContain('Lightning Bolt');
+  });
+
+  it('opens the exile browser and inspects a card inside it', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-exile-p1'));
+    expect(screen.getByTestId('zone-browser-title').textContent).toContain('p1 — Exile');
+    // A card inside the browser opens the shared inspect popover (issue #261 reuse).
+    fireEvent.click(screen.getByTestId('browser-card-ex_p1_a'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Forest');
+    // Closing inspect leaves the browser open beneath it.
+    fireEvent.click(screen.getByTestId('card-inspect-close'));
+    expect(screen.queryByTestId('card-inspect')).toBeNull();
+    expect(screen.getByTestId('zone-browser')).toBeDefined();
+  });
+
+  it('shows the empty-zone state for a player with no exile, and closes on Escape', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    // p2 has no exile pile in the view → browses empty.
+    fireEvent.click(screen.getByTestId('open-exile-p2'));
+    expect(screen.getByTestId('zone-browser-empty')).toBeDefined();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('zone-browser')).toBeNull();
+  });
+
+  it('drops an open browser when a fresh GameView arrives (no state across messages)', () => {
+    seed(ZONES_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    expect(screen.getByTestId('zone-browser')).toBeDefined();
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
+    expect(screen.queryByTestId('zone-browser')).toBeNull();
+  });
+
+  it('browses zones in the read-only game-over state', () => {
+    const terminal = JSON.stringify({
+      you: 'p1',
+      my_hand: [],
+      opponents: [{ player_id: 'p2', hand_size: 0, life: 0, library_size: 40, graveyard_size: 0 }],
+      battlefield: [],
+      graveyards: [
+        { player_id: 'p1', cards: [{ id: 'gy_end', name: 'Shock', type_line: 'Instant' }] },
+      ],
+      phase: 'end',
+      valid_actions: [],
+      result: { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+    });
+    seed(terminal);
+    render(<Table />);
+    fireEvent.click(screen.getByTestId('open-graveyard-p1'));
+    expect(screen.getByTestId('browser-card-gy_end').textContent).toContain('Shock');
   });
 });
 

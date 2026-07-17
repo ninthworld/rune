@@ -24,6 +24,7 @@
  */
 import type { EntityId, GameView, StackItem } from '../protocol';
 import {
+  inspectRowHandle,
   stackBadges,
   stackItem,
   stackItemButtonReset,
@@ -31,6 +32,7 @@ import {
   stackItemName,
   stackItemTop,
   stackKindBadge,
+  stackItemRow,
   stackList,
   stackPanel,
   stackTargetItem,
@@ -51,6 +53,8 @@ interface Props {
   view: GameView;
   /** Present only in targeting mode; makes candidate stack objects pickable. */
   targeting?: TargetingStack;
+  /** Open the inspect popover for a stack object (issue #261). */
+  onInspect?: (id: EntityId) => void;
 }
 
 /**
@@ -63,7 +67,7 @@ function sourceName(view: GameView, source: EntityId): string {
   return view.battlefield.find((perm) => perm.id === source)?.card.name ?? source;
 }
 
-export function StackPanel({ view, targeting }: Props) {
+export function StackPanel({ view, targeting, onInspect }: Props) {
   // Empty stack renders no chrome at all (acceptance: unobtrusive when nothing is
   // on the stack). There is nothing to reconstruct, so the panel simply vanishes.
   if (view.stack.length === 0) return null;
@@ -98,6 +102,22 @@ export function StackPanel({ view, targeting }: Props) {
     );
   };
 
+  // The inspect handle sits as a sibling of the entry inside its `<li>` (never
+  // nested inside a candidate's target `<button>`, which would be invalid HTML), so
+  // a stack object is inspectable whether or not it is a legal target.
+  const inspectButton = (item: StackItem) =>
+    onInspect && (
+      <button
+        type="button"
+        data-testid={`inspect-${item.id}`}
+        aria-label={`Inspect ${item.description}`}
+        onClick={() => onInspect(item.id)}
+        style={inspectRowHandle}
+      >
+        i
+      </button>
+    );
+
   return (
     <section data-testid="stack-panel" style={stackPanel} aria-label="Stack">
       <h2 style={stackTitle}>Stack ({view.stack.length})</h2>
@@ -107,7 +127,7 @@ export function StackPanel({ view, targeting }: Props) {
           const isCandidate = candidateSet?.has(item.id) ?? false;
           if (isCandidate && targeting) {
             return (
-              <li key={item.id}>
+              <li key={item.id} style={stackItemRow}>
                 <button
                   type="button"
                   data-testid={`target-${item.id}`}
@@ -117,12 +137,16 @@ export function StackPanel({ view, targeting }: Props) {
                 >
                   {renderEntry(item, isTop)}
                 </button>
+                {inspectButton(item)}
               </li>
             );
           }
           return (
-            <li key={item.id} data-testid={`stack-item-${item.id}`} style={style}>
-              {renderEntry(item, isTop)}
+            <li key={item.id} style={stackItemRow}>
+              <div data-testid={`stack-item-${item.id}`} style={{ ...style, flex: 1 }}>
+                {renderEntry(item, isTop)}
+              </div>
+              {inspectButton(item)}
             </li>
           );
         })}

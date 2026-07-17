@@ -109,6 +109,10 @@ export function normalizeGameView(payload: unknown): GameView {
     graveyards: asArray(payload.graveyards, 'graveyards'),
     exile: asArray(payload.exile, 'exile'),
     phase: payload.phase,
+    // Turn structure (issue #267): the server owns turn counting and whose turn it
+    // is; an older server may omit them, so default to 0/'' (unknown).
+    turn: typeof payload.turn === 'number' ? payload.turn : 0,
+    active_player: typeof payload.active_player === 'string' ? payload.active_player : '',
     mana_pool: asArray(payload.mana_pool, 'mana_pool'),
     priority_player:
       typeof payload.priority_player === 'string' ? payload.priority_player : undefined,

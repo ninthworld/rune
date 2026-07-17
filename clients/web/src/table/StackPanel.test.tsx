@@ -21,6 +21,8 @@ function viewWith(stack: StackItem[], battlefield: Permanent[] = []): GameView {
     graveyards: [],
     exile: [],
     phase: 'precombat_main',
+    turn: 1,
+    active_player: 'p1',
     mana_pool: [],
     valid_actions: [],
   };
@@ -104,6 +106,30 @@ describe('StackPanel (issue #142)', () => {
     ]);
     render(<StackPanel view={view} />);
     expect(within(screen.getByTestId('stack-item-s1')).getByText(/→ Grizzly Bears/)).toBeDefined();
+  });
+
+  it('renders an inspect handle per entry and reports the id (issue #261)', () => {
+    const onInspect = vi.fn();
+    const view = viewWith([
+      { id: 's1', controller: 'p1', description: 'Grizzly Bears' },
+      { id: 's2', controller: 'p2', description: 'Counterspell' },
+    ]);
+    render(<StackPanel view={view} onInspect={onInspect} />);
+    fireEvent.click(screen.getByTestId('inspect-s2'));
+    expect(onInspect).toHaveBeenCalledWith('s2');
+  });
+
+  it('inspects a candidate entry without picking it as a target (issue #261)', () => {
+    const onPick = vi.fn();
+    const onInspect = vi.fn();
+    const view = viewWith([{ id: 's1', controller: 'p1', description: 'Grizzly Bears' }]);
+    render(
+      <StackPanel view={view} targeting={{ candidates: ['s1'], onPick }} onInspect={onInspect} />,
+    );
+    // The inspect handle is a sibling of the target button (valid HTML, no nesting).
+    fireEvent.click(screen.getByTestId('inspect-s1'));
+    expect(onInspect).toHaveBeenCalledWith('s1');
+    expect(onPick).not.toHaveBeenCalled();
   });
 
   it('makes a candidate stack object pickable in targeting mode and picks it', () => {

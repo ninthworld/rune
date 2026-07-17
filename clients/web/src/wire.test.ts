@@ -38,6 +38,8 @@ describe('parseGameView', () => {
       graveyards: [],
       exile: [],
       phase: 'upkeep',
+      turn: 0,
+      active_player: '',
       mana_pool: [],
       priority_player: undefined,
       valid_actions: [],
@@ -143,6 +145,8 @@ describe('cross-language contract fixture (issue #56)', () => {
 
     expect(view.you).toBe('p1');
     expect(view.phase).toBe('precombat_main');
+    expect(view.turn).toBe(3);
+    expect(view.active_player).toBe('p1');
     expect(view.priority_player).toBe('p1');
     expect(view.action_deadline).toBe(12.5);
     expect(view.mana_pool).toEqual(['{G}', '{G}']);

@@ -26,6 +26,92 @@ export const main: CSSProperties = {
   boxSizing: 'border-box',
 };
 
+/**
+ * The phase/turn ribbon (issue #267): a persistent HUD row carrying the turn
+ * number, active player, and the phase/step sequence with the current step marked.
+ * Reads the shared `SURFACES` palette like the rest of the table chrome; the
+ * `data-mode` attribute (not these styles) is the source of truth for the mode.
+ */
+export const ribbon: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 12,
+  padding: '8px 14px',
+  borderRadius: 8,
+  background: '#1B1E23',
+  border: '1px solid #2C313A',
+  fontSize: 13,
+};
+
+/** The turn-number lead, emphasized. */
+export const ribbonTurn: CSSProperties = {
+  fontWeight: 700,
+  color: SURFACES.nameText,
+  letterSpacing: 0.3,
+};
+
+/** The active-player label, in the shared selection accent. */
+export const ribbonActive: CSSProperties = {
+  fontWeight: 600,
+  color: SURFACES.selection,
+};
+
+/** The horizontal phase/step strip. */
+export const ribbonSteps: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+};
+
+/** One step pill in the strip (non-current). */
+export const ribbonStep: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  padding: '2px 7px',
+  borderRadius: 999,
+  background: 'transparent',
+  color: SURFACES.typeText,
+  border: '1px solid transparent',
+};
+
+/**
+ * The current step pill, ringed and filled in the accent. Uses the full `border`
+ * shorthand (not `borderColor`) so toggling current state on rerender never mixes
+ * shorthand and longhand for the same property (a React styling-bug warning).
+ */
+export const ribbonStepCurrent: CSSProperties = {
+  color: SURFACES.nameText,
+  background: '#2A2F37',
+  border: `1px solid ${SURFACES.selection}`,
+};
+
+/** The focus-mode "Decision" badge, in the shared alert (targeting) accent. */
+export const ribbonFocusBadge: CSSProperties = {
+  marginLeft: 'auto',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+  padding: '2px 9px',
+  borderRadius: 999,
+  color: SURFACES.targeting,
+  border: `1px solid ${SURFACES.targeting}`,
+};
+
+/**
+ * Focus-mode de-emphasis (issue #267): applied to the non-decision chrome (player
+ * tiles, stack, board) when a decision is pending, so attention lands on the
+ * ribbon and prompt. A light, reduced-motion-safe dim — never a hard hide, so the
+ * table stays scannable. Overview mode applies nothing.
+ */
+export const focusDimmed: CSSProperties = {
+  opacity: 0.7,
+};
+
 export const banner: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -38,6 +124,15 @@ export const banner: CSSProperties = {
 };
 
 export const bannerAccent: CSSProperties = { color: SURFACES.selection, fontWeight: 600 };
+
+/** The live decision countdown appended to "Your move" (issue #263). */
+export const deadlineCountdown: CSSProperties = { color: SURFACES.nameText, fontWeight: 600 };
+
+/** The countdown in its low-time warning state, in the shared alert accent. */
+export const deadlineCountdownLow: CSSProperties = {
+  color: SURFACES.targeting,
+  fontWeight: 700,
+};
 
 /** The lead span of the targeting-mode banner, in the shared targeting color. */
 export const bannerTargeting: CSSProperties = { color: SURFACES.targeting, fontWeight: 600 };
@@ -290,6 +385,377 @@ export function entityActions(rect: Rect): CSSProperties {
   };
 }
 
+/**
+ * Card inspect popover (issue #261, React DOM per ADR 0003 — oracle text a user
+ * reads is DOM, never the Pixi canvas). A universal, reusable surface that reads
+ * only `CardView`/`StackItem` fields the server already sent; it never touches the
+ * card color/size tokens (that is the renderers' job) and reads the shared
+ * `SURFACES` palette like the rest of the table chrome.
+ */
+export const inspectBackdrop: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(9, 10, 12, 0.66)',
+  zIndex: 20,
+};
+
+export const inspectPanel: CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  width: '100%',
+  maxWidth: 340,
+  maxHeight: '80vh',
+  overflowY: 'auto',
+  padding: 20,
+  borderRadius: 12,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  boxSizing: 'border-box',
+};
+
+/** The close (×) control, anchored top-right of the panel. */
+export const inspectClose: CSSProperties = {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  minWidth: TOUCH,
+  minHeight: TOUCH,
+  padding: 0,
+  borderRadius: 8,
+  border: 'none',
+  background: 'transparent',
+  color: SURFACES.typeText,
+  fontSize: 22,
+  lineHeight: 1,
+  cursor: 'pointer',
+};
+
+export const inspectName: CSSProperties = {
+  margin: 0,
+  paddingRight: TOUCH,
+  fontSize: 18,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+/** The mana cost line, in the muted secondary color (rendered verbatim). */
+export const inspectCost: CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: SURFACES.typeText,
+};
+
+export const inspectTypeLine: CSSProperties = {
+  fontSize: 13,
+  color: SURFACES.typeText,
+};
+
+/** The current (effective) power/toughness line. */
+export const inspectPt: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+/** The keyword badge row. */
+export const inspectKeywords: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+};
+
+/** One keyword badge. */
+export const inspectKeyword: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  padding: '2px 8px',
+  borderRadius: 999,
+  background: '#2A2F37',
+  color: SURFACES.nameText,
+  border: '1px solid #3A4049',
+};
+
+/** The oracle/rules text block, wrapping across lines. */
+export const inspectRules: CSSProperties = {
+  margin: '4px 0 0',
+  fontSize: 14,
+  lineHeight: 1.5,
+  color: SURFACES.nameText,
+  whiteSpace: 'pre-wrap',
+};
+
+/** The placeholder shown when a card has no rules text. */
+export const inspectNoText: CSSProperties = {
+  ...inspectRules,
+  fontStyle: 'italic',
+  color: SURFACES.typeText,
+};
+
+/** The row of dynamic-state badges (tapped, counters, controller). */
+export const inspectStateRow: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  marginTop: 4,
+};
+
+/** One dynamic-state badge. */
+export const inspectState: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  padding: '2px 8px',
+  borderRadius: 6,
+  background: '#15171A',
+  color: SURFACES.typeText,
+  border: '1px solid #2C313A',
+};
+
+/**
+ * The inspect handle drawn ON a card (issue #261): a small, touch-sized affordance
+ * anchored at the card's top-right corner that opens the inspect popover. It is a
+ * DISTINCT control from the select/target hotspot beneath it (its own testid and a
+ * higher stacking context), so a card can be inspected without disturbing its
+ * select/target interaction — the two coexist (a card stays both inspectable and
+ * toggleable in targeting/multi-select).
+ */
+export function inspectHandle(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x + rect.w - TOUCH + 6,
+    top: rect.y - 6,
+    width: TOUCH,
+    height: TOUCH,
+    padding: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    border: `1px solid ${SURFACES.selection}`,
+    background: 'rgba(21, 23, 26, 0.9)',
+    color: SURFACES.nameText,
+    fontSize: 15,
+    fontWeight: 700,
+    lineHeight: 1,
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    zIndex: 3,
+  };
+}
+
+/** A compact inspect handle for a DOM row (stack entry): inline, not absolute. */
+export const inspectRowHandle: CSSProperties = {
+  minWidth: TOUCH,
+  minHeight: TOUCH,
+  padding: 0,
+  borderRadius: 999,
+  border: `1px solid ${SURFACES.selection}`,
+  background: '#2A2F37',
+  color: SURFACES.nameText,
+  fontSize: 15,
+  fontWeight: 700,
+  cursor: 'pointer',
+  flexShrink: 0,
+};
+
+/**
+ * Zone browser overlay (issue #262, React DOM per ADR 0003 — a scrollable list of
+ * card text is DOM, not the Pixi canvas). Reads the shared `SURFACES` palette like
+ * the rest of the table chrome and never touches card color/size tokens.
+ */
+export const zoneBrowserBackdrop: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(9, 10, 12, 0.66)',
+  zIndex: 15,
+};
+
+export const zoneBrowserPanel: CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  width: '100%',
+  maxWidth: 380,
+  maxHeight: '80vh',
+  padding: 20,
+  borderRadius: 12,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  boxSizing: 'border-box',
+};
+
+export const zoneBrowserClose: CSSProperties = {
+  position: 'absolute',
+  top: 8,
+  right: 8,
+  minWidth: TOUCH,
+  minHeight: TOUCH,
+  padding: 0,
+  borderRadius: 8,
+  border: 'none',
+  background: 'transparent',
+  color: SURFACES.typeText,
+  fontSize: 22,
+  lineHeight: 1,
+  cursor: 'pointer',
+};
+
+export const zoneBrowserTitle: CSSProperties = {
+  margin: 0,
+  paddingRight: TOUCH,
+  fontSize: 16,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+/** The scrollable card list (grows within the panel's max-height, then scrolls). */
+export const zoneBrowserList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+  overflowY: 'auto',
+};
+
+/** One card row — a full-width button that opens inspect. */
+export const zoneBrowserCard: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  width: '100%',
+  minHeight: TOUCH,
+  padding: '8px 10px',
+  borderRadius: 8,
+  background: '#15171A',
+  border: '1px solid #2C313A',
+  color: SURFACES.nameText,
+  font: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer',
+};
+
+export const zoneBrowserCardName: CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  color: SURFACES.nameText,
+};
+
+export const zoneBrowserCardType: CSSProperties = {
+  fontSize: 12,
+  color: SURFACES.typeText,
+};
+
+/** The empty-zone placeholder. */
+export const zoneBrowserEmpty: CSSProperties = {
+  margin: 0,
+  fontSize: 14,
+  fontStyle: 'italic',
+  color: SURFACES.typeText,
+};
+
+/**
+ * A player-tile zone count rendered as an affordance (issue #262): the graveyard /
+ * exile line becomes a button that opens the zone browser. Styled to read as the
+ * tile's own text (not a chunky button) while staying a real, focusable control.
+ */
+export const zoneOpenButton: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: TOUCH,
+  padding: '2px 6px',
+  margin: '-2px -6px',
+  borderRadius: 6,
+  border: '1px solid transparent',
+  background: 'none',
+  color: 'inherit',
+  font: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  textUnderlineOffset: 2,
+  textDecorationColor: SURFACES.typeText,
+};
+
+/**
+ * Keyboard shortcut reference overlay (issue #266, React DOM per ADR 0003). Reads
+ * the shared `SURFACES` palette like the rest of the table chrome.
+ */
+export const shortcutBackdrop: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  background: 'rgba(9, 10, 12, 0.66)',
+  zIndex: 25,
+};
+
+export const shortcutPanel: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  width: '100%',
+  maxWidth: 360,
+  maxHeight: '80vh',
+  overflowY: 'auto',
+  padding: 20,
+  borderRadius: 12,
+  background: '#1E2126',
+  border: '1px solid #2C313A',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  boxSizing: 'border-box',
+};
+
+export const shortcutTitle: CSSProperties = {
+  margin: '0 0 4px',
+  fontSize: 16,
+  fontWeight: 700,
+  color: SURFACES.nameText,
+};
+
+export const shortcutRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '6px 0',
+  fontSize: 13,
+  color: SURFACES.nameText,
+};
+
+/** A binding with no matching action right now: dimmed. */
+export const shortcutRowOff: CSSProperties = {
+  opacity: 0.45,
+};
+
+/** The keycap for a binding. */
+export const shortcutKey: CSSProperties = {
+  minWidth: 56,
+  padding: '3px 8px',
+  borderRadius: 6,
+  background: '#15171A',
+  border: '1px solid #3A4049',
+  color: SURFACES.nameText,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 12,
+  fontWeight: 700,
+  textAlign: 'center',
+};
+
 export const bar: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -447,6 +913,16 @@ export const stackList: CSSProperties = {
   margin: 0,
   padding: 0,
   listStyle: 'none',
+};
+
+/**
+ * A stack list row: lays the entry (or its target button) beside its inspect
+ * handle. The entry grows to fill; the handle stays a fixed touch-sized control.
+ */
+export const stackItemRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  gap: 6,
 };
 
 /** One stack entry (spell or ability). */
