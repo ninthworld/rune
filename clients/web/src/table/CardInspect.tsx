@@ -33,6 +33,14 @@ interface Props {
   target: InspectTarget;
   /** Close the popover (backdrop click or the explicit close control). */
   onClose: () => void;
+  /**
+   * Render as a **transient peek** (issue #321): a non-blocking preview in one
+   * consistent home rather than the pinned modal. A peek has no backdrop, no close
+   * control, and never captures pointer input, so a hover-dwell / long-press / just-
+   * selected preview coexists with the interaction the player is already making.
+   * Omitted/`false` renders the pinned, dismissible panel.
+   */
+  transient?: boolean;
 }
 
 /**
@@ -51,8 +59,36 @@ function targetName(target: InspectTarget): string {
   return target.kind === 'card' ? target.card.name : target.item.description;
 }
 
-export function CardInspect({ target, onClose }: Props) {
+export function CardInspect({ target, onClose, transient = false }: Props) {
   const name = targetName(target);
+  const body =
+    target.kind === 'card' ? (
+      <CardBody card={target.card} tapped={target.tapped} counters={target.counters} />
+    ) : (
+      <StackBody item={target.item} />
+    );
+
+  // Transient peek (issue #321): a non-blocking preview parked in a consistent home.
+  // No backdrop, no close control, `pointer-events: none` — it never steals input
+  // from the interaction the player is already making, and its entrance honors
+  // `prefers-reduced-motion` (handled in the stylesheet).
+  if (transient) {
+    return (
+      <div
+        data-testid="card-inspect"
+        data-transient="true"
+        className={s.inspectPreview}
+        role="img"
+        aria-label={`Preview ${name}`}
+      >
+        <h2 className={s.inspectName} data-testid="card-inspect-name">
+          {name}
+        </h2>
+        {body}
+      </div>
+    );
+  }
+
   return (
     <div
       data-testid="card-inspect-backdrop"
@@ -81,11 +117,7 @@ export function CardInspect({ target, onClose }: Props) {
         <h2 className={s.inspectName} data-testid="card-inspect-name">
           {name}
         </h2>
-        {target.kind === 'card' ? (
-          <CardBody card={target.card} tapped={target.tapped} counters={target.counters} />
-        ) : (
-          <StackBody item={target.item} />
-        )}
+        {body}
       </div>
     </div>
   );
