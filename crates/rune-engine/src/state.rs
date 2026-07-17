@@ -238,11 +238,17 @@ pub struct Permanent {
     /// Not a zone-change counter: a permanent re-entering the battlefield gets a
     /// fresh [`PermanentId`] and a fresh `entered_turn`; nothing counts entries.
     pub entered_turn: u32,
-    /// Whether this permanent is currently attacking, i.e. it was declared as an
-    /// attacker this combat and has not yet been removed from combat (CR 508.1,
-    /// CR 511.3). Raw stored state, set when attackers are declared and cleared at
-    /// the end-of-combat step. `false` for a permanent not in combat.
-    pub attacking: bool,
+    /// Whom this permanent is attacking, i.e. the defending player it was declared
+    /// to attack this combat (CR 508.1a — each attacker attacks a chosen defending
+    /// player), or `None` if it is not attacking. Raw stored state, set when
+    /// attackers are declared and cleared at the end-of-combat step (CR 511.3).
+    ///
+    /// This is the one field that carries combat's multiplayer generalization: a
+    /// two-player game's sole legal defender is the one opponent, but with more
+    /// seats each attacker records *which* opponent it attacks, and blocker
+    /// eligibility and combat damage follow that assignment (issue #341). `None`
+    /// for a permanent not in combat.
+    pub attacking: Option<PlayerId>,
     /// The attacker this permanent is blocking, if it was declared as a blocker
     /// this combat (CR 509.1); `None` for a permanent that is not blocking.
     ///
@@ -566,6 +572,26 @@ impl GameState {
         if self.log.len() > LOG_WINDOW {
             self.log.remove(0);
         }
+    }
+
+    /// A bare in-progress scaffold with `seats` players (clamped to at least two),
+    /// seeded with `rng_seed`; the multiplayer generalization of
+    /// [`Self::new_two_player_with_seed`]. Turn and priority start on seat 0 and no
+    /// combat is in progress, so it is a ready base for the engine's multiplayer
+    /// combat and elimination tests (issues #341/#342/#344).
+    #[must_use]
+    pub fn new_multiplayer_with_seed(seats: usize, rng_seed: u64) -> Self {
+        Self {
+            players: (0..seats.max(2)).map(|_| Player::new()).collect(),
+            ..Self::new_two_player_with_seed(rng_seed)
+        }
+    }
+
+    /// A bare in-progress scaffold with `seats` players (clamped to at least two);
+    /// the multiplayer counterpart of [`Self::new_two_player`].
+    #[must_use]
+    pub fn new_multiplayer(seats: usize) -> Self {
+        Self::new_multiplayer_with_seed(seats, 0)
     }
 
     /// Mint a fresh, never-reused object id from the monotonic counter.

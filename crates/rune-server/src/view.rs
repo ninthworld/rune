@@ -12,10 +12,11 @@
 
 use rune_engine::{
     attacker_candidates, blocker_candidates, bottom_requirement, characteristics,
-    declared_attackers, scripted_rules_text, target_requirements, valid_actions, Action, Block,
-    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, DamageTarget,
-    GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player,
-    PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    declared_attackers, defending_player, scripted_rules_text, target_requirements, valid_actions,
+    Action, Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
+    CounterKind, DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedPermanent,
+    LossReason, PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
+    TargetSpec,
 };
 
 use crate::rules_text::{effects_description, rules_text};
@@ -819,8 +820,11 @@ pub(crate) fn personalized_view(
             card: permanent_card_view(state, perm, db),
             tapped: perm.tapped,
             // Combat declaration state (CR 508/509): whether this permanent is
-            // attacking, and which attacker it is blocking (as an entity id).
-            attacking: perm.attacking,
+            // attacking, and which attacker it is blocking (as an entity id). The
+            // engine now records *whom* an attacker attacks (issue #341); the wire
+            // still projects only the boolean fact here — the attacked player rides
+            // in the view with the multiplayer contract (issue #345).
+            attacking: perm.attacking.is_some(),
             blocking: perm.blocking.map(permanent_entity_id),
             // Marked combat damage (CR 120.3 / 510), for lethal-damage display.
             damage: perm.damage,
@@ -1110,9 +1114,22 @@ fn bind_attackers(
         return None;
     }
     let candidates = attacker_candidates(state, db);
+    // The wire still declares attackers as a plain id multi-select against the
+    // sole opponent (issue #341 keeps the two-player view unchanged; the
+    // per-attacker defender rides in with the multiplayer contract, #345). Bind
+    // every chosen attacker to the one legal defender. With no single defender
+    // (a >2-seat game, unreachable until #344/#345) the declaration binds nothing.
+    let Some(defender) = defending_player(state) else {
+        return Some(Action::DeclareAttackers {
+            attackers: Vec::new(),
+        });
+    };
     let mut attackers = Vec::new();
     for id in chosen_for(targets, "attackers") {
-        attackers.push(permanent_in(&candidates, id)?);
+        attackers.push(Attack {
+            attacker: permanent_in(&candidates, id)?,
+            defender,
+        });
     }
     Some(Action::DeclareAttackers { attackers })
 }
@@ -1530,7 +1547,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -1544,7 +1561,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -1584,7 +1601,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             // Insertion order is deliberately reversed from the expected wire
@@ -1605,7 +1622,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -1675,7 +1692,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: true,
             entered_turn: 0,
-            attacking: true,
+            attacking: Some(PlayerId(1)),
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -1689,7 +1706,7 @@ mod tests {
             controller: PlayerId(1),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: Some(attacker),
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -1733,7 +1750,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 2,
             counters: std::collections::BTreeMap::new(),
@@ -1776,7 +1793,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: BTreeMap::new(),
@@ -1838,7 +1855,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -1852,7 +1869,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -2166,7 +2183,9 @@ mod tests {
             // Entered a previous turn, so it is free of summoning sickness in a
             // turn > 0 combat state (CR 302.6).
             entered_turn: 0,
-            attacking,
+            // The bool param stages a two-player combat: attacking the sole
+            // opponent, seat 1 (issue #341 made this the defending player).
+            attacking: attacking.then_some(PlayerId(1)),
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),
@@ -2444,7 +2463,10 @@ mod tests {
         assert_eq!(
             resolved,
             Action::DeclareAttackers {
-                attackers: vec![attacker],
+                attackers: vec![Attack {
+                    attacker,
+                    defender: PlayerId(1),
+                }],
             },
         );
 

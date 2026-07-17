@@ -4,6 +4,15 @@
 //!
 //! Declarations (issue #117): who *may* attack (CR 508.1a), who *may* block
 //! (CR 509.1a), and which player owes the declaration in each declare step.
+//! Attack targets (issue #341): each attacker is declared to attack a chosen
+//! defending player — [`Permanent::attacking`] records *whom* (an
+//! `Option<PlayerId>`), not a bare boolean. In a two-player game the sole opponent
+//! is the only legal defender ([`defender_candidates`] returns exactly it), so
+//! combat plays as it always has; with more seats each attacker picks an opponent,
+//! blocker eligibility is scoped to attackers attacking that blocker's controller,
+//! and combat damage routes to each attacker's own defender. The multi-defender
+//! *declaration flow* (each attacked player declaring blockers in APNAP order) is
+//! issue #344; this module already carries the per-attacker targets it builds on.
 //! Combat damage (issue #118, extended by #154): the assignment each attacker and
 //! blocker makes in a combat-damage step (CR 510.1), gathered so it can be dealt
 //! simultaneously (CR 510.2). First strike splits combat into two damage steps
@@ -21,19 +30,41 @@ use crate::phase::Step;
 use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
 
-/// The defending player this combat: in a two-player game, the one player who is
-/// not the active player (CR 508.1 — the active player is the attacking player,
-/// and this slice's single legal attack target is the sole opponent).
+/// The players an attacker may legally be declared to attack (CR 508.1a): every
+/// opponent still in the game — a seat other than the active (attacking) player
+/// that has not lost. In seat order, so the enumeration is deterministic.
 ///
-/// `None` on a state without an opponent to defend (fewer than two seats), so
-/// callers never fabricate a defender.
+/// In a two-player game this is exactly the sole opponent, so the only legal
+/// assignment for every attacker is that one player and combat plays as it always
+/// has. With more seats each attacker chooses among these candidates (issue #341).
+/// A player may never attack themselves or an eliminated player, so neither is a
+/// candidate.
 #[must_use]
-pub(crate) fn defending_player(state: &GameState) -> Option<PlayerId> {
-    let seats = state.players.len();
-    if seats < 2 {
-        return None;
+pub fn defender_candidates(state: &GameState) -> Vec<PlayerId> {
+    state
+        .players
+        .iter()
+        .enumerate()
+        .filter(|(seat, player)| PlayerId(*seat) != state.active_player && !player.has_lost)
+        .map(|(seat, _)| PlayerId(seat))
+        .collect()
+}
+
+/// The single defending player of a two-player combat: the one opponent still in
+/// the game (CR 508.1). `None` when there is not exactly one eligible defender —
+/// on a state with fewer than two seats, or (once multiplayer combat lands) more
+/// than one opponent, where there is no *single* defender and callers must consult
+/// [`defender_candidates`] / each attacker's own [`Permanent::attacking`] target
+/// instead. This keeps every two-player code path (blocker declaration flow,
+/// server view binding) working unchanged while the multi-defender flow (#344)
+/// builds on the per-attacker targets.
+#[must_use]
+pub fn defending_player(state: &GameState) -> Option<PlayerId> {
+    let candidates = defender_candidates(state);
+    match candidates.as_slice() {
+        [only] => Some(*only),
+        _ => None,
     }
-    Some(PlayerId((state.active_player.0 + 1) % seats))
 }
 
 /// Whether `perm` has summoning sickness for its controller (CR 302.6): it has
@@ -124,23 +155,39 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
         .collect()
 }
 
-/// The permanents the defending player may legally declare as blockers right now
+/// The permanents `defender` may legally declare as blockers right now
 /// (CR 509.1a): untapped creatures they control (a tapped creature can't block).
-/// In stable battlefield order. Empty when there is no defender.
+/// In stable battlefield order.
 ///
-/// This is the multi-select candidate set of *blockers* for the declare-blockers
-/// action; the attacker each is assigned to comes from [`declared_attackers`].
+/// This is the per-defender blocker candidate set: a player may block only with
+/// their own creatures, and (enforced in the declaration's legality check, not
+/// here) only against attackers attacking *them* (issue #341). The multi-defender
+/// declaration flow (#344) calls this once per attacked player.
 #[must_use]
-pub fn blocker_candidates(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> {
-    let Some(defender) = defending_player(state) else {
-        return Vec::new();
-    };
+pub fn blocker_candidates_for(
+    state: &GameState,
+    defender: PlayerId,
+    db: &CardDatabase,
+) -> Vec<PermanentId> {
     state
         .battlefield
         .iter()
         .filter(|perm| perm.controller == defender && is_creature(perm, db) && !perm.tapped)
         .map(|perm| perm.id)
         .collect()
+}
+
+/// The permanents the sole defending player of a two-player combat may legally
+/// declare as blockers (CR 509.1a). Empty when there is no single defender (see
+/// [`defending_player`]). A convenience over [`blocker_candidates_for`] for the
+/// two-player declaration flow and server view binding; the multi-defender flow
+/// (#344) uses [`blocker_candidates_for`] per attacked player.
+#[must_use]
+pub fn blocker_candidates(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> {
+    let Some(defender) = defending_player(state) else {
+        return Vec::new();
+    };
+    blocker_candidates_for(state, defender, db)
 }
 
 /// The permanents currently declared as attackers, in stable battlefield order —
@@ -150,9 +197,21 @@ pub fn declared_attackers(state: &GameState) -> Vec<PermanentId> {
     state
         .battlefield
         .iter()
-        .filter(|perm| perm.attacking)
+        .filter(|perm| perm.attacking.is_some())
         .map(|perm| perm.id)
         .collect()
+}
+
+/// Whom the permanent `attacker` is attacking this combat (CR 508.1a), or `None`
+/// if it is not on the battlefield or is not an attacker. This is the defending
+/// player its combat damage routes to and the player whose creatures may block it.
+#[must_use]
+pub fn attacking_defender_of(state: &GameState, attacker: PermanentId) -> Option<PlayerId> {
+    state
+        .battlefield
+        .iter()
+        .find(|p| p.id == attacker)
+        .and_then(|p| p.attacking)
 }
 
 /// The player who owes a combat declaration in the current step, if any: the
@@ -263,10 +322,9 @@ fn deals_in_step(perm: &Permanent, step: DamageStep, db: &CardDatabase) -> bool 
 /// a single [`DamageStep::Only`] step suffices.
 #[must_use]
 pub(crate) fn combat_has_first_strike(state: &GameState, db: &CardDatabase) -> bool {
-    state
-        .battlefield
-        .iter()
-        .any(|p| (p.attacking || p.blocking.is_some()) && has_keyword(p, Keyword::FirstStrike, db))
+    state.battlefield.iter().any(|p| {
+        (p.attacking.is_some() || p.blocking.is_some()) && has_keyword(p, Keyword::FirstStrike, db)
+    })
 }
 
 /// The attackers that are *blocked* this combat — each has at least one creature
@@ -282,7 +340,9 @@ pub(crate) fn blocked_attackers(state: &GameState) -> Vec<PermanentId> {
     state
         .battlefield
         .iter()
-        .filter(|p| p.attacking && state.battlefield.iter().any(|b| b.blocking == Some(p.id)))
+        .filter(|p| {
+            p.attacking.is_some() && state.battlefield.iter().any(|b| b.blocking == Some(p.id))
+        })
         .map(|p| p.id)
         .collect()
 }
@@ -384,13 +444,15 @@ fn push_permanent_damage(
 /// is still treated as blocked (CR 509.1h). `step` gates which creatures deal
 /// (first strike splits combat in two, CR 510.5 — see [`deals_in_step`]).
 ///
-/// - An **unblocked** attacker assigns its combat damage to the defending player
-///   (CR 510.1c). Lifelink gains its controller that much life (CR 702.15e).
+/// - An **unblocked** attacker assigns its combat damage to the player it is
+///   attacking — its own chosen defender (CR 510.1c / 508.1a), not a single global
+///   defender, so split attacks route to the right seats. Lifelink gains its
+///   controller that much life (CR 702.15e).
 /// - A **blocked** attacker assigns its combat damage among its *surviving*
 ///   blockers in battlefield order, each just-lethal before the next
 ///   (deathtouch-aware, CR 510.1e); with **trample** any remainder is assigned to
-///   the defending player (CR 702.19e), otherwise it is left undealt. Player-chosen
-///   damage-assignment order is still deferred.
+///   the player it is attacking (CR 702.19e), otherwise it is left undealt.
+///   Player-chosen damage-assignment order is still deferred.
 /// - Each surviving blocker assigns its combat damage to the attacker it blocks
 ///   (CR 510.1c), carrying its own deathtouch/lifelink.
 ///
@@ -403,9 +465,11 @@ pub(crate) fn combat_damage(
     step: DamageStep,
     blocked: &[PermanentId],
 ) -> Vec<CombatDamage> {
-    let defender = defending_player(state);
     let mut out = Vec::new();
-    for attacker in state.battlefield.iter().filter(|p| p.attacking) {
+    for attacker in state.battlefield.iter().filter(|p| p.attacking.is_some()) {
+        // The player this attacker is attacking (CR 508.1a): its damage and any
+        // trample overflow route here, not to a single global defender.
+        let defender = attacker.attacking;
         let blockers = blockers_of(state, attacker.id);
         // The attacker's own strike, if it deals in this step.
         if deals_in_step(attacker, step, db) {
@@ -414,7 +478,7 @@ pub(crate) fn combat_damage(
             let lifelink = has_keyword(attacker, Keyword::Lifelink, db);
             let controller = attacker.controller;
             if !blocked.contains(&attacker.id) {
-                // Unblocked: the attacker's damage goes to the defending player.
+                // Unblocked: the attacker's damage goes to the player it attacks.
                 if power > 0 {
                     if let Some(player) = defender {
                         push_player_damage(&mut out, player, power, controller, lifelink);
@@ -501,7 +565,7 @@ mod tests {
             controller,
             tapped,
             entered_turn,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: Default::default(),
@@ -576,7 +640,7 @@ mod tests {
             controller,
             tapped: false,
             entered_turn,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: Default::default(),
@@ -644,11 +708,24 @@ mod tests {
 
     // ----- Combat II: first strike / trample / deathtouch / lifelink (issue #154) -----
 
-    /// Place an attacking creature of `card` under `controller`; returns its id.
+    /// Place an attacking creature of `card` under `controller` attacking the sole
+    /// opponent (the two-player default); returns its id.
     fn attacker(state: &mut GameState, card: CardId, controller: PlayerId) -> PermanentId {
+        let defender = defending_player(state).unwrap_or(PlayerId(1));
+        attacker_of(state, card, controller, defender)
+    }
+
+    /// Place an attacking creature of `card` under `controller` attacking
+    /// `defender`; returns its id. Used by the multi-defender combat tests.
+    fn attacker_of(
+        state: &mut GameState,
+        card: CardId,
+        controller: PlayerId,
+        defender: PlayerId,
+    ) -> PermanentId {
         let id = creature_card(state, card, controller, 0);
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-            perm.attacking = true;
+            perm.attacking = Some(defender);
         }
         id
     }
@@ -829,6 +906,129 @@ mod tests {
         assert!(
             batch.is_empty(),
             "a blocked non-trampler with no surviving blockers deals nothing"
+        );
+    }
+
+    // ----- Multiplayer combat: per-attacker attack targets (issue #341) -----
+
+    #[test]
+    fn issue_341_defender_candidates_are_every_living_opponent_cr_508_1a() {
+        // CR 508.1a: an attacker may be declared to attack any opponent still in the
+        // game — never the active player, never an eliminated one.
+        let mut state = GameState::new_multiplayer(3);
+        state.active_player = PlayerId(0);
+        assert_eq!(
+            defender_candidates(&state),
+            vec![PlayerId(1), PlayerId(2)],
+            "both opponents of the active player are candidates"
+        );
+        // A two-player game has exactly one defender candidate — the sole opponent —
+        // so `defending_player` resolves and combat plays as it always has.
+        let two = GameState::new_two_player();
+        assert_eq!(defender_candidates(&two), vec![PlayerId(1)]);
+        assert_eq!(defending_player(&two), Some(PlayerId(1)));
+        // With more than one opponent there is no single defender.
+        assert_eq!(defending_player(&state), None);
+
+        // An eliminated opponent drops out of the candidate set.
+        state.players[1].has_lost = true;
+        assert_eq!(defender_candidates(&state), vec![PlayerId(2)]);
+    }
+
+    #[test]
+    fn issue_341_split_attacks_route_damage_to_each_chosen_defender() {
+        // CR 510.1c: with attackers split across two defenders, each unblocked
+        // attacker's damage goes to *its own* chosen defender, not one global one.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        // Seat 0 attacks: a 3/2 at seat 1 and a 3/2 at seat 2, both unblocked.
+        let _at1 = attacker_of(
+            &mut state,
+            fixture("thornback_boar"),
+            PlayerId(0),
+            PlayerId(1),
+        );
+        let _at2 = attacker_of(
+            &mut state,
+            fixture("thornback_boar"),
+            PlayerId(0),
+            PlayerId(2),
+        );
+        let blocked = blocked_attackers(&state);
+        assert!(blocked.is_empty());
+
+        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
+        assert!(
+            batch.contains(&CombatDamage::ToPlayer {
+                player: PlayerId(1),
+                amount: 3,
+            }),
+            "the attacker assigned to seat 1 hits seat 1"
+        );
+        assert!(
+            batch.contains(&CombatDamage::ToPlayer {
+                player: PlayerId(2),
+                amount: 3,
+            }),
+            "the attacker assigned to seat 2 hits seat 2"
+        );
+    }
+
+    #[test]
+    fn issue_341_trample_overflow_routes_to_the_attackers_own_defender() {
+        // CR 702.19e: a blocked trampler's overflow goes to the player it is
+        // attacking. A 5/4 trampler at seat 2, blocked by seat 2's 3/2, assigns 2
+        // (lethal) to the blocker and tramples 3 to seat 2 — never seat 1.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        let atk = attacker_of(
+            &mut state,
+            fixture("gorehorn_ravager"),
+            PlayerId(0),
+            PlayerId(2),
+        ); // trample 5/4
+        let blk = blocker(&mut state, fixture("thornback_boar"), PlayerId(2), atk); // 3/2
+        let blocked = blocked_attackers(&state);
+
+        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
+        assert!(batch.contains(&CombatDamage::ToPermanent {
+            permanent: blk,
+            amount: 2,
+            deathtouch: false,
+        }));
+        assert!(
+            batch.contains(&CombatDamage::ToPlayer {
+                player: PlayerId(2),
+                amount: 3,
+            }),
+            "trample overflow hits the attacker's own defender (seat 2)"
+        );
+        assert!(
+            !batch.contains(&CombatDamage::ToPlayer {
+                player: PlayerId(1),
+                amount: 3,
+            }),
+            "no damage leaks to the other opponent (seat 1)"
+        );
+    }
+
+    #[test]
+    fn issue_341_blocker_candidates_are_per_defender() {
+        // Blocker candidates for a defending player include only that player's own
+        // untapped creatures (issue #341); the per-attacker scoping is enforced in
+        // the declaration's legality check.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        let seat1_creature = creature_card(&mut state, fixture("verdant_scout"), PlayerId(1), 0);
+        let seat2_creature = creature_card(&mut state, fixture("verdant_scout"), PlayerId(2), 0);
+
+        assert_eq!(
+            blocker_candidates_for(&state, PlayerId(1), &db),
+            vec![seat1_creature]
+        );
+        assert_eq!(
+            blocker_candidates_for(&state, PlayerId(2), &db),
+            vec![seat2_creature]
         );
     }
 }
