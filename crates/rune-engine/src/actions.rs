@@ -10,8 +10,8 @@ use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
 use crate::card::{abilities_of, CardData};
 use crate::card_type::CardType;
 use crate::combat::{
-    attacker_candidates, attacking_defender_of, blocker_can_block_attacker, blocker_candidates,
-    declared_attackers, defender_candidates, defending_player,
+    attacker_candidates, attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for,
+    declared_attackers, defender_candidates, pending_blocker_declarer,
 };
 use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
@@ -310,9 +310,11 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             Vec::new()
         };
     }
-    if state.step == Step::DeclareBlockers && !state.blockers_declared {
-        // CR 509.1: the defending player declares blockers.
-        return if Some(priority) == defending_player(state) {
+    if state.step == Step::DeclareBlockers && pending_blocker_declarer(state).is_some() {
+        // CR 509.1: each attacked player declares blockers for the attackers
+        // attacking them, in APNAP order (issue #344). Only the player who owes the
+        // next declaration is offered it.
+        return if Some(priority) == pending_blocker_declarer(state) {
             let mut actions = vec![Action::DeclareBlockers { blocks: Vec::new() }];
             offer_concede(&mut actions);
             actions
@@ -594,46 +596,41 @@ fn attackers_selection_is_legal(
 }
 
 /// Whether a declared blocker selection is legal (CR 509.1a): every blocker is a
-/// current blocker candidate ([`blocker_candidates`]), every named attacker is
-/// currently attacking ([`declared_attackers`]), no creature is declared as a
-/// blocker more than once (each blocker is assigned to exactly one attacker), and
-/// each blocker can legally block the attacker it is assigned to given evasion
-/// keywords — a flyer can be blocked only by flying or reach (CR 702.9c, 702.17b,
-/// via [`blocker_can_block_attacker`]). An empty selection is legal (declaring no
-/// blockers).
+/// current blocker candidate of the player who owes this declaration
+/// ([`blocker_candidates_for`] the [`pending_blocker_declarer`]), every named
+/// attacker is currently attacking ([`declared_attackers`]) *and attacking that
+/// player* (CR 509.1a — a player blocks only attackers attacking them), no creature
+/// is declared as a blocker more than once, and each blocker can legally block the
+/// attacker it is assigned to given evasion keywords — a flyer can be blocked only
+/// by flying or reach (CR 702.9c, 702.17b, via [`blocker_can_block_attacker`]). An
+/// empty selection is legal (declaring no blockers).
+///
+/// Scoping to the current declarer is what makes the multi-defender flow (issue
+/// #344) safe: each attacked player's declaration is validated against exactly
+/// their own creatures and the attackers attacking them. Two-player games are
+/// unchanged — the sole opponent is the one declarer.
 ///
 /// Evasion is checked per assignment rather than by trimming the candidate set, so
 /// a partial block of a mix of flying and ground attackers stays expressible: a
 /// ground creature may still block the ground attacker in the same declaration
 /// that a flyer blocks the flyer.
 fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Block]) -> bool {
-    let blockers = blocker_candidates(state, db);
+    let Some(declarer) = pending_blocker_declarer(state) else {
+        // No declaration is owed: only the empty selection is vacuously legal.
+        return blocks.is_empty();
+    };
+    let blockers = blocker_candidates_for(state, declarer, db);
     let attackers = declared_attackers(state);
     let assigned: Vec<PermanentId> = blocks.iter().map(|b| b.blocker).collect();
     all_unique(&assigned)
         && blocks.iter().all(|b| {
             blockers.contains(&b.blocker)
                 && attackers.contains(&b.attacker)
-                // A player may block only attackers attacking *them* (CR 509.1a,
-                // issue #341): the attacker's chosen defender must be the blocker's
-                // controller. In a two-player game this always holds, since the sole
-                // opponent is the only defender.
-                && blocker_controller(state, b.blocker)
-                    .zip(attacking_defender_of(state, b.attacker))
-                    .is_some_and(|(controller, defender)| controller == defender)
+                // CR 509.1a: the declaring player may block only attackers attacking
+                // *them*, so the attacker's chosen defender must be this declarer.
+                && attacking_defender_of(state, b.attacker) == Some(declarer)
                 && blocker_can_block_attacker(state, b.attacker, b.blocker, db)
         })
-}
-
-/// The controller of a would-be blocker `id`, or `None` if it is not on the
-/// battlefield. Used to enforce that a player blocks only attackers attacking
-/// them (CR 509.1a).
-fn blocker_controller(state: &GameState, id: PermanentId) -> Option<PlayerId> {
-    state
-        .battlefield
-        .iter()
-        .find(|p| p.id == id)
-        .map(|p| p.controller)
 }
 
 /// Whether every element of `ids` is distinct. O(n²), which is fine for the
