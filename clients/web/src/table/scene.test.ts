@@ -153,6 +153,46 @@ describe('buildTableScene', () => {
     expect(scene.hand.map((c) => c.tier)).toEqual(['hand']);
   });
 
+  it('labels each band by its controller and marks the local one (issue #278)', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const local = scene.bands.at(-1);
+    const opponent = scene.bands[0];
+    expect(local?.isLocal).toBe(true);
+    expect(local?.label).toBe('p1 (you)');
+    expect(opponent?.label).toBe('p2');
+  });
+
+  it('gives every band a bounded region, including an empty one (issue #278)', () => {
+    const scene = buildTableScene(boardView(['p1'], 0));
+    const band = scene.bands[0];
+    expect(band?.isEmpty).toBe(true);
+    // An empty lane still reserves a labeled, non-zero region a newcomer can see.
+    expect(band?.rect.w).toBeGreaterThan(0);
+    expect(band?.rect.h).toBeGreaterThan(0);
+  });
+
+  it('carries each controller’s zone pile counts straight from the view (issue #278)', () => {
+    const view = SAMPLE_GAME_VIEW;
+    const scene = buildTableScene(view);
+    const local = scene.bands.at(-1);
+    const opponent = scene.bands[0];
+    // Local library comes from `me`; an opponent's from its redacted view.
+    expect(local?.zones.library).toBe(view.me.library_size);
+    expect(opponent?.zones.library).toBe(
+      view.opponents.find((o) => o.player_id === 'p2')?.library_size ?? -1,
+    );
+    // Graveyard/exile counts mirror the piles the tiles read.
+    expect(local?.zones.graveyard).toBe(
+      view.graveyards.find((g) => g.player_id === 'p1')?.cards.length ?? -1,
+    );
+  });
+
+  it('labels the hand row as its own region (issue #278)', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    expect(scene.handRegion.label).toBe('Your hand');
+    expect(scene.handRegion.rect.h).toBeGreaterThan(0);
+  });
+
   it('marks the selected entity so its card draws a ring', () => {
     const scene = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
     expect(scene.bands.at(-1)?.cards[0]?.data.selected).toBe(true);
