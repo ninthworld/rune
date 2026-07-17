@@ -199,6 +199,35 @@ describe('LobbyScreen (issue #114)', () => {
     expect(screen.queryByTestId('join-directory-r0')).toBeNull();
   });
 
+  it('names roster seats: a seat-derived fallback plus a You tag for the local seat (#300)', () => {
+    // #294 has not landed, so occupied seats read as the seat-derived "Player N"
+    // fallback; the local seat additionally carries a "You" tag.
+    mountLobby(LOBBY_ROOM_ALL_READY_JSON);
+    const seat0 = screen.getByTestId('seat-0');
+    const seat1 = screen.getByTestId('seat-1');
+    expect(seat0.textContent).toContain('Player 1');
+    expect(seat0.textContent).toContain('You');
+    expect(seat1.textContent).toContain('Player 2');
+    // The opaque player id is never shown as the primary name.
+    expect(seat1.textContent).not.toContain('p2');
+  });
+
+  it('renders RUNE identity procedurally and puts the directory first (#300)', () => {
+    mountLobby(LOBBY_DIRECTORY_JSON);
+    // Procedural motif: an inline SVG mark and the wordmark, never an image asset.
+    expect(screen.getByRole('heading', { name: 'RUNE' })).toBeDefined();
+    expect(document.querySelector('svg')).not.toBeNull();
+    expect(document.querySelector('img')).toBeNull();
+
+    // The room directory (primary path) renders ahead of the create-room card in
+    // document order.
+    const directory = screen.getByTestId('room-directory');
+    const create = screen.getByTestId('create-room');
+    expect(
+      directory.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('renders a non-fatal lobby error with the form still interactive', () => {
     mountLobby(LOBBY_ROOMLESS_JSON);
     act(() =>
