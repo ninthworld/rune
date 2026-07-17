@@ -16,7 +16,9 @@ The server provides explicit rooms, validated deck submission, a ready gate, per
 optional decision timers, and server-owned priority automation — auto-pass of idle priority
 holds with per-phase stop preferences that survive reconnect (ADR 0020). The catalog contains
 36 functional definitions and a complete basic-land cycle; the bundled starter decks are shared
-by the web client and the full-game agent test.
+by the web client and the full-game agent test. A deterministic, CI-checked compatibility
+report ([`generated/compatibility.md`](generated/compatibility.md), #258) names every
+supported card and excluded mechanic, with a freshness gate that fails `make check` on drift.
 
 The web client implements the lobby and game flow, targeting, combat selection, stack, game
 over, card inspection, public-zone browsers, keyboard controls, and timer display, and has
@@ -25,52 +27,47 @@ full-bleed adaptive table shell with its pure layout function (#295), player HUD
 the compact turn/phase indicator (#297), anchored decision staging (#298), the collapsible
 stack/activity rail (#299), connection and lobby identity screens (#300), protocol-carried
 display names (#294), and the capability-aware spatial focus model (#301). On that shell it
-now ships the comprehension layer: the game-log panel with clickable references and collapsed
+ships the comprehension layer — the game-log panel with clickable references and collapsed
 step runs (#260) over structured, redacted log events carried in `GameView` (#259), per-phase
 stop toggles with an auto-pass indicator (#264), and non-blaming rejected-action toasts with
-distinct fizzle log entries (#265).
+distinct fizzle log entries (#265) — and the battlefield-legibility batch: the procedural
+rune glyph language (#317), type-grouped battlefield bands with land chips, ×N stacking, and
+tapped-footprint reservation (#318), zone piles as findable spatial objects (#319), the
+card-face information budget — keyword glyphs and activated-ability markers at battlefield
+scale (#320), inspect without per-card chrome (#321), and a bundled OFL display face behind
+`--rune-font-display` (#322).
 
-The presentation gap has moved from the shell to the surfaces on it. Inside each player's
-lane the battlefield is still one undifferentiated row of same-size cards: no type-grouped
-rows or land chips, no stacking of identical permanents, and tapped cards can collide with
-their neighbors. Zone piles read as header chips rather than findable objects, every card
-carries a permanently visible inspect handle, card faces stop at cost and P/T (no keyword
-or ability indicators), and the identity layer — display face, glyph language — is not yet
-built. The targets for all of these are specified in
+The presentation gap has moved from drawing the board to showing true game state on it. The
+view contract already carries combat facts the board never renders: `Permanent.attacking`,
+`blocking`, and marked `damage` are projected by the server and documented in the protocol,
+but the client's TypeScript mirror drops them, so declared combat and marked damage are
+invisible outside the log (#332). Aura attachment is engine state the view does not carry at
+all, so an aura renders as a free-standing card with no visible host (#333). And board
+changes teleport: the scene reconciler has no animate-the-diff layer, so row migrations and
+zone transitions snap into place (#334). The targets are specified in
 [`design/ui-design-notes.md`](design/ui-design-notes.md).
 
 ## Immediate priorities
 
-With the shell (#293–#301) and the comprehension layer (#259, #260, #264, #265) landed,
-priorities move inside the battlefield. The glyph language leads the batch because two of
-the surfaces consume it:
+With the battlefield-legibility batch (#317–#322) and the M3 compatibility report (#258)
+landed, priorities move from board layout to state visibility:
 
-1. Glyph foundation: the procedural rune glyph language for zones, phases, keywords, and
-   tap state ([#317](https://github.com/ninthworld/rune/issues/317)) — blocks the two
-   items below.
-2. Board legibility: the battlefield-band interior specified in
-   [`design/ui-design-notes.md`](design/ui-design-notes.md) — type-grouped rows with land
-   chips, ×N stacking of identical permanents, and tier-dependent tapped treatment that
-   reserves the rotated footprint ([#318](https://github.com/ninthworld/rune/issues/318)),
-   then zone piles as findable spatial objects
-   ([#319](https://github.com/ninthworld/rune/issues/319)).
-3. Card-face information budget: keyword glyphs and the activated-ability marker at
-   battlefield scale, so reading the board doesn't require serial inspection
-   ([#320](https://github.com/ninthworld/rune/issues/320)).
-4. Inspect without clutter: retire the permanent per-card inspect handles in favor of
-   selection-surfaced preview, hover-dwell peek, and long-press
-   ([#321](https://github.com/ninthworld/rune/issues/321)).
-5. Identity: the bundled OFL display face behind `--rune-font-display`
-   ([#322](https://github.com/ninthworld/rune/issues/322)).
-6. M3 evidence closeout: the deterministic, CI-checked card-compatibility report
-   ([#258](https://github.com/ninthworld/rune/issues/258)) — **shipped**:
-   [`docs/generated/compatibility.md`](generated/compatibility.md), generated by
-   `make compat` and kept fresh by a `cargo test` gate.
+1. Combat visibility: render declared attackers, blockers, and marked damage from the
+   already-shipped view contract, closing the TypeScript-mirror drift
+   ([#332](https://github.com/ninthworld/rune/issues/332)).
+2. Attachment visibility: carry `attached_to` on `Permanent` (a contract change) and
+   cluster auras with their hosts on the board and in inspect
+   ([#333](https://github.com/ninthworld/rune/issues/333)) — may run in parallel with #332.
+3. Motion: the reconciler's animate-the-diff layer — row migrations and board transitions
+   that honor reduced motion and never block input
+   ([#334](https://github.com/ninthworld/rune/issues/334)); preferably after #332 so combat
+   transitions animate too.
 
 Real-browser coverage (a smoke path through rendered turns,
-[#279](https://github.com/ninthworld/rune/issues/279)) stays **deferred** with the rest of the
-E2E suite (ADR 0011) while the in-game UI is still in flux; the canvas render path is guarded by
-component-level tests in the meantime.
+[#279](https://github.com/ninthworld/rune/issues/279), reopened because the #290 canary was
+reverted in #292) stays **deferred** with the rest of the E2E suite (ADR 0011) while the
+in-game UI is still in flux; the canvas render path is guarded by component-level tests in
+the meantime.
 
 ## Milestones
 
@@ -135,24 +132,31 @@ Shipped foundations:
   structured `GameView` log, with clickable entity/player references and collapsible step
   runs (#260);
 - server-owned priority automation — auto-pass of idle priority holds with per-phase stop
-  preferences, an auto-pass indicator, and reconnect-safe settings (#264, ADR 0020); and
+  preferences, an auto-pass indicator, and reconnect-safe settings (#264, ADR 0020);
 - rejection and fizzle feedback — non-blaming toasts for rejected in-game actions and
-  distinct countered-versus-fizzled log entries (#265).
+  distinct countered-versus-fizzled log entries (#265);
+- battlefield-band legibility — type-grouped rows, land chips, ×N stacking of identical
+  permanents, and tier-dependent tapped treatment that reserves the rotated footprint
+  (#318);
+- zone piles as findable spatial objects with a face-up slot for future reveals (#319);
+- the card-face information budget — keyword glyphs, the latent activated-ability marker,
+  and counter badges at battlefield scale, plus a marked-damage badge that lights up once
+  #332 feeds it (#320);
+- the inspect affordance redesign — no permanently visible per-card handles; hover-dwell
+  peek, long-press, selection-surfaced preview, and focusable inspect surfaces (#321); and
+- the identity layer — the procedural rune glyph language (#317) and the bundled OFL
+  display face behind `--rune-font-display` (#322).
 
 Remaining:
 
-- battlefield-band legibility: type-grouped rows, land chips, ×N stacking of
-  identical permanents, and tier-dependent tapped treatment without overlap
-  ([#318](https://github.com/ninthworld/rune/issues/318));
-- zone piles as findable spatial objects
-  ([#319](https://github.com/ninthworld/rune/issues/319));
-- the card-face information budget: keyword glyphs and activated-ability markers at
-  battlefield scale ([#320](https://github.com/ninthworld/rune/issues/320));
-- the inspect affordance redesign: no permanently visible per-card handles
-  ([#321](https://github.com/ninthworld/rune/issues/321)); and
-- the identity layer: the procedural rune glyph language
-  ([#317](https://github.com/ninthworld/rune/issues/317)) and a bundled OFL display face
-  ([#322](https://github.com/ninthworld/rune/issues/322)).
+- combat-state visibility: declared attackers, blockers, and marked damage rendered from
+  the `Permanent` fields the server already sends
+  ([#332](https://github.com/ninthworld/rune/issues/332));
+- attachment visibility: `attached_to` carried on `Permanent` (contract change) and auras
+  clustered with their hosts on the board and in inspect
+  ([#333](https://github.com/ninthworld/rune/issues/333)); and
+- the view-diff animation layer: row migrations and board transitions that honor reduced
+  motion and never block input ([#334](https://github.com/ninthworld/rune/issues/334)).
 
 ### M5 — More than two
 
