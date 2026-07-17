@@ -4,7 +4,48 @@ import { SAMPLE_GAME_VIEW } from '../game-view.fixture';
 import type { GameView } from '../protocol';
 import { TIER } from '../tokens';
 import { deriveColorIdentity } from './colorIdentity';
-import { buildTableScene, DEFAULT_VIEWPORT_WIDTH, type TableScene } from './scene';
+import {
+  basicLandGlyph,
+  buildTableScene,
+  DEFAULT_VIEWPORT_WIDTH,
+  rowKindForType,
+  type TableScene,
+} from './scene';
+
+/** A minimal permanent spec for the type-grouped-band tests (issue #318). */
+interface PermSpec {
+  id: string;
+  type_line: string;
+  tapped?: boolean;
+  controller?: string;
+  name?: string;
+  power?: string;
+  toughness?: string;
+}
+
+/** A `GameView` with `p1` local, holding the given permanents (issue #318). */
+function permBoard(perms: PermSpec[], validActions: GameView['valid_actions'] = []): GameView {
+  return normalizeGameView({
+    you: 'p1',
+    my_hand: [],
+    opponents: [{ player_id: 'p2', hand_size: 0, life: 20, library_size: 40 }],
+    battlefield: perms.map((p) => ({
+      id: p.id,
+      controller: p.controller ?? 'p1',
+      owner: p.controller ?? 'p1',
+      tapped: p.tapped,
+      card: {
+        id: p.id,
+        name: p.name ?? p.id,
+        type_line: p.type_line,
+        power: p.power,
+        toughness: p.toughness,
+      },
+    })),
+    phase: 'precombat_main',
+    valid_actions: validActions,
+  });
+}
 
 /** A `GameView` whose battlefield holds `perController` permanents for each id. */
 function boardView(controllers: string[], perController: number): GameView {
@@ -378,5 +419,202 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
     expect(scene.hand.map((c) => c.entityId)).toEqual(['h9']);
     // No valid_actions → nothing interactive anywhere.
     expect(scene.bands.flatMap((b) => b.cards).every((c) => c.actions.length === 0)).toBe(true);
+  });
+});
+
+describe('rowKindForType (issue #318)', () => {
+  it('routes any creature/planeswalker/battle to the creatures row', () => {
+    expect(rowKindForType('Creature — Bear')).toBe('creatures');
+    expect(rowKindForType('Artifact Creature — Golem')).toBe('creatures');
+    expect(rowKindForType('Land Creature — Dryad')).toBe('creatures'); // creature wins
+    expect(rowKindForType('Planeswalker — Jace')).toBe('creatures');
+    expect(rowKindForType('Battle — Siege')).toBe('creatures');
+  });
+  it('routes a non-creature land to the lands row', () => {
+    expect(rowKindForType('Basic Land — Forest')).toBe('lands');
+    expect(rowKindForType('Land')).toBe('lands');
+  });
+  it('routes everything else to the support row', () => {
+    expect(rowKindForType('Artifact')).toBe('support');
+    expect(rowKindForType('Enchantment — Aura')).toBe('support');
+  });
+});
+
+describe('basicLandGlyph (issue #318)', () => {
+  it('maps each basic land to its glyph', () => {
+    expect(basicLandGlyph('Basic Land — Forest')).toBe('land-forest');
+    expect(basicLandGlyph('Basic Land — Island')).toBe('land-island');
+    expect(basicLandGlyph('Basic Snow Land — Mountain')).toBe('land-mountain');
+  });
+  it('returns undefined for a nonbasic land or non-land', () => {
+    expect(basicLandGlyph('Land — Desert')).toBeUndefined();
+    expect(basicLandGlyph('Creature — Bear')).toBeUndefined();
+  });
+});
+
+describe('buildTableScene type-grouped bands (issue #318)', () => {
+  const mixed = () =>
+    permBoard([
+      { id: 'bear', type_line: 'Creature — Bear', power: '2', toughness: '2' },
+      { id: 'signet', type_line: 'Artifact' },
+      { id: 'forest', type_line: 'Basic Land — Forest' },
+    ]);
+
+  it('assigns each type group its tier: creatures→field, support→support, lands→chip', () => {
+    const local = buildTableScene(mixed()).bands.at(-1)!;
+    const byId = new Map(local.cards.map((c) => [c.entityId, c]));
+    expect(byId.get('bear')!.tier).toBe('field');
+    expect(byId.get('signet')!.tier).toBe('support');
+    expect(byId.get('forest')!.tier).toBe('chip');
+  });
+
+  it('orders the local rows toward the center: creatures first, lands at the back', () => {
+    const local = buildTableScene(mixed()).bands.at(-1)!;
+    expect(local.rows.map((r) => r.kind)).toEqual(['creatures', 'support', 'lands']);
+    // Rows stack downward — creatures (nearest center) sit above lands (nearest hand).
+    const y = (k: string) => local.rows.find((r) => r.kind === k)!.rect.y;
+    expect(y('creatures')).toBeLessThan(y('support'));
+    expect(y('support')).toBeLessThan(y('lands'));
+  });
+
+  it('mirrors an opponent band so their creatures sit nearest the center line', () => {
+    const opp = buildTableScene(
+      permBoard([
+        {
+          id: 'o_bear',
+          controller: 'p2',
+          type_line: 'Creature — Bear',
+          power: '2',
+          toughness: '2',
+        },
+        { id: 'o_forest', controller: 'p2', type_line: 'Basic Land — Forest' },
+      ]),
+    ).bands.find((b) => b.playerId === 'p2')!;
+    const y = (k: string) => opp.rows.find((r) => r.kind === k)!.rect.y;
+    // Opponent is at the top; their creatures render below their lands (toward center).
+    expect(y('lands')).toBeLessThan(y('creatures'));
+  });
+
+  it('labels only the lands row — rows are a sorting convention, not zones', () => {
+    const local = buildTableScene(mixed()).bands.at(-1)!;
+    expect(local.rows.find((r) => r.kind === 'lands')!.label).toBe('Lands');
+    expect(local.rows.find((r) => r.kind === 'creatures')!.label).toBeUndefined();
+    expect(local.rows.find((r) => r.kind === 'support')!.label).toBeUndefined();
+  });
+
+  it('renders a basic land as a glyph chip and a nonbasic land as a named chip', () => {
+    const local = buildTableScene(
+      permBoard([
+        { id: 'forest', type_line: 'Basic Land — Forest' },
+        { id: 'strand', name: 'Windswept Heath', type_line: 'Land' },
+      ]),
+    ).bands.at(-1)!;
+    const byId = new Map(local.cards.map((c) => [c.entityId, c]));
+    expect(byId.get('forest')!.data.landGlyph).toBe('land-forest');
+    expect(byId.get('strand')!.data.landGlyph).toBeUndefined();
+    expect(byId.get('strand')!.name).toBe('Windswept Heath');
+  });
+});
+
+describe('buildTableScene ×N stacking (issue #318)', () => {
+  it('collapses four identical untapped permanents into one ×4 render', () => {
+    const local = buildTableScene(
+      permBoard(
+        Array.from({ length: 4 }, (_, i) => ({
+          id: `f${i}`,
+          name: 'Forest',
+          type_line: 'Basic Land — Forest',
+        })),
+      ),
+    ).bands.at(-1)!;
+    expect(local.cards).toHaveLength(1);
+    const stack = local.cards[0]!;
+    expect(stack.stackCount).toBe(4);
+    expect(stack.data.stackCount).toBe(4);
+    expect(stack.memberIds).toHaveLength(4);
+  });
+
+  it('splits a tapped one out: ×3 untapped beside a tapped single', () => {
+    const local = buildTableScene(
+      permBoard([
+        { id: 'f0', name: 'Forest', type_line: 'Basic Land — Forest' },
+        { id: 'f1', name: 'Forest', type_line: 'Basic Land — Forest' },
+        { id: 'f2', name: 'Forest', type_line: 'Basic Land — Forest' },
+        { id: 'f3', name: 'Forest', type_line: 'Basic Land — Forest', tapped: true },
+      ]),
+    ).bands.at(-1)!;
+    const counts = local.cards.map((c) => c.stackCount).sort();
+    expect(counts).toEqual([1, 3]);
+    const tapped = local.cards.find((c) => c.data.tapped);
+    expect(tapped!.stackCount).toBe(1);
+  });
+
+  it('never folds an individually actionable permanent into a stack', () => {
+    // Both Forests are identical, but only f0 carries an offered action → f0 stays
+    // its own render so it remains clickable; f1 is a singleton too.
+    const local = buildTableScene(
+      permBoard(
+        [
+          { id: 'f0', name: 'Forest', type_line: 'Basic Land — Forest' },
+          { id: 'f1', name: 'Forest', type_line: 'Basic Land — Forest' },
+        ],
+        [{ id: 'a0', type: 'activate_ability', label: 'Tap for G', subject: ['f0'] }],
+      ),
+    ).bands.at(-1)!;
+    expect(local.cards).toHaveLength(2);
+    expect(local.cards.every((c) => c.stackCount === 1)).toBe(true);
+  });
+});
+
+describe('buildTableScene tapped footprint (issue #318)', () => {
+  it('reserves the rotated footprint of a tapped field card so it cannot overlap', () => {
+    const local = buildTableScene(
+      permBoard([
+        { id: 'a', type_line: 'Creature — Bear', power: '2', toughness: '2', tapped: true },
+        { id: 'b', type_line: 'Creature — Ox', power: '2', toughness: '4' },
+      ]),
+    ).bands.at(-1)!;
+    const a = local.cards.find((c) => c.entityId === 'a')!;
+    const b = local.cards.find((c) => c.entityId === 'b')!;
+    // Tapped card reserves h×w (rotated), so its footprint width is the card height.
+    expect(a.rect.w).toBe(TIER.field.h);
+    expect(a.rect.h).toBe(TIER.field.w);
+    // The neighbor begins past the reserved footprint — no overlap.
+    expect(b.rect.x).toBeGreaterThanOrEqual(a.rect.x + a.rect.w);
+  });
+
+  it('keeps a tapped chip un-rotated (dim + corner glyph handle tap state)', () => {
+    const local = buildTableScene(
+      permBoard([{ id: 'forest', type_line: 'Basic Land — Forest', tapped: true }]),
+    ).bands.at(-1)!;
+    const chip = local.cards[0]!;
+    expect(chip.rect.w).toBe(TIER.chip.w);
+    expect(chip.rect.h).toBe(TIER.chip.h);
+    expect(chip.data.tapped).toBe(true);
+  });
+});
+
+describe('buildTableScene stacked targeting addressing (issue #318)', () => {
+  it('expands identical candidates so each stays individually targetable', () => {
+    const ids = ['c0', 'c1', 'c2', 'c3'];
+    const scene = buildTableScene(
+      permBoard(
+        ids.map((id) => ({
+          id,
+          name: 'Bear',
+          type_line: 'Creature — Bear',
+          power: '2',
+          toughness: '2',
+        })),
+      ),
+      undefined,
+      DEFAULT_VIEWPORT_WIDTH,
+      { candidates: ids },
+    );
+    const local = scene.bands.at(-1)!;
+    // No collapsing while targeting: four individually pickable candidates.
+    expect(local.cards).toHaveLength(4);
+    expect(local.cards.every((c) => c.targetable && c.stackCount === 1)).toBe(true);
+    expect(local.cards.map((c) => c.entityId).sort()).toEqual(ids);
   });
 });

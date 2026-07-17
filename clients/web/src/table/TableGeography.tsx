@@ -23,7 +23,7 @@
 import { Fragment } from 'react';
 import type { PlayerId } from '../protocol';
 import type { TableScene } from './scene';
-import { bandRegion, emptyBandHint, geographyLayer, regionHeader } from './styles';
+import { bandRegion, emptyBandHint, geographyLayer, regionHeader, rowLabel } from './styles';
 import s from './chrome.module.css';
 
 /**
@@ -50,6 +50,20 @@ export function TableGeography({ scene, onOpenZone }: Props) {
       {scene.bands.map((band) => (
         <Fragment key={band.playerId}>
           <div style={bandRegion(band.rect, band.isLocal)} aria-hidden="true" />
+          {/* Row labels: only the lands row is labeled — the type-grouped rows are a
+              sorting convention, not zones (issue #318). */}
+          {band.rows.map(
+            (row) =>
+              row.label && (
+                <span
+                  key={`${band.playerId}-${row.kind}`}
+                  data-testid={`row-label-${band.playerId}-${row.kind}`}
+                  style={rowLabel(row.rect)}
+                >
+                  {row.label}
+                </span>
+              ),
+          )}
           {band.isEmpty && (
             <div data-testid={`empty-band-${band.playerId}`} style={emptyBandHint(band.rect)}>
               {band.isLocal
