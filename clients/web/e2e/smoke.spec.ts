@@ -96,15 +96,15 @@ function waitForTable(page: Page): Promise<unknown> {
 }
 
 /**
- * Assert the battlefield board is attached and showing content — the #276 guard.
+ * Assert the battlefield board actually renders — the #276 guard.
  *
- * The load-bearing half is **attachment**: with the fix (Pixi `destroy(false)`) the
- * `<canvas>` stays in the DOM across StrictMode's mount→cleanup→mount; reverting to
- * `destroy(true)` detaches it and `toBeAttached()` fails. On top of that we prove the
- * board is not a *silent* blank: real canvas pixels where the GL stack can paint, or
- * — where a headless software renderer cannot recreate the WebGL context under
- * StrictMode — the loud DOM fallback that #276 also added, listing the cards in play.
- * Either way the board shows content; only a detached/void board fails.
+ * Pixi owns its own canvas inside a React-owned host `<div>`, so each StrictMode
+ * mount gets a *fresh* canvas with a fresh GL context (reverting that fix leaves
+ * the second mount reusing a context-less canvas, which fails to paint). We
+ * require a genuine render here — the DOM fallback must NOT be showing and the
+ * canvas pixels must not be a flat fill — because a fallback-tolerant assertion
+ * once let a non-rendering board ship green. A land is drawn later, so a
+ * non-empty scene always has content to paint.
  */
 async function assertBoardRendered(page: Page): Promise<void> {
   const canvas = page.locator('canvas');
@@ -114,16 +114,14 @@ async function assertBoardRendered(page: Page): Promise<void> {
   );
   expect(connected).toBe(true);
 
-  const fallback = page.getByTestId('board-render-fallback');
-  if (await fallback.isVisible()) {
-    // Loud "not blank" stand-in (#276): the board is visibly listed, never a void.
-    await expect(fallback).toContainText(/Battlefield:/);
-  } else {
-    // Real render: give Pixi a frame, then prove the pixels are not a flat fill.
-    await page.waitForTimeout(400);
-    const shot = await canvas.screenshot();
-    expect(countDistinctColors(shot)).toBeGreaterThan(1);
-  }
+  // The loud fallback means the canvas could not paint — a real render must not
+  // fall back to it (the blind spot that let #276's incomplete fix ship green).
+  await expect(page.getByTestId('board-render-fallback')).toBeHidden();
+
+  // Give Pixi a frame, then prove the pixels are not a flat fill.
+  await page.waitForTimeout(400);
+  const shot = await canvas.screenshot();
+  expect(countDistinctColors(shot)).toBeGreaterThan(1);
 }
 
 /** Connect a page to the server through the connection screen and reach the lobby. */

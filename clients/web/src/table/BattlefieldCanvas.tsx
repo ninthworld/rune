@@ -12,17 +12,21 @@
  * the whole scene graph being rebuilt each frame. The reconcile cache is a pure
  * optimization — a fresh mount of any single scene renders identically.
  *
- * Two invariants this component must uphold (both regressed once, issue #276):
- *  - **React owns the `<canvas>` element.** Pixi's `destroy(removeView)` detaches
- *    the view from the DOM when `removeView` is truthy; under React 18 StrictMode
- *    the mount→cleanup→mount cycle would then destroy the element React still
- *    thinks it owns, and every later frame draws into a detached node forever.
- *    Cleanup therefore passes `removeView = false` and lets React unmount the node.
- *  - **A canvas that genuinely fails is loud, not blank.** Where WebGL *is*
- *    available but the Pixi app cannot start or a frame throws, we surface a
- *    visible DOM fallback rather than an indistinguishable-from-broken blank
- *    board. Where WebGL is absent (jsdom/headless) the blank canvas is expected
- *    and stays silent, as it always has.
+ * **Pixi owns its own canvas; React owns only the container `<div>`** (issue #276).
+ * This is the crux of the StrictMode story: React 18 runs every effect
+ * mount→cleanup→mount in dev. If React owned the `<canvas>` and we merely avoided
+ * detaching it (an earlier fix), the first app's cleanup still destroys that
+ * canvas's WebGL context, and the second mount cannot obtain a *fresh* context
+ * from the same element — Pixi throws and the board never paints. So instead we
+ * let `new Application()` create its own canvas, append it to the React-owned
+ * container, and on cleanup `destroy(true)` disposes the app **and its own
+ * canvas**. Each mount therefore gets a brand-new canvas with a brand-new
+ * context, and React's container is never touched by Pixi.
+ *
+ * When WebGL *is* available but Pixi still cannot start (or a frame throws), a
+ * visible DOM fallback stands in rather than a silently blank board — a blank
+ * board is indistinguishable from a broken game. Where WebGL is absent
+ * (jsdom/headless) the empty container stays silent, as it always has.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Application, Container } from 'pixi.js';
@@ -55,22 +59,22 @@ function webglSupported(): boolean {
 }
 
 export function BattlefieldCanvas({ scene }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const reconcilerRef = useRef<SceneReconciler | null>(null);
   // Set true only when WebGL is available yet the canvas still cannot render, so
   // the DOM fallback below appears instead of a silently blank board.
   const [renderFailed, setRenderFailed] = useState(false);
 
-  // Create the Pixi application once, guarding against environments without a
-  // real GL context (tests, SSR). The reconciler owns a root container parented
-  // under the stage and lives exactly as long as the application.
+  // Create the Pixi application once per mount, guarding against environments
+  // without a real GL context (tests, SSR). Pixi creates and owns its canvas; we
+  // parent it under the React-owned container. The reconciler owns a root
+  // container under the stage and lives exactly as long as the application.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const host = containerRef.current;
+    if (!host) return;
     try {
       const app = new Application({
-        view: canvas,
         backgroundColor: hexToNumber(SURFACES.board),
         antialias: true,
         autoDensity: true,
@@ -78,10 +82,14 @@ export function BattlefieldCanvas({ scene }: Props) {
         width: scene.width,
         height: scene.height,
       });
+      const view = app.view as HTMLCanvasElement;
+      view.style.display = 'block';
+      host.appendChild(view);
       const root = new Container();
       app.stage.addChild(root);
       appRef.current = app;
       reconcilerRef.current = new SceneReconciler(root);
+      reconcilerRef.current.reconcile(scene);
       setRenderFailed(false);
     } catch {
       appRef.current = null;
@@ -90,14 +98,15 @@ export function BattlefieldCanvas({ scene }: Props) {
       if (webglSupported()) setRenderFailed(true);
     }
     return () => {
-      // `removeView = false`: the canvas is React-owned. Destroying with `true`
-      // would detach the element React still tracks and break the next mount
-      // (StrictMode double-invoke, issue #276). React removes the node on unmount.
-      appRef.current?.destroy(false);
+      // Destroy the app AND its own canvas (`removeView = true`). The canvas is
+      // Pixi's element, not React's, so removing it is correct — and it means the
+      // next mount starts from a fresh canvas with a fresh GL context rather than
+      // trying (and failing) to reuse a context-less one (issue #276).
+      appRef.current?.destroy(true);
       appRef.current = null;
       reconcilerRef.current = null;
     };
-    // Intentionally run once: the render effect below reacts to `scene`.
+    // Intentionally run once per mount: the render effect below reacts to `scene`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -121,13 +130,15 @@ export function BattlefieldCanvas({ scene }: Props) {
   return (
     <>
       {/*
-       * Always rendered and always React-owned so unmount (and only unmount)
-       * removes it. Hidden — not destroyed — while the DOM fallback stands in.
+       * React owns only this container; Pixi appends and removes its own canvas
+       * inside it. Hidden — not unmounted — while the DOM fallback stands in, so
+       * the mount effect's ref stays valid.
        */}
-      <canvas
-        ref={canvasRef}
+      <div
+        ref={containerRef}
+        data-testid="battlefield-canvas-host"
         aria-hidden="true"
-        style={{ display: renderFailed ? 'none' : 'block' }}
+        style={{ display: renderFailed ? 'none' : 'block', lineHeight: 0 }}
       />
       {renderFailed && <BoardRenderFallback scene={scene} />}
     </>
