@@ -276,3 +276,101 @@ describe('SceneReconciler determinism invariant (fresh-mount equivalence)', () =
     }
   });
 });
+
+describe('SceneReconciler animate-the-diff (issue #334)', () => {
+  it('eases a moved card to its new spot without snapping, and settles exactly there', () => {
+    const r = new SceneReconciler(new Container(), { animate: true });
+    r.reconcile(scene([card('a', bears, 0, 0)]));
+    r.reconcile(scene([card('a', bears, 240, 60)]));
+    const a = r.displayFor('a')!;
+
+    // The authoritative target is known immediately (a hit-test never waits on the
+    // tween), while the visual is still at its old spot.
+    expect(r.targetFor('a')).toEqual({ x: 240, y: 60 });
+    expect([a.position.x, a.position.y]).toEqual([0, 0]);
+
+    r.advance(0); // start the clock
+    r.advance(90); // halfway
+    expect(a.position.x).toBeGreaterThan(0);
+    expect(a.position.x).toBeLessThan(240);
+
+    r.advance(180); // done
+    expect([a.position.x, a.position.y]).toEqual([240, 60]);
+    expect(r.hasPendingAnimations()).toBe(false);
+  });
+
+  it('reduced motion snaps to the final layout with no tween or fade', () => {
+    const r = new SceneReconciler(new Container(), { animate: { reducedMotion: true } });
+    r.reconcile(scene([card('a', bears, 0, 0)]));
+    r.reconcile(scene([card('a', bears, 240, 60)]));
+    const a = r.displayFor('a')!;
+
+    expect([a.position.x, a.position.y]).toEqual([240, 60]);
+    expect(a.alpha).toBe(1);
+    expect(r.hasPendingAnimations()).toBe(false);
+    // advance is inert under reduced motion.
+    r.advance(1000);
+    expect([a.position.x, a.position.y]).toEqual([240, 60]);
+  });
+
+  it('fades an entering card up from zero, addressable at its final spot at once', () => {
+    const r = new SceneReconciler(new Container(), { animate: true });
+    r.reconcile(scene([card('a', bears, 10, 20)]));
+    const a = r.displayFor('a')!;
+
+    // Immediately addressable at the final position even though the pixels fade in.
+    expect(r.targetFor('a')).toEqual({ x: 10, y: 20 });
+    expect([a.position.x, a.position.y]).toEqual([10, 20]);
+    expect(a.alpha).toBe(0);
+
+    r.advance(0);
+    r.advance(180);
+    expect(a.alpha).toBe(1);
+  });
+
+  it('lets a leaving card fade out — not addressable mid-exit — then destroys it', () => {
+    const r = new SceneReconciler(new Container(), { animate: true });
+    r.reconcile(scene([card('a', bears, 0, 0), card('b', elves, 100, 0)]));
+    r.advance(0);
+    r.advance(180); // settle the entrance fades
+
+    r.reconcile(scene([card('a', bears, 0, 0)])); // b leaves
+    // b is dropped from the cache the instant it leaves, so it is no longer a
+    // hit-target, even while its visual lingers fading out.
+    expect(r.displayFor('b')).toBeUndefined();
+    expect(r.targetFor('b')).toBeUndefined();
+    expect(r.root.children).toHaveLength(2);
+    expect(r.hasPendingAnimations()).toBe(true);
+
+    r.advance(1000);
+    r.advance(1180); // fade complete
+    expect(r.root.children).toHaveLength(1);
+    expect(r.hasPendingAnimations()).toBe(false);
+  });
+
+  it('matches a fresh mount once every transition settles (final layout unchanged)', () => {
+    const r = new SceneReconciler(new Container(), { animate: true });
+    r.reconcile(scene([card('a', bears, 0, 0)]));
+    const target = scene([card('a', bears, 240, 60)]);
+    r.reconcile(target);
+    r.advance(0);
+    r.advance(180);
+
+    expect(snapshot(r.root)).toEqual(snapshot(freshMount(target)));
+  });
+
+  it('keeps an entering card immediately addressable while an outgoing one still fades', () => {
+    const r = new SceneReconciler(new Container(), { animate: true });
+    r.reconcile(scene([card('a', bears, 0, 0)]));
+    r.advance(0);
+    r.advance(180);
+
+    // a leaves and c enters in the same diff.
+    r.reconcile(scene([card('c', elves, 0, 0)]));
+    // The entering card is live at its final spot at once; the leaving one is gone
+    // from the addressable set even though its pixels are still on screen.
+    expect(r.displayFor('c')).toBeDefined();
+    expect(r.targetFor('c')).toEqual({ x: 0, y: 0 });
+    expect(r.displayFor('a')).toBeUndefined();
+  });
+});

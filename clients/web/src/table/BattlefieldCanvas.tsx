@@ -45,6 +45,20 @@ function hexToNumber(hex: string): number {
 }
 
 /**
+ * Whether the viewer asked for reduced motion (issue #334). A hard accessibility
+ * requirement: when true the reconciler snaps every diff instantly, with no layout
+ * or state difference from the animated path. Guarded for environments without
+ * `matchMedia` (older jsdom / SSR), where it degrades to "no reduced-motion request".
+ */
+function prefersReducedMotion(): boolean {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether the environment can provide a WebGL context at all. Used to decide
  * whether a Pixi failure is a *real* rendering fault worth surfacing to the user
  * or the expected headless/jsdom no-op that must stay silent (see file header).
@@ -88,8 +102,17 @@ export function BattlefieldCanvas({ scene }: Props) {
       const root = new Container();
       app.stage.addChild(root);
       appRef.current = app;
-      reconcilerRef.current = new SceneReconciler(root);
-      reconcilerRef.current.reconcile(scene);
+      // Animate the view diff (issue #334): cards ease between layouts, entering ones
+      // fade up, leaving ones fade out — honoring reduced motion, which snaps instead.
+      const reconciler = new SceneReconciler(root, {
+        animate: { reducedMotion: prefersReducedMotion() },
+      });
+      reconcilerRef.current = reconciler;
+      reconciler.reconcile(scene);
+      // Drive the transitions from the Pixi ticker (before its own render pass). This
+      // only moves pixels toward layouts the scene already made authoritative, so it
+      // never gates input — a live prompt is actionable the instant its view arrives.
+      app.ticker.add(() => reconciler.advance(performance.now()));
       setRenderFailed(false);
     } catch {
       appRef.current = null;
