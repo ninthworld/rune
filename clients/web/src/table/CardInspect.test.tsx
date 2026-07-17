@@ -60,6 +60,39 @@ describe('CardInspect (issue #261)', () => {
     expect(state.textContent).toContain('2× +1/+1');
   });
 
+  it('shows the attachment relationship from both sides (issue #333)', () => {
+    const aura: CardView = { id: 'aura', name: 'Ironbark Aegis', type_line: 'Enchantment — Aura' };
+    // The aura names the host it enchants.
+    render(
+      <CardInspect
+        target={{ kind: 'card', card: aura, attachedTo: { id: 'bear', name: 'Grizzly Bears' } }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('card-inspect-attachments').textContent).toContain(
+      'Attached to Grizzly Bears',
+    );
+    cleanup();
+
+    // The host lists what is attached to it.
+    const bear: CardView = { id: 'bear', name: 'Grizzly Bears', type_line: 'Creature — Bear' };
+    render(
+      <CardInspect
+        target={{ kind: 'card', card: bear, attachments: [{ id: 'aura', name: 'Ironbark Aegis' }] }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('card-inspect-attachments').textContent).toContain(
+      'Enchanted by Ironbark Aegis',
+    );
+  });
+
+  it('omits the attachment row for an unattached, unenchanted permanent (issue #333)', () => {
+    const card: CardView = { id: 'p1', name: 'Grizzly Bears', type_line: 'Creature — Bear' };
+    render(<CardInspect target={{ kind: 'card', card }} onClose={vi.fn()} />);
+    expect(screen.queryByTestId('card-inspect-attachments')).toBeNull();
+  });
+
   it('inspects a stack object from its server-composed description', () => {
     const item: StackItem = { id: 's1', controller: 'p2', description: 'Lightning Bolt → p1' };
     render(<CardInspect target={{ kind: 'stack', item }} onClose={vi.fn()} />);

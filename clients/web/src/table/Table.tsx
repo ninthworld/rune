@@ -192,7 +192,24 @@ function resolveInspect(view: GameView, id: EntityId): InspectTarget | null {
   for (const card of view.my_hand) if (card.id === id) return { kind: 'card', card };
   for (const perm of view.battlefield) {
     if (perm.id === id) {
-      return { kind: 'card', card: perm.card, tapped: perm.tapped, counters: perm.counters };
+      // Attachment relationship (issue #333), resolved from the view for both sides:
+      // the host this permanent is attached to (if visible), and the attachments this
+      // permanent hosts. Presentation-only lookup — the client derives no rules.
+      const host =
+        perm.attached_to !== undefined
+          ? view.battlefield.find((p) => p.id === perm.attached_to)
+          : undefined;
+      const attachments = view.battlefield
+        .filter((p) => p.attached_to === perm.id)
+        .map((p) => ({ id: p.id, name: p.card.name }));
+      return {
+        kind: 'card',
+        card: perm.card,
+        tapped: perm.tapped,
+        counters: perm.counters,
+        attachedTo: host ? { id: host.id, name: host.card.name } : undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      };
     }
   }
   for (const pile of view.graveyards) {

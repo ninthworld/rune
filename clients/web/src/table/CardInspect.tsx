@@ -14,8 +14,16 @@
  * messages, so the same target always produces the same panel. Opening/closing is
  * ephemeral selection state owned by {@link Table}, discarded on the next view.
  */
-import type { CardView, Counter, StackItem } from '../protocol';
+import type { CardView, Counter, EntityId, StackItem } from '../protocol';
 import s from './chrome.module.css';
+
+/** A named reference to another permanent, for the inspector's attachment lines. */
+export interface AttachmentRef {
+  /** Entity id of the referenced permanent. */
+  id: EntityId;
+  /** Its display name, taken straight from the view. */
+  name: string;
+}
 
 /**
  * What the popover is inspecting. A `card` target is any {@link CardView} (hand,
@@ -25,7 +33,24 @@ import s from './chrome.module.css';
  * CardView exists for a stack object in the current protocol).
  */
 export type InspectTarget =
-  | { kind: 'card'; card: CardView; tapped?: boolean; counters?: Counter[] }
+  | {
+      kind: 'card';
+      card: CardView;
+      tapped?: boolean;
+      counters?: Counter[];
+      /**
+       * The host this permanent is attached to (issue #333), if any — an Aura names
+       * the object it enchants. Resolved from the view's `attached_to`; absent when
+       * unattached or the host is not in the visible battlefield.
+       */
+      attachedTo?: AttachmentRef;
+      /**
+       * The permanents attached to this one (issue #333) — the host side of the
+       * relationship, so inspecting an enchanted creature lists its Auras. Absent
+       * when nothing is attached.
+       */
+      attachments?: AttachmentRef[];
+    }
   | { kind: 'stack'; item: StackItem };
 
 interface Props {
@@ -63,7 +88,13 @@ export function CardInspect({ target, onClose, transient = false }: Props) {
   const name = targetName(target);
   const body =
     target.kind === 'card' ? (
-      <CardBody card={target.card} tapped={target.tapped} counters={target.counters} />
+      <CardBody
+        card={target.card}
+        tapped={target.tapped}
+        counters={target.counters}
+        attachedTo={target.attachedTo}
+        attachments={target.attachments}
+      />
     ) : (
       <StackBody item={target.item} />
     );
@@ -128,14 +159,19 @@ function CardBody({
   card,
   tapped,
   counters,
+  attachedTo,
+  attachments,
 }: {
   card: CardView;
   tapped?: boolean;
   counters?: Counter[];
+  attachedTo?: AttachmentRef;
+  attachments?: AttachmentRef[];
 }) {
   const keywords = card.keywords ?? [];
   const rules = card.rules_text ?? '';
   const hasPt = card.power !== undefined && card.toughness !== undefined;
+  const attachmentList = attachments ?? [];
   return (
     <>
       {card.mana_cost !== undefined && (
@@ -175,6 +211,19 @@ function CardBody({
           {(counters ?? []).map((counter) => (
             <span key={counter.kind} className={s.inspectState}>
               {counter.count}× {counter.kind}
+            </span>
+          ))}
+        </div>
+      )}
+      {/* Attachment relationship (issue #333), shown from either side: an attached
+          permanent names its host; a host lists what is attached to it. Straight
+          from the view — the client derives no rules from the reference. */}
+      {(attachedTo || attachmentList.length > 0) && (
+        <div className={s.inspectStateRow} data-testid="card-inspect-attachments">
+          {attachedTo && <span className={s.inspectState}>Attached to {attachedTo.name}</span>}
+          {attachmentList.map((ref) => (
+            <span key={ref.id} className={s.inspectState}>
+              Enchanted by {ref.name}
             </span>
           ))}
         </div>

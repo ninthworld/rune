@@ -154,7 +154,9 @@ A `Permanent` contains:
 - `id`, `controller`, `owner`, and a computed `card`;
 - optional `tapped` and `attacking` booleans;
 - optional `blocking`, naming the attacker’s entity id;
-- optional marked `damage`; and
+- optional marked `damage`;
+- optional `attached_to`, naming the host permanent’s entity id when this permanent
+  (e.g. an Aura, CR 303.4) is attached to another; and
 - optional `counters`, each `{ "kind": string, "count": number }`.
 
 These fields describe server-computed state. They do not authorize interaction.

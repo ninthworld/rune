@@ -1162,6 +1162,7 @@ mod tests {
             attacking: false,
             blocking: None,
             damage: 0,
+            attached_to: None,
             counters: vec![],
         }
     }

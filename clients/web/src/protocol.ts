@@ -111,6 +111,13 @@ export interface Permanent {
   card: CardView;
   /** Whether the permanent is tapped. Omitted (defaults to `false`) when untapped. */
   tapped?: boolean;
+  /**
+   * The host permanent this one is attached to, if any (CR 303.4): an Aura names
+   * the object it enchants, as that host's {@link EntityId} — the same reference
+   * shape {@link Permanent.blocking} uses. Omitted for an unattached permanent.
+   * The client clusters the attachment with its host and derives no rules from it.
+   */
+  attached_to?: EntityId;
   /** Named counters and their quantities. */
   counters?: Counter[];
 }

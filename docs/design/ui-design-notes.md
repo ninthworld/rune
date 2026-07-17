@@ -230,11 +230,18 @@ it matters most.
 
 Delivered by issue #318 in the pure `buildTableScene` layout (`clients/web/src/table/scene.ts`)
 plus a chip renderer (`buildChipDisplay`) and the `×N` badge in the card factory.
-Two spec points are intentionally deferred, since neither is achievable under the
-current contract without new work: **aura clustering** waits on an attachment field
-in the view (`Permanent` carries no `attached_to` today, and the client derives no
-rules), and the **row-migration transition** waits on the reconciler's animate-the-diff
-layer (`sceneReconciler.ts` is the documented attachment point, and animations ship
+
+**Aura clustering** delivered by issue #333: `Permanent` now carries `attached_to`
+(the host's entity id, projected like `blocking`), so `buildTableScene` pulls an
+attachment out of its own type row and lays it adjacent to its host, host first, in
+the host's row. A host that carries an attachment — and every attachment — is kept its
+own render (never folded into an `×N` stack), so the cluster stays coherent and each
+object stays individually addressable in prompts; the inspector names the relationship
+from either side. An attachment whose host is not in the same band (e.g. an aura on an
+opponent-controlled creature, or a host the viewer cannot see) degrades to its own row.
+
+The **row-migration transition** waits on the reconciler's animate-the-diff layer
+(`sceneReconciler.ts` is the documented attachment point, and animations ship
 separately). Row *membership* already follows the server type line, so a permanent
 moves rows the instant its types change; only the tween is pending.
 
