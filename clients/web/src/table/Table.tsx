@@ -210,6 +210,11 @@ export function Table() {
   const setStops = useGameStore((state) => state.setStops);
   const disconnect = useGameStore((state) => state.disconnect);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
+  // The entity a game-log reference last highlighted, if any (issue #260): a permanent
+  // rings on the canvas and a player's tile lights up. Purely presentational — it opens
+  // no actions and derives nothing — and ephemeral like every other selection here
+  // (dropped on the next view below), so the table stays reconstructable from one view.
+  const [highlightedId, setHighlightedId] = useState<EntityId | null>(null);
   const [targeting, setTargeting] = useState<TargetingSession | null>(null);
   const [multiSelect, setMultiSelect] = useState<MultiSelectSession | null>(null);
   // The entity whose inspect popover is open, if any (issue #261). Ephemeral
@@ -243,6 +248,7 @@ export function Table() {
     setMultiSelect(null);
     setInspectedId(null);
     setBrowsing(null);
+    setHighlightedId(null);
   }, [view]);
 
   // Escape abandons the topmost ephemeral surface, mirroring the targeting-mode
@@ -438,9 +444,12 @@ export function Table() {
       const activeReq = activeRequirement(targeting);
       if (activeReq) targetingScene = { candidates: activeReq.candidates ?? [] };
     }
-    const sel = targeting || multiSelect ? undefined : (selectedId ?? undefined);
+    // Outside a targeting/multi-select flow the selection ring shows for the selected
+    // entity, or — failing that — the entity a log reference is highlighting (issue
+    // #260); a permanent thus rings whether it was picked on the board or in the log.
+    const sel = targeting || multiSelect ? undefined : (selectedId ?? highlightedId ?? undefined);
     return buildTableScene(view, sel, battlefieldW, targetingScene);
-  }, [view, selectedId, battlefieldW, targeting, multiSelect, overlayMode]);
+  }, [view, selectedId, highlightedId, battlefieldW, targeting, multiSelect, overlayMode]);
 
   // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
   // production builds; the e2e suite reads it to assert what the canvas draws.
@@ -548,6 +557,13 @@ export function Table() {
     </>
   );
 
+  // Toggle the game-log highlight for an entity/player (issue #260): clicking a
+  // reference lights up its object; clicking the same one again clears it. Purely
+  // presentational — it opens no actions and derives no legality. Shared by the live
+  // and game-over branches (the log lives in the rail in both).
+  const highlight = (id: EntityId): void =>
+    setHighlightedId((current) => (current === id ? null : id));
+
   // Game over (issue #141): a terminal view carries `result`. The whole screen is
   // pure render of that latest view — the DOM overlay names the verdict/reason and
   // the interactive prompt/action UI is suppressed (the server sends no actions
@@ -570,10 +586,10 @@ export function Table() {
           <PhaseIndicator view={view} mode="overview" localId={localId} />
         </div>
         <div className={s.regionHud} style={regionBox(r.opponentHud.rect)}>
-          <OpponentHud view={view} />
+          <OpponentHud view={view} highlightedId={highlightedId} />
         </div>
         <div className={s.regionLocalDock} style={regionBox(r.localDock.rect)}>
-          <LocalDock view={view} localId={localId} />
+          <LocalDock view={view} localId={localId} highlightedId={highlightedId} />
         </div>
         <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
           <div style={sceneBox(scene.width, scene.height)}>
@@ -606,6 +622,8 @@ export function Table() {
           rect={r.rail.rect}
           collapsed={shell.railCollapsed}
           onInspect={setInspectedId}
+          onHighlight={highlight}
+          highlightedId={highlightedId}
         />
         <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
         {overlays}
@@ -845,6 +863,7 @@ export function Table() {
       >
         <OpponentHud
           view={view}
+          highlightedId={highlightedId}
           targeting={
             targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
           }
@@ -860,6 +879,7 @@ export function Table() {
         <LocalDock
           view={view}
           localId={localId}
+          highlightedId={highlightedId}
           targeting={
             targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
           }
@@ -904,6 +924,8 @@ export function Table() {
             targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
           }
           onInspect={setInspectedId}
+          onHighlight={highlight}
+          highlightedId={highlightedId}
         />
       </div>
       {/* Anchored prompt overlay (issue #298): a focused decision surface staged over
