@@ -79,6 +79,21 @@ export interface RenderedCard {
    * multi-select toggles a subset; drives the pressed/ringed affordance.
    */
   chosen: boolean;
+  /**
+   * The host this render is attached to (issue #333), a passthrough of the server's
+   * `attached_to`. Set only when the host is a visible permanent in the same band, so
+   * the attachment is laid out adjacent to (clustered with) its host; absent when the
+   * permanent is unattached or its host is not in this band (graceful degradation — it
+   * renders in its own type row). An attached render never folds into an ×N stack.
+   */
+  attachedTo?: EntityId;
+  /**
+   * The attachments clustered under this render (issue #333): the ids of the
+   * permanents whose `attached_to` names this one and that lay out adjacent to it,
+   * host first. Empty for a permanent with none. A host with attachments never folds
+   * into an ×N stack, so its cluster stays coherent and individually addressable.
+   */
+  attachments?: EntityId[];
 }
 
 /**
@@ -351,7 +366,14 @@ function groupStacks(
   const stackAt = new Map<string, number>();
   for (const card of cards) {
     const individual =
-      card.actions.length > 0 || card.targetable || card.chosen || card.data.selected === true;
+      card.actions.length > 0 ||
+      card.targetable ||
+      card.chosen ||
+      card.data.selected === true ||
+      // An attachment, and any host that carries one, stay their own render so the
+      // cluster stays coherent and every attached object remains addressable (#333).
+      card.attachedTo !== undefined ||
+      (card.attachments?.length ?? 0) > 0;
     if (individual) {
       result.push({ ...card, stackCount: 1, memberIds: [card.entityId] });
       continue;
@@ -485,6 +507,7 @@ export function buildTableScene(
 
   const toRenderable = (
     perm: Permanent,
+    cluster?: { attachedTo?: EntityId; attachments?: EntityId[] },
   ): Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds'> => {
     const actions = actionsFor(perm.id, subjectActions);
     const rowKind = rowKindForType(perm.card.type_line);
@@ -502,6 +525,8 @@ export function buildTableScene(
         landGlyph,
       }),
       actions,
+      attachedTo: cluster?.attachedTo,
+      attachments: cluster?.attachments,
     });
   };
 
@@ -526,10 +551,45 @@ export function buildTableScene(
     const isLocal = playerId === localPlayerId;
     const bandTop = top;
 
-    // Split into type-grouped rows in server order, then collapse identical-state
-    // permanents in each row into ×N stacks.
-    const inRow = (kind: BandRowKind) =>
-      groupStacks(perms.filter((p) => rowKindForType(p.card.type_line) === kind).map(toRenderable));
+    // Attachment clustering (issue #333): an attachment whose host is a visible
+    // permanent in this same band rides adjacent to that host (in the host's row,
+    // host first) instead of flowing in its own type row. A host that is itself
+    // attached does not adopt clusters — its own attachments degrade to their normal
+    // rows rather than nesting — and an attachment whose host is not in this band
+    // (e.g. an aura on an opponent-controlled creature) also degrades to its own row.
+    const bandPermById = new Map<EntityId, Permanent>(perms.map((p) => [p.id, p]));
+    const clustersUnderHost = (p: Permanent): boolean => {
+      if (p.attached_to === undefined) return false;
+      const host = bandPermById.get(p.attached_to);
+      return host !== undefined && host.attached_to === undefined;
+    };
+    const attachmentsByHost = new Map<EntityId, Permanent[]>();
+    for (const p of perms) {
+      if (!clustersUnderHost(p)) continue;
+      const list = attachmentsByHost.get(p.attached_to!) ?? [];
+      list.push(p);
+      attachmentsByHost.set(p.attached_to!, list);
+    }
+
+    // Split into type-grouped rows in server order, clustering each host with its
+    // attachments, then collapse identical-state permanents in each row into ×N
+    // stacks (hosts and attachments never fold, so a cluster stays coherent).
+    const inRow = (kind: BandRowKind) => {
+      const renderables: Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds'>[] = [];
+      for (const p of perms) {
+        if (rowKindForType(p.card.type_line) !== kind) continue;
+        // A clustered attachment rides with its host (below), not in its own row.
+        if (clustersUnderHost(p)) continue;
+        const attachments = attachmentsByHost.get(p.id);
+        renderables.push(
+          toRenderable(p, attachments ? { attachments: attachments.map((a) => a.id) } : undefined),
+        );
+        for (const att of attachments ?? []) {
+          renderables.push(toRenderable(att, { attachedTo: p.id }));
+        }
+      }
+      return groupStacks(renderables);
+    };
     const grouped: Record<BandRowKind, Omit<RenderedCard, 'rect'>[]> = {
       creatures: inRow('creatures'),
       support: inRow('support'),

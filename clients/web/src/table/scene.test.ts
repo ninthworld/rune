@@ -21,6 +21,8 @@ interface PermSpec {
   name?: string;
   power?: string;
   toughness?: string;
+  /** The host this permanent is attached to (issue #333), for clustering tests. */
+  attached_to?: string;
 }
 
 /** A `GameView` with `p1` local, holding the given permanents (issue #318). */
@@ -34,6 +36,7 @@ function permBoard(perms: PermSpec[], validActions: GameView['valid_actions'] = 
       controller: p.controller ?? 'p1',
       owner: p.controller ?? 'p1',
       tapped: p.tapped,
+      attached_to: p.attached_to,
       card: {
         id: p.id,
         name: p.name ?? p.id,
@@ -696,5 +699,125 @@ describe('buildTableScene stacked targeting addressing (issue #318)', () => {
     expect(local.cards).toHaveLength(4);
     expect(local.cards.every((c) => c.targetable && c.stackCount === 1)).toBe(true);
     expect(local.cards.map((c) => c.entityId).sort()).toEqual(ids);
+  });
+});
+
+describe('buildTableScene aura clustering (issue #333)', () => {
+  it('clusters an aura adjacent to its host, host first, in the host’s row', () => {
+    const local = buildTableScene(
+      permBoard([
+        {
+          id: 'bear',
+          name: 'Grizzly Bears',
+          type_line: 'Creature — Bear',
+          power: '2',
+          toughness: '2',
+        },
+        {
+          id: 'aura',
+          name: 'Ironbark Aegis',
+          type_line: 'Enchantment — Aura',
+          attached_to: 'bear',
+        },
+      ]),
+    ).bands.at(-1)!;
+    // The aura leaves the support row and rides in the host's creatures row, right
+    // after the host, so the two read as one cluster.
+    const creatures = local.rows.find((r) => r.kind === 'creatures')!;
+    const inCreatures = local.cards.filter((c) => c.rect.y === creatures.rect.y);
+    expect(inCreatures.map((c) => c.entityId)).toEqual(['bear', 'aura']);
+    // No standalone support row is created for the clustered aura.
+    expect(local.rows.some((r) => r.kind === 'support')).toBe(false);
+    expect(local.cards.find((c) => c.entityId === 'aura')!.attachedTo).toBe('bear');
+    expect(local.cards.find((c) => c.entityId === 'bear')!.attachments).toEqual(['aura']);
+  });
+
+  it('never folds an attachment or its host into an ×N stack', () => {
+    // Two identical bears; only one is enchanted. Without clustering they would fold
+    // into a ×2 — the enchanted host and its aura must stay their own renders.
+    const local = buildTableScene(
+      permBoard([
+        {
+          id: 'bear_a',
+          name: 'Grizzly Bears',
+          type_line: 'Creature — Bear',
+          power: '2',
+          toughness: '2',
+        },
+        {
+          id: 'bear_b',
+          name: 'Grizzly Bears',
+          type_line: 'Creature — Bear',
+          power: '2',
+          toughness: '2',
+          attached_to: undefined,
+        },
+        {
+          id: 'aura',
+          name: 'Ironbark Aegis',
+          type_line: 'Enchantment — Aura',
+          attached_to: 'bear_a',
+        },
+      ]),
+    ).bands.at(-1)!;
+    const host = local.cards.find((c) => c.entityId === 'bear_a')!;
+    expect(host.stackCount).toBe(1);
+    const aura = local.cards.find((c) => c.entityId === 'aura')!;
+    expect(aura.stackCount).toBe(1);
+    // The un-enchanted bear is still individually present (it has nothing to fold with).
+    expect(local.cards.some((c) => c.entityId === 'bear_b')).toBe(true);
+  });
+
+  it('keeps a clustered attachment individually addressable in targeting mode', () => {
+    const scene = buildTableScene(
+      permBoard([
+        {
+          id: 'bear',
+          name: 'Grizzly Bears',
+          type_line: 'Creature — Bear',
+          power: '2',
+          toughness: '2',
+        },
+        {
+          id: 'aura',
+          name: 'Ironbark Aegis',
+          type_line: 'Enchantment — Aura',
+          attached_to: 'bear',
+        },
+      ]),
+      undefined,
+      DEFAULT_VIEWPORT_WIDTH,
+      { candidates: ['aura'] },
+    );
+    const aura = scene.bands.at(-1)!.cards.find((c) => c.entityId === 'aura')!;
+    expect(aura.targetable).toBe(true);
+    expect(aura.stackCount).toBe(1);
+  });
+
+  it('degrades gracefully when the referenced host is not in the visible battlefield', () => {
+    // The host is not on the board (e.g. an aura on an object the viewer cannot see):
+    // the aura renders in its own support row exactly as an unattached permanent would.
+    const local = buildTableScene(
+      permBoard([
+        { id: 'aura', name: 'Pacifism', type_line: 'Enchantment — Aura', attached_to: 'ghost' },
+      ]),
+    ).bands.at(-1)!;
+    expect(local.rows.map((r) => r.kind)).toEqual(['support']);
+    const aura = local.cards.find((c) => c.entityId === 'aura')!;
+    expect(aura.attachedTo).toBeUndefined();
+  });
+
+  it('reconstructs identical clustering from one GameView (fresh mount)', () => {
+    const view = permBoard([
+      {
+        id: 'bear',
+        name: 'Grizzly Bears',
+        type_line: 'Creature — Bear',
+        power: '2',
+        toughness: '2',
+      },
+      { id: 'aura', name: 'Ironbark Aegis', type_line: 'Enchantment — Aura', attached_to: 'bear' },
+    ]);
+    expect(buildTableScene(view)).toEqual(buildTableScene(view));
   });
 });

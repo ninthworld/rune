@@ -824,6 +824,10 @@ pub(crate) fn personalized_view(
             blocking: perm.blocking.map(permanent_entity_id),
             // Marked combat damage (CR 120.3 / 510), for lethal-damage display.
             damage: perm.damage,
+            // Aura attachment (CR 303.4): the host this permanent is attached to,
+            // projected from the engine's `PermanentId` to its view entity id
+            // exactly as `blocking` above. `None` for an unattached permanent.
+            attached_to: perm.attached_to.map(permanent_entity_id),
             counters: permanent_counters(perm),
         })
         .collect();
@@ -1749,6 +1753,73 @@ mod tests {
         undamaged.damage = 0;
         let json = serde_json::to_value(&undamaged).unwrap();
         assert!(json.get("damage").is_none());
+    }
+
+    /// Aura attachment (issue #333) projects onto [`PermanentView::attached_to`]: an
+    /// Aura resolved onto the battlefield through the real engine path reports the
+    /// entity id of the host it enchants, while its host (and any unattached
+    /// permanent) reports no attachment and elides the field from the wire.
+    #[test]
+    fn issue_333_aura_attachment_projects_into_the_view() {
+        use std::collections::BTreeMap;
+
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+
+        // A host creature already on the battlefield.
+        let host = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: host,
+            instance: CardInstanceId(0),
+            card: fixture("verdant_scout"),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            counters: BTreeMap::new(),
+            attached_to: None,
+        });
+
+        // The Aura spell resolves off the stack attached to the host (CR 303.4d),
+        // exactly as the engine's aura-resolution path produces it — no shortcut of
+        // hand-populating `attached_to`.
+        let aura = state.new_instance(fixture("ironbark_aegis"));
+        let sid = state.mint_id();
+        state.stack.push(StackObject {
+            id: StackId(sid),
+            controller: PlayerId(0),
+            kind: StackObjectKind::Spell { card: aura },
+            targets: vec![Target::Permanent(host)],
+        });
+        let state = rune_engine::apply_action(&state, &Action::PassPriority, &db);
+        let state = rune_engine::apply_action(&state, &Action::PassPriority, &db);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+
+        // The Aura's view entry names its host as an entity id.
+        let aura_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.attached_to.is_some())
+            .expect("the resolved Aura must appear in the view, attached");
+        assert_eq!(
+            aura_view.attached_to.as_deref(),
+            Some(permanent_entity_id(host).as_str()),
+            "the Aura names the host it enchants (CR 303.4)",
+        );
+
+        // The host itself carries no attachment, and the empty field elides.
+        let host_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(host))
+            .expect("host in view");
+        assert_eq!(host_view.attached_to, None);
+        let json = serde_json::to_value(host_view).unwrap();
+        assert!(json.get("attached_to").is_none());
     }
 
     /// A permanent's printed keywords (issue #153) project onto its card view as

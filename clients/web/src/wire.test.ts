@@ -93,6 +93,32 @@ describe('parseGameView', () => {
     expect(view.you).toBe('p1');
   });
 
+  it('normalizes a permanent’s attachment, defaulting an omitted host to unattached (issue #333)', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'declare_blockers',
+        battlefield: [
+          {
+            id: 'bear',
+            controller: 'p1',
+            owner: 'p1',
+            card: { id: 'bear', name: 'Grizzly Bears', type_line: 'Creature — Bear' },
+          },
+          {
+            id: 'aura',
+            controller: 'p1',
+            owner: 'p1',
+            attached_to: 'bear',
+            card: { id: 'aura', name: 'Pacifism', type_line: 'Enchantment — Aura' },
+          },
+        ],
+      }),
+    );
+    // The unattached permanent has no host; the aura names its host verbatim.
+    expect(view.battlefield[0]!.attached_to).toBeUndefined();
+    expect(view.battlefield[1]!.attached_to).toBe('bear');
+  });
+
   it('ignores unknown fields for forward compatibility', () => {
     const view = parseGameView('{"phase":"draw","some_future_field":42}');
     expect(view.phase).toBe('draw');

@@ -9,9 +9,12 @@
  * forward compatibility.
  */
 import {
+  type CardView,
+  type Counter,
   type GameResult,
   type GameView,
   type LobbyView,
+  type Permanent,
   PHASES,
   type Phase,
   type PlayerId,
@@ -81,6 +84,30 @@ function normalizeSelfView(payload: unknown): SelfView {
 }
 
 /**
+ * Normalize one wire {@link Permanent}. The server elides absent optionals, so a
+ * missing `tapped`/`attached_to`/`counters` stays absent rather than being invented,
+ * keeping the normalized shape identical to the terse wire shape. The computed
+ * `card` face rides through untouched — the client renders exactly what the server
+ * sent and derives no characteristics. This is the single per-permanent
+ * normalization point every combat/attachment field flows through.
+ */
+function normalizePermanent(payload: unknown): Permanent {
+  const record = isRecord(payload) ? payload : {};
+  const perm: Permanent = {
+    id: asString(record.id),
+    controller: asString(record.controller),
+    owner: asString(record.owner),
+    card: record.card as CardView,
+  };
+  if (record.tapped === true) perm.tapped = true;
+  // Aura attachment (issue #333): the host's entity id, present only when attached;
+  // a view that omits it (older server) degrades to an unattached permanent.
+  if (typeof record.attached_to === 'string') perm.attached_to = record.attached_to;
+  if (Array.isArray(record.counters)) perm.counters = record.counters as Counter[];
+  return perm;
+}
+
+/**
  * Normalize the optional terminal {@link GameResult} half of a {@link GameView}.
  * Returns `undefined` while the game is live (the server omits `result`, or sends
  * a malformed object with no string `reason`), so its mere presence signals game
@@ -121,7 +148,7 @@ export function normalizeGameView(payload: unknown): GameView {
     my_hand: asArray(payload.my_hand, 'my_hand'),
     me: normalizeSelfView(payload.me),
     opponents: asArray(payload.opponents, 'opponents'),
-    battlefield: asArray(payload.battlefield, 'battlefield'),
+    battlefield: asArray<unknown>(payload.battlefield, 'battlefield').map(normalizePermanent),
     stack: asArray(payload.stack, 'stack'),
     graveyards: asArray(payload.graveyards, 'graveyards'),
     exile: asArray(payload.exile, 'exile'),

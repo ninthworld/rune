@@ -281,6 +281,13 @@ pub struct Permanent {
     /// cleanup (CR 514.2). `0`/omitted when no damage is marked.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub damage: u32,
+    /// The permanent this one is attached to, if any (CR 303.4): an Aura on the
+    /// battlefield names the object it enchants, as that host's entity id — the
+    /// same `PermanentId`→`EntityId` projection [`blocking`](Self::blocking) uses.
+    /// `None`/omitted for an unattached permanent. Server-computed; the client
+    /// clusters the attachment with its host and derives no rules from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attached_to: Option<EntityId>,
     /// Named counters and their quantities, e.g. `{"+1/+1": 2}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub counters: Vec<Counter>,
@@ -1478,6 +1485,7 @@ mod tests {
                 attacking: false,
                 blocking: None,
                 damage: 0,
+                attached_to: None,
                 counters: vec![Counter {
                     kind: "+1/+1".into(),
                     count: 2,
@@ -1768,6 +1776,7 @@ mod tests {
             attacking: false,
             blocking: None,
             damage: 0,
+            attached_to: None,
             counters: vec![],
         };
 
@@ -1815,6 +1824,55 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<Permanent>(damaged_json).unwrap(),
             damaged
+        );
+    }
+
+    #[test]
+    fn permanent_attachment_round_trips_and_elides_when_absent() {
+        // Aura attachment (issue #333, CR 303.4): `attached_to` names the host's
+        // entity id when the permanent is attached, round-trips through the wire,
+        // and elides entirely for an unattached permanent so the common non-Aura
+        // shape is unchanged.
+        let base = Permanent {
+            id: "perm_1".into(),
+            controller: "p0".into(),
+            owner: "p0".into(),
+            card: CardView {
+                id: "perm_1".into(),
+                name: "Ironbark Aegis".into(),
+                type_line: "Enchantment — Aura".into(),
+                mana_cost: Some("{1}{G}".into()),
+                rules_text: "Enchant creature".into(),
+                functional_id: String::new(),
+                power: None,
+                toughness: None,
+                keywords: vec![],
+            },
+            tapped: false,
+            attacking: false,
+            blocking: None,
+            damage: 0,
+            attached_to: None,
+            counters: vec![],
+        };
+
+        // Unattached: the field elides from the JSON.
+        let json = serde_json::to_value(&base).unwrap();
+        assert!(json.get("attached_to").is_none());
+
+        // Attached: the host id round-trips and serializes as a string.
+        let attached = Permanent {
+            attached_to: Some("perm_9".into()),
+            ..base.clone()
+        };
+        let attached_json = serde_json::to_value(&attached).unwrap();
+        assert_eq!(
+            attached_json.get("attached_to"),
+            Some(&serde_json::json!("perm_9"))
+        );
+        assert_eq!(
+            serde_json::from_value::<Permanent>(attached_json).unwrap(),
+            attached
         );
     }
 
