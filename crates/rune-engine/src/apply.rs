@@ -12,8 +12,8 @@ use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
 use crate::actions::{action_is_legal, Action, Attack, Block};
 use crate::card::{abilities_of, apply_enters_replacements, Keyword};
 use crate::combat::{
-    blocked_attackers, combat_damage, combat_has_first_strike, has_keyword,
-    priority_after_step_change, CombatDamage, DamageStep,
+    blocked_attackers, combat_damage, combat_has_first_strike, defending_player, has_keyword,
+    pending_blocker_declarer, priority_after_step_change, CombatDamage, DamageStep,
 };
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
@@ -547,20 +547,26 @@ fn logged_permanent(state: &GameState, id: PermanentId) -> LoggedPermanent {
     }
 }
 
-/// Declare the defending player's blockers (CR 509.1): record each blocker's
-/// assignment to its attacker, mark the declaration done, and hand priority to the
-/// active player for the step's priority round (CR 509.4). An empty selection is a
-/// legal "no blockers" declaration.
+/// Declare one attacked player's blockers (CR 509.1): record each blocker's
+/// assignment to its attacker and either hand the next attacked player their own
+/// declaration (multi-defender combat, APNAP order — issue #344) or, once every
+/// attacked player has declared, open the step's priority round with the active
+/// player (CR 509.4). An empty selection is a legal "no blockers" declaration.
 ///
-/// Only ever reached during the declare-blockers step for the defending player,
-/// and only for a selection already validated in [`action_is_legal`].
+/// Only ever reached during the declare-blockers step for the player who currently
+/// owes the declaration ([`pending_blocker_declarer`]), and only for a selection
+/// already validated in [`action_is_legal`]. Combat damage is computed later, at
+/// the combat-damage step, so it is computed once — after every attacked player has
+/// declared.
 fn apply_declare_blockers(state: &mut GameState, blocks: &[Block]) {
+    // The player who owes this declaration, captured before recording changes who
+    // owes the next one.
+    let declarer = pending_blocker_declarer(state).unwrap_or(state.active_player);
     for block in blocks {
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == block.blocker) {
             perm.blocking = Some(block.attacker);
         }
     }
-    state.blockers_declared = true;
     // Record the assignments with both creatures' card identity for stable naming.
     let declared: Vec<(LoggedPermanent, LoggedPermanent)> = blocks
         .iter()
@@ -572,10 +578,29 @@ fn apply_declare_blockers(state: &mut GameState, blocks: &[Block]) {
         })
         .collect();
     state.record_event(GameEvent::BlockersDeclared {
-        player: state.active_player,
+        player: declarer,
         blocks: declared,
     });
-    state.priority = state.active_player;
+    // Mark this defender done and decide whether any attacked player still owes a
+    // declaration. Two-player combat has a single declarer, so the one declaration
+    // completes the step; multi-defender combat tracks each declarer and finishes
+    // only once none remain.
+    if defending_player(state).is_some() {
+        state.blockers_declared = true;
+    } else {
+        state.blockers_declared_by.push(declarer);
+        if pending_blocker_declarer(state).is_none() {
+            state.blockers_declared = true;
+        }
+    }
+    state.priority = if state.blockers_declared {
+        // Every declaration is in: the step's normal priority round opens with the
+        // active player (CR 509.4).
+        state.active_player
+    } else {
+        // The next attacked player (APNAP order) declares before priority is passed.
+        pending_blocker_declarer(state).unwrap_or(state.active_player)
+    };
     state.consecutive_passes = 0;
 }
 
@@ -1649,7 +1674,7 @@ mod tests {
     // ----- Combat I: declare attackers and blockers (issue #117) -----
 
     use crate::actions::{valid_actions as valid, Attack, Block};
-    use crate::combat::{attacker_candidates, blocker_candidates};
+    use crate::combat::{attacker_candidates, blocker_candidates, pending_blocker_declarer};
 
     /// A two-player game paused at the declare-attackers step, turn 2 so that
     /// permanents which entered on turn 0/1 are free of summoning sickness. Player
@@ -3552,5 +3577,145 @@ mod tests {
                 step: Step::Upkeep,
             }
         ));
+    }
+
+    // ----- Multi-defender declare-blockers flow (issue #344) -----
+
+    /// A 3-seat state parked at declare-blockers: seat 0 attacks seat 1 (with
+    /// attacker A) and seat 2 (with attacker B), each defender has one untapped
+    /// blocker, and priority sits with the first attacked player to declare.
+    fn split_combat_at_declare_blockers() -> (
+        GameState,
+        PermanentId,
+        PermanentId,
+        PermanentId,
+        PermanentId,
+    ) {
+        let mut state = GameState::new_multiplayer(3);
+        state.turn = 2;
+        state.step = Step::DeclareBlockers;
+        state.active_player = PlayerId(0);
+        state.attackers_declared = true;
+        let atk_a = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), true, 0);
+        let atk_b = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), true, 0);
+        for (id, defender) in [(atk_a, PlayerId(1)), (atk_b, PlayerId(2))] {
+            state
+                .battlefield
+                .iter_mut()
+                .find(|p| p.id == id)
+                .unwrap()
+                .attacking = Some(defender);
+        }
+        let blk1 = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let blk2 = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(2), false, 0);
+        state.priority = pending_blocker_declarer(&state).unwrap();
+        (state, atk_a, atk_b, blk1, blk2)
+    }
+
+    #[test]
+    fn issue_344_split_attacks_each_defender_declares_in_apnap_order() {
+        // CR 509.1 + 101.4: each attacked player declares their own blockers, seat 1
+        // then seat 2; combat is not "done" until both have declared.
+        let db = db();
+        let (state, atk_a, atk_b, blk1, blk2) = split_combat_at_declare_blockers();
+        assert_eq!(state.priority, PlayerId(1), "seat 1 declares first (APNAP)");
+
+        let after1 = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker: blk1,
+                    attacker: atk_a,
+                }],
+            },
+            &db,
+        );
+        assert_eq!(find_perm(&after1, blk1).blocking, Some(atk_a));
+        assert!(
+            !after1.blockers_declared,
+            "seat 2 still owes a declaration, so combat is not done"
+        );
+        assert_eq!(after1.priority, PlayerId(2), "seat 2 declares next (APNAP)");
+
+        let after2 = apply_action(
+            &after1,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker: blk2,
+                    attacker: atk_b,
+                }],
+            },
+            &db,
+        );
+        assert_eq!(find_perm(&after2, blk2).blocking, Some(atk_b));
+        assert!(
+            after2.blockers_declared,
+            "both attacked players declared — the step is done"
+        );
+        assert_eq!(
+            after2.priority,
+            PlayerId(0),
+            "the priority round opens with the active player (CR 509.4)"
+        );
+    }
+
+    #[test]
+    fn issue_344_a_defender_cannot_block_an_attacker_attacking_someone_else() {
+        // CR 509.1a: seat 1 may block only the attacker attacking seat 1. Assigning
+        // its blocker to the attacker attacking seat 2 is illegal — a no-op.
+        let db = db();
+        let (state, _atk_a, atk_b, blk1, _blk2) = split_combat_at_declare_blockers();
+
+        let rejected = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker: blk1,
+                    attacker: atk_b, // attacking seat 2, not seat 1
+                }],
+            },
+            &db,
+        );
+        assert_eq!(
+            rejected, state,
+            "blocking an attacker attacking another player is rejected"
+        );
+    }
+
+    #[test]
+    fn issue_344_damage_is_computed_once_after_all_declarations_route_per_defender() {
+        // After both defenders declare, passing the priority round advances to the
+        // combat-damage step, where damage is computed once and routes per #341:
+        // each attacker's block resolves against its own defender's blocker.
+        let db = db();
+        let (state, atk_a, _atk_b, blk1, _blk2) = split_combat_at_declare_blockers();
+
+        // Seat 1 blocks attacker A; seat 2 declares no blockers (attacker B is
+        // unblocked and will hit seat 2).
+        let state = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block {
+                    blocker: blk1,
+                    attacker: atk_a,
+                }],
+            },
+            &db,
+        );
+        let state = apply_action(&state, &Action::DeclareBlockers { blocks: Vec::new() }, &db);
+        assert!(state.blockers_declared);
+
+        // A full 3-seat priority round advances into combat damage.
+        let mut state = state;
+        for _ in 0..3 {
+            state = apply_action(&state, &Action::PassPriority, &db);
+        }
+        // Attacker A (3/2) and its blocker (3/2) traded; seat 2 took 3 from the
+        // unblocked attacker B.
+        assert_eq!(state.players[2].life, 17, "unblocked attacker B hit seat 2");
+        assert_eq!(
+            state.players[1].life, 20,
+            "seat 1 blocked its attacker, so took no damage"
+        );
     }
 }

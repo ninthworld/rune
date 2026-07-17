@@ -51,8 +51,9 @@ pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
 pub use combat::{
-    attacker_candidates, attacking_defender_of, blocker_candidates, blocker_candidates_for,
-    declared_attackers, defender_candidates, defending_player,
+    attacked_players, attacker_candidates, attacking_defender_of, blocker_candidates,
+    blocker_candidates_for, declared_attackers, defender_candidates, defending_player,
+    pending_blocker_declarer,
 };
 pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,

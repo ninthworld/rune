@@ -478,8 +478,18 @@ pub struct GameState {
     ///
     /// The mirror of [`Self::attackers_declared`] for the declare-blockers step:
     /// the defender's declaration is a player choice, and this records that it has
-    /// been made so the step advances to its priority round. Reset each turn.
+    /// been made so the step advances to its priority round. Set once *every*
+    /// attacked player has declared (see [`Self::blockers_declared_by`]). Reset each
+    /// turn.
     pub blockers_declared: bool,
+    /// The attacked players who have already declared blockers this combat, in the
+    /// order they declared (issue #344). When attackers are split across several
+    /// defenders each attacked player gets their own declare-blockers decision,
+    /// resolved in APNAP order; this records who is done so the engine knows which
+    /// defender owes the next declaration and when [`Self::blockers_declared`] can
+    /// be set. Empty and unused in a two-player game (the sole defender declares
+    /// once). Reset each turn.
+    pub blockers_declared_by: Vec<PlayerId>,
     /// Permanents dealt combat damage this combat by a source with deathtouch
     /// (CR 702.2b), pending the CR 704.5h state-based action that destroys them.
     ///
@@ -558,6 +568,7 @@ impl GameState {
             land_played: false,
             attackers_declared: false,
             blockers_declared: false,
+            blockers_declared_by: Vec::new(),
             deathtouch_struck: Vec::new(),
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
@@ -952,6 +963,7 @@ impl GameState {
         // apply (CR 508.1 / 509.1 are performed afresh each combat).
         self.attackers_declared = false;
         self.blockers_declared = false;
+        self.blockers_declared_by.clear();
     }
 
     /// Return a copy with an extra turn granted to `player`. Because extra turns

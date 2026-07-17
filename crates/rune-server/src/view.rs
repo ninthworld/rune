@@ -11,12 +11,12 @@
 //! already depends on, and adds nothing to the wire contract in `rune-protocol`.
 
 use rune_engine::{
-    attacker_candidates, blocker_candidates, bottom_requirement, characteristics,
-    declared_attackers, defending_player, scripted_rules_text, target_requirements, valid_actions,
-    Action, Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
-    CounterKind, DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedPermanent,
-    LossReason, PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
-    TargetSpec,
+    attacker_candidates, attacking_defender_of, blocker_candidates_for, bottom_requirement,
+    characteristics, declared_attackers, defending_player, pending_blocker_declarer,
+    scripted_rules_text, target_requirements, valid_actions, Action, Attack, Block, CardData,
+    CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, DamageTarget, GameEvent,
+    GameResult, GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player, PlayerId,
+    StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{effects_description, rules_text};
@@ -579,14 +579,23 @@ fn attacker_requirements(state: &GameState, db: &CardDatabase) -> Vec<TargetRequ
     }]
 }
 
-/// The blocker-declaration requirement slots (CR 509.1a): one slot per declared
-/// attacker ([`declared_attackers`]), each listing the eligible
-/// [`blocker_candidates`] the defender may assign to that attacker. Empty when
-/// there is nothing to block or no creature to block with, so declaring no blockers
-/// stays a plain, choice-free action.
+/// The blocker-declaration requirement slots (CR 509.1a) for the player who owes
+/// the current declaration ([`pending_blocker_declarer`]): one slot per attacker
+/// *attacking that player*, each listing the eligible blockers they control
+/// ([`blocker_candidates_for`]). Empty when there is nothing for this declarer to
+/// block or no creature to block with, so declaring no blockers stays a plain,
+/// choice-free action. In a two-player game the sole opponent is the declarer and
+/// every attacker attacks them, so this is unchanged; with attackers split across
+/// several defenders (issue #344) each declarer sees only their own sub-combat.
 fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<TargetRequirement> {
-    let attackers = declared_attackers(state);
-    let blockers = blocker_candidates(state, db);
+    let Some(declarer) = pending_blocker_declarer(state) else {
+        return Vec::new();
+    };
+    let attackers: Vec<_> = declared_attackers(state)
+        .into_iter()
+        .filter(|&attacker| attacking_defender_of(state, attacker) == Some(declarer))
+        .collect();
+    let blockers = blocker_candidates_for(state, declarer, db);
     if attackers.is_empty() || blockers.is_empty() {
         return Vec::new();
     }
@@ -1145,7 +1154,11 @@ fn bind_attackers(
 /// that names no declared attacker, or a non-candidate blocker, rejects the answer.
 fn bind_blockers(state: &GameState, db: &CardDatabase, targets: &[TargetChoice]) -> Option<Action> {
     let attackers = declared_attackers(state);
-    let candidates = blocker_candidates(state, db);
+    // The candidates are the current declarer's creatures (issue #344): in a
+    // two-player game the sole opponent; with split attacks, the attacked player who
+    // owes this declaration. The engine re-validates the whole selection anyway.
+    let declarer = pending_blocker_declarer(state)?;
+    let candidates = blocker_candidates_for(state, declarer, db);
     let mut blocks = Vec::new();
     for choice in targets {
         let attacker = attackers
