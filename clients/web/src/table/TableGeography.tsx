@@ -24,6 +24,7 @@ import { Fragment } from 'react';
 import type { PlayerId } from '../protocol';
 import type { TableScene } from './scene';
 import { bandRegion, emptyBandHint, geographyLayer, regionHeader, rowLabel } from './styles';
+import { ZonePile } from './ZonePile';
 import s from './chrome.module.css';
 
 /**
@@ -75,31 +76,35 @@ export function TableGeography({ scene, onOpenZone }: Props) {
             <span data-testid={`band-label-${band.playerId}`} className={s.regionLabel}>
               {band.label}
             </span>
+            {/*
+             * Zone piles (issue #319): findable card-shaped objects, not text chips,
+             * parked in this lane's corner. The library is count-only (hidden info);
+             * graveyard/exile open their browsers when the board is interactive. Each
+             * count lives here and nowhere else (the HUD no longer repeats them).
+             */}
             <div className={s.zonePiles}>
-              <span data-testid={`library-pile-${band.playerId}`} className={s.libraryPile}>
-                <span className={s.cardBack} aria-hidden="true" />
-                Library {band.zones.library}
-              </span>
+              <ZonePile
+                zone="library"
+                playerLabel={band.label}
+                count={band.zones.library}
+                testId={`library-pile-${band.playerId}`}
+              />
               {onOpenZone && (
                 <>
-                  <button
-                    type="button"
-                    data-testid={`table-graveyard-${band.playerId}`}
-                    aria-label={`Browse ${band.label} graveyard (${band.zones.graveyard})`}
-                    className={s.pileButton}
-                    onClick={() => onOpenZone(band.playerId, 'graveyard')}
-                  >
-                    Graveyard {band.zones.graveyard}
-                  </button>
-                  <button
-                    type="button"
-                    data-testid={`table-exile-${band.playerId}`}
-                    aria-label={`Browse ${band.label} exile (${band.zones.exile})`}
-                    className={s.pileButton}
-                    onClick={() => onOpenZone(band.playerId, 'exile')}
-                  >
-                    Exile {band.zones.exile}
-                  </button>
+                  <ZonePile
+                    zone="graveyard"
+                    playerLabel={band.label}
+                    count={band.zones.graveyard}
+                    onOpen={() => onOpenZone(band.playerId, 'graveyard')}
+                    testId={`table-graveyard-${band.playerId}`}
+                  />
+                  <ZonePile
+                    zone="exile"
+                    playerLabel={band.label}
+                    count={band.zones.exile}
+                    onOpen={() => onOpenZone(band.playerId, 'exile')}
+                    testId={`table-exile-${band.playerId}`}
+                  />
                 </>
               )}
             </div>

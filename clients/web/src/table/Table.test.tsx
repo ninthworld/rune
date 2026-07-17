@@ -98,7 +98,11 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
     // life, not only their opponents'. The library count lives ONCE, on the board's
     // zone pile (issue #296); the dock no longer repeats it.
     expect(screen.getByTestId('hud-life-p1').textContent).toBe('18');
-    expect(within(screen.getByTestId('library-pile-p1')).getByText(/Library 52/)).toBeDefined();
+    // The library count lives ONCE, on the board's card-shaped zone pile (issue #319);
+    // its zone name rides the pile's accessible label, and the dock never repeats it.
+    const libraryPile = screen.getByTestId('library-pile-p1');
+    expect(libraryPile.getAttribute('aria-label')).toBe('p1 (you) library (52)');
+    expect(within(libraryPile).getByText('52')).toBeDefined();
     expect(within(screen.getByTestId('local-dock')).queryByText(/Library/)).toBeNull();
 
     // A fresh frame replaces everything — as a reconnect would.
