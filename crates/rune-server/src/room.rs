@@ -30,8 +30,11 @@ use std::future::Future;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use rune_engine::{apply_action, valid_actions, Action, CardDatabase, GameState, PlayerId};
-use rune_protocol::{ClientMessage, GameView};
+use rune_engine::{
+    apply_action, priority_has_no_meaningful_action, valid_actions, Action, CardDatabase,
+    GameState, PlayerId,
+};
+use rune_protocol::{ClientMessage, GameView, Phase, SetStops};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -40,7 +43,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
-use crate::view::{personalized_view, resolve_action};
+use crate::view::{personalized_view, phase_of, resolve_action};
 
 /// Bound on the room's input queue. Inputs beyond this depth from a flooding client
 /// are dropped (see [`RoomHandle::send`]); the value is generous enough that a
@@ -184,6 +187,33 @@ fn timeout_default_action(state: &GameState, db: &CardDatabase) -> Option<Action
     None
 }
 
+/// A room's basic priority-automation policy (issue #264, ADR 0020).
+///
+/// Like [`TimerPolicy`], automation is a room-layer concern layered over the pure,
+/// automation-free engine: the engine only *reports* (via
+/// [`priority_has_no_meaningful_action`]) whether the priority holder has a
+/// meaningful action; the room owns the loop that acts on it. **Off by default** —
+/// an off policy reproduces exactly the pre-automation behavior, so every existing
+/// flow and test is unchanged — and, when on, auto-passes a seat's priority while
+/// the engine says it is idle and the seat has not opted to stop at the current step
+/// (its `set_stops` preferences, held per seat on the room).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum AutoPassPolicy {
+    /// No automation: every priority pass is manual (the default, and the behavior
+    /// before automation existed).
+    #[default]
+    Off,
+    /// Auto-pass an idle seat's priority (per its stop preferences).
+    On,
+}
+
+/// A hard cap on how many priority passes one settle may apply, a defence against a
+/// pathological stop configuration that never reaches a meaningful decision. The
+/// loop terminates naturally far below this every turn (the active player's
+/// declare-attackers step is a forced choice that offers no pass), so hitting the
+/// cap signals a bug; it is logged and the settle stops rather than hanging the task.
+const MAX_AUTO_PASSES: usize = 256;
+
 /// One game room: a single-writer async task around one [`GameState`].
 ///
 /// The room owns exactly one engine game and one [`CardDatabase`] and is the only
@@ -227,6 +257,22 @@ pub struct Room {
     /// [`GameView::player_names`] rather than the pure [`personalized_view`] shim.
     /// Empty (all-`None`) when no name was ever set, so the map elides from the wire.
     player_names: Vec<Option<String>>,
+    /// The basic priority-automation policy (issue #264). [`AutoPassPolicy::Off`] by
+    /// default, so automation is opt-in and existing behavior is unchanged.
+    auto_pass: AutoPassPolicy,
+    /// Each seat's priority-stop preferences in seat order (issue #264, ADR 0020):
+    /// the steps at which that seat wants priority even when the engine reports no
+    /// meaningful action, so auto-pass does not skip it there. Set over the protocol
+    /// (`set_stops`) and held here — like [`Self::player_names`], a per-seat concern
+    /// that is *not* engine state — so a preference survives a disconnect/reconnect
+    /// (the room is never torn down on leave). Empty per seat by default (stop
+    /// nowhere); reflected back in each seat's [`GameView::stops`].
+    stops: Vec<Vec<Phase>>,
+    /// Which seats were auto-passed during the most recent settle (issue #264): a
+    /// transient, display-only signal, recomputed each settle and projected into the
+    /// affected seat's [`GameView::auto_passed`] on the following broadcast so a
+    /// client can show a "passed for you" indicator. Not load-bearing state.
+    auto_passed_seats: Vec<bool>,
 }
 
 impl Room {
@@ -235,7 +281,8 @@ impl Room {
     /// use [`Room::with_timer_policy`] to enable a decision clock.
     #[must_use]
     pub fn new(state: GameState, db: CardDatabase) -> Self {
-        let seats = state.players.iter().map(|_| None).collect();
+        let seat_count = state.players.len();
+        let seats = (0..seat_count).map(|_| None).collect();
         Self {
             state,
             db,
@@ -243,6 +290,9 @@ impl Room {
             timer: TimerPolicy::Off,
             deadline: None,
             player_names: Vec::new(),
+            auto_pass: AutoPassPolicy::Off,
+            stops: vec![Vec::new(); seat_count],
+            auto_passed_seats: vec![false; seat_count],
         }
     }
 
@@ -251,6 +301,28 @@ impl Room {
     #[must_use]
     pub fn with_timer_policy(mut self, policy: TimerPolicy) -> Self {
         self.timer = policy;
+        self
+    }
+
+    /// Set this room's priority-automation policy (issue #264). Chainable on
+    /// [`Room::new`]; the default is [`AutoPassPolicy::Off`].
+    #[must_use]
+    pub fn with_auto_pass(mut self, policy: AutoPassPolicy) -> Self {
+        self.auto_pass = policy;
+        self
+    }
+
+    /// Preset each seat's priority-stop preferences (issue #264), indexed by seat.
+    /// Chainable on [`Room::new`]; the default is no stops for any seat. A seat with
+    /// an index past the end of `stops` keeps its empty default. In production the
+    /// preferences arrive over the wire (`set_stops`); this seeds them for tests.
+    #[must_use]
+    pub fn with_stops(mut self, stops: Vec<Vec<Phase>>) -> Self {
+        for (seat, set) in stops.into_iter().enumerate() {
+            if let Some(slot) = self.stops.get_mut(seat) {
+                *slot = set;
+            }
+        }
         self
     }
 
@@ -293,7 +365,9 @@ impl Room {
     /// sees the finished board, then stops; the lobby reclaims the room afterward
     /// (issue #54).
     pub async fn run(mut self, mut inbox: mpsc::Receiver<RoomInput>) {
-        // Start the clock on the opening decision (a no-op when timers are off).
+        // Fast-forward any idle opening priority (a no-op when automation is off),
+        // then start the clock on whatever decision actually rests (issue #264).
+        self.settle_auto_passes();
         self.arm_deadline();
         while !self.game_over() {
             // Copy the deadline out so the timer future borrows nothing of `self`
@@ -368,8 +442,10 @@ impl Room {
                 match resolve_action(&self.state, &self.db, PlayerId(seat), choose) {
                     Some(action) => {
                         self.state = apply_action(&self.state, &action, &self.db);
-                        // The decision advanced: restart the clock for whatever the
-                        // new state presents next (a no-op when timers are off).
+                        // Auto-pass any idle priority the action left behind (a no-op
+                        // when automation is off), then restart the clock for whatever
+                        // decision now rests (a no-op when timers are off).
+                        self.settle_auto_passes();
                         self.arm_deadline();
                         // A terminal result is delivered once by the run loop's final
                         // broadcast; don't re-send the same full-state view here.
@@ -387,7 +463,96 @@ impl Room {
                     }
                 }
             }
+            ClientMessage::SetStops(set) => self.on_set_stops(seat, set),
         }
+    }
+
+    /// Record a seat's priority-stop preferences (issue #264, ADR 0020) and reflect
+    /// them back. The preferences are held on the room, like the display name, so
+    /// they survive reconnect; a stops change can make the current priority holder
+    /// newly eligible to auto-pass (they cleared a stop), so a settle runs, and the
+    /// clock is re-armed only if that settle actually advanced the game.
+    fn on_set_stops(&mut self, seat: Seat, set: &SetStops) {
+        let Some(slot) = self.stops.get_mut(seat) else {
+            warn!(seat, "set_stops for a seat that does not exist; ignoring");
+            return;
+        };
+        // Replace the seat's set wholesale, de-duplicated so the reflected list is
+        // canonical (a client that sends the same phase twice sees it once back).
+        let mut stops = set.stops.clone();
+        stops.dedup();
+        *slot = stops;
+        let advanced = self.settle_auto_passes();
+        if advanced {
+            self.arm_deadline();
+        }
+        if !self.game_over() {
+            self.broadcast();
+        }
+    }
+
+    /// Auto-pass the priority holder while it is idle and has not opted to stop at the
+    /// current step (issue #264, ADR 0020). Returns whether any pass was applied.
+    ///
+    /// A no-op unless [`AutoPassPolicy::On`]. Each iteration passes priority for
+    /// whichever seat currently holds it — the engine's own `PassPriority`, so the
+    /// resulting state is identical to a manual pass and determinism is preserved.
+    /// The loop stops the instant a seat has a meaningful action, owes a forced choice
+    /// (a window with no pass on offer — e.g. the active player's declare-attackers),
+    /// or has opted to stop; a fixed [`MAX_AUTO_PASSES`] cap is a defensive backstop
+    /// so a pathological configuration can never hang the task.
+    fn settle_auto_passes(&mut self) -> bool {
+        for flag in &mut self.auto_passed_seats {
+            *flag = false;
+        }
+        if self.auto_pass != AutoPassPolicy::On {
+            return false;
+        }
+        let mut advanced = false;
+        let mut passes = 0usize;
+        loop {
+            if self.game_over() || self.state.priority_holder().is_none() {
+                break;
+            }
+            let seat = self.state.priority.0;
+            if !self.should_auto_pass(seat) {
+                break;
+            }
+            if passes >= MAX_AUTO_PASSES {
+                // Still idle after the cap: a stop configuration that never rests. Log
+                // it and stop; the game waits for a human rather than the task spinning.
+                warn!("auto-pass settle hit its cap without reaching a decision; stopping");
+                break;
+            }
+            let next = apply_action(&self.state, &Action::PassPriority, &self.db);
+            // Defensive: a pass that does not change state would loop forever.
+            if next == self.state {
+                break;
+            }
+            self.state = next;
+            if let Some(flag) = self.auto_passed_seats.get_mut(seat) {
+                *flag = true;
+            }
+            advanced = true;
+            passes += 1;
+        }
+        advanced
+    }
+
+    /// Whether `seat`, which currently holds priority, should be auto-passed: the
+    /// engine reports it has no meaningful action **and** the seat has not opted to
+    /// stop at the current step (issue #264). The engine predicate is the rules
+    /// authority (the client may not make this call); the stop set is the seat's
+    /// opt-in escape hatch.
+    fn should_auto_pass(&self, seat: Seat) -> bool {
+        if !priority_has_no_meaningful_action(&self.state, &self.db) {
+            return false;
+        }
+        let here = phase_of(self.state.step);
+        !self
+            .stops
+            .get(seat)
+            .is_some_and(|stops| stops.contains(&here))
     }
 
     /// (Re)arm the decision clock for the state the room now presents (issue #263).
@@ -423,6 +588,10 @@ impl Room {
             let next = apply_action(&self.state, &action, &self.db);
             if next != self.state {
                 self.state = next;
+                // The default action can leave idle priority behind, exactly as a
+                // player's action does; settle it before re-arming (a no-op when
+                // automation is off).
+                self.settle_auto_passes();
                 self.arm_deadline();
                 if !self.game_over() {
                     self.broadcast();
@@ -448,6 +617,12 @@ impl Room {
         // Names are a lobby/session concern, not engine state, so the room labels
         // players here rather than in the pure projection shim (issue #294).
         view.player_names = self.player_names_map();
+        // Priority-stop preferences and the auto-pass indicator are likewise room
+        // state, not engine state, and per-viewer (issue #264): reflect this seat's
+        // stops so its stops UI is reconstructable, and flag whether reaching this
+        // state auto-passed it.
+        view.stops = self.stops.get(seat).cloned().unwrap_or_default();
+        view.auto_passed = self.auto_passed_seats.get(seat).copied().unwrap_or(false);
         if let Some(at) = self.deadline {
             if !view.valid_actions.is_empty() {
                 view.action_deadline =
@@ -1154,5 +1329,336 @@ mod tests {
         // The task stops on its own once terminal.
         task.await.unwrap();
         drop(handle);
+    }
+
+    // ----- Basic priority automation (issue #264, ADR 0020) -----
+
+    use rune_protocol::{Phase, SetStops};
+
+    /// A two-player game where neither seat can ever take a meaningful action: empty
+    /// hands and boards, and libraries of uncastable creatures (drawn cards can never
+    /// be cast — no lands, no mana — so a seat stays idle every turn without decking).
+    /// Starts at seat 0's upkeep so a full turn's worth of priority windows is ahead.
+    fn spell_less_state() -> GameState {
+        let mut state = GameState::new_two_player();
+        state.step = Step::Upkeep;
+        for seat in 0..2 {
+            let lib: Vec<_> = (0..12)
+                .map(|_| state.new_instance(fixture("thornback_boar")))
+                .collect();
+            state.players[seat].library = lib;
+        }
+        state
+    }
+
+    /// Choose this seat's move from a view: pass if offered, else the sole forced
+    /// choice (an empty combat declaration), with no targets. A minimal inline driver
+    /// (no rule-based agent, to avoid a crate cycle) that stands in for a human's clicks.
+    fn forced_move(view: &GameView) -> ChooseAction {
+        let action = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .or_else(|| view.valid_actions.iter().find(|a| a.kind != "concede"))
+            .expect("an actionable view offers a move");
+        ChooseAction {
+            action_id: action.id.clone(),
+            token: action.token.clone(),
+            targets: Vec::new(),
+        }
+    }
+
+    /// Drive the room with [`forced_move`] until either seat's latest view reaches
+    /// `until_turn`, returning how many messages the driver had to send — a proxy for
+    /// how many manual clicks the turn cost.
+    async fn count_clicks_until_turn(
+        handle: &RoomHandle,
+        rx0: &mut watch::Receiver<Option<GameView>>,
+        rx1: &mut watch::Receiver<Option<GameView>>,
+        until_turn: u32,
+    ) -> usize {
+        let mut clicks = 0usize;
+        for _ in 0..1000usize {
+            let v0 = rx0.borrow_and_update().clone();
+            let v1 = rx1.borrow_and_update().clone();
+            if v0
+                .as_ref()
+                .or(v1.as_ref())
+                .is_some_and(|v| v.turn >= until_turn)
+            {
+                return clicks;
+            }
+            let actor = if v0.as_ref().is_some_and(|v| !v.valid_actions.is_empty()) {
+                v0.map(|v| (0usize, v))
+            } else if v1.as_ref().is_some_and(|v| !v.valid_actions.is_empty()) {
+                v1.map(|v| (1usize, v))
+            } else {
+                None
+            };
+            match actor {
+                Some((seat, view)) => {
+                    clicks += 1;
+                    handle.send(RoomInput::Message {
+                        seat,
+                        message: ClientMessage::ChooseAction(forced_move(&view)),
+                    });
+                    tokio::select! {
+                        _ = rx0.changed() => {}
+                        _ = rx1.changed() => {}
+                    }
+                }
+                None => {
+                    tokio::select! {
+                        r0 = rx0.changed() => { if r0.is_err() { break; } }
+                        r1 = rx1.changed() => { if r1.is_err() { break; } }
+                    }
+                }
+            }
+        }
+        clicks
+    }
+
+    #[tokio::test]
+    async fn issue_264_automation_off_by_default_elides_stops_and_indicator() {
+        // The default policy changes nothing on the wire: no stops, never auto-passed.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let view0 = wait_for_view(&mut rx0).await;
+        assert!(view0.stops.is_empty(), "no stops by default");
+        assert!(
+            !view0.auto_passed,
+            "nothing is auto-passed under the off policy"
+        );
+        assert!(
+            view0
+                .valid_actions
+                .iter()
+                .any(|a| a.kind == "pass_priority"),
+            "the seat still gets a manual pass with automation off"
+        );
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_264_auto_pass_dramatically_reduces_manual_passes_on_a_spell_less_turn() {
+        // Acceptance: with default stops, a spell-less turn requires dramatically fewer
+        // manual passes. Drive the identical spell-less turn twice — automation off vs
+        // on — and count the clicks each cost.
+        let (off_handle, off_task) = Room::new(spell_less_state(), db()).spawn();
+        let (tx0, mut off0) = view_channel();
+        let (tx1, mut off1) = view_channel();
+        off_handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        off_handle.send(RoomInput::Join {
+            seat: 1,
+            outbox: tx1,
+        });
+        let off_clicks = count_clicks_until_turn(&off_handle, &mut off0, &mut off1, 2).await;
+        drop(off_handle);
+        off_task.await.unwrap();
+
+        let (on_handle, on_task) = Room::new(spell_less_state(), db())
+            .with_auto_pass(AutoPassPolicy::On)
+            .spawn();
+        let (tx0, mut on0) = view_channel();
+        let (tx1, mut on1) = view_channel();
+        on_handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        on_handle.send(RoomInput::Join {
+            seat: 1,
+            outbox: tx1,
+        });
+        let on_clicks = count_clicks_until_turn(&on_handle, &mut on0, &mut on1, 2).await;
+        drop(on_handle);
+        on_task.await.unwrap();
+
+        assert!(
+            off_clicks >= 8,
+            "the manual baseline spends many passes on a spell-less turn: {off_clicks}"
+        );
+        assert!(
+            on_clicks * 3 < off_clicks,
+            "automation makes a spell-less turn dramatically cheaper: on={on_clicks} off={off_clicks}"
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_264_stop_preferences_survive_reconnect() {
+        // Preferences set over the wire are held on the room, so a disconnect/reconnect
+        // re-sends them in full — they never live only in client memory.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let _ = wait_for_view(&mut rx0).await;
+
+        handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::SetStops(SetStops {
+                stops: vec![Phase::Upkeep, Phase::End],
+            }),
+        });
+        let after = wait_for_view(&mut rx0).await;
+        assert_eq!(after.stops, vec![Phase::Upkeep, Phase::End]);
+
+        // Disconnect and reconnect with a fresh outbox: the stops come back in full.
+        handle.send(RoomInput::Leave { seat: 0 });
+        let (tx0b, mut rx0b) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0b,
+        });
+        let resumed = wait_for_view(&mut rx0b).await;
+        assert_eq!(
+            resumed.stops,
+            vec![Phase::Upkeep, Phase::End],
+            "stop preferences survive reconnect"
+        );
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_264_a_relevant_stop_keeps_priority_at_an_idle_step() {
+        // A seat that has opted to stop at a step still receives priority there even
+        // when idle — the escape hatch from an auto-pass chain. Seat 0 is idle at its
+        // postcombat main; with a stop there it is handed priority rather than passed.
+        let mut state = spell_less_state();
+        state.step = Step::PostcombatMain;
+        let (handle, task) = Room::new(state, db())
+            .with_auto_pass(AutoPassPolicy::On)
+            .with_stops(vec![vec![Phase::PostcombatMain], vec![]])
+            .spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let view0 = wait_for_view(&mut rx0).await;
+        assert_eq!(
+            view0.phase,
+            Phase::PostcombatMain,
+            "the stop halts the settle at the postcombat main"
+        );
+        assert!(
+            view0
+                .valid_actions
+                .iter()
+                .any(|a| a.kind == "pass_priority"),
+            "the stopped seat is handed priority (a manual pass), not auto-passed"
+        );
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_264_without_a_stop_the_same_idle_step_is_auto_passed() {
+        // The control for the test above: the same idle postcombat main, no stop, is
+        // auto-passed through — the seat never rests there.
+        let mut state = spell_less_state();
+        state.step = Step::PostcombatMain;
+        let (handle, task) = Room::new(state, db())
+            .with_auto_pass(AutoPassPolicy::On)
+            .spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        // The settle fast-forwards past the postcombat main to the next forced choice
+        // (a combat declaration on the following turn); seat 0's resting view is no
+        // longer a pass at its postcombat main.
+        let view0 = wait_for_view(&mut rx0).await;
+        assert!(
+            !(view0.phase == Phase::PostcombatMain
+                && view0.turn == 1
+                && view0
+                    .valid_actions
+                    .iter()
+                    .any(|a| a.kind == "pass_priority")),
+            "with no stop the idle postcombat main is auto-passed, not rested on"
+        );
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_264_a_castable_instant_is_never_auto_passed() {
+        // Safety: a seat with an instant-speed play always keeps priority, even with
+        // automation on and no stop. Seat 1 holds an affordable instant on seat 0's
+        // turn; the engine reports it non-idle, so the room never passes for it.
+        let mut state = GameState::new_two_player();
+        state.step = Step::Upkeep; // seat 0's turn, seat 1 may respond at instant speed
+        let bolt = state.new_instance(fixture("runic_negation"));
+        state.players[1].hand = vec![bolt];
+        state.players[1].mana_pool.add(rune_engine::Color::Blue, 1);
+        // Something on the stack for the counterspell to legally target.
+        let boar = state.new_instance(fixture("thornback_boar"));
+        let sid = rune_engine::StackId(state.mint_id());
+        state.stack.push(rune_engine::StackObject {
+            id: sid,
+            controller: PlayerId(0),
+            kind: rune_engine::StackObjectKind::Spell { card: boar },
+            targets: Vec::new(),
+        });
+        state.priority = PlayerId(1);
+
+        let (handle, task) = Room::new(state, db())
+            .with_auto_pass(AutoPassPolicy::On)
+            .spawn();
+        let (tx1, mut rx1) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 1,
+            outbox: tx1,
+        });
+        let view1 = wait_for_view(&mut rx1).await;
+        assert!(
+            view1.valid_actions.iter().any(|a| a.kind == "cast_spell"),
+            "a seat with a castable instant keeps priority — never auto-passed out of a response"
+        );
+        assert!(!view1.auto_passed, "the seat was not auto-passed");
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_264_auto_passed_indicator_flags_the_skipped_seat() {
+        // The display-only indicator: reaching the first forced decision auto-passes
+        // seat 0 through the early idle steps, so its resting view is flagged.
+        let (handle, task) = Room::new(spell_less_state(), db())
+            .with_auto_pass(AutoPassPolicy::On)
+            .spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+        let view0 = wait_for_view(&mut rx0).await;
+        assert!(
+            view0.auto_passed,
+            "seat 0 was auto-passed to reach its first forced decision (indicator set)"
+        );
+        // It rests on the forced attacker declaration (no pass on offer there).
+        assert!(
+            view0
+                .valid_actions
+                .iter()
+                .any(|a| a.kind == "declare_attackers"),
+            "the settle halted at the active player's forced combat declaration"
+        );
+        drop(handle);
+        task.await.unwrap();
     }
 }

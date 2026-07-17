@@ -28,9 +28,11 @@ import { createStore } from 'zustand/vanilla';
 import {
   chooseAction,
   helloCommand,
+  setStopsMessage,
   type GameView,
   type LobbyCommand,
   type LobbyView,
+  type Phase,
   type PlayerId,
   type SeatView,
   type TargetChoice,
@@ -178,6 +180,14 @@ export interface GameStore {
    * multi-message handshake. No legality is computed here (hard rule).
    */
   choose: (action: ValidAction, targets?: TargetChoice[]) => void;
+  /**
+   * Set this connection's priority-stop preferences (issue #264): the steps at which
+   * the seat wants priority even when idle, so basic auto-pass does not skip it there.
+   * Sends a `set_stops` message; the server stores it (surviving reconnect) and
+   * reflects it back in `GameView.stops`, which is the sole source of the toggles'
+   * rendered state — nothing is stored client-side. No legality is computed here.
+   */
+  setStops: (stops: Phase[]) => void;
   /**
    * Ingest one raw server frame, replacing the stored view. This is the single
    * entry point for server→client state and the seam tests use to feed a lone
@@ -369,6 +379,14 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       // what it issued; no legality is computed here (hard rule).
       if (!socket) return;
       socket.send(JSON.stringify(chooseAction(action.id, action.token, targets)));
+    },
+
+    setStops(stops): void {
+      // Send the seat's stop preferences; the server is authoritative and reflects
+      // the accepted set back in the next `GameView.stops`. Nothing is stored here —
+      // the toggles render from the server's echo, so this survives reconnect.
+      if (!socket) return;
+      socket.send(JSON.stringify(setStopsMessage(stops)));
     },
 
     ingest(raw): void {

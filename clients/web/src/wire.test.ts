@@ -49,6 +49,8 @@ describe('parseGameView', () => {
       valid_actions: [],
       action_deadline: undefined,
       result: undefined,
+      stops: [],
+      auto_passed: false,
       player_names: {},
     });
   });
@@ -336,6 +338,36 @@ describe('lobby wire (issue #114)', () => {
 
   it('rejects malformed JSON when routing a frame', () => {
     expect(() => parseServerFrame('not json')).toThrow(ProtocolError);
+  });
+});
+
+describe('priority stops and auto-pass (issue #264)', () => {
+  it('normalizes GameView.stops, keeping only known phases', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'upkeep',
+        you: 'p0',
+        stops: ['upkeep', 'end', 'not_a_phase'],
+      }),
+    );
+    // Known phases survive; an unrecognized future value is dropped, never thrown.
+    expect(view.stops).toEqual(['upkeep', 'end']);
+  });
+
+  it('defaults stops to an empty list and auto_passed to false when omitted', () => {
+    const view = parseGameView('{"phase":"upkeep","you":"p0"}');
+    expect(view.stops).toEqual([]);
+    expect(view.auto_passed).toBe(false);
+  });
+
+  it('carries the auto_passed indicator through when set', () => {
+    const view = parseGameView('{"phase":"upkeep","you":"p0","auto_passed":true}');
+    expect(view.auto_passed).toBe(true);
+  });
+
+  it('treats a malformed stops value as empty rather than throwing', () => {
+    const view = parseGameView('{"phase":"upkeep","you":"p0","stops":"upkeep"}');
+    expect(view.stops).toEqual([]);
   });
 });
 
