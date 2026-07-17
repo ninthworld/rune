@@ -1192,3 +1192,45 @@ export const seatBadges: CSSProperties = {
   gap: 6,
   marginLeft: 'auto',
 };
+
+/** The room-directory list (issue #280): the browsable open-games rows. */
+export const roomList: CSSProperties = {
+  ...seatList,
+  gap: 8,
+};
+
+/** One room row in the directory: setup + occupancy on the left, a Join on the right. */
+export const roomRow: CSSProperties = {
+  ...seatRow,
+  gap: 10,
+};
+
+/** The setup + occupancy text block on a room row. */
+export const roomRowInfo: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+};
+
+/** Trailing controls (Join button / status badge) pushed to the right of a room row. */
+export const roomRowActions: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  marginLeft: 'auto',
+};
+
+/** The empty-directory placeholder ("No open games — create one."). */
+export const roomListEmpty: CSSProperties = {
+  ...muted,
+  padding: '8px 4px',
+};
+
+/** The collapsed/secondary "join by room id" disclosure summary. */
+export const joinByIdSummary: CSSProperties = {
+  ...muted,
+  cursor: 'pointer',
+  fontSize: 13,
+  fontWeight: 600,
+  userSelect: 'none',
+};

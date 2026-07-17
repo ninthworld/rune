@@ -16,6 +16,8 @@ import {
   type Phase,
   type PlayerId,
   type RoomConfig,
+  type RoomState,
+  type RoomSummary,
   type RoomView,
   type SeatView,
   type SelfView,
@@ -176,11 +178,31 @@ function normalizeRoomView(payload: unknown): RoomView {
   };
 }
 
+/** The room lifecycle states the directory knows; anything else defaults to
+ * `'gathering'` so an unknown future value never breaks rendering. */
+function normalizeRoomState(value: unknown): RoomState {
+  return value === 'in_progress' ? 'in_progress' : 'gathering';
+}
+
+/**
+ * Normalize one wire {@link RoomSummary} (a directory entry). Missing fields default
+ * to their empty/zero form; `state` falls back to `'gathering'` for an unknown value.
+ */
+function normalizeRoomSummary(payload: unknown): RoomSummary {
+  const record = isRecord(payload) ? payload : {};
+  return {
+    room_id: asString(record.room_id),
+    config: normalizeRoomConfig(record.config),
+    filled: typeof record.filled === 'number' ? record.filled : 0,
+    state: normalizeRoomState(record.state),
+  };
+}
+
 /**
  * Normalize an already-parsed payload into a complete {@link LobbyView}. Missing
  * `session`/`you` default to `''` (like `GameView.you`), `room` stays absent when
- * omitted, and `valid_commands` becomes the empty array. This is wire hygiene, not
- * game logic — unknown fields are tolerated for forward compatibility.
+ * omitted, and `directory`/`valid_commands` become the empty array. This is wire
+ * hygiene, not game logic — unknown fields are tolerated for forward compatibility.
  */
 export function normalizeLobbyView(payload: unknown): LobbyView {
   if (!isRecord(payload)) {
@@ -189,6 +211,7 @@ export function normalizeLobbyView(payload: unknown): LobbyView {
   const view: LobbyView = {
     session: asString(payload.session),
     you: asString(payload.you),
+    directory: asArray(payload.directory, 'directory').map(normalizeRoomSummary),
     valid_commands: asArray<string>(payload.valid_commands, 'valid_commands'),
   };
   if (isRecord(payload.room)) view.room = normalizeRoomView(payload.room);

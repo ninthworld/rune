@@ -601,6 +601,40 @@ pub struct RoomView {
     pub seats: Vec<SeatView>,
 }
 
+/// The lifecycle state of a room in the lobby's [`directory`](LobbyView::directory)
+/// (issue #280). A room appears in the directory while it is one of these two states;
+/// a finished or emptied room simply leaves the list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoomState {
+    /// Pre-game: the room is still filling seats, taking decks, and readying up. A
+    /// `gathering` room with an open seat can be joined straight from the directory.
+    Gathering,
+    /// The room's game has started. It stays visible for context but is **not**
+    /// joinable — spectating a live game is out of scope (ADR 0012).
+    InProgress,
+}
+
+/// One room as it appears in the lobby's public **room directory** (issue #280):
+/// exactly enough to browse and join an open game without an out-of-band id, and no
+/// more. It carries no seat roster and no player-identifying information beyond the
+/// occupancy count, and never any game state — a room browser, not a spectator feed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomSummary {
+    /// The room's opaque id — the same id a [`JoinRoom`] command carries, so a client
+    /// can join directly from the listing.
+    pub room_id: RoomId,
+    /// The room's configuration (seat count and game setup): the config summary the
+    /// browser renders.
+    pub config: RoomConfig,
+    /// How many of the room's seats are currently occupied. The total is
+    /// [`RoomConfig::seats`]; a [`RoomState::Gathering`] room with `filled` below that
+    /// total has an open seat to join.
+    pub filled: u8,
+    /// The room's lifecycle state (`gathering` or `in_progress`).
+    pub state: RoomState,
+}
+
 /// The full pre-game state for one connection, pushed on every change — the
 /// pre-game analogue of [`GameView`]. The client rebuilds its entire pre-game UI
 /// from a single `LobbyView` (reconnect-safe by construction) and derives no
@@ -621,6 +655,15 @@ pub struct LobbyView {
     /// The room the connection is in, if any, with its config and seat roster.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room: Option<RoomView>,
+    /// The public **room directory** (issue #280): every browsable room in the lobby,
+    /// so a player can discover and join an open game without being handed a room id
+    /// out-of-band. Each entry is a [`RoomSummary`] (id, config, occupancy count,
+    /// lifecycle state); no seat roster or player-identifying info rides here, and no
+    /// game state. Re-projected and pushed on every room lifecycle change, exactly
+    /// like the rest of the view. Omitted from the wire when empty (no rooms); a client
+    /// treats a missing field as an empty list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub directory: Vec<RoomSummary>,
     /// The lobby command kinds currently legal for this connection (e.g.
     /// `"create_room"`, `"join_room"`, `"submit_deck"`, `"ready"`, `"unready"`,
     /// `"leave"`). Free-form strings so new command kinds do not break older
@@ -1539,6 +1582,7 @@ mod tests {
                     },
                 ],
             }),
+            directory: vec![],
             valid_commands: vec!["submit_deck".into(), "unready".into(), "leave".into()],
         };
         let json = serde_json::to_string(&view).unwrap();
@@ -1554,10 +1598,13 @@ mod tests {
             session: "s:new".into(),
             you: "p9".into(),
             room: None,
+            directory: vec![],
             valid_commands: vec!["create_room".into(), "join_room".into()],
         };
         let json = serde_json::to_value(&view).unwrap();
         assert!(json.get("room").is_none());
+        // An empty directory elides from the wire, like every other empty collection.
+        assert!(json.get("directory").is_none());
         // `session` and `you` are always present on the wire (like `GameView::you`).
         assert_eq!(json.get("session"), Some(&serde_json::json!("s:new")));
         assert_eq!(json.get("you"), Some(&serde_json::json!("p9")));
@@ -1607,7 +1654,94 @@ mod tests {
         let view: LobbyView = serde_json::from_str(json).unwrap();
         assert_eq!(view.session, "");
         assert_eq!(view.you, "");
+        assert!(view.directory.is_empty());
         assert_eq!(view.valid_commands, vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn room_summary_round_trips_and_tags_its_state() {
+        // Issue #280: a directory entry carries the room id, its config summary, the
+        // occupancy count, and the lifecycle state tagged snake_case on the wire.
+        let gathering = RoomSummary {
+            room_id: "r0".into(),
+            config: RoomConfig {
+                seats: 2,
+                game_setup: "standard_2p".into(),
+            },
+            filled: 1,
+            state: RoomState::Gathering,
+        };
+        let json = serde_json::to_value(&gathering).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "room_id": "r0",
+                "config": { "seats": 2, "game_setup": "standard_2p" },
+                "filled": 1,
+                "state": "gathering"
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<RoomSummary>(json).unwrap(),
+            gathering
+        );
+
+        // The started state tags as `in_progress`.
+        let in_progress = RoomSummary {
+            state: RoomState::InProgress,
+            filled: 2,
+            ..gathering.clone()
+        };
+        let json = serde_json::to_value(&in_progress).unwrap();
+        assert_eq!(json["state"], serde_json::json!("in_progress"));
+        assert_eq!(
+            serde_json::from_value::<RoomSummary>(json).unwrap(),
+            in_progress
+        );
+    }
+
+    #[test]
+    fn lobby_view_directory_round_trips_and_elides_when_empty() {
+        // Issue #280: the room directory rides on `LobbyView`, round-trips populated,
+        // and elides from the wire when there are no rooms.
+        let mut view = LobbyView {
+            session: "s:ab12".into(),
+            you: "p1".into(),
+            room: None,
+            directory: vec![],
+            valid_commands: vec!["create_room".into(), "join_room".into()],
+        };
+        // Empty directory: the field elides entirely.
+        assert!(serde_json::to_value(&view)
+            .unwrap()
+            .get("directory")
+            .is_none());
+
+        // Populated: a gathering room and an in-progress room both survive the trip.
+        view.directory = vec![
+            RoomSummary {
+                room_id: "r0".into(),
+                config: RoomConfig {
+                    seats: 2,
+                    game_setup: "standard_2p".into(),
+                },
+                filled: 1,
+                state: RoomState::Gathering,
+            },
+            RoomSummary {
+                room_id: "r1".into(),
+                config: RoomConfig {
+                    seats: 4,
+                    game_setup: "ffa-4".into(),
+                },
+                filled: 4,
+                state: RoomState::InProgress,
+            },
+        ];
+        let back: LobbyView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
+        assert_eq!(back, view);
+        assert_eq!(back.directory[0].state, RoomState::Gathering);
+        assert_eq!(back.directory[1].state, RoomState::InProgress);
     }
 
     #[test]

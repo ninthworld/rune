@@ -30,6 +30,7 @@ import {
   readyCommand,
   submitDeckCommand,
   type LobbyView,
+  type RoomSummary,
   type SeatView,
 } from './protocol';
 import { useGameStore } from './store';
@@ -41,12 +42,18 @@ import {
   errorText,
   field,
   fieldLabel,
+  joinByIdSummary,
   lobbyPanel,
   lobbySection,
   lobbySectionTitle,
   muted,
   roomIdCode,
   roomIdRow,
+  roomList,
+  roomListEmpty,
+  roomRow,
+  roomRowActions,
+  roomRowInfo,
   seatBadge,
   seatBadgeOn,
   seatBadges,
@@ -85,6 +92,15 @@ function can(view: LobbyView, command: string): boolean {
   return view.valid_commands.includes(command);
 }
 
+/**
+ * A human label for an opaque `game_setup` id: the known options' display label,
+ * falling back to the raw id (which is server-owned and forward-compatible — an
+ * unknown setup still renders, never blank).
+ */
+function setupLabel(gameSetup: string): string {
+  return GAME_SETUPS.find((option) => option.id === gameSetup)?.label ?? gameSetup;
+}
+
 /** Human label for a seat's occupant. */
 function occupantLabel(seat: SeatView, you: string): string {
   if (seat.occupied_by === undefined) return 'Open';
@@ -114,7 +130,89 @@ function LobbyWaiting({ onDisconnect }: { onDisconnect: () => void }) {
   );
 }
 
-/** The create-a-room / join-a-room form, shown when not yet in a room. */
+/**
+ * One row of the room directory (issue #280). A `gathering` room with an open seat
+ * shows a Join button (only when `join_room` is offered — `valid_commands` gates
+ * interactivity); a full `gathering` room shows "Full"; an `in_progress` room is
+ * visible but un-joinable. All of it is derived from the `RoomSummary` — no legality
+ * computed here.
+ */
+function RoomDirectoryRow({
+  room,
+  canJoin,
+  onJoin,
+}: {
+  room: RoomSummary;
+  canJoin: boolean;
+  onJoin: (roomId: string) => void;
+}) {
+  const total = room.config.seats;
+  const started = room.state === 'in_progress';
+  const full = room.filled >= total;
+
+  // Priority: a started room is un-joinable; a full gathering room is Full; an open
+  // gathering room offers Join only when the server advertised `join_room`.
+  const action = started ? (
+    <span style={seatBadge} data-testid={`room-${room.room_id}-in-progress`}>
+      In progress
+    </span>
+  ) : full ? (
+    <span style={seatBadge} data-testid={`room-${room.room_id}-full`}>
+      Full
+    </span>
+  ) : canJoin ? (
+    <button
+      type="button"
+      style={button}
+      onClick={() => onJoin(room.room_id)}
+      data-testid={`join-directory-${room.room_id}`}
+    >
+      Join
+    </button>
+  ) : null;
+
+  return (
+    <li style={roomRow} data-testid={`room-row-${room.room_id}`}>
+      <span style={roomRowInfo}>
+        <span>
+          {setupLabel(room.config.game_setup)} · {total} seats
+        </span>
+        <span style={muted} data-testid={`room-${room.room_id}-occupancy`}>
+          {room.filled}/{total} filled
+        </span>
+      </span>
+      <span style={roomRowActions}>{action}</span>
+    </li>
+  );
+}
+
+/** The room browser (issue #280): the list of open games, plus an empty state. */
+function RoomDirectory({ view }: { view: LobbyView }) {
+  const sendLobby = useGameStore((state) => state.sendLobby);
+  const canJoin = can(view, 'join_room');
+  const join = (roomId: string): void => {
+    sendLobby(joinRoomCommand(roomId));
+  };
+
+  return (
+    <section style={lobbySection} aria-label="Open games" data-testid="room-directory">
+      <h2 style={lobbySectionTitle}>Open games</h2>
+      {view.directory.length === 0 ? (
+        <span style={roomListEmpty} data-testid="room-directory-empty">
+          No open games — create one.
+        </span>
+      ) : (
+        <ul style={roomList} data-testid="room-directory-list">
+          {view.directory.map((room) => (
+            <RoomDirectoryRow key={room.room_id} room={room} canJoin={canJoin} onJoin={join} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** The create-a-room / room-directory / join-by-id screen, shown when room-less. */
 function RoomEntry({ view }: { view: LobbyView }) {
   const sendLobby = useGameStore((state) => state.sendLobby);
   const [setupId, setSetupId] = useState(GAME_SETUPS[0].id);
@@ -184,9 +282,11 @@ function RoomEntry({ view }: { view: LobbyView }) {
         </section>
       )}
 
+      <RoomDirectory view={view} />
+
       {can(view, 'join_room') && (
-        <section style={lobbySection} aria-label="Join a room" data-testid="join-room">
-          <h2 style={lobbySectionTitle}>Join a room</h2>
+        <details style={lobbySection} data-testid="join-room">
+          <summary style={joinByIdSummary}>Join by room id</summary>
           <label style={field}>
             <span style={fieldLabel}>Room id</span>
             <input
@@ -210,7 +310,7 @@ function RoomEntry({ view }: { view: LobbyView }) {
               Join room
             </button>
           </div>
-        </section>
+        </details>
       )}
     </>
   );

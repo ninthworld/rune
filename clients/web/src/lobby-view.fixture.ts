@@ -20,8 +20,34 @@ export const LOBBY_ROOMLESS_JSON = JSON.stringify({
 export const LOBBY_ROOMLESS: LobbyView = {
   session: 's:ab12',
   you: 'p1',
+  directory: [],
   valid_commands: ['create_room', 'join_room'],
 };
+
+/**
+ * Room-less, but the directory (issue #280) now carries two rooms to browse: an
+ * open `gathering` room with one of two seats filled, and a full `in_progress`
+ * room. Written as raw wire JSON with the same eliding the server uses.
+ */
+export const LOBBY_DIRECTORY_JSON = JSON.stringify({
+  session: 's:ab12',
+  you: 'p1',
+  directory: [
+    {
+      room_id: 'r0',
+      config: { seats: 2, game_setup: '1v1' },
+      filled: 1,
+      state: 'gathering',
+    },
+    {
+      room_id: 'r1',
+      config: { seats: 4, game_setup: 'ffa-4' },
+      filled: 4,
+      state: 'in_progress',
+    },
+  ],
+  valid_commands: ['create_room', 'join_room'],
+});
 
 /**
  * In a freshly created 2-seat room: you (p1) hold seat 0, undecked; seat 1 is

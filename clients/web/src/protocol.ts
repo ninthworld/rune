@@ -528,6 +528,31 @@ export interface RoomView {
 }
 
 /**
+ * A room's lifecycle state in the lobby {@link LobbyView.directory} (issue #280):
+ * `gathering` (pre-game, joinable while it has an open seat) or `in_progress` (its
+ * game has started — visible for context but not joinable). A finished or emptied
+ * room leaves the directory entirely. A client tolerates an unknown future value.
+ */
+export type RoomState = 'gathering' | 'in_progress';
+
+/**
+ * One room as it appears in the public room **directory** — enough to browse and
+ * join an open game without an out-of-band id, and no more. It carries no seat
+ * roster and no player-identifying info beyond the occupancy count, and never any
+ * game state.
+ */
+export interface RoomSummary {
+  /** The room's opaque id — the same id a `join_room` command carries. */
+  room_id: RoomId;
+  /** The room's configuration (seat count and game setup). */
+  config: RoomConfig;
+  /** How many of the room's seats are occupied; the total is `config.seats`. */
+  filled: number;
+  /** The room's lifecycle state (`gathering` or `in_progress`). */
+  state: RoomState;
+}
+
+/**
  * The full pre-game state for one connection, pushed on every change — the
  * pre-game analogue of {@link GameView}. The client rebuilds its entire pre-game
  * UI from a single `LobbyView` (reconnect-safe by construction) and derives no
@@ -547,6 +572,15 @@ export interface LobbyView {
   you: PlayerId;
   /** The room the connection is in, if any. Absent when not in a room. */
   room?: RoomView;
+  /**
+   * The public room **directory** (issue #280): every browsable room in the lobby,
+   * so a player can discover and join an open game without an out-of-band id. Each
+   * entry is a {@link RoomSummary} (id, config, occupancy, lifecycle state); no seat
+   * roster or player-identifying info, and no game state. Pushed on every room
+   * lifecycle change. Elided on the wire when empty; {@link normalizeLobbyView}
+   * defaults it to an empty array.
+   */
+  directory: RoomSummary[];
   /**
    * The lobby command kinds currently legal for this connection (e.g.
    * `"create_room"`, `"join_room"`, `"submit_deck"`, `"ready"`, `"unready"`,

@@ -7,7 +7,11 @@ import {
   ProtocolError,
 } from './wire';
 import { SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
-import { LOBBY_ROOM_UNDECKED_JSON, LOBBY_ROOMLESS_JSON } from './lobby-view.fixture';
+import {
+  LOBBY_DIRECTORY_JSON,
+  LOBBY_ROOM_UNDECKED_JSON,
+  LOBBY_ROOMLESS_JSON,
+} from './lobby-view.fixture';
 // The single canonical cross-language fixture, owned by the `rune-protocol` crate
 // and round-tripped by its Rust test. Resolved via a path alias (tsconfig.json +
 // vitest.config.ts) so there is exactly one copy of the JSON in the repo.
@@ -272,6 +276,7 @@ describe('lobby wire (issue #114)', () => {
     expect(view).toEqual({
       session: 's:ab12',
       you: 'p1',
+      directory: [],
       valid_commands: ['create_room', 'join_room'],
     });
     expect(view.room).toBeUndefined();
@@ -293,7 +298,23 @@ describe('lobby wire (issue #114)', () => {
 
   it('tolerates a sparse/empty LobbyView and unknown fields (forward compat)', () => {
     const view = normalizeLobbyView({ some_future_field: true });
-    expect(view).toEqual({ session: '', you: '', valid_commands: [] });
+    expect(view).toEqual({ session: '', you: '', directory: [], valid_commands: [] });
+  });
+
+  it('normalizes the room directory, defaulting an unknown state to gathering (issue #280)', () => {
+    const view = normalizeLobbyView(JSON.parse(LOBBY_DIRECTORY_JSON));
+    expect(view.room).toBeUndefined();
+    expect(view.directory).toEqual([
+      { room_id: 'r0', config: { seats: 2, game_setup: '1v1' }, filled: 1, state: 'gathering' },
+      { room_id: 'r1', config: { seats: 4, game_setup: 'ffa-4' }, filled: 4, state: 'in_progress' },
+    ]);
+
+    // A sparse entry with an unknown state falls back to gathering, and missing
+    // numeric/id fields default rather than throwing.
+    const sparse = normalizeLobbyView({ directory: [{ state: 'exploding' }] });
+    expect(sparse.directory).toEqual([
+      { room_id: '', config: { seats: 0, game_setup: '' }, filled: 0, state: 'gathering' },
+    ]);
   });
 
   it('rejects a non-object LobbyView payload', () => {
