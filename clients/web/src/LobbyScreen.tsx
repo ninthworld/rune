@@ -1,12 +1,20 @@
 /**
- * The pre-game lobby screen (issue #114).
+ * The pre-game lobby screen (issue #114; identity redesign #300).
  *
  * The screen shown between the {@link ConnectionScreen} and the in-game
  * {@link Table}: after the socket opens, the store greets the server (`Hello`)
- * and this screen renders the resulting {@link LobbyView} — create a room (with a
- * seat count), join one by id, pick a bundled starter deck, submit it, and ready
- * up. When every seat is filled, decked, and ready the server constructs the game
- * and pushes the first `GameView`; the app then switches to the table.
+ * and this screen renders the resulting {@link LobbyView} — browse the room
+ * directory (the primary "find a game" path), create a room or join one by id (the
+ * secondary paths), pick a bundled starter deck, submit it, and ready up. When
+ * every seat is filled, decked, and ready the server constructs the game and
+ * pushes the first `GameView`; the app then switches to the table.
+ *
+ * Identity (docs/design/ui-design-notes.md §Identity): the pre-game screens share
+ * the table's visual system and RUNE's procedural motif — the {@link RuneMark} and
+ * the display-face wordmark, geometry only, never a card image or WotC branding.
+ * Players read as people: display names ride the protocol as a later contract
+ * change (issue #294); {@link seatDisplayName} reads that field defensively and
+ * falls back to a seat-derived "Player N" until it lands.
  *
  * Hard rules (AGENTS.md, ADR 0012):
  * - **Reconstruct from one `LobbyView`.** Every control here is derived from the
@@ -35,7 +43,9 @@ import {
 } from './protocol';
 import { useGameStore } from './store';
 import { cx } from './chrome/cx';
+import { RuneMark } from './chrome/RuneMark';
 import s from './table/chrome.module.css';
+import l from './screens.module.css';
 
 /** A game-setup option offered by the create-room form. */
 interface GameSetupOption {
@@ -74,19 +84,39 @@ function setupLabel(gameSetup: string): string {
   return GAME_SETUPS.find((option) => option.id === gameSetup)?.label ?? gameSetup;
 }
 
-/** Human label for a seat's occupant. */
-function occupantLabel(seat: SeatView, you: string): string {
-  if (seat.occupied_by === undefined) return 'Open';
-  if (seat.occupied_by === you) return 'You';
-  return seat.occupied_by;
+/**
+ * The presentation name for an occupied seat. Display names ride the protocol as a
+ * later contract change (issue #294); until the field lands we read it defensively
+ * so real names light up automatically the moment #294 adds it to `SeatView`,
+ * falling back to a seat-derived "Player N" today. Presentation only — never a game
+ * or legality input.
+ */
+function seatDisplayName(seat: SeatView): string {
+  const named = seat as SeatView & { display_name?: string };
+  const name = named.display_name?.trim();
+  if (name !== undefined && name.length > 0) return name;
+  return `Player ${seat.seat + 1}`;
+}
+
+/** The RUNE brand lockup: the procedural mark, the wordmark, and a tagline. */
+function Brand({ tagline }: { tagline: string }) {
+  return (
+    <div className={l.brand}>
+      <div className={l.brandRow}>
+        <RuneMark size={40} className={l.mark} />
+        <h1 className={l.wordmark}>RUNE</h1>
+      </div>
+      <p className={l.tagline}>{tagline}</p>
+    </div>
+  );
 }
 
 /** The pre-first-frame lobby fallback: a live status plus a Disconnect action. */
 function LobbyWaiting({ onDisconnect }: { onDisconnect: () => void }) {
   return (
-    <main className={s.connectMain}>
+    <main className={l.screen}>
       <section className={s.lobbyPanel} aria-label="Entering lobby" data-testid="lobby-waiting">
-        <h1 className={s.connectHeading}>RUNE</h1>
+        <Brand tagline="Lobby" />
         <div className={s.waitingBar}>
           <span className={s.muted}>Connected — entering the lobby…</span>
           <button
@@ -159,7 +189,11 @@ function RoomDirectoryRow({
   );
 }
 
-/** The room browser (issue #280): the list of open games, plus an empty state. */
+/**
+ * The room browser (issue #280) — the PRIMARY "find a game" path (issue #300): the
+ * list of open games, plus an empty state. Accented ahead of the secondary
+ * create/join paths.
+ */
 function RoomDirectory({ view }: { view: LobbyView }) {
   const sendLobby = useGameStore((state) => state.sendLobby);
   const canJoin = can(view, 'join_room');
@@ -168,7 +202,12 @@ function RoomDirectory({ view }: { view: LobbyView }) {
   };
 
   return (
-    <section className={s.lobbySection} aria-label="Open games" data-testid="room-directory">
+    <section
+      className={cx(s.lobbySection, l.primarySection)}
+      aria-label="Open games"
+      data-testid="room-directory"
+    >
+      <span className={l.kicker}>Find a game</span>
       <h2 className={s.lobbySectionTitle}>Open games</h2>
       {view.directory.length === 0 ? (
         <span className={s.roomListEmpty} data-testid="room-directory-empty">
@@ -209,92 +248,101 @@ function RoomEntry({ view }: { view: LobbyView }) {
 
   return (
     <>
-      {can(view, 'create_room') && (
-        <section className={s.lobbySection} aria-label="Create a room" data-testid="create-room">
-          <h2 className={s.lobbySectionTitle}>Create a room</h2>
-          <label className={s.field}>
-            <span className={s.fieldLabel}>Game setup</span>
-            <select
-              className={s.select}
-              value={setupId}
-              data-testid="game-setup-select"
-              onChange={(event) => {
-                const next = event.target.value;
-                setSetupId(next);
-                const found = GAME_SETUPS.find((option) => option.id === next);
-                if (found) setSeats(found.seats);
-              }}
-            >
-              {GAME_SETUPS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={s.field}>
-            <span className={s.fieldLabel}>Seats</span>
-            <select
-              className={s.select}
-              value={seats}
-              data-testid="seat-count-select"
-              onChange={(event) => setSeats(Number(event.target.value))}
-            >
-              {SEAT_COUNTS.map((count) => (
-                <option key={count} value={count}>
-                  {count}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className={s.buttonRow}>
-            <button
-              type="button"
-              className={s.button}
-              onClick={create}
-              data-testid="create-room-button"
-            >
-              Create room
-            </button>
-          </div>
-        </section>
-      )}
-
+      {/* Primary path: browse and join an open game. */}
       <RoomDirectory view={view} />
 
-      {can(view, 'join_room') && (
-        <details className={s.lobbySection} data-testid="join-room">
-          <summary className={s.joinByIdSummary}>Join by room id</summary>
-          <label className={s.field}>
-            <span className={s.fieldLabel}>Room id</span>
-            <input
-              className={s.select}
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              value={roomId}
-              onChange={(event) => setRoomId(event.target.value)}
-              data-testid="join-room-input"
-              aria-label="Room id"
-            />
-          </label>
-          {joinError !== null && (
-            <span className={s.errorText} role="alert" data-testid="join-room-error">
-              {joinError}
-            </span>
-          )}
-          <div className={s.buttonRow}>
-            <button
-              type="button"
-              className={s.button}
-              onClick={join}
-              data-testid="join-room-button"
-            >
-              Join room
-            </button>
-          </div>
-        </details>
-      )}
+      {/* Secondary paths: start your own room, or join a specific id you were sent. */}
+      <div className={l.secondary}>
+        {can(view, 'create_room') && (
+          <section
+            className={cx(s.lobbySection, l.secondaryCard)}
+            aria-label="Create a room"
+            data-testid="create-room"
+          >
+            <span className={l.kicker}>Or start your own</span>
+            <h2 className={s.lobbySectionTitle}>Create a room</h2>
+            <label className={s.field}>
+              <span className={s.fieldLabel}>Game setup</span>
+              <select
+                className={s.select}
+                value={setupId}
+                data-testid="game-setup-select"
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setSetupId(next);
+                  const found = GAME_SETUPS.find((option) => option.id === next);
+                  if (found) setSeats(found.seats);
+                }}
+              >
+                {GAME_SETUPS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={s.field}>
+              <span className={s.fieldLabel}>Seats</span>
+              <select
+                className={s.select}
+                value={seats}
+                data-testid="seat-count-select"
+                onChange={(event) => setSeats(Number(event.target.value))}
+              >
+                {SEAT_COUNTS.map((count) => (
+                  <option key={count} value={count}>
+                    {count}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className={s.buttonRow}>
+              <button
+                type="button"
+                className={s.button}
+                onClick={create}
+                data-testid="create-room-button"
+              >
+                Create room
+              </button>
+            </div>
+          </section>
+        )}
+
+        {can(view, 'join_room') && (
+          <details className={cx(s.lobbySection, l.secondaryCard)} data-testid="join-room">
+            <summary className={s.joinByIdSummary}>Join by room id</summary>
+            <label className={s.field}>
+              <span className={s.fieldLabel}>Room id</span>
+              <input
+                className={s.select}
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={roomId}
+                onChange={(event) => setRoomId(event.target.value)}
+                data-testid="join-room-input"
+                aria-label="Room id"
+              />
+            </label>
+            {joinError !== null && (
+              <span className={s.errorText} role="alert" data-testid="join-room-error">
+                {joinError}
+              </span>
+            )}
+            <div className={s.buttonRow}>
+              <button
+                type="button"
+                className={s.button}
+                onClick={join}
+                data-testid="join-room-button"
+              >
+                Join room
+              </button>
+            </div>
+          </details>
+        )}
+      </div>
     </>
   );
 }
@@ -359,17 +407,21 @@ function RoomPanel({ view }: { view: LobbyView }) {
         <ul className={s.seatList} data-testid="seat-list">
           {room.seats.map((seat) => {
             const isLocal = seat.occupied_by !== undefined && seat.occupied_by === view.you;
+            const occupied = seat.occupied_by !== undefined;
             return (
               <li
                 key={seat.seat}
                 className={isLocal ? cx(s.seatRow, s.seatRowLocal) : s.seatRow}
                 data-testid={`seat-${seat.seat}`}
               >
-                <span>Seat {seat.seat + 1}</span>
-                <span className={s.muted}>{occupantLabel(seat, view.you)}</span>
+                <span className={s.muted}>Seat {seat.seat + 1}</span>
+                <span className={occupied ? l.seatName : s.muted}>
+                  {occupied ? seatDisplayName(seat) : 'Open'}
+                </span>
+                {isLocal && <span className={l.youTag}>You</span>}
                 <span className={s.seatBadges}>
-                  <span className={seat.occupied_by !== undefined ? s.seatBadgeOn : s.seatBadge}>
-                    {seat.occupied_by !== undefined ? 'Filled' : 'Open'}
+                  <span className={occupied ? s.seatBadgeOn : s.seatBadge}>
+                    {occupied ? 'Filled' : 'Open'}
                   </span>
                   {seat.decked === true && (
                     <span className={s.seatBadgeOn} data-testid={`seat-${seat.seat}-decked`}>
@@ -472,9 +524,9 @@ export function LobbyScreen() {
   }
 
   return (
-    <main className={s.connectMain}>
+    <main className={l.screen}>
       <section className={s.lobbyPanel} aria-label="Lobby" data-testid="lobby-screen">
-        <h1 className={s.connectHeading}>RUNE Lobby</h1>
+        <Brand tagline="Lobby" />
         {lobbyError !== null && (
           <span className={s.errorText} role="alert" data-testid="lobby-error">
             {lobbyError}

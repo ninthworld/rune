@@ -1,0 +1,161 @@
+/*
+ * Pre-game screen chrome (issue #300) — the connection screen and lobby, dressed
+ * in RUNE's procedural identity so the front door and the table read as one
+ * product (docs/design/ui-design-notes.md §Identity).
+ *
+ * This is the screen-specific companion to the app-wide chrome in
+ * `table/chrome.module.css`: the shared primitives (panel, button, field, input,
+ * seat/room rows, badges) still come from there; this file adds only the identity
+ * treatment (brand lockup, wordmark, connection-state signalling) and the
+ * responsive pre-game layout. Every value reads a chrome token
+ * (`chrome/tokens.css`); there are no chrome hex literals here (ADR 0019).
+ */
+
+/* ── Screen shell ──────────────────────────────────────────────────────────── */
+/* A grid-centered shell rather than a flex-centered one: when the lobby is taller
+ * than the viewport (small portrait phones) the panel grows and the page scrolls
+ * without the top being clipped, which a flex `justify-content: center` would do. */
+.screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--rune-space-9) var(--rune-space-7);
+  background: var(--rune-table);
+  color: var(--rune-text);
+  font-family: var(--rune-font-body);
+  box-sizing: border-box;
+}
+
+/* ── Brand lockup ──────────────────────────────────────────────────────────── */
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+.brandRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--rune-space-6);
+}
+/* The mark tints to the selection accent; it inherits via `currentColor`. */
+.mark {
+  display: block;
+  color: var(--rune-selection);
+  flex-shrink: 0;
+}
+/* The RUNE wordmark — the product's front-door identity moment (§Identity),
+ * carried by the display face with generous carved-letter tracking. */
+.wordmark {
+  margin: 0;
+  font-family: var(--rune-font-display);
+  font-weight: 800;
+  font-size: var(--rune-type-display);
+  letter-spacing: 0.32em;
+  /* Re-center against the trailing space the tracking adds. */
+  padding-left: 0.32em;
+  line-height: 1;
+  color: var(--rune-text);
+}
+.tagline {
+  margin: 0;
+  text-align: center;
+  font-size: var(--rune-type-caption);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--rune-text-muted);
+}
+
+/* ── Connection state signalling ───────────────────────────────────────────── */
+/* The three connection states stay visually distinct via a colored status pill
+ * with a leading dot — idle (muted), connecting (selection + a live pulse),
+ * closed (targeting). The pulse is neutralized by the global reduced-motion
+ * mechanism in `chrome/base.css`. */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-3);
+  font-size: var(--rune-type-caption);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.stateIdle {
+  color: var(--rune-text-muted);
+}
+.stateConnecting {
+  color: var(--rune-selection);
+}
+.stateClosed {
+  color: var(--rune-targeting);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--rune-radius-pill);
+  background: currentColor;
+  flex-shrink: 0;
+}
+.dotLive {
+  animation: runePulse 1.3s ease-in-out infinite;
+}
+@keyframes runePulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── Lobby layout ──────────────────────────────────────────────────────────── */
+/* A short uppercase kicker above a section title, marking the primary path. */
+.kicker {
+  font-size: var(--rune-type-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--rune-selection);
+}
+/* The room directory is the primary "find a game" path: accent its edge so it
+ * reads ahead of the secondary create / join-by-id paths. */
+.primarySection {
+  border-color: var(--rune-selection);
+}
+/* Secondary paths (create room, join by id) share a row that wraps to a single
+ * column on narrow portrait and sits two-up on wide/ultrawide viewports — the
+ * responsive rule (no fixed panel widths that break small or ultrawide). */
+.secondary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--rune-space-6);
+  align-items: start;
+}
+/* The join-by-id disclosure lives inside a secondary card; drop the default
+ * `<details>` marker so it matches the create card's plain heading. */
+.secondaryCard summary {
+  list-style: none;
+}
+.secondaryCard summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A "you" chip beside the local player's name in the roster. */
+.youTag {
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: var(--rune-radius-pill);
+  color: var(--rune-selection);
+  border: 1px solid var(--rune-selection);
+}
+/* The occupant's presentation name in a seat row — the primary read of "who". */
+.seatName {
+  font-weight: 600;
+  color: var(--rune-text);
+}

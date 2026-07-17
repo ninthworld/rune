@@ -80,4 +80,35 @@ describe('ConnectionScreen', () => {
     fireEvent.click(retry);
     expect(connect).toHaveBeenCalledWith('ws://retry:9000', { autoReconnect: false });
   });
+
+  it('renders RUNE identity procedurally — a wordmark and an SVG mark, no image assets (#300)', () => {
+    withStore('idle');
+    const { container } = render(<ConnectionScreen />);
+
+    // The wordmark carries the accessible product name…
+    expect(screen.getByRole('heading', { name: 'RUNE' })).toBeDefined();
+    // …and the motif is procedural geometry (an inline SVG), never a bundled image.
+    expect(container.querySelector('svg')).not.toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('keeps the three connection states visually distinct (#300)', () => {
+    // Each lifecycle state advertises a distinct status; the closed one is an alert.
+    withStore('idle');
+    const idle = render(<ConnectionScreen />);
+    expect(screen.getByTestId('connection-status').textContent).toContain('Enter a server address');
+    expect(screen.queryByRole('alert')).toBeNull();
+    idle.unmount();
+
+    withStore('connecting');
+    const connecting = render(<ConnectionScreen />);
+    expect(screen.getByTestId('connection-status').textContent).toContain('Opening a connection');
+    expect(screen.queryByRole('alert')).toBeNull();
+    connecting.unmount();
+
+    withStore('closed');
+    render(<ConnectionScreen />);
+    // The closed state is the only one announced to assistive tech via role=alert.
+    expect(screen.getByRole('alert').textContent).toContain('Connection closed');
+  });
 });
