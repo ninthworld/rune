@@ -54,7 +54,11 @@ async fn client_lands_in_the_lobby_then_server_shuts_down_gracefully() {
     assert!(view.room.is_none(), "a fresh connection is in no room");
     assert_eq!(
         view.valid_commands,
-        vec!["create_room".to_string(), "join_room".to_string()]
+        vec![
+            "set_name".to_string(),
+            "create_room".to_string(),
+            "join_room".to_string()
+        ]
     );
 
     // Graceful shutdown: signal the server and confirm the task finishes.

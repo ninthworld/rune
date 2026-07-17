@@ -240,4 +240,46 @@ describe('LobbyScreen (issue #114)', () => {
     // The join form is still on screen to retry.
     expect(screen.getByTestId('join-room-button')).toBeDefined();
   });
+
+  it('offers a display-name field when set_name is advertised, sending set_name (issue #294)', () => {
+    const socket = mountLobby(
+      JSON.stringify({
+        session: 's:1',
+        you: 'p1',
+        valid_commands: ['set_name', 'create_room', 'join_room'],
+      }),
+    );
+    fireEvent.change(screen.getByTestId('display-name-input'), { target: { value: '  Alice  ' } });
+    fireEvent.click(screen.getByTestId('set-name-button'));
+    expect(lastSent(socket)).toEqual({ type: 'set_name', name: 'Alice' });
+  });
+
+  it('hides the display-name field when set_name is not advertised', () => {
+    mountLobby(LOBBY_ROOMLESS_JSON);
+    expect(screen.queryByTestId('display-name')).toBeNull();
+  });
+
+  it('labels seats by display name, falling back to "Player N" (issue #294)', () => {
+    mountLobby(
+      JSON.stringify({
+        session: 's:1',
+        you: 'p1',
+        name: 'Alice',
+        room: {
+          room_id: 'r0',
+          config: { seats: 2, game_setup: '1v1' },
+          seats: [
+            { seat: 0, occupied_by: 'p1', name: 'Alice' },
+            { seat: 1, occupied_by: 'p2' },
+          ],
+        },
+        valid_commands: ['set_name', 'submit_deck', 'leave'],
+      }),
+    );
+    // The local named seat reads "Alice" with a "You" marker (#300 chip); the
+    // unnamed peer falls back to "Player 2".
+    expect(screen.getByTestId('seat-0').textContent).toContain('Alice');
+    expect(screen.getByTestId('seat-0').textContent).toContain('You');
+    expect(screen.getByTestId('seat-1').textContent).toContain('Player 2');
+  });
 });

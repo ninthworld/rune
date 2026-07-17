@@ -21,6 +21,7 @@ function viewWith(turn: number, activePlayer: string, phase: Phase): GameView {
     active_player: activePlayer,
     mana_pool: [],
     valid_actions: [],
+    player_names: {},
   };
 }
 
@@ -43,6 +44,12 @@ describe('PhaseRibbon (issue #267)', () => {
   it('phrases the receiver’s own turn as "Your turn"', () => {
     render(<PhaseRibbon view={viewWith(1, 'p1', 'upkeep')} mode="overview" localId="p1" />);
     expect(screen.getByTestId('ribbon-active').textContent).toBe('Your turn');
+  });
+
+  it('labels the active opponent by display name when the server sent one (issue #294)', () => {
+    const view = { ...viewWith(4, 'p2', 'draw'), player_names: { p2: 'Bob' } };
+    render(<PhaseRibbon view={view} mode="overview" localId="p1" />);
+    expect(screen.getByTestId('ribbon-active').textContent).toBe("Bob's turn");
   });
 
   it('shows a decision badge in focus mode and none in overview', () => {

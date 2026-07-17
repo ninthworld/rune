@@ -16,6 +16,8 @@
 //! server tolerate unknown fields (serde ignores them) so the wire format can
 //! grow without breaking older clients — see the forward-compat test below.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Opaque player identity (server-assigned).
@@ -462,6 +464,17 @@ pub struct GameView {
     /// `valid_actions` is empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<GameResult>,
+    /// Public display names, keyed by [`PlayerId`] (issue #294): every player who has
+    /// chosen a name maps to it, so any in-game surface — the turn indicator, player
+    /// tiles, zone-browser titles, the game-over verdict — can label any player
+    /// (`you`, an opponent, the active/priority player, a winner) without a lobby
+    /// round-trip. Names are public information (no redaction beyond validation), the
+    /// display name never replaces the `p{N}` id an action echoes back, and a player
+    /// with no name simply has no entry here. Omitted from the wire when empty; a
+    /// client treats a missing key as "unnamed" and falls back to a seat-derived
+    /// label, so an older server that never sends names keeps working.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub player_names: BTreeMap<PlayerId, String>,
 }
 
 /// The client's chosen action, answered atomically: the `id` of one issued
@@ -580,6 +593,14 @@ pub struct SeatView {
     /// The player occupying this seat, or `None` if it is empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub occupied_by: Option<PlayerId>,
+    /// The occupant's chosen human-readable display name (issue #294), if they set
+    /// one. Public, display-only information — the seat's identity remains its
+    /// [`occupied_by`](SeatView::occupied_by) [`PlayerId`]. `None`/omitted for an
+    /// empty seat or an occupant who has not named themselves, in which case a client
+    /// falls back to a seat-derived label (e.g. `"Player 2"`), so an older server that
+    /// never sends names keeps working.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Whether this seat has submitted a server-validated deck.
     #[serde(default, skip_serializing_if = "is_false")]
     pub decked: bool,
@@ -652,6 +673,13 @@ pub struct LobbyView {
     /// payload that omits it.
     #[serde(default)]
     pub you: PlayerId,
+    /// The connection's own chosen display name (issue #294), if it has set one via
+    /// [`SetName`]. Lets the pre-game UI show the local player's name before a seat
+    /// exists (and confirm an accepted name); once seated, the same name also rides in
+    /// the matching [`SeatView::name`] of the roster. `None`/omitted when unset, in
+    /// which case the client falls back to a default presentation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// The room the connection is in, if any, with its config and seat roster.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room: Option<RoomView>,
@@ -719,6 +747,20 @@ pub struct Ready {
     pub ready: bool,
 }
 
+/// Set (or change) this connection's public display name (issue #294). The name is
+/// how other players read this one — it appears in the lobby roster
+/// ([`SeatView::name`]) and, once a game starts, in every in-game view
+/// ([`GameView::player_names`]). The server validates it (length bounds, printable
+/// characters) and rejects an invalid value with the lobby's non-fatal error
+/// pattern — the current [`LobbyView`] is re-sent unchanged. The name is bound to
+/// the *session*, so it survives a per-tab reconnect. It is a display label only,
+/// never an identity or authentication handle.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetName {
+    /// The requested display name. The server trims and validates it before storing.
+    pub name: String,
+}
+
 /// Everything a client can send in the lobby phase. Serializes with a `type`
 /// discriminator (`{"type":"create_room", ...}`), structurally parallel to
 /// [`ClientMessage`], so the wire stays self-describing and open to future
@@ -738,6 +780,8 @@ pub enum LobbyCommand {
     SubmitDeck(SubmitDeck),
     /// Declare or retract readiness.
     Ready(Ready),
+    /// Set or change this connection's public display name (issue #294).
+    SetName(SetName),
     /// Leave the current room (vacating the seat).
     Leave,
 }
@@ -1124,6 +1168,7 @@ mod tests {
             }],
             action_deadline: Some(12.5),
             result: None,
+            player_names: BTreeMap::new(),
         };
 
         let json = serde_json::to_string(&view).unwrap();
@@ -1171,6 +1216,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            player_names: BTreeMap::new(),
         };
         let json = serde_json::to_string(&view).unwrap();
         let back: GameView = serde_json::from_str(&json).unwrap();
@@ -1196,6 +1242,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            player_names: BTreeMap::new(),
         };
         // Empty pool is elided from the wire.
         let json = serde_json::to_value(&view).unwrap();
@@ -1561,6 +1608,7 @@ mod tests {
         let view = LobbyView {
             session: "s:ab12".into(),
             you: "p1".into(),
+            name: Some("Alice".into()),
             room: Some(RoomView {
                 room_id: "r:7f3".into(),
                 config: RoomConfig {
@@ -1571,12 +1619,14 @@ mod tests {
                     SeatView {
                         seat: 0,
                         occupied_by: Some("p1".into()),
+                        name: Some("Alice".into()),
                         decked: true,
                         ready: true,
                     },
                     SeatView {
                         seat: 1,
                         occupied_by: Some("p2".into()),
+                        name: None,
                         decked: true,
                         ready: false,
                     },
@@ -1597,6 +1647,7 @@ mod tests {
         let view = LobbyView {
             session: "s:new".into(),
             you: "p9".into(),
+            name: None,
             room: None,
             directory: vec![],
             valid_commands: vec!["create_room".into(), "join_room".into()],
@@ -1613,6 +1664,7 @@ mod tests {
         let empty_seat = SeatView {
             seat: 3,
             occupied_by: None,
+            name: None,
             decked: false,
             ready: false,
         };
@@ -1707,6 +1759,7 @@ mod tests {
         let mut view = LobbyView {
             session: "s:ab12".into(),
             you: "p1".into(),
+            name: None,
             room: None,
             directory: vec![],
             valid_commands: vec!["create_room".into(), "join_room".into()],
@@ -1765,6 +1818,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            player_names: BTreeMap::new(),
         };
         // Live game: the field elides entirely.
         let json = serde_json::to_value(&view).unwrap();
@@ -1818,6 +1872,7 @@ mod tests {
             valid_actions: vec![],
             action_deadline: None,
             result: None,
+            player_names: BTreeMap::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
         // The receiver's own seat id is always present on the wire (like `phase`),
@@ -1825,5 +1880,111 @@ mod tests {
         assert_eq!(json.get("you"), Some(&serde_json::json!("p1")));
         let back: GameView = serde_json::from_value(json).unwrap();
         assert_eq!(back.you, "p1");
+    }
+
+    #[test]
+    fn set_name_command_round_trips() {
+        // Issue #294: the display-name command is a tagged lobby command carrying the
+        // requested name verbatim; the server validates it before storing.
+        let msg = LobbyCommand::SetName(SetName {
+            name: "Alice".into(),
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "set_name", "name": "Alice" })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn seat_view_name_round_trips_and_elides_when_absent() {
+        // Issue #294: a named occupant's display name rides in the roster and
+        // round-trips; an unnamed (or empty) seat omits it entirely.
+        let named = SeatView {
+            seat: 0,
+            occupied_by: Some("p1".into()),
+            name: Some("Alice".into()),
+            decked: true,
+            ready: false,
+        };
+        let json = serde_json::to_value(&named).unwrap();
+        assert_eq!(json.get("name"), Some(&serde_json::json!("Alice")));
+        assert_eq!(serde_json::from_value::<SeatView>(json).unwrap(), named);
+
+        let unnamed = SeatView {
+            name: None,
+            ..named.clone()
+        };
+        let json = serde_json::to_value(&unnamed).unwrap();
+        assert!(json.get("name").is_none());
+    }
+
+    #[test]
+    fn lobby_view_name_round_trips_and_elides_when_absent() {
+        // Issue #294: the connection's own display name rides on the lobby view (so the
+        // pre-game UI can show it before a seat exists) and elides when unset.
+        let mut view = LobbyView {
+            session: "s:ab12".into(),
+            you: "p1".into(),
+            name: Some("Alice".into()),
+            room: None,
+            directory: vec![],
+            valid_commands: vec!["set_name".into(), "create_room".into()],
+        };
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json.get("name"), Some(&serde_json::json!("Alice")));
+        assert_eq!(serde_json::from_value::<LobbyView>(json).unwrap(), view);
+
+        view.name = None;
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(json.get("name").is_none());
+    }
+
+    #[test]
+    fn game_view_player_names_round_trip_and_elide_when_empty() {
+        // Issue #294: the per-player name map lets any in-game surface label a player;
+        // it round-trips as a JSON object and elides from the wire when empty. An older
+        // server that omits it deserializes to an empty map (backward compatibility).
+        let mut view = GameView {
+            you: "p1".into(),
+            my_hand: vec![],
+            me: SelfView::default(),
+            opponents: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            graveyards: vec![],
+            exile: vec![],
+            phase: Phase::Upkeep,
+            turn: 1,
+            active_player: "p1".into(),
+            mana_pool: vec![],
+            priority_player: None,
+            valid_actions: vec![],
+            action_deadline: None,
+            result: None,
+            player_names: BTreeMap::new(),
+        };
+        // Empty map elides from the wire.
+        assert!(serde_json::to_value(&view)
+            .unwrap()
+            .get("player_names")
+            .is_none());
+
+        // Populated: names keyed by player id survive the round trip.
+        view.player_names.insert("p1".into(), "Alice".into());
+        view.player_names.insert("p2".into(), "Bob".into());
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(
+            json.get("player_names"),
+            Some(&serde_json::json!({ "p1": "Alice", "p2": "Bob" }))
+        );
+        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
+        assert_eq!(back, view);
+
+        // A payload from an older server that omits the field defaults to an empty map.
+        let legacy: GameView = serde_json::from_str(r#"{"you":"p1","phase":"upkeep"}"#).unwrap();
+        assert!(legacy.player_names.is_empty());
     }
 }

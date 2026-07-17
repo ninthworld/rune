@@ -657,6 +657,17 @@ fn not_listed(line: &str) -> String {
     )
 }
 
+/// The display label for a player id (issue #294): the chosen display name when the
+/// server sent one in [`GameView::player_names`], suffixed with the opaque id (which
+/// actions and targeting still reference), else the bare id. Display-only — the
+/// client parses nothing and derives no name it was not given.
+fn player_label(view: &GameView, id: &str) -> String {
+    match view.player_names.get(id) {
+        Some(name) => format!("{name} ({id})"),
+        None => id.to_string(),
+    }
+}
+
 /// Render the whole display for one [`GameView`]: a plain-text summary of the
 /// public and owned state followed by the numbered `valid_actions` menu.
 ///
@@ -669,7 +680,7 @@ pub fn render(view: &GameView) -> String {
     out.push_str("\n========================================\n");
     out.push_str(&format!("Phase: {:?}\n", view.phase));
     match &view.priority_player {
-        Some(player) => out.push_str(&format!("Priority: {player}\n")),
+        Some(player) => out.push_str(&format!("Priority: {}\n", player_label(view, player))),
         None => out.push_str("Priority: (none)\n"),
     }
     if !view.mana_pool.is_empty() {
@@ -681,7 +692,9 @@ pub fn render(view: &GameView) -> String {
     // (issue #255). Graveyards are listed separately for every player.
     out.push_str(&format!(
         "You ({}): life {}, library {}\n",
-        view.you, view.me.life, view.me.library_size,
+        player_label(view, &view.you),
+        view.me.life,
+        view.me.library_size,
     ));
 
     out.push_str(&format!("Your hand ({}):\n", view.my_hand.len()));
@@ -696,7 +709,7 @@ pub fn render(view: &GameView) -> String {
     for opponent in &view.opponents {
         out.push_str(&format!(
             "Opponent {}: life {}, hand {}, library {}, graveyard {}\n",
-            opponent.player_id,
+            player_label(view, &opponent.player_id),
             opponent.life,
             opponent.hand_size,
             opponent.library_size,
@@ -710,7 +723,9 @@ pub fn render(view: &GameView) -> String {
             let tapped = if perm.tapped { " (tapped)" } else { "" };
             out.push_str(&format!(
                 "  - {} [{}]{}\n",
-                perm.card.name, perm.controller, tapped
+                perm.card.name,
+                player_label(view, &perm.controller),
+                tapped
             ));
         }
     }
@@ -718,21 +733,25 @@ pub fn render(view: &GameView) -> String {
     if !view.stack.is_empty() {
         out.push_str("Stack (top last):\n");
         for item in &view.stack {
-            out.push_str(&format!("  - {} [{}]\n", item.description, item.controller));
+            out.push_str(&format!(
+                "  - {} [{}]\n",
+                item.description,
+                player_label(view, &item.controller)
+            ));
         }
     }
 
     for pile in &view.graveyards {
         out.push_str(&format!(
             "Graveyard {}: {} card(s)\n",
-            pile.player_id,
+            player_label(view, &pile.player_id),
             pile.cards.len()
         ));
     }
     for pile in &view.exile {
         out.push_str(&format!(
             "Exile {}: {} card(s)\n",
-            pile.player_id,
+            player_label(view, &pile.player_id),
             pile.cards.len()
         ));
     }
@@ -817,6 +836,7 @@ mod tests {
             valid_actions: actions,
             action_deadline: None,
             result: None,
+            player_names: std::collections::BTreeMap::new(),
         }
     }
 

@@ -216,15 +216,17 @@ async fn interactive_cli_drives_numbered_menus_to_a_game_start() {
 
     // The interactive client joins by the known id, submits a deck, and readies — all
     // by typing menu numbers and sub-prompt answers, exactly as an operator would.
-    // Menus: roomless [create_room, join_room] → "2"; then a room id; in-room
-    // [submit_deck, leave] → "1" + a decklist; in-room [submit_deck, ready, leave] →
-    // "2" to ready. Once the game starts it faces the pre-game mulligan decision
-    // (issue #156): the collapsed `mulligan_decision` action ("1") whose `option`
-    // prompt offers keep ("1") or mulligan — so it keeps its opening hand and the
-    // game proceeds past the mulligan rather than stalling the moment it is offered
-    // a decision. Input then runs out and the client exits at the next prompt.
+    // Menus (issue #294 adds `set_name` first in every pre-game menu): roomless
+    // [set_name, create_room, join_room] → "3"; then a room id; in-room
+    // [set_name, submit_deck, leave] → "2" + a decklist; in-room
+    // [set_name, submit_deck, ready, leave] → "3" to ready. Once the game starts it
+    // faces the pre-game mulligan decision (issue #156): the collapsed
+    // `mulligan_decision` action ("1") whose `option` prompt offers keep ("1") or
+    // mulligan — so it keeps its opening hand and the game proceeds past the mulligan
+    // rather than stalling the moment it is offered a decision. Input then runs out and
+    // the client exits at the next prompt.
     let deck_csv = decklist().join(",");
-    let scripted = format!("2\nr0\n1\n{deck_csv}\n2\n1\n1\n");
+    let scripted = format!("3\nr0\n2\n{deck_csv}\n3\n1\n1\n");
     let stdin = BufReader::new(scripted.as_bytes());
     let (mut out_reader, out_writer) = tokio::io::duplex(64 * 1024);
 

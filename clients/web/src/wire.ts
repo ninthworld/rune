@@ -53,6 +53,21 @@ function asArray<T>(value: unknown, field: string): T[] {
 }
 
 /**
+ * Coerce a wire value into a string→string map, treating an omitted field as the
+ * empty map and dropping any non-string entry. Used for `GameView.player_names`
+ * (issue #294): the server elides it when empty, so a missing or malformed value
+ * degrades to `{}` rather than throwing — the client then falls back per player.
+ */
+function normalizeStringMap(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === 'string') out[key] = entry;
+  }
+  return out;
+}
+
+/**
  * Normalize the receiver's own {@link SelfView} stats. An older server may omit the
  * whole object, or a field; each missing value defaults to `0`, so the client always
  * has a number to display and never invents anything the server did not send.
@@ -122,6 +137,10 @@ export function normalizeGameView(payload: unknown): GameView {
     action_deadline:
       typeof payload.action_deadline === 'number' ? payload.action_deadline : undefined,
     result: normalizeGameResult(payload.result),
+    // Public display names (issue #294): a string→string map the server elides when
+    // empty; default to `{}` so every surface can look a name up and fall back when
+    // absent (older servers never send it).
+    player_names: normalizeStringMap(payload.player_names),
   };
 }
 
@@ -165,6 +184,8 @@ function normalizeSeatView(payload: unknown, index: number): SeatView {
     ready: record.ready === true,
   };
   if (typeof record.occupied_by === 'string') seat.occupied_by = record.occupied_by;
+  // Display name (issue #294): present only when the occupant has named themselves.
+  if (typeof record.name === 'string') seat.name = record.name;
   return seat;
 }
 
@@ -214,6 +235,8 @@ export function normalizeLobbyView(payload: unknown): LobbyView {
     directory: asArray(payload.directory, 'directory').map(normalizeRoomSummary),
     valid_commands: asArray<string>(payload.valid_commands, 'valid_commands'),
   };
+  // The connection's own display name (issue #294): present only once set.
+  if (typeof payload.name === 'string') view.name = payload.name;
   if (isRecord(payload.room)) view.room = normalizeRoomView(payload.room);
   return view;
 }

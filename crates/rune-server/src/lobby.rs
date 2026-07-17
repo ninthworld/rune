@@ -77,7 +77,7 @@ use rune_engine::{
 };
 use rune_protocol::{
     CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomState,
-    RoomSummary, RoomView, SeatView, SessionToken, SubmitDeck,
+    RoomSummary, RoomView, SeatView, SessionToken, SetName, SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -93,6 +93,12 @@ use crate::room::{serve_connection, Room, RoomHandle, Seat};
 /// a config the engine cannot yet build a game for is caught later, at the ready
 /// gate (issue #112), not here.
 const SEAT_RANGE: std::ops::RangeInclusive<u8> = 2..=8;
+
+/// The maximum length (in Unicode scalar values) of a player display name (issue
+/// #294). Long enough for real names/handles, short enough to keep rosters and
+/// in-game labels readable and bound the stored/echoed string. Counts `char`s, not
+/// bytes, so a multi-byte name is judged by what a reader sees.
+const MAX_NAME_LEN: usize = 32;
 
 /// What the lobby pushes to one connection: either a fresh full [`LobbyView`] to
 /// render, or — the instant the ready gate passes — the hand-off that switches the
@@ -200,6 +206,13 @@ pub(crate) struct SessionHandle {
 struct Session {
     /// The public player identity shown to other seats as [`SeatView::occupied_by`].
     player: PlayerId,
+    /// The connection's chosen public display name (issue #294), or `None` until it
+    /// sets one via [`SetName`]. Bound to the session, so it survives a per-tab
+    /// reconnect (the token reclaims this same `Session`). Projected into the lobby
+    /// roster ([`SeatView::name`]) and, once a game starts, into every in-game view
+    /// ([`GameView::player_names`]). Public information — never redacted beyond the
+    /// validation applied when it is set.
+    name: Option<String>,
     /// The room this session currently occupies, if any.
     room: Option<RoomId>,
     /// The seat index within [`Session::room`], if seated.
@@ -281,6 +294,38 @@ pub(crate) enum LobbyError {
     /// A lobby command aimed at a room whose game has already started (its seats
     /// speak `GameView`s now, not lobby commands).
     GameStarted,
+    /// `set_name` whose requested display name failed validation (issue #294). Carries
+    /// the specific [`NameError`]; the connection keeps whatever name it had and its
+    /// current [`LobbyView`] is re-sent unchanged (the non-fatal pattern).
+    InvalidName(NameError),
+}
+
+/// Why a requested display name was rejected (issue #294). A closed enum so a new
+/// validation rule forces a matching arm rather than a silent catch-all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NameError {
+    /// The name was empty (or only whitespace) after trimming.
+    Empty,
+    /// The name exceeded [`MAX_NAME_LEN`] scalar values. Carries the trimmed length.
+    TooLong(usize),
+    /// The name held a control character (e.g. a newline or NUL) — display names must
+    /// be printable text.
+    Unprintable,
+}
+
+impl std::fmt::Display for NameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "display name is empty"),
+            Self::TooLong(len) => {
+                write!(
+                    f,
+                    "display name is {len} characters, over the {MAX_NAME_LEN} limit"
+                )
+            }
+            Self::Unprintable => write!(f, "display name has a non-printable character"),
+        }
+    }
 }
 
 impl std::fmt::Display for LobbyError {
@@ -299,6 +344,7 @@ impl std::fmt::Display for LobbyError {
             Self::IllegalDeck(error) => write!(f, "illegal deck: {error}"),
             Self::NotDecked => write!(f, "seat has not submitted a valid deck"),
             Self::GameStarted => write!(f, "the room's game has already started"),
+            Self::InvalidName(error) => write!(f, "invalid display name: {error}"),
         }
     }
 }
@@ -404,6 +450,7 @@ impl Lobby {
             token.clone(),
             Session {
                 player,
+                name: None,
                 room: None,
                 seat: None,
                 outbox,
@@ -532,6 +579,7 @@ impl Lobby {
                 self.submit_deck(&mut registry, token, &cards)
             }
             LobbyCommand::Ready(Ready { ready }) => self.ready(&mut registry, token, ready),
+            LobbyCommand::SetName(SetName { name }) => set_name(&mut registry, token, &name),
         };
         // Whether the command succeeded (and already pushed the affected views) or
         // was rejected, the sender always ends with a fresh, authoritative view.
@@ -731,6 +779,19 @@ impl Lobby {
         if let Some(life) = self.inner.life_override {
             setup.starting_life = life;
         }
+        // Each seat's chosen display name in seat order (issue #294), so the room can
+        // label players in every `GameView::player_names`. A seat with no name is `None`
+        // and simply has no entry in the projected map.
+        let player_names: Vec<Option<String>> = room
+            .seats
+            .iter()
+            .map(|occupant| {
+                occupant
+                    .as_ref()
+                    .and_then(|token| registry.sessions.get(token))
+                    .and_then(|session| session.name.clone())
+            })
+            .collect();
         let db = self.inner.db.clone();
         let state = match GameState::new(&setup, &db) {
             Ok(state) => state,
@@ -740,7 +801,7 @@ impl Lobby {
                 return;
             }
         };
-        let (handle, _task) = Room::new(state, db).spawn();
+        let (handle, _task) = Room::new(state, db).with_player_names(player_names).spawn();
 
         // Hand every seated session off to the in-game contract.
         let occupants: Vec<(Seat, SessionToken)> = room
@@ -828,6 +889,53 @@ fn leave_room(registry: &mut Registry, token: &SessionToken) -> Result<(), Lobby
     broadcast_views(registry);
     info!(%token, %room_id, seat, "left room");
     Ok(())
+}
+
+/// Handle `set_name`: validate the requested display name and store it on the
+/// session (issue #294). On success the affected views are re-pushed — the sender's
+/// own, and, if it is seated, the whole room roster so every occupant sees the new
+/// name. On rejection the name is left untouched and a typed [`LobbyError::InvalidName`]
+/// is returned; the caller re-sends the sender's current [`LobbyView`] unchanged (the
+/// lobby's non-fatal error pattern).
+fn set_name(
+    registry: &mut Registry,
+    token: &SessionToken,
+    requested: &str,
+) -> Result<(), LobbyError> {
+    let name = validate_name(requested).map_err(LobbyError::InvalidName)?;
+    let Some(session) = registry.sessions.get_mut(token) else {
+        return Err(LobbyError::UnknownSession);
+    };
+    session.name = Some(name);
+    // If the session is seated, its name appears in the shared roster, so re-project to
+    // every occupant; otherwise only the sender's own view changed.
+    match session.room.clone() {
+        Some(room_id) => push_room(registry, &room_id),
+        None => push_view(registry, token),
+    }
+    info!(%token, "connection set its display name");
+    Ok(())
+}
+
+/// Validate a requested display name (issue #294), returning the cleaned name to
+/// store or a typed [`NameError`]. Policy: trim surrounding whitespace; reject an
+/// empty result, a name longer than [`MAX_NAME_LEN`] scalar values, or one holding a
+/// control character (newlines, NUL, and other non-printable code points). Names need
+/// not be unique — the seat's [`PlayerId`] remains the identity, so a collision is
+/// allowed rather than rejected (two "Alice"s are disambiguated by their seat).
+fn validate_name(requested: &str) -> Result<String, NameError> {
+    let trimmed = requested.trim();
+    if trimmed.is_empty() {
+        return Err(NameError::Empty);
+    }
+    let len = trimmed.chars().count();
+    if len > MAX_NAME_LEN {
+        return Err(NameError::TooLong(len));
+    }
+    if trimmed.chars().any(char::is_control) {
+        return Err(NameError::Unprintable);
+    }
+    Ok(trimmed.to_string())
 }
 
 /// Clear a seat's occupant and reset its pre-game gate state (a vacated seat is
@@ -952,6 +1060,7 @@ fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
     Some(LobbyView {
         session: token.clone(),
         you: session.player.clone(),
+        name: session.name.clone(),
         room,
         directory: build_directory(registry),
         valid_commands,
@@ -1000,10 +1109,16 @@ fn build_directory(registry: &Registry) -> Vec<RoomSummary> {
 /// once it is ready. (A started room's seats are on the in-game contract and never
 /// see a `LobbyView`, so no in-game case appears here.)
 fn valid_commands(registry: &Registry, session: &Session) -> Vec<String> {
+    // `set_name` is always available in the pre-game phase (issue #294): a connection
+    // may name itself before joining a room and rename at any point up to game start.
     let Some(room_id) = session.room.as_ref() else {
-        return vec!["create_room".to_string(), "join_room".to_string()];
+        return vec![
+            "set_name".to_string(),
+            "create_room".to_string(),
+            "join_room".to_string(),
+        ];
     };
-    let mut commands = vec!["submit_deck".to_string()];
+    let mut commands = vec!["set_name".to_string(), "submit_deck".to_string()];
     if let (Some(room), Some(seat)) = (registry.rooms.get(room_id), session.seat) {
         if let Some(gate) = room.gate.get(seat) {
             if gate.ready {
@@ -1027,14 +1142,15 @@ fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
         .iter()
         .enumerate()
         .map(|(index, occupant)| {
-            let occupied_by = occupant
-                .as_ref()
-                .and_then(|tok| registry.sessions.get(tok))
-                .map(|session| session.player.clone());
+            let session = occupant.as_ref().and_then(|tok| registry.sessions.get(tok));
+            let occupied_by = session.map(|session| session.player.clone());
+            // The occupant's chosen display name (issue #294), public in the roster.
+            let name = session.and_then(|session| session.name.clone());
             let gate = room.gate.get(index);
             SeatView {
                 seat: index as u8,
                 occupied_by,
+                name,
                 decked: gate.is_some_and(|g| g.deck.is_some()),
                 ready: gate.is_some_and(|g| g.ready),
             }
@@ -1478,7 +1594,11 @@ mod tests {
         // Only the create/join commands are legal before a room exists.
         assert_eq!(
             view.valid_commands,
-            vec!["create_room".to_string(), "join_room".to_string()]
+            vec![
+                "set_name".to_string(),
+                "create_room".to_string(),
+                "join_room".to_string()
+            ]
         );
     }
 
@@ -1512,7 +1632,11 @@ mod tests {
         // Seated but undecked: the seat may submit a deck or leave, not ready up.
         assert_eq!(
             view.valid_commands,
-            vec!["submit_deck".to_string(), "leave".to_string()]
+            vec![
+                "set_name".to_string(),
+                "submit_deck".to_string(),
+                "leave".to_string()
+            ]
         );
     }
 
@@ -1727,11 +1851,19 @@ mod tests {
         // in-game actions. No game has been constructed.
         assert_eq!(
             bob.view().await.valid_commands,
-            vec!["submit_deck".to_string(), "leave".to_string()]
+            vec![
+                "set_name".to_string(),
+                "submit_deck".to_string(),
+                "leave".to_string()
+            ]
         );
         assert_eq!(
             alice.view().await.valid_commands,
-            vec!["submit_deck".to_string(), "leave".to_string()]
+            vec![
+                "set_name".to_string(),
+                "submit_deck".to_string(),
+                "leave".to_string()
+            ]
         );
         assert!(!bob.started() && !alice.started());
     }
@@ -1768,7 +1900,11 @@ mod tests {
         assert!(bob_after.room.is_none());
         assert_eq!(
             bob_after.valid_commands,
-            vec!["create_room".to_string(), "join_room".to_string()]
+            vec![
+                "set_name".to_string(),
+                "create_room".to_string(),
+                "join_room".to_string()
+            ]
         );
 
         let alice_after = alice.view().await.room.expect("alice still holds the room");
@@ -2179,6 +2315,7 @@ mod tests {
         assert_eq!(
             alice_view.valid_commands,
             vec![
+                "set_name".to_string(),
                 "submit_deck".to_string(),
                 "ready".to_string(),
                 "leave".to_string()
@@ -2318,6 +2455,7 @@ mod tests {
         assert_eq!(
             alice.current().valid_commands,
             vec![
+                "set_name".to_string(),
                 "submit_deck".to_string(),
                 "unready".to_string(),
                 "leave".to_string()
@@ -2462,5 +2600,173 @@ mod tests {
                 .await,
             Err(LobbyError::UnknownSession)
         );
+    }
+
+    #[tokio::test]
+    async fn set_name_is_accepted_and_projects_into_the_lobby_and_roster() {
+        // Issue #294: a chosen name lands on the connection's own view and, once seated,
+        // in the shared roster every occupant sees.
+        let lobby = lobby(4);
+        let (mut alice, mut bob, _room) = seated_pair(&lobby).await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SetName(SetName {
+                    name: "Alice".into(),
+                }),
+            )
+            .await
+            .expect("a valid name is accepted");
+
+        // Alice's own view carries her name...
+        assert_eq!(alice.view().await.name.as_deref(), Some("Alice"));
+        // ...and the roster names her seat for the peer (a public, un-redacted field).
+        let bob_room = bob.view().await.room.expect("bob in room");
+        assert_eq!(bob_room.seats[0].name.as_deref(), Some("Alice"));
+        assert_eq!(bob_room.seats[1].name, None, "bob has not named himself");
+    }
+
+    #[tokio::test]
+    async fn set_name_trims_and_rejects_invalid_names_non_fatally() {
+        // Issue #294: validation policy — trim; reject empty/whitespace, over-long, and
+        // control-character names with a typed error, leaving the stored name untouched
+        // (the lobby's non-fatal pattern; the caller re-sends the current view).
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+
+        // A surrounding-whitespace name is trimmed, not rejected.
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SetName(SetName {
+                    name: "  Alice  ".into(),
+                }),
+            )
+            .await
+            .expect("a trimmable name is accepted");
+        assert_eq!(alice.view().await.name.as_deref(), Some("Alice"));
+
+        // Empty / whitespace-only.
+        assert_eq!(
+            lobby
+                .command(
+                    &alice.token,
+                    LobbyCommand::SetName(SetName { name: "   ".into() })
+                )
+                .await,
+            Err(LobbyError::InvalidName(NameError::Empty))
+        );
+        // Over the length limit (counted in scalar values).
+        let too_long = "x".repeat(MAX_NAME_LEN + 1);
+        assert_eq!(
+            lobby
+                .command(
+                    &alice.token,
+                    LobbyCommand::SetName(SetName { name: too_long })
+                )
+                .await,
+            Err(LobbyError::InvalidName(NameError::TooLong(
+                MAX_NAME_LEN + 1
+            )))
+        );
+        // A control character (newline) is non-printable.
+        assert_eq!(
+            lobby
+                .command(
+                    &alice.token,
+                    LobbyCommand::SetName(SetName {
+                        name: "Al\nice".into()
+                    })
+                )
+                .await,
+            Err(LobbyError::InvalidName(NameError::Unprintable))
+        );
+
+        // The earlier accepted name is untouched by the rejected attempts.
+        assert_eq!(alice.current().name.as_deref(), Some("Alice"));
+    }
+
+    #[tokio::test]
+    async fn a_display_name_survives_a_reconnect() {
+        // Issue #294: the name is bound to the session, so a per-tab reconnect (echoing
+        // the session token) is reunited with the same name.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair(&lobby).await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SetName(SetName {
+                    name: "Alice".into(),
+                }),
+            )
+            .await
+            .expect("name accepted");
+
+        // Drop the connection (the seated session is held open) and reconnect by token.
+        lobby.disconnect(&alice.handle()).await;
+        let mut returning = Client::reconnect(&lobby, Some(alice.token.clone())).await;
+        let resumed = returning.view().await;
+        assert_eq!(
+            resumed.name.as_deref(),
+            Some("Alice"),
+            "name survived reconnect"
+        );
+        let room = resumed.room.expect("reclaimed the held seat");
+        assert_eq!(room.seats[0].name.as_deref(), Some("Alice"));
+    }
+
+    #[tokio::test]
+    async fn player_names_project_into_the_game_view_at_game_start() {
+        // Issue #294: names set in the lobby reach the constructed game, keyed by the
+        // `p{N}` player id, so every in-game surface can label players.
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair(&lobby).await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SetName(SetName {
+                    name: "Alice".into(),
+                }),
+            )
+            .await
+            .expect("alice names herself");
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::SetName(SetName { name: "Bob".into() }),
+            )
+            .await
+            .expect("bob names himself");
+        submit_valid_deck(&lobby, &alice).await;
+        submit_valid_deck(&lobby, &bob).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        lobby
+            .command(&bob.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("bob readies");
+
+        // Join seat 0's constructed game and read its first personalized GameView.
+        let handle = alice.start_handle().expect("game constructed");
+        let (tx, mut rx) = watch::channel::<Option<rune_protocol::GameView>>(None);
+        assert!(handle.send(crate::RoomInput::Join {
+            seat: 0,
+            outbox: tx
+        }));
+        let view = loop {
+            if let Some(view) = rx.borrow_and_update().clone() {
+                break view;
+            }
+            rx.changed().await.expect("first GameView is pushed");
+        };
+        assert_eq!(
+            view.player_names.get("p0").map(String::as_str),
+            Some("Alice")
+        );
+        assert_eq!(view.player_names.get("p1").map(String::as_str), Some("Bob"));
     }
 }

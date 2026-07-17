@@ -16,6 +16,7 @@
 import type { EntityId, GameView, PlayerId } from '../protocol';
 import type { ReactNode } from 'react';
 import { cx } from '../chrome/cx';
+import { playerName } from '../playerNames';
 import s from './chrome.module.css';
 
 /** A browsable public zone that a tile count can open (issue #262). */
@@ -126,7 +127,7 @@ export function PlayerTiles({ view, localId, targeting, onOpenZone }: Props) {
           opponent.player_id,
           s.tile,
           <>
-            <div className={s.tileName}>{opponent.player_id}</div>
+            <div className={s.tileName}>{playerName(view, opponent.player_id)}</div>
             <div>Life {opponent.life}</div>
             <div>Hand {opponent.hand_size}</div>
             <div>Library {opponent.library_size}</div>
@@ -143,7 +144,9 @@ export function PlayerTiles({ view, localId, targeting, onOpenZone }: Props) {
         localId ?? 'local',
         cx(s.tile, s.localTile),
         <>
-          <div className={s.tileName}>{localId ?? 'You'} (you)</div>
+          <div className={s.tileName}>
+            {localId !== undefined ? playerName(view, localId) : 'You'} (you)
+          </div>
           <div>Life {view.me.life}</div>
           <div>Hand {view.my_hand.length}</div>
           <div>Library {view.me.library_size}</div>

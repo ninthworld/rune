@@ -21,6 +21,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
+import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
 import { ActionBar } from './ActionBar';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
@@ -407,7 +408,7 @@ export function Table() {
   const closeBrowser = (): void => setBrowsing(null);
   const browserData = browsing
     ? {
-        title: `${browsing.playerId} — ${browsing.zone === 'graveyard' ? 'Graveyard' : 'Exile'}`,
+        title: `${playerName(view, browsing.playerId)} — ${browsing.zone === 'graveyard' ? 'Graveyard' : 'Exile'}`,
         cards:
           (browsing.zone === 'graveyard' ? view.graveyards : view.exile).find(
             (pile) => pile.player_id === browsing.playerId,
@@ -494,7 +495,7 @@ export function Table() {
             onInspect={setInspectedId}
           />
         </div>
-        <GameOverOverlay result={view.result} you={view.you} />
+        <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
         {overlays}
       </main>
     );
