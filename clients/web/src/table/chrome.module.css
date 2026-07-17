@@ -736,6 +736,46 @@
   box-shadow: var(--rune-elevation-2);
   box-sizing: border-box;
 }
+/*
+ * Transient inspect peek (issue #321): the preview's one consistent home. Parked in
+ * the top-right, elevated over the table but never modal — `pointer-events: none`
+ * guarantees a peek can never block the click/drag/target the player is mid-way
+ * through. Its fade-in is suppressed under reduced-motion.
+ */
+.inspectPreview {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  width: 260px;
+  max-width: 40vw;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 14px 16px;
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-2);
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 18;
+  animation: inspectPreviewIn var(--rune-transition, 120ms) ease-out;
+}
+@keyframes inspectPreviewIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inspectPreview {
+    animation: none;
+  }
+}
 .inspectClose {
   position: absolute;
   top: 8px;

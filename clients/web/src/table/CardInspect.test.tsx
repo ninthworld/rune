@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { CardView, StackItem } from '../protocol';
 import { CardInspect } from './CardInspect';
 
@@ -86,5 +86,23 @@ describe('CardInspect (issue #261)', () => {
     render(<CardInspect target={{ kind: 'card', card }} onClose={onClose} />);
     fireEvent.click(screen.getByTestId('card-inspect'));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('renders a transient peek as a non-blocking preview (issue #321)', () => {
+    const card: CardView = {
+      id: 'c1',
+      name: 'Grizzly Bears',
+      type_line: 'Creature — Bear',
+      power: '2',
+      toughness: '2',
+    };
+    render(<CardInspect target={{ kind: 'card', card }} onClose={vi.fn()} transient />);
+    const preview = screen.getByTestId('card-inspect');
+    // Same content, but no modal chrome: no backdrop, no close control — a peek can
+    // never block the interaction the player is mid-way through.
+    expect(preview.getAttribute('data-transient')).toBe('true');
+    expect(within(preview).getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+    expect(screen.queryByTestId('card-inspect-backdrop')).toBeNull();
+    expect(screen.queryByTestId('card-inspect-close')).toBeNull();
   });
 });
