@@ -23,7 +23,7 @@ import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
-import { ActionBar } from './ActionBar';
+import { ActionTray } from './ActionTray';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { TableGeography, type BrowsableZone } from './TableGeography';
 import { CardInspect, type InspectTarget } from './CardInspect';
@@ -38,6 +38,7 @@ import { ZoneBrowser } from './ZoneBrowser';
 import {
   buildTableScene,
   DEFAULT_VIEWPORT_WIDTH,
+  type Rect,
   type RenderedCard,
   type TableScene,
   type TargetingScene,
@@ -69,7 +70,7 @@ import {
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
 import { layout, type Viewport } from './layout';
-import { regionBox, sceneBox, shellBox } from './styles';
+import { promptOverlayBox, regionBox, sceneBox, shellBox, trayBox } from './styles';
 import { cx } from '../chrome/cx';
 import s from './chrome.module.css';
 
@@ -113,6 +114,30 @@ function findCard(scene: TableScene, id: EntityId | null): RenderedCard | undefi
     if (hit) return hit;
   }
   return scene.hand.find((card) => card.entityId === id);
+}
+
+/**
+ * The union of the given entities' card rects in scene coordinates (issue #298), or
+ * `null` when none of them is a rendered card. This is how the anchored prompt overlay
+ * finds "where its subjects are" — straight from the scene's REPORTED RECTS (ADR 0003),
+ * never by reaching into Pixi. Ids that are not on the canvas (a player portrait, a
+ * non-visible zone) simply contribute nothing.
+ */
+function sceneBoundsOf(scene: TableScene, ids: EntityId[]): Rect | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const id of ids) {
+    const card = findCard(scene, id);
+    if (!card) continue;
+    minX = Math.min(minX, card.rect.x);
+    minY = Math.min(minY, card.rect.y);
+    maxX = Math.max(maxX, card.rect.x + card.rect.w);
+    maxY = Math.max(maxY, card.rect.y + card.rect.h);
+  }
+  if (minX === Infinity) return null;
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
 /**
@@ -708,14 +733,49 @@ export function Table() {
       : [];
 
   const r = shell.regions;
-  // The floating bottom decision cluster (prompt banner, prompt surface, action
-  // tray) spans the battlefield width above the hand, clear of the docked rail.
-  const bottomRect = {
-    x: 0,
-    y: r.tray.rect.y,
-    w: r.battlefield.rect.w,
-    h: viewport.height - r.tray.rect.y,
-  };
+  const bf = r.battlefield.rect;
+
+  // The anchored prompt overlay (issue #298): while a decision is being resolved it
+  // stages as a focused surface positioned relative to the SUBJECTS the decision
+  // concerns — the active slot's candidate cards, the source card, or (failing any
+  // on-canvas subject) centered above the tray. Anchoring reads the scene's reported
+  // rects (ADR 0003), translated from scene space into the battlefield region; it
+  // never reaches into Pixi and needs no targeting arrows on the canvas.
+  let anchorIds: EntityId[] = [];
+  if (targeting) {
+    const req = activeRequirement(targeting);
+    const cands = (req?.candidates ?? []).filter((id) => isOnCanvas(view, id));
+    anchorIds = cands.length
+      ? cands
+      : (targeting.action.subject ?? []).filter((id) => isOnCanvas(view, id));
+  } else if (multiSelect) {
+    if (!overlayMode && msSlot) {
+      anchorIds = msSlot.candidates.filter((id) => isOnCanvas(view, id));
+    }
+    if (anchorIds.length === 0) {
+      anchorIds = (multiSelect.action.subject ?? []).filter((id) => isOnCanvas(view, id));
+    }
+  }
+  const bounds = sceneBoundsOf(scene, anchorIds);
+  const gap = 10;
+  const clampY = (value: number): number => Math.max(bf.y + 8, Math.min(value, bf.y + bf.h - 8));
+  // Grow upward from just above the subjects when they sit lower on the board, downward
+  // from just below them when they sit near the top — so the overlay never runs off an
+  // edge. With no on-canvas subject (a non-visible zone / abstract order), centre it
+  // above the tray.
+  const promptAnchor = bounds
+    ? bounds.y > bf.h * 0.35
+      ? {
+          centerX: bf.x + bounds.x + bounds.w / 2,
+          y: clampY(bf.y + bounds.y - gap),
+          place: 'above' as const,
+        }
+      : {
+          centerX: bf.x + bounds.x + bounds.w / 2,
+          y: clampY(bf.y + bounds.y + bounds.h + gap),
+          place: 'below' as const,
+        }
+    : { centerX: bf.x + bf.w / 2, y: r.tray.rect.y - gap, place: 'above' as const };
 
   return (
     <main
@@ -793,33 +853,50 @@ export function Table() {
         }
         onInspect={setInspectedId}
       />
-      {/* Floating decision cluster above the hand: prompt banner, prompt surface, and
-          the action tray (issue #298 splits the tray from the prompt overlay). */}
-      <div className={s.regionBottom} style={regionBox(bottomRect)}>
-        <PromptBanner
-          view={view}
-          prompt={prompt}
-          targeting={targetingBanner}
-          multiSelect={multiSelectBanner}
-          onOption={chooseOption}
-        />
-        {overlayMode && msSlot && (
-          <PromptSurface
-            mode={msSlot.kind === 'order' ? 'order' : 'select'}
-            prompt={msSlot.prompt}
-            zone={msSlot.zone}
-            items={surfaceItems}
-            onToggle={toggleCandidate}
-            onMove={moveOrder}
+      {/* Anchored prompt overlay (issue #298): a focused decision surface staged over
+          the board, positioned (inline, from reported rects) relative to the decision's
+          subjects. Present only while a decision is being resolved; the banner, option
+          picker, deadline countdown, and the order/zone prompt surface all ride it. */}
+      {selecting && (
+        <div
+          className={s.promptOverlay}
+          data-testid="prompt-overlay"
+          data-placement={promptAnchor.place}
+          style={promptOverlayBox(promptAnchor, bf)}
+        >
+          <PromptBanner
+            view={view}
+            prompt={prompt}
+            targeting={targetingBanner}
+            multiSelect={multiSelectBanner}
+            onOption={chooseOption}
           />
-        )}
-        <ActionBar
+          {overlayMode && msSlot && (
+            <PromptSurface
+              mode={msSlot.kind === 'order' ? 'order' : 'select'}
+              prompt={msSlot.prompt}
+              zone={msSlot.zone}
+              items={surfaceItems}
+              onToggle={toggleCandidate}
+              onMove={moveOrder}
+            />
+          )}
+        </div>
+      )}
+      {/* Floating action tray above the hand (issue #298): global actions + the selected
+          entity's echo in the neutral state; the decision controls (multi-select
+          confirm/advance/cancel, targeting cancel) while a decision is staged. It reads
+          "waiting" quietly when the server offers nothing. */}
+      <div className={s.regionTray} style={trayBox(r.tray.rect, viewport.height)}>
+        <ActionTray
           globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
           selectedActions={selectedActions}
           selectedName={selectedCard?.name}
           onChoose={fire}
           onCancelTargeting={targeting ? cancelTargeting : undefined}
           multiSelect={multiSelectControls}
+          waiting={prompt === null}
+          deadline={selecting ? undefined : prompt?.deadline}
         />
       </div>
       {overlays}

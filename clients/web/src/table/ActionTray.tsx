@@ -1,21 +1,31 @@
 /**
- * The React DOM action bar (ADR 0004).
+ * The floating action tray (ADR 0004; issue #298).
  *
- * The bar is O(1) in board size: it holds only global, subject-less actions
- * (pass, end turn, confirm) plus a contextual echo of the currently selected
- * entity's actions. Per-card actions are NEVER enumerated here — they render on
- * the entity (see `EntityOverlay`). Every button corresponds to an entry in
- * `valid_actions[]`; the bar computes no legality.
+ * Restages the old detached action bar as a tray that floats just above the hand
+ * (`regions.tray`), reading as part of the board rather than a document row. It stays
+ * O(1) in board size: it holds only global, subject-less actions (pass, end turn)
+ * plus a contextual echo of the currently selected entity's actions. Per-card actions
+ * are NEVER enumerated here — they render on the entity (see `EntityOverlay`). Every
+ * button corresponds to an entry in `valid_actions[]`; the tray computes no legality.
+ *
+ * The tray also hosts the decision controls that used to live in a separate bar —
+ * multi-select confirm/advance/cancel and the targeting-cancel — so they sit adjacent
+ * to the anchored prompt overlay (issue #298). When nothing is offered it communicates
+ * "waiting" quietly rather than showing a placeholder empty bar.
+ *
+ * Keeps `data-testid="action-bar"` for continuity with the interaction suite.
  */
 import type { ValidAction } from '../protocol';
+import { DeadlineCountdown } from './DeadlineCountdown';
 import s from './chrome.module.css';
 
 /**
  * The multi-select toolbar's controls (issues #143/#157). While building a
- * declaration the bar is dedicated to it: advancing between slots, confirming the
+ * declaration the tray is dedicated to it: advancing between slots, confirming the
  * whole selection, and cancelling. An `option` decision's named choices render in
- * the prompt banner (the modal picker, #157), not here. Enablement is computed by
- * the caller from the session — the bar renders it and never derives legality.
+ * the anchored prompt overlay (the modal picker, #157), not here. Enablement is
+ * computed by the caller from the session — the tray renders it and never derives
+ * legality.
  */
 export interface MultiSelectControls {
   /** Whether a "Next" advance to the following slot is offered. */
@@ -44,23 +54,37 @@ interface Props {
   onCancelTargeting?: () => void;
   /** Present in multi-select mode: the confirm/advance/option/cancel controls. */
   multiSelect?: MultiSelectControls;
+  /**
+   * True when the server is offering the receiver nothing to do (no `valid_actions`).
+   * The tray then reads a quiet "Waiting" instead of an empty bar with placeholder
+   * text (issue #298).
+   */
+  waiting?: boolean;
+  /**
+   * Seconds remaining on the server clock for the bare priority window, if any. Shown
+   * only in the neutral state; during an active decision the countdown rides the
+   * anchored prompt overlay instead (issue #298/#263).
+   */
+  deadline?: number;
 }
 
-export function ActionBar({
+export function ActionTray({
   globalActions,
   selectedActions,
   selectedName,
   onChoose,
   onCancelTargeting,
   multiSelect,
+  waiting,
+  deadline,
 }: Props) {
-  // During a multi-select the bar drives the declaration: step through slots,
+  // During a multi-select the tray drives the declaration: step through slots,
   // confirm the whole selection, and cancel. An option decision's choices render in
-  // the banner (the modal picker). No other global action is offered until the
-  // selection is confirmed or abandoned.
+  // the anchored overlay (the modal picker). No other global action is offered until
+  // the selection is confirmed or abandoned.
   if (multiSelect) {
     return (
-      <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.bar}>
+      <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.tray}>
         {multiSelect.canAdvance && (
           <button type="button" onClick={multiSelect.onAdvance} className={s.button}>
             Next
@@ -89,11 +113,11 @@ export function ActionBar({
     );
   }
 
-  // During targeting the bar is dedicated to cancelling the in-progress pick;
+  // During targeting the tray is dedicated to cancelling the in-progress pick;
   // no other global action is offered until the target is chosen or abandoned.
   if (onCancelTargeting) {
     return (
-      <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.bar}>
+      <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.tray}>
         <button type="button" onClick={onCancelTargeting} className={s.button}>
           Cancel targeting
         </button>
@@ -102,10 +126,9 @@ export function ActionBar({
   }
 
   const hasEcho = selectedActions.length > 0 && selectedName !== undefined;
-  const empty = globalActions.length === 0 && !hasEcho;
 
   return (
-    <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.bar}>
+    <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.tray}>
       {globalActions.map((action) => (
         <button key={action.id} type="button" onClick={() => onChoose(action)} className={s.button}>
           {action.label}
@@ -128,7 +151,21 @@ export function ActionBar({
         </div>
       )}
 
-      {empty && <span className={s.muted}>No actions available</span>}
+      {/* Bare priority window: show the server clock quietly next to the offered
+          actions; an active decision carries its own countdown on the overlay. */}
+      {!waiting && deadline !== undefined && (
+        <span className={s.trayClock}>
+          Priority
+          <DeadlineCountdown seconds={deadline} />
+        </span>
+      )}
+
+      {/* Nothing to do: read "Waiting" quietly rather than an empty placeholder bar. */}
+      {waiting && (
+        <span className={s.trayWaiting} data-testid="tray-waiting">
+          Waiting…
+        </span>
+      )}
     </div>
   );
 }
