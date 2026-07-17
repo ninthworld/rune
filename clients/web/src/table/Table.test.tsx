@@ -560,6 +560,90 @@ describe('Table keyboard parity (issue #266)', () => {
   });
 });
 
+describe('Table spatial focus model (issue #301)', () => {
+  /**
+   * Press an arrow `key` (the region-aware *move focus* verb) until the focused
+   * element satisfies `match`, proving the target is reachable purely by keyboard
+   * navigation — never by a `.focus()` shortcut. Bounded so a miss fails loudly.
+   */
+  function arrowUntil(key: string, match: (el: Element | null) => boolean, max = 80): void {
+    for (let i = 0; i < max; i += 1) {
+      fireEvent.keyDown(window, { key });
+      if (match(document.activeElement)) return;
+    }
+    throw new Error(`focus never reached the target after ${max} "${key}" presses`);
+  }
+  const byTestId =
+    (id: string) =>
+    (el: Element | null): boolean =>
+      el?.getAttribute('data-testid') === id;
+  const byName =
+    (name: string) =>
+    (el: Element | null): boolean =>
+      el?.textContent?.trim() === name;
+
+  it('drives a full targeting flow keyboard-only through region navigation', () => {
+    const choose = seed(TARGETING_GAME_VIEW_JSON);
+    render(<Table />);
+
+    // Reach the spell card's on-entity hotspot by arrow navigation, then select it.
+    arrowUntil('ArrowRight', byTestId('entity-c3'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    // Its cast action now renders on the entity; reach the chip by arrows and confirm.
+    expect(screen.getByTestId('entity-actions-c3')).toBeDefined();
+    arrowUntil('ArrowRight', byName('Cast Lightning Bolt'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    // Choosing a targeted action opens targeting — nothing is submitted yet.
+    expect(choose).not.toHaveBeenCalled();
+
+    // Navigate to a server candidate hotspot and submit the pick with Enter.
+    arrowUntil('ArrowRight', byTestId('target-perm_xyz'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose).toHaveBeenCalledTimes(1);
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action.id).toBe('a3');
+    expect(targets).toEqual([{ slot: 't0', chosen: ['perm_xyz'] }]);
+  });
+
+  it('drives a full multi-select flow keyboard-only through region navigation', () => {
+    const choose = seed(DECLARE_ATTACKERS_GAME_VIEW_JSON);
+    render(<Table />);
+
+    // Reach the subject-less multi-select action in the tray region and open it.
+    arrowUntil('ArrowRight', byName('Declare attackers'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByTestId('multiselect-prompt')).toBeDefined();
+
+    // Toggle both attacker candidates with Space, reaching each by arrow navigation.
+    arrowUntil('ArrowRight', byTestId('target-atk_1'));
+    fireEvent.keyDown(window, { key: ' ' });
+    expect(screen.getByTestId('multiselect-count').textContent).toContain('1 selected');
+    arrowUntil('ArrowRight', byTestId('target-atk_2'));
+    fireEvent.keyDown(window, { key: ' ' });
+    expect(screen.getByTestId('multiselect-count').textContent).toContain('2 selected');
+
+    // Navigate to the confirm control and commit the whole selection atomically.
+    arrowUntil('ArrowRight', byTestId('multiselect-confirm'));
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose).toHaveBeenCalledTimes(1);
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action.id).toBe('a5');
+    expect(targets).toEqual([{ slot: 'attackers', chosen: ['atk_1', 'atk_2'] }]);
+  });
+
+  it('reaches a rail (stack) control by keyboard, proving cross-region navigation', () => {
+    // The stack/activity rail is a vertical (column) region: cross-region arrows land
+    // in it, and its own axis (Up/Down) walks its items — so its stack inspect handle
+    // is reachable by keyboard like every other surface (canvas hotspots included).
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    // Cross into the rail from the board with Right, then walk its items with Down.
+    arrowUntil('ArrowRight', byTestId('rail-collapse'));
+    arrowUntil('ArrowDown', byTestId('inspect-s1'));
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('inspect-s1');
+  });
+});
+
 describe('Table zone browsers (issue #262)', () => {
   it('opens the local graveyard from the board pile and lists it in order', () => {
     seed(ZONES_GAME_VIEW_JSON);

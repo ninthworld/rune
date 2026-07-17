@@ -69,7 +69,8 @@ import {
   type MultiSelectSession,
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
-import { layout, type Viewport } from './layout';
+import { layout, type RegionId, type Viewport } from './layout';
+import { collectFocusRegions, nextFocus, type FocusDir } from './focus';
 import { promptOverlayBox, regionBox, sceneBox, shellBox, trayBox } from './styles';
 import { cx } from '../chrome/cx';
 import s from './chrome.module.css';
@@ -225,6 +226,11 @@ export function Table() {
   // The live table's root, for keyboard focus navigation and activation (issue
   // #266): the keyboard layer moves focus among and activates the buttons within it.
   const mainRef = useRef<HTMLElement>(null);
+  // The shell's region geometry (issue #301), from the layout function — the basis
+  // for the spatial focus model. Kept in a ref so the always-on key listener reads
+  // the latest rects without re-subscribing on every resize/mode change. Assigned in
+  // the render body below from the live `shell`.
+  const focusGeometryRef = useRef<Map<string, Rect>>(new Map());
 
   // A fresh view supersedes any in-progress targeting or multi-select: the answer
   // either landed (server's response) or is now stale — most importantly, a changed
@@ -268,23 +274,14 @@ export function Table() {
   // Shortcuts are inert when no matching action exists — the handlers only ever act
   // on what is actually on screen / in `valid_actions`.
   useEffect(() => {
-    const moveFocus = (dir: 1 | -1, event: KeyboardEvent): void => {
+    const moveFocus = (dir: FocusDir, event: KeyboardEvent): void => {
       const root = mainRef.current;
       if (!root) return;
-      const buttons = Array.from(
-        root.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
-      );
-      if (buttons.length === 0) return;
+      const regions = collectFocusRegions(root, focusGeometryRef.current);
+      const next = nextFocus(regions, document.activeElement, dir);
+      if (!next) return;
       event.preventDefault();
-      const active = document.activeElement;
-      const index = active instanceof HTMLButtonElement ? buttons.indexOf(active) : -1;
-      const next =
-        index === -1
-          ? dir === 1
-            ? 0
-            : buttons.length - 1
-          : (index + dir + buttons.length) % buttons.length;
-      buttons[next].focus();
+      next.focus();
     };
 
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -328,12 +325,16 @@ export function Table() {
           return;
         }
         case 'ArrowRight':
+          moveFocus('right', event);
+          return;
         case 'ArrowDown':
-          moveFocus(1, event);
+          moveFocus('down', event);
           return;
         case 'ArrowLeft':
+          moveFocus('left', event);
+          return;
         case 'ArrowUp':
-          moveFocus(-1, event);
+          moveFocus('up', event);
           return;
         case 'p':
         case 'P': {
@@ -374,6 +375,37 @@ export function Table() {
   // never scrolls horizontally.
   const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
   const battlefieldW = shell.regions.battlefield.rect.w;
+
+  // The region geometry the spatial focus model navigates by (issue #301): map each
+  // tagged shell region to its layout rect, so `focus.ts` orders/adjoins regions the
+  // way the table is laid out (not by DOM source order). Includes every interactive
+  // surface the keyboard must reach — the opponent HUD, the local dock (#296), the
+  // board, the rail (#299), the action tray, and the staged prompt overlay (#298),
+  // whose anchored surface is registered as a synthetic `overlay` rect just above the
+  // tray so pressing Down from the board reaches its option/order controls. Held in a
+  // ref (below) so the always-on key listener reads the latest rects.
+  const focusGeometry = useMemo(() => {
+    const geometry = new Map<string, Rect>();
+    const ids: RegionId[] = [
+      'indicator',
+      'opponentHud',
+      'localDock',
+      'battlefield',
+      'rail',
+      'tray',
+    ];
+    for (const id of ids) geometry.set(id, shell.regions[id].rect);
+    // The prompt overlay is not a layout region (it anchors to the decision's subjects
+    // at render time); give it a stable rect just above the tray so region ordering is
+    // deterministic even where the DOM reports no box (jsdom/SSR).
+    const tray = shell.regions.tray.rect;
+    const bf = shell.regions.battlefield.rect;
+    geometry.set('overlay', { x: bf.x, y: tray.y - 1, w: bf.w, h: 1 });
+    return geometry;
+  }, [shell]);
+  useEffect(() => {
+    focusGeometryRef.current = focusGeometry;
+  }, [focusGeometry]);
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
   // The server names the receiver directly in `view.you`; an older server may
   // omit it (empty), which we treat as "unknown".
@@ -473,7 +505,12 @@ export function Table() {
     targeting === null &&
     multiSelect === null;
   const shortcutBindings: Binding[] = [
-    { id: 'arrows', keys: '← → ↑ ↓', description: 'Move focus between controls', available: true },
+    {
+      id: 'arrows',
+      keys: '← → ↑ ↓',
+      description: 'Move focus across regions and items',
+      available: true,
+    },
     {
       id: 'enter',
       keys: 'Enter',
@@ -784,8 +821,13 @@ export function Table() {
       data-mode={mode}
       style={shellBox(viewport.width, viewport.height)}
     >
-      {/* Turn/phase indicator — top (issue #297 redesigns its internals). */}
-      <div className={s.regionIndicator} style={regionBox(r.indicator.rect)}>
+      {/* Turn/phase indicator — top (issue #297 redesigns its internals). Tagged as a
+          focus region (issue #301) so keyboard navigation reaches its controls. */}
+      <div
+        className={s.regionIndicator}
+        style={regionBox(r.indicator.rect)}
+        data-focus-region="indicator"
+      >
         <PhaseIndicator view={view} mode={mode} localId={localId} />
       </div>
       {/*
@@ -798,6 +840,7 @@ export function Table() {
       <div
         className={cx(s.regionHud, mode === 'focus' && s.focusDimmed)}
         style={regionBox(r.opponentHud.rect)}
+        data-focus-region="opponentHud"
       >
         <OpponentHud
           view={view}
@@ -811,6 +854,7 @@ export function Table() {
       <div
         className={cx(s.regionLocalDock, mode === 'focus' && s.focusDimmed)}
         style={regionBox(r.localDock.rect)}
+        data-focus-region="localDock"
       >
         <LocalDock
           view={view}
@@ -822,7 +866,11 @@ export function Table() {
       </div>
       {/* Battlefield — the center, owning most of the viewport. The Pixi scene sizes
           to this region's width, so it never scrolls horizontally. */}
-      <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
+      <div
+        className={s.regionBattlefield}
+        style={regionBox(r.battlefield.rect)}
+        data-focus-region="battlefield"
+      >
         <div style={sceneBox(scene.width, scene.height)}>
           <BattlefieldCanvas scene={scene} />
           {/* Labeled, bounded player lanes + zone piles (issue #278), anchored to the
@@ -843,16 +891,20 @@ export function Table() {
       </div>
       {/* Stack & activity rail — right edge: a collapsible panel that auto-expands
           while the stack is populated and collapses to a count badge on narrow
-          geometry, reserving a slot for the game log (issue #299 / #260). */}
-      <Rail
-        view={view}
-        rect={r.rail.rect}
-        collapsed={shell.railCollapsed}
-        targeting={
-          targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-        }
-        onInspect={setInspectedId}
-      />
+          geometry, reserving a slot for the game log (issue #299 / #260). Wrapped in a
+          `rail` focus region (issue #301) so keyboard navigation reaches its controls;
+          the wrapper adds no layout (the Rail positions itself absolutely). */}
+      <div data-focus-region="rail">
+        <Rail
+          view={view}
+          rect={r.rail.rect}
+          collapsed={shell.railCollapsed}
+          targeting={
+            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+          }
+          onInspect={setInspectedId}
+        />
+      </div>
       {/* Anchored prompt overlay (issue #298): a focused decision surface staged over
           the board, positioned (inline, from reported rects) relative to the decision's
           subjects. Present only while a decision is being resolved; the banner, option
@@ -861,6 +913,7 @@ export function Table() {
         <div
           className={s.promptOverlay}
           data-testid="prompt-overlay"
+          data-focus-region="overlay"
           data-placement={promptAnchor.place}
           style={promptOverlayBox(promptAnchor, bf)}
         >
@@ -887,7 +940,11 @@ export function Table() {
           entity's echo in the neutral state; the decision controls (multi-select
           confirm/advance/cancel, targeting cancel) while a decision is staged. It reads
           "waiting" quietly when the server offers nothing. */}
-      <div className={s.regionTray} style={trayBox(r.tray.rect, viewport.height)}>
+      <div
+        className={s.regionTray}
+        style={trayBox(r.tray.rect, viewport.height)}
+        data-focus-region="tray"
+      >
         <ActionTray
           globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
           selectedActions={selectedActions}
