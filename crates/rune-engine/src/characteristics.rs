@@ -256,7 +256,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: BTreeMap::new(),

@@ -9,7 +9,7 @@
 //! an immutable [`crate::GameState`].
 
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
-use crate::actions::{action_is_legal, Action, Block};
+use crate::actions::{action_is_legal, Action, Attack, Block};
 use crate::card::{abilities_of, apply_enters_replacements, Keyword};
 use crate::combat::{
     blocked_attackers, combat_damage, combat_has_first_strike, has_keyword,
@@ -478,7 +478,7 @@ fn apply_keep(state: &mut GameState, bottom: &[Target]) {
 /// ([`GameState::begin_next_turn`]), so a fresh combat starts clean.
 fn remove_creatures_from_combat(state: &mut GameState) {
     for perm in &mut state.battlefield {
-        perm.attacking = false;
+        perm.attacking = None;
         perm.blocking = None;
     }
 }
@@ -492,10 +492,16 @@ fn remove_creatures_from_combat(state: &mut GameState) {
 /// Only ever reached during the declare-attackers step for the active player (the
 /// action is offered nowhere else — see [`crate::valid_actions`]) and only for a
 /// selection already validated in [`action_is_legal`].
-fn apply_declare_attackers(state: &mut GameState, attackers: &[PermanentId], db: &CardDatabase) {
-    for &id in attackers {
-        if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-            perm.attacking = true;
+fn apply_declare_attackers(state: &mut GameState, attackers: &[Attack], db: &CardDatabase) {
+    for attack in attackers {
+        if let Some(perm) = state
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == attack.attacker)
+        {
+            // CR 508.1a: record whom this attacker is attacking, so blocker
+            // eligibility and combat damage follow the assignment (issue #341).
+            perm.attacking = Some(attack.defender);
             // CR 508.1f / CR 702.20b: attacking taps the creature, unless it has
             // vigilance, in which case it attacks without tapping.
             if !has_keyword(perm, Keyword::Vigilance, db) {
@@ -508,7 +514,7 @@ fn apply_declare_attackers(state: &mut GameState, attackers: &[PermanentId], db:
     // it even after it has left combat or the battlefield (CR 508.1).
     let declared: Vec<LoggedPermanent> = attackers
         .iter()
-        .map(|&id| logged_permanent(state, id))
+        .map(|attack| logged_permanent(state, attack.attacker))
         .collect();
     state.record_event(GameEvent::AttackersDeclared {
         player: state.active_player,
@@ -591,7 +597,7 @@ fn apply_play_land(state: &mut GameState, card: CardInstance, db: &CardDatabase)
         controller,
         tapped: false,
         entered_turn,
-        attacking: false,
+        attacking: None,
         blocking: None,
         damage: 0,
         counters: Default::default(),
@@ -996,7 +1002,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: Default::default(),
@@ -1029,7 +1035,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: Default::default(),
@@ -1217,7 +1223,7 @@ mod tests {
             controller,
             tapped,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage,
             counters: Default::default(),
@@ -1637,7 +1643,7 @@ mod tests {
 
     // ----- Combat I: declare attackers and blockers (issue #117) -----
 
-    use crate::actions::{valid_actions as valid, Block};
+    use crate::actions::{valid_actions as valid, Attack, Block};
     use crate::combat::{attacker_candidates, blocker_candidates};
 
     /// A two-player game paused at the declare-attackers step, turn 2 so that
@@ -1681,13 +1687,16 @@ mod tests {
         let after = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![attacker],
+                attackers: atk1(&[attacker]),
             },
             &db,
         );
 
         let perm = find_perm(&after, attacker);
-        assert!(perm.attacking, "declared creature is attacking (CR 508.1a)");
+        assert!(
+            perm.attacking.is_some(),
+            "declared creature is attacking (CR 508.1a)"
+        );
         assert!(perm.tapped, "attacking taps the creature (CR 508.1f)");
         assert!(after.attackers_declared);
         // The declaration made, the step opens its priority round with the active
@@ -1713,7 +1722,7 @@ mod tests {
         );
 
         assert!(after.attackers_declared);
-        assert!(!find_perm(&after, creature).attacking);
+        assert!(find_perm(&after, creature).attacking.is_none());
         assert!(!find_perm(&after, creature).tapped);
         assert!(valid(&after, &db).contains(&Action::PassPriority));
     }
@@ -1733,7 +1742,7 @@ mod tests {
         let after = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![sick],
+                attackers: atk1(&[sick]),
             },
             &db,
         );
@@ -1751,7 +1760,7 @@ mod tests {
         let after = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![tapped],
+                attackers: atk1(&[tapped]),
             },
             &db,
         );
@@ -1774,7 +1783,7 @@ mod tests {
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![attacker],
+                attackers: atk1(&[attacker]),
             },
             &db,
         );
@@ -1826,7 +1835,7 @@ mod tests {
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![attacker],
+                attackers: atk1(&[attacker]),
             },
             &db,
         );
@@ -1859,7 +1868,7 @@ mod tests {
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![attacker],
+                attackers: atk1(&[attacker]),
             },
             &db,
         );
@@ -1890,7 +1899,7 @@ mod tests {
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![atk_a, atk_b],
+                attackers: atk1(&[atk_a, atk_b]),
             },
             &db,
         );
@@ -1959,7 +1968,7 @@ mod tests {
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![attacker],
+                attackers: atk1(&[attacker]),
             },
             &db,
         );
@@ -1977,7 +1986,7 @@ mod tests {
         let state = pass_full_round(&state, &db); // → EndCombat (turn-based action runs)
         assert_eq!(state.step, Step::EndCombat);
 
-        assert!(!find_perm(&state, attacker).attacking);
+        assert!(find_perm(&state, attacker).attacking.is_none());
         assert_eq!(find_perm(&state, blocker).blocking, None);
     }
 
@@ -2003,11 +2012,11 @@ mod tests {
         let after = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![vigilant, plain],
+                attackers: atk1(&[vigilant, plain]),
             },
             &db,
         );
-        assert!(find_perm(&after, vigilant).attacking);
+        assert!(find_perm(&after, vigilant).attacking.is_some());
         assert!(
             !find_perm(&after, vigilant).tapped,
             "vigilance skips the attack tap (CR 702.20b)"
@@ -2034,7 +2043,7 @@ mod tests {
             .iter_mut()
             .find(|p| p.id == opp_attacker)
         {
-            p.attacking = true;
+            p.attacking = Some(PlayerId(1));
         }
         assert!(
             blocker_candidates(&defense, &db).contains(&vigilant),
@@ -2063,12 +2072,12 @@ mod tests {
         let after = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![hasty],
+                attackers: atk1(&[hasty]),
             },
             &db,
         );
         assert!(
-            find_perm(&after, hasty).attacking,
+            find_perm(&after, hasty).attacking.is_some(),
             "a hasty creature attacks the turn it enters (CR 702.10b)"
         );
         assert!(
@@ -2104,7 +2113,7 @@ mod tests {
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
-                attackers: vec![flyer],
+                attackers: atk1(&[flyer]),
             },
             &db,
         );
@@ -2153,6 +2162,17 @@ mod tests {
         state.battlefield.iter().any(|p| p.id == id)
     }
 
+    /// Wrap plain attacker ids as attacks on the sole opponent, seat 1 — the
+    /// two-player default these combat tests exercise (issue #341).
+    fn atk1(ids: &[PermanentId]) -> Vec<Attack> {
+        ids.iter()
+            .map(|&attacker| Attack {
+                attacker,
+                defender: PlayerId(1),
+            })
+            .collect()
+    }
+
     /// Drive combat from the declare-attackers step through the combat-damage
     /// step: declare `attackers`, pass to declare-blockers, declare `blocks`, then
     /// pass into combat damage (where the turn-based damage assignment runs and the
@@ -2164,7 +2184,13 @@ mod tests {
         blocks: Vec<Block>,
         db: &CardDatabase,
     ) -> GameState {
-        let state = apply_action(state, &Action::DeclareAttackers { attackers }, db);
+        let state = apply_action(
+            state,
+            &Action::DeclareAttackers {
+                attackers: atk1(&attackers),
+            },
+            db,
+        );
         let state = pass_full_round(&state, db);
         assert_eq!(state.step, Step::DeclareBlockers);
         let state = apply_action(&state, &Action::DeclareBlockers { blocks }, db);

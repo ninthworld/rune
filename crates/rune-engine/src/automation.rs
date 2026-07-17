@@ -147,7 +147,7 @@ mod tests {
             controller,
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: Default::default(),

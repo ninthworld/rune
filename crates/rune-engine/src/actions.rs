@@ -10,8 +10,8 @@ use crate::ability::{Ability, Cost, Effect, Target, TargetSpec};
 use crate::card::{abilities_of, CardData};
 use crate::card_type::CardType;
 use crate::combat::{
-    attacker_candidates, blocker_can_block_attacker, blocker_candidates, declared_attackers,
-    defending_player,
+    attacker_candidates, attacking_defender_of, blocker_can_block_attacker, blocker_candidates,
+    declared_attackers, defender_candidates, defending_player,
 };
 use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
@@ -111,8 +111,11 @@ pub enum Action {
     /// and a filled-in selection is validated against that fresh set in
     /// [`action_is_legal`] — never pre-expanded into one action per subset.
     DeclareAttackers {
-        /// The permanents declared as attackers, each attacking the sole opponent.
-        attackers: Vec<PermanentId>,
+        /// The declared attacks: each names one attacker and the defending player
+        /// it attacks (CR 508.1a). In a two-player game the only legal defender is
+        /// the sole opponent; with more seats each attacker chooses among the
+        /// opponents still in the game ([`defender_candidates`]).
+        attackers: Vec<Attack>,
     },
     /// Declare the defending player's blockers (CR 509.1), the turn-based player
     /// choice of the declare-blockers step. Each [`Block`] assigns one eligible
@@ -129,6 +132,22 @@ pub enum Action {
     /// conceding player as having lost; the game then becomes terminal with the
     /// opponent as the winner (CR 104.2a).
     Concede,
+}
+
+/// One attacker→defender assignment of a [`Action::DeclareAttackers`] declaration
+/// (CR 508.1a): the `attacker` is declared to attack the defending player
+/// `defender`.
+///
+/// In a two-player game every attack's `defender` is the sole opponent, so the
+/// declaration is choice-free; with more seats each attacker records which
+/// opponent it attacks, which is what blocker eligibility and combat damage follow
+/// (issue #341). Plain `Copy`/`Eq` data, mirroring [`Block`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Attack {
+    /// The creature declared as an attacker (an [`attacker_candidates`] member).
+    pub attacker: PermanentId,
+    /// The defending player it attacks (a [`defender_candidates`] member).
+    pub defender: PlayerId,
 }
 
 /// One blocker→attacker assignment of a [`Action::DeclareBlockers`] declaration
@@ -555,15 +574,23 @@ fn legal_targets_for_spec(spec: TargetSpec, state: &GameState, db: &CardDatabase
 }
 
 /// Whether a declared attacker selection is legal (CR 508.1a): every named
-/// permanent is a current attacker candidate ([`attacker_candidates`]) and no
-/// permanent is named twice. An empty selection is legal (declaring no attackers).
+/// permanent is a current attacker candidate ([`attacker_candidates`]), no
+/// permanent is named twice, and every attacker's defender is a legal defender
+/// candidate ([`defender_candidates`]) — an opponent still in the game, never the
+/// active player and never an eliminated one. An empty selection is legal
+/// (declaring no attackers).
 fn attackers_selection_is_legal(
     state: &GameState,
     db: &CardDatabase,
-    attackers: &[PermanentId],
+    attackers: &[Attack],
 ) -> bool {
     let candidates = attacker_candidates(state, db);
-    all_unique(attackers) && attackers.iter().all(|id| candidates.contains(id))
+    let defenders = defender_candidates(state);
+    let ids: Vec<PermanentId> = attackers.iter().map(|a| a.attacker).collect();
+    all_unique(&ids)
+        && attackers
+            .iter()
+            .all(|a| candidates.contains(&a.attacker) && defenders.contains(&a.defender))
 }
 
 /// Whether a declared blocker selection is legal (CR 509.1a): every blocker is a
@@ -587,8 +614,26 @@ fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Blo
         && blocks.iter().all(|b| {
             blockers.contains(&b.blocker)
                 && attackers.contains(&b.attacker)
+                // A player may block only attackers attacking *them* (CR 509.1a,
+                // issue #341): the attacker's chosen defender must be the blocker's
+                // controller. In a two-player game this always holds, since the sole
+                // opponent is the only defender.
+                && blocker_controller(state, b.blocker)
+                    .zip(attacking_defender_of(state, b.attacker))
+                    .is_some_and(|(controller, defender)| controller == defender)
                 && blocker_can_block_attacker(state, b.attacker, b.blocker, db)
         })
+}
+
+/// The controller of a would-be blocker `id`, or `None` if it is not on the
+/// battlefield. Used to enforce that a player blocks only attackers attacking
+/// them (CR 509.1a).
+fn blocker_controller(state: &GameState, id: PermanentId) -> Option<PlayerId> {
+    state
+        .battlefield
+        .iter()
+        .find(|p| p.id == id)
+        .map(|p| p.controller)
 }
 
 /// Whether every element of `ids` is distinct. O(n²), which is fine for the
@@ -664,7 +709,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
-            attacking: false,
+            attacking: None,
             blocking: None,
             damage: 0,
             counters: Default::default(),
@@ -1324,5 +1369,60 @@ mod tests {
             &db,
         );
         assert_eq!(after, state);
+    }
+
+    #[test]
+    fn issue_341_attacker_may_target_any_opponent_but_never_self_or_eliminated() {
+        // CR 508.1a: an attacker may be declared to attack any opponent still in the
+        // game; assigning it to the active player or an eliminated one is illegal.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        state.turn = 2;
+        state.step = Step::DeclareAttackers;
+        state.active_player = PlayerId(0);
+        let atk = put_on_battlefield(&mut state, fixture("verdant_scout"));
+
+        let attack = |defender| {
+            [Attack {
+                attacker: atk,
+                defender,
+            }]
+        };
+        // Legal against either living opponent.
+        assert!(attackers_selection_is_legal(
+            &state,
+            &db,
+            &attack(PlayerId(1))
+        ));
+        assert!(attackers_selection_is_legal(
+            &state,
+            &db,
+            &attack(PlayerId(2))
+        ));
+        // Illegal against the active player themselves.
+        assert!(!attackers_selection_is_legal(
+            &state,
+            &db,
+            &attack(PlayerId(0))
+        ));
+        // Illegal against a non-existent seat.
+        assert!(!attackers_selection_is_legal(
+            &state,
+            &db,
+            &attack(PlayerId(9))
+        ));
+
+        // Once seat 2 is eliminated it is no longer a legal defender.
+        state.players[2].has_lost = true;
+        assert!(!attackers_selection_is_legal(
+            &state,
+            &db,
+            &attack(PlayerId(2))
+        ));
+        assert!(attackers_selection_is_legal(
+            &state,
+            &db,
+            &attack(PlayerId(1))
+        ));
     }
 }

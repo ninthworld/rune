@@ -402,7 +402,7 @@ fn entering_combat_damage_is_logged_before_the_damage_and_death() {
     // An unblocked 3/2 attacker owned by player 0.
     let attacker = place(&mut state, &db, "thornback_boar", 0);
     if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == attacker) {
-        perm.attacking = true;
+        perm.attacking = Some(PlayerId(1));
         perm.tapped = true;
     }
 
