@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { GameView, StackItem } from '../protocol';
+import type { GameLogEntry, GameView, StackItem } from '../protocol';
 import type { Rect } from './scene';
 import { Rail } from './Rail';
 
 afterEach(cleanup);
 
-/** A minimal live {@link GameView} carrying just the fields the rail/stack read. */
-function viewWith(stack: StackItem[]): GameView {
+/** A minimal live {@link GameView} carrying just the fields the rail/stack/log read. */
+function viewWith(stack: StackItem[], log: GameLogEntry[] = []): GameView {
   return {
     you: 'p1',
     my_hand: [],
@@ -22,9 +22,15 @@ function viewWith(stack: StackItem[]): GameView {
     active_player: 'p1',
     mana_pool: [],
     valid_actions: [],
+    log,
     player_names: {},
   };
 }
+
+/** A one-entry log window (a spell cast) for exercising the rail's log slot. */
+const oneLog: GameLogEntry[] = [
+  { sequence: 1, event: { type: 'spell_cast', player: 'p1', card: { id: 's1', name: 'Bolt' } } },
+];
 
 /** The docked rail column rect (wide geometry). */
 const DOCKED: Rect = { x: 1024, y: 124, w: 256, h: 676 };
@@ -38,7 +44,7 @@ const twoSpells: StackItem[] = [
 ];
 
 describe('Rail (issue #299)', () => {
-  it('renders nothing for an empty stack (claims no meaningful width)', () => {
+  it('renders nothing with neither a populated stack nor a log (claims no width)', () => {
     const { container } = render(<Rail view={viewWith([])} rect={DOCKED} collapsed={false} />);
     expect(container.firstChild).toBeNull();
     expect(screen.queryByTestId('rail')).toBeNull();
@@ -47,12 +53,45 @@ describe('Rail (issue #299)', () => {
 
   it('auto-expands the panel when the stack is populated on wide geometry', () => {
     render(<Rail view={viewWith(oneSpell)} rect={DOCKED} collapsed={false} />);
-    // The expanded panel (stack section + reserved log slot) shows by default; no badge.
+    // The expanded panel (stack section + game log) shows by default; no badge.
     expect(screen.getByTestId('rail')).toBeDefined();
     expect(screen.getByTestId('stack-panel')).toBeDefined();
-    expect(screen.getByTestId('rail-log-slot')).toBeDefined();
+    expect(screen.getByTestId('game-log')).toBeDefined();
     expect(screen.queryByTestId('rail-badge')).toBeNull();
     expect(screen.getByTestId('stack-item-s1').textContent).toContain('Lightning Bolt');
+  });
+
+  it('renders the rail for a log even when the stack is empty (wide geometry)', () => {
+    render(<Rail view={viewWith([], oneLog)} rect={DOCKED} collapsed={false} />);
+    // No stack, but the log alone keeps the activity rail present and populated.
+    expect(screen.getByTestId('rail')).toBeDefined();
+    expect(screen.queryByTestId('stack-panel')).toBeNull();
+    expect(screen.getByTestId('game-log')).toBeDefined();
+    expect(screen.getByTestId('log-entry-1').textContent).toBe('p1 cast Bolt.');
+  });
+
+  it('forwards a log reference click to onHighlight', () => {
+    const onHighlight = vi.fn();
+    render(
+      <Rail
+        view={viewWith([], oneLog)}
+        rect={DOCKED}
+        collapsed={false}
+        onHighlight={onHighlight}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('log-ref-s1'));
+    expect(onHighlight).toHaveBeenCalledWith('s1');
+  });
+
+  it('collapses to a log-count badge on narrow geometry with a log but no stack', () => {
+    render(<Rail view={viewWith([], oneLog)} rect={BADGE_ANCHOR} collapsed={true} />);
+    const badge = screen.getByTestId('rail-badge');
+    expect(badge.textContent).toContain('1');
+    expect(badge.getAttribute('aria-label')).toContain('Game log');
+    // Expanding reveals the log.
+    fireEvent.click(badge);
+    expect(screen.getByTestId('game-log')).toBeDefined();
   });
 
   it('collapses to a count badge by default on narrow geometry', () => {

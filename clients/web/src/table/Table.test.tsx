@@ -1179,3 +1179,71 @@ describe('Table discard-to-max end to end (issue #156/#157)', () => {
     ).toBeDefined();
   });
 });
+
+describe('Table game log (issue #260)', () => {
+  it('renders the game log in the rail with client-composed prose', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    const log = screen.getByTestId('game-log');
+    // A spell-cast entry composed client-side from the structured event.
+    expect(within(log).getByTestId('log-entry-35').textContent).toBe('p2 cast Lightning Bolt.');
+    // The leading run of consecutive step changes collapses behind one summary.
+    expect(within(log).getByTestId('log-steps')).toBeDefined();
+  });
+
+  it('highlights a referenced player tile on click, and toggles it off', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    // The cast entry references p2; before any click the tile is not highlighted.
+    expect(screen.getByTestId('tile-p2').getAttribute('data-highlighted')).toBeNull();
+    fireEvent.click(within(screen.getByTestId('game-log')).getByTestId('log-ref-p2'));
+    expect(screen.getByTestId('tile-p2').getAttribute('data-highlighted')).toBe('true');
+    // Clicking the same reference again clears the highlight (ephemeral, presentational).
+    fireEvent.click(within(screen.getByTestId('game-log')).getByTestId('log-ref-p2'));
+    expect(screen.getByTestId('tile-p2').getAttribute('data-highlighted')).toBeNull();
+  });
+
+  it('highlighting a log reference opens no action tray (purely presentational)', () => {
+    const choose = seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    fireEvent.click(within(screen.getByTestId('game-log')).getByTestId('log-ref-perm_xyz'));
+    // No selection echo / entity actions surface — highlighting derives nothing.
+    expect(screen.queryByTestId('entity-actions-perm_xyz')).toBeNull();
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('keeps the log visible and interactive in the read-only game-over state', () => {
+    // A terminal frame that still carries a history window: the log rides the rail in
+    // the game-over branch too, and its references still highlight (issue #260 scope).
+    const gameOverWithLog = JSON.stringify({
+      you: 'p1',
+      opponents: [{ player_id: 'p2', hand_size: 0, life: 0, library_size: 40 }],
+      phase: 'end',
+      valid_actions: [],
+      result: { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+      log: [
+        {
+          sequence: 1,
+          event: { type: 'spell_cast', player: 'p2', card: { id: 's9', name: 'Shock' } },
+        },
+        {
+          sequence: 2,
+          event: {
+            type: 'game_over',
+            result: { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+          },
+        },
+      ],
+    });
+    seed(gameOverWithLog);
+    render(<Table />);
+    expect(screen.getByTestId('table-game-over')).toBeDefined();
+    const log = screen.getByTestId('game-log');
+    expect(within(log).getByTestId('log-entry-2').textContent).toBe(
+      'Game over — p1 wins (life total reached zero).',
+    );
+    // A reference still highlights the player's tile in the read-only terminal state.
+    fireEvent.click(within(log).getByTestId('log-ref-p2'));
+    expect(screen.getByTestId('tile-p2').getAttribute('data-highlighted')).toBe('true');
+  });
+});

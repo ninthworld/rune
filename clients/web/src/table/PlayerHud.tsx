@@ -50,10 +50,19 @@ function renderSurface(
   className: string,
   content: ReactNode,
   targeting: TargetingTiles | undefined,
+  highlighted: boolean,
 ): ReactNode {
+  // A game-log reference can presentationally highlight a player's tile (issue #260):
+  // a ring, independent of targeting. Purely display — it makes nothing pickable.
+  const highlightClass = highlighted ? s.tileHighlighted : undefined;
   if (!targeting) {
     return (
-      <div key={playerId} data-testid={`tile-${playerId}`} className={className}>
+      <div
+        key={playerId}
+        data-testid={`tile-${playerId}`}
+        className={cx(className, highlightClass)}
+        data-highlighted={highlighted || undefined}
+      >
         {content}
       </div>
     );
@@ -66,14 +75,18 @@ function renderSurface(
         data-testid={`target-player-${playerId}`}
         aria-label={`Target player ${name}`}
         onClick={() => targeting.onPick(playerId)}
-        className={cx(s.tileButtonReset, className, s.targetTile)}
+        className={cx(s.tileButtonReset, className, s.targetTile, highlightClass)}
       >
         {content}
       </button>
     );
   }
   return (
-    <div key={playerId} data-testid={`tile-${playerId}`} className={cx(className, s.dimmedTile)}>
+    <div
+      key={playerId}
+      data-testid={`tile-${playerId}`}
+      className={cx(className, s.dimmedTile, highlightClass)}
+    >
       {content}
     </div>
   );
@@ -117,13 +130,15 @@ interface OpponentHudProps {
   view: GameView;
   /** Present only in targeting mode; makes candidate opponents pickable. */
   targeting?: TargetingTiles;
+  /** The player a game-log reference is highlighting, if any (issue #260). */
+  highlightedId?: PlayerId | null;
 }
 
 /**
  * The opponent HUD strip. One tile per opponent, reflowing by count (wide at 2p →
  * grid at 8p) without moving the local player, who lives in the {@link LocalDock}.
  */
-export function OpponentHud({ view, targeting }: OpponentHudProps) {
+export function OpponentHud({ view, targeting, highlightedId }: OpponentHudProps) {
   return (
     <div data-testid="opponent-hud" className={s.hudStrip}>
       {view.opponents.map((opponent) => {
@@ -140,6 +155,7 @@ export function OpponentHud({ view, targeting }: OpponentHudProps) {
             opponent.statuses,
           ),
           targeting,
+          highlightedId === opponent.player_id,
         );
       })}
     </div>
@@ -152,6 +168,8 @@ interface LocalDockProps {
   localId?: PlayerId;
   /** Present only in targeting mode; makes the local player pickable when a candidate. */
   targeting?: TargetingTiles;
+  /** The player a game-log reference is highlighting, if any (issue #260). */
+  highlightedId?: PlayerId | null;
 }
 
 /**
@@ -159,7 +177,7 @@ interface LocalDockProps {
  * the pool is non-empty). The receiver's own statuses are not carried by
  * {@link SelfView}, so the dock shows none — it renders exactly what the view supplies.
  */
-export function LocalDock({ view, localId, targeting }: LocalDockProps) {
+export function LocalDock({ view, localId, targeting, highlightedId }: LocalDockProps) {
   const id = localId ?? 'local';
   const name = localId !== undefined ? playerName(view, localId) : 'You';
   return (
@@ -185,6 +203,7 @@ export function LocalDock({ view, localId, targeting }: LocalDockProps) {
           )}
         </>,
         targeting,
+        highlightedId === id,
       )}
     </div>
   );

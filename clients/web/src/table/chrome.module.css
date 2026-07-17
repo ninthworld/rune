@@ -164,26 +164,123 @@
   line-height: 1;
 }
 
-/* The reserved game-log dock (issue #260): a clearly-marked, deliberately empty
- * section so the log panel has a stable home. Sunken tier so it reads as an
- * awaiting slot, not a populated panel. */
-.railLog {
+/* The game log (issue #260): the rail's readable, scrollable activity history. The
+ * section holds a compact title over a bounded, internally-scrolling list — newest at
+ * the bottom, auto-pinned there unless the reader scrolls up. It fills the rail's
+ * reserved dock and shares its sunken tier so it reads as content within the rail. */
+.gameLog {
   display: flex;
   flex-direction: column;
   gap: var(--rune-space-3);
-  padding: var(--rune-space-4);
-  border-radius: var(--rune-radius-md);
-  background: var(--rune-region-bg-soft);
-  border: 1px dashed var(--rune-border);
-  min-height: 48px;
+  min-height: 0;
+  /* Claim the rail's remaining height (below the stack) so the list scrolls rather
+   * than pushing the rail; a floor keeps it usable when the stack is tall. */
+  flex: 1 1 auto;
 }
-.railLogLabel {
+.gameLogTitle {
   margin: 0;
   font-size: var(--rune-type-micro);
   font-weight: 700;
   color: var(--rune-text-muted);
   letter-spacing: 0.4px;
   text-transform: uppercase;
+}
+.gameLogEmpty {
+  margin: 0;
+  padding: var(--rune-space-4);
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+  font-style: italic;
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-region-bg-soft);
+  border: 1px dashed var(--rune-border);
+}
+.gameLogList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  overflow-y: auto;
+  /* Bounded so a long history scrolls internally instead of growing the rail; the
+   * board keeps its space (ui-requirements: logs with thousands of entries). */
+  max-height: 40vh;
+  padding-right: var(--rune-space-2);
+}
+.logEntry {
+  font-size: var(--rune-type-caption);
+  line-height: 1.45;
+  color: var(--rune-text);
+  padding: var(--rune-space-2) var(--rune-space-3);
+  border-radius: var(--rune-radius-sm);
+  background: var(--rune-region-bg-soft);
+  word-break: break-word;
+}
+/* A step-change line reads as secondary meta (turn/phase advance), quieter than the
+ * consequential events around it. */
+.logStepEntry {
+  color: var(--rune-text-muted);
+  background: transparent;
+  padding-block: var(--rune-space-1);
+}
+/* A collapsed run of step changes: the toggle over the (collapsed or expanded) list. */
+.logSteps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+}
+.logStepsList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+}
+.logStepsToggle {
+  align-self: flex-start;
+  font: inherit;
+  font-size: var(--rune-type-micro);
+  color: var(--rune-text-muted);
+  background: none;
+  border: none;
+  padding: 0 var(--rune-space-2);
+  min-height: var(--rune-touch);
+  cursor: pointer;
+  text-align: left;
+}
+.logStepsToggle:hover {
+  color: var(--rune-text);
+}
+/* A clickable entity/player reference inside a log line: reads as an inline link but
+ * is a real button (pointer + keyboard + touch), so it carries the highlight action. */
+.logRef {
+  font: inherit;
+  color: var(--rune-selection);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color var(--rune-transition);
+}
+.logRef:hover {
+  text-decoration-color: currentColor;
+}
+.logRef:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 1px;
+  border-radius: var(--rune-radius-xs);
+}
+/* The currently-highlighted reference reads pressed (matches the tile/card ring). */
+.logRefActive {
+  color: var(--rune-text);
+  background: var(--rune-selection-fill);
+  border-radius: var(--rune-radius-xs);
+  text-decoration-color: currentColor;
 }
 
 /* Tier 3 — the floating action tray region (issue #298): it overlays the board's
@@ -552,6 +649,12 @@
 }
 .dimmedTile {
   opacity: 0.32;
+}
+/* A game-log reference highlighting this player's tile (issue #260): a selection ring
+ * echoing the canvas card ring, presentation only (it makes nothing pickable). */
+.tileHighlighted {
+  border-color: var(--rune-selection);
+  box-shadow: 0 0 0 2px var(--rune-selection-fill);
 }
 
 /* Identity — the primary label. Truncates before it can widen a tile past the strip. */

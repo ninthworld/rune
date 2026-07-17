@@ -111,7 +111,10 @@ Shipped foundations:
 - visible action affordances and table geography (#277–#278); and
 - the client UI overhaul shell — visual system and tokens, full-bleed tabletop shell,
   player HUDs, decision staging, stack/activity rail, identity screens, display names, and
-  the spatial focus model (#293–#301, #294).
+  the spatial focus model (#293–#301, #294); and
+- the client game-log panel — a readable, scrollable history composed client-side from the
+  structured `GameView` log, with clickable entity/player references and collapsible step
+  runs ([#260](https://github.com/ninthworld/rune/issues/260)).
 
 Remaining:
 
@@ -124,7 +127,6 @@ Remaining:
 - the identity layer: a bundled OFL display face and the procedural rune glyph language;
 - structured, redacted game events in `GameView`
   ([#259](https://github.com/ninthworld/rune/issues/259));
-- a client game-log panel ([#260](https://github.com/ninthworld/rune/issues/260));
 - server-owned priority automation and stops
   ([#264](https://github.com/ninthworld/rune/issues/264)); and
 - action rejection and fizzle explanations

@@ -4,7 +4,38 @@
  * that empty collections (`exile`) are omitted, exactly as the server elides
  * them, so tests exercise the client's normalization of missing fields.
  */
-import type { GameView } from './protocol';
+import type { GameLogEntry, GameView } from './protocol';
+
+/**
+ * A representative slice of the structured game-history window (issue #259 / #260),
+ * shared between the wire JSON and the normalized object below so the two can never
+ * drift. It exercises the log panel's shapes: a collapsible run of consecutive step
+ * changes, a lone step change, a draw, a spell cast, and damage to a permanent — with
+ * references to players (`p1`/`p2`) and a live battlefield permanent (`perm_xyz`) that
+ * the panel makes clickable for presentational highlighting.
+ */
+const SAMPLE_LOG: GameLogEntry[] = [
+  { sequence: 30, event: { type: 'step_changed', turn: 4, active_player: 'p2', phase: 'end' } },
+  { sequence: 31, event: { type: 'step_changed', turn: 5, active_player: 'p1', phase: 'untap' } },
+  { sequence: 32, event: { type: 'step_changed', turn: 5, active_player: 'p1', phase: 'draw' } },
+  { sequence: 33, event: { type: 'cards_drawn', player: 'p1', count: 1 } },
+  {
+    sequence: 34,
+    event: { type: 'step_changed', turn: 5, active_player: 'p1', phase: 'precombat_main' },
+  },
+  {
+    sequence: 35,
+    event: { type: 'spell_cast', player: 'p2', card: { id: 's1', name: 'Lightning Bolt' } },
+  },
+  {
+    sequence: 36,
+    event: {
+      type: 'damage_dealt',
+      target: { kind: 'permanent', permanent: { id: 'perm_xyz', name: 'Grizzly Bears' } },
+      amount: 3,
+    },
+  },
+];
 
 /** The wire text a client would receive over the socket. */
 export const SAMPLE_GAME_VIEW_JSON = JSON.stringify({
@@ -62,6 +93,7 @@ export const SAMPLE_GAME_VIEW_JSON = JSON.stringify({
     { id: 'a1', type: 'pass_priority', label: 'Pass' },
   ],
   action_deadline: 12.5,
+  log: SAMPLE_LOG,
 });
 
 /** The fully-normalized {@link GameView} the client should hold after parsing. */
@@ -120,8 +152,9 @@ export const SAMPLE_GAME_VIEW: GameView = {
     { id: 'a1', type: 'pass_priority', label: 'Pass' },
   ],
   action_deadline: 12.5,
-  // The game-history window is optional on older frames and normalizes to empty.
-  log: [],
+  // The structured game-history window (issue #259 / #260); an older frame may omit it
+  // and normalization defaults it to empty.
+  log: SAMPLE_LOG,
   result: undefined,
   // No stops or auto-pass in the sample frame; normalization defaults them (issue #264).
   stops: [],
