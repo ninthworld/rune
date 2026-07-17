@@ -422,6 +422,86 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
   });
 });
 
+describe('buildTableScene card-face indicators (issue #320)', () => {
+  it('passes server keywords through to the card face verbatim', () => {
+    const local = buildTableScene(
+      permBoard([{ id: 'drake', type_line: 'Creature — Drake', power: '2', toughness: '2' }]),
+    ).bands.at(-1)!;
+    // Keywords come from the view; inject via a raw permanent card.
+    const withKeywords = normalizeGameView({
+      you: 'p1',
+      my_hand: [],
+      opponents: [],
+      battlefield: [
+        {
+          id: 'drake',
+          controller: 'p1',
+          owner: 'p1',
+          card: {
+            id: 'drake',
+            name: 'Drake',
+            type_line: 'Creature — Drake',
+            power: '2',
+            toughness: '2',
+            keywords: ['flying', 'deathtouch'],
+          },
+        },
+      ],
+      phase: 'precombat_main',
+      valid_actions: [],
+    });
+    const card = buildTableScene(withKeywords).bands.at(-1)!.cards[0]!;
+    expect(card.data.keywords).toEqual(['flying', 'deathtouch']);
+    // Sanity: the keyword-less board carries no keywords.
+    expect(local.cards[0]!.data.keywords).toBeUndefined();
+  });
+
+  it('marks a latent activated ability from the printed rules text, payable or not', () => {
+    const view = normalizeGameView({
+      you: 'p1',
+      my_hand: [],
+      opponents: [],
+      battlefield: [
+        {
+          id: 'pinger',
+          controller: 'p1',
+          owner: 'p1',
+          card: {
+            id: 'pinger',
+            name: 'Prodigal Sorcerer',
+            type_line: 'Creature — Human Wizard',
+            power: '1',
+            toughness: '1',
+            rules_text: '{T}: Deal 1 damage to any target.',
+          },
+        },
+        {
+          id: 'vanilla',
+          controller: 'p1',
+          owner: 'p1',
+          card: {
+            id: 'vanilla',
+            name: 'Grizzly Bears',
+            type_line: 'Creature — Bear',
+            power: '2',
+            toughness: '2',
+          },
+        },
+      ],
+      phase: 'precombat_main',
+      // No valid_actions → the marker is independent of any offered action.
+      valid_actions: [],
+    });
+    const byId = new Map(
+      buildTableScene(view)
+        .bands.at(-1)!
+        .cards.map((c) => [c.entityId, c]),
+    );
+    expect(byId.get('pinger')!.data.hasActivatedAbility).toBe(true);
+    expect(byId.get('vanilla')!.data.hasActivatedAbility).toBe(false);
+  });
+});
+
 describe('rowKindForType (issue #318)', () => {
   it('routes any creature/planeswalker/battle to the creatures row', () => {
     expect(rowKindForType('Creature — Bear')).toBe('creatures');

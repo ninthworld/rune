@@ -188,6 +188,16 @@ twenty inspect round-trips.
 - **inspect** — everything the server supplies: full rules text, keywords,
   current-vs-printed, counters, attachments, linked objects.
 
+Delivered by issue #320 in the card factory: a capped keyword-glyph strip (from
+`CardView.keywords`, overflowing to `+N` rather than shrinking below legibility),
+the latent-ability marker dot (distinct in *shape* from the gold playable bar; read
+off the printed rules text as a presentation heuristic — the swap point for a future
+`has_activated_ability` view field), and the existing counter badge, all at
+support/field/hand and never on chips. The **marked-damage badge** renders when a
+`markedDamage` value is present, but no protocol field carries combat damage today —
+so populating it is a follow-up contract change (the renderer is ready), exactly the
+"needed fact not view-derivable → follow-up" path the issue calls for.
+
 ## Battlefield bands
 
 Per player, ordered toward the center line: creatures/planeswalkers/battles

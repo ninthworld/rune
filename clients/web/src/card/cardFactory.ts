@@ -27,6 +27,7 @@ import {
   BADGE,
   FONT,
   FRAME,
+  INDICATORS,
   PALETTE,
   PIP,
   PT_TEXT,
@@ -34,7 +35,7 @@ import {
   TIER,
   type ColorIdentity,
 } from '../tokens';
-import { buildGlyphDisplay, type GlyphName } from '../chrome/glyphs';
+import { buildGlyphDisplay, keywordGlyphName, type GlyphName } from '../chrome/glyphs';
 
 /** Tiers that render a full card face (chips are a separate digest representation). */
 export type CardTier = 'support' | 'field' | 'hand';
@@ -114,6 +115,26 @@ export interface CardDisplayData {
    * absent for a nonbasic land (which shows its name) or any non-chip render.
    */
   landGlyph?: GlyphName;
+  /**
+   * The card's server-supplied keyword abilities as lowercase wire names (issue
+   * #320) — e.g. `['flying', 'deathtouch']`. Rendered as a capped glyph strip at
+   * support/field/hand tiers; a keyword with no glyph is dropped (the #317 coverage
+   * test guarantees the shipped set is covered). Never derived here.
+   */
+  keywords?: string[];
+  /**
+   * Whether the permanent has a **latent activated ability** (issue #320) — drawn as
+   * a quiet marker dot, distinct from the gold playable edge bar (which means "the
+   * server is offering an action right now"). The dot says *latent*; both can appear
+   * together. Supplied by the caller from view data; the factory computes no rules.
+   */
+  hasActivatedAbility?: boolean;
+  /**
+   * Marked combat damage on the permanent (issue #320), drawn as a corner badge when
+   * `> 0`. Rendered verbatim from view data — never computed. (No protocol field
+   * carries this today; the renderer is ready for the follow-up contract change.)
+   */
+  markedDamage?: number;
 }
 
 /**
@@ -144,6 +165,9 @@ export function cardVisualSignature(data: CardDisplayData, tier: RenderTier = 'f
     actionable: data.actionable ?? false,
     stackCount: data.stackCount ?? 1,
     landGlyph: data.landGlyph ?? null,
+    keywords: data.keywords ?? [],
+    hasActivatedAbility: data.hasActivatedAbility ?? false,
+    markedDamage: data.markedDamage ?? 0,
     counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
   });
 }
@@ -343,6 +367,47 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   typeLine.position.set(6, t.h - t.type - 20);
   inner.addChild(typeLine);
 
+  // Keyword-glyph strip (issue #320): a quiet row just above the type line, from the
+  // server-supplied keywords only (no rules derivation). Capped to what fits at this
+  // tier; the overflow degrades to a "+N" tag rather than shrinking glyphs below
+  // recognition (ui-requirements §10 — an illegible strip is worse than none).
+  const keywordGlyphs = (data.keywords ?? [])
+    .map(keywordGlyphName)
+    .filter((n): n is GlyphName => n !== null);
+  if (keywordGlyphs.length > 0) {
+    const gsize = t.pip;
+    const gap = 3;
+    const stripY = t.h - t.type - 20 - gsize - 3;
+    const capacity = Math.max(1, Math.floor((t.w - 14) / (gsize + gap)));
+    const overflow = keywordGlyphs.length > capacity;
+    const shown = overflow ? capacity - 1 : keywordGlyphs.length;
+    let gx = 7;
+    for (let i = 0; i < shown; i++) {
+      const g = buildGlyphDisplay(keywordGlyphs[i]!, { size: gsize, color: INDICATORS.keyword });
+      g.position.set(gx, stripY);
+      inner.addChild(g);
+      gx += gsize + gap;
+    }
+    if (overflow) {
+      const moreSize = Math.max(9, t.type);
+      const more = mkText(`+${keywordGlyphs.length - shown}`, moreSize, INDICATORS.keyword);
+      more.position.set(gx, stripY + (gsize - moreSize) / 2);
+      inner.addChild(more);
+    }
+  }
+
+  // Latent activated-ability marker (issue #320): a quiet dot, deliberately a
+  // different *shape* from the gold playable edge bar — the dot says the permanent
+  // *has* an activated ability, the bar says the server is offering one *right now*.
+  // Both can appear together, so the dot sits above the bar, clear of the P/T pill.
+  if (data.hasActivatedAbility) {
+    const dot = new Graphics();
+    dot.beginFill(hexToNumber(INDICATORS.abilityMarker));
+    dot.drawCircle(9, t.h - 13, 3);
+    dot.endFill();
+    inner.addChild(dot);
+  }
+
   // Power/toughness pill (bottom-right). Rendered exactly as provided.
   if (data.power !== undefined && data.toughness !== undefined) {
     const label = `${data.power}/${data.toughness}`;
@@ -368,6 +433,10 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   });
   if (data.summoningSick) {
     addBadge('zz', BADGE.bg, BADGE.text);
+  }
+  // Marked-damage badge (issue #320): rendered verbatim from view data when present.
+  if ((data.markedDamage ?? 0) > 0) {
+    addBadge(`${data.markedDamage} dmg`, INDICATORS.damageBg, INDICATORS.damageText);
   }
   // Stacking badge (issue #318): identical-state permanents collapse to one render
   // carrying an `×N`. The caller groups only on full state identity, so the badge
