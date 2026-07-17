@@ -105,9 +105,14 @@ is replaced by explicit surface tiers:
 Typography gets a scale (display / heading / body / caption) and a distinctive
 display face for identity moments — the wordmark, victory/defeat, phase names.
 Body text stays a legible system stack. `--rune-font-display` is the swap point:
-ADR 0019 ships it as a geometric system stack with no bundled binary, and
-bundling a single OFL-licensed display face is the intended next step — a token
-change plus one asset, no new architecture. Effects remain restrained per the
+ADR 0019 shipped it as a geometric system stack with no bundled binary, and issue
+#322 made the anticipated swap — a bundled **OFL display face** now leads the token,
+with that system stack kept as the fallback. The bundled face is "RUNE Display" (a
+subset of Rajdhani, SIL OFL 1.1; angular, geometric, rune-adjacent), served with the
+client bundle as a ~14 KB WOFF2 (no network fetch), `font-display: swap` so identity
+text is never invisible and there is no blocking layout shift. The asset, its OFL
+license text, and a provenance note live in
+[`clients/web/src/chrome/fonts/`](../../clients/web/src/chrome/fonts/). Effects remain restrained per the
 brief (no 3D, no particle noise): elevation, tint, and motion that always honors
 `prefers-reduced-motion`.
 
