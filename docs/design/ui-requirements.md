@@ -35,6 +35,10 @@ condense or collapse, but never displaces the board into a scrolled document flo
 Information regions keep stable positions across states so play does not require visually
 re-locating controls; density and emphasis, not region order, are what vary.
 
+Adaptation must run in both directions. On large viewports the layout spends the
+available space — card sizes and region breathing room scale up and the table stays
+centered — rather than anchoring content to one corner and leaving the remainder empty.
+
 ## Table and zones
 
 The table must represent:
@@ -54,12 +58,24 @@ Large zones need scrolling or virtualization. Large battlefields may collapse on
 with identical complete state; a prompt must still allow selection of each physical object.
 Tokens leaving the battlefield must not appear as cards in another zone.
 
+Tapped state must render without colliding with neighboring objects: layout reserves
+whatever footprint the tapped treatment occupies. Zone piles must be locatable at a
+glance as spatial objects in the owner's board area, not summary text in chrome, and a
+pile must be able to display a server-revealed card (for example a revealed library top
+card) in place.
+
 ## Cards and inspection
 
 At battlefield scale, a card must remain identifiable by name, frame color or monogram,
-mana cost when relevant, computed power/toughness, and essential state badges. Full inspection
-must expose all server-provided characteristics, rules text, keywords, counters, attachments,
-and linked objects.
+mana cost when relevant, computed power/toughness, and essential state badges — including
+keyword indicators and the presence of an activated ability. A player must not need
+per-card inspection to learn that a creature flies or that a permanent can be activated.
+Full inspection must expose all server-provided characteristics, rules text, keywords,
+counters, attachments, and linked objects.
+
+Inspection affordances must not add permanently visible chrome to every card. Inspect is
+reached through selection, hover dwell, or long-press — each input class has a path, and
+none requires a dedicated always-on control per object.
 
 The client uses no official images or frames. Color is never the only carrier of identity or
 selection state. Printed and current characteristics must be clearly distinguished if both
@@ -88,9 +104,10 @@ The stack must show objects in resolution order, including synthetic entries for
 and triggered abilities. A stack entry must be able to show its controller, source, targets,
 modes, and values when the protocol supplies them.
 
-Priority, active player, phase, and turn must remain visible. A decision deadline is a
-server-owned value: the client displays a live countdown and warning but never enforces or
-restarts it.
+Priority, active player, phase, and turn must remain visible. On-demand expansions of the
+phase display (the full step sequence) must render entirely within the viewport at every
+supported geometry, never clipped by an edge. A decision deadline is a server-owned value:
+the client displays a live countdown and warning but never enforces or restarts it.
 
 Priority automation, stops, auto-yield, and hold-priority controls require a server contract
 before client implementation. The client cannot decide that a player has no meaningful
