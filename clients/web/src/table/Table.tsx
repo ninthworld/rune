@@ -68,26 +68,41 @@ import {
   type MultiSelectSession,
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
-import { boardWrap } from './styles';
+import { layout, type Viewport } from './layout';
+import { railFloat, regionBox, sceneBox, shellBox } from './styles';
+import { cx } from '../chrome/cx';
 import s from './chrome.module.css';
 
 /**
- * The current logical width the board may wrap within, tracking the window so the
- * battlefield re-wraps on resize (the layout stays a pure function — this only
- * feeds it the live budget). Falls back to {@link DEFAULT_VIEWPORT_WIDTH} where
- * there is no `window` (SSR/tests).
+ * The measured viewport (width, height, pointer precision) the shell lays out
+ * from, tracking the window so the whole table re-lays-out live on resize (the
+ * layout itself stays a pure function — this only feeds it the live geometry).
+ * Falls back to the {@link DEFAULT_VIEWPORT_WIDTH}-shaped default where there is no
+ * `window` (SSR/tests). Pointer precision is a capability, not a device (detected
+ * via a media query, absent → `fine`), per ui-requirements §Input capability model.
  */
-function useViewportWidth(): number {
-  const [width, setWidth] = useState(() =>
-    typeof window === 'undefined' ? DEFAULT_VIEWPORT_WIDTH : window.innerWidth,
-  );
+function detectPointer(): Viewport['pointer'] {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'fine';
+  return window.matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine';
+}
+
+function useViewport(): Required<Viewport> {
+  const read = (): Required<Viewport> =>
+    typeof window === 'undefined'
+      ? { width: DEFAULT_VIEWPORT_WIDTH, height: 800, pointer: 'fine' }
+      : {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          pointer: detectPointer() ?? 'fine',
+        };
+  const [viewport, setViewport] = useState(read);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onResize = (): void => setWidth(window.innerWidth);
+    const onResize = (): void => setViewport(read());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  return width;
+  return viewport;
 }
 
 /** Find a rendered card anywhere in the scene by entity id. */
@@ -324,7 +339,16 @@ export function Table() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [view, choose, targeting, multiSelect, showHelp]);
 
-  const viewportWidth = useViewportWidth();
+  const viewport = useViewport();
+  // The number of seats the HUD strip reflows for: the receiver plus its opponents.
+  const playerCount = view ? view.opponents.length + 1 : 2;
+  // The shell region rects, from the measured geometry (issue #295). Geometry is
+  // mode-invariant, so the placeholder mode here never moves a region — the live
+  // `mode` (derived below) only drives density/emphasis via `data-mode`. The
+  // battlefield rect's width is the wrap budget the scene consumes, so the board
+  // never scrolls horizontally.
+  const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
+  const battlefieldW = shell.regions.battlefield.rect.w;
   const prompt = useMemo(() => selectPendingPrompt(view), [view]);
   // The server names the receiver directly in `view.you`; an older server may
   // omit it (empty), which we treat as "unknown".
@@ -357,8 +381,8 @@ export function Table() {
       if (activeReq) targetingScene = { candidates: activeReq.candidates ?? [] };
     }
     const sel = targeting || multiSelect ? undefined : (selectedId ?? undefined);
-    return buildTableScene(view, sel, viewportWidth, targetingScene);
-  }, [view, selectedId, viewportWidth, targeting, multiSelect, overlayMode]);
+    return buildTableScene(view, sel, battlefieldW, targetingScene);
+  }, [view, selectedId, battlefieldW, targeting, multiSelect, overlayMode]);
 
   // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
   // production builds; the e2e suite reads it to assert what the canvas draws.
@@ -468,32 +492,52 @@ export function Table() {
   // (no EntityOverlay, so nothing is selectable/targetable). Nothing is load-bearing
   // across messages, so a reconnect that replays this view shows the same screen.
   if (view.result) {
+    const r = shell.regions;
+    const railDocked = r.rail.layer === 'docked';
     return (
-      <main className={s.main} data-testid="table-game-over" data-mode="overview">
-        {/* The final board renders in overview treatment beneath the overlay. */}
-        <PhaseRibbon view={view} mode="overview" localId={localId} />
-        <PlayerTiles view={view} localId={localId} onOpenZone={openZone} />
-        <StackPanel view={view} onInspect={setInspectedId} />
-        <div style={boardWrap(scene.width, scene.height)}>
-          <BattlefieldCanvas scene={scene} />
-          {/* Labeled lanes + zone piles stay on the final board. Card actions are
-              gone (no EntityOverlay select), but graveyard/exile stay browsable
-              here exactly as they do on the tiles above (issue #262). */}
-          <TableGeography scene={scene} onOpenZone={openZone} />
-          {/*
-           * Read-only game-over board: no select/target interaction (the server
-           * offers no actions once the game is over), but every card stays
-           * inspectable, so the overlay renders inspect handles only (issue #261).
-           */}
-          <EntityOverlay
-            scene={scene}
-            selectedId={null}
-            targeting={false}
-            onSelect={() => {}}
-            onChoose={() => {}}
-            onPickTarget={() => {}}
-            onInspect={setInspectedId}
-          />
+      <main
+        className={s.shell}
+        data-testid="table-game-over"
+        data-mode="overview"
+        style={shellBox(viewport.width, viewport.height)}
+      >
+        {/* The final board renders full-bleed in overview treatment beneath the
+            overlay; every region docks in exactly the place it does during play
+            (regions never reorder between states). */}
+        <div className={s.regionIndicator} style={regionBox(r.indicator.rect)}>
+          <PhaseRibbon view={view} mode="overview" localId={localId} />
+        </div>
+        <div className={s.regionHud} style={regionBox(r.opponentHud.rect)}>
+          <PlayerTiles view={view} localId={localId} onOpenZone={openZone} />
+        </div>
+        <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
+          <div style={sceneBox(scene.width, scene.height)}>
+            <BattlefieldCanvas scene={scene} />
+            {/* Labeled lanes + zone piles stay on the final board. Card actions are
+                gone (no EntityOverlay select), but graveyard/exile stay browsable
+                here exactly as they do on the tiles above (issue #262). */}
+            <TableGeography scene={scene} onOpenZone={openZone} />
+            {/*
+             * Read-only game-over board: no select/target interaction (the server
+             * offers no actions once the game is over), but every card stays
+             * inspectable, so the overlay renders inspect handles only (issue #261).
+             */}
+            <EntityOverlay
+              scene={scene}
+              selectedId={null}
+              targeting={false}
+              onSelect={() => {}}
+              onChoose={() => {}}
+              onPickTarget={() => {}}
+              onInspect={setInspectedId}
+            />
+          </div>
+        </div>
+        <div
+          className={cx(s.regionRail, railDocked ? s.regionRailDocked : s.regionRailFloating)}
+          style={railDocked ? regionBox(r.rail.rect) : railFloat(r.rail.rect)}
+        >
+          <StackPanel view={view} onInspect={setInspectedId} />
         </div>
         <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
         {overlays}
@@ -658,22 +702,38 @@ export function Table() {
         }))
       : [];
 
+  const r = shell.regions;
+  const railDocked = r.rail.layer === 'docked';
+  // The floating bottom decision cluster (prompt banner, prompt surface, action
+  // tray) spans the battlefield width above the hand, clear of the docked rail.
+  const bottomRect = {
+    x: 0,
+    y: r.tray.rect.y,
+    w: r.battlefield.rect.w,
+    h: viewport.height - r.tray.rect.y,
+  };
+
   return (
-    <main ref={mainRef} className={s.main} data-mode={mode}>
-      <PhaseRibbon view={view} mode={mode} localId={localId} />
-      <PromptBanner
-        view={view}
-        prompt={prompt}
-        targeting={targetingBanner}
-        multiSelect={multiSelectBanner}
-        onOption={chooseOption}
-      />
+    <main
+      ref={mainRef}
+      className={s.shell}
+      data-mode={mode}
+      style={shellBox(viewport.width, viewport.height)}
+    >
+      {/* Turn/phase indicator — top (issue #297 redesigns its internals). */}
+      <div className={s.regionIndicator} style={regionBox(r.indicator.rect)}>
+        <PhaseRibbon view={view} mode={mode} localId={localId} />
+      </div>
       {/*
-       * In focus mode the standings chrome (player tiles) is lightly de-emphasized
-       * so attention lands on the ribbon and the pending decision — presentation
+       * Opponent HUD strip — top. Carries every player tile as-is until #296 splits
+       * the local dock out. In focus mode the standings chrome is lightly
+       * de-emphasized so attention lands on the pending decision — presentation
        * only, derived from `mode` (issue #267).
        */}
-      <div className={mode === 'focus' ? s.focusDimmed : undefined}>
+      <div
+        className={cx(s.regionHud, mode === 'focus' && s.focusDimmed)}
+        style={regionBox(r.opponentHud.rect)}
+      >
         <PlayerTiles
           view={view}
           localId={localId}
@@ -683,48 +743,69 @@ export function Table() {
           onOpenZone={openZone}
         />
       </div>
-      <StackPanel
-        view={view}
-        targeting={
-          targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-        }
-        onInspect={setInspectedId}
-      />
-      <div style={boardWrap(scene.width, scene.height)}>
-        <BattlefieldCanvas scene={scene} />
-        {/* Labeled, bounded player lanes + zone piles (issue #278), anchored to the
-            scene's band/hand rects and stacked under the interactive overlay so it
-            never intercepts a card click. */}
-        <TableGeography scene={scene} onOpenZone={openZone} />
-        <EntityOverlay
-          scene={scene}
-          selectedId={selectedId}
-          targeting={selecting}
-          multiSelect={multiSelect !== null}
-          onSelect={toggleSelect}
-          onChoose={fire}
-          onPickTarget={multiSelect ? toggleCandidate : pickTarget}
+      {/* Battlefield — the center, owning most of the viewport. The Pixi scene sizes
+          to this region's width, so it never scrolls horizontally. */}
+      <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
+        <div style={sceneBox(scene.width, scene.height)}>
+          <BattlefieldCanvas scene={scene} />
+          {/* Labeled, bounded player lanes + zone piles (issue #278), anchored to the
+              scene's band/hand rects and stacked under the interactive overlay so it
+              never intercepts a card click. */}
+          <TableGeography scene={scene} onOpenZone={openZone} />
+          <EntityOverlay
+            scene={scene}
+            selectedId={selectedId}
+            targeting={selecting}
+            multiSelect={multiSelect !== null}
+            onSelect={toggleSelect}
+            onChoose={fire}
+            onPickTarget={multiSelect ? toggleCandidate : pickTarget}
+            onInspect={setInspectedId}
+          />
+        </div>
+      </div>
+      {/* Stack & activity rail — right edge (issue #299 redesigns/collapses it). */}
+      <div
+        className={cx(s.regionRail, railDocked ? s.regionRailDocked : s.regionRailFloating)}
+        style={railDocked ? regionBox(r.rail.rect) : railFloat(r.rail.rect)}
+      >
+        <StackPanel
+          view={view}
+          targeting={
+            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+          }
           onInspect={setInspectedId}
         />
       </div>
-      {overlayMode && msSlot && (
-        <PromptSurface
-          mode={msSlot.kind === 'order' ? 'order' : 'select'}
-          prompt={msSlot.prompt}
-          zone={msSlot.zone}
-          items={surfaceItems}
-          onToggle={toggleCandidate}
-          onMove={moveOrder}
+      {/* Floating decision cluster above the hand: prompt banner, prompt surface, and
+          the action tray (issue #298 splits the tray from the prompt overlay). */}
+      <div className={s.regionBottom} style={regionBox(bottomRect)}>
+        <PromptBanner
+          view={view}
+          prompt={prompt}
+          targeting={targetingBanner}
+          multiSelect={multiSelectBanner}
+          onOption={chooseOption}
         />
-      )}
-      <ActionBar
-        globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
-        selectedActions={selectedActions}
-        selectedName={selectedCard?.name}
-        onChoose={fire}
-        onCancelTargeting={targeting ? cancelTargeting : undefined}
-        multiSelect={multiSelectControls}
-      />
+        {overlayMode && msSlot && (
+          <PromptSurface
+            mode={msSlot.kind === 'order' ? 'order' : 'select'}
+            prompt={msSlot.prompt}
+            zone={msSlot.zone}
+            items={surfaceItems}
+            onToggle={toggleCandidate}
+            onMove={moveOrder}
+          />
+        )}
+        <ActionBar
+          globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
+          selectedActions={selectedActions}
+          selectedName={selectedCard?.name}
+          onChoose={fire}
+          onCancelTargeting={targeting ? cancelTargeting : undefined}
+          multiSelect={multiSelectControls}
+        />
+      </div>
       {overlays}
     </main>
   );

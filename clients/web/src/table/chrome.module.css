@@ -24,6 +24,80 @@
   box-sizing: border-box;
 }
 
+/*
+ * ── Full-bleed tabletop shell (issue #295) ──────────────────────────────────
+ * The live table is no longer a stacked document column: the battlefield owns the
+ * viewport and the chrome docks around its edges. The shell root fills the measured
+ * viewport (sized inline from `layout.ts`); every region is absolutely positioned
+ * within it from a region rect. These classes carry only each region's *look*
+ * (surface tier, tint, elevation, overflow) — the runtime geometry is inline
+ * (`styles.ts`), which ADR 0019 keeps out of the static classes.
+ */
+.shell {
+  background: var(--rune-table);
+  color: var(--rune-text);
+  font-family: var(--rune-font-body);
+}
+
+/* Tier 1 — the battlefield is the table itself: no chrome box, just the board. A
+ * board taller than its region scrolls vertically; it never scrolls horizontally
+ * (the scene wraps within the region width). */
+.regionBattlefield {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Tier 3 — docked top chrome (indicator over the opponent HUD strip). Elevated,
+ * lighter than the board it frames; scrolls internally rather than pushing the
+ * board if its content overflows. */
+.regionIndicator,
+.regionHud {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  padding: var(--rune-space-2) var(--rune-space-4);
+  overflow: auto;
+  box-sizing: border-box;
+}
+.regionHud {
+  border-top: 1px solid var(--rune-border);
+}
+
+/* Tier 3 — the stack/activity rail on the right edge. Docked it carries a dividing
+ * border; collapsed it is a floating badge (elevated). Scrolls internally. */
+.regionRail {
+  overflow: auto;
+  padding: var(--rune-space-4);
+  box-sizing: border-box;
+}
+.regionRailDocked {
+  border-left: 1px solid var(--rune-border);
+}
+/* Collapsed on narrow geometry: a floating, elevated content-sized panel rather
+ * than a docked column (it overlays the board instead of carving it). */
+.regionRailFloating {
+  border-radius: var(--rune-radius-md);
+  box-shadow: var(--rune-elevation-2);
+}
+
+/* Tier 3 — the floating bottom decision cluster (prompt banner, prompt surface,
+ * and the action tray), anchored over the battlefield's lower edge above the hand
+ * rather than stacked as detached document rows (§Tabletop shell). The container
+ * overlays the board, so it passes pointer events through and only its actual chrome
+ * (its children) catches them — empty space never blocks a card click. Its rows hug
+ * the bottom and grow upward. (#298 splits the tray from the prompt overlay.) */
+.regionBottom {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: var(--rune-space-4);
+  pointer-events: none;
+}
+.regionBottom > * {
+  pointer-events: auto;
+}
+
 /* ── Phase ribbon ──────────────────────────────────────────────────────────── */
 .ribbon {
   display: flex;
