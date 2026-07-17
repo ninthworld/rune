@@ -88,8 +88,19 @@ function scene(cards: RenderedCard[], hand: RenderedCard[] = []): TableScene {
   return {
     width: 600,
     height: 400,
-    bands: [{ playerId: 'p1', isLocal: true, cards }],
+    bands: [
+      {
+        playerId: 'p1',
+        isLocal: true,
+        cards,
+        rect: { x: 0, y: 0, w: 600, h: 160 },
+        label: 'p1 (you)',
+        isEmpty: cards.length === 0,
+        zones: { library: 0, graveyard: 0, exile: 0 },
+      },
+    ],
     hand,
+    handRegion: { rect: { x: 0, y: 160, w: 600, h: 140 }, label: 'Your hand' },
     localPlayerId: 'p1',
   };
 }

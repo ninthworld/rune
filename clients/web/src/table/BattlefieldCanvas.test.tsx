@@ -49,7 +49,14 @@ vi.mock('./sceneReconciler', () => ({
 }));
 
 function makeScene(overrides: Partial<TableScene> = {}): TableScene {
-  return { width: 200, height: 200, bands: [], hand: [], ...overrides };
+  return {
+    width: 200,
+    height: 200,
+    bands: [],
+    hand: [],
+    handRegion: { rect: { x: 0, y: 0, w: 200, h: 24 }, label: 'Your hand' },
+    ...overrides,
+  };
 }
 
 /** Force `webglSupported()` to a given answer by stubbing the probe context. */
