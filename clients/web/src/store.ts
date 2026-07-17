@@ -151,6 +151,15 @@ export interface GameStore {
    * interactive lobby UI rebuilds from {@link lobby} alone without it.
    */
   lobbyError: string | null;
+  /**
+   * A monotonically increasing counter, bumped each time the server pushes a view
+   * flagging the receiver's last in-game action as **rejected** (issue #265). It is
+   * only a trigger for the transient rejected-action toast — ephemeral and never load
+   * bearing: the table rebuilds fully from {@link view} alone, and this is not
+   * persisted or reconstructed from anything. Starts at `0`; the toast fires on each
+   * increment (a counter, not a boolean, so back-to-back rejections each re-fire it).
+   */
+  rejectionNonce: number;
   /** Current connection lifecycle state. */
   status: ConnectionStatus;
   /** Open (or replace) the connection to `url`. */
@@ -315,6 +324,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     view: null,
     lobby: null,
     lobbyError: null,
+    rejectionNonce: 0,
     status: 'idle',
 
     connect(url, options = {}): void {
@@ -397,7 +407,18 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       if (frame.kind === 'game') {
         // First GameView: the game has been constructed; the app switches to the
         // in-game table (App gates on `view`). No merge with any prior view.
-        set({ view: frame.view });
+        //
+        // A view flagged `action_rejected` (issue #265) means this frame answers a
+        // rejected in-game action; bump the ephemeral trigger so the table shows a
+        // transient "the game moved on" toast. The flag never survives into stored
+        // state — only the counter changes — so the view stays the sole load-bearing
+        // truth and a resync (which clears the flag) never re-fires the toast.
+        set((state) => ({
+          view: frame.view,
+          rejectionNonce: frame.view.action_rejected
+            ? state.rejectionNonce + 1
+            : state.rejectionNonce,
+        }));
         return;
       }
 

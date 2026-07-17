@@ -93,6 +93,28 @@ describe('game store', () => {
     expect(selectPendingPrompt(view)).toBeNull();
   });
 
+  it('bumps rejectionNonce only on a view flagged action_rejected (issue #265)', () => {
+    const store = createGameStore();
+    expect(store.getState().rejectionNonce).toBe(0);
+
+    // A normal view leaves the trigger untouched…
+    store.getState().ingest('{"phase":"upkeep"}');
+    expect(store.getState().rejectionNonce).toBe(0);
+
+    // …a rejection re-send bumps it (driving the transient toast)…
+    store.getState().ingest('{"phase":"upkeep","action_rejected":true}');
+    expect(store.getState().rejectionNonce).toBe(1);
+
+    // …a following normal resync (flag cleared) does NOT bump it, so the toast is not
+    // re-fired by an ordinary view — the flag never becomes load-bearing state…
+    store.getState().ingest('{"phase":"upkeep"}');
+    expect(store.getState().rejectionNonce).toBe(1);
+
+    // …and a second, distinct rejection bumps it again.
+    store.getState().ingest('{"phase":"upkeep","action_rejected":true}');
+    expect(store.getState().rejectionNonce).toBe(2);
+  });
+
   it('sends a ChooseAction echoing the chosen id (plain action, no token/targets)', () => {
     const store = createGameStore();
     const { factory, sockets } = recordingFactory();

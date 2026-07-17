@@ -459,7 +459,11 @@ impl Room {
                             action_id = %choose.action_id,
                             "rejected action id not offered to this seat"
                         );
-                        self.send_view(seat);
+                        // Re-send the unchanged view flagged as a rejection (issue #265)
+                        // so the client can show a brief, non-blaming "the game moved on"
+                        // notice. With a `valid_actions`-driven client this is a rare
+                        // stale-view race, not a user error.
+                        self.send_view_flagged(seat, true);
                     }
                 }
             }
@@ -613,6 +617,15 @@ impl Room {
     /// until the default action fires, computed from the absolute deadline so a
     /// reconnect sees the true remaining time.
     fn send_view(&mut self, seat: Seat) {
+        self.send_view_flagged(seat, false);
+    }
+
+    /// Send `seat` its personalized view, flagging it as the response to a **rejected
+    /// action** when `action_rejected` (issue #265). Only the rejection re-send in
+    /// [`Self::on_message`] passes `true`; every other push (normal broadcast, join
+    /// resync) goes through [`Self::send_view`] with `false`, so the transient
+    /// "the game moved on" notice fires once and is never resurrected by a later resync.
+    fn send_view_flagged(&mut self, seat: Seat, action_rejected: bool) {
         let mut view = personalized_view(&self.state, &self.db, PlayerId(seat));
         // Names are a lobby/session concern, not engine state, so the room labels
         // players here rather than in the pure projection shim (issue #294).
@@ -623,6 +636,10 @@ impl Room {
         // state auto-passed it.
         view.stops = self.stops.get(seat).cloned().unwrap_or_default();
         view.auto_passed = self.auto_passed_seats.get(seat).copied().unwrap_or(false);
+        // Rejected-action feedback (issue #265): the only caller that sets this is the
+        // rejection re-send, and the game state is unchanged, so this rides an otherwise
+        // ordinary resync — advisory presentation, never load-bearing.
+        view.action_rejected = action_rejected;
         if let Some(at) = self.deadline {
             if !view.valid_actions.is_empty() {
                 view.action_deadline =
@@ -945,6 +962,10 @@ mod tests {
         assert_eq!(resent.phase, before.phase);
         assert_eq!(resent.priority_player, before.priority_player);
         assert_eq!(resent.valid_actions, before.valid_actions);
+        // …but it is flagged as a rejection so the client can surface the transient
+        // "the game moved on" notice (issue #265). The initial view was not flagged.
+        assert!(!before.action_rejected);
+        assert!(resent.action_rejected);
 
         drop(handle);
         task.await.unwrap();
@@ -977,6 +998,8 @@ mod tests {
         });
         let resent = wait_for_view(&mut rx1).await;
         assert!(resent.valid_actions.is_empty());
+        // The resync is flagged as a rejection for the sending seat (issue #265).
+        assert!(resent.action_rejected);
         // Seat 0 was never re-broadcast because nothing changed: its latest-value
         // outbox holds no view newer than the one already observed.
         assert!(!rx0.has_changed().unwrap());

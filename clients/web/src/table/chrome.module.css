@@ -1539,3 +1539,46 @@
   cursor: not-allowed;
   filter: none;
 }
+
+/* ── Rejected-action toast (issue #265) ────────────────────────────────────────
+   A transient, non-blaming "the game moved on" notice for a rejected in-game action.
+   It is ephemeral presentation only (never load-bearing) and must never block input,
+   so the layer spans the top of the shell but ignores pointer events entirely. */
+.toastLayer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  padding: var(--rune-space-4);
+  pointer-events: none;
+  z-index: 30;
+}
+.toast {
+  max-width: min(90vw, 420px);
+  padding: var(--rune-space-3) var(--rune-space-6);
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-2);
+  color: var(--rune-text);
+  font-size: var(--rune-type-caption);
+  text-align: center;
+  animation: toastIn var(--rune-transition) ease-out;
+}
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

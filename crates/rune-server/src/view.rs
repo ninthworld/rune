@@ -895,6 +895,11 @@ pub(crate) fn personalized_view(
         // auto-passed) keep this pure shim automation-agnostic and elide from the wire.
         stops: Vec::new(),
         auto_passed: false,
+        // Rejected-action feedback is likewise a room concern, not engine state (issue
+        // #265): only the room knows an action was rejected, and it flags the one
+        // re-sent view answering that rejection. Not-rejected here by default, so it
+        // elides from the wire on every normal projection.
+        action_rejected: false,
         // Player display names are a lobby/session concern, not engine state; the room
         // fills this in after projection (issue #294). Empty here so this pure shim
         // stays name-agnostic and the field elides from the wire by default.

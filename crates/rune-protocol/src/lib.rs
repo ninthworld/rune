@@ -633,6 +633,18 @@ pub struct GameView {
     /// the wire when `false`.
     #[serde(default, skip_serializing_if = "is_false")]
     pub auto_passed: bool,
+    /// Whether this view was pushed **because the receiver's last in-game action was
+    /// rejected** (issue #265): a stale-view race meant the chosen action was no longer
+    /// on offer (unknown id, mismatched [`ValidAction::token`], or a now-illegal target),
+    /// so the server re-sent the current state unchanged rather than mutating the game.
+    /// Purely advisory and transient — like [`Self::auto_passed`], the UI reconstructs
+    /// fully without it and a reconnect re-send need not preserve it — so a client shows a
+    /// brief, non-blaming "the game moved on" notice and nothing more. It is never load
+    /// bearing: `valid_actions` already reflects the true current legal set. Set only on
+    /// the one re-send that answers a rejection; omitted from the wire (treated as `false`)
+    /// on every other broadcast.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub action_rejected: bool,
     /// Public display names, keyed by [`PlayerId`] (issue #294): every player who has
     /// chosen a name maps to it, so any in-game surface — the turn indicator, player
     /// tiles, zone-browser titles, the game-over verdict — can label any player
@@ -1159,6 +1171,7 @@ mod tests {
             log: vec![],
             stops: vec![],
             auto_passed: false,
+            action_rejected: false,
             player_names: BTreeMap::new(),
         };
         // Defaults elide.
@@ -1506,6 +1519,7 @@ mod tests {
             }],
             stops: Vec::new(),
             auto_passed: false,
+            action_rejected: false,
             player_names: BTreeMap::new(),
         };
 
@@ -1557,6 +1571,7 @@ mod tests {
             log: vec![],
             stops: Vec::new(),
             auto_passed: false,
+            action_rejected: false,
             player_names: BTreeMap::new(),
         };
         let json = serde_json::to_string(&view).unwrap();
@@ -1586,6 +1601,7 @@ mod tests {
             log: vec![],
             stops: Vec::new(),
             auto_passed: false,
+            action_rejected: false,
             player_names: BTreeMap::new(),
         };
         // Empty pool is elided from the wire.
@@ -2165,6 +2181,7 @@ mod tests {
             log: vec![],
             stops: Vec::new(),
             auto_passed: false,
+            action_rejected: false,
             player_names: BTreeMap::new(),
         };
         // Live game: the field elides entirely.
@@ -2222,6 +2239,7 @@ mod tests {
             log: vec![],
             stops: Vec::new(),
             auto_passed: false,
+            action_rejected: false,
             player_names: BTreeMap::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
@@ -2317,6 +2335,7 @@ mod tests {
             log: vec![],
             stops: Vec::new(),
             auto_passed: false,
+            action_rejected: false,
             player_names: BTreeMap::new(),
         };
         // Empty map elides from the wire.
@@ -2339,5 +2358,52 @@ mod tests {
         // A payload from an older server that omits the field defaults to an empty map.
         let legacy: GameView = serde_json::from_str(r#"{"you":"p1","phase":"upkeep"}"#).unwrap();
         assert!(legacy.player_names.is_empty());
+    }
+
+    #[test]
+    fn issue_265_action_rejected_flag_round_trips_and_elides_when_false() {
+        // The rejected-action feedback flag is a transient, per-receiver advisory
+        // (like `auto_passed`): it appears on the wire only on the one view answering a
+        // rejection, and an older server that never sends it deserializes to `false`.
+        let mut view = GameView {
+            you: "p1".into(),
+            my_hand: vec![],
+            me: SelfView::default(),
+            opponents: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            graveyards: vec![],
+            exile: vec![],
+            phase: Phase::Upkeep,
+            turn: 1,
+            active_player: "p1".into(),
+            mana_pool: vec![],
+            priority_player: None,
+            valid_actions: vec![],
+            action_deadline: None,
+            result: None,
+            log: vec![],
+            stops: Vec::new(),
+            auto_passed: false,
+            action_rejected: false,
+            player_names: BTreeMap::new(),
+        };
+        // Not rejected: the field elides from the wire (the common case).
+        assert!(serde_json::to_value(&view)
+            .unwrap()
+            .get("action_rejected")
+            .is_none());
+
+        // Rejected: the flag serializes and survives the round trip.
+        view.action_rejected = true;
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json.get("action_rejected"), Some(&serde_json::json!(true)));
+        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
+        assert_eq!(back, view);
+        assert!(back.action_rejected);
+
+        // A payload from an older server that omits the field defaults to `false`.
+        let legacy: GameView = serde_json::from_str(r#"{"you":"p1","phase":"upkeep"}"#).unwrap();
+        assert!(!legacy.action_rejected);
     }
 }
