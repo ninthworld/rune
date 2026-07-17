@@ -126,7 +126,12 @@ stuff" and the card answers "what stuff".
 The monogram motif grows into a small procedural **glyph language** — inline SVG
 in the `RuneMark` mold, no raster assets — for the places a repeated symbol beats
 a repeated word: zone piles, phase names, keyword badges (flying, deathtouch, …),
-tap state, and seat/ready markers.
+tap state, and seat/ready markers. It ships in
+[`clients/web/src/chrome/glyphs/`](../../clients/web/src/chrome/glyphs/) (issue #317):
+one authored geometry source (`geometry.ts`) rendered by both a DOM `<Glyph>`
+component and a Pixi `buildGlyphDisplay` drawer (ADR 0003), tinted from tokens /
+`currentColor` and never a baked hex. Keyword-glyph coverage is asserted against the
+engine catalog's shipped keyword set, so a new keyword can never render an empty gap.
 Still: no card images, official frames, symbols, or WotC branding, anywhere.
 
 ## Palette (dark board)
