@@ -32,8 +32,6 @@ Stabilize the existing two-player experience before expanding the rules surface:
    ([#278](https://github.com/ninthworld/rune/issues/278)).
 3. Add a minimal real-browser smoke path through rendered turns
    ([#279](https://github.com/ninthworld/rune/issues/279)).
-4. Let players discover and join open rooms without exchanging an id out of band
-   ([#280](https://github.com/ninthworld/rune/issues/280)).
 
 ## Milestones
 
@@ -42,9 +40,9 @@ Stabilize the existing two-player experience before expanding the rules surface:
 **Outcome:** two players can connect, find or create a room, submit decks, ready, begin a game,
 and reclaim their seats after a page refresh.
 
-The server and clients implement identity, explicit rooms, deck submission, readiness, and
-session-token reconnect. The remaining product gap is room discovery: joining currently
-requires an out-of-band room id (#280).
+The server and clients implement identity, a public room directory, explicit rooms, deck
+submission, readiness, and session-token reconnect. Players can browse and join open rooms or
+enter an id directly.
 
 ### M2 — Play to the win
 

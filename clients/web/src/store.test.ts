@@ -214,6 +214,7 @@ describe('game store', () => {
       expect(store.getState().lobby).toEqual({
         session: 's:ab12',
         you: 'p1',
+        directory: [],
         valid_commands: ['create_room', 'join_room'],
       });
     });

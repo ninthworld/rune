@@ -224,6 +224,7 @@ Further submitted actions are rejected and the final view is re-sent.
 | `session` | `SessionToken` | Private reconnect token |
 | `you` | `PlayerId` | Public player identity |
 | `room` | `RoomView?` | Current room, if joined |
+| `directory` | `RoomSummary[]` | Public rooms available to browse |
 | `valid_commands` | `string[]` | Only commands currently available |
 
 The client stores `session` per browser tab and echoes it on a later `hello`. It is an
@@ -243,6 +244,22 @@ Each seat contains:
 
 Deck contents are private and never appear in another connection’s view.
 
+### `RoomSummary`
+
+Each `directory` entry exposes only the information needed to browse rooms:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `room_id` | `RoomId` | Opaque id accepted by `join_room` |
+| `config` | `RoomConfig` | Seat count and game setup |
+| `filled` | `number` | Occupied seat count |
+| `state` | `RoomState` | `gathering` or `in_progress` |
+
+The directory never exposes rosters, deck lists, or game state. A `gathering` room is joinable
+while it has an open seat; an `in_progress` room is visible but not joinable. Empty and
+finished rooms leave the directory. The server re-sends affected lobby views whenever the
+directory changes. A missing `directory` field is treated as an empty list.
+
 ### `LobbyCommand`
 
 Lobby commands are tagged by `type`:
@@ -251,7 +268,7 @@ Lobby commands are tagged by `type`:
 | --- | --- | --- |
 | `hello` | optional `token` | Start a session or reclaim one |
 | `create_room` | `config` | Create and occupy a room |
-| `join_room` | `room_id` | Join a room by shared id |
+| `join_room` | `room_id` | Join a listed room or a room identified out of band |
 | `submit_deck` | `cards` | Submit functional card identities |
 | `ready` | `ready` | Set or clear readiness |
 | `leave` | none | Vacate the current room |
@@ -270,7 +287,8 @@ resolves every identity and applies the selected format’s deck policy. A playe
 after submitting a valid deck. The game begins when every required seat is occupied, decked,
 and ready.
 
-There is currently no room discovery or matchmaking; room ids are shared out of band.
+The directory provides room discovery, not matchmaking; the server never pairs players
+automatically.
 
 ## Invariants
 

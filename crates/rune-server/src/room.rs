@@ -113,6 +113,16 @@ impl RoomHandle {
             Err(mpsc::error::TrySendError::Closed(_)) => false,
         }
     }
+
+    /// Whether the room task is still running — its input channel is open. The task
+    /// drops its receiver when the game reaches a terminal state (or is otherwise
+    /// stopped), so this returns `false` once the game is over. The lobby uses it to
+    /// prune a finished room from the public directory (issue #280) and reclaim its
+    /// capacity, since the pure engine gives the lobby no other game-over signal.
+    #[must_use]
+    pub(crate) fn is_active(&self) -> bool {
+        !self.inbox.is_closed()
+    }
 }
 
 /// A room's decision-timer policy (issue #263).
