@@ -1,0 +1,531 @@
+<!doctype html>
+<!--
+  RUNE — 4-player mid-game table @ laptop (1440×900) — design mock v1.
+
+  Reference-only prototype (never imported). This is the "hostile case" mock:
+  four players, ~60 permanents, mid-combat with a populated stack, auras,
+  token swarms, counters, marked damage. If a composition survives this board
+  at this size, the duel case is free.
+
+  Anatomy commitments this mock encodes (the overhaul blueprint):
+  - FIXED SHELL. Top status bar / opponent panels row / your battlefield /
+    right rail (stack+phase+log) / bottom shell (crest+hand+piles+actions).
+    Nothing floats over anything. Nothing can clip by construction.
+  - ONE ACTION HOME. All offered actions render in the action dock
+    (bottom-right). Selecting a hand/board card lifts it and routes its
+    server-offered actions there. The primary action (pass/resolve) is always
+    the same button in the same place.
+  - FLAT-BUT-DELIBERATE surface: line-work borders with corner notches,
+    per-player identity accents, gold = actionable, orange = targeting,
+    no texture assets. Texture remains a deferrable skin.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>RUNE — 4p table mock (laptop)</title>
+<style>
+  :root {
+    --bg: #0f1114;
+    --panel: rgba(255, 255, 255, 0.022);
+    --panel-deep: rgba(0, 0, 0, 0.25);
+    --line: #262b33;
+    --line-strong: #39404b;
+    --text: #e8e6e1;
+    --muted: #8f959e;
+    --faint: #5c626b;
+    --gold: #f2c94c;
+    --target: #e0784a;
+    --select: #7fb2e5;
+    --display: 'Avenir Next', 'Century Gothic', Futura, system-ui, sans-serif;
+    --body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* identity accents */
+    --you: #3e9c9c;
+    --north: #c2698f;
+    --east: #7b77c9;
+    --west: #9ba65a;
+    /* card frames (shared tokens) */
+    --W: #cfc7ac; --U: #4e86c1; --B: #77688c; --R: #c05b4d; --G: #57935f;
+    --M: #c9a84c; --C: #8c949c; --L: #a08a6e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    width: 1440px; height: 900px; overflow: hidden;
+    background:
+      radial-gradient(120% 85% at 50% 38%, rgba(255,255,255,0.035) 0%, transparent 55%),
+      radial-gradient(140% 110% at 50% 50%, var(--bg) 55%, #0a0c0e 100%);
+    background-color: var(--bg);
+    color: var(--text); font-family: var(--body); font-size: 12px;
+    display: grid;
+    grid-template-rows: 40px minmax(0,1fr) 178px;
+    grid-template-columns: minmax(0,1fr) 260px;
+    gap: 8px; padding: 8px;
+  }
+
+  /* ── panels: line-work + corner notches ────────────────────────────── */
+  .panel {
+    position: relative; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  .panel::before, .panel::after {
+    content: ''; position: absolute; width: 10px; height: 10px; pointer-events: none;
+  }
+  .panel::before { top: -1px; left: -1px; border-top: 1px solid var(--acc, var(--line-strong)); border-left: 1px solid var(--acc, var(--line-strong)); border-top-left-radius: 6px; }
+  .panel::after { bottom: -1px; right: -1px; border-bottom: 1px solid var(--acc, var(--line-strong)); border-right: 1px solid var(--acc, var(--line-strong)); border-bottom-right-radius: 6px; }
+
+  /* ── top bar ───────────────────────────────────────────────────────── */
+  .topbar {
+    grid-column: 1 / 3; display: flex; align-items: center; gap: 14px; padding: 0 12px;
+  }
+  .brand { display:flex; align-items:center; gap:8px; font-family: var(--display); letter-spacing: 0.32em; font-size: 13px; color: var(--muted); }
+  .brand svg { display:block; }
+  .phase-strip { display: flex; align-items: center; gap: 2px; margin-left: 10px; }
+  .phase-strip .seg {
+    font-family: var(--display); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 3px 9px; color: var(--faint); border: 1px solid transparent; border-radius: 999px;
+  }
+  .phase-strip .seg.done { color: #6d737c; }
+  .phase-strip .seg.now { color: var(--text); border-color: var(--east); background: rgba(123,119,201,0.12); }
+  .turn-label { font-family: var(--display); font-size: 12px; letter-spacing: 0.06em; }
+  .turn-label b { color: var(--east); font-weight: 600; }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .chip-btn {
+    font: 600 11px var(--body); color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px;
+  }
+
+  /* ── board column ──────────────────────────────────────────────────── */
+  .board { grid-column: 1; grid-row: 2; display: grid; grid-template-rows: 300px minmax(0,1fr); gap: 8px; min-width: 0; }
+  .opps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; min-width: 0; }
+
+  /* player panel skeleton */
+  .pp { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .pp-head {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px 5px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 10%, transparent), transparent);
+  }
+  .pp-name { font-family: var(--display); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--acc); font-weight: 600; }
+  .pp-meta { display: flex; gap: 8px; margin-left: auto; align-items: center; color: var(--muted); font-size: 11px; }
+  .pp-meta .m { display: inline-flex; align-items: center; gap: 3px; }
+  .pp-body { flex: 1; display: flex; min-height: 0; }
+  .rows { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 7px 8px; min-width: 0; }
+  .rows .rowline:first-child { padding-top: 8px; }
+  .rowline { display: flex; flex-wrap: wrap; gap: 5px; align-items: flex-end; justify-content: center; min-height: 0; }
+  .rowline.lands { gap: 4px; }
+  .warband { display: flex; gap: 8px; }
+
+  /* combat tags */
+  .atk-tag {
+    position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 2;
+    background: #3a1510; color: #ffb59e; border: 1px solid var(--target);
+    font: 700 8px var(--body); letter-spacing: 0.04em; padding: 1px 5px; border-radius: 999px; white-space: nowrap;
+  }
+  .underattack {
+    font: 700 10px var(--body); color: var(--target); border: 1px solid var(--target);
+    border-radius: 999px; padding: 2px 8px; background: rgba(224,120,74,0.10);
+  }
+
+  /* life crest */
+  .crest { position: relative; display: grid; place-items: center; width: 34px; height: 38px; flex: none; }
+  .crest::before, .crest::after { content:''; position: absolute; clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%); }
+  .crest::before { inset: 0; background: var(--acc); }
+  .crest::after { inset: 2px; background: #171a1f; }
+  .crest b { position: relative; z-index: 1; font: 700 15px var(--display); }
+  .crest.big { width: 46px; height: 52px; }
+  .crest.big b { font-size: 20px; }
+
+  /* ── cards ─────────────────────────────────────────────────────────── */
+  .card {
+    position: relative; border-radius: 4px; background: #1d2026;
+    border: 1px solid color-mix(in srgb, var(--ci) 75%, #000 10%);
+    display: flex; flex-direction: column; overflow: visible; flex: none;
+  }
+  .card .head {
+    display: flex; align-items: center; gap: 3px; padding: 2px 4px;
+    background: color-mix(in srgb, var(--ci) 16%, transparent);
+    border-radius: 3px 3px 0 0; min-height: 13px;
+  }
+  .card .nm { font-weight: 600; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .cost { margin-left: auto; display: flex; gap: 1px; flex: none; }
+  .pip { width: 10px; height: 10px; border-radius: 50%; font: 700 7px var(--body); display: grid; place-items: center; color: #1b1b1f; background: #cacbcf; }
+  .pip.W { background:#f1ebd4; } .pip.U { background:#afcbe9; } .pip.B { background:#a79db5; color:#241d2e;}
+  .pip.R { background:#e5a192; } .pip.G { background:#a3c095; }
+  .card .art { flex: 1; display: grid; place-items: center; color: color-mix(in srgb, var(--ci) 34%, transparent); font: 700 22px var(--display); }
+  .card .kw { position: absolute; left: 3px; bottom: 15px; display: flex; gap: 2px; color: #c6cbd2; font-size: 8px; }
+  .card .pt {
+    position: absolute; right: -3px; bottom: -3px; background: var(--ci); color: #14161a;
+    font: 700 8px var(--body); border-radius: 3px; padding: 1px 4px;
+  }
+  .card .cnt { position: absolute; left: -4px; top: 12px; background: var(--M); color: #241d09; font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
+  .card .dmg { position: absolute; right: -4px; top: 12px; background: #b0413a; color: #f6e7e4; font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
+  .card .xn { position: absolute; right: -5px; top: -6px; background: #2a2f37; border: 1px solid var(--line-strong); color: var(--text); font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
+  .card.actionable::after { content:''; position:absolute; left: 3px; right: 3px; bottom: 0; height: 3px; border-radius: 2px; background: var(--gold); }
+  .card.attacking { box-shadow: 0 -2px 0 0 var(--target); }
+  .card.blocking { box-shadow: -2px 0 0 0 #3f7fc4; }
+  .card.tappedmini { opacity: 0.55; }
+  .card.attacking.tappedmini { opacity: 1; }
+  .card.tappedmini .tapmark { position: absolute; right: 2px; top: 1px; font-size: 8px; color: var(--muted); opacity: 1; }
+  .card.dim { opacity: 0.55; }
+  .card.targeted { outline: 2px solid var(--target); outline-offset: 1px; }
+  .card.selected-lift { transform: translateY(-14px); box-shadow: 0 10px 22px rgba(0,0,0,0.55), 0 0 0 1px var(--gold); }
+
+  /* tiers */
+  .t-mini { width: 58px; height: 74px; }
+  .t-mini .cost { display: none; }
+  .t-mini .art { font-size: 18px; }
+  .t-std  { width: 66px; height: 90px; }
+  .t-hand { width: 96px; height: 132px; }
+  .t-hand .head { min-height: 17px; padding: 3px 5px; }
+  .t-hand .nm { font-size: 10px; }
+  .t-hand .art { font-size: 30px; }
+  .t-hand .pt { font-size: 9px; }
+
+  /* rotated (tapped) footprint: the wrapper reserves the rotated box */
+  .tapbox { position: relative; flex: none; }
+  .tapbox > .card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg) !important; opacity: 0.7; }
+  .tapbox.s { width: 90px; height: 66px; }
+
+  /* land chip */
+  .chip {
+    position: relative; width: 34px; height: 46px; border-radius: 4px; flex: none;
+    background: color-mix(in srgb, var(--ci) 12%, #1d2026);
+    border: 1px solid color-mix(in srgb, var(--ci) 60%, transparent);
+    display: grid; place-items: center; color: var(--ci); font: 700 13px var(--display);
+  }
+  .chip.tappedc { opacity: 0.5; }
+  .chip.tappedc::after { content: '⤵'; position: absolute; right: 1px; top: 0; font-size: 8px; color: var(--muted); }
+  .chip .xn { position: absolute; right: -5px; top: -6px; background: #2a2f37; border: 1px solid var(--line-strong); color: var(--text); font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
+  .chip.actionable { box-shadow: inset 0 -3px 0 0 var(--gold); }
+
+  /* piles */
+  .piles { display: flex; flex-direction: column; gap: 13px; padding: 8px 9px; border-left: 1px solid var(--line); justify-content: center; flex: none; }
+  .piles .zl { display: none; }
+  .piles.h { flex-direction: row; border-left: none; align-items: center; }
+  .pile { position: relative; width: 32px; height: 44px; border-radius: 3px; border: 1px solid var(--line-strong); display: grid; place-items: center; color: var(--muted); flex: none; }
+  .pile.lib { background: linear-gradient(135deg, #3a3350, #211c30); border-color: #453d5c; box-shadow: 2px 2px 0 rgba(255,255,255,0.05), 4px 4px 0 rgba(255,255,255,0.028); color: #cfc9e2; }
+  .pile.lib::before { content: ''; width: 55%; height: 55%; border: 1px solid rgba(207,201,226,0.4); clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%); }
+  .mb { display: inline-block; width: 9px; height: 12px; border-radius: 2px; background: linear-gradient(135deg, #3a3350, #211c30); border: 1px solid #453d5c; vertical-align: -2px; margin-right: 2px; }
+  .pile.empty { border-style: dashed; opacity: 0.45; }
+  .pile .n { position: absolute; right: -6px; bottom: -6px; background: #2a2f37; border: 1px solid var(--line-strong); font: 700 8px var(--body); color: var(--text); border-radius: 999px; padding: 1px 4px; min-width: 14px; text-align: center; }
+  .pile .zl { position: absolute; left: 50%; transform: translateX(-50%); bottom: -13px; font: 600 7px var(--body); letter-spacing: 0.08em; color: var(--faint); text-transform: uppercase; }
+  .pile .topface { position: absolute; inset: 0; border-radius: 3px; border: 1px solid var(--ci); background: #1d2026; display: flex; flex-direction: column; overflow: hidden; }
+  .pile .topface .band { height: 5px; background: var(--ci); opacity: 0.85; }
+  .pile .topface .tn { flex: 1; font: 600 7px var(--body); padding: 2px 3px; color: var(--text); line-height: 1.15; overflow: hidden; }
+  .pile-lg { width: 44px; height: 60px; }
+  .pile-lg .zl { bottom: -14px; font-size: 8px; }
+
+  /* ── your battlefield ─────────────────────────────────────────────── */
+  .you-field { display: flex; flex-direction: column; min-height: 0; }
+  .you-field .pp-head { border-bottom-color: color-mix(in srgb, var(--you) 30%, var(--line)); }
+  .you-rows { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; justify-content: center; min-height: 0; }
+
+  /* ── right rail ───────────────────────────────────────────────────── */
+  .rail { grid-column: 2; grid-row: 2 / 4; display: flex; flex-direction: column; min-height: 0; gap: 8px; }
+  .rail .panel { display: flex; flex-direction: column; min-height: 0; }
+  .rail-title { font: 700 10px var(--display); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); padding: 8px 10px 6px; display: flex; align-items: center; gap: 6px; }
+  .rail-title .count { margin-left: auto; background: #2a2f37; border-radius: 999px; padding: 1px 7px; color: var(--text); }
+  .stackp { flex: none; }
+  .stack-items { display: flex; flex-direction: column; gap: 5px; padding: 0 8px 9px; }
+  .sitem { position: relative; border: 1px solid var(--line); border-left: 3px solid var(--ci); border-radius: 4px; padding: 5px 7px 5px 8px; background: var(--panel-deep); }
+  .sitem .sn { font-weight: 700; font-size: 11px; }
+  .sitem .st { color: var(--muted); font-size: 10px; margin-top: 1px; }
+  .sitem .who { position: absolute; top: 5px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--acc); }
+  .sitem.resolving { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(242,201,76,0.25); }
+  .sitem.resolving .sr { position: absolute; right: 6px; bottom: 4px; font: 700 8px var(--body); letter-spacing: 0.08em; color: var(--gold); text-transform: uppercase; }
+  .logp { flex: 1; min-height: 0; }
+  .log { flex: 1; overflow: hidden; padding: 0 10px 8px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; font-size: 10.5px; color: var(--muted); }
+  .log .ref { font-weight: 600; }
+  .log .turnhead { color: var(--faint); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 3px; }
+  .log .new { color: var(--text); }
+
+  /* ── bottom shell ─────────────────────────────────────────────────── */
+  .shellb {
+    grid-column: 1; grid-row: 3; display: grid;
+    grid-template-columns: 236px minmax(0,1fr) 200px;
+    gap: 8px; min-height: 0;
+  }
+  .me { --acc: var(--you); display: flex; flex-direction: column; padding: 8px 10px; gap: 6px; }
+  .me-top { display: flex; align-items: center; gap: 10px; }
+  .me-name { font-family: var(--display); font-size: 13px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--you); font-weight: 600; }
+  .me-sub { color: var(--faint); font-size: 10px; }
+  .mana { display: flex; gap: 3px; align-items: center; }
+  .mana .pip { width: 14px; height: 14px; font-size: 9px; }
+  .mana-label { font-size: 9px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-right: 2px; }
+  .me-piles { display: flex; gap: 14px; padding: 2px 2px 10px; margin-top: auto; }
+  .me-piles .zl { display: block; }
+
+  .handp { --acc: var(--you); display: flex; flex-direction: column; min-width: 0; }
+  .prompt-strip {
+    display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+    border-bottom: 1px solid var(--line); font-size: 11px; color: var(--text);
+    background: linear-gradient(180deg, rgba(224,120,74,0.07), transparent);
+  }
+  .prompt-strip .tag { font: 700 9px var(--body); letter-spacing: 0.1em; color: var(--target); border: 1px solid var(--target); border-radius: 999px; padding: 1px 7px; text-transform: uppercase; }
+  .prompt-strip .hint { margin-left: auto; color: var(--faint); font-size: 10px; }
+  .hand { flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 4px 10px 10px; min-width: 0; }
+
+  .dock { display: flex; flex-direction: column; gap: 6px; padding: 9px 10px; justify-content: center; }
+  .btn {
+    font: 600 12px var(--body); color: var(--text); text-align: left;
+    border: 1px solid var(--line-strong); background: #232830; border-radius: 6px;
+    padding: 8px 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .btn.primary { font-family: var(--display); letter-spacing: 0.04em; border-color: rgba(242,201,76,0.65); background: rgba(242,201,76,0.13); }
+  .btn.primary:hover { background: rgba(242,201,76,0.2); }
+  .btn .kbd { margin-left: auto; font: 700 9px ui-monospace, monospace; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 3px; padding: 1px 5px; background: #14161a; }
+  .btn.ghost { background: transparent; color: var(--muted); }
+  .dock-label { font: 700 9px var(--display); letter-spacing: 0.16em; color: var(--faint); text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+  <!-- ── TOP BAR ─────────────────────────────────────────────────────── -->
+  <div class="topbar panel" style="--acc: var(--line-strong)">
+    <span class="brand">
+      <svg width="18" height="18" viewBox="0 0 48 48" fill="none"><polygon points="24,3 42,13.5 42,34.5 24,45 6,34.5 6,13.5" stroke="#4a5158" stroke-width="3"/><path d="M19 13 L19 35 M19 13 L30 17 L19 22 M19 22 L30 35" stroke="#6d737c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      RUNE
+    </span>
+    <span class="turn-label">Turn 9 — <b>Serra's turn</b></span>
+    <span class="phase-strip">
+      <span class="seg done">Beginning</span><span class="seg done">Main</span><span class="seg now">Combat · Blockers</span><span class="seg">Main</span><span class="seg">Ending</span>
+    </span>
+    <span class="top-right">
+      <span class="underattack">▸ You are attacked ×2</span>
+      <button class="chip-btn">Log</button>
+      <button class="chip-btn">☰ Menu</button>
+    </span>
+  </div>
+
+  <!-- ── BOARD ───────────────────────────────────────────────────────── -->
+  <div class="board">
+    <div class="opps" id="opps"></div>
+    <div class="panel you-field" style="--acc: var(--you)" id="youfield">
+      <div class="pp-head">
+        <span class="pp-name">Rowan (you)</span>
+        <span class="pp-meta"><span class="m underattack" style="font-size:9px">▸ declare blockers next</span></span>
+      </div>
+      <div class="you-rows" id="yourows"></div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT RAIL ──────────────────────────────────────────────────── -->
+  <div class="rail">
+    <div class="panel stackp" style="--acc: var(--line-strong)">
+      <div class="rail-title">Stack <span class="count">4</span></div>
+      <div class="stack-items">
+        <div class="sitem resolving" style="--ci: var(--R); --acc: var(--west)">
+          <span class="who"></span><div class="sn">Quickfire Bolt</div>
+          <div class="st">Fern → targets <b style="color:var(--target)">Thornback Boar</b></div>
+          <span class="sr">next</span>
+        </div>
+        <div class="sitem" style="--ci: var(--G); --acc: var(--you)">
+          <span class="who"></span><div class="sn">Verdant Surge</div>
+          <div class="st">You → +2/+2 to Thornback Boar</div>
+        </div>
+        <div class="sitem" style="--ci: var(--C); --acc: var(--east)">
+          <span class="who"></span><div class="sn">Dawnblade Duelist</div>
+          <div class="st">Trigger — attacks: gains first strike</div>
+        </div>
+        <div class="sitem" style="--ci: var(--B); --acc: var(--north)">
+          <span class="who"></span><div class="sn">Cryptvine Lurker</div>
+          <div class="st">Nyx → activated: drain 1</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel logp" style="--acc: var(--line-strong)">
+      <div class="rail-title">Activity</div>
+      <div class="log">
+        <div class="turnhead">Turn 8 · Ending — Fern</div>
+        <div><span class="ref" style="color:var(--west)">Fern</span> discards Ember Whelp.</div>
+        <div class="turnhead">Turn 9 · Beginning — Serra</div>
+        <div><span class="ref" style="color:var(--east)">Serra</span> draws 1 card.</div>
+        <div class="turnhead">Turn 9 · Main — Serra</div>
+        <div><span class="ref" style="color:var(--east)">Serra</span> casts Oath of Unity.</div>
+        <div>Oath of Unity resolves.</div>
+        <div class="turnhead">Turn 9 · Combat — Serra</div>
+        <div><span class="ref" style="color:var(--east)">Serra</span> attacks <span class="ref" style="color:var(--you)">you</span> with 2 creatures.</div>
+        <div><span class="ref" style="color:var(--east)">Serra</span> attacks <span class="ref" style="color:var(--west)">Fern</span> with Dawnblade Duelist.</div>
+        <div><span class="ref" style="color:var(--north)">Nyx</span> activates Cryptvine Lurker.</div>
+        <div class="new"><span class="ref" style="color:var(--you)">You</span> cast Verdant Surge.</div>
+        <div class="new"><span class="ref" style="color:var(--west)">Fern</span> casts Quickfire Bolt.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BOTTOM SHELL ────────────────────────────────────────────────── -->
+  <div class="shellb">
+    <div class="panel me">
+      <div class="me-top">
+        <span class="crest big" style="--acc: var(--you)"><b>14</b></span>
+        <div>
+          <div class="me-name">Rowan <span class="me-sub">(you)</span></div>
+          <div class="me-sub">Priority · respond or pass</div>
+        </div>
+      </div>
+      <div class="mana"><span class="mana-label">Mana</span><span class="pip G">G</span><span class="pip G">G</span><span class="pip">1</span></div>
+      <div class="me-piles">
+        <span class="pile lib pile-lg"><span class="n">31</span><span class="zl">Library</span></span>
+        <span class="pile pile-lg"><span class="topface" style="--ci: var(--R)"><span class="band"></span><span class="tn">Cinder Shock</span></span><span class="n">6</span><span class="zl">Graveyard</span></span>
+        <span class="pile pile-lg empty">◇<span class="n">0</span><span class="zl">Exile</span></span>
+      </div>
+    </div>
+
+    <div class="panel handp">
+      <div class="prompt-strip">
+        <span class="tag">Stack</span>
+        <span><b>Quickfire Bolt</b> targets your <b>Thornback Boar</b> — respond, or pass to let it resolve.</span>
+        <span class="hint">Esc — deselect · drag a card to play it</span>
+      </div>
+      <div class="hand" id="hand"></div>
+    </div>
+
+    <div class="panel dock">
+      <span class="dock-label">Actions</span>
+      <button class="btn primary">Pass priority <span class="kbd">P</span></button>
+      <button class="btn">Cast Withering Touch <span class="kbd">↵</span></button>
+      <button class="btn ghost">Cancel selection <span class="kbd">Esc</span></button>
+    </div>
+  </div>
+
+<script>
+/* fake worst-case state, rendered procedurally so density is easy to tune */
+const KW = { flying: '↟', deathtouch: '☠', firststrike: '⚡', vigilance: '👁' };
+
+function pips(cost) {
+  return cost.map(c => `<span class="pip ${/[WUBRG]/.test(c) ? c : ''}">${c}</span>`).join('');
+}
+function card(o, tier) {
+  const cls = ['card', tier,
+    o.tapped && !o.tapWrap ? 'tappedmini' : '', o.act ? 'actionable' : '',
+    o.atk ? 'attacking' : '', o.blk ? 'blocking' : '', o.dim ? 'dim' : '',
+    o.targeted ? 'targeted' : '', o.lift ? 'selected-lift' : ''].filter(Boolean).join(' ');
+  const inner = `
+    <div class="${cls}" style="--ci: var(--${o.ci})">
+      ${o.atkTag ? `<span class="atk-tag">${o.atkTag}</span>` : ''}
+      ${o.tapped && !o.tapWrap ? `<span class="tapmark">⟳</span>` : ''}
+      <div class="head"><span class="nm">${o.n}</span><span class="cost">${pips(o.c || [])}</span></div>
+      <div class="art">${o.n[0]}</div>
+      ${o.kw ? `<span class="kw">${o.kw.map(k => KW[k]).join(' ')}</span>` : ''}
+      ${o.pt ? `<span class="pt">${o.pt}</span>` : ''}
+      ${o.cnt ? `<span class="cnt">+${o.cnt}</span>` : ''}
+      ${o.dmg ? `<span class="dmg">${o.dmg}</span>` : ''}
+      ${o.xn ? `<span class="xn">×${o.xn}</span>` : ''}
+    </div>`;
+  if (o.tapped && o.tapWrap) {
+    return `<span class="tapbox ${o.tapWrap}">${inner.replace('class="card', 'class="card tapwrap')}</span>`;
+  }
+  return inner;
+}
+const chip = (sym, ci, o = {}) =>
+  `<span class="chip ${o.tapped ? 'tappedc' : ''} ${o.act ? 'actionable' : ''}" style="--ci: var(--${ci})">${sym}${o.xn ? `<span class="xn">×${o.xn}</span>` : ''}</span>`;
+const pile = (kind, n, o = {}) => {
+  if (kind === 'lib') return `<span class="pile lib"><span class="n">${n}</span><span class="zl">Lib</span></span>`;
+  if (kind === 'gy') return `<span class="pile">${o.top ? `<span class="topface" style="--ci: var(--${o.top.ci})"><span class="band"></span><span class="tn">${o.top.n}</span></span>` : '⌗'}<span class="n">${n}</span><span class="zl">Gy</span></span>`;
+  return `<span class="pile ${n === 0 ? 'empty' : ''}">◇<span class="n">${n}</span><span class="zl">Ex</span></span>`;
+};
+
+/* ── opponents ── */
+const opponents = [
+  {
+    name: 'Nyx', accVar: 'north', life: 11, hand: 3, meta: '',
+    creatures: [
+      { n: 'Cryptvine Lurker', ci: 'B', c: ['1','B'], pt: '2/2', kw: ['deathtouch'] },
+      { n: 'Gravewaker', ci: 'B', c: ['3','B'], pt: '4/3', cnt: 1 },
+      { n: 'Marsh Husk', ci: 'B', c: ['2'], pt: '2/1', xn: 2 },
+      { n: 'Bog Sentinel', ci: 'B', c: ['1','B'], pt: '1/4', tapped: true },
+    ],
+    support: [
+      { n: 'Vexing Ordeal', ci: 'B', c: ['B'] },
+      { n: 'Umbral Pact', ci: 'B', c: ['1','B'], xn: 2 },
+    ],
+    lands: [ ['▲', 'B', { xn: 4 }], ['▲', 'B', { tapped: true, xn: 2 }], ['◆', 'L'] ],
+    piles: { lib: 24, gy: 9, gyTop: { n: 'Gravewaker', ci: 'B' }, ex: 2 },
+  },
+  {
+    name: 'Serra', accVar: 'east', life: 17, hand: 5, meta: 'active',
+    creatures: [
+      { n: 'Dawnblade Duelist', ci: 'W', c: ['1','W'], pt: '2/2', kw: ['firststrike'], atk: true, atkTag: '→ Fern', tapped: true },
+      { n: 'Sky Warden', ci: 'W', c: ['2','W'], pt: '2/3', kw: ['flying'], atk: true, atkTag: '→ You', tapped: true },
+      { n: 'Oath Keeper', ci: 'W', c: ['3','W'], pt: '3/4', kw: ['vigilance'], atk: true, atkTag: '→ You' },
+      { n: 'Cleric of the Vault', ci: 'W', c: ['2','W'], pt: '2/3' },
+    ],
+    support: [
+      { n: 'Ironguard Aegis', ci: 'W', c: ['2'] },
+      { n: 'Oath of Unity', ci: 'M', c: ['W','G'] },
+    ],
+    lands: [ ['✦', 'W', { xn: 3 }], ['✦', 'W', { tapped: true, xn: 3 }], ['◆', 'L', { tapped: true }] ],
+    piles: { lib: 21, gy: 4, gyTop: { n: 'Sunfall', ci: 'W' }, ex: 1 },
+  },
+  {
+    name: 'Fern', accVar: 'west', life: 6, hand: 2, meta: '▸ attacked ×1',
+    creatures: [
+      { n: 'Ember Whelp', ci: 'R', c: ['R'], pt: '1/1', xn: 5 },
+      { n: 'Goblin Firebrand', ci: 'R', c: ['1','R'], pt: '2/1', dmg: 1 },
+      { n: 'Ashvault Raider', ci: 'R', c: ['2','R'], pt: '3/2', blk: true },
+    ],
+    support: [ { n: 'Pyre Rite', ci: 'R', c: ['1','R'] } ],
+    lands: [ ['▲', 'R', { xn: 2 }], ['▲', 'R', { tapped: true, xn: 3 }] ],
+    piles: { lib: 18, gy: 11, gyTop: { n: 'Quickfire Bolt', ci: 'R' }, ex: 0 },
+  },
+];
+
+document.getElementById('opps').innerHTML = opponents.map(p => `
+  <div class="panel pp" style="--acc: var(--${p.accVar})">
+    <div class="pp-head">
+      <span class="crest" style="--acc: var(--${p.accVar})"><b>${p.life}</b></span>
+      <span class="pp-name">${p.name}</span>
+      <span class="pp-meta">
+        ${p.meta === 'active' ? `<span class="m" style="color:var(--east)">● turn</span>` : p.meta ? `<span class="m" style="color:var(--target)">${p.meta}</span>` : ''}
+        <span class="m"><span class="mb"></span>${p.hand}</span>
+      </span>
+    </div>
+    <div class="pp-body">
+      <div class="rows">
+        <div class="rowline">${p.creatures.map(c => card(c, 't-mini')).join('')}</div>
+        <div class="rowline">${p.support.map(c => card(c, 't-mini')).join('')}</div>
+        <div class="rowline lands">${p.lands.map(([s, ci, o]) => chip(s, ci, o)).join('')}</div>
+      </div>
+      <div class="piles">
+        ${pile('lib', p.piles.lib)}${pile('gy', p.piles.gy, { top: p.piles.gyTop })}${pile('ex', p.piles.ex)}
+      </div>
+    </div>
+  </div>`).join('');
+
+/* ── your battlefield ── */
+const mine = {
+  creatures: [
+    { n: 'Thornback Boar', ci: 'G', c: ['2','G'], pt: '5/4', cnt: 2, targeted: true, act: true },
+    { n: 'Gorehorn Ravager', ci: 'G', c: ['3','G'], pt: '5/4', kw: ['vigilance'], act: true },
+    { n: 'Verdant Scout', ci: 'G', c: ['G'], pt: '1/1', act: true },
+    { n: 'Moss Bear', ci: 'G', c: ['1','G'], pt: '2/2', xn: 2, act: true },
+    { n: 'Cleric of the Vault', ci: 'W', c: ['2','W'], pt: '2/3', dmg: 2, act: true },
+    { n: 'Sporeback Colossus', ci: 'G', c: ['5','G'], pt: '7/7', tapped: true, tapWrap: 's' },
+  ],
+  support: [
+    { n: 'Nature’s Resolve', ci: 'G', c: ['1','G'] },
+    { n: 'Ward of Thorns', ci: 'G', c: ['2'], xn: 2 },
+    { n: 'Sigil of Dawn', ci: 'W', c: ['W'] },
+  ],
+  lands: [ ['♣', 'G', { xn: 3, act: true }], ['♣', 'G', { tapped: true, xn: 2 }], ['✦', 'W', { xn: 2, act: true }], ['◆', 'L', { tapped: true }] ],
+};
+document.getElementById('yourows').innerHTML = `
+  <div class="rowline">${mine.creatures.map(c => card(c, 't-std')).join('')}</div>
+  <div class="rowline">${mine.support.map(c => card(c, 't-mini')).join('')}
+    <span style="width:26px"></span>
+    ${mine.lands.map(([s, ci, o]) => chip(s, ci, o)).join('')}</div>`;
+
+/* ── hand ── */
+const hand = [
+  { n: 'Withering Touch', ci: 'B', c: ['B'], lift: true, act: true },
+  { n: 'Cinder Shock', ci: 'R', c: ['R'], act: true },
+  { n: 'Forest', ci: 'L', c: [], act: true },
+  { n: 'Gorehorn Ravager', ci: 'G', c: ['3','G'], pt: '5/4' },
+  { n: 'Oath of Unity', ci: 'M', c: ['W','G'] },
+  { n: 'Sky Warden', ci: 'W', c: ['2','W'], pt: '2/3', kw: ['flying'] },
+  { n: 'Vexing Ordeal', ci: 'B', c: ['B'] },
+];
+document.getElementById('hand').innerHTML = hand.map(c => card(c, 't-hand')).join('');
+</script>
+</body>
+</html>
