@@ -37,6 +37,11 @@ import type { EntityId, Prompt, PromptOption, TargetChoice, ValidAction } from '
 /** How an action routes: a plain submit, single-target targeting, or multi-select. */
 export type ActionMode = 'plain' | 'target' | 'multi';
 
+/** The requirement-slot id of the attacker subset in a declare-attackers action. */
+const ATTACKERS_SLOT = 'attackers';
+/** The prefix of a per-attacker defender-choice slot (`defend_<permId>`, #347). */
+const DEFEND_SLOT_PREFIX = 'defend_';
+
 /**
  * Classify how firing an action is handled. `multi` covers the toggle-and-confirm
  * declarations (combat by `type`, plus any action carrying non-target `prompts`);
@@ -71,15 +76,26 @@ export interface MultiSelectSlot {
    * `subset` — any number of the candidates (attackers/blockers, optional).
    * `count` — exactly {@link MultiSelectSlot.count} of them (bottoming/discard).
    * `order` — all of the candidates, arranged into the chosen order (a permutation).
+   * `defender` — exactly one candidate (a defending player), for the multiplayer
+   *   per-attacker attack-target choice (`defend_<id>`, issue #341/#347). Active only
+   *   while its {@link MultiSelectSlot.attacker} is chosen in the `attackers` slot.
    */
-  kind: 'subset' | 'count' | 'order';
+  kind: 'subset' | 'count' | 'order' | 'defender';
   /**
    * The server-listed candidate entity ids — for `subset`/`count` the only ids the
-   * client may toggle; for `order` the full item set the player arranges.
+   * client may toggle; for `order` the full item set the player arranges; for
+   * `defender` the defending-player ids the attacker may be assigned to.
    */
   candidates: EntityId[];
   /** For a `count` slot, exactly how many must be chosen. */
   count?: number;
+  /**
+   * For a `defender` slot, the attacker (permanent entity id) whose defending player
+   * this slot chooses. The slot is walked only while that attacker is in the
+   * `attackers` selection — the client never asks whom a *non-attacking* creature
+   * attacks (issue #347). Absent for every other slot kind.
+   */
+  attacker?: EntityId;
   /**
    * For a `select_from_zone` slot, the zone the cards come from (`"hand"`,
    * `"graveyard"`, …). Display context only — the client renders candidates in
@@ -141,12 +157,27 @@ function isOrder(prompt: Prompt): prompt is Extract<Prompt, { kind: 'order' }> {
  * {@link isMultiSelect}.
  */
 export function beginMultiSelect(action: ValidAction): MultiSelectSession {
-  const slots: MultiSelectSlot[] = (action.requirements ?? []).map((req) => ({
-    slot: req.slot,
-    prompt: req.prompt,
-    kind: 'subset' as const,
-    candidates: req.candidates ?? [],
-  }));
+  const slots: MultiSelectSlot[] = (action.requirements ?? []).map((req) => {
+    // A multiplayer per-attacker attack-target slot (`defend_<permId>`, issue #347):
+    // a single defending-player pick, walked only while its attacker is declared.
+    // The attacker's entity id is `perm_<permId>` — the same `PermanentId` the slot
+    // is keyed by (server `defender_slot`/`permanent_entity_id`).
+    if (req.slot.startsWith(DEFEND_SLOT_PREFIX)) {
+      return {
+        slot: req.slot,
+        prompt: req.prompt,
+        kind: 'defender' as const,
+        candidates: req.candidates ?? [],
+        attacker: `perm_${req.slot.slice(DEFEND_SLOT_PREFIX.length)}`,
+      };
+    }
+    return {
+      slot: req.slot,
+      prompt: req.prompt,
+      kind: 'subset' as const,
+      candidates: req.candidates ?? [],
+    };
+  });
   const options: MultiSelectOption[] = [];
   for (const prompt of action.prompts ?? []) {
     if (isSelectFromZone(prompt)) {
@@ -175,6 +206,26 @@ export function beginMultiSelect(action: ValidAction): MultiSelectSession {
   return { action, slots, options, active: 0, chosen };
 }
 
+/** The attacker permanent ids currently chosen in the `attackers` slot — the set a
+ * `defender` slot is gated on (issue #347). Empty when there is no attackers slot. */
+function chosenAttackers(session: MultiSelectSession): EntityId[] {
+  const i = session.slots.findIndex((slot) => slot.slot === ATTACKERS_SLOT);
+  return i < 0 ? [] : (session.chosen[i] ?? []);
+}
+
+/**
+ * Whether slot `i` is *in play* right now. Every slot is in play except a `defender`
+ * slot whose attacker is not currently declared: the client never asks whom a
+ * creature that is not attacking attacks (issue #347). A two-player action (no
+ * `defender` slots) has every slot always in play, so this is a no-op there.
+ */
+function isSlotInPlay(session: MultiSelectSession, i: number): boolean {
+  const slot = session.slots[i];
+  if (!slot) return false;
+  if (slot.kind !== 'defender') return true;
+  return slot.attacker !== undefined && chosenAttackers(session).includes(slot.attacker);
+}
+
 /** The slot the player is currently toggling, or `null` if there are none. */
 export function activeSlot(session: MultiSelectSession): MultiSelectSlot | null {
   return session.slots[session.active] ?? null;
@@ -183,6 +234,19 @@ export function activeSlot(session: MultiSelectSession): MultiSelectSlot | null 
 /** The active slot's server candidates — the only ids the UI may make toggleable. */
 export function activeCandidates(session: MultiSelectSession): EntityId[] {
   return activeSlot(session)?.candidates ?? [];
+}
+
+/** Whether the active slot is a per-attacker defender pick (its candidates are
+ * defending players, picked from the player HUD rather than the board, #347). */
+export function activeIsDefender(session: MultiSelectSession): boolean {
+  return activeSlot(session)?.kind === 'defender';
+}
+
+/** The attacker permanent the active `defender` slot is assigning, so the board can
+ * highlight which creature the player is routing; `null` outside a defender slot. */
+export function activeAttacker(session: MultiSelectSession): EntityId | null {
+  const slot = activeSlot(session);
+  return slot?.kind === 'defender' ? (slot.attacker ?? null) : null;
 }
 
 /** The ids already chosen in the active slot (for the pressed/selected affordance). */
@@ -199,9 +263,15 @@ export function toggle(session: MultiSelectSession, entityId: EntityId): MultiSe
   const slot = activeSlot(session);
   if (!slot || !slot.candidates.includes(entityId)) return session;
   const current = session.chosen[session.active] ?? [];
-  const next = current.includes(entityId)
-    ? current.filter((id) => id !== entityId)
-    : [...current, entityId];
+  // A `defender` slot is a single choice (whom this attacker attacks): picking a
+  // candidate replaces any prior pick rather than accumulating (issue #347). Every
+  // other slot is a toggling subset.
+  const next =
+    slot.kind === 'defender'
+      ? [entityId]
+      : current.includes(entityId)
+        ? current.filter((id) => id !== entityId)
+        : [...current, entityId];
   const chosen = session.chosen.map((ids, i) => (i === session.active ? next : ids));
   return { ...session, chosen };
 }
@@ -237,12 +307,19 @@ export function moveInActiveSlot(
 function slotSatisfied(slot: MultiSelectSlot, chosen: EntityId[]): boolean {
   if (slot.kind === 'count') return chosen.length === (slot.count ?? 0);
   if (slot.kind === 'order') return chosen.length === slot.candidates.length;
+  // A declared attacker must be assigned exactly one defending player (issue #347).
+  if (slot.kind === 'defender') return chosen.length === 1;
   return true;
 }
 
-/** Whether every walked slot's selection meets its constraint (drives Confirm). */
+/** Whether every in-play slot's selection meets its constraint (drives Confirm). A
+ * `defender` slot for an undeclared attacker is not in play, so it never blocks the
+ * confirm — declaring no attackers, or attackers whose defenders are all chosen, is
+ * submittable (issue #347). */
 export function allSlotsSatisfied(session: MultiSelectSession): boolean {
-  return session.slots.every((slot, i) => slotSatisfied(slot, session.chosen[i] ?? []));
+  return session.slots.every(
+    (slot, i) => !isSlotInPlay(session, i) || slotSatisfied(slot, session.chosen[i] ?? []),
+  );
 }
 
 /**
@@ -259,15 +336,24 @@ export function optionsSubmittable(session: MultiSelectSession): boolean {
   });
 }
 
-/** Whether the active slot is the last walked slot. */
+/** Whether the active slot is the last *in-play* slot — i.e. there is no later slot
+ * still to walk (a `defender` slot for an undeclared attacker is skipped, #347). */
 export function isLastSlot(session: MultiSelectSession): boolean {
-  return session.active >= session.slots.length - 1;
+  for (let i = session.active + 1; i < session.slots.length; i += 1) {
+    if (isSlotInPlay(session, i)) return false;
+  }
+  return true;
 }
 
-/** Advance to the next walked slot (clamped to the last), keeping selections. */
+/** Advance to the next *in-play* walked slot (clamped to the current when there is
+ * none later), keeping selections. Skips `defender` slots whose attacker is not
+ * declared, so the player only assigns targets for the creatures actually attacking
+ * (issue #347). */
 export function advance(session: MultiSelectSession): MultiSelectSession {
-  const next = Math.min(session.active + 1, session.slots.length - 1);
-  return next === session.active ? session : { ...session, active: next };
+  for (let i = session.active + 1; i < session.slots.length; i += 1) {
+    if (isSlotInPlay(session, i)) return { ...session, active: i };
+  }
+  return session;
 }
 
 /** Whether this action carries an option prompt (mulligan keep/take-another). */
@@ -285,9 +371,13 @@ export function assembleChoices(
   session: MultiSelectSession,
   optionChoices: TargetChoice[] = [],
 ): TargetChoice[] {
-  const slotChoices = session.slots.map((slot, i) => ({
-    slot: slot.slot,
-    chosen: session.chosen[i] ?? [],
-  }));
+  const slotChoices = session.slots
+    // A `defender` slot for an undeclared attacker is not in play — omit it so a stale
+    // target pick for a creature the player is not attacking with is never submitted
+    // (issue #347). Every in-play slot (attackers, each declared attacker's defender,
+    // and non-combat slots) is included, an empty subset legally declaring none.
+    .map((slot, i) => ({ slot, i }))
+    .filter(({ i }) => isSlotInPlay(session, i))
+    .map(({ slot, i }) => ({ slot: slot.slot, chosen: session.chosen[i] ?? [] }));
   return [...optionChoices, ...slotChoices];
 }

@@ -145,6 +145,13 @@ export interface CardDisplayData {
    */
   attacking?: boolean;
   /**
+   * Whom this attacker is attacking (issue #341/#347): the defending player's `p{N}`
+   * id, so a multi-opponent board can point the attacker's treatment toward that
+   * player's area/HUD tile. Absent in a two-player game (the sole opponent is implied)
+   * and for a non-attacker. Purely from the view (`Permanent.attacking_player`).
+   */
+  attackingPlayer?: string;
+  /**
    * Whether this permanent is a **declared blocker** this combat (issue #332, CR 509).
    * Draws a bar on the *left* edge — a distinct edge again — marking it as defending.
    * Which attacker it blocks is carried by the scene's combat links, not the face.
