@@ -631,7 +631,7 @@ export function Table() {
         </div>
         <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
           <div style={sceneBox(scene.width, scene.height)}>
-            <BattlefieldCanvas scene={scene} />
+            <BattlefieldCanvas scene={scene} isolatedId={highlightedId} />
             {/* Labeled lanes + zone piles stay on the final board. Card actions are
                 gone (no EntityOverlay select), but graveyard/exile stay browsable
                 here exactly as they do on the tiles above (issue #262). */}
@@ -933,7 +933,7 @@ export function Table() {
         data-focus-region="battlefield"
       >
         <div style={sceneBox(scene.width, scene.height)}>
-          <BattlefieldCanvas scene={scene} />
+          <BattlefieldCanvas scene={scene} isolatedId={highlightedId ?? selectedId} />
           {/* Labeled, bounded player lanes + zone piles (issue #278), anchored to the
               scene's band/hand rects and stacked under the interactive overlay so it
               never intercepts a card click. */}
