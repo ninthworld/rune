@@ -1,12 +1,15 @@
 /**
  * The interactive DOM overlay anchored over the Pixi canvas (ADR 0003: DOM
  * anchors to canvas objects via reported rects; the DOM never reaches into the
- * scene). This is where subject-owned action routing (ADR 0004) becomes tangible:
+ * scene). This is where subject-owned action routing (ADR 0004, reinterpreted by
+ * ADR 0023) becomes tangible:
  *
  * - Every entity that carries `valid_actions` gets a focusable, touch-sized
  *   hotspot ON the card — the "select" step of select-then-confirm.
- * - Selecting an entity reveals its actions as chips ON the entity, so an entity
- *   action fires from the entity itself (and is echoed in the action bar).
+ * - Selecting an entity lifts/rings it and routes its offered actions to the
+ *   **action dock** — the one action home. Per-card action popups are abolished
+ *   (a popup under a bottom-edge card is guaranteed to clip; in the fixed shell
+ *   it cannot exist).
  *
  * In **targeting mode** the same overlay drives target picking (ADR 0009 §Client):
  * every legal target the server listed gets a hotspot ON the card (select-then-
@@ -21,11 +24,11 @@
  * an inert hand card) hosts these gestures on a transparent, focusable inspect
  * surface, so inspect reaches every card in every input mode without board noise.
  */
-import { Fragment, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
-import type { EntityId, ValidAction } from '../protocol';
+import type { EntityId } from '../protocol';
 import type { RenderedCard, TableScene } from './scene';
-import { entityActions, hotspot, inspectSurface, overlay, targetHotspot } from './styles';
+import { hotspot, inspectSurface, overlay, targetHotspot } from './styles';
 import s from './chrome.module.css';
 
 /** Precise-pointer hover-dwell delay before a peek opens (ms). */
@@ -52,10 +55,8 @@ interface Props {
    * peek; `coarse` enables the long-press peek. A capability, not a device.
    */
   pointer?: 'fine' | 'coarse';
-  /** Toggle selection of an entity (the select step). */
+  /** Toggle selection of an entity (the select step — actions route to the dock). */
   onSelect: (id: EntityId) => void;
-  /** Confirm one of the entity's offered actions (echoes the `ValidAction`). */
-  onChoose: (action: ValidAction) => void;
   /** Pick an entity as the current target slot's answer (targeting mode). */
   onPickTarget: (id: EntityId) => void;
   /**
@@ -155,7 +156,6 @@ export function EntityOverlay({
   multiSelect = false,
   pointer = 'fine',
   onSelect,
-  onChoose,
   onPickTarget,
   onPeek,
   onPinInspect,
@@ -224,36 +224,23 @@ export function EntityOverlay({
         // this list is always non-empty. Naming the offered action(s) gives the
         // canvas's visual "playable" edge bar an accessible-tree equivalent for a
         // screen-reader / no-color-vision user (issue #277, ui-requirements §10).
+        // Selecting routes the actions to the action dock (ADR 0023 commitment 2)
+        // — no per-card popup ever renders on the entity.
         const actionHint = card.actions.map((action) => action.label).join(', ');
         return (
-          <Fragment key={card.entityId}>
-            <button
-              type="button"
-              data-testid={`entity-${card.entityId}`}
-              data-entity={card.entityId}
-              data-actionable="true"
-              aria-pressed={selected}
-              aria-label={`${card.name} — playable: ${actionHint}`}
-              onClick={() => onSelect(card.entityId)}
-              className={s.canvasControl}
-              style={hotspot(card.rect, selected)}
-              {...gestures}
-            />
-            {selected && (
-              <div data-testid={`entity-actions-${card.entityId}`} style={entityActions(card.rect)}>
-                {card.actions.map((action) => (
-                  <button
-                    key={action.id}
-                    type="button"
-                    onClick={() => onChoose(action)}
-                    className={s.chip}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </Fragment>
+          <button
+            key={card.entityId}
+            type="button"
+            data-testid={`entity-${card.entityId}`}
+            data-entity={card.entityId}
+            data-actionable="true"
+            aria-pressed={selected}
+            aria-label={`${card.name} — playable: ${actionHint}`}
+            onClick={() => onSelect(card.entityId)}
+            className={s.canvasControl}
+            style={hotspot(card.rect, selected)}
+            {...gestures}
+          />
         );
       })}
     </div>

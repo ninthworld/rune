@@ -8,13 +8,51 @@ import {
 import type { GameView } from '../protocol';
 import { TIER } from '../tokens';
 import { deriveColorIdentity } from './colorIdentity';
+import { rectsOverlap } from './layout';
 import {
   basicLandGlyph,
   buildTableScene,
-  DEFAULT_VIEWPORT_WIDTH,
+  defaultSceneGeometry,
   rowKindForType,
+  tappedFootprint,
+  type PanelFrame,
+  type SceneGeometry,
   type TableScene,
+  type TargetingScene,
 } from './scene';
+
+/** The default carved geometry for a duel (the same carve the live shell makes). */
+const GEO = defaultSceneGeometry();
+/** The carved geometry for a four-seat table (three opponent panels). */
+const GEO4 = defaultSceneGeometry(4);
+
+/** Build a scene against the default duel geometry (most tests' shell). */
+function build(view: GameView, selectedId?: string, targeting?: TargetingScene): TableScene {
+  return buildTableScene(view, selectedId, GEO, targeting);
+}
+
+/**
+ * A synthetic single-panel geometry whose receiver content area is exactly
+ * `contentW` wide — for the wrap tests, where the interesting variable is the
+ * row budget, not the whole shell.
+ */
+function panelGeometry(contentW: number): SceneGeometry {
+  const frame = (y: number): PanelFrame => ({
+    rect: { x: 0, y, w: contentW + 32, h: 900 },
+    header: { x: 0, y, w: contentW + 32, h: 0 },
+    content: { x: 16, y, w: contentW, h: 900 },
+    piles: { x: contentW + 32, y, w: 0, h: 0 },
+  });
+  return {
+    width: contentW + 32,
+    height: 2000,
+    opponents: [frame(0)],
+    you: frame(950),
+    hand: { x: 16, y: 1900, w: contentW, h: 100 },
+    tiers: { you: 'field', opp: 'support' },
+    handFan: false,
+  };
+}
 
 /** A minimal permanent spec for the type-grouped-band tests (issue #318). */
 interface PermSpec {
@@ -135,7 +173,7 @@ describe('deriveColorIdentity', () => {
 
 describe('buildTableScene local player', () => {
   it('identifies the receiver straight from view.you', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     expect(scene.localPlayerId).toBe('p1');
     expect(scene.bands.at(-1)?.isLocal).toBe(true);
   });
@@ -151,7 +189,7 @@ describe('buildTableScene local player', () => {
       exile: [],
       priority_player: undefined,
     };
-    const scene = buildTableScene(opening);
+    const scene = build(opening);
     expect(scene.localPlayerId).toBe('p1');
     // A local band is still laid out for the receiver even with no permanents.
     expect(scene.bands.map((b) => b.playerId)).toEqual(['p2', 'p1']);
@@ -160,7 +198,7 @@ describe('buildTableScene local player', () => {
 
   it('treats an absent view.you (older server) as unknown', () => {
     const legacy = normalizeGameView({ ...JSON.parse(JSON.stringify(SAMPLE_GAME_VIEW)), you: '' });
-    const scene = buildTableScene(legacy);
+    const scene = build(legacy);
     expect(scene.localPlayerId).toBeUndefined();
     // No band is flagged local when the receiver is unknown.
     expect(scene.bands.every((b) => !b.isLocal)).toBe(true);
@@ -169,7 +207,7 @@ describe('buildTableScene local player', () => {
 
 describe('buildTableScene', () => {
   it('groups the battlefield into per-controller bands with the local band last', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     expect(scene.bands.map((b) => b.playerId)).toEqual(['p2', 'p1']);
     const local = scene.bands.at(-1);
     expect(local?.isLocal).toBe(true);
@@ -177,7 +215,7 @@ describe('buildTableScene', () => {
   });
 
   it('passes P/T, tapped and counters through verbatim (no game logic)', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     const bear = scene.bands.at(-1)?.cards[0];
     expect(bear?.data.power).toBe('2');
     expect(bear?.data.toughness).toBe('2');
@@ -187,7 +225,7 @@ describe('buildTableScene', () => {
   });
 
   it('routes each subject-action onto its entity, leaving others non-interactive', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     const bear = scene.bands.at(-1)?.cards[0];
     // The activate-ability action names perm_xyz, so it rides on the card.
     expect(bear?.actions.map((a) => a.id)).toEqual(['a2']);
@@ -197,12 +235,12 @@ describe('buildTableScene', () => {
   });
 
   it('renders the local hand at hand tier', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     expect(scene.hand.map((c) => c.tier)).toEqual(['hand']);
   });
 
   it('labels each band by its controller and marks the local one (issue #278)', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     const local = scene.bands.at(-1);
     const opponent = scene.bands[0];
     expect(local?.isLocal).toBe(true);
@@ -211,17 +249,17 @@ describe('buildTableScene', () => {
   });
 
   it('gives every band a bounded region, including an empty one (issue #278)', () => {
-    const scene = buildTableScene(boardView(['p1'], 0));
+    const scene = build(boardView(['p1'], 0));
     const band = scene.bands[0];
     expect(band?.isEmpty).toBe(true);
-    // An empty lane still reserves a labeled, non-zero region a newcomer can see.
+    // An empty panel still reserves a carved, non-zero home a newcomer can see.
     expect(band?.rect.w).toBeGreaterThan(0);
     expect(band?.rect.h).toBeGreaterThan(0);
   });
 
   it('carries each controller’s zone pile counts straight from the view (issue #278)', () => {
     const view = SAMPLE_GAME_VIEW;
-    const scene = buildTableScene(view);
+    const scene = build(view);
     const local = scene.bands.at(-1);
     const opponent = scene.bands[0];
     // Local library comes from `me`; an opponent's from its redacted view.
@@ -236,19 +274,20 @@ describe('buildTableScene', () => {
   });
 
   it('labels the hand row as its own region (issue #278)', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     expect(scene.handRegion.label).toBe('Your hand');
     expect(scene.handRegion.rect.h).toBeGreaterThan(0);
+    expect(scene.handRegion.rect).toEqual(GEO.hand);
   });
 
   it('marks the selected entity so its card draws a ring', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
+    const scene = build(SAMPLE_GAME_VIEW, 'perm_xyz');
     expect(scene.bands.at(-1)?.cards[0]?.data.selected).toBe(true);
     expect(scene.hand[0]?.data.selected).toBe(false);
   });
 
   it('marks a card with offered actions as actionable and inert cards not (issue #277)', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     // perm_xyz carries the activate-ability action → the playable affordance.
     expect(scene.bands.at(-1)?.cards[0]?.data.actionable).toBe(true);
     // The hand card has no subject-action → no affordance, purely from the view.
@@ -256,13 +295,13 @@ describe('buildTableScene', () => {
   });
 
   it('is a pure function of its inputs: identical view → identical scene', () => {
-    const a = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
-    const b = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz');
+    const a = build(SAMPLE_GAME_VIEW, 'perm_xyz');
+    const b = build(SAMPLE_GAME_VIEW, 'perm_xyz');
     expect(a).toEqual(b);
   });
 
   it('leaves nothing targetable outside targeting mode', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     const all = [...scene.bands.flatMap((b) => b.cards), ...scene.hand];
     expect(all.every((c) => c.targetable === false)).toBe(true);
     expect(all.every((c) => c.data.targeting === undefined || c.data.targeting === false)).toBe(
@@ -274,7 +313,7 @@ describe('buildTableScene', () => {
 describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
   it('highlights exactly the server candidates and dims everything else', () => {
     // perm_xyz is a legal target; the hand card c1 is not.
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, { candidates: ['perm_xyz'] });
+    const scene = build(SAMPLE_GAME_VIEW, undefined, { candidates: ['perm_xyz'] });
     const bear = scene.bands.at(-1)?.cards[0];
     const handCard = scene.hand[0];
 
@@ -297,29 +336,27 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
   it('suppresses the play affordance in targeting mode (issue #277)', () => {
     // Even a card that would otherwise be actionable advertises no play affordance
     // while a target is being picked — the sole interaction is choosing a target.
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, {
-      candidates: ['perm_xyz'],
-    });
+    const scene = build(SAMPLE_GAME_VIEW, undefined, { candidates: ['perm_xyz'] });
     const all = [...scene.bands.flatMap((b) => b.cards), ...scene.hand];
     expect(all.every((c) => c.data.actionable === false)).toBe(true);
   });
 
   it('suppresses the selection ring while targeting (a target is not a selection)', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, 'perm_xyz', 1280, { candidates: ['perm_xyz'] });
+    const scene = build(SAMPLE_GAME_VIEW, 'perm_xyz', { candidates: ['perm_xyz'] });
     // Even though perm_xyz was the selected id, targeting mode clears `selected`.
     expect(scene.bands.at(-1)?.cards[0]?.data.selected).toBe(false);
   });
 
   it('stays a pure function of its inputs in targeting mode', () => {
-    const a = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, { candidates: ['perm_xyz'] });
-    const b = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, { candidates: ['perm_xyz'] });
+    const a = build(SAMPLE_GAME_VIEW, undefined, { candidates: ['perm_xyz'] });
+    const b = build(SAMPLE_GAME_VIEW, undefined, { candidates: ['perm_xyz'] });
     expect(a).toEqual(b);
   });
 
   it('marks a chosen multi-select candidate as selected (issue #143)', () => {
     // A candidate already toggled into the answer is `chosen` and draws the
     // selection ring; a candidate not yet chosen stays merely targetable.
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, {
+    const scene = build(SAMPLE_GAME_VIEW, undefined, {
       candidates: ['perm_xyz'],
       selected: ['perm_xyz'],
     });
@@ -331,7 +368,7 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
   });
 
   it('does not mark an unchosen candidate as selected', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, 1280, {
+    const scene = build(SAMPLE_GAME_VIEW, undefined, {
       candidates: ['perm_xyz'],
       selected: [],
     });
@@ -339,27 +376,27 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
     expect(bear?.chosen).toBe(false);
     expect(bear?.data.selected).toBe(false);
   });
+});
 
-  it('lays a single small band as one centered row (no wrapping when everything fits)', () => {
-    const scene = buildTableScene(boardView(['p1'], 3), undefined, 1280);
-    const ys = new Set(scene.bands[0]?.cards.map((c) => c.rect.y));
+describe('buildTableScene panel row flow (carved frames, ADR 0023)', () => {
+  it('lays a small board as one centered row inside the panel content area', () => {
+    const scene = build(boardView(['p1'], 3));
+    const cards = scene.bands[0]!.cards;
+    const ys = new Set(cards.map((c) => c.rect.y));
     expect(ys.size).toBe(1); // all three share one row
-    // Columns advance by card width + gap, and the line centers within the row
-    // budget (the wrap width minus the reserved zone-pile column) rather than
-    // hugging the left margin.
-    const [a, b, c] = scene.bands[0]!.cards;
-    expect(b?.rect.x).toBe(a!.rect.x + TIER.field.w + 12);
-    const lineLeft = a!.rect.x;
-    const lineRight = c!.rect.x + c!.rect.w;
-    const rowBudgetRight = 1280 - 84 - 16; // budget − pile column − margin
-    // Centered: the slack on the left ≈ the slack on the right (within rounding).
-    expect(Math.abs(lineLeft - 16 - (rowBudgetRight - lineRight))).toBeLessThanOrEqual(1);
+    // Columns advance by card width + gap at the receiver's field tier.
+    const [a, b, c] = cards;
+    expect(b?.rect.x).toBe(a!.rect.x + TIER.field.w + 10);
+    // The line centers within the content span rather than hugging the left edge.
+    const content = GEO.you.content;
+    const leftSlack = a!.rect.x - content.x;
+    const rightSlack = content.x + content.w - (c!.rect.x + c!.rect.w);
+    expect(Math.abs(leftSlack - rightSlack)).toBeLessThanOrEqual(1);
   });
 
-  it('wraps a band into rows bounded by the row budget', () => {
-    // A 344px budget leaves a 260px row span after the reserved pile column —
-    // exactly two field cards per row (16*2 margins, 12 gap).
-    const scene = buildTableScene(boardView(['p1'], 5), undefined, 344);
+  it('wraps a panel into rows bounded by its content width', () => {
+    // A 178px content area holds exactly two field cards per row (84×2 + one 10px gap).
+    const scene = buildTableScene(boardView(['p1'], 5), undefined, panelGeometry(178));
     const cards = scene.bands[0]!.cards;
     const perRowY = cards[0]!.rect.y;
     // Row 0 holds cards 0 and 1 at the same y; card 2 starts a new, lower row.
@@ -367,45 +404,41 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
     expect(cards[2]?.rect.y).toBeGreaterThan(perRowY);
     // Three rows for five cards at two per row.
     expect(new Set(cards.map((c) => c.rect.y)).size).toBe(3);
-    // The cards never run past the width the scene reports, and the scene spans
-    // the full budget (bands read against the whole table width).
+    // The cards never run past the width the scene reports.
     const maxRight = Math.max(...cards.map((c) => c.rect.x + c.rect.w));
-    expect(scene.width).toBeGreaterThanOrEqual(maxRight);
-    expect(scene.width).toBe(344);
+    expect(maxRight).toBeLessThanOrEqual(scene.width);
   });
 
-  it('keeps at least one card per row even in an absurdly narrow viewport', () => {
-    const scene = buildTableScene(boardView(['p1'], 3), undefined, 10);
+  it('keeps at least one card per row even in an absurdly narrow panel', () => {
+    const scene = buildTableScene(boardView(['p1'], 3), undefined, panelGeometry(10));
     const cards = scene.bands[0]!.cards;
-    // One per row → three distinct rows, each card at the left margin.
+    // One per row → three distinct rows, each card at the content's left edge.
     expect(new Set(cards.map((c) => c.rect.y)).size).toBe(3);
     expect(cards.every((c) => c.rect.x === 16)).toBe(true);
   });
 
-  it('lays out 100 permanents across bands with no horizontal page scroll', () => {
-    // 55 permanents for the local player, 45 for the opponent — the 100-permanent
-    // envelope (ui-requirements §11). Everything must fit inside the width budget.
-    const scene = buildTableScene(boardView(['p1', 'p2'], 50), undefined, DEFAULT_VIEWPORT_WIDTH);
+  it('lays out 100 permanents across panels with no horizontal scroll', () => {
+    // 50 permanents per player — the 100-permanent envelope (ui-requirements §11).
+    // Everything must stay inside the carved canvas width.
+    const scene = build(boardView(['p1', 'p2'], 50));
     const cards = allCards(scene);
     expect(cards).toHaveLength(100);
 
-    // Hard requirement: nothing extends past the reported width, and the reported
-    // width stays within the viewport budget → the board never scrolls sideways.
+    // Hard requirement: nothing extends past the reported width → the board
+    // never scrolls sideways; density degrades inside each panel instead.
     const maxRight = Math.max(...cards.map((c) => c.rect.x + c.rect.w));
     expect(maxRight).toBeLessThanOrEqual(scene.width);
-    expect(scene.width).toBeLessThanOrEqual(DEFAULT_VIEWPORT_WIDTH);
+    expect(scene.width).toBe(GEO.width);
 
-    // Each 50-card band must have wrapped into multiple rows (not one long row).
+    // Each 50-card panel must have wrapped into multiple rows (not one long row).
     for (const band of scene.bands) {
       expect(new Set(band.cards.map((c) => c.rect.y)).size).toBeGreaterThan(1);
     }
-    // The board grows downward instead: its height exceeds a single band.
-    expect(scene.height).toBeGreaterThan(TIER.field.h * 3);
   });
 
-  it('is deterministic: identical view + width → identical layout', () => {
-    const a = buildTableScene(boardView(['p1', 'p2'], 50), undefined, DEFAULT_VIEWPORT_WIDTH);
-    const b = buildTableScene(boardView(['p1', 'p2'], 50), undefined, DEFAULT_VIEWPORT_WIDTH);
+  it('is deterministic: identical view + geometry → identical layout', () => {
+    const a = build(boardView(['p1', 'p2'], 50));
+    const b = build(boardView(['p1', 'p2'], 50));
     expect(a).toEqual(b);
   });
 
@@ -426,7 +459,7 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
       phase: 'end',
       valid_actions: [],
     });
-    const scene = buildTableScene(next);
+    const scene = build(next);
     const allBattlefield = scene.bands.flatMap((b) => b.cards.map((c) => c.entityId));
     expect(allBattlefield).toEqual(['perm_new']);
     expect(allBattlefield).not.toContain('perm_xyz');
@@ -438,7 +471,7 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
 
 describe('buildTableScene card-face indicators (issue #320)', () => {
   it('passes server keywords through to the card face verbatim', () => {
-    const local = buildTableScene(
+    const local = build(
       permBoard([{ id: 'drake', type_line: 'Creature — Drake', power: '2', toughness: '2' }]),
     ).bands.at(-1)!;
     // Keywords come from the view; inject via a raw permanent card.
@@ -464,7 +497,7 @@ describe('buildTableScene card-face indicators (issue #320)', () => {
       phase: 'precombat_main',
       valid_actions: [],
     });
-    const card = buildTableScene(withKeywords).bands.at(-1)!.cards[0]!;
+    const card = build(withKeywords).bands.at(-1)!.cards[0]!;
     expect(card.data.keywords).toEqual(['flying', 'deathtouch']);
     // Sanity: the keyword-less board carries no keywords.
     expect(local.cards[0]!.data.keywords).toBeUndefined();
@@ -507,7 +540,7 @@ describe('buildTableScene card-face indicators (issue #320)', () => {
       valid_actions: [],
     });
     const byId = new Map(
-      buildTableScene(view)
+      build(view)
         .bands.at(-1)!
         .cards.map((c) => [c.entityId, c]),
     );
@@ -546,7 +579,7 @@ describe('basicLandGlyph (issue #318)', () => {
   });
 });
 
-describe('buildTableScene type-grouped bands (issue #318)', () => {
+describe('buildTableScene type-grouped rows (issue #318)', () => {
   const mixed = () =>
     permBoard([
       { id: 'bear', type_line: 'Creature — Bear', power: '2', toughness: '2' },
@@ -555,24 +588,37 @@ describe('buildTableScene type-grouped bands (issue #318)', () => {
     ]);
 
   it('assigns each type group its tier: creatures→field, support→support, lands→chip', () => {
-    const local = buildTableScene(mixed()).bands.at(-1)!;
+    // A roomy panel, so the density ladder stays on its full-tier rung.
+    const local = buildTableScene(mixed(), undefined, panelGeometry(600)).bands.at(-1)!;
+    expect(local.densityRung).toBe(0);
     const byId = new Map(local.cards.map((c) => [c.entityId, c]));
     expect(byId.get('bear')!.tier).toBe('field');
     expect(byId.get('signet')!.tier).toBe('support');
     expect(byId.get('forest')!.tier).toBe('chip');
   });
 
-  it('orders the local rows toward the center: creatures first, lands at the back', () => {
-    const local = buildTableScene(mixed()).bands.at(-1)!;
+  it('steps a panel that outgrows its content down one tier rung (density ladder)', () => {
+    // Three stacked rows outgrow the default duel carve's receiver panel, so the
+    // panel engages rung 1: every row steps down one card tier — per panel, never
+    // globally.
+    const local = build(mixed()).bands.at(-1)!;
+    expect(local.densityRung).toBeGreaterThanOrEqual(1);
+    const byId = new Map(local.cards.map((c) => [c.entityId, c]));
+    expect(byId.get('bear')!.tier).toBe('support');
+    expect(byId.get('signet')!.tier).toBe('mini');
+    expect(byId.get('forest')!.tier).toBe('chip');
+  });
+
+  it('orders every panel’s rows creatures → support → lands, top to bottom', () => {
+    // The fixed shell's panels are self-contained homes: the row order is the
+    // shared vocabulary of the blueprint mocks and never flips per seat.
+    const local = build(mixed()).bands.at(-1)!;
     expect(local.rows.map((r) => r.kind)).toEqual(['creatures', 'support', 'lands']);
-    // Rows stack downward — creatures (nearest center) sit above lands (nearest hand).
     const y = (k: string) => local.rows.find((r) => r.kind === k)!.rect.y;
     expect(y('creatures')).toBeLessThan(y('support'));
     expect(y('support')).toBeLessThan(y('lands'));
-  });
 
-  it('mirrors an opponent band so their creatures sit nearest the center line', () => {
-    const opp = buildTableScene(
+    const opp = build(
       permBoard([
         {
           id: 'o_bear',
@@ -584,20 +630,19 @@ describe('buildTableScene type-grouped bands (issue #318)', () => {
         { id: 'o_forest', controller: 'p2', type_line: 'Basic Land — Forest' },
       ]),
     ).bands.find((b) => b.playerId === 'p2')!;
-    const y = (k: string) => opp.rows.find((r) => r.kind === k)!.rect.y;
-    // Opponent is at the top; their creatures render below their lands (toward center).
-    expect(y('lands')).toBeLessThan(y('creatures'));
+    const oy = (k: string) => opp.rows.find((r) => r.kind === k)!.rect.y;
+    expect(oy('creatures')).toBeLessThan(oy('lands'));
   });
 
   it('labels only the lands row — rows are a sorting convention, not zones', () => {
-    const local = buildTableScene(mixed()).bands.at(-1)!;
+    const local = build(mixed()).bands.at(-1)!;
     expect(local.rows.find((r) => r.kind === 'lands')!.label).toBe('Lands');
     expect(local.rows.find((r) => r.kind === 'creatures')!.label).toBeUndefined();
     expect(local.rows.find((r) => r.kind === 'support')!.label).toBeUndefined();
   });
 
   it('renders a basic land as a glyph chip and a nonbasic land as a named chip', () => {
-    const local = buildTableScene(
+    const local = build(
       permBoard([
         { id: 'forest', type_line: 'Basic Land — Forest' },
         { id: 'strand', name: 'Windswept Heath', type_line: 'Land' },
@@ -612,7 +657,7 @@ describe('buildTableScene type-grouped bands (issue #318)', () => {
 
 describe('buildTableScene ×N stacking (issue #318)', () => {
   it('collapses four identical untapped permanents into one ×4 render', () => {
-    const local = buildTableScene(
+    const local = build(
       permBoard(
         Array.from({ length: 4 }, (_, i) => ({
           id: `f${i}`,
@@ -629,7 +674,7 @@ describe('buildTableScene ×N stacking (issue #318)', () => {
   });
 
   it('splits a tapped one out: ×3 untapped beside a tapped single', () => {
-    const local = buildTableScene(
+    const local = build(
       permBoard([
         { id: 'f0', name: 'Forest', type_line: 'Basic Land — Forest' },
         { id: 'f1', name: 'Forest', type_line: 'Basic Land — Forest' },
@@ -646,7 +691,7 @@ describe('buildTableScene ×N stacking (issue #318)', () => {
   it('splits permanents whose offered actions differ (action set is part of the key)', () => {
     // Both Forests look identical, but only f0 carries an offered action → the two
     // are NOT interchangeable, so they stay separate renders.
-    const local = buildTableScene(
+    const local = build(
       permBoard(
         [
           { id: 'f0', name: 'Forest', type_line: 'Basic Land — Forest' },
@@ -665,7 +710,7 @@ describe('buildTableScene ×N stacking (issue #318)', () => {
     // keeps the representative's action, so "four Forests" reads as one chip and
     // tapping the stack floats one mana. This is the fix for boards reading as a
     // row of duplicate lands (every untapped land is always actionable).
-    const local = buildTableScene(
+    const local = build(
       permBoard(
         Array.from({ length: 4 }, (_, i) => ({
           id: `f${i}`,
@@ -693,7 +738,7 @@ describe('buildTableScene ×N stacking (issue #318)', () => {
 
 describe('buildTableScene tapped footprint (issue #318)', () => {
   it('reserves the rotated footprint of a tapped field card so it cannot overlap', () => {
-    const local = buildTableScene(
+    const local = build(
       permBoard([
         { id: 'a', type_line: 'Creature — Bear', power: '2', toughness: '2', tapped: true },
         { id: 'b', type_line: 'Creature — Ox', power: '2', toughness: '4' },
@@ -701,20 +746,23 @@ describe('buildTableScene tapped footprint (issue #318)', () => {
     ).bands.at(-1)!;
     const a = local.cards.find((c) => c.entityId === 'a')!;
     const b = local.cards.find((c) => c.entityId === 'b')!;
-    // Tapped card reserves h×w (rotated), so its footprint width is the card height.
-    expect(a.rect.w).toBe(TIER.field.h);
-    expect(a.rect.h).toBe(TIER.field.w);
+    // A tapped card reserves the bounding box the ~25° rotation sweeps.
+    const swept = tappedFootprint(TIER.field.w, TIER.field.h);
+    expect(a.rect.w).toBe(swept.w);
+    expect(a.rect.h).toBe(swept.h);
+    expect(a.rect.w).toBeGreaterThan(TIER.field.w);
     // The neighbor begins past the reserved footprint — no overlap.
     expect(b.rect.x).toBeGreaterThanOrEqual(a.rect.x + a.rect.w);
   });
 
-  it('keeps a tapped chip un-rotated (dim + corner glyph handle tap state)', () => {
-    const local = buildTableScene(
+  it('applies the one tap treatment to a chip too (same sweep, smaller card)', () => {
+    const local = build(
       permBoard([{ id: 'forest', type_line: 'Basic Land — Forest', tapped: true }]),
     ).bands.at(-1)!;
     const chip = local.cards[0]!;
-    expect(chip.rect.w).toBe(TIER.chip.w);
-    expect(chip.rect.h).toBe(TIER.chip.h);
+    const swept = tappedFootprint(TIER.chip.w, TIER.chip.h);
+    expect(chip.rect.w).toBe(swept.w);
+    expect(chip.rect.h).toBe(swept.h);
     expect(chip.data.tapped).toBe(true);
   });
 });
@@ -722,7 +770,7 @@ describe('buildTableScene tapped footprint (issue #318)', () => {
 describe('buildTableScene stacked targeting addressing (issue #318)', () => {
   it('expands identical candidates so each stays individually targetable', () => {
     const ids = ['c0', 'c1', 'c2', 'c3'];
-    const scene = buildTableScene(
+    const scene = build(
       permBoard(
         ids.map((id) => ({
           id,
@@ -733,7 +781,6 @@ describe('buildTableScene stacked targeting addressing (issue #318)', () => {
         })),
       ),
       undefined,
-      DEFAULT_VIEWPORT_WIDTH,
       { candidates: ids },
     );
     const local = scene.bands.at(-1)!;
@@ -746,7 +793,7 @@ describe('buildTableScene stacked targeting addressing (issue #318)', () => {
 
 describe('buildTableScene aura clustering (issue #333)', () => {
   it('clusters an aura adjacent to its host, host first, in the host’s row', () => {
-    const local = buildTableScene(
+    const local = build(
       permBoard([
         {
           id: 'bear',
@@ -777,7 +824,7 @@ describe('buildTableScene aura clustering (issue #333)', () => {
   it('never folds an attachment or its host into an ×N stack', () => {
     // Two identical bears; only one is enchanted. Without clustering they would fold
     // into a ×2 — the enchanted host and its aura must stay their own renders.
-    const local = buildTableScene(
+    const local = build(
       permBoard([
         {
           id: 'bear_a',
@@ -811,7 +858,7 @@ describe('buildTableScene aura clustering (issue #333)', () => {
   });
 
   it('keeps a clustered attachment individually addressable in targeting mode', () => {
-    const scene = buildTableScene(
+    const scene = build(
       permBoard([
         {
           id: 'bear',
@@ -828,7 +875,6 @@ describe('buildTableScene aura clustering (issue #333)', () => {
         },
       ]),
       undefined,
-      DEFAULT_VIEWPORT_WIDTH,
       { candidates: ['aura'] },
     );
     const aura = scene.bands.at(-1)!.cards.find((c) => c.entityId === 'aura')!;
@@ -839,7 +885,7 @@ describe('buildTableScene aura clustering (issue #333)', () => {
   it('degrades gracefully when the referenced host is not in the visible battlefield', () => {
     // The host is not on the board (e.g. an aura on an object the viewer cannot see):
     // the aura renders in its own support row exactly as an unattached permanent would.
-    const local = buildTableScene(
+    const local = build(
       permBoard([
         { id: 'aura', name: 'Pacifism', type_line: 'Enchantment — Aura', attached_to: 'ghost' },
       ]),
@@ -860,12 +906,12 @@ describe('buildTableScene aura clustering (issue #333)', () => {
       },
       { id: 'aura', name: 'Ironbark Aegis', type_line: 'Enchantment — Aura', attached_to: 'bear' },
     ]);
-    expect(buildTableScene(view)).toEqual(buildTableScene(view));
+    expect(build(view)).toEqual(build(view));
   });
 });
 
 describe('buildTableScene combat state (issue #332)', () => {
-  const combat = () => buildTableScene(parseGameView(COMBAT_GAME_VIEW_JSON));
+  const combat = () => build(parseGameView(COMBAT_GAME_VIEW_JSON));
   const byId = (scene: TableScene) => new Map(allCards(scene).map((c) => [c.entityId, c]));
 
   it('passes the attacking flag and marked damage straight through to the face', () => {
@@ -874,7 +920,7 @@ describe('buildTableScene combat state (issue #332)', () => {
     expect(atk.data.attacking).toBe(true);
     expect(atk.data.markedDamage).toBe(2);
     // A merely-tapped, non-attacking permanent is not marked attacking.
-    const bear = buildTableScene(SAMPLE_GAME_VIEW).bands.at(-1)!.cards[0]!;
+    const bear = build(SAMPLE_GAME_VIEW).bands.at(-1)!.cards[0]!;
     expect(bear.data.tapped).toBe(true);
     expect(bear.data.attacking ?? false).toBe(false);
   });
@@ -898,7 +944,7 @@ describe('buildTableScene combat state (issue #332)', () => {
   it('never folds a combat participant into an ×N stack', () => {
     // Two identical attackers would fold outside combat; attacking keeps them apart
     // so each keeps its own treatment and its own blocker→attacker link.
-    const scene = buildTableScene(
+    const scene = build(
       parseGameView(
         JSON.stringify({
           you: 'p1',
@@ -945,17 +991,20 @@ describe('buildTableScene combat state (issue #332)', () => {
 
   it('reconstructs identical combat state from one GameView (fresh mount)', () => {
     const view = parseGameView(COMBAT_GAME_VIEW_JSON);
-    expect(buildTableScene(view)).toEqual(buildTableScene(view));
+    expect(build(view)).toEqual(build(view));
   });
 
   it('has no combat links or attacking flags outside combat', () => {
-    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    const scene = build(SAMPLE_GAME_VIEW);
     expect(scene.combatLinks).toEqual([]);
     expect(allCards(scene).every((c) => !(c.data.attacking ?? false))).toBe(true);
   });
 });
 
 describe('buildTableScene multiplayer table (3–4 players, issue #348)', () => {
+  /** Build against the four-seat carve — one panel frame per opponent. */
+  const build4 = (view: GameView) => buildTableScene(view, undefined, GEO4);
+
   /** A view whose `seat_order` lists the opponents in a scrambled order relative to
    * `view.opponents`, to prove the arrangement follows `seat_order`, not projection
    * order. `p1` local, opponents p2/p3/p4, seat order p1,p4,p3,p2. */
@@ -989,51 +1038,51 @@ describe('buildTableScene multiplayer table (3–4 players, issue #348)', () => 
   }
 
   it('lays a band for every seat with the receiver anchored last (bottom)', () => {
-    const scene = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    const scene = build4(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
     // Four seats → four bands; the local band is last and flagged local.
     expect(scene.bands).toHaveLength(4);
     expect(scene.bands.at(-1)?.isLocal).toBe(true);
     expect(scene.bands.at(-1)?.playerId).toBe('p1');
     expect(scene.bands.slice(0, -1).every((b) => !b.isLocal)).toBe(true);
-    // The local band sits below (greater y than) every opponent band.
-    const localTop = scene.bands.at(-1)!.rect.y;
+    // The local panel sits below every opponent panel.
+    const local = scene.bands.at(-1)!.rect;
     for (const opp of scene.bands.slice(0, -1)) {
-      expect(opp.rect.y).toBeLessThan(localTop);
+      expect(local.y).toBeGreaterThanOrEqual(opp.rect.y + opp.rect.h);
     }
   });
 
+  it('assigns each opponent their own carved panel frame', () => {
+    const scene = build4(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    const rects = scene.bands.map((b) => b.rect);
+    // Panels are the fixed anatomy's homes: pairwise disjoint by construction.
+    for (let i = 0; i < rects.length; i += 1) {
+      for (let j = i + 1; j < rects.length; j += 1) {
+        expect(rectsOverlap(rects[i]!, rects[j]!)).toBe(false);
+      }
+    }
+    // The hand region sits below the local panel — the receiver keeps the bottom.
+    const local = scene.bands.at(-1)!.rect;
+    expect(scene.handRegion.rect.y).toBeGreaterThanOrEqual(local.y + local.h);
+  });
+
   it('stacks opponent areas in seat order, not projection order', () => {
-    const scene = buildTableScene(scrambledSeatOrder());
-    // seat_order p1,p4,p3,p2 → opponents render p4, p3, p2 (top→down), local last.
+    const scene = build4(scrambledSeatOrder());
+    // seat_order p1,p4,p3,p2 → opponents render p4, p3, p2, local last.
     expect(scene.bands.map((b) => b.playerId)).toEqual(['p4', 'p3', 'p2', 'p1']);
   });
 
   it('keeps opponent areas in a stable arrangement across a view update', () => {
     // The same table, one turn later (life/hand totals changed): the seat order —
     // and therefore the band order — must be identical, so opponents never reshuffle.
-    const first = buildTableScene(scrambledSeatOrder());
+    const first = build4(scrambledSeatOrder());
     const later = scrambledSeatOrder();
     later.opponents = later.opponents.map((o) => ({ ...o, life: o.life - 3 }));
-    const second = buildTableScene(later);
+    const second = build4(later);
     expect(second.bands.map((b) => b.playerId)).toEqual(first.bands.map((b) => b.playerId));
   });
 
-  it('renders every seat’s bands without vertical overlap (no browser)', () => {
-    const scene = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON), undefined, 1280);
-    const bands = scene.bands;
-    for (let i = 0; i + 1 < bands.length; i += 1) {
-      const above = bands[i]!.rect;
-      const below = bands[i + 1]!.rect;
-      // Each band starts strictly below the previous one's bottom edge → no overlap.
-      expect(below.y).toBeGreaterThanOrEqual(above.y + above.h);
-    }
-    // The hand region sits below the local band — the receiver keeps the bottom.
-    const local = bands.at(-1)!.rect;
-    expect(scene.handRegion.rect.y).toBeGreaterThanOrEqual(local.y + local.h);
-  });
-
   it('carries each seat’s zone-pile counts, including an eliminated seat’s', () => {
-    const scene = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    const scene = build4(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
     const byId = new Map(scene.bands.map((b) => [b.playerId, b]));
     expect(byId.get('p2')?.zones.graveyard).toBe(2);
     // p3 is eliminated with an empty battlefield but still shows its public piles.
@@ -1043,7 +1092,7 @@ describe('buildTableScene multiplayer table (3–4 players, issue #348)', () => 
   });
 
   it('keeps combat treatments and links legible across opponent areas', () => {
-    const scene = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    const scene = build4(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
     const cards = allCards(scene);
     // Both of the local player's split attackers read as attacking…
     const rhino = cards.find((c) => c.entityId === 'p1_atk_a');
@@ -1060,27 +1109,27 @@ describe('buildTableScene multiplayer table (3–4 players, issue #348)', () => 
   it('reconstructs who-attacks-whom from the view alone (fresh-mount readable)', () => {
     // A player mounting mid-combat (only the view, no history) derives the same split
     // attack assignments — attacker → attacked player — as one who watched declaration.
-    const scene = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    const scene = build4(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
     expect(scene.attackTargets).toEqual([
       { attacker: 'p1_atk_a', defender: 'p2' },
       { attacker: 'p1_atk_b', defender: 'p4' },
     ]);
     // Deterministic: two fresh builds of the same view produce identical assignments.
-    const again = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    const again = build4(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
     expect(again.attackTargets).toEqual(scene.attackTargets);
   });
 
   it('has no attack targets in a two-player view (sole opponent implied)', () => {
     // COMBAT_GAME_VIEW is a duel: attackers carry no `attacking_player`, so the scene
     // reports no split-attack assignments — the two-player render is unchanged.
-    const scene = buildTableScene(parseGameView(COMBAT_GAME_VIEW_JSON));
+    const scene = build(parseGameView(COMBAT_GAME_VIEW_JSON));
     expect(scene.attackTargets).toEqual([]);
   });
 
   it('renders three opponent areas even when some are empty', () => {
     // A three-opponent table where two opponents control nothing still shows three
     // opponent bands — density degrades, areas never disappear.
-    const scene = buildTableScene(
+    const scene = build4(
       normalizeGameView({
         you: 'p1',
         my_hand: [],
@@ -1100,74 +1149,55 @@ describe('buildTableScene multiplayer table (3–4 players, issue #348)', () => 
   });
 });
 
-describe('buildTableScene shell-derived presentation (scale, fill, piles, names)', () => {
+describe('buildTableScene shell-derived presentation (frames, piles, names)', () => {
   it('labels bands by display name, never by seat id, when names are supplied', () => {
     const view = permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]);
     view.player_names = { p1: 'Rowan', p2: 'Kellan' };
-    const scene = buildTableScene(view);
+    const scene = build(view);
     expect(scene.bands.at(-1)?.label).toBe('Rowan (you)');
     expect(scene.bands[0]?.label).toBe('Kellan');
   });
 
   it('falls back to the raw id when the server sent no name', () => {
-    const scene = buildTableScene(permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]));
+    const scene = build(permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]));
     expect(scene.bands.at(-1)?.label).toBe('p1 (you)');
     expect(scene.bands[0]?.label).toBe('p2');
   });
 
-  it('scales card footprints, and the scene reports its scale for the renderer', () => {
-    const view = permBoard([
-      { id: 'b1', type_line: 'Creature — Bear', power: '2', toughness: '2' },
-    ]);
-    const base = buildTableScene(view, undefined, 1280);
-    const scaled = buildTableScene(view, undefined, 1280, undefined, { scale: 1.5 });
-    const baseCard = base.bands.at(-1)!.cards[0]!;
-    const scaledCard = scaled.bands.at(-1)!.cards[0]!;
-    expect(scaledCard.rect.w).toBe(Math.round(baseCard.rect.w * 1.5));
-    expect(scaledCard.rect.h).toBe(Math.round(baseCard.rect.h * 1.5));
-    expect(scaled.scale).toBe(1.5);
-    expect(base.scale).toBe(1);
+  it('lays out at scale 1 — tiers, not scaling, spend the screen (ADR 0023)', () => {
+    const scene = build(permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]));
+    // The fixed shell never scales the scene; the legacy field stays unset.
+    expect(scene.scale).toBeUndefined();
+    // The scene spans exactly the carved canvas.
+    expect(scene.width).toBe(GEO.width);
+    expect(scene.height).toBe(GEO.height);
   });
 
-  it('stretches to minHeight by distributing slack between bands, hand pinned last', () => {
-    const view = permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]);
-    const natural = buildTableScene(view, undefined, 1280);
-    const stretched = buildTableScene(view, undefined, 1280, undefined, { minHeight: 1200 });
-    expect(natural.height).toBeLessThan(1200);
-    expect(stretched.height).toBe(1200);
-    // The hand region rides the full slack to the bottom of the region…
-    expect(stretched.handRegion.rect.y).toBe(natural.handRegion.rect.y + (1200 - natural.height));
-    // …the first band stays at the top, and the local band moves toward the hand.
-    expect(stretched.bands[0]?.rect.y).toBe(natural.bands[0]?.rect.y);
-    expect(stretched.bands.at(-1)!.rect.y).toBeGreaterThan(natural.bands.at(-1)!.rect.y);
-    // Cards inside a shifted band ride along with it.
-    const dLocal = stretched.bands.at(-1)!.rect.y - natural.bands.at(-1)!.rect.y;
-    expect(stretched.bands.at(-1)!.cards[0]!.rect.y).toBe(
-      natural.bands.at(-1)!.cards[0]!.rect.y + dLocal,
-    );
+  it('mirrors each band’s carved frame: panel rect, header strip, piles column', () => {
+    const scene = build(SAMPLE_GAME_VIEW);
+    const opponent = scene.bands[0]!;
+    const local = scene.bands.at(-1)!;
+    expect(opponent.rect).toEqual(GEO.opponents[0]!.rect);
+    expect(opponent.headerRect).toEqual(GEO.opponents[0]!.header);
+    expect(opponent.pileRect).toEqual(GEO.opponents[0]!.piles);
+    expect(local.rect).toEqual(GEO.you.rect);
+    expect(local.headerRect).toEqual(GEO.you.header);
   });
 
-  it('a scene already taller than minHeight is unchanged', () => {
-    const view = boardView(['p1', 'p2'], 40);
-    const natural = buildTableScene(view, undefined, 600);
-    const constrained = buildTableScene(view, undefined, 600, undefined, { minHeight: 100 });
-    expect(constrained.height).toBe(natural.height);
-    expect(constrained.bands.map((b) => b.rect.y)).toEqual(natural.bands.map((b) => b.rect.y));
-  });
-
-  it('reserves a pile column in every band, clear of the card rows', () => {
-    const scene = buildTableScene(boardView(['p1', 'p2'], 12), undefined, 1280);
-    for (const band of scene.bands) {
-      // The column parks at the band's right edge, inside the band.
-      expect(band.pileRect.x).toBeGreaterThan(0);
-      expect(band.pileRect.x + band.pileRect.w).toBeLessThanOrEqual(scene.width);
-      expect(band.pileRect.y).toBeGreaterThanOrEqual(band.rect.y);
-      expect(band.pileRect.y + band.pileRect.h).toBeLessThanOrEqual(band.rect.y + band.rect.h + 1);
-      // Cards never intrude into the reserved column.
-      for (const card of band.cards) {
-        expect(card.rect.x + card.rect.w).toBeLessThanOrEqual(band.pileRect.x);
-      }
+  it('reserves an opponent pile column clear of the card rows; the local panel has none', () => {
+    const scene = build(boardView(['p1', 'p2'], 12));
+    const opponent = scene.bands.find((b) => !b.isLocal)!;
+    // The column parks at the panel's right edge, inside the panel.
+    expect(opponent.pileRect.w).toBeGreaterThan(0);
+    expect(opponent.pileRect.x + opponent.pileRect.w).toBe(opponent.rect.x + opponent.rect.w);
+    // Cards never intrude into the reserved column.
+    for (const card of opponent.cards) {
+      expect(card.rect.x + card.rect.w).toBeLessThanOrEqual(opponent.pileRect.x);
     }
+    // The receiver's piles live in the bottom shell's identity panel instead
+    // (full composition), so the local panel reserves no column.
+    const local = scene.bands.find((b) => b.isLocal)!;
+    expect(local.pileRect.w).toBe(0);
   });
 
   it('carries the public graveyard top card on the band zones (face-up in place)', () => {
@@ -1181,7 +1211,7 @@ describe('buildTableScene shell-derived presentation (scale, fill, piles, names)
         ],
       },
     ];
-    const scene = buildTableScene(view);
+    const scene = build(view);
     const local = scene.bands.at(-1)!;
     expect(local.zones.graveyard).toBe(2);
     // The LAST card is the top of the ordered pile.

@@ -141,7 +141,9 @@ export const FRAME = {
   headerTintAlpha: 0.16,
   monogramAlpha: 0.22,
   selectionWidth: 2,
-  tappedAlpha: 0.55,
+  /** Tap is a *slight* dim riding the partial rotation (blueprint: one tap
+   * treatment everywhere) — legibility of a tapped board state stays high. */
+  tappedAlpha: 0.8,
   sickAlpha: 0.85,
   /** Alpha for a card dimmed as an ineligible target during targeting mode. */
   dimmedAlpha: 0.32,
@@ -166,12 +168,29 @@ export const FONT = {
   bitmapBaseSize: 42,
 } as const;
 
-/** Card size tiers: digest (opponent chips) / field / support / hand / full (inspect). */
+/**
+ * Card size tiers (blueprint §Card vocabulary): hand (largest) → field (your
+ * battlefield at a duel) → support → mini (the stepped-down dense tier the
+ * density ladder engages) → chip (land digests). The *set of faces* never
+ * changes; which tier a surface uses is the shell layout's call.
+ */
 export const TIER = {
   chip: { w: 44, h: 60 },
+  mini: { w: 54, h: 76, name: 9, mono: 16, pip: 10, header: 24, type: 8 },
   support: { w: 66, h: 92, name: 11, mono: 22, pip: 12, header: 30, type: 9 },
   field: { w: 84, h: 118, name: 11, mono: 30, pip: 13, header: 34, type: 10 },
   hand: { w: 104, h: 146, name: 12, mono: 38, pip: 15, header: 40, type: 11 },
+} as const;
+
+/**
+ * The tap treatment (blueprint §Card vocabulary): ONE treatment at every tier —
+ * a partial rotation plus a slight dim — the same visual for you and opponents,
+ * rendered as a tween in the live client. Partial rotation is what keeps small
+ * cards legible; the row gap absorbs the swept corners.
+ */
+export const TAP = {
+  /** Tap rotation in radians (~25°). */
+  angle: (25 * Math.PI) / 180,
 } as const;
 
 export type ColorIdentity = keyof typeof PALETTE;

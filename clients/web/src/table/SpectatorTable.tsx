@@ -1,14 +1,18 @@
 /**
  * Spectate mode (ADR 0022, issue #351): a **read-only** table over a
- * {@link SpectatorView}.
+ * {@link SpectatorView}, in the fixed shell (ADR 0023).
  *
  * A spectator is a non-seated observer; its view carries only public information (no
- * hand, no mana pool, no `valid_actions`), so this shell reuses the shared board /
- * stack / log / HUD renderers but drops the hand row, the action tray, and every
- * interactive affordance. Redaction is enforced upstream by the type — there is no
- * hidden field to accidentally render — so this component's only job is to *not*
- * offer interaction: cards are inspectable (peek / pin) and public zones are
- * browsable, but nothing is selectable, targetable, or submittable.
+ * hand, no mana pool, no `valid_actions`), so this shell reuses the shared panel /
+ * stack / log renderers but drops the hand, the action dock, and every interactive
+ * affordance. Redaction is enforced upstream by the type — there is no hidden field
+ * to accidentally render — so this component's only job is to *not* offer
+ * interaction: cards are inspectable (peek / pin) and public zones are browsable,
+ * but nothing is selectable, targetable, or submittable.
+ *
+ * With no receiver, every seat lays out as a bounded player panel (the scene
+ * builder folds the receiver's panel frame into the pool), and the bottom shell
+ * shows only a quiet "Spectating" badge.
  *
  * The whole UI reconstructs from the single {@link SpectatorView}, so a spectator that
  * joins mid-game (or reconnects) renders the complete public board from its first
@@ -17,25 +21,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EntityId, GameView, PlayerId, SpectatorView } from '../protocol';
 import { playerName } from '../playerNames';
-import { RuneMark } from '../chrome/RuneMark';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
-import { OpponentHud } from './PlayerHud';
-import { PhaseIndicator } from './PhaseIndicator';
+import { PanelChrome, type BrowsableZone } from './PanelChrome';
 import { Rail } from './Rail';
-import { TableGeography, type BrowsableZone } from './TableGeography';
+import { TopBar } from './TopBar';
 import { ZoneBrowser } from './ZoneBrowser';
-import { buildTableScene } from './scene';
-import { battlefieldWidth, layout, type Viewport } from './layout';
+import { buildTableScene, type SceneGeometry } from './scene';
+import { layout, type Viewport } from './layout';
 import { regionBox, sceneBox, shellBox } from './styles';
 import s from './chrome.module.css';
 
 const noop = (): void => {};
 
 /** Measured viewport, tracking window resizes (the read-only analogue of the table's
- * own hook). A spectator has no action tray, so pointer precision does not matter — it
+ * own hook). A spectator has no action dock, so pointer precision does not matter — it
  * defaults to `fine`. */
 function useViewport(): Required<Viewport> {
   const read = (): Required<Viewport> =>
@@ -53,11 +55,12 @@ function useViewport(): Required<Viewport> {
 }
 
 /**
- * Present a {@link SpectatorView} as the public {@link GameView} shape the shared board
- * renderers consume. There is **no receiver** (`you: ''`), so `buildTableScene` lays out
- * every seat as an opponent band (no local band) and the HUD shows every player; the
- * hand, mana pool, and action list are empty because a spectator has none. Nothing
- * hidden is invented — the spectator view simply has no private state to fill.
+ * Present a {@link SpectatorView} as the public {@link GameView} shape the shared
+ * renderers consume. There is **no receiver** (`you: ''`), so `buildTableScene` lays
+ * out every seat as a bounded panel (no local band) and the chrome shows every
+ * player; the hand, mana pool, and action list are empty because a spectator has
+ * none. Nothing hidden is invented — the spectator view simply has no private state
+ * to fill.
  */
 function asPublicView(spec: SpectatorView): GameView {
   return {
@@ -82,6 +85,35 @@ function asPublicView(spec: SpectatorView): GameView {
     auto_passed: false,
     action_rejected: false,
     player_names: spec.player_names,
+  };
+}
+
+/**
+ * Re-carve the shell's `you` frame with a zone-piles column before the scene lays
+ * seats into it. The full composition's `you` frame parks no piles (a *receiver's*
+ * piles live in the bottom shell's identity panel) — but a spectator shows only the
+ * badge there, so the seat the scene folds into that frame would lose its
+ * library/graveyard/exile everywhere. Give it the same column the opponent panels
+ * get, so every seat's public piles stay findable on the board. No-op when the
+ * frame already parks piles (the compact composition).
+ */
+function withPilesColumn(geometry: SceneGeometry): SceneGeometry {
+  if (geometry.you.piles.w > 0) return geometry;
+  const pilesW = geometry.opponents[0]?.piles.w ?? 60;
+  const { rect, header, content } = geometry.you;
+  return {
+    ...geometry,
+    you: {
+      rect,
+      header,
+      content: { ...content, w: Math.max(0, content.w - pilesW) },
+      piles: {
+        x: rect.x + rect.w - pilesW,
+        y: rect.y + header.h,
+        w: pilesW,
+        h: Math.max(0, rect.h - header.h),
+      },
+    },
   };
 }
 
@@ -117,20 +149,15 @@ function resolveInspect(view: GameView, id: EntityId): InspectTarget | null {
 export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
   const viewport = useViewport();
   const publicView = useMemo(() => asPublicView(spec), [spec]);
-  // Every seat is a player area on a spectator table; there is no bottom-anchored
-  // receiver, so the HUD reflows for the full seat count.
+  // Every seat is a player panel on a spectator table: the shell carves N-1
+  // opponent frames plus the receiver frame, and the scene builder (no receiver)
+  // folds that frame into the pool, so all N seats get a bounded panel.
   const playerCount = Math.max(1, publicView.opponents.length);
-  const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
-  const battlefieldW = battlefieldWidth(shell);
-  const battlefieldH = shell.regions.battlefield.rect.h;
-  const sceneScale = shell.sceneScale;
+  const shell = useMemo(() => layout(viewport, playerCount), [viewport, playerCount]);
+  const compact = shell.composition === 'compact';
   const scene = useMemo(
-    () =>
-      buildTableScene(publicView, undefined, battlefieldW, undefined, {
-        scale: sceneScale,
-        minHeight: battlefieldH,
-      }),
-    [publicView, battlefieldW, battlefieldH, sceneScale],
+    () => buildTableScene(publicView, undefined, withPilesColumn(shell.scene)),
+    [publicView, shell],
   );
 
   const [inspectedId, setInspectedId] = useState<EntityId | null>(null);
@@ -159,33 +186,21 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
       className={s.shell}
       data-testid="spectator-table"
       data-mode="overview"
+      data-composition={shell.composition}
       style={shellBox(viewport.width, viewport.height)}
     >
-      <div className={s.regionIndicator} style={regionBox(r.indicator.rect)}>
-        <PhaseIndicator view={publicView} mode="overview" />
+      <div style={regionBox(r.topBar.rect)}>
+        <TopBar view={publicView} mode="overview" compact={compact} />
       </div>
-      <div className={s.regionHud} style={regionBox(r.opponentHud.rect)}>
-        <OpponentHud view={publicView} />
-      </div>
-      {/* Where the receiver's dock and hand would live, a spectator shows only a badge —
-          no hand row, no action tray, nothing to play. */}
-      <div className={s.regionLocalDock} style={regionBox(r.localDock.rect)}>
-        <div className={s.spectatorBadge} data-testid="spectator-badge">
-          Spectating
-        </div>
-      </div>
-      <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
+      <div style={regionBox(r.canvas.rect)} className={s.regionCanvas}>
         <div style={sceneBox(scene.width, scene.height)}>
-          {/* The table surface's faint rune motif, under the transparent canvas. */}
-          <div className={s.tableMotif} aria-hidden="true">
-            <RuneMark size={420} />
-          </div>
           <BattlefieldCanvas scene={scene} isolatedId={null} />
-          <TableGeography
+          <PanelChrome
+            view={publicView}
             scene={scene}
             onOpenZone={(playerId, zone) => setBrowsing({ playerId, zone })}
           />
-          {/* Read-only overlay: no select/target/choose handlers, so the board is
+          {/* Read-only overlay: no select/target handlers, so the board is
               inspect-only. Every card still hosts the peek/pin inspect gestures. */}
           <EntityOverlay
             scene={scene}
@@ -193,19 +208,24 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
             targeting={false}
             pointer={viewport.pointer}
             onSelect={noop}
-            onChoose={noop}
             onPickTarget={noop}
             onPeek={setPeekId}
             onPinInspect={setInspectedId}
           />
         </div>
       </div>
-      <Rail
-        view={publicView}
-        rect={r.rail.rect}
-        collapsed={shell.railCollapsed}
-        onInspect={setInspectedId}
-      />
+      {!compact && (
+        <div style={regionBox(r.rail.rect)} className={s.regionRail}>
+          <Rail view={publicView} onInspect={setInspectedId} />
+        </div>
+      )}
+      {/* Where the receiver's identity panel would live, a spectator shows only a
+          badge — no hand, no action dock, nothing to play. */}
+      <div style={regionBox(r.mePanel.rect)}>
+        <div className={s.spectatorBadge} data-testid="spectator-badge">
+          Spectating
+        </div>
+      </div>
       {browserData && (
         <ZoneBrowser
           title={browserData.title}

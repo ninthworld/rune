@@ -7,7 +7,7 @@ import {
   parseManaCost,
   type CardDisplayData,
 } from './cardFactory';
-import { BADGE, PALETTE, PIP, PT_TEXT, SURFACES } from '../tokens';
+import { BADGE, PALETTE, PIP, PT_TEXT, SURFACES, TAP } from '../tokens';
 
 /** Collect every `Text` node in a display object, depth first. */
 function collectText(node: Container): Text[] {
@@ -139,9 +139,11 @@ describe('buildCardDisplay', () => {
     expect(fill(chip)).toBe(token(BADGE.counterText));
   });
 
-  it('rotates a tapped card by a quarter turn and dims it', () => {
+  it('rotates a tapped card by the one partial tap treatment and dims it', () => {
+    // ONE tap treatment at every tier (blueprint §Card vocabulary): a ~25°
+    // rotation plus a slight dim — partial rotation keeps small cards legible.
     const inner = buildCardDisplay(pridemate).children[0] as Container;
-    expect(inner.rotation).toBeCloseTo(Math.PI / 2);
+    expect(inner.rotation).toBeCloseTo(TAP.angle);
     expect(inner.alpha).toBeLessThan(1);
   });
 
@@ -219,10 +221,12 @@ describe('buildChipDisplay (issue #318)', () => {
     expect(texts(chip).some((t) => t.startsWith('Wind'))).toBe(true);
   });
 
-  it('dims a tapped chip without rotating it (chip tier has no room to rotate)', () => {
+  it('applies the same tap treatment to a chip: partial rotation plus dim', () => {
+    // Tap is ONE treatment at every tier — the chip sweeps the same ~25° angle
+    // as a full-face card, so tap state reads identically everywhere.
     const inner = buildChipDisplay({ ...forest, landGlyph: 'land-forest', tapped: true })
       .children[0] as Container;
-    expect(inner.rotation).toBe(0);
+    expect(inner.rotation).toBeCloseTo(TAP.angle);
     expect(inner.alpha).toBeLessThan(1);
   });
 

@@ -54,12 +54,13 @@ describe('Table action routing (ADR 0004)', () => {
     expect(within(bar).queryByRole('button', { name: 'Tap for mana' })).toBeNull();
   });
 
-  it('fires an entity action from the entity (select-then-confirm)', () => {
+  it('fires an entity action via the dock (select-then-act, one action home)', () => {
     // Select the permanent via its on-entity hotspot...
     fireEvent.click(screen.getByTestId('entity-perm_xyz'));
-    // ...then confirm the action rendered ON the entity.
-    const onEntity = screen.getByTestId('entity-actions-perm_xyz');
-    fireEvent.click(within(onEntity).getByRole('button', { name: 'Tap for mana' }));
+    // ...its actions route to the dock (ADR 0023: per-card popups are abolished).
+    expect(screen.queryByTestId('entity-actions-perm_xyz')).toBeNull();
+    const echo = screen.getByTestId('selection-echo');
+    fireEvent.click(within(echo).getByRole('button', { name: 'Tap for mana' }));
 
     expect(choose).toHaveBeenCalledTimes(1);
     // The store receives the whole ValidAction (it reads id + token); no targets.
@@ -96,16 +97,15 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
     expect(screen.getByTestId('hud-life-p2').textContent).toBe('20');
     expect(screen.getByTestId('entity-perm_xyz')).toBeDefined();
 
-    // Our own dock shows our own life (issue #255/#296) — a player can read their own
-    // life, not only their opponents'. The library count lives ONCE, on the board's
-    // zone pile (issue #296); the dock no longer repeats it.
+    // Our own identity panel shows our own life (issue #255/#296) — a player can read
+    // their own life, not only their opponents'. The library count lives ONCE, on the
+    // identity panel's card-shaped zone pile (issue #319, ADR 0023: the receiver's
+    // piles park in the bottom shell); the action dock never repeats it.
     expect(screen.getByTestId('hud-life-p1').textContent).toBe('18');
-    // The library count lives ONCE, on the board's card-shaped zone pile (issue #319);
-    // its zone name rides the pile's accessible label, and the dock never repeats it.
-    const libraryPile = screen.getByTestId('library-pile-p1');
-    expect(libraryPile.getAttribute('aria-label')).toBe('p1 (you) library (52)');
+    const libraryPile = within(screen.getByTestId('me-piles')).getByTestId('library-pile-p1');
+    expect(libraryPile.getAttribute('aria-label')).toBe('p1 library (52)');
     expect(within(libraryPile).getByText('52')).toBeDefined();
-    expect(within(screen.getByTestId('local-dock')).queryByText(/Library/)).toBeNull();
+    expect(within(screen.getByTestId('action-bar')).queryByText(/Library/)).toBeNull();
 
     // A fresh frame replaces everything — as a reconnect would.
     const next = JSON.stringify({
@@ -118,15 +118,16 @@ describe('Table reconstructs from one GameView (reconnect/replay)', () => {
     act(() => useGameStore.getState().ingest(next));
 
     // The UI reflects only the new frame: updated life, no stale entity, and input is
-    // gated (no valid_actions): the tray reads "waiting" quietly (issue #298) and no
-    // anchored prompt overlay is staged.
+    // gated (no valid_actions): the dock reads "waiting" quietly (issue #298) and the
+    // fixed prompt strip carries no staged decision — only the muted waiting state.
     expect(screen.getByTestId('hud-life-p2').textContent).toBe('7');
     expect(screen.queryByTestId('entity-perm_xyz')).toBeNull();
     expect(
       within(screen.getByTestId('action-bar')).getByTestId('tray-waiting').textContent,
     ).toContain('Waiting');
-    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
-    expect(screen.queryByTestId('prompt-banner')).toBeNull();
+    expect(screen.queryByTestId('targeting-prompt')).toBeNull();
+    expect(screen.queryByTestId('multiselect-prompt')).toBeNull();
+    expect(screen.getByTestId('prompt-banner').textContent).toContain('Waiting');
   });
 });
 
@@ -292,7 +293,7 @@ describe('Table card inspect (issues #261/#321)', () => {
     // Enter targeting on the bolt.
     fireEvent.click(screen.getByTestId('entity-c3'));
     fireEvent.click(
-      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+      within(screen.getByTestId('selection-echo')).getByRole('button', {
         name: 'Cast Lightning Bolt',
       }),
     );
@@ -358,7 +359,7 @@ describe('Table phase/turn indicator and modes (issue #267, #297)', () => {
     // Entering targeting visibly shifts to focus treatment...
     fireEvent.click(screen.getByTestId('entity-c3'));
     fireEvent.click(
-      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+      within(screen.getByTestId('selection-echo')).getByRole('button', {
         name: 'Cast Lightning Bolt',
       }),
     );
@@ -391,47 +392,47 @@ describe('Table phase/turn indicator and modes (issue #267, #297)', () => {
   });
 });
 
-describe('Table decision staging (issue #298)', () => {
-  it('stages an anchored prompt overlay for a decision and tears it down on cancel', () => {
+describe('Table decision staging (issue #298, reinterpreted by ADR 0023)', () => {
+  it('dedicates the fixed prompt strip to a staged decision and releases it on cancel', () => {
     seed(TARGETING_GAME_VIEW_JSON);
     render(<Table />);
-    // No decision yet → no staged overlay; the tray carries the global actions.
-    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+    // No decision yet → the strip is in its neutral state; no floating overlay
+    // exists in the fixed shell (the strip is a permanent region).
+    expect(screen.queryByTestId('targeting-prompt')).toBeNull();
+    expect(screen.getByTestId('prompt-banner')).toBeDefined();
 
-    // Enter targeting: the anchored overlay stages, carrying the prompt banner.
+    // Enter targeting: the strip states the pending question in words.
     fireEvent.click(screen.getByTestId('entity-c3'));
     fireEvent.click(
-      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+      within(screen.getByTestId('selection-echo')).getByRole('button', {
         name: 'Cast Lightning Bolt',
       }),
     );
-    const overlay = screen.getByTestId('prompt-overlay');
-    // The overlay is anchored (a placement was resolved from reported rects) and holds
-    // the decision banner, not the tray.
-    expect(overlay.getAttribute('data-placement')).toMatch(/above|below/);
-    expect(within(overlay).getByTestId('prompt-banner')).toBeDefined();
-    expect(within(overlay).getByTestId('targeting-prompt')).toBeDefined();
-    // The decision controls (cancel) live in the tray, adjacent to the overlay.
+    const banner = screen.getByTestId('prompt-banner');
+    expect(within(banner).getByTestId('targeting-prompt')).toBeDefined();
+    // The decision controls (cancel) live in the dock — the one action home.
     fireEvent.click(
       within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Cancel targeting' }),
     );
-    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+    expect(screen.queryByTestId('targeting-prompt')).toBeNull();
+    // The strip itself never disappears — it returns to the neutral state.
+    expect(screen.getByTestId('prompt-banner')).toBeDefined();
   });
 
-  it('stages the order/zone prompt surface inside the anchored overlay', () => {
+  it('stages the order/zone prompt surface inside the decision sheet', () => {
     seed(ORDER_GAME_VIEW_JSON);
     render(<Table />);
     fireEvent.click(
       within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Order triggers' }),
     );
-    const overlay = screen.getByTestId('prompt-overlay');
-    // The reorder list rides the same staged overlay as the banner.
-    expect(within(overlay).getByTestId('prompt-surface')).toBeDefined();
+    const sheet = screen.getByTestId('decision-sheet');
+    // The reorder list rides the viewport-clamped decision sheet.
+    expect(within(sheet).getByTestId('prompt-surface')).toBeDefined();
   });
 
-  it('renders the deadline countdown within the staged prompt overlay (issue #263)', () => {
+  it('renders the deadline countdown within the staged prompt strip (issue #263)', () => {
     // A targeting view that also carries a server clock: the countdown rides the
-    // anchored decision surface, not a detached banner row.
+    // decision's prompt strip, not a detached banner row.
     const withDeadline = JSON.stringify({
       ...JSON.parse(TARGETING_GAME_VIEW_JSON),
       action_deadline: 8,
@@ -440,13 +441,11 @@ describe('Table decision staging (issue #298)', () => {
     render(<Table />);
     fireEvent.click(screen.getByTestId('entity-c3'));
     fireEvent.click(
-      within(screen.getByTestId('entity-actions-c3')).getByRole('button', {
+      within(screen.getByTestId('selection-echo')).getByRole('button', {
         name: 'Cast Lightning Bolt',
       }),
     );
-    const countdown = within(screen.getByTestId('prompt-overlay')).getByTestId(
-      'deadline-countdown',
-    );
+    const countdown = within(screen.getByTestId('prompt-banner')).getByTestId('deadline-countdown');
     // Seeded under the 10s low-time threshold → the warning state is shown.
     expect(countdown.textContent).toContain('8s');
     expect(countdown.getAttribute('data-low')).toBe('true');
@@ -456,12 +455,12 @@ describe('Table decision staging (issue #298)', () => {
     // The sample view carries a clock and a bare priority window (no forced decision).
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<Table />);
-    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
+    expect(screen.queryByTestId('targeting-prompt')).toBeNull();
     const countdown = within(screen.getByTestId('action-bar')).getByTestId('deadline-countdown');
     expect(countdown.textContent).toContain('13s');
   });
 
-  it('reconstructs the staged overlay from a replayed mid-prompt view (rehydration)', () => {
+  it('reconstructs the staged decision from a replayed mid-prompt view (rehydration)', () => {
     seed(DECLARE_ATTACKERS_GAME_VIEW_JSON);
     render(<Table />);
     const enter = (): void => {
@@ -472,15 +471,14 @@ describe('Table decision staging (issue #298)', () => {
       );
     };
     enter();
-    expect(screen.getByTestId('prompt-overlay')).toBeDefined();
+    expect(screen.getByTestId('multiselect-prompt')).toBeDefined();
     // Replaying the same view drops the ephemeral session (no state across messages)…
     act(() => useGameStore.getState().ingest(DECLARE_ATTACKERS_GAME_VIEW_JSON));
-    expect(screen.queryByTestId('prompt-overlay')).toBeNull();
-    // …and re-entering stages the identical overlay again.
+    expect(screen.queryByTestId('multiselect-prompt')).toBeNull();
+    // …and re-entering stages the identical decision strip again.
     enter();
-    expect(screen.getByTestId('prompt-overlay')).toBeDefined();
     expect(
-      within(screen.getByTestId('prompt-overlay')).getByTestId('multiselect-prompt').textContent,
+      within(screen.getByTestId('prompt-banner')).getByTestId('multiselect-prompt').textContent,
     ).toContain('Choose attackers');
   });
 });
@@ -561,10 +559,11 @@ describe('Table keyboard parity (issue #266)', () => {
   it('drives a targeting pick entirely by keyboard', () => {
     const choose = seed(TARGETING_GAME_VIEW_JSON);
     render(<Table />);
-    // Open targeting via the entity + its cast action (focus + Enter, no pointer).
+    // Open targeting via the entity + its dock-routed cast action (focus + Enter,
+    // no pointer — the selection routes its actions to the one action home).
     screen.getByTestId('entity-c3').focus();
     fireEvent.keyDown(window, { key: 'Enter' });
-    within(screen.getByTestId('entity-actions-c3'))
+    within(screen.getByTestId('selection-echo'))
       .getByRole('button', { name: 'Cast Lightning Bolt' })
       .focus();
     fireEvent.keyDown(window, { key: 'Enter' });
@@ -627,9 +626,14 @@ describe('Table spatial focus model (issue #301)', () => {
     // Reach the spell card's on-entity hotspot by arrow navigation, then select it.
     arrowUntil('ArrowRight', byTestId('entity-c3'));
     fireEvent.keyDown(window, { key: 'Enter' });
-    // Its cast action now renders on the entity; reach the chip by arrows and confirm.
-    expect(screen.getByTestId('entity-actions-c3')).toBeDefined();
-    arrowUntil('ArrowRight', byName('Cast Lightning Bolt'));
+    // Its cast action now routes to the dock; cross into the dock region with
+    // Right, then walk the (column) dock's items with Down to reach the button.
+    expect(screen.getByTestId('selection-echo')).toBeDefined();
+    arrowUntil(
+      'ArrowRight',
+      (el) => el !== null && el.closest('[data-focus-region="dock"]') !== null,
+    );
+    arrowUntil('ArrowDown', byName('Cast Lightning Bolt'));
     fireEvent.keyDown(window, { key: 'Enter' });
     // Choosing a targeted action opens targeting — nothing is submitted yet.
     expect(choose).not.toHaveBeenCalled();
@@ -676,8 +680,13 @@ describe('Table spatial focus model (issue #301)', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<Table />);
     // Cross into the rail from the board with Right, then walk its items with Down.
-    arrowUntil('ArrowRight', byTestId('rail-collapse'));
-    arrowUntil('ArrowDown', byTestId('inspect-s1'));
+    arrowUntil(
+      'ArrowRight',
+      (el) => el?.closest('[data-focus-region="rail"]') !== null && el !== null,
+    );
+    if (document.activeElement?.getAttribute('data-testid') !== 'inspect-s1') {
+      arrowUntil('ArrowDown', byTestId('inspect-s1'));
+    }
     expect(document.activeElement?.getAttribute('data-testid')).toBe('inspect-s1');
   });
 });
@@ -719,25 +728,26 @@ describe('Table multiplayer table (3–4 players, issue #348)', () => {
   it('makes every opponent area — board, piles, and HUD tile — keyboard-reachable', () => {
     seed(FOUR_PLAYER_GAME_VIEW_JSON);
     render(<Table />);
-    // Each opponent's HUD tile is a focus item in the opponent-HUD region, so
-    // keyboard/controller focus can land on the tile itself — not just the board.
+    // Each opponent's HUD tile is a focus item in their carved panel (the canvas
+    // region), so keyboard/controller focus can land on the tile itself — not just
+    // the board.
     for (const id of ['p2', 'p3', 'p4']) {
       const tile = screen.getByTestId(`tile-${id}`);
       expect(isFocusReachable(tile)).toBe(true);
-      expect(focusRegionOf(tile)).toBe('opponentHud');
+      expect(focusRegionOf(tile)).toBe('canvas');
       expect(tile.getAttribute('tabindex')).toBe('0');
     }
-    // Each opponent's board permanents are reachable inspect surfaces in the battlefield.
+    // Each opponent's board permanents are reachable inspect surfaces on the canvas.
     for (const id of ['p2_blk', 'p4_crt']) {
       const surface = screen.getByTestId(`inspect-surface-${id}`);
       expect(isFocusReachable(surface)).toBe(true);
-      expect(focusRegionOf(surface)).toBe('battlefield');
+      expect(focusRegionOf(surface)).toBe('canvas');
     }
-    // Each opponent's graveyard pile is a reachable button in the battlefield.
+    // Each opponent's graveyard pile is a reachable button in their panel chrome.
     for (const id of ['p2', 'p3', 'p4']) {
       const pile = screen.getByTestId(`table-graveyard-${id}`);
       expect(isFocusReachable(pile)).toBe(true);
-      expect(focusRegionOf(pile)).toBe('battlefield');
+      expect(focusRegionOf(pile)).toBe('canvas');
     }
   });
 
@@ -843,11 +853,12 @@ describe('Table targeting mode (ADR 0009 §Client)', () => {
     render(<Table />);
   });
 
-  /** Enter targeting: select the spell card, then confirm its cast action. */
+  /** Enter targeting: select the spell card, then confirm its cast action from the
+   * dock — the one action home the selection routes to (ADR 0023). */
   function enterTargeting(): void {
     fireEvent.click(screen.getByTestId('entity-c3'));
-    const onEntity = screen.getByTestId('entity-actions-c3');
-    fireEvent.click(within(onEntity).getByRole('button', { name: 'Cast Lightning Bolt' }));
+    const echo = screen.getByTestId('selection-echo');
+    fireEvent.click(within(echo).getByRole('button', { name: 'Cast Lightning Bolt' }));
   }
 
   it('does not submit when a targeted action is chosen — it opens targeting mode', () => {
@@ -1224,13 +1235,14 @@ describe('Table option: modal picker in the banner (issue #157)', () => {
     );
   }
 
-  it('renders the named choices as buttons in the prompt banner', () => {
+  it('renders the named choices as buttons in the decision sheet', () => {
     enter();
     expect(choose).not.toHaveBeenCalled();
-    const banner = screen.getByTestId('prompt-banner');
-    // The modal option picker lives in the banner (issue #157), not the action bar.
-    expect(within(banner).getByTestId('multiselect-option-draw')).toBeDefined();
-    expect(within(banner).getByTestId('multiselect-option-gain')).toBeDefined();
+    const sheet = screen.getByTestId('decision-sheet');
+    // The modal option picker lives in the decision sheet (issue #157, restaged by
+    // ADR 0023), not the action bar.
+    expect(within(sheet).getByTestId('multiselect-option-draw')).toBeDefined();
+    expect(within(sheet).getByTestId('multiselect-option-gain')).toBeDefined();
     expect(screen.getByTestId('multiselect-options').textContent).toContain('Choose a mode');
     // A pure option decision shows no selection count.
     expect(screen.queryByTestId('multiselect-count')).toBeNull();
