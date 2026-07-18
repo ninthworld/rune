@@ -228,6 +228,25 @@ reconciler redraws them each frame from the cards' current centers — and rende
 statically at the final positions under reduced motion. The which-to-draw and geometry
 policy is a pure module (`combatLinks.ts`); the reconciler only strokes what it returns.
 
+**Multiplayer combat — declaration and target rendering, delivered (issue #347).**
+With more than one opponent, an attacker chooses *whom* it attacks (CR 508.1a). The
+declaration flow stays server-driven: the `declare_attackers` action carries the
+`attackers` subset slot plus one `defend_<permId>` slot per attacker candidate
+(server `attacker_requirements`, offered only with several opponents), so the client
+computes no legality. The client walks the attacker pick, then — for **each declared
+attacker only** — a single defending-player pick made from that opponent's HUD tile
+(the same tile affordance as player targeting), and submits one atomic answer. The
+common two-player case is the fast path unchanged: a sole opponent means the server
+offers no `defend_*` slot, so no extra step appears (`multiSelect.ts` gates a
+`defender` slot on its attacker being declared; keyboard, pointer, and touch each
+complete the flow). Target **rendering** is reconstructed from the view alone
+(`Permanent.attacking_player`): each attacker's face carries whom it attacks
+(`CardDisplayData.attackingPlayer`), the scene exposes the attacker→defender
+assignments (`TableScene.attackTargets`), and each attacked player's HUD tile shows an
+`Attacked ×N` treatment in the targeting accent — so the attack points *toward the
+attacked player's tile* and any player, including a bystander not under attack, reads
+who-attacks-whom on a fresh mount. Composes with the #339 blocker→attacker links.
+
 ## Battlefield bands
 
 Per player, ordered toward the center line: creatures/planeswalkers/battles

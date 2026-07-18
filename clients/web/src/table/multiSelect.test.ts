@@ -292,3 +292,110 @@ describe('order: arrange N items into a permutation (issue #157)', () => {
     expect(allSlotsSatisfied(s)).toBe(true);
   });
 });
+
+describe('multi-select per-attacker defender flow (multiplayer, issue #347)', () => {
+  /** Declare-attackers in a 3-player game: the `attackers` subset slot plus one
+   * `defend_<permId>` slot per attacker candidate, each listing the defending
+   * players that attacker may be assigned to (server `attacker_requirements`). */
+  const splitAttackers: ValidAction = {
+    id: 'a7',
+    type: 'declare_attackers',
+    label: 'Declare attackers',
+    token: 'h:atk1',
+    requirements: [
+      { slot: 'attackers', prompt: 'Choose attackers', candidates: ['perm_1', 'perm_2'] },
+      { slot: 'defend_1', prompt: 'Choose whom Rhino attacks', candidates: ['p2', 'p3'] },
+      { slot: 'defend_2', prompt: 'Choose whom Falcon attacks', candidates: ['p2', 'p3'] },
+    ],
+  };
+
+  it('classifies the defender slots and links each to its attacker', () => {
+    const s = beginMultiSelect(splitAttackers);
+    expect(s.slots.map((slot) => slot.kind)).toEqual(['subset', 'defender', 'defender']);
+    expect(s.slots[1]?.attacker).toBe('perm_1');
+    expect(s.slots[2]?.attacker).toBe('perm_2');
+  });
+
+  it('walks only the declared attackers’ defender slots', () => {
+    // Declare only the first attacker; advancing skips the second's defender slot.
+    let s = beginMultiSelect(splitAttackers);
+    s = toggle(s, 'perm_1');
+    expect(isLastSlot(s)).toBe(false); // defend_1 is still to walk
+    s = advance(s);
+    expect(activeSlot(s)?.slot).toBe('defend_1');
+    expect(isLastSlot(s)).toBe(true); // defend_2 is skipped (perm_2 not attacking)
+  });
+
+  it('assigns two attackers to different defenders and submits atomically', () => {
+    let s = beginMultiSelect(splitAttackers);
+    // Declare both attackers.
+    s = toggle(s, 'perm_1');
+    s = toggle(s, 'perm_2');
+    // Not submittable yet: each declared attacker owes a defender.
+    expect(allSlotsSatisfied(s)).toBe(false);
+    // Assign the rhino to p2…
+    s = advance(s);
+    expect(activeSlot(s)?.slot).toBe('defend_1');
+    s = toggle(s, 'p2');
+    expect(allSlotsSatisfied(s)).toBe(false);
+    // …and the falcon to p3.
+    s = advance(s);
+    expect(activeSlot(s)?.slot).toBe('defend_2');
+    s = toggle(s, 'p3');
+    expect(allSlotsSatisfied(s)).toBe(true);
+    expect(isLastSlot(s)).toBe(true);
+    // One atomic answer: the attacker subset plus each attacker's defender.
+    expect(assembleChoices(s)).toEqual([
+      { slot: 'attackers', chosen: ['perm_1', 'perm_2'] },
+      { slot: 'defend_1', chosen: ['p2'] },
+      { slot: 'defend_2', chosen: ['p3'] },
+    ]);
+  });
+
+  it('treats a defender pick as single-select (replaces, never accumulates)', () => {
+    let s = beginMultiSelect(splitAttackers);
+    s = toggle(s, 'perm_1');
+    s = advance(s);
+    s = toggle(s, 'p2');
+    s = toggle(s, 'p3'); // change of mind
+    expect(activeChosen(s)).toEqual(['p3']);
+  });
+
+  it('omits an undeclared attacker’s defender slot from the answer', () => {
+    let s = beginMultiSelect(splitAttackers);
+    s = toggle(s, 'perm_1');
+    s = advance(s);
+    s = toggle(s, 'p2');
+    // Only perm_1 was declared, so only its defender slot is submitted.
+    expect(assembleChoices(s)).toEqual([
+      { slot: 'attackers', chosen: ['perm_1'] },
+      { slot: 'defend_1', chosen: ['p2'] },
+    ]);
+    expect(activeCandidates(s)).toEqual(['p2', 'p3']);
+  });
+
+  it('lets the player declare no attackers with no defender step (empty is legal)', () => {
+    const s = beginMultiSelect(splitAttackers);
+    // Nothing toggled: no defender slot is in play, so it is immediately confirmable.
+    expect(allSlotsSatisfied(s)).toBe(true);
+    expect(isLastSlot(s)).toBe(true);
+    expect(assembleChoices(s)).toEqual([{ slot: 'attackers', chosen: [] }]);
+  });
+
+  it('is unchanged for a two-player declare (no defender slots)', () => {
+    // A two-player declare-attackers carries only the `attackers` slot — the fast path
+    // gains no extra step (server omits defend_* with a sole opponent).
+    const twoPlayer: ValidAction = {
+      id: 'a8',
+      type: 'declare_attackers',
+      label: 'Declare attackers',
+      token: 'h:atk2',
+      requirements: [{ slot: 'attackers', prompt: 'Choose attackers', candidates: ['perm_1'] }],
+    };
+    let s = beginMultiSelect(twoPlayer);
+    expect(s.slots.map((slot) => slot.kind)).toEqual(['subset']);
+    s = toggle(s, 'perm_1');
+    expect(isLastSlot(s)).toBe(true);
+    expect(assembleChoices(s)).toEqual([{ slot: 'attackers', chosen: ['perm_1'] }]);
+  });
+});

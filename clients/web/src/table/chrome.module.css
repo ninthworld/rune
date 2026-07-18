@@ -763,6 +763,15 @@
 .hudStatuses {
   overflow-wrap: anywhere;
 }
+/* "Attacked ×N" (issue #347): the attacker treatment pointed at the defending
+   player's tile. Uses the targeting accent so it reads as combat aimed here, a
+   different channel from life/statuses. */
+.hudAttacked {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  color: var(--rune-accent-targeting, #e0784a);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Card inspect popover ──────────────────────────────────────────────────── */
 .inspectBackdrop {

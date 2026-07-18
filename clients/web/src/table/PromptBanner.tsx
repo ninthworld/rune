@@ -52,9 +52,11 @@ export interface MultiSelectBanner {
   /**
    * The active walked slot's kind, so the banner shows a running count only for a
    * selection (`subset`/`count`) and not for an `order` slot (where every item is
-   * always included). Absent when there is no walked slot (a pure option decision).
+   * always included) or a `defender` slot (a single per-attacker target pick, whose
+   * prompt already names the attacker — issue #347). Absent when there is no walked
+   * slot (a pure option decision).
    */
-  slotKind?: 'subset' | 'count' | 'order';
+  slotKind?: 'subset' | 'count' | 'order' | 'defender';
   /**
    * A modal option picker (issue #157): the named choices rendered as buttons in
    * the banner itself, so a keep/mulligan-style decision reads as a modal choice
