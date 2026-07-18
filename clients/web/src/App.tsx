@@ -27,10 +27,12 @@ import { ConnectionScreen } from './ConnectionScreen';
 import { LobbyScreen } from './LobbyScreen';
 import { useGameStore } from './store';
 import { Table } from './table/Table';
+import { SpectatorTable } from './table/SpectatorTable';
 
 export function App() {
   const status = useGameStore((state) => state.status);
   const view = useGameStore((state) => state.view);
+  const spectatorView = useGameStore((state) => state.spectatorView);
   const lobby = useGameStore((state) => state.lobby);
 
   // On mount — including a hard page reload — try to reclaim a held seat from a
@@ -45,6 +47,11 @@ export function App() {
   // contract for the life of the game).
   if (view !== null) {
     return <Table />;
+  }
+  // A SpectatorView means this connection is watching a live game (ADR 0022, issue
+  // #351): mount the read-only spectate mode.
+  if (spectatorView !== null) {
+    return <SpectatorTable view={spectatorView} />;
   }
   // Socket open (or a lobby frame already in hand): drive the pre-game lobby. The
   // lobby screen covers the pre-first-frame wait with its own fallback.

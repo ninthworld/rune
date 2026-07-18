@@ -24,8 +24,8 @@ use crate::rules_text::{effects_description, rules_text};
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameLogEntry, GameLogEvent, GameOverReason,
     GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
-    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, StackItem, TargetChoice,
-    TargetRequirement, ValidAction, ZonePile,
+    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -1011,6 +1011,84 @@ pub(crate) fn personalized_view(
         // Player display names are a lobby/session concern, not engine state; the room
         // fills this in after projection (issue #294). Empty here so this pure shim
         // stays name-agnostic and the field elides from the wire by default.
+        player_names: std::collections::BTreeMap::new(),
+    }
+}
+
+/// Project the game state onto a **spectator** view (ADR 0022, issue #351): the
+/// public intersection only, for a non-seated observer. Unlike [`personalized_view`]
+/// there is **no viewer** — nothing indexes a seat's hand, mana pool, or actions, so
+/// the projection *cannot* reach any hidden information. Redaction is structural: the
+/// [`SpectatorView`] type simply has no field that could hold a hand, a library's
+/// contents, or a decision surface, so the worst a projection bug could do is *omit* a
+/// public fact, never *leak* a private one.
+///
+/// Every seat is projected as the same public [`OpponentView`] shape seated views use
+/// for a non-receiver seat (life, hand/library/graveyard *sizes*, eliminated flag);
+/// the battlefield, stack, public zone piles, phase, turn, active/priority player, seat
+/// order, terminal result, and public log are the same public projections
+/// [`personalized_view`] shares. Player display names, like there, are filled by the
+/// room after projection (they are a lobby/session concern, not engine state).
+pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorView {
+    // Every seat as a public OpponentView — there is no privileged "self".
+    let players = state
+        .players
+        .iter()
+        .enumerate()
+        .map(|(seat, player)| OpponentView {
+            player_id: player_id(PlayerId(seat)),
+            hand_size: count(player.hand.len()),
+            life: player.life,
+            library_size: count(player.library.len()),
+            graveyard_size: count(player.graveyard.len()),
+            statuses: Vec::new(),
+            eliminated: player.has_lost,
+        })
+        .collect();
+
+    let battlefield = state
+        .battlefield
+        .iter()
+        .map(|perm| PermanentView {
+            id: permanent_entity_id(perm.id),
+            controller: player_id(perm.controller),
+            owner: player_id(perm.controller),
+            card: permanent_card_view(state, perm, db),
+            tapped: perm.tapped,
+            attacking: perm.attacking.is_some(),
+            attacking_player: perm.attacking.map(player_id),
+            blocking: perm.blocking.map(permanent_entity_id),
+            damage: perm.damage,
+            attached_to: perm.attached_to.map(permanent_entity_id),
+            counters: permanent_counters(perm),
+        })
+        .collect();
+
+    let stack = state
+        .stack
+        .iter()
+        .map(|o| stack_item(state, o, db))
+        .collect();
+    let holds_priority = state.priority_holder().is_some();
+
+    SpectatorView {
+        players,
+        battlefield,
+        stack,
+        graveyards: zone_piles(state, |p| &p.graveyard, db),
+        exile: zone_piles(state, |p| &p.exile, db),
+        phase: phase_of(state.step),
+        turn: state.turn,
+        active_player: player_id(state.active_player),
+        seat_order: (0..state.players.len())
+            .map(|seat| player_id(PlayerId(seat)))
+            .collect(),
+        // Whose turn it is to act — public, decision-free. A spectator sees *that* a
+        // seat holds priority, never the actions offered to it.
+        priority_player: holds_priority.then(|| player_id(state.priority)),
+        result: state.result().map(result_view),
+        log: log_entries(state, db),
+        // Names are a lobby/session concern; the room fills them after projection.
         player_names: std::collections::BTreeMap::new(),
     }
 }
@@ -3039,6 +3117,83 @@ mod tests {
             .unwrap();
         assert!(opp1.eliminated, "seat 1 left the game");
         assert!(!opp2.eliminated, "seat 2 is still in");
+    }
+
+    #[test]
+    fn issue_351_spectator_view_is_the_public_intersection_with_no_hidden_fields() {
+        // A 3-seat game with cards in every hand, a battlefield permanent, and one
+        // eliminated seat. The spectator projection must show every seat as public
+        // counts, expose no hand contents or decision surface, and — structurally —
+        // carry no receiver fields at all (ADR 0022, issue #351).
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_multiplayer(3);
+        state.step = Step::PrecombatMain;
+        state.priority = PlayerId(0);
+        // Distinctive hands per seat, so a leak of any seat's hand would be visible.
+        let hand0 = vec![
+            state.new_instance(fixture("forest")),
+            state.new_instance(fixture("thornback_boar")),
+        ];
+        let hand1 = vec![state.new_instance(fixture("riverbank_otter"))];
+        state.players[0].hand = hand0.clone();
+        state.players[1].hand = hand1.clone();
+        state.players[2].has_lost = true;
+        let perm = put_permanent(
+            &mut state,
+            fixture("verdant_scout"),
+            PlayerId(0),
+            false,
+            false,
+        );
+
+        let view = spectator_view(&state, &db);
+
+        // Every seat appears as a public OpponentView — there is no privileged self.
+        assert_eq!(view.players.len(), 3);
+        let seat = |id: &str| view.players.iter().find(|p| p.player_id == id).unwrap();
+        assert_eq!(seat("p0").hand_size, 2, "hand SIZE is public…");
+        assert_eq!(seat("p1").hand_size, 1);
+        assert!(seat("p2").eliminated, "the eliminated seat is flagged");
+        // The public counts equal what any seated player already sees about a seat
+        // (the intersection of all seated players' public information).
+        let seated = personalized_view(&state, &db, PlayerId(1));
+        let opp0 = seated
+            .opponents
+            .iter()
+            .find(|o| o.player_id == "p0")
+            .unwrap();
+        assert_eq!(seat("p0").hand_size, opp0.hand_size);
+        assert_eq!(seat("p0").library_size, opp0.library_size);
+        // The public battlefield permanent is present (public board is shared).
+        assert!(view
+            .battlefield
+            .iter()
+            .any(|p| p.id == permanent_entity_id(perm)));
+
+        // …but no hand CONTENTS leak: no seat's hand card entity id appears anywhere.
+        let json = serde_json::to_value(&view).unwrap();
+        let text = json.to_string();
+        for inst in hand0.iter().chain(hand1.iter()) {
+            assert!(
+                !text.contains(&card_entity_id(inst.id)),
+                "a hidden hand card id leaked to a spectator"
+            );
+        }
+        // Structural redaction: the receiver/decision fields do not exist on the type.
+        for hidden in [
+            "you",
+            "me",
+            "my_hand",
+            "mana_pool",
+            "valid_actions",
+            "action_deadline",
+            "stops",
+        ] {
+            assert!(
+                json.get(hidden).is_none(),
+                "a spectator view must never carry `{hidden}`"
+            );
+        }
     }
 
     #[test]

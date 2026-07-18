@@ -661,6 +661,22 @@
   display: flex;
   width: 100%;
 }
+/* Spectate mode badge (issue #351): where the receiver's dock/hand would be, a
+   spectator sees only this quiet marker — read-only, no interaction. */
+.spectatorBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+  background: var(--rune-surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--rune-border, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+}
 .tileButtonReset {
   font: inherit;
   color: inherit;

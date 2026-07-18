@@ -400,6 +400,25 @@ preview (the transient `CardInspect`) in a fixed home, honoring `prefers-reduced
 right-click / select+I / activating a surface pins the full panel. Hover and
 long-press are suppressed mid-pick (targeting); pinning stays reachable.
 
+## Spectate mode
+
+A spectator (ADR 0022, issue #351) is a non-seated observer watching a live game.
+Its view is a `SpectatorView` — the public intersection only, redacted **by
+construction** (the type has no hand, mana pool, or `valid_actions` field), so the
+spectate shell cannot render hidden information even by mistake. It **reuses the
+board, stack, log, HUD, phase indicator, and inspect renderers** and differs only in
+the shell: there is no hand row, no action tray, no local dock, and no interactive
+affordance. Every seat renders as a player HUD tile and a battlefield band — there is
+no privileged "self" (the scene builds with no receiver, so every band is an opponent
+band). Read-only inspection stays: cards peek/pin-inspect and public graveyard/exile
+piles open the zone browser, but nothing is selectable, targetable, or submittable.
+Where the receiver's dock would sit, a quiet "Spectating" badge marks the mode. The
+whole UI reconstructs from one `SpectatorView`, so a spectator that joins mid-game (or
+reconnects) renders the complete public board from its first frame. The terminal
+verdict shows with no personal win/lose framing. Delivered by `SpectatorTable`
+(`clients/web/src/table/SpectatorTable.tsx`); the lobby directory offers a **Spectate**
+button on any in-progress room and advertises the spectator count.
+
 ## Concept-board decisions
 
 The 2026 concept boards (pre-game screens, menus, table, multiplayer

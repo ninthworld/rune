@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeGameView,
   normalizeLobbyView,
+  normalizeSpectatorView,
   parseGameView,
   parseServerFrame,
   ProtocolError,
@@ -422,15 +423,33 @@ describe('lobby wire (issue #114)', () => {
     const view = normalizeLobbyView(JSON.parse(LOBBY_DIRECTORY_JSON));
     expect(view.room).toBeUndefined();
     expect(view.directory).toEqual([
-      { room_id: 'r0', config: { seats: 2, game_setup: '1v1' }, filled: 1, state: 'gathering' },
-      { room_id: 'r1', config: { seats: 4, game_setup: 'ffa-4' }, filled: 4, state: 'in_progress' },
+      {
+        room_id: 'r0',
+        config: { seats: 2, game_setup: '1v1' },
+        filled: 1,
+        spectators: 0,
+        state: 'gathering',
+      },
+      {
+        room_id: 'r1',
+        config: { seats: 4, game_setup: 'ffa-4' },
+        filled: 4,
+        spectators: 0,
+        state: 'in_progress',
+      },
     ]);
 
     // A sparse entry with an unknown state falls back to gathering, and missing
     // numeric/id fields default rather than throwing.
     const sparse = normalizeLobbyView({ directory: [{ state: 'exploding' }] });
     expect(sparse.directory).toEqual([
-      { room_id: '', config: { seats: 0, game_setup: '' }, filled: 0, state: 'gathering' },
+      {
+        room_id: '',
+        config: { seats: 0, game_setup: '' },
+        filled: 0,
+        spectators: 0,
+        state: 'gathering',
+      },
     ]);
   });
 
@@ -452,6 +471,108 @@ describe('lobby wire (issue #114)', () => {
 
   it('rejects malformed JSON when routing a frame', () => {
     expect(() => parseServerFrame('not json')).toThrow(ProtocolError);
+  });
+});
+
+describe('spectator wire (issue #351)', () => {
+  /** A live spectator frame over a 3-seat game with one eliminated seat. It carries a
+   * `phase` (like a game view) but NO `you` (unlike one) — the structural discriminator. */
+  const SPECTATOR_JSON = JSON.stringify({
+    players: [
+      { player_id: 'p0', hand_size: 4, life: 18, library_size: 33, graveyard_size: 2 },
+      {
+        player_id: 'p1',
+        hand_size: 0,
+        life: 0,
+        library_size: 0,
+        graveyard_size: 7,
+        eliminated: true,
+      },
+      { player_id: 'p2', hand_size: 6, life: 20, library_size: 34, graveyard_size: 1 },
+    ],
+    battlefield: [
+      {
+        id: 'perm_1',
+        controller: 'p0',
+        owner: 'p0',
+        card: {
+          id: 'perm_1',
+          name: 'Grizzly Bears',
+          type_line: 'Creature — Bear',
+          power: '2',
+          toughness: '2',
+        },
+      },
+    ],
+    phase: 'precombat_main',
+    turn: 9,
+    active_player: 'p0',
+    seat_order: ['p0', 'p1', 'p2'],
+    priority_player: 'p0',
+  });
+
+  it('normalizes a spectator view with every seat as public state', () => {
+    const view = normalizeSpectatorView(JSON.parse(SPECTATOR_JSON));
+    expect(view.players).toHaveLength(3);
+    expect(view.players[1]?.eliminated).toBe(true);
+    expect(view.battlefield[0]?.id).toBe('perm_1');
+    expect(view.phase).toBe('precombat_main');
+    expect(view.seat_order).toEqual(['p0', 'p1', 'p2']);
+    // Structurally there is no receiver/decision state to read.
+    expect('you' in view).toBe(false);
+    expect('my_hand' in view).toBe(false);
+    expect('valid_actions' in view).toBe(false);
+  });
+
+  it('routes a phase-bearing frame with no `you` to a spectator view', () => {
+    const frame = parseServerFrame(SPECTATOR_JSON);
+    expect(frame.kind).toBe('spectator');
+    if (frame.kind === 'spectator') expect(frame.view.players).toHaveLength(3);
+  });
+
+  it('still routes a phase-bearing frame WITH `you` to a seated game view', () => {
+    // The discriminator must not misroute a seated view (which always carries `you`).
+    const frame = parseServerFrame(SAMPLE_GAME_VIEW_JSON);
+    expect(frame.kind).toBe('game');
+  });
+
+  it('throws on a spectator payload missing its phase', () => {
+    expect(() => normalizeSpectatorView({ players: [] })).toThrow(ProtocolError);
+  });
+
+  it('defaults a missing spectator count on a room summary to 0', () => {
+    const view = normalizeLobbyView({
+      session: 's:1',
+      you: 'p0',
+      directory: [
+        {
+          room_id: 'r1',
+          config: { seats: 4, game_setup: 'standard_ffa' },
+          filled: 4,
+          state: 'in_progress',
+        },
+      ],
+      valid_commands: [],
+    });
+    expect(view.directory[0]?.spectators).toBe(0);
+  });
+
+  it('carries a spectator count when the server advertises one', () => {
+    const view = normalizeLobbyView({
+      session: 's:1',
+      you: 'p0',
+      directory: [
+        {
+          room_id: 'r1',
+          config: { seats: 4, game_setup: 'standard_ffa' },
+          filled: 4,
+          spectators: 3,
+          state: 'in_progress',
+        },
+      ],
+      valid_commands: [],
+    });
+    expect(view.directory[0]?.spectators).toBe(3);
   });
 });
 
