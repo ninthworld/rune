@@ -1,13 +1,15 @@
 # UI redesign plan — closing the gap to the concept boards
 
-> **Status: phases A–E delivered** by the UI catch-up batch (July 2026, single PR).
-> The decisions each phase introduced are folded into
-> [`ui-design-notes.md`](ui-design-notes.md) (§Tabletop shell, §Visual hierarchy,
-> §Identity, §Battlefield bands, §Zone piles, §Concept-board decisions). What
-> remains open from this plan: **F2** — screenshot checks in the real-browser
-> canary (#279) at a small and a large viewport, so "spends the screen" and
-> "never clipped" stay verified. The audit and phase text below are kept as the
-> record of what was found and why each change was made.
+> **Status: phases A–E delivered** by the UI catch-up batch (July 2026, single PR),
+> with the decisions folded into [`ui-design-notes.md`](ui-design-notes.md).
+> **Superseded in direction:** the design investigation that followed produced
+> [`ui-blueprint.md`](ui-blueprint.md) and
+> [ADR 0023](../decisions/0023-fixed-shell-anatomy.md) — a fixed-shell anatomy
+> that replaces the floating-chrome model this plan polished. The next
+> implementation effort builds against the blueprint, not against this plan.
+> Still open from here: **F2** — screenshot checks in the real-browser canary
+> (#279). The audit and phase text below are kept as the record of what was
+> found and why each change was made.
 
 A delivery plan, not a new design. The design source of truth stays
 [`ui-design-notes.md`](ui-design-notes.md); its §Concept-board decisions section already

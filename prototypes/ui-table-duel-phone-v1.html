@@ -1,0 +1,310 @@
+<!doctype html>
+<!--
+  RUNE — 2-player duel @ phone portrait (390×844) — design mock v1.
+
+  The "change of kind" geometry: the smallest supported surface. The duel still
+  shows BOTH battlefields in full (no summary tiles needed at 2p); what changes:
+  - the status bar compresses to a pill + phase dots (full strip behind a tap);
+  - the stack/log rail collapses to status-bar chips that open sheets;
+  - the hand becomes an overlapping fan — a selected card lifts to full size;
+  - all actions live in a FIXED action bar between board and hand (nothing ever
+    pops under a card at the screen edge — the popup-clipping class of bug is
+    designed out);
+  - everything interactive lives in the bottom ~half (thumb reach); the top half
+    is display. Tap-select-confirm is the primary input; drag works identically
+    to the tablet mock (ghost + lit zone) as an enhancement.
+  Shared vocabulary with the laptop/tablet mocks: one 25° tap treatment, ×N
+  stacks, attachment splay clusters, per-player accents, gold=actionable.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>RUNE — duel mock (phone portrait)</title>
+<style>
+  :root {
+    --bg: #0f1114; --panel: rgba(255,255,255,0.022); --line: #262b33; --line-strong: #39404b;
+    --text: #e8e6e1; --muted: #8f959e; --faint: #5c626b;
+    --gold: #f2c94c; --target: #e0784a; --select: #7fb2e5;
+    --display: 'Avenir Next', 'Century Gothic', Futura, system-ui, sans-serif;
+    --body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --you: #3e9c9c; --opp: #c2698f;
+    --W: #cfc7ac; --U: #4e86c1; --B: #77688c; --R: #c05b4d; --G: #57935f;
+    --M: #c9a84c; --C: #8c949c; --L: #a08a6e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    width: 390px; height: 844px; overflow: hidden;
+    background:
+      radial-gradient(130% 70% at 50% 34%, rgba(255,255,255,0.03) 0%, transparent 55%),
+      radial-gradient(150% 110% at 50% 50%, var(--bg) 55%, #0a0c0e 100%);
+    background-color: var(--bg);
+    color: var(--text); font-family: var(--body); font-size: 12px;
+    display: flex; flex-direction: column; gap: 6px; padding: 6px;
+  }
+  .panel { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .panel::before, .panel::after { content: ''; position: absolute; width: 9px; height: 9px; pointer-events: none; }
+  .panel::before { top: -1px; left: -1px; border-top: 1px solid var(--acc, var(--line-strong)); border-left: 1px solid var(--acc, var(--line-strong)); border-top-left-radius: 6px; }
+  .panel::after { bottom: -1px; right: -1px; border-bottom: 1px solid var(--acc, var(--line-strong)); border-right: 1px solid var(--acc, var(--line-strong)); border-bottom-right-radius: 6px; }
+
+  /* ── status bar ────────────────────────────────────────────────────── */
+  .topbar { display: flex; align-items: center; gap: 6px; padding: 4px 6px; flex: none; }
+  .turnpill {
+    font: 600 10.5px var(--display); letter-spacing: 0.03em; white-space: nowrap;
+    border: 1px solid var(--you); color: var(--text); border-radius: 999px; padding: 3px 8px;
+    background: rgba(62,156,156,0.10);
+  }
+  .turnpill b { color: var(--you); }
+  .dots { display: flex; gap: 4px; align-items: center; }
+  .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
+  .dots i.done { background: #6d737c; }
+  .dots i.now { width: 7px; height: 7px; background: var(--you); }
+  .chip-btn {
+    font: 600 10px var(--body); color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; white-space: nowrap;
+  }
+  .chip-btn .n { color: var(--text); font-weight: 700; }
+  .top-right { margin-left: auto; display: flex; gap: 6px; }
+
+  /* ── player panels ─────────────────────────────────────────────────── */
+  .pp { display: flex; flex-direction: column; min-height: 0; }
+  .pp-head {
+    display: flex; align-items: center; gap: 7px; padding: 5px 9px 4px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 10%, transparent), transparent);
+  }
+  .pp-name { font-family: var(--display); font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--acc); font-weight: 600; }
+  .pp-meta { display: flex; gap: 7px; margin-left: auto; align-items: center; color: var(--muted); font-size: 10px; }
+  .mb { display: inline-block; width: 8px; height: 11px; border-radius: 2px; background: linear-gradient(135deg,#3a3350,#211c30); border: 1px solid #453d5c; vertical-align: -2px; margin-right: 2px; }
+  .pp-body { flex: 1; display: flex; min-height: 0; }
+  .rows { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 7px 6px; min-width: 0; }
+  .rowline { display: flex; flex-wrap: wrap; gap: 5px; align-items: flex-end; justify-content: center; min-height: 0; }
+
+  .crest { position: relative; display: grid; place-items: center; width: 30px; height: 34px; flex: none; }
+  .crest::before, .crest::after { content: ''; position: absolute; clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%); }
+  .crest::before { inset: 0; background: var(--acc); }
+  .crest::after { inset: 2px; background: #171a1f; }
+  .crest b { position: relative; z-index: 1; font: 700 13px var(--display); }
+
+  /* ── cards (shared vocabulary with the larger mocks) ───────────────── */
+  .card { position: relative; border-radius: 4px; background: #1d2026; border: 1px solid color-mix(in srgb, var(--ci) 75%, #000 10%); display: flex; flex-direction: column; flex: none; }
+  .card .head { display: flex; align-items: center; gap: 3px; padding: 2px 4px; background: color-mix(in srgb, var(--ci) 16%, transparent); border-radius: 3px 3px 0 0; min-height: 13px; }
+  .card .nm { font-weight: 600; font-size: 8.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .cost { margin-left: auto; display: flex; gap: 1px; flex: none; }
+  .pip { width: 10px; height: 10px; border-radius: 50%; font: 700 7px var(--body); display: grid; place-items: center; color: #1b1b1f; background: #cacbcf; }
+  .pip.W{background:#f1ebd4}.pip.U{background:#afcbe9}.pip.B{background:#a79db5;color:#241d2e}.pip.R{background:#e5a192}.pip.G{background:#a3c095}
+  .card .art { flex: 1; position: relative; overflow: hidden; border-radius: 0 0 3px 3px; }
+  .card .art::before { content: ''; position: absolute; inset: 0; opacity: 0.35; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"); }
+  .card .art::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 34%; background: linear-gradient(180deg, transparent, rgba(10,11,14,0.75)); }
+  .card .kw { position: absolute; left: 3px; bottom: 13px; z-index: 1; display: flex; gap: 2px; color: #c6cbd2; font-size: 8px; }
+  .card .pt { position: absolute; right: -3px; bottom: -3px; z-index: 1; background: var(--ci); color: #14161a; font: 700 8px var(--body); border-radius: 3px; padding: 1px 4px; }
+  .card .cnt { position: absolute; left: -4px; top: 11px; z-index: 2; background: var(--M); color: #241d09; font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
+  .card .xn { position: absolute; right: -5px; top: -6px; z-index: 2; background: #2a2f37; border: 1px solid var(--line-strong); color: var(--text); font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
+  .card.actionable::after { content: ''; position: absolute; left: 3px; right: 3px; bottom: 0; height: 3px; border-radius: 2px; background: var(--gold); z-index: 2; }
+  .card.tapped25 { transform: rotate(24deg); transform-origin: 50% 62%; opacity: 0.82; margin: 4px 7px 0 5px; }
+  .card.selected { outline: 2px solid var(--select); outline-offset: 1px; }
+
+  .t-mini { width: 46px; height: 62px; }
+  .t-std { width: 54px; height: 74px; }
+  .t-fan { width: 84px; height: 116px; }
+  .t-fan .head { min-height: 16px; padding: 3px 5px; }
+  .t-fan .nm { font-size: 9.5px; }
+
+  .cluster { position: relative; display: inline-flex; flex: none; padding-top: 12px; }
+  .cluster .attach { position: absolute; top: 0; left: 6px; z-index: 0; filter: brightness(0.72) saturate(0.85); }
+  .cluster .hostc { position: relative; z-index: 1; }
+
+  .chip { position: relative; width: 28px; height: 40px; border-radius: 4px; flex: none;
+    background: color-mix(in srgb, var(--ci) 12%, #1d2026); border: 1px solid color-mix(in srgb, var(--ci) 60%, transparent);
+    display: grid; place-items: center; color: var(--ci); font: 700 12px var(--display); }
+  .chip.tappedc { transform: rotate(24deg); opacity: 0.55; margin: 0 4px; }
+  .chip .xn { position: absolute; right: -5px; top: -6px; background: #2a2f37; border: 1px solid var(--line-strong); color: var(--text); font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
+  .chip.actionable { box-shadow: inset 0 -3px 0 0 var(--gold); }
+
+  .piles { display: flex; flex-direction: column; gap: 12px; padding: 7px 7px; border-left: 1px solid var(--line); justify-content: center; flex: none; }
+  .pile { position: relative; width: 26px; height: 36px; border-radius: 3px; border: 1px solid var(--line-strong); display: grid; place-items: center; color: var(--muted); flex: none; }
+  .pile.lib { background: linear-gradient(135deg,#3a3350,#211c30); border-color: #453d5c; box-shadow: 2px 2px 0 rgba(255,255,255,0.05); }
+  .pile.lib::before { content: ''; width: 55%; height: 55%; border: 1px solid rgba(207,201,226,0.4); clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%); }
+  .pile.empty { border-style: dashed; opacity: 0.45; }
+  .pile .n { position: absolute; right: -6px; bottom: -6px; background: #2a2f37; border: 1px solid var(--line-strong); font: 700 7px var(--body); color: var(--text); border-radius: 999px; padding: 1px 3px; min-width: 12px; text-align: center; }
+  .pile .topface { position: absolute; inset: 0; border-radius: 3px; border: 1px solid var(--ci); background: #1d2026; display: flex; flex-direction: column; overflow: hidden; }
+  .pile .topface .band { height: 4px; background: var(--ci); opacity: 0.85; }
+  .pile .topface .tn { flex: 1; font: 600 6px var(--body); padding: 1px 2px; color: var(--text); line-height: 1.15; overflow: hidden; }
+
+  /* ── bottom shell: prompt, action bar, hand fan, dock strip ────────── */
+  .shellb { flex: none; display: flex; flex-direction: column; gap: 6px; }
+  .prompt-strip {
+    display: flex; align-items: center; gap: 7px; padding: 5px 9px; font-size: 10.5px;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted);
+  }
+  .prompt-strip .tag { white-space: nowrap; font: 700 8px var(--body); letter-spacing: 0.08em; color: var(--gold); border: 1px solid var(--gold); border-radius: 999px; padding: 1px 6px; text-transform: uppercase; }
+  .prompt-strip b { color: var(--text); }
+
+  /* the FIXED action bar: every offered action, always here, always above the
+     fan — a popup under a bottom-edge card cannot exist in this anatomy. */
+  .actionbar { display: flex; gap: 6px; }
+  .btn {
+    min-height: 44px; font: 600 12px var(--body); color: var(--text);
+    border: 1px solid var(--line-strong); background: #232830; border-radius: 8px;
+    padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+  }
+  .btn.primary { font-family: var(--display); border-color: rgba(242,201,76,0.65); background: rgba(242,201,76,0.13); }
+  .btn.grow { flex: 1; }
+  .btn .kbd { font: 700 8px ui-monospace, monospace; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 3px; padding: 1px 4px; background: #14161a; }
+  .btn.icon { min-width: 44px; padding: 0; color: var(--muted); }
+
+  .handwrap { position: relative; padding: 4px 6px 8px; }
+  .fan { display: flex; align-items: flex-end; justify-content: center; }
+  .fan > * { margin-left: -38px; }
+  .fan > *:first-child { margin-left: 0; }
+  .fan .card { box-shadow: -6px 0 12px rgba(0,0,0,0.45); }
+  .fan .lifted { transform: translateY(-14px); z-index: 5; box-shadow: 0 10px 22px rgba(0,0,0,0.6), 0 0 0 1px var(--select); }
+
+  .dockstrip { display: flex; align-items: center; gap: 9px; padding: 2px 4px 0; }
+  .me-name { font-family: var(--display); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--you); font-weight: 600; }
+  .mana { display: flex; gap: 3px; align-items: center; margin-left: 2px; }
+  .mana .pip { width: 13px; height: 13px; font-size: 8px; }
+  .dock-piles { margin-left: auto; display: flex; gap: 11px; }
+</style>
+</head>
+<body>
+
+  <!-- status bar: turn pill + phase dots; stack & log collapse to chips -->
+  <div class="topbar panel" style="--acc: var(--line-strong)">
+    <span class="turnpill">T7 · <b>Your turn</b> · Main 2</span>
+    <span class="dots" aria-label="phase progress"><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i></span>
+    <span class="top-right">
+      <button class="chip-btn">Stack <span class="n">0</span></button>
+      <button class="chip-btn">Log <span class="n">•</span></button>
+      <button class="chip-btn">☰</button>
+    </span>
+  </div>
+
+  <!-- opponent board (display half) -->
+  <div class="panel pp" style="--acc: var(--opp); flex: 5; min-height: 0;">
+    <div class="pp-head">
+      <span class="crest" style="--acc: var(--opp)"><b>13</b></span>
+      <span class="pp-name">Kellan</span>
+      <span class="pp-meta"><span><span class="mb"></span>4</span></span>
+    </div>
+    <div class="pp-body">
+      <div class="rows" id="opprows"></div>
+      <div class="piles" id="opppiles"></div>
+    </div>
+  </div>
+
+  <!-- your board -->
+  <div class="panel pp" style="--acc: var(--you); flex: 6; min-height: 0;">
+    <div class="pp-head">
+      <span class="crest" style="--acc: var(--you)"><b>16</b></span>
+      <span class="pp-name">Rowan (you)</span>
+      <span class="pp-meta"><span style="color:var(--faint)">priority</span></span>
+    </div>
+    <div class="pp-body">
+      <div class="rows" id="myrows"></div>
+      <div class="piles" id="mypiles"></div>
+    </div>
+  </div>
+
+  <!-- bottom shell: prompt → fixed action bar → hand fan → identity strip -->
+  <div class="shellb">
+    <div class="prompt-strip">
+      <span class="tag">Main 2</span>
+      <span><b>Cinder Shock</b> selected — cast it, or tap another card.</span>
+    </div>
+    <div class="actionbar">
+      <button class="btn primary grow">Cast Cinder Shock · choose target</button>
+      <button class="btn">Pass <span class="kbd">P</span></button>
+      <button class="btn icon" aria-label="Cancel selection">✕</button>
+    </div>
+    <div class="handwrap panel" style="--acc: var(--you)">
+      <div class="fan" id="fan"></div>
+    </div>
+    <div class="dockstrip">
+      <span class="me-name">Rowan</span>
+      <span class="mana"><span class="pip G">G</span><span class="pip G">G</span><span class="pip">1</span></span>
+      <span style="color:var(--faint); font-size:10px; margin-left:6px;">16 life · your turn</span>
+    </div>
+  </div>
+
+<script>
+const KW = { flying: '↟', deathtouch: '☠', firststrike: '⚡', vigilance: '👁' };
+const CI_HUE = { W: 45, U: 210, B: 275, R: 12, G: 130, M: 40, C: 220, L: 32 };
+function artStyle(name, ci) {
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const base = CI_HUE[ci] ?? 200;
+  const h1 = (base + (h % 40) - 20 + 360) % 360, h2 = (base + 150 + (h % 70)) % 360;
+  const x1 = 15 + (h % 55), y1 = 10 + ((h >> 3) % 45), x2 = 80 - ((h >> 5) % 40), ang = 130 + (h % 90);
+  return `background:radial-gradient(95% 75% at ${x1}% ${y1}%, hsla(${h1},58%,60%,0.85), transparent 62%),` +
+    `radial-gradient(110% 95% at ${x2}% 88%, hsla(${h2},40%,32%,0.9), transparent 72%),` +
+    `linear-gradient(${ang}deg, hsl(${h1},34%,30%), hsl(${(h1 + 45) % 360},38%,12%));`;
+}
+const pips = (cost) => cost.map((c) => `<span class="pip ${/[WUBRG]/.test(c) ? c : ''}">${c}</span>`).join('');
+function card(o, tier) {
+  const cls = ['card', tier, o.tapped ? 'tapped25' : '', o.act ? 'actionable' : '',
+    o.sel ? 'selected' : '', o.lift ? 'lifted' : ''].filter(Boolean).join(' ');
+  return `<div class="${cls}" style="--ci: var(--${o.ci})">
+      <div class="head"><span class="nm">${o.n}</span>${tier === 't-fan' ? `<span class="cost">${pips(o.c || [])}</span>` : ''}</div>
+      <div class="art" style="${artStyle(o.n, o.ci)}"></div>
+      ${o.kw ? `<span class="kw">${o.kw.map((k) => KW[k]).join(' ')}</span>` : ''}
+      ${o.pt ? `<span class="pt">${o.pt}</span>` : ''}
+      ${o.cnt ? `<span class="cnt">+${o.cnt}</span>` : ''}
+      ${o.xn ? `<span class="xn">×${o.xn}</span>` : ''}
+    </div>`;
+}
+const cluster = (a, h, tier) =>
+  `<span class="cluster">${card(a, tier).replace('class="card', 'class="card attach')}${card(h, tier).replace('class="card', 'class="card hostc')}</span>`;
+const chip = (sym, ci, o = {}) =>
+  `<span class="chip ${o.tapped ? 'tappedc' : ''} ${o.act ? 'actionable' : ''}" style="--ci: var(--${ci})">${sym}${o.xn ? `<span class="xn">×${o.xn}</span>` : ''}</span>`;
+const pile = (kind, n, o = {}) => {
+  if (kind === 'lib') return `<span class="pile lib"><span class="n">${n}</span></span>`;
+  if (kind === 'gy') return `<span class="pile">${o.top ? `<span class="topface" style="--ci: var(--${o.top.ci})"><span class="band"></span><span class="tn">${o.top.n}</span></span>` : '⌗'}<span class="n">${n}</span></span>`;
+  return `<span class="pile ${n === 0 ? 'empty' : ''}">◇<span class="n">${n}</span></span>`;
+};
+
+/* opponent: 9 permanents incl. cluster, tapped attackers-from-last-turn */
+document.getElementById('opprows').innerHTML = `
+  <div class="rowline">
+    ${card({ n: 'Sky Warden', ci: 'W', c: ['2','W'], pt: '2/3', kw: ['flying'], tapped: true }, 't-mini')}
+    ${cluster({ n: 'Ironguard Aegis', ci: 'C', c: ['2'] }, { n: 'Oath Keeper', ci: 'W', c: ['3','W'], pt: '5/4', kw: ['vigilance'] }, 't-mini')}
+    ${card({ n: 'Ember Whelp', ci: 'R', c: ['R'], pt: '1/1', xn: 2 }, 't-mini')}
+    ${card({ n: 'Dawnblade Duelist', ci: 'W', c: ['1','W'], pt: '2/2', kw: ['firststrike'] }, 't-mini')}
+  </div>
+  <div class="rowline">
+    ${card({ n: 'Oath of Unity', ci: 'M', c: ['W','G'] }, 't-mini')}
+    <span style="width:14px"></span>
+    ${chip('✦', 'W', { xn: 3 })}${chip('✦', 'W', { tapped: true, xn: 2 })}${chip('▲', 'R', { tapped: true })}${chip('◆', 'L')}
+  </div>`;
+document.getElementById('opppiles').innerHTML =
+  pile('lib', 22) + pile('gy', 5, { top: { n: 'Sunfall', ci: 'W' } }) + pile('ex', 1);
+
+/* you: 10 permanents; Thornback cluster; actionable lands */
+document.getElementById('myrows').innerHTML = `
+  <div class="rowline">
+    ${cluster({ n: 'Ward of Thorns', ci: 'G', c: ['2'] }, { n: 'Thornback Boar', ci: 'G', c: ['2','G'], pt: '5/4', cnt: 1, act: true }, 't-std')}
+    ${card({ n: 'Gorehorn Ravager', ci: 'G', c: ['3','G'], pt: '5/4', kw: ['vigilance'], tapped: true }, 't-std')}
+    ${card({ n: 'Moss Bear', ci: 'G', c: ['1','G'], pt: '2/2', xn: 2, act: true }, 't-std')}
+    ${card({ n: 'Verdant Scout', ci: 'G', c: ['G'], pt: '1/1', act: true }, 't-std')}
+  </div>
+  <div class="rowline">
+    ${card({ n: 'Sigil of Dawn', ci: 'W', c: ['W'] }, 't-mini')}
+    <span style="width:14px"></span>
+    ${chip('♣', 'G', { xn: 3, act: true })}${chip('♣', 'G', { tapped: true, xn: 2 })}${chip('✦', 'W', { act: true })}
+  </div>`;
+document.getElementById('mypiles').innerHTML =
+  pile('lib', 29) + pile('gy', 3, { top: { n: 'Verdant Surge', ci: 'G' } }) + pile('ex', 0);
+
+/* hand fan: 6 cards, Cinder Shock selected & lifted */
+const fanCards = [
+  { n: 'Withering Touch', ci: 'B', c: ['B'], act: true },
+  { n: 'Forest', ci: 'L', c: [], act: true },
+  { n: 'Cinder Shock', ci: 'R', c: ['R'], act: true, sel: true, lift: true },
+  { n: 'Gorehorn Ravager', ci: 'G', c: ['3','G'], pt: '5/4' },
+  { n: 'Oath of Unity', ci: 'M', c: ['W','G'] },
+  { n: 'Vexing Ordeal', ci: 'B', c: ['B'] },
+];
+document.getElementById('fan').innerHTML = fanCards.map((c) => card(c, 't-fan')).join('');
+</script>
+</body>
+</html>
