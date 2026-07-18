@@ -14,8 +14,11 @@ before changing code; [`docs/brief.md`](docs/brief.md) defines the product and a
   `rune-protocol`, and the TypeScript mirror in the same PR.
 - **The entire client UI must be reconstructable from one `GameView` + pending prompt.**
   No client state is load-bearing across messages.
-- **No card images, no official frames, no WotC branding, no monetization paths.**
-  See `docs/brief.md` (Legal Considerations) before touching card data or rendering.
+- **No card images shipped by the project, no official frames, no WotC branding, no
+  monetization paths.** See `docs/brief.md` (Legal Considerations) before touching card
+  data or rendering. The only exception is the player-side, opt-in art pipeline of
+  ADR 0024: the player's own browser may fetch card images from a third-party source,
+  cached device-local only — never committed, bundled, served, or redistributed.
 - Never commit secrets, `.env` files, `node_modules/`, or `target/`.
 - Only force-push a branch you exclusively own, using `--force-with-lease`. Never
   rewrite `main` or a shared branch.

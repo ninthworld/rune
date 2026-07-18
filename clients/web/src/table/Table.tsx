@@ -27,8 +27,10 @@
  * a multi-message handshake. The in-progress selection is ephemeral and discarded
  * on the next view, so the UI stays reconstructable from one GameView + prompt.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
+import { collectArtCards, getArtVersion, noteCards, subscribeArt } from '../card/art/artStore';
+import { ArtSettings } from './ArtSettings';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
@@ -245,6 +247,21 @@ export function Table() {
   // Whether the keyboard shortcut reference overlay is open (issue #266). Ephemeral
   // UI, not game state — toggled with `?`.
   const [showHelp, setShowHelp] = useState(false);
+  // Whether the card-art settings overlay is open (ADR 0024). Ephemeral UI state;
+  // the chosen source itself is a device preference owned by the art store.
+  const [showArtSettings, setShowArtSettings] = useState(false);
+  // The art store's change counter (ADR 0024): bumps when an illustration finishes
+  // loading (or the source/preference changes), so the scene rebuilds and cards
+  // whose art arrived re-render. Presentation cache only — the scene remains fully
+  // reconstructable from the view alone when the store is empty.
+  const artVersion = useSyncExternalStore(subscribeArt, getArtVersion);
+
+  // Tell the art store which cards the current view shows so their illustrations
+  // load in the background under the player's chosen source (a no-op under the
+  // procedural default).
+  useEffect(() => {
+    if (view) noteCards(collectArtCards(view));
+  }, [view]);
   // The live table's root, for keyboard focus navigation and activation (issue
   // #266): the keyboard layer moves focus among and activates the buttons within it.
   const mainRef = useRef<HTMLElement>(null);
@@ -278,6 +295,7 @@ export function Table() {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       if (showHelp) setShowHelp(false);
+      else if (showArtSettings) setShowArtSettings(false);
       else if (inspectedId !== null) setInspectedId(null);
       else if (peekId !== null) setPeekId(null);
       else if (browsing) setBrowsing(null);
@@ -288,7 +306,7 @@ export function Table() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showHelp, inspectedId, peekId, browsing, railSheet, multiSelect, targeting]);
+  }, [showHelp, showArtSettings, inspectedId, peekId, browsing, railSheet, multiSelect, targeting]);
 
   // Keyboard parity for core play (issue #266). Every binding maps to an
   // interaction the pointer already has — no new game semantics, all client-side:
@@ -463,7 +481,21 @@ export function Table() {
     const sel =
       targeting || multiSelect ? attackerRing : (selectedId ?? highlightedId ?? undefined);
     return buildTableScene(view, sel, shell.scene, targetingScene);
-  }, [view, selectedId, highlightedId, shell, targeting, multiSelect, sheetMode, defenderSlot]);
+    // `artVersion` is a rebuild trigger, not an input read here: the scene builder
+    // reads the art store directly (per-card `artKey`), and the version bump is how
+    // an illustration finishing its background load re-renders the affected cards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    view,
+    selectedId,
+    highlightedId,
+    shell,
+    targeting,
+    multiSelect,
+    sheetMode,
+    defenderSlot,
+    artVersion,
+  ]);
 
   // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
   // production builds; the e2e suite reads it to assert what the canvas draws.
@@ -611,6 +643,7 @@ export function Table() {
         <CardInspect target={inspectTarget} onClose={closeInspect} transient={inspectTransient} />
       )}
       {showHelp && <ShortcutHelp bindings={shortcutBindings} onClose={() => setShowHelp(false)} />}
+      {showArtSettings && <ArtSettings onClose={() => setShowArtSettings(false)} />}
       <RejectionToast nonce={rejectionNonce} />
     </>
   );
@@ -928,6 +961,7 @@ export function Table() {
           concede={view.valid_actions.find((action) => action.type === 'concede')}
           onChoose={choose}
           onShowShortcuts={() => setShowHelp(true)}
+          onShowArtSettings={() => setShowArtSettings(true)}
         />
       </div>
 

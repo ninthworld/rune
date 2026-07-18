@@ -24,6 +24,27 @@ describe('GameMenu', () => {
     expect(screen.queryByTestId('game-menu')).toBeNull();
   });
 
+  it('opens the card-art settings from its menu item (ADR 0024)', () => {
+    const onShowArtSettings = vi.fn();
+    render(
+      <GameMenu
+        onChoose={() => {}}
+        onShowShortcuts={() => {}}
+        onShowArtSettings={onShowArtSettings}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('game-menu-button'));
+    fireEvent.click(screen.getByTestId('menu-card-art'));
+    expect(onShowArtSettings).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('game-menu')).toBeNull();
+  });
+
+  it('hides the card-art item when no handler is wired', () => {
+    render(<GameMenu onChoose={() => {}} onShowShortcuts={() => {}} />);
+    fireEvent.click(screen.getByTestId('game-menu-button'));
+    expect(screen.queryByTestId('menu-card-art')).toBeNull();
+  });
+
   it('offers concede only when the server offers it', () => {
     render(<GameMenu onChoose={() => {}} onShowShortcuts={() => {}} />);
     fireEvent.click(screen.getByTestId('game-menu-button'));

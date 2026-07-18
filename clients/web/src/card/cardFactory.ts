@@ -21,9 +21,10 @@
  * rather than measuring glyphs, so it constructs a full scene graph without a
  * live canvas/GPU. That keeps it deterministic and headless-testable.
  */
-import { BitmapFont, BitmapText, Container, Graphics, Text } from 'pixi.js';
+import { BitmapFont, BitmapText, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import {
   AFFORDANCE,
+  ART,
   BADGE,
   FONT,
   FRAME,
@@ -37,6 +38,7 @@ import {
   type ColorIdentity,
 } from '../tokens';
 import { buildGlyphDisplay, keywordGlyphName, type GlyphName } from '../chrome/glyphs';
+import { textureForArtKey } from './art/artStore';
 
 /** Tiers that render a full card face (chips are a separate digest representation).
  * `mini` is the stepped-down dense tier the density ladder engages (blueprint). */
@@ -167,6 +169,14 @@ export interface CardDisplayData {
    * server-supplied references — never a combat prediction.
    */
   blockedBy?: number;
+  /**
+   * Key of the card's currently-published illustration in the client-local art
+   * store (ADR 0024), or absent for the procedural face. Opaque here: the
+   * factory only *looks up* the already-loaded texture — it never fetches,
+   * decodes, or derives anything. The key changes when the art changes, so it
+   * rides the visual signature and the reconciler rebuilds exactly on arrival.
+   */
+  artKey?: string;
 }
 
 /**
@@ -204,6 +214,7 @@ export function cardVisualSignature(data: CardDisplayData, tier: RenderTier = 'f
     blocking: data.blocking ?? false,
     blockedBy: data.blockedBy ?? 0,
     counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
+    artKey: data.artKey ?? null,
   });
 }
 
@@ -370,37 +381,104 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   frame.endFill();
   inner.addChild(frame);
 
-  // Name (top-left, truncated to fit the header width).
-  const name = mkText(fitName(data.name, t.w - 14, t.name), t.name, SURFACES.nameText);
-  name.position.set(7, 7);
-  inner.addChild(name);
+  // Which published image (if any) the face renders (ADR 0024). A FULL-CARD
+  // image replaces the whole procedural face at every full-face tier; a window
+  // illustration renders inside RUNE's frame at the larger tiers only (dense
+  // tiers keep their information budget). Either way the factory only looks up
+  // an already-loaded texture — it never fetches or decodes.
+  const published = data.artKey ? textureForArtKey(data.artKey) : undefined;
+  const fullArt = published?.full ? published : undefined;
+  const windowArt =
+    published && !published.full && (ART.tiers as readonly string[]).includes(tier)
+      ? published
+      : undefined;
 
-  // Mana cost pips beneath the name.
-  if (data.manaCost) {
-    parseManaCost(data.manaCost).forEach((mp, i) => {
-      const pip = new Graphics();
-      pip.beginFill(hexToNumber(mp.bg));
-      pip.drawCircle(0, 0, t.pip / 2 + 1);
-      pip.endFill();
-      pip.position.set(7 + t.pip / 2 + i * (t.pip + 4), 7 + t.name + 12);
-      const glyph = mkText(mp.symbol, 11, mp.fg);
-      glyph.anchor.set(0.5);
-      pip.addChild(glyph);
-      inner.addChild(pip);
-    });
+  /** Draw `texture` cover-cropped and rounded-mask-clipped into a face rect. */
+  const addArtSprite = (
+    texture: Texture,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    radius: number,
+  ): void => {
+    const sprite = new Sprite(texture);
+    // Stable node name so tests (and debugging) can find the art layer without
+    // relying on child order or on Sprite being distinguishable from glyph text.
+    sprite.name = 'card-art';
+    const scale = Math.max(w / texture.width, h / texture.height);
+    sprite.width = texture.width * scale;
+    sprite.height = texture.height * scale;
+    sprite.anchor.set(0.5);
+    sprite.position.set(x + w / 2, y + h / 2);
+    const mask = new Graphics();
+    mask.beginFill(0xffffff);
+    mask.drawRoundedRect(x, y, w, h, radius);
+    mask.endFill();
+    sprite.mask = mask;
+    inner.addChild(sprite, mask);
+  };
+
+  if (fullArt) {
+    // Full-card mode: the ENTIRE official card image is the face — RUNE's name
+    // band, pips, monogram, type line, and keyword strip are suppressed (all of
+    // it is printed on the image). Server-computed state below (effective P/T,
+    // counters, combat bars, rings, affordances, tap) still overlays on top:
+    // the image is presentation; the overlays remain the authoritative values.
+    // Scryfall card images share the physical card aspect (~63:88), which every
+    // tier's footprint matches to within a fraction of a percent, so full-art
+    // and standard printings alike cover-crop without visible loss.
+    addArtSprite(fullArt.texture, 0, 0, t.w, t.h, FRAME.radius);
+  } else {
+    // Name (top-left, truncated to fit the header width).
+    const name = mkText(fitName(data.name, t.w - 14, t.name), t.name, SURFACES.nameText);
+    name.position.set(7, 7);
+    inner.addChild(name);
+
+    // Mana cost pips beneath the name.
+    if (data.manaCost) {
+      parseManaCost(data.manaCost).forEach((mp, i) => {
+        const pip = new Graphics();
+        pip.beginFill(hexToNumber(mp.bg));
+        pip.drawCircle(0, 0, t.pip / 2 + 1);
+        pip.endFill();
+        pip.position.set(7 + t.pip / 2 + i * (t.pip + 4), 7 + t.name + 12);
+        const glyph = mkText(mp.symbol, 11, mp.fg);
+        glyph.anchor.set(0.5);
+        pip.addChild(glyph);
+        inner.addChild(pip);
+      });
+    }
+
+    if (windowArt) {
+      // Art window (ADR 0024): the reserved region between the header band and
+      // the type line holds the illustration, cover-cropped inside a rounded
+      // mask. Any source aspect is safe — full-art printings' tall crops simply
+      // crop tighter.
+      const winY = t.header + ART.topGap;
+      addArtSprite(
+        windowArt.texture,
+        ART.inset,
+        winY,
+        t.w - ART.inset * 2,
+        t.h - t.type - ART.bottomReserve - winY,
+        ART.radius,
+      );
+    } else {
+      // Center monogram (first letter of the name) as a faint watermark — the
+      // procedural placeholder for the art box, not the card's identity.
+      const monogram = mkText(data.name.slice(0, 1), t.mono, accent);
+      monogram.alpha = FRAME.monogramAlpha;
+      monogram.anchor.set(0.5);
+      monogram.position.set(t.w / 2, (t.h + t.header) / 2);
+      inner.addChild(monogram);
+    }
+
+    // Type line above the bottom edge.
+    const typeLine = mkText(fitName(data.typeLine, t.w - 12, t.type), t.type, SURFACES.typeText);
+    typeLine.position.set(6, t.h - t.type - 20);
+    inner.addChild(typeLine);
   }
-
-  // Center monogram (first letter of the name) as a faint watermark.
-  const monogram = mkText(data.name.slice(0, 1), t.mono, accent);
-  monogram.alpha = FRAME.monogramAlpha;
-  monogram.anchor.set(0.5);
-  monogram.position.set(t.w / 2, (t.h + t.header) / 2);
-  inner.addChild(monogram);
-
-  // Type line above the bottom edge.
-  const typeLine = mkText(fitName(data.typeLine, t.w - 12, t.type), t.type, SURFACES.typeText);
-  typeLine.position.set(6, t.h - t.type - 20);
-  inner.addChild(typeLine);
 
   // Keyword-glyph strip (issue #320): a quiet row just above the type line, from the
   // server-supplied keywords only (no rules derivation). Capped to what fits at this
@@ -409,13 +487,26 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
   const keywordGlyphs = (data.keywords ?? [])
     .map(keywordGlyphName)
     .filter((n): n is GlyphName => n !== null);
-  if (keywordGlyphs.length > 0) {
+  // Suppressed in full-card mode: the printed card already carries its text and
+  // the strip would sit over the image's own type band.
+  if (!fullArt && keywordGlyphs.length > 0) {
     const gsize = t.pip;
     const gap = 3;
     const stripY = t.h - t.type - 20 - gsize - 3;
     const capacity = Math.max(1, Math.floor((t.w - 14) / (gsize + gap)));
     const overflow = keywordGlyphs.length > capacity;
     const shown = overflow ? capacity - 1 : keywordGlyphs.length;
+    // Over an illustration the strip gets a card-body scrim so the glyphs stay
+    // legible on any art (ADR 0024); over the plain body it stays scrim-free.
+    if (windowArt) {
+      const stripCount = shown + (overflow ? 1 : 0);
+      const stripWidth = stripCount * (gsize + gap) + 4;
+      const scrim = new Graphics();
+      scrim.beginFill(hexToNumber(SURFACES.cardBody), ART.scrimAlpha);
+      scrim.drawRoundedRect(5, stripY - 2, stripWidth, gsize + 4, ART.radius);
+      scrim.endFill();
+      inner.addChild(scrim);
+    }
     let gx = 7;
     for (let i = 0; i < shown; i++) {
       const g = buildGlyphDisplay(keywordGlyphs[i]!, { size: gsize, color: INDICATORS.keyword });

@@ -34,6 +34,7 @@ import type {
   ValidAction,
 } from '../protocol';
 import { cardVisualSignature, type CardDisplayData, type RenderTier } from '../card/cardFactory';
+import { artKeyFor } from '../card/art/artStore';
 import type { GlyphName } from '../chrome/glyphs';
 import { TAP, TIER, type ColorIdentity } from '../tokens';
 import { deriveColorIdentity } from './colorIdentity';
@@ -441,6 +442,11 @@ function toDisplayData(
     // keyword list, and a latent activated-ability marker read off the printed text.
     keywords: card.keywords,
     hasActivatedAbility: hasActivatedAbilityText(card.rules_text),
+    // The card's currently-published illustration key (ADR 0024), looked up by the
+    // stable `functional_id` the protocol reserved for client-local presentation
+    // enrichment. Undefined under the procedural default or until art loads, so the
+    // face — and every existing test — is byte-identical without art.
+    artKey: artKeyFor(card.functional_id),
   };
 }
 
