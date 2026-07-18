@@ -453,6 +453,146 @@ export const COMBAT_GAME_VIEW_JSON = JSON.stringify({
 });
 
 /**
+ * A four-player free-for-all mid-combat frame (issue #348, built on the #345
+ * multiplayer shapes). `p1` is the receiver; the table seats `p1..p4` in
+ * `seat_order`. `p1` (the active player) has declared a **split attack** — one
+ * attacker at `p2`, one at `p4` (`attacking_player`) — so the fixture exercises
+ * combat treatments and links spanning more than one opponent area. `p3` has been
+ * **eliminated** (CR 800.4a, issue #342): it is still in `seat_order` and carries
+ * the `eliminated` flag, but its permanents have left the game, so its band is
+ * empty. Every seat has public zone piles (graveyard sizes) so each band's pile
+ * counts render. This is the shared fixture the multiplayer scene and layout tests
+ * build on; it is a render fixture (no interaction slots) — the declaration UI has
+ * its own fixtures (issue #347).
+ */
+export const FOUR_PLAYER_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [{ id: 'hand_1', name: 'Forest', type_line: 'Basic Land — Forest' }],
+  me: { life: 18, library_size: 33 },
+  opponents: [
+    { player_id: 'p2', hand_size: 3, life: 14, library_size: 31, graveyard_size: 2 },
+    {
+      player_id: 'p3',
+      hand_size: 0,
+      life: 0,
+      library_size: 0,
+      graveyard_size: 3,
+      eliminated: true,
+    },
+    { player_id: 'p4', hand_size: 5, life: 20, library_size: 34, graveyard_size: 1 },
+  ],
+  graveyards: [
+    {
+      player_id: 'p2',
+      cards: [
+        { id: 'p2_gy_0', name: 'Shock', type_line: 'Instant' },
+        { id: 'p2_gy_1', name: 'Goblin', type_line: 'Creature — Goblin' },
+      ],
+    },
+    {
+      player_id: 'p3',
+      cards: [
+        { id: 'p3_gy_0', name: 'Bear', type_line: 'Creature — Bear' },
+        { id: 'p3_gy_1', name: 'Forest', type_line: 'Basic Land — Forest' },
+        { id: 'p3_gy_2', name: 'Elf', type_line: 'Creature — Elf' },
+      ],
+    },
+    {
+      player_id: 'p4',
+      cards: [{ id: 'p4_gy_0', name: 'Island', type_line: 'Basic Land — Island' }],
+    },
+  ],
+  battlefield: [
+    // p1 (local): a split attack — one attacker at p2, one at p4 — plus a land.
+    {
+      id: 'p1_atk_a',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'p1_atk_a',
+        name: 'Charging Rhino',
+        type_line: 'Creature — Rhino',
+        power: '4',
+        toughness: '4',
+      },
+      tapped: true,
+      attacking: true,
+      attacking_player: 'p2',
+    },
+    {
+      id: 'p1_atk_b',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'p1_atk_b',
+        name: 'Skyshroud Falcon',
+        type_line: 'Creature — Bird',
+        power: '2',
+        toughness: '1',
+        keywords: ['flying'],
+      },
+      tapped: true,
+      attacking: true,
+      attacking_player: 'p4',
+    },
+    {
+      id: 'p1_land',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'p1_land', name: 'Forest', type_line: 'Basic Land — Forest' },
+      tapped: true,
+    },
+    // p2: a blocker facing p1's rhino, plus a land.
+    {
+      id: 'p2_blk',
+      controller: 'p2',
+      owner: 'p2',
+      card: {
+        id: 'p2_blk',
+        name: 'Stone Golem',
+        type_line: 'Artifact Creature — Golem',
+        power: '3',
+        toughness: '4',
+      },
+      blocking: 'p1_atk_a',
+    },
+    {
+      id: 'p2_land',
+      controller: 'p2',
+      owner: 'p2',
+      card: { id: 'p2_land', name: 'Mountain', type_line: 'Basic Land — Mountain' },
+    },
+    // p3 is eliminated: no permanents remain (they left the game, CR 800.4a).
+    // p4: an untapped creature (not yet blocking) and a land.
+    {
+      id: 'p4_crt',
+      controller: 'p4',
+      owner: 'p4',
+      card: {
+        id: 'p4_crt',
+        name: 'Air Elemental',
+        type_line: 'Creature — Elemental',
+        power: '4',
+        toughness: '4',
+        keywords: ['flying'],
+      },
+    },
+    {
+      id: 'p4_land',
+      controller: 'p4',
+      owner: 'p4',
+      card: { id: 'p4_land', name: 'Island', type_line: 'Basic Land — Island' },
+    },
+  ],
+  phase: 'declare_blockers',
+  turn: 9,
+  active_player: 'p1',
+  seat_order: ['p1', 'p2', 'p3', 'p4'],
+  priority_player: 'p2',
+  valid_actions: [{ id: 'a1', type: 'pass_priority', label: 'Pass' }],
+});
+
+/**
  * A wire frame owing mulligan bottoming (issue #143/#156, CR 103.5 London): the
  * subject-less `mulligan_decision` action carries an `option` prompt (keep /
  * take-another) AND a `select_from_zone` bottoming prompt (`count: 1`) over the

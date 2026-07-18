@@ -277,6 +277,55 @@ opt-in and honors `prefers-reduced-motion` (which snaps, with no layout or state
 difference), so the reconnect/replay determinism invariant and every existing test
 hold unchanged.
 
+## Multiplayer table (3–4 players)
+
+The composition above was designed, tuned, and tested at exactly one opponent. A
+free-for-all seats three or four (issue #349), so the table must lay out two or
+three opponent areas readably without displacing the receiver — the M5 outcome
+"2–8 player tiles without moving the receiver from the bottom interaction area"
+(`ui-requirements.md` §Players). This is the in-repo concept decision for the 3–4
+player arrangement (issue #348); the visual system and shell architecture are
+unchanged, so no ADR.
+
+**Arrangement.** The receiver is always anchored at the bottom — its hand row and
+local dock keep the bottom interaction area at every seat count — and opponents are
+added *toward the top*, never by pushing the receiver up. Each opponent is a full
+battlefield **band** (the same type-grouped rows, zone piles, and combat treatments
+as the two-player board), stacked vertically inside the battlefield region above the
+receiver's own band. Bands are stacked in the table's **seat order**
+(`GameView.seat_order`, issue #345), so opponent areas keep a **stable relative
+position** across every view update: a bystander who mounts mid-combat reads the same
+seating as one who watched the game fill, and an opponent never reshuffles because a
+life total changed. Every seated player gets a band even with no permanents, so a
+three-opponent table always shows three opponent areas; an eliminated seat (issue
+#342) keeps its band and its public piles while its permanents leave the game.
+
+The **opponent HUD strip** across the top carries one identity/life/hand tile per
+opponent, reflowing by count (a wide tile at 2p → a compact grid as opponents are
+added) without moving the receiver, who lives in the bottom-left dock. Each band
+still owns its own zone piles (library/graveyard/exile) parked in its lane — the
+count lives once, on the board, and the HUD never repeats it.
+
+**Density and collapse.** Three opponents at a small viewport is the hard case. The
+board never scrolls horizontally at any supported geometry (the pure `layout()`
+sizes the scene to the battlefield width and the scene wraps within it); instead the
+stacked bands grow downward and the battlefield region scrolls vertically if the
+whole table overflows. Degradation is graceful before anything becomes unreadable or
+untappable: the HUD strip reflows to a grid, bands condense toward their chip tiers,
+and every interactive target stays ≥ 44 px. The two-player composition is left
+exactly as tuned — the multiplayer arrangement is additive and only engages once
+there is more than one opponent.
+
+**Focus and combat legibility.** The spatial focus model (#301) reaches every
+opponent area: each opponent's board permanents and zone piles are focusable surfaces
+in the battlefield region, and on a multiplayer table each opponent's HUD tile
+becomes a keyboard/controller focus anchor (in a duel the single opponent tile stays
+quiet display, so the finely-tuned two-player focus order is unchanged). Combat
+treatments and the #339 blocker→attacker links compose across opponent areas: a split
+attack (one attacker at each of two opponents, issue #347) renders each attacker's
+treatment in its own band and its link to the blocker in the attacked opponent's
+area, so who-attacks-whom stays legible on a crowded multi-opponent board.
+
 ## Action routing
 
 Every entity-owned action has a `subject`. Entity-subject actions render as the entity's

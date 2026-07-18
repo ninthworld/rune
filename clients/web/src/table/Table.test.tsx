@@ -5,6 +5,7 @@ import {
   DECLARE_ATTACKERS_GAME_VIEW_JSON,
   DECLARE_BLOCKERS_GAME_VIEW_JSON,
   DISCARD_GAME_VIEW_JSON,
+  FOUR_PLAYER_GAME_VIEW_JSON,
   GAME_OVER_DRAW_JSON,
   GAME_OVER_LOSS_JSON,
   GAME_OVER_WIN_JSON,
@@ -677,6 +678,76 @@ describe('Table spatial focus model (issue #301)', () => {
     arrowUntil('ArrowRight', byTestId('rail-collapse'));
     arrowUntil('ArrowDown', byTestId('inspect-s1'));
     expect(document.activeElement?.getAttribute('data-testid')).toBe('inspect-s1');
+  });
+});
+
+describe('Table multiplayer table (3–4 players, issue #348)', () => {
+  /** The nearest ancestor focus region's id, or null — the region the focus engine
+   * (issue #301) walks this element as part of. */
+  function focusRegionOf(el: Element): string | null {
+    return el.closest('[data-focus-region]')?.getAttribute('data-focus-region') ?? null;
+  }
+  /** Whether the focus engine treats this element as a reachable item: a live button
+   * or an explicit `data-focus-item`, sitting inside a focus region. */
+  function isFocusReachable(el: Element): boolean {
+    const focusable =
+      (el.tagName === 'BUTTON' && !el.hasAttribute('disabled')) ||
+      el.hasAttribute('data-focus-item');
+    return focusable && focusRegionOf(el) !== null;
+  }
+
+  it('renders a HUD tile, board area, and zone piles for every opponent', () => {
+    seed(FOUR_PLAYER_GAME_VIEW_JSON);
+    render(<Table />);
+    // A HUD tile for each of the three opponents (the receiver lives in the dock).
+    for (const id of ['p2', 'p3', 'p4']) {
+      expect(screen.getByTestId(`tile-${id}`)).toBeDefined();
+    }
+    // The eliminated seat's tile announces its state to assistive tech.
+    expect(screen.getByTestId('tile-p3').getAttribute('aria-label')).toContain('eliminated');
+    // Each opponent's board permanents render as inspectable surfaces…
+    for (const id of ['p2_blk', 'p2_land', 'p4_crt', 'p4_land']) {
+      expect(screen.getByTestId(`inspect-surface-${id}`)).toBeDefined();
+    }
+    // …and every seat has its own graveyard pile on the board (count lives here).
+    for (const id of ['p1', 'p2', 'p3', 'p4']) {
+      expect(screen.getByTestId(`table-graveyard-${id}`)).toBeDefined();
+    }
+  });
+
+  it('makes every opponent area — board, piles, and HUD tile — keyboard-reachable', () => {
+    seed(FOUR_PLAYER_GAME_VIEW_JSON);
+    render(<Table />);
+    // Each opponent's HUD tile is a focus item in the opponent-HUD region, so
+    // keyboard/controller focus can land on the tile itself — not just the board.
+    for (const id of ['p2', 'p3', 'p4']) {
+      const tile = screen.getByTestId(`tile-${id}`);
+      expect(isFocusReachable(tile)).toBe(true);
+      expect(focusRegionOf(tile)).toBe('opponentHud');
+      expect(tile.getAttribute('tabindex')).toBe('0');
+    }
+    // Each opponent's board permanents are reachable inspect surfaces in the battlefield.
+    for (const id of ['p2_blk', 'p4_crt']) {
+      const surface = screen.getByTestId(`inspect-surface-${id}`);
+      expect(isFocusReachable(surface)).toBe(true);
+      expect(focusRegionOf(surface)).toBe('battlefield');
+    }
+    // Each opponent's graveyard pile is a reachable button in the battlefield.
+    for (const id of ['p2', 'p3', 'p4']) {
+      const pile = screen.getByTestId(`table-graveyard-${id}`);
+      expect(isFocusReachable(pile)).toBe(true);
+      expect(focusRegionOf(pile)).toBe('battlefield');
+    }
+  });
+
+  it('keeps the two-player opponent tile as quiet display (no focus stop)', () => {
+    // The duel is untouched: a single opponent's tile is not a focus anchor, so the
+    // finely-tuned two-player focus order does not change (issue #348 AC: 2p unchanged).
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    const tile = screen.getByTestId('tile-p2');
+    expect(tile.hasAttribute('data-focus-item')).toBe(false);
+    expect(tile.hasAttribute('tabindex')).toBe(false);
   });
 });
 

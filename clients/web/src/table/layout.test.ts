@@ -155,6 +155,26 @@ describe('layout region geometry', () => {
       computed.regions.localDock.rect.x + computed.regions.localDock.rect.w,
     );
   });
+
+  it('keeps the receiver bottom-anchored regardless of opponent count (issue #348)', () => {
+    // The receiver's hand and dock stay pinned to the viewport bottom whether the
+    // table seats one opponent or three — opponents are added toward the top, never
+    // by displacing the receiver's bottom interaction area.
+    for (const { viewport } of GEOMETRIES) {
+      const { height } = { height: Math.max(1, Math.floor(viewport.height)) };
+      for (const playerCount of [2, 3, 4]) {
+        const computed = layout(viewport, 'overview', playerCount);
+        const { hand, localDock } = computed.regions;
+        // The hand band's bottom edge sits at the very bottom of the viewport.
+        expect(hand.rect.y + hand.rect.h).toBe(height);
+        // The local dock is anchored to the bottom too (within its bottom pad).
+        expect(localDock.rect.y + localDock.rect.h).toBeLessThanOrEqual(height);
+        expect(localDock.rect.y + localDock.rect.h).toBeGreaterThan(height - 24);
+        // The opponent HUD strip stays at the top, above the receiver's band.
+        expect(computed.regions.opponentHud.rect.y).toBeLessThan(hand.rect.y);
+      }
+    }
+  });
 });
 
 describe('layout is mode-invariant (regions never move between overview and focus)', () => {
