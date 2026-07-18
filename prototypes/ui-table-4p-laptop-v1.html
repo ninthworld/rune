@@ -173,15 +173,26 @@
   .card.actionable::after { content:''; position:absolute; left: 3px; right: 3px; bottom: 0; height: 3px; border-radius: 2px; background: var(--gold); }
   .card.attacking { box-shadow: 0 -2px 0 0 var(--target); }
   .card.blocking { box-shadow: -2px 0 0 0 #3f7fc4; }
-  .card.tappedmini { opacity: 0.55; }
-  .card.attacking.tappedmini { opacity: 1; }
-  .card.tappedmini .tapmark { position: absolute; right: 2px; top: 1px; font-size: 8px; color: var(--muted); opacity: 1; }
+  /* ONE tap treatment at every tier (design decision): ~25° rotation + dim.
+     Partial rotation keeps small cards legible; the row gap absorbs the swept
+     corners. In the live client this is a tween (reduced-motion snaps). */
+  .card.tapped25 { transform: rotate(24deg); transform-origin: 50% 62%; opacity: 0.82; margin: 6px 9px 0 7px; }
+  .card.attacking.tapped25 { opacity: 1; }
   .card.dim { opacity: 0.55; }
   .card.targeted { outline: 2px solid var(--target); outline-offset: 1px; }
   .card.selected-lift { transform: translateY(-14px); box-shadow: 0 10px 22px rgba(0,0,0,0.55), 0 0 0 1px var(--gold); }
 
+  /* attachment cluster: equipment/aura splays behind its host — the attachment's
+     name band peeks above; one slot wide at every tier. */
+  .cluster { position: relative; display: inline-flex; flex: none; padding-top: 15px; }
+  .cluster .attach { position: absolute; top: 0; left: 7px; z-index: 0; filter: brightness(0.72) saturate(0.85); }
+  .cluster .hostc { position: relative; z-index: 1; }
+
   /* tiers */
   .t-mini { width: 58px; height: 74px; }
+  .pp.dense .t-mini { width: 46px; height: 62px; }
+  .pp.dense .t-mini .nm { font-size: 8px; }
+  .pp.dense .rowline { gap: 4px; }
   .t-mini .cost { display: none; }
   .t-mini .art { font-size: 18px; }
   .t-std  { width: 66px; height: 90px; }
@@ -191,10 +202,7 @@
   .t-hand .art { font-size: 30px; }
   .t-hand .pt { font-size: 9px; }
 
-  /* rotated (tapped) footprint: the wrapper reserves the rotated box */
-  .tapbox { position: relative; flex: none; }
-  .tapbox > .card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg) !important; opacity: 0.7; }
-  .tapbox.s { width: 90px; height: 66px; }
+
 
   /* land chip */
   .chip {
@@ -203,8 +211,8 @@
     border: 1px solid color-mix(in srgb, var(--ci) 60%, transparent);
     display: grid; place-items: center; color: var(--ci); font: 700 13px var(--display);
   }
-  .chip.tappedc { opacity: 0.5; }
-  .chip.tappedc::after { content: '⤵'; position: absolute; right: 1px; top: 0; font-size: 8px; color: var(--muted); }
+  .chip.tappedc { transform: rotate(24deg); opacity: 0.55; margin: 0 5px; }
+
   .chip .xn { position: absolute; right: -5px; top: -6px; background: #2a2f37; border: 1px solid var(--line-strong); color: var(--text); font: 700 8px var(--body); border-radius: 999px; padding: 1px 4px; }
   .chip.actionable { box-shadow: inset 0 -3px 0 0 var(--gold); }
 
@@ -423,13 +431,13 @@ function pips(cost) {
 }
 function card(o, tier) {
   const cls = ['card', tier,
-    o.tapped && !o.tapWrap ? 'tappedmini' : '', o.act ? 'actionable' : '',
+    o.tapped ? 'tapped25' : '', o.act ? 'actionable' : '',
     o.atk ? 'attacking' : '', o.blk ? 'blocking' : '', o.dim ? 'dim' : '',
     o.targeted ? 'targeted' : '', o.lift ? 'selected-lift' : ''].filter(Boolean).join(' ');
   const inner = `
     <div class="${cls}" style="--ci: var(--${o.ci})">
       ${o.atkTag ? `<span class="atk-tag">${o.atkTag}</span>` : ''}
-      ${o.tapped && !o.tapWrap ? `<span class="tapmark">⟳</span>` : ''}
+
       <div class="head"><span class="nm">${o.n}</span><span class="cost">${pips(o.c || [])}</span></div>
       <div class="art" style="${artStyle(o.n, o.ci)}"></div>
       ${o.kw ? `<span class="kw">${o.kw.map(k => KW[k]).join(' ')}</span>` : ''}
@@ -438,10 +446,10 @@ function card(o, tier) {
       ${o.dmg ? `<span class="dmg">${o.dmg}</span>` : ''}
       ${o.xn ? `<span class="xn">×${o.xn}</span>` : ''}
     </div>`;
-  if (o.tapped && o.tapWrap) {
-    return `<span class="tapbox ${o.tapWrap}">${inner.replace('class="card', 'class="card tapwrap')}</span>`;
-  }
   return inner;
+}
+function cluster(attachment, host, tier) {
+  return `<span class="cluster">${card(attachment, tier).replace('class="card', 'class="card attach')}${card(host, tier).replace('class="card', 'class="card hostc')}</span>`;
 }
 const chip = (sym, ci, o = {}) =>
   `<span class="chip ${o.tapped ? 'tappedc' : ''} ${o.act ? 'actionable' : ''}" style="--ci: var(--${ci})">${sym}${o.xn ? `<span class="xn">×${o.xn}</span>` : ''}</span>`;
@@ -454,16 +462,20 @@ const pile = (kind, n, o = {}) => {
 /* ── opponents ── */
 const opponents = [
   {
-    name: 'Nyx', accVar: 'north', life: 11, hand: 3, meta: '',
+    name: 'Nyx', accVar: 'north', life: 11, hand: 3, meta: '', dense: true,
     creatures: [
       { n: 'Cryptvine Lurker', ci: 'B', c: ['1','B'], pt: '2/2', kw: ['deathtouch'] },
       { n: 'Gravewaker', ci: 'B', c: ['3','B'], pt: '4/3', cnt: 1 },
       { n: 'Marsh Husk', ci: 'B', c: ['2'], pt: '2/1', xn: 2 },
+      { n: 'Tomb Rat', ci: 'B', c: ['B'], pt: '1/1', xn: 3 },
+      { n: 'Night Moth', ci: 'B', c: ['1','B'], pt: '1/1', kw: ['flying'] },
+      { n: 'Crypt Thrall', ci: 'B', c: ['2','B'], pt: '2/2', tapped: true },
       { n: 'Bog Sentinel', ci: 'B', c: ['1','B'], pt: '1/4', tapped: true },
     ],
     support: [
       { n: 'Vexing Ordeal', ci: 'B', c: ['B'] },
       { n: 'Umbral Pact', ci: 'B', c: ['1','B'], xn: 2 },
+      { n: 'Grave Sigil', ci: 'B', c: ['2'] },
     ],
     lands: [ ['▲', 'B', { xn: 4 }], ['▲', 'B', { tapped: true, xn: 2 }], ['◆', 'L'] ],
     piles: { lib: 24, gy: 9, gyTop: { n: 'Gravewaker', ci: 'B' }, ex: 2 },
@@ -473,13 +485,11 @@ const opponents = [
     creatures: [
       { n: 'Dawnblade Duelist', ci: 'W', c: ['1','W'], pt: '2/2', kw: ['firststrike'], atk: true, atkTag: '→ Fern', tapped: true },
       { n: 'Sky Warden', ci: 'W', c: ['2','W'], pt: '2/3', kw: ['flying'], atk: true, atkTag: '→ You', tapped: true },
-      { n: 'Oath Keeper', ci: 'W', c: ['3','W'], pt: '3/4', kw: ['vigilance'], atk: true, atkTag: '→ You' },
+      { host: { n: 'Oath Keeper', ci: 'W', c: ['3','W'], pt: '5/4', kw: ['vigilance'], atk: true, atkTag: '→ You' },
+        attach: { n: 'Ironguard Aegis', ci: 'C', c: ['2'] } },
       { n: 'Cleric of the Vault', ci: 'W', c: ['2','W'], pt: '2/3' },
     ],
-    support: [
-      { n: 'Ironguard Aegis', ci: 'W', c: ['2'] },
-      { n: 'Oath of Unity', ci: 'M', c: ['W','G'] },
-    ],
+    support: [ { n: 'Oath of Unity', ci: 'M', c: ['W','G'] } ],
     lands: [ ['✦', 'W', { xn: 3 }], ['✦', 'W', { tapped: true, xn: 3 }], ['◆', 'L', { tapped: true }] ],
     piles: { lib: 21, gy: 4, gyTop: { n: 'Sunfall', ci: 'W' }, ex: 1 },
   },
@@ -497,7 +507,7 @@ const opponents = [
 ];
 
 document.getElementById('opps').innerHTML = opponents.map(p => `
-  <div class="panel pp" style="--acc: var(--${p.accVar})">
+  <div class="panel pp ${p.dense ? 'dense' : ''}" style="--acc: var(--${p.accVar})">
     <div class="pp-head">
       <span class="crest" style="--acc: var(--${p.accVar})"><b>${p.life}</b></span>
       <span class="pp-name">${p.name}</span>
@@ -508,7 +518,7 @@ document.getElementById('opps').innerHTML = opponents.map(p => `
     </div>
     <div class="pp-body">
       <div class="rows">
-        <div class="rowline">${p.creatures.map(c => card(c, 't-mini')).join('')}</div>
+        <div class="rowline">${p.creatures.map(c => c.host ? cluster(c.attach, c.host, 't-mini') : card(c, 't-mini')).join('')}</div>
         <div class="rowline">${p.support.map(c => card(c, 't-mini')).join('')}</div>
         <div class="rowline lands">${p.lands.map(([s, ci, o]) => chip(s, ci, o)).join('')}</div>
       </div>
@@ -521,22 +531,23 @@ document.getElementById('opps').innerHTML = opponents.map(p => `
 /* ── your battlefield ── */
 const mine = {
   creatures: [
-    { n: 'Thornback Boar', ci: 'G', c: ['2','G'], pt: '5/4', cnt: 2, targeted: true, act: true },
+    { host: { n: 'Thornback Boar', ci: 'G', c: ['2','G'], pt: '5/4', cnt: 2, targeted: true, act: true },
+      attach: { n: 'Ward of Thorns', ci: 'G', c: ['2'] } },
     { n: 'Gorehorn Ravager', ci: 'G', c: ['3','G'], pt: '5/4', kw: ['vigilance'], act: true },
     { n: 'Verdant Scout', ci: 'G', c: ['G'], pt: '1/1', act: true },
     { n: 'Moss Bear', ci: 'G', c: ['1','G'], pt: '2/2', xn: 2, act: true },
     { n: 'Cleric of the Vault', ci: 'W', c: ['2','W'], pt: '2/3', dmg: 2, act: true },
-    { n: 'Sporeback Colossus', ci: 'G', c: ['5','G'], pt: '7/7', tapped: true, tapWrap: 's' },
+    { n: 'Sporeback Colossus', ci: 'G', c: ['5','G'], pt: '7/7', tapped: true },
   ],
   support: [
     { n: 'Nature’s Resolve', ci: 'G', c: ['1','G'] },
-    { n: 'Ward of Thorns', ci: 'G', c: ['2'], xn: 2 },
+    { n: 'Ward of Thorns', ci: 'G', c: ['2'] },
     { n: 'Sigil of Dawn', ci: 'W', c: ['W'] },
   ],
   lands: [ ['♣', 'G', { xn: 3, act: true }], ['♣', 'G', { tapped: true, xn: 2 }], ['✦', 'W', { xn: 2, act: true }], ['◆', 'L', { tapped: true }] ],
 };
 document.getElementById('yourows').innerHTML = `
-  <div class="rowline">${mine.creatures.map(c => card(c, 't-std')).join('')}</div>
+  <div class="rowline">${mine.creatures.map(c => c.host ? cluster(c.attach, c.host, 't-std') : card(c, 't-std')).join('')}</div>
   <div class="rowline">${mine.support.map(c => card(c, 't-mini')).join('')}
     <span style="width:26px"></span>
     ${mine.lands.map(([s, ci, o]) => chip(s, ci, o)).join('')}</div>`;
