@@ -34,9 +34,28 @@
  * (`styles.ts`), which ADR 0019 keeps out of the static classes.
  */
 .shell {
-  background: var(--rune-table);
+  /* Tier 1 (§Visual hierarchy): the table is a surface, not an app background — a
+   * soft procedural vignette centered under the board. Tokens + gradient only; no
+   * texture assets (§Design stance). */
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(255, 255, 255, 0.03) 0%, transparent 55%),
+    radial-gradient(140% 110% at 50% 50%, var(--rune-table) 55%, #0e1013 100%);
+  background-color: var(--rune-table);
   color: var(--rune-text);
   font-family: var(--rune-font-body);
+}
+
+/* The table's procedural rune motif: brand geometry (the RuneMark) laid faintly
+ * under the battlefield scene. Decorative, non-interactive, token-tinted. */
+.tableMotif {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rune-raised-bg);
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 /* Tier 1 — the battlefield is the table itself: no chrome box, just the board. A
@@ -706,15 +725,18 @@
   border-radius: var(--rune-radius-md);
   background: var(--rune-chrome-bg);
   border: 1px solid var(--rune-border);
+  /* The player's identity accent (§Identity), set inline per tile as
+   * `--identity-accent`; the edge stripe answers "whose tile" at a glance. */
+  border-left: 3px solid var(--identity-accent, var(--rune-border-strong));
   font-size: var(--rune-type-body);
   line-height: 1.4;
   box-sizing: border-box;
+  box-shadow: var(--rune-elevation-1);
 }
 /* The dock's single surface is not part of a growing strip; the region already caps
  * its width, so it simply fills the dock. */
 .dock .hudTile {
   flex: 1 1 auto;
-  border-color: var(--rune-selection);
 }
 .targetTile {
   border-color: var(--rune-targeting);
@@ -769,6 +791,44 @@
   font-family: var(--rune-font-display);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+/* The life crest (§Identity): the total worn in a hexagonal rune frame tinted by
+ * the player's accent — the concepts' hex badge translated to procedural geometry.
+ * The frame is two clipped layers (accent rim, chrome fill); the value paints above
+ * both. Purely presentational; the number renders verbatim. */
+.lifeCrest {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 40px;
+  height: 44px;
+  padding: 0 4px;
+  flex: none;
+}
+.lifeCrest::before,
+.lifeCrest::after {
+  content: '';
+  position: absolute;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+.lifeCrest::before {
+  inset: 0;
+  background: var(--identity-accent, var(--rune-border-strong));
+  opacity: 0.85;
+}
+.lifeCrest::after {
+  inset: 2px;
+  background: var(--rune-chrome-bg);
+}
+.lifeCrestValue {
+  position: relative;
+  z-index: 1;
+  font-size: var(--rune-type-title);
+  font-weight: 700;
+  font-family: var(--rune-font-display);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--rune-text);
 }
 
 /* Secondary meta — hand count and statuses, quieter than identity/life. */

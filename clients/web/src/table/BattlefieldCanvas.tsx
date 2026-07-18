@@ -93,6 +93,9 @@ export function BattlefieldCanvas({ scene, isolatedId = null }: Props) {
     if (!host) return;
     try {
       const app = new Application({
+        // Transparent: the table surface (vignette + rune motif, DOM beneath the
+        // canvas) shows through — the board is drawn ON the table, not over it.
+        backgroundAlpha: 0,
         backgroundColor: hexToNumber(SURFACES.board),
         antialias: true,
         autoDensity: true,

@@ -1116,7 +1116,9 @@ describe('buildTableScene shell-derived presentation (scale, fill, piles, names)
   });
 
   it('scales card footprints, and the scene reports its scale for the renderer', () => {
-    const view = permBoard([{ id: 'b1', type_line: 'Creature — Bear', power: '2', toughness: '2' }]);
+    const view = permBoard([
+      { id: 'b1', type_line: 'Creature — Bear', power: '2', toughness: '2' },
+    ]);
     const base = buildTableScene(view, undefined, 1280);
     const scaled = buildTableScene(view, undefined, 1280, undefined, { scale: 1.5 });
     const baseCard = base.bands.at(-1)!.cards[0]!;
@@ -1134,9 +1136,7 @@ describe('buildTableScene shell-derived presentation (scale, fill, piles, names)
     expect(natural.height).toBeLessThan(1200);
     expect(stretched.height).toBe(1200);
     // The hand region rides the full slack to the bottom of the region…
-    expect(stretched.handRegion.rect.y).toBe(
-      natural.handRegion.rect.y + (1200 - natural.height),
-    );
+    expect(stretched.handRegion.rect.y).toBe(natural.handRegion.rect.y + (1200 - natural.height));
     // …the first band stays at the top, and the local band moves toward the hand.
     expect(stretched.bands[0]?.rect.y).toBe(natural.bands[0]?.rect.y);
     expect(stretched.bands.at(-1)!.rect.y).toBeGreaterThan(natural.bands.at(-1)!.rect.y);

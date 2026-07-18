@@ -322,8 +322,12 @@ export function pileColumnBox(rect: Rect): CSSProperties {
   };
 }
 
-/** A player's bounded battlefield lane. The local lane is ringed like its tile. */
-export function bandRegion(rect: Rect, isLocal: boolean): CSSProperties {
+/**
+ * A player's bounded battlefield lane, bordered and tinted in the controller's
+ * identity accent (§Identity: the region answers "whose stuff"; cards never wear
+ * the accent). The local lane reads slightly stronger.
+ */
+export function bandRegion(rect: Rect, isLocal: boolean, accent: string): CSSProperties {
   return {
     position: 'absolute',
     left: rect.x,
@@ -331,9 +335,9 @@ export function bandRegion(rect: Rect, isLocal: boolean): CSSProperties {
     width: rect.w,
     height: rect.h,
     boxSizing: 'border-box',
-    border: `1px solid ${isLocal ? SURFACES.selection : 'var(--rune-border)'}`,
+    border: `1px solid ${accent}${isLocal ? '8C' : '4D'}`,
     borderRadius: 8,
-    background: isLocal ? 'var(--rune-region-bg-local)' : 'var(--rune-region-bg)',
+    background: `${accent}${isLocal ? '14' : '0A'}`,
   };
 }
 

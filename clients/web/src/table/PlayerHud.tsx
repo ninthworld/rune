@@ -23,11 +23,21 @@
  * makes the server's candidates pickable — it derives no legality. This is exactly the
  * contract the retired `PlayerTiles` carried, preserved here for both surfaces.
  */
+import type { CSSProperties, ReactNode } from 'react';
 import type { EntityId, GameView, PlayerId } from '../protocol';
-import type { ReactNode } from 'react';
 import { cx } from '../chrome/cx';
+import { identityAccent } from './identityAccents';
 import { playerName } from '../playerNames';
 import s from './chrome.module.css';
+
+/**
+ * The tile style carrying a player's identity accent (§Identity) as a CSS custom
+ * property the chrome classes read (`--identity-accent`): the tile's edge, the
+ * nameplate, and the life crest all tint from this one value.
+ */
+function accentStyle(view: GameView, playerId: PlayerId): CSSProperties {
+  return { '--identity-accent': identityAccent(view, playerId) } as CSSProperties;
+}
 
 /** The active target slot's player candidates plus the pick handler. */
 export interface TargetingTiles {
@@ -52,6 +62,7 @@ function renderSurface(
   targeting: TargetingTiles | undefined,
   highlighted: boolean,
   focusLabel?: string,
+  style?: CSSProperties,
 ): ReactNode {
   // A game-log reference can presentationally highlight a player's tile (issue #260):
   // a ring, independent of targeting. Purely display — it makes nothing pickable.
@@ -69,6 +80,7 @@ function renderSurface(
         data-testid={`tile-${playerId}`}
         className={cx(className, highlightClass)}
         data-highlighted={highlighted || undefined}
+        style={style}
         {...(focusLabel !== undefined
           ? { tabIndex: 0, 'data-focus-item': '', role: 'group', 'aria-label': focusLabel }
           : {})}
@@ -86,6 +98,7 @@ function renderSurface(
         aria-label={`Target player ${name}`}
         onClick={() => targeting.onPick(playerId)}
         className={cx(s.tileButtonReset, className, s.targetTile, highlightClass)}
+        style={style}
       >
         {content}
       </button>
@@ -96,6 +109,7 @@ function renderSurface(
       key={playerId}
       data-testid={`tile-${playerId}`}
       className={cx(className, s.dimmedTile, highlightClass)}
+      style={style}
     >
       {content}
     </div>
@@ -117,11 +131,15 @@ function surfaceBody(
       <div className={s.hudName} data-testid={`hud-name-${playerId}`}>
         {name}
       </div>
+      {/* Life is the identity moment the tile leads with (§Identity): a rune-framed
+          crest in the player's accent, display-face numerals. Value verbatim. */}
       <div className={s.hudLife}>
-        <span className={s.hudLifeLabel}>Life</span>
-        <span className={s.hudLifeValue} data-testid={`hud-life-${playerId}`}>
-          {life}
+        <span className={s.lifeCrest}>
+          <span className={s.lifeCrestValue} data-testid={`hud-life-${playerId}`}>
+            {life}
+          </span>
         </span>
+        <span className={s.hudLifeLabel}>Life</span>
       </div>
       {hand !== undefined && (
         <div className={s.hudMeta} data-testid={`hud-hand-${playerId}`}>
@@ -199,6 +217,7 @@ export function OpponentHud({ view, targeting, highlightedId }: OpponentHudProps
           targeting,
           highlightedId === opponent.player_id,
           multiplayer ? opponentFocusLabel(name, opponent) : undefined,
+          accentStyle(view, opponent.player_id),
         );
       })}
     </div>
@@ -234,10 +253,12 @@ export function LocalDock({ view, localId, targeting, highlightedId }: LocalDock
             {name} <span className={s.hudYou}>(you)</span>
           </div>
           <div className={s.hudLife}>
-            <span className={s.hudLifeLabel}>Life</span>
-            <span className={s.hudLifeValue} data-testid={`hud-life-${id}`}>
-              {view.me.life}
+            <span className={s.lifeCrest}>
+              <span className={s.lifeCrestValue} data-testid={`hud-life-${id}`}>
+                {view.me.life}
+              </span>
             </span>
+            <span className={s.hudLifeLabel}>Life</span>
           </div>
           {view.mana_pool.length > 0 && (
             <div className={s.hudMana} data-testid="hud-mana">
@@ -253,6 +274,8 @@ export function LocalDock({ view, localId, targeting, highlightedId }: LocalDock
         </>,
         targeting,
         highlightedId === id,
+        undefined,
+        localId !== undefined ? accentStyle(view, localId) : undefined,
       )}
     </div>
   );

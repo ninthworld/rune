@@ -109,7 +109,10 @@ describe('TableGeography pile column (zone piles as table furniture)', () => {
       expect(column.style.left).toBe(`${band.pileRect.x}px`);
       expect(column.style.top).toBe(`${band.pileRect.y}px`);
       // All three piles live inside the column.
-      expect(column.querySelectorAll('[data-testid$="-pile-' + band.playerId + '"]').length + column.querySelectorAll('[data-testid^="table-"]').length).toBeGreaterThanOrEqual(3);
+      expect(
+        column.querySelectorAll('[data-testid$="-pile-' + band.playerId + '"]').length +
+          column.querySelectorAll('[data-testid^="table-"]').length,
+      ).toBeGreaterThanOrEqual(3);
     }
   });
 

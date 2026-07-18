@@ -57,7 +57,7 @@ export function TableGeography({ scene, onOpenZone }: Props) {
     <div data-testid="table-geography" style={geographyLayer(scene.width, scene.height)}>
       {scene.bands.map((band) => (
         <Fragment key={band.playerId}>
-          <div style={bandRegion(band.rect, band.isLocal)} aria-hidden="true" />
+          <div style={bandRegion(band.rect, band.isLocal, band.accent)} aria-hidden="true" />
           {/* Row labels: only the lands row is labeled — the type-grouped rows are a
               sorting convention, not zones (issue #318). */}
           {band.rows.map(
@@ -80,7 +80,12 @@ export function TableGeography({ scene, onOpenZone }: Props) {
             </div>
           )}
           <div style={regionHeader(band.rect)}>
-            <span data-testid={`band-label-${band.playerId}`} className={s.regionLabel}>
+            {/* The nameplate wears the controller's identity accent (§Identity). */}
+            <span
+              data-testid={`band-label-${band.playerId}`}
+              className={s.regionLabel}
+              style={{ color: band.accent }}
+            >
               {band.label}
             </span>
           </div>
@@ -159,8 +164,17 @@ export function TableGeography({ scene, onOpenZone }: Props) {
       ))}
 
       {/* The hand row: a labeled, bounded region separating it from the battlefield.
-          Its cards render on the canvas; only the label/boundary live here. */}
-      <div style={bandRegion(scene.handRegion.rect, true)} aria-hidden="true" />
+          Its cards render on the canvas; only the label/boundary live here. It wears
+          the receiver's identity accent, same as their battlefield lane. */}
+      <div
+        style={bandRegion(
+          scene.handRegion.rect,
+          true,
+          // Neutral steel when no local band exists (a spectator's table).
+          scene.bands.find((band) => band.isLocal)?.accent ?? '#5A6470',
+        )}
+        aria-hidden="true"
+      />
       <div style={regionHeader(scene.handRegion.rect)}>
         <span data-testid="hand-label" className={s.regionLabel}>
           {scene.handRegion.label}

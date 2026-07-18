@@ -25,6 +25,7 @@ import { cardVisualSignature, type CardDisplayData, type RenderTier } from '../c
 import type { GlyphName } from '../chrome/glyphs';
 import { TIER, type ColorIdentity } from '../tokens';
 import { deriveColorIdentity } from './colorIdentity';
+import { identityAccent } from './identityAccents';
 import { playerName } from '../playerNames';
 
 /** Absolute placement of a card within the scene's logical coordinate space. */
@@ -175,6 +176,12 @@ export interface Band {
   isEmpty: boolean;
   /** The controller's library/graveyard/exile pile counts, straight from the view. */
   zones: ZoneCounts;
+  /**
+   * The controller's identity accent (§Identity): worn by the region border and
+   * nameplate — never by cards. Deterministic from the view's seat order, so every
+   * client (and a fresh mount) derives the same color for the same player.
+   */
+  accent: string;
   /**
    * The reserved column where this band's zone piles park — a consistent corner of
    * every player's region (§Zone piles), on the table itself rather than in the
@@ -951,7 +958,9 @@ export function buildTableScene(
   const bandShift = (index: number): number =>
     gaps === 0 ? 0 : Math.floor((slack * index) / gaps);
   const shiftCards = (cards: RenderedCard[], dy: number): RenderedCard[] =>
-    dy === 0 ? cards : cards.map((card) => ({ ...card, rect: { ...card.rect, y: card.rect.y + dy } }));
+    dy === 0
+      ? cards
+      : cards.map((card) => ({ ...card, rect: { ...card.rect, y: card.rect.y + dy } }));
 
   // Finalize band regions now that the board width is known: every lane (and each of
   // its rows) spans the full width, is labeled by its controller, and carries that
@@ -969,6 +978,7 @@ export function buildTableScene(
       isEmpty: meta.isEmpty,
       label: bandLabel(view, meta.playerId, meta.isLocal),
       zones: zoneCountsOf(view, meta.playerId, meta.isLocal),
+      accent: identityAccent(view, meta.playerId),
       rect: { x: 0, y: meta.top + dy, w: width, h: meta.height },
       // The zone piles park in the reserved right-edge column, below the nameplate
       // strip — the same corner of every player's region (§Zone piles).
