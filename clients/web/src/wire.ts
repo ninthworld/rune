@@ -104,6 +104,10 @@ function normalizePermanent(payload: unknown): Permanent {
   // attacking, and which attacker it is blocking. Present only mid-combat; a view
   // that omits them (not in combat, or an older server) defaults to not-in-combat.
   if (record.attacking === true) perm.attacking = true;
+  // The defending player an attacker attacks (issue #341/#345): present only mid-combat
+  // in a multiplayer game; a two-player or older view omits it and the client falls
+  // back to the sole opponent.
+  if (typeof record.attacking_player === 'string') perm.attacking_player = record.attacking_player;
   if (typeof record.blocking === 'string') perm.blocking = record.blocking;
   // Marked combat damage (issue #332, CR 120.3): a non-negative number, present only
   // while damage is marked; an omitted or non-positive value defaults to undamaged.
@@ -165,6 +169,9 @@ export function normalizeGameView(payload: unknown): GameView {
     // is; an older server may omit them, so default to 0/'' (unknown).
     turn: typeof payload.turn === 'number' ? payload.turn : 0,
     active_player: typeof payload.active_player === 'string' ? payload.active_player : '',
+    // Explicit seat order (issue #345): every seat id in order; an older server omits
+    // it, defaulting to `[]` (the client then falls back to its prior inference).
+    seat_order: asArray(payload.seat_order, 'seat_order'),
     mana_pool: asArray(payload.mana_pool, 'mana_pool'),
     priority_player:
       typeof payload.priority_player === 'string' ? payload.priority_player : undefined,
