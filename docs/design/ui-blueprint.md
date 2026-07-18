@@ -144,6 +144,13 @@ Each panel picks its own rung — one hoarding opponent never shrinks the others
 - **Select → confirm** is the universal path (pointer, touch, keyboard,
   controller): selecting an entity lifts/rings it and routes its offered actions
   to the action dock; the prompt strip states the pending question in words.
+- **Direct activation shortcuts the round trip where intent is unambiguous**
+  (ADR 0025), on the same single gesture in every input mode: a sole
+  server-flagged mana ability fires on the first activation (tap the land, get
+  the mana); a combat-declaration candidate enters the declaration pre-toggled;
+  and activating the already-selected entity again fires its sole action. The
+  dock remains the labeled home for every action and the only home for
+  ambiguous ones.
 - **Drag is an enhancement, never required**: dragging a playable hand card
   ghosts it under the pointer/touch point, holds its origin slot open in the
   hand, and lights the **legal drop area** (gold inset on your battlefield for a

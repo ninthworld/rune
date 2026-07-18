@@ -188,6 +188,7 @@ for an ability originating from a permanent.
   "type": "activate_ability",
   "label": "Tap for mana",
   "subject": ["perm_17"],
+  "mana_ability": true,
   "token": "t00000000deadbeef"
 }
 ```
@@ -197,6 +198,10 @@ for an ability originating from a permanent.
 - `label` is server-supplied display text.
 - `subject` names the entities that own the action. An empty subject identifies a global
   action such as passing priority.
+- `mana_ability` (optional, default `false`) marks the activation of a mana ability
+  (CR 605): no targets, no stack, only mana production. Server-computed so a client may
+  offer a lighter gesture — one-click tap-for-mana (ADR 0025) — for exactly these actions
+  without ever classifying abilities itself. Omitted when `false`.
 - `token` binds the answer to the action’s exact current content. The client echoes it
   verbatim and never derives or parses it.
 

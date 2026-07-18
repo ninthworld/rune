@@ -845,8 +845,48 @@ export function Table() {
 
   const cancelTargeting = (): void => setTargeting(null);
   const cancelMultiSelect = (): void => setMultiSelect(null);
-  const toggleSelect = (id: EntityId): void =>
-    setSelectedId((current) => (current === id ? null : id));
+
+  // Direct activation (ADR 0025): one gesture vocabulary — click, tap, or
+  // keyboard activate — that shortcuts the select→dock round trip wherever the
+  // intent is unambiguous, on every input method identically:
+  //
+  // 1. A combat-declaration candidate ENTERS the declaration with itself
+  //    pre-toggled on the first activation (reversible until Confirm).
+  // 2. A sole offered action the server flagged as a mana ability (CR 605)
+  //    fires on the first activation — tap the land, get the mana.
+  // 3. Otherwise the first activation selects (inspect + dock, as ever), and
+  //    activating the already-selected entity again fires its sole action —
+  //    entering targeting mode if it has slots. Several actions keep the dock
+  //    as the disambiguator (the repeat activation is then a no-op).
+  //
+  // Every fired action is one the server offered on this entity — the gesture
+  // only changes how it is reached, never what is legal (AGENTS.md hard rule).
+  const activateEntity = (id: EntityId): void => {
+    const card = findCard(scene, id);
+    if (!card) return;
+    if (card.actions.length === 0 && card.declaration) {
+      const session = beginMultiSelect(card.declaration);
+      const slot = msActiveSlot(session);
+      setSelectedId(null);
+      setTargeting(null);
+      setMultiSelect(
+        slot && slot.kind !== 'order' && slot.candidates.includes(id)
+          ? msToggle(session, id)
+          : session,
+      );
+      return;
+    }
+    const sole = card.actions.length === 1 ? card.actions[0] : undefined;
+    if (sole?.mana_ability) {
+      fire(sole);
+      return;
+    }
+    if (selectedId !== id) {
+      setSelectedId(id);
+      return;
+    }
+    if (sole) fire(sole);
+  };
 
   const activeReq = targeting ? activeRequirement(targeting) : null;
   const targetingBanner: TargetingBanner | null =
@@ -984,7 +1024,7 @@ export function Table() {
             targeting={selecting}
             multiSelect={multiSelect !== null}
             pointer={viewport.pointer}
-            onSelect={toggleSelect}
+            onSelect={activateEntity}
             onPickTarget={multiSelect ? toggleCandidate : pickTarget}
             onPeek={setPeekId}
             onPinInspect={setInspectedId}

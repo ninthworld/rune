@@ -123,6 +123,15 @@ export interface RenderedCard {
    */
   actions: ValidAction[];
   /**
+   * The offered subject-less **combat declaration** (declare attackers/blockers)
+   * that lists this entity among its candidates (ADR 0025), when the entity has
+   * no subject-actions of its own. Makes the candidate directly interactive: a
+   * click enters the declaration with this entity pre-toggled, instead of the
+   * player hunting the dock button first. Pure projection of `valid_actions` —
+   * the client still computes no legality. Suppressed during targeting mode.
+   */
+  declaration?: ValidAction;
+  /**
    * Whether this card is a legal target for the active target slot — set only in
    * targeting mode, straight from the server's candidate list (ADR 0009 §Client).
    * The overlay makes exactly these cards pickable; everything else is dimmed.
@@ -467,6 +476,26 @@ function actionsFor(entityId: EntityId, actions: ValidAction[]): ValidAction[] {
   return actions.filter((a) => a.subject?.includes(entityId));
 }
 
+/** The combat-declaration kinds whose candidates get direct entity entry (ADR 0025). */
+const DECLARATION_KINDS = new Set(['declare_attackers', 'declare_blockers']);
+
+/**
+ * The single offered subject-less combat declaration listing `entityId` among
+ * its requirement candidates (ADR 0025), or `undefined` when none. Only the two
+ * combat declarations participate — reversible toggle-and-confirm flows where
+ * "click the creature" is unmistakably the player's intent; other multi-select
+ * actions (mulligan bottoming, zone selections) keep their explicit entry.
+ */
+function declarationFor(entityId: EntityId, actions: ValidAction[]): ValidAction | undefined {
+  const matches = actions.filter(
+    (a) =>
+      DECLARATION_KINDS.has(a.type) &&
+      (a.subject === undefined || a.subject.length === 0) &&
+      (a.requirements ?? []).some((r) => (r.candidates ?? []).includes(entityId)),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 /**
  * Which type-grouped row a permanent belongs to (issue #318), derived from the
  * **server-computed type line** alone — the client knows no rules. A permanent that
@@ -783,6 +812,8 @@ export function buildTableScene(
         actionable: false,
       },
       actions: [],
+      // Entity entry is likewise suppressed mid-pick: the flow is already open.
+      declaration: undefined,
       targetable,
       chosen,
     };
@@ -822,6 +853,11 @@ export function buildTableScene(
     cluster?: { attachedTo?: EntityId; attachments?: EntityId[] },
   ): Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds'> => {
     const actions = actionsFor(perm.id, subjectActions);
+    // A creature with no subject-actions may still be a candidate of an offered
+    // combat declaration (ADR 0025): it becomes directly interactive — and wears
+    // the playable affordance — as the entry point into that declaration.
+    const declaration =
+      actions.length === 0 ? declarationFor(perm.id, view.valid_actions) : undefined;
     const rowKind = rowKindForType(perm.card.type_line);
     const landGlyph = rowKind === 'lands' ? basicLandGlyph(perm.card.type_line) : undefined;
     return withTargeting({
@@ -834,7 +870,7 @@ export function buildTableScene(
         tapped: perm.tapped,
         counters: perm.counters,
         selected: perm.id === selectedId,
-        actionable: actions.length > 0,
+        actionable: actions.length > 0 || declaration !== undefined,
         landGlyph,
         attacking: perm.attacking,
         attackingPlayer: perm.attacking_player,
@@ -843,6 +879,7 @@ export function buildTableScene(
         markedDamage: perm.damage,
       }),
       actions,
+      declaration,
       attachedTo: cluster?.attachedTo,
       attachments: cluster?.attachments,
     });

@@ -356,6 +356,35 @@ function makePill(
 }
 
 /**
+ * Draw `texture` cover-cropped and rounded-mask-clipped into a face rect of
+ * `inner` (ADR 0024). The sprite carries the stable node name `card-art` so
+ * tests (and debugging) can find the art layer without relying on child order.
+ */
+function addArtSprite(
+  inner: Container,
+  texture: Texture,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius: number,
+): void {
+  const sprite = new Sprite(texture);
+  sprite.name = 'card-art';
+  const scale = Math.max(w / texture.width, h / texture.height);
+  sprite.width = texture.width * scale;
+  sprite.height = texture.height * scale;
+  sprite.anchor.set(0.5);
+  sprite.position.set(x + w / 2, y + h / 2);
+  const mask = new Graphics();
+  mask.beginFill(0xffffff);
+  mask.drawRoundedRect(x, y, w, h, radius);
+  mask.endFill();
+  sprite.mask = mask;
+  inner.addChild(sprite, mask);
+}
+
+/**
  * Build the display object for one card at the given tier. Returns a `Container`
  * whose child (`inner`) holds the frame and content; tapping rotates `inner` so
  * callers can position the outer container without recomputing layout.
@@ -393,32 +422,6 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
       ? published
       : undefined;
 
-  /** Draw `texture` cover-cropped and rounded-mask-clipped into a face rect. */
-  const addArtSprite = (
-    texture: Texture,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    radius: number,
-  ): void => {
-    const sprite = new Sprite(texture);
-    // Stable node name so tests (and debugging) can find the art layer without
-    // relying on child order or on Sprite being distinguishable from glyph text.
-    sprite.name = 'card-art';
-    const scale = Math.max(w / texture.width, h / texture.height);
-    sprite.width = texture.width * scale;
-    sprite.height = texture.height * scale;
-    sprite.anchor.set(0.5);
-    sprite.position.set(x + w / 2, y + h / 2);
-    const mask = new Graphics();
-    mask.beginFill(0xffffff);
-    mask.drawRoundedRect(x, y, w, h, radius);
-    mask.endFill();
-    sprite.mask = mask;
-    inner.addChild(sprite, mask);
-  };
-
   if (fullArt) {
     // Full-card mode: the ENTIRE official card image is the face — RUNE's name
     // band, pips, monogram, type line, and keyword strip are suppressed (all of
@@ -428,7 +431,7 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
     // Scryfall card images share the physical card aspect (~63:88), which every
     // tier's footprint matches to within a fraction of a percent, so full-art
     // and standard printings alike cover-crop without visible loss.
-    addArtSprite(fullArt.texture, 0, 0, t.w, t.h, FRAME.radius);
+    addArtSprite(inner, fullArt.texture, 0, 0, t.w, t.h, FRAME.radius);
   } else {
     // Name (top-left, truncated to fit the header width).
     const name = mkText(fitName(data.name, t.w - 14, t.name), t.name, SURFACES.nameText);
@@ -457,6 +460,7 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
       // crop tighter.
       const winY = t.header + ART.topGap;
       addArtSprite(
+        inner,
         windowArt.texture,
         ART.inset,
         winY,
@@ -668,9 +672,12 @@ function applyTapTransform(inner: Container, w: number, h: number, tapped: boole
  * Build the digest **chip** for a land at the back of a band (issue #318). Chips are
  * the smallest tier (`TIER.chip`, 44×60): the information budget is frame color, a
  * name **or** a basic-land glyph, and tap state — nothing else (see
- * `docs/design/ui-design-notes.md` §Card render). Tap is the same partial-rotation
- * treatment as every other tier (blueprint §Card vocabulary); the caller reserves
- * the rotated bounding box accordingly.
+ * `docs/design/ui-design-notes.md` §Card render). A published image (ADR 0024)
+ * fills the body underneath that budget without changing it: the glyph/name stays
+ * on top over a scrim, except in full-card mode where the card image itself
+ * carries identity. Tap is the same partial-rotation treatment as every other
+ * tier (blueprint §Card vocabulary); the caller reserves the rotated bounding
+ * box accordingly.
  *
  * Basic lands draw their glyph ({@link CardDisplayData.landGlyph}); nonbasics draw a
  * truncated name. Selection/targeting rings, the playable edge bar, and the `×N`
@@ -694,13 +701,41 @@ export function buildChipDisplay(data: CardDisplayData): Container {
   frame.endFill();
   inner.addChild(frame);
 
-  if (data.landGlyph) {
+  // Art on the chip (ADR 0024): when the player's chosen source has an image,
+  // it fills the chip body under the identity mark — so lands are never the one
+  // zone left artless. The digest budget is unchanged: identity still reads
+  // from the border color plus the glyph/name, which gains a card-body scrim
+  // for legibility over any art. In full-card mode the image alone carries
+  // identity (it IS the card), so the glyph/name is suppressed like the larger
+  // faces suppress their printed text.
+  const published = data.artKey ? textureForArtKey(data.artKey) : undefined;
+  if (published) {
+    addArtSprite(inner, published.texture, 0, 0, t.w, t.h, FRAME.chipRadius);
+  }
+
+  if (published?.full) {
+    // Entire-card face: no procedural identity mark over the printed card.
+  } else if (data.landGlyph) {
     // Basic land: the glyph carries identity in place of a name.
+    if (published) {
+      const scrim = new Graphics();
+      scrim.beginFill(hexToNumber(SURFACES.cardBody), ART.scrimAlpha);
+      scrim.drawRoundedRect((t.w - 32) / 2, (t.h - 32) / 2, 32, 32, ART.radius);
+      scrim.endFill();
+      inner.addChild(scrim);
+    }
     const glyph = buildGlyphDisplay(data.landGlyph, { size: 26, color: accent });
     glyph.position.set((t.w - 26) / 2, (t.h - 26) / 2);
     inner.addChild(glyph);
   } else {
     // Nonbasic land (or any named chip): a small truncated name, centered.
+    if (published) {
+      const scrim = new Graphics();
+      scrim.beginFill(hexToNumber(SURFACES.cardBody), ART.scrimAlpha);
+      scrim.drawRoundedRect(2, t.h / 2 - 8, t.w - 4, 16, ART.radius);
+      scrim.endFill();
+      inner.addChild(scrim);
+    }
     const label = fitName(data.name, t.w - 8, 9);
     const name = mkText(label, 9, SURFACES.nameText);
     name.anchor.set(0.5);

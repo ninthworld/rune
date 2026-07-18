@@ -5,7 +5,12 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { Container, Sprite, Text, Texture } from 'pixi.js';
-import { buildCardDisplay, cardVisualSignature, type CardDisplayData } from './cardFactory';
+import {
+  buildCardDisplay,
+  buildChipDisplay,
+  cardVisualSignature,
+  type CardDisplayData,
+} from './cardFactory';
 import {
   artKeyFor,
   configureArtStore,
@@ -138,6 +143,45 @@ describe('card factory art window (ADR 0024)', () => {
       const display = buildCardDisplay({ ...CARD, artKey }, tier);
       expect(collectSprites(display).length).toBe(1);
     }
+  });
+
+  it('draws art on a land chip beneath its glyph, so lands are never artless', async () => {
+    const artKey = await publishArt('forest');
+    const chip = buildChipDisplay({
+      name: 'Forest',
+      typeLine: 'Basic Land — Forest',
+      colorIdentity: 'L',
+      landGlyph: 'land-forest',
+      artKey,
+    });
+    expect(collectSprites(chip).length).toBe(1);
+    // Without a published image the chip is unchanged (no sprite).
+    const plain = buildChipDisplay({
+      name: 'Forest',
+      typeLine: 'Basic Land — Forest',
+      colorIdentity: 'L',
+      landGlyph: 'land-forest',
+    });
+    expect(collectSprites(plain).length).toBe(0);
+  });
+
+  it('full-card mode chip: the card image carries identity alone', async () => {
+    const artKey = await publishArt('verdant_sanctuary', 'full');
+    const chip = buildChipDisplay({
+      name: 'Verdant Sanctuary',
+      typeLine: 'Land',
+      colorIdentity: 'L',
+      artKey,
+    });
+    expect(collectSprites(chip).length).toBe(1);
+    // The nonbasic name label is suppressed — it is printed on the image.
+    expect(collectTexts(chip).some((t) => t.startsWith('Verdan'))).toBe(false);
+    const plain = buildChipDisplay({
+      name: 'Verdant Sanctuary',
+      typeLine: 'Land',
+      colorIdentity: 'L',
+    });
+    expect(collectTexts(plain).some((t) => t.startsWith('Verdan'))).toBe(true);
   });
 
   it('changes the visual signature when art arrives, so the reconciler rebuilds', () => {
