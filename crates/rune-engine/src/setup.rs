@@ -187,6 +187,7 @@ impl GameState {
             land_played: false,
             attackers_declared: false,
             blockers_declared: false,
+            damage_orders: Vec::new(),
             blockers_declared_by: Vec::new(),
             deathtouch_struck: Vec::new(),
             extra_turns: Vec::new(),

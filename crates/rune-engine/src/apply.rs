@@ -9,7 +9,7 @@
 //! an immutable [`crate::GameState`].
 
 use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
-use crate::actions::{action_is_legal, Action, Attack, Block};
+use crate::actions::{action_is_legal, Action, Attack, Block, DamageOrder};
 use crate::card::{abilities_of, apply_enters_replacements, Keyword};
 use crate::combat::{
     blocked_attackers, combat_damage, combat_has_first_strike, defending_player, has_keyword,
@@ -71,6 +71,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             apply_declare_attackers(&mut next, attackers, db);
         }
         Action::DeclareBlockers { blocks } => apply_declare_blockers(&mut next, blocks),
+        Action::OrderCombatDamage { orders } => apply_order_combat_damage(&mut next, orders),
         Action::Concede => apply_concede(&mut next),
     }
 
@@ -601,6 +602,24 @@ fn apply_declare_blockers(state: &mut GameState, blocks: &[Block]) {
         // The next attacked player (APNAP order) declares before priority is passed.
         pending_blocker_declarer(state).unwrap_or(state.active_player)
     };
+    state.consecutive_passes = 0;
+}
+
+/// Record the attacking player's combat-damage assignment orders (CR 510.1, issue
+/// #346) and open the declare-blockers priority round. Each order is stored on
+/// [`GameState::damage_orders`], where [`crate::combat::combat_damage`] reads it to
+/// assign lethal-before-next along the chosen sequence; an attacker without a stored
+/// order keeps stable battlefield order. Only ever reached for the attacking player
+/// once every owed order is supplied (validated in [`action_is_legal`]).
+fn apply_order_combat_damage(state: &mut GameState, orders: &[DamageOrder]) {
+    for order in orders {
+        state
+            .damage_orders
+            .push((order.attacker, order.blockers.clone()));
+    }
+    // Every owed order is in; the step's normal priority round opens with the active
+    // player before combat damage is dealt (CR 510.1 precedes the damage step).
+    state.priority = state.active_player;
     state.consecutive_passes = 0;
 }
 
@@ -1673,7 +1692,7 @@ mod tests {
 
     // ----- Combat I: declare attackers and blockers (issue #117) -----
 
-    use crate::actions::{valid_actions as valid, Attack, Block};
+    use crate::actions::{valid_actions as valid, Attack, Block, DamageOrder};
     use crate::combat::{attacker_candidates, blocker_candidates, pending_blocker_declarer};
 
     /// A two-player game paused at the declare-attackers step, turn 2 so that
@@ -2224,9 +2243,146 @@ mod tests {
         let state = pass_full_round(&state, db);
         assert_eq!(state.step, Step::DeclareBlockers);
         let state = apply_action(&state, &Action::DeclareBlockers { blocks }, db);
+        // Issue #346: a multi-blocked attacker owes a combat-damage assignment order
+        // before the priority round; submit the battlefield-order default so these
+        // tests keep exercising the pre-#346 assignment order.
+        let state = match default_damage_order(&state) {
+            Some(order) => apply_action(&state, &order, db),
+            None => state,
+        };
         let state = pass_full_round(&state, db);
         assert_eq!(state.step, Step::CombatDamage);
         state
+    }
+
+    /// The battlefield-order `OrderCombatDamage` for every attacker that owes an
+    /// order (issue #346), or `None` when none does. The deterministic default the
+    /// server also falls back to on a timeout.
+    fn default_damage_order(state: &GameState) -> Option<Action> {
+        let owed = crate::combat::attackers_needing_damage_order(state);
+        if owed.is_empty() {
+            return None;
+        }
+        let orders = owed
+            .into_iter()
+            .map(|attacker| DamageOrder {
+                attacker,
+                blockers: state
+                    .battlefield
+                    .iter()
+                    .filter(|p| p.blocking == Some(attacker))
+                    .map(|p| p.id)
+                    .collect(),
+            })
+            .collect();
+        Some(Action::OrderCombatDamage { orders })
+    }
+
+    #[test]
+    fn issue_346_attacker_orders_its_blockers_and_that_chooses_which_dies() {
+        // CR 510.1: the attacking player orders a multi-blocked attacker's blockers,
+        // and lethal-before-next assignment follows that order. A 3-power attacker
+        // blocked by two 2-toughness creatures kills whichever it orders FIRST (it
+        // takes the lethal 2; the second takes the leftover 1 and survives), so the
+        // chosen order — not battlefield order — decides the casualty.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker =
+            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0);
+        let blk_a = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let blk_b = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: atk1(&[attacker]),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        let state = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![
+                    Block {
+                        blocker: blk_a,
+                        attacker,
+                    },
+                    Block {
+                        blocker: blk_b,
+                        attacker,
+                    },
+                ],
+            },
+            &db,
+        );
+
+        // The declaration owes an ordering decision to the attacking player, and only
+        // that action (plus concede) is offered.
+        assert_eq!(
+            crate::combat::pending_damage_order(&state),
+            Some(PlayerId(0))
+        );
+        let offered = valid(&state, &db);
+        assert!(offered
+            .iter()
+            .any(|a| matches!(a, Action::OrderCombatDamage { .. })));
+        assert!(!offered.iter().any(|a| matches!(a, Action::PassPriority)));
+
+        // Order blk_b first, the reverse of battlefield order.
+        let state = apply_action(
+            &state,
+            &Action::OrderCombatDamage {
+                orders: vec![DamageOrder {
+                    attacker,
+                    blockers: vec![blk_b, blk_a],
+                }],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        assert_eq!(state.step, Step::CombatDamage);
+
+        let present = |id| state.battlefield.iter().any(|p| p.id == id);
+        assert!(
+            !present(blk_b),
+            "the first-ordered blocker took the lethal damage"
+        );
+        assert!(
+            present(blk_a),
+            "the second-ordered blocker survived on the leftover 1"
+        );
+    }
+
+    #[test]
+    fn issue_346_a_single_blocker_needs_no_damage_order_decision() {
+        // CR 510.1: an attacker blocked by one creature has no assignment choice, so
+        // no ordering decision is offered — the declare-blockers priority round opens
+        // straight away.
+        let db = db();
+        let mut state = at_declare_attackers();
+        let attacker =
+            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: atk1(&[attacker]),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        let state = apply_action(
+            &state,
+            &Action::DeclareBlockers {
+                blocks: vec![Block { blocker, attacker }],
+            },
+            &db,
+        );
+        assert_eq!(crate::combat::pending_damage_order(&state), None);
+        assert!(valid(&state, &db)
+            .iter()
+            .any(|a| matches!(a, Action::PassPriority)));
     }
 
     #[test]

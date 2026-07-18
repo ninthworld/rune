@@ -11,12 +11,13 @@
 //! already depends on, and adds nothing to the wire contract in `rune-protocol`.
 
 use rune_engine::{
-    attacker_candidates, attacking_defender_of, blocker_candidates_for, bottom_requirement,
-    characteristics, declared_attackers, defender_candidates, defending_player,
-    pending_blocker_declarer, scripted_rules_text, target_requirements, valid_actions, Action,
-    Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind,
-    DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason,
-    PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
+    blocker_candidates_for, bottom_requirement, characteristics, declared_attackers,
+    defender_candidates, defending_player, pending_blocker_declarer, scripted_rules_text,
+    target_requirements, valid_actions, Action, Attack, Block, CardData, CardDatabase, CardId,
+    CardInstance, CardInstanceId, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult,
+    GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player, PlayerId, StackId,
+    StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{effects_description, rules_text};
@@ -548,6 +549,39 @@ fn blocker_slot(attacker: PermanentId) -> String {
     format!("block_{}", attacker.0)
 }
 
+/// The combat-damage assignment-order slot for a multi-blocked attacker (CR 510.1,
+/// issue #346), keyed by the attacker's permanent id so the returned permutation
+/// names which attacker it orders. Recomputed (never parsed) on resolution.
+fn damage_order_slot(attacker: PermanentId) -> String {
+    format!("order_{}", attacker.0)
+}
+
+/// One `order` prompt per attacker that owes a combat-damage assignment order
+/// ([`attackers_needing_damage_order`], issue #346): the prompt's `items` are that
+/// attacker's blockers in battlefield order, and the client returns a permutation of
+/// them. Empty when no attacker is multi-blocked (a choice-free action).
+fn damage_order_prompts(state: &GameState, db: &CardDatabase) -> Vec<Prompt> {
+    attackers_needing_damage_order(state)
+        .into_iter()
+        .map(|attacker| {
+            let items: Vec<String> = state
+                .battlefield
+                .iter()
+                .filter(|p| p.blocking == Some(attacker))
+                .map(|p| permanent_entity_id(p.id))
+                .collect();
+            Prompt::Order {
+                slot: damage_order_slot(attacker),
+                prompt: format!(
+                    "Order damage assignment for {}",
+                    permanent_card_name(state, attacker, db)
+                ),
+                items,
+            }
+        })
+        .collect()
+}
+
 /// The per-attacker defender-choice slot of a multiplayer [`Action::DeclareAttackers`]
 /// (CR 508.1a, issue #345), keyed by the attacker's permanent id so the returned
 /// choice names which attacker the selected defender is assigned to — the exact
@@ -779,6 +813,15 @@ fn valid_action_view(
             Vec::new(),
             blocker_requirements(state, db),
         ),
+        // Combat-damage assignment order (CR 510.1, issue #346): the choice rides as
+        // one `order` prompt per multi-blocked attacker (built below), not a target
+        // requirement.
+        Action::OrderCombatDamage { .. } => (
+            "order_combat_damage".to_string(),
+            "Order combat damage".to_string(),
+            Vec::new(),
+            Vec::new(),
+        ),
         // Concede (CR 104.3a): a subject-less action always offered to the acting
         // seat, rendered in the action bar (ADR 0004).
         Action::Concede => (
@@ -788,10 +831,13 @@ fn valid_action_view(
             Vec::new(),
         ),
     };
-    // A 1:1 engine-action projection carries no `prompts` (the option /
-    // select-from-zone / order shapes ride only on the collapsed mulligan and
-    // discard actions, issue #156).
-    let prompts: Vec<Prompt> = Vec::new();
+    // Most 1:1 engine-action projections carry no `prompts`; the combat-damage
+    // ordering action (issue #346) carries one `order` prompt per multi-blocked
+    // attacker, each a permutation over that attacker's blockers.
+    let prompts: Vec<Prompt> = match action {
+        Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
+        _ => Vec::new(),
+    };
     let token = content_token(&kind, &subject, &requirements, &prompts);
     ValidAction {
         id,
@@ -1194,6 +1240,37 @@ fn bind_attackers(
     Some(Action::DeclareAttackers { attackers })
 }
 
+/// Map a returned combat-damage assignment order onto the concrete
+/// [`Action::OrderCombatDamage`] (CR 510.1, issue #346): for each attacker that owes
+/// an order, its `order_<id>` slot carries a permutation of that attacker's blockers
+/// as entity ids, mapped back to their permanent ids. The engine re-validates that
+/// every owed attacker is named with a full permutation.
+fn bind_order_combat_damage(state: &GameState, targets: &[TargetChoice]) -> Option<Action> {
+    let mut orders = Vec::new();
+    for attacker in attackers_needing_damage_order(state) {
+        let blockers: Vec<PermanentId> = state
+            .battlefield
+            .iter()
+            .filter(|p| p.blocking == Some(attacker))
+            .map(|p| p.id)
+            .collect();
+        let mut ordered = Vec::new();
+        for id in chosen_for(targets, &damage_order_slot(attacker)) {
+            ordered.push(
+                blockers
+                    .iter()
+                    .copied()
+                    .find(|&b| permanent_entity_id(b) == *id)?,
+            );
+        }
+        orders.push(DamageOrder {
+            attacker,
+            blockers: ordered,
+        });
+    }
+    Some(Action::OrderCombatDamage { orders })
+}
+
 /// Map a returned blocker declaration onto the concrete
 /// [`Action::DeclareBlockers`] (CR 509.1a): each answered slot names a declared
 /// attacker, and every chosen id in it must be a current blocker candidate assigned
@@ -1345,6 +1422,7 @@ pub(crate) fn resolve_action(
                 bind_attackers(state, db, &offered.requirements, &choice.targets)
             }
             Action::DeclareBlockers { .. } => bind_blockers(state, db, &choice.targets),
+            Action::OrderCombatDamage { .. } => bind_order_combat_damage(state, &choice.targets),
             Action::ActivateAbility { .. } | Action::CastSpell { .. } => {
                 if !targets_fill_requirements(&choice.targets, &offered.requirements) {
                     return None;
@@ -2825,6 +2903,83 @@ mod tests {
         };
         assert_eq!(player, &player_id(PlayerId(1)));
         assert_eq!(reason, &GameOverReason::LifeZero);
+    }
+
+    #[test]
+    fn issue_346_multi_block_projects_an_order_action_and_binds_the_permutation() {
+        // A multi-blocked attacker projects an `order_combat_damage` action carrying
+        // one `order` prompt over its blockers; a returned permutation binds back to
+        // the concrete OrderCombatDamage action (CR 510.1, issue #346).
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.step = Step::DeclareBlockers;
+        state.active_player = PlayerId(0);
+        state.priority = PlayerId(0);
+        state.attackers_declared = true;
+        state.blockers_declared = true;
+        let attacker = put_permanent(
+            &mut state,
+            fixture("thornback_boar"),
+            PlayerId(0),
+            true,
+            true,
+        );
+        let blk_a = put_permanent(
+            &mut state,
+            fixture("thornback_boar"),
+            PlayerId(1),
+            false,
+            false,
+        );
+        let blk_b = put_permanent(
+            &mut state,
+            fixture("thornback_boar"),
+            PlayerId(1),
+            false,
+            false,
+        );
+        for b in [blk_a, blk_b] {
+            state
+                .battlefield
+                .iter_mut()
+                .find(|p| p.id == b)
+                .unwrap()
+                .blocking = Some(attacker);
+        }
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let order = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "order_combat_damage")
+            .expect("the attacking player orders combat damage");
+        assert_eq!(order.prompts.len(), 1);
+        let Prompt::Order { items, slot, .. } = &order.prompts[0] else {
+            panic!("expected an order prompt");
+        };
+        assert_eq!(slot, &format!("order_{}", attacker.0));
+        assert_eq!(items.len(), 2, "both blockers are orderable");
+
+        let choose = ChooseAction {
+            action_id: order.id.clone(),
+            token: order.token.clone(),
+            targets: vec![TargetChoice {
+                slot: format!("order_{}", attacker.0),
+                chosen: vec![permanent_entity_id(blk_b), permanent_entity_id(blk_a)],
+            }],
+        };
+        let resolved =
+            resolve_action(&state, &db, PlayerId(0), &choose).expect("the order resolves");
+        assert_eq!(
+            resolved,
+            Action::OrderCombatDamage {
+                orders: vec![DamageOrder {
+                    attacker,
+                    blockers: vec![blk_b, blk_a],
+                }],
+            }
+        );
     }
 
     #[test]

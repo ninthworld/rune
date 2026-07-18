@@ -285,7 +285,12 @@ pub fn pending_blocker_declarer(state: &GameState) -> Option<PlayerId> {
 pub(crate) fn pending_declarer(state: &GameState) -> Option<PlayerId> {
     match state.step {
         Step::DeclareAttackers if !state.attackers_declared => Some(state.active_player),
-        Step::DeclareBlockers => pending_blocker_declarer(state),
+        // Blockers first, then — once every attacked player has declared — the
+        // attacking player's combat-damage assignment order for any multi-blocked
+        // attacker (CR 510.1, issue #346).
+        Step::DeclareBlockers => {
+            pending_blocker_declarer(state).or_else(|| pending_damage_order(state))
+        }
         _ => None,
     }
 }
@@ -438,15 +443,78 @@ fn lethal_needed(state: &GameState, id: PermanentId, db: &CardDatabase, deathtou
     }
 }
 
-/// The blockers assigned to `attacker`, in stable battlefield order — the order
-/// in which combat damage is spread across them (see [`combat_damage`]).
+/// The blockers assigned to `attacker`, in the order combat damage is assigned
+/// across them (see [`combat_damage`]): the attacking player's chosen
+/// damage-assignment order (CR 510.1, issue #346) when one has been recorded for
+/// this attacker, otherwise stable battlefield order. A chosen order is filtered to
+/// the attacker's *current* blockers, so a blocker that has since left combat is
+/// simply skipped and the rest keep their chosen sequence.
 fn blockers_of(state: &GameState, attacker: PermanentId) -> Vec<PermanentId> {
+    let battlefield_order = || -> Vec<PermanentId> {
+        state
+            .battlefield
+            .iter()
+            .filter(|p| p.blocking == Some(attacker))
+            .map(|p| p.id)
+            .collect()
+    };
+    match state.damage_orders.iter().find(|(atk, _)| *atk == attacker) {
+        Some((_, order)) => order
+            .iter()
+            .copied()
+            .filter(|blocker| {
+                state
+                    .battlefield
+                    .iter()
+                    .any(|p| p.id == *blocker && p.blocking == Some(attacker))
+            })
+            .collect(),
+        None => battlefield_order(),
+    }
+}
+
+/// The attackers whose controller still owes a combat-damage assignment order
+/// (CR 510.1, issue #346): those blocked by two or more creatures whose order has
+/// not yet been chosen (they are absent from [`GameState::damage_orders`]). An
+/// attacker with zero or one blocker has no choice to make and never appears here.
+/// In stable battlefield order.
+#[must_use]
+pub fn attackers_needing_damage_order(state: &GameState) -> Vec<PermanentId> {
+    state
+        .battlefield
+        .iter()
+        .filter(|p| p.attacking.is_some())
+        .map(|p| p.id)
+        .filter(|&atk| {
+            blockers_of_unordered(state, atk).len() >= 2
+                && !state.damage_orders.iter().any(|(a, _)| *a == atk)
+        })
+        .collect()
+}
+
+/// The attacker's blockers in bare battlefield order, ignoring any chosen order —
+/// used to *count* blockers when deciding whether an ordering choice is owed
+/// (independent of whether one has been made).
+fn blockers_of_unordered(state: &GameState, attacker: PermanentId) -> Vec<PermanentId> {
     state
         .battlefield
         .iter()
         .filter(|p| p.blocking == Some(attacker))
         .map(|p| p.id)
         .collect()
+}
+
+/// The player who owes a combat-damage assignment order, if any (CR 510.1, issue
+/// #346): the attacking (active) player, once every blocker declaration is in and at
+/// least one attacker is multi-blocked without a chosen order. `None` once every
+/// such attacker has been ordered, or when none is multi-blocked.
+#[must_use]
+pub fn pending_damage_order(state: &GameState) -> Option<PlayerId> {
+    if state.blockers_declared && !attackers_needing_damage_order(state).is_empty() {
+        Some(state.active_player)
+    } else {
+        None
+    }
 }
 
 /// Record `amount` combat damage a `source_controller`'s creature deals to

@@ -50,7 +50,7 @@ Every functional definition in `crates/rune-engine/data/catalog/`, in interned o
 | `witherbrand_curse` | Witherbrand Curse | functional definition |
 | `withering_touch` | Withering Touch | functional definition |
 
-## Excluded (5)
+## Excluded (6)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/rune-engine/data/exclusions.json`.
 
@@ -58,6 +58,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | --- | --- |
 | Auras that enchant a player or land, or move between hosts | only P/T-granting enchant-creature Auras are modeled |
 | Continuous keyword-granting effects | only printed keywords are modeled; effects that grant keywords are not |
+| Double strike | a creature deals combat damage in exactly one step; dealing in both the first-strike and regular steps is not modeled (issue #346) |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Planeswalkers | no loyalty counter system or loyalty abilities |
 | Replacement effects | no replacement-effect layer in the rules engine |
