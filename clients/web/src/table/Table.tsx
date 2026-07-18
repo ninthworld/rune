@@ -640,7 +640,12 @@ export function Table() {
         <div style={regionBox(r.canvas.rect)} className={s.regionCanvas}>
           <div style={sceneBox(scene.width, scene.height)}>
             <BattlefieldCanvas scene={scene} isolatedId={highlightedId} />
-            <PanelChrome view={view} scene={scene} onOpenZone={openZone} />
+            <PanelChrome
+              view={view}
+              scene={scene}
+              onOpenZone={openZone}
+              highlightedId={highlightedId}
+            />
             {/* Read-only game-over board: no select/target interaction (the server
                 offers no actions once the game is over), but every card stays
                 inspectable, so the overlay renders inspect handles only (#261). */}
