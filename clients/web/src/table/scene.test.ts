@@ -1012,8 +1012,31 @@ describe('buildTableScene multiplayer table (3–4 players, issue #348)', () => 
     const falcon = cards.find((c) => c.entityId === 'p1_atk_b');
     expect(rhino?.data.attacking).toBe(true);
     expect(falcon?.data.attacking).toBe(true);
+    // …each carrying whom it attacks on its face (issue #347)…
+    expect(rhino?.data.attackingPlayer).toBe('p2');
+    expect(falcon?.data.attackingPlayer).toBe('p4');
     // …and the blocker→attacker link spanning p2's area is reconstructed from the view.
     expect(scene.combatLinks).toContainEqual({ blocker: 'p2_blk', attacker: 'p1_atk_a' });
+  });
+
+  it('reconstructs who-attacks-whom from the view alone (fresh-mount readable)', () => {
+    // A player mounting mid-combat (only the view, no history) derives the same split
+    // attack assignments — attacker → attacked player — as one who watched declaration.
+    const scene = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    expect(scene.attackTargets).toEqual([
+      { attacker: 'p1_atk_a', defender: 'p2' },
+      { attacker: 'p1_atk_b', defender: 'p4' },
+    ]);
+    // Deterministic: two fresh builds of the same view produce identical assignments.
+    const again = buildTableScene(parseGameView(FOUR_PLAYER_GAME_VIEW_JSON));
+    expect(again.attackTargets).toEqual(scene.attackTargets);
+  });
+
+  it('has no attack targets in a two-player view (sole opponent implied)', () => {
+    // COMBAT_GAME_VIEW is a duel: attackers carry no `attacking_player`, so the scene
+    // reports no split-attack assignments — the two-player render is unchanged.
+    const scene = buildTableScene(parseGameView(COMBAT_GAME_VIEW_JSON));
+    expect(scene.attackTargets).toEqual([]);
   });
 
   it('renders three opponent areas even when some are empty', () => {

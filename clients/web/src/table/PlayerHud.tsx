@@ -110,6 +110,7 @@ function surfaceBody(
   life: number,
   hand: number | undefined,
   statuses: string[] | undefined,
+  underAttack: number,
 ): ReactNode {
   return (
     <>
@@ -127,6 +128,15 @@ function surfaceBody(
           Hand {hand}
         </div>
       )}
+      {/* Whom the attackers point at (issue #347): a player being attacked shows how
+          many attackers are coming, so the attack treatment reads *toward the attacked
+          player's HUD tile* and a bystander can tell who is under attack. Reconstructed
+          from the view; the client derives no combat. */}
+      {underAttack > 0 && (
+        <div className={s.hudAttacked} data-testid={`hud-attacked-${playerId}`}>
+          Attacked ×{underAttack}
+        </div>
+      )}
       {statuses && statuses.length > 0 && (
         <div className={s.hudStatuses} data-testid={`hud-statuses-${playerId}`}>
           {statuses.join(', ')}
@@ -134,6 +144,12 @@ function surfaceBody(
       )}
     </>
   );
+}
+
+/** How many attackers are currently attacking `playerId`, straight from the view
+ * (`Permanent.attacking_player`, issue #347). The client counts; it derives no combat. */
+function attackersOn(view: GameView, playerId: PlayerId): number {
+  return view.battlefield.filter((perm) => perm.attacking_player === playerId).length;
 }
 
 /** The screen-reader label a focused opponent tile announces: their public state,
@@ -178,6 +194,7 @@ export function OpponentHud({ view, targeting, highlightedId }: OpponentHudProps
             opponent.life,
             opponent.hand_size,
             opponent.statuses,
+            attackersOn(view, opponent.player_id),
           ),
           targeting,
           highlightedId === opponent.player_id,
@@ -225,6 +242,12 @@ export function LocalDock({ view, localId, targeting, highlightedId }: LocalDock
           {view.mana_pool.length > 0 && (
             <div className={s.hudMana} data-testid="hud-mana">
               Mana {view.mana_pool.join(' ')}
+            </div>
+          )}
+          {/* The receiver, too, reads when they are the one being attacked (issue #347). */}
+          {localId !== undefined && attackersOn(view, localId) > 0 && (
+            <div className={s.hudAttacked} data-testid={`hud-attacked-${id}`}>
+              Attacked ×{attackersOn(view, localId)}
             </div>
           )}
         </>,

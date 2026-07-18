@@ -59,6 +59,7 @@ function makeScene(overrides: Partial<TableScene> = {}): TableScene {
     hand: [],
     handRegion: { rect: { x: 0, y: 0, w: 200, h: 24 }, label: 'Your hand' },
     combatLinks: [],
+    attackTargets: [],
     ...overrides,
   };
 }

@@ -54,6 +54,7 @@ import {
   type TargetingSession,
 } from './targeting';
 import {
+  activeAttacker as msActiveAttacker,
   activeCandidates as msActiveCandidates,
   activeChosen as msActiveChosen,
   activeSlot as msActiveSlot,
@@ -451,9 +452,14 @@ export function Table() {
   // whose candidates are not board cards (graveyard/library). A hand/battlefield
   // selection stays on the canvas (candidates highlight in place).
   const msSlot = multiSelect ? msActiveSlot(multiSelect) : null;
+  // A per-attacker defender pick (issue #347): its candidates are defending *players*,
+  // chosen from the player HUD tiles (like single-target player targeting), not the
+  // board — so it is neither an on-canvas pick nor a DOM overlay list.
+  const defenderSlot = !!msSlot && msSlot.kind === 'defender';
   const overlayMode =
     !!msSlot &&
     !!view &&
+    !defenderSlot &&
     (msSlot.kind === 'order' || !msSlot.candidates.some((id) => isOnCanvas(view, id)));
 
   const scene = useMemo(() => {
@@ -463,7 +469,11 @@ export function Table() {
     // In overlay mode the picking happens in the DOM surface, so the board stays
     // neutral (no candidates passed) rather than dimming every card.
     let targetingScene: TargetingScene | undefined;
-    if (multiSelect && !overlayMode) {
+    if (multiSelect && defenderSlot) {
+      // Assigning an attacker's defender: the pick surface is the player HUD, so the
+      // board stays neutral except the attacker being routed, which rings for context.
+      targetingScene = undefined;
+    } else if (multiSelect && !overlayMode) {
       targetingScene = {
         candidates: msActiveCandidates(multiSelect),
         selected: msActiveChosen(multiSelect),
@@ -475,9 +485,23 @@ export function Table() {
     // Outside a targeting/multi-select flow the selection ring shows for the selected
     // entity, or — failing that — the entity a log reference is highlighting (issue
     // #260); a permanent thus rings whether it was picked on the board or in the log.
-    const sel = targeting || multiSelect ? undefined : (selectedId ?? highlightedId ?? undefined);
+    // While assigning a defender, ring the attacker being routed so the player sees
+    // which creature the current player-HUD pick applies to.
+    const attackerRing =
+      multiSelect && defenderSlot ? (msActiveAttacker(multiSelect) ?? undefined) : undefined;
+    const sel =
+      targeting || multiSelect ? attackerRing : (selectedId ?? highlightedId ?? undefined);
     return buildTableScene(view, sel, battlefieldW, targetingScene);
-  }, [view, selectedId, highlightedId, battlefieldW, targeting, multiSelect, overlayMode]);
+  }, [
+    view,
+    selectedId,
+    highlightedId,
+    battlefieldW,
+    targeting,
+    multiSelect,
+    overlayMode,
+    defenderSlot,
+  ]);
 
   // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
   // production builds; the e2e suite reads it to assert what the canvas draws.
@@ -730,6 +754,26 @@ export function Table() {
     setMultiSelect(msToggle(multiSelect, entityId));
   };
 
+  // Assign a defending player to the attacker of the active `defender` slot (issue
+  // #347), then advance to the next declared attacker awaiting a target. A defender is
+  // a single choice, so the pick replaces any prior one; after the last attacker the
+  // advance clamps and Confirm submits the whole declaration atomically.
+  const pickDefender = (playerId: EntityId): void => {
+    if (!multiSelect) return;
+    setMultiSelect((prev) => (prev ? msAdvance(msToggle(prev, playerId)) : prev));
+  };
+
+  // The player-HUD pick contract for the tiles: a single-target player *targeting*
+  // slot, or a multiplayer per-attacker *defender* pick — both choose a player from
+  // their HUD tile (issue #347), so they share the same tile affordance and differ
+  // only in the pick handler. Absent when no player choice is active.
+  const playerTargeting =
+    multiSelect && defenderSlot
+      ? { candidates: msActiveCandidates(multiSelect), onPick: pickDefender }
+      : targeting
+        ? { candidates: activeCandidates(targeting), onPick: pickTarget }
+        : undefined;
+
   // Advance to the next walked slot (per-attacker blocker assignment).
   const advanceSlot = (): void => {
     if (!multiSelect) return;
@@ -901,13 +945,7 @@ export function Table() {
         style={regionBox(r.opponentHud.rect)}
         data-focus-region="opponentHud"
       >
-        <OpponentHud
-          view={view}
-          highlightedId={highlightedId}
-          targeting={
-            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-          }
-        />
+        <OpponentHud view={view} highlightedId={highlightedId} targeting={playerTargeting} />
       </div>
       {/* Local player dock — bottom-left: identity, life, floating mana (issue #296).
           A self-target candidate is pickable here with the same ring/dim contract. */}
@@ -920,9 +958,7 @@ export function Table() {
           view={view}
           localId={localId}
           highlightedId={highlightedId}
-          targeting={
-            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-          }
+          targeting={playerTargeting}
         />
       </div>
       {/* Battlefield — the center, owning most of the viewport. The Pixi scene sizes

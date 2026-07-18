@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import {
   BOTTOM_GAME_VIEW_JSON,
   DECLARE_ATTACKERS_GAME_VIEW_JSON,
+  DECLARE_ATTACKERS_MULTIPLAYER_GAME_VIEW_JSON,
   DECLARE_BLOCKERS_GAME_VIEW_JSON,
   DISCARD_GAME_VIEW_JSON,
   FOUR_PLAYER_GAME_VIEW_JSON,
@@ -740,6 +741,15 @@ describe('Table multiplayer table (3–4 players, issue #348)', () => {
     }
   });
 
+  it('points the attack treatment at each attacked player’s HUD tile (issue #347)', () => {
+    seed(FOUR_PLAYER_GAME_VIEW_JSON);
+    render(<Table />);
+    // p1's split attack hits p2 and p4 (one attacker each); p3 is not attacked.
+    expect(screen.getByTestId('hud-attacked-p2').textContent).toContain('×1');
+    expect(screen.getByTestId('hud-attacked-p4').textContent).toContain('×1');
+    expect(screen.queryByTestId('hud-attacked-p3')).toBeNull();
+  });
+
   it('keeps the two-player opponent tile as quiet display (no focus stop)', () => {
     // The duel is untouched: a single opponent's tile is not a focus anchor, so the
     // finely-tuned two-player focus order does not change (issue #348 AC: 2p unchanged).
@@ -981,6 +991,104 @@ describe('Table multi-select: declare attackers (issue #143)', () => {
     fireEvent.click(screen.getByTestId('target-atk_1'));
     act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
     expect(screen.queryByTestId('target-atk_1')).toBeNull();
+    expect(screen.queryByTestId('multiselect-prompt')).toBeNull();
+    expect(choose).not.toHaveBeenCalled();
+  });
+});
+
+describe('Table multi-select: multiplayer declare attackers (issue #347)', () => {
+  let choose: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    choose = seed(DECLARE_ATTACKERS_MULTIPLAYER_GAME_VIEW_JSON);
+    render(<Table />);
+  });
+
+  function enter(): void {
+    fireEvent.click(
+      within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Declare attackers' }),
+    );
+  }
+
+  it('assigns two attackers to different defenders and submits atomically (pointer/touch)', () => {
+    enter();
+    // Pick both attackers on the board.
+    fireEvent.click(screen.getByTestId('target-perm_1'));
+    fireEvent.click(screen.getByTestId('target-perm_2'));
+    // Advance to the first attacker's defender pick; the prompt names the attacker.
+    fireEvent.click(within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Next' }));
+    expect(screen.getByTestId('multiselect-prompt').textContent).toContain('Charging Rhino');
+    // The defenders are chosen from their HUD tiles (players, not board cards).
+    expect(screen.queryByTestId('target-perm_1')).toBeNull();
+    fireEvent.click(screen.getByTestId('target-player-p3')); // Rhino attacks p3
+    // Picking a defender auto-advances to the next attacker's target choice.
+    expect(screen.getByTestId('multiselect-prompt').textContent).toContain('Skyshroud Falcon');
+    fireEvent.click(screen.getByTestId('target-player-p2')); // Falcon attacks p2
+    // Confirm the whole split declaration in one atomic answer.
+    fireEvent.click(screen.getByTestId('multiselect-confirm'));
+    expect(choose).toHaveBeenCalledTimes(1);
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action.id).toBe('a5');
+    expect(action.token).toBe('h:atk0');
+    expect(targets).toEqual([
+      { slot: 'attackers', chosen: ['perm_1', 'perm_2'] },
+      { slot: 'defend_1', chosen: ['p3'] },
+      { slot: 'defend_2', chosen: ['p2'] },
+    ]);
+  });
+
+  it('only asks for a defender for the attackers actually declared', () => {
+    enter();
+    // Declare a single attacker; there must be exactly one defender step (its own).
+    fireEvent.click(screen.getByTestId('target-perm_1'));
+    fireEvent.click(within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Next' }));
+    expect(screen.getByTestId('multiselect-prompt').textContent).toContain('Charging Rhino');
+    fireEvent.click(screen.getByTestId('target-player-p2'));
+    // No further defender step for the undeclared falcon — confirm submits now.
+    fireEvent.click(screen.getByTestId('multiselect-confirm'));
+    const [, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(targets).toEqual([
+      { slot: 'attackers', chosen: ['perm_1'] },
+      { slot: 'defend_1', chosen: ['p2'] },
+    ]);
+  });
+
+  it('keeps the empty declaration a one-step, defender-free flow', () => {
+    enter();
+    // No attackers → no defender step → immediately confirmable, unchanged from 2p.
+    fireEvent.click(screen.getByTestId('multiselect-confirm'));
+    const [, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(targets).toEqual([{ slot: 'attackers', chosen: [] }]);
+  });
+
+  it('completes the whole declaration by keyboard (Enter/Space activate)', () => {
+    // Open via Enter on the focused action; select-then-confirm reuses click handlers,
+    // so keyboard drives the same flow (issue #347: keyboard path completes).
+    within(screen.getByTestId('action-bar'))
+      .getByRole('button', { name: 'Declare attackers' })
+      .focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    screen.getByTestId('target-perm_1').focus();
+    fireEvent.keyDown(window, { key: ' ' });
+    // Advance to the defender pick, then choose the defending player by keyboard.
+    within(screen.getByTestId('action-bar')).getByRole('button', { name: 'Next' }).focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    screen.getByTestId('target-player-p3').focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    screen.getByTestId('multiselect-confirm').focus();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose).toHaveBeenCalledTimes(1);
+    const [, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(targets).toEqual([
+      { slot: 'attackers', chosen: ['perm_1'] },
+      { slot: 'defend_1', chosen: ['p3'] },
+    ]);
+  });
+
+  it('drops the in-progress split declaration when a fresh view arrives', () => {
+    enter();
+    fireEvent.click(screen.getByTestId('target-perm_1'));
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
     expect(screen.queryByTestId('multiselect-prompt')).toBeNull();
     expect(choose).not.toHaveBeenCalled();
   });

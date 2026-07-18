@@ -277,6 +277,79 @@ export const DECLARE_ATTACKERS_GAME_VIEW_JSON = JSON.stringify({
 });
 
 /**
+ * A multiplayer declare-attackers frame (issue #341/#347): `p1` declaring attackers
+ * in a three-player game. The subject-less `declare_attackers` action carries the
+ * `attackers` subset slot PLUS one `defend_<permId>` slot per attacker candidate,
+ * each listing the defending players that attacker may be assigned to (server
+ * `attacker_requirements`, offered only with more than one opponent). The client
+ * walks the attacker pick, then — for each declared attacker — a single defending-
+ * player pick from that opponent's HUD tile, and submits one atomic answer.
+ */
+export const DECLARE_ATTACKERS_MULTIPLAYER_GAME_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [],
+  me: { life: 20, library_size: 40 },
+  opponents: [
+    { player_id: 'p2', hand_size: 3, life: 20, library_size: 40, graveyard_size: 0 },
+    { player_id: 'p3', hand_size: 2, life: 15, library_size: 39, graveyard_size: 1 },
+  ],
+  battlefield: [
+    {
+      id: 'perm_1',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'perm_1',
+        name: 'Charging Rhino',
+        type_line: 'Creature — Rhino',
+        power: '4',
+        toughness: '4',
+      },
+    },
+    {
+      id: 'perm_2',
+      controller: 'p1',
+      owner: 'p1',
+      card: {
+        id: 'perm_2',
+        name: 'Skyshroud Falcon',
+        type_line: 'Creature — Bird',
+        power: '2',
+        toughness: '1',
+        keywords: ['flying'],
+      },
+    },
+  ],
+  phase: 'declare_attackers',
+  turn: 7,
+  active_player: 'p1',
+  seat_order: ['p1', 'p2', 'p3'],
+  priority_player: 'p1',
+  valid_actions: [
+    {
+      id: 'a5',
+      type: 'declare_attackers',
+      label: 'Declare attackers',
+      token: 'h:atk0',
+      requirements: [
+        { slot: 'attackers', prompt: 'Choose attackers', candidates: ['perm_1', 'perm_2'] },
+        {
+          slot: 'defend_1',
+          prompt: 'Choose whom Charging Rhino attacks',
+          candidates: ['p2', 'p3'],
+        },
+        {
+          slot: 'defend_2',
+          prompt: 'Choose whom Skyshroud Falcon attacks',
+          candidates: ['p2', 'p3'],
+        },
+      ],
+    },
+    { id: 'a1', type: 'pass_priority', label: 'Pass' },
+  ],
+});
+
+/**
  * A wire frame in the declare-blockers step (issue #143 / protocol.md, CR 509.1a):
  * a subject-less `declare_blockers` action with ONE `requirements` slot **per
  * declared attacker** (`"block_<id>"`), each listing the defender's eligible

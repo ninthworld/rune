@@ -198,6 +198,23 @@ export interface CombatLink {
   attacker: EntityId;
 }
 
+/**
+ * One declared attacker→defending-player relationship (issue #341/#347): which player
+ * an attacker is attacking, both straight from the view (`Permanent.attacking_player`).
+ * Carried on the scene so a renderer can point the attacker's treatment toward the
+ * attacked player's area/HUD tile and so any player — including a bystander not being
+ * attacked — can read who attacks whom. Reconstructed from the view alone, so a client
+ * that mounts mid-combat shows the same assignments as one that watched them declared.
+ * Empty in a two-player game (the sole opponent is the only defender) and outside
+ * combat.
+ */
+export interface AttackTarget {
+  /** The attacking permanent's entity id. */
+  attacker: EntityId;
+  /** The defending player it is attacking (their `p{N}` id). */
+  defender: PlayerId;
+}
+
 /** The full scene: opponents' bands (top), the local band, and the hand. */
 export interface TableScene {
   /** Logical width the canvas + DOM overlay share. */
@@ -218,6 +235,13 @@ export interface TableScene {
    * mounts mid-combat shows the same links as one that watched them being declared.
    */
   combatLinks: CombatLink[];
+  /**
+   * The declared attacker→defending-player assignments this combat (issue #341/#347),
+   * in battlefield order. Empty in a two-player game and outside combat. Reconstructed
+   * from the view alone (`Permanent.attacking_player`), so who-attacks-whom is readable
+   * on a fresh mount.
+   */
+  attackTargets: AttackTarget[];
 }
 
 /** Layout geometry (logical px). Card sizes come from the shared TIER tokens. */
@@ -284,6 +308,7 @@ function toDisplayData(
     actionable: boolean;
     landGlyph?: GlyphName;
     attacking?: boolean;
+    attackingPlayer?: PlayerId;
     blocking?: boolean;
     blockedBy?: number;
     markedDamage?: number;
@@ -303,6 +328,9 @@ function toDisplayData(
     // Combat-declaration state and marked damage (issue #332), all straight from the
     // view — the client renders exactly what the server declared and predicts nothing.
     attacking: opts.attacking,
+    // Whom this attacker is attacking (issue #341/#347): the card face can point its
+    // treatment toward that player. Absent in a two-player game and for non-attackers.
+    attackingPlayer: opts.attackingPlayer,
     blocking: opts.blocking,
     blockedBy: opts.blockedBy,
     markedDamage: opts.markedDamage,
@@ -498,10 +526,20 @@ export function buildTableScene(
   // client mounting mid-combat derives the same state as one that watched declaration.
   const blockerCountByAttacker = new Map<EntityId, number>();
   const combatLinks: CombatLink[] = [];
+  const attackTargets: AttackTarget[] = [];
   for (const perm of view.battlefield) {
-    if (perm.blocking === undefined) continue;
-    blockerCountByAttacker.set(perm.blocking, (blockerCountByAttacker.get(perm.blocking) ?? 0) + 1);
-    combatLinks.push({ blocker: perm.id, attacker: perm.blocking });
+    if (perm.blocking !== undefined) {
+      blockerCountByAttacker.set(
+        perm.blocking,
+        (blockerCountByAttacker.get(perm.blocking) ?? 0) + 1,
+      );
+      combatLinks.push({ blocker: perm.id, attacker: perm.blocking });
+    }
+    // Whom each attacker attacks (issue #341/#347), straight from the view. Two-player
+    // views omit `attacking_player` (the sole opponent is implied), so this stays empty.
+    if (perm.attacking_player !== undefined) {
+      attackTargets.push({ attacker: perm.id, defender: perm.attacking_player });
+    }
   }
 
   // Fold targeting state into a card's display data + interactivity. Outside
@@ -588,6 +626,7 @@ export function buildTableScene(
         actionable: actions.length > 0,
         landGlyph,
         attacking: perm.attacking,
+        attackingPlayer: perm.attacking_player,
         blocking: perm.blocking !== undefined,
         blockedBy: blockerCountByAttacker.get(perm.id),
         markedDamage: perm.damage,
@@ -762,5 +801,14 @@ export function buildTableScene(
     label: 'Your hand',
   };
 
-  return { width: maxWidth, height, bands, hand, handRegion, localPlayerId, combatLinks };
+  return {
+    width: maxWidth,
+    height,
+    bands,
+    hand,
+    handRegion,
+    localPlayerId,
+    combatLinks,
+    attackTargets,
+  };
 }
