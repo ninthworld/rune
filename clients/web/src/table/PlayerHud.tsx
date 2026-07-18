@@ -51,17 +51,27 @@ function renderSurface(
   content: ReactNode,
   targeting: TargetingTiles | undefined,
   highlighted: boolean,
+  focusLabel?: string,
 ): ReactNode {
   // A game-log reference can presentationally highlight a player's tile (issue #260):
   // a ring, independent of targeting. Purely display — it makes nothing pickable.
   const highlightClass = highlighted ? s.tileHighlighted : undefined;
   if (!targeting) {
+    // Outside targeting the tile is display-only, but keyboard/controller focus must
+    // still reach every player area on a multiplayer table (issue #348): a
+    // `focusLabel` makes the tile a focusable, screen-reader-labeled navigation
+    // anchor (`data-focus-item`, part of the `opponentHud` focus region) that reads
+    // the player's public state when focused. It makes nothing *pickable* — there is
+    // no action here; picking a player only happens in targeting mode below.
     return (
       <div
         key={playerId}
         data-testid={`tile-${playerId}`}
         className={cx(className, highlightClass)}
         data-highlighted={highlighted || undefined}
+        {...(focusLabel !== undefined
+          ? { tabIndex: 0, 'data-focus-item': '', role: 'group', 'aria-label': focusLabel }
+          : {})}
       >
         {content}
       </div>
@@ -126,6 +136,14 @@ function surfaceBody(
   );
 }
 
+/** The screen-reader label a focused opponent tile announces: their public state,
+ * and whether they have been eliminated (issue #342/#348). */
+function opponentFocusLabel(name: string, opponent: GameView['opponents'][number]): string {
+  const parts = [`${name}`, `${opponent.life} life`, `hand ${opponent.hand_size}`];
+  if (opponent.eliminated) parts.push('eliminated');
+  return parts.join(', ');
+}
+
 interface OpponentHudProps {
   view: GameView;
   /** Present only in targeting mode; makes candidate opponents pickable. */
@@ -139,6 +157,13 @@ interface OpponentHudProps {
  * grid at 8p) without moving the local player, who lives in the {@link LocalDock}.
  */
 export function OpponentHud({ view, targeting, highlightedId }: OpponentHudProps) {
+  // On a multiplayer table there is more than one opponent area to navigate between,
+  // so each opponent tile becomes a keyboard/controller focus anchor (issue #348). A
+  // two-player duel keeps its single opponent tile as pure quiet display — no focus
+  // stop — so the finely-tuned duel focus order is unchanged (the design stance:
+  // only offered interactions are focusable; here the extra anchor earns its place
+  // only once there are several opponent areas to reach).
+  const multiplayer = view.opponents.length > 1;
   return (
     <div data-testid="opponent-hud" className={s.hudStrip}>
       {view.opponents.map((opponent) => {
@@ -156,6 +181,7 @@ export function OpponentHud({ view, targeting, highlightedId }: OpponentHudProps
           ),
           targeting,
           highlightedId === opponent.player_id,
+          multiplayer ? opponentFocusLabel(name, opponent) : undefined,
         );
       })}
     </div>

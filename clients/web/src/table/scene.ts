@@ -544,9 +544,26 @@ export function buildTableScene(
     byController.set(perm.controller, list);
   }
 
-  // Band order: each opponent (top), any other controller, then the local band.
+  // Band order: opponents first (stacked toward the top), then any other
+  // controller, then the local band anchored at the bottom. Opponent areas are
+  // stacked in the table's **seat order** (`view.seat_order`, issue #345) so their
+  // relative positions stay stable across view updates — a bystander who mounts
+  // mid-game reads the same arrangement as one who watched it fill (issue #348).
+  // `seat_order` is the explicit contract for the arrangement; an older or partial
+  // view that omits it falls back to the opponent-projection order (which the server
+  // already happens to emit in seat order). Every opponent gets a band even with no
+  // permanents, so a three-opponent table always shows three opponent areas.
   const opponentIds = view.opponents.map((o) => o.player_id);
-  const ordered: PlayerId[] = [...opponentIds];
+  const opponentSet = new Set(opponentIds);
+  const seatOrderOpponents = view.seat_order.filter(
+    (id) => id !== localPlayerId && opponentSet.has(id),
+  );
+  const orderedOpponents =
+    seatOrderOpponents.length > 0
+      ? // Seat-order first, then any opponent the seat order somehow omitted (defensive).
+        [...seatOrderOpponents, ...opponentIds.filter((id) => !seatOrderOpponents.includes(id))]
+      : opponentIds;
+  const ordered: PlayerId[] = [...orderedOpponents];
   for (const controller of byController.keys()) {
     if (!ordered.includes(controller) && controller !== localPlayerId) ordered.push(controller);
   }
