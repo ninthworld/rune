@@ -138,25 +138,12 @@ export function ActionDock({
         </button>
       ) : (
         <>
-          {globalActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onClick={() => onChoose(action)}
-              className={cx(s.dockButton, isPrimary(action) && s.dockButtonPrimary)}
-            >
-              {action.label}
-              {/* The pass shortcut hint rides its button (issue #266 binding). */}
-              {isPrimary(action) && (
-                <kbd className={s.keyHint} aria-hidden="true">
-                  P
-                </kbd>
-              )}
-            </button>
-          ))}
-
           {/* The selected entity's actions, routed to the one action home (ADR 0023
-              commitment 2). Server-labeled, O(1) — never a per-board enumeration. */}
+              commitment 2). Server-labeled, O(1) — never a per-board enumeration.
+              While a selection is active its actions are the player's declared
+              intent, so they render FIRST and carry the primary weight — and the
+              global pass demotes to the quiet treatment (below), so the brightest
+              control is never one slip away from the wrong verb. */}
           {selectedActions.length > 0 && selectedName !== undefined && (
             <div data-testid="selection-echo" className={s.dockSelection}>
               <span className={s.dockSelectionName}>{selectedName}</span>
@@ -165,7 +152,8 @@ export function ActionDock({
                   key={action.id}
                   type="button"
                   onClick={() => onChoose(action)}
-                  className={s.dockButton}
+                  data-primary="true"
+                  className={cx(s.dockButton, s.dockButtonPrimary)}
                 >
                   {action.label}
                 </button>
@@ -185,6 +173,29 @@ export function ActionDock({
               )}
             </div>
           )}
+
+          {globalActions.map((action) => {
+            // Pass keeps its fixed slot and keybind, but yields the primary
+            // treatment whenever a selection's actions are routed to the dock.
+            const primary = isPrimary(action) && selectedActions.length === 0;
+            return (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => onChoose(action)}
+                data-primary={primary || undefined}
+                className={cx(s.dockButton, primary && s.dockButtonPrimary)}
+              >
+                {action.label}
+                {/* The pass shortcut hint rides its button (issue #266 binding). */}
+                {isPrimary(action) && (
+                  <kbd className={s.keyHint} aria-hidden="true">
+                    P
+                  </kbd>
+                )}
+              </button>
+            );
+          })}
 
           {/* Bare priority window: show the server clock quietly under the actions. */}
           {!waiting && deadline !== undefined && (

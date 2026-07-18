@@ -9,7 +9,7 @@
  * with a shared token.
  */
 import type { CSSProperties } from 'react';
-import { SURFACES } from '../tokens';
+import { AFFORDANCE, SURFACES, TIER } from '../tokens';
 import type { Rect } from './scene';
 
 /** Minimum touch target per AGENTS.md (44px), applied to every affordance. */
@@ -153,6 +153,72 @@ export function inspectSurface(rect: Rect): CSSProperties {
     background: 'transparent',
     cursor: 'default',
     pointerEvents: 'auto',
+  };
+}
+
+/* ── Drag-to-play affordances (blueprint §Interaction model) ──────────────────
+ * Lit while a playable hand card is being dragged. All are pointer-events:none —
+ * the drop is resolved by hit-testing the pointer against SCENE rects (like the
+ * focus engine, deterministic even where the DOM reports no geometry), never by
+ * DOM hit-testing on these elements.
+ */
+
+/** The legal drop area for an untargeted play: a gold inset on the receiver's
+ * battlefield panel (the playable-affordance accent, ui-requirements §10 —
+ * distinct by shape: an area inset, not a ring or edge bar). */
+export function dropBoardInset(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x + 4,
+    top: rect.y + 4,
+    width: Math.max(0, rect.w - 8),
+    height: Math.max(0, rect.h - 8),
+    border: `2px dashed ${AFFORDANCE.actionable}`,
+    borderRadius: 12,
+    background: 'rgba(242, 201, 76, 0.06)',
+    pointerEvents: 'none',
+  };
+}
+
+/** One legal target candidate's ring while a targeted spell drags: the shared
+ * targeting accent, same shape vocabulary as the targeting-mode hotspot ring. */
+export function dropTargetRing(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x - 3,
+    top: rect.y - 3,
+    width: rect.w + 6,
+    height: rect.h + 6,
+    border: `2px solid ${SURFACES.targeting}`,
+    borderRadius: 10,
+    background: 'var(--rune-targeting-fill)',
+    pointerEvents: 'none',
+  };
+}
+
+/** The dragged card's ghost, riding centered under the pointer at the hand tier
+ * (the blueprint's "ghosts it under the pointer"). Purely presentational. */
+export function dragGhostBox(x: number, y: number): CSSProperties {
+  return {
+    position: 'absolute',
+    left: x - TIER.hand.w / 2,
+    top: y - TIER.hand.h / 2,
+    width: TIER.hand.w,
+    height: TIER.hand.h,
+    borderRadius: 10,
+    border: `2px solid ${AFFORDANCE.actionable}`,
+    background: SURFACES.cardBody,
+    color: SURFACES.nameText,
+    opacity: 0.85,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    fontSize: 12,
+    padding: 6,
+    boxSizing: 'border-box',
+    pointerEvents: 'none',
+    zIndex: 3,
   };
 }
 

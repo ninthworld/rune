@@ -48,9 +48,13 @@ owning identity, piles, hand, and the single action dock), per-card action popup
 retired in favor of dock routing, tap is the uniform ~25° treatment at every tier,
 the per-panel density ladder steps crowded panels down a card tier, and the compact
 (phone-portrait) composition condenses the same anatomy to a turn pill, stack/log
-sheets, a hand fan, and a fixed action bar. Still open from the blueprint: drag-to-play
-(the pointer enhancement), zone-travel animations, the front-door screens, and the
-4-player phone summary-tile composition.
+sheets, a hand fan, and a fixed action bar. Drag-to-play (the pointer enhancement)
+is in: a playable hand card drags to a gold battlefield inset (untargeted) or onto an
+orange-ringed server candidate (targeted), firing the same offered action the dock
+routes; the dock now gives a selection's routed actions the primary weight (pass
+demotes while a card is selected), and each ability activation is labeled with its
+own generated rules sentence. Still open from the blueprint: zone-travel animations,
+the front-door screens, and the 4-player phone summary-tile composition.
 
 A deterministic, seeded 4-player free-for-all full game runs against the real server in the
 normal test gate, with a mid-game elimination and a single winner (#350). Deck selection is

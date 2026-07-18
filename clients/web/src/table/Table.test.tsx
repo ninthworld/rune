@@ -86,6 +86,30 @@ describe('Table action routing (ADR 0004)', () => {
     // The hand card c1 has no subject-action, so it is not interactive.
     expect(screen.queryByTestId('entity-c1')).toBeNull();
   });
+
+  it('gives the selection’s actions the primary weight and demotes Pass while selected', () => {
+    const bar = screen.getByTestId('action-bar');
+    // Neutral dock: Pass is the primary affordance (the button pressed most).
+    expect(within(bar).getByRole('button', { name: /Pass/ }).getAttribute('data-primary')).toBe(
+      'true',
+    );
+
+    // Selecting a card flips the hierarchy: the routed action is the declared
+    // intent, so IT carries the primary treatment and renders above the demoted
+    // Pass — the brightest control is never one slip away from the wrong verb.
+    fireEvent.click(screen.getByTestId('entity-perm_xyz'));
+    const cast = within(bar).getByRole('button', { name: 'Tap for mana' });
+    const pass = within(bar).getByRole('button', { name: /Pass/ });
+    expect(cast.getAttribute('data-primary')).toBe('true');
+    expect(pass.getAttribute('data-primary')).toBeNull();
+    expect(cast.compareDocumentPosition(pass) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // Clearing the selection restores Pass as the primary.
+    fireEvent.click(screen.getByTestId('clear-selection'));
+    expect(within(bar).getByRole('button', { name: /Pass/ }).getAttribute('data-primary')).toBe(
+      'true',
+    );
+  });
 });
 
 describe('Table reconstructs from one GameView (reconnect/replay)', () => {
