@@ -34,6 +34,8 @@ interface Props {
   onChoose?: (action: ValidAction) => void;
   /** Open the keyboard shortcut reference. */
   onShowShortcuts?: () => void;
+  /** Open the card-art settings overlay (ADR 0024). */
+  onShowArtSettings?: () => void;
 }
 
 /** How many attackers currently attack the receiver, verbatim from the view. */
@@ -52,6 +54,7 @@ export function TopBar({
   concede,
   onChoose,
   onShowShortcuts,
+  onShowArtSettings,
 }: Props) {
   const attacked = attackersOnMe(view, localId);
   return (
@@ -94,7 +97,12 @@ export function TopBar({
           </>
         )}
         {onChoose && onShowShortcuts && (
-          <GameMenu concede={concede} onChoose={onChoose} onShowShortcuts={onShowShortcuts} />
+          <GameMenu
+            concede={concede}
+            onChoose={onChoose}
+            onShowShortcuts={onShowShortcuts}
+            onShowArtSettings={onShowArtSettings}
+          />
         )}
       </span>
     </div>

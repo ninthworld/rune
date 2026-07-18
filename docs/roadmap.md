@@ -212,10 +212,22 @@ Later M6 capabilities stay at outcome level until the first batch lands: team se
 shared-team state for formats such as Two-Headed Giant, larger player layouts, more prompt
 types, expanded automation, and a substantially larger verified card catalog.
 
-Original, licensed card artwork may arrive alongside the larger catalog. The card frame is
-designed around an art window from M4 onward (see
-[`design/ui-design-notes.md`](design/ui-design-notes.md)) so art drops into the reserved
-region without a frame redesign; official imagery remains excluded permanently.
+The client's card-art pipeline shipped with ADR 0024: the frame's art window renders a
+player-selected source — procedural (default), bundled project-owned art, or an opt-in,
+device-local Scryfall download (see
+[`design/ui-design-notes.md`](design/ui-design-notes.md) and
+[ADR 0024](decisions/0024-user-side-card-art.md)). Two follow-ups ride the M6+ catalog
+work:
+
+- **The real-card catalog migration** — replace the functional stand-in cards with their
+  real counterparts (names and matching functional data) so external art resolves by the
+  card's own name and the client-side art mapping (`artMap.json`) retires. A wide,
+  engine-and-test-heavy batch; it should land with or after the catalog-over-the-wire
+  work (#367).
+- **The bundled RUNE art set** — original, project-owned illustrations under
+  `clients/web/public/card-art/` filling the bundled source's manifest.
+
+Official imagery remains excluded from the project's own distribution permanently.
 
 ### M7 — Beyond the browser
 
@@ -227,7 +239,8 @@ opponents. Mobile comes after the desktop and multiplayer interaction models sta
 ## Persistent exclusions
 
 - Collection ownership, trading, and marketplace features
-- Official card images, frames, branding, or exact Oracle text
+- Official card images, frames, branding, or exact Oracle text in the project's own
+  distribution (player-side, device-local art downloads are governed by ADR 0024)
 - Monetization
 - Ante, subgames, and novelty mechanics until explicitly added through an architectural
   decision

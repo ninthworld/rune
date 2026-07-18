@@ -21,9 +21,10 @@
  * rather than measuring glyphs, so it constructs a full scene graph without a
  * live canvas/GPU. That keeps it deterministic and headless-testable.
  */
-import { BitmapFont, BitmapText, Container, Graphics, Text } from 'pixi.js';
+import { BitmapFont, BitmapText, Container, Graphics, Sprite, Text } from 'pixi.js';
 import {
   AFFORDANCE,
+  ART,
   BADGE,
   FONT,
   FRAME,
@@ -37,6 +38,7 @@ import {
   type ColorIdentity,
 } from '../tokens';
 import { buildGlyphDisplay, keywordGlyphName, type GlyphName } from '../chrome/glyphs';
+import { textureForArtKey } from './art/artStore';
 
 /** Tiers that render a full card face (chips are a separate digest representation).
  * `mini` is the stepped-down dense tier the density ladder engages (blueprint). */
@@ -167,6 +169,14 @@ export interface CardDisplayData {
    * server-supplied references — never a combat prediction.
    */
   blockedBy?: number;
+  /**
+   * Key of the card's currently-published illustration in the client-local art
+   * store (ADR 0024), or absent for the procedural face. Opaque here: the
+   * factory only *looks up* the already-loaded texture — it never fetches,
+   * decodes, or derives anything. The key changes when the art changes, so it
+   * rides the visual signature and the reconciler rebuilds exactly on arrival.
+   */
+  artKey?: string;
 }
 
 /**
@@ -204,6 +214,7 @@ export function cardVisualSignature(data: CardDisplayData, tier: RenderTier = 'f
     blocking: data.blocking ?? false,
     blockedBy: data.blockedBy ?? 0,
     counters: (data.counters ?? []).map((c) => [c.kind, c.count]),
+    artKey: data.artKey ?? null,
   });
 }
 
@@ -390,12 +401,46 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
     });
   }
 
-  // Center monogram (first letter of the name) as a faint watermark.
-  const monogram = mkText(data.name.slice(0, 1), t.mono, accent);
-  monogram.alpha = FRAME.monogramAlpha;
-  monogram.anchor.set(0.5);
-  monogram.position.set(t.w / 2, (t.h + t.header) / 2);
-  inner.addChild(monogram);
+  // Art window (ADR 0024): the reserved region between the header band and the
+  // type line. When the player's chosen art source has published an illustration
+  // for this card — an already-loaded texture looked up by `artKey`, never
+  // fetched here — it renders cover-cropped inside a rounded mask. Otherwise the
+  // window keeps its procedural fill, the accent monogram, exactly as before.
+  // Only the larger tiers draw art (ART.tiers); dense tiers keep their budget.
+  const art =
+    (ART.tiers as readonly string[]).includes(tier) && data.artKey
+      ? textureForArtKey(data.artKey)
+      : undefined;
+  if (art) {
+    const winX = ART.inset;
+    const winY = t.header + ART.topGap;
+    const winW = t.w - ART.inset * 2;
+    const winH = t.h - t.type - ART.bottomReserve - winY;
+    const sprite = new Sprite(art.texture);
+    // Stable node name so tests (and debugging) can find the art layer without
+    // relying on child order or on Sprite being distinguishable from glyph text.
+    sprite.name = 'card-art';
+    // Cover-crop: scale to fill the window, centered, overflow masked away.
+    const scale = Math.max(winW / art.texture.width, winH / art.texture.height);
+    sprite.width = art.texture.width * scale;
+    sprite.height = art.texture.height * scale;
+    sprite.anchor.set(0.5);
+    sprite.position.set(winX + winW / 2, winY + winH / 2);
+    const mask = new Graphics();
+    mask.beginFill(0xffffff);
+    mask.drawRoundedRect(winX, winY, winW, winH, ART.radius);
+    mask.endFill();
+    sprite.mask = mask;
+    inner.addChild(sprite, mask);
+  } else {
+    // Center monogram (first letter of the name) as a faint watermark — the
+    // procedural placeholder for the art box, not the card's identity.
+    const monogram = mkText(data.name.slice(0, 1), t.mono, accent);
+    monogram.alpha = FRAME.monogramAlpha;
+    monogram.anchor.set(0.5);
+    monogram.position.set(t.w / 2, (t.h + t.header) / 2);
+    inner.addChild(monogram);
+  }
 
   // Type line above the bottom edge.
   const typeLine = mkText(fitName(data.typeLine, t.w - 12, t.type), t.type, SURFACES.typeText);
@@ -416,6 +461,17 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
     const capacity = Math.max(1, Math.floor((t.w - 14) / (gsize + gap)));
     const overflow = keywordGlyphs.length > capacity;
     const shown = overflow ? capacity - 1 : keywordGlyphs.length;
+    // Over an illustration the strip gets a card-body scrim so the glyphs stay
+    // legible on any art (ADR 0024); over the plain body it stays scrim-free.
+    if (art) {
+      const stripCount = shown + (overflow ? 1 : 0);
+      const stripWidth = stripCount * (gsize + gap) + 4;
+      const scrim = new Graphics();
+      scrim.beginFill(hexToNumber(SURFACES.cardBody), ART.scrimAlpha);
+      scrim.drawRoundedRect(5, stripY - 2, stripWidth, gsize + 4, ART.radius);
+      scrim.endFill();
+      inner.addChild(scrim);
+    }
     let gx = 7;
     for (let i = 0; i < shown; i++) {
       const g = buildGlyphDisplay(keywordGlyphs[i]!, { size: gsize, color: INDICATORS.keyword });

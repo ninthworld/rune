@@ -149,7 +149,9 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
 the underlying card definition and is not a legal-action handle. Clients treat both as
-opaque strings.
+opaque strings. The web client uses `functional_id` as the key of its client-local card-art
+cache (ADR 0024) — a pure presentation enrichment; the wire contract is unchanged and a
+client that ignores the field renders completely without it.
 
 `OpponentView` contains `player_id`, `hand_size`, `life`, `library_size`,
 `graveyard_size`, optional display-only `statuses`, and an optional `eliminated` boolean —

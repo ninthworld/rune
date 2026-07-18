@@ -959,6 +959,15 @@
   font-weight: 700;
   color: var(--rune-text);
 }
+/* The inspected card's illustration (ADR 0024), shown only when the player's
+ * chosen art source has one loaded; the text-only panel is the baseline. */
+.inspectArt {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
+}
 .inspectCost {
   font-size: var(--rune-type-body-lg);
   font-weight: 600;
@@ -1192,6 +1201,67 @@
   font-size: var(--rune-type-caption);
   font-weight: 700;
   text-align: center;
+}
+
+/* ── Card art settings (ADR 0024) ──────────────────────────────────────────── */
+/* The source picker: one column of radio-role option cards inside the shared
+ * overlay panel chrome. The active option carries the accent border. */
+.artOptions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+.artOption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: var(--rune-touch);
+  padding: 10px 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  text-align: left;
+  cursor: pointer;
+}
+.artOption:hover {
+  border-color: var(--rune-border-strong);
+}
+.artOptionActive {
+  border-color: var(--rune-accent, var(--rune-border-strong));
+  box-shadow: inset 0 0 0 1px var(--rune-accent, var(--rune-border-strong));
+}
+.artOptionLabel {
+  font-size: var(--rune-type-body);
+  font-weight: 700;
+}
+.artOptionDescription {
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+}
+.artConsent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  padding: 10px 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-sunken-bg);
+}
+.artNote {
+  margin: 0;
+  font-size: var(--rune-type-caption);
+  line-height: 1.5;
+  color: var(--rune-text-muted);
+}
+.artActionsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+.artStorage {
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
 }
 
 /* ── Action tray (issue #298) ──────────────────────────────────────────────── */

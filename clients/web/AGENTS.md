@@ -17,7 +17,12 @@ the table UI.
   read the same constants; never inline card colors.
 - The whole in-game UI must rebuild from one `GameView` and its pending prompt.
 - Effective values (P/T, counters) are displayed exactly as the server computes them.
-- No `localStorage` of game state; server is the source of truth.
+- No `localStorage` of game state; server is the source of truth. Device *preferences*
+  (e.g. the art source) may persist; they must never be load-bearing for a view.
+- Card art (ADR 0024) is a client-local cache keyed by `functional_id` in
+  `src/card/art/`: player-selected source, device-local storage, renderers only
+  *look up* loaded textures. The UI must render fully with the art store empty, and
+  nothing under `public/card-art/` may be anything but project-owned originals.
 - Touch first: 44px minimum targets; no action reachable only by drag or hover.
 
 ## Commands

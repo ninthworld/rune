@@ -14,7 +14,9 @@
  * messages, so the same target always produces the same panel. Opening/closing is
  * ephemeral selection state owned by {@link Table}, discarded on the next view.
  */
+import { useSyncExternalStore } from 'react';
 import type { CardView, Counter, EntityId, StackItem } from '../protocol';
+import { artUrlFor, getArtVersion, subscribeArt } from '../card/art/artStore';
 import s from './chrome.module.css';
 
 /** A named reference to another permanent, for the inspector's attachment lines. */
@@ -172,8 +174,22 @@ function CardBody({
   const rules = card.rules_text ?? '';
   const hasPt = card.power !== undefined && card.toughness !== undefined;
   const attachmentList = attachments ?? [];
+  // The card's illustration under the player's chosen art source (ADR 0024), if
+  // one is loaded — resubscribed so a background download appearing mid-inspect
+  // shows up. Pure presentation cache; absent renders the text-only panel.
+  useSyncExternalStore(subscribeArt, getArtVersion);
+  const artUrl = artUrlFor(card.functional_id);
   return (
     <>
+      {artUrl !== undefined && (
+        <img
+          className={s.inspectArt}
+          data-testid="card-inspect-art"
+          src={artUrl}
+          alt=""
+          aria-hidden="true"
+        />
+      )}
       {card.mana_cost !== undefined && (
         <div className={s.inspectCost} data-testid="card-inspect-cost">
           {card.mana_cost}

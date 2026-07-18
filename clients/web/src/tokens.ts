@@ -132,6 +132,28 @@ export const BADGE = {
   counterText: PT_TEXT.M,
 } as const;
 
+/**
+ * The card-face **art window** (ADR 0024): the reserved region between the
+ * header band and the type line that holds the accent monogram procedurally and
+ * an illustration when the player's chosen art source has one. Only the two
+ * larger tiers draw art — the dense tiers (chip/mini/support) keep their full
+ * procedural information budget (ui-design-notes §Card render).
+ */
+export const ART = {
+  /** Horizontal inset of the window from the card edge. */
+  inset: 5,
+  /** Gap between the header band's bottom and the window top. */
+  topGap: 6,
+  /** Space reserved below the window for the type line row. */
+  bottomReserve: 24,
+  /** Corner radius of the window mask. */
+  radius: 4,
+  /** Alpha of the card-body scrim drawn behind the keyword strip over art. */
+  scrimAlpha: 0.72,
+  /** Tiers that render an illustration when one is available. */
+  tiers: ['field', 'hand'],
+} as const;
+
 /** Vector frame geometry — the look of the card body with no images or WotC art. */
 export const FRAME = {
   borderWidth: 1.5,
