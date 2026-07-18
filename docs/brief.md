@@ -58,8 +58,10 @@ a fresh `PermanentId`, which provides zone-change identity.
 - personalized view projection and hidden-information redaction; and
 - optional decision timers and conservative timeout actions.
 
-The lobby supports room configurations with 2–8 seats, but the current engine and bundled
-formats start two-player games. Multiplayer game rules are future work.
+The lobby supports room configurations with 2–8 seats. A bundled free-for-all format
+(`standard_ffa`) seats 3–4 players and starts real multiplayer games on the engine's
+multiplayer rules (per-attacker attack targets, multi-defender blocking, and elimination);
+the two-player formats remain the default. Room creation validates each format's seat range.
 
 ### Protocol
 

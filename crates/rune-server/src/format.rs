@@ -55,6 +55,12 @@ pub(crate) struct Format {
     pub(crate) starting_life: i32,
     /// Opening-hand size (feeds [`GameSetup::starting_hand_size`]).
     pub(crate) starting_hand_size: usize,
+    /// The inclusive seat-count range a room using this format may be created with
+    /// (issue #349). Room creation rejects a seat count outside it, so a format
+    /// controls how many players its games seat — a two-player format refuses a
+    /// free-for-all seat count and vice versa. Always within the lobby's overall
+    /// `2..=8` bound.
+    pub(crate) seats: std::ops::RangeInclusive<u8>,
     /// The deck-legality rules submitted decks are validated against.
     pub(crate) deck_rules: DeckRules,
 }
@@ -67,6 +73,8 @@ impl Format {
         Self {
             starting_life: rune_engine::DEFAULT_STARTING_LIFE,
             starting_hand_size: rune_engine::DEFAULT_STARTING_HAND_SIZE,
+            // The starter format is a 1v1 duel.
+            seats: 2..=2,
             deck_rules: DeckRules {
                 min_size: 40,
                 max_size: None,
@@ -86,12 +94,26 @@ impl Format {
         Self {
             starting_life: rune_engine::DEFAULT_STARTING_LIFE,
             starting_hand_size: rune_engine::DEFAULT_STARTING_HAND_SIZE,
+            // The permissive catch-all keeps the lobby's full 2–8 seat plumbing range
+            // (ADR 0012); named formats like the free-for-all narrow it.
+            seats: 2..=8,
             deck_rules: DeckRules {
                 min_size: 0,
                 max_size: None,
                 max_copies: usize::MAX,
                 basic_land_exempt: true,
             },
+        }
+    }
+
+    /// A permissive **free-for-all** format (`standard_ffa`, issue #349): the same
+    /// no-deck-rules openness as [`Self::open`], seating 3–4 players. This is the
+    /// format that starts real multiplayer games on the engine's multiplayer rules
+    /// (#341/#342/#344); a room created with it and 3 or 4 seats runs a free-for-all.
+    fn open_ffa() -> Self {
+        Self {
+            seats: 3..=4,
+            ..Self::open()
         }
     }
 
@@ -236,6 +258,9 @@ impl FormatRegistry {
     /// The identifier of the seeded starter format (ADR 0013 §4).
     const STARTER_ID: &'static str = "starter-1v1";
 
+    /// The identifier of the free-for-all format (issue #349): 3–4 seats.
+    const FFA_ID: &'static str = "standard_ffa";
+
     /// Build the registry seeded with the competitive starter format
     /// (`starter-1v1`: 40-card minimum, four copies per non-basic, basics exempt)
     /// and the permissive default two-player format (`standard_2p`: no size or copy
@@ -245,13 +270,17 @@ impl FormatRegistry {
         let mut formats = HashMap::new();
         // The competitive starter format enforces deck legality (size + copy limits).
         formats.insert(Self::STARTER_ID.to_string(), Format::starter());
-        // Permissive catch-all formats for the `game_setup` ids clients actually
-        // send — the web client's `1v1`/`ffa-4` (LobbyScreen) and the CLI's/protocol's
-        // `standard_2p` default. They impose no deck rules (the pre-registry behavior,
-        // ADR 0012); only named competitive formats like `starter-1v1` do. An id
-        // absent here is still rejected by `create_room` (ADR 0013 §4).
-        for id in [Self::DEFAULT_ID, "1v1", "ffa-4"] {
+        // Permissive two-player catch-all formats: the CLI's/protocol's `standard_2p`
+        // default and the web client's `1v1` (LobbyScreen). No deck rules (ADR 0012).
+        for id in [Self::DEFAULT_ID, "1v1"] {
             formats.insert(id.to_string(), Format::open());
+        }
+        // Permissive free-for-all formats seating 3–4 players (issue #349): the web
+        // client's `ffa-4` and the named `standard_ffa`. These start real multiplayer
+        // games on the engine's multiplayer rules; an id absent here is still rejected
+        // by `create_room` (ADR 0013 §4).
+        for id in [Self::FFA_ID, "ffa-4"] {
+            formats.insert(id.to_string(), Format::open_ffa());
         }
         Self { formats }
     }
@@ -310,6 +339,21 @@ mod tests {
         assert!(registry.get("1v1").is_some());
         assert!(registry.get("ffa-4").is_some());
         assert!(registry.get("no-such-format").is_none());
+    }
+
+    #[test]
+    fn issue_349_ffa_format_seats_three_to_four_and_duels_seat_two() {
+        let registry = FormatRegistry::with_defaults();
+        // The free-for-all format seats 3–4 players; a duel format seats exactly two.
+        let ffa = registry
+            .get("standard_ffa")
+            .expect("standard_ffa is registered");
+        assert_eq!(ffa.seats, 3..=4);
+        assert!(!ffa.seats.contains(&2) && ffa.seats.contains(&3) && ffa.seats.contains(&4));
+        // The FFA format imposes no deck rules (permissive, like the open default).
+        assert_eq!(ffa.deck_rules, Format::open().deck_rules);
+        // The seeded competitive starter is a 1v1 duel.
+        assert_eq!(registry.get("starter-1v1").unwrap().seats, 2..=2);
     }
 
     #[test]
@@ -374,6 +418,7 @@ mod tests {
         let strict = Format {
             starting_life: 20,
             starting_hand_size: 7,
+            seats: 2..=2,
             deck_rules: DeckRules {
                 min_size: 40,
                 max_size: None,
@@ -396,6 +441,7 @@ mod tests {
         let capped = Format {
             starting_life: 20,
             starting_hand_size: 7,
+            seats: 2..=2,
             deck_rules: DeckRules {
                 min_size: 40,
                 max_size: Some(60),
