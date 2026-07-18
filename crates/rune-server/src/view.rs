@@ -11,7 +11,7 @@
 //! already depends on, and adds nothing to the wire contract in `rune-protocol`.
 
 use rune_engine::{
-    attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
+    abilities_of, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocker_candidates_for, bottom_requirement, characteristics, declared_attackers,
     defender_candidates, defending_player, pending_blocker_declarer, scripted_rules_text,
     target_requirements, valid_actions, Action, Attack, Block, CardData, CardDatabase, CardId,
@@ -20,7 +20,7 @@ use rune_engine::{
     StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
-use crate::rules_text::{effects_description, rules_text};
+use crate::rules_text::{ability_text, effects_description, rules_text};
 use rune_protocol::{
     CardView, ChooseAction, Counter, GameLogEntry, GameLogEvent, GameOverReason,
     GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
@@ -702,6 +702,32 @@ fn ability_requirements(
         .collect()
 }
 
+/// The dock label for one ability activation: the ability's own generated rules
+/// sentence (`ability_text`, ADR 0018), resolved through the same
+/// [`abilities_of`] index the engine action names — so the words a player clicks
+/// are exactly the words the card prints, and two abilities on one permanent
+/// never share a label. Falls back to the old generic label if the permanent or
+/// index cannot be resolved (defensive: an offered action always names a live
+/// ability).
+fn ability_label(
+    state: &GameState,
+    db: &CardDatabase,
+    permanent: PermanentId,
+    index: usize,
+) -> String {
+    state
+        .battlefield
+        .iter()
+        .find(|perm| perm.id == permanent)
+        .and_then(|perm| {
+            let name = card_name(perm.card, db);
+            abilities_of(db, perm.card)
+                .get(index)
+                .map(|ability| ability_text(&name, ability))
+        })
+        .unwrap_or_else(|| "Activate ability".to_string())
+}
+
 /// The display name of the permanent `id` on the battlefield, for a human prompt,
 /// or a stable placeholder if it is not found.
 fn permanent_card_name(state: &GameState, id: PermanentId, db: &CardDatabase) -> String {
@@ -772,9 +798,15 @@ fn valid_action_view(
             vec![card_entity_id(card.id)],
             Vec::new(),
         ),
-        Action::ActivateAbility { permanent, .. } => (
+        // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0018
+        // text generation), so a permanent offering several activations renders
+        // *distinguishable* dock buttons — a generic "Activate ability" collapses
+        // them into identical choices the player cannot tell apart.
+        Action::ActivateAbility {
+            permanent, index, ..
+        } => (
             "activate_ability".to_string(),
-            "Activate ability".to_string(),
+            ability_label(state, db, *permanent, *index),
             vec![permanent_entity_id(*permanent)],
             ability_requirements(state, db, action),
         ),
@@ -2892,6 +2924,48 @@ mod tests {
             }],
         };
         assert!(resolve_action(&state, &db, PlayerId(0), &illegal).is_none());
+    }
+
+    #[test]
+    fn multi_ability_activations_carry_distinguishable_rules_sentence_labels() {
+        // A permanent with two activated abilities offers two actions; each must be
+        // labeled with its OWN generated rules sentence (ADR 0018), not a shared
+        // generic "Activate ability" — otherwise the dock renders identical buttons
+        // the player cannot tell apart.
+        let json = r#"[
+            {"schema_version":1,"functional_id":"toolbox","name":"Toolbox","types":["artifact"],"mana_cost":"",
+             "abilities":[
+                {"type":"activated","cost":[{"kind":"tap"}],
+                 "effects":[{"kind":"add_mana","color":"green","amount":1}]},
+                {"type":"activated","cost":[{"kind":"tap"}],
+                 "effects":[{"kind":"tap","target":"any_creature"}]}
+             ]},
+            {"schema_version":1,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
+             "power":2,"toughness":2}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        put_permanent(&mut state, id_in(&db, "toolbox"), PlayerId(0), false, false);
+        put_permanent(&mut state, id_in(&db, "bear"), PlayerId(0), false, false);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let labels: Vec<&str> = view
+            .valid_actions
+            .iter()
+            .filter(|a| a.kind == "activate_ability")
+            .map(|a| a.label.as_str())
+            .collect();
+        assert_eq!(labels.len(), 2, "both abilities are offered");
+        // Each label is that ability's cost-colon-effect sentence, and they differ.
+        assert_ne!(labels[0], labels[1]);
+        for label in &labels {
+            assert!(
+                label.starts_with("{T}: "),
+                "cost leads the sentence: {label}"
+            );
+            assert_ne!(*label, "Activate ability");
+        }
     }
 
     // ----- Game-log projection (issue #259) -----

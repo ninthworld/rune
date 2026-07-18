@@ -67,8 +67,10 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
 }
 
 /// One ability as a sentence. `source` is the name of the object the ability is on —
-/// what a rules sentence calls itself.
-fn ability_text(source: &str, ability: &Ability) -> String {
+/// what a rules sentence calls itself. Also used to label an `activate_ability`
+/// action with its own cost-colon-effect line (`view::ability_label`), so the dock
+/// button and the printed text can never disagree.
+pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
     match ability {
         Ability::Activated { cost, effects } => {
             let costs: Vec<&str> = cost.iter().map(|c| cost_symbol(c)).collect();
