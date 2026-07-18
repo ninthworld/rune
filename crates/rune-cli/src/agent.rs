@@ -344,6 +344,8 @@ pub fn fill_answers(view: &GameView, action: &ValidAction) -> Option<Vec<TargetC
     for req in &action.requirements {
         let chosen: Vec<String> = if req.slot == "attackers" {
             attacker_selection(view, req)
+        } else if req.slot.starts_with("defend_") {
+            defender_selection(req)
         } else if req.slot.starts_with("block_") {
             block_selection(view, req, &mut used_blockers)
         } else if req.slot == "bottom" {
@@ -417,6 +419,19 @@ fn attacker_selection(view: &GameView, req: &TargetRequirement) -> Vec<String> {
         .filter(|id| permanent_in_play(view, id).is_none_or(|perm| power_of(perm) >= 1))
         .cloned()
         .collect()
+}
+
+/// The defending player an attacker attacks, for a multiplayer `defend_<id>` slot
+/// (issue #341/#345): the **first** advertised defender candidate. The server offers
+/// these slots only when the active player has more than one opponent (a two-player
+/// game has a sole defender and no slot); the engine lists the candidates in stable
+/// seat order, so "first candidate" is a deterministic, always-legal choice — the
+/// same simple, sound policy the agent uses elsewhere. `defend_*` slots for creatures
+/// the agent does not attack with are ignored by the server, so answering every one is
+/// harmless. Empty only if the slot somehow carries no candidate (then the attacker is
+/// simply left undeclared).
+fn defender_selection(req: &TargetRequirement) -> Vec<String> {
+    req.candidates.first().cloned().into_iter().collect()
 }
 
 /// The blockers to assign to one attacker's `block_*` slot: at most one *profitable*
