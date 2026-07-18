@@ -4,10 +4,10 @@
 
 use crate::ability::Target;
 use crate::characteristics::characteristics;
-use crate::id::PermanentId;
+use crate::id::{PermanentId, PlayerId};
 use crate::player::LossReason;
 use crate::resolve::target_is_legal;
-use crate::state::{EffectAffects, GameState, Permanent};
+use crate::state::{EffectAffects, GameEvent, GameState, Permanent};
 use crate::CardDatabase;
 
 /// Run state-based actions to a fixed point: keep applying them until a full
@@ -60,6 +60,39 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                 if !player.has_lost {
                     player.has_lost = true;
                     player.loss_reason = Some(LossReason::DrewFromEmptyLibrary);
+                }
+                changed = true;
+            }
+        }
+        // CR 800.4a: a player who lost while two or more players remain *leaves the
+        // game* — the game continues without them. Their objects are removed and the
+        // departure is logged, exactly once (guarded by `left_game`). In a
+        // two-player game a loss instead ends the game (CR 104.2a) before this
+        // applies, so `left_game` stays false and nothing is cleaned up here —
+        // preserving the two-player behavior unchanged. Done before the death checks
+        // below so those judge the battlefield the eliminated player has already
+        // left, and so cleanup itself cannot re-trigger from the departing objects.
+        if state.living_player_count() >= 2 {
+            let leaving: Vec<(PlayerId, LossReason)> = state
+                .players
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.has_lost && !p.left_game)
+                .map(|(seat, p)| {
+                    (
+                        PlayerId(seat),
+                        p.loss_reason.unwrap_or(LossReason::ZeroLife),
+                    )
+                })
+                .collect();
+            for (seat, reason) in leaving {
+                state.record_event(GameEvent::PlayerEliminated {
+                    player: seat,
+                    reason,
+                });
+                state.remove_player_from_game(seat);
+                if let Some(player) = state.players.get_mut(seat.0) {
+                    player.left_game = true;
                 }
                 changed = true;
             }
@@ -477,5 +510,154 @@ mod tests {
         assert!(state.battlefield.iter().any(|p| p.id == host));
         assert!(state.battlefield.iter().any(|p| p.id == aura));
         assert_eq!(characteristics(&state, host, &db).power, Some(3));
+    }
+
+    // ----- Elimination: leaving the game cleanly (issue #342) -----
+
+    fn eliminated(event: &GameEvent) -> Option<PlayerId> {
+        match event {
+            GameEvent::PlayerEliminated { player, .. } => Some(*player),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn issue_342_lost_player_leaves_the_game_while_others_remain_cr_800_4a() {
+        // CR 800.4a: in a game of three, a player at 0 life leaves — their objects
+        // are removed and the game continues with no terminal result.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        let perm = place(&mut state, fixture("thornback_boar"), PlayerId(1), 0);
+        state.players[1].hand = vec![state.new_instance(fixture("verdant_scout"))];
+        state.players[1].library = vec![state.new_instance(fixture("forest"))];
+        state.players[1].life = 0;
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(state.players[1].has_lost && state.players[1].left_game);
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == perm),
+            "the eliminated player's permanents leave the game (CR 800.4a)"
+        );
+        assert!(
+            state.players[1].hand.is_empty() && state.players[1].library.is_empty(),
+            "their hidden zones are no longer part of the game"
+        );
+        assert!(
+            state.result().is_none(),
+            "the game continues — two players remain"
+        );
+        assert_eq!(
+            state
+                .log
+                .iter()
+                .filter_map(|e| eliminated(&e.event))
+                .count(),
+            1,
+            "the elimination is logged exactly once"
+        );
+        assert_eq!(
+            state.log.iter().find_map(|e| eliminated(&e.event)),
+            Some(PlayerId(1))
+        );
+
+        // Idempotent: a second pass neither re-logs nor changes anything.
+        let sequence_before = state.next_log_sequence;
+        run_state_based_actions(&mut state, &db);
+        assert_eq!(state.next_log_sequence, sequence_before);
+    }
+
+    #[test]
+    fn issue_342_eliminated_players_aura_on_a_survivor_is_cleaned_up() {
+        // CR 800.4a + 704.5m: an eliminated player's Aura attached to a survivor's
+        // creature leaves with its owner; a survivor's Aura orphaned by the departed
+        // player's creature leaving goes to its owner's graveyard.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        // Survivor (seat 0) creature enchanted by the doomed player's (seat 1) Aura.
+        let survivor_creature = place(&mut state, fixture("verdant_scout"), PlayerId(0), 0);
+        let doomed_aura = place(&mut state, fixture("ironbark_aegis"), PlayerId(1), 0);
+        if let Some(a) = state.battlefield.iter_mut().find(|p| p.id == doomed_aura) {
+            a.attached_to = Some(survivor_creature);
+        }
+        state.players[1].life = 0;
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == doomed_aura),
+            "the eliminated player's Aura leaves the game"
+        );
+        assert!(
+            state.battlefield.iter().any(|p| p.id == survivor_creature),
+            "the survivor's creature stays"
+        );
+    }
+
+    #[test]
+    fn issue_342_two_player_loss_ends_the_game_with_no_cleanup() {
+        // Two-player behavior is unchanged: a loss ends the game immediately
+        // (CR 104.2a); no CR 800.4a leave-the-game cleanup runs and `left_game`
+        // stays false.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let perm = place(&mut state, fixture("thornback_boar"), PlayerId(1), 0);
+        state.players[1].life = 0;
+
+        run_state_based_actions(&mut state, &db);
+
+        assert!(state.players[1].has_lost);
+        assert!(
+            !state.players[1].left_game,
+            "no one leaves a two-player game — it just ends"
+        );
+        assert!(
+            state.battlefield.iter().any(|p| p.id == perm),
+            "the loser's permanents are untouched (the game is simply over)"
+        );
+        assert!(state.result().is_some(), "the game is over");
+        assert!(
+            !state.log.iter().any(|e| eliminated(&e.event).is_some()),
+            "no elimination event in a two-player game"
+        );
+    }
+
+    #[test]
+    fn issue_342_last_player_standing_wins_with_all_losers_recorded() {
+        // Two of three players lost: the survivor wins and both losers appear in
+        // GameResult.losers (existing shape, no contract change).
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        state.players[1].life = 0;
+        run_state_based_actions(&mut state, &db); // seat 1 leaves; game continues
+        assert!(state.result().is_none());
+        state.players[2].life = -1;
+        run_state_based_actions(&mut state, &db); // seat 2 lost; now over
+
+        let result = state.result().unwrap();
+        assert_eq!(result.winner, Some(PlayerId(0)));
+        assert!(result.losers.contains(&PlayerId(1)) && result.losers.contains(&PlayerId(2)));
+    }
+
+    #[test]
+    fn issue_342_eliminated_defender_removes_its_attackers_from_combat() {
+        // A player eliminated mid-combat is removed from combat: an attacker
+        // declared against them is no longer attacking, so it deals no player damage.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        // Seat 0's attacker is attacking seat 1, who is about to be eliminated.
+        let attacker = place(&mut state, fixture("thornback_boar"), PlayerId(0), 0);
+        if let Some(a) = state.battlefield.iter_mut().find(|p| p.id == attacker) {
+            a.attacking = Some(PlayerId(1));
+        }
+        state.players[1].life = 0;
+
+        run_state_based_actions(&mut state, &db);
+
+        let attacker_state = state.battlefield.iter().find(|p| p.id == attacker).unwrap();
+        assert_eq!(
+            attacker_state.attacking, None,
+            "an attacker on the departed player is removed from combat (CR 800.4a)"
+        );
     }
 }

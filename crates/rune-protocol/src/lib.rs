@@ -130,6 +130,17 @@ pub enum GameLogEvent {
         /// Entered phase.
         phase: Phase,
     },
+    /// A player left the game under CR 800.4a — they lost while two or more players
+    /// remained, so play continues without them and their objects are removed. This
+    /// is the mid-game "leaves the game" event, distinct from [`Self::GameOver`],
+    /// which fires only once one player is left. A two-player loss produces
+    /// `GameOver`, never this.
+    PlayerEliminated {
+        /// The player who left the game.
+        player: PlayerId,
+        /// Why they lost (CR 104.3 / 704.5).
+        reason: GameOverReason,
+    },
     /// The game ended with this already-decided result.
     GameOver {
         /// The terminal result.
@@ -1067,11 +1078,33 @@ mod tests {
                 },
                 amount: 2,
             },
+            GameLogEvent::PlayerEliminated {
+                player: "p2".into(),
+                reason: GameOverReason::LifeZero,
+            },
         ] {
             let text = serde_json::to_string(&event).unwrap();
             let back: GameLogEvent = serde_json::from_str(&text).unwrap();
             assert_eq!(event, back);
         }
+    }
+
+    #[test]
+    fn issue_342_player_eliminated_event_tags_its_type_and_reason() {
+        // The elimination log event (issue #342) serializes under its snake_case
+        // `type` and carries the same GameOverReason enum `game_over` uses.
+        let event = GameLogEvent::PlayerEliminated {
+            player: "p1".into(),
+            reason: GameOverReason::Concede,
+        };
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::json!({
+                "type": "player_eliminated",
+                "player": "p1",
+                "reason": "concede",
+            })
+        );
     }
 
     #[test]

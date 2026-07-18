@@ -42,6 +42,14 @@ pub struct Player {
     /// `None` while the player is still in the game. Used to surface the deciding
     /// reason in the terminal [`GameResult`](crate::GameResult).
     pub loss_reason: Option<LossReason>,
+    /// Whether this player has *left the game* under CR 800.4a — their objects have
+    /// been removed and the elimination logged. Distinct from [`Self::has_lost`]:
+    /// in a two-player game a loss ends the game (CR 104.2a) with no one leaving,
+    /// so this stays `false`; in a game of three or more it is set exactly once,
+    /// when the state-based-actions loop performs the leave-the-game cleanup for a
+    /// player who lost while the game continues. Never unset. Engine-internal
+    /// bookkeeping so the cleanup and its log event fire once, not per SBA pass.
+    pub left_game: bool,
     /// Whether this player has attempted to draw from an empty library since the
     /// last time state-based actions were checked (CR 704.5c). Raw stored event,
     /// set by [`Self::draw`] and consumed by the state-based-actions loop, which
