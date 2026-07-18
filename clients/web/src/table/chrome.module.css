@@ -34,9 +34,28 @@
  * (`styles.ts`), which ADR 0019 keeps out of the static classes.
  */
 .shell {
-  background: var(--rune-table);
+  /* Tier 1 (§Visual hierarchy): the table is a surface, not an app background — a
+   * soft procedural vignette centered under the board. Tokens + gradient only; no
+   * texture assets (§Design stance). */
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(255, 255, 255, 0.03) 0%, transparent 55%),
+    radial-gradient(140% 110% at 50% 50%, var(--rune-table) 55%, #0e1013 100%);
+  background-color: var(--rune-table);
   color: var(--rune-text);
   font-family: var(--rune-font-body);
+}
+
+/* The table's procedural rune motif: brand geometry (the RuneMark) laid faintly
+ * under the battlefield scene. Decorative, non-interactive, token-tinted. */
+.tableMotif {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rune-raised-bg);
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 /* Tier 1 — the battlefield is the table itself: no chrome box, just the board. A
@@ -452,14 +471,20 @@
   color: var(--rune-targeting);
   border: 1px solid var(--rune-targeting);
 }
+/* The expanded step panel: a tier-4 floating surface dropped below the compact bar
+ * (geometry is inline via `indicatorStepsBox` — fixed, viewport-clamped, so the
+ * twelve steps are never clipped by the indicator strip). */
 .indicatorSteps {
-  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: var(--rune-space-2);
   margin: 0;
-  padding: 0;
+  padding: var(--rune-space-5) var(--rune-space-6);
   list-style: none;
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-lg);
+  box-shadow: var(--rune-elevation-2);
 }
 .indicatorFullStep {
   font-size: var(--rune-type-micro);
@@ -700,15 +725,18 @@
   border-radius: var(--rune-radius-md);
   background: var(--rune-chrome-bg);
   border: 1px solid var(--rune-border);
+  /* The player's identity accent (§Identity), set inline per tile as
+   * `--identity-accent`; the edge stripe answers "whose tile" at a glance. */
+  border-left: 3px solid var(--identity-accent, var(--rune-border-strong));
   font-size: var(--rune-type-body);
   line-height: 1.4;
   box-sizing: border-box;
+  box-shadow: var(--rune-elevation-1);
 }
 /* The dock's single surface is not part of a growing strip; the region already caps
  * its width, so it simply fills the dock. */
 .dock .hudTile {
   flex: 1 1 auto;
-  border-color: var(--rune-selection);
 }
 .targetTile {
   border-color: var(--rune-targeting);
@@ -743,6 +771,21 @@
   font-size: var(--rune-type-caption);
 }
 
+/* The tile body: the life crest beside the identity column, so a tile fits one HUD
+ * row instead of stacking (and clipping) vertically. */
+.hudBody {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  min-width: 0;
+}
+.hudInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+  min-width: 0;
+}
+
 /* Life — the prominent value. Tabular figures keep hundreds from jittering the layout,
  * and the value is free to grow without breaking the row (it wraps under the label). */
 .hudLife {
@@ -763,6 +806,44 @@
   font-family: var(--rune-font-display);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+/* The life crest (§Identity): the total worn in a hexagonal rune frame tinted by
+ * the player's accent — the concepts' hex badge translated to procedural geometry.
+ * The frame is two clipped layers (accent rim, chrome fill); the value paints above
+ * both. Purely presentational; the number renders verbatim. */
+.lifeCrest {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 40px;
+  height: 44px;
+  padding: 0 4px;
+  flex: none;
+}
+.lifeCrest::before,
+.lifeCrest::after {
+  content: '';
+  position: absolute;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+.lifeCrest::before {
+  inset: 0;
+  background: var(--identity-accent, var(--rune-border-strong));
+  opacity: 0.85;
+}
+.lifeCrest::after {
+  inset: 2px;
+  background: var(--rune-chrome-bg);
+}
+.lifeCrestValue {
+  position: relative;
+  z-index: 1;
+  font-size: var(--rune-type-title);
+  font-weight: 700;
+  font-family: var(--rune-font-display);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--rune-text);
 }
 
 /* Secondary meta — hand count and statuses, quieter than identity/life. */
@@ -1157,6 +1238,33 @@
   font-weight: 600;
   cursor: pointer;
 }
+/* The tray's primary affordance (pass/resolve priority): the one button the player
+ * presses most, weighted so it reads first. Gold is the "you can act" accent
+ * (§Palette) — a treatment on a server-offered action, never a client-invented one. */
+.buttonPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  border-color: rgba(242, 201, 76, 0.65);
+  background: rgba(242, 201, 76, 0.14);
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  letter-spacing: 0.4px;
+}
+.buttonPrimary:hover {
+  background: rgba(242, 201, 76, 0.22);
+}
+/* The keybind hint riding a button (e.g. `P` on pass priority). */
+.keyHint {
+  padding: 1px 6px;
+  border-radius: var(--rune-radius-xs);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-sunken-bg);
+  font-family: var(--rune-font-mono);
+  font-size: var(--rune-type-micro);
+  color: var(--rune-text-muted);
+  line-height: 1.5;
+}
 .chip {
   min-height: var(--rune-touch);
   padding: 0 12px;
@@ -1513,24 +1621,25 @@
 }
 
 /* ── Table geography (labels, boundaries, zone piles) ──────────────────────── */
+/* The pile column's geometry is inline (`pileColumnBox`, from the scene's reserved
+ * `Band.pileRect`); this class only names the layer for its children. */
 .zonePiles {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--rune-space-4);
   pointer-events: auto;
 }
 /*
- * A card-shaped zone pile (issue #319): library / graveyard / exile as findable
- * objects, not text chips. The glyph (or a revealed face-up card) sits in a
- * card-proportioned frame with the count below; the whole thing is one 44px-tall
- * touch target whether it is a button (graveyard/exile) or a static pile (library).
+ * A card-shaped zone pile (issue #319 + pile column): library / graveyard / exile
+ * as table furniture, findable at a glance. The glyph (or a revealed face-up card)
+ * sits in a card-proportioned frame wearing the count as a corner badge; a small
+ * zone name sits beneath. The whole pile is one ≥44px touch target whether it is a
+ * button (graveyard/exile) or a static pile (library).
  */
 .zonePile {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  width: 34px;
+  gap: 3px;
+  width: 56px;
+  min-height: var(--rune-touch);
   padding: 0;
   border: none;
   background: none;
@@ -1555,16 +1664,27 @@ button.zonePile:focus-visible {
 }
 /* The card-proportioned frame the glyph or a revealed top card renders inside. */
 .zonePileFace {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 44px;
+  width: 44px;
+  height: 60px;
   border-radius: var(--rune-radius-xs);
   border: 1px solid var(--rune-border);
   background: var(--rune-region-bg-soft);
   color: var(--rune-text-muted);
-  overflow: hidden;
+}
+/* A pile with several cards reads as a physical stack: offset edge sheets. */
+.zonePileFace[data-stacked] {
+  box-shadow:
+    2px 2px 0 rgba(255, 255, 255, 0.05),
+    4px 4px 0 rgba(255, 255, 255, 0.03);
+}
+/* An empty pile stays findable as a faint outlined slot — geography never vanishes. */
+.zonePileFace[data-empty] {
+  border-style: dashed;
+  opacity: 0.55;
 }
 /* The library reads as hidden information — a card back behind its glyph. */
 .zonePileFace[data-zone='library'] {
@@ -1572,11 +1692,57 @@ button.zonePile:focus-visible {
   background: var(--rune-cardback);
   color: var(--rune-text);
 }
+/* The count badge: the value's single home, worn on the pile's corner. */
 .zonePileCount {
-  font-size: var(--rune-type-caption);
-  font-weight: 600;
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-raised-bg);
+  border: 1px solid var(--rune-border-strong);
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
   color: var(--rune-text);
+  line-height: 1.4;
+  text-align: center;
+}
+.zonePileName {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
   line-height: 1;
+}
+/* The graveyard's face-up top card: the minimal honest face — the frame color band
+ * (game information, tinted inline from the shared card tokens) over the name. */
+.pileTopCard {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--rune-radius-xs);
+  border: 1px solid;
+  background: var(--rune-chrome-bg-alt);
+  overflow: hidden;
+}
+.pileTopCardBand {
+  height: 6px;
+  flex: none;
+  opacity: 0.85;
+}
+.pileTopCardName {
+  flex: 1;
+  padding: 2px 3px;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--rune-text);
+  overflow: hidden;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 .pileButton {
   display: inline-flex;
@@ -1746,4 +1912,98 @@ button.zonePile:focus-visible {
   .toast {
     animation: none;
   }
+}
+
+/* ── Game menu (session-level actions: shortcuts, concede) ─────────────────── */
+/* Pinned to the indicator strip's right edge; the drawer drops below it. */
+.gameMenu {
+  margin-left: auto;
+  flex: none;
+}
+.menuButton {
+  min-width: var(--rune-touch);
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
+  background: transparent;
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-heading);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--rune-transition),
+    border-color var(--rune-transition);
+}
+.menuButton:hover,
+.menuButton[aria-expanded='true'] {
+  color: var(--rune-text);
+  border-color: var(--rune-border-strong);
+}
+.menuButton:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+/* Click-away layer under the drawer: invisible, closes without acting. */
+.menuScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+/* The drawer: a tier-4 panel below the menu button. */
+.menuDrawer {
+  position: fixed;
+  top: 52px;
+  right: 8px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  min-width: 220px;
+  padding: var(--rune-space-4);
+  border-radius: var(--rune-radius-lg);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-overlay-bg);
+  box-shadow: var(--rune-elevation-2);
+}
+.menuItem {
+  min-height: var(--rune-touch);
+  padding: 0 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--rune-text);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.menuItem:hover {
+  background: var(--rune-raised-bg);
+}
+.menuItem:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: -2px;
+}
+/* Concede reads as consequential — the targeting accent marks danger without
+ * inventing a new hue channel. */
+.menuItemDanger {
+  color: var(--rune-targeting);
+}
+.menuConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  padding: var(--rune-space-4);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-targeting);
+  background: var(--rune-targeting-fill);
+}
+.menuConfirmLabel {
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  color: var(--rune-text);
 }

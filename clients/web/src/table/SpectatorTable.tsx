@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EntityId, GameView, PlayerId, SpectatorView } from '../protocol';
 import { playerName } from '../playerNames';
+import { RuneMark } from '../chrome/RuneMark';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
@@ -121,9 +122,15 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
   const playerCount = Math.max(1, publicView.opponents.length);
   const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
   const battlefieldW = battlefieldWidth(shell);
+  const battlefieldH = shell.regions.battlefield.rect.h;
+  const sceneScale = shell.sceneScale;
   const scene = useMemo(
-    () => buildTableScene(publicView, undefined, battlefieldW),
-    [publicView, battlefieldW],
+    () =>
+      buildTableScene(publicView, undefined, battlefieldW, undefined, {
+        scale: sceneScale,
+        minHeight: battlefieldH,
+      }),
+    [publicView, battlefieldW, battlefieldH, sceneScale],
   );
 
   const [inspectedId, setInspectedId] = useState<EntityId | null>(null);
@@ -169,6 +176,10 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
       </div>
       <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
         <div style={sceneBox(scene.width, scene.height)}>
+          {/* The table surface's faint rune motif, under the transparent canvas. */}
+          <div className={s.tableMotif} aria-hidden="true">
+            <RuneMark size={420} />
+          </div>
           <BattlefieldCanvas scene={scene} isolatedId={null} />
           <TableGeography
             scene={scene}

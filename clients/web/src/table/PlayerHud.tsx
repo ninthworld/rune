@@ -23,11 +23,21 @@
  * makes the server's candidates pickable — it derives no legality. This is exactly the
  * contract the retired `PlayerTiles` carried, preserved here for both surfaces.
  */
+import type { CSSProperties, ReactNode } from 'react';
 import type { EntityId, GameView, PlayerId } from '../protocol';
-import type { ReactNode } from 'react';
 import { cx } from '../chrome/cx';
+import { identityAccent } from './identityAccents';
 import { playerName } from '../playerNames';
 import s from './chrome.module.css';
+
+/**
+ * The tile style carrying a player's identity accent (§Identity) as a CSS custom
+ * property the chrome classes read (`--identity-accent`): the tile's edge, the
+ * nameplate, and the life crest all tint from this one value.
+ */
+function accentStyle(view: GameView, playerId: PlayerId): CSSProperties {
+  return { '--identity-accent': identityAccent(view, playerId) } as CSSProperties;
+}
 
 /** The active target slot's player candidates plus the pick handler. */
 export interface TargetingTiles {
@@ -52,6 +62,7 @@ function renderSurface(
   targeting: TargetingTiles | undefined,
   highlighted: boolean,
   focusLabel?: string,
+  style?: CSSProperties,
 ): ReactNode {
   // A game-log reference can presentationally highlight a player's tile (issue #260):
   // a ring, independent of targeting. Purely display — it makes nothing pickable.
@@ -69,6 +80,7 @@ function renderSurface(
         data-testid={`tile-${playerId}`}
         className={cx(className, highlightClass)}
         data-highlighted={highlighted || undefined}
+        style={style}
         {...(focusLabel !== undefined
           ? { tabIndex: 0, 'data-focus-item': '', role: 'group', 'aria-label': focusLabel }
           : {})}
@@ -86,6 +98,7 @@ function renderSurface(
         aria-label={`Target player ${name}`}
         onClick={() => targeting.onPick(playerId)}
         className={cx(s.tileButtonReset, className, s.targetTile, highlightClass)}
+        style={style}
       >
         {content}
       </button>
@@ -96,6 +109,7 @@ function renderSurface(
       key={playerId}
       data-testid={`tile-${playerId}`}
       className={cx(className, s.dimmedTile, highlightClass)}
+      style={style}
     >
       {content}
     </div>
@@ -114,34 +128,40 @@ function surfaceBody(
 ): ReactNode {
   return (
     <>
-      <div className={s.hudName} data-testid={`hud-name-${playerId}`}>
-        {name}
-      </div>
-      <div className={s.hudLife}>
-        <span className={s.hudLifeLabel}>Life</span>
-        <span className={s.hudLifeValue} data-testid={`hud-life-${playerId}`}>
-          {life}
+      {/* Crest beside the identity column, so the tile fits one HUD row: life is
+          the identity moment the tile leads with (§Identity) — a rune-framed crest
+          in the player's accent, display-face numerals, value verbatim. */}
+      <div className={s.hudBody}>
+        <span className={s.lifeCrest} title="Life">
+          <span className={s.lifeCrestValue} data-testid={`hud-life-${playerId}`}>
+            {life}
+          </span>
         </span>
+        <div className={s.hudInfo}>
+          <div className={s.hudName} data-testid={`hud-name-${playerId}`}>
+            {name}
+          </div>
+          {hand !== undefined && (
+            <div className={s.hudMeta} data-testid={`hud-hand-${playerId}`}>
+              Hand {hand}
+            </div>
+          )}
+          {/* Whom the attackers point at (issue #347): a player being attacked shows
+              how many attackers are coming, so the attack treatment reads *toward the
+              attacked player's HUD tile* and a bystander can tell who is under attack.
+              Reconstructed from the view; the client derives no combat. */}
+          {underAttack > 0 && (
+            <div className={s.hudAttacked} data-testid={`hud-attacked-${playerId}`}>
+              Attacked ×{underAttack}
+            </div>
+          )}
+          {statuses && statuses.length > 0 && (
+            <div className={s.hudStatuses} data-testid={`hud-statuses-${playerId}`}>
+              {statuses.join(', ')}
+            </div>
+          )}
+        </div>
       </div>
-      {hand !== undefined && (
-        <div className={s.hudMeta} data-testid={`hud-hand-${playerId}`}>
-          Hand {hand}
-        </div>
-      )}
-      {/* Whom the attackers point at (issue #347): a player being attacked shows how
-          many attackers are coming, so the attack treatment reads *toward the attacked
-          player's HUD tile* and a bystander can tell who is under attack. Reconstructed
-          from the view; the client derives no combat. */}
-      {underAttack > 0 && (
-        <div className={s.hudAttacked} data-testid={`hud-attacked-${playerId}`}>
-          Attacked ×{underAttack}
-        </div>
-      )}
-      {statuses && statuses.length > 0 && (
-        <div className={s.hudStatuses} data-testid={`hud-statuses-${playerId}`}>
-          {statuses.join(', ')}
-        </div>
-      )}
     </>
   );
 }
@@ -199,6 +219,7 @@ export function OpponentHud({ view, targeting, highlightedId }: OpponentHudProps
           targeting,
           highlightedId === opponent.player_id,
           multiplayer ? opponentFocusLabel(name, opponent) : undefined,
+          accentStyle(view, opponent.player_id),
         );
       })}
     </div>
@@ -230,29 +251,34 @@ export function LocalDock({ view, localId, targeting, highlightedId }: LocalDock
         name,
         s.hudTile,
         <>
-          <div className={s.hudName} data-testid={`hud-name-${id}`}>
-            {name} <span className={s.hudYou}>(you)</span>
-          </div>
-          <div className={s.hudLife}>
-            <span className={s.hudLifeLabel}>Life</span>
-            <span className={s.hudLifeValue} data-testid={`hud-life-${id}`}>
-              {view.me.life}
+          <div className={s.hudBody}>
+            <span className={s.lifeCrest} title="Life">
+              <span className={s.lifeCrestValue} data-testid={`hud-life-${id}`}>
+                {view.me.life}
+              </span>
             </span>
+            <div className={s.hudInfo}>
+              <div className={s.hudName} data-testid={`hud-name-${id}`}>
+                {name} <span className={s.hudYou}>(you)</span>
+              </div>
+              {view.mana_pool.length > 0 && (
+                <div className={s.hudMana} data-testid="hud-mana">
+                  Mana {view.mana_pool.join(' ')}
+                </div>
+              )}
+              {/* The receiver, too, reads when they are being attacked (issue #347). */}
+              {localId !== undefined && attackersOn(view, localId) > 0 && (
+                <div className={s.hudAttacked} data-testid={`hud-attacked-${id}`}>
+                  Attacked ×{attackersOn(view, localId)}
+                </div>
+              )}
+            </div>
           </div>
-          {view.mana_pool.length > 0 && (
-            <div className={s.hudMana} data-testid="hud-mana">
-              Mana {view.mana_pool.join(' ')}
-            </div>
-          )}
-          {/* The receiver, too, reads when they are the one being attacked (issue #347). */}
-          {localId !== undefined && attackersOn(view, localId) > 0 && (
-            <div className={s.hudAttacked} data-testid={`hud-attacked-${id}`}>
-              Attacked ×{attackersOn(view, localId)}
-            </div>
-          )}
         </>,
         targeting,
         highlightedId === id,
+        undefined,
+        localId !== undefined ? accentStyle(view, localId) : undefined,
       )}
     </div>
   );

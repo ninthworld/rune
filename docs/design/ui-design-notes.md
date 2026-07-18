@@ -69,11 +69,15 @@ condense, or collapse.
   are *places where cards can be shown*: a server-revealed library top card
   renders face-up on the library pile. (The protocol carries no such reveal
   today; adding one is a contract change, but the layout assumes the pile can
-  host it.) Delivered by issue #319: the `ZonePile` component
-  (`clients/web/src/table/ZonePile.tsx`) renders each zone as a card-shaped pile
-  identified by its zone glyph (#317), with a `faceUp` slot the future reveal drops
-  into without a layout change; the count lives only here (the HUD stopped repeating
-  it in #296).
+  host it.) Delivered by issue #319 and the UI catch-up batch: the `ZonePile`
+  component (`clients/web/src/table/ZonePile.tsx`) renders each zone as a
+  card-shaped pile in a **reserved pile column** on the band's right edge
+  (`Band.pileRect`; card rows wrap short of it) — a stacked-edge card back for the
+  library, an outlined slot when empty, the count worn as a corner badge (still its
+  single home, the HUD stopped repeating it in #296). The **graveyard fills its
+  `faceUp` slot today** with the pile's public top card (already in
+  `GameView.graveyards` — no protocol change); the library's slot stays reserved
+  for the future server reveal.
 
 One pure function `layout(viewport, mode, playerCount)` positions every region for
 both renderers. It keys on measured geometry (width, height, aspect) and input
@@ -88,13 +92,31 @@ up and the table stays centered, rather than content anchoring to one corner of 
 mostly empty viewport. A 27-inch monitor should feel like a bigger table, not a
 phone layout with margins.
 
+Delivered (UI catch-up batch): `layout()` derives a **`sceneScale`** (≥ 1, clamped
+and quarter-quantized) from the battlefield region, and `buildTableScene` multiplies
+its card footprints and gaps by it — the reconciler applies the same factor to each
+Pixi display object, so both renderers stay rect-aligned. The scene spans the full
+wrap budget, **centers each card row**, and stretches to the region height by
+distributing slack into the gaps *between* bands (opponents justify from the top;
+the local band and hand sink together to the bottom), so open table space pools
+along the battle line. The expanded phase indicator now floats as a viewport-clamped
+overlay below the compact bar — the fixed-height strip can no longer clip it. A
+**game menu** (top-right, restrained drawer) holds session-level actions: the
+shortcut reference and — only when the server offers it — concede behind a confirm
+step, so the highest-stakes action never sits beside Pass priority in the tray;
+the tray centers above the hand and gives the offered pass-priority action the
+primary (gold, keybind-hinted) treatment.
+
 ## Visual hierarchy
 
 The uniform panel look (one background, one border color, one radius everywhere)
 is replaced by explicit surface tiers:
 
 1. **Table** — the deepest layer: the board surface, with subtle procedural
-   texture/vignette so it reads as a table, not an app background.
+   texture/vignette so it reads as a table, not an app background. Delivered (UI
+   catch-up batch): the shell wears a radial vignette and a faint `RuneMark` motif
+   under a now-transparent battlefield canvas — tokens and geometry only, no
+   texture assets.
 2. **Board regions** — player lanes, hand row, zone piles: bounded areas *on* the
    table, delineated by geometry and tint, not chrome boxes.
 3. **Floating chrome** — HUDs, tray, rail, indicator: elevated above the table
@@ -130,7 +152,13 @@ and HUD tile, **never on their cards**. A permanent's frame color is game
 information (protection, devotion, and targeting restrictions all read it), so
 identity accents and card frames are separate channels; the WUBRG frame tokens in
 `src/tokens.ts` stay owner-independent. At a glance, the region answers "whose
-stuff" and the card answers "what stuff".
+stuff" and the card answers "what stuff". Delivered (UI catch-up batch):
+`clients/web/src/table/identityAccents.ts` assigns a muted jewel-tone accent per
+seat, deterministically from `GameView.seat_order` (every client and a fresh mount
+derive the same color); the scene carries it as `Band.accent` for the region border
+and nameplate, and the HUD tiles wear it as an edge stripe plus a hexagonal
+**life crest** — the total in a rune-framed badge with display-face numerals.
+Band labels use display names (never seat ids), completing #294's reach.
 
 The monogram motif grows into a small procedural **glyph language** — inline SVG
 in the `RuneMark` mold, no raster assets — for the places a repeated symbol beats
@@ -271,6 +299,17 @@ rotate: tapped chips dim and carry a corner tap glyph instead. Tap state is part
 of the ×N grouping key, so "four Plains, one tapped" reads as an untapped ×3
 stack beside a tapped single — the tapped count stays legible at the size where
 it matters most.
+
+**Actionable permanents stack** (UI catch-up batch). The original grouping refused
+to fold any card with an offered action — but every untapped land always carries
+its tap-for-mana action, so lands never stacked and boards read as rows of
+duplicates. The grouping key now includes the offered-action *fingerprint*
+(type + label, never entity-bound ids): permanents whose full visual state and
+action shapes are identical are interchangeable and fold into one activatable
+stack; activating it submits the representative's action. Pick-specific
+affordances — target candidacy, a multi-select pick, the current selection, combat
+participation, attachments — still force individual renders, so every physical
+object stays addressable in prompts (ui-requirements §Table and zones).
 
 Delivered by issue #318 in the pure `buildTableScene` layout (`clients/web/src/table/scene.ts`)
 plus a chip renderer (`buildChipDisplay`) and the `×N` badge in the card factory.
@@ -429,7 +468,9 @@ Adopted: the dark-tabletop composition (it matches the shell region-for-region);
 the right-edge stack / activity / phase rail; a state legend built on the
 existing selected / targeting / playable accents; compressed opponent rows at
 portrait geometry; the overview/focus mode pair (#301); an identity built on
-runes, a display face, and disciplined gold.
+runes, a display face, and disciplined gold; the menus board's drawer — adopted
+in restrained form as the game menu (shortcuts + confirm-stepped concede), minus
+its ornament; the hexagonal life badge — translated to the procedural life crest.
 
 Rejected:
 

@@ -16,8 +16,19 @@
  * Keeps `data-testid="action-bar"` for continuity with the interaction suite.
  */
 import type { ValidAction } from '../protocol';
+import { cx } from '../chrome/cx';
 import { DeadlineCountdown } from './DeadlineCountdown';
 import s from './chrome.module.css';
+
+/**
+ * Whether an offered global action is the tray's **primary** affordance — the one
+ * the player presses most (pass/resolve priority). Primary is a *treatment*
+ * (weight + the `P` keybind hint), never a client-invented action: the button
+ * exists only because the server offered it (ADR 0004 unchanged).
+ */
+function isPrimary(action: ValidAction): boolean {
+  return action.type === 'pass_priority';
+}
 
 /**
  * The multi-select toolbar's controls (issues #143/#157). While building a
@@ -130,8 +141,19 @@ export function ActionTray({
   return (
     <div role="toolbar" aria-label="Actions" data-testid="action-bar" className={s.tray}>
       {globalActions.map((action) => (
-        <button key={action.id} type="button" onClick={() => onChoose(action)} className={s.button}>
+        <button
+          key={action.id}
+          type="button"
+          onClick={() => onChoose(action)}
+          className={cx(s.button, isPrimary(action) && s.buttonPrimary)}
+        >
           {action.label}
+          {/* The pass shortcut hint rides its button (issue #266 binding). */}
+          {isPrimary(action) && (
+            <kbd className={s.keyHint} aria-hidden="true">
+              P
+            </kbd>
+          )}
         </button>
       ))}
 

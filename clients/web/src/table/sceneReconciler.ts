@@ -257,6 +257,10 @@ export class SceneReconciler {
           this.fades.set(card.entityId, { display, from: 0, to: 1 });
         }
       }
+      // The scene's card rects already carry the scaled footprints; scaling the
+      // display object makes the drawn pixels match them. Applied unconditionally
+      // (like position) so a reused display tracks a scale change across scenes.
+      display.scale.set(scene.scale ?? 1);
       this.targets.set(card.entityId, { x: card.rect.x, y: card.rect.y });
       ordered.push(display);
     }

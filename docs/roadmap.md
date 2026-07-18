@@ -32,7 +32,14 @@ links with focus isolation (#339), surfaces unread log activity after returning 
 backgrounded tab (#340), declares and renders multiplayer combat — whom each attacker
 attacks — through the real UI (#347), lays out a seat-ordered table for 3–4 players with
 every opponent area keyboard-reachable (#348), and mounts a read-only spectator table with
-a lobby spectate affordance (#351).
+a lobby spectate affordance (#351). The UI catch-up batch
+([`design/ui-redesign-plan.md`](design/ui-redesign-plan.md)) then closed the gap between
+the shipped table and the agreed design: un-clipped phase expansion, display-named bands,
+identically-actionable ×N stacking (lands finally stack), a viewport-derived scene scale
+with centered rows and vertical fill, zone piles as table furniture (graveyard top card
+face-up), a centered tray with a primary pass affordance, a game menu holding
+confirm-stepped concede, and the identity layer's accents, life crests, and table
+vignette.
 
 A deterministic, seeded 4-player free-for-all full game runs against the real server in the
 normal test gate, with a mid-game elimination and a single winner (#350). Deck selection is

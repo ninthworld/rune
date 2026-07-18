@@ -31,7 +31,12 @@ import type { GameView, Phase, PlayerId } from '../protocol';
 import { PHASES } from '../protocol';
 import { cx } from '../chrome/cx';
 import { playerName } from '../playerNames';
+import { indicatorStepsBox } from './styles';
 import s from './chrome.module.css';
+
+/** The compact indicator bar's height (layout `L.indicatorH`); the expanded step
+ * panel drops just below it. */
+const BAR_HEIGHT = 48;
 
 /** The table's presentation mode (issue #267). */
 export type TableMode = 'overview' | 'focus';
@@ -175,8 +180,16 @@ export function PhaseIndicator({ view, mode, localId, onSetStops }: Props) {
           Auto-passed
         </span>
       )}
+      {/* The expanded step list floats BELOW the bar as its own elevated panel —
+          never inside the fixed-height indicator strip, which would clip it
+          (ui-requirements: phase expansions render entirely within the viewport). */}
       {expanded && (
-        <ol id={listId} className={s.indicatorSteps} data-testid="indicator-steps">
+        <ol
+          id={listId}
+          className={s.indicatorSteps}
+          style={indicatorStepsBox(BAR_HEIGHT)}
+          data-testid="indicator-steps"
+        >
           {PHASES.map((phase) => {
             const current = phase === view.phase;
             const stopped = stops.includes(phase);

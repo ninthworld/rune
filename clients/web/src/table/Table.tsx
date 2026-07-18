@@ -25,6 +25,7 @@ import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
 import { ActionTray } from './ActionTray';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
+import { GameMenu } from './GameMenu';
 import { TableGeography, type BrowsableZone } from './TableGeography';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
@@ -72,6 +73,7 @@ import {
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
 import { layout, type RegionId, type Viewport } from './layout';
+import { RuneMark } from '../chrome/RuneMark';
 import { collectFocusRegions, nextFocus, type FocusDir } from './focus';
 import { promptOverlayBox, regionBox, sceneBox, shellBox, trayBox } from './styles';
 import { cx } from '../chrome/cx';
@@ -411,6 +413,8 @@ export function Table() {
   // never scrolls horizontally.
   const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
   const battlefieldW = shell.regions.battlefield.rect.w;
+  const battlefieldH = shell.regions.battlefield.rect.h;
+  const sceneScale = shell.sceneScale;
 
   // The region geometry the spatial focus model navigates by (issue #301): map each
   // tagged shell region to its layout rect, so `focus.ts` orders/adjoins regions the
@@ -491,12 +495,17 @@ export function Table() {
       multiSelect && defenderSlot ? (msActiveAttacker(multiSelect) ?? undefined) : undefined;
     const sel =
       targeting || multiSelect ? attackerRing : (selectedId ?? highlightedId ?? undefined);
-    return buildTableScene(view, sel, battlefieldW, targetingScene);
+    return buildTableScene(view, sel, battlefieldW, targetingScene, {
+      scale: sceneScale,
+      minHeight: battlefieldH,
+    });
   }, [
     view,
     selectedId,
     highlightedId,
     battlefieldW,
+    battlefieldH,
+    sceneScale,
     targeting,
     multiSelect,
     overlayMode,
@@ -655,6 +664,10 @@ export function Table() {
         </div>
         <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
           <div style={sceneBox(scene.width, scene.height)}>
+            {/* The table surface's faint rune motif, under the transparent canvas. */}
+            <div className={s.tableMotif} aria-hidden="true">
+              <RuneMark size={420} />
+            </div>
             <BattlefieldCanvas scene={scene} isolatedId={highlightedId} />
             {/* Labeled lanes + zone piles stay on the final board. Card actions are
                 gone (no EntityOverlay select), but graveyard/exile stay browsable
@@ -898,7 +911,13 @@ export function Table() {
   }
   const bounds = sceneBoundsOf(scene, anchorIds);
   const gap = 10;
-  const clampY = (value: number): number => Math.max(bf.y + 8, Math.min(value, bf.y + bf.h - 8));
+  // An "above" anchor is additionally clamped above the tray, so the staged
+  // decision surface never overlaps the confirm/cancel controls riding the tray
+  // (subjects at the bottom of the board — e.g. hand-card candidates — anchor
+  // there instead of on top of the tray).
+  const trayTop = r.tray.rect.y;
+  const clampY = (value: number): number =>
+    Math.max(bf.y + 8, Math.min(value, bf.y + bf.h - 8, trayTop - gap));
   // Grow upward from just above the subjects when they sit lower on the board, downward
   // from just below them when they sit near the top — so the overlay never runs off an
   // edge. With no on-canvas subject (a non-visible zone / abstract order), centre it
@@ -932,6 +951,14 @@ export function Table() {
         data-focus-region="indicator"
       >
         <PhaseIndicator view={view} mode={mode} localId={localId} onSetStops={setStops} />
+        {/* The game menu: session-level actions (shortcuts; concede when the server
+            offers it) at the shell's top-right corner. Concede lives here, behind a
+            confirm step — never one slip away from Pass priority in the tray. */}
+        <GameMenu
+          concede={view.valid_actions.find((action) => action.type === 'concede')}
+          onChoose={choose}
+          onShowShortcuts={() => setShowHelp(true)}
+        />
       </div>
       {/*
        * Opponent HUD strip — top: identity + life prominent, hand/statuses secondary
@@ -969,6 +996,10 @@ export function Table() {
         data-focus-region="battlefield"
       >
         <div style={sceneBox(scene.width, scene.height)}>
+          {/* The table surface's faint rune motif, under the transparent canvas. */}
+          <div className={s.tableMotif} aria-hidden="true">
+            <RuneMark size={420} />
+          </div>
           <BattlefieldCanvas scene={scene} isolatedId={highlightedId ?? selectedId} />
           {/* Labeled, bounded player lanes + zone piles (issue #278), anchored to the
               scene's band/hand rects and stacked under the interactive overlay so it
@@ -1047,7 +1078,13 @@ export function Table() {
         data-focus-region="tray"
       >
         <ActionTray
-          globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
+          globalActions={
+            // Concede is relocated to the game menu (with a confirm step) so the
+            // highest-stakes action never sits beside the most-pressed button.
+            selecting
+              ? []
+              : (prompt?.globalActions ?? []).filter((action) => action.type !== 'concede')
+          }
           selectedActions={selectedActions}
           selectedName={selectedCard?.name}
           onChoose={fire}

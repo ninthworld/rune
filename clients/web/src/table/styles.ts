@@ -73,7 +73,9 @@ export function trayBox(rect: Rect, viewportHeight: number): CSSProperties {
     width: rect.w,
     boxSizing: 'border-box',
     display: 'flex',
-    justifyContent: 'flex-start',
+    // Centered above the hand, visually tied to it — not a lone box drifting at
+    // the dock's edge (§Tabletop shell: the tray floats above the hand).
+    justifyContent: 'center',
     // Pass-through container; the tray content (its child) opts back in via CSS.
     pointerEvents: 'none',
   };
@@ -106,6 +108,30 @@ export function promptOverlayBox(
     overflowY: 'auto',
     boxSizing: 'border-box',
     zIndex: 6,
+  };
+}
+
+/**
+ * The expanded phase indicator's step panel: a floating overlay dropped BELOW the
+ * compact bar, never rendered inside the fixed-height indicator strip (which
+ * clipped it — ui-requirements §Stack, priority, and timers demands the expansion
+ * "render entirely within the viewport, never clipped by an edge"). Fixed
+ * positioning escapes the strip's overflow; the max sizes keep the panel inside the
+ * viewport at every geometry, scrolling internally if it must. Geometry only — the
+ * elevated look is a `chrome.module.css` class.
+ */
+export function indicatorStepsBox(indicatorHeight: number): CSSProperties {
+  const top = indicatorHeight + 8;
+  return {
+    position: 'fixed',
+    top,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    maxWidth: 'min(92vw, 760px)',
+    maxHeight: `calc(100vh - ${top + 16}px)`,
+    overflowY: 'auto',
+    boxSizing: 'border-box',
+    zIndex: 7,
   };
 }
 
@@ -274,8 +300,34 @@ export function geographyLayer(width: number, height: number): CSSProperties {
   };
 }
 
-/** A player's bounded battlefield lane. The local lane is ringed like its tile. */
-export function bandRegion(rect: Rect, isLocal: boolean): CSSProperties {
+/**
+ * The zone-pile column (§Zone piles): the reserved right-edge strip of a band the
+ * scene computed (`Band.pileRect`), where the library / graveyard / exile stack
+ * parks as table furniture. Geometry only; the pile look is `chrome.module.css`.
+ */
+export function pileColumnBox(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x,
+    top: rect.y,
+    width: rect.w,
+    height: rect.h,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+    boxSizing: 'border-box',
+    // The geography layer is pointer-events: none; the piles opt back in.
+    pointerEvents: 'auto',
+  };
+}
+
+/**
+ * A player's bounded battlefield lane, bordered and tinted in the controller's
+ * identity accent (§Identity: the region answers "whose stuff"; cards never wear
+ * the accent). The local lane reads slightly stronger.
+ */
+export function bandRegion(rect: Rect, isLocal: boolean, accent: string): CSSProperties {
   return {
     position: 'absolute',
     left: rect.x,
@@ -283,9 +335,9 @@ export function bandRegion(rect: Rect, isLocal: boolean): CSSProperties {
     width: rect.w,
     height: rect.h,
     boxSizing: 'border-box',
-    border: `1px solid ${isLocal ? SURFACES.selection : 'var(--rune-border)'}`,
+    border: `1px solid ${accent}${isLocal ? '8C' : '4D'}`,
     borderRadius: 8,
-    background: isLocal ? 'var(--rune-region-bg-local)' : 'var(--rune-region-bg)',
+    background: `${accent}${isLocal ? '14' : '0A'}`,
   };
 }
 
