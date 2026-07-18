@@ -1163,6 +1163,33 @@
   font-weight: 600;
   cursor: pointer;
 }
+/* The tray's primary affordance (pass/resolve priority): the one button the player
+ * presses most, weighted so it reads first. Gold is the "you can act" accent
+ * (§Palette) — a treatment on a server-offered action, never a client-invented one. */
+.buttonPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  border-color: rgba(242, 201, 76, 0.65);
+  background: rgba(242, 201, 76, 0.14);
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  letter-spacing: 0.4px;
+}
+.buttonPrimary:hover {
+  background: rgba(242, 201, 76, 0.22);
+}
+/* The keybind hint riding a button (e.g. `P` on pass priority). */
+.keyHint {
+  padding: 1px 6px;
+  border-radius: var(--rune-radius-xs);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-sunken-bg);
+  font-family: var(--rune-font-mono);
+  font-size: var(--rune-type-micro);
+  color: var(--rune-text-muted);
+  line-height: 1.5;
+}
 .chip {
   min-height: var(--rune-touch);
   padding: 0 12px;
@@ -1810,4 +1837,98 @@ button.zonePile:focus-visible {
   .toast {
     animation: none;
   }
+}
+
+/* ── Game menu (session-level actions: shortcuts, concede) ─────────────────── */
+/* Pinned to the indicator strip's right edge; the drawer drops below it. */
+.gameMenu {
+  margin-left: auto;
+  flex: none;
+}
+.menuButton {
+  min-width: var(--rune-touch);
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
+  background: transparent;
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-heading);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--rune-transition),
+    border-color var(--rune-transition);
+}
+.menuButton:hover,
+.menuButton[aria-expanded='true'] {
+  color: var(--rune-text);
+  border-color: var(--rune-border-strong);
+}
+.menuButton:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+/* Click-away layer under the drawer: invisible, closes without acting. */
+.menuScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+/* The drawer: a tier-4 panel below the menu button. */
+.menuDrawer {
+  position: fixed;
+  top: 52px;
+  right: 8px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  min-width: 220px;
+  padding: var(--rune-space-4);
+  border-radius: var(--rune-radius-lg);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-overlay-bg);
+  box-shadow: var(--rune-elevation-2);
+}
+.menuItem {
+  min-height: var(--rune-touch);
+  padding: 0 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--rune-text);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.menuItem:hover {
+  background: var(--rune-raised-bg);
+}
+.menuItem:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: -2px;
+}
+/* Concede reads as consequential — the targeting accent marks danger without
+ * inventing a new hue channel. */
+.menuItemDanger {
+  color: var(--rune-targeting);
+}
+.menuConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  padding: var(--rune-space-4);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-targeting);
+  background: var(--rune-targeting-fill);
+}
+.menuConfirmLabel {
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  color: var(--rune-text);
 }

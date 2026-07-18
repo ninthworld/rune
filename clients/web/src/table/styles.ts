@@ -73,7 +73,9 @@ export function trayBox(rect: Rect, viewportHeight: number): CSSProperties {
     width: rect.w,
     boxSizing: 'border-box',
     display: 'flex',
-    justifyContent: 'flex-start',
+    // Centered above the hand, visually tied to it — not a lone box drifting at
+    // the dock's edge (§Tabletop shell: the tray floats above the hand).
+    justifyContent: 'center',
     // Pass-through container; the tray content (its child) opts back in via CSS.
     pointerEvents: 'none',
   };

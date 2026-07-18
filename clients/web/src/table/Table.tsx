@@ -25,6 +25,7 @@ import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
 import { ActionTray } from './ActionTray';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
+import { GameMenu } from './GameMenu';
 import { TableGeography, type BrowsableZone } from './TableGeography';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
@@ -939,6 +940,14 @@ export function Table() {
         data-focus-region="indicator"
       >
         <PhaseIndicator view={view} mode={mode} localId={localId} onSetStops={setStops} />
+        {/* The game menu: session-level actions (shortcuts; concede when the server
+            offers it) at the shell's top-right corner. Concede lives here, behind a
+            confirm step — never one slip away from Pass priority in the tray. */}
+        <GameMenu
+          concede={view.valid_actions.find((action) => action.type === 'concede')}
+          onChoose={choose}
+          onShowShortcuts={() => setShowHelp(true)}
+        />
       </div>
       {/*
        * Opponent HUD strip — top: identity + life prominent, hand/statuses secondary
@@ -1054,7 +1063,13 @@ export function Table() {
         data-focus-region="tray"
       >
         <ActionTray
-          globalActions={selecting ? [] : (prompt?.globalActions ?? [])}
+          globalActions={
+            // Concede is relocated to the game menu (with a confirm step) so the
+            // highest-stakes action never sits beside the most-pressed button.
+            selecting
+              ? []
+              : (prompt?.globalActions ?? []).filter((action) => action.type !== 'concede')
+          }
           selectedActions={selectedActions}
           selectedName={selectedCard?.name}
           onChoose={fire}
