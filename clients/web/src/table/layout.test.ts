@@ -3,11 +3,10 @@ import { buildTableScene } from './scene';
 import { normalizeGameView } from '../wire';
 import type { GameView } from '../protocol';
 import {
-  battlefieldWidth,
+  DEFAULT_VIEWPORT,
   layout,
   rectArea,
   rectsOverlap,
-  type Mode,
   type RegionId,
   type TableLayout,
   type Viewport,
@@ -15,26 +14,41 @@ import {
 
 /**
  * The supported-geometry matrix the shell must resolve identically from: a
- * portrait phone, a small landscape window, a 16:9 desktop, and an ultrawide.
- * Portrait, landscape, and ultrawide all come out of the one pure function.
+ * portrait phone, a small landscape window, a laptop, a 16:9 desktop, an
+ * ultrawide, and a portrait tablet. Every one comes out of the one pure function.
  */
 const GEOMETRIES: { name: string; viewport: Viewport }[] = [
   { name: 'portrait phone', viewport: { width: 390, height: 844, pointer: 'coarse' } },
   { name: 'small landscape', viewport: { width: 668, height: 375, pointer: 'coarse' } },
+  { name: 'laptop', viewport: { width: 1280, height: 800, pointer: 'fine' } },
   { name: '16:9 desktop', viewport: { width: 1920, height: 1080, pointer: 'fine' } },
   { name: 'ultrawide', viewport: { width: 3440, height: 1440, pointer: 'fine' } },
   { name: 'tall portrait tablet', viewport: { width: 768, height: 1024, pointer: 'coarse' } },
 ];
 
 const PLAYER_COUNTS = [2, 4, 8];
-const DOCKED: RegionId[] = ['indicator', 'opponentHud', 'battlefield', 'rail'];
 
-/** The docked regions actually docked at this geometry (the rail may float). */
-function dockedRegions(computed: TableLayout) {
-  return DOCKED.map((id) => computed.regions[id]).filter((r) => r.layer === 'docked');
+const ALL_REGIONS: RegionId[] = [
+  'topBar',
+  'canvas',
+  'rail',
+  'mePanel',
+  'promptStrip',
+  'dock',
+  'handPanel',
+];
+
+/** The chrome regions that must never overlap one another. The canvas underlies
+ * the bottom shell by design, and the prompt strip rides the hand panel's top
+ * edge (full composition), so those two are excluded from the pairwise check and
+ * asserted separately. */
+function chromeRegions(computed: TableLayout) {
+  return ALL_REGIONS.filter((id) => id !== 'canvas' && id !== 'promptStrip').map(
+    (id) => computed.regions[id],
+  );
 }
 
-/** A board with `perController` permanents each, for the horizontal-scroll check. */
+/** A board with `perController` permanents each, for the no-sideways-scroll check. */
 function boardView(controllers: string[], perController: number): GameView {
   const battlefield = controllers.flatMap((controller) =>
     Array.from({ length: perController }, (_, i) => ({
@@ -59,11 +73,18 @@ function boardView(controllers: string[], perController: number): GameView {
   });
 }
 
-describe('layout region geometry', () => {
+describe('layout region geometry (ADR 0023 fixed shell)', () => {
   for (const { name, viewport } of GEOMETRIES) {
     for (const playerCount of PLAYER_COUNTS) {
       describe(`${name} @ ${playerCount}p`, () => {
-        const computed = layout(viewport, 'overview', playerCount);
+        const computed = layout(viewport, playerCount);
+
+        it('carves every region of the anatomy, keyed by its stable identity', () => {
+          for (const id of ALL_REGIONS) {
+            expect(computed.regions[id]).toBeDefined();
+            expect(computed.regions[id].id).toBe(id);
+          }
+        });
 
         it('keeps every region inside the viewport', () => {
           for (const region of Object.values(computed.regions)) {
@@ -77,188 +98,235 @@ describe('layout region geometry', () => {
           }
         });
 
-        it('never overlaps two docked regions', () => {
-          const docked = dockedRegions(computed);
-          for (let i = 0; i < docked.length; i += 1) {
-            for (let j = i + 1; j < docked.length; j += 1) {
-              expect(rectsOverlap(docked[i]!.rect, docked[j]!.rect)).toBe(false);
+        it('never overlaps two chrome regions — nothing floats over anything', () => {
+          const chrome = chromeRegions(computed);
+          for (let i = 0; i < chrome.length; i += 1) {
+            for (let j = i + 1; j < chrome.length; j += 1) {
+              expect(rectsOverlap(chrome[i]!.rect, chrome[j]!.rect)).toBe(false);
             }
           }
         });
 
-        it('keeps floating chrome clear of the docked top/side chrome', () => {
-          // Floating regions may overlay the battlefield (they sit above it), but
-          // must not collide with the docked top chrome or a docked rail.
-          const floating = Object.values(computed.regions).filter((r) => r.layer === 'floating');
-          const barriers = [computed.regions.indicator, computed.regions.opponentHud].concat(
-            computed.regions.rail.layer === 'docked' ? [computed.regions.rail] : [],
-          );
-          for (const region of floating) {
-            for (const barrier of barriers) {
-              expect(rectsOverlap(region.rect, barrier.rect)).toBe(false);
+        it('parks the prompt strip on the hand panel or its own strip, never elsewhere', () => {
+          const prompt = computed.regions.promptStrip.rect;
+          const hand = computed.regions.handPanel.rect;
+          if (computed.composition === 'full') {
+            // The strip rides the hand panel's top edge — contained in it.
+            expect(prompt.x).toBeGreaterThanOrEqual(hand.x);
+            expect(prompt.y).toBe(hand.y);
+            expect(prompt.x + prompt.w).toBeLessThanOrEqual(hand.x + hand.w);
+            expect(prompt.y + prompt.h).toBeLessThanOrEqual(hand.y + hand.h);
+          } else {
+            // Compact: its own strip above the action bar, overlapping no chrome.
+            for (const other of chromeRegions(computed)) {
+              expect(rectsOverlap(prompt, other.rect)).toBe(false);
             }
           }
         });
 
-        it('gives the battlefield the majority of the viewport', () => {
-          // The battlefield alone (it visually contains the hand the scene draws)
-          // claims well over half the viewport at every geometry.
+        it('keeps the bottom-shell chrome inside the canvas it overlays', () => {
+          const canvas = computed.regions.canvas.rect;
+          for (const id of ['mePanel', 'promptStrip', 'dock', 'handPanel'] as RegionId[]) {
+            const r = computed.regions[id].rect;
+            expect(r.x).toBeGreaterThanOrEqual(canvas.x);
+            expect(r.y).toBeGreaterThanOrEqual(canvas.y);
+            expect(r.x + r.w).toBeLessThanOrEqual(canvas.x + canvas.w);
+            expect(r.y + r.h).toBeLessThanOrEqual(canvas.y + canvas.h);
+          }
+        });
+
+        it('gives the board canvas the majority of the viewport', () => {
           const total = viewport.width * viewport.height;
-          expect(rectArea(computed.regions.battlefield.rect)).toBeGreaterThan(total * 0.5);
+          expect(rectArea(computed.regions.canvas.rect)).toBeGreaterThan(total * 0.5);
         });
 
-        it('makes the battlefield the single largest region', () => {
-          const bf = rectArea(computed.regions.battlefield.rect);
+        it('makes the canvas the single largest region', () => {
+          const canvas = rectArea(computed.regions.canvas.rect);
           for (const region of Object.values(computed.regions)) {
-            if (region.id === 'battlefield') continue;
-            expect(bf).toBeGreaterThanOrEqual(rectArea(region.rect));
+            if (region.id === 'canvas') continue;
+            expect(canvas).toBeGreaterThanOrEqual(rectArea(region.rect));
           }
+        });
+
+        it('emits one opponent panel frame per opponent seat', () => {
+          expect(computed.scene.opponents).toHaveLength(Math.max(1, playerCount - 1));
+          expect(computed.scene.width).toBe(computed.regions.canvas.rect.w);
+          expect(computed.scene.height).toBe(computed.regions.canvas.rect.h);
         });
       });
     }
   }
 
   it('derives orientation from the aspect, never a device list', () => {
-    expect(layout({ width: 390, height: 844 }, 'overview', 2).orientation).toBe('portrait');
-    expect(layout({ width: 1920, height: 1080 }, 'overview', 2).orientation).toBe('landscape');
-    expect(layout({ width: 800, height: 800 }, 'overview', 2).orientation).toBe('landscape');
-  });
-
-  it('collapses the rail to a floating badge on narrow width', () => {
-    const narrow = layout({ width: 400, height: 800 }, 'overview', 2);
-    expect(narrow.railCollapsed).toBe(true);
-    expect(narrow.regions.rail.layer).toBe('floating');
-    // A collapsed rail returns the full width to the battlefield.
-    expect(narrow.regions.battlefield.rect.w).toBe(400);
-
-    const wide = layout({ width: 1600, height: 900 }, 'overview', 2);
-    expect(wide.railCollapsed).toBe(false);
-    expect(wide.regions.rail.layer).toBe('docked');
-    expect(wide.regions.battlefield.rect.w).toBeLessThan(1600);
-  });
-
-  it('reflows the opponent HUD taller as the seat count grows (capped)', () => {
-    const two = layout({ width: 768, height: 1024 }, 'overview', 2);
-    const eight = layout({ width: 768, height: 1024 }, 'overview', 8);
-    expect(eight.regions.opponentHud.rect.h).toBeGreaterThan(two.regions.opponentHud.rect.h);
-    // Even crowded, top chrome never exceeds 30% of the height (board stays majority).
-    const topH = eight.regions.indicator.rect.h + eight.regions.opponentHud.rect.h;
-    expect(topH).toBeLessThanOrEqual(Math.floor(1024 * 0.3));
-  });
-
-  it('floats the action tray above the hand band', () => {
-    const computed = layout({ width: 1280, height: 800 }, 'overview', 2);
-    const { tray, hand } = computed.regions;
-    expect(tray.rect.y + tray.rect.h).toBeLessThanOrEqual(hand.rect.y);
-    // The tray clears the local dock on its left.
-    expect(tray.rect.x).toBeGreaterThanOrEqual(
-      computed.regions.localDock.rect.x + computed.regions.localDock.rect.w,
-    );
+    expect(layout({ width: 390, height: 844 }, 2).orientation).toBe('portrait');
+    expect(layout({ width: 1920, height: 1080 }, 2).orientation).toBe('landscape');
+    expect(layout({ width: 800, height: 800 }, 2).orientation).toBe('landscape');
   });
 
   it('keeps the receiver bottom-anchored regardless of opponent count (issue #348)', () => {
-    // The receiver's hand and dock stay pinned to the viewport bottom whether the
-    // table seats one opponent or three — opponents are added toward the top, never
-    // by displacing the receiver's bottom interaction area.
+    // The bottom shell stays pinned to the viewport bottom whether the table
+    // seats one opponent or seven — opponents are added toward the top, never by
+    // displacing the receiver's interaction area.
     for (const { viewport } of GEOMETRIES) {
-      const { height } = { height: Math.max(1, Math.floor(viewport.height)) };
-      for (const playerCount of [2, 3, 4]) {
-        const computed = layout(viewport, 'overview', playerCount);
-        const { hand, localDock } = computed.regions;
-        // The hand band's bottom edge sits at the very bottom of the viewport.
-        expect(hand.rect.y + hand.rect.h).toBe(height);
-        // The local dock is anchored to the bottom too (within its bottom pad).
-        expect(localDock.rect.y + localDock.rect.h).toBeLessThanOrEqual(height);
-        expect(localDock.rect.y + localDock.rect.h).toBeGreaterThan(height - 24);
-        // The opponent HUD strip stays at the top, above the receiver's band.
-        expect(computed.regions.opponentHud.rect.y).toBeLessThan(hand.rect.y);
+      for (const playerCount of [2, 3, 4, 8]) {
+        const computed = layout(viewport, playerCount);
+        const { mePanel, handPanel, dock, topBar } = computed.regions;
+        const bottoms = [mePanel, handPanel, dock].map((r) => r.rect.y + r.rect.h);
+        // The shell's lowest region sits within the bottom pad of the viewport.
+        expect(Math.max(...bottoms)).toBeGreaterThan(viewport.height - 12);
+        expect(Math.max(...bottoms)).toBeLessThanOrEqual(viewport.height);
+        // The top bar stays at the top, above every bottom-shell region.
+        for (const r of [mePanel, handPanel, dock]) {
+          expect(topBar.rect.y + topBar.rect.h).toBeLessThanOrEqual(r.rect.y);
+        }
       }
     }
   });
 });
 
-describe('layout is mode-invariant (regions never move between overview and focus)', () => {
-  for (const { name, viewport } of GEOMETRIES) {
-    it(`places identical regions in both modes @ ${name}`, () => {
-      const overview = layout(viewport, 'overview', 4);
-      const focus = layout(viewport, 'focus', 4);
-      // Only the echoed mode differs; every region rect is identical.
-      expect(focus.regions).toEqual(overview.regions);
-      expect(focus.mode).toBe('focus');
-      expect(overview.mode).toBe('overview');
+describe('layout composition changes kind on geometry, not anatomy', () => {
+  it('resolves the compact composition below the width threshold', () => {
+    expect(layout({ width: 390, height: 844 }, 2).composition).toBe('compact');
+    expect(layout({ width: 719, height: 900 }, 2).composition).toBe('compact');
+    expect(layout({ width: 720, height: 900 }, 2).composition).toBe('full');
+    expect(layout({ width: 1920, height: 1080 }, 2).composition).toBe('full');
+  });
+
+  it('docks a bounded right rail on the full composition', () => {
+    const computed = layout({ width: 1280, height: 800 }, 2);
+    const rail = computed.regions.rail.rect;
+    expect(rail.w).toBeGreaterThanOrEqual(236);
+    expect(rail.w).toBeLessThanOrEqual(312);
+    // The rail parks at the right edge, beside (never over) the canvas.
+    expect(rail.x + rail.w).toBe(1280 - 8);
+    expect(rectsOverlap(rail, computed.regions.canvas.rect)).toBe(false);
+  });
+
+  it('collapses the rail to a zero-area region on compact — the identity persists', () => {
+    const compact = layout({ width: 390, height: 844 }, 2);
+    // The region is still carved (chrome never reorders) but claims no space:
+    // stack/log live behind top-bar chips that open sheets.
+    expect(compact.regions.rail.id).toBe('rail');
+    expect(rectArea(compact.regions.rail.rect)).toBe(0);
+    // The canvas spans the full padded width instead.
+    expect(compact.regions.canvas.rect.w).toBe(390 - 12);
+  });
+
+  it('orders the compact bottom shell prompt → dock → hand → identity, top to bottom', () => {
+    const { regions } = layout({ width: 390, height: 844 }, 2);
+    expect(regions.promptStrip.rect.y).toBeLessThan(regions.dock.rect.y);
+    expect(regions.dock.rect.y).toBeLessThan(regions.handPanel.rect.y);
+    expect(regions.handPanel.rect.y).toBeLessThan(regions.mePanel.rect.y);
+  });
+
+  it('rides the prompt strip on the hand panel top edge on the full composition', () => {
+    const { regions } = layout({ width: 1280, height: 800 }, 2);
+    expect(regions.promptStrip.rect.y).toBe(regions.handPanel.rect.y);
+    expect(regions.promptStrip.rect.x).toBe(regions.handPanel.rect.x);
+    expect(regions.promptStrip.rect.w).toBe(regions.handPanel.rect.w);
+    // Identity panel · hand panel · dock sit side by side on one bottom row.
+    expect(regions.mePanel.rect.y).toBe(regions.handPanel.rect.y);
+    expect(regions.dock.rect.y).toBe(regions.handPanel.rect.y);
+    expect(regions.mePanel.rect.x + regions.mePanel.rect.w).toBeLessThanOrEqual(
+      regions.handPanel.rect.x,
+    );
+    expect(regions.handPanel.rect.x + regions.handPanel.rect.w).toBeLessThanOrEqual(
+      regions.dock.rect.x,
+    );
+  });
+});
+
+describe('opponent panel reflow (composition, never reordering)', () => {
+  it('splits one row evenly across up to three opponents (full)', () => {
+    const { scene } = layout({ width: 1280, height: 800 }, 4);
+    expect(scene.opponents).toHaveLength(3);
+    const ys = new Set(scene.opponents.map((f) => f.rect.y));
+    expect(ys.size).toBe(1); // one row
+    const widths = new Set(scene.opponents.map((f) => f.rect.w));
+    expect(widths.size).toBe(1); // even split
+  });
+
+  it('wraps beyond three opponents into two rows (full)', () => {
+    const { scene } = layout({ width: 1920, height: 1080 }, 8);
+    expect(scene.opponents).toHaveLength(7);
+    const ys = [...new Set(scene.opponents.map((f) => f.rect.y))].sort((a, b) => a - b);
+    expect(ys).toHaveLength(2);
+  });
+
+  it('stacks opponent panels vertically on compact, receiver largest and last', () => {
+    const { scene } = layout({ width: 390, height: 844 }, 3);
+    expect(scene.opponents).toHaveLength(2);
+    const [a, b] = scene.opponents;
+    expect(a!.rect.y).toBeLessThan(b!.rect.y);
+    // The receiver's panel sits below every opponent's and is at least as tall.
+    expect(scene.you.rect.y).toBeGreaterThanOrEqual(b!.rect.y + b!.rect.h);
+    expect(scene.you.rect.h).toBeGreaterThanOrEqual(b!.rect.h);
+  });
+
+  it('keeps the receiver a tier step ahead: duel field boards, crowded support boards', () => {
+    expect(layout({ width: 1280, height: 800 }, 2).scene.tiers).toEqual({
+      you: 'field',
+      opp: 'support',
     });
-  }
+    expect(layout({ width: 1280, height: 800 }, 4).scene.tiers).toEqual({
+      you: 'support',
+      opp: 'mini',
+    });
+    expect(layout({ width: 390, height: 844 }, 2).scene.tiers).toEqual({
+      you: 'support',
+      opp: 'mini',
+    });
+  });
+
+  it('fans the hand only on the compact composition', () => {
+    expect(layout({ width: 1280, height: 800 }, 2).scene.handFan).toBe(false);
+    expect(layout({ width: 390, height: 844 }, 2).scene.handFan).toBe(true);
+  });
 });
 
 describe('layout is a pure, deterministic function', () => {
   it('returns identical output for identical input', () => {
-    const a = layout({ width: 1440, height: 900, pointer: 'fine' }, 'overview', 3);
-    const b = layout({ width: 1440, height: 900, pointer: 'fine' }, 'overview', 3);
+    const a = layout({ width: 1440, height: 900, pointer: 'fine' }, 3);
+    const b = layout({ width: 1440, height: 900, pointer: 'fine' }, 3);
     expect(a).toEqual(b);
   });
 
-  it('guards degenerate (zero) geometry into a well-formed layout', () => {
-    const computed = layout({ width: 0, height: 0 }, 'overview', 2);
+  it('defaults an absent pointer to fine (SSR/tests) and echoes a supplied one', () => {
+    expect(layout({ width: 1280, height: 800 }, 2).viewport.pointer).toBe('fine');
+    expect(layout({ width: 1280, height: 800, pointer: 'coarse' }, 2).viewport.pointer).toBe(
+      'coarse',
+    );
+    expect(DEFAULT_VIEWPORT.pointer).toBe('fine');
+  });
+
+  it('guards degenerate (zero) geometry into finite rects', () => {
+    const computed = layout({ width: 0, height: 0 }, 2);
     for (const region of Object.values(computed.regions)) {
-      expect(region.rect.w).toBeGreaterThanOrEqual(0);
-      expect(region.rect.h).toBeGreaterThanOrEqual(0);
+      for (const value of [region.rect.x, region.rect.y, region.rect.w, region.rect.h]) {
+        expect(Number.isFinite(value)).toBe(true);
+      }
     }
+    expect(computed.playerCount).toBe(2);
   });
 });
 
-describe('battlefield sizing feeds the scene with no horizontal scroll', () => {
+describe('the carved scene geometry feeds the scene with no horizontal scroll', () => {
   for (const { name, viewport } of GEOMETRIES) {
-    for (const playerCount of PLAYER_COUNTS) {
-      it(`the scene fits the battlefield width @ ${name} ${playerCount}p`, () => {
-        const computed = layout(viewport, 'overview', playerCount);
-        const width = battlefieldWidth(computed);
-        // A dense board (50 permanents per player) wrapped within the battlefield
-        // width must never report a scene wider than that width → no sideways scroll.
+    for (const playerCount of [2, 4]) {
+      it(`a dense board fits the canvas width @ ${name} ${playerCount}p`, () => {
+        const computed = layout(viewport, playerCount);
+        // A dense board (30 permanents per player) wrapped inside the carved
+        // panels must never place a card past the canvas width → no sideways scroll.
         const controllers = Array.from({ length: playerCount }, (_, i) => `p${i + 1}`);
-        const scene = buildTableScene(boardView(controllers, 50), undefined, width);
-        const maxRight = Math.max(
-          ...scene.bands.flatMap((b) => b.cards).map((c) => c.rect.x + c.rect.w),
-        );
-        expect(scene.width).toBeLessThanOrEqual(width);
-        expect(maxRight).toBeLessThanOrEqual(width);
+        const scene = buildTableScene(boardView(controllers, 30), undefined, computed.scene);
+        const rects = scene.bands.flatMap((b) => b.cards).map((c) => c.rect);
+        expect(rects.length).toBe(playerCount * 30);
+        for (const rect of rects) {
+          expect(rect.x).toBeGreaterThanOrEqual(0);
+          expect(rect.x + rect.w).toBeLessThanOrEqual(scene.width);
+        }
+        expect(scene.width).toBe(computed.regions.canvas.rect.w);
       });
     }
   }
 });
-
-describe('scene scale spends large viewports (ui-design-notes §Tabletop shell)', () => {
-  it('stays at the baseline scale on small/typical geometry', () => {
-    expect(layout({ width: 1280, height: 800 }, 'overview', 2).sceneScale).toBe(1);
-    expect(layout({ width: 900, height: 700 }, 'overview', 2).sceneScale).toBe(1);
-    expect(layout({ width: 390, height: 844 }, 'overview', 2).sceneScale).toBe(1);
-  });
-
-  it('scales up on a large desktop viewport, clamped and quantized', () => {
-    const big = layout({ width: 2560, height: 1440 }, 'overview', 2);
-    expect(big.sceneScale).toBeGreaterThan(1);
-    expect(big.sceneScale).toBeLessThanOrEqual(1.5);
-    // Quarter-step quantization keeps resize churn down.
-    expect((big.sceneScale * 4) % 1).toBe(0);
-  });
-
-  it('never scales below 1 (small screens condense by other means)', () => {
-    expect(layout({ width: 320, height: 480 }, 'overview', 2).sceneScale).toBe(1);
-  });
-
-  it('a scaled scene still fits the battlefield width (no horizontal scroll)', () => {
-    const computed = layout({ width: 2560, height: 1440 }, 'overview', 2);
-    const width = battlefieldWidth(computed);
-    const scene = buildTableScene(boardView(['p1', 'p2'], 40), undefined, width, undefined, {
-      scale: computed.sceneScale,
-    });
-    const maxRight = Math.max(
-      ...scene.bands.flatMap((b) => b.cards).map((c) => c.rect.x + c.rect.w),
-    );
-    expect(maxRight).toBeLessThanOrEqual(width);
-    expect(scene.width).toBeLessThanOrEqual(width);
-  });
-});
-
-// Type-only sanity: the exported Mode union is what the Table passes through.
-const _modes: Mode[] = ['overview', 'focus'];
-void _modes;

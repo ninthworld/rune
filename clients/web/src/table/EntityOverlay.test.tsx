@@ -8,7 +8,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EntityOverlay } from './EntityOverlay';
-import { buildTableScene, type TargetingScene } from './scene';
+import { buildTableScene, defaultSceneGeometry, type TargetingScene } from './scene';
 import { SAMPLE_GAME_VIEW } from '../game-view.fixture';
 
 const noop = () => {};
@@ -21,7 +21,12 @@ interface OverlayOpts {
 }
 
 function renderOverlay(opts: OverlayOpts = {}) {
-  const scene = buildTableScene(SAMPLE_GAME_VIEW, undefined, undefined, opts.targeting);
+  const scene = buildTableScene(
+    SAMPLE_GAME_VIEW,
+    undefined,
+    defaultSceneGeometry(),
+    opts.targeting,
+  );
   render(
     <EntityOverlay
       scene={scene}
@@ -29,7 +34,6 @@ function renderOverlay(opts: OverlayOpts = {}) {
       targeting={opts.targeting !== undefined}
       pointer={opts.pointer ?? 'fine'}
       onSelect={noop}
-      onChoose={noop}
       onPickTarget={noop}
       onPeek={opts.onPeek ?? noop}
       onPinInspect={opts.onPinInspect ?? noop}

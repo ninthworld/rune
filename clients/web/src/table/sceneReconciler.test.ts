@@ -3,7 +3,7 @@ import { Container, Text } from 'pixi.js';
 import type { CardDisplayData } from '../card/cardFactory';
 import { normalizeGameView } from '../wire';
 import { SAMPLE_GAME_VIEW } from '../game-view.fixture';
-import { buildTableScene } from './scene';
+import { buildTableScene, defaultSceneGeometry } from './scene';
 import type { RenderedCard, TableScene } from './scene';
 import { SceneReconciler } from './sceneReconciler';
 
@@ -97,11 +97,13 @@ function scene(cards: RenderedCard[], hand: RenderedCard[] = []): TableScene {
         cards,
         rows: [],
         rect: { x: 0, y: 0, w: 600, h: 160 },
+        headerRect: { x: 0, y: 0, w: 600, h: 32 },
         label: 'p1 (you)',
         isEmpty: cards.length === 0,
         zones: { library: 0, graveyard: 0, exile: 0 },
         accent: '#3E9C9C',
         pileRect: { x: 520, y: 40, w: 68, h: 120 },
+        densityRung: 0,
       },
     ],
     hand,
@@ -273,7 +275,7 @@ describe('SceneReconciler determinism invariant (fresh-mount equivalence)', () =
 
     const reconciler = new SceneReconciler(new Container());
     for (const view of frames) {
-      const s = buildTableScene(view);
+      const s = buildTableScene(view, undefined, defaultSceneGeometry());
       reconciler.reconcile(s);
       expect(snapshot(reconciler.root)).toEqual(snapshot(freshMount(s)));
     }

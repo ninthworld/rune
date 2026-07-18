@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { Container } from 'pixi.js';
 import { normalizeGameView } from '../wire';
-import { buildTableScene } from './scene';
+import { buildTableScene, defaultSceneGeometry } from './scene';
 import type { GameView } from '../protocol';
 import { SceneReconciler } from './sceneReconciler';
 
@@ -56,19 +56,29 @@ function twoBlockersOnOneAttacker(): GameView {
 describe('combat-link overlay (issue #339)', () => {
   it('draws a link for each declared blocker on a mid-combat board', () => {
     const reconciler = new SceneReconciler(new Container());
-    reconciler.reconcile(buildTableScene(twoBlockersOnOneAttacker()));
+    reconciler.reconcile(
+      buildTableScene(twoBlockersOnOneAttacker(), undefined, defaultSceneGeometry()),
+    );
     expect(reconciler.drawnLinkCount()).toBe(2);
   });
 
   it('draws no links outside combat', () => {
     const reconciler = new SceneReconciler(new Container());
-    reconciler.reconcile(buildTableScene(combatView([{ id: 'x', controller: 'p1' }])));
+    reconciler.reconcile(
+      buildTableScene(
+        combatView([{ id: 'x', controller: 'p1' }]),
+        undefined,
+        defaultSceneGeometry(),
+      ),
+    );
     expect(reconciler.drawnLinkCount()).toBe(0);
   });
 
   it('isolates a focused participant’s links', () => {
     const reconciler = new SceneReconciler(new Container());
-    reconciler.reconcile(buildTableScene(twoBlockersOnOneAttacker()));
+    reconciler.reconcile(
+      buildTableScene(twoBlockersOnOneAttacker(), undefined, defaultSceneGeometry()),
+    );
 
     // Focusing one blocker isolates its single link.
     reconciler.setIsolation('blkA');
@@ -86,7 +96,9 @@ describe('combat-link overlay (issue #339)', () => {
 
   it('keeps links only for endpoints still present after a reconcile', () => {
     const reconciler = new SceneReconciler(new Container());
-    reconciler.reconcile(buildTableScene(twoBlockersOnOneAttacker()));
+    reconciler.reconcile(
+      buildTableScene(twoBlockersOnOneAttacker(), undefined, defaultSceneGeometry()),
+    );
     expect(reconciler.drawnLinkCount()).toBe(2);
 
     // One blocker leaves combat: the next view carries only the other link.
@@ -96,6 +108,8 @@ describe('combat-link overlay (issue #339)', () => {
           { id: 'atk', controller: 'p2', attacking: true },
           { id: 'blkA', controller: 'p1', blocking: 'atk' },
         ]),
+        undefined,
+        defaultSceneGeometry(),
       ),
     );
     expect(reconciler.drawnLinkCount()).toBe(1);
