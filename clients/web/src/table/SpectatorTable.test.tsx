@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { normalizeSpectatorView } from '../wire';
 import type { SpectatorView } from '../protocol';
 import { SpectatorTable } from './SpectatorTable';
@@ -47,25 +47,35 @@ function spectatorView(overrides: Partial<Record<string, unknown>> = {}): Specta
 afterEach(cleanup);
 
 describe('SpectatorTable (ADR 0022, issue #351)', () => {
-  it('renders a read-only live board with no hand row or action tray', () => {
+  it('renders the read-only fixed shell: top bar, badge, and no action surfaces', () => {
     render(<SpectatorTable view={spectatorView()} />);
-    // The spectate shell and its badge are present…
+    // The spectate shell rides the fixed anatomy: top bar up top, the badge where
+    // the receiver's identity panel would live…
     expect(screen.getByTestId('spectator-table')).toBeDefined();
+    expect(screen.getByTestId('top-bar')).toBeDefined();
     expect(screen.getByTestId('spectator-badge').textContent).toContain('Spectating');
-    // …but there is no action tray and no local hand/dock — nothing to play.
+    // …but there is no action tray and no local hand/dock — nothing to play…
     expect(screen.queryByTestId('action-bar')).toBeNull();
     expect(screen.queryByTestId('local-dock')).toBeNull();
     expect(screen.queryByTestId('hud-mana')).toBeNull();
+    // …and nothing on the board is selectable or targetable: the public permanent
+    // carries only its transparent inspect surface.
+    expect(screen.queryByTestId('entity-perm_1')).toBeNull();
+    expect(screen.queryByTestId('target-perm_1')).toBeNull();
+    expect(screen.getByTestId('inspect-surface-perm_1')).toBeDefined();
   });
 
-  it('shows every seat’s public state (each player is an opponent tile)', () => {
+  it('gives every seat its own bounded player panel (no privileged "self")', () => {
     render(<SpectatorTable view={spectatorView()} />);
-    const hud = screen.getByTestId('opponent-hud');
-    // All three seats appear in the HUD — no privileged "self".
+    const chrome = screen.getByTestId('panel-chrome');
+    // With no receiver, the scene folds the you-frame into the pool: all three
+    // seats get a panel, a header tile, and their public zone piles.
     for (const id of ['p0', 'p1', 'p2']) {
-      expect(within(hud).getByTestId(`tile-${id}`)).toBeDefined();
+      expect(within(chrome).getByTestId(`player-panel-${id}`)).toBeDefined();
+      expect(within(chrome).getByTestId(`tile-${id}`)).toBeDefined();
+      expect(within(chrome).getByTestId(`pile-column-${id}`)).toBeDefined();
     }
-    expect(within(hud).getByTestId('hud-life-p0').textContent).toBe('18');
+    expect(within(chrome).getByTestId('hud-life-p0').textContent).toBe('18');
   });
 
   it('reconstructs the public board from one view (mid-game join)', () => {
@@ -75,6 +85,54 @@ describe('SpectatorTable (ADR 0022, issue #351)', () => {
     expect(screen.getByTestId('inspect-surface-perm_1')).toBeDefined();
     // The opponent's public graveyard pile is browsable on the board.
     expect(screen.getByTestId('table-graveyard-p0')).toBeDefined();
+  });
+
+  it('browses a public graveyard from its board pile', () => {
+    render(<SpectatorTable view={spectatorView()} />);
+    fireEvent.click(screen.getByTestId('table-graveyard-p0'));
+    const browser = screen.getByTestId('zone-browser');
+    expect(within(browser).getByTestId('zone-browser-title').textContent).toContain('Graveyard');
+    expect(within(browser).getByTestId('browser-card-gy_0').textContent).toContain('Shock');
+  });
+
+  it('pins the inspect popover from a card’s read-only surface', () => {
+    render(<SpectatorTable view={spectatorView()} />);
+    fireEvent.click(screen.getByTestId('inspect-surface-perm_1'));
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+  });
+
+  it('docks the rail with the quiet empty-stack state and the log', () => {
+    render(<SpectatorTable view={spectatorView()} />);
+    // The rail is carved into the shell: both sections present, the empty stack
+    // showing its designed quiet state rather than vanishing.
+    const rail = screen.getByTestId('rail');
+    expect(within(rail).getByTestId('rail-stack')).toBeDefined();
+    expect(within(rail).getByTestId('rail-activity')).toBeDefined();
+    expect(within(rail).getByTestId('stack-quiet')).toBeDefined();
+    expect(within(rail).getByTestId('game-log')).toBeDefined();
+  });
+
+  it('shows a populated stack and log in the rail', () => {
+    render(
+      <SpectatorTable
+        view={spectatorView({
+          stack: [{ id: 's1', controller: 'p0', description: 'Lightning Bolt' }],
+          log: [
+            {
+              sequence: 1,
+              event: {
+                type: 'spell_cast',
+                player: 'p0',
+                card: { id: 's1', name: 'Lightning Bolt' },
+              },
+            },
+          ],
+        })}
+      />,
+    );
+    const rail = screen.getByTestId('rail');
+    expect(within(rail).getByTestId('stack-item-s1').textContent).toContain('Lightning Bolt');
+    expect(within(rail).getByTestId('log-entry-1').textContent).toBe('p0 cast Lightning Bolt.');
   });
 
   it('shows the terminal verdict when the game is over', () => {
