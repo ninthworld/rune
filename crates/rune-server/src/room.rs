@@ -34,7 +34,7 @@ use rune_engine::{
     apply_action, attackers_needing_damage_order, priority_has_no_meaningful_action, valid_actions,
     Action, CardDatabase, DamageOrder, GameState, PlayerId,
 };
-use rune_protocol::{ClientMessage, GameView, Phase, SetStops};
+use rune_protocol::{ClientMessage, GameView, Phase, SetStops, SpectatorView};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -43,7 +43,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
-use crate::view::{personalized_view, phase_of, resolve_action};
+use crate::view::{personalized_view, phase_of, resolve_action, spectator_view};
 
 /// Bound on the room's input queue. Inputs beyond this depth from a flooding client
 /// are dropped (see [`RoomHandle::send`]); the value is generous enough that a
@@ -87,6 +87,16 @@ pub enum RoomInput {
     Leave {
         /// The seat whose connection dropped.
         seat: Seat,
+    },
+    /// A **spectator** connection attached (ADR 0022, issue #351): a non-seated
+    /// observer. `outbox` is where the room pushes redacted [`SpectatorView`]s; the
+    /// room immediately sends the current one so a mid-game spectator reconstructs the
+    /// whole public board from a single message. A spectator owns no seat and is not
+    /// held open — its sender is simply dropped from the fan-out when the connection
+    /// ends (detected on the next broadcast).
+    JoinSpectator {
+        /// Latest-value channel the room pushes redacted spectator views to.
+        outbox: watch::Sender<Option<SpectatorView>>,
     },
 }
 
@@ -294,6 +304,12 @@ pub struct Room {
     /// affected seat's [`GameView::auto_passed`] on the following broadcast so a
     /// client can show a "passed for you" indicator. Not load-bearing state.
     auto_passed_seats: Vec<bool>,
+    /// The connected **spectators** (ADR 0022, issue #351): each a latest-value sender
+    /// the room pushes a redacted [`SpectatorView`] to on every broadcast. Spectators
+    /// own no seat and are not held open across disconnects — a sender whose receiver
+    /// has been dropped is pruned on the next broadcast. Empty by default, so a room
+    /// with no spectators does exactly the seated work it did before.
+    spectators: Vec<watch::Sender<Option<SpectatorView>>>,
 }
 
 impl Room {
@@ -314,6 +330,7 @@ impl Room {
             auto_pass: AutoPassPolicy::Off,
             stops: vec![Vec::new(); seat_count],
             auto_passed_seats: vec![false; seat_count],
+            spectators: Vec::new(),
         }
     }
 
@@ -405,6 +422,7 @@ impl Room {
                         RoomInput::Join { seat, outbox } => self.on_join(seat, outbox),
                         RoomInput::Message { seat, message } => self.on_message(seat, &message),
                         RoomInput::Leave { seat } => self.on_leave(seat),
+                        RoomInput::JoinSpectator { outbox } => self.on_join_spectator(outbox),
                     }
                 }
                 () = async move {
@@ -451,6 +469,32 @@ impl Room {
             *slot = None;
             info!(seat, "seat disconnected; held open for reconnect");
         }
+    }
+
+    /// Attach a spectator (ADR 0022, issue #351) and bring it current with a single
+    /// redacted [`SpectatorView`] — the whole public board, so a mid-game spectator
+    /// reconstructs its UI with no history. A spectator owns no seat and never mutates
+    /// the game; a dead spectator sender is pruned lazily on the next broadcast.
+    fn on_join_spectator(&mut self, outbox: watch::Sender<Option<SpectatorView>>) {
+        let mut view = spectator_view(&self.state, &self.db);
+        view.player_names = self.player_names_map();
+        // If the receiver is already gone, don't retain the sender.
+        if outbox.send(Some(view)).is_ok() {
+            self.spectators.push(outbox);
+        }
+    }
+
+    /// Push the current redacted [`SpectatorView`] to every connected spectator,
+    /// pruning any whose receiver has been dropped (the spectator disconnected). A
+    /// no-op when there are no spectators, so a seated-only room is unaffected.
+    fn broadcast_spectators(&mut self) {
+        if self.spectators.is_empty() {
+            return;
+        }
+        let mut view = spectator_view(&self.state, &self.db);
+        view.player_names = self.player_names_map();
+        self.spectators
+            .retain(|outbox| outbox.send(Some(view.clone())).is_ok());
     }
 
     /// Route a client message. A chosen action the engine offered this seat is
@@ -678,7 +722,9 @@ impl Room {
         }
     }
 
-    /// Send every connected seat its own personalized view.
+    /// Send every connected seat its own personalized view, and every spectator the
+    /// current redacted view. Seated traffic is exactly as before; the spectator
+    /// fan-out is a no-op when there are no spectators (ADR 0022, issue #351).
     fn broadcast(&mut self) {
         for seat in 0..self.seats.len() {
             let connected = self.seats.get(seat).map(Option::is_some).unwrap_or(false);
@@ -686,6 +732,7 @@ impl Room {
                 self.send_view(seat);
             }
         }
+        self.broadcast_spectators();
     }
 }
 
@@ -782,6 +829,69 @@ pub async fn serve_connection<S, F>(
     }
 
     let _ = room.send(RoomInput::Leave { seat });
+    let _ = write.close().await;
+}
+
+/// Bridge a live WebSocket connection to a room as a **spectator** (ADR 0022, issue
+/// #351): a non-seated observer that receives redacted [`SpectatorView`]s and sends
+/// **nothing** back. It is the read-only counterpart of [`serve_connection`] — it joins
+/// via [`RoomInput::JoinSpectator`], serializes each pushed `SpectatorView` to JSON and
+/// writes it, and still drains the read half so it notices a client close or answers a
+/// ping, but it never decodes or forwards a `ClientMessage` (a spectator has no seat and
+/// no `valid_actions`, so any frame it sends is ignored). A spectator owns no seat, so
+/// there is nothing to hold open on exit — it simply drops its outbox and the room
+/// prunes it on the next broadcast.
+pub async fn serve_spectator_connection<S, F>(room: RoomHandle, ws: WebSocketStream<S>, shutdown: F)
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    F: Future<Output = ()>,
+{
+    let (mut write, mut read) = ws.split();
+    let (outbox_tx, mut outbox_rx) = watch::channel::<Option<SpectatorView>>(None);
+    if !room.send(RoomInput::JoinSpectator { outbox: outbox_tx }) {
+        warn!("room unavailable at spectator join; closing connection");
+        let _ = write.close().await;
+        return;
+    }
+
+    tokio::pin!(shutdown);
+    loop {
+        tokio::select! {
+            () = &mut shutdown => break,
+            incoming = read.next() => match incoming {
+                // A spectator carries no interactivity: text frames are ignored, not
+                // decoded into game actions. We still answer pings and notice a close.
+                Some(Ok(Message::Ping(payload))) => {
+                    if write.send(Message::Pong(payload)).await.is_err() {
+                        break;
+                    }
+                }
+                Some(Ok(Message::Close(_))) | None => break,
+                Some(Ok(_)) => {} // text/binary/pong — a spectator sends nothing actionable
+                Some(Err(error)) => {
+                    warn!(%error, "spectator websocket read error");
+                    break;
+                }
+            },
+            changed = outbox_rx.changed() => match changed {
+                Ok(()) => {
+                    let latest = outbox_rx.borrow_and_update().clone();
+                    if let Some(view) = latest {
+                        match serde_json::to_string(&view) {
+                            Ok(json) => {
+                                if write.send(Message::Text(json)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(error) => warn!(%error, "failed to serialize spectator view"),
+                        }
+                    }
+                }
+                Err(_) => break, // the room stopped: nothing more to send
+            },
+        }
+    }
+
     let _ = write.close().await;
 }
 
@@ -897,6 +1007,83 @@ mod tests {
         assert!(!view0.valid_actions.is_empty());
         assert!(view1.valid_actions.is_empty());
 
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    /// Receive the next (latest) spectator view, awaiting the room task.
+    async fn wait_for_spectator_view(
+        rx: &mut watch::Receiver<Option<SpectatorView>>,
+    ) -> SpectatorView {
+        rx.changed()
+            .await
+            .expect("room should push a spectator view");
+        rx.borrow_and_update().clone().expect("a pushed view")
+    }
+
+    #[tokio::test]
+    async fn a_spectator_joins_mid_game_and_receives_a_redacted_view() {
+        // A seated game underway; a spectator attaches and immediately reconstructs the
+        // whole public board from one SpectatorView — every seat as public counts, no
+        // hand contents, and it keeps updating as the game advances (issue #351).
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        let seat0_view = wait_for_view(&mut rx0).await;
+        // Grab seat 0's pass action now (its view will not change on a spectator join).
+        let action = seat0_view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .cloned()
+            .expect("a pass is offered to the priority holder");
+
+        // A spectator attaches after the game is underway.
+        let (stx, mut srx) = watch::channel::<Option<SpectatorView>>(None);
+        assert!(handle.send(RoomInput::JoinSpectator { outbox: stx }));
+        let spec = wait_for_spectator_view(&mut srx).await;
+
+        // Every seat appears as a public OpponentView with only counts, no hand cards.
+        assert_eq!(spec.players.len(), 2);
+        assert_eq!(spec.players[0].hand_size, 2);
+        assert_eq!(spec.players[1].hand_size, 1);
+        // The public board is fully present (reconstruct-from-one-message).
+        let json = serde_json::to_value(&spec).unwrap();
+        assert!(json.get("valid_actions").is_none());
+        assert!(json.get("my_hand").is_none());
+        assert!(json.get("you").is_none());
+        assert!(handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: action.id,
+                token: action.token,
+                targets: vec![],
+            }),
+        }));
+        let updated = wait_for_spectator_view(&mut srx).await;
+        // Still redacted, still every seat public — the update is a full public snapshot.
+        assert_eq!(updated.players.len(), 2);
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_room_with_no_spectators_broadcasts_exactly_as_before() {
+        // Zero-spectator rooms do the seated work unchanged: the spectator fan-out is a
+        // no-op, so a seated pass round is byte-for-byte the two-player behavior.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        let view0 = wait_for_view(&mut rx0).await;
+        assert_eq!(view0.you, "p0");
+        assert!(!view0.valid_actions.is_empty());
         drop(handle);
         task.await.unwrap();
     }

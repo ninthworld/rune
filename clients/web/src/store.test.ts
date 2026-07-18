@@ -79,6 +79,22 @@ describe('game store', () => {
     expect(prompt?.deadline).toBe(12.5);
   });
 
+  it('routes a spectator frame to spectatorView, mutually exclusive with view (issue #351)', () => {
+    const store = createGameStore();
+    // A spectator frame (a phase-bearing frame with `players` and no `you`) lands in
+    // `spectatorView`, driving the app's read-only spectate mode; `view` stays null.
+    store
+      .getState()
+      .ingest('{"phase":"upkeep","players":[{"player_id":"p0","hand_size":3,"life":20}]}');
+    expect(store.getState().spectatorView?.players).toHaveLength(1);
+    expect(store.getState().view).toBeNull();
+
+    // A later seated GameView supersedes the spectator session (and vice-versa).
+    store.getState().ingest(SAMPLE_GAME_VIEW_JSON);
+    expect(store.getState().view?.you).toBe('p1');
+    expect(store.getState().spectatorView).toBeNull();
+  });
+
   it('replaces the prior view wholesale — no diff/merge', () => {
     const store = createGameStore();
     store.getState().ingest(SAMPLE_GAME_VIEW_JSON);

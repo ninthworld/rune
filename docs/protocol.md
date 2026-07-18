@@ -325,6 +325,39 @@ When the game ends, `result` is present and `valid_actions` is empty:
 `winner` is absent for a draw. `reason` is one of `life_zero`, `decked`, or `concede`.
 Further submitted actions are rejected and the final view is re-sent.
 
+### `SpectatorView`
+
+A connection that joined with `spectate_room` (ADR 0022, issue #351) receives a
+`SpectatorView` instead of a `GameView` on every change — a **non-seated observer** watching
+the game live with all hidden information redacted. Redaction is **structural**: the type
+simply has no receiver or decision fields, so a projection cannot leak a hand, a library’s
+contents, a mana pool, or a `valid_actions` list to a spectator. It reuses `GameView`’s public
+component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, `GameLogEntry`,
+`Phase`, `PlayerId`, `GameResult`).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `players` | `OpponentView[]` | **Every** seat as public state and hidden-zone counts — no privileged “self” |
+| `battlefield` | `Permanent[]` | Public permanents and computed state |
+| `stack` | `StackItem[]` | Stack objects, bottom first |
+| `graveyards` | `ZonePile[]` | Public ordered graveyards |
+| `exile` | `ZonePile[]` | Public ordered exile zones |
+| `phase` | `Phase` | Current turn step |
+| `turn` | `number` | One-based turn number |
+| `active_player` | `PlayerId` | Player whose turn it is |
+| `seat_order` | `PlayerId[]` | Every seat’s id in seat order, including eliminated players |
+| `priority_player` | `PlayerId?` | Player currently holding priority (whose turn it is to act — never the actions themselves) |
+| `result` | `GameResult?` | Terminal result; absent during a live game |
+| `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent **public** game history |
+| `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
+
+A `SpectatorView` carries **no** `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
+`action_deadline`, `stops`, `auto_passed`, or `action_rejected` — those fields do not exist on
+the type. A spectator reconstructs the whole public board from a single `SpectatorView` (the
+complete-view principle), so it may join mid-game and resume after a reconnect with no history.
+The client distinguishes a `SpectatorView` from a seated `GameView` structurally: a
+`SpectatorView` has no `you` field, whereas a `GameView` always serializes one.
+
 ## Lobby phase
 
 ### `LobbyView`
@@ -370,12 +403,16 @@ Each `directory` entry exposes only the information needed to browse rooms:
 | `room_id` | `RoomId` | Opaque id accepted by `join_room` |
 | `config` | `RoomConfig` | Seat count and game setup |
 | `filled` | `number` | Occupied seat count |
+| `spectators` | `number` | How many observers are watching (issue #351); omitted when `0` |
 | `state` | `RoomState` | `gathering` or `in_progress` |
 
 The directory never exposes rosters, deck lists, or game state. A `gathering` room is joinable
-while it has an open seat; an `in_progress` room is visible but not joinable. Empty and
-finished rooms leave the directory. The server re-sends affected lobby views whenever the
-directory changes. A missing `directory` field is treated as an empty list.
+while it has an open seat. An `in_progress` room is not seat-joinable, but it **can be
+spectated** (`spectate_room`, ADR 0022 / issue #351): observers do not consume seats, so
+`spectators` is independent of `filled`, and only a count is advertised — never a spectator’s
+identity. Empty and finished rooms leave the directory. The server re-sends affected lobby
+views whenever the directory changes (including a spectator count change). A missing
+`directory` field is treated as an empty list; a missing `spectators` field as `0`.
 
 ### `LobbyCommand`
 
@@ -386,20 +423,30 @@ Lobby commands are tagged by `type`:
 | `hello` | optional `token` | Start a session or reclaim one |
 | `create_room` | `config` | Create and occupy a room |
 | `join_room` | `room_id` | Join a listed room or a room identified out of band |
+| `spectate_room` | `room_id` | Watch an in-progress room as an observer (issue #351) |
 | `submit_deck` | `cards` | Submit functional card identities |
 | `ready` | `ready` | Set or clear readiness |
 | `set_name` | `name` | Set or change this connection’s public display name |
-| `leave` | none | Vacate the current room |
+| `leave` | none | Vacate the current room, or stop spectating |
 
 ```json
 { "type": "hello", "token": "s:ab12" }
 { "type": "create_room", "config": { "seats": 2, "game_setup": "standard_2p" } }
 { "type": "join_room", "room_id": "r:7f3" }
+{ "type": "spectate_room", "room_id": "r:7f3" }
 { "type": "submit_deck", "cards": ["forest", "verdant_scout"] }
 { "type": "ready", "ready": true }
 { "type": "set_name", "name": "Alice" }
 { "type": "leave" }
 ```
+
+`spectate_room` joins a room as a **spectator** (ADR 0022, issue #351): a non-seated observer
+that watches the game live with all hidden information redacted. Unlike `join_room` it does not
+consume a seat, so it succeeds on a room whose seats are full — but the room’s game must already
+be running (spectating a `gathering` room is rejected with the lobby’s non-fatal error, since
+there is no board to watch yet). On success the connection stops receiving `LobbyView`s and
+begins receiving `SpectatorView`s (below); it sends nothing back. `leave` ends the spectator
+session. Spectators are advertised to the directory as `RoomSummary.spectators` (a count only).
 
 `set_name` sets the connection’s public display name (issue #294). The server validates it
 authoritatively — it trims surrounding whitespace and rejects a name that is empty, longer

@@ -23,7 +23,8 @@
 
 use futures_util::{SinkExt, StreamExt};
 use rune_protocol::{
-    CreateRoom, GameView, JoinRoom, LobbyCommand, LobbyView, Ready, RoomConfig, SetName, SubmitDeck,
+    CreateRoom, GameView, JoinRoom, LobbyCommand, LobbyView, Ready, RoomConfig, SetName,
+    SpectateRoom, SubmitDeck,
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
@@ -630,6 +631,9 @@ fn describe_command(command: &LobbyCommand) -> String {
             )
         }
         LobbyCommand::JoinRoom(JoinRoom { room_id }) => format!("joining room {room_id}"),
+        LobbyCommand::SpectateRoom(SpectateRoom { room_id }) => {
+            format!("spectating room {room_id}")
+        }
         LobbyCommand::SubmitDeck(SubmitDeck { cards }) => {
             format!("submitting a {}-card deck", cards.len())
         }

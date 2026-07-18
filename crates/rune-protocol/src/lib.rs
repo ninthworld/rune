@@ -702,6 +702,72 @@ pub struct GameView {
     pub player_names: BTreeMap<PlayerId, String>,
 }
 
+/// The state a **spectator** connection receives (ADR 0022, issue #351): a
+/// non-seated observer watching a live game with all hidden information redacted
+/// **by construction**. It shares [`GameView`]'s public component types verbatim —
+/// [`OpponentView`], [`Permanent`], [`StackItem`], [`ZonePile`], [`GameLogEntry`],
+/// [`Phase`], [`PlayerId`], [`GameResult`] — but carries **no receiver fields**:
+/// there is no `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`, `action_deadline`,
+/// or per-seat prompt, because those fields simply do not exist on the type. A
+/// projection therefore *cannot* leak a hand, a library's contents, or a decision
+/// surface to a spectator — the worst case is a missing public fact, never a leaked
+/// private one (ADR 0022 §Consequences).
+///
+/// Every seat appears as the public [`OpponentView`] shape (life, hand *size*, library
+/// *size*, graveyard *size*, public statuses, and the eliminated flag); there is no
+/// privileged "self". A spectator reconstructs the whole public board from a single
+/// `SpectatorView` with no history (the complete-view principle), so it may join
+/// mid-game.
+///
+/// The client distinguishes this from a seated [`GameView`] structurally: a
+/// `SpectatorView` carries no `you` field, whereas a `GameView` always serializes one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpectatorView {
+    /// Every player at the table as the public [`OpponentView`] shape — no seat is
+    /// "self". In seat order (see [`Self::seat_order`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub players: Vec<OpponentView>,
+    /// All permanents in play (the same public projection seated views share).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub battlefield: Vec<Permanent>,
+    /// The stack, bottom first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stack: Vec<StackItem>,
+    /// Each player's public graveyard pile.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graveyards: Vec<ZonePile>,
+    /// Each player's public exile zone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exile: Vec<ZonePile>,
+    /// The current turn step.
+    pub phase: Phase,
+    /// The current turn number (1-based).
+    #[serde(default)]
+    pub turn: u32,
+    /// The player whose turn it is (the active player).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub active_player: PlayerId,
+    /// The table's seat order: every player's id in seat order, including eliminated
+    /// players — the same public promise seated views carry (issue #345).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seat_order: Vec<PlayerId>,
+    /// Which player currently holds priority, if any. Public, decision-free
+    /// information — a spectator sees *whose* turn it is to act but never the actions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority_player: Option<PlayerId>,
+    /// The terminal outcome once the game is over; omitted while it is live.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<GameResult>,
+    /// The bounded, sequence-numbered window of **public** game history (ADR 0021's
+    /// per-viewer redaction gives a spectator the public log for free).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub log: Vec<GameLogEntry>,
+    /// Public display names, keyed by [`PlayerId`] (issue #294) — the same public map
+    /// seated views carry, so a spectator labels every player without a lobby round-trip.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub player_names: BTreeMap<PlayerId, String>,
+}
+
 /// The client's chosen action, answered atomically: the `id` of one issued
 /// [`ValidAction`], its content-binding [`token`](ChooseAction::token), and the
 /// full set of [`targets`](ChooseAction::targets) filling that action's
@@ -872,8 +938,10 @@ pub enum RoomState {
     /// Pre-game: the room is still filling seats, taking decks, and readying up. A
     /// `gathering` room with an open seat can be joined straight from the directory.
     Gathering,
-    /// The room's game has started. It stays visible for context but is **not**
-    /// joinable — spectating a live game is out of scope (ADR 0012).
+    /// The room's game has started. Its seats are no longer joinable, but it can be
+    /// **spectated**: an observer joins with [`SpectateRoom`] and watches live with
+    /// full redaction (ADR 0022, issue #351). The directory advertises its spectator
+    /// count in [`RoomSummary::spectators`].
     InProgress,
 }
 
@@ -893,6 +961,13 @@ pub struct RoomSummary {
     /// [`RoomConfig::seats`]; a [`RoomState::Gathering`] room with `filled` below that
     /// total has an open seat to join.
     pub filled: u8,
+    /// How many **spectators** are currently watching the room (ADR 0022, issue #351).
+    /// Spectators do not consume seats, so this is independent of [`Self::filled`]; a
+    /// room may be spectated at any state, including [`RoomState::InProgress`]. Only a
+    /// count is advertised — never a spectator's identity (no social layer in M5).
+    /// Omitted from the wire when zero; a client treats a missing field as `0`.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub spectators: u8,
     /// The room's lifecycle state (`gathering` or `in_progress`).
     pub state: RoomState,
 }
@@ -968,6 +1043,19 @@ pub struct JoinRoom {
     pub room_id: RoomId,
 }
 
+/// Join an existing room as a **spectator** (ADR 0022, issue #351): a non-seated
+/// observer watching the game live with all hidden information redacted. Unlike
+/// [`JoinRoom`], a spectator does **not** consume a seat, so it may join a room whose
+/// seats are full — including a room whose game is already **in progress**
+/// ([`RoomState::InProgress`]); the spectator reconstructs the whole public board from
+/// its first [`SpectatorView`]. The room advertises its spectator count in
+/// [`RoomSummary::spectators`] but never a spectator's identity to the seated players.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpectateRoom {
+    /// The opaque id of the room to spectate.
+    pub room_id: RoomId,
+}
+
 /// Submit a decklist for this connection's seat. The list is a flat sequence of
 /// [`CardIdentity`] handles (a card appearing multiple times is repeated). The
 /// server validates it authoritatively against its card database and reflects
@@ -1023,7 +1111,9 @@ pub enum LobbyCommand {
     Ready(Ready),
     /// Set or change this connection's public display name (issue #294).
     SetName(SetName),
-    /// Leave the current room (vacating the seat).
+    /// Join an existing room as a spectator (ADR 0022, issue #351) — no seat consumed.
+    SpectateRoom(SpectateRoom),
+    /// Leave the current room (vacating the seat, or ending a spectator session).
     Leave,
 }
 
@@ -1034,6 +1124,11 @@ fn is_false(b: &bool) -> bool {
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_u8(n: &u8) -> bool {
     *n == 0
 }
 
@@ -2161,6 +2256,129 @@ mod tests {
     }
 
     #[test]
+    fn issue_351_lobby_command_spectate_room_round_trips() {
+        let msg = LobbyCommand::SpectateRoom(SpectateRoom {
+            room_id: "r:7f3".into(),
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "spectate_room", "room_id": "r:7f3" })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_351_room_summary_carries_a_spectator_count_and_elides_zero() {
+        // An in-progress room with spectators advertises the count.
+        let watched = RoomSummary {
+            room_id: "r:1".into(),
+            config: RoomConfig {
+                seats: 4,
+                game_setup: "standard_ffa".into(),
+            },
+            filled: 4,
+            spectators: 3,
+            state: RoomState::InProgress,
+        };
+        let json = serde_json::to_value(&watched).unwrap();
+        assert_eq!(json.get("spectators"), Some(&serde_json::json!(3)));
+        assert_eq!(json.get("state"), Some(&serde_json::json!("in_progress")));
+        assert_eq!(
+            serde_json::from_value::<RoomSummary>(json).unwrap(),
+            watched
+        );
+
+        // Zero spectators elide from the wire; an older payload without the field
+        // deserializes to zero.
+        let unwatched = RoomSummary {
+            spectators: 0,
+            ..watched.clone()
+        };
+        let json = serde_json::to_value(&unwatched).unwrap();
+        assert!(json.get("spectators").is_none());
+        let legacy: RoomSummary = serde_json::from_str(
+            r#"{"room_id":"r:1","config":{"seats":4,"game_setup":"standard_ffa"},"filled":4,"state":"in_progress"}"#,
+        )
+        .unwrap();
+        assert_eq!(legacy.spectators, 0);
+    }
+
+    #[test]
+    fn issue_351_spectator_view_round_trips_and_has_no_receiver_fields() {
+        // A populated, live spectator view over a three-player game with one seat
+        // eliminated. Every seat is an OpponentView (public counts only).
+        let view = SpectatorView {
+            players: vec![
+                OpponentView {
+                    player_id: "p0".into(),
+                    hand_size: 4,
+                    life: 18,
+                    library_size: 33,
+                    graveyard_size: 2,
+                    statuses: vec![],
+                    eliminated: false,
+                },
+                OpponentView {
+                    player_id: "p1".into(),
+                    hand_size: 0,
+                    life: 0,
+                    library_size: 0,
+                    graveyard_size: 7,
+                    statuses: vec![],
+                    eliminated: true,
+                },
+                OpponentView {
+                    player_id: "p2".into(),
+                    hand_size: 6,
+                    life: 20,
+                    library_size: 34,
+                    graveyard_size: 1,
+                    statuses: vec![],
+                    eliminated: false,
+                },
+            ],
+            battlefield: vec![],
+            stack: vec![],
+            graveyards: vec![],
+            exile: vec![],
+            phase: Phase::PrecombatMain,
+            turn: 9,
+            active_player: "p0".into(),
+            seat_order: vec!["p0".into(), "p1".into(), "p2".into()],
+            priority_player: Some("p0".into()),
+            result: None,
+            log: vec![],
+            player_names: BTreeMap::new(),
+        };
+        let json = serde_json::to_value(&view).unwrap();
+        // Redaction is structural: the type has no receiver/decision fields at all.
+        for hidden in [
+            "you",
+            "me",
+            "my_hand",
+            "mana_pool",
+            "valid_actions",
+            "action_deadline",
+            "stops",
+            "auto_passed",
+            "action_rejected",
+        ] {
+            assert!(
+                json.get(hidden).is_none(),
+                "a spectator view must never carry `{hidden}`"
+            );
+        }
+        // Every seat appears as a public OpponentView; the eliminated seat is flagged.
+        assert_eq!(json["players"].as_array().unwrap().len(), 3);
+        assert_eq!(json["players"][1]["eliminated"], true);
+        let back: SpectatorView =
+            serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
+        assert_eq!(back, view);
+    }
+
+    #[test]
     fn lobby_view_round_trips_populated() {
         let view = LobbyView {
             session: "s:ab12".into(),
@@ -2278,6 +2496,7 @@ mod tests {
                 game_setup: "standard_2p".into(),
             },
             filled: 1,
+            spectators: 0,
             state: RoomState::Gathering,
         };
         let json = serde_json::to_value(&gathering).unwrap();
@@ -2336,6 +2555,7 @@ mod tests {
                     game_setup: "standard_2p".into(),
                 },
                 filled: 1,
+                spectators: 0,
                 state: RoomState::Gathering,
             },
             RoomSummary {
@@ -2345,6 +2565,7 @@ mod tests {
                     game_setup: "ffa-4".into(),
                 },
                 filled: 4,
+                spectators: 2,
                 state: RoomState::InProgress,
             },
         ];

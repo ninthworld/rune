@@ -34,6 +34,7 @@ import { STARTER_DECKLISTS, decklistCards, decklistById, decklistSize } from './
 import {
   createRoomCommand,
   joinRoomCommand,
+  spectateRoomCommand,
   leaveCommand,
   readyCommand,
   setNameCommand,
@@ -180,22 +181,39 @@ function LobbyWaiting({ onDisconnect }: { onDisconnect: () => void }) {
 function RoomDirectoryRow({
   room,
   canJoin,
+  canSpectate,
   onJoin,
+  onSpectate,
 }: {
   room: RoomSummary;
   canJoin: boolean;
+  canSpectate: boolean;
   onJoin: (roomId: string) => void;
+  onSpectate: (roomId: string) => void;
 }) {
   const total = room.config.seats;
   const started = room.state === 'in_progress';
   const full = room.filled >= total;
 
-  // Priority: a started room is un-joinable; a full gathering room is Full; an open
-  // gathering room offers Join only when the server advertised `join_room`.
+  // A started room is un-joinable but **spectatable** (issue #351): it shows an
+  // "In progress" badge plus a Spectate button when the server offers `spectate_room`.
+  // An open gathering room offers Join (gated by `join_room`); a full one shows Full.
   const action = started ? (
-    <span className={s.seatBadge} data-testid={`room-${room.room_id}-in-progress`}>
-      In progress
-    </span>
+    <>
+      <span className={s.seatBadge} data-testid={`room-${room.room_id}-in-progress`}>
+        In progress
+      </span>
+      {canSpectate && (
+        <button
+          type="button"
+          className={s.button}
+          onClick={() => onSpectate(room.room_id)}
+          data-testid={`spectate-directory-${room.room_id}`}
+        >
+          Spectate
+        </button>
+      )}
+    </>
   ) : full ? (
     <span className={s.seatBadge} data-testid={`room-${room.room_id}-full`}>
       Full
@@ -219,6 +237,12 @@ function RoomDirectoryRow({
         </span>
         <span className={s.muted} data-testid={`room-${room.room_id}-occupancy`}>
           {room.filled}/{total} filled
+          {room.spectators > 0 && (
+            <span data-testid={`room-${room.room_id}-spectators`}>
+              {' '}
+              · {room.spectators} watching
+            </span>
+          )}
         </span>
       </span>
       <span className={s.roomRowActions}>{action}</span>
@@ -234,8 +258,12 @@ function RoomDirectoryRow({
 function RoomDirectory({ view }: { view: LobbyView }) {
   const sendLobby = useGameStore((state) => state.sendLobby);
   const canJoin = can(view, 'join_room');
+  const canSpectate = can(view, 'spectate_room');
   const join = (roomId: string): void => {
     sendLobby(joinRoomCommand(roomId));
+  };
+  const spectate = (roomId: string): void => {
+    sendLobby(spectateRoomCommand(roomId));
   };
 
   return (
@@ -253,7 +281,14 @@ function RoomDirectory({ view }: { view: LobbyView }) {
       ) : (
         <ul className={s.roomList} data-testid="room-directory-list">
           {view.directory.map((room) => (
-            <RoomDirectoryRow key={room.room_id} room={room} canJoin={canJoin} onJoin={join} />
+            <RoomDirectoryRow
+              key={room.room_id}
+              room={room}
+              canJoin={canJoin}
+              canSpectate={canSpectate}
+              onJoin={join}
+              onSpectate={spectate}
+            />
           ))}
         </ul>
       )}

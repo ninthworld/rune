@@ -57,7 +57,8 @@ async fn client_lands_in_the_lobby_then_server_shuts_down_gracefully() {
         vec![
             "set_name".to_string(),
             "create_room".to_string(),
-            "join_room".to_string()
+            "join_room".to_string(),
+            "spectate_room".to_string()
         ]
     );
 

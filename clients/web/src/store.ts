@@ -35,6 +35,7 @@ import {
   type Phase,
   type PlayerId,
   type SeatView,
+  type SpectatorView,
   type TargetChoice,
   type ValidAction,
 } from './protocol';
@@ -63,7 +64,8 @@ export interface ConnectOptions {
  * is inferred from "the expected change did not happen", not an error frame). A
  * `ready`/`unready` distinction is kept because both are the same wire command.
  */
-type PendingLobbyKind = 'create_room' | 'join_room' | 'submit_deck' | 'ready' | 'unready' | 'leave';
+type PendingLobbyKind =
+  'create_room' | 'join_room' | 'spectate_room' | 'submit_deck' | 'ready' | 'unready' | 'leave';
 
 /** The player's seat in a lobby view, matched by public identity, if any. */
 function seatOf(view: LobbyView, you: PlayerId): SeatView | undefined {
@@ -82,6 +84,11 @@ function lobbyCommandSatisfied(kind: PendingLobbyKind, view: LobbyView): boolean
     case 'create_room':
     case 'join_room':
       return view.room !== undefined;
+    case 'spectate_room':
+      // A successful spectate yields a SpectatorView, not a LobbyView, and clears the
+      // pending kind before we get here. So a LobbyView arriving while this is pending
+      // means the spectate was rejected (e.g. the room had not started) — unsatisfied.
+      return false;
     case 'leave':
       return view.room === undefined;
     case 'submit_deck':
@@ -100,6 +107,8 @@ function lobbyErrorMessage(kind: PendingLobbyKind): string {
       return 'Could not create the room. Check the settings and try again.';
     case 'join_room':
       return 'Could not join that room — it may be full or unknown. Check the id and try again.';
+    case 'spectate_room':
+      return 'Could not spectate that room — it may not have started yet. Try again once it is in progress.';
     case 'submit_deck':
       return 'That deck was rejected. Pick a deck and submit again.';
     case 'ready':
@@ -118,6 +127,8 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
       return 'create_room';
     case 'join_room':
       return 'join_room';
+    case 'spectate_room':
+      return 'spectate_room';
     case 'submit_deck':
       return 'submit_deck';
     case 'ready':
@@ -139,6 +150,14 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
 export interface GameStore {
   /** The latest personalized view, or `null` before the first message. */
   view: GameView | null;
+  /**
+   * The latest {@link SpectatorView} when this connection is watching as a spectator
+   * (ADR 0022, issue #351), or `null` otherwise. Mutually exclusive with {@link view}:
+   * a connection is either seated (`view`) or spectating (`spectatorView`). Replaced
+   * wholesale on every spectator frame, exactly like {@link view}, so a spectate mode
+   * is reconstructable from this one value.
+   */
+  spectatorView: SpectatorView | null;
   /**
    * The latest pre-game {@link LobbyView}, or `null` when not in the lobby phase.
    * The whole pre-game UI is reconstructable from this one value (ADR 0012); it
@@ -322,6 +341,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
 
   return {
     view: null,
+    spectatorView: null,
     lobby: null,
     lobbyError: null,
     rejectionNonce: 0,
@@ -415,10 +435,22 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         // truth and a resync (which clears the flag) never re-fires the toast.
         set((state) => ({
           view: frame.view,
+          // A seated game frame supersedes any spectator session.
+          spectatorView: null,
           rejectionNonce: frame.view.action_rejected
             ? state.rejectionNonce + 1
             : state.rejectionNonce,
         }));
+        return;
+      }
+
+      if (frame.kind === 'spectator') {
+        // A spectator frame (ADR 0022, issue #351): the app switches to the read-only
+        // spectate mode (App gates on `spectatorView`). Like a `GameView` it fully
+        // replaces prior state — no merge — so a mid-game join or reconnect is trivially
+        // correct. A pending `spectate_room` command is satisfied by this frame arriving.
+        pendingLobby = null;
+        set({ spectatorView: frame.view, view: null, lobby: null, lobbyError: null });
         return;
       }
 

@@ -537,6 +537,44 @@ export interface GameView {
 }
 
 /**
+ * The state a **spectator** connection receives (ADR 0022, issue #351): a non-seated
+ * observer watching a live game with all hidden information redacted **by
+ * construction**. It reuses {@link GameView}'s public component types but carries no
+ * receiver fields — there is no `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
+ * `action_deadline`, or per-seat prompt, so the client's spectate mode can never even
+ * read a hand or a decision surface. Every seat is a public {@link OpponentView}; a
+ * spectator reconstructs the whole public board from a single `SpectatorView`.
+ */
+export interface SpectatorView {
+  /** Every player at the table as public state — no privileged "self". */
+  players: OpponentView[];
+  /** All permanents in play. */
+  battlefield: Permanent[];
+  /** The stack, bottom first. */
+  stack: StackItem[];
+  /** Each player's public graveyard. */
+  graveyards: ZonePile[];
+  /** Each player's public exile zone. */
+  exile: ZonePile[];
+  /** The current turn step. */
+  phase: Phase;
+  /** The current turn number (1-based). */
+  turn: number;
+  /** The player whose turn it is. */
+  active_player: PlayerId;
+  /** Every seat's id in seat order, including eliminated players. */
+  seat_order: PlayerId[];
+  /** The player currently holding priority, if any (whose turn it is to act). */
+  priority_player?: PlayerId;
+  /** The terminal result once the game is over; absent while live. */
+  result?: GameResult;
+  /** Bounded structured public log window. */
+  log?: GameLogEntry[];
+  /** Public display names keyed by player id. */
+  player_names: Record<PlayerId, string>;
+}
+
+/**
  * The player's answer to one choice slot — a {@link TargetRequirement} or a
  * {@link Prompt} — keyed back to the slot by `slot`. The same shape answers every
  * slot kind; each id must be one of that slot's advertised candidates / options /
@@ -709,6 +747,12 @@ export interface RoomSummary {
   config: RoomConfig;
   /** How many of the room's seats are occupied; the total is `config.seats`. */
   filled: number;
+  /**
+   * How many observers are watching the room (issue #351). Spectators do not
+   * consume seats, so this is independent of {@link RoomSummary.filled}; a count
+   * only, never a spectator's identity. Defaults to `0` when the server omits it.
+   */
+  spectators: number;
   /** The room's lifecycle state (`gathering` or `in_progress`). */
   state: RoomState;
 }
@@ -782,6 +826,18 @@ export interface JoinRoomCommand {
   room_id: RoomId;
 }
 
+/**
+ * Watch an in-progress room as a spectator (ADR 0022, issue #351): a non-seated
+ * observer receiving redacted {@link SpectatorView}s. Unlike `join_room` it consumes
+ * no seat and succeeds on a full room, but the room's game must already be running.
+ */
+export interface SpectateRoomCommand {
+  /** Discriminator. */
+  type: 'spectate_room';
+  /** The opaque id of the room to spectate. */
+  room_id: RoomId;
+}
+
 /** Submit a decklist for this connection's seat (server-validated). */
 export interface SubmitDeckCommand {
   /** Discriminator. */
@@ -827,6 +883,7 @@ export type LobbyCommand =
   | HelloCommand
   | CreateRoomCommand
   | JoinRoomCommand
+  | SpectateRoomCommand
   | SubmitDeckCommand
   | ReadyCommand
   | SetNameCommand
@@ -847,6 +904,11 @@ export function createRoomCommand(config: RoomConfig): CreateRoomCommand {
 /** Build a `join_room` command for the given room id. */
 export function joinRoomCommand(roomId: RoomId): JoinRoomCommand {
   return { type: 'join_room', room_id: roomId };
+}
+
+/** Build a `spectate_room` command for the given room id (issue #351). */
+export function spectateRoomCommand(roomId: RoomId): SpectateRoomCommand {
+  return { type: 'spectate_room', room_id: roomId };
 }
 
 /** Build a `submit_deck` command, eliding `cards` when the decklist is empty. */

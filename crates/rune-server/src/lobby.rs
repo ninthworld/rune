@@ -77,7 +77,7 @@ use rune_engine::{
 };
 use rune_protocol::{
     CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomState,
-    RoomSummary, RoomView, SeatView, SessionToken, SetName, SubmitDeck,
+    RoomSummary, RoomView, SeatView, SessionToken, SetName, SpectateRoom, SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -86,7 +86,9 @@ use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
 use crate::format::{DeckError, FormatRegistry};
-use crate::room::{serve_connection, AutoPassPolicy, Room, RoomHandle, Seat};
+use crate::room::{
+    serve_connection, serve_spectator_connection, AutoPassPolicy, Room, RoomHandle, Seat,
+};
 
 /// Inclusive range of seats a room may be configured with. The lobby and room
 /// plumbing support 2–8 seats even while the engine remains two-player (ADR 0012):
@@ -118,6 +120,14 @@ pub(crate) enum LobbySignal {
         /// The seat this connection holds at the table.
         seat: Seat,
         /// Handle to the running room task that now owns the one game.
+        room: RoomHandle,
+    },
+    /// This connection joined as a **spectator** (ADR 0022, issue #351): it should
+    /// switch to the read-only spectator bridge driven by `room`, receiving redacted
+    /// [`SpectatorView`]s and sending nothing. Like [`Start`](LobbySignal::Start) it is
+    /// a terminal hand-off — no `LobbyView` is pushed to a spectating session afterward.
+    Spectate {
+        /// Handle to the running room task the spectator watches.
         room: RoomHandle,
     },
 }
@@ -243,6 +253,13 @@ struct RoomEntry {
     /// still pre-game. A started room is never reaped as "empty" and rejects further
     /// lobby commands — its seats speak `GameView`s now.
     game: Option<RoomHandle>,
+    /// The sessions currently **spectating** this room (ADR 0022, issue #351). A
+    /// spectator does not occupy a seat, so this is separate from
+    /// [`seats`](RoomEntry::seats): the directory advertises `spectators.len()` as the
+    /// room's spectator count, independent of seat occupancy. Spectating only starts
+    /// once the room's [`game`](RoomEntry::game) is running (there is no pre-game board
+    /// to watch), and a spectator is removed on `leave` or disconnect.
+    spectators: Vec<SessionToken>,
 }
 
 /// One seat's pre-game gate state: the deck it submitted (validated against the
@@ -286,6 +303,10 @@ pub(crate) enum LobbyError {
     UnknownRoom,
     /// `join_room` on a room whose every seat is occupied.
     RoomFull,
+    /// `spectate_room` on a room whose game has not started yet (ADR 0022, issue
+    /// #351): there is no live board to watch until the ready gate passes. The client
+    /// may retry once the room shows [`RoomState::InProgress`] in the directory.
+    RoomNotStarted,
     /// `create_room` while the registry is already at [`Lobby::max_rooms`].
     AtCapacity,
     /// A `submit_deck`/`ready` command from a session that is not seated in a room.
@@ -350,6 +371,7 @@ impl std::fmt::Display for LobbyError {
             Self::UnknownFormat(id) => write!(f, "unknown game_setup format {id}"),
             Self::UnknownRoom => write!(f, "unknown room id"),
             Self::RoomFull => write!(f, "room is full"),
+            Self::RoomNotStarted => write!(f, "room's game has not started yet"),
             Self::AtCapacity => write!(f, "lobby is at room capacity"),
             Self::NotSeated => write!(f, "not seated in a room"),
             Self::UnknownCard(id) => write!(f, "unknown card identity {id}"),
@@ -553,6 +575,24 @@ impl Lobby {
             // A newer connection has superseded this one; leave its session intact.
             return;
         }
+        // A **spectator** (issue #351) owns no seat, so there is nothing to hold open:
+        // drop it from the room's spectator roster (keeping the advertised count
+        // accurate) and remove the session. Reconnecting to watch is a fresh
+        // `spectate_room`, which reconstructs the whole public board from its first
+        // `SpectatorView` — the complete-view principle makes that indistinguishable
+        // from resuming.
+        if session.room.is_some() && session.seat.is_none() {
+            let room_id = session.room.clone();
+            registry.sessions.remove(&handle.token);
+            if let Some(room_id) = room_id {
+                if let Some(room) = registry.rooms.get_mut(&room_id) {
+                    room.spectators.retain(|t| *t != handle.token);
+                }
+            }
+            broadcast_views(&registry);
+            info!(token = %handle.token, "spectator connection left");
+            return;
+        }
         if session.room.is_some() {
             info!(token = %handle.token, "connection dropped; seat held open for reconnect");
             return;
@@ -585,6 +625,9 @@ impl Lobby {
             }
             LobbyCommand::JoinRoom(JoinRoom { room_id }) => {
                 join_room(&mut registry, token, &room_id)
+            }
+            LobbyCommand::SpectateRoom(SpectateRoom { room_id }) => {
+                spectate_room(&mut registry, token, &room_id)
             }
             LobbyCommand::Leave => leave_room(&mut registry, token),
             LobbyCommand::SubmitDeck(SubmitDeck { cards }) => {
@@ -653,6 +696,7 @@ impl Lobby {
                 seats,
                 gate: vec![SeatGate::default(); seat_count],
                 game: None,
+                spectators: Vec::new(),
             },
         );
         if let Some(session) = registry.sessions.get_mut(token) {
@@ -896,16 +940,77 @@ fn join_room(
     Ok(())
 }
 
+/// Handle `spectate_room` (ADR 0022, issue #351): attach the sender as a spectator of
+/// an **in-progress** room without consuming a seat. Unlike [`join_room`] this succeeds
+/// on a room whose seats are full, but the room's game must already be running — there
+/// is no board to watch until the ready gate passes ([`LobbyError::RoomNotStarted`]).
+/// On success the session is marked as spectating (`room` set, `seat` left `None`), the
+/// room's spectator roster gains its token (advertised as a count in the directory),
+/// and the connection is handed off to the read-only spectator bridge via
+/// [`LobbySignal::Spectate`].
+fn spectate_room(
+    registry: &mut Registry,
+    token: &SessionToken,
+    room_id: &RoomId,
+) -> Result<(), LobbyError> {
+    if registry
+        .sessions
+        .get(token)
+        .is_some_and(|s| s.room.is_some())
+    {
+        return Err(LobbyError::AlreadyInRoom);
+    }
+    let room = registry
+        .rooms
+        .get_mut(room_id)
+        .ok_or(LobbyError::UnknownRoom)?;
+    // A spectator needs a live game to watch. A gathering room has no board yet.
+    let handle = match &room.game {
+        Some(handle) if handle.is_active() => handle.clone(),
+        _ => return Err(LobbyError::RoomNotStarted),
+    };
+    room.spectators.push(token.clone());
+    if let Some(session) = registry.sessions.get(token) {
+        // Hand this connection off to the read-only spectator contract immediately —
+        // like the `Start` gate, a terminal signal after which no `LobbyView` is pushed.
+        let _ = session
+            .outbox
+            .send(Some(LobbySignal::Spectate { room: handle }));
+    }
+    if let Some(session) = registry.sessions.get_mut(token) {
+        session.room = Some(room_id.clone());
+        session.seat = None;
+    }
+    // The room's spectator count changed in the directory: re-project to browsers.
+    broadcast_views(registry);
+    info!(%token, %room_id, "joined room as spectator");
+    Ok(())
+}
+
 /// Handle `leave`: vacate the sender's seat, reclaim the room if it is now empty,
 /// otherwise notify the remaining occupants.
 fn leave_room(registry: &mut Registry, token: &SessionToken) -> Result<(), LobbyError> {
     let (room_id, seat) = match registry.sessions.get(token) {
         Some(Session {
             room: Some(room_id),
-            seat: Some(seat),
+            seat,
             ..
         }) => (room_id.clone(), *seat),
         _ => return Err(LobbyError::NotInRoom),
+    };
+    // A spectator (issue #351) holds no seat: drop it from the room's spectator roster
+    // instead of vacating a seat, then clear its session and re-project the directory
+    // (its spectator count changed). The room is never reaped for losing a spectator.
+    let Some(seat) = seat else {
+        if let Some(room) = registry.rooms.get_mut(&room_id) {
+            room.spectators.retain(|t| t != token);
+        }
+        if let Some(session) = registry.sessions.get_mut(token) {
+            session.room = None;
+        }
+        broadcast_views(registry);
+        info!(%token, %room_id, "stopped spectating room");
+        return Ok(());
     };
     vacate(registry, &room_id, seat);
     if let Some(session) = registry.sessions.get_mut(token) {
@@ -1122,6 +1227,9 @@ fn build_directory(registry: &Registry) -> Vec<RoomSummary> {
                 room_id: room_id.clone(),
                 config: room.config.clone(),
                 filled: u8::try_from(filled).unwrap_or(u8::MAX),
+                // The room's spectator count (ADR 0022, issue #351): observers, not
+                // seats — a count only, never a spectator identity.
+                spectators: u8::try_from(room.spectators.len()).unwrap_or(u8::MAX),
                 state,
             })
         })
@@ -1145,6 +1253,8 @@ fn valid_commands(registry: &Registry, session: &Session) -> Vec<String> {
             "set_name".to_string(),
             "create_room".to_string(),
             "join_room".to_string(),
+            // A roomless connection may also spectate an in-progress room (issue #351).
+            "spectate_room".to_string(),
         ];
     };
     let mut commands = vec!["set_name".to_string(), "submit_deck".to_string()];
@@ -1285,6 +1395,8 @@ where
 
     // Set once the ready gate hands this connection off to a started game.
     let mut handoff: Option<(Seat, RoomHandle)> = None;
+    // Set once this connection joins a running game as a spectator (issue #351).
+    let mut spectate_handoff: Option<RoomHandle> = None;
 
     tokio::pin!(shutdown);
     loop {
@@ -1331,6 +1443,12 @@ where
                             handoff = Some((seat, room));
                             break;
                         }
+                        // Joined a running game as a spectator: hand off to the
+                        // read-only spectator bridge below (issue #351).
+                        Some(LobbySignal::Spectate { room }) => {
+                            spectate_handoff = Some(room);
+                            break;
+                        }
                         None => {}
                     }
                 }
@@ -1350,6 +1468,19 @@ where
                 warn!(token = %handle.token, %error, "failed to reunite socket for game hand-off")
             }
         }
+        return;
+    }
+
+    if let Some(room) = spectate_handoff {
+        // Reunite the socket and switch to the read-only spectator bridge (issue #351).
+        // On exit the spectator is dropped from the lobby (it holds no seat to keep).
+        match write.reunite(read) {
+            Ok(ws) => serve_spectator_connection(room, ws, shutdown).await,
+            Err(error) => {
+                warn!(token = %handle.token, %error, "failed to reunite socket for spectator hand-off")
+            }
+        }
+        lobby.disconnect(&handle).await;
         return;
     }
 
@@ -1502,7 +1633,9 @@ mod tests {
         async fn view(&mut self) -> LobbyView {
             match self.signal().await {
                 LobbySignal::View(view) => view,
-                LobbySignal::Start { .. } => panic!("expected a lobby view, got a game start"),
+                LobbySignal::Start { .. } | LobbySignal::Spectate { .. } => {
+                    panic!("expected a lobby view, got a hand-off")
+                }
             }
         }
 
@@ -1510,7 +1643,9 @@ mod tests {
         fn current(&self) -> LobbyView {
             match self.rx.borrow().clone().expect("a signal is present") {
                 LobbySignal::View(view) => view,
-                LobbySignal::Start { .. } => panic!("expected a lobby view, got a game start"),
+                LobbySignal::Start { .. } | LobbySignal::Spectate { .. } => {
+                    panic!("expected a lobby view, got a hand-off")
+                }
             }
         }
 
@@ -1533,6 +1668,16 @@ mod tests {
         fn start_handle(&self) -> Option<RoomHandle> {
             match &*self.rx.borrow() {
                 Some(LobbySignal::Start { room, .. }) => Some(room.clone()),
+                _ => None,
+            }
+        }
+
+        /// The room handle carried by a pushed **spectate** hand-off, if any (issue
+        /// #351) — the grip a spectator test uses to join the running game as an
+        /// observer and read its first `SpectatorView`.
+        fn spectate_handle(&self) -> Option<RoomHandle> {
+            match &*self.rx.borrow() {
+                Some(LobbySignal::Spectate { room }) => Some(room.clone()),
                 _ => None,
             }
         }
@@ -1586,6 +1731,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn issue_351_a_spectator_watches_a_started_game_with_redaction_and_a_directory_count() {
+        // Two players start a game; a third connection spectates it mid-game, is handed
+        // off to the spectator bridge, and reads a redacted SpectatorView — while the
+        // directory advertises the spectator as a count to everyone else browsing.
+        let lobby = Lobby::bundled_with_overrides(8, Some(0xABCD), None).expect("bundled cards");
+        let (alice, bob, room_id) = seated_pair(&lobby).await;
+        submit_valid_deck(&lobby, &alice).await;
+        submit_valid_deck(&lobby, &bob).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        lobby
+            .command(&bob.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("bob readies");
+        assert!(alice.started(), "the game started");
+
+        // A browsing client sees the room in progress with no spectators yet.
+        let mut carol = Client::connect(&lobby).await;
+        let dir0 = carol.view().await;
+        let listed = dir0
+            .directory
+            .iter()
+            .find(|r| r.room_id == room_id)
+            .expect("the started room is listed");
+        assert_eq!(listed.state, RoomState::InProgress);
+        assert_eq!(listed.spectators, 0);
+
+        // Carol spectates the in-progress room and is handed off to the spectator bridge.
+        lobby
+            .command(
+                &carol.token,
+                LobbyCommand::SpectateRoom(SpectateRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .expect("spectate accepted");
+        let handle = carol.spectate_handle().expect("a spectate hand-off");
+
+        // Join as a spectator and read the first redacted view.
+        let (tx, mut rx) = watch::channel::<Option<rune_protocol::SpectatorView>>(None);
+        assert!(handle.send(crate::RoomInput::JoinSpectator { outbox: tx }));
+        let spec = loop {
+            if let Some(view) = rx.borrow_and_update().clone() {
+                break view;
+            }
+            rx.changed()
+                .await
+                .expect("the first SpectatorView is pushed");
+        };
+        // Every seat is public; there is no receiver or decision surface at all.
+        assert_eq!(spec.players.len(), 2, "both seats appear as public state");
+        let json = serde_json::to_value(&spec).unwrap();
+        assert!(
+            json.get("you").is_none(),
+            "no receiver id leaks to a spectator"
+        );
+        assert!(
+            json.get("my_hand").is_none(),
+            "no hand leaks to a spectator"
+        );
+        assert!(
+            json.get("valid_actions").is_none(),
+            "no decision surface for a spectator"
+        );
+
+        // The directory now advertises the spectator (count only) to another browser.
+        let mut dave = Client::connect(&lobby).await;
+        let dir1 = dave.view().await;
+        let watched = dir1
+            .directory
+            .iter()
+            .find(|r| r.room_id == room_id)
+            .expect("the started room is still listed");
+        assert_eq!(
+            watched.spectators, 1,
+            "the directory advertises one spectator"
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_351_spectating_a_gathering_room_is_rejected_non_fatally() {
+        // A room that has not started has no board to watch: spectate is rejected with
+        // the lobby's non-fatal error, and the would-be spectator stays roomless.
+        let lobby = Lobby::bundled_with_overrides(8, None, None).expect("bundled cards");
+        let (alice, _bob, room_id) = seated_pair(&lobby).await; // a gathering room
+        let mut carol = Client::connect(&lobby).await;
+        let _ = carol.view().await;
+
+        let err = lobby
+            .command(
+                &carol.token,
+                LobbyCommand::SpectateRoom(SpectateRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .expect_err("spectating a gathering room is rejected");
+        assert_eq!(err, LobbyError::RoomNotStarted);
+        // Carol is still roomless (no spectate hand-off, no seat).
+        assert!(carol.spectate_handle().is_none());
+        assert!(carol.current().room.is_none());
+        // The seated player is unaffected.
+        assert!(!alice.started());
+    }
+
+    #[tokio::test]
     async fn a_pinned_starting_life_overrides_the_format_default() {
         // Seat 0 sees seat 1 (its only opponent) start at the pinned life, not the
         // format's 20 — proof the override reaches game construction (issue #145).
@@ -1620,13 +1874,14 @@ mod tests {
         assert!(!view.session.is_empty());
         assert!(!view.you.is_empty());
         assert!(view.room.is_none());
-        // Only the create/join commands are legal before a room exists.
+        // Only the create/join/spectate commands are legal before a room exists.
         assert_eq!(
             view.valid_commands,
             vec![
                 "set_name".to_string(),
                 "create_room".to_string(),
-                "join_room".to_string()
+                "join_room".to_string(),
+                "spectate_room".to_string()
             ]
         );
     }
@@ -1932,7 +2187,8 @@ mod tests {
             vec![
                 "set_name".to_string(),
                 "create_room".to_string(),
-                "join_room".to_string()
+                "join_room".to_string(),
+                "spectate_room".to_string()
             ]
         );
 

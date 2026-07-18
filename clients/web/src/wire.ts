@@ -24,6 +24,7 @@ import {
   type RoomView,
   type SeatView,
   type SelfView,
+  type SpectatorView,
 } from './protocol';
 
 /** Raised when a server payload is not a decodable {@link GameView}. */
@@ -199,6 +200,38 @@ export function normalizeGameView(payload: unknown): GameView {
 }
 
 /**
+ * Normalize a raw wire {@link SpectatorView} (ADR 0022, issue #351): the public
+ * intersection only. It has no receiver/decision fields to default — the type
+ * literally cannot hold a hand, a mana pool, or a `valid_actions` list — so this
+ * mirrors {@link normalizeGameView} minus every private field. A missing collection
+ * degrades to `[]`; the required `phase` throws if absent, like a `GameView`.
+ */
+export function normalizeSpectatorView(payload: unknown): SpectatorView {
+  if (!isRecord(payload)) {
+    throw new ProtocolError('SpectatorView payload must be a JSON object');
+  }
+  if (!isPhase(payload.phase)) {
+    throw new ProtocolError(`SpectatorView.phase is missing or invalid: ${String(payload.phase)}`);
+  }
+  return {
+    players: asArray(payload.players, 'players'),
+    battlefield: asArray<unknown>(payload.battlefield, 'battlefield').map(normalizePermanent),
+    stack: asArray(payload.stack, 'stack'),
+    graveyards: asArray(payload.graveyards, 'graveyards'),
+    exile: asArray(payload.exile, 'exile'),
+    phase: payload.phase,
+    turn: typeof payload.turn === 'number' ? payload.turn : 0,
+    active_player: typeof payload.active_player === 'string' ? payload.active_player : '',
+    seat_order: asArray(payload.seat_order, 'seat_order'),
+    priority_player:
+      typeof payload.priority_player === 'string' ? payload.priority_player : undefined,
+    result: normalizeGameResult(payload.result),
+    log: asArray(payload.log, 'log'),
+    player_names: normalizeStringMap(payload.player_names),
+  };
+}
+
+/**
  * Coerce a wire value into a list of known {@link Phase} values, dropping any
  * non-phase entry. Used for `GameView.stops` (issue #264): the server elides it when
  * empty, so a missing or malformed value degrades to `[]` and an unrecognized future
@@ -280,6 +313,8 @@ function normalizeRoomSummary(payload: unknown): RoomSummary {
     room_id: asString(record.room_id),
     config: normalizeRoomConfig(record.config),
     filled: typeof record.filled === 'number' ? record.filled : 0,
+    // Spectator count (issue #351): the server elides it when zero.
+    spectators: typeof record.spectators === 'number' ? record.spectators : 0,
     state: normalizeRoomState(record.state),
   };
 }
@@ -314,12 +349,18 @@ export function normalizeLobbyView(payload: unknown): LobbyView {
  */
 export type ServerFrame =
   | { readonly kind: 'game'; readonly view: GameView }
+  | { readonly kind: 'spectator'; readonly view: SpectatorView }
   | { readonly kind: 'lobby'; readonly lobby: LobbyView };
 
 /**
- * Parse a raw server→client text frame, routing it to a {@link GameView} or a
- * {@link LobbyView} by the presence of a valid `phase`. Throws
- * {@link ProtocolError} on malformed JSON or a non-object payload.
+ * Parse a raw server→client text frame, routing it to a {@link GameView}, a
+ * {@link SpectatorView}, or a {@link LobbyView}. A frame with a valid `phase` is an
+ * in-game view; a {@link SpectatorView} is distinguished by its spectator-only
+ * `players` array together with the absence of a receiver `you` (ADR 0022, issue #351)
+ * — a seated {@link GameView} carries `opponents`/`you`, never `players`, so a
+ * `you`-less older-server game frame still routes to a `GameView`. A frame with no
+ * `phase` is a `LobbyView`. Throws {@link ProtocolError} on malformed JSON or a
+ * non-object payload.
  */
 export function parseServerFrame(raw: string): ServerFrame {
   let parsed: unknown;
@@ -329,6 +370,11 @@ export function parseServerFrame(raw: string): ServerFrame {
     throw new ProtocolError(`server frame is not valid JSON: ${String(cause)}`);
   }
   if (isRecord(parsed) && isPhase(parsed.phase)) {
+    // A spectator frame carries the spectator-only `players` array and no receiver
+    // `you`; anything else with a phase is a seated game view.
+    if ('players' in parsed && !('you' in parsed)) {
+      return { kind: 'spectator', view: normalizeSpectatorView(parsed) };
+    }
     return { kind: 'game', view: normalizeGameView(parsed) };
   }
   return { kind: 'lobby', lobby: normalizeLobbyView(parsed) };
