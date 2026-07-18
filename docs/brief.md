@@ -109,10 +109,12 @@ so display text cannot silently diverge from executable behavior.
 
 ## Current scope
 
-RUNE currently targets a deterministic two-player game built around creature combat. The
-implemented slice includes the full turn loop, priority, casting and mana payment, targets,
-the stack, attackers and blockers, combat damage, common combat keywords, counters, auras,
-triggers, initial replacement effects, mulligans, concessions, and loss by life or decking.
+RUNE currently supports deterministic games of two to four players built around creature
+combat, with spectators. The implemented slice includes the full turn loop, priority, casting
+and mana payment, targets, the stack, per-attacker attack targets, multi-defender blocking,
+combat damage with player-chosen assignment order, common combat keywords, counters, auras,
+triggers, initial replacement effects, mulligans, concessions, loss by life or decking, and
+mid-game elimination in multiplayer games.
 
 The project intentionally grows by verified rule slices rather than claiming broad card or
 format compatibility. Tests and the generated, CI-checked compatibility report

@@ -377,9 +377,10 @@ The client stores `session` per browser tab and echoes it on a later `hello`. It
 identity/reconnect handle, not a user account or human authentication credential.
 
 `RoomView` contains an opaque `room_id`, a `config`, and the ordered seat roster. The room
-config contains `seats` and an opaque `game_setup` id. The lobby validates a 2–8 seat range
-and requires the setup id to exist in the server format registry. Supported gameplay remains
-two-player even though the lobby shape is wider.
+config contains `seats` and an opaque `game_setup` id. The lobby validates a 2–8 seat range,
+requires the setup id to exist in the server format registry, and rejects a seat count
+outside the chosen format's own range (issue #349). Two-player formats and 3–4 seat
+free-for-all formats both start real games.
 
 Each seat contains:
 
