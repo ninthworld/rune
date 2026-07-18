@@ -949,14 +949,15 @@ export function buildTableScene(
 
   // Spend the vertical space (§Tabletop shell: adaptation runs in both directions):
   // when the natural layout is shorter than the region, the slack distributes into
-  // the gaps between bands (and before the hand) — band i shifts by i/n of the
-  // slack, the hand by all of it — so the table fills its region top to bottom with
-  // the local band kept adjacent to the hand. A taller-than-region scene is
-  // unchanged (it scrolls). Deterministic: same inputs, same shifts.
+  // the gaps BETWEEN bands — opponents justify from the top, the local band (and
+  // the hand right below it) sinks to the bottom — so the open table space pools
+  // along the battle line between the armies, not between a player and their own
+  // hand. A taller-than-region scene is unchanged (it scrolls). Deterministic:
+  // same inputs, same shifts.
   const slack = Math.max(0, Math.floor((opts?.minHeight ?? 0) - naturalHeight));
-  const gaps = bandMetas.length; // one gap after each band; the last sits before the hand
+  const betweenGaps = Math.max(1, bandMetas.length - 1);
   const bandShift = (index: number): number =>
-    gaps === 0 ? 0 : Math.floor((slack * index) / gaps);
+    bandMetas.length <= 1 ? slack : Math.floor((slack * index) / betweenGaps);
   const shiftCards = (cards: RenderedCard[], dy: number): RenderedCard[] =>
     dy === 0
       ? cards

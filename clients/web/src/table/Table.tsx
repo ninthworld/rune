@@ -911,7 +911,13 @@ export function Table() {
   }
   const bounds = sceneBoundsOf(scene, anchorIds);
   const gap = 10;
-  const clampY = (value: number): number => Math.max(bf.y + 8, Math.min(value, bf.y + bf.h - 8));
+  // An "above" anchor is additionally clamped above the tray, so the staged
+  // decision surface never overlaps the confirm/cancel controls riding the tray
+  // (subjects at the bottom of the board — e.g. hand-card candidates — anchor
+  // there instead of on top of the tray).
+  const trayTop = r.tray.rect.y;
+  const clampY = (value: number): number =>
+    Math.max(bf.y + 8, Math.min(value, bf.y + bf.h - 8, trayTop - gap));
   // Grow upward from just above the subjects when they sit lower on the board, downward
   // from just below them when they sit near the top — so the overlay never runs off an
   // edge. With no on-canvas subject (a non-visible zone / abstract order), centre it

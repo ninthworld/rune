@@ -771,6 +771,21 @@
   font-size: var(--rune-type-caption);
 }
 
+/* The tile body: the life crest beside the identity column, so a tile fits one HUD
+ * row instead of stacking (and clipping) vertically. */
+.hudBody {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  min-width: 0;
+}
+.hudInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+  min-width: 0;
+}
+
 /* Life — the prominent value. Tabular figures keep hundreds from jittering the layout,
  * and the value is free to grow without breaking the row (it wraps under the label). */
 .hudLife {

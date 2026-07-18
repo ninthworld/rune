@@ -1,5 +1,14 @@
 # UI redesign plan — closing the gap to the concept boards
 
+> **Status: phases A–E delivered** by the UI catch-up batch (July 2026, single PR).
+> The decisions each phase introduced are folded into
+> [`ui-design-notes.md`](ui-design-notes.md) (§Tabletop shell, §Visual hierarchy,
+> §Identity, §Battlefield bands, §Zone piles, §Concept-board decisions). What
+> remains open from this plan: **F2** — screenshot checks in the real-browser
+> canary (#279) at a small and a large viewport, so "spends the screen" and
+> "never clipped" stay verified. The audit and phase text below are kept as the
+> record of what was found and why each change was made.
+
 A delivery plan, not a new design. The design source of truth stays
 [`ui-design-notes.md`](ui-design-notes.md); its §Concept-board decisions section already
 records what the 2026 concept boards got right and wrong, and this plan does not relitigate

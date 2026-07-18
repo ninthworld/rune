@@ -244,7 +244,8 @@ export function layout(viewport: Viewport, mode: Mode, playerCount: number): Tab
 
   // The hand's stable bottom-center anchor band (the scene draws the actual hand
   // cards inside the battlefield; this rect is what downstream #298 anchors to).
-  const handBandH = Math.min(L.handBandH, Math.floor(battlefield.h * 0.5));
+  // Scaled with the scene so the tray floats clear of the taller scaled hand cards.
+  const handBandH = Math.min(Math.round(L.handBandH * sceneScale), Math.floor(battlefield.h * 0.5));
   const hand: Rect = {
     x: 0,
     y: height - handBandH,
