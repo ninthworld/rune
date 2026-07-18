@@ -452,14 +452,20 @@
   color: var(--rune-targeting);
   border: 1px solid var(--rune-targeting);
 }
+/* The expanded step panel: a tier-4 floating surface dropped below the compact bar
+ * (geometry is inline via `indicatorStepsBox` — fixed, viewport-clamped, so the
+ * twelve steps are never clipped by the indicator strip). */
 .indicatorSteps {
-  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: var(--rune-space-2);
   margin: 0;
-  padding: 0;
+  padding: var(--rune-space-5) var(--rune-space-6);
   list-style: none;
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-lg);
+  box-shadow: var(--rune-elevation-2);
 }
 .indicatorFullStep {
   font-size: var(--rune-type-micro);

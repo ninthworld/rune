@@ -411,6 +411,8 @@ export function Table() {
   // never scrolls horizontally.
   const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
   const battlefieldW = shell.regions.battlefield.rect.w;
+  const battlefieldH = shell.regions.battlefield.rect.h;
+  const sceneScale = shell.sceneScale;
 
   // The region geometry the spatial focus model navigates by (issue #301): map each
   // tagged shell region to its layout rect, so `focus.ts` orders/adjoins regions the
@@ -491,12 +493,17 @@ export function Table() {
       multiSelect && defenderSlot ? (msActiveAttacker(multiSelect) ?? undefined) : undefined;
     const sel =
       targeting || multiSelect ? attackerRing : (selectedId ?? highlightedId ?? undefined);
-    return buildTableScene(view, sel, battlefieldW, targetingScene);
+    return buildTableScene(view, sel, battlefieldW, targetingScene, {
+      scale: sceneScale,
+      minHeight: battlefieldH,
+    });
   }, [
     view,
     selectedId,
     highlightedId,
     battlefieldW,
+    battlefieldH,
+    sceneScale,
     targeting,
     multiSelect,
     overlayMode,

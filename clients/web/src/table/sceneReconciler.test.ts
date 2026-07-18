@@ -100,6 +100,7 @@ function scene(cards: RenderedCard[], hand: RenderedCard[] = []): TableScene {
         label: 'p1 (you)',
         isEmpty: cards.length === 0,
         zones: { library: 0, graveyard: 0, exile: 0 },
+        pileRect: { x: 520, y: 40, w: 68, h: 120 },
       },
     ],
     hand,

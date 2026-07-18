@@ -110,6 +110,30 @@ export function promptOverlayBox(
 }
 
 /**
+ * The expanded phase indicator's step panel: a floating overlay dropped BELOW the
+ * compact bar, never rendered inside the fixed-height indicator strip (which
+ * clipped it — ui-requirements §Stack, priority, and timers demands the expansion
+ * "render entirely within the viewport, never clipped by an edge"). Fixed
+ * positioning escapes the strip's overflow; the max sizes keep the panel inside the
+ * viewport at every geometry, scrolling internally if it must. Geometry only — the
+ * elevated look is a `chrome.module.css` class.
+ */
+export function indicatorStepsBox(indicatorHeight: number): CSSProperties {
+  const top = indicatorHeight + 8;
+  return {
+    position: 'fixed',
+    top,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    maxWidth: 'min(92vw, 760px)',
+    maxHeight: `calc(100vh - ${top + 16}px)`,
+    overflowY: 'auto',
+    boxSizing: 'border-box',
+    zIndex: 7,
+  };
+}
+
+/**
  * The expanded stack/activity rail when the geometry is narrow (issue #299): rather
  * than docking (which would eat board width), the on-demand expanded panel floats a
  * content-sized surface pinned to the right edge at the rail's badge anchor,

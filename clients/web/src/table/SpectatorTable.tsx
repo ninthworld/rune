@@ -121,9 +121,15 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
   const playerCount = Math.max(1, publicView.opponents.length);
   const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
   const battlefieldW = battlefieldWidth(shell);
+  const battlefieldH = shell.regions.battlefield.rect.h;
+  const sceneScale = shell.sceneScale;
   const scene = useMemo(
-    () => buildTableScene(publicView, undefined, battlefieldW),
-    [publicView, battlefieldW],
+    () =>
+      buildTableScene(publicView, undefined, battlefieldW, undefined, {
+        scale: sceneScale,
+        minHeight: battlefieldH,
+      }),
+    [publicView, battlefieldW, battlefieldH, sceneScale],
   );
 
   const [inspectedId, setInspectedId] = useState<EntityId | null>(null);

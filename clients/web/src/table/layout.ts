@@ -85,6 +85,13 @@ export interface TableLayout {
   orientation: 'portrait' | 'landscape';
   /** Whether the stack/activity rail collapsed to a floating badge (narrow width). */
   railCollapsed: boolean;
+  /**
+   * The card scale the battlefield scene should lay out at (≥ 1). Large viewports
+   * are *spent* — cards and gaps grow with the board region — instead of leaving a
+   * phone-sized table in a corner (ui-design-notes §Tabletop shell). Quantized to
+   * quarter steps so ordinary window resizing doesn't churn the whole scene.
+   */
+  sceneScale: number;
   /** Every region, keyed by its stable identity. */
   regions: Record<RegionId, Region>;
 }
@@ -127,6 +134,11 @@ const L = {
   handBandH: 200,
   /** A coarse pointer widens the shortest floating strips to keep 44px targets. */
   coarseTrayH: 68,
+  /** Battlefield size at which cards render at scale 1; larger regions scale up. */
+  sceneBaseW: 1100,
+  sceneBaseH: 700,
+  /** Cards never grow beyond this factor (legibility beats sheer size). */
+  sceneMaxScale: 1.5,
 } as const;
 
 /** The viewport the layout falls back to where there is no `window` (SSR/tests). */
@@ -192,6 +204,13 @@ export function layout(viewport: Viewport, mode: Mode, playerCount: number): Tab
   // left of the docked rail. This is the rect the Pixi scene sizes to.
   const battlefield: Rect = { x: 0, y: topH, w: width - railW, h: height - topH };
 
+  // ── Scene scale: how much bigger than baseline the board region is, on its
+  // *tighter* axis (so cards never outgrow either dimension), clamped to [1, max]
+  // and quantized down to quarter steps for resize stability. Purely geometric —
+  // the same viewport always yields the same scale.
+  const rawScale = Math.min(battlefield.w / L.sceneBaseW, battlefield.h / L.sceneBaseH);
+  const sceneScale = clamp(Math.floor(rawScale * 4) / 4, 1, L.sceneMaxScale);
+
   const indicator: Rect = { x: 0, y: 0, w: width, h: indicatorH };
   const opponentHud: Rect = { x: 0, y: indicatorH, w: width, h: hudH };
 
@@ -250,6 +269,7 @@ export function layout(viewport: Viewport, mode: Mode, playerCount: number): Tab
     aspect,
     orientation,
     railCollapsed,
+    sceneScale,
     regions: {
       indicator: { id: 'indicator', layer: 'docked', rect: indicator },
       opponentHud: { id: 'opponentHud', layer: 'docked', rect: opponentHud },

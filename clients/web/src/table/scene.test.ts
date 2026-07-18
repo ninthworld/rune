@@ -340,31 +340,38 @@ describe('buildTableScene targeting mode (ADR 0009 §Client)', () => {
     expect(bear?.data.selected).toBe(false);
   });
 
-  it('lays a single small band as one row (no wrapping when everything fits)', () => {
+  it('lays a single small band as one centered row (no wrapping when everything fits)', () => {
     const scene = buildTableScene(boardView(['p1'], 3), undefined, 1280);
     const ys = new Set(scene.bands[0]?.cards.map((c) => c.rect.y));
     expect(ys.size).toBe(1); // all three share one row
-    // Columns advance by card width + gap; the first card sits at the margin.
-    const [a, b] = scene.bands[0]!.cards;
-    expect(a?.rect.x).toBe(16);
-    expect(b?.rect.x).toBe(16 + TIER.field.w + 12);
+    // Columns advance by card width + gap, and the line centers within the row
+    // budget (the wrap width minus the reserved zone-pile column) rather than
+    // hugging the left margin.
+    const [a, b, c] = scene.bands[0]!.cards;
+    expect(b?.rect.x).toBe(a!.rect.x + TIER.field.w + 12);
+    const lineLeft = a!.rect.x;
+    const lineRight = c!.rect.x + c!.rect.w;
+    const rowBudgetRight = 1280 - 84 - 16; // budget − pile column − margin
+    // Centered: the slack on the left ≈ the slack on the right (within rounding).
+    expect(Math.abs(lineLeft - 16 - (rowBudgetRight - lineRight))).toBeLessThanOrEqual(1);
   });
 
-  it('wraps a band into rows bounded by the viewport width', () => {
-    // A 260px budget fits exactly two field cards per row (16*2 margins, 12 gap).
-    const scene = buildTableScene(boardView(['p1'], 5), undefined, 260);
+  it('wraps a band into rows bounded by the row budget', () => {
+    // A 344px budget leaves a 260px row span after the reserved pile column —
+    // exactly two field cards per row (16*2 margins, 12 gap).
+    const scene = buildTableScene(boardView(['p1'], 5), undefined, 344);
     const cards = scene.bands[0]!.cards;
     const perRowY = cards[0]!.rect.y;
     // Row 0 holds cards 0 and 1 at the same y; card 2 starts a new, lower row.
     expect(cards[1]?.rect.y).toBe(perRowY);
     expect(cards[2]?.rect.y).toBeGreaterThan(perRowY);
-    expect(cards[2]?.rect.x).toBe(16); // wraps back to the left margin
     // Three rows for five cards at two per row.
     expect(new Set(cards.map((c) => c.rect.y)).size).toBe(3);
-    // The band never runs past the width the scene reports.
+    // The cards never run past the width the scene reports, and the scene spans
+    // the full budget (bands read against the whole table width).
     const maxRight = Math.max(...cards.map((c) => c.rect.x + c.rect.w));
     expect(scene.width).toBeGreaterThanOrEqual(maxRight);
-    expect(scene.width).toBeLessThanOrEqual(260);
+    expect(scene.width).toBe(344);
   });
 
   it('keeps at least one card per row even in an absurdly narrow viewport', () => {
@@ -636,9 +643,9 @@ describe('buildTableScene ×N stacking (issue #318)', () => {
     expect(tapped!.stackCount).toBe(1);
   });
 
-  it('never folds an individually actionable permanent into a stack', () => {
-    // Both Forests are identical, but only f0 carries an offered action → f0 stays
-    // its own render so it remains clickable; f1 is a singleton too.
+  it('splits permanents whose offered actions differ (action set is part of the key)', () => {
+    // Both Forests look identical, but only f0 carries an offered action → the two
+    // are NOT interchangeable, so they stay separate renders.
     const local = buildTableScene(
       permBoard(
         [
@@ -650,6 +657,37 @@ describe('buildTableScene ×N stacking (issue #318)', () => {
     ).bands.at(-1)!;
     expect(local.cards).toHaveLength(2);
     expect(local.cards.every((c) => c.stackCount === 1)).toBe(true);
+  });
+
+  it('folds identically actionable permanents into one activatable stack', () => {
+    // Four untapped Forests each offering the same tap-for-mana action (per-entity
+    // action ids, same shape) are interchangeable: they fold into one ×4 stack that
+    // keeps the representative's action, so "four Forests" reads as one chip and
+    // tapping the stack floats one mana. This is the fix for boards reading as a
+    // row of duplicate lands (every untapped land is always actionable).
+    const local = buildTableScene(
+      permBoard(
+        Array.from({ length: 4 }, (_, i) => ({
+          id: `f${i}`,
+          name: 'Forest',
+          type_line: 'Basic Land — Forest',
+        })),
+        Array.from({ length: 4 }, (_, i) => ({
+          id: `a${i}`,
+          type: 'activate_ability',
+          label: 'Tap for G',
+          subject: [`f${i}`],
+        })),
+      ),
+    ).bands.at(-1)!;
+    expect(local.cards).toHaveLength(1);
+    const stack = local.cards[0]!;
+    expect(stack.stackCount).toBe(4);
+    expect(stack.memberIds).toHaveLength(4);
+    // The stack stays activatable via its representative's offered action.
+    expect(stack.actions).toHaveLength(1);
+    expect(stack.actions[0]!.subject).toContain(stack.entityId);
+    expect(stack.data.actionable).toBe(true);
   });
 });
 
@@ -1059,5 +1097,96 @@ describe('buildTableScene multiplayer table (3–4 players, issue #348)', () => 
     );
     expect(scene.bands.map((b) => b.playerId)).toEqual(['p2', 'p3', 'p4', 'p1']);
     expect(scene.bands.every((b) => b.isEmpty)).toBe(true);
+  });
+});
+
+describe('buildTableScene shell-derived presentation (scale, fill, piles, names)', () => {
+  it('labels bands by display name, never by seat id, when names are supplied', () => {
+    const view = permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]);
+    view.player_names = { p1: 'Rowan', p2: 'Kellan' };
+    const scene = buildTableScene(view);
+    expect(scene.bands.at(-1)?.label).toBe('Rowan (you)');
+    expect(scene.bands[0]?.label).toBe('Kellan');
+  });
+
+  it('falls back to the raw id when the server sent no name', () => {
+    const scene = buildTableScene(permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]));
+    expect(scene.bands.at(-1)?.label).toBe('p1 (you)');
+    expect(scene.bands[0]?.label).toBe('p2');
+  });
+
+  it('scales card footprints, and the scene reports its scale for the renderer', () => {
+    const view = permBoard([{ id: 'b1', type_line: 'Creature — Bear', power: '2', toughness: '2' }]);
+    const base = buildTableScene(view, undefined, 1280);
+    const scaled = buildTableScene(view, undefined, 1280, undefined, { scale: 1.5 });
+    const baseCard = base.bands.at(-1)!.cards[0]!;
+    const scaledCard = scaled.bands.at(-1)!.cards[0]!;
+    expect(scaledCard.rect.w).toBe(Math.round(baseCard.rect.w * 1.5));
+    expect(scaledCard.rect.h).toBe(Math.round(baseCard.rect.h * 1.5));
+    expect(scaled.scale).toBe(1.5);
+    expect(base.scale).toBe(1);
+  });
+
+  it('stretches to minHeight by distributing slack between bands, hand pinned last', () => {
+    const view = permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]);
+    const natural = buildTableScene(view, undefined, 1280);
+    const stretched = buildTableScene(view, undefined, 1280, undefined, { minHeight: 1200 });
+    expect(natural.height).toBeLessThan(1200);
+    expect(stretched.height).toBe(1200);
+    // The hand region rides the full slack to the bottom of the region…
+    expect(stretched.handRegion.rect.y).toBe(
+      natural.handRegion.rect.y + (1200 - natural.height),
+    );
+    // …the first band stays at the top, and the local band moves toward the hand.
+    expect(stretched.bands[0]?.rect.y).toBe(natural.bands[0]?.rect.y);
+    expect(stretched.bands.at(-1)!.rect.y).toBeGreaterThan(natural.bands.at(-1)!.rect.y);
+    // Cards inside a shifted band ride along with it.
+    const dLocal = stretched.bands.at(-1)!.rect.y - natural.bands.at(-1)!.rect.y;
+    expect(stretched.bands.at(-1)!.cards[0]!.rect.y).toBe(
+      natural.bands.at(-1)!.cards[0]!.rect.y + dLocal,
+    );
+  });
+
+  it('a scene already taller than minHeight is unchanged', () => {
+    const view = boardView(['p1', 'p2'], 40);
+    const natural = buildTableScene(view, undefined, 600);
+    const constrained = buildTableScene(view, undefined, 600, undefined, { minHeight: 100 });
+    expect(constrained.height).toBe(natural.height);
+    expect(constrained.bands.map((b) => b.rect.y)).toEqual(natural.bands.map((b) => b.rect.y));
+  });
+
+  it('reserves a pile column in every band, clear of the card rows', () => {
+    const scene = buildTableScene(boardView(['p1', 'p2'], 12), undefined, 1280);
+    for (const band of scene.bands) {
+      // The column parks at the band's right edge, inside the band.
+      expect(band.pileRect.x).toBeGreaterThan(0);
+      expect(band.pileRect.x + band.pileRect.w).toBeLessThanOrEqual(scene.width);
+      expect(band.pileRect.y).toBeGreaterThanOrEqual(band.rect.y);
+      expect(band.pileRect.y + band.pileRect.h).toBeLessThanOrEqual(band.rect.y + band.rect.h + 1);
+      // Cards never intrude into the reserved column.
+      for (const card of band.cards) {
+        expect(card.rect.x + card.rect.w).toBeLessThanOrEqual(band.pileRect.x);
+      }
+    }
+  });
+
+  it('carries the public graveyard top card on the band zones (face-up in place)', () => {
+    const view = permBoard([{ id: 'b1', type_line: 'Creature — Bear' }]);
+    view.graveyards = [
+      {
+        player_id: 'p1',
+        cards: [
+          { id: 'g1', name: 'Early Bear', type_line: 'Creature — Bear' },
+          { id: 'g2', name: 'Cinder Shock', type_line: 'Instant', mana_cost: '{R}' },
+        ],
+      },
+    ];
+    const scene = buildTableScene(view);
+    const local = scene.bands.at(-1)!;
+    expect(local.zones.graveyard).toBe(2);
+    // The LAST card is the top of the ordered pile.
+    expect(local.zones.graveyardTop).toEqual({ name: 'Cinder Shock', colorIdentity: 'R' });
+    // An empty pile reports no top card.
+    expect(scene.bands[0]!.zones.graveyardTop).toBeUndefined();
   });
 });

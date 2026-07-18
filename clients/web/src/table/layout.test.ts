@@ -226,6 +226,39 @@ describe('battlefield sizing feeds the scene with no horizontal scroll', () => {
   }
 });
 
+describe('scene scale spends large viewports (ui-design-notes §Tabletop shell)', () => {
+  it('stays at the baseline scale on small/typical geometry', () => {
+    expect(layout({ width: 1280, height: 800 }, 'overview', 2).sceneScale).toBe(1);
+    expect(layout({ width: 900, height: 700 }, 'overview', 2).sceneScale).toBe(1);
+    expect(layout({ width: 390, height: 844 }, 'overview', 2).sceneScale).toBe(1);
+  });
+
+  it('scales up on a large desktop viewport, clamped and quantized', () => {
+    const big = layout({ width: 2560, height: 1440 }, 'overview', 2);
+    expect(big.sceneScale).toBeGreaterThan(1);
+    expect(big.sceneScale).toBeLessThanOrEqual(1.5);
+    // Quarter-step quantization keeps resize churn down.
+    expect((big.sceneScale * 4) % 1).toBe(0);
+  });
+
+  it('never scales below 1 (small screens condense by other means)', () => {
+    expect(layout({ width: 320, height: 480 }, 'overview', 2).sceneScale).toBe(1);
+  });
+
+  it('a scaled scene still fits the battlefield width (no horizontal scroll)', () => {
+    const computed = layout({ width: 2560, height: 1440 }, 'overview', 2);
+    const width = battlefieldWidth(computed);
+    const scene = buildTableScene(boardView(['p1', 'p2'], 40), undefined, width, undefined, {
+      scale: computed.sceneScale,
+    });
+    const maxRight = Math.max(
+      ...scene.bands.flatMap((b) => b.cards).map((c) => c.rect.x + c.rect.w),
+    );
+    expect(maxRight).toBeLessThanOrEqual(width);
+    expect(scene.width).toBeLessThanOrEqual(width);
+  });
+});
+
 // Type-only sanity: the exported Mode union is what the Table passes through.
 const _modes: Mode[] = ['overview', 'focus'];
 void _modes;

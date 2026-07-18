@@ -23,8 +23,9 @@ import type {
 } from '../protocol';
 import { cardVisualSignature, type CardDisplayData, type RenderTier } from '../card/cardFactory';
 import type { GlyphName } from '../chrome/glyphs';
-import { TIER } from '../tokens';
+import { TIER, type ColorIdentity } from '../tokens';
 import { deriveColorIdentity } from './colorIdentity';
+import { playerName } from '../playerNames';
 
 /** Absolute placement of a card within the scene's logical coordinate space. */
 export interface Rect {
@@ -142,6 +143,13 @@ export interface ZoneCounts {
   graveyard: number;
   /** Exile size — opens the exile browser (issue #262). */
   exile: number;
+  /**
+   * The graveyard's top card, when the pile is non-empty. Graveyard contents are
+   * public in the view (`GameView.graveyards`), so the pile can show what died last
+   * in place — filling the `faceUp` slot the pile layout reserved (§Zone piles)
+   * without any protocol change. Presentation-only projection of view data.
+   */
+  graveyardTop?: { name: string; colorIdentity: ColorIdentity };
 }
 
 /** A per-controller battlefield row. */
@@ -167,6 +175,13 @@ export interface Band {
   isEmpty: boolean;
   /** The controller's library/graveyard/exile pile counts, straight from the view. */
   zones: ZoneCounts;
+  /**
+   * The reserved column where this band's zone piles park — a consistent corner of
+   * every player's region (§Zone piles), on the table itself rather than in the
+   * band's header chrome. The card rows wrap short of this column, so piles and
+   * cards never collide; the DOM geography layer renders the pile stack here.
+   */
+  pileRect: Rect;
   /**
    * The type-grouped rows in this band (issue #318), ordered toward the center line:
    * for the local band, creatures are nearest the center (first) and lands at the
@@ -221,6 +236,15 @@ export interface TableScene {
   width: number;
   /** Logical height the canvas + DOM overlay share. */
   height: number;
+  /**
+   * The uniform card scale this scene was laid out at (issue: spend the screen —
+   * ui-design-notes §Tabletop shell "large screens are spent"). Card rects already
+   * carry the scaled footprints; the Pixi reconciler applies the same factor to each
+   * card display object so drawn pixels match the rects. `1` at the baseline
+   * geometry, larger on large viewports — never below 1. Optional so hand-built
+   * scene fixtures default to the baseline.
+   */
+  scale?: number;
   /** Battlefield bands, opponents first and the local player last. */
   bands: Band[];
   /** The local player's hand. */
@@ -244,18 +268,79 @@ export interface TableScene {
   attackTargets: AttackTarget[];
 }
 
-/** Layout geometry (logical px). Card sizes come from the shared TIER tokens. */
+/** Layout geometry (logical px, at scale 1). Card sizes come from the TIER tokens. */
 const LAYOUT = {
   margin: 16,
   cardGap: 12,
   rowGap: 10,
   bandGap: 18,
   handGap: 28,
-  /** Header strip reserved at the top of each band for its DOM label + zone piles. */
-  bandHeader: 48,
+  /** Header strip reserved at the top of each band for its DOM nameplate. */
+  bandHeader: 40,
   /** Header strip reserved above the hand row for its label. */
   handHeader: 24,
 } as const;
+
+/**
+ * The reserved zone-pile column (§Zone piles): a fixed-width strip on the right
+ * edge of every band where the library/graveyard/exile pile stack parks. Card rows
+ * wrap short of it. The DOM piles render at a fixed size (their look is chrome, in
+ * CSS), so the reservation is deliberately un-scaled — a bigger table gives cards
+ * more room without inflating the pile furniture.
+ */
+const PILE_COL = {
+  /** Full reserved width, including its inner padding. */
+  width: 84,
+  /** Inner padding between the column edge and the pile stack. */
+  pad: 8,
+  /** Minimum column height that fits the three-pile stack comfortably. */
+  minHeight: 176,
+} as const;
+
+/** Per-scene layout metrics: the LAYOUT constants at the scene's card scale. */
+interface Metrics {
+  margin: number;
+  cardGap: number;
+  rowGap: number;
+  bandGap: number;
+  handGap: number;
+  bandHeader: number;
+  handHeader: number;
+}
+
+function metricsAt(scale: number): Metrics {
+  return {
+    margin: Math.round(LAYOUT.margin * scale),
+    cardGap: Math.round(LAYOUT.cardGap * scale),
+    rowGap: Math.round(LAYOUT.rowGap * scale),
+    bandGap: Math.round(LAYOUT.bandGap * scale),
+    handGap: Math.round(LAYOUT.handGap * scale),
+    // Header strips hold fixed-size DOM chrome (nameplates), so they stay un-scaled.
+    bandHeader: LAYOUT.bandHeader,
+    handHeader: LAYOUT.handHeader,
+  };
+}
+
+/**
+ * Options for {@link buildTableScene} beyond the wrap budget: the card scale and
+ * the minimum scene height (both derived from the measured shell geometry by
+ * `layout()` — the scene itself stays pure).
+ */
+export interface SceneOptions {
+  /**
+   * Uniform card/geometry scale (≥ 1). Card footprints, gaps, and margins multiply
+   * by it, so large viewports get a proportionally bigger table instead of a small
+   * board in a corner.
+   */
+  scale?: number;
+  /**
+   * Stretch the scene to at least this height by distributing the slack into the
+   * gaps between bands (and before the hand), so the table fills its region — the
+   * local band stays anchored near the hand — rather than pooling empty space at
+   * the bottom. A scene naturally taller than this is unchanged (it scrolls).
+   */
+  minHeight?: number;
+}
 
 /**
  * Default logical width the layout wraps within when the caller passes none.
@@ -277,11 +362,14 @@ function localPlayerIdOf(view: GameView): PlayerId | undefined {
 
 /**
  * The band's display label. Names the *controller* of the permanents (zone
- * placement follows control, ui-requirements §2); the local band is marked
- * "(you)" so a newcomer can tell their area from the opponent's.
+ * placement follows control, ui-requirements §2) by their **display name** (issue
+ * #294 — players are people, never seat ids, §Identity), falling back to the raw
+ * id only when the server sent no name. The local band is marked "(you)" so a
+ * newcomer can tell their area from the opponent's.
  */
-function bandLabel(playerId: PlayerId, isLocal: boolean): string {
-  return isLocal ? `${playerId} (you)` : playerId;
+function bandLabel(view: GameView, playerId: PlayerId, isLocal: boolean): string {
+  const name = playerName(view, playerId);
+  return isLocal ? `${name} (you)` : name;
 }
 
 /**
@@ -293,9 +381,19 @@ function zoneCountsOf(view: GameView, playerId: PlayerId, isLocal: boolean): Zon
   const library = isLocal
     ? view.me.library_size
     : (view.opponents.find((o) => o.player_id === playerId)?.library_size ?? 0);
-  const graveyard = view.graveyards.find((g) => g.player_id === playerId)?.cards.length ?? 0;
+  const graveyardCards = view.graveyards.find((g) => g.player_id === playerId)?.cards ?? [];
   const exile = view.exile.find((e) => e.player_id === playerId)?.cards.length ?? 0;
-  return { library, graveyard, exile };
+  // The graveyard is ordered and public; its last card is the top of the pile, shown
+  // face-up in place (§Zone piles — a pile is a place where a card can be shown).
+  const topCard = graveyardCards.length > 0 ? graveyardCards[graveyardCards.length - 1] : undefined;
+  return {
+    library,
+    graveyard: graveyardCards.length,
+    exile,
+    graveyardTop: topCard
+      ? { name: topCard.name, colorIdentity: deriveColorIdentity(topCard) }
+      : undefined,
+  };
 }
 
 /** Map a server card + permanent state onto the factory's display data. */
@@ -402,20 +500,41 @@ const TIER_FOR_ROW: Record<BandRowKind, RenderTier> = {
  * keeps a tapped card from overlapping its neighbors (issue #318). A **chip** never
  * rotates (dim + corner tap glyph instead), so its footprint is constant.
  */
-function cellSize(tier: RenderTier, tapped: boolean): { w: number; h: number } {
-  if (tier === 'chip') return { w: TIER.chip.w, h: TIER.chip.h };
+function cellSize(tier: RenderTier, tapped: boolean, scale: number): { w: number; h: number } {
+  if (tier === 'chip') {
+    return { w: Math.round(TIER.chip.w * scale), h: Math.round(TIER.chip.h * scale) };
+  }
   const t = TIER[tier];
-  return tapped ? { w: t.h, h: t.w } : { w: t.w, h: t.h };
+  const w = Math.round(t.w * scale);
+  const h = Math.round(t.h * scale);
+  return tapped ? { w: h, h: w } : { w, h };
+}
+
+/**
+ * A fingerprint of a card's offered subject-actions, used only as part of the ×N
+ * grouping key. Two permanents whose full visual state AND offered action shapes
+ * (type + label, in server order) are identical are interchangeable from the
+ * player's point of view, so they may fold into one stack — activating the stack
+ * submits the representative's action id, and the server's next view splits the
+ * stack exactly where states diverge. Entity-bound ids are deliberately excluded
+ * (they always differ); this is a presentation key, never legality.
+ */
+function actionFingerprint(actions: ValidAction[]): string {
+  return actions.map((a) => `${a.type} ${a.label}`).join('');
 }
 
 /**
  * Collapse identical-state permanents in one row into `×N` stacks (issue #318). The
  * grouping key is the card's **full visual signature** (tap state, counters, and all
- * interactive flags included), so a stack never hides a differing card — "four
- * Plains, one tapped" reads as an untapped ×3 beside a tapped single. A card that
- * carries any individual affordance (an offered action, target candidacy, a
- * multi-select pick, or the current selection) is never folded in, so every
- * individually-addressable permanent stays its own render for prompts and clicks.
+ * interactive flags included) plus its offered-action fingerprint, so a stack never
+ * hides a differing card — "four Plains, one tapped" reads as an untapped ×3 beside
+ * a tapped single. Ordinary actionability does NOT force a card to render alone:
+ * four untapped Plains each offering the same tap-for-mana action fold into one
+ * activatable ×4 stack (activation fires the representative's action). A card that
+ * carries a *pick-specific* affordance — target candidacy, a multi-select pick, the
+ * current selection, combat participation, or an attachment relationship — is never
+ * folded in, so every individually-addressable permanent stays its own render for
+ * prompts and clicks (ui-requirements §Table and zones).
  */
 function groupStacks(
   cards: Omit<RenderedCard, 'rect' | 'stackCount' | 'memberIds'>[],
@@ -424,7 +543,6 @@ function groupStacks(
   const stackAt = new Map<string, number>();
   for (const card of cards) {
     const individual =
-      card.actions.length > 0 ||
       card.targetable ||
       card.chosen ||
       card.data.selected === true ||
@@ -441,7 +559,7 @@ function groupStacks(
       result.push({ ...card, stackCount: 1, memberIds: [card.entityId] });
       continue;
     }
-    const key = cardVisualSignature(card.data, card.tier);
+    const key = `${cardVisualSignature(card.data, card.tier)}|${actionFingerprint(card.actions)}`;
     const at = stackAt.get(key);
     if (at === undefined) {
       stackAt.set(key, result.length);
@@ -457,11 +575,14 @@ function groupStacks(
 }
 
 /**
- * Flow a row of (possibly mixed-footprint) cards left-to-right, wrapping to a new
- * line when the next card would cross `availWidth`. Returns the placed cards, the
- * widest extent reached, and the total height the row occupies. Each card's `rect`
- * is its **visible footprint** (rotated dimensions for a tapped field/support card),
- * so both the reconciler's placement and the DOM hotspot cover the drawn card.
+ * Flow a row of (possibly mixed-footprint) cards, wrapping to a new line when the
+ * next card would cross `availWidth`, then **centering each line** within the
+ * available span — so a sparse row reads as a balanced table row rather than cards
+ * huddled against the left edge (§Tabletop shell: the table stays centered).
+ * Returns the placed cards, the widest extent reached, and the total height the
+ * row occupies. Each card's `rect` is its **visible footprint** (rotated dimensions
+ * for a tapped field/support card), so both the reconciler's placement and the DOM
+ * hotspot cover the drawn card.
  *
  * This is the pure wrapping math the feature turns on: bounding line width to the
  * viewport keeps a 100-permanent board growing downward, never off the right edge
@@ -471,29 +592,48 @@ function flowRow(
   cards: Omit<RenderedCard, 'rect'>[],
   top: number,
   availWidth: number,
+  m: Metrics,
+  scale: number,
 ): { placed: RenderedCard[]; width: number; height: number } {
   if (cards.length === 0) return { placed: [], width: 0, height: 0 };
-  const limit = availWidth - LAYOUT.margin;
+  const limit = availWidth - m.margin;
   const placed: RenderedCard[] = [];
-  let x: number = LAYOUT.margin;
+  let x: number = m.margin;
   let y = top;
   let lineHeight = 0;
-  let maxRight: number = LAYOUT.margin;
+  let maxRight: number = m.margin;
+  let lineStart = 0;
+
+  // Center a completed line [from, placed.length) within [margin, limit].
+  const centerLine = (from: number): void => {
+    if (from >= placed.length) return;
+    const last = placed[placed.length - 1]!;
+    const lineRight = last.rect.x + last.rect.w;
+    const slack = Math.max(0, limit - lineRight);
+    const shift = Math.floor(slack / 2);
+    if (shift <= 0) return;
+    for (let i = from; i < placed.length; i += 1) placed[i]!.rect.x += shift;
+    maxRight = Math.max(maxRight, lineRight + shift);
+  };
+
   for (const card of cards) {
-    const size = cellSize(card.tier, card.data.tapped ?? false);
+    const size = cellSize(card.tier, card.data.tapped ?? false, scale);
     // Wrap when this card would cross the right edge — but never wrap the first card
     // of a line, so an over-wide card still gets its own line (≥ 1 per line).
-    if (x !== LAYOUT.margin && x + size.w > limit) {
-      x = LAYOUT.margin;
-      y += lineHeight + LAYOUT.rowGap;
+    if (x !== m.margin && x + size.w > limit) {
+      centerLine(lineStart);
+      lineStart = placed.length;
+      x = m.margin;
+      y += lineHeight + m.rowGap;
       lineHeight = 0;
     }
     placed.push({ ...card, rect: { x, y, w: size.w, h: size.h } });
     maxRight = Math.max(maxRight, x + size.w);
-    x += size.w + LAYOUT.cardGap;
+    x += size.w + m.cardGap;
     lineHeight = Math.max(lineHeight, size.h);
   }
-  return { placed, width: maxRight + LAYOUT.margin, height: y - top + lineHeight };
+  centerLine(lineStart);
+  return { placed, width: maxRight + m.margin, height: y - top + lineHeight };
 }
 
 /**
@@ -508,13 +648,21 @@ function flowRow(
  * other card is dimmed and non-interactive, and normal subject-actions are
  * suppressed so the sole interaction is picking a target. The candidates come
  * straight from the server; the scene derives no legality (ADR 0009 §Client).
+ *
+ * `opts` carries the shell-derived presentation geometry: the card `scale` (large
+ * viewports spend their space on bigger cards) and `minHeight` (slack distributes
+ * between bands so the table fills its region). Both default to the pre-existing
+ * behavior (scale 1, natural height).
  */
 export function buildTableScene(
   view: GameView,
   selectedId?: EntityId,
   viewportWidth: number = DEFAULT_VIEWPORT_WIDTH,
   targeting?: TargetingScene,
+  opts?: SceneOptions,
 ): TableScene {
+  const scale = Math.max(1, opts?.scale ?? 1);
+  const m = metricsAt(scale);
   const localPlayerId = localPlayerIdOf(view);
   const subjectActions = view.valid_actions.filter((a) => a.subject && a.subject.length > 0);
   const candidateSet = targeting ? new Set(targeting.candidates) : null;
@@ -650,8 +798,11 @@ export function buildTableScene(
     height: number;
   }
   const bandMetas: BandMeta[] = [];
-  let top = LAYOUT.margin;
-  let maxWidth = LAYOUT.margin * 2;
+  let top = m.margin;
+  let maxWidth = m.margin * 2;
+  // Card rows wrap short of the reserved zone-pile column on the band's right edge,
+  // so piles and cards never collide (§Zone piles: piles are table furniture).
+  const rowBudget = Math.max(TIER.field.w * scale + m.margin * 2, viewportWidth - PILE_COL.width);
 
   for (const playerId of ordered) {
     const perms = byController.get(playerId) ?? [];
@@ -716,11 +867,11 @@ export function buildTableScene(
       support: [],
       lands: [],
     };
-    let rowTop = bandTop + LAYOUT.bandHeader;
+    let rowTop = bandTop + m.bandHeader;
     for (const kind of order) {
       const cards = grouped[kind];
       if (cards.length === 0) continue;
-      const { placed, width, height } = flowRow(cards, rowTop, viewportWidth);
+      const { placed, width, height } = flowRow(cards, rowTop, rowBudget, m, scale);
       placedByKind[kind] = placed;
       rows.push({
         kind,
@@ -730,15 +881,18 @@ export function buildTableScene(
         label: kind === 'lands' ? 'Lands' : undefined,
       });
       maxWidth = Math.max(maxWidth, width);
-      rowTop += height + LAYOUT.rowGap;
+      rowTop += height + m.rowGap;
     }
 
     // Band cards in a stable order (creatures, support, lands) regardless of the
     // mirrored vertical layout, so the reconciler's draw order stays deterministic.
     const cards = [...placedByKind.creatures, ...placedByKind.support, ...placedByKind.lands];
-    const contentHeight = rows.length > 0 ? rowTop - LAYOUT.rowGap - bandTop : LAYOUT.bandHeader;
-    // An empty band still reserves a card-height slot so its "invite play" hint fits.
-    const bandHeight = rows.length > 0 ? contentHeight : LAYOUT.bandHeader + TIER.field.h;
+    const contentHeight = rows.length > 0 ? rowTop - m.rowGap - bandTop : m.bandHeader;
+    // An empty band still reserves a card-height slot so its "invite play" hint fits;
+    // every band is at least tall enough to park its three-pile zone column.
+    const naturalHeight =
+      rows.length > 0 ? contentHeight : m.bandHeader + Math.round(TIER.field.h * scale);
+    const bandHeight = Math.max(naturalHeight, m.bandHeader + PILE_COL.minHeight);
 
     bandMetas.push({
       playerId,
@@ -749,14 +903,14 @@ export function buildTableScene(
       top: bandTop,
       height: bandHeight,
     });
-    top = bandTop + bandHeight + LAYOUT.bandGap;
+    top = bandTop + bandHeight + m.bandGap;
   }
 
   // Hand along the bottom, in the larger hand tier — wrapping the same way so a big
   // hand also grows downward instead of off the right edge. The hand is never
   // stacked: every card stays individually playable. Its own header strip separates
   // "my hand" from "my battlefield" (issue #278).
-  top += LAYOUT.handGap - LAYOUT.bandGap;
+  top += m.handGap - m.bandGap;
   const handTop = top;
   const handCards: Omit<RenderedCard, 'rect'>[] = view.my_hand.map((card) => {
     const actions = actionsFor(card.id, subjectActions);
@@ -777,35 +931,67 @@ export function buildTableScene(
     placed: hand,
     width: handWidth,
     height: handHeight,
-  } = flowRow(handCards, handTop + LAYOUT.handHeader, viewportWidth);
+  } = flowRow(handCards, handTop + m.handHeader, viewportWidth, m, scale);
   maxWidth = Math.max(maxWidth, handWidth);
-  const handRegionHeight = LAYOUT.handHeader + handHeight;
-  const height = handTop + handRegionHeight + LAYOUT.margin;
+  const handRegionHeight = m.handHeader + handHeight;
+  const naturalHeight = handTop + handRegionHeight + m.margin;
+
+  // The scene spans the full wrap budget (bands and centered rows read against the
+  // whole table width), growing wider only if a single over-wide card forced it.
+  const width = Math.max(viewportWidth, maxWidth);
+
+  // Spend the vertical space (§Tabletop shell: adaptation runs in both directions):
+  // when the natural layout is shorter than the region, the slack distributes into
+  // the gaps between bands (and before the hand) — band i shifts by i/n of the
+  // slack, the hand by all of it — so the table fills its region top to bottom with
+  // the local band kept adjacent to the hand. A taller-than-region scene is
+  // unchanged (it scrolls). Deterministic: same inputs, same shifts.
+  const slack = Math.max(0, Math.floor((opts?.minHeight ?? 0) - naturalHeight));
+  const gaps = bandMetas.length; // one gap after each band; the last sits before the hand
+  const bandShift = (index: number): number =>
+    gaps === 0 ? 0 : Math.floor((slack * index) / gaps);
+  const shiftCards = (cards: RenderedCard[], dy: number): RenderedCard[] =>
+    dy === 0 ? cards : cards.map((card) => ({ ...card, rect: { ...card.rect, y: card.rect.y + dy } }));
 
   // Finalize band regions now that the board width is known: every lane (and each of
   // its rows) spans the full width, is labeled by its controller, and carries that
   // controller's pile counts (all straight from the view — no layout state persists).
-  const bands: Band[] = bandMetas.map((meta) => ({
-    playerId: meta.playerId,
-    isLocal: meta.isLocal,
-    cards: meta.cards,
-    rows: meta.rows.map((row) => ({ ...row, rect: { ...row.rect, w: maxWidth } })),
-    isEmpty: meta.isEmpty,
-    label: bandLabel(meta.playerId, meta.isLocal),
-    zones: zoneCountsOf(view, meta.playerId, meta.isLocal),
-    rect: { x: 0, y: meta.top, w: maxWidth, h: meta.height },
-  }));
+  const bands: Band[] = bandMetas.map((meta, index) => {
+    const dy = bandShift(index);
+    return {
+      playerId: meta.playerId,
+      isLocal: meta.isLocal,
+      cards: shiftCards(meta.cards, dy),
+      rows: meta.rows.map((row) => ({
+        ...row,
+        rect: { ...row.rect, y: row.rect.y + dy, w: width },
+      })),
+      isEmpty: meta.isEmpty,
+      label: bandLabel(view, meta.playerId, meta.isLocal),
+      zones: zoneCountsOf(view, meta.playerId, meta.isLocal),
+      rect: { x: 0, y: meta.top + dy, w: width, h: meta.height },
+      // The zone piles park in the reserved right-edge column, below the nameplate
+      // strip — the same corner of every player's region (§Zone piles).
+      pileRect: {
+        x: width - PILE_COL.width + PILE_COL.pad,
+        y: meta.top + dy + m.bandHeader,
+        w: PILE_COL.width - PILE_COL.pad * 2,
+        h: Math.max(0, meta.height - m.bandHeader),
+      },
+    };
+  });
 
   const handRegion: HandRegion = {
-    rect: { x: 0, y: handTop, w: maxWidth, h: handRegionHeight },
+    rect: { x: 0, y: handTop + slack, w: width, h: handRegionHeight },
     label: 'Your hand',
   };
 
   return {
-    width: maxWidth,
-    height,
+    width,
+    height: Math.max(naturalHeight, opts?.minHeight ?? 0),
+    scale,
     bands,
-    hand,
+    hand: shiftCards(hand, slack),
     handRegion,
     localPlayerId,
     combatLinks,

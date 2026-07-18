@@ -200,3 +200,18 @@ describe('PhaseIndicator priority stops and auto-pass (issue #264)', () => {
     expect(screen.queryByTestId('stop-toggle-upkeep')).toBeNull();
   });
 });
+
+describe('expanded step panel is never clipped (ui-requirements §Stack, priority, timers)', () => {
+  it('floats the expanded list as a viewport-clamped fixed overlay, outside the bar strip', () => {
+    render(<PhaseIndicator view={viewWith(1, 'p1', 'upkeep')} mode="overview" localId="p1" />);
+    fireEvent.click(screen.getByTestId('indicator-toggle'));
+    const list = screen.getByTestId('indicator-steps');
+    // Fixed positioning escapes the 48px indicator strip (whose overflow used to
+    // clip the twelve steps); the max sizes keep the panel inside the viewport at
+    // every geometry, scrolling internally if it must.
+    expect(list.style.position).toBe('fixed');
+    expect(list.style.maxHeight).toContain('100vh');
+    expect(list.style.maxWidth).not.toBe('');
+    expect(list.style.overflowY).toBe('auto');
+  });
+});
