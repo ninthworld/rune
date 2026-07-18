@@ -39,7 +39,10 @@ identically-actionable ×N stacking (lands finally stack), a viewport-derived sc
 with centered rows and vertical fill, zone piles as table furniture (graveyard top card
 face-up), a centered tray with a primary pass affordance, a game menu holding
 confirm-stepped concede, and the identity layer's accents, life crests, and table
-vignette.
+vignette. The design investigation that followed locked the client's target anatomy in
+[`design/ui-blueprint.md`](design/ui-blueprint.md) (ADR 0023): a fixed shell with one
+action home, proven by hostile-state mocks at laptop, tablet, and phone-portrait
+geometries; the next client implementation effort builds against that blueprint.
 
 A deterministic, seeded 4-player free-for-all full game runs against the real server in the
 normal test gate, with a mid-game elimination and a single winner (#350). Deck selection is

@@ -1,9 +1,18 @@
 # UI design decisions
 
-The current design source of truth for the web client's presentation. The full
-capability list is in [`ui-requirements.md`](ui-requirements.md); delivery status
-belongs in [`../roadmap.md`](../roadmap.md). The historical reference
-implementation is [`prototypes/ui-battlefield-v3.html`](../../prototypes/ui-battlefield-v3.html).
+> **Partially superseded (July 2026).** The screen anatomy, shell layout, and
+> action-placement model in this document — the floating-chrome tabletop shell,
+> the scene-drawn hand, per-card action rendering, and anchored prompt overlays
+> — are **superseded by [`ui-blueprint.md`](ui-blueprint.md)** (see
+> [ADR 0023](../decisions/0023-fixed-shell-anatomy.md)). Where the two
+> disagree, the blueprint wins. This document remains authoritative for the
+> card tokens and palette, the card-face information budget, combat indicator
+> shapes, the identity layer, zone-pile semantics, and legal constraints.
+
+The design source of truth for the web client's presentation vocabulary. The full
+capability list is in [`ui-requirements.md`](ui-requirements.md); the screen
+anatomy and interaction model live in [`ui-blueprint.md`](ui-blueprint.md);
+delivery status belongs in [`../roadmap.md`](../roadmap.md).
 Change tokens in [`clients/web/src/tokens.ts`](../../clients/web/src/tokens.ts) only in
 lockstep with this document.
 
@@ -37,6 +46,11 @@ gray dashboard. The target is the intersection — restrained surfaces with a re
 display face, a glyph language, and disciplined accent color.
 
 ## Tabletop shell
+
+> **Superseded by [`ui-blueprint.md`](ui-blueprint.md) (ADR 0023).** The
+> region model below — floating chrome overlaying the battlefield, the hand
+> drawn inside the scene, the floating tray — is the shipped state, kept here
+> as a record; the blueprint's fixed-shell anatomy replaces it.
 
 Full-bleed regions replace the stacked column. Regions never reorder; they scale,
 condense, or collapse.
