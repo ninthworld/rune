@@ -5,12 +5,14 @@ pure Rust engine owns the rules, a WebSocket server owns sessions and rooms, and
 Pixi, terminal, or automated clients render personalized server views and return issued
 action identifiers.
 
-The project is in active development. The engine can play a deterministic two-player
-creature-combat game to a win, including casting, targeting, the stack, combat, common
-keywords, triggers, auras, and initial replacement effects. The server supports rooms,
-validated decks, reconnect tokens, and decision timers. The web client covers the game
-loop, but its table presentation and interaction affordances still have open usability
-issues. See the [roadmap](docs/roadmap.md) for current work.
+The project is in active development. The engine plays deterministic creature-combat
+games of two to four players to a single winner, including casting, targeting, the stack,
+multiplayer combat with per-attacker targets, elimination, common keywords, triggers,
+auras, and initial replacement effects. The server supports rooms, validated decks,
+reconnect tokens, decision timers, priority automation, free-for-all formats, and
+spectators. The web client covers the full game loop on a tabletop-style table for 2–4
+players, with a read-only spectator mode. See the [roadmap](docs/roadmap.md) for current
+work.
 
 ## Architecture
 

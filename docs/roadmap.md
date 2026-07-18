@@ -1,97 +1,74 @@
 # RUNE roadmap
 
-RUNE is progressing from a deterministic two-player rules implementation toward a clear,
-reliable multiplayer product. Milestones describe user-visible outcomes; issue state alone
-does not prove an outcome is complete.
+RUNE is progressing from a deterministic multiplayer rules implementation toward a product
+where players build their own decks and play format-specific games. Milestones describe
+user-visible outcomes; issue state alone does not prove an outcome is complete.
 
 ## Current state
 
-The engine can play a deterministic two-player creature-combat game through the real server
-protocol to a win. It includes the turn and priority loops, mana and casting, targets and the
-stack, attackers and blockers, combat damage, common combat keywords, counters, auras,
-triggers, initial replacement effects, mulligans, terminal results, and a structured game log
-recorded in `GameState` (ADR 0021).
+The engine plays deterministic games of two to four players through the real server protocol
+to a single winner. It includes the turn and priority loops, mana and casting, targets and
+the stack, multiplayer combat — per-attacker attack targets (#341), multi-defender blocker
+declaration in APNAP order (#344), and the attacking player's combat-damage assignment order
+among multiple blockers (CR 510.1, #346) — combat damage, common combat keywords, counters,
+auras, triggers, initial replacement effects, mulligans, the elimination lifecycle for
+players who lose while others remain (CR 800.4a, #342), terminal results, and a structured
+game log recorded in `GameState` (ADR 0021).
 
-The server provides explicit rooms, validated deck submission, a ready gate, per-tab reconnect,
-optional decision timers, and server-owned priority automation — auto-pass of idle priority
-holds with per-phase stop preferences that survive reconnect (ADR 0020). The catalog contains
-36 functional definitions and a complete basic-land cycle; the bundled starter decks are shared
-by the web client and the full-game agent test. A deterministic, CI-checked compatibility
+The server provides explicit rooms, validated deck submission, a ready gate, per-tab
+reconnect, optional decision timers, server-owned priority automation (ADR 0020), free-for-all
+formats that seat 3–4 players on the engine's multiplayer rules (#349), and spectators: an
+observer joins an in-progress room and receives a structurally redacted `SpectatorView`
+(ADR 0022, #343/#351). The multiplayer view contract carries per-attacker attack targets,
+eliminated state, and explicit seat order (#345). The catalog contains 36 functional
+definitions and a complete basic-land cycle; the deterministic, CI-checked compatibility
 report ([`generated/compatibility.md`](generated/compatibility.md), #258) names every
 supported card and excluded mechanic, with a freshness gate that fails `make check` on drift.
 
-The web client implements the lobby and game flow, targeting, combat selection, stack, game
-over, card inspection, public-zone browsers, keyboard controls, and timer display, and has
-shipped the tabletop overhaul's shell: the chrome visual system and tokens (#293), the
-full-bleed adaptive table shell with its pure layout function (#295), player HUDs (#296),
-the compact turn/phase indicator (#297), anchored decision staging (#298), the collapsible
-stack/activity rail (#299), connection and lobby identity screens (#300), protocol-carried
-display names (#294), and the capability-aware spatial focus model (#301). On that shell it
-ships the comprehension layer — the game-log panel with clickable references and collapsed
-step runs (#260) over structured, redacted log events carried in `GameView` (#259), per-phase
-stop toggles with an auto-pass indicator (#264), and non-blaming rejected-action toasts with
-distinct fizzle log entries (#265) — the battlefield-legibility batch: the procedural
-rune glyph language (#317), type-grouped battlefield bands with land chips, ×N stacking, and
-tapped-footprint reservation (#318), zone piles as findable spatial objects (#319), the
-card-face information budget — keyword glyphs and activated-ability markers at battlefield
-scale (#320), inspect without per-card chrome (#321), and a bundled OFL display face behind
-`--rune-font-display` (#322) — and the state-visibility batch: declared attackers, blockers,
-and marked damage rendered from the view contract, with combat participants never folding
-into stacks (#332); aura attachment carried on `Permanent` and clustered with its host on
-the board and in inspect (#333); and the reconciler's opt-in animate-the-diff layer — row
-migrations, enters, exits, and tap transitions that honor reduced motion and never gate
-input (#334).
+The web client implements the lobby and game flow on the tabletop shell (#293–#301) with the
+comprehension layer (#259–#265), the battlefield-legibility batch (#317–#322), and the
+state-visibility batch (#332–#334). On top of those it renders drawn blocker→attacker combat
+links with focus isolation (#339), surfaces unread log activity after returning to a
+backgrounded tab (#340), declares and renders multiplayer combat — whom each attacker
+attacks — through the real UI (#347), lays out a seat-ordered table for 3–4 players with
+every opponent area keyboard-reachable (#348), and mounts a read-only spectator table with
+a lobby spectate affordance (#351).
 
-Two presentation gaps remain from that batch's neighborhood. The scene computes
-blocker→attacker relationships as `TableScene.combatLinks`, but no renderer consumes them,
-so who-blocks-whom is still read from badges and the log rather than seen (#339). And a
-player returning to a backgrounded tab gets no unread-activity signal, although server-owned
-auto-pass means the game legitimately advances while they are away (#340). One rules-slice
-deviation is now owned by an issue: combat damage among multiple blockers is assigned in
-battlefield order with no player choice, though CR 510.1 grants the attacker's controller
-that ordering (#346).
+A deterministic, seeded 4-player free-for-all full game runs against the real server in the
+normal test gate, with a mid-game elimination and a single winner (#350). Deck selection is
+still limited to the two bundled starter decks; there is no deck construction, no saved
+decks, and no format beyond the starter duel, the permissive defaults, and the free-for-all.
 
 ## Immediate priorities
 
-With the state-visibility batch (#332–#334) landed, M4 is down to two residual gaps and the
-project's weight shifts to M5 — the multiplayer engine, protocol, and client work. Ordered
-by dependency and impact:
+M4 and M5 are complete. The project's weight shifts to M6 — deck construction and
+format-specific play. Ordered by dependency and product impact:
 
-1. Combat-link rendering: draw the blocker→attacker relationships the scene already
-   computes, with focus isolation on crowded boards
-   ([#339](https://github.com/ninthworld/rune/issues/339)) — independent, and #347 builds
-   on its treatment.
-2. The M5 engine roots, in parallel: per-attacker attack targets
-   ([#341](https://github.com/ninthworld/rune/issues/341)) and the elimination lifecycle
-   ([#342](https://github.com/ninthworld/rune/issues/342)); then multi-defender blocker
-   declaration in APNAP order ([#344](https://github.com/ninthworld/rune/issues/344),
-   blocked by #341).
-3. The multiplayer view contract: attack targets, eliminated state, and seat order carried
-   in `GameView`, with per-attacker defender requirements
-   ([#345](https://github.com/ninthworld/rune/issues/345), blocked by #341/#342).
-4. Client multiplayer: the declare-and-render combat flow
-   ([#347](https://github.com/ninthworld/rune/issues/347), blocked by #345) and the 3–4
-   player table layout ([#348](https://github.com/ninthworld/rune/issues/348), fixtures
-   from #345) — parallel tracks.
-5. Free-for-all formats and rooms ([#349](https://github.com/ninthworld/rune/issues/349),
-   blocked by #341/#344/#342), then the deterministic 4-player full-game test through the
-   real server ([#350](https://github.com/ninthworld/rune/issues/350)).
-6. Spectators: the view-model decision
-   ([#343](https://github.com/ninthworld/rune/issues/343), ADR — can start any time) and
-   its implementation ([#351](https://github.com/ninthworld/rune/issues/351), blocked by
-   #343). #350 plus #351 together satisfy the M5 exit criterion.
-7. Damage assignment order for multi-blocked attackers
-   ([#346](https://github.com/ninthworld/rune/issues/346)) — after #341/#344 to avoid
-   reworking the same combat code twice.
-8. Unread-activity surfacing after returning to the tab
-   ([#340](https://github.com/ninthworld/rune/issues/340)) — small and independent; any
-   time.
-
-Real-browser coverage (a smoke path through rendered turns,
-[#279](https://github.com/ninthworld/rune/issues/279), reopened because the #290 canary was
-reverted in #292) stays **deferred** with the rest of the E2E suite (ADR 0011): the M5
-client batch (#347, #348, #351) keeps the in-game UI in flux, and the canvas render path
-remains guarded by component-level tests in the meantime.
+1. The card catalog and format deck rules over the wire
+   ([#367](https://github.com/ninthworld/rune/issues/367)) — independent; the deck
+   builder and commander format consume it.
+2. The deck builder: construct and submit a legal deck from the browsable catalog
+   ([#368](https://github.com/ninthworld/rune/issues/368), blocked by #367).
+3. The saved-decks decision — durable identity and where deck lists live
+   ([#366](https://github.com/ninthworld/rune/issues/366), ADR — can start any time);
+   saved deck lists ([#369](https://github.com/ninthworld/rune/issues/369), blocked by
+   #366 and #368) follow it.
+4. The commander engine roots, in parallel with the deck track: the command zone,
+   commander casting, and tax ([#370](https://github.com/ninthworld/rune/issues/370));
+   then commander damage ([#371](https://github.com/ninthworld/rune/issues/371), blocked
+   by #370).
+5. The commander format — singleton and color-identity validation, 40 life, 2–4 seats,
+   command-zone and damage presentation
+   ([#372](https://github.com/ninthworld/rune/issues/372), blocked by #370/#371, after
+   #367).
+6. Catalog growth while the format work proceeds: double strike
+   ([#373](https://github.com/ninthworld/rune/issues/373)) and continuous
+   keyword-granting effects ([#374](https://github.com/ninthworld/rune/issues/374)) —
+   both independent, each removes a compatibility-report exclusion.
+7. The real-browser smoke path ([#279](https://github.com/ninthworld/rune/issues/279)) —
+   **no longer deferred**: the M5 client batch has landed and the in-game UI is stable;
+   the next client work (#368) touches lobby screens, not the table render path the
+   canary guards. The full E2E suite beyond the canary stays deferred (ADR 0011).
 
 ## Milestones
 
@@ -110,8 +87,8 @@ enter an id directly.
 
 The engine, protocol, and UI flows are implemented and covered by unit and integration tests.
 Reliable canvas rendering and a visible failure state are shipped, as are action
-discoverability and table geography (#277, #278). A real-browser smoke path (#279) stays
-deferred with the E2E suite (ADR 0011).
+discoverability and table geography (#277, #278). The real-browser smoke path (#279) is the
+one open item; it is now unblocked (see Immediate priorities).
 
 ### M3 — A real card pool
 
@@ -137,98 +114,81 @@ fails `make check` if it ever drifts. See
 ### M4 — Readable games
 
 **Outcome:** a newcomer can follow decisions and state changes, inspect public information,
-and complete a game without hidden interaction knowledge.
+and complete a game without hidden interaction knowledge. **Complete.**
 
-Shipped foundations:
+Shipped:
 
 - universal card inspection;
 - graveyard and exile browsers;
 - decision timers with server enforcement and client countdowns;
 - keyboard access for the core play flow;
 - turn, phase, active-player, and priority presentation;
-- visible action affordances and table geography (#277–#278); and
+- visible action affordances and table geography (#277–#278);
 - the client UI overhaul shell — visual system and tokens, full-bleed tabletop shell,
   player HUDs, decision staging, stack/activity rail, identity screens, display names, and
   the spatial focus model (#293–#301, #294);
 - structured, redacted game events carried in `GameView`, recorded by the engine and
   projected per viewer (#259, ADR 0021);
-- the client game-log panel — a readable, scrollable history composed client-side from the
-  structured `GameView` log, with clickable entity/player references and collapsible step
-  runs (#260);
-- server-owned priority automation — auto-pass of idle priority holds with per-phase stop
-  preferences, an auto-pass indicator, and reconnect-safe settings (#264, ADR 0020);
-- rejection and fizzle feedback — non-blaming toasts for rejected in-game actions and
-  distinct countered-versus-fizzled log entries (#265);
-- battlefield-band legibility — type-grouped rows, land chips, ×N stacking of identical
-  permanents, and tier-dependent tapped treatment that reserves the rotated footprint
-  (#318);
-- zone piles as findable spatial objects with a face-up slot for future reveals (#319);
-- the card-face information budget — keyword glyphs, the latent activated-ability marker,
-  and counter badges at battlefield scale, plus a marked-damage badge that lights up once
-  #332 feeds it (#320);
-- the inspect affordance redesign — no permanently visible per-card handles; hover-dwell
-  peek, long-press, selection-surfaced preview, and focusable inspect surfaces (#321);
+- the client game-log panel with clickable references and collapsible step runs (#260);
+- server-owned priority automation with per-phase stops and reconnect-safe settings
+  (#264, ADR 0020);
+- rejection and fizzle feedback (#265);
+- battlefield-band legibility — type-grouped rows, land chips, ×N stacking, and
+  tapped-footprint reservation (#318);
+- zone piles as findable spatial objects (#319);
+- the card-face information budget at battlefield scale (#320);
+- the inspect affordance redesign (#321);
 - the identity layer — the procedural rune glyph language (#317) and the bundled OFL
-  display face behind `--rune-font-display` (#322);
-- combat-state visibility — declared attackers, blockers, marked damage, and
-  blocker→attacker relationships reconstructed from any single `GameView`, with combat
-  participants never folded into ×N stacks (#332);
-- attachment visibility — `attached_to` carried on `Permanent` (contract change), auras
-  clustered with their hosts and never stack-folded, and the relationship inspectable from
-  either side (#333); and
-- the view-diff animation layer — row migrations, enters, exits, and tap transitions that
-  honor reduced motion and never gate input on a live prompt (#334).
-
-Remaining:
-
-- combat-link rendering: the blocker→attacker links the scene computes as
-  `TableScene.combatLinks`, drawn with focus isolation on crowded boards
-  ([#339](https://github.com/ninthworld/rune/issues/339)); and
-- unread activity: a visible signal for log entries that arrived while the tab was
-  backgrounded ([#340](https://github.com/ninthworld/rune/issues/340)).
+  display face (#322);
+- combat-state visibility — declared attackers, blockers, and marked damage reconstructed
+  from any single `GameView` (#332);
+- attachment visibility — `attached_to` on `Permanent`, auras clustered with their hosts
+  (#333);
+- the view-diff animation layer honoring reduced motion (#334);
+- drawn blocker→attacker combat links with focus isolation on crowded boards (#339); and
+- unread-activity surfacing after returning to a backgrounded tab (#340).
 
 ### M5 — More than two
 
-**Outcome:** 3–4 players and spectators can complete free-for-all games.
+**Outcome:** 3–4 players and spectators can complete free-for-all games. **Complete.**
 
-**Exit:** a 4-player free-for-all plays to a single winner with a spectator watching
-([#350](https://github.com/ninthworld/rune/issues/350) +
-[#351](https://github.com/ninthworld/rune/issues/351)).
+**Exit satisfied:** a deterministic 4-player free-for-all plays to a single winner with a
+mid-game elimination through the real server in the standard test gate (#350), and a
+spectator watches a live game through a structurally redacted `SpectatorView` (#351,
+ADR 0022).
 
-The groundwork is further along than the milestone label suggests: `GameState` players,
-turn and priority rotation, mulligans, `GameResult`'s last-player-standing rule, the
-opponent-list view projection, the 2–8-seat lobby (ADR 0012), and the client's per-opponent
-HUD and battlefield bands are already seat-count-generic. The batch closes what is genuinely
-two-player-bound:
-
-- engine: per-attacker attack targets ([#341](https://github.com/ninthworld/rune/issues/341))
-  and multi-defender blocker declaration in APNAP order
-  ([#344](https://github.com/ninthworld/rune/issues/344));
-- engine: the elimination lifecycle — turn/priority skip and CR 800.4a object cleanup
-  ([#342](https://github.com/ninthworld/rune/issues/342));
-- protocol/server: attack targets, eliminated state, and seat order in the view contract
-  ([#345](https://github.com/ninthworld/rune/issues/345));
-- client: multiplayer combat declaration and rendering
-  ([#347](https://github.com/ninthworld/rune/issues/347)) and the 3–4 player table layout
-  ([#348](https://github.com/ninthworld/rune/issues/348));
-- server: free-for-all formats over the existing 2–8-seat rooms
-  ([#349](https://github.com/ninthworld/rune/issues/349)) and the deterministic 4-player
-  full-game test ([#350](https://github.com/ninthworld/rune/issues/350));
-- spectators: the view-model ADR ([#343](https://github.com/ninthworld/rune/issues/343))
-  and the redacted spectator implementation
-  ([#351](https://github.com/ninthworld/rune/issues/351)); and
-- combat completeness while the same code is open: player-chosen damage assignment order
-  ([#346](https://github.com/ninthworld/rune/issues/346)).
+Shipped: per-attacker attack targets (#341), the elimination lifecycle (#342), multi-defender
+blocker declaration in APNAP order (#344), the multiplayer view contract — attack targets,
+eliminated state, seat order (#345), player-chosen combat-damage assignment order
+(CR 510.1, #346), client multiplayer combat declaration and rendering (#347), the 3–4 player
+table (#348), free-for-all formats over the existing 2–8-seat rooms (#349), and spectators
+(#343, #351).
 
 ### M6 — Formats at scale
 
 **Outcome:** players can build decks and play format-specific games on the multiplayer
 foundation.
 
-Expected capabilities include deck construction with server-validated format rules, saved
-deck lists, Commander’s command zone, commander tax and damage, team seating and shared-team
-state for formats such as Two-Headed Giant, larger player layouts, more prompt types, expanded
-automation, and a substantially larger verified card catalog.
+Active. The first batch covers deck construction and the commander foundation:
+
+- protocol/server: the card catalog and per-format deck rules over the wire
+  ([#367](https://github.com/ninthworld/rune/issues/367));
+- client: the deck builder ([#368](https://github.com/ninthworld/rune/issues/368));
+- decision: durable identity and deck persistence
+  ([#366](https://github.com/ninthworld/rune/issues/366), ADR), then saved deck lists
+  ([#369](https://github.com/ninthworld/rune/issues/369));
+- engine: the command zone, commander casting, and tax
+  ([#370](https://github.com/ninthworld/rune/issues/370)) and commander damage
+  ([#371](https://github.com/ninthworld/rune/issues/371));
+- server/protocol/client: the commander format — singleton, color identity, 40 life,
+  2–4 seats ([#372](https://github.com/ninthworld/rune/issues/372)); and
+- catalog: double strike ([#373](https://github.com/ninthworld/rune/issues/373)) and
+  continuous keyword-granting effects
+  ([#374](https://github.com/ninthworld/rune/issues/374)).
+
+Later M6 capabilities stay at outcome level until the first batch lands: team seating and
+shared-team state for formats such as Two-Headed Giant, larger player layouts, more prompt
+types, expanded automation, and a substantially larger verified card catalog.
 
 Original, licensed card artwork may arrive alongside the larger catalog. The card frame is
 designed around an art window from M4 onward (see
