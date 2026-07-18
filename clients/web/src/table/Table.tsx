@@ -715,6 +715,29 @@ export function Table() {
     setSelectedId(null);
   };
 
+  // Fire a targeted action with its first target already chosen — the drag-to-play
+  // drop on a candidate (blueprint §Interaction model): cast + first target in one
+  // gesture. A single-slot spell submits atomically right here; a multi-slot one
+  // continues in the ordinary targeting flow for its remaining slots. The dropped
+  // target is always one of the server-enumerated slot-0 candidates (the overlay
+  // only offers those), and `pick` re-checks it against the session's active slot.
+  const fireOnTarget = (action: ValidAction, target: EntityId): void => {
+    if (!requiresTargets(action)) {
+      fire(action);
+      return;
+    }
+    setSelectedId(null);
+    setMultiSelect(null);
+    const advanced = pick(beginTargeting(action), target);
+    const targets = assembleTargets(advanced);
+    if (targets !== null) {
+      choose(advanced.action, targets);
+      setTargeting(null);
+    } else {
+      setTargeting(advanced);
+    }
+  };
+
   // Pick a target for the active slot. When the last slot is filled, assemble and
   // submit the whole answer atomically (action token + one choice per slot).
   function pickTarget(entityId: EntityId): void {
@@ -931,6 +954,8 @@ export function Table() {
             onPickTarget={multiSelect ? toggleCandidate : pickTarget}
             onPeek={setPeekId}
             onPinInspect={setInspectedId}
+            onPlay={fire}
+            onPlayOnTarget={fireOnTarget}
           />
         </div>
       </div>

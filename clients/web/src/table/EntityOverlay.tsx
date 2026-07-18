@@ -24,17 +24,50 @@
  * an inert hand card) hosts these gestures on a transparent, focusable inspect
  * surface, so inspect reaches every card in every input mode without board noise.
  */
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
-import type { EntityId } from '../protocol';
-import type { RenderedCard, TableScene } from './scene';
-import { hotspot, inspectSurface, overlay, targetHotspot } from './styles';
+import type { EntityId, ValidAction } from '../protocol';
+import type { Rect, RenderedCard, TableScene } from './scene';
+import {
+  dragGhostBox,
+  dropBoardInset,
+  dropTargetRing,
+  hotspot,
+  inspectSurface,
+  overlay,
+  targetHotspot,
+} from './styles';
 import s from './chrome.module.css';
 
 /** Precise-pointer hover-dwell delay before a peek opens (ms). */
 const DWELL_MS = 400;
 /** Touch long-press delay before a peek opens (ms). */
 const LONG_PRESS_MS = 500;
+/** Pointer travel (px) before an armed press becomes a drag rather than a click. */
+const DRAG_THRESHOLD = 6;
+
+/** Whether a point (scene coordinates) lands inside a scene rect. */
+function contains(rect: Rect, x: number, y: number): boolean {
+  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+}
+
+/** The offered action a hand card can be dragged to play, if any: its server-offered
+ * play/cast entry. Presentation only — the drop fires exactly this action. */
+function playActionOf(card: RenderedCard): ValidAction | undefined {
+  if (card.zone !== 'hand') return undefined;
+  return card.actions.find((a) => a.type === 'play_land' || a.type === 'cast_spell');
+}
+
+/** An in-flight drag: the card, the play action it will fire, and the pointer's
+ * current scene position (drives the ghost + drop hit-test). Ephemeral — never
+ * survives a view change, let alone a message. */
+interface DragSession {
+  entityId: EntityId;
+  name: string;
+  action: ValidAction;
+  x: number;
+  y: number;
+}
 
 interface Props {
   /** The scene whose actionable (or targetable) cards get overlay affordances. */
@@ -69,6 +102,21 @@ interface Props {
    * keyboard activate on a card. Absent ⇒ no inspect is reachable from the overlay.
    */
   onPinInspect?: (id: EntityId) => void;
+  /**
+   * Fire an untargeted play/cast dropped on the receiver's battlefield — the
+   * drag-to-play enhancement (blueprint §Interaction model). Dragging ghosts the
+   * card under the pointer and lights the legal drop area; release fires exactly
+   * the server-offered action. Absent ⇒ dragging is disabled; the select-then-act
+   * path is always available, so drag is an enhancement, never required.
+   */
+  onPlay?: (action: ValidAction) => void;
+  /**
+   * Fire a targeted spell dropped on one of its slot-0 candidates: cast + first
+   * target in one gesture (any remaining slots continue in the normal targeting
+   * flow). The candidates come straight from the action's server-enumerated
+   * `requirements` — the overlay derives no legality.
+   */
+  onPlayOnTarget?: (action: ValidAction, target: EntityId) => void;
 }
 
 /** The React pointer handlers the inspect gestures install on a card's layer. */
@@ -159,8 +207,127 @@ export function EntityOverlay({
   onPickTarget,
   onPeek,
   onPinInspect,
+  onPlay,
+  onPlayOnTarget,
 }: Props) {
-  const allCards: RenderedCard[] = [...scene.bands.flatMap((band) => band.cards), ...scene.hand];
+  const allCards: RenderedCard[] = useMemo(
+    () => [...scene.bands.flatMap((band) => band.cards), ...scene.hand],
+    [scene],
+  );
+
+  // ── Drag-to-play (blueprint §Interaction model) ─────────────────────────────
+  // An armed press on a playable hand card becomes a drag once the pointer travels
+  // past the threshold; a shorter press stays an ordinary click (select). The drop
+  // is resolved by hit-testing the pointer against SCENE rects — deterministic
+  // where the DOM reports no geometry (jsdom/SSR), the same choice the focus
+  // engine makes — never by DOM hit-testing.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<DragSession | null>(null);
+  // Swallow exactly one click after a real drag/cancel, so releasing over the
+  // origin card does not also toggle its selection.
+  const swallowClick = useRef(false);
+  const dragEnabled = !targeting && (onPlay !== undefined || onPlayOnTarget !== undefined);
+
+  // A fresh scene (new view) invalidates any in-flight drag: the card, action, or
+  // geometry may be gone. Nothing client-side is load-bearing across messages.
+  useEffect(() => setDrag(null), [scene]);
+
+  const toScene = useCallback((clientX: number, clientY: number): { x: number; y: number } => {
+    const origin = rootRef.current?.getBoundingClientRect();
+    return { x: clientX - (origin?.left ?? 0), y: clientY - (origin?.top ?? 0) };
+  }, []);
+
+  const resolveDrop = useCallback(
+    (action: ValidAction, x: number, y: number): void => {
+      const requirements = action.requirements ?? [];
+      if (requirements.length === 0) {
+        // Untargeted play: the legal drop area is the receiver's battlefield panel.
+        const board = scene.bands.find((band) => band.isLocal)?.rect;
+        if (board && contains(board, x, y)) onPlay?.(action);
+        return;
+      }
+      // Targeted spell: the legal drops are the first slot's server candidates.
+      const candidates = new Set(requirements[0]?.candidates ?? []);
+      const hit = allCards.find(
+        (card) => candidates.has(card.entityId) && contains(card.rect, x, y),
+      );
+      if (hit) onPlayOnTarget?.(action, hit.entityId);
+    },
+    [scene, allCards, onPlay, onPlayOnTarget],
+  );
+
+  /** Arm a drag on pointerdown; it goes live only past the travel threshold. */
+  const armDrag = useCallback(
+    (card: RenderedCard, action: ValidAction, e: ReactPointerEvent): void => {
+      // A secondary/middle press never drags; an environment that reports no
+      // button (some synthetic pointer events) counts as primary.
+      if ((e.button ?? 0) !== 0) return;
+      const start = { x: e.clientX, y: e.clientY };
+      let live = false;
+      const detach = (): void => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('keydown', onKey, true);
+      };
+      const onMove = (ev: PointerEvent): void => {
+        if (!live && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < DRAG_THRESHOLD) {
+          return;
+        }
+        live = true;
+        const p = toScene(ev.clientX, ev.clientY);
+        setDrag({ entityId: card.entityId, name: card.name, action, x: p.x, y: p.y });
+      };
+      // A completed (or cancelled) drag swallows the click the browser fires on
+      // release; the flag self-clears next tick so it can never eat a later,
+      // genuine click when the release landed on a non-interactive area.
+      const swallowNextClick = (): void => {
+        swallowClick.current = true;
+        setTimeout(() => {
+          swallowClick.current = false;
+        }, 0);
+      };
+      const onUp = (ev: PointerEvent): void => {
+        detach();
+        if (!live) return; // an ordinary click — the hotspot's onClick selects
+        setDrag(null);
+        swallowNextClick();
+        const p = toScene(ev.clientX, ev.clientY);
+        resolveDrop(action, p.x, p.y);
+      };
+      // Esc cancels back to the origin slot (blueprint) — nothing fires, and the
+      // shell's own Escape handling is suppressed for this press (the cancel is
+      // the drag's, not the selection's).
+      const onKey = (ev: KeyboardEvent): void => {
+        if (ev.key !== 'Escape' || !live) return;
+        ev.stopPropagation();
+        detach();
+        swallowNextClick();
+        setDrag(null);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('keydown', onKey, true);
+    },
+    [toScene, resolveDrop],
+  );
+
+  /** The select handler, swallowing the click a completed drag releases. */
+  const selectGuarded = useCallback(
+    (id: EntityId): void => {
+      if (swallowClick.current) {
+        swallowClick.current = false;
+        return;
+      }
+      onSelect(id);
+    },
+    [onSelect],
+  );
+
+  const dragBoard = drag && (drag.action.requirements?.length ?? 0) === 0;
+  const dragCandidates = drag
+    ? new Set(drag.action.requirements?.[0]?.candidates ?? [])
+    : new Set<EntityId>();
+  const localBoard = scene.bands.find((band) => band.isLocal)?.rect;
 
   // In targeting mode the only interactive cards are the server-listed candidates;
   // otherwise it is every card that carries a subject-action.
@@ -174,7 +341,28 @@ export function EntityOverlay({
   const gesturesFor = useInspectGestures({ pointer, disabled: targeting, onPeek, onPinInspect });
 
   return (
-    <div style={overlay(scene.width, scene.height)}>
+    <div ref={rootRef} style={overlay(scene.width, scene.height)}>
+      {/*
+       * Drag-to-play affordances: while a playable hand card is in flight the legal
+       * drop area lights — a gold inset on the receiver's battlefield for an
+       * untargeted play, orange rings on the server-listed candidates for a
+       * targeted spell. All non-interactive; the drop resolves via scene rects.
+       */}
+      {drag && dragBoard && localBoard && (
+        <div data-testid="drop-board" aria-hidden="true" style={dropBoardInset(localBoard)} />
+      )}
+      {drag &&
+        !dragBoard &&
+        allCards
+          .filter((card) => dragCandidates.has(card.entityId))
+          .map((card) => (
+            <div
+              key={`drop-${card.entityId}`}
+              data-testid={`drop-target-${card.entityId}`}
+              aria-hidden="true"
+              style={dropTargetRing(card.rect)}
+            />
+          ))}
       {/*
        * Inspect surfaces (issue #321): a transparent, focusable layer over every card
        * that carries NO select/target hotspot, so inspect reaches an opponent's
@@ -227,6 +415,18 @@ export function EntityOverlay({
         // Selecting routes the actions to the action dock (ADR 0023 commitment 2)
         // — no per-card popup ever renders on the entity.
         const actionHint = card.actions.map((action) => action.label).join(', ');
+        // A playable hand card is also draggable (the pointer enhancement): its
+        // pointerdown arms a drag that goes live past the travel threshold, while
+        // a plain click still selects — drag is layered ON the universal path,
+        // never replacing it (keyboard/AT interact exactly as before).
+        const playAction = dragEnabled ? playActionOf(card) : undefined;
+        const onPointerDown =
+          playAction !== undefined
+            ? (e: ReactPointerEvent): void => {
+                gestures.onPointerDown(e);
+                armDrag(card, playAction, e);
+              }
+            : gestures.onPointerDown;
         return (
           <button
             key={card.entityId}
@@ -234,15 +434,24 @@ export function EntityOverlay({
             data-testid={`entity-${card.entityId}`}
             data-entity={card.entityId}
             data-actionable="true"
+            data-draggable={playAction !== undefined || undefined}
             aria-pressed={selected}
             aria-label={`${card.name} — playable: ${actionHint}`}
-            onClick={() => onSelect(card.entityId)}
+            onClick={() => selectGuarded(card.entityId)}
             className={s.canvasControl}
             style={hotspot(card.rect, selected)}
             {...gestures}
+            onPointerDown={onPointerDown}
           />
         );
       })}
+      {/* The dragged card's ghost rides under the pointer; its origin slot stays
+          open in the hand (the scene never re-lays-out mid-drag). */}
+      {drag && (
+        <div data-testid="drag-ghost" aria-hidden="true" style={dragGhostBox(drag.x, drag.y)}>
+          {drag.name}
+        </div>
+      )}
     </div>
   );
 }
