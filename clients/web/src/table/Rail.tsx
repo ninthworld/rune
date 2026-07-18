@@ -32,6 +32,7 @@ import type { EntityId, GameView } from '../protocol';
 import { cx } from '../chrome/cx';
 import { GameLog } from './GameLog';
 import { StackPanel } from './StackPanel';
+import { useUnreadLog } from './useUnreadLog';
 import type { Rect } from './scene';
 import { railBadgeBox, railFloat, regionBox } from './styles';
 import s from './chrome.module.css';
@@ -79,6 +80,10 @@ export function Rail({
   const [override, setOverride] = useState<boolean | null>(null);
   useEffect(() => setOverride(null), [view]);
 
+  // Unread game-log activity after returning to the tab (issue #340). Ephemeral, kept
+  // here so both the collapsed badge and the docked log share one marker.
+  const { unreadCount, isUnseen, markSeen } = useUnreadLog(view.log ?? []);
+
   const count = view.stack.length;
   const logCount = view.log?.length ?? 0;
   // Nothing on the stack AND no log ⇒ no rail chrome at all; it claims no meaningful
@@ -95,10 +100,11 @@ export function Rail({
     // The badge counts the stack when populated, else the log window — either way it is
     // a single touch target that expands the activity rail.
     const badgeCount = count > 0 ? count : logCount;
+    const unreadSuffix = unreadCount > 0 ? ` — ${unreadCount} new` : '';
     const label =
       count > 0
-        ? `Stack: ${count} object${count === 1 ? '' : 's'} — expand activity rail`
-        : `Game log: ${logCount} entr${logCount === 1 ? 'y' : 'ies'} — expand activity rail`;
+        ? `Stack: ${count} object${count === 1 ? '' : 's'}${unreadSuffix} — expand activity rail`
+        : `Game log: ${logCount} entr${logCount === 1 ? 'y' : 'ies'}${unreadSuffix} — expand activity rail`;
     return (
       <button
         type="button"
@@ -110,6 +116,11 @@ export function Rail({
         onClick={() => setOverride(true)}
       >
         <span className={s.railBadgeCount}>{badgeCount}</span>
+        {/* Unread game-log activity (issue #340): a non-hue-only dot, with the count
+         * carried in the button's aria-label above so it is AT-visible. */}
+        {unreadCount > 0 && (
+          <span className={s.railBadgeUnread} data-testid="rail-unread" aria-hidden="true" />
+        )}
       </button>
     );
   }
@@ -140,7 +151,14 @@ export function Rail({
        * history composed client-side from `view.log`, with clickable entity/player
        * references that ask the table to highlight their object.
        */}
-      <GameLog view={view} onHighlight={onHighlight} highlightedId={highlightedId} />
+      <GameLog
+        view={view}
+        onHighlight={onHighlight}
+        highlightedId={highlightedId}
+        isUnseen={isUnseen}
+        unreadCount={unreadCount}
+        onSeen={markSeen}
+      />
     </div>
   );
 }
