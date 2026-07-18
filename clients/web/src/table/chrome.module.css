@@ -1519,24 +1519,25 @@
 }
 
 /* ── Table geography (labels, boundaries, zone piles) ──────────────────────── */
+/* The pile column's geometry is inline (`pileColumnBox`, from the scene's reserved
+ * `Band.pileRect`); this class only names the layer for its children. */
 .zonePiles {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--rune-space-4);
   pointer-events: auto;
 }
 /*
- * A card-shaped zone pile (issue #319): library / graveyard / exile as findable
- * objects, not text chips. The glyph (or a revealed face-up card) sits in a
- * card-proportioned frame with the count below; the whole thing is one 44px-tall
- * touch target whether it is a button (graveyard/exile) or a static pile (library).
+ * A card-shaped zone pile (issue #319 + pile column): library / graveyard / exile
+ * as table furniture, findable at a glance. The glyph (or a revealed face-up card)
+ * sits in a card-proportioned frame wearing the count as a corner badge; a small
+ * zone name sits beneath. The whole pile is one ≥44px touch target whether it is a
+ * button (graveyard/exile) or a static pile (library).
  */
 .zonePile {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  width: 34px;
+  gap: 3px;
+  width: 56px;
+  min-height: var(--rune-touch);
   padding: 0;
   border: none;
   background: none;
@@ -1561,16 +1562,27 @@ button.zonePile:focus-visible {
 }
 /* The card-proportioned frame the glyph or a revealed top card renders inside. */
 .zonePileFace {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 44px;
+  width: 44px;
+  height: 60px;
   border-radius: var(--rune-radius-xs);
   border: 1px solid var(--rune-border);
   background: var(--rune-region-bg-soft);
   color: var(--rune-text-muted);
-  overflow: hidden;
+}
+/* A pile with several cards reads as a physical stack: offset edge sheets. */
+.zonePileFace[data-stacked] {
+  box-shadow:
+    2px 2px 0 rgba(255, 255, 255, 0.05),
+    4px 4px 0 rgba(255, 255, 255, 0.03);
+}
+/* An empty pile stays findable as a faint outlined slot — geography never vanishes. */
+.zonePileFace[data-empty] {
+  border-style: dashed;
+  opacity: 0.55;
 }
 /* The library reads as hidden information — a card back behind its glyph. */
 .zonePileFace[data-zone='library'] {
@@ -1578,11 +1590,57 @@ button.zonePile:focus-visible {
   background: var(--rune-cardback);
   color: var(--rune-text);
 }
+/* The count badge: the value's single home, worn on the pile's corner. */
 .zonePileCount {
-  font-size: var(--rune-type-caption);
-  font-weight: 600;
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-raised-bg);
+  border: 1px solid var(--rune-border-strong);
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
   color: var(--rune-text);
+  line-height: 1.4;
+  text-align: center;
+}
+.zonePileName {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
   line-height: 1;
+}
+/* The graveyard's face-up top card: the minimal honest face — the frame color band
+ * (game information, tinted inline from the shared card tokens) over the name. */
+.pileTopCard {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--rune-radius-xs);
+  border: 1px solid;
+  background: var(--rune-chrome-bg-alt);
+  overflow: hidden;
+}
+.pileTopCardBand {
+  height: 6px;
+  flex: none;
+  opacity: 0.85;
+}
+.pileTopCardName {
+  flex: 1;
+  padding: 2px 3px;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--rune-text);
+  overflow: hidden;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 .pileButton {
   display: inline-flex;

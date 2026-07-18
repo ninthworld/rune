@@ -298,6 +298,28 @@ export function geographyLayer(width: number, height: number): CSSProperties {
   };
 }
 
+/**
+ * The zone-pile column (§Zone piles): the reserved right-edge strip of a band the
+ * scene computed (`Band.pileRect`), where the library / graveyard / exile stack
+ * parks as table furniture. Geometry only; the pile look is `chrome.module.css`.
+ */
+export function pileColumnBox(rect: Rect): CSSProperties {
+  return {
+    position: 'absolute',
+    left: rect.x,
+    top: rect.y,
+    width: rect.w,
+    height: rect.h,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+    boxSizing: 'border-box',
+    // The geography layer is pointer-events: none; the piles opt back in.
+    pointerEvents: 'auto',
+  };
+}
+
 /** A player's bounded battlefield lane. The local lane is ringed like its tile. */
 export function bandRegion(rect: Rect, isLocal: boolean): CSSProperties {
   return {

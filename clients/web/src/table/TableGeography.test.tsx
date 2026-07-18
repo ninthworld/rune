@@ -97,3 +97,39 @@ describe('TableGeography (issue #278)', () => {
     expect(screen.queryByTestId('row-label-p1-creatures')).toBeNull();
   });
 });
+
+describe('TableGeography pile column (zone piles as table furniture)', () => {
+  afterEach(cleanup);
+
+  it('parks the piles in the band pile column, not the header strip', () => {
+    const scene = buildTableScene(SAMPLE_GAME_VIEW);
+    render(<TableGeography scene={scene} onOpenZone={() => {}} />);
+    for (const band of scene.bands) {
+      const column = screen.getByTestId(`pile-column-${band.playerId}`);
+      expect(column.style.left).toBe(`${band.pileRect.x}px`);
+      expect(column.style.top).toBe(`${band.pileRect.y}px`);
+      // All three piles live inside the column.
+      expect(column.querySelectorAll('[data-testid$="-pile-' + band.playerId + '"]').length + column.querySelectorAll('[data-testid^="table-"]').length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('shows the public graveyard top card face-up in place', () => {
+    const view = normalizeGameView({
+      you: 'p1',
+      my_hand: [],
+      opponents: [],
+      battlefield: [],
+      graveyards: [
+        {
+          player_id: 'p1',
+          cards: [{ id: 'g1', name: 'Cinder Shock', type_line: 'Instant', mana_cost: '{R}' }],
+        },
+      ],
+      phase: 'precombat_main',
+      valid_actions: [],
+    });
+    render(<TableGeography scene={buildTableScene(view)} onOpenZone={() => {}} />);
+    const top = screen.getByTestId('pile-top-card');
+    expect(top.textContent).toContain('Cinder Shock');
+  });
+});

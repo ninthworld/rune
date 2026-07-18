@@ -23,8 +23,15 @@
 import { Fragment } from 'react';
 import type { PlayerId } from '../protocol';
 import type { TableScene } from './scene';
-import { bandRegion, emptyBandHint, geographyLayer, regionHeader, rowLabel } from './styles';
-import { ZonePile } from './ZonePile';
+import {
+  bandRegion,
+  emptyBandHint,
+  geographyLayer,
+  pileColumnBox,
+  regionHeader,
+  rowLabel,
+} from './styles';
+import { PileTopCard, ZonePile } from './ZonePile';
 import s from './chrome.module.css';
 
 /**
@@ -76,38 +83,77 @@ export function TableGeography({ scene, onOpenZone }: Props) {
             <span data-testid={`band-label-${band.playerId}`} className={s.regionLabel}>
               {band.label}
             </span>
-            {/*
-             * Zone piles (issue #319): findable card-shaped objects, not text chips,
-             * parked in this lane's corner. The library is count-only (hidden info);
-             * graveyard/exile open their browsers when the board is interactive. Each
-             * count lives here and nowhere else (the HUD no longer repeats them).
-             */}
-            <div className={s.zonePiles}>
-              <ZonePile
-                zone="library"
-                playerLabel={band.label}
-                count={band.zones.library}
-                testId={`library-pile-${band.playerId}`}
-              />
-              {onOpenZone && (
-                <>
-                  <ZonePile
-                    zone="graveyard"
-                    playerLabel={band.label}
-                    count={band.zones.graveyard}
-                    onOpen={() => onOpenZone(band.playerId, 'graveyard')}
-                    testId={`table-graveyard-${band.playerId}`}
-                  />
-                  <ZonePile
-                    zone="exile"
-                    playerLabel={band.label}
-                    count={band.zones.exile}
-                    onOpen={() => onOpenZone(band.playerId, 'exile')}
-                    testId={`table-exile-${band.playerId}`}
-                  />
-                </>
-              )}
-            </div>
+          </div>
+          {/*
+           * Zone piles (issue #319 + pile column): findable card-shaped objects
+           * parked in the reserved column of this lane — table furniture, not header
+           * chrome. The library is count-only (hidden info) and reads as a stacked
+           * card back; the graveyard shows its public top card face-up in place;
+           * graveyard/exile open their browsers when the board is interactive. Each
+           * count lives here and nowhere else (the HUD never repeats them).
+           */}
+          <div
+            className={s.zonePiles}
+            style={pileColumnBox(band.pileRect)}
+            data-testid={`pile-column-${band.playerId}`}
+          >
+            <ZonePile
+              zone="library"
+              playerLabel={band.label}
+              count={band.zones.library}
+              testId={`library-pile-${band.playerId}`}
+            />
+            {onOpenZone ? (
+              <>
+                <ZonePile
+                  zone="graveyard"
+                  playerLabel={band.label}
+                  count={band.zones.graveyard}
+                  onOpen={() => onOpenZone(band.playerId, 'graveyard')}
+                  faceUp={
+                    band.zones.graveyardTop && (
+                      <PileTopCard
+                        name={band.zones.graveyardTop.name}
+                        colorIdentity={band.zones.graveyardTop.colorIdentity}
+                      />
+                    )
+                  }
+                  testId={`table-graveyard-${band.playerId}`}
+                />
+                <ZonePile
+                  zone="exile"
+                  playerLabel={band.label}
+                  count={band.zones.exile}
+                  onOpen={() => onOpenZone(band.playerId, 'exile')}
+                  testId={`table-exile-${band.playerId}`}
+                />
+              </>
+            ) : (
+              // A read-only board (game over) keeps the piles visible — only the
+              // browser affordance is gone.
+              <>
+                <ZonePile
+                  zone="graveyard"
+                  playerLabel={band.label}
+                  count={band.zones.graveyard}
+                  faceUp={
+                    band.zones.graveyardTop && (
+                      <PileTopCard
+                        name={band.zones.graveyardTop.name}
+                        colorIdentity={band.zones.graveyardTop.colorIdentity}
+                      />
+                    )
+                  }
+                  testId={`graveyard-pile-${band.playerId}`}
+                />
+                <ZonePile
+                  zone="exile"
+                  playerLabel={band.label}
+                  count={band.zones.exile}
+                  testId={`exile-pile-${band.playerId}`}
+                />
+              </>
+            )}
           </div>
         </Fragment>
       ))}
