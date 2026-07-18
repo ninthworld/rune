@@ -151,7 +151,17 @@
   .pip { width: 10px; height: 10px; border-radius: 50%; font: 700 7px var(--body); display: grid; place-items: center; color: #1b1b1f; background: #cacbcf; }
   .pip.W { background:#f1ebd4; } .pip.U { background:#afcbe9; } .pip.B { background:#a79db5; color:#241d2e;}
   .pip.R { background:#e5a192; } .pip.G { background:#a3c095; }
-  .card .art { flex: 1; display: grid; place-items: center; color: color-mix(in srgb, var(--ci) 34%, transparent); font: 700 22px var(--display); }
+  .card .art {
+    flex: 1; position: relative; overflow: hidden; border-radius: 0 0 3px 3px;
+  }
+  .card .art::before { /* grain */
+    content: ''; position: absolute; inset: 0; opacity: 0.35; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  }
+  .card .art::after { /* bottom scrim so PT/keywords read over art */
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 34%;
+    background: linear-gradient(180deg, transparent, rgba(10,11,14,0.75));
+  }
   .card .kw { position: absolute; left: 3px; bottom: 15px; display: flex; gap: 2px; color: #c6cbd2; font-size: 8px; }
   .card .pt {
     position: absolute; right: -3px; bottom: -3px; background: var(--ci); color: #14161a;
@@ -392,6 +402,22 @@
 /* fake worst-case state, rendered procedurally so density is easy to tune */
 const KW = { flying: '↟', deathtouch: '☠', firststrike: '⚡', vigilance: '👁' };
 
+/* seeded painterly placeholder art: stands in for real per-card images so the
+   with-art path is judged accurately. hue seeded by name, biased to frame color. */
+const CI_HUE = { W: 45, U: 210, B: 275, R: 12, G: 130, M: 40, C: 220, L: 32 };
+function artStyle(name, ci) {
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const base = CI_HUE[ci] ?? 200;
+  const h1 = (base + (h % 40) - 20 + 360) % 360;
+  const h2 = (base + 150 + (h % 70)) % 360;
+  const x1 = 15 + (h % 55), y1 = 10 + ((h >> 3) % 45);
+  const x2 = 80 - ((h >> 5) % 40), ang = 130 + (h % 90);
+  return `background:` +
+    `radial-gradient(95% 75% at ${x1}% ${y1}%, hsla(${h1},58%,60%,0.85), transparent 62%),` +
+    `radial-gradient(110% 95% at ${x2}% 88%, hsla(${h2},40%,32%,0.9), transparent 72%),` +
+    `linear-gradient(${ang}deg, hsl(${h1},34%,30%), hsl(${(h1 + 45) % 360},38%,12%));`;
+}
+
 function pips(cost) {
   return cost.map(c => `<span class="pip ${/[WUBRG]/.test(c) ? c : ''}">${c}</span>`).join('');
 }
@@ -405,7 +431,7 @@ function card(o, tier) {
       ${o.atkTag ? `<span class="atk-tag">${o.atkTag}</span>` : ''}
       ${o.tapped && !o.tapWrap ? `<span class="tapmark">⟳</span>` : ''}
       <div class="head"><span class="nm">${o.n}</span><span class="cost">${pips(o.c || [])}</span></div>
-      <div class="art">${o.n[0]}</div>
+      <div class="art" style="${artStyle(o.n, o.ci)}"></div>
       ${o.kw ? `<span class="kw">${o.kw.map(k => KW[k]).join(' ')}</span>` : ''}
       ${o.pt ? `<span class="pt">${o.pt}</span>` : ''}
       ${o.cnt ? `<span class="cnt">+${o.cnt}</span>` : ''}
