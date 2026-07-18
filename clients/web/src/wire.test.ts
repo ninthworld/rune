@@ -44,6 +44,7 @@ describe('parseGameView', () => {
       phase: 'upkeep',
       turn: 0,
       active_player: '',
+      seat_order: [],
       mana_pool: [],
       priority_player: undefined,
       valid_actions: [],
@@ -152,6 +153,56 @@ describe('parseGameView', () => {
     // The unattached permanent has no host; the aura names its host verbatim.
     expect(view.battlefield[0]!.attached_to).toBeUndefined();
     expect(view.battlefield[1]!.attached_to).toBe('bear');
+  });
+
+  it('normalizes multiplayer combat + seat order, defaulting omitted fields (issue #345)', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'declare_blockers',
+        active_player: 'p0',
+        seat_order: ['p0', 'p1', 'p2'],
+        opponents: [
+          { player_id: 'p1', hand_size: 3, life: 20, library_size: 40, eliminated: true },
+          { player_id: 'p2', hand_size: 5, life: 12, library_size: 38 },
+        ],
+        battlefield: [
+          {
+            id: 'atk',
+            controller: 'p0',
+            owner: 'p0',
+            attacking: true,
+            attacking_player: 'p2',
+            card: { id: 'atk', name: 'Raider', type_line: 'Creature — Orc' },
+          },
+        ],
+      }),
+    );
+    // Seat order rides through verbatim; the attacker names whom it attacks.
+    expect(view.seat_order).toEqual(['p0', 'p1', 'p2']);
+    expect(view.battlefield[0]!.attacking_player).toBe('p2');
+    // Eliminated flag carried on the opponent it applies to; absent ⇒ still in.
+    expect(view.opponents[0]!.eliminated).toBe(true);
+    expect(view.opponents[1]!.eliminated).toBeUndefined();
+  });
+
+  it('defaults omitted multiplayer fields for a two-player / older view (issue #345)', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'declare_blockers',
+        battlefield: [
+          {
+            id: 'atk',
+            controller: 'p1',
+            owner: 'p1',
+            attacking: true,
+            card: { id: 'atk', name: 'Bear', type_line: 'Creature — Bear' },
+          },
+        ],
+      }),
+    );
+    expect(view.seat_order).toEqual([]);
+    expect(view.battlefield[0]!.attacking).toBe(true);
+    expect(view.battlefield[0]!.attacking_player).toBeUndefined();
   });
 
   it('ignores unknown fields for forward compatibility', () => {

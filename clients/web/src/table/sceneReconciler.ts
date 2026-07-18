@@ -42,10 +42,24 @@
  * No game logic: the reconciler only reuses/positions the display objects the
  * scene already describes. Legality, cost, and effect are never computed here.
  */
+import { Graphics } from 'pixi.js';
 import type { Container } from 'pixi.js';
 import { buildCardDisplay, buildChipDisplay, cardVisualSignature } from '../card/cardFactory';
 import type { EntityId } from '../protocol';
-import type { RenderedCard, TableScene } from './scene';
+import type { CombatLink, RenderedCard, Rect, TableScene } from './scene';
+import {
+  doubledStroke,
+  linkAlpha,
+  positionLinks,
+  selectVisibleLinks,
+  type PositionedLink,
+} from './combatLinks';
+import { COMBAT_LINK } from '../tokens';
+
+/** Parse a `#rrggbb` token to the numeric form Pixi wants. */
+function hexColor(hex: string): number {
+  return parseInt(hex.replace('#', ''), 16);
+}
 
 /** Build a card's display object, dispatching a land chip to the chip renderer. */
 function buildDisplay(card: RenderedCard): Container {
@@ -157,6 +171,21 @@ export class SceneReconciler {
   /** Leaving cards fading out; destroyed when their fade completes (issue #334). */
   private exits: FadeTween[] = [];
 
+  /** The combat-link overlay (issue #339): a single Graphics layer, kept on top of the
+   * cards, that draws each blocker→attacker connector. Redrawn on reconcile and — while
+   * a view-diff animation is in flight — each frame, so links track their endpoints. */
+  private readonly linkLayer = new Graphics();
+
+  /** The blocker→attacker links of the latest scene (issue #339). */
+  private combatLinks: CombatLink[] = [];
+
+  /** Each present card's footprint, for locating a link endpoint's centre. */
+  private readonly rects = new Map<EntityId, Rect>();
+
+  /** The focused/selected/hovered participant whose links are isolated on a crowded
+   * board, or `null` to draw every link (issue #339). Ephemeral presentation. */
+  private isolatedId: EntityId | null = null;
+
   /**
    * @param root the container to mutate; the caller parents it under the stage.
    * @param options set `animate` to enable the animate-the-diff layer (issue #334).
@@ -164,6 +193,9 @@ export class SceneReconciler {
   constructor(root: Container, options: ReconcilerOptions = {}) {
     this.root = root;
     this.animation = resolveAnimation(options.animate);
+    // The link overlay is passive: it never intercepts pointer input, so a combat link
+    // can never become a hit-target or delay a live prompt (issue #339).
+    this.linkLayer.eventMode = 'none';
   }
 
   /** Whether transitions should be tweened (enabled and not reduced-motion). */
@@ -184,9 +216,12 @@ export class SceneReconciler {
     const present = new Set<EntityId>();
     const ordered: Container[] = [];
     const animating = this.animating;
+    this.combatLinks = scene.combatLinks;
+    this.rects.clear();
 
     for (const card of cards) {
       present.add(card.entityId);
+      this.rects.set(card.entityId, card.rect);
       const signature = cardVisualSignature(card.data, card.tier);
       const cached = this.cache.get(card.entityId);
 
@@ -237,10 +272,64 @@ export class SceneReconciler {
     }
 
     // Reassert draw order to match a fresh mount. Leaving cards mid-fade sit beneath
-    // the live set so an incoming card is never occluded by one on its way out.
+    // the live set so an incoming card is never occluded by one on its way out. The
+    // combat-link overlay sits on top of every card so links are never occluded.
     this.root.removeChildren();
     for (const exit of this.exits) this.root.addChild(exit.display);
     for (const display of ordered) this.root.addChild(display);
+    // The link overlay is parented (on top) only when there are links to draw, so a
+    // board with no combat carries no extra display node — a fresh mount of a
+    // link-free scene is byte-identical to before this layer existed.
+    if (this.combatLinks.length > 0) this.root.addChild(this.linkLayer);
+    this.drawLinks();
+  }
+
+  /**
+   * Isolate the combat links of a focused/selected/hovered participant (issue #339):
+   * on a crowded board only that object's links draw, instead of every line at once.
+   * `null` clears the isolation (all links draw). Ephemeral presentation — it only
+   * redraws the overlay, never a scene or hit-target.
+   */
+  setIsolation(entityId: EntityId | null): void {
+    if (this.isolatedId === entityId) return;
+    this.isolatedId = entityId;
+    this.drawLinks();
+  }
+
+  /** The current on-screen centre of a card, from wherever it renders *now* (possibly
+   * mid-tween), or `undefined` if it is not on stage. Lets links track their endpoints
+   * during a view-diff animation (issue #334/#339). */
+  private centerOf(id: EntityId): { x: number; y: number } | undefined {
+    const display = this.cache.get(id)?.display;
+    const rect = this.rects.get(id);
+    if (!display || !rect) return undefined;
+    return { x: display.position.x + rect.w / 2, y: display.position.y + rect.h / 2 };
+  }
+
+  /** Redraw the combat-link overlay from the current card positions and isolation.
+   * Passive pixels only — the layer has no hit area and never intercepts input. */
+  private drawLinks(): void {
+    this.linkLayer.clear();
+    if (this.combatLinks.length === 0) return;
+    const visible = selectVisibleLinks(this.combatLinks, this.isolatedId);
+    const alpha = linkAlpha(this.combatLinks.length, this.isolatedId);
+    const positioned = positionLinks(visible, (id) => this.centerOf(id));
+    for (const pl of positioned) this.drawLink(pl, alpha);
+  }
+
+  /** Draw one positioned link as a doubled stroke with a node at the blocker end. */
+  private drawLink(pl: PositionedLink, alpha: number): void {
+    const color = hexColor(COMBAT_LINK.color);
+    this.linkLayer.lineStyle({ width: COMBAT_LINK.strokeWidth, color, alpha });
+    for (const [a, b] of doubledStroke(pl.from, pl.to)) {
+      this.linkLayer.moveTo(a.x, a.y);
+      this.linkLayer.lineTo(b.x, b.y);
+    }
+    // A small node at the blocker end marks the link's direction (blocker → attacker).
+    this.linkLayer.lineStyle(0);
+    this.linkLayer.beginFill(color, alpha);
+    this.linkLayer.drawCircle(pl.from.x, pl.from.y, COMBAT_LINK.nodeRadius);
+    this.linkLayer.endFill();
   }
 
   /**
@@ -267,6 +356,7 @@ export class SceneReconciler {
   advance(now: number): void {
     if (this.animation === null) return;
     const { duration } = this.animation;
+    const hadMoves = this.moves.size > 0;
 
     for (const [id, tween] of this.moves) {
       const display = this.cache.get(id)?.display;
@@ -302,6 +392,10 @@ export class SceneReconciler {
       }
       return true;
     });
+
+    // Redraw the combat links from the moved positions so they track their endpoints
+    // while cards ease to new spots (issue #339); only while cards are actually moving.
+    if (hadMoves && this.combatLinks.length > 0) this.drawLinks();
   }
 
   /** Whether any transition is still in flight (issue #334); false when un-animated. */
@@ -335,11 +429,22 @@ export class SceneReconciler {
       this.root.removeChild(exit.display);
       exit.display.destroy({ children: true });
     }
+    this.linkLayer.clear();
+    this.root.removeChild(this.linkLayer);
     this.cache.clear();
     this.targets.clear();
     this.moves.clear();
     this.fades.clear();
     this.exits = [];
+    this.rects.clear();
+    this.combatLinks = [];
+  }
+
+  /** How many combat links are currently drawn — the visible set after isolation
+   * filtering and endpoint resolution (issue #339). For renderer-level tests. */
+  drawnLinkCount(): number {
+    const visible = selectVisibleLinks(this.combatLinks, this.isolatedId);
+    return positionLinks(visible, (id) => this.centerOf(id)).length;
   }
 }
 

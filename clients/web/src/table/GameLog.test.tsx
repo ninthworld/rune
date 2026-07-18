@@ -19,6 +19,7 @@ function viewWith(log: GameLogEntry[], names: Record<string, string> = {}): Game
     phase: 'precombat_main',
     turn: 1,
     active_player: 'p1',
+    seat_order: [],
     mana_pool: [],
     valid_actions: [],
     log,
@@ -170,5 +171,49 @@ describe('GameLog (issue #260)', () => {
     const freshText = screen.getByTestId('game-log-list').textContent;
 
     expect(freshText).toBe(watchedText);
+  });
+
+  // ----- Unread activity (issue #340) -----
+
+  it('marks unseen entries distinctly with an AT-visible "New:" prefix', () => {
+    const entries: GameLogEntry[] = [
+      { sequence: 1, event: { type: 'hand_kept', player: 'p1' } },
+      { sequence: 2, event: { type: 'cards_drawn', player: 'p2', count: 1 } },
+    ];
+    render(
+      <GameLog view={viewWith(entries, NAMES)} isUnseen={(seq) => seq === 2} unreadCount={1} />,
+    );
+    const seen = screen.getByTestId('log-entry-1');
+    const unseen = screen.getByTestId('log-entry-2');
+    expect(seen.getAttribute('data-unseen')).toBeNull();
+    expect(unseen.getAttribute('data-unseen')).toBe('true');
+    // The distinction has a text form for assistive technology, not hue alone.
+    expect(unseen.textContent).toContain('New:');
+  });
+
+  it('offers a jump-to-newest affordance that reports the log seen', () => {
+    const entries: GameLogEntry[] = [
+      { sequence: 1, event: { type: 'hand_kept', player: 'p1' } },
+      { sequence: 2, event: { type: 'cards_drawn', player: 'p2', count: 1 } },
+    ];
+    const onSeen = vi.fn();
+    render(
+      <GameLog
+        view={viewWith(entries, NAMES)}
+        isUnseen={(seq) => seq === 2}
+        unreadCount={1}
+        onSeen={onSeen}
+      />,
+    );
+    const jump = screen.getByTestId('log-unread');
+    expect(jump.getAttribute('aria-label')).toContain('1 new');
+    fireEvent.click(jump);
+    expect(onSeen).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no unread affordance when nothing is unread', () => {
+    const entries: GameLogEntry[] = [{ sequence: 1, event: { type: 'hand_kept', player: 'p1' } }];
+    render(<GameLog view={viewWith(entries, NAMES)} unreadCount={0} />);
+    expect(screen.queryByTestId('log-unread')).toBeNull();
   });
 });

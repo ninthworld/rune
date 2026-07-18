@@ -74,6 +74,9 @@ export interface OpponentView {
   graveyard_size: number;
   /** Free-form status labels (e.g. `"monarch"`) for display only. */
   statuses?: string[];
+  /** Whether this opponent has been eliminated — they left the game (CR 800.4a,
+   * issue #342/#345). Omitted (treated as `false`) in a two-player game. */
+  eliminated?: boolean;
 }
 
 /**
@@ -117,6 +120,13 @@ export interface Permanent {
    * Omitted (treated as `false`) when it is not attacking.
    */
   attacking?: boolean;
+  /**
+   * The defending player this permanent is attacking (CR 508.1a) as their
+   * {@link EntityId} — the multiplayer generalization of {@link attacking} (issue
+   * #341/#345). Omitted when not attacking; a two-player client may ignore it since
+   * the sole opponent is the only defender. Server-computed; never derived.
+   */
+  attacking_player?: EntityId;
   /**
    * The permanent this one is blocking, if it was declared as a blocker this combat
    * (CR 509): the attacker's {@link EntityId}. Omitted when it is not blocking.
@@ -462,6 +472,13 @@ export interface GameView {
    * it.
    */
   active_player: PlayerId;
+  /**
+   * The table's seat order: every player id (`p0`, `p1`, …) in seat order, including
+   * the receiver and any eliminated players (issue #345). The explicit ordering the
+   * multiplayer table layout relies on. Defaulted to `[]` by {@link normalizeGameView}
+   * when an older server omits it.
+   */
+  seat_order: PlayerId[];
   /** The receiving player's unspent mana, as pip strings (e.g. `["{G}"]`). */
   mana_pool: string[];
   /** The player who currently holds priority, if any. */

@@ -20,6 +20,7 @@ function viewWith(stack: StackItem[], log: GameLogEntry[] = []): GameView {
     phase: 'precombat_main',
     turn: 1,
     active_player: 'p1',
+    seat_order: [],
     mana_pool: [],
     valid_actions: [],
     log,

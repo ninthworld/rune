@@ -210,8 +210,23 @@ from `damage`. Each indicator is a distinct *edge/shape*, so combat state stays 
 apart from selection (ring), targeting (ring), and playable (bottom bar) without hue.
 The blocker→attacker relationship is carried as `TableScene.combatLinks` — reconstructed
 from the view alone, so a client that mounts mid-combat shows the same links as one that
-watched declaration — for a focus overlay to draw or isolate on a crowded board. Combat
-participants never fold into an ×N stack, so each keeps its own treatment and link.
+watched declaration. Combat participants never fold into an ×N stack, so each keeps its
+own treatment and link.
+
+**Delivered (issue #339):** the combat links now render as a **canvas-layer overlay**
+(`SceneReconciler`), a connector drawn between each blocker and the attacker it blocks.
+The connector is a *doubled* (two-parallel) stroke with a small node at the blocker end
+— a distinct *shape* from the selection ring, the targeting ring/arrow, and the playable
+edge bar, so it reads apart from them without relying on hue. The overlay is **passive**
+(`eventMode = 'none'`): a link is never a hit-target and never delays a live prompt.
+Density behavior: with few links all draw at full emphasis; on a crowded board
+(`COMBAT_LINK.crowdedThreshold`) they calm to a lower alpha until a participant is
+focused/selected/hovered, which **isolates** just that object's links (fed from the
+table's `highlightedId`/`selectedId` via `BattlefieldCanvas`'s `isolatedId`). Links
+**track their endpoints** while the #334 view-diff animation is in flight — the
+reconciler redraws them each frame from the cards' current centers — and render
+statically at the final positions under reduced motion. The which-to-draw and geometry
+policy is a pure module (`combatLinks.ts`); the reconciler only strokes what it returns.
 
 ## Battlefield bands
 

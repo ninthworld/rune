@@ -20,6 +20,7 @@ function viewWith(turn: number, activePlayer: string, phase: Phase): GameView {
     phase,
     turn,
     active_player: activePlayer,
+    seat_order: [],
     mana_pool: [],
     valid_actions: [],
     player_names: {},

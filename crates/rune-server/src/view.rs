@@ -12,11 +12,11 @@
 
 use rune_engine::{
     attacker_candidates, attacking_defender_of, blocker_candidates_for, bottom_requirement,
-    characteristics, declared_attackers, defending_player, pending_blocker_declarer,
-    scripted_rules_text, target_requirements, valid_actions, Action, Attack, Block, CardData,
-    CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, DamageTarget, GameEvent,
-    GameResult, GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player, PlayerId,
-    StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    characteristics, declared_attackers, defender_candidates, defending_player,
+    pending_blocker_declarer, scripted_rules_text, target_requirements, valid_actions, Action,
+    Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind,
+    DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason,
+    PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{effects_description, rules_text};
@@ -548,6 +548,14 @@ fn blocker_slot(attacker: PermanentId) -> String {
     format!("block_{}", attacker.0)
 }
 
+/// The per-attacker defender-choice slot of a multiplayer [`Action::DeclareAttackers`]
+/// (CR 508.1a, issue #345), keyed by the attacker's permanent id so the returned
+/// choice names which attacker the selected defender is assigned to — the exact
+/// parallel of [`blocker_slot`]. Recomputed (never parsed) on resolution.
+fn defender_slot(attacker: PermanentId) -> String {
+    format!("defend_{}", attacker.0)
+}
+
 /// The bottoming requirement slot for a mulligan [`Action::Keep`] (CR 103.5,
 /// London): the [`bottom_requirement`] candidates (the deciding seat's hand cards)
 /// projected as a single multi-select slot asking for `count` cards. Empty for a
@@ -563,20 +571,47 @@ fn keep_requirements(state: &GameState, action: &Action) -> Vec<TargetRequiremen
     }
 }
 
-/// The attacker-declaration requirement slot (CR 508.1a): the engine's
-/// [`attacker_candidates`] projected as a single multi-select slot. Empty when no
-/// creature may attack, so declaring no attackers stays a plain, choice-free action
-/// (and the token-less path keeps working when there is nothing to choose).
+/// The attacker-declaration requirement slots (CR 508.1a): the engine's
+/// [`attacker_candidates`] as one multi-select `attackers` slot, plus — only when the
+/// active player has more than one opponent to attack (issue #341/#345) — one
+/// `defend_<id>` slot per attacker candidate listing the defender candidates
+/// ([`defender_candidates`], as player entity ids) that attacker may be assigned to.
+///
+/// Empty when no creature may attack, so declaring no attackers stays a plain,
+/// choice-free action. In a two-player game the sole opponent is the only defender,
+/// so no `defend_*` slot is offered and the wire is exactly as before — the client
+/// gains no extra step (issue #347); [`bind_attackers`] assigns that sole defender.
 fn attacker_requirements(state: &GameState, db: &CardDatabase) -> Vec<TargetRequirement> {
     let candidates = attacker_candidates(state, db);
     if candidates.is_empty() {
         return Vec::new();
     }
-    vec![TargetRequirement {
+    let mut reqs = vec![TargetRequirement {
         slot: "attackers".to_string(),
         prompt: "Choose which creatures attack".to_string(),
-        candidates: candidates.into_iter().map(permanent_entity_id).collect(),
-    }]
+        candidates: candidates
+            .iter()
+            .copied()
+            .map(permanent_entity_id)
+            .collect(),
+    }];
+    // Multiplayer: each attacker chooses a defending player. With a single opponent
+    // there is nothing to choose, so no defender slots are offered.
+    let defenders = defender_candidates(state);
+    if defenders.len() > 1 {
+        let defender_ids: Vec<String> = defenders.iter().copied().map(player_id).collect();
+        for attacker in candidates {
+            reqs.push(TargetRequirement {
+                slot: defender_slot(attacker),
+                prompt: format!(
+                    "Choose whom {} attacks",
+                    permanent_card_name(state, attacker, db)
+                ),
+                candidates: defender_ids.clone(),
+            });
+        }
+    }
+    reqs
 }
 
 /// The blocker-declaration requirement slots (CR 509.1a) for the player who owes
@@ -812,6 +847,9 @@ pub(crate) fn personalized_view(
             library_size: count(player.library.len()),
             graveyard_size: count(player.graveyard.len()),
             statuses: Vec::new(),
+            // Eliminated state (CR 800.4a, issue #342/#345): an opponent who left the
+            // game. Additive — false (and omitted) in a two-player game.
+            eliminated: player.has_lost,
         })
         .collect();
 
@@ -829,11 +867,12 @@ pub(crate) fn personalized_view(
             card: permanent_card_view(state, perm, db),
             tapped: perm.tapped,
             // Combat declaration state (CR 508/509): whether this permanent is
-            // attacking, and which attacker it is blocking (as an entity id). The
-            // engine now records *whom* an attacker attacks (issue #341); the wire
-            // still projects only the boolean fact here — the attacked player rides
-            // in the view with the multiplayer contract (issue #345).
+            // attacking, whom it attacks (issue #341/#345), and which attacker it is
+            // blocking (as an entity id). `attacking` stays the boolean fact for
+            // back-compat; `attacking_player` names the defending player so a client
+            // can render split attacks — omitted when not attacking.
             attacking: perm.attacking.is_some(),
+            attacking_player: perm.attacking.map(player_id),
             blocking: perm.blocking.map(permanent_entity_id),
             // Marked combat damage (CR 120.3 / 510), for lethal-damage display.
             damage: perm.damage,
@@ -898,6 +937,12 @@ pub(crate) fn personalized_view(
         // without counting anything itself.
         turn: state.turn,
         active_player: player_id(state.active_player),
+        // Explicit seat order (issue #345): every seat's id in order, so a
+        // multiplayer client can place opponents in a stable arrangement rather than
+        // relying on the projection's incidental ordering.
+        seat_order: (0..state.players.len())
+            .map(|seat| player_id(PlayerId(seat)))
+            .collect(),
         mana_pool,
         priority_player,
         valid_actions,
@@ -1127,22 +1172,24 @@ fn bind_attackers(
         return None;
     }
     let candidates = attacker_candidates(state, db);
-    // The wire still declares attackers as a plain id multi-select against the
-    // sole opponent (issue #341 keeps the two-player view unchanged; the
-    // per-attacker defender rides in with the multiplayer contract, #345). Bind
-    // every chosen attacker to the one legal defender. With no single defender
-    // (a >2-seat game, unreachable until #344/#345) the declaration binds nothing.
-    let Some(defender) = defending_player(state) else {
-        return Some(Action::DeclareAttackers {
-            attackers: Vec::new(),
-        });
-    };
+    let defenders = defender_candidates(state);
+    // The sole opponent, used as the default when the client sends no per-attacker
+    // defender — the two-player fast path (issue #345). `None` with several opponents.
+    let sole_defender = defending_player(state);
     let mut attackers = Vec::new();
     for id in chosen_for(targets, "attackers") {
-        attackers.push(Attack {
-            attacker: permanent_in(&candidates, id)?,
-            defender,
-        });
+        let attacker = permanent_in(&candidates, id)?;
+        // The per-attacker defender: the client's `defend_<id>` choice if present
+        // (multiplayer), else the sole opponent (two-player). With more than one
+        // opponent and no choice supplied, the declaration is rejected.
+        let defender = match chosen_for(targets, &defender_slot(attacker)).first() {
+            Some(chosen) => defenders
+                .iter()
+                .copied()
+                .find(|&seat| player_id(seat) == *chosen)?,
+            None => sole_defender?,
+        };
+        attackers.push(Attack { attacker, defender });
     }
     Some(Action::DeclareAttackers { attackers })
 }
@@ -2778,5 +2825,129 @@ mod tests {
         };
         assert_eq!(player, &player_id(PlayerId(1)));
         assert_eq!(reason, &GameOverReason::LifeZero);
+    }
+
+    #[test]
+    fn issue_345_view_carries_attack_targets_eliminated_flags_and_seat_order() {
+        // A 3-seat mid-combat state projects each attacker's defending player, each
+        // opponent's eliminated flag, and the table's explicit seat order.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_multiplayer(3);
+        state.turn = 2;
+        state.step = Step::DeclareBlockers;
+        state.attackers_declared = true;
+        // Seat 0 attacks seat 2. Seat 1 has been eliminated.
+        let attacker = put_permanent(
+            &mut state,
+            fixture("verdant_scout"),
+            PlayerId(0),
+            true,
+            false,
+        );
+        state
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == attacker)
+            .unwrap()
+            .attacking = Some(PlayerId(2));
+        state.players[1].has_lost = true;
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+
+        // Seat order lists every seat in order, including the eliminated one.
+        assert_eq!(
+            view.seat_order,
+            vec![
+                player_id(PlayerId(0)),
+                player_id(PlayerId(1)),
+                player_id(PlayerId(2))
+            ]
+        );
+        // The attacker names whom it attacks (seat 2).
+        let atk = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(attacker))
+            .unwrap();
+        assert!(atk.attacking);
+        assert_eq!(atk.attacking_player, Some(player_id(PlayerId(2))));
+        // The eliminated opponent is flagged; the live one is not.
+        let opp1 = view
+            .opponents
+            .iter()
+            .find(|o| o.player_id == player_id(PlayerId(1)))
+            .unwrap();
+        let opp2 = view
+            .opponents
+            .iter()
+            .find(|o| o.player_id == player_id(PlayerId(2)))
+            .unwrap();
+        assert!(opp1.eliminated, "seat 1 left the game");
+        assert!(!opp2.eliminated, "seat 2 is still in");
+    }
+
+    #[test]
+    fn issue_345_declare_attackers_offers_a_defender_slot_per_attacker_in_multiplayer() {
+        // With more than one opponent, the declare_attackers requirements enumerate a
+        // defender choice per attacker candidate; a two-player game offers none.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_multiplayer(3);
+        state.turn = 2;
+        state.step = Step::DeclareAttackers;
+        state.active_player = PlayerId(0);
+        state.priority = PlayerId(0);
+        let attacker = put_permanent(
+            &mut state,
+            fixture("verdant_scout"),
+            PlayerId(0),
+            false,
+            false,
+        );
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let declare = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "declare_attackers")
+            .expect("the active player declares attackers");
+        // The attackers multi-select, plus one defender slot for the candidate.
+        assert!(declare.requirements.iter().any(|r| r.slot == "attackers"));
+        let defender_req = declare
+            .requirements
+            .iter()
+            .find(|r| r.slot == format!("defend_{}", attacker.0))
+            .expect("a defender slot for the attacker candidate");
+        assert_eq!(
+            defender_req.candidates,
+            vec![player_id(PlayerId(1)), player_id(PlayerId(2))],
+            "both living opponents are defender candidates",
+        );
+
+        // A returned declaration pairing the attacker with seat 2 binds that defender.
+        let choose = ChooseAction {
+            action_id: declare.id.clone(),
+            token: declare.token.clone(),
+            targets: vec![
+                TargetChoice {
+                    slot: "attackers".to_string(),
+                    chosen: vec![permanent_entity_id(attacker)],
+                },
+                TargetChoice {
+                    slot: format!("defend_{}", attacker.0),
+                    chosen: vec![player_id(PlayerId(2))],
+                },
+            ],
+        };
+        let resolved = resolve_action(&state, &db, PlayerId(0), &choose)
+            .expect("the multiplayer declaration resolves");
+        assert_eq!(
+            resolved,
+            Action::DeclareAttackers {
+                attackers: vec![Attack {
+                    attacker,
+                    defender: PlayerId(2),
+                }],
+            }
+        );
     }
 }

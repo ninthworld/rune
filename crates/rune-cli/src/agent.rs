@@ -960,6 +960,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: std::collections::BTreeMap::new(),
+            seat_order: Vec::new(),
         }
     }
 
@@ -1160,6 +1161,7 @@ mod tests {
             },
             tapped: false,
             attacking: false,
+            attacking_player: None,
             blocking: None,
             damage: 0,
             attached_to: None,
@@ -1485,6 +1487,7 @@ mod tests {
             library_size: 0,
             graveyard_size: 0,
             statuses: vec![],
+            eliminated: false,
         }];
         let act = ValidAction {
             requirements: vec![TargetRequirement {
