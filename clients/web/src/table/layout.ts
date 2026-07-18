@@ -1,42 +1,34 @@
 /**
- * The full-bleed tabletop shell layout (issue #295).
+ * The fixed-shell tabletop layout (ADR 0023; `docs/design/ui-blueprint.md`).
  *
- * ONE pure function — {@link layout} — maps measured viewport geometry to the set
- * of region rects that position BOTH the DOM chrome and the Pixi battlefield scene
- * (ADR 0003: one `layout()` positions both renderers). It keys ONLY on measured
- * geometry (width, height, aspect) and detected input capability (pointer
- * precision) — never on a user-agent string or a desktop/mobile breakpoint list
- * (ui-requirements §Layout and devices). Portrait, landscape, 16:9, and ultrawide
- * all resolve from this one function.
+ * ONE pure function — {@link layout} — carves the measured viewport into the
+ * blueprint's fixed anatomy: top status bar, opponent panel(s), the receiver's
+ * battlefield panel, a right rail (stack + activity), and a bottom shell owning
+ * the receiver's identity, piles, hand, and the single action dock. **Nothing
+ * floats over anything**: every region has a permanent, disjoint home, so nothing
+ * can overlap or clip *by construction* — this replaces the floating-chrome model
+ * (dock/hand/tray overlaying the board) that ADR 0023 retires.
  *
- * The shell is the procedural tabletop `docs/design/ui-design-notes.md` (§Tabletop
- * shell) specifies: the battlefield owns the center and most of the viewport; the
- * chrome docks around its edges and never displaces the board into a scrolled
- * document flow. Regions NEVER reorder between states — they only scale, condense,
- * or collapse — so play never requires visually re-locating a control.
+ * The function keys ONLY on measured geometry (width, height) and detected input
+ * capability (pointer precision) — never a user-agent string or a device list
+ * (ui-requirements §Layout and devices). Geometry breakpoints change
+ * **composition, not anatomy**:
  *
- * Region model
- * ------------
- * Two layers (see {@link Region.layer}):
+ * - `full` — the laptop/tablet anatomy (`prototypes/ui-table-4p-laptop-v1.html`,
+ *   `…-tablet-v1.html`): opponents across the top, your battlefield full width,
+ *   rail on the right, bottom shell of identity panel · prompt strip + hand ·
+ *   action dock.
+ * - `compact` — the phone-portrait change of kind (`…-duel-phone-v1.html`): the
+ *   top bar compresses to a turn pill + phase dots with stack/log as chips opening
+ *   sheets, panels stack vertically, and the bottom shell becomes prompt strip →
+ *   fixed action bar → hand fan → identity strip, all in thumb reach.
  *
- * - **docked** — carves the battlefield: `indicator` and `opponentHud` stack across
- *   the top, `rail` docks on the right edge, and `battlefield` is the large central
- *   remainder the Pixi scene sizes to. These four are pairwise disjoint.
- * - **floating** — overlays the battlefield's edges without shrinking it (the board
- *   still owns that space): `localDock` (bottom-left), `hand` (bottom-center anchor
- *   band), and `tray` (the action tray, floating just above the hand). On narrow
- *   geometry the `rail` collapses to a floating badge instead of docking.
- *
- * The battlefield rect is the one the scene consumes: its width is the wrap budget
- * fed to `buildTableScene`, which returns a scene no wider than that — so the board
- * never scrolls horizontally at any supported geometry (it grows downward instead,
- * scrolling vertically inside the region if a huge board overflows).
- *
- * Downstream issues (#296 HUDs, #297 indicator, #298 tray/prompts, #299 rail, #301
- * focus) consume these stable region identities plus the scene's reported card/lane
- * rects (`scene.bands[].rect`, `scene.handRegion.rect`) and the `mode` signal.
+ * Alongside the viewport-space chrome regions, the layout emits the
+ * {@link SceneGeometry} the scene builder consumes: the per-player panel frames
+ * and the hand area, in canvas-local coordinates (ADR 0003: one layout positions
+ * both renderers).
  */
-import type { Rect } from './scene';
+import type { Rect, SceneGeometry, PanelFrame, SurfaceTier } from './scene';
 
 /** Presentation mode (issue #267): overview vs focus differ in emphasis/density
  * only — never in region order or placement, so the geometry here is mode-invariant. */
@@ -47,19 +39,20 @@ export type Mode = 'overview' | 'focus';
  * never changes region order. */
 export type Pointer = 'coarse' | 'fine';
 
+/** Which composition the geometry resolved (see file header). Composition changes
+ * how regions condense — never the anatomy's ownership rules (ADR 0023). */
+export type Composition = 'full' | 'compact';
+
 /** Stable region identities. Downstream work anchors to these names, never to
  * incidental DOM structure. */
 export type RegionId =
-  'indicator' | 'opponentHud' | 'battlefield' | 'rail' | 'localDock' | 'hand' | 'tray';
+  'topBar' | 'canvas' | 'rail' | 'mePanel' | 'promptStrip' | 'dock' | 'handPanel';
 
-/** Whether a region carves the battlefield (`docked`) or overlays it (`floating`). */
-export type RegionLayer = 'docked' | 'floating';
-
-/** One positioned region: its rect (viewport px) and which layer it sits on. */
+/** One positioned region (viewport px). Every region is carved — no floating layer
+ * exists in the fixed shell (ADR 0023). */
 export interface Region {
   id: RegionId;
   rect: Rect;
-  layer: RegionLayer;
 }
 
 /** Measured viewport geometry plus detected input capability. */
@@ -70,75 +63,61 @@ export interface Viewport {
   pointer?: Pointer;
 }
 
-/** The computed shell: the region rects plus the derived geometry signals the DOM
- * and scene read. */
+/** The computed shell: carved chrome regions plus the scene geometry. */
 export interface TableLayout {
   /** The (clamped) viewport the layout was computed for. */
   viewport: Required<Viewport>;
-  /** The presentation mode echoed through (geometry is mode-invariant). */
-  mode: Mode;
-  /** The seat count the HUD strip reflowed for. */
+  /** The seat count the panels reflowed for. */
   playerCount: number;
   /** width / height. */
   aspect: number;
   /** Coarse orientation derived from the aspect (never from a device list). */
   orientation: 'portrait' | 'landscape';
-  /** Whether the stack/activity rail collapsed to a floating badge (narrow width). */
-  railCollapsed: boolean;
-  /**
-   * The card scale the battlefield scene should lay out at (≥ 1). Large viewports
-   * are *spent* — cards and gaps grow with the board region — instead of leaving a
-   * phone-sized table in a corner (ui-design-notes §Tabletop shell). Quantized to
-   * quarter steps so ordinary window resizing doesn't churn the whole scene.
-   */
-  sceneScale: number;
-  /** Every region, keyed by its stable identity. */
+  /** The resolved composition (full anatomy vs the phone change of kind). */
+  composition: Composition;
+  /** Every chrome region, keyed by its stable identity. On `compact` the rail is
+   * a zero-width rect (its content lives behind top-bar chips as sheets); the
+   * region identity itself never disappears (chrome never reorders). */
   regions: Record<RegionId, Region>;
+  /** The card-surface geometry the scene builder consumes (canvas-local). */
+  scene: SceneGeometry;
 }
 
 /**
- * Layout constants (viewport px / fractions). Fractional caps are what guarantee
- * the battlefield stays the majority surface at every geometry: the top chrome
- * never exceeds {@link topChromeMaxFrac} of the height and the rail never exceeds
- * {@link railMaxFrac} of the width, so the central battlefield always keeps well
- * over half the viewport.
+ * Layout constants (viewport px). The fractional caps guarantee the battlefield
+ * panels stay the majority surface at every geometry.
  */
 const L = {
   pad: 8,
-  /** Compact turn/phase indicator bar height (top). */
-  indicatorH: 48,
-  /** The indicator never eats more than this fraction of a short viewport. */
-  indicatorMaxFrac: 0.12,
-  /** One row of opponent HUD tiles. */
-  hudRowH: 76,
-  /** Approx min tile pitch used to reflow the HUD strip by player count. */
-  hudTilePitch: 160,
-  /** Top chrome (indicator + HUD) never exceeds this fraction of the height. */
-  topChromeMaxFrac: 0.3,
-  /** Stack/activity rail: minimum docked width and its fractional cap. */
-  railMin: 240,
-  railMaxFrac: 0.26,
-  railPreferredFrac: 0.2,
-  /** Below this width the rail collapses to a floating badge (never docks). */
-  railCollapseBelow: 700,
-  /** The collapsed rail badge is a single touch target. */
-  railBadge: 44,
-  /** Floating action tray height (min one touch target + padding). */
-  trayH: 60,
-  /** Local player dock (bottom-left) nominal size and width cap. */
-  dockW: 260,
-  dockH: 96,
-  dockMaxFrac: 0.32,
-  /** Nominal hand anchor band height (the hand is drawn by the scene inside the
-   * battlefield; this rect is the stable bottom-center anchor downstream #298 uses). */
-  handBandH: 200,
-  /** A coarse pointer widens the shortest floating strips to keep 44px targets. */
-  coarseTrayH: 68,
-  /** Battlefield size at which cards render at scale 1; larger regions scale up. */
-  sceneBaseW: 1100,
-  sceneBaseH: 700,
-  /** Cards never grow beyond this factor (legibility beats sheer size). */
-  sceneMaxScale: 1.5,
+  gap: 8,
+  /** Top status bar height (compact composition condenses it). */
+  topBarH: 44,
+  topBarCompactH: 40,
+  /** Right rail width bounds (stack + activity). */
+  railMin: 236,
+  railMax: 312,
+  railFrac: 0.19,
+  /** Below this width the composition changes kind (phone portrait). */
+  compactBelow: 720,
+  /** Panel header strip (crest · name · meta). */
+  panelHeaderH: 32,
+  /** Opponent panel piles column width; the local panel has none (its piles live
+   * in the bottom shell's identity panel, per the blueprint). */
+  pilesColW: 60,
+  /** Bottom shell: identity panel and action dock widths (full composition). */
+  mePanelW: 240,
+  dockW: 224,
+  /** Prompt strip height (the pending question in words). */
+  promptStripH: 32,
+  /** Hand card area height: the hand tier plus breathing room. */
+  handAreaH: 162,
+  /** Compact bottom shell strips. */
+  compactActionBarH: 52,
+  compactHandH: 158,
+  compactMeStripH: 28,
+  /** Opponent row height bounds (full composition). */
+  oppRowMin: 176,
+  oppRowFrac: 0.44,
 } as const;
 
 /** The viewport the layout falls back to where there is no `window` (SSR/tests). */
@@ -163,129 +142,301 @@ export function rectArea(rect: Rect): number {
   return Math.max(0, rect.w) * Math.max(0, rect.h);
 }
 
+/** Carve a panel rect into its header / content / piles frames (canvas coords). */
+function frame(rect: Rect, pilesW: number): PanelFrame {
+  const header: Rect = { x: rect.x, y: rect.y, w: rect.w, h: Math.min(L.panelHeaderH, rect.h) };
+  const piles: Rect =
+    pilesW > 0
+      ? {
+          x: rect.x + rect.w - pilesW,
+          y: rect.y + header.h,
+          w: pilesW,
+          h: Math.max(0, rect.h - header.h),
+        }
+      : { x: rect.x + rect.w, y: rect.y + header.h, w: 0, h: 0 };
+  const content: Rect = {
+    x: rect.x + L.pad,
+    y: rect.y + header.h + 4,
+    w: Math.max(0, rect.w - L.pad * 2 - piles.w),
+    h: Math.max(0, rect.h - header.h - 4 - L.pad),
+  };
+  return { rect, header, content, piles };
+}
+
+/**
+ * The per-surface card tiers for a geometry (the blueprint's tier ladder: the
+ * receiver's battlefield is a step larger than the opponents'; a duel at full
+ * width earns the largest board tiers). The density ladder may step these DOWN
+ * per panel (scene builder) — never up.
+ */
+function tiersFor(
+  composition: Composition,
+  opponents: number,
+): { you: SurfaceTier; opp: SurfaceTier } {
+  if (composition === 'full' && opponents <= 1) return { you: 'field', opp: 'support' };
+  return { you: 'support', opp: 'mini' };
+}
+
 /**
  * Position every shell region for a measured viewport.
  *
- * Pure and total: the same `(viewport, mode, playerCount)` always yields the same
- * rects, and every rect stays inside the viewport. `mode` is echoed through but
- * does NOT move any region (overview/focus differ in density/emphasis only), so a
- * caller can re-lay-out on a mode flip and see identical placement.
+ * Pure and total: the same `(viewport, playerCount)` always yields the same rects,
+ * every chrome region stays inside the viewport, and the carved regions are
+ * pairwise disjoint (the canvas region underlies the bottom-shell chrome regions,
+ * but no chrome region overlaps another and card areas never sit under chrome).
  */
-export function layout(viewport: Viewport, mode: Mode, playerCount: number): TableLayout {
-  // Guard against zero/negative geometry (a hidden or not-yet-measured container)
-  // so every derived rect stays well-formed.
+export function layout(viewport: Viewport, playerCount: number): TableLayout {
   const width = Math.max(1, Math.floor(viewport.width));
   const height = Math.max(1, Math.floor(viewport.height));
   const pointer: Pointer = viewport.pointer ?? 'fine';
   const seats = Math.max(1, Math.floor(playerCount));
+  const opponents = Math.max(1, seats - 1);
 
   const aspect = width / height;
   const orientation = width >= height ? 'landscape' : 'portrait';
+  const composition: Composition = width < L.compactBelow ? 'compact' : 'full';
 
-  // ── Top chrome: a compact indicator bar over the opponent HUD strip. The HUD
-  // reflows by seat count (wide tile at 2p → grid at 8p), but the whole top band is
-  // hard-capped at `topChromeMaxFrac` of the height so it never crowds out the board
-  // (and, at a degenerate tiny viewport, never overruns it into a negative board).
-  const indicatorH = Math.min(L.indicatorH, Math.floor(height * L.indicatorMaxFrac));
-  const topCap = Math.floor(height * L.topChromeMaxFrac);
-  const tilesPerRow = Math.max(1, Math.floor(width / L.hudTilePitch));
-  const hudRows = Math.max(1, Math.ceil(seats / tilesPerRow));
-  const hudH = Math.min(hudRows * L.hudRowH, Math.max(0, topCap - indicatorH));
-  const topH = indicatorH + hudH;
+  return composition === 'full'
+    ? fullLayout(width, height, pointer, seats, opponents, aspect, orientation)
+    : compactLayout(width, height, pointer, seats, opponents, aspect, orientation);
+}
 
-  // ── Rail: docks on the right edge when wide; collapses to a floating badge when
-  // narrow so the board keeps the width.
-  const railCollapsed = width < L.railCollapseBelow;
-  const railW = railCollapsed
-    ? 0
-    : clamp(Math.floor(width * L.railPreferredFrac), L.railMin, Math.floor(width * L.railMaxFrac));
+/** The full (laptop/tablet) anatomy. */
+function fullLayout(
+  width: number,
+  height: number,
+  pointer: Pointer,
+  seats: number,
+  opponents: number,
+  aspect: number,
+  orientation: 'portrait' | 'landscape',
+): TableLayout {
+  const pad = L.pad;
+  const gap = L.gap;
+  const topBar: Rect = { x: pad, y: pad, w: width - pad * 2, h: L.topBarH };
 
-  // ── Battlefield: the central remainder — everything below the top chrome and
-  // left of the docked rail. This is the rect the Pixi scene sizes to.
-  const battlefield: Rect = { x: 0, y: topH, w: width - railW, h: height - topH };
-
-  // ── Scene scale: how much bigger than baseline the board region is, on its
-  // *tighter* axis (so cards never outgrow either dimension), clamped to [1, max]
-  // and quantized down to quarter steps for resize stability. Purely geometric —
-  // the same viewport always yields the same scale.
-  const rawScale = Math.min(battlefield.w / L.sceneBaseW, battlefield.h / L.sceneBaseH);
-  const sceneScale = clamp(Math.floor(rawScale * 4) / 4, 1, L.sceneMaxScale);
-
-  const indicator: Rect = { x: 0, y: 0, w: width, h: indicatorH };
-  const opponentHud: Rect = { x: 0, y: indicatorH, w: width, h: hudH };
-
-  const rail: Region = railCollapsed
-    ? {
-        id: 'rail',
-        layer: 'floating',
-        rect: {
-          x: width - L.railBadge - L.pad,
-          y: topH + L.pad,
-          w: L.railBadge,
-          h: L.railBadge,
-        },
-      }
-    : {
-        id: 'rail',
-        layer: 'docked',
-        rect: { x: width - railW, y: topH, w: railW, h: height - topH },
-      };
-
-  // ── Floating bottom chrome, overlaying the battlefield's lower edge (the board
-  // still owns that space; these sit above it).
-  const dockW = Math.min(L.dockW, Math.floor(width * L.dockMaxFrac));
-  const dockH = Math.min(L.dockH, Math.floor(battlefield.h * 0.5));
-  const localDock: Rect = {
-    x: L.pad,
-    y: height - dockH - L.pad,
-    w: dockW,
-    h: dockH,
+  const railW = clamp(
+    Math.round(width * L.railFrac),
+    L.railMin,
+    Math.min(L.railMax, Math.floor(width * 0.3)),
+  );
+  const contentTop = topBar.y + topBar.h + gap;
+  const rail: Rect = {
+    x: width - pad - railW,
+    y: contentTop,
+    w: railW,
+    h: Math.max(0, height - contentTop - pad),
   };
 
-  // The hand's stable bottom-center anchor band (the scene draws the actual hand
-  // cards inside the battlefield; this rect is what downstream #298 anchors to).
-  // Scaled with the scene so the tray floats clear of the taller scaled hand cards.
-  const handBandH = Math.min(Math.round(L.handBandH * sceneScale), Math.floor(battlefield.h * 0.5));
-  const hand: Rect = {
-    x: 0,
-    y: height - handBandH,
-    w: battlefield.w,
-    h: handBandH,
+  // Left column: board panels above the bottom shell.
+  const leftW = Math.max(1, width - pad * 2 - railW - gap);
+  const bottomH = Math.min(L.promptStripH + L.handAreaH, Math.floor((height - contentTop) * 0.4));
+  const bottomY = height - pad - bottomH;
+  const boardH = Math.max(0, bottomY - gap - contentTop);
+
+  // Bottom shell: identity panel · hand panel (prompt strip on top) · action dock.
+  const mePanelW = Math.min(L.mePanelW, Math.floor(leftW * 0.24));
+  const dockW = Math.min(L.dockW, Math.floor(leftW * 0.22));
+  const mePanel: Rect = { x: pad, y: bottomY, w: mePanelW, h: bottomH };
+  const dock: Rect = { x: pad + leftW - dockW, y: bottomY, w: dockW, h: bottomH };
+  const handPanel: Rect = {
+    x: mePanel.x + mePanel.w + gap,
+    y: bottomY,
+    w: Math.max(0, leftW - mePanelW - dockW - gap * 2),
+    h: bottomH,
+  };
+  const promptStrip: Rect = { x: handPanel.x, y: handPanel.y, w: handPanel.w, h: L.promptStripH };
+
+  // The canvas underlies the whole left column below the top bar; panel frames and
+  // the hand area are carved inside it (canvas-local coordinates).
+  const canvas: Rect = {
+    x: pad,
+    y: contentTop,
+    w: leftW,
+    h: Math.max(0, height - contentTop - pad),
+  };
+  const toCanvas = (r: Rect): Rect => ({ x: r.x - canvas.x, y: r.y - canvas.y, w: r.w, h: r.h });
+
+  // Opponent panels: one row up to 3 across; two rows beyond. A duel gets one wide
+  // panel. Panels split the row evenly — composition, not reordering.
+  const oppRows = opponents <= 3 ? 1 : 2;
+  const perRow = Math.ceil(opponents / oppRows);
+  const oppH = Math.max(L.oppRowMin, Math.floor(boardH * L.oppRowFrac));
+  const oppRowH = oppRows === 1 ? oppH : Math.floor((oppH * 1.6) / 2);
+  const oppAreaH = oppRows === 1 ? oppH : oppRowH * 2 + gap;
+  const opponentFrames: PanelFrame[] = [];
+  for (let i = 0; i < opponents; i += 1) {
+    const row = Math.floor(i / perRow);
+    const col = i % perRow;
+    const inRow = row === oppRows - 1 ? opponents - perRow * (oppRows - 1) : perRow;
+    const w = Math.floor((leftW - gap * (inRow - 1)) / inRow);
+    const rect: Rect = {
+      x: pad + col * (w + gap),
+      y: contentTop + row * (oppRowH + gap),
+      w,
+      h: oppRows === 1 ? oppH : oppRowH,
+    };
+    opponentFrames.push(frame(toCanvas(rect), L.pilesColW));
+  }
+
+  const youRect: Rect = {
+    x: pad,
+    y: contentTop + oppAreaH + gap,
+    w: leftW,
+    h: Math.max(0, boardH - oppAreaH - gap),
+  };
+  // The local panel has no piles column: your piles live in the identity panel
+  // (bottom shell), at the largest pile tier, per the blueprint.
+  const you = frame(toCanvas(youRect), 0);
+
+  const handRect: Rect = {
+    x: handPanel.x + pad,
+    y: promptStrip.y + promptStrip.h + 4,
+    w: Math.max(0, handPanel.w - pad * 2),
+    h: Math.max(0, handPanel.h - promptStrip.h - 4 - pad),
   };
 
-  // The action tray floats just above the hand band, clearing the local dock.
-  const trayH = pointer === 'coarse' ? L.coarseTrayH : L.trayH;
-  const trayX = dockW + L.pad * 2;
-  const tray: Rect = {
-    x: trayX,
-    y: Math.max(topH, hand.y - trayH - L.pad),
-    w: Math.max(0, battlefield.w - trayX - L.pad),
-    h: trayH,
+  const scene: SceneGeometry = {
+    width: canvas.w,
+    height: canvas.h,
+    opponents: opponentFrames,
+    you,
+    hand: toCanvas(handRect),
+    tiers: tiersFor('full', opponents),
+    handFan: false,
   };
 
   return {
     viewport: { width, height, pointer },
-    mode,
     playerCount: seats,
     aspect,
     orientation,
-    railCollapsed,
-    sceneScale,
+    composition: 'full',
     regions: {
-      indicator: { id: 'indicator', layer: 'docked', rect: indicator },
-      opponentHud: { id: 'opponentHud', layer: 'docked', rect: opponentHud },
-      battlefield: { id: 'battlefield', layer: 'docked', rect: battlefield },
-      rail,
-      localDock: { id: 'localDock', layer: 'floating', rect: localDock },
-      hand: { id: 'hand', layer: 'floating', rect: hand },
-      tray: { id: 'tray', layer: 'floating', rect: tray },
+      topBar: { id: 'topBar', rect: topBar },
+      canvas: { id: 'canvas', rect: canvas },
+      rail: { id: 'rail', rect: rail },
+      mePanel: { id: 'mePanel', rect: mePanel },
+      promptStrip: { id: 'promptStrip', rect: promptStrip },
+      dock: { id: 'dock', rect: dock },
+      handPanel: { id: 'handPanel', rect: handPanel },
     },
+    scene,
   };
 }
 
-/** The battlefield width the scene should wrap within, for a given layout. A thin
- * convenience so callers don't reach into the region map for the one value the
- * Pixi scene consumes. */
-export function battlefieldWidth(computed: TableLayout): number {
-  return computed.regions.battlefield.rect.w;
+/** The compact (phone-portrait) change of kind. Same anatomy ownership: the top
+ * bar owns status (as a pill + dots + chips), the panels own the boards, the
+ * bottom shell owns prompt → action bar → hand fan → identity strip. */
+function compactLayout(
+  width: number,
+  height: number,
+  pointer: Pointer,
+  seats: number,
+  opponents: number,
+  aspect: number,
+  orientation: 'portrait' | 'landscape',
+): TableLayout {
+  const pad = 6;
+  const gap = 6;
+  const topBar: Rect = { x: pad, y: pad, w: width - pad * 2, h: L.topBarCompactH };
+  const contentTop = topBar.y + topBar.h + gap;
+
+  // Bottom shell strips, thumb-reach: prompt strip, fixed action bar, hand fan,
+  // identity strip. All interaction lives here; the top half is display.
+  const meStrip: Rect = {
+    x: pad,
+    y: height - pad - L.compactMeStripH,
+    w: width - pad * 2,
+    h: L.compactMeStripH,
+  };
+  const handPanel: Rect = {
+    x: pad,
+    y: meStrip.y - gap - L.compactHandH,
+    w: width - pad * 2,
+    h: L.compactHandH,
+  };
+  const dock: Rect = {
+    x: pad,
+    y: handPanel.y - gap - L.compactActionBarH,
+    w: width - pad * 2,
+    h: L.compactActionBarH,
+  };
+  const promptStrip: Rect = {
+    x: pad,
+    y: dock.y - gap - L.promptStripH,
+    w: width - pad * 2,
+    h: L.promptStripH,
+  };
+
+  const boardH = Math.max(0, promptStrip.y - gap - contentTop);
+  const canvas: Rect = {
+    x: pad,
+    y: contentTop,
+    w: width - pad * 2,
+    h: Math.max(0, height - contentTop - pad),
+  };
+  const toCanvas = (r: Rect): Rect => ({ x: r.x - canvas.x, y: r.y - canvas.y, w: r.w, h: r.h });
+
+  // Panels stack vertically; the receiver's is slightly larger (mock: 5:6). With
+  // several opponents each shares the opponent portion evenly.
+  const youShare = 6 / (5 * opponents + 6);
+  const youH = Math.floor(boardH * youShare);
+  const oppH = Math.floor((boardH - youH - gap * opponents) / opponents);
+  const opponentFrames: PanelFrame[] = [];
+  for (let i = 0; i < opponents; i += 1) {
+    const rect: Rect = {
+      x: pad,
+      y: contentTop + i * (oppH + gap),
+      w: width - pad * 2,
+      h: oppH,
+    };
+    opponentFrames.push(frame(toCanvas(rect), Math.min(L.pilesColW, 44)));
+  }
+  const youRect: Rect = {
+    x: pad,
+    y: contentTop + opponents * (oppH + gap),
+    w: width - pad * 2,
+    h: youH,
+  };
+  const you = frame(toCanvas(youRect), Math.min(L.pilesColW, 44));
+
+  const handRect: Rect = {
+    x: handPanel.x + pad,
+    y: handPanel.y + 4,
+    w: Math.max(0, handPanel.w - pad * 2),
+    h: Math.max(0, handPanel.h - 4 - pad),
+  };
+
+  const scene: SceneGeometry = {
+    width: canvas.w,
+    height: canvas.h,
+    opponents: opponentFrames,
+    you,
+    hand: toCanvas(handRect),
+    tiers: tiersFor('compact', opponents),
+    handFan: true,
+  };
+
+  // The rail region identity persists (chrome never reorders) but claims no space:
+  // on compact the stack/log live behind top-bar chips that open sheets.
+  const rail: Rect = { x: width - pad, y: contentTop, w: 0, h: 0 };
+
+  return {
+    viewport: { width, height, pointer },
+    playerCount: seats,
+    aspect,
+    orientation,
+    composition: 'compact',
+    regions: {
+      topBar: { id: 'topBar', rect: topBar },
+      canvas: { id: 'canvas', rect: canvas },
+      rail: { id: 'rail', rect: rail },
+      mePanel: { id: 'mePanel', rect: meStrip },
+      promptStrip: { id: 'promptStrip', rect: promptStrip },
+      dock: { id: 'dock', rect: dock },
+      handPanel: { id: 'handPanel', rect: handPanel },
+    },
+    scene,
+  };
 }

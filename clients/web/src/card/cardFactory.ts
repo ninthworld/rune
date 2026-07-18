@@ -32,13 +32,15 @@ import {
   PIP,
   PT_TEXT,
   SURFACES,
+  TAP,
   TIER,
   type ColorIdentity,
 } from '../tokens';
 import { buildGlyphDisplay, keywordGlyphName, type GlyphName } from '../chrome/glyphs';
 
-/** Tiers that render a full card face (chips are a separate digest representation). */
-export type CardTier = 'support' | 'field' | 'hand';
+/** Tiers that render a full card face (chips are a separate digest representation).
+ * `mini` is the stepped-down dense tier the density ladder engages (blueprint). */
+export type CardTier = 'mini' | 'support' | 'field' | 'hand';
 
 /**
  * The full set of size tiers a battlefield object can render at, including the
@@ -539,31 +541,45 @@ export function buildCardDisplay(data: CardDisplayData, tier: CardTier = 'field'
     inner.addChild(ring);
   }
 
-  // Tapped: rotate 90° about the card center and dim. A dimmed card (ineligible
-  // during targeting mode) recedes further, multiplying its base alpha. A declared
+  // Tapped: ONE treatment at every tier (blueprint §Card vocabulary) — a partial
+  // ~25° rotation about the card center plus a slight dim, centered inside the
+  // rotated bounding box the scene reserved. A dimmed card (ineligible during
+  // targeting mode) recedes further, multiplying its base alpha. A declared
   // attacker keeps full opacity even while tapped (issue #332) — it is actively in
   // combat, not inert like a tapped land — so it never recedes below its neighbors.
-  inner.pivot.set(t.w / 2, t.h / 2);
   const baseAlpha =
     data.tapped && !data.attacking ? FRAME.tappedAlpha : data.summoningSick ? FRAME.sickAlpha : 1;
   inner.alpha = data.dimmed ? baseAlpha * FRAME.dimmedAlpha : baseAlpha;
-  if (data.tapped) {
-    inner.rotation = Math.PI / 2;
-    inner.position.set(t.h / 2, t.w / 2);
-  } else {
-    inner.position.set(t.w / 2, t.h / 2);
-  }
+  applyTapTransform(inner, t.w, t.h, data.tapped ?? false);
 
   return outer;
+}
+
+/**
+ * Center a card's `inner` container in its reserved footprint, rotating it by the
+ * shared {@link TAP.angle} when tapped. The footprint is the rotated bounding box
+ * (`w·cosθ + h·sinθ` × `w·sinθ + h·cosθ`) the scene reserves for a tapped card, so
+ * drawn pixels always match the reported rect at every tier — chips included.
+ */
+function applyTapTransform(inner: Container, w: number, h: number, tapped: boolean): void {
+  inner.pivot.set(w / 2, h / 2);
+  if (tapped) {
+    const c = Math.cos(TAP.angle);
+    const s = Math.sin(TAP.angle);
+    inner.rotation = TAP.angle;
+    inner.position.set((w * c + h * s) / 2, (w * s + h * c) / 2);
+  } else {
+    inner.position.set(w / 2, h / 2);
+  }
 }
 
 /**
  * Build the digest **chip** for a land at the back of a band (issue #318). Chips are
  * the smallest tier (`TIER.chip`, 44×60): the information budget is frame color, a
  * name **or** a basic-land glyph, and tap state — nothing else (see
- * `docs/design/ui-design-notes.md` §Card render). Unlike a full face, a chip has no
- * room to rotate, so tapped state is **dim + a corner tap glyph** rather than a 90°
- * rotation; the caller reserves the chip's un-rotated footprint accordingly.
+ * `docs/design/ui-design-notes.md` §Card render). Tap is the same partial-rotation
+ * treatment as every other tier (blueprint §Card vocabulary); the caller reserves
+ * the rotated bounding box accordingly.
  *
  * Basic lands draw their glyph ({@link CardDisplayData.landGlyph}); nonbasics draw a
  * truncated name. Selection/targeting rings, the playable edge bar, and the `×N`
@@ -616,15 +632,6 @@ export function buildChipDisplay(data: CardDisplayData): Container {
     inner.addChild(edge);
   }
 
-  // Tapped chip: no rotation (no room) — dim the body and mark a corner tap glyph so
-  // "tapped" still reads at chip scale (issue #318). Drawn top-left to leave the
-  // top-right corner for the ×N stack badge.
-  if (data.tapped) {
-    const tapMark = buildGlyphDisplay('tap', { size: 14, color: SURFACES.typeText });
-    tapMark.position.set(3, 3);
-    inner.addChild(tapMark);
-  }
-
   // Stack badge (issue #318): identical tapped/untapped chips collapse to one ×N.
   if ((data.stackCount ?? 1) > 1) {
     const badge = makePill(`×${data.stackCount}`, 10, BADGE.bg, BADGE.text, 7);
@@ -642,9 +649,11 @@ export function buildChipDisplay(data: CardDisplayData): Container {
     inner.addChild(ring);
   }
 
-  // Dim for tapped or ineligible-target state (chips never carry summoning sickness).
+  // Tapped: the same ~25° rotation + slight dim as every other tier (blueprint:
+  // ONE tap treatment everywhere — partial rotation keeps even chips legible).
   const baseAlpha = data.tapped ? FRAME.tappedAlpha : 1;
   inner.alpha = data.dimmed ? baseAlpha * FRAME.dimmedAlpha : baseAlpha;
+  applyTapTransform(inner, t.w, t.h, data.tapped ?? false);
 
   return outer;
 }

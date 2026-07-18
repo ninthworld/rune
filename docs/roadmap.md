@@ -42,7 +42,15 @@ confirm-stepped concede, and the identity layer's accents, life crests, and tabl
 vignette. The design investigation that followed locked the client's target anatomy in
 [`design/ui-blueprint.md`](design/ui-blueprint.md) (ADR 0023): a fixed shell with one
 action home, proven by hostile-state mocks at laptop, tablet, and phone-portrait
-geometries; the next client implementation effort builds against that blueprint.
+geometries. The blueprint's core anatomy is now implemented: the client shell is the
+carved fixed layout (top bar, per-player panels, stack+activity rail, bottom shell
+owning identity, piles, hand, and the single action dock), per-card action popups are
+retired in favor of dock routing, tap is the uniform ~25° treatment at every tier,
+the per-panel density ladder steps crowded panels down a card tier, and the compact
+(phone-portrait) composition condenses the same anatomy to a turn pill, stack/log
+sheets, a hand fan, and a fixed action bar. Still open from the blueprint: drag-to-play
+(the pointer enhancement), zone-travel animations, the front-door screens, and the
+4-player phone summary-tile composition.
 
 A deterministic, seeded 4-player free-for-all full game runs against the real server in the
 normal test gate, with a mid-game elimination and a single winner (#350). Deck selection is

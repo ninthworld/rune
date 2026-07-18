@@ -1,14 +1,23 @@
 /**
  * The playable table: the single React tree that reconstructs the whole UI from
- * the store's latest {@link GameView} (plus its derived pending prompt).
+ * the store's latest {@link GameView} (plus its derived pending prompt), laid out
+ * in the **fixed shell** (ADR 0023; `docs/design/ui-blueprint.md`).
  *
- * - Pixi canvas draws battlefield bands + hand (ADR 0003).
- * - DOM islands render the prompt banner, player tiles, the interactive overlay,
- *   and the action bar.
+ * - The shell is carved by `layout()`: top bar, per-player panels, right rail
+ *   (stack + activity), and a bottom shell owning the receiver's identity panel,
+ *   the prompt strip + hand, and the single action dock. Nothing floats over
+ *   anything, so nothing can overlap or clip by construction.
+ * - Pixi draws the cards inside the carved panel areas (ADR 0003); DOM layers
+ *   render the panel chrome, prompts, and controls.
  * - Interactivity is driven entirely by `valid_actions[]`; choosing an action
  *   sends `ChooseAction` through the store, and the UI then rebuilds purely from
  *   the resulting GameView. The only client-side state is ephemeral selection
  *   (nothing load-bearing across messages — the reconnect/replay invariant).
+ * - **One action home** (ADR 0023 commitment 2): selecting a card routes its
+ *   offered actions to the action dock; the prompt strip states the pending
+ *   question in words. Zone browsers, option pickers, and decision sheets are the
+ *   only layer permitted to cover the shell — always viewport-clamped, always
+ *   dismissible.
  *
  * Targeting mode (ADR 0009 §Client): choosing an action that carries
  * `requirements` enters a data-driven targeting flow. The client walks the
@@ -23,23 +32,21 @@ import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
 import { selectPendingPrompt, useGameStore } from '../store';
 import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
-import { ActionTray } from './ActionTray';
+import { ActionDock } from './ActionDock';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
-import { GameMenu } from './GameMenu';
-import { TableGeography, type BrowsableZone } from './TableGeography';
+import { PanelChrome, type BrowsableZone } from './PanelChrome';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
-import { PhaseIndicator, type TableMode } from './PhaseIndicator';
-import { OpponentHud, LocalDock } from './PlayerHud';
-import { PromptBanner } from './PromptBanner';
+import { MePanel } from './MePanel';
+import { PromptStrip, type MultiSelectBanner, type TargetingBanner } from './PromptStrip';
 import { RejectionToast } from './RejectionToast';
 import { ShortcutHelp, type Binding } from './ShortcutHelp';
 import { Rail } from './Rail';
+import { TopBar, type RailSheet } from './TopBar';
 import { ZoneBrowser } from './ZoneBrowser';
 import {
   buildTableScene,
-  DEFAULT_VIEWPORT_WIDTH,
   type Rect,
   type RenderedCard,
   type TableScene,
@@ -73,19 +80,20 @@ import {
 } from './multiSelect';
 import { PromptSurface } from './PromptSurface';
 import { layout, type RegionId, type Viewport } from './layout';
-import { RuneMark } from '../chrome/RuneMark';
 import { collectFocusRegions, nextFocus, type FocusDir } from './focus';
-import { promptOverlayBox, regionBox, sceneBox, shellBox, trayBox } from './styles';
-import { cx } from '../chrome/cx';
+import { regionBox, sceneBox, shellBox } from './styles';
+import { identityAccent } from './identityAccents';
 import s from './chrome.module.css';
+
+/** The table's presentation mode (issue #267). */
+export type TableMode = 'overview' | 'focus';
 
 /**
  * The measured viewport (width, height, pointer precision) the shell lays out
  * from, tracking the window so the whole table re-lays-out live on resize (the
  * layout itself stays a pure function — this only feeds it the live geometry).
- * Falls back to the {@link DEFAULT_VIEWPORT_WIDTH}-shaped default where there is no
- * `window` (SSR/tests). Pointer precision is a capability, not a device (detected
- * via a media query, absent → `fine`), per ui-requirements §Input capability model.
+ * Pointer precision is a capability, not a device (detected via a media query,
+ * absent → `fine`), per ui-requirements §Input capability model.
  */
 function detectPointer(): Viewport['pointer'] {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'fine';
@@ -95,7 +103,7 @@ function detectPointer(): Viewport['pointer'] {
 function useViewport(): Required<Viewport> {
   const read = (): Required<Viewport> =>
     typeof window === 'undefined'
-      ? { width: DEFAULT_VIEWPORT_WIDTH, height: 800, pointer: 'fine' }
+      ? { width: 1280, height: 800, pointer: 'fine' }
       : {
           width: window.innerWidth,
           height: window.innerHeight,
@@ -122,32 +130,8 @@ function findCard(scene: TableScene, id: EntityId | null): RenderedCard | undefi
 }
 
 /**
- * The union of the given entities' card rects in scene coordinates (issue #298), or
- * `null` when none of them is a rendered card. This is how the anchored prompt overlay
- * finds "where its subjects are" — straight from the scene's REPORTED RECTS (ADR 0003),
- * never by reaching into Pixi. Ids that are not on the canvas (a player portrait, a
- * non-visible zone) simply contribute nothing.
- */
-function sceneBoundsOf(scene: TableScene, ids: EntityId[]): Rect | null {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const id of ids) {
-    const card = findCard(scene, id);
-    if (!card) continue;
-    minX = Math.min(minX, card.rect.x);
-    minY = Math.min(minY, card.rect.y);
-    maxX = Math.max(maxX, card.rect.x + card.rect.w);
-    maxY = Math.max(maxY, card.rect.y + card.rect.h);
-  }
-  if (minX === Infinity) return null;
-  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-}
-
-/**
  * A display-name lookup across every zone whose cards the view exposes (hand,
- * battlefield, graveyards, exile). Used to label the prompt surface's rows for a
+ * battlefield, graveyards, exile). Used to label the decision sheet's rows for a
  * `select_from_zone`/`order` over a non-canvas zone; an id with no known card
  * (e.g. a hidden library card or an abstract ordered trigger) falls back to its id.
  */
@@ -236,7 +220,7 @@ export function Table() {
   const rejectionNonce = useGameStore((state) => state.rejectionNonce);
   const [selectedId, setSelectedId] = useState<EntityId | null>(null);
   // The entity a game-log reference last highlighted, if any (issue #260): a permanent
-  // rings on the canvas and a player's tile lights up. Purely presentational — it opens
+  // rings on the canvas and a player's panel lights up. Purely presentational — it opens
   // no actions and derives nothing — and ephemeral like every other selection here
   // (dropped on the next view below), so the table stays reconstructable from one view.
   const [highlightedId, setHighlightedId] = useState<EntityId | null>(null);
@@ -255,6 +239,9 @@ export function Table() {
   const [browsing, setBrowsing] = useState<{ playerId: PlayerId; zone: BrowsableZone } | null>(
     null,
   );
+  // The rail sheet open on the compact composition (blueprint §Phone portrait):
+  // the stack or the log, opened from the top bar's chips. Ephemeral presentation.
+  const [railSheet, setRailSheet] = useState<RailSheet | null>(null);
   // Whether the keyboard shortcut reference overlay is open (issue #266). Ephemeral
   // UI, not game state — toggled with `?`.
   const [showHelp, setShowHelp] = useState(false);
@@ -270,7 +257,7 @@ export function Table() {
   // A fresh view supersedes any in-progress targeting or multi-select: the answer
   // either landed (server's response) or is now stale — most importantly, a changed
   // content-binding `token` invalidates the pending selection. Discarding both here
-  // (and any open inspect popover) is what keeps the whole selection UI
+  // (and any open inspect popover / sheet) is what keeps the whole selection UI
   // reconstructable from one GameView + prompt (no load-bearing state across messages).
   useEffect(() => {
     setTargeting(null);
@@ -278,13 +265,15 @@ export function Table() {
     setInspectedId(null);
     setPeekId(null);
     setBrowsing(null);
+    setRailSheet(null);
     setHighlightedId(null);
   }, [view]);
 
   // Escape abandons the topmost ephemeral surface, mirroring the targeting-mode
   // Cancel affordance (keyboard parity). An open inspect popover closes first (it
-  // sits above everything, including an open zone browser), then the zone browser,
-  // then a multi-select, then a targeting session; a plain view ignores the key.
+  // sits above everything, including an open zone browser), then the zone browser
+  // or rail sheet, then a multi-select, then a targeting session, then the current
+  // selection; a plain view ignores the key.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
@@ -292,12 +281,14 @@ export function Table() {
       else if (inspectedId !== null) setInspectedId(null);
       else if (peekId !== null) setPeekId(null);
       else if (browsing) setBrowsing(null);
+      else if (railSheet) setRailSheet(null);
       else if (multiSelect) setMultiSelect(null);
       else if (targeting) setTargeting(null);
+      else setSelectedId(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showHelp, inspectedId, peekId, browsing, multiSelect, targeting]);
+  }, [showHelp, inspectedId, peekId, browsing, railSheet, multiSelect, targeting]);
 
   // Keyboard parity for core play (issue #266). Every binding maps to an
   // interaction the pointer already has — no new game semantics, all client-side:
@@ -404,43 +395,20 @@ export function Table() {
   }, [view, choose, targeting, multiSelect, showHelp]);
 
   const viewport = useViewport();
-  // The number of seats the HUD strip reflows for: the receiver plus its opponents.
+  // The number of seats the shell carves panels for: the receiver plus opponents.
   const playerCount = view ? view.opponents.length + 1 : 2;
-  // The shell region rects, from the measured geometry (issue #295). Geometry is
-  // mode-invariant, so the placeholder mode here never moves a region — the live
-  // `mode` (derived below) only drives density/emphasis via `data-mode`. The
-  // battlefield rect's width is the wrap budget the scene consumes, so the board
-  // never scrolls horizontally.
-  const shell = useMemo(() => layout(viewport, 'overview', playerCount), [viewport, playerCount]);
-  const battlefieldW = shell.regions.battlefield.rect.w;
-  const battlefieldH = shell.regions.battlefield.rect.h;
-  const sceneScale = shell.sceneScale;
+  // The carved shell (ADR 0023): chrome region rects + the scene geometry. Pure
+  // function of the measured viewport and seat count — regions never reorder.
+  const shell = useMemo(() => layout(viewport, playerCount), [viewport, playerCount]);
+  const compact = shell.composition === 'compact';
 
   // The region geometry the spatial focus model navigates by (issue #301): map each
   // tagged shell region to its layout rect, so `focus.ts` orders/adjoins regions the
-  // way the table is laid out (not by DOM source order). Includes every interactive
-  // surface the keyboard must reach — the opponent HUD, the local dock (#296), the
-  // board, the rail (#299), the action tray, and the staged prompt overlay (#298),
-  // whose anchored surface is registered as a synthetic `overlay` rect just above the
-  // tray so pressing Down from the board reaches its option/order controls. Held in a
-  // ref (below) so the always-on key listener reads the latest rects.
+  // way the table is laid out (not by DOM source order).
   const focusGeometry = useMemo(() => {
     const geometry = new Map<string, Rect>();
-    const ids: RegionId[] = [
-      'indicator',
-      'opponentHud',
-      'localDock',
-      'battlefield',
-      'rail',
-      'tray',
-    ];
+    const ids: RegionId[] = ['topBar', 'canvas', 'rail', 'mePanel', 'promptStrip', 'dock'];
     for (const id of ids) geometry.set(id, shell.regions[id].rect);
-    // The prompt overlay is not a layout region (it anchors to the decision's subjects
-    // at render time); give it a stable rect just above the tray so region ordering is
-    // deterministic even where the DOM reports no box (jsdom/SSR).
-    const tray = shell.regions.tray.rect;
-    const bf = shell.regions.battlefield.rect;
-    geometry.set('overlay', { x: bf.x, y: tray.y - 1, w: bf.w, h: 1 });
     return geometry;
   }, [shell]);
   useEffect(() => {
@@ -451,16 +419,16 @@ export function Table() {
   // omit it (empty), which we treat as "unknown".
   const localId = view?.you || undefined;
 
-  // The active multi-select slot and whether it is answered in the DOM prompt
-  // surface rather than on the canvas: an `order` list, or a `select_from_zone`
-  // whose candidates are not board cards (graveyard/library). A hand/battlefield
+  // The active multi-select slot and whether it is answered in the decision sheet
+  // rather than on the canvas: an `order` list, or a `select_from_zone` whose
+  // candidates are not board cards (graveyard/library). A hand/battlefield
   // selection stays on the canvas (candidates highlight in place).
   const msSlot = multiSelect ? msActiveSlot(multiSelect) : null;
   // A per-attacker defender pick (issue #347): its candidates are defending *players*,
-  // chosen from the player HUD tiles (like single-target player targeting), not the
-  // board — so it is neither an on-canvas pick nor a DOM overlay list.
+  // chosen from the player panels (like single-target player targeting), not the
+  // board — so it is neither an on-canvas pick nor a sheet list.
   const defenderSlot = !!msSlot && msSlot.kind === 'defender';
-  const overlayMode =
+  const sheetMode =
     !!msSlot &&
     !!view &&
     !defenderSlot &&
@@ -470,14 +438,14 @@ export function Table() {
     if (!view) return null;
     // In targeting / on-canvas multi-select mode the active slot's server candidates
     // drive highlight/dim; a multi-select also marks the already-chosen candidates.
-    // In overlay mode the picking happens in the DOM surface, so the board stays
+    // In sheet mode the picking happens in the DOM sheet, so the board stays
     // neutral (no candidates passed) rather than dimming every card.
     let targetingScene: TargetingScene | undefined;
     if (multiSelect && defenderSlot) {
-      // Assigning an attacker's defender: the pick surface is the player HUD, so the
-      // board stays neutral except the attacker being routed, which rings for context.
+      // Assigning an attacker's defender: the pick surface is the player panels, so
+      // the board stays neutral except the attacker being routed, which rings.
       targetingScene = undefined;
-    } else if (multiSelect && !overlayMode) {
+    } else if (multiSelect && !sheetMode) {
       targetingScene = {
         candidates: msActiveCandidates(multiSelect),
         selected: msActiveChosen(multiSelect),
@@ -488,29 +456,14 @@ export function Table() {
     }
     // Outside a targeting/multi-select flow the selection ring shows for the selected
     // entity, or — failing that — the entity a log reference is highlighting (issue
-    // #260); a permanent thus rings whether it was picked on the board or in the log.
-    // While assigning a defender, ring the attacker being routed so the player sees
-    // which creature the current player-HUD pick applies to.
+    // #260). While assigning a defender, ring the attacker being routed so the player
+    // sees which creature the current pick applies to.
     const attackerRing =
       multiSelect && defenderSlot ? (msActiveAttacker(multiSelect) ?? undefined) : undefined;
     const sel =
       targeting || multiSelect ? attackerRing : (selectedId ?? highlightedId ?? undefined);
-    return buildTableScene(view, sel, battlefieldW, targetingScene, {
-      scale: sceneScale,
-      minHeight: battlefieldH,
-    });
-  }, [
-    view,
-    selectedId,
-    highlightedId,
-    battlefieldW,
-    battlefieldH,
-    sceneScale,
-    targeting,
-    multiSelect,
-    overlayMode,
-    defenderSlot,
-  ]);
+    return buildTableScene(view, sel, shell.scene, targetingScene);
+  }, [view, selectedId, highlightedId, shell, targeting, multiSelect, sheetMode, defenderSlot]);
 
   // Publish the derived scene on the test-only window hook (ADR 0011). A no-op in
   // production builds; the e2e suite reads it to assert what the canvas draws.
@@ -607,11 +560,45 @@ export function Table() {
     { id: 'toggle-help', keys: '?', description: 'Toggle this help', available: true },
   ];
 
-  // The inspect popover, zone browser, and shortcut help share one render across both
-  // the live and game-over branches; extracted here so each branch mounts the same
-  // overlays.
+  // Toggle the game-log highlight for an entity/player (issue #260): clicking a
+  // reference lights up its object; clicking the same one again clears it. Purely
+  // presentational — it opens no actions and derives no legality. Shared by the live
+  // and game-over branches (the log lives in the rail in both).
+  const highlight = (id: EntityId): void =>
+    setHighlightedId((current) => (current === id ? null : id));
+
+  // The rail sheet (compact composition): the stack or activity log as a
+  // viewport-clamped sheet above the shell, opened from the top bar's chips.
+  const railSheetOverlay = railSheet && (
+    <div className={s.sheetBackdrop} data-testid={`rail-sheet-${railSheet}`}>
+      <div className={s.sheetPanel}>
+        <button
+          type="button"
+          className={s.sheetClose}
+          aria-label="Close"
+          data-testid="rail-sheet-close"
+          onClick={() => setRailSheet(null)}
+        >
+          ×
+        </button>
+        <Rail
+          view={view}
+          targeting={
+            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+          }
+          onInspect={setInspectedId}
+          onHighlight={highlight}
+          highlightedId={highlightedId}
+        />
+      </div>
+    </div>
+  );
+
+  // The inspect popover, zone browser, sheets, and shortcut help share one render
+  // across both the live and game-over branches.
   const overlays = (
     <>
+      {railSheetOverlay}
       {browserData && (
         <ZoneBrowser
           title={browserData.title}
@@ -628,80 +615,60 @@ export function Table() {
     </>
   );
 
-  // Toggle the game-log highlight for an entity/player (issue #260): clicking a
-  // reference lights up its object; clicking the same one again clears it. Purely
-  // presentational — it opens no actions and derives no legality. Shared by the live
-  // and game-over branches (the log lives in the rail in both).
-  const highlight = (id: EntityId): void =>
-    setHighlightedId((current) => (current === id ? null : id));
+  const r = shell.regions;
+  const handAccent =
+    localId !== undefined ? identityAccent(view, localId) : 'var(--rune-border-strong)';
 
   // Game over (issue #141): a terminal view carries `result`. The whole screen is
   // pure render of that latest view — the DOM overlay names the verdict/reason and
   // the interactive prompt/action UI is suppressed (the server sends no actions
-  // once the game is over). The final board + tiles stay visible beneath, read-only
-  // (no EntityOverlay, so nothing is selectable/targetable). Nothing is load-bearing
-  // across messages, so a reconnect that replays this view shows the same screen.
+  // once the game is over). The final board + panels stay visible beneath,
+  // read-only. Regions dock exactly where they do during play (ADR 0023: regions
+  // never reorder between states).
   if (view.result) {
-    const r = shell.regions;
     return (
       <main
         className={s.shell}
         data-testid="table-game-over"
         data-mode="overview"
+        data-composition={shell.composition}
         style={shellBox(viewport.width, viewport.height)}
       >
-        {/* The final board renders full-bleed in overview treatment beneath the
-            overlay; every region docks in exactly the place it does during play
-            (regions never reorder between states). */}
-        <div className={s.regionIndicator} style={regionBox(r.indicator.rect)}>
-          <PhaseIndicator view={view} mode="overview" localId={localId} />
+        <div style={regionBox(r.topBar.rect)}>
+          <TopBar view={view} mode="overview" localId={localId} compact={compact} />
         </div>
-        <div className={s.regionHud} style={regionBox(r.opponentHud.rect)}>
-          <OpponentHud view={view} highlightedId={highlightedId} />
-        </div>
-        <div className={s.regionLocalDock} style={regionBox(r.localDock.rect)}>
-          <LocalDock view={view} localId={localId} highlightedId={highlightedId} />
-        </div>
-        <div className={s.regionBattlefield} style={regionBox(r.battlefield.rect)}>
+        <div style={regionBox(r.canvas.rect)} className={s.regionCanvas}>
           <div style={sceneBox(scene.width, scene.height)}>
-            {/* The table surface's faint rune motif, under the transparent canvas. */}
-            <div className={s.tableMotif} aria-hidden="true">
-              <RuneMark size={420} />
-            </div>
             <BattlefieldCanvas scene={scene} isolatedId={highlightedId} />
-            {/* Labeled lanes + zone piles stay on the final board. Card actions are
-                gone (no EntityOverlay select), but graveyard/exile stay browsable
-                here exactly as they do on the tiles above (issue #262). */}
-            <TableGeography scene={scene} onOpenZone={openZone} />
-            {/*
-             * Read-only game-over board: no select/target interaction (the server
-             * offers no actions once the game is over), but every card stays
-             * inspectable, so the overlay renders inspect handles only (issue #261).
-             */}
+            <PanelChrome view={view} scene={scene} onOpenZone={openZone} />
+            {/* Read-only game-over board: no select/target interaction (the server
+                offers no actions once the game is over), but every card stays
+                inspectable, so the overlay renders inspect handles only (#261). */}
             <EntityOverlay
               scene={scene}
               selectedId={null}
               targeting={false}
               pointer={viewport.pointer}
               onSelect={() => {}}
-              onChoose={() => {}}
               onPickTarget={() => {}}
               onPeek={setPeekId}
               onPinInspect={setInspectedId}
             />
           </div>
         </div>
-        {/* Stack & activity rail — right edge. On the terminal frame it is read-only
-            (no targeting), but the stack stays inspectable and the rail collapses to
-            its badge on narrow geometry exactly as during play (issue #299). */}
-        <Rail
-          view={view}
-          rect={r.rail.rect}
-          collapsed={shell.railCollapsed}
-          onInspect={setInspectedId}
-          onHighlight={highlight}
-          highlightedId={highlightedId}
-        />
+        {!compact && (
+          <div style={regionBox(r.rail.rect)} className={s.regionRail}>
+            <Rail
+              view={view}
+              onInspect={setInspectedId}
+              onHighlight={highlight}
+              highlightedId={highlightedId}
+            />
+          </div>
+        )}
+        <div style={regionBox(r.mePanel.rect)}>
+          <MePanel view={view} localId={localId} condensed={compact} onOpenZone={openZone} />
+        </div>
         <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
         {overlays}
       </main>
@@ -719,11 +686,8 @@ export function Table() {
   const selectedCard = findCard(scene, selectedId);
 
   // The presentation mode (issue #267), derived purely from the current view +
-  // whether a decision is being resolved — never from history. Focus when the
-  // player has drilled into a targeting/multi-select flow, or when the view itself
-  // poses a forced decision (so a fresh mid-prompt mount is already in focus);
-  // overview otherwise. Drives only presentation (the ribbon emphasis + a light
-  // de-emphasis of the standings chrome).
+  // whether a decision is being resolved — never from history. Drives only
+  // presentation (emphasis; the region placement is mode-invariant).
   const mode: TableMode = selecting || demandsDecision(view) ? 'focus' : 'overview';
 
   // Fire an action: a multi-select declaration (combat / bottoming) opens the
@@ -748,7 +712,7 @@ export function Table() {
 
   // Pick a target for the active slot. When the last slot is filled, assemble and
   // submit the whole answer atomically (action token + one choice per slot).
-  const pickTarget = (entityId: EntityId): void => {
+  function pickTarget(entityId: EntityId): void {
     if (!targeting) return;
     const advanced = pick(targeting, entityId);
     const targets = assembleTargets(advanced);
@@ -758,7 +722,7 @@ export function Table() {
     } else {
       setTargeting(advanced);
     }
-  };
+  }
 
   // Toggle a candidate into (or out of) the active multi-select slot. Nothing is
   // submitted until the player confirms (or picks an option).
@@ -776,10 +740,10 @@ export function Table() {
     setMultiSelect((prev) => (prev ? msAdvance(msToggle(prev, playerId)) : prev));
   };
 
-  // The player-HUD pick contract for the tiles: a single-target player *targeting*
+  // The player-panel pick contract (issue #347): a single-target player *targeting*
   // slot, or a multiplayer per-attacker *defender* pick — both choose a player from
-  // their HUD tile (issue #347), so they share the same tile affordance and differ
-  // only in the pick handler. Absent when no player choice is active.
+  // their panel header (or the identity panel), so they share the same affordance
+  // and differ only in the pick handler. Absent when no player choice is active.
   const playerTargeting =
     multiSelect && defenderSlot
       ? { candidates: msActiveCandidates(multiSelect), onPick: pickDefender }
@@ -807,7 +771,7 @@ export function Table() {
     setMultiSelect(msMove(multiSelect, entityId, direction));
   };
 
-  // Submit an option decision (the banner's modal picker, e.g. mulligan keep/take-
+  // Submit an option decision (the sheet's modal picker, e.g. mulligan keep/take-
   // another) together with the current per-slot selection (e.g. the bottomed cards)
   // in one atomic answer, keyed by the option slot the server posed.
   const chooseOption = (optionId: string): void => {
@@ -824,7 +788,7 @@ export function Table() {
     setSelectedId((current) => (current === id ? null : id));
 
   const activeReq = targeting ? activeRequirement(targeting) : null;
-  const targetingBanner =
+  const targetingBanner: TargetingBanner | null =
     targeting && activeReq
       ? {
           label: targeting.action.label,
@@ -834,10 +798,10 @@ export function Table() {
         }
       : null;
 
-  // The option decision (if any) renders as the banner's modal picker: its named
-  // choices plus the count affordance that blocks submit while a paired count slot
-  // is partially filled (e.g. a mulligan whose bottoming is not yet complete).
-  const multiSelectBanner =
+  // The option decision (if any) renders in the decision sheet: its named choices
+  // plus the count affordance that blocks submit while a paired count slot is
+  // partially filled (e.g. a mulligan whose bottoming is not yet complete).
+  const multiSelectBanner: MultiSelectBanner | null =
     multiSelect && (msSlot || hasOptions(multiSelect))
       ? {
           label: multiSelect.action.label,
@@ -847,14 +811,6 @@ export function Table() {
           chosen: msActiveChosen(multiSelect).length,
           required: msSlot?.kind === 'count' ? msSlot.count : undefined,
           slotKind: msSlot?.kind,
-          options: hasOptions(multiSelect)
-            ? (multiSelect.options[0]?.options ?? []).map((option) => ({
-                id: option.id,
-                label: option.label,
-              }))
-            : undefined,
-          optionPrompt: hasOptions(multiSelect) ? multiSelect.options[0]?.prompt : undefined,
-          optionsEnabled: optionsSubmittable(multiSelect),
         }
       : null;
 
@@ -873,11 +829,11 @@ export function Table() {
       }
     : undefined;
 
-  // The DOM prompt surface's rows for an overlay-mode slot: an `order` list (items
+  // The decision sheet's rows for a sheet-mode slot: an `order` list (items
   // in current order) or a non-canvas `select_from_zone` (candidates with chosen).
   const surfaceChosen = multiSelect ? msActiveChosen(multiSelect) : [];
   const surfaceItems =
-    overlayMode && msSlot
+    sheetMode && msSlot
       ? (msSlot.kind === 'order' ? surfaceChosen : msSlot.candidates).map((id) => ({
           id,
           label: cardNameOf(view, id),
@@ -885,178 +841,14 @@ export function Table() {
         }))
       : [];
 
-  const r = shell.regions;
-  const bf = r.battlefield.rect;
-
-  // The anchored prompt overlay (issue #298): while a decision is being resolved it
-  // stages as a focused surface positioned relative to the SUBJECTS the decision
-  // concerns — the active slot's candidate cards, the source card, or (failing any
-  // on-canvas subject) centered above the tray. Anchoring reads the scene's reported
-  // rects (ADR 0003), translated from scene space into the battlefield region; it
-  // never reaches into Pixi and needs no targeting arrows on the canvas.
-  let anchorIds: EntityId[] = [];
-  if (targeting) {
-    const req = activeRequirement(targeting);
-    const cands = (req?.candidates ?? []).filter((id) => isOnCanvas(view, id));
-    anchorIds = cands.length
-      ? cands
-      : (targeting.action.subject ?? []).filter((id) => isOnCanvas(view, id));
-  } else if (multiSelect) {
-    if (!overlayMode && msSlot) {
-      anchorIds = msSlot.candidates.filter((id) => isOnCanvas(view, id));
-    }
-    if (anchorIds.length === 0) {
-      anchorIds = (multiSelect.action.subject ?? []).filter((id) => isOnCanvas(view, id));
-    }
-  }
-  const bounds = sceneBoundsOf(scene, anchorIds);
-  const gap = 10;
-  // An "above" anchor is additionally clamped above the tray, so the staged
-  // decision surface never overlaps the confirm/cancel controls riding the tray
-  // (subjects at the bottom of the board — e.g. hand-card candidates — anchor
-  // there instead of on top of the tray).
-  const trayTop = r.tray.rect.y;
-  const clampY = (value: number): number =>
-    Math.max(bf.y + 8, Math.min(value, bf.y + bf.h - 8, trayTop - gap));
-  // Grow upward from just above the subjects when they sit lower on the board, downward
-  // from just below them when they sit near the top — so the overlay never runs off an
-  // edge. With no on-canvas subject (a non-visible zone / abstract order), centre it
-  // above the tray.
-  const promptAnchor = bounds
-    ? bounds.y > bf.h * 0.35
-      ? {
-          centerX: bf.x + bounds.x + bounds.w / 2,
-          y: clampY(bf.y + bounds.y - gap),
-          place: 'above' as const,
-        }
-      : {
-          centerX: bf.x + bounds.x + bounds.w / 2,
-          y: clampY(bf.y + bounds.y + bounds.h + gap),
-          place: 'below' as const,
-        }
-    : { centerX: bf.x + bf.w / 2, y: r.tray.rect.y - gap, place: 'above' as const };
-
-  return (
-    <main
-      ref={mainRef}
-      className={s.shell}
-      data-mode={mode}
-      style={shellBox(viewport.width, viewport.height)}
-    >
-      {/* Turn/phase indicator — top (issue #297 redesigns its internals). Tagged as a
-          focus region (issue #301) so keyboard navigation reaches its controls. */}
-      <div
-        className={s.regionIndicator}
-        style={regionBox(r.indicator.rect)}
-        data-focus-region="indicator"
-      >
-        <PhaseIndicator view={view} mode={mode} localId={localId} onSetStops={setStops} />
-        {/* The game menu: session-level actions (shortcuts; concede when the server
-            offers it) at the shell's top-right corner. Concede lives here, behind a
-            confirm step — never one slip away from Pass priority in the tray. */}
-        <GameMenu
-          concede={view.valid_actions.find((action) => action.type === 'concede')}
-          onChoose={choose}
-          onShowShortcuts={() => setShowHelp(true)}
-        />
-      </div>
-      {/*
-       * Opponent HUD strip — top: identity + life prominent, hand/statuses secondary
-       * (issue #296). It reflows purely by opponent count and never pulls the local
-       * player up (they live in the dock below). In focus mode the standings chrome is
-       * lightly de-emphasized so attention lands on the pending decision — presentation
-       * only, derived from `mode` (issue #267).
-       */}
-      <div
-        className={cx(s.regionHud, mode === 'focus' && s.focusDimmed)}
-        style={regionBox(r.opponentHud.rect)}
-        data-focus-region="opponentHud"
-      >
-        <OpponentHud view={view} highlightedId={highlightedId} targeting={playerTargeting} />
-      </div>
-      {/* Local player dock — bottom-left: identity, life, floating mana (issue #296).
-          A self-target candidate is pickable here with the same ring/dim contract. */}
-      <div
-        className={cx(s.regionLocalDock, mode === 'focus' && s.focusDimmed)}
-        style={regionBox(r.localDock.rect)}
-        data-focus-region="localDock"
-      >
-        <LocalDock
-          view={view}
-          localId={localId}
-          highlightedId={highlightedId}
-          targeting={playerTargeting}
-        />
-      </div>
-      {/* Battlefield — the center, owning most of the viewport. The Pixi scene sizes
-          to this region's width, so it never scrolls horizontally. */}
-      <div
-        className={s.regionBattlefield}
-        style={regionBox(r.battlefield.rect)}
-        data-focus-region="battlefield"
-      >
-        <div style={sceneBox(scene.width, scene.height)}>
-          {/* The table surface's faint rune motif, under the transparent canvas. */}
-          <div className={s.tableMotif} aria-hidden="true">
-            <RuneMark size={420} />
-          </div>
-          <BattlefieldCanvas scene={scene} isolatedId={highlightedId ?? selectedId} />
-          {/* Labeled, bounded player lanes + zone piles (issue #278), anchored to the
-              scene's band/hand rects and stacked under the interactive overlay so it
-              never intercepts a card click. */}
-          <TableGeography scene={scene} onOpenZone={openZone} />
-          <EntityOverlay
-            scene={scene}
-            selectedId={selectedId}
-            targeting={selecting}
-            multiSelect={multiSelect !== null}
-            pointer={viewport.pointer}
-            onSelect={toggleSelect}
-            onChoose={fire}
-            onPickTarget={multiSelect ? toggleCandidate : pickTarget}
-            onPeek={setPeekId}
-            onPinInspect={setInspectedId}
-          />
-        </div>
-      </div>
-      {/* Stack & activity rail — right edge: a collapsible panel that auto-expands
-          while the stack is populated and collapses to a count badge on narrow
-          geometry, reserving a slot for the game log (issue #299 / #260). Wrapped in a
-          `rail` focus region (issue #301) so keyboard navigation reaches its controls;
-          the wrapper adds no layout (the Rail positions itself absolutely). */}
-      <div data-focus-region="rail">
-        <Rail
-          view={view}
-          rect={r.rail.rect}
-          collapsed={shell.railCollapsed}
-          targeting={
-            targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-          }
-          onInspect={setInspectedId}
-          onHighlight={highlight}
-          highlightedId={highlightedId}
-        />
-      </div>
-      {/* Anchored prompt overlay (issue #298): a focused decision surface staged over
-          the board, positioned (inline, from reported rects) relative to the decision's
-          subjects. Present only while a decision is being resolved; the banner, option
-          picker, deadline countdown, and the order/zone prompt surface all ride it. */}
-      {selecting && (
-        <div
-          className={s.promptOverlay}
-          data-testid="prompt-overlay"
-          data-focus-region="overlay"
-          data-placement={promptAnchor.place}
-          style={promptOverlayBox(promptAnchor, bf)}
-        >
-          <PromptBanner
-            view={view}
-            prompt={prompt}
-            targeting={targetingBanner}
-            multiSelect={multiSelectBanner}
-            onOption={chooseOption}
-          />
-          {overlayMode && msSlot && (
+  // The option picker's named choices (issue #157), rendered in the decision sheet
+  // — one of the only layers permitted to cover the shell, viewport-clamped.
+  const optionControls = multiSelect && hasOptions(multiSelect) ? multiSelect.options[0] : null;
+  const decisionSheet =
+    (sheetMode && msSlot) || optionControls ? (
+      <div className={s.sheetBackdrop} data-testid="decision-sheet">
+        <div className={s.sheetPanel}>
+          {sheetMode && msSlot && (
             <PromptSurface
               mode={msSlot.kind === 'order' ? 'order' : 'select'}
               prompt={msSlot.prompt}
@@ -1066,20 +858,133 @@ export function Table() {
               onMove={moveOrder}
             />
           )}
+          {multiSelect && optionControls && (
+            <div className={s.sheetOptions} data-testid="multiselect-options">
+              {optionControls.prompt !== undefined && <span>{optionControls.prompt}</span>}
+              {(optionControls.options ?? []).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => chooseOption(option.id)}
+                  disabled={!optionsSubmittable(multiSelect)}
+                  data-testid={`multiselect-option-${option.id}`}
+                  className={s.optionButton}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    ) : null;
+
+  return (
+    <main
+      ref={mainRef}
+      className={s.shell}
+      data-mode={mode}
+      data-composition={shell.composition}
+      style={shellBox(viewport.width, viewport.height)}
+    >
+      {/* Top bar: brand · turn/phase strip · combat status · menu (compact: turn
+          pill + dots + stack/log chips). One fixed status home (ADR 0023). */}
+      <div style={regionBox(r.topBar.rect)} data-focus-region="topBar">
+        <TopBar
+          view={view}
+          mode={mode}
+          localId={localId}
+          compact={compact}
+          onSetStops={setStops}
+          onOpenSheet={compact ? setRailSheet : undefined}
+          concede={view.valid_actions.find((action) => action.type === 'concede')}
+          onChoose={choose}
+          onShowShortcuts={() => setShowHelp(true)}
+        />
+      </div>
+
+      {/* The card canvas: every player panel's card area plus the hand, in one
+          carved region. The Pixi scene draws the cards; the panel chrome and the
+          interactive overlay position over it from reported rects (ADR 0003). */}
+      <div style={regionBox(r.canvas.rect)} className={s.regionCanvas} data-focus-region="canvas">
+        <div style={sceneBox(scene.width, scene.height)}>
+          <BattlefieldCanvas scene={scene} isolatedId={highlightedId ?? selectedId} />
+          <PanelChrome
+            view={view}
+            scene={scene}
+            onOpenZone={openZone}
+            targeting={playerTargeting}
+            highlightedId={highlightedId}
+          />
+          <EntityOverlay
+            scene={scene}
+            selectedId={selectedId}
+            targeting={selecting}
+            multiSelect={multiSelect !== null}
+            pointer={viewport.pointer}
+            onSelect={toggleSelect}
+            onPickTarget={multiSelect ? toggleCandidate : pickTarget}
+            onPeek={setPeekId}
+            onPinInspect={setInspectedId}
+          />
+        </div>
+      </div>
+
+      {/* Stack & activity rail — a fixed carved column (full composition). On
+          compact its content lives behind the top bar's chips as sheets. */}
+      {!compact && (
+        <div style={regionBox(r.rail.rect)} className={s.regionRail} data-focus-region="rail">
+          <Rail
+            view={view}
+            targeting={
+              targeting
+                ? { candidates: activeCandidates(targeting), onPick: pickTarget }
+                : undefined
+            }
+            onInspect={setInspectedId}
+            onHighlight={highlight}
+            highlightedId={highlightedId}
+          />
         </div>
       )}
-      {/* Floating action tray above the hand (issue #298): global actions + the selected
-          entity's echo in the neutral state; the decision controls (multi-select
-          confirm/advance/cancel, targeting cancel) while a decision is staged. It reads
-          "waiting" quietly when the server offers nothing. */}
+
+      {/* Bottom shell (ADR 0023): identity panel · prompt strip + hand · action
+          dock. Nothing may render over it. The hand panel box is chrome behind
+          the canvas-drawn hand cards. */}
       <div
-        className={s.regionTray}
-        style={trayBox(r.tray.rect, viewport.height)}
-        data-focus-region="tray"
-      >
-        <ActionTray
+        style={
+          {
+            ...regionBox(r.handPanel.rect),
+            pointerEvents: 'none',
+            '--identity-accent': handAccent,
+          } as React.CSSProperties
+        }
+        className={s.handPanelBox}
+        data-testid="hand-panel"
+        aria-hidden="true"
+      />
+      <div style={regionBox(r.mePanel.rect)} data-focus-region="mePanel">
+        <MePanel
+          view={view}
+          localId={localId}
+          condensed={compact}
+          onOpenZone={openZone}
+          targeting={playerTargeting}
+          highlightedId={highlightedId}
+        />
+      </div>
+      <div style={regionBox(r.promptStrip.rect)} data-focus-region="promptStrip">
+        <PromptStrip
+          view={view}
+          prompt={prompt}
+          targeting={targetingBanner}
+          multiSelect={multiSelectBanner}
+        />
+      </div>
+      <div style={regionBox(r.dock.rect)} className={s.regionDock} data-focus-region="dock">
+        <ActionDock
           globalActions={
-            // Concede is relocated to the game menu (with a confirm step) so the
+            // Concede is routed to the game menu (with a confirm step) so the
             // highest-stakes action never sits beside the most-pressed button.
             selecting
               ? []
@@ -1088,12 +993,14 @@ export function Table() {
           selectedActions={selectedActions}
           selectedName={selectedCard?.name}
           onChoose={fire}
+          onClearSelection={selectedId !== null ? () => setSelectedId(null) : undefined}
           onCancelTargeting={targeting ? cancelTargeting : undefined}
           multiSelect={multiSelectControls}
           waiting={prompt === null}
           deadline={selecting ? undefined : prompt?.deadline}
         />
       </div>
+      {decisionSheet}
       {overlays}
     </main>
   );

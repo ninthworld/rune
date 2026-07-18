@@ -216,8 +216,12 @@ pips, type line, and P/T pill keep their positions either way. The monogram is a
 placeholder for the art box, not the card's identity. Official imagery stays
 excluded regardless (see the brief).
 
-Size tiers: chip 44×60 (lands/digest), support 66×92, field 84×118, hand 104×146,
-plus a "full" inspect tier with type line and rules text.
+Size tiers: chip 44×60 (lands/digest), mini 54×76 (the stepped-down dense tier
+the blueprint's density ladder engages), support 66×92, field 84×118, hand
+104×146, plus a "full" inspect tier with type line and rules text. Which tier a
+surface uses is the shell layout's call (blueprint §Card vocabulary): the
+receiver's battlefield runs one step larger than the opponents', and a crowded
+panel steps its own tier down one rung.
 
 Each tier carries a fixed **information budget** — what a card must answer at
 that size without opening an inspector. Cost + P/T alone is not a playable card
@@ -225,7 +229,7 @@ face; a player has to see the board's keywords and latent abilities without
 twenty inspect round-trips.
 
 - **chip** — frame color, name or basic-land glyph, tap state.
-- **support / field** — adds cost pips, computed P/T (never printed values; pill
+- **mini / support / field** — adds cost pips, computed P/T (never printed values; pill
   only), counter and damage badges, keyword glyphs from the identity glyph
   language, and an **ability marker**: a quiet persistent dot for "this permanent
   has an activated ability". The marker is deliberately distinct from the gold
@@ -306,13 +310,15 @@ an animated land moves up among the creatures, a crewed Vehicle likewise — and
 migration gets a subtle transition (honoring reduced motion) so the card doesn't
 appear to teleport.
 
-Tapping is **tier-dependent**. At field and support tiers, tapped is the classic
-90° rotation plus dim — and the row layout reserves the *rotated* footprint, so a
-tapped card never overlaps its neighbors. At chip tier there is no room to
-rotate: tapped chips dim and carry a corner tap glyph instead. Tap state is part
-of the ×N grouping key, so "four Plains, one tapped" reads as an untapped ×3
-stack beside a tapped single — the tapped count stays legible at the size where
-it matters most.
+Tapping is **one treatment at every tier** (blueprint §Card vocabulary,
+superseding the earlier tier-dependent scheme): a ~25° partial rotation plus a
+slight dim (`FRAME.tappedAlpha`), identical for full faces and land chips, with
+the row layout reserving the *rotated bounding box* so a tapped card never
+overlaps its neighbors. Partial rotation is what keeps small cards legible; the
+row gap absorbs the swept corners; the live client renders it as a tween
+(reduced motion snaps). Tap state is part of the ×N grouping key, so "four
+Plains, one tapped" reads as an untapped ×3 stack beside a tapped single — the
+tapped count stays legible at the size where it matters most.
 
 **Actionable permanents stack** (UI catch-up batch). The original grouping refused
 to fold any card with an offered action — but every untapped land always carries

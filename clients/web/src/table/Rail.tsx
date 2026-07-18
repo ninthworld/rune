@@ -1,40 +1,25 @@
 /**
- * The stack & activity rail (React DOM, issue #299): the right-edge home for the
- * stack and the game log (issue #260), with the public-zone activity feed reserved
- * for later.
+ * The stack & activity rail (ADR 0023; React DOM, issues #299/#260).
  *
- * The rail has two presentations, and which one shows is a PURE function of the
- * latest view plus the measured geometry, so a fresh mount from one `GameView`
- * always resolves the correct default (nothing here is load-bearing across
- * messages, per AGENTS.md):
+ * On the full composition the rail is a **fixed carved column** on the right
+ * edge, owning two permanent panels: the STACK on top (adjacent to the boards it
+ * resolves into) and the ACTIVITY log below. Chrome never disappears and
+ * reflows: an empty stack shows a designed quiet state instead of vanishing
+ * (blueprint §Screen anatomy — the shipped collapse/auto-expand behavior is
+ * retired with the floating shell).
  *
- * - **expanded panel** — the stack panel (present only when the stack is populated)
- *   above the game log, docked in the rail column on wide geometry or floated over the
- *   board's right edge when the geometry is too narrow to dock. This is the default
- *   whenever there is activity and the geometry is not collapsed.
- * - **collapsed badge** — a single touch target showing the live object count (stack
- *   when populated, else the log window). This is the default on narrow geometry
- *   (`layout()`'s `railCollapsed`, geometry-driven — never a hardcoded breakpoint), so
- *   the board keeps its width.
- *
- * Manual expand/collapse is ephemeral presentation state (`override`), reset on
- * every fresh view so a reconnect/replay reconstructs the default. With neither a
- * populated stack nor any log the rail renders NOTHING — it then claims no
- * meaningful width.
+ * On the compact composition the same content renders as a **sheet** opened from
+ * the top bar's stack/log chips — the only layer permitted to cover the shell,
+ * viewport-clamped and dismissible.
  *
  * The stack itself is rendered by {@link StackPanel} unchanged: resolution order
- * top-first, the "resolves next" emphasis, controller/source meta, inspect handles,
- * and targeting-mode pickability of stack objects all come from it. The rail only
- * frames it and adds the collapse/expand affordance.
+ * top-first, the "resolves next" emphasis, controller/source meta, inspect
+ * handles, and targeting-mode pickability all come from it.
  */
-import { useEffect, useState } from 'react';
 import type { EntityId, GameView } from '../protocol';
-import { cx } from '../chrome/cx';
 import { GameLog } from './GameLog';
 import { StackPanel } from './StackPanel';
 import { useUnreadLog } from './useUnreadLog';
-import type { Rect } from './scene';
-import { railBadgeBox, railFloat, regionBox } from './styles';
 import s from './chrome.module.css';
 
 /** The active target slot's stack-object candidates plus the pick handler, forwarded
@@ -45,15 +30,8 @@ interface TargetingStack {
 }
 
 interface Props {
-  /** The latest view; the rail renders exactly its `stack`. */
+  /** The latest view; the rail renders exactly its `stack` and `log`. */
   view: GameView;
-  /** The rail region rect from `layout()` — the docked column when wide, or the
-   * 44px badge anchor when the geometry collapsed the rail. */
-  rect: Rect;
-  /** Whether the geometry collapsed the rail to a badge (`layout()`'s `railCollapsed`,
-   * NOT a hardcoded breakpoint). Drives the default (badge) and where an expanded
-   * panel sits (floating vs docked). */
-  collapsed: boolean;
   /** Present only in targeting mode; makes candidate stack objects pickable. */
   targeting?: TargetingStack;
   /** Open the inspect popover for a stack object (issue #261). */
@@ -65,100 +43,40 @@ interface Props {
   highlightedId?: EntityId | null;
 }
 
-export function Rail({
-  view,
-  rect,
-  collapsed,
-  targeting,
-  onInspect,
-  onHighlight,
-  highlightedId,
-}: Props) {
-  // Manual expand/collapse: an ephemeral override of the geometry default, reset on
-  // every fresh view (like every other selection in the table) so the rail is always
-  // reconstructable from one GameView + geometry. `null` ⇒ follow the default.
-  const [override, setOverride] = useState<boolean | null>(null);
-  useEffect(() => setOverride(null), [view]);
-
-  // Unread game-log activity after returning to the tab (issue #340). Ephemeral, kept
-  // here so both the collapsed badge and the docked log share one marker.
+export function Rail({ view, targeting, onInspect, onHighlight, highlightedId }: Props) {
+  // Unread game-log activity after returning to the tab (issue #340).
   const { unreadCount, isUnseen, markSeen } = useUnreadLog(view.log ?? []);
-
   const count = view.stack.length;
-  const logCount = view.log?.length ?? 0;
-  // Nothing on the stack AND no log ⇒ no rail chrome at all; it claims no meaningful
-  // width. The log alone is enough to keep the activity rail present (its reserved
-  // right-edge column is already carved by `layout()`, so filling it moves nothing).
-  if (count === 0 && logCount === 0) return null;
-
-  // Default expanded when there is activity AND the geometry is not collapsed; a manual
-  // toggle overrides until the next view. This is what auto-expands the rail on stack
-  // activity (wide) yet keeps the badge on narrow geometry.
-  const expanded = override ?? !collapsed;
-
-  if (!expanded) {
-    // The badge counts the stack when populated, else the log window — either way it is
-    // a single touch target that expands the activity rail.
-    const badgeCount = count > 0 ? count : logCount;
-    const unreadSuffix = unreadCount > 0 ? ` — ${unreadCount} new` : '';
-    const label =
-      count > 0
-        ? `Stack: ${count} object${count === 1 ? '' : 's'}${unreadSuffix} — expand activity rail`
-        : `Game log: ${logCount} entr${logCount === 1 ? 'y' : 'ies'}${unreadSuffix} — expand activity rail`;
-    return (
-      <button
-        type="button"
-        className={s.railBadge}
-        style={railBadgeBox(rect)}
-        data-testid="rail-badge"
-        aria-label={label}
-        aria-expanded={false}
-        onClick={() => setOverride(true)}
-      >
-        <span className={s.railBadgeCount}>{badgeCount}</span>
-        {/* Unread game-log activity (issue #340): a non-hue-only dot, with the count
-         * carried in the button's aria-label above so it is AT-visible. */}
-        {unreadCount > 0 && (
-          <span className={s.railBadgeUnread} data-testid="rail-unread" aria-hidden="true" />
-        )}
-      </button>
-    );
-  }
 
   return (
-    <div
-      className={cx(s.rail, collapsed ? s.railFloating : s.railDocked)}
-      style={collapsed ? railFloat(rect) : regionBox(rect)}
-      data-testid="rail"
-      data-expanded="true"
-    >
-      <div className={s.railHeader}>
-        <span className={s.railHeaderTitle}>Activity</span>
-        <button
-          type="button"
-          className={s.railCollapse}
-          data-testid="rail-collapse"
-          aria-label="Collapse activity rail"
-          aria-expanded={true}
-          onClick={() => setOverride(false)}
-        >
-          <span aria-hidden="true">›</span>
-        </button>
-      </div>
-      <StackPanel view={view} targeting={targeting} onInspect={onInspect} />
-      {/*
-       * The game log (issue #260) fills the rail's reserved dock: a readable, scrollable
-       * history composed client-side from `view.log`, with clickable entity/player
-       * references that ask the table to highlight their object.
-       */}
-      <GameLog
-        view={view}
-        onHighlight={onHighlight}
-        highlightedId={highlightedId}
-        isUnseen={isUnseen}
-        unreadCount={unreadCount}
-        onSeen={markSeen}
-      />
+    <div className={s.rail} data-testid="rail" data-expanded="true">
+      {/* The stack panel: fixed home at the rail's top. A populated stack lists its
+          objects; an empty one shows the designed quiet state — the chrome never
+          disappears, so the stack is always findable in the same place. */}
+      <section className={s.railSection} data-testid="rail-stack">
+        {count > 0 ? (
+          <StackPanel view={view} targeting={targeting} onInspect={onInspect} />
+        ) : (
+          <>
+            <h2 className={s.stackTitle}>Stack</h2>
+            <p className={s.stackQuiet} data-testid="stack-quiet">
+              Empty — spells and abilities appear here.
+            </p>
+          </>
+        )}
+      </section>
+      {/* The activity log (issue #260): fills the rail's remaining height, scrolls
+          internally, and carries the unread marker (issue #340). */}
+      <section className={s.railSection} data-testid="rail-activity">
+        <GameLog
+          view={view}
+          onHighlight={onHighlight}
+          highlightedId={highlightedId}
+          isUnseen={isUnseen}
+          unreadCount={unreadCount}
+          onSeen={markSeen}
+        />
+      </section>
     </div>
   );
 }
