@@ -41,6 +41,7 @@ redacted before serialization.
 | `phase` | `Phase` | Current turn step |
 | `turn` | `number` | One-based turn number; `0` only for an empty state |
 | `active_player` | `PlayerId` | Player whose turn it is |
+| `seat_order` | `PlayerId[]` | Every seat's id in seat order, including the receiver and any eliminated players (issue #345). The explicit ordering a multiplayer client uses to arrange opponents; omitted (defaults to `[]`) by an older server |
 | `mana_pool` | `string[]` | Receiver’s unspent mana as pip strings |
 | `priority_player` | `PlayerId?` | Player currently holding priority |
 | `valid_actions` | `ValidAction[]` | Only actions available to the receiver |
@@ -151,8 +152,10 @@ the underlying card definition and is not a legal-action handle. Clients treat b
 opaque strings.
 
 `OpponentView` contains `player_id`, `hand_size`, `life`, `library_size`,
-`graveyard_size`, and optional display-only `statuses`. `ZonePile` contains a `player_id`
-and ordered `cards`; the top of the zone is last.
+`graveyard_size`, optional display-only `statuses`, and an optional `eliminated` boolean —
+`true` when the opponent has left the game (CR 800.4a, issue #342/#345), omitted (and
+defaulting to `false`) in a two-player game. `ZonePile` contains a `player_id` and ordered
+`cards`; the top of the zone is last.
 
 ### Permanents and stack objects
 
@@ -160,6 +163,10 @@ A `Permanent` contains:
 
 - `id`, `controller`, `owner`, and a computed `card`;
 - optional `tapped` and `attacking` booleans;
+- optional `attacking_player`, naming the defending player's entity id this attacker
+  attacks (CR 508.1a, issue #341/#345) — the multiplayer generalization of `attacking`,
+  omitted when not attacking; a two-player client may ignore it (the sole opponent is the
+  only defender);
 - optional `blocking`, naming the attacker’s entity id;
 - optional marked `damage`;
 - optional `attached_to`, naming the host permanent’s entity id when this permanent
@@ -242,9 +249,17 @@ creatures, so its controller chooses the combat-damage assignment order (CR 510.
 #346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
 with 0–1 blockers produces no ordering prompt.
 
-Combat declarations also use requirements. The attackers slot lists creatures eligible to
-attack; blocker slots list eligible blockers for each attacker. Empty selections are legal
-for these optional declarations. The server validates cardinality and action-specific rules.
+Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
+attack; blocker slots list eligible blockers for each attacker. In a game with more than one
+opponent (issue #345), `declare_attackers` additionally offers one **defender slot per
+attacker candidate** — a slot whose candidates are the defending players that attacker may be
+declared to attack (CR 508.1a); the client answers a defender for each attacker it declares,
+and the slot is correlated to its attacker the same way blocker slots are. A two-player game
+offers no defender slots (the sole opponent is the only defender), so the wire and the client
+flow are unchanged. `declare_blockers` requirements are scoped to the player who currently
+owes the declaration (issue #344): with attacks split across defenders, each attacked player
+sees only the attackers attacking them. Empty selections are legal for these optional
+declarations. The server validates cardinality and action-specific rules.
 
 ### `ChooseAction`
 

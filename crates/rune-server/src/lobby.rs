@@ -270,6 +270,15 @@ pub(crate) enum LobbyError {
     NotInRoom,
     /// `create_room` with a seat count outside [`SEAT_RANGE`].
     InvalidSeatCount(u8),
+    /// `create_room` whose seat count is valid for the lobby but outside the chosen
+    /// format's own seat range (issue #349): e.g. 4 seats for a two-player format, or
+    /// 2 for a free-for-all. Carries the seat count and the format id; no room opens.
+    SeatCountForFormat {
+        /// The requested seat count.
+        seats: u8,
+        /// The format id it was rejected for.
+        format: String,
+    },
     /// `create_room` whose `game_setup` id names no format in the registry (ADR
     /// 0013 §4). Carries the offending id; no room is opened.
     UnknownFormat(String),
@@ -335,6 +344,9 @@ impl std::fmt::Display for LobbyError {
             Self::AlreadyInRoom => write!(f, "already in a room"),
             Self::NotInRoom => write!(f, "not in a room"),
             Self::InvalidSeatCount(n) => write!(f, "seat count {n} is outside 2..=8"),
+            Self::SeatCountForFormat { seats, format } => {
+                write!(f, "seat count {seats} is not allowed by format {format}")
+            }
             Self::UnknownFormat(id) => write!(f, "unknown game_setup format {id}"),
             Self::UnknownRoom => write!(f, "unknown room id"),
             Self::RoomFull => write!(f, "room is full"),
@@ -608,8 +620,18 @@ impl Lobby {
         // The `game_setup` id must name a registered format (ADR 0013 §4); an unknown
         // id is refused before a room is opened, so no room ever holds a setup the
         // server cannot build a game from or validate decks against.
-        if self.inner.formats.get(&config.game_setup).is_none() {
+        let Some(format) = self.inner.formats.get(&config.game_setup) else {
             return Err(LobbyError::UnknownFormat(config.game_setup.clone()));
+        };
+        // The seat count must also be one the chosen format allows (issue #349): a
+        // two-player format refuses a free-for-all count, and a free-for-all refuses a
+        // duel. Non-fatal — the current lobby view is re-sent, like every other
+        // rejected command.
+        if !format.seats.contains(&config.seats) {
+            return Err(LobbyError::SeatCountForFormat {
+                seats: config.seats,
+                format: config.game_setup.clone(),
+            });
         }
         // Free capacity held by empty rooms before checking the cap, so a creator is
         // never refused for a slot no live room still needs.
@@ -2210,7 +2232,9 @@ mod tests {
         lobby
             .command(
                 &alice.token,
-                LobbyCommand::CreateRoom(CreateRoom { config: config(3) }),
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: config_with(3, "standard_ffa"),
+                }),
             )
             .await
             .unwrap();
@@ -2544,6 +2568,97 @@ mod tests {
                 .await,
             Err(LobbyError::GameStarted)
         );
+    }
+
+    #[tokio::test]
+    async fn issue_349_ffa_format_rejects_a_seat_count_it_does_not_allow() {
+        // The free-for-all format seats 3–4 (issue #349): a two-seat request is a
+        // valid lobby seat count but not one this format allows, so it is rejected
+        // non-fatally and no room opens.
+        let lobby = lobby(4);
+        let mut client = Client::connect(&lobby).await;
+        let _ = client.view().await;
+        let err = lobby
+            .command(
+                &client.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: config_with(2, "standard_ffa"),
+                }),
+            )
+            .await
+            .expect_err("2 seats is not a free-for-all count");
+        assert_eq!(
+            err,
+            LobbyError::SeatCountForFormat {
+                seats: 2,
+                format: "standard_ffa".to_string(),
+            }
+        );
+        assert!(client.current().room.is_none());
+    }
+
+    #[tokio::test]
+    async fn issue_349_three_seat_free_for_all_starts_a_three_player_game() {
+        // Creating a 3-seat free-for-all room, decking and readying every seat, starts
+        // an engine game seating that many players (the FFA-format acceptance).
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: config_with(3, "standard_ffa"),
+                }),
+            )
+            .await
+            .expect("alice creates a 3-seat FFA room");
+        let room_id = alice.view().await.room.expect("alice in room").room_id;
+        assert_eq!(
+            alice.current().room.unwrap().seats.len(),
+            3,
+            "the room has three seats"
+        );
+
+        // Two more players join.
+        let mut others = Vec::new();
+        for _ in 0..2 {
+            let mut client = Client::connect(&lobby).await;
+            let _ = client.view().await;
+            lobby
+                .command(
+                    &client.token,
+                    LobbyCommand::JoinRoom(JoinRoom {
+                        room_id: room_id.clone(),
+                    }),
+                )
+                .await
+                .expect("player joins the FFA room");
+            let _ = client.view().await;
+            others.push(client);
+        }
+        let _ = alice.view().await;
+
+        // Every seat decks and readies; the game starts only once all three are in.
+        submit_valid_deck(&lobby, &alice).await;
+        for client in &others {
+            submit_valid_deck(&lobby, client).await;
+        }
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        for client in &others {
+            lobby
+                .command(&client.token, LobbyCommand::Ready(Ready { ready: true }))
+                .await
+                .expect("player readies");
+        }
+
+        // All three seats are handed off to a running game, one per seat index.
+        assert_eq!(alice.start_seat(), Some(0));
+        assert_eq!(others[0].start_seat(), Some(1));
+        assert_eq!(others[1].start_seat(), Some(2));
     }
 
     #[tokio::test]

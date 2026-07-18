@@ -20,6 +20,7 @@ function view(): GameView {
     phase: 'precombat_main',
     turn: 1,
     active_player: 'p1',
+    seat_order: [],
     mana_pool: [],
     priority_player: 'p1',
     valid_actions: [],
