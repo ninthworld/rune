@@ -5,6 +5,7 @@ import { ArtSettings } from './ArtSettings';
 import {
   configureArtStore,
   getArtSource,
+  getArtStyle,
   noteCards,
   resetArtStore,
   setArtSource,
@@ -82,6 +83,28 @@ describe('ArtSettings (ADR 0024)', () => {
     expect(screen.getByTestId('art-status').textContent).toContain('1 of 1');
     // The clear control is available for the downloaded set.
     expect(screen.getByTestId('art-clear')).toBeDefined();
+  });
+
+  it('offers the presentation styles only under the Scryfall source', () => {
+    configureArtStore(offlineDeps());
+    render(<ArtSettings onClose={vi.fn()} />);
+    // Procedural: no presentation choice to make.
+    expect(screen.queryByTestId('art-style')).toBeNull();
+    fireEvent.click(screen.getByTestId('art-source-scryfall'));
+    fireEvent.click(screen.getByTestId('art-consent-accept'));
+    // Scryfall active: the illustration-in-frame default is checked.
+    expect(screen.getByTestId('art-style-window').getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('art-style-full').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('switches to the entire-card presentation (ADR 0024 full-card mode)', async () => {
+    configureArtStore(offlineDeps());
+    setArtSource('scryfall');
+    render(<ArtSettings onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('art-style-full'));
+    expect(getArtStyle()).toBe('full');
+    expect(screen.getByTestId('art-style-full').getAttribute('aria-checked')).toBe('true');
+    await Promise.resolve();
   });
 
   it('closes on the backdrop', () => {

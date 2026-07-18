@@ -8,10 +8,12 @@ import {
   collectArtCards,
   configureArtStore,
   getArtSource,
+  getArtStyle,
   getArtVersion,
   noteCards,
   resetArtStore,
   setArtSource,
+  setArtStyle,
   subscribeArt,
   textureForArtKey,
   type ArtStoreDeps,
@@ -39,7 +41,14 @@ function stubFetch(seen: string[]): FetchLike {
       status: 200,
       json: () =>
         Promise.resolve(
-          url.endsWith('manifest.json') ? [] : { image_uris: { art_crop: `https://img/${url}` } },
+          url.endsWith('manifest.json')
+            ? []
+            : {
+                image_uris: {
+                  art_crop: `https://img/crop/${url}`,
+                  normal: `https://img/full/${url}`,
+                },
+              },
         ),
       blob: () => Promise.resolve(new Blob(['img'])),
     });
@@ -93,7 +102,7 @@ describe('artStore (ADR 0024)', () => {
 
   it('serves repeat sessions from the device cache without refetching', async () => {
     const cache = new MemoryArtCache();
-    await cache.put('emberfang_jackal', {
+    await cache.put('emberfang_jackal#crop', {
       blob: new Blob(['cached']),
       source: 'scryfall',
       sourceName: 'Jackal Pup',
@@ -114,8 +123,8 @@ describe('artStore (ADR 0024)', () => {
     setArtSource('scryfall');
     noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
     await settle();
-    expect(await cache.keys()).toEqual(['cinder_shock']);
-    expect((await cache.get('cinder_shock'))?.sourceName).toBe('Shock');
+    expect(await cache.keys()).toEqual(['cinder_shock#crop']);
+    expect((await cache.get('cinder_shock#crop'))?.sourceName).toBe('Shock');
   });
 
   it('marks an unresolvable card failed and keeps the face procedural', async () => {
@@ -219,6 +228,43 @@ describe('artStore (ADR 0024)', () => {
     expect(urls).toContain('/card-art/manifest.json');
     expect(urls).toContain('/card-art/emberfang_jackal.jpg');
     expect(urls).not.toContain('/card-art/cinder_shock.jpg');
+  });
+
+  it('downloads the entire card image under full-card mode (ADR 0024)', async () => {
+    const seen: string[] = [];
+    const cache = new MemoryArtCache();
+    configureArtStore({ ...testDeps(seen), cache });
+    setArtSource('scryfall');
+    setArtStyle('full');
+    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    await settle();
+    // The image URL fetched is the `normal` (whole card) one, cached under the
+    // full-mode key, and the published record is flagged as a full-card face.
+    expect(seen.some((url) => url.startsWith('https://img/full/'))).toBe(true);
+    expect(await cache.keys()).toEqual(['cinder_shock#full']);
+    const key = artKeyFor('cinder_shock');
+    expect(key).toContain('scryfall:full');
+    expect(textureForArtKey(key)?.full).toBe(true);
+  });
+
+  it('keeps the two presentation styles independently cached and keyed', async () => {
+    const cache = new MemoryArtCache();
+    configureArtStore({ ...testDeps(), cache });
+    setArtSource('scryfall');
+    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    await settle();
+    const windowKey = artKeyFor('cinder_shock');
+    expect(textureForArtKey(windowKey)?.full).toBe(false);
+    setArtStyle('full');
+    await settle();
+    const fullKey = artKeyFor('cinder_shock');
+    expect(fullKey).not.toBe(windowKey);
+    expect(textureForArtKey(fullKey)?.full).toBe(true);
+    expect((await cache.keys()).sort()).toEqual(['cinder_shock#crop', 'cinder_shock#full']);
+    // Switching back is instant: the window texture is still published.
+    setArtStyle('window');
+    expect(artKeyFor('cinder_shock')).toBe(windowKey);
+    expect(getArtStyle()).toBe('window');
   });
 
   it('collects every face-up card a view shows', () => {

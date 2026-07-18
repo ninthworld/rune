@@ -151,12 +151,12 @@ by the server. The functional schema rejects prohibited presentation fields.
 
 These constraints govern **what the project distributes** — the repository, the built
 client, and the server. A player may additionally opt in, on their own device, to having
-their browser fetch card illustrations directly from a third-party source (currently
-Scryfall); those images are cached only on that device, render inside RUNE's own
-procedural frame (bare illustrations only, never official frames or symbols), and are
-never uploaded, proxied, served, or redistributed by the project
-([ADR 0024](decisions/0024-user-side-card-art.md)). Bundled art is limited to original,
-project-owned illustrations.
+their browser fetch card images directly from a third-party source (currently Scryfall);
+those images are cached only on that device and are never uploaded, proxied, served, or
+redistributed by the project ([ADR 0024](decisions/0024-user-side-card-art.md)). By
+default only the bare illustration renders inside RUNE's own procedural frame; the player
+may instead choose to display the entire card image, again on their device only. Bundled
+art is limited to original, project-owned illustrations.
 
 Any further weakening of these constraints requires an explicit legal review and
 architectural decision; it is not authorized by existing plans or ADRs.

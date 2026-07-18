@@ -212,13 +212,23 @@ The frame is designed around an **art window**: a reserved region of the face
 that holds procedural fill (the accent-tinted initial monogram) by default and an
 illustration when the player's chosen art source has one (ADR 0024); the name
 band, cost pips, type line, and P/T pill keep their positions either way. The
-monogram is a placeholder for the art box, not the card's identity. Art renders
-at the **field and hand tiers only** — chip/mini/support keep their full dense
-information budget — cover-cropped inside a rounded mask (`ART` tokens), with a
-card-body scrim behind the keyword-glyph strip so glyphs stay legible on any
-illustration. Sources are player-selected per device (procedural default,
-bundled project-owned art, or opt-in Scryfall download, device-cached only);
-the project itself ships no official imagery (see the brief).
+monogram is a placeholder for the art box, not the card's identity. Window-mode
+art renders at the **field and hand tiers only** — chip/mini/support keep their
+full dense information budget — cover-cropped inside a rounded mask (`ART`
+tokens), with a card-body scrim behind the keyword-glyph strip so glyphs stay
+legible on any illustration.
+
+**Full-card mode** (ADR 0024, Scryfall source only) replaces the whole face with
+the entire official card image at every full-face tier (mini through hand):
+RUNE's name band, pips, type line, and keyword strip are suppressed (the image
+carries them), while every server-computed overlay — effective P/T pill, counter
+and damage badges, combat bars, rings, the playable edge bar, tap — draws on top
+unchanged, so the game-state vocabulary is identical across all three faces
+(procedural, window, full). Chips stay procedural digests in every mode.
+
+Sources are player-selected per device (procedural default, bundled
+project-owned art, or opt-in Scryfall download, device-cached only); the
+project itself ships no official imagery (see the brief).
 
 Size tiers: chip 44×60 (lands/digest), mini 54×76 (the stepped-down dense tier
 the blueprint's density ladder engages), support 66×92, field 84×118, hand

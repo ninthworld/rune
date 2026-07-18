@@ -1,16 +1,20 @@
 /**
  * The client-local card-art store (ADR 0024): the one place that turns a card's
  * stable `functional_id` (the presentation identity the protocol reserved for
- * exactly this) into a loaded illustration texture for the Pixi factory and an
- * object URL for DOM surfaces.
+ * exactly this) into a loaded image texture for the Pixi factory and an object
+ * URL for DOM surfaces.
  *
  * Pipelines (selected by the player, `artSettings.ts`):
  * - `procedural` — nothing loads; every card keeps the vector frame. Default.
- * - `bundled`    — project-owned art shipped with the client under
- *                  `/card-art/<functional_id>.jpg`, listed by `/card-art/manifest.json`.
- * - `scryfall`   — real card illustrations the player opted into, fetched by
- *                  their browser from Scryfall (rate-limited, `art_crop` only),
- *                  cached in IndexedDB on their device.
+ * - `bundled`    — project-owned illustrations shipped with the client under
+ *                  `/card-art/<functional_id>.jpg`, listed by `/card-art/manifest.json`,
+ *                  always rendered inside RUNE's frame.
+ * - `scryfall`   — real card images the player opted into, fetched by their
+ *                  browser from Scryfall (rate-limited), cached in IndexedDB on
+ *                  their device. Two presentation styles: `window` downloads the
+ *                  bare illustration (`art_crop`) for RUNE's frame; `full`
+ *                  downloads the entire official card image (`normal`) which
+ *                  replaces the procedural face wholesale.
  *
  * Everything here is presentation cache and preference — never game state. The
  * whole store can be cleared at any time and the UI remains fully reconstructable
@@ -23,30 +27,34 @@
 import { Texture } from 'pixi.js';
 import type { GameView } from '../../protocol';
 import artMapJson from './artMap.json';
-import { loadArtSource, saveArtSource, type ArtSource } from './artSettings';
+import {
+  loadArtSource,
+  loadArtStyle,
+  saveArtSource,
+  saveArtStyle,
+  type ArtSource,
+  type ArtStyle,
+} from './artSettings';
 import { openArtCache, type ArtBlobCache } from './artCache';
 import {
   fetchImageBlob,
-  resolveArtCrop,
+  resolveCardImage,
   SCRYFALL_REQUEST_SPACING_MS,
   type FetchLike,
+  type PrintingRef,
 } from './scryfall';
-
-/** A real-card art counterpart for a catalog card (see `artMap.json`). */
-interface ArtMapEntry {
-  /** Exact real card name to resolve on Scryfall. */
-  name: string;
-}
 
 /**
  * The functional_id → real-card mapping. While the embedded catalog still ships
  * functional stand-ins, each maps to a real card whose illustration fits its
- * color and flavor; once the catalog migrates to real cards (roadmap), lookup
- * falls back to the card's own name and this map shrinks away.
+ * color and flavor; an entry may also pin a specific printing (`set` + collector
+ * `number`) to select a deliberate version — e.g. a full-art land — instead of
+ * Scryfall's default printing. Once the catalog migrates to real cards
+ * (roadmap), lookup falls back to the card's own name and this map shrinks away.
  */
-const ART_MAP: Record<string, ArtMapEntry> = artMapJson;
+const ART_MAP: Record<string, PrintingRef> = artMapJson;
 
-/** A published illustration: the texture for Pixi plus a URL for DOM surfaces. */
+/** A decoded image: the texture for Pixi plus a URL for DOM surfaces. */
 export interface LoadedArt {
   /** Decoded texture the card factory draws. */
   texture: Texture;
@@ -54,10 +62,26 @@ export interface LoadedArt {
   url: string;
 }
 
+/** A published image: the decoded art plus how the face should present it. */
+export interface PublishedArt extends LoadedArt {
+  /**
+   * Whether this is an ENTIRE official card image (full-card mode): the factory
+   * renders it as the whole face and suppresses RUNE's procedural name band,
+   * pips, and type line. `false` means an illustration for RUNE's art window.
+   */
+  full: boolean;
+}
+
+/**
+ * One loading pipeline: a source plus (for Scryfall) its presentation style.
+ * Kept separate per style because the two styles download different images.
+ */
+type ArtPipeline = 'bundled' | 'scryfall:window' | 'scryfall:full';
+
 /** Per-card load state under one pipeline. */
 interface ArtEntry {
   state: 'loading' | 'loaded' | 'failed';
-  art?: LoadedArt;
+  art?: PublishedArt;
   /** Unique key for the published texture, embedded in the card's visual signature. */
   key?: string;
 }
@@ -104,12 +128,13 @@ function defaultDeps(): ArtStoreDeps {
 interface StoreState {
   deps: ArtStoreDeps;
   source: ArtSource;
+  style: ArtStyle;
   /** Cards the current views want art for: functional_id → display name. */
   wanted: Map<string, string>;
-  /** Load state per pipeline so switching sources re-resolves cleanly. */
-  entries: Map<ArtSource, Map<string, ArtEntry>>;
+  /** Load state per pipeline so switching source/style re-resolves cleanly. */
+  entries: Map<ArtPipeline, Map<string, ArtEntry>>;
   /** Published textures by signature key (what the card factory looks up). */
-  textures: Map<string, LoadedArt>;
+  textures: Map<string, PublishedArt>;
   /** Monotonic counter making every published texture key unique. */
   generation: number;
   /** Change counter for `useSyncExternalStore` subscribers. */
@@ -127,6 +152,7 @@ function freshState(deps?: Partial<ArtStoreDeps>): StoreState {
   return {
     deps: { ...defaultDeps(), ...deps },
     source: loadArtSource(),
+    style: loadArtStyle(),
     wanted: new Map(),
     entries: new Map(),
     textures: new Map(),
@@ -180,6 +206,18 @@ export function getArtSource(): ArtSource {
   return store().source;
 }
 
+/** The active presentation style (meaningful under the `scryfall` source). */
+export function getArtStyle(): ArtStyle {
+  return store().style;
+}
+
+/** The pipeline the active source/style selects, or `null` under procedural. */
+function activePipeline(s: StoreState): ArtPipeline | null {
+  if (s.source === 'procedural') return null;
+  if (s.source === 'bundled') return 'bundled';
+  return s.style === 'full' ? 'scryfall:full' : 'scryfall:window';
+}
+
 /**
  * Switch the active art pipeline (the settings surface's radio). Persists the
  * device preference and kicks loads for every wanted card under the new source.
@@ -193,12 +231,27 @@ export function setArtSource(source: ArtSource): void {
   bump(s);
 }
 
-/** The per-source entry map, created on demand. */
-function entriesFor(s: StoreState, source: ArtSource): Map<string, ArtEntry> {
-  let map = s.entries.get(source);
+/**
+ * Switch the presentation style: illustration in RUNE's frame (`window`) or the
+ * entire official card image (`full`). Persists the device preference; under
+ * the `scryfall` source the newly-needed image kind starts loading for every
+ * wanted card (the styles cache independently, so switching back is instant).
+ */
+export function setArtStyle(style: ArtStyle): void {
+  const s = store();
+  if (s.style === style) return;
+  s.style = style;
+  saveArtStyle(style);
+  for (const [functionalId, name] of s.wanted) ensureLoading(s, functionalId, name);
+  bump(s);
+}
+
+/** The per-pipeline entry map, created on demand. */
+function entriesFor(s: StoreState, pipeline: ArtPipeline): Map<string, ArtEntry> {
+  let map = s.entries.get(pipeline);
   if (!map) {
     map = new Map();
-    s.entries.set(source, map);
+    s.entries.set(pipeline, map);
   }
   return map;
 }
@@ -218,36 +271,40 @@ export function noteCards(cards: { functionalId?: string; name: string }[]): voi
 }
 
 /**
- * The signature key for a card's currently-published illustration, or
- * `undefined` when none (procedural source, still loading, or failed). The key
- * goes into `CardDisplayData.artKey`, so a card's visual signature changes —
- * and the reconciler rebuilds it — exactly when its art arrives.
+ * The signature key for a card's currently-published image, or `undefined`
+ * when none (procedural source, still loading, or failed). The key goes into
+ * `CardDisplayData.artKey`, so a card's visual signature changes — and the
+ * reconciler rebuilds it — exactly when its art (or the presentation style)
+ * changes.
  */
 export function artKeyFor(functionalId: string | undefined): string | undefined {
   if (!functionalId) return undefined;
   const s = store();
-  if (s.source === 'procedural') return undefined;
-  return entriesFor(s, s.source).get(functionalId)?.key;
+  const pipeline = activePipeline(s);
+  if (!pipeline) return undefined;
+  return entriesFor(s, pipeline).get(functionalId)?.key;
 }
 
-/** The published texture for a signature key (the card factory's lookup). */
-export function textureForArtKey(artKey: string | undefined): LoadedArt | undefined {
+/** The published image for a signature key (the card factory's lookup). */
+export function textureForArtKey(artKey: string | undefined): PublishedArt | undefined {
   if (!artKey) return undefined;
   return store().textures.get(artKey);
 }
 
-/** Display URL for DOM surfaces (the inspector), under the active source. */
+/** Display URL for DOM surfaces (the inspector), under the active pipeline. */
 export function artUrlFor(functionalId: string | undefined): string | undefined {
   if (!functionalId) return undefined;
   const s = store();
-  if (s.source === 'procedural') return undefined;
-  return entriesFor(s, s.source).get(functionalId)?.art?.url;
+  const pipeline = activePipeline(s);
+  if (!pipeline) return undefined;
+  return entriesFor(s, pipeline).get(functionalId)?.art?.url;
 }
 
-/** Progress over the wanted set under the active source (settings panel). */
+/** Progress over the wanted set under the active pipeline (settings panel). */
 export function artStatus(): { total: number; loaded: number; failed: number; pending: number } {
   const s = store();
-  const map = s.source === 'procedural' ? new Map<string, ArtEntry>() : entriesFor(s, s.source);
+  const pipeline = activePipeline(s);
+  const map = pipeline ? entriesFor(s, pipeline) : new Map<string, ArtEntry>();
   let loaded = 0;
   let failed = 0;
   let pending = 0;
@@ -261,9 +318,9 @@ export function artStatus(): { total: number; loaded: number; failed: number; pe
 }
 
 /**
- * Clear every downloaded illustration from the device cache and drop the
- * published Scryfall textures. Cards fall back to procedural faces on the next
- * render; nothing else changes (presentation cache only).
+ * Clear every downloaded image from the device cache and drop the published
+ * Scryfall textures (both presentation styles). Cards fall back to procedural
+ * faces on the next render; nothing else changes (presentation cache only).
  */
 export async function clearDownloadedArt(): Promise<void> {
   const s = store();
@@ -272,12 +329,14 @@ export async function clearDownloadedArt(): Promise<void> {
   } catch {
     // A failed clear leaves stale cache entries; the UI state still resets.
   }
-  const scryfall = entriesFor(s, 'scryfall');
-  for (const entry of scryfall.values()) {
-    if (entry.key) s.textures.delete(entry.key);
-    if (entry.art) revokeUrl(entry.art.url);
+  for (const pipeline of ['scryfall:window', 'scryfall:full'] as const) {
+    const map = entriesFor(s, pipeline);
+    for (const entry of map.values()) {
+      if (entry.key) s.textures.delete(entry.key);
+      if (entry.art) revokeUrl(entry.art.url);
+    }
+    map.clear();
   }
-  scryfall.clear();
   bump(s);
 }
 
@@ -301,31 +360,37 @@ export async function storageEstimate(): Promise<{ usage: number; quota: number 
   }
 }
 
-/** Publish a decoded illustration for a card under a source and notify. */
+/** Publish a decoded image for a card under a pipeline and notify. */
 function publish(
   s: StoreState,
-  source: ArtSource,
+  pipeline: ArtPipeline,
   functionalId: string,
   art: LoadedArt | null,
 ): void {
   const entry: ArtEntry = art
-    ? { state: 'loaded', art, key: `${source}:${functionalId}#${(s.generation += 1)}` }
+    ? {
+        state: 'loaded',
+        art: { ...art, full: pipeline === 'scryfall:full' },
+        key: `${pipeline}:${functionalId}#${(s.generation += 1)}`,
+      }
     : { state: 'failed' };
-  entriesFor(s, source).set(functionalId, entry);
-  if (entry.key && art) s.textures.set(entry.key, art);
+  entriesFor(s, pipeline).set(functionalId, entry);
+  if (entry.key && entry.art) s.textures.set(entry.key, entry.art);
   bump(s);
 }
 
-/** Start (once) the background load of one card's art under the active source. */
+/** Start (once) the background load of one card's art under the active pipeline. */
 function ensureLoading(s: StoreState, functionalId: string, name: string): void {
-  if (s.source === 'procedural') return;
-  const source = s.source;
-  const map = entriesFor(s, source);
+  const pipeline = activePipeline(s);
+  if (!pipeline) return;
+  const map = entriesFor(s, pipeline);
   if (map.has(functionalId)) return;
   map.set(functionalId, { state: 'loading' });
   const job =
-    source === 'bundled' ? loadBundled(s, functionalId) : loadScryfall(s, functionalId, name);
-  void job.catch(() => publish(s, source, functionalId, null));
+    pipeline === 'bundled'
+      ? loadBundled(s, functionalId)
+      : loadScryfall(s, pipeline, functionalId, name);
+  void job.catch(() => publish(s, pipeline, functionalId, null));
 }
 
 /** Load one bundled illustration (`/card-art/<id>.jpg`, gated by the manifest). */
@@ -358,41 +423,50 @@ async function bundledManifest(s: StoreState): Promise<Set<string>> {
 }
 
 /**
- * Load one Scryfall illustration: device cache first, then a rate-limited
- * resolve + download, persisting the blob so the next session skips the network.
+ * Load one Scryfall image for a pipeline: device cache first, then a
+ * rate-limited resolve + download, persisting the blob so the next session
+ * skips the network. The two styles download different image kinds and cache
+ * under different keys, so each is fetched at most once per device.
  */
-async function loadScryfall(s: StoreState, functionalId: string, name: string): Promise<void> {
+async function loadScryfall(
+  s: StoreState,
+  pipeline: 'scryfall:window' | 'scryfall:full',
+  functionalId: string,
+  name: string,
+): Promise<void> {
+  const full = pipeline === 'scryfall:full';
+  const cacheKey = `${functionalId}#${full ? 'full' : 'crop'}`;
   let cached;
   try {
-    cached = await s.deps.cache.get(functionalId);
+    cached = await s.deps.cache.get(cacheKey);
   } catch {
     cached = undefined;
   }
   if (cached) {
-    publish(s, 'scryfall', functionalId, await s.deps.loadArt(cached.blob));
+    publish(s, pipeline, functionalId, await s.deps.loadArt(cached.blob));
     return;
   }
 
-  const realName = ART_MAP[functionalId]?.name ?? name;
+  const ref: PrintingRef = ART_MAP[functionalId] ?? { name };
   const blob = await enqueueScryfall(s, async () => {
-    const artUrl = await resolveArtCrop(s.deps.fetchLike, realName);
-    if (!artUrl) return null;
+    const imageUrl = await resolveCardImage(s.deps.fetchLike, ref, full ? 'normal' : 'art_crop');
+    if (!imageUrl) return null;
     await s.deps.delay(SCRYFALL_REQUEST_SPACING_MS);
-    return fetchImageBlob(s.deps.fetchLike, artUrl);
+    return fetchImageBlob(s.deps.fetchLike, imageUrl);
   });
   if (blob) {
     try {
-      await s.deps.cache.put(functionalId, {
+      await s.deps.cache.put(cacheKey, {
         blob,
         source: 'scryfall',
-        sourceName: realName,
+        sourceName: ref.name,
         fetchedAt: s.deps.now(),
       });
     } catch {
       // Persisting is best-effort; the session still gets its texture.
     }
   }
-  publish(s, 'scryfall', functionalId, blob ? await s.deps.loadArt(blob) : null);
+  publish(s, pipeline, functionalId, blob ? await s.deps.loadArt(blob) : null);
 }
 
 /**

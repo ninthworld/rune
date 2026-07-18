@@ -16,7 +16,14 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { CardView, Counter, EntityId, StackItem } from '../protocol';
-import { artUrlFor, getArtVersion, subscribeArt } from '../card/art/artStore';
+import {
+  artUrlFor,
+  getArtSource,
+  getArtStyle,
+  getArtVersion,
+  subscribeArt,
+} from '../card/art/artStore';
+import { cx } from '../chrome/cx';
 import s from './chrome.module.css';
 
 /** A named reference to another permanent, for the inspector's attachment lines. */
@@ -179,12 +186,16 @@ function CardBody({
   // shows up. Pure presentation cache; absent renders the text-only panel.
   useSyncExternalStore(subscribeArt, getArtVersion);
   const artUrl = artUrlFor(card.functional_id);
+  // Under full-card mode the image IS a whole card: show it uncropped (contain)
+  // at card aspect rather than as a letterboxed illustration strip.
+  const fullCard = getArtSource() === 'scryfall' && getArtStyle() === 'full';
   return (
     <>
       {artUrl !== undefined && (
         <img
-          className={s.inspectArt}
+          className={cx(s.inspectArt, fullCard && s.inspectArtFull)}
           data-testid="card-inspect-art"
+          data-full-card={fullCard || undefined}
           src={artUrl}
           alt=""
           aria-hidden="true"

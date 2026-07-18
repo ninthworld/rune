@@ -4,7 +4,7 @@
  * one (or at a dense tier) the procedural face is byte-identical to before.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { Container, Sprite, Texture } from 'pixi.js';
+import { Container, Sprite, Text, Texture } from 'pixi.js';
 import { buildCardDisplay, cardVisualSignature, type CardDisplayData } from './cardFactory';
 import {
   artKeyFor,
@@ -12,9 +12,11 @@ import {
   noteCards,
   resetArtStore,
   setArtSource,
+  setArtStyle,
   type ArtStoreDeps,
 } from './art/artStore';
 import { MemoryArtCache } from './art/artCache';
+import type { ArtStyle } from './art/artSettings';
 
 afterEach(() => {
   resetArtStore();
@@ -22,13 +24,16 @@ afterEach(() => {
 });
 
 /** Publish stub art for one functional id and return its signature key. */
-async function publishArt(functionalId: string): Promise<string> {
+async function publishArt(functionalId: string, style: ArtStyle = 'window'): Promise<string> {
   const deps: Partial<ArtStoreDeps> = {
     fetchLike: () =>
       Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ image_uris: { art_crop: 'https://img/a.jpg' } }),
+        json: () =>
+          Promise.resolve({
+            image_uris: { art_crop: 'https://img/crop.jpg', normal: 'https://img/full.jpg' },
+          }),
         blob: () => Promise.resolve(new Blob(['img'])),
       }),
     cache: new MemoryArtCache(),
@@ -38,11 +43,25 @@ async function publishArt(functionalId: string): Promise<string> {
   };
   configureArtStore(deps);
   setArtSource('scryfall');
+  setArtStyle(style);
   noteCards([{ functionalId, name: functionalId }]);
   for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
   const key = artKeyFor(functionalId);
   if (!key) throw new Error('art did not publish');
   return key;
+}
+
+/** Every plain-`Text` string in a display object, depth first. */
+function collectTexts(node: Container): string[] {
+  const found: string[] = [];
+  const walk = (n: Container): void => {
+    for (const child of n.children) {
+      if (child instanceof Text) found.push(child.text);
+      if (child instanceof Container) walk(child);
+    }
+  };
+  walk(node);
+  return found;
 }
 
 /** Collect the named art-layer sprites in a display object, depth first. */
@@ -94,6 +113,31 @@ describe('card factory art window (ADR 0024)', () => {
     const artKey = await publishArt('emberfang_jackal');
     const display = buildCardDisplay({ ...CARD, artKey }, 'hand');
     expect(collectSprites(display).length).toBe(1);
+  });
+
+  it('renders the entire card image as the face in full-card mode', async () => {
+    const artKey = await publishArt('emberfang_jackal', 'full');
+    const display = buildCardDisplay({ ...CARD, keywords: ['haste'] }, 'field');
+    // Without the key the procedural face renders as usual…
+    expect(collectSprites(display).length).toBe(0);
+    const fullFace = buildCardDisplay({ ...CARD, keywords: ['haste'], artKey }, 'field');
+    const sprites = collectSprites(fullFace);
+    expect(sprites.length).toBe(1);
+    expect(sprites[0]!.mask).not.toBeNull();
+    // …with the key, RUNE's printed text is suppressed (it's on the image): no
+    // name, no type line — while the server-computed P/T pill stays on top.
+    const texts = collectTexts(fullFace);
+    expect(texts.some((t) => t.startsWith('Emberf'))).toBe(false);
+    expect(texts.some((t) => t.startsWith('Creatu'))).toBe(false);
+    expect(texts).toContain('2/1');
+  });
+
+  it('renders full-card mode at every full-face tier, dense tiers included', async () => {
+    const artKey = await publishArt('emberfang_jackal', 'full');
+    for (const tier of ['mini', 'support', 'field', 'hand'] as const) {
+      const display = buildCardDisplay({ ...CARD, artKey }, tier);
+      expect(collectSprites(display).length).toBe(1);
+    }
   });
 
   it('changes the visual signature when art arrives, so the reconciler rebuilds', () => {

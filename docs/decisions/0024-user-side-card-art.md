@@ -43,13 +43,32 @@ in a settings surface and stored as a device preference:
 2. **Bundled**: original, project-owned illustrations (the RUNE-generated set)
    shipped with the client under `clients/web/public/card-art/` and gated by a
    manifest. Only art the project may redistribute is ever added here.
-3. **Scryfall** (opt-in): the player's browser fetches real card illustrations
+3. **Scryfall** (opt-in): the player's browser fetches real card images
    directly from Scryfall after an explicit consent step, rate-limited per
    Scryfall's guidelines, and caches them in IndexedDB **on the player's device
-   only**. Only the bare illustration (`art_crop`) is used — it renders inside
-   RUNE's own procedural frame; official frames, symbols, and full card scans
-   stay excluded. Additional sources can be added behind the same interface
-   later.
+   only**. Additional sources can be added behind the same interface later.
+
+The Scryfall source has two player-selected **presentation styles**:
+
+- **Window** (default): only the bare illustration (`art_crop`) is downloaded
+  and rendered inside RUNE's own procedural frame — RUNE keeps drawing the
+  name band, pips, type line, and keyword strip.
+- **Full card**: the entire official card image (`normal`) becomes the face,
+  frame and all, at every full-face tier. RUNE's printed text is suppressed
+  (it is on the image), but the server-computed overlays — effective P/T,
+  counters, combat bars, selection/targeting rings, the playable affordance,
+  tap — always render on top: the image is presentation, the overlays remain
+  the authoritative values. The two styles download different images and cache
+  independently, so switching between them is instant once both are fetched.
+
+**Full-art and alternate printings.** The exact-name lookup returns Scryfall's
+default printing. An art-map entry may pin a specific printing (`set` +
+collector `number`) to deliberately select a version — full-art basics, a
+particular illustration — instead. Aspect differences need no special casing:
+window mode cover-crops any illustration aspect inside its mask, and every
+Scryfall card image (full-art printings included) shares the physical card
+aspect (~63:88), which each render tier's footprint matches to within a
+fraction of a percent.
 
 Rules the codebase follows:
 
@@ -62,6 +81,9 @@ Rules the codebase follows:
 - The renderer treats art as a looked-up texture keyed by the card's
   `functional_id`; it never fetches, and no game data flows to any art source
   beyond the card names being resolved.
+- Server-computed characteristics are never hidden behind a printed image: in
+  full-card mode the effective values still overlay the face, so a buffed 4/4
+  never reads as its printed 2/2.
 - While the catalog ships functional stand-ins, a client-side mapping
   (`clients/web/src/card/art/artMap.json`) pairs each `functional_id` with a
   real card whose illustration fits its color and flavor; resolution falls back

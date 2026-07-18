@@ -21,12 +21,14 @@ import {
   artStatus,
   clearDownloadedArt,
   getArtSource,
+  getArtStyle,
   getArtVersion,
   setArtSource,
+  setArtStyle,
   storageEstimate,
   subscribeArt,
 } from '../card/art/artStore';
-import type { ArtSource } from '../card/art/artSettings';
+import type { ArtSource, ArtStyle } from '../card/art/artSettings';
 import { cx } from '../chrome/cx';
 import s from './chrome.module.css';
 
@@ -56,6 +58,24 @@ const SOURCE_OPTIONS: { source: ArtSource; label: string; description: string }[
   },
 ];
 
+/**
+ * The two presentations for downloaded real-card images (ADR 0024): the bare
+ * illustration inside RUNE's frame, or the entire official card image.
+ */
+const STYLE_OPTIONS: { style: ArtStyle; label: string; description: string }[] = [
+  {
+    style: 'window',
+    label: 'Illustration in the RUNE frame',
+    description: 'RUNE draws the frame and text; only the illustration is downloaded.',
+  },
+  {
+    style: 'full',
+    label: 'Entire card image',
+    description:
+      'The official card, frame and all. Current values (power, counters) still overlay on top.',
+  },
+];
+
 /** Format a byte count for the storage line. */
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -66,6 +86,7 @@ export function ArtSettings({ onClose }: Props) {
   // Re-render as illustrations finish loading so the progress line stays live.
   useSyncExternalStore(subscribeArt, getArtVersion);
   const source = getArtSource();
+  const style = getArtStyle();
   const status = artStatus();
 
   // The Scryfall consent step: choosing the option arms it; downloads only start
@@ -131,8 +152,9 @@ export function ArtSettings({ onClose }: Props) {
           <div className={s.artConsent} data-testid="art-consent">
             <p className={s.artNote}>
               Real card images are fetched by your browser directly from Scryfall and cached only on
-              this device. RUNE never ships, uploads, or redistributes them, and only the bare
-              illustration is used — never official frames or symbols. Portions of the materials are
+              this device. RUNE never ships, uploads, or redistributes them. By default only the
+              bare illustration is drawn inside RUNE&apos;s own frame; choosing “Entire card image”
+              displays the full official card on your device instead. Portions of the materials are
               unofficial Fan Content permitted under the Wizards of the Coast Fan Content Policy;
               RUNE is not affiliated with or endorsed by Wizards of the Coast or Scryfall.
             </p>
@@ -157,6 +179,30 @@ export function ArtSettings({ onClose }: Props) {
                 Cancel
               </button>
             </div>
+          </div>
+        )}
+
+        {source === 'scryfall' && (
+          <div
+            role="radiogroup"
+            aria-label="Card presentation"
+            className={s.artOptions}
+            data-testid="art-style"
+          >
+            {STYLE_OPTIONS.map((option) => (
+              <button
+                key={option.style}
+                type="button"
+                role="radio"
+                aria-checked={style === option.style}
+                data-testid={`art-style-${option.style}`}
+                className={cx(s.artOption, style === option.style && s.artOptionActive)}
+                onClick={() => setArtStyle(option.style)}
+              >
+                <span className={s.artOptionLabel}>{option.label}</span>
+                <span className={s.artOptionDescription}>{option.description}</span>
+              </button>
+            ))}
           </div>
         )}
 

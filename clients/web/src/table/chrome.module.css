@@ -968,6 +968,14 @@
   border-radius: var(--rune-radius-md);
   border: 1px solid var(--rune-border);
 }
+/* Full-card mode (ADR 0024): the image is an entire card — show it whole at
+ * card aspect instead of cropping it into the illustration strip. */
+.inspectArtFull {
+  max-height: 420px;
+  object-fit: contain;
+  border: none;
+  background: transparent;
+}
 .inspectCost {
   font-size: var(--rune-type-body-lg);
   font-weight: 600;

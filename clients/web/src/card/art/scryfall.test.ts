@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  artCropFromCard,
   fetchImageBlob,
+  imageFromCard,
+  lookupUrl,
   namedCardUrl,
-  resolveArtCrop,
+  printingUrl,
+  resolveCardImage,
   type FetchLike,
 } from './scryfall';
 
@@ -25,40 +27,53 @@ describe('scryfall resolution (ADR 0024)', () => {
     expect(namedCardUrl('Kitsa, Otterball Elite')).toContain('Kitsa%2C%20Otterball%20Elite');
   });
 
-  it('extracts art_crop from a single-faced card', () => {
-    expect(artCropFromCard({ image_uris: { art_crop: 'https://img/x.jpg' } })).toBe(
-      'https://img/x.jpg',
+  it('builds the pinned-printing URL, and prefers the pin over the name', () => {
+    expect(printingUrl('znr', '270')).toBe('https://api.scryfall.com/cards/znr/270');
+    // A pinned reference selects a deliberate version (e.g. a full-art land).
+    expect(lookupUrl({ name: 'Forest', set: 'znr', number: '270' })).toBe(
+      'https://api.scryfall.com/cards/znr/270',
     );
+    expect(lookupUrl({ name: 'Forest' })).toBe(namedCardUrl('Forest'));
   });
 
-  it('falls back to the first face carrying art on a multi-faced card', () => {
+  it('extracts the requested image kind from a single-faced card', () => {
+    const card = {
+      image_uris: { art_crop: 'https://img/crop.jpg', normal: 'https://img/full.jpg' },
+    };
+    expect(imageFromCard(card, 'art_crop')).toBe('https://img/crop.jpg');
+    expect(imageFromCard(card, 'normal')).toBe('https://img/full.jpg');
+  });
+
+  it('falls back to the first face carrying the image on a multi-faced card', () => {
     const card = {
       card_faces: [{ image_uris: {} }, { image_uris: { art_crop: 'https://img/face.jpg' } }],
     };
-    expect(artCropFromCard(card)).toBe('https://img/face.jpg');
+    expect(imageFromCard(card, 'art_crop')).toBe('https://img/face.jpg');
   });
 
-  it('returns null for a card without a usable illustration', () => {
-    expect(artCropFromCard({})).toBeNull();
-    expect(artCropFromCard(null)).toBeNull();
-    expect(artCropFromCard('nonsense')).toBeNull();
+  it('returns null for a card without a usable image', () => {
+    expect(imageFromCard({}, 'art_crop')).toBeNull();
+    expect(imageFromCard(null, 'normal')).toBeNull();
+    expect(imageFromCard('nonsense', 'art_crop')).toBeNull();
   });
 
-  it('resolves a name to its art_crop URL via the injected fetch', async () => {
+  it('resolves a reference to an image URL via the injected fetch', async () => {
     const seen: string[] = [];
     const fetchLike: FetchLike = (url) => {
       seen.push(url);
       return Promise.resolve(response({ image_uris: { art_crop: 'https://img/a.jpg' } }));
     };
-    expect(await resolveArtCrop(fetchLike, 'Shock')).toBe('https://img/a.jpg');
+    expect(await resolveCardImage(fetchLike, { name: 'Shock' }, 'art_crop')).toBe(
+      'https://img/a.jpg',
+    );
     expect(seen[0]).toBe(namedCardUrl('Shock'));
   });
 
   it('returns null on a miss or a network refusal instead of throwing', async () => {
     const missing: FetchLike = () => Promise.resolve(response({}, false));
-    expect(await resolveArtCrop(missing, 'Not A Card')).toBeNull();
+    expect(await resolveCardImage(missing, { name: 'Not A Card' }, 'art_crop')).toBeNull();
     const refused: FetchLike = () => Promise.reject(new Error('offline'));
-    expect(await resolveArtCrop(refused, 'Shock')).toBeNull();
+    expect(await resolveCardImage(refused, { name: 'Shock' }, 'normal')).toBeNull();
     expect(await fetchImageBlob(refused, 'https://img/a.jpg')).toBeNull();
   });
 

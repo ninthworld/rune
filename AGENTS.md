@@ -17,7 +17,7 @@ before changing code; [`docs/brief.md`](docs/brief.md) defines the product and a
 - **No card images shipped by the project, no official frames, no WotC branding, no
   monetization paths.** See `docs/brief.md` (Legal Considerations) before touching card
   data or rendering. The only exception is the player-side, opt-in art pipeline of
-  ADR 0024: the player's own browser may fetch illustrations from a third-party source,
+  ADR 0024: the player's own browser may fetch card images from a third-party source,
   cached device-local only — never committed, bundled, served, or redistributed.
 - Never commit secrets, `.env` files, `node_modules/`, or `target/`.
 - Only force-push a branch you exclusively own, using `--force-with-lease`. Never
