@@ -36,6 +36,14 @@ interface Props {
   onHighlight?: (id: EntityId) => void;
   /** The id currently highlighted, if any — marks its references as pressed. */
   highlightedId?: EntityId | null;
+  /** Whether an entry's `sequence` is unseen (issue #340) — arrived while the tab was
+   * backgrounded and not yet reviewed. Marks it distinctly until seen. */
+  isUnseen?: (sequence: number) => boolean;
+  /** How many entries are unseen; drives the "jump to newest" affordance. */
+  unreadCount?: number;
+  /** Mark the log as seen (the reader viewed it): called when the reader scrolls to
+   * the newest entry or uses the jump affordance. */
+  onSeen?: () => void;
 }
 
 /** How close to the bottom (px) still counts as "pinned", so sub-pixel rounding or a
@@ -69,20 +77,29 @@ function renderSegments(
   });
 }
 
-/** A single log line for one entry. */
+/** A single log line for one entry. An unseen entry (issue #340) is marked with a
+ * distinct class *and* a visually-hidden "New:" prefix, so the distinction is not
+ * hue-only and has an assistive-technology-visible text form. */
 function EntryLine({
   entry,
   view,
   onHighlight,
   highlightedId,
+  unseen,
 }: {
   entry: GameLogEntry;
   view: GameView;
   onHighlight: Props['onHighlight'];
   highlightedId: Props['highlightedId'];
+  unseen: boolean;
 }) {
   return (
-    <li className={s.logEntry} data-testid={`log-entry-${entry.sequence}`}>
+    <li
+      className={cx(s.logEntry, unseen && s.logEntryUnseen)}
+      data-testid={`log-entry-${entry.sequence}`}
+      data-unseen={unseen || undefined}
+    >
+      {unseen && <span className={s.srOnly}>New: </span>}
       {renderSegments(describeEvent(entry.event, view), onHighlight, highlightedId)}
     </li>
   );
@@ -134,7 +151,14 @@ function StepsGroup({
   );
 }
 
-export function GameLog({ view, onHighlight, highlightedId }: Props) {
+export function GameLog({
+  view,
+  onHighlight,
+  highlightedId,
+  isUnseen,
+  unreadCount = 0,
+  onSeen,
+}: Props) {
   const entries = view.log ?? [];
   const groups: LogGroup[] = groupEntries(entries);
 
@@ -152,6 +176,18 @@ export function GameLog({ view, onHighlight, highlightedId }: Props) {
     pinnedRef.current = el.scrollHeight - el.clientHeight - el.scrollTop <= PIN_THRESHOLD;
   };
 
+  /** Jump to the newest entry and mark the log seen (issue #340) — the explicit
+   * "I'm reading the new activity now" gesture. Mark-seen is deliberately *not* wired
+   * to scroll, so the auto-scroll that fires on returning to the tab cannot clear the
+   * indicator before the reader acts. Steady-state viewing is handled by the live tail
+   * in {@link useUnreadLog}. */
+  const jumpToNewest = (): void => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    pinnedRef.current = true;
+    onSeen?.();
+  };
+
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !pinnedRef.current) return;
@@ -162,7 +198,20 @@ export function GameLog({ view, onHighlight, highlightedId }: Props) {
 
   return (
     <section className={s.gameLog} data-testid="game-log" aria-label="Game log">
-      <h3 className={s.gameLogTitle}>Log</h3>
+      <h3 className={s.gameLogTitle}>
+        Log
+        {unreadCount > 0 && (
+          <button
+            type="button"
+            className={s.logUnread}
+            data-testid="log-unread"
+            aria-label={`${unreadCount} new log ${unreadCount === 1 ? 'entry' : 'entries'} — jump to newest`}
+            onClick={jumpToNewest}
+          >
+            {unreadCount} new
+          </button>
+        )}
+      </h3>
       {entries.length === 0 ? (
         <p className={s.gameLogEmpty} data-testid="game-log-empty">
           No game events yet.
@@ -191,6 +240,7 @@ export function GameLog({ view, onHighlight, highlightedId }: Props) {
                 view={view}
                 onHighlight={onHighlight}
                 highlightedId={highlightedId}
+                unseen={isUnseen?.(group.entry.sequence) ?? false}
               />
             ),
           )}

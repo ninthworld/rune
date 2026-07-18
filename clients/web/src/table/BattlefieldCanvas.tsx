@@ -33,10 +33,14 @@ import { Application, Container } from 'pixi.js';
 import { SURFACES } from '../tokens';
 import { SceneReconciler } from './sceneReconciler';
 import type { TableScene } from './scene';
+import type { EntityId } from '../protocol';
 
 interface Props {
   /** The scene to draw; the canvas reconciles its display tree when it changes. */
   scene: TableScene;
+  /** The focused/selected/hovered participant whose combat links are isolated on a
+   * crowded board (issue #339). `null`/absent draws every link. Ephemeral. */
+  isolatedId?: EntityId | null;
 }
 
 /** `'#RRGGBB'` token to the numeric color Pixi expects. */
@@ -72,7 +76,7 @@ function webglSupported(): boolean {
   }
 }
 
-export function BattlefieldCanvas({ scene }: Props) {
+export function BattlefieldCanvas({ scene, isolatedId = null }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const reconcilerRef = useRef<SceneReconciler | null>(null);
@@ -143,12 +147,13 @@ export function BattlefieldCanvas({ scene }: Props) {
     try {
       app.renderer.resize(scene.width, scene.height);
       reconciler.reconcile(scene);
+      reconciler.setIsolation(isolatedId);
     } catch {
       // A frame threw on a GL-capable renderer: surface it instead of leaving a
       // blank board that reads as a broken game (issue #276).
       if (webglSupported()) setRenderFailed(true);
     }
-  }, [scene]);
+  }, [scene, isolatedId]);
 
   return (
     <>

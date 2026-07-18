@@ -94,6 +94,35 @@ export const INDICATORS = {
   blockingBar: '#3F7FC4',
 } as const;
 
+/**
+ * The blocker→attacker combat link (issue #339): a canvas-layer connector drawn
+ * between a blocker and the attacker it blocks. It stays distinct from the selection
+ * ring, the targeting ring/arrow, and the playable edge bar by **shape** — it is a
+ * *doubled* (two parallel) stroke with a small node at the blocker end, not a single
+ * line or a full-perimeter ring — so a colorblind player separates it from those
+ * accents without relying on hue. The warm combat hue matches the attacker bar
+ * (#332) as a bonus, not the signal. Purely presentational: it renders exactly the
+ * scene's server-derived `combatLinks`, computing no combat.
+ */
+export const COMBAT_LINK = {
+  /** Stroke color — the combat-warm hue, shared with the attacker bar. */
+  color: '#E4572E',
+  /** Width of each of the two parallel strokes (logical px). */
+  strokeWidth: 2,
+  /** Gap between the two parallel strokes — the "doubled" look that reads as a bind. */
+  gap: 3,
+  /** Radius of the node drawn at the blocker end, marking the link's direction. */
+  nodeRadius: 4,
+  /** Alpha for links at full emphasis (few links, or an isolated participant's links). */
+  alpha: 0.9,
+  /** Alpha for links on a crowded board with nothing isolated — present but calmed so
+   * the board stays legible until focus isolates one object's links. */
+  crowdedAlpha: 0.32,
+  /** Above this many links the board is "crowded": links calm to `crowdedAlpha` unless
+   * a participant is focused/selected, which isolates its links at full `alpha`. */
+  crowdedThreshold: 6,
+} as const;
+
 /** Small chip drawn at a card corner for counters and state (summoning sick). */
 export const BADGE = {
   bg: '#3A3E45',
