@@ -414,6 +414,13 @@ pub struct ValidAction {
     /// Entity ids this action belongs to; empty for global actions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subject: Vec<String>,
+    /// Whether this action activates a **mana ability** (CR 605): it targets
+    /// nothing, does not use the stack, and only produces mana. Server-computed
+    /// so a client may offer a lighter gesture — one-click tap-for-mana — for
+    /// exactly these actions without ever classifying abilities itself
+    /// (ADR 0025). Omitted from the wire when `false`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mana_ability: bool,
     /// Ordered choice steps this action requires before it can be taken — one per
     /// target slot (modes/X ride the same mechanism later). The client walks them
     /// as a prompt queue and answers every slot **atomically** in a single
@@ -1433,6 +1440,7 @@ mod tests {
     #[test]
     fn valid_action_serializes_type_and_omits_empty_subject() {
         let pass = ValidAction {
+            mana_ability: false,
             id: "a1".into(),
             kind: "pass_priority".into(),
             label: "Pass".into(),
@@ -1449,11 +1457,38 @@ mod tests {
     }
 
     #[test]
+    fn cr_605_mana_ability_flag_round_trips_and_defaults_off() {
+        // ADR 0025: `mana_ability` rides the wire only when true; a legacy
+        // payload without the key deserializes to `false`.
+        let tap = ValidAction {
+            mana_ability: true,
+            id: "a2".into(),
+            kind: "activate_ability".into(),
+            label: "{T}: Add {G}.".into(),
+            subject: vec!["perm_1".into()],
+            requirements: vec![],
+            prompts: vec![],
+            token: "h:1".into(),
+        };
+        let json = serde_json::to_value(&tap).unwrap();
+        assert_eq!(json.get("mana_ability"), Some(&serde_json::json!(true)));
+        let back: ValidAction = serde_json::from_value(json).unwrap();
+        assert_eq!(back, tap);
+
+        let legacy: ValidAction = serde_json::from_value(serde_json::json!({
+            "id": "a1", "type": "activate_ability", "label": "x"
+        }))
+        .unwrap();
+        assert!(!legacy.mana_ability);
+    }
+
+    #[test]
     fn valid_action_carries_requirements_and_token() {
         // A targeted spell: subject is the hand card, requirements advertise the
         // one target slot's legal candidates, and a content-binding token is
         // present for the client to echo back.
         let bolt = ValidAction {
+            mana_ability: false,
             id: "a3".into(),
             kind: "cast_spell".into(),
             label: "Cast Lightning Bolt".into(),
@@ -1579,6 +1614,7 @@ mod tests {
         // one: it carries its prompt slots and a content-binding token, and the client
         // answers each slot with a `TargetChoice` keyed by `slot`.
         let action = ValidAction {
+            mana_ability: false,
             id: "a0".into(),
             kind: "mulligan_decision".into(),
             label: "Mulligan decision".into(),
@@ -1737,6 +1773,7 @@ mod tests {
             mana_pool: vec!["{G}".into()],
             priority_player: Some("p1".into()),
             valid_actions: vec![ValidAction {
+                mana_ability: false,
                 id: "a2".into(),
                 kind: "activate_ability".into(),
                 label: "Tap for mana".into(),

@@ -360,6 +360,14 @@ export interface ValidAction {
   /** Entity ids this action belongs to; empty for global actions. */
   subject?: EntityId[];
   /**
+   * Whether this action activates a **mana ability** (CR 605): it targets
+   * nothing, does not use the stack, and only produces mana. Server-computed so
+   * the client can offer a lighter gesture — one-click tap-for-mana (ADR 0025)
+   * — for exactly these actions without ever classifying abilities itself.
+   * Omitted when false.
+   */
+  mana_ability?: boolean;
+  /**
    * Ordered choice steps this action requires before it can be taken — one per
    * target slot. The client walks them as a prompt queue and answers every slot
    * **atomically** in a single {@link ChooseAction}, never a stateful

@@ -242,7 +242,10 @@ that size without opening an inspector. Cost + P/T alone is not a playable card
 face; a player has to see the board's keywords and latent abilities without
 twenty inspect round-trips.
 
-- **chip** — frame color, name or basic-land glyph, tap state.
+- **chip** — frame color, name or basic-land glyph, tap state. An available
+  image (ADR 0024) fills the chip body beneath that budget — the glyph/name
+  stays on top over a scrim; in full-card mode the card image carries identity
+  alone.
 - **mini / support / field** — adds cost pips, computed P/T (never printed values; pill
   only), counter and damage badges, keyword glyphs from the identity glyph
   language, and an **ability marker**: a quiet persistent dot for "this permanent
@@ -424,7 +427,11 @@ Every entity-owned action has a `subject`. Entity-subject actions render as the 
 interactivity (the card is the button); the tray holds only global actions plus a
 contextual echo of the selected entity's actions. The tray is O(1) regardless of
 hand size. Interaction is select-then-confirm everywhere (tap/click twice, or
-Enter), which unifies mouse, touch, keyboard, and controller focus.
+Enter), which unifies mouse, touch, keyboard, and controller focus. Direct
+activation (ADR 0025) rides the same single gesture: a sole flagged mana
+ability fires on the first activation, a combat-declaration candidate enters
+its declaration pre-toggled, and the selected entity's sole action fires on the
+second activation — the dock stays the labeled disambiguator.
 
 ## Input capability model
 

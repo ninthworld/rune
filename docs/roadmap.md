@@ -226,6 +226,10 @@ work:
   work (#367).
 - **The bundled RUNE art set** — original, project-owned illustrations under
   `clients/web/public/card-art/` filling the bundled source's manifest.
+- **Server-computed cost payment (auto-tap)** — the engine proposing a payment
+  plan so casting taps the lands in one action. ADR 0025's direct activation
+  (one-click tap-for-mana, entity-entry combat declarations) removes most of the
+  urgency; the engine feature remains the eventual completion of the flow.
 
 Official imagery remains excluded from the project's own distribution permanently.
 

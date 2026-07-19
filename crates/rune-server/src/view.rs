@@ -13,11 +13,11 @@
 use rune_engine::{
     abilities_of, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocker_candidates_for, bottom_requirement, characteristics, declared_attackers,
-    defender_candidates, defending_player, pending_blocker_declarer, scripted_rules_text,
-    target_requirements, valid_actions, Action, Attack, Block, CardData, CardDatabase, CardId,
-    CardInstance, CardInstanceId, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult,
-    GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player, PlayerId, StackId,
-    StackObject, StackObjectKind, Step, Target, TargetSpec,
+    defender_candidates, defending_player, is_mana_ability, pending_blocker_declarer,
+    scripted_rules_text, target_requirements, valid_actions, Action, Attack, Block, CardData,
+    CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, DamageOrder, DamageTarget,
+    GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player,
+    PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{ability_text, effects_description, rules_text};
@@ -374,6 +374,7 @@ fn build_mulligan_decision(state: &GameState, id: String) -> Projected {
         view: ValidAction {
             id,
             kind,
+            mana_ability: false,
             label: "Keep or mulligan".to_string(),
             subject,
             requirements,
@@ -420,6 +421,7 @@ fn build_discard(state: &GameState, id: String) -> Projected {
         view: ValidAction {
             id,
             kind,
+            mana_ability: false,
             label: "Discard a card".to_string(),
             subject,
             requirements,
@@ -870,12 +872,28 @@ fn valid_action_view(
         Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
         _ => Vec::new(),
     };
+    // One-gesture mana (ADR 0025): mark the activation of a mana ability
+    // (CR 605.1a) so a client may offer a lighter gesture for exactly these
+    // actions. Computed by the engine's classifier — clients never inspect
+    // abilities themselves.
+    let mana_ability = match action {
+        Action::ActivateAbility {
+            permanent, index, ..
+        } => state
+            .battlefield
+            .iter()
+            .find(|perm| perm.id == *permanent)
+            .and_then(|perm| abilities_of(db, perm.card).get(*index).map(is_mana_ability))
+            .unwrap_or(false),
+        _ => false,
+    };
     let token = content_token(&kind, &subject, &requirements, &prompts);
     ValidAction {
         id,
         kind,
         label,
         subject,
+        mana_ability,
         requirements,
         prompts,
         token,
@@ -2966,6 +2984,46 @@ mod tests {
             );
             assert_ne!(*label, "Activate ability");
         }
+    }
+
+    #[test]
+    fn cr_605_mana_ability_activation_carries_the_wire_flag() {
+        // ADR 0025: the projection flags exactly the mana-ability activation
+        // (CR 605.1a — all effects add mana, no stack, no targets) so a client
+        // can offer the one-gesture tap-for-mana; the targeted tap ability of
+        // the same permanent stays unflagged, as does every other action kind.
+        let json = r#"[
+            {"schema_version":1,"functional_id":"toolbox","name":"Toolbox","types":["artifact"],"mana_cost":"",
+             "abilities":[
+                {"type":"activated","cost":[{"kind":"tap"}],
+                 "effects":[{"kind":"add_mana","color":"green","amount":1}]},
+                {"type":"activated","cost":[{"kind":"tap"}],
+                 "effects":[{"kind":"tap","target":"any_creature"}]}
+             ]},
+            {"schema_version":1,"functional_id":"bear","name":"Bear","types":["creature"],"mana_cost":"",
+             "power":2,"toughness":2}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        put_permanent(&mut state, id_in(&db, "toolbox"), PlayerId(0), false, false);
+        put_permanent(&mut state, id_in(&db, "bear"), PlayerId(0), false, false);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let flags: Vec<bool> = view
+            .valid_actions
+            .iter()
+            .filter(|a| a.kind == "activate_ability")
+            .map(|a| a.mana_ability)
+            .collect();
+        assert_eq!(flags, vec![true, false], "only the mana ability is flagged");
+        assert!(
+            view.valid_actions
+                .iter()
+                .filter(|a| a.kind != "activate_ability")
+                .all(|a| !a.mana_ability),
+            "no other action kind carries the flag",
+        );
     }
 
     // ----- Game-log projection (issue #259) -----

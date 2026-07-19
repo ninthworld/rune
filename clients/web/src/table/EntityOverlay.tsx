@@ -330,10 +330,12 @@ export function EntityOverlay({
   const localBoard = scene.bands.find((band) => band.isLocal)?.rect;
 
   // In targeting mode the only interactive cards are the server-listed candidates;
-  // otherwise it is every card that carries a subject-action.
+  // otherwise it is every card that carries a subject-action — or that is a
+  // candidate of an offered combat declaration (ADR 0025), so an attacker/blocker
+  // pick starts on the creature itself rather than in the dock.
   const interactive = targeting
     ? allCards.filter((card) => card.targetable)
-    : allCards.filter((card) => card.actions.length > 0);
+    : allCards.filter((card) => card.actions.length > 0 || card.declaration !== undefined);
   const interactiveIds = new Set(interactive.map((card) => card.entityId));
 
   // Hover-dwell / long-press are suppressed mid-pick; pinning (right-click / keyboard)
@@ -408,13 +410,17 @@ export function EntityOverlay({
           );
         }
         const selected = selectedId === card.entityId;
-        // The select hotspot is only rendered on cards that carry an action, so
-        // this list is always non-empty. Naming the offered action(s) gives the
-        // canvas's visual "playable" edge bar an accessible-tree equivalent for a
-        // screen-reader / no-color-vision user (issue #277, ui-requirements §10).
-        // Selecting routes the actions to the action dock (ADR 0023 commitment 2)
+        // The select hotspot is only rendered on cards that carry an action (or a
+        // declaration candidacy, ADR 0025), so this hint is always non-empty.
+        // Naming the offered action(s) gives the canvas's visual "playable" edge
+        // bar an accessible-tree equivalent for a screen-reader /
+        // no-color-vision user (issue #277, ui-requirements §10). Selecting
+        // routes the actions to the action dock (ADR 0023 commitment 2)
         // — no per-card popup ever renders on the entity.
-        const actionHint = card.actions.map((action) => action.label).join(', ');
+        const actionHint =
+          card.actions.length > 0
+            ? card.actions.map((action) => action.label).join(', ')
+            : (card.declaration?.label ?? '');
         // A playable hand card is also draggable (the pointer enhancement): its
         // pointerdown arms a drag that goes live past the travel threshold, while
         // a plain click still selects — drag is layered ON the universal path,
