@@ -7,48 +7,45 @@
 
 RUNE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (36)
+## Supported cards (33)
 
 Every functional definition in `crates/rune-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).
 
 | Functional ID | Name | Implementation |
 | --- | --- | --- |
-| `bramble_hatchling` | Bramble Hatchling | functional definition |
-| `bramblefang_spider` | Bramblefang Spider | functional definition |
-| `cinder_shock` | Cinder Shock | functional definition |
-| `cleric_of_the_sunwell` | Cleric of the Sunwell | functional definition |
-| `copper_lodestone` | Copper Lodestone | functional definition |
-| `cryptvine_lurker` | Cryptvine Lurker | functional definition |
-| `dawnblade_duelist` | Dawnblade Duelist | functional definition |
-| `emberfang_jackal` | Emberfang Jackal | functional definition |
-| `emberrush_raider` | Emberrush Raider | functional definition |
+| `air_elemental` | Air Elemental | functional definition |
+| `cancel` | Cancel | functional definition |
+| `child_of_night` | Child of Night | functional definition |
+| `colossal_dreadmaw` | Colossal Dreadmaw | functional definition |
+| `diregraf_ghoul` | Diregraf Ghoul | functional definition |
+| `divination` | Divination | functional definition |
+| `druid_of_the_cowl` | Druid of the Cowl | functional definition |
+| `electrify` | Electrify | functional definition |
+| `fire_elemental` | Fire Elemental | functional definition |
 | `forest` | Forest | functional definition |
-| `gorehorn_ravager` | Gorehorn Ravager | functional definition |
-| `hurried_study` | Hurried Study | functional definition |
-| `ironbark_aegis` | Ironbark Aegis | functional definition |
-| `ironwatch_sentinel` | Ironwatch Sentinel | functional definition |
+| `giant_spider` | Giant Spider | functional definition |
+| `gigantosaurus` | Gigantosaurus | functional definition |
 | `island` | Island | functional definition |
+| `lightning_strike` | Lightning Strike | functional definition |
+| `llanowar_elves` | Llanowar Elves | functional definition |
 | `mountain` | Mountain | functional definition |
-| `nettle_adder` | Nettle Adder | functional definition |
+| `murder` | Murder | functional definition |
+| `onakke_ogre` | Onakke Ogre | functional definition |
 | `plains` | Plains | functional definition |
-| `quickfire_bolt` | Quickfire Bolt | functional definition |
-| `riverbank_otter` | Riverbank Otter | functional definition |
-| `runic_negation` | Runic Negation | functional definition |
-| `skywhisker_drake` | Skywhisker Drake | functional definition |
-| `soothing_balm` | Soothing Balm | functional definition |
-| `stonehide_basilisk` | Stonehide Basilisk | functional definition |
-| `sunder_ray` | Sunder Ray | functional definition |
+| `revitalize` | Revitalize | functional definition |
+| `rustwing_falcon` | Rustwing Falcon | functional definition |
+| `serra_angel` | Serra Angel | functional definition |
+| `shock` | Shock | functional definition |
+| `skyscanner` | Skyscanner | functional definition |
+| `snapping_drake` | Snapping Drake | functional definition |
 | `swamp` | Swamp | functional definition |
-| `thornback_boar` | Thornback Boar | functional definition |
-| `thornweft_sprite` | Thornweft Sprite | functional definition |
-| `titanroot_surge` | Titanroot Surge | functional definition |
-| `verdant_blessing` | Verdant Blessing | functional definition |
-| `verdant_sanctuary` | Verdant Sanctuary | functional definition |
-| `verdant_scout` | Verdant Scout | functional definition |
-| `vexing_ordeal` | Vexing Ordeal | functional definition |
-| `viridian_baneclaw` | Viridian Baneclaw | functional definition |
-| `witherbrand_curse` | Witherbrand Curse | functional definition |
-| `withering_touch` | Withering Touch | functional definition |
+| `titanic_growth` | Titanic Growth | functional definition |
+| `tolarian_scholar` | Tolarian Scholar | functional definition |
+| `tranquil_expanse` | Tranquil Expanse | functional definition |
+| `trusty_packbeast` | Trusty Packbeast | functional definition |
+| `viashino_pyromancer` | Viashino Pyromancer | functional definition |
+| `volcanic_dragon` | Volcanic Dragon | functional definition |
+| `walking_corpse` | Walking Corpse | functional definition |
 
 ## Excluded (6)
 

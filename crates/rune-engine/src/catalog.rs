@@ -133,7 +133,7 @@ impl fmt::Display for Violation {
             Self::MalformedFunctionalId { slug } => write!(
                 f,
                 "`{slug}` is not a well-formed functional id: expected a lowercase \
-                 snake_case slug (e.g. `thornback_boar`)"
+                 snake_case slug (e.g. `onakke_ogre`)"
             ),
             Self::FileNameMismatch {
                 functional_id,
@@ -172,7 +172,7 @@ impl fmt::Display for Violation {
 
 /// Whether `slug` is a well-formed [`FunctionalId`](crate::FunctionalId): a non-empty
 /// lowercase `snake_case` identifier starting with a letter, with no doubled or
-/// trailing underscore (e.g. `thornback_boar`).
+/// trailing underscore (e.g. `onakke_ogre`).
 ///
 /// The single definition of the rule. `FunctionalId::try_from` enforces it on the
 /// typed side and `build.rs` enforces it on catalog files, both through this function,
@@ -383,12 +383,7 @@ mod tests {
 
     #[test]
     fn well_formed_slugs_are_accepted() {
-        for slug in [
-            "forest",
-            "thornback_boar",
-            "cleric_of_the_sunwell",
-            "b2_bomber",
-        ] {
+        for slug in ["forest", "onakke_ogre", "druid_of_the_cowl", "b2_bomber"] {
             assert!(
                 is_well_formed_slug(slug),
                 "expected `{slug}` to be accepted"

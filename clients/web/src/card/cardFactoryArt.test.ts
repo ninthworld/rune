@@ -83,7 +83,7 @@ function collectSprites(node: Container): Sprite[] {
 }
 
 const CARD: CardDisplayData = {
-  name: 'Emberfang Jackal',
+  name: 'Onakke Ogre',
   typeLine: 'Creature — Jackal',
   colorIdentity: 'R',
   manaCost: '{1}{R}',
@@ -93,7 +93,7 @@ const CARD: CardDisplayData = {
 
 describe('card factory art window (ADR 0024)', () => {
   it('draws a masked art sprite at the field tier when art is published', async () => {
-    const artKey = await publishArt('emberfang_jackal');
+    const artKey = await publishArt('onakke_ogre');
     const display = buildCardDisplay({ ...CARD, artKey }, 'field');
     const sprites = collectSprites(display);
     expect(sprites.length).toBe(1);
@@ -107,7 +107,7 @@ describe('card factory art window (ADR 0024)', () => {
   });
 
   it('keeps dense tiers procedural even when art is published', async () => {
-    const artKey = await publishArt('emberfang_jackal');
+    const artKey = await publishArt('onakke_ogre');
     for (const tier of ['mini', 'support'] as const) {
       const display = buildCardDisplay({ ...CARD, artKey }, tier);
       expect(collectSprites(display).length).toBe(0);
@@ -115,13 +115,13 @@ describe('card factory art window (ADR 0024)', () => {
   });
 
   it('renders art at the hand tier', async () => {
-    const artKey = await publishArt('emberfang_jackal');
+    const artKey = await publishArt('onakke_ogre');
     const display = buildCardDisplay({ ...CARD, artKey }, 'hand');
     expect(collectSprites(display).length).toBe(1);
   });
 
   it('renders the entire card image as the face in full-card mode', async () => {
-    const artKey = await publishArt('emberfang_jackal', 'full');
+    const artKey = await publishArt('onakke_ogre', 'full');
     const display = buildCardDisplay({ ...CARD, keywords: ['haste'] }, 'field');
     // Without the key the procedural face renders as usual…
     expect(collectSprites(display).length).toBe(0);
@@ -138,7 +138,7 @@ describe('card factory art window (ADR 0024)', () => {
   });
 
   it('renders full-card mode at every full-face tier, dense tiers included', async () => {
-    const artKey = await publishArt('emberfang_jackal', 'full');
+    const artKey = await publishArt('onakke_ogre', 'full');
     for (const tier of ['mini', 'support', 'field', 'hand'] as const) {
       const display = buildCardDisplay({ ...CARD, artKey }, tier);
       expect(collectSprites(display).length).toBe(1);
@@ -166,7 +166,7 @@ describe('card factory art window (ADR 0024)', () => {
   });
 
   it('full-card mode chip: the card image carries identity alone', async () => {
-    const artKey = await publishArt('verdant_sanctuary', 'full');
+    const artKey = await publishArt('tranquil_expanse', 'full');
     const chip = buildChipDisplay({
       name: 'Verdant Sanctuary',
       typeLine: 'Land',

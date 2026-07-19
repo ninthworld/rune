@@ -21,7 +21,7 @@ use serde::Deserialize;
 
 /// The authored, stable identity of one functional card definition (ADR 0018 §3).
 ///
-/// A lowercase `snake_case` slug (e.g. `thornback_boar`), assigned once by
+/// A lowercase `snake_case` slug (e.g. `onakke_ogre`), assigned once by
 /// whoever writes the card and never reused or renumbered. This — not the
 /// interned [`CardId`] — is what a printing record, a decklist, and any future
 /// external mapping reference, because it is the only card identity that is
@@ -71,7 +71,7 @@ impl fmt::Display for FunctionalIdError {
         write!(
             f,
             "{:?} is not a functional id: expected lowercase snake_case, \
-             starting with a letter (e.g. \"thornback_boar\")",
+             starting with a letter (e.g. \"onakke_ogre\")",
             self.0
         )
     }
@@ -149,9 +149,9 @@ mod tests {
 
     #[test]
     fn a_well_formed_slug_is_accepted() {
-        let id = FunctionalId::try_from("thornback_boar".to_string()).unwrap();
-        assert_eq!(id.as_str(), "thornback_boar");
-        assert_eq!(id.to_string(), "thornback_boar");
+        let id = FunctionalId::try_from("onakke_ogre".to_string()).unwrap();
+        assert_eq!(id.as_str(), "onakke_ogre");
+        assert_eq!(id.to_string(), "onakke_ogre");
         // Digits are allowed after the first character.
         assert!(FunctionalId::try_from("scout_2".to_string()).is_ok());
     }

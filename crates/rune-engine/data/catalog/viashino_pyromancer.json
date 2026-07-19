@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "functional_id": "viashino_pyromancer",
+  "name": "Viashino Pyromancer",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Viashino",
+    "Wizard"
+  ],
+  "mana_cost": "{1}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "target": "any_player",
+          "amount": 2
+        }
+      ]
+    }
+  ]
+}

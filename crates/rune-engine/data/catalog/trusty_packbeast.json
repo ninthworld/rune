@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "trusty_packbeast",
+  "name": "Trusty Packbeast",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Ox"
+  ],
+  "mana_cost": "{3}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 4
+}

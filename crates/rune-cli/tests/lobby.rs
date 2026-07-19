@@ -25,17 +25,18 @@ use tokio::io::{AsyncReadExt, BufReader, DuplexStream};
 use tokio_tungstenite::tungstenite::protocol::Role;
 use tokio_tungstenite::WebSocketStream;
 
-/// The six bundled cards these decks are built from: five green creatures and a Forest
-/// to cast them with. Named by authored `functional_id` (ADR 0018 §3) — a `CardId` is
-/// interned from the catalog's sort order, so an integer deck would silently become a
-/// different (and, with no land in it, unplayable) deck the next time a card is added.
+/// The six bundled cards these decks are built from: three red creatures and two burn
+/// spells, plus a Mountain to cast them with. Named by authored `functional_id`
+/// (ADR 0018 §3) — a `CardId` is interned from the catalog's sort order, so an integer
+/// deck would silently become a different (and, with no land in it, unplayable) deck the
+/// next time a card is added.
 const STARTER_CARDS: [&str; 6] = [
-    "thornback_boar",
-    "riverbank_otter",
-    "emberfang_jackal",
-    "stonehide_basilisk",
-    "forest",
-    "verdant_scout",
+    "onakke_ogre",
+    "fire_elemental",
+    "shock",
+    "lightning_strike",
+    "mountain",
+    "viashino_pyromancer",
 ];
 
 /// A 40-card decklist as wire card identities — the same shape the server's pre-game

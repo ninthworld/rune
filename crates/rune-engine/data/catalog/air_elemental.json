@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "air_elemental",
+  "name": "Air Elemental",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elemental"
+  ],
+  "mana_cost": "{3}{U}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ]
+}

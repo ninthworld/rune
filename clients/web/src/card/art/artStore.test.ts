@@ -70,24 +70,24 @@ describe('artStore (ADR 0024)', () => {
   it('defaults to the procedural source and publishes no art keys', async () => {
     configureArtStore(testDeps());
     expect(getArtSource()).toBe('procedural');
-    noteCards([{ functionalId: 'emberfang_jackal', name: 'Emberfang Jackal' }]);
+    noteCards([{ functionalId: 'onakke_ogre', name: 'Onakke Ogre' }]);
     await settle();
-    expect(artKeyFor('emberfang_jackal')).toBeUndefined();
-    expect(artUrlFor('emberfang_jackal')).toBeUndefined();
+    expect(artKeyFor('onakke_ogre')).toBeUndefined();
+    expect(artUrlFor('onakke_ogre')).toBeUndefined();
   });
 
-  it('resolves a mapped stand-in card through its real-card counterpart', async () => {
+  it('resolves a real card by its own name and publishes its texture', async () => {
     const seen: string[] = [];
     configureArtStore(testDeps(seen));
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'emberfang_jackal', name: 'Emberfang Jackal' }]);
+    noteCards([{ functionalId: 'onakke_ogre', name: 'Onakke Ogre' }]);
     await settle();
-    // The stand-in resolves via its artMap counterpart, not its invented name.
-    expect(seen[0]).toBe(namedCardUrl('Jackal Pup'));
-    const key = artKeyFor('emberfang_jackal');
+    // The catalog ships real cards, so a card resolves by its own name (ADR 0026).
+    expect(seen[0]).toBe(namedCardUrl('Onakke Ogre'));
+    const key = artKeyFor('onakke_ogre');
     expect(key).toBeDefined();
     expect(textureForArtKey(key)?.texture).toBe(Texture.WHITE);
-    expect(artUrlFor('emberfang_jackal')).toBe('blob:stub');
+    expect(artUrlFor('onakke_ogre')).toBe('blob:stub');
   });
 
   it('falls back to the card name for a card outside the map', async () => {
@@ -102,29 +102,29 @@ describe('artStore (ADR 0024)', () => {
 
   it('serves repeat sessions from the device cache without refetching', async () => {
     const cache = new MemoryArtCache();
-    await cache.put('emberfang_jackal#crop', {
+    await cache.put('onakke_ogre#crop', {
       blob: new Blob(['cached']),
       source: 'scryfall',
-      sourceName: 'Jackal Pup',
+      sourceName: 'Onakke Ogre',
       fetchedAt: 1,
     });
     const seen: string[] = [];
     configureArtStore({ ...testDeps(seen), cache });
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'emberfang_jackal', name: 'Emberfang Jackal' }]);
+    noteCards([{ functionalId: 'onakke_ogre', name: 'Onakke Ogre' }]);
     await settle();
     expect(seen).toHaveLength(0);
-    expect(artKeyFor('emberfang_jackal')).toBeDefined();
+    expect(artKeyFor('onakke_ogre')).toBeDefined();
   });
 
   it('persists a fresh download into the device cache', async () => {
     const cache = new MemoryArtCache();
     configureArtStore({ ...testDeps(), cache });
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    noteCards([{ functionalId: 'shock', name: 'Shock' }]);
     await settle();
-    expect(await cache.keys()).toEqual(['cinder_shock#crop']);
-    expect((await cache.get('cinder_shock#crop'))?.sourceName).toBe('Shock');
+    expect(await cache.keys()).toEqual(['shock#crop']);
+    expect((await cache.get('shock#crop'))?.sourceName).toBe('Shock');
   });
 
   it('marks an unresolvable card failed and keeps the face procedural', async () => {
@@ -151,7 +151,7 @@ describe('artStore (ADR 0024)', () => {
     subscribeArt(listener);
     const before = getArtVersion();
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    noteCards([{ functionalId: 'shock', name: 'Shock' }]);
     await settle();
     expect(listener).toHaveBeenCalled();
     expect(getArtVersion()).toBeGreaterThan(before);
@@ -160,12 +160,12 @@ describe('artStore (ADR 0024)', () => {
   it('hides published art the moment the player returns to procedural', async () => {
     configureArtStore(testDeps());
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    noteCards([{ functionalId: 'shock', name: 'Shock' }]);
     await settle();
-    expect(artKeyFor('cinder_shock')).toBeDefined();
+    expect(artKeyFor('shock')).toBeDefined();
     setArtSource('procedural');
-    expect(artKeyFor('cinder_shock')).toBeUndefined();
-    expect(artUrlFor('cinder_shock')).toBeUndefined();
+    expect(artKeyFor('shock')).toBeUndefined();
+    expect(artUrlFor('shock')).toBeUndefined();
   });
 
   it('spaces Scryfall requests per the API guidelines', async () => {
@@ -179,8 +179,8 @@ describe('artStore (ADR 0024)', () => {
     });
     setArtSource('scryfall');
     noteCards([
-      { functionalId: 'cinder_shock', name: 'Cinder Shock' },
-      { functionalId: 'soothing_balm', name: 'Soothing Balm' },
+      { functionalId: 'shock', name: 'Shock' },
+      { functionalId: 'revitalize', name: 'Revitalize' },
     ]);
     await settle();
     // Each card waits between its lookup and image download, and the queue
@@ -193,13 +193,13 @@ describe('artStore (ADR 0024)', () => {
     const cache = new MemoryArtCache();
     configureArtStore({ ...testDeps(), cache });
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    noteCards([{ functionalId: 'shock', name: 'Shock' }]);
     await settle();
-    const key = artKeyFor('cinder_shock');
+    const key = artKeyFor('shock');
     expect(key).toBeDefined();
     await clearDownloadedArt();
     expect(await cache.keys()).toEqual([]);
-    expect(artKeyFor('cinder_shock')).toBeUndefined();
+    expect(artKeyFor('shock')).toBeUndefined();
     expect(textureForArtKey(key)).toBeUndefined();
   });
 
@@ -212,22 +212,22 @@ describe('artStore (ADR 0024)', () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve(['emberfang_jackal']),
+          json: () => Promise.resolve(['onakke_ogre']),
           blob: () => Promise.resolve(new Blob(['img'])),
         });
       },
     });
     setArtSource('bundled');
     noteCards([
-      { functionalId: 'emberfang_jackal', name: 'Emberfang Jackal' },
-      { functionalId: 'cinder_shock', name: 'Cinder Shock' },
+      { functionalId: 'onakke_ogre', name: 'Onakke Ogre' },
+      { functionalId: 'shock', name: 'Shock' },
     ]);
     await settle();
-    expect(artKeyFor('emberfang_jackal')).toBeDefined();
-    expect(artKeyFor('cinder_shock')).toBeUndefined();
+    expect(artKeyFor('onakke_ogre')).toBeDefined();
+    expect(artKeyFor('shock')).toBeUndefined();
     expect(urls).toContain('/card-art/manifest.json');
-    expect(urls).toContain('/card-art/emberfang_jackal.jpg');
-    expect(urls).not.toContain('/card-art/cinder_shock.jpg');
+    expect(urls).toContain('/card-art/onakke_ogre.jpg');
+    expect(urls).not.toContain('/card-art/shock.jpg');
   });
 
   it('downloads the entire card image under full-card mode (ADR 0024)', async () => {
@@ -236,13 +236,13 @@ describe('artStore (ADR 0024)', () => {
     configureArtStore({ ...testDeps(seen), cache });
     setArtSource('scryfall');
     setArtStyle('full');
-    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    noteCards([{ functionalId: 'shock', name: 'Shock' }]);
     await settle();
     // The image URL fetched is the `normal` (whole card) one, cached under the
     // full-mode key, and the published record is flagged as a full-card face.
     expect(seen.some((url) => url.startsWith('https://img/full/'))).toBe(true);
-    expect(await cache.keys()).toEqual(['cinder_shock#full']);
-    const key = artKeyFor('cinder_shock');
+    expect(await cache.keys()).toEqual(['shock#full']);
+    const key = artKeyFor('shock');
     expect(key).toContain('scryfall:full');
     expect(textureForArtKey(key)?.full).toBe(true);
   });
@@ -251,19 +251,19 @@ describe('artStore (ADR 0024)', () => {
     const cache = new MemoryArtCache();
     configureArtStore({ ...testDeps(), cache });
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    noteCards([{ functionalId: 'shock', name: 'Shock' }]);
     await settle();
-    const windowKey = artKeyFor('cinder_shock');
+    const windowKey = artKeyFor('shock');
     expect(textureForArtKey(windowKey)?.full).toBe(false);
     setArtStyle('full');
     await settle();
-    const fullKey = artKeyFor('cinder_shock');
+    const fullKey = artKeyFor('shock');
     expect(fullKey).not.toBe(windowKey);
     expect(textureForArtKey(fullKey)?.full).toBe(true);
-    expect((await cache.keys()).sort()).toEqual(['cinder_shock#crop', 'cinder_shock#full']);
+    expect((await cache.keys()).sort()).toEqual(['shock#crop', 'shock#full']);
     // Switching back is instant: the window texture is still published.
     setArtStyle('window');
-    expect(artKeyFor('cinder_shock')).toBe(windowKey);
+    expect(artKeyFor('shock')).toBe(windowKey);
     expect(getArtStyle()).toBe('window');
   });
 

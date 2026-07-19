@@ -96,12 +96,12 @@ fn config(seats: u8) -> RoomConfig {
 /// never by `CardId` — that handle is interned from the catalog's sort order, so an
 /// integer deck would come to mean different cards as soon as one is added.
 const STARTER_CARDS: [&str; 6] = [
-    "thornback_boar",
-    "riverbank_otter",
-    "emberfang_jackal",
-    "stonehide_basilisk",
+    "onakke_ogre",
+    "snapping_drake",
+    "fire_elemental",
+    "giant_spider",
     "forest",
-    "verdant_scout",
+    "walking_corpse",
 ];
 
 /// A legal 40-card decklist as the wire carries it.

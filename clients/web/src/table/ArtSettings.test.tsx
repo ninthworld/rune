@@ -77,7 +77,7 @@ describe('ArtSettings (ADR 0024)', () => {
   it('reports live progress over the cards the current game wants', async () => {
     configureArtStore(offlineDeps());
     setArtSource('scryfall');
-    noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+    noteCards([{ functionalId: 'shock', name: 'Shock' }]);
     for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
     render(<ArtSettings onClose={vi.fn()} />);
     expect(screen.getByTestId('art-status').textContent).toContain('1 of 1');

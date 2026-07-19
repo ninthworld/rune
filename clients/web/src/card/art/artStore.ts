@@ -45,12 +45,12 @@ import {
 } from './scryfall';
 
 /**
- * The functional_id → real-card mapping. While the embedded catalog still ships
- * functional stand-ins, each maps to a real card whose illustration fits its
- * color and flavor; an entry may also pin a specific printing (`set` + collector
- * `number`) to select a deliberate version — e.g. a full-art land — instead of
- * Scryfall's default printing. Once the catalog migrates to real cards
- * (roadmap), lookup falls back to the card's own name and this map shrinks away.
+ * The functional_id → printing-pin mapping. The embedded catalog now ships real
+ * cards (functional data only — no Oracle text, art, or branding; ADR 0026), so
+ * a card resolves by its own name and this map is empty by default. An entry may
+ * still pin a specific printing (`set` + collector `number`) to select a
+ * deliberate version — e.g. a full-art land — instead of Scryfall's default
+ * printing; absent an entry, lookup falls back to the card's own name.
  */
 const ART_MAP: Record<string, PrintingRef> = artMapJson;
 

@@ -95,7 +95,7 @@ fn resolve_top(state: &GameState, db: &CardDatabase) -> GameState {
 fn a_creature_cast_logs_spell_cast_then_spell_resolved_in_order() {
     let db = db();
     let mut state = main_phase();
-    let scout = state.new_instance(cid(&db, "verdant_scout"));
+    let scout = state.new_instance(cid(&db, "llanowar_elves"));
     state.players[0].hand = vec![scout];
     state.players[0].mana_pool.add(Color::Green, 1);
 
@@ -128,7 +128,7 @@ fn burn_to_a_player_logs_damage_dealt_after_resolution_and_no_life_change() {
     // client can report the hit and the two never double-count.
     let db = db();
     let mut state = main_phase();
-    let bolt = state.new_instance(cid(&db, "quickfire_bolt"));
+    let bolt = state.new_instance(cid(&db, "lightning_strike"));
     push_spell(
         &mut state,
         bolt,
@@ -164,8 +164,8 @@ fn burn_to_a_player_logs_damage_dealt_after_resolution_and_no_life_change() {
 fn lethal_burn_to_a_creature_logs_nonlethal_damage_then_a_single_death() {
     let db = db();
     let mut state = main_phase();
-    let boar = place(&mut state, &db, "thornback_boar", 0); // 3/2
-    let bolt = state.new_instance(cid(&db, "quickfire_bolt")); // 3 damage, lethal
+    let boar = place(&mut state, &db, "onakke_ogre", 0); // 4/2
+    let bolt = state.new_instance(cid(&db, "lightning_strike")); // 3 damage, lethal to a 2-toughness creature
     push_spell(&mut state, bolt, PlayerId(0), vec![Target::Permanent(boar)]);
 
     let state = resolve_top(&state, &db);
@@ -197,8 +197,8 @@ fn lethal_burn_to_a_creature_logs_nonlethal_damage_then_a_single_death() {
 fn nonlethal_burn_logs_damage_but_no_death() {
     let db = db();
     let mut state = main_phase();
-    let basilisk = place(&mut state, &db, "stonehide_basilisk", 0); // 4/5
-    let shock = state.new_instance(cid(&db, "cinder_shock")); // 2 damage, nonlethal to a 4/5
+    let basilisk = place(&mut state, &db, "giant_spider", 0); // 2/4
+    let shock = state.new_instance(cid(&db, "shock")); // 2 damage, nonlethal to a 2/4
     push_spell(
         &mut state,
         shock,
@@ -229,9 +229,9 @@ fn countering_a_spell_logs_spell_countered_for_its_controller() {
     let db = db();
     let mut state = main_phase();
     // A creature spell owned by player 0, with a counterspell on top owned by player 1.
-    let scout = state.new_instance(cid(&db, "verdant_scout"));
+    let scout = state.new_instance(cid(&db, "walking_corpse"));
     let target = push_spell(&mut state, scout, PlayerId(0), Vec::new());
-    let negation = state.new_instance(cid(&db, "runic_negation"));
+    let negation = state.new_instance(cid(&db, "cancel"));
     push_spell(
         &mut state,
         negation,
@@ -262,8 +262,8 @@ fn countering_a_spell_logs_spell_countered_for_its_controller() {
 fn a_spell_whose_only_target_vanished_logs_spell_fizzled() {
     let db = db();
     let mut state = main_phase();
-    let boar = place(&mut state, &db, "thornback_boar", 0);
-    let bolt = state.new_instance(cid(&db, "quickfire_bolt"));
+    let boar = place(&mut state, &db, "onakke_ogre", 0);
+    let bolt = state.new_instance(cid(&db, "lightning_strike"));
     push_spell(&mut state, bolt, PlayerId(0), vec![Target::Permanent(boar)]);
     // The target leaves before the bolt resolves.
     state.battlefield.retain(|p| p.id != boar);
@@ -296,7 +296,9 @@ fn a_spell_whose_only_target_vanished_logs_spell_fizzled() {
 fn gaining_life_logs_life_changed_not_damage() {
     let db = db();
     let mut state = main_phase();
-    let balm = state.new_instance(cid(&db, "soothing_balm")); // gain 3 life
+    let balm = state.new_instance(cid(&db, "revitalize")); // gain 3 life, then draw 1
+                                                           // Revitalize also draws, so seed a card to avoid decking out (CR 704.5c).
+    state.players[0].library = vec![state.new_instance(cid(&db, "forest"))];
     push_spell(&mut state, balm, PlayerId(0), Vec::new());
 
     let state = resolve_top(&state, &db);
@@ -324,11 +326,20 @@ fn gaining_life_logs_life_changed_not_damage() {
 fn killing_an_enchanted_creature_logs_only_the_creature_death_not_the_aura() {
     // The orphaned-Aura state-based action (CR 704.5m) moves the Aura to the
     // graveyard when its host dies, but that is a zone change, not a death: only the
-    // creature produces `permanent_died`.
-    let db = db();
+    // creature produces `permanent_died`. P/T Auras have no clean M19 card, so this
+    // builds its own catalog (ADR 0025).
+    let json = r#"[
+        {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
+         "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
+         "power":3,"toughness":2},
+        {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
+         "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
+         "aura":{"enchant":"any_creature","power":2,"toughness":2}}
+    ]"#;
+    let db = CardDatabase::from_json(json).expect("a well-formed inline catalog");
     let mut state = main_phase();
-    let host = place(&mut state, &db, "thornback_boar", 4); // 3/2 + Aura = 5/4, 4 marked = lethal
-    let aura = place(&mut state, &db, "ironbark_aegis", 0); // +2/+2 Aura
+    let host = place(&mut state, &db, "test_boar", 4); // 3/2 + Aura = 5/4, 4 marked = lethal
+    let aura = place(&mut state, &db, "test_aegis", 0); // +2/+2 Aura
     if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == aura) {
         perm.attached_to = Some(host);
     }
@@ -399,8 +410,8 @@ fn entering_combat_damage_is_logged_before_the_damage_and_death() {
     state.priority = PlayerId(0);
     state.attackers_declared = true;
     state.blockers_declared = true;
-    // An unblocked 3/2 attacker owned by player 0.
-    let attacker = place(&mut state, &db, "thornback_boar", 0);
+    // An unblocked 4/2 attacker owned by player 0.
+    let attacker = place(&mut state, &db, "onakke_ogre", 0);
     if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == attacker) {
         perm.attacking = Some(PlayerId(1));
         perm.tapped = true;
@@ -427,7 +438,7 @@ fn entering_combat_damage_is_logged_before_the_damage_and_death() {
         step < damaged,
         "step_changed:combat_damage precedes its damage"
     );
-    assert_eq!(state.players[1].life, 17, "3 combat damage to the defender");
+    assert_eq!(state.players[1].life, 16, "4 combat damage to the defender");
 }
 
 // ----- Mulligan decisions -----

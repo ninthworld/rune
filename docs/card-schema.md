@@ -20,17 +20,22 @@ running engine performs no filesystem I/O.
 
 ## Functional definition
 
+The bundled catalog's functional definitions are sourced from a real set (Core Set 2019);
+see [ADR 0026](decisions/0026-real-functional-card-data.md). Only functional data is stored —
+no Oracle text, flavor, art, or branding.
+
 ```json
 {
   "schema_version": 1,
-  "functional_id": "verdant_scout",
-  "name": "Verdant Scout",
-  "types": ["creature"],
-  "subtypes": ["Elf", "Scout"],
-  "mana_cost": "{G}",
-  "colors": ["green"],
+  "functional_id": "skyscanner",
+  "name": "Skyscanner",
+  "types": ["artifact", "creature"],
+  "subtypes": ["Thopter"],
+  "mana_cost": "{3}",
+  "colors": [],
   "power": 1,
   "toughness": 1,
+  "keywords": ["flying"],
   "abilities": [
     {
       "type": "triggered",
@@ -86,9 +91,9 @@ registration to agree in both directions.
 
 ```json
 {
-  "functional_id": "verdant_scout",
-  "collector_number": "12",
-  "rarity": "rare"
+  "functional_id": "skyscanner",
+  "collector_number": "19",
+  "rarity": "common"
 }
 ```
 

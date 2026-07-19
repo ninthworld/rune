@@ -257,12 +257,12 @@ mod tests {
     /// moment one is authored ahead of it.
     fn sample_decklist() -> Vec<CardId> {
         const CARDS: [&str; 6] = [
-            "thornback_boar",
-            "riverbank_otter",
-            "emberfang_jackal",
-            "stonehide_basilisk",
+            "onakke_ogre",
+            "fire_elemental",
+            "snapping_drake",
+            "giant_spider",
             "forest",
-            "verdant_scout",
+            "llanowar_elves",
         ];
         (0..40).map(|i| fixture(CARDS[i % 6])).collect()
     }
@@ -357,7 +357,7 @@ mod tests {
     fn unknown_card_id_is_rejected() {
         // The one validation this constructor performs: unknown ids (CardId(9999)
         // is absent from the bundled database) fail with the offending seat/id.
-        let bad = vec![fixture("thornback_boar"), CardId(9999)];
+        let bad = vec![fixture("onakke_ogre"), CardId(9999)];
         let setup = GameSetup::two_player(bad, sample_decklist(), 0);
         let err = GameState::new(&setup, &db()).unwrap_err();
         assert_eq!(
@@ -384,8 +384,8 @@ mod tests {
         // leaves it empty rather than erroring (deck-size legality is out of
         // scope; #111 handles mulligans).
         let setup = GameSetup::two_player(
-            vec![fixture("thornback_boar"), fixture("riverbank_otter")],
-            vec![fixture("thornback_boar")],
+            vec![fixture("onakke_ogre"), fixture("fire_elemental")],
+            vec![fixture("onakke_ogre")],
             3,
         );
         let state = GameState::new(&setup, &db()).unwrap();

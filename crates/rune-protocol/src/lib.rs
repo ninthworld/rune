@@ -878,7 +878,7 @@ pub type GameSetupId = String;
 /// database; the client never parses them.
 ///
 /// Concretely, an identity is a card's authored `functional_id` (ADR 0018 §3): a
-/// lowercase `snake_case` slug such as `thornback_boar`. That is the only card identity
+/// lowercase `snake_case` slug such as `llanowar_elves`. That is the only card identity
 /// stable across builds — the engine's `CardId` is interned from the catalog's sort
 /// order, so it shifts whenever a card is authored ahead of it. Clients still treat this
 /// as an opaque string; the note is here so nobody reintroduces an integer.
@@ -2154,12 +2154,12 @@ mod tests {
         // JSON when the card has none, so a keyword-less card keeps its terse shape.
         let base = CardView {
             id: "c1".into(),
-            name: "Skywhisker Drake".into(),
+            name: "Snapping Drake".into(),
             type_line: "Creature — Drake".into(),
-            mana_cost: Some("{2}{U}".into()),
+            mana_cost: Some("{3}{U}".into()),
             rules_text: "Flying".into(),
-            functional_id: "skywhisker_drake".into(),
-            power: Some("2".into()),
+            functional_id: "snapping_drake".into(),
+            power: Some("3".into()),
             toughness: Some("2".into()),
             keywords: vec!["flying".into()],
         };

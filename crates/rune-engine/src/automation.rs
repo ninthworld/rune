@@ -189,7 +189,7 @@ mod tests {
         // With mana available, a castable creature is likewise meaningful.
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let scout = state.new_instance(fixture("verdant_scout"));
+        let scout = state.new_instance(fixture("llanowar_elves"));
         state.players[0].hand = vec![scout];
         state.players[0].mana_pool.add(Color::Green, 1);
         assert!(!priority_has_no_meaningful_action(&state, &db()));
@@ -204,7 +204,7 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         place(&mut state, fixture("forest"), PlayerId(0));
-        let scout = state.new_instance(fixture("verdant_scout")); // a {G} creature
+        let scout = state.new_instance(fixture("llanowar_elves")); // a {G} creature
         state.players[0].hand = vec![scout];
         assert!(
             state.players[0].mana_pool.green == 0,
@@ -224,12 +224,14 @@ mod tests {
         state.active_player = PlayerId(0);
         state.priority = PlayerId(1);
         state.step = Step::Upkeep;
-        // A blue source and Runic Negation ({U} instant), plus a spell on the stack
-        // for the counter to legally target.
+        // Three blue sources and Cancel ({1}{U}{U} instant), plus a spell on the
+        // stack for the counter to legally target.
         place(&mut state, fixture("island"), PlayerId(1));
-        let negation = state.new_instance(fixture("runic_negation"));
+        place(&mut state, fixture("island"), PlayerId(1));
+        place(&mut state, fixture("island"), PlayerId(1));
+        let negation = state.new_instance(fixture("cancel"));
         state.players[1].hand = vec![negation];
-        let boar = state.new_instance(fixture("thornback_boar"));
+        let boar = state.new_instance(fixture("onakke_ogre"));
         let sid = crate::stack::StackId(state.mint_id());
         state.stack.push(crate::stack::StackObject {
             id: sid,

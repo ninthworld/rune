@@ -288,7 +288,7 @@ describe('game store', () => {
       const { store, socket } = open();
       store.getState().sendLobby(createRoomCommand({ seats: 4, game_setup: 'ffa-4' }));
       store.getState().sendLobby(joinRoomCommand('r:7f3'));
-      store.getState().sendLobby(submitDeckCommand(['thornback_boar', 'thornback_boar', 'forest']));
+      store.getState().sendLobby(submitDeckCommand(['onakke_ogre', 'onakke_ogre', 'forest']));
       store.getState().sendLobby(readyCommand(true));
 
       expect(socket.sent).toContain(
@@ -298,7 +298,7 @@ describe('game store', () => {
       expect(socket.sent).toContain(
         JSON.stringify({
           type: 'submit_deck',
-          cards: ['thornback_boar', 'thornback_boar', 'forest'],
+          cards: ['onakke_ogre', 'onakke_ogre', 'forest'],
         }),
       );
       expect(socket.sent).toContain(JSON.stringify({ type: 'ready', ready: true }));
@@ -337,7 +337,7 @@ describe('game store', () => {
       expect(store.getState().lobbyError).toContain('deck was rejected');
 
       // Resubmit; this time the seat comes back decked and the error clears.
-      store.getState().sendLobby(submitDeckCommand(['thornback_boar', 'forest']));
+      store.getState().sendLobby(submitDeckCommand(['onakke_ogre', 'forest']));
       socket.emitMessage(LOBBY_ROOM_DECKED_JSON);
       expect(store.getState().lobbyError).toBeNull();
       expect(store.getState().lobby?.room?.seats[0].decked).toBe(true);

@@ -306,11 +306,11 @@ mod tests {
 
     /// The five non-basic cards these deck tests build with.
     const NON_BASICS: [&str; 5] = [
-        "thornback_boar",
-        "riverbank_otter",
-        "emberfang_jackal",
-        "stonehide_basilisk",
-        "verdant_scout",
+        "onakke_ogre",
+        "snapping_drake",
+        "fire_elemental",
+        "giant_spider",
+        "walking_corpse",
     ];
 
     /// A legal 40-card starter deck: four copies each of the five non-basics plus
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn over_the_copy_limit_for_a_non_basic_is_rejected() {
         // Five copies of one non-basic with an otherwise legal 40-card deck.
-        let mut deck = vec![fixture("thornback_boar"); 5];
+        let mut deck = vec![fixture("onakke_ogre"); 5];
         for slug in &NON_BASICS[1..] {
             for _ in 0..4 {
                 deck.push(fixture(slug));
@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(
             Format::starter().validate_deck(&deck, &db()),
             Err(DeckError::CopyLimit {
-                card: fixture("thornback_boar"),
+                card: fixture("onakke_ogre"),
                 count: 5,
                 limit: 4,
             }),

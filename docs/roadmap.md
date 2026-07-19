@@ -223,11 +223,11 @@ device-local Scryfall download (see
 [ADR 0024](decisions/0024-user-side-card-art.md)). Two follow-ups ride the M6+ catalog
 work:
 
-- **The real-card catalog migration** — replace the functional stand-in cards with their
-  real counterparts (names and matching functional data) so external art resolves by the
-  card's own name and the client-side art mapping (`artMap.json`) retires. A wide,
-  engine-and-test-heavy batch; it should land with or after the catalog-over-the-wire
-  work (#367).
+- **The real-card catalog migration** — *done* ([ADR 0026](decisions/0026-real-functional-card-data.md)):
+  the bundled catalog ships real Core Set 2019 functional definitions (names + matching
+  functional data, no Oracle text/art/branding), so external art resolves by the card's own
+  name and the client-side art mapping (`artMap.json`) is empty by default. Growing the pool
+  beyond one set rides the catalog-over-the-wire work (#367).
 - **The bundled RUNE art set** — original, project-owned illustrations under
   `clients/web/public/card-art/` filling the bundled source's manifest.
 - **Server-computed cost payment (auto-tap)** — the engine proposing a payment

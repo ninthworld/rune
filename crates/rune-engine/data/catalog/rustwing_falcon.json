@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "rustwing_falcon",
+  "name": "Rustwing Falcon",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Bird"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 1,
+  "toughness": 2,
+  "keywords": [
+    "flying"
+  ]
+}

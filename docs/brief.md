@@ -149,6 +149,13 @@ RUNE follows a deliberately conservative fan-project policy:
 Cards are procedural renders of structured data, and player-facing rules text is generated
 by the server. The functional schema rejects prohibited presentation fields.
 
+The prohibitions above cover **presentation assets**. A card's *functional data* — its name and
+mechanical characteristics (types, mana cost, power/toughness, and the ability IR) — may match a
+real card and be sourced from a real set; the bundled catalog draws its functional definitions
+from Core Set 2019 ([ADR 0026](decisions/0026-real-functional-card-data.md)). No Oracle text,
+flavor text, art, frames, symbols, or branding is shipped: rules text stays server-generated and
+printings stay bibliographic.
+
 These constraints govern **what the project distributes** — the repository, the built
 client, and the server. A player may additionally opt in, on their own device, to having
 their browser fetch card images directly from a third-party source (currently Scryfall);

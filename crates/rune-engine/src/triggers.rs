@@ -127,13 +127,24 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
-    use crate::fixtures::fixture;
+    use crate::fixtures::{fixture, id_in};
     use crate::id::CardInstanceId;
     use crate::state::Permanent;
 
     /// The bundled card database, for tests that need oracle data.
     fn db() -> CardDatabase {
         CardDatabase::bundled().unwrap()
+    }
+
+    /// An inline catalog with a dies-draw creature. No clean M19 card carries a bare
+    /// "when this dies, draw a card", so the dies-trigger tests build their own
+    /// definition (ADR 0026).
+    fn lurker_db() -> CardDatabase {
+        let json = r#"[{"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
+            "types":["creature"],"subtypes":["Horror"],"mana_cost":"{1}{B}","colors":["black"],
+            "power":2,"toughness":2,
+            "abilities":[{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}]}]"#;
+        CardDatabase::from_json(json).unwrap()
     }
 
     #[test]
@@ -151,7 +162,7 @@ mod tests {
         after.battlefield.push(Permanent {
             id: PermanentId(1),
             instance: CardInstanceId(1),
-            card: fixture("verdant_scout"),
+            card: fixture("skyscanner"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -167,17 +178,17 @@ mod tests {
         assert_eq!(triggers[0].effects, vec![Effect::DrawCard { count: 1 }]);
     }
 
-    /// A battlefield holding the dies fixture (Cryptvine Lurker, id 28) as a lone
+    /// A battlefield holding the dies-draw creature (`test_lurker`) as a lone
     /// permanent under player 0. Returns the `before` state and the permanent's id
     /// and instance so a test can craft the matching `after`.
-    fn before_with_lurker() -> (GameState, PermanentId, CardInstanceId) {
+    fn before_with_lurker(db: &CardDatabase) -> (GameState, PermanentId, CardInstanceId) {
         let mut before = GameState::new_two_player();
         let instance = CardInstanceId(77);
         let id = PermanentId(1);
         before.battlefield.push(Permanent {
             id,
             instance,
-            card: fixture("cryptvine_lurker"),
+            card: id_in(db, "test_lurker"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -195,13 +206,13 @@ mod tests {
         // CR 700.4 / 603.6c: the permanent left the battlefield and its instance is
         // now in a graveyard — the diff observes the death and yields the dies
         // trigger, its source the (now-gone) permanent id.
-        let db = db();
-        let (before, id, instance) = before_with_lurker();
+        let db = lurker_db();
+        let (before, id, instance) = before_with_lurker(&db);
         let mut after = before.clone();
         after.battlefield.clear();
         after.players[0].graveyard.push(crate::id::CardInstance {
             id: instance,
-            card: fixture("cryptvine_lurker"),
+            card: id_in(&db, "test_lurker"),
         });
 
         let triggers = collect_triggers(&before, &after, &db);
@@ -217,8 +228,8 @@ mod tests {
         // is *not* put into a graveyard (e.g. a bounce or a countered permanent)
         // does not satisfy `SelfDies`. The permanent is simply gone from `after`
         // with nothing in any graveyard.
-        let db = db();
-        let (before, _id, _instance) = before_with_lurker();
+        let db = lurker_db();
+        let (before, _id, _instance) = before_with_lurker(&db);
         let mut after = before.clone();
         after.battlefield.clear();
 

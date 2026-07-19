@@ -233,14 +233,14 @@ mod tests {
     }
 
     /// A two-player game in the precombat main phase with player 0 holding a
-    /// Forest and Verdant Scout, and one card to draw in the library. Each card
+    /// Forest and Llanowar Elves, and one card to draw in the library. Each card
     /// is a freshly minted [`CardInstance`] so copies stay distinguishable.
     fn slice_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let forest = state.new_instance(fixture("forest"));
-        let scout = state.new_instance(fixture("verdant_scout"));
-        let draw = state.new_instance(fixture("thornback_boar"));
+        let scout = state.new_instance(fixture("llanowar_elves"));
+        let draw = state.new_instance(fixture("onakke_ogre"));
         state.players[0].hand = vec![forest, scout];
         state.players[0].library = vec![draw];
         state
@@ -260,7 +260,7 @@ mod tests {
         let db = db();
         let mut state = slice_state();
         state.players[0].mana_pool.add(Color::Green, 1);
-        let scout = hand_instance(&state, 0, fixture("verdant_scout"));
+        let scout = hand_instance(&state, 0, fixture("llanowar_elves"));
         let state = apply_action(
             &state,
             &Action::CastSpell {
@@ -275,7 +275,7 @@ mod tests {
         let perm = state
             .battlefield
             .iter()
-            .find(|p| p.card == fixture("verdant_scout"))
+            .find(|p| p.card == fixture("llanowar_elves"))
             .unwrap();
         assert_eq!(perm.instance, scout.id);
     }
@@ -309,15 +309,15 @@ mod tests {
         assert_eq!(state.players[0].graveyard, vec![bolt]);
     }
 
-    /// Put a creature (Verdant Scout, [`fixture("verdant_scout")`]) onto the battlefield under
+    /// Put a creature (Llanowar Elves, a 1/1) onto the battlefield under
     /// player 0's control and return its fresh [`PermanentId`].
     fn creature_on_battlefield(state: &mut GameState) -> PermanentId {
-        let inst = state.new_instance(fixture("verdant_scout"));
+        let inst = state.new_instance(fixture("llanowar_elves"));
         let id = state.mint_id();
         state.battlefield.push(Permanent {
             id: PermanentId(id),
             instance: inst.id,
-            card: fixture("verdant_scout"),
+            card: fixture("llanowar_elves"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -464,7 +464,7 @@ mod tests {
         // ability on the stack is not a spell and is never a legal target.
         let db = db();
         let mut state = GameState::new_two_player();
-        let spell = state.new_instance(fixture("thornback_boar"));
+        let spell = state.new_instance(fixture("onakke_ogre"));
         let sid = StackId(state.mint_id());
         state.stack.push(StackObject {
             id: sid,
@@ -592,23 +592,52 @@ mod tests {
 
     // ----- Auras: enchant, attachment, and fizzle (issue #152) -----
     //
-    // Ironbark Aegis ({1}{G} Aura, "+2/+2, enchant creature") and Verdant Scout
-    // (1/1 creature), named by authored identity rather than interned handle.
-    fn aura_buff() -> CardId {
-        fixture("ironbark_aegis")
+    // P/T Auras have no clean M19 representative, so these tests build an inline
+    // catalog (ADR 0026): `test_aegis` ({1}{G} Aura, "+2/+2, enchant creature") and a
+    // 1/1 `test_scout` host, named by authored identity rather than interned handle.
+    fn aura_db() -> CardDatabase {
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
+             "aura":{"enchant":"any_creature","power":2,"toughness":2}},
+            {"schema_version":1,"functional_id":"test_scout","name":"Test Scout",
+             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
+             "power":1,"toughness":1}
+        ]"#;
+        CardDatabase::from_json(json).unwrap()
+    }
+
+    /// Put the 1/1 `test_scout` host from `db` onto the battlefield under player 0.
+    fn aura_host(state: &mut GameState, db: &CardDatabase) -> PermanentId {
+        let inst = state.new_instance(id_in(db, "test_scout"));
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(Permanent {
+            id,
+            instance: inst.id,
+            card: id_in(db, "test_scout"),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+            attached_to: None,
+        });
+        id
     }
 
     #[test]
     fn issue_152_aura_resolves_attached_to_its_target_and_boosts_it_cr_303_4d() {
         // CR 303.4d: a resolving Aura enters the battlefield attached to the object
         // its enchant ability chose, and its +2/+2 grant folds into the host's
-        // current P/T (CR 613.7c). Verdant Scout is a printed 1/1 -> 3/3 enchanted.
+        // current P/T (CR 613.7c). The host is a printed 1/1 -> 3/3 enchanted.
         use crate::characteristics::characteristics;
-        let db = db();
+        let db = aura_db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let host = creature_on_battlefield(&mut state); // Verdant Scout, 1/1
-        let aura = state.new_instance(aura_buff());
+        let host = aura_host(&mut state, &db); // test_scout, 1/1
+        let aura = state.new_instance(id_in(&db, "test_aegis"));
         state.players[0].hand = vec![aura];
         state.players[0].mana_pool.add(Color::Green, 1);
         state.players[0].mana_pool.colorless = 1;
@@ -628,7 +657,7 @@ mod tests {
         let aura_perm = state
             .battlefield
             .iter()
-            .find(|p| p.card == aura_buff())
+            .find(|p| p.card == id_in(&db, "test_aegis"))
             .unwrap();
         assert_eq!(
             aura_perm.attached_to,
@@ -645,11 +674,11 @@ mod tests {
         // CR 608.2b: with its only target (the enchant object) now illegal, the Aura
         // spell is removed from the stack without resolving — it never enters the
         // battlefield, and (a card that failed to resolve) goes to the graveyard.
-        let db = db();
+        let db = aura_db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let host = creature_on_battlefield(&mut state);
-        let aura = state.new_instance(aura_buff());
+        let host = aura_host(&mut state, &db);
+        let aura = state.new_instance(id_in(&db, "test_aegis"));
         state.players[0].hand = vec![aura];
         state.players[0].mana_pool.add(Color::Green, 1);
         state.players[0].mana_pool.colorless = 1;
@@ -670,7 +699,10 @@ mod tests {
 
         assert!(state.stack.is_empty());
         assert!(
-            !state.battlefield.iter().any(|p| p.card == aura_buff()),
+            !state
+                .battlefield
+                .iter()
+                .any(|p| p.card == id_in(&db, "test_aegis")),
             "a fizzled Aura never enters the battlefield (CR 608.2b)"
         );
         assert!(
@@ -685,14 +717,19 @@ mod tests {
     fn issue_155_zero_zero_entering_with_two_counters_lives_cr_614_12() {
         // CR 614.12 / 704.5f: a 0/0 that enters with two +1/+1 counters has the
         // counters as part of *entering* — so it is a 2/2 by the time the SBA loop
-        // runs and is never put into the graveyard for 0 toughness. Bramble Hatchling
-        // (id 32) is a printed 0/0 that enters with two +1/+1 counters.
+        // runs and is never put into the graveyard for 0 toughness. No clean M19 card
+        // enters with a fixed number of counters, so `test_hatchling` (an inline 0/0
+        // that enters with two +1/+1 counters, {1}{G}) exercises it (ADR 0026).
         use crate::characteristics::characteristics;
         use crate::state::CounterKind;
-        let db = db();
+        let json = r#"[{"schema_version":1,"functional_id":"test_hatchling","name":"Test Hatchling",
+            "types":["creature"],"subtypes":["Insect"],"mana_cost":"{1}{G}","colors":["green"],
+            "power":0,"toughness":0,
+            "abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2}]}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let hatchling = state.new_instance(fixture("bramble_hatchling"));
+        let hatchling = state.new_instance(id_in(&db, "test_hatchling"));
         state.players[0].hand = vec![hatchling];
         // Pay {1}{G}.
         state.players[0].mana_pool.add(Color::Green, 1);
@@ -714,7 +751,7 @@ mod tests {
         let perm = state
             .battlefield
             .iter()
-            .find(|p| p.card == fixture("bramble_hatchling"))
+            .find(|p| p.card == id_in(&db, "test_hatchling"))
             .unwrap(); // the 0/0 survives entry with two +1/+1 counters (CR 614.12/704.5f)
         assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 2);
         let ch = characteristics(&state, perm.id, &db);

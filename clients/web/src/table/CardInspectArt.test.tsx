@@ -25,10 +25,10 @@ afterEach(() => {
 
 const CARD: CardView = {
   id: 'c1',
-  name: 'Cinder Shock',
+  name: 'Shock',
   type_line: 'Instant',
   mana_cost: '{R}',
-  functional_id: 'cinder_shock',
+  functional_id: 'shock',
 };
 
 /** Publish stub art for the card under the scryfall source. */
@@ -48,7 +48,7 @@ async function publishArt(): Promise<void> {
   };
   configureArtStore(deps);
   setArtSource('scryfall');
-  noteCards([{ functionalId: 'cinder_shock', name: 'Cinder Shock' }]);
+  noteCards([{ functionalId: 'shock', name: 'Shock' }]);
   for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -64,6 +64,6 @@ describe('CardInspect art (ADR 0024)', () => {
     configureArtStore({ cache: new MemoryArtCache() });
     render(<CardInspect target={{ kind: 'card', card: CARD }} onClose={vi.fn()} />);
     expect(screen.queryByTestId('card-inspect-art')).toBeNull();
-    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Cinder Shock');
+    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Shock');
   });
 });

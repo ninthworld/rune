@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "colossal_dreadmaw",
+  "name": "Colossal Dreadmaw",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dinosaur"
+  ],
+  "mana_cost": "{4}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 6,
+  "toughness": 6,
+  "keywords": [
+    "trample"
+  ]
+}

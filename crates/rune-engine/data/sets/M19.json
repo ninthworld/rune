@@ -1,0 +1,167 @@
+[
+  {
+    "functional_id": "llanowar_elves",
+    "collector_number": "1",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "druid_of_the_cowl",
+    "collector_number": "2",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "giant_spider",
+    "collector_number": "3",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "colossal_dreadmaw",
+    "collector_number": "4",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "gigantosaurus",
+    "collector_number": "5",
+    "rarity": "mythic"
+  },
+  {
+    "functional_id": "rustwing_falcon",
+    "collector_number": "6",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "trusty_packbeast",
+    "collector_number": "7",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "serra_angel",
+    "collector_number": "8",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "child_of_night",
+    "collector_number": "9",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "walking_corpse",
+    "collector_number": "10",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "diregraf_ghoul",
+    "collector_number": "11",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "snapping_drake",
+    "collector_number": "12",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "air_elemental",
+    "collector_number": "13",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "tolarian_scholar",
+    "collector_number": "14",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "onakke_ogre",
+    "collector_number": "15",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "fire_elemental",
+    "collector_number": "16",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "viashino_pyromancer",
+    "collector_number": "17",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "volcanic_dragon",
+    "collector_number": "18",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "skyscanner",
+    "collector_number": "19",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "shock",
+    "collector_number": "20",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "lightning_strike",
+    "collector_number": "21",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "electrify",
+    "collector_number": "22",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "murder",
+    "collector_number": "23",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "cancel",
+    "collector_number": "24",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "divination",
+    "collector_number": "25",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "revitalize",
+    "collector_number": "26",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "titanic_growth",
+    "collector_number": "27",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "tranquil_expanse",
+    "collector_number": "28",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "forest",
+    "collector_number": "29",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "island",
+    "collector_number": "30",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "mountain",
+    "collector_number": "31",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "plains",
+    "collector_number": "32",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "swamp",
+    "collector_number": "33",
+    "rarity": "common"
+  }
+]

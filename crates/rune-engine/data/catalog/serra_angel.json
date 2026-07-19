@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "functional_id": "serra_angel",
+  "name": "Serra Angel",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Angel"
+  ],
+  "mana_cost": "{3}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "keywords": [
+    "flying",
+    "vigilance"
+  ]
+}

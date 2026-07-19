@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "diregraf_ghoul",
+  "name": "Diregraf Ghoul",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Zombie"
+  ],
+  "mana_cost": "{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "enters_tapped"
+    }
+  ]
+}

@@ -819,7 +819,7 @@ mod tests {
     use crate::card_type::{CardType, Supertype};
 
     /// The number of functional definitions in `data/catalog/`.
-    const CATALOG_SIZE: usize = 36;
+    const CATALOG_SIZE: usize = 33;
 
     /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0018 §3).
     fn every_id() -> impl Iterator<Item = CardId> {
@@ -852,14 +852,17 @@ mod tests {
     #[test]
     fn known_id_resolves_to_expected_characteristics() {
         let db = CardDatabase::bundled().unwrap();
-        let boar = card_named(&db, "thornback_boar");
-        assert_eq!(boar.name, "Thornback Boar");
-        assert_eq!(boar.types, vec![CardType::Creature]);
-        assert_eq!(boar.subtypes, vec!["Boar".to_string()]);
-        assert_eq!(boar.type_line(), "Creature — Boar");
-        assert_eq!(boar.mana_cost, "{2}{G}");
-        assert_eq!(boar.power, Some(3));
-        assert_eq!(boar.toughness, Some(2));
+        let ogre = card_named(&db, "onakke_ogre");
+        assert_eq!(ogre.name, "Onakke Ogre");
+        assert_eq!(ogre.types, vec![CardType::Creature]);
+        assert_eq!(
+            ogre.subtypes,
+            vec!["Ogre".to_string(), "Warrior".to_string()]
+        );
+        assert_eq!(ogre.type_line(), "Creature — Ogre Warrior");
+        assert_eq!(ogre.mana_cost, "{2}{R}");
+        assert_eq!(ogre.power, Some(4));
+        assert_eq!(ogre.toughness, Some(2));
     }
 
     #[test]
@@ -939,8 +942,8 @@ mod tests {
         let db = CardDatabase::bundled().unwrap();
         // Multiple subtypes are space-joined after the em dash.
         assert_eq!(
-            card_named(&db, "verdant_scout").type_line(),
-            "Creature — Elf Scout"
+            card_named(&db, "tolarian_scholar").type_line(),
+            "Creature — Human Wizard"
         );
         // A supertype precedes the card type; the land subtype follows the dash.
         assert_eq!(card_named(&db, "forest").type_line(), "Basic Land — Forest");
@@ -949,18 +952,18 @@ mod tests {
     #[test]
     fn has_type_and_has_subtype_query_structured_types() {
         let db = CardDatabase::bundled().unwrap();
-        let scout = card_named(&db, "verdant_scout");
-        assert!(scout.has_type(CardType::Creature));
-        assert!(!scout.has_type(CardType::Land));
-        assert!(scout.has_subtype("Elf"));
-        assert!(!scout.has_subtype("Goblin"));
+        let elves = card_named(&db, "llanowar_elves");
+        assert!(elves.has_type(CardType::Creature));
+        assert!(!elves.has_type(CardType::Land));
+        assert!(elves.has_subtype("Elf"));
+        assert!(!elves.has_subtype("Goblin"));
     }
 
     #[test]
     fn is_permanent_splits_permanent_types_from_instants_and_sorceries() {
         let db = CardDatabase::bundled().unwrap();
         // Creature and land are permanent cards.
-        assert!(card_named(&db, "thornback_boar").is_permanent());
+        assert!(card_named(&db, "onakke_ogre").is_permanent());
         assert!(card_named(&db, "forest").is_permanent());
         // An instant-only card is not.
         let json = r#"[{"schema_version":1,"functional_id":"test_bolt","name":"Test Bolt","types":["instant"],"mana_cost":"{R}"}]"#;
@@ -971,7 +974,7 @@ mod tests {
     #[test]
     fn vanilla_cards_deserialize_with_no_abilities() {
         let db = CardDatabase::bundled().unwrap();
-        assert!(card_named(&db, "thornback_boar").abilities.is_empty());
+        assert!(card_named(&db, "onakke_ogre").abilities.is_empty());
     }
 
     #[test]
@@ -983,11 +986,11 @@ mod tests {
     }
 
     #[test]
-    fn verdant_scout_has_an_etb_draw_trigger() {
+    fn skyscanner_has_an_etb_draw_trigger() {
         let db = CardDatabase::bundled().unwrap();
-        let scout = card_named(&db, "verdant_scout");
+        let skyscanner = card_named(&db, "skyscanner");
         assert_eq!(
-            scout.abilities,
+            skyscanner.abilities,
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::DrawCard { count: 1 }],
@@ -997,15 +1000,17 @@ mod tests {
 
     #[test]
     fn issue_155_etb_replacement_fixtures_carry_their_self_replacements() {
-        // The tapland (id 31) authors an `enters_tapped` self-replacement (CR 614.1c)
-        // alongside its two mana abilities; the 0/0 (id 32) authors an
-        // `enters_with_counters` self-replacement of two +1/+1 counters (CR 614.12).
+        // The bundled tapland authors an `enters_tapped` self-replacement (CR 614.1c)
+        // alongside its two mana abilities. The `enters_with_counters` self-replacement
+        // (CR 614.12) has no clean representative in the real M19 catalog, so it is
+        // exercised through an inline definition — the sanctioned pattern for an IR
+        // shape the shipped set does not use (ADR 0026).
         use crate::ability::Ability;
         use crate::state::CounterKind;
         let db = CardDatabase::bundled().unwrap();
 
-        let land = card_named(&db, "verdant_sanctuary");
-        assert_eq!(land.name, "Verdant Sanctuary");
+        let land = card_named(&db, "tranquil_expanse");
+        assert_eq!(land.name, "Tranquil Expanse");
         assert_eq!(land.types, vec![CardType::Land]);
         assert_eq!(
             land.abilities
@@ -1024,12 +1029,16 @@ mod tests {
             2
         );
 
-        let hatchling = card_named(&db, "bramble_hatchling");
-        assert_eq!(hatchling.name, "Bramble Hatchling");
-        assert_eq!(hatchling.power, Some(0));
-        assert_eq!(hatchling.toughness, Some(0));
+        let json = r#"[{"schema_version":1,"functional_id":"test_broodling","name":"Test Broodling",
+            "types":["creature"],"subtypes":["Insect"],"mana_cost":"{1}{G}","colors":["green"],
+            "power":0,"toughness":0,
+            "abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2}]}]"#;
+        let inline = CardDatabase::from_json(json).unwrap();
+        let broodling = card_named(&inline, "test_broodling");
+        assert_eq!(broodling.power, Some(0));
+        assert_eq!(broodling.toughness, Some(0));
         assert_eq!(
-            hatchling.abilities,
+            broodling.abilities,
             vec![Ability::EntersWithCounters {
                 counter: CounterKind::PlusOnePlusOne,
                 count: 2,
@@ -1038,38 +1047,38 @@ mod tests {
     }
 
     #[test]
-    fn runic_negation_carries_a_counter_spell_effect() {
-        // The counterspell fixture (id 11) is a vanilla-abilities instant whose
-        // spell effect counters a spell on the stack (CR 701.5).
+    fn cancel_carries_a_counter_spell_effect() {
+        // The counterspell is a vanilla-abilities instant whose spell effect counters
+        // a spell on the stack (CR 701.5).
         use crate::ability::TargetSpec;
         let db = CardDatabase::bundled().unwrap();
-        let negation = card_named(&db, "runic_negation");
-        assert_eq!(negation.name, "Runic Negation");
-        assert_eq!(negation.types, vec![CardType::Instant]);
-        assert!(negation.abilities.is_empty());
+        let cancel = card_named(&db, "cancel");
+        assert_eq!(cancel.name, "Cancel");
+        assert_eq!(cancel.types, vec![CardType::Instant]);
+        assert!(cancel.abilities.is_empty());
         assert_eq!(
-            negation.spell_effects,
+            cancel.spell_effects,
             vec![Effect::CounterSpell {
                 target: TargetSpec::SpellOnStack,
             }]
         );
         assert_eq!(
-            spell_effects_of(&db, id_of(&db, "runic_negation")),
-            negation.spell_effects
+            spell_effects_of(&db, id_of(&db, "cancel")),
+            cancel.spell_effects
         );
         // A card with no spell ability reports none.
-        assert!(spell_effects_of(&db, id_of(&db, "thornback_boar")).is_empty());
+        assert!(spell_effects_of(&db, id_of(&db, "onakke_ogre")).is_empty());
     }
 
     #[test]
     fn issue_149_effect_ir_wave_fixtures_carry_their_verbs() {
-        use crate::ability::{Ability, PlayerRef, TargetSpec, TriggerCondition};
+        use crate::ability::{PlayerRef, TargetSpec};
         use crate::state::CounterKind;
         let db = CardDatabase::bundled().unwrap();
 
         // A burn instant: deal 2 to any target.
-        let shock = card_named(&db, "cinder_shock");
-        assert_eq!(shock.name, "Cinder Shock");
+        let shock = card_named(&db, "shock");
+        assert_eq!(shock.name, "Shock");
         assert_eq!(
             shock.spell_effects,
             vec![Effect::DealDamage {
@@ -1077,19 +1086,53 @@ mod tests {
                 amount: 2
             }]
         );
-        // A destroy sorcery.
-        let ray = card_named(&db, "sunder_ray");
+        // A burn instant restricted to a creature: deal 4 to target creature.
         assert_eq!(
-            ray.spell_effects,
+            card_named(&db, "electrify").spell_effects,
+            vec![Effect::DealDamage {
+                target: TargetSpec::AnyCreature,
+                amount: 4
+            }]
+        );
+        // A destroy instant.
+        let murder = card_named(&db, "murder");
+        assert_eq!(
+            murder.spell_effects,
             vec![Effect::Destroy {
                 target: TargetSpec::AnyCreature
             }]
         );
-        // A counters-ETB creature: its ETB trigger puts a +1/+1 counter on a
-        // target creature.
-        let sprite = card_named(&db, "thornweft_sprite");
+        // A two-effect spell: gain life, then draw.
         assert_eq!(
-            sprite.abilities,
+            card_named(&db, "revitalize").spell_effects,
+            vec![
+                Effect::GainLife {
+                    player_ref: PlayerRef::Controller,
+                    amount: 3
+                },
+                Effect::DrawCard { count: 1 },
+            ]
+        );
+
+        // Effects the real M19 catalog does not use — a +1/+1 ETB counter, life loss,
+        // and a -1/-1 counter — are exercised inline (ADR 0026).
+        use crate::ability::{Ability, TriggerCondition};
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_sprite","name":"Test Sprite",
+             "types":["creature"],"subtypes":["Faerie"],"mana_cost":"{1}{G}","colors":["green"],
+             "power":1,"toughness":1,
+             "abilities":[{"type":"triggered","event":"self_enters_battlefield",
+               "effects":[{"kind":"put_counters","target":"any_creature","counter":"plus_one_plus_one","count":1}]}]},
+            {"schema_version":1,"functional_id":"test_drain","name":"Test Drain",
+             "types":["instant"],"mana_cost":"{B}","colors":["black"],
+             "spell_effects":[{"kind":"lose_life","player_ref":"controller","amount":2}]},
+            {"schema_version":1,"functional_id":"test_wither","name":"Test Wither",
+             "types":["sorcery"],"mana_cost":"{B}","colors":["black"],
+             "spell_effects":[{"kind":"put_counters","target":"any_creature","counter":"minus_one_minus_one","count":1}]}
+        ]"#;
+        let inline = CardDatabase::from_json(json).unwrap();
+        assert_eq!(
+            card_named(&inline, "test_sprite").abilities,
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::PutCounters {
@@ -1099,23 +1142,15 @@ mod tests {
                 }],
             }]
         );
-        // Life gain/loss instants and a -1/-1 sorcery.
         assert_eq!(
-            card_named(&db, "soothing_balm").spell_effects,
-            vec![Effect::GainLife {
-                player_ref: PlayerRef::Controller,
-                amount: 3
-            }]
-        );
-        assert_eq!(
-            card_named(&db, "vexing_ordeal").spell_effects,
+            card_named(&inline, "test_drain").spell_effects,
             vec![Effect::LoseLife {
                 player_ref: PlayerRef::Controller,
                 amount: 2
             }]
         );
         assert_eq!(
-            card_named(&db, "withering_touch").spell_effects,
+            card_named(&inline, "test_wither").spell_effects,
             vec![Effect::PutCounters {
                 target: TargetSpec::AnyCreature,
                 counter: CounterKind::MinusOneMinusOne,
@@ -1126,56 +1161,67 @@ mod tests {
 
     #[test]
     fn issue_153_keyword_fixtures_carry_their_printed_keywords() {
-        // CR 702: the four enforced-here keyword fixtures each print exactly one
-        // keyword, deserialized from its snake_case name, and a vanilla creature
-        // prints none.
+        // CR 702: the keywords the combat-declaration step enforces, each deserialized
+        // from its snake_case name off a real M19 card, and a vanilla creature prints
+        // none.
         let db = CardDatabase::bundled().unwrap();
 
-        let flyer = card_named(&db, "skywhisker_drake");
-        assert_eq!(flyer.name, "Skywhisker Drake");
+        let flyer = card_named(&db, "snapping_drake");
+        assert_eq!(flyer.name, "Snapping Drake");
         assert!(flyer.has_keyword(Keyword::Flying));
         assert!(!flyer.has_keyword(Keyword::Reach));
 
-        assert!(card_named(&db, "bramblefang_spider").has_keyword(Keyword::Reach));
-        assert!(card_named(&db, "ironwatch_sentinel").has_keyword(Keyword::Vigilance));
-        assert!(card_named(&db, "emberrush_raider").has_keyword(Keyword::Haste));
+        assert!(card_named(&db, "giant_spider").has_keyword(Keyword::Reach));
+        assert!(card_named(&db, "serra_angel").has_keyword(Keyword::Vigilance));
+        assert!(card_named(&db, "volcanic_dragon").has_keyword(Keyword::Haste));
 
         // A vanilla creature prints no keywords.
-        assert!(card_named(&db, "thornback_boar").keywords.is_empty());
-        assert!(!card_named(&db, "thornback_boar").has_keyword(Keyword::Flying));
+        assert!(card_named(&db, "onakke_ogre").keywords.is_empty());
+        assert!(!card_named(&db, "onakke_ogre").has_keyword(Keyword::Flying));
     }
 
     #[test]
     fn issue_154_damage_keyword_fixtures_carry_their_printed_keywords() {
-        // CR 702: the four combat-damage keyword fixtures each print exactly one
-        // keyword, the ones keywords II enforces at combat-damage time.
+        // CR 702: the keywords II enforces at combat-damage time. Trample and lifelink
+        // ride real M19 cards; first strike and deathtouch have no clean M19
+        // representative, so they are exercised inline (ADR 0026).
         let db = CardDatabase::bundled().unwrap();
 
-        let duelist = card_named(&db, "dawnblade_duelist");
-        assert_eq!(duelist.name, "Dawnblade Duelist");
+        assert!(card_named(&db, "colossal_dreadmaw").has_keyword(Keyword::Trample));
+        assert!(card_named(&db, "child_of_night").has_keyword(Keyword::Lifelink));
+
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_duelist","name":"Test Duelist",
+             "types":["creature"],"subtypes":["Human","Knight"],"mana_cost":"{1}{W}","colors":["white"],
+             "power":2,"toughness":2,"keywords":["first_strike"]},
+            {"schema_version":1,"functional_id":"test_baneclaw","name":"Test Baneclaw",
+             "types":["creature"],"subtypes":["Beast"],"mana_cost":"{2}{B}{G}","colors":["black","green"],
+             "power":4,"toughness":4,"keywords":["trample","deathtouch"]}
+        ]"#;
+        let inline = CardDatabase::from_json(json).unwrap();
+
+        let duelist = card_named(&inline, "test_duelist");
         assert!(duelist.has_keyword(Keyword::FirstStrike));
         assert!(!duelist.has_keyword(Keyword::Deathtouch));
 
-        assert!(card_named(&db, "gorehorn_ravager").has_keyword(Keyword::Trample));
-        assert!(db
-            .card(id_of(&db, "nettle_adder"))
-            .unwrap()
-            .has_keyword(Keyword::Deathtouch));
-        assert!(card_named(&db, "cleric_of_the_sunwell").has_keyword(Keyword::Lifelink));
-
         // A creature can print more than one keyword (trample + deathtouch).
-        let baneclaw = card_named(&db, "viridian_baneclaw");
+        let baneclaw = card_named(&inline, "test_baneclaw");
         assert!(baneclaw.has_keyword(Keyword::Trample));
         assert!(baneclaw.has_keyword(Keyword::Deathtouch));
     }
 
     #[test]
     fn issue_151_dies_fixture_carries_a_self_dies_draw_trigger() {
-        // The dies fixture (id 28) is a creature whose triggered ability fires when
-        // it dies (CR 700.4 / 603.6c) and draws its controller a card.
-        let db = CardDatabase::bundled().unwrap();
-        let lurker = card_named(&db, "cryptvine_lurker");
-        assert_eq!(lurker.name, "Cryptvine Lurker");
+        // A creature whose triggered ability fires when it dies (CR 700.4 / 603.6c)
+        // and draws its controller a card. No clean M19 card carries a bare dies-draw,
+        // so the shape is exercised inline (ADR 0026).
+        let json = r#"[{"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
+            "types":["creature"],"subtypes":["Horror"],"mana_cost":"{1}{B}","colors":["black"],
+            "power":2,"toughness":2,
+            "abilities":[{"type":"triggered","event":"self_dies",
+              "effects":[{"kind":"draw_card","count":1}]}]}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
+        let lurker = card_named(&db, "test_lurker");
         assert_eq!(lurker.types, vec![CardType::Creature]);
         assert_eq!(lurker.power, Some(2));
         assert_eq!(lurker.toughness, Some(2));
@@ -1190,38 +1236,46 @@ mod tests {
 
     #[test]
     fn issue_150_pump_fixture_carries_its_until_end_of_turn_verb() {
-        // The Giant-Growth-style fixture (id 27) is a vanilla-abilities instant
-        // whose spell effect pumps a target creature +3/+3 until end of turn.
+        // Titanic Growth is a vanilla-abilities instant whose spell effect pumps a
+        // target creature +4/+4 until end of turn.
         use crate::ability::TargetSpec;
         let db = CardDatabase::bundled().unwrap();
-        let surge = card_named(&db, "titanroot_surge");
-        assert_eq!(surge.name, "Titanroot Surge");
-        assert_eq!(surge.types, vec![CardType::Instant]);
-        assert!(surge.abilities.is_empty());
+        let growth = card_named(&db, "titanic_growth");
+        assert_eq!(growth.name, "Titanic Growth");
+        assert_eq!(growth.types, vec![CardType::Instant]);
+        assert!(growth.abilities.is_empty());
         assert_eq!(
-            surge.spell_effects,
+            growth.spell_effects,
             vec![Effect::Pump {
                 target: TargetSpec::AnyCreature,
-                power: 3,
-                toughness: 3,
+                power: 4,
+                toughness: 4,
             }]
         );
         assert_eq!(
-            spell_effects_of(&db, id_of(&db, "titanroot_surge")),
-            surge.spell_effects
+            spell_effects_of(&db, id_of(&db, "titanic_growth")),
+            growth.spell_effects
         );
     }
 
     #[test]
     fn issue_152_aura_fixtures_carry_their_enchant_and_pt_grant() {
-        // CR 303.4: the two Aura fixtures are Enchantment — Aura cards carrying an
-        // enchant-creature restriction and a static P/T grant. One buffs (+2/+2),
+        // CR 303.4: an Aura is an Enchantment — Aura card carrying an enchant-creature
+        // restriction and a static P/T grant. P/T-only Auras have no clean M19
+        // representative, so they are exercised inline (ADR 0026): one buffs (+2/+2),
         // one shrinks (-2/-2); both surface their enchant slot via cast_target_specs.
         use crate::ability::TargetSpec;
-        let db = CardDatabase::bundled().unwrap();
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
+             "aura":{"enchant":"any_creature","power":2,"toughness":2}},
+            {"schema_version":1,"functional_id":"test_curse","name":"Test Curse",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{B}","colors":["black"],
+             "aura":{"enchant":"any_creature","power":-2,"toughness":-2}}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
 
-        let aegis = card_named(&db, "ironbark_aegis");
-        assert_eq!(aegis.name, "Ironbark Aegis");
+        let aegis = card_named(&db, "test_aegis");
         assert_eq!(aegis.types, vec![CardType::Enchantment]);
         assert!(aegis.has_subtype("Aura"));
         assert_eq!(
@@ -1235,8 +1289,7 @@ mod tests {
         // An Aura chooses its enchant target as it is cast (CR 601.2c): one slot.
         assert_eq!(aegis.cast_target_specs(), vec![TargetSpec::AnyCreature]);
 
-        let curse = card_named(&db, "witherbrand_curse");
-        assert_eq!(curse.name, "Witherbrand Curse");
+        let curse = card_named(&db, "test_curse");
         assert!(curse.has_subtype("Aura"));
         assert_eq!(
             curse.aura,
@@ -1248,8 +1301,9 @@ mod tests {
         );
 
         // A non-Aura card has no aura ability and no cast target slots.
-        assert!(card_named(&db, "thornback_boar").aura.is_none());
-        assert!(card_named(&db, "thornback_boar")
+        let bundled = CardDatabase::bundled().unwrap();
+        assert!(card_named(&bundled, "onakke_ogre").aura.is_none());
+        assert!(card_named(&bundled, "onakke_ogre")
             .cast_target_specs()
             .is_empty());
     }
@@ -1282,29 +1336,29 @@ mod tests {
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // FIX prints the thirty-six fixtures; FIX2 reprints one — thirty-seven printings total.
-        assert_eq!(printings.len(), 37);
+        // M19 prints the thirty-three cards; PM19 reprints one — thirty-four printings total.
+        assert_eq!(printings.len(), 34);
         assert!(!printings.is_empty());
-        let boar = printings.printing("FIX", "1").unwrap();
-        // The record names thornback_boar; the loader resolved that to its handle.
-        assert_eq!(boar.oracle, id_of(&cards, "thornback_boar"));
-        assert_eq!(boar.rarity, Rarity::Common);
+        let ogre = printings.printing("M19", "15").unwrap();
+        // The record names onakke_ogre; the loader resolved that to its handle.
+        assert_eq!(ogre.oracle, id_of(&cards, "onakke_ogre"));
+        assert_eq!(ogre.rarity, Rarity::Common);
         // A collector number absent from a set does not resolve.
-        assert!(printings.printing("FIX", "999").is_none());
+        assert!(printings.printing("M19", "999").is_none());
         // Neither does an unknown set code.
         assert!(printings.printing("ZZZ", "1").is_none());
     }
 
     #[test]
     fn adding_a_reprint_changes_no_logic() {
-        // Verdant Scout is printed in FIX (#6) and reprinted in FIX2 (#12). The
+        // Skyscanner is printed in M19 (#19) and reprinted in PM19 (#1). The
         // two printings differ only bibliographically; everything the engine
         // reasons about is read through the shared OracleId, so it is identical.
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
 
-        let first = printings.printing("FIX", "6").unwrap();
-        let reprint = printings.printing("FIX2", "12").unwrap();
+        let first = printings.printing("M19", "19").unwrap();
+        let reprint = printings.printing("PM19", "1").unwrap();
 
         // The printings are distinct bibliographic records...
         assert_ne!(first.collector_number, reprint.collector_number);
@@ -1335,12 +1389,11 @@ mod tests {
     #[test]
     fn printing_deserializes_only_bibliographic_fields() {
         let cards = CardDatabase::bundled().unwrap();
-        let json =
-            r#"[{"functional_id":"thornback_boar","collector_number":"1","rarity":"common"}]"#;
+        let json = r#"[{"functional_id":"onakke_ogre","collector_number":"1","rarity":"common"}]"#;
         let db = PrintingDatabase::from_json("TST", json, &cards).unwrap();
         assert_eq!(db.len(), 1);
         let p = db.printing("TST", "1").unwrap();
-        assert_eq!(p.oracle, id_of(&cards, "thornback_boar"));
+        assert_eq!(p.oracle, id_of(&cards, "onakke_ogre"));
         assert_eq!(p.rarity, Rarity::Common);
     }
 
@@ -1349,10 +1402,10 @@ mod tests {
         // An image_uris-style field must fail to parse: the art/branding
         // prohibition is structural via deny_unknown_fields (ADR 0013 §6).
         let cards = CardDatabase::bundled().unwrap();
-        let json = r#"[{"functional_id":"thornback_boar","collector_number":"1","rarity":"common","image_uris":{"small":"x"}}]"#;
+        let json = r#"[{"functional_id":"onakke_ogre","collector_number":"1","rarity":"common","image_uris":{"small":"x"}}]"#;
         assert!(PrintingDatabase::from_json("TST", json, &cards).is_err());
         // An artist credit is likewise rejected.
-        let json = r#"[{"functional_id":"thornback_boar","collector_number":"1","rarity":"common","artist":"Someone"}]"#;
+        let json = r#"[{"functional_id":"onakke_ogre","collector_number":"1","rarity":"common","artist":"Someone"}]"#;
         assert!(PrintingDatabase::from_json("TST", json, &cards).is_err());
     }
 
@@ -1682,48 +1735,70 @@ mod tests {
     }
 
     #[test]
-    fn issue_256_the_four_wired_cards_carry_their_functions() {
-        use crate::ability::{Ability, Cost, Effect, PlayerRef, TargetSpec, TriggerCondition};
+    fn bundled_spells_carry_their_functions() {
+        use crate::ability::{Ability, Cost, Effect, TargetSpec, TriggerCondition};
         let db = CardDatabase::bundled().unwrap();
 
-        // Quickfire Bolt: a {R} bolt dealing 3 to any target — distinct from Cinder
+        // Lightning Strike: a {1}{R} bolt dealing 3 to any target — distinct from
         // Shock's 2, so it is its own definition rather than a reprint of one identity.
-        let bolt = card_named(&db, "quickfire_bolt");
-        assert_eq!(bolt.types, vec![CardType::Instant]);
+        let strike = card_named(&db, "lightning_strike");
+        assert_eq!(strike.types, vec![CardType::Instant]);
         assert_eq!(
-            bolt.spell_effects,
+            strike.spell_effects,
             vec![Effect::DealDamage {
                 target: TargetSpec::AnyTarget,
                 amount: 3,
             }]
         );
         assert_ne!(
-            bolt.spell_effects,
-            card_named(&db, "cinder_shock").spell_effects,
+            strike.spell_effects,
+            card_named(&db, "shock").spell_effects,
             "a byte-identical twin should be a reprint, not a second definition"
         );
 
-        // Hurried Study: a {U} sorcery drawing two.
-        let study = card_named(&db, "hurried_study");
-        assert_eq!(study.types, vec![CardType::Sorcery]);
-        assert_eq!(study.spell_effects, vec![Effect::DrawCard { count: 2 }]);
-
-        // Verdant Blessing: a {G} enchantment whose ETB trigger gains 4 life.
-        let blessing = card_named(&db, "verdant_blessing");
-        assert_eq!(blessing.types, vec![CardType::Enchantment]);
+        // Divination: a {2}{U} sorcery drawing two.
+        let divination = card_named(&db, "divination");
+        assert_eq!(divination.types, vec![CardType::Sorcery]);
         assert_eq!(
-            blessing.abilities,
+            divination.spell_effects,
+            vec![Effect::DrawCard { count: 2 }]
+        );
+
+        // Viashino Pyromancer: a creature whose ETB trigger deals 2 to a target player.
+        let pyromancer = card_named(&db, "viashino_pyromancer");
+        assert_eq!(
+            pyromancer.abilities,
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
-                effects: vec![Effect::GainLife {
-                    player_ref: PlayerRef::Controller,
-                    amount: 4,
+                effects: vec![Effect::DealDamage {
+                    target: TargetSpec::AnyPlayer,
+                    amount: 2,
                 }],
             }]
         );
 
-        // Copper Lodestone: a {1} artifact mana rock — {T}: Add {C}.
-        let lodestone = card_named(&db, "copper_lodestone");
+        // A mana dork: {T}: Add {G} is a mana ability (CR 605.1a).
+        let elves = card_named(&db, "llanowar_elves");
+        assert_eq!(
+            elves.abilities,
+            vec![Ability::Activated {
+                cost: vec![Cost::Tap],
+                effects: vec![Effect::AddMana {
+                    color: Color::Green,
+                    amount: 1,
+                }],
+            }]
+        );
+        assert!(crate::ability::is_mana_ability(&elves.abilities[0]));
+
+        // The colorless-mana verb ({T}: Add {C}) has no clean M19 representative,
+        // so a mana rock is exercised inline (ADR 0026).
+        let json = r#"[{"schema_version":1,"functional_id":"test_lodestone","name":"Test Lodestone",
+            "types":["artifact"],"mana_cost":"{1}","colors":[],
+            "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
+              "effects":[{"kind":"add_colorless_mana","amount":1}]}]}]"#;
+        let inline = CardDatabase::from_json(json).unwrap();
+        let lodestone = card_named(&inline, "test_lodestone");
         assert_eq!(lodestone.types, vec![CardType::Artifact]);
         assert_eq!(
             lodestone.abilities,
