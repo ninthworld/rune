@@ -186,9 +186,11 @@ Each panel picks its own rung — one hoarding opponent never shrinks the others
 
 ## Open design items
 
-1. Front-door screens (main menu, play/room flow) in this language — replaces
+1. ~~Front-door screens (main menu, play/room flow) in this language — replaces
    the IP-entry connection screen; server address becomes a default +
-   advanced/settings affordance.
+   advanced/settings affordance.~~ **Delivered** — the Play-first landing and
+   the polished lobby flow; decisions recorded in
+   [`ui-design-notes.md`](ui-design-notes.md) §Front door.
 2. The 4-player phone/portrait summary-tile + focus-mode composition (mock).
 3. Targeting-drag and stack-response states on phone (mock).
 4. The texture-skin question — explicitly deferred; revisit only after the

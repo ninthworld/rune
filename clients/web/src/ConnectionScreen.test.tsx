@@ -23,17 +23,33 @@ afterEach(() => {
   useGameStore.setState({ status: 'idle', view: null });
 });
 
-describe('ConnectionScreen', () => {
-  it('renders the URL entry pre-filled from the env default when idle', () => {
+describe('ConnectionScreen (front-door landing)', () => {
+  it('leads with Play and connects to the default server without opening settings', () => {
+    // The blueprint's front door: the address is a default + advanced affordance,
+    // never a form the player must fill before playing.
+    const { connect } = withStore('idle');
+    render(<ConnectionScreen />);
+
+    const play = screen.getByTestId('connect-button');
+    expect(play.textContent).toBe('Play');
+    fireEvent.click(play);
+
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(connect).toHaveBeenCalledWith(DEFAULT_SERVER_URL, { autoReconnect: false });
+  });
+
+  it('tucks the server address behind a settings disclosure, pre-filled and closed', () => {
     withStore('idle');
     render(<ConnectionScreen />);
 
+    const settings = screen.getByTestId('server-settings') as HTMLDetailsElement;
+    expect(settings.open).toBe(false);
+
     const inputEl = screen.getByTestId('server-url') as HTMLInputElement;
     expect(inputEl.value).toBe(DEFAULT_SERVER_URL);
-    expect(screen.getByTestId('connect-button').textContent).toBe('Connect');
   });
 
-  it('connects with the entered URL and no auto-reconnect', () => {
+  it('connects with an edited address from server settings', () => {
     const { connect } = withStore('idle');
     render(<ConnectionScreen />);
 
@@ -67,7 +83,7 @@ describe('ConnectionScreen', () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('surfaces a closed connection as a retryable error with an editable URL', () => {
+  it('surfaces a closed connection as a retryable error with server settings opened', () => {
     const { connect } = withStore('closed');
     render(<ConnectionScreen />);
 
@@ -75,7 +91,10 @@ describe('ConnectionScreen', () => {
     const retry = screen.getByTestId('connect-button');
     expect(retry.textContent).toBe('Retry');
 
-    // The URL stays editable so the user can fix a bad address before retrying.
+    // The address is the likely fix, so the disclosure auto-opens on failure and
+    // the URL stays editable before retrying.
+    const settings = screen.getByTestId('server-settings') as HTMLDetailsElement;
+    expect(settings.open).toBe(true);
     fireEvent.change(screen.getByTestId('server-url'), { target: { value: 'ws://retry:9000' } });
     fireEvent.click(retry);
     expect(connect).toHaveBeenCalledWith('ws://retry:9000', { autoReconnect: false });
@@ -96,7 +115,7 @@ describe('ConnectionScreen', () => {
     // Each lifecycle state advertises a distinct status; the closed one is an alert.
     withStore('idle');
     const idle = render(<ConnectionScreen />);
-    expect(screen.getByTestId('connection-status').textContent).toContain('Enter a server address');
+    expect(screen.getByTestId('connection-status').textContent).toContain('Ready to play');
     expect(screen.queryByRole('alert')).toBeNull();
     idle.unmount();
 

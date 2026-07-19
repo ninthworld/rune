@@ -1,29 +1,107 @@
 /*
- * Pre-game screen chrome (issue #300) — the connection screen and lobby, dressed
- * in RUNE's procedural identity so the front door and the table read as one
- * product (docs/design/ui-design-notes.md §Identity).
+ * Pre-game screen chrome — the front-door landing and the lobby flow, dressed in
+ * RUNE's procedural identity so the front door and the table read as one product
+ * (docs/design/ui-design-notes.md §Identity, §Front door;
+ * docs/design/ui-blueprint.md open item 1).
  *
  * This is the screen-specific companion to the app-wide chrome in
- * `table/chrome.module.css`: the shared primitives (panel, button, field, input,
- * seat/room rows, badges) still come from there; this file adds only the identity
- * treatment (brand lockup, wordmark, connection-state signalling) and the
- * responsive pre-game layout. Every value reads a chrome token
- * (`chrome/tokens.css`); there are no chrome hex literals here (ADR 0019).
+ * `table/chrome.module.css`: the shared primitives (button, field, input, badges,
+ * room rows) still come from there; this file adds the identity treatment (brand
+ * lockup, wordmark, connection-state signalling), the carved front-door panels
+ * (line-work borders with corner notches, the table panels' idiom), the seat
+ * roster's identity accents, and the deck tiles. Every value reads a chrome token
+ * (`chrome/tokens.css`); the only literals are the same vignette gradient stops
+ * the table shell uses (ADR 0019).
  */
 
 /* ── Screen shell ──────────────────────────────────────────────────────────── */
-/* A grid-centered shell rather than a flex-centered one: when the lobby is taller
- * than the viewport (small portrait phones) the panel grows and the page scrolls
- * without the top being clipped, which a flex `justify-content: center` would do. */
+/* The pre-game screens sit on the same tier-1 table surface as the game: the
+ * radial vignette from `.shell` (table/chrome.module.css), not a flat app
+ * background. Grid-centered so a lobby taller than the viewport scrolls without
+ * clipping its top (which flex `justify-content: center` would do). */
 .screen {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: var(--rune-space-9) var(--rune-space-7);
-  background: var(--rune-table);
+  background:
+    radial-gradient(120% 90% at 50% 40%, rgba(255, 255, 255, 0.03) 0%, transparent 55%),
+    radial-gradient(140% 110% at 50% 50%, var(--rune-table) 55%, #0e1013 100%);
+  background-color: var(--rune-table);
   color: var(--rune-text);
   font-family: var(--rune-font-body);
   box-sizing: border-box;
+}
+
+/* The table's faint rune motif, carried under the front door too — brand
+ * geometry (the RuneMark), decorative, token-tinted, never interactive. */
+.motif {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rune-raised-bg);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ── Carved panels ─────────────────────────────────────────────────────────── */
+/* The front-door surfaces are tier-3 chrome in the table panels' idiom: a
+ * line-work border with accent corner notches (see `.panelBox`), elevated over
+ * the vignette. `--panel-accent` tints the notches per surface. */
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-7);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--rune-space-10);
+  border: 1px solid var(--rune-border);
+  border-radius: var(--rune-radius-md);
+  background: linear-gradient(180deg, var(--rune-chrome-bg), var(--rune-chrome-bg-alt));
+  box-shadow: var(--rune-elevation-2);
+}
+.panel::before,
+.panel::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+.panel::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid var(--panel-accent, var(--rune-border-strong));
+  border-left: 1px solid var(--panel-accent, var(--rune-border-strong));
+  border-top-left-radius: var(--rune-radius-md);
+}
+.panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1px solid var(--panel-accent, var(--rune-border-strong));
+  border-right: 1px solid var(--panel-accent, var(--rune-border-strong));
+  border-bottom-right-radius: var(--rune-radius-md);
+}
+
+/* The landing: the product's front-door moment — centered brand, one gold Play. */
+.landing {
+  composes: panel;
+  --panel-accent: var(--rune-selection);
+  max-width: 430px;
+  align-items: center;
+  text-align: center;
+  gap: var(--rune-space-8);
+  padding: 44px 36px;
+}
+
+/* The lobby: a wider working panel; the flow reads top-down inside it. */
+.lobbyShell {
+  composes: panel;
+  max-width: 720px;
+  gap: var(--rune-space-8);
 }
 
 /* ── Brand lockup ──────────────────────────────────────────────────────────── */
@@ -57,6 +135,11 @@
   padding-left: 0.32em;
   line-height: 1;
   color: var(--rune-text);
+}
+/* The landing gets the largest brand tier — the one place the wordmark leads. */
+.wordmarkLanding {
+  composes: wordmark;
+  font-size: 42px;
 }
 .tagline {
   margin: 0;
@@ -111,7 +194,127 @@
   }
 }
 
-/* ── Lobby layout ──────────────────────────────────────────────────────────── */
+/* ── The Play affordance ───────────────────────────────────────────────────── */
+/* Gold is the "you can act" accent (§Palette); the landing spends it on exactly
+ * one control. Sized as an identity moment: display face, carved tracking. */
+.play {
+  min-height: 52px;
+  min-width: 220px;
+  padding: 0 40px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-gold-border);
+  background: var(--rune-gold-fill);
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-heading);
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  padding-left: calc(40px + 0.24em);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background var(--rune-transition),
+    filter var(--rune-transition);
+}
+.play:hover {
+  background: var(--rune-gold-fill-hover);
+}
+.play:active {
+  filter: brightness(0.92);
+}
+.play:focus-visible {
+  outline: 2px solid var(--rune-accent-gold);
+  outline-offset: 2px;
+}
+
+/* ── Advanced / server-settings disclosure ─────────────────────────────────── */
+/* The server address is a default plus an advanced affordance, not the front
+ * door (ui-blueprint.md open item 1). A quiet disclosure under Play. */
+.advanced {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-5);
+  text-align: left;
+}
+.advancedSummary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--rune-space-3);
+  min-height: var(--rune-touch);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+.advancedSummary::-webkit-details-marker {
+  display: none;
+}
+.advancedSummary::before {
+  content: '▸';
+  font-size: var(--rune-type-micro);
+}
+.advanced[open] > .advancedSummary::before {
+  content: '▾';
+}
+.advancedSummary:hover {
+  color: var(--rune-text);
+}
+.advancedSummary:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+
+/* ── Lobby header ──────────────────────────────────────────────────────────── */
+/* A compact brand bar: lockup left, session actions (Disconnect) right — the
+ * lobby's one chrome row, so the flow below stays about finding a game. */
+.lobbyHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-6);
+  padding-bottom: var(--rune-space-7);
+  border-bottom: 1px solid var(--rune-border);
+}
+.lobbyBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-5);
+  margin-right: auto;
+}
+.lobbyWordmark {
+  composes: wordmark;
+  font-size: var(--rune-type-title);
+  letter-spacing: 0.24em;
+  padding-left: 0;
+}
+.lobbyTag {
+  font-size: var(--rune-type-caption);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--rune-text-muted);
+  padding-left: var(--rune-space-5);
+  border-left: 1px solid var(--rune-border-strong);
+}
+
+/* ── Lobby sections ────────────────────────────────────────────────────────── */
+/* Section titles share the panel-name treatment from the table (display face,
+ * small caps) so pre-game sections and in-game panels speak one language. */
+.cardTitle {
+  margin: 0;
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rune-text);
+}
 /* A short uppercase kicker above a section title, marking the primary path. */
 .kicker {
   font-size: var(--rune-type-micro);
@@ -142,7 +345,273 @@
 .secondaryCard summary::-webkit-details-marker {
   display: none;
 }
+/* ── Identity strip ────────────────────────────────────────────────────────── */
+/* "Playing as <name>" as one quiet inline row (issue #294) — identity is a
+ * fact with an edit affordance, not a form card competing with the flow. */
+.identityRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+  font-size: var(--rune-type-body);
+}
+.identityGlyph {
+  display: block;
+  flex-shrink: 0;
+  color: var(--rune-text-muted);
+}
+.identityLabel {
+  color: var(--rune-text-muted);
+}
+.identityName {
+  font-weight: 700;
+  color: var(--rune-text);
+}
+/* The quiet inline edit affordance: text-like, but a full-height touch target. */
+.identityChange {
+  min-height: var(--rune-touch);
+  padding: 0 var(--rune-space-5);
+  border: none;
+  background: none;
+  color: var(--rune-selection);
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.identityChange:hover {
+  text-decoration: underline;
+}
+.identityChange:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+  border-radius: var(--rune-radius-xs);
+}
+.identityInput {
+  flex: 1 1 12rem;
+  max-width: 20rem;
+}
 
+/* ── Directory rows ────────────────────────────────────────────────────────── */
+/* The game's name leads a directory row — the thing a player scans for. */
+.directoryName {
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ── Choice tiles and segments (create-room pickers) ───────────────────────── */
+/* Every option is one visible press — no dropdowns to open (44px targets). */
+.choiceGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+.choiceRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: var(--rune-space-4);
+}
+.choiceTile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--rune-space-2);
+  min-height: var(--rune-touch);
+  padding: var(--rune-space-5) var(--rune-space-6);
+  text-align: left;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-family: inherit;
+  font-size: var(--rune-type-body);
+  cursor: pointer;
+  transition:
+    border-color var(--rune-transition),
+    box-shadow var(--rune-transition);
+}
+.choiceTile:hover {
+  filter: brightness(1.1);
+}
+.choiceTile:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+.choiceTileSelected {
+  border-color: var(--rune-selection);
+  box-shadow: inset 0 0 0 1px var(--rune-selection);
+  background: color-mix(in srgb, var(--rune-selection) 8%, var(--rune-raised-bg));
+}
+.choiceName {
+  font-family: var(--rune-font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.choiceMeta {
+  font-size: var(--rune-type-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+.segmentRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-3);
+}
+.segment {
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0 var(--rune-space-4);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-family: inherit;
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  cursor: pointer;
+}
+.segment:hover {
+  filter: brightness(1.1);
+}
+.segment:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+.segmentOn {
+  composes: segment;
+  border-color: var(--rune-selection);
+  box-shadow: inset 0 0 0 1px var(--rune-selection);
+  background: color-mix(in srgb, var(--rune-selection) 8%, var(--rune-raised-bg));
+}
+
+/* ── Room header ───────────────────────────────────────────────────────────── */
+/* The game's name, the live seats/ready summary, the copyable room code, and
+ * Leave — the concept's lobby header, from nothing but the LobbyView. */
+.roomHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-6);
+}
+.roomHeadText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  margin-right: auto;
+}
+.roomStatus {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+.roomHeadActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+/* The room code as one compact chip: the id and its Copy action together. */
+.codeChip {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-sunken-bg-deep);
+  overflow: hidden;
+}
+.codeText {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--rune-space-6);
+  font-family: var(--rune-font-mono);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 700;
+  user-select: all;
+}
+.codeCopy {
+  min-height: var(--rune-touch);
+  min-width: var(--rune-touch);
+  padding: 0 var(--rune-space-6);
+  border: none;
+  border-left: 1px solid var(--rune-border-strong);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.codeCopy:hover {
+  filter: brightness(1.15);
+}
+.codeCopy:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: -2px;
+}
+
+/* ── Players table (roster) ────────────────────────────────────────────────── */
+/* Who | deck | status. Seats wear the same deterministic identity accents as the
+ * table's player panels (§Identity, `table/identityAccents.ts`): an accent edge +
+ * a tinted seat glyph, so "who is here" reads like "whose stuff" in-game. */
+.rosterRow {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) auto auto;
+  align-items: center;
+  gap: var(--rune-space-5);
+  padding: var(--rune-space-5) var(--rune-space-6);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
+  border-left: 3px solid var(--seat-accent, var(--rune-border-strong));
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--seat-accent, transparent) 8%, transparent),
+      transparent 45%
+    ),
+    var(--rune-chrome-bg);
+  font-size: var(--rune-type-body);
+}
+/* An open seat is an invitation, not a person: dashed, quiet, no accent. */
+.seatOpen {
+  grid-template-columns: minmax(9rem, 1fr) auto;
+  border-style: dashed;
+  border-left-style: solid;
+  background: transparent;
+  color: var(--rune-text-muted);
+}
+.rosterWho {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  min-width: 0;
+}
+.rosterCell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--rune-space-3);
+}
+.seatGlyph {
+  display: block;
+  flex-shrink: 0;
+  color: var(--seat-accent, var(--rune-text-muted));
+}
+/* The occupant's presentation name — the primary read of "who". */
+.seatName {
+  font-weight: 600;
+  color: var(--rune-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seatOpen .seatName {
+  font-weight: 500;
+  color: var(--rune-text-muted);
+}
 /* A "you" chip beside the local player's name in the roster. */
 .youTag {
   font-size: var(--rune-type-micro);
@@ -153,9 +622,111 @@
   border-radius: var(--rune-radius-pill);
   color: var(--rune-selection);
   border: 1px solid var(--rune-selection);
+  flex-shrink: 0;
 }
-/* The occupant's presentation name in a seat row — the primary read of "who". */
-.seatName {
+/* Glyph-coded readiness chips: shape + word, never color alone. */
+.stateChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-2);
+  font-size: var(--rune-type-caption);
   font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text-muted);
+  border: 1px solid var(--rune-border-strong);
+}
+.stateChipOn {
+  composes: stateChip;
+  color: var(--rune-selection);
+  border-color: var(--rune-selection);
+}
+
+/* ── Deck tiles ────────────────────────────────────────────────────────────── */
+/* The bundled starter decks as selectable tiles (name in the display face, the
+ * deck's basic-land glyphs, summary, size) — display-only data, the server still
+ * validates the submitted list. Selection is the blue ring (never gold: gold is
+ * the act of submitting). */
+.deckGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--rune-space-5);
+}
+.deckTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--rune-space-3);
+  min-height: var(--rune-touch);
+  padding: var(--rune-space-6) var(--rune-space-7);
+  text-align: left;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-raised-bg);
   color: var(--rune-text);
+  font-family: inherit;
+  font-size: var(--rune-type-body);
+  cursor: pointer;
+  transition:
+    border-color var(--rune-transition),
+    box-shadow var(--rune-transition);
+}
+.deckTile:hover {
+  filter: brightness(1.1);
+}
+.deckTile:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+.deckTileSelected {
+  border-color: var(--rune-selection);
+  box-shadow: inset 0 0 0 1px var(--rune-selection);
+  background: color-mix(in srgb, var(--rune-selection) 8%, var(--rune-raised-bg));
+}
+.deckTileHead {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  width: 100%;
+}
+.deckName {
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+/* The deck's basic-land glyphs, each tinted by its card-token frame hue (the
+ * glyph answers "what colors", exactly as land chips do on the table). */
+.deckGlyphs {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-2);
+  margin-left: auto;
+}
+.deckSummary {
+  margin: 0;
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+}
+.deckMeta {
+  font-size: var(--rune-type-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+
+/* ── CTA area ──────────────────────────────────────────────────────────────── */
+/* The advance-the-game moment, centered under the flow (the concept's START
+ * GAME position): gold on the next step only, quiet fallbacks beside it. Leave
+ * lives in the room header, apart from this area, so the room-exit never
+ * neighbors the primary. */
+.ctaArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rune-space-5);
+  padding-top: var(--rune-space-4);
 }

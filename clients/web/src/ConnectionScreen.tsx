@@ -1,30 +1,37 @@
 /**
- * The pre-game connection screen (issue #103; identity redesign #300).
+ * The front-door landing screen (issue #103; identity redesign #300; front-door
+ * screens per `docs/design/ui-blueprint.md` open item 1).
  *
- * This is the only UI shown before the first {@link GameView} arrives. It drives
- * the store's connection lifecycle directly — the first production caller of
- * `store.connect()` — and always keeps a possible user input on screen so the app
- * is never in a dead state:
+ * This is the only UI shown before the first {@link LobbyView} arrives. It is the
+ * product's front door, not an IP-entry form: the brand lockup leads, one gold
+ * **Play** affordance connects, and the server address is a default (from
+ * `VITE_RUNE_SERVER_URL`) tucked behind a "Server settings" disclosure — an
+ * advanced affordance, present for anyone pointing at a different server but never
+ * the first thing a player must read.
  *
- * - `idle`   → a server-URL input (pre-filled from `VITE_RUNE_SERVER_URL`) + Connect.
- * - `connecting` → a connecting indicator + Cancel (aborts via `disconnect`).
- * - `closed` → an error/closed notice + editable URL + Retry.
+ * It drives the store's connection lifecycle directly and always keeps a possible
+ * user input on screen so the app is never in a dead state:
+ *
+ * - `idle`   → Play (connects to the resolved address) + the settings disclosure.
+ * - `connecting` → a connecting pulse + Cancel (aborts via `disconnect`).
+ * - `closed` → a disconnected notice + Retry, with the settings disclosure opened
+ *   so the address is right there to fix.
  *
  * The three states stay visually distinct via a colored status pill (idle / a live
- * "connecting" pulse / a "disconnected" alert) beneath the RUNE brand lockup, so
+ * "connecting" pulse / a "disconnected" alert) beneath the brand lockup, so
  * pre-game reads as the same product as the table (docs/design/ui-design-notes.md
  * §Identity). Identity is procedural geometry only — the {@link RuneMark} and the
  * display-face wordmark; no card image, official frame, symbol, or WotC branding.
  *
  * The "connected, waiting for first state" case (`status === 'open'`, no view yet)
- * is owned by {@link Table}'s fallback, not here — App renders `Table` as soon as
+ * is owned by {@link LobbyScreen}'s fallback, not here — App switches as soon as
  * the socket is open. This component holds no game state; it is chrome only.
  *
  * We connect with `autoReconnect: false`: this is a manual, user-driven screen, so
  * the UI must reflect the true socket state and let the player decide when to
  * Retry. Silent background reconnects would make the displayed status dishonest.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from './store';
 import { RuneMark } from './chrome/RuneMark';
 import { cx } from './chrome/cx';
@@ -39,16 +46,64 @@ function initialServerUrl(): string {
   return import.meta.env.VITE_RUNE_SERVER_URL ?? DEFAULT_SERVER_URL;
 }
 
-/** The RUNE brand lockup: the procedural mark, the wordmark, and a tagline. */
+/** The RUNE brand lockup at landing scale: mark, wordmark, and tagline. */
 function Brand() {
   return (
     <div className={l.brand}>
       <div className={l.brandRow}>
-        <RuneMark size={44} className={l.mark} />
-        <h1 className={l.wordmark}>RUNE</h1>
+        <RuneMark size={56} className={l.mark} />
+        <h1 className={l.wordmarkLanding}>RUNE</h1>
       </div>
       <p className={l.tagline}>Server-authoritative tabletop</p>
     </div>
+  );
+}
+
+/**
+ * The "Server settings" disclosure: the address input as an advanced affordance.
+ * Controlled open state so a failed connection can open it (the address is the
+ * likely fix); a user toggle stays in charge afterwards via `onToggle`.
+ */
+function ServerSettings({
+  url,
+  open,
+  onToggle,
+  onChange,
+  onSubmit,
+}: {
+  url: string;
+  open: boolean;
+  onToggle: (open: boolean) => void;
+  onChange: (url: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <details
+      className={l.advanced}
+      open={open}
+      onToggle={(event) => onToggle((event.target as HTMLDetailsElement).open)}
+      data-testid="server-settings"
+    >
+      <summary className={l.advancedSummary}>Server settings</summary>
+      <label className={s.field}>
+        <span className={s.fieldLabel}>Server address</span>
+        <input
+          className={s.input}
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          value={url}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') onSubmit();
+          }}
+          data-testid="server-url"
+          aria-label="Server address"
+        />
+      </label>
+      <span className={s.muted}>Play connects to this address.</span>
+    </details>
   );
 }
 
@@ -57,8 +112,16 @@ export function ConnectionScreen() {
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
   const [url, setUrl] = useState(initialServerUrl);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Manual, user-driven flow: the Retry button is the only reconnect path, so the
+  // A failed connection opens Server settings: the address is the likely fix,
+  // so it should be on screen next to the Retry (never a dead end).
+  const isClosed = status === 'closed';
+  useEffect(() => {
+    if (isClosed) setSettingsOpen(true);
+  }, [isClosed]);
+
+  // Manual, user-driven flow: Play/Retry is the only connect path, so the
   // displayed status always matches the real socket (see file header).
   const attempt = (): void => {
     const target = url.trim();
@@ -69,7 +132,10 @@ export function ConnectionScreen() {
   if (status === 'connecting') {
     return (
       <main className={l.screen}>
-        <section className={s.connectPanel} aria-label="Connecting" data-testid="connection-screen">
+        <div className={l.motif} aria-hidden="true">
+          <RuneMark size={520} />
+        </div>
+        <section className={l.landing} aria-label="Connecting" data-testid="connection-screen">
           <Brand />
           <span className={cx(l.state, l.stateConnecting)}>
             <span className={cx(l.dot, l.dotLive)} />
@@ -88,17 +154,15 @@ export function ConnectionScreen() {
     );
   }
 
-  // `idle` and `closed` share the URL-entry form; only the framing differs. There
+  // `idle` and `closed` share the Play landing; only the framing differs. There
   // is no distinct 'error' status — an errored socket surfaces as a close, so we
   // treat `closed` as the retryable error/closed state (see store.ts).
-  const isClosed = status === 'closed';
   return (
     <main className={l.screen}>
-      <section
-        className={s.connectPanel}
-        aria-label="Connect to a server"
-        data-testid="connection-screen"
-      >
+      <div className={l.motif} aria-hidden="true">
+        <RuneMark size={520} />
+      </div>
+      <section className={l.landing} aria-label="RUNE" data-testid="connection-screen">
         <Brand />
         {isClosed ? (
           <>
@@ -113,28 +177,19 @@ export function ConnectionScreen() {
         ) : (
           <span className={cx(l.state, l.stateIdle)} data-testid="connection-status">
             <span className={l.dot} />
-            Enter a server address to connect
+            Ready to play
           </span>
         )}
-        <label className={s.field}>
-          <span className={s.fieldLabel}>Server address</span>
-          <input
-            className={s.input}
-            type="text"
-            inputMode="url"
-            autoComplete="off"
-            spellCheck={false}
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            data-testid="server-url"
-            aria-label="Server address"
-          />
-        </label>
-        <div className={s.buttonRow}>
-          <button type="button" className={s.button} onClick={attempt} data-testid="connect-button">
-            {isClosed ? 'Retry' : 'Connect'}
-          </button>
-        </div>
+        <button type="button" className={l.play} onClick={attempt} data-testid="connect-button">
+          {isClosed ? 'Retry' : 'Play'}
+        </button>
+        <ServerSettings
+          url={url}
+          open={settingsOpen}
+          onToggle={setSettingsOpen}
+          onChange={setUrl}
+          onSubmit={attempt}
+        />
       </section>
     </main>
   );

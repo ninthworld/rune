@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LobbyScreen } from './LobbyScreen';
+import { STARTER_DECKLISTS, decklistSize } from './decklists';
 import { useGameStore, type SocketFactory } from './store';
 import {
   LOBBY_DIRECTORY_JSON,
@@ -75,13 +76,27 @@ describe('LobbyScreen (issue #114)', () => {
     expect(screen.getByTestId('create-room')).toBeDefined();
     expect(screen.getByTestId('join-room')).toBeDefined();
 
-    // Pick a seat count, then create.
-    fireEvent.change(screen.getByTestId('seat-count-select'), { target: { value: '6' } });
+    // Pick a seat count on the segmented picker, then create.
+    fireEvent.click(screen.getByTestId('seat-count-6'));
     fireEvent.click(screen.getByTestId('create-room-button'));
 
     expect(lastSent(socket)).toEqual({
       type: 'create_room',
       config: { seats: 6, game_setup: '1v1' },
+    });
+  });
+
+  it('picking a game-type tile pre-fills its designed seat count', () => {
+    const socket = mountLobby(LOBBY_ROOMLESS_JSON);
+
+    // The free-for-all tile pre-fills 4 seats without a separate seat pick.
+    fireEvent.click(screen.getByTestId('game-setup-ffa-4'));
+    expect(screen.getByTestId('game-setup-ffa-4').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTestId('create-room-button'));
+
+    expect(lastSent(socket)).toEqual({
+      type: 'create_room',
+      config: { seats: 4, game_setup: 'ffa-4' },
     });
   });
 
@@ -241,6 +256,34 @@ describe('LobbyScreen (issue #114)', () => {
     expect(screen.getByTestId('join-room-button')).toBeDefined();
   });
 
+  it('offers every starter deck as a tile, with the first selected by default', () => {
+    mountLobby(LOBBY_ROOM_DECKED_JSON);
+    for (const deck of STARTER_DECKLISTS) {
+      expect(screen.getByTestId(`deck-tile-${deck.id}`)).toBeDefined();
+    }
+    // Selection is carried for assistive tech (never color alone).
+    const first = screen.getByTestId(`deck-tile-${STARTER_DECKLISTS[0].id}`);
+    expect(first.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('submits the deck picked on a tile (the tile drives the submitted list)', () => {
+    const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+    const picked = STARTER_DECKLISTS[STARTER_DECKLISTS.length - 1];
+
+    fireEvent.click(screen.getByTestId(`deck-tile-${picked.id}`));
+    expect(screen.getByTestId(`deck-tile-${picked.id}`).getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(screen.getByTestId('submit-deck-button'));
+    const sent = lastSent(socket) as { type: string; cards: string[] };
+    expect(sent.type).toBe('submit_deck');
+    expect(sent.cards).toHaveLength(decklistSize(picked));
+  });
+
+  it('summarizes the room state in one line (seats filled and ready counts)', () => {
+    mountLobby(LOBBY_ROOM_ALL_READY_JSON);
+    expect(screen.getByTestId('room-status').textContent).toBe('2/2 seats filled · 2 ready');
+  });
+
   it('offers a display-name field when set_name is advertised, sending set_name (issue #294)', () => {
     const socket = mountLobby(
       JSON.stringify({
@@ -257,6 +300,28 @@ describe('LobbyScreen (issue #114)', () => {
   it('hides the display-name field when set_name is not advertised', () => {
     mountLobby(LOBBY_ROOMLESS_JSON);
     expect(screen.queryByTestId('display-name')).toBeNull();
+  });
+
+  it('shows a set name as a compact "Playing as" strip with an inline editor', () => {
+    const socket = mountLobby(
+      JSON.stringify({
+        session: 's:1',
+        you: 'p1',
+        name: 'Alice',
+        valid_commands: ['set_name', 'create_room', 'join_room'],
+      }),
+    );
+    // At rest: the name reads as a fact, not a form.
+    expect(screen.getByTestId('display-name-current').textContent).toBe('Alice');
+    expect(screen.queryByTestId('display-name-input')).toBeNull();
+
+    // Change opens the inline editor seeded with the server's name; Save sends it.
+    fireEvent.click(screen.getByTestId('change-name-button'));
+    const input = screen.getByTestId('display-name-input') as HTMLInputElement;
+    expect(input.value).toBe('Alice');
+    fireEvent.change(input, { target: { value: 'Alia' } });
+    fireEvent.click(screen.getByTestId('set-name-button'));
+    expect(lastSent(socket)).toEqual({ type: 'set_name', name: 'Alia' });
   });
 
   it('labels seats by display name, falling back to "Player N" (issue #294)', () => {

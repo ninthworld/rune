@@ -53,8 +53,12 @@ is in: a playable hand card drags to a gold battlefield inset (untargeted) or on
 orange-ringed server candidate (targeted), firing the same offered action the dock
 routes; the dock now gives a selection's routed actions the primary weight (pass
 demotes while a card is selected), and each ability activation is labeled with its
-own generated rules sentence. Still open from the blueprint: zone-travel animations,
-the front-door screens, and the 4-player phone summary-tile composition.
+own generated rules sentence. The front-door screens have landed in the blueprint's
+language (`design/ui-design-notes.md` §Front door): a Play-first landing with the
+server address as an advanced affordance, and the lobby flow — directory, room,
+accented seat roster, starter-deck tiles — in the table's visual system. Still open
+from the blueprint: zone-travel animations and the 4-player phone summary-tile
+composition.
 
 A deterministic, seeded 4-player free-for-all full game runs against the real server in the
 normal test gate, with a mid-game elimination and a single winner (#350). Deck selection is
