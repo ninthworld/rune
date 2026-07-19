@@ -185,6 +185,46 @@ component and a Pixi `buildGlyphDisplay` drawer (ADR 0003), tinted from tokens /
 engine catalog's shipped keyword set, so a new keyword can never render an empty gap.
 Still: no card images, official frames, symbols, or WotC branding, anywhere.
 
+## Front door
+
+Delivered (front-door batch; `ui-blueprint.md` open item 1). The pre-game screens
+are the blueprint's "front-door screens in this language", replacing the IP-entry
+connection screen:
+
+- **The landing leads with Play, not an address.** The brand lockup (mark +
+  display-face wordmark) sits in a carved panel — the table panels' line-work
+  border with accent corner notches — over the same tier-1 vignette and faint
+  rune motif the table wears. One gold **Play** affordance connects to the
+  default server (`VITE_RUNE_SERVER_URL`, else the bundled fallback); the server
+  address is an advanced affordance behind a quiet "Server settings" disclosure.
+  A failed connection surfaces as the disconnected state with the disclosure
+  auto-opened, so the likely fix sits beside Retry — never a dead screen.
+- **The lobby is the same carved panel, flowing top-down**: a compact brand
+  header bar (lockup left, Disconnect right), the display-name row, then the
+  room directory as the primary "find a game" path ahead of the secondary
+  create / join-by-id cards. Section titles carry the panel-name treatment
+  (display face, small caps) so pre-game sections and in-game panels speak one
+  language.
+- **Seats wear the table's identity accents.** Roster rows take the
+  deterministic seat-indexed accent (`identityAccents.ts`) as an edge stripe,
+  tinted seat glyph, and accent wash — "who is here" reads like "whose stuff"
+  in-game. Readiness is glyph-coded chips (library glyph = decked, check =
+  ready; shape + word, never color alone); open seats render as dashed
+  invitations. A one-line room status ("2/2 seats filled · 1 ready") reads
+  straight off the `LobbyView`.
+- **Starter decks are tiles, not a dropdown**: name in the display face, the
+  deck's basic-land glyphs tinted by their card-token frame hues (the same
+  "what colors" read as the table's land chips), summary, and card count.
+  Selection is the blue ring plus `aria-pressed`; the tiles anticipate the deck
+  builder (#368) visually while staying display-only static data.
+- **Gold stays disciplined**: exactly one advance-the-game affordance per
+  surface — Play on the landing; in the room, Submit deck until decked, then
+  Ready. Leave room sits apart from the primary so the exit never neighbors it.
+
+The architectural invariants are unchanged: the whole pre-game UI reconstructs
+from one `LobbyView`, `valid_commands` remains the only source of interactivity,
+and the client computes no legality.
+
 ## Palette (dark board)
 
 Board `#15171A`, card body `#23262B`, name text `#E8E6E1`.
