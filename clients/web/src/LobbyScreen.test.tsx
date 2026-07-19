@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LobbyScreen } from './LobbyScreen';
+import { STARTER_DECKLISTS, decklistSize } from './decklists';
 import { useGameStore, type SocketFactory } from './store';
 import {
   LOBBY_DIRECTORY_JSON,
@@ -239,6 +240,34 @@ describe('LobbyScreen (issue #114)', () => {
     expect(screen.getByTestId('lobby-error').textContent).toContain('full or unknown');
     // The join form is still on screen to retry.
     expect(screen.getByTestId('join-room-button')).toBeDefined();
+  });
+
+  it('offers every starter deck as a tile, with the first selected by default', () => {
+    mountLobby(LOBBY_ROOM_DECKED_JSON);
+    for (const deck of STARTER_DECKLISTS) {
+      expect(screen.getByTestId(`deck-tile-${deck.id}`)).toBeDefined();
+    }
+    // Selection is carried for assistive tech (never color alone).
+    const first = screen.getByTestId(`deck-tile-${STARTER_DECKLISTS[0].id}`);
+    expect(first.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('submits the deck picked on a tile (the tile drives the submitted list)', () => {
+    const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+    const picked = STARTER_DECKLISTS[STARTER_DECKLISTS.length - 1];
+
+    fireEvent.click(screen.getByTestId(`deck-tile-${picked.id}`));
+    expect(screen.getByTestId(`deck-tile-${picked.id}`).getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(screen.getByTestId('submit-deck-button'));
+    const sent = lastSent(socket) as { type: string; cards: string[] };
+    expect(sent.type).toBe('submit_deck');
+    expect(sent.cards).toHaveLength(decklistSize(picked));
+  });
+
+  it('summarizes the room state in one line (seats filled and ready counts)', () => {
+    mountLobby(LOBBY_ROOM_ALL_READY_JSON);
+    expect(screen.getByTestId('room-status').textContent).toBe('2/2 seats filled · 2 ready');
   });
 
   it('offers a display-name field when set_name is advertised, sending set_name (issue #294)', () => {

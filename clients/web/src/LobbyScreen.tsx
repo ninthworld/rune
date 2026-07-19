@@ -1,36 +1,48 @@
 /**
- * The pre-game lobby screen (issue #114; identity redesign #300).
+ * The pre-game lobby screen (issue #114; identity redesign #300; front-door
+ * polish per `docs/design/ui-blueprint.md` open item 1).
  *
- * The screen shown between the {@link ConnectionScreen} and the in-game
+ * The screen shown between the {@link ConnectionScreen} landing and the in-game
  * {@link Table}: after the socket opens, the store greets the server (`Hello`)
  * and this screen renders the resulting {@link LobbyView} — browse the room
  * directory (the primary "find a game" path), create a room or join one by id (the
- * secondary paths), pick a bundled starter deck, submit it, and ready up. When
- * every seat is filled, decked, and ready the server constructs the game and
- * pushes the first `GameView`; the app then switches to the table.
+ * secondary paths), pick a bundled starter deck from the deck tiles, submit it,
+ * and ready up. When every seat is filled, decked, and ready the server constructs
+ * the game and pushes the first `GameView`; the app then switches to the table.
  *
- * Identity (docs/design/ui-design-notes.md §Identity): the pre-game screens share
- * the table's visual system and RUNE's procedural motif — the {@link RuneMark} and
- * the display-face wordmark, geometry only, never a card image or WotC branding.
- * Players read as people: display names ride the protocol (issue #294);
+ * Identity (docs/design/ui-design-notes.md §Identity, §Front door): the pre-game
+ * screens share the table's visual system — the {@link RuneMark} and display-face
+ * wordmark in a carved panel over the table vignette, section titles in the
+ * panel-name treatment, seats wearing the same deterministic identity accents as
+ * the in-game player panels ({@link IDENTITY_ACCENTS}, indexed by seat), and gold
+ * reserved for the one advance-the-game action (submit deck, then ready). Players
+ * read as people: display names ride the protocol (issue #294);
  * {@link seatDisplayName} reads the seat's `name` field and falls back to a
- * seat-derived "Player N" when a seat has no chosen name.
+ * seat-derived "Player N" when a seat has no chosen name. Geometry only — never a
+ * card image or WotC branding.
  *
  * Hard rules (AGENTS.md, ADR 0012):
  * - **Reconstruct from one `LobbyView`.** Every control here is derived from the
  *   store's latest `LobbyView`; nothing about the lobby is load-bearing across
  *   messages. Local component state is ephemeral form input only (the seat count
- *   being typed, the deck picked in the dropdown, a "Copied" flash).
+ *   being typed, the deck tile picked, a "Copied" flash).
  * - **`valid_commands` is the only source of interactivity.** A create/join/deck/
  *   ready/leave affordance is offered only when the server advertised that command
  *   for this connection; the client computes no legality.
  * - **No card logic.** The bundled decklists are static names/ids (see
- *   `decklists.ts`); the server validates a submitted deck authoritatively.
+ *   `decklists.ts`); the deck tiles' land glyphs are read off that static data for
+ *   display, and the server validates a submitted deck authoritatively.
  * - **Never a dead screen.** Before the first `LobbyView`, and on every error, an
  *   interactive control (Disconnect / retry-able form) is always on screen.
  */
-import { useEffect, useState } from 'react';
-import { STARTER_DECKLISTS, decklistCards, decklistById, decklistSize } from './decklists';
+import { useEffect, useState, type CSSProperties } from 'react';
+import {
+  STARTER_DECKLISTS,
+  decklistCards,
+  decklistById,
+  decklistSize,
+  type Decklist,
+} from './decklists';
 import {
   createRoomCommand,
   joinRoomCommand,
@@ -41,11 +53,16 @@ import {
   submitDeckCommand,
   type LobbyView,
   type RoomSummary,
+  type SeatView,
 } from './protocol';
 import { seatDisplayName } from './playerNames';
 import { useGameStore } from './store';
 import { cx } from './chrome/cx';
 import { RuneMark } from './chrome/RuneMark';
+import { Glyph } from './chrome/glyphs';
+import type { GlyphName } from './chrome/glyphs';
+import { IDENTITY_ACCENTS } from './table/identityAccents';
+import { PALETTE } from './tokens';
 import s from './table/chrome.module.css';
 import l from './screens.module.css';
 
@@ -72,6 +89,29 @@ const GAME_SETUPS: readonly GameSetupOption[] = [
 /** The seat counts the lobby offers, matching the protocol's `2..=8` range. */
 const SEAT_COUNTS = [2, 3, 4, 5, 6, 7, 8] as const;
 
+/**
+ * The basic-land glyphs a deck tile shows, in WUBRG order: display-only reads of
+ * the static decklist (which basics it runs), tinted by the card-token frame hue —
+ * the same "what colors" read the table's land chips give. No card logic: this
+ * never touches cost, legality, or effect.
+ */
+const BASIC_LAND_GLYPHS: ReadonlyArray<{
+  readonly name: string;
+  readonly glyph: GlyphName;
+  readonly hue: string;
+}> = [
+  { name: 'Plains', glyph: 'land-plains', hue: PALETTE.W },
+  { name: 'Island', glyph: 'land-island', hue: PALETTE.U },
+  { name: 'Swamp', glyph: 'land-swamp', hue: PALETTE.B },
+  { name: 'Mountain', glyph: 'land-mountain', hue: PALETTE.R },
+  { name: 'Forest', glyph: 'land-forest', hue: PALETTE.G },
+];
+
+/** The land glyphs (with hues) for the basics a decklist actually runs. */
+function deckLandGlyphs(deck: Decklist): typeof BASIC_LAND_GLYPHS {
+  return BASIC_LAND_GLYPHS.filter((land) => deck.entries.some((e) => e.name === land.name));
+}
+
 /** Whether a command kind is currently offered to this connection. */
 function can(view: LobbyView, command: string): boolean {
   return view.valid_commands.includes(command);
@@ -86,16 +126,35 @@ function setupLabel(gameSetup: string): string {
   return GAME_SETUPS.find((option) => option.id === gameSetup)?.label ?? gameSetup;
 }
 
-/** The RUNE brand lockup: the procedural mark, the wordmark, and a tagline. */
-function Brand({ tagline }: { tagline: string }) {
+/** The seat's identity accent as an inline custom property (see `.seat`). */
+function seatAccentStyle(seatIndex: number): CSSProperties {
+  return {
+    '--seat-accent': IDENTITY_ACCENTS[seatIndex % IDENTITY_ACCENTS.length],
+  } as CSSProperties;
+}
+
+/**
+ * The lobby's brand header bar: the compact lockup left (the wordmark keeps the
+ * accessible product name), session actions right. Disconnect lives here — a
+ * session-level action, out of the find-a-game flow.
+ */
+function LobbyHeader({ onDisconnect }: { onDisconnect: () => void }) {
   return (
-    <div className={l.brand}>
-      <div className={l.brandRow}>
-        <RuneMark size={40} className={l.mark} />
-        <h1 className={l.wordmark}>RUNE</h1>
+    <header className={l.lobbyHeader}>
+      <div className={l.lobbyBrand}>
+        <RuneMark size={28} className={l.mark} />
+        <h1 className={l.lobbyWordmark}>RUNE</h1>
+        <span className={l.lobbyTag}>Lobby</span>
       </div>
-      <p className={l.tagline}>{tagline}</p>
-    </div>
+      <button
+        type="button"
+        className={s.button}
+        onClick={onDisconnect}
+        data-testid="lobby-disconnect-button"
+      >
+        Disconnect
+      </button>
+    </header>
   );
 }
 
@@ -125,22 +184,25 @@ function DisplayNameField({ view }: { view: LobbyView }) {
 
   return (
     <section className={s.lobbySection} aria-label="Display name" data-testid="display-name">
-      <h2 className={s.lobbySectionTitle}>Display name</h2>
-      <label className={s.field}>
-        <span className={s.fieldLabel}>Your name</span>
-        <input
-          className={s.select}
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={32}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          data-testid="display-name-input"
-          aria-label="Display name"
-        />
-      </label>
-      <div className={s.buttonRow}>
+      <h2 className={l.cardTitle}>Display name</h2>
+      <div className={l.inlineForm}>
+        <label className={l.inlineFormField}>
+          <span className={s.fieldLabel}>How other players see you</span>
+          <input
+            className={s.input}
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={32}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') save();
+            }}
+            data-testid="display-name-input"
+            aria-label="Display name"
+          />
+        </label>
         <button type="button" className={s.button} onClick={save} data-testid="set-name-button">
           {current.length > 0 ? 'Change name' : 'Set name'}
         </button>
@@ -153,19 +215,15 @@ function DisplayNameField({ view }: { view: LobbyView }) {
 function LobbyWaiting({ onDisconnect }: { onDisconnect: () => void }) {
   return (
     <main className={l.screen}>
-      <section className={s.lobbyPanel} aria-label="Entering lobby" data-testid="lobby-waiting">
-        <Brand tagline="Lobby" />
-        <div className={s.waitingBar}>
-          <span className={s.muted}>Connected — entering the lobby…</span>
-          <button
-            type="button"
-            className={s.button}
-            onClick={onDisconnect}
-            data-testid="lobby-disconnect-button"
-          >
-            Disconnect
-          </button>
-        </div>
+      <div className={l.motif} aria-hidden="true">
+        <RuneMark size={520} />
+      </div>
+      <section className={l.lobbyShell} aria-label="Entering lobby" data-testid="lobby-waiting">
+        <LobbyHeader onDisconnect={onDisconnect} />
+        <span className={cx(l.state, l.stateConnecting)}>
+          <span className={cx(l.dot, l.dotLive)} />
+          Connected — entering the lobby
+        </span>
       </section>
     </main>
   );
@@ -273,7 +331,7 @@ function RoomDirectory({ view }: { view: LobbyView }) {
       data-testid="room-directory"
     >
       <span className={l.kicker}>Find a game</span>
-      <h2 className={s.lobbySectionTitle}>Open games</h2>
+      <h2 className={l.cardTitle}>Open games</h2>
       {view.directory.length === 0 ? (
         <span className={s.roomListEmpty} data-testid="room-directory-empty">
           No open games — create one.
@@ -332,7 +390,7 @@ function RoomEntry({ view }: { view: LobbyView }) {
             data-testid="create-room"
           >
             <span className={l.kicker}>Or start your own</span>
-            <h2 className={s.lobbySectionTitle}>Create a room</h2>
+            <h2 className={l.cardTitle}>Create a room</h2>
             <label className={s.field}>
               <span className={s.fieldLabel}>Game setup</span>
               <select
@@ -387,7 +445,7 @@ function RoomEntry({ view }: { view: LobbyView }) {
             <label className={s.field}>
               <span className={s.fieldLabel}>Room id</span>
               <input
-                className={s.select}
+                className={s.input}
                 type="text"
                 autoComplete="off"
                 spellCheck={false}
@@ -419,6 +477,79 @@ function RoomEntry({ view }: { view: LobbyView }) {
   );
 }
 
+/**
+ * One starter deck as a selectable tile: name in the display face, the deck's
+ * basic-land glyphs in their frame hues, summary, and size. Selection is the blue
+ * ring (`aria-pressed` carries it for assistive tech — never color alone).
+ */
+function DeckTile({
+  deck,
+  selected,
+  onSelect,
+}: {
+  deck: Decklist;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cx(l.deckTile, selected && l.deckTileSelected)}
+      aria-pressed={selected}
+      onClick={() => onSelect(deck.id)}
+      data-testid={`deck-tile-${deck.id}`}
+    >
+      <span className={l.deckTileHead}>
+        <span className={l.deckName}>{deck.name}</span>
+        <span className={l.deckGlyphs}>
+          {deckLandGlyphs(deck).map((land) => (
+            <span key={land.glyph} style={{ color: land.hue, display: 'inline-flex' }}>
+              <Glyph name={land.glyph} size={16} label={land.name} />
+            </span>
+          ))}
+        </span>
+      </span>
+      <span className={l.deckSummary}>{deck.summary}</span>
+      <span className={l.deckMeta}>{decklistSize(deck)} cards</span>
+    </button>
+  );
+}
+
+/** One roster seat: identity accent, seat glyph, name, and glyph-coded state. */
+function SeatRow({ view, seat }: { view: LobbyView; seat: SeatView }) {
+  const occupied = seat.occupied_by !== undefined;
+  const isLocal = occupied && seat.occupied_by === view.you;
+  return (
+    <li
+      className={cx(l.seat, !occupied && l.seatOpen)}
+      style={occupied ? seatAccentStyle(seat.seat) : undefined}
+      data-testid={`seat-${seat.seat}`}
+    >
+      <Glyph name="seat" size={18} className={l.seatGlyph} />
+      <span className={l.seatName}>{occupied ? seatDisplayName(seat) : 'Open seat'}</span>
+      {isLocal && <span className={l.youTag}>You</span>}
+      <span className={l.seatStatus}>
+        {seat.decked === true && (
+          <span className={l.stateChipOn} data-testid={`seat-${seat.seat}-decked`}>
+            <Glyph name="zone-library" size={12} />
+            Decked
+          </span>
+        )}
+        {occupied &&
+          (seat.ready === true ? (
+            <span className={l.stateChipOn} data-testid={`seat-${seat.seat}-ready`}>
+              <Glyph name="ready" size={12} />
+              Ready
+            </span>
+          ) : (
+            <span className={l.stateChip}>Not ready</span>
+          ))}
+        {!occupied && <span className={l.stateChip}>Open</span>}
+      </span>
+    </li>
+  );
+}
+
 /** The room roster + deck/ready controls, shown once in a room. */
 function RoomPanel({ view }: { view: LobbyView }) {
   const sendLobby = useGameStore((state) => state.sendLobby);
@@ -436,6 +567,13 @@ function RoomPanel({ view }: { view: LobbyView }) {
 
   if (room === undefined) return null;
   const mySeat = room.seats.find((seat) => seat.occupied_by === view.you);
+  const decked = mySeat?.decked === true;
+
+  // Presentation-only counts read straight off the view (no legality computed):
+  // the room's one-line "where are we" summary.
+  const filled = room.seats.filter((seat) => seat.occupied_by !== undefined).length;
+  const ready = room.seats.filter((seat) => seat.ready === true).length;
+  const total = room.seats.length;
 
   const copyRoomId = (): void => {
     const write = navigator.clipboard?.writeText?.(room.room_id);
@@ -458,7 +596,10 @@ function RoomPanel({ view }: { view: LobbyView }) {
   return (
     <>
       <section className={s.lobbySection} aria-label="Room" data-testid="room-panel">
-        <h2 className={s.lobbySectionTitle}>Room</h2>
+        <h2 className={l.cardTitle}>Room</h2>
+        <span className={l.roomStatus} data-testid="room-status">
+          {filled}/{total} seats filled · {ready} ready
+        </span>
         <div className={s.roomIdRow}>
           <span className={s.fieldLabel}>Room id</span>
           <code className={s.roomIdCode} data-testid="room-id">
@@ -477,38 +618,9 @@ function RoomPanel({ view }: { view: LobbyView }) {
         <span className={s.muted}>Share this id so another player can join.</span>
 
         <ul className={s.seatList} data-testid="seat-list">
-          {room.seats.map((seat) => {
-            const isLocal = seat.occupied_by !== undefined && seat.occupied_by === view.you;
-            const occupied = seat.occupied_by !== undefined;
-            return (
-              <li
-                key={seat.seat}
-                className={isLocal ? cx(s.seatRow, s.seatRowLocal) : s.seatRow}
-                data-testid={`seat-${seat.seat}`}
-              >
-                <span className={s.muted}>Seat {seat.seat + 1}</span>
-                <span className={occupied ? l.seatName : s.muted}>
-                  {occupied ? seatDisplayName(seat) : 'Open'}
-                </span>
-                {isLocal && <span className={l.youTag}>You</span>}
-                <span className={s.seatBadges}>
-                  <span className={occupied ? s.seatBadgeOn : s.seatBadge}>
-                    {occupied ? 'Filled' : 'Open'}
-                  </span>
-                  {seat.decked === true && (
-                    <span className={s.seatBadgeOn} data-testid={`seat-${seat.seat}-decked`}>
-                      Decked
-                    </span>
-                  )}
-                  {seat.ready === true && (
-                    <span className={s.seatBadgeOn} data-testid={`seat-${seat.seat}-ready`}>
-                      Ready
-                    </span>
-                  )}
-                </span>
-              </li>
-            );
-          })}
+          {room.seats.map((seat) => (
+            <SeatRow key={seat.seat} view={view} seat={seat} />
+          ))}
         </ul>
       </section>
 
@@ -518,41 +630,37 @@ function RoomPanel({ view }: { view: LobbyView }) {
           aria-label="Choose a deck"
           data-testid="deck-select-section"
         >
-          <h2 className={s.lobbySectionTitle}>Choose a deck</h2>
-          <label className={s.field}>
-            <span className={s.fieldLabel}>Starter deck</span>
-            <select
-              className={s.select}
-              value={deckId}
-              data-testid="deck-select"
-              onChange={(event) => setDeckId(event.target.value)}
-            >
-              {STARTER_DECKLISTS.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name} ({decklistSize(deck)} cards)
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className={s.muted}>{decklistById(deckId)?.summary}</span>
+          <h2 className={l.cardTitle}>Choose a deck</h2>
+          <div className={l.deckGrid} role="group" aria-label="Starter decks">
+            {STARTER_DECKLISTS.map((deck) => (
+              <DeckTile
+                key={deck.id}
+                deck={deck}
+                selected={deck.id === deckId}
+                onSelect={setDeckId}
+              />
+            ))}
+          </div>
           <div className={s.buttonRow}>
             <button
               type="button"
-              className={s.button}
+              className={cx(s.button, !decked && s.buttonPrimary)}
               onClick={submitDeck}
               data-testid="submit-deck-button"
             >
-              {mySeat?.decked === true ? 'Resubmit deck' : 'Submit deck'}
+              {decked ? 'Resubmit deck' : 'Submit deck'}
             </button>
           </div>
         </section>
       )}
 
-      <div className={s.buttonRow}>
+      {/* The ready bar: gold on the one advance-the-game action; Leave sits apart
+          on the right so the room-exit never neighbors it. */}
+      <div className={l.readyBar}>
         {can(view, 'ready') && (
           <button
             type="button"
-            className={s.button}
+            className={cx(s.button, decked && s.buttonPrimary)}
             onClick={() => sendLobby(readyCommand(true))}
             data-testid="ready-button"
           >
@@ -572,7 +680,7 @@ function RoomPanel({ view }: { view: LobbyView }) {
         {can(view, 'leave') && (
           <button
             type="button"
-            className={s.button}
+            className={cx(s.button, l.readyBarSpacer)}
             onClick={() => sendLobby(leaveCommand())}
             data-testid="leave-room-button"
           >
@@ -597,8 +705,11 @@ export function LobbyScreen() {
 
   return (
     <main className={l.screen}>
-      <section className={s.lobbyPanel} aria-label="Lobby" data-testid="lobby-screen">
-        <Brand tagline="Lobby" />
+      <div className={l.motif} aria-hidden="true">
+        <RuneMark size={520} />
+      </div>
+      <section className={l.lobbyShell} aria-label="Lobby" data-testid="lobby-screen">
+        <LobbyHeader onDisconnect={disconnect} />
         {lobbyError !== null && (
           <span className={s.errorText} role="alert" data-testid="lobby-error">
             {lobbyError}
@@ -606,16 +717,6 @@ export function LobbyScreen() {
         )}
         {can(lobby, 'set_name') && <DisplayNameField view={lobby} />}
         {lobby.room === undefined ? <RoomEntry view={lobby} /> : <RoomPanel view={lobby} />}
-        <div className={s.buttonRow}>
-          <button
-            type="button"
-            className={s.button}
-            onClick={disconnect}
-            data-testid="lobby-disconnect-button"
-          >
-            Disconnect
-          </button>
-        </div>
       </section>
     </main>
   );

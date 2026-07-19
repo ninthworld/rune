@@ -70,6 +70,12 @@
   --rune-targeting: #e0784a;
   --rune-selection-fill: rgba(127, 178, 229, 0.24);
   --rune-targeting-fill: rgba(224, 120, 74, 0.14);
+  /* Gold — the "you can act" accent (§Palette): the primary offered affordance,
+   * used with discipline (one primary action per surface). */
+  --rune-accent-gold: #f2c94c;
+  --rune-gold-border: rgba(242, 201, 76, 0.65);
+  --rune-gold-fill: rgba(242, 201, 76, 0.14);
+  --rune-gold-fill-hover: rgba(242, 201, 76, 0.22);
   /* The hidden-info deck back (procedural geometry, never a card identity). */
   --rune-cardback: linear-gradient(135deg, #3a3350, #211c30);
 
