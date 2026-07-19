@@ -200,18 +200,30 @@ connection screen:
   A failed connection surfaces as the disconnected state with the disclosure
   auto-opened, so the likely fix sits beside Retry — never a dead screen.
 - **The lobby is the same carved panel, flowing top-down**: a compact brand
-  header bar (lockup left, Disconnect right), the display-name row, then the
-  room directory as the primary "find a game" path ahead of the secondary
-  create / join-by-id cards. Section titles carry the panel-name treatment
+  header bar (lockup left, Disconnect right), identity as an inline "Playing
+  as <name>" strip with an inline editor (a fact with an edit affordance, not a
+  form card), then the room directory as the primary "find a game" path ahead
+  of the secondary cards. Section titles carry the panel-name treatment
   (display face, small caps) so pre-game sections and in-game panels speak one
   language.
-- **Seats wear the table's identity accents.** Roster rows take the
-  deterministic seat-indexed accent (`identityAccents.ts`) as an edge stripe,
-  tinted seat glyph, and accent wash — "who is here" reads like "whose stuff"
-  in-game. Readiness is glyph-coded chips (library glyph = decked, check =
-  ready; shape + word, never color alone); open seats render as dashed
-  invitations. A one-line room status ("2/2 seats filled · 1 ready") reads
-  straight off the `LobbyView`.
+- **Choices are visible presses, not dropdowns.** The create-room card offers
+  the game type as choice tiles (picking one pre-fills its designed seat
+  count) and the seat count as a segmented row of ≥44 px buttons; joining by
+  code is its own always-visible card. Selection is the blue ring plus
+  `aria-pressed` everywhere.
+- **The room is a players table under a meta header.** The header carries the
+  game's name, a live "2/2 seats filled · 1 ready" summary read straight off
+  the `LobbyView`, the room code as a compact copyable chip, and Leave room —
+  apart from the primary action. Roster rows are who | deck | status columns
+  wearing the deterministic seat-indexed accent (`identityAccents.ts`) as an
+  edge stripe, tinted seat glyph, and accent wash — "who is here" reads like
+  "whose stuff" in-game. Deck and readiness are glyph-coded chips (library
+  glyph = deck submitted, check = ready; shape + word, never color alone);
+  open seats render as dashed invitations.
+- **One centered CTA advances the game.** Submit deck, then Ready, take the
+  landing Play's gold display-face treatment, centered under the flow; once
+  ready, a quiet waiting line and the Not ready fallback replace it. Every
+  server-offered command still renders — gold only marks the next step.
 - **Starter decks are tiles, not a dropdown**: name in the display face, the
   deck's basic-land glyphs tinted by their card-token frame hues (the same
   "what colors" read as the table's land chips), summary, and card count.
@@ -220,6 +232,16 @@ connection screen:
 - **Gold stays disciplined**: exactly one advance-the-game affordance per
   surface — Play on the landing; in the room, Submit deck until decked, then
   Ready. Leave room sits apart from the primary so the exit never neighbors it.
+
+The lobby composition was refined against a pre-game concept board (players
+table, segmented pickers, centered CTA, room meta header — adopted as
+composition only). Rejected from that board, so the reasoning isn't
+relitigated: friends lists, chat, host controls (kick/transfer), room privacy
+and names, and a host-gated "start game" — all require protocol support that
+does not exist (`valid_commands` is the only source of interactivity, and the
+ready gate auto-starts server-side); practice/AI, collection, and store —
+persistent exclusions or unbuilt products; engraved painted ornament — mood
+stays tokens and geometry (§Design stance).
 
 The architectural invariants are unchanged: the whole pre-game UI reconstructs
 from one `LobbyView`, `valid_commands` remains the only source of interactivity,

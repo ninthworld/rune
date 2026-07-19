@@ -5,30 +5,31 @@
  * The screen shown between the {@link ConnectionScreen} landing and the in-game
  * {@link Table}: after the socket opens, the store greets the server (`Hello`)
  * and this screen renders the resulting {@link LobbyView} — browse the room
- * directory (the primary "find a game" path), create a room or join one by id (the
- * secondary paths), pick a bundled starter deck from the deck tiles, submit it,
- * and ready up. When every seat is filled, decked, and ready the server constructs
- * the game and pushes the first `GameView`; the app then switches to the table.
+ * directory (the primary "find a game" path), create a room or join one by code
+ * (the secondary paths), pick a bundled starter deck from the deck tiles, submit
+ * it, and ready up. When every seat is filled, decked, and ready the server
+ * constructs the game and pushes the first `GameView`; the app then switches to
+ * the table.
  *
- * Identity (docs/design/ui-design-notes.md §Identity, §Front door): the pre-game
- * screens share the table's visual system — the {@link RuneMark} and display-face
- * wordmark in a carved panel over the table vignette, section titles in the
- * panel-name treatment, seats wearing the same deterministic identity accents as
- * the in-game player panels ({@link IDENTITY_ACCENTS}, indexed by seat), and gold
- * reserved for the one advance-the-game action (submit deck, then ready). Players
- * read as people: display names ride the protocol (issue #294);
- * {@link seatDisplayName} reads the seat's `name` field and falls back to a
- * seat-derived "Player N" when a seat has no chosen name. Geometry only — never a
- * card image or WotC branding.
+ * Composition (docs/design/ui-design-notes.md §Front door): a carved panel over
+ * the table vignette with a brand header bar; identity is an inline "Playing as"
+ * strip, not a form card. Room-less, the directory leads; creating a room uses
+ * choice tiles and a segmented seat picker (no dropdowns); joining by code is its
+ * own card. In a room, the header carries the game's name, a live seats/ready
+ * summary, the room code as a copyable chip, and Leave; the roster is a
+ * player/deck/status table wearing the table's per-seat identity accents; and one
+ * big gold CTA advances the game (submit deck, then Ready). Gold stays
+ * disciplined — exactly one advance-the-game affordance at a time.
  *
  * Hard rules (AGENTS.md, ADR 0012):
  * - **Reconstruct from one `LobbyView`.** Every control here is derived from the
  *   store's latest `LobbyView`; nothing about the lobby is load-bearing across
  *   messages. Local component state is ephemeral form input only (the seat count
- *   being typed, the deck tile picked, a "Copied" flash).
+ *   being picked, the deck tile picked, a "Copied" flash, an open name editor).
  * - **`valid_commands` is the only source of interactivity.** A create/join/deck/
  *   ready/leave affordance is offered only when the server advertised that command
- *   for this connection; the client computes no legality.
+ *   for this connection; the client computes no legality. Friends, chat, host
+ *   controls, privacy, and room names have no protocol support and therefore no UI.
  * - **No card logic.** The bundled decklists are static names/ids (see
  *   `decklists.ts`); the deck tiles' land glyphs are read off that static data for
  *   display, and the server validates a submitted deck authoritatively.
@@ -72,7 +73,7 @@ interface GameSetupOption {
   readonly id: string;
   /** Display label. */
   readonly label: string;
-  /** The seat count this setup is designed for (pre-fills the seat selector). */
+  /** The seat count this setup is designed for (pre-fills the seat picker). */
   readonly seats: number;
 }
 
@@ -126,7 +127,7 @@ function setupLabel(gameSetup: string): string {
   return GAME_SETUPS.find((option) => option.id === gameSetup)?.label ?? gameSetup;
 }
 
-/** The seat's identity accent as an inline custom property (see `.seat`). */
+/** The seat's identity accent as an inline custom property (see `.rosterRow`). */
 function seatAccentStyle(seatIndex: number): CSSProperties {
   return {
     '--seat-accent': IDENTITY_ACCENTS[seatIndex % IDENTITY_ACCENTS.length],
@@ -159,41 +160,49 @@ function LobbyHeader({ onDisconnect }: { onDisconnect: () => void }) {
 }
 
 /**
- * The display-name field (issue #294): set or change the public name other players
- * read for this connection. Offered only when the server advertises `set_name`
- * (`valid_commands` is the sole source of interactivity). The input seeds from the
- * server's current `name` — the one load-bearing value — while what is being typed is
- * ephemeral local form state, cleared to the server's truth whenever it changes.
+ * The identity strip (issue #294): "Playing as <name>" with an inline editor —
+ * one quiet row, not a form card. Offered only when the server advertises
+ * `set_name` (`valid_commands` is the sole source of interactivity); with a name
+ * set but no `set_name` offered it stays a read-only line. The input seeds from
+ * the server's current `name` — the one load-bearing value — while what is being
+ * typed is ephemeral local form state, re-seeded to server truth on change.
  */
-function DisplayNameField({ view }: { view: LobbyView }) {
+function IdentityRow({ view }: { view: LobbyView }) {
   const sendLobby = useGameStore((state) => state.sendLobby);
+  const canSet = can(view, 'set_name');
   const current = view.name ?? '';
   const [draft, setDraft] = useState(current);
+  const [editing, setEditing] = useState(false);
 
-  // Re-seed the draft when the server's accepted name changes (e.g. after a
-  // reconnect re-sends it), so the field always reflects server truth at rest.
+  // Re-seed the draft (and close the editor) when the server's accepted name
+  // changes, so the strip always reflects server truth at rest.
   useEffect(() => {
     setDraft(current);
+    setEditing(false);
   }, [current]);
 
   const save = (): void => {
     const next = draft.trim();
     if (next.length === 0) return;
     sendLobby(setNameCommand(next));
+    setEditing(false);
   };
 
+  if (!canSet && current.length === 0) return null;
+  const formOpen = canSet && (editing || current.length === 0);
+
   return (
-    <section className={s.lobbySection} aria-label="Display name" data-testid="display-name">
-      <h2 className={l.cardTitle}>Display name</h2>
-      <div className={l.inlineForm}>
-        <label className={l.inlineFormField}>
-          <span className={s.fieldLabel}>How other players see you</span>
+    <div className={l.identityRow} data-testid="display-name">
+      <Glyph name="seat" size={16} className={l.identityGlyph} />
+      {formOpen ? (
+        <>
           <input
-            className={s.input}
+            className={cx(s.input, l.identityInput)}
             type="text"
             autoComplete="off"
             spellCheck={false}
             maxLength={32}
+            placeholder="Your display name"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -202,12 +211,29 @@ function DisplayNameField({ view }: { view: LobbyView }) {
             data-testid="display-name-input"
             aria-label="Display name"
           />
-        </label>
-        <button type="button" className={s.button} onClick={save} data-testid="set-name-button">
-          {current.length > 0 ? 'Change name' : 'Set name'}
-        </button>
-      </div>
-    </section>
+          <button type="button" className={s.button} onClick={save} data-testid="set-name-button">
+            {current.length > 0 ? 'Save' : 'Set name'}
+          </button>
+        </>
+      ) : (
+        <>
+          <span className={l.identityLabel}>Playing as</span>
+          <span className={l.identityName} data-testid="display-name-current">
+            {current}
+          </span>
+          {canSet && (
+            <button
+              type="button"
+              className={l.identityChange}
+              onClick={() => setEditing(true)}
+              data-testid="change-name-button"
+            >
+              Change
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -279,7 +305,7 @@ function RoomDirectoryRow({
   ) : canJoin ? (
     <button
       type="button"
-      className={s.button}
+      className={s.chip}
       onClick={() => onJoin(room.room_id)}
       data-testid={`join-directory-${room.room_id}`}
     >
@@ -290,9 +316,7 @@ function RoomDirectoryRow({
   return (
     <li className={s.roomRow} data-testid={`room-row-${room.room_id}`}>
       <span className={s.roomRowInfo}>
-        <span>
-          {setupLabel(room.config.game_setup)} · {total} seats
-        </span>
+        <span className={l.directoryName}>{setupLabel(room.config.game_setup)}</span>
         <span className={s.muted} data-testid={`room-${room.room_id}-occupancy`}>
           {room.filled}/{total} filled
           {room.spectators > 0 && (
@@ -334,7 +358,7 @@ function RoomDirectory({ view }: { view: LobbyView }) {
       <h2 className={l.cardTitle}>Open games</h2>
       {view.directory.length === 0 ? (
         <span className={s.roomListEmpty} data-testid="room-directory-empty">
-          No open games — create one.
+          No open games right now — start your own below.
         </span>
       ) : (
         <ul className={s.roomList} data-testid="room-directory-list">
@@ -354,17 +378,87 @@ function RoomDirectory({ view }: { view: LobbyView }) {
   );
 }
 
-/** The create-a-room / room-directory / join-by-id screen, shown when room-less. */
-function RoomEntry({ view }: { view: LobbyView }) {
+/**
+ * The create-a-room card: game type as choice tiles, seats as a segmented picker
+ * (no dropdowns — every option is one visible press), and a gold Create. Picking
+ * a game type pre-fills its designed seat count; the seat picker can still
+ * override it within the protocol's `2..=8`.
+ */
+function CreateRoomCard() {
   const sendLobby = useGameStore((state) => state.sendLobby);
   const [setupId, setSetupId] = useState(GAME_SETUPS[0].id);
   const [seats, setSeats] = useState<number>(GAME_SETUPS[0].seats);
-  const [roomId, setRoomId] = useState('');
-  const [joinError, setJoinError] = useState<string | null>(null);
 
   const create = (): void => {
     sendLobby(createRoomCommand({ seats, game_setup: setupId }));
   };
+
+  return (
+    <section
+      className={cx(s.lobbySection, l.secondaryCard)}
+      aria-label="Create a room"
+      data-testid="create-room"
+    >
+      <span className={l.kicker}>Or start your own</span>
+      <h2 className={l.cardTitle}>Create a room</h2>
+      <div className={l.choiceGroup} role="group" aria-label="Game type">
+        <span className={s.fieldLabel}>Game type</span>
+        <div className={l.choiceRow}>
+          {GAME_SETUPS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={cx(l.choiceTile, option.id === setupId && l.choiceTileSelected)}
+              aria-pressed={option.id === setupId}
+              onClick={() => {
+                setSetupId(option.id);
+                setSeats(option.seats);
+              }}
+              data-testid={`game-setup-${option.id}`}
+            >
+              <span className={l.choiceName}>{option.label}</span>
+              <span className={l.choiceMeta}>{option.seats} players</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={l.choiceGroup} role="group" aria-label="Seats">
+        <span className={s.fieldLabel}>Seats</span>
+        <div className={l.segmentRow}>
+          {SEAT_COUNTS.map((count) => (
+            <button
+              key={count}
+              type="button"
+              className={cx(l.segment, count === seats && l.segmentOn)}
+              aria-pressed={count === seats}
+              onClick={() => setSeats(count)}
+              data-testid={`seat-count-${count}`}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={s.buttonRow}>
+        <button
+          type="button"
+          className={cx(s.button, s.buttonPrimary)}
+          onClick={create}
+          data-testid="create-room-button"
+        >
+          Create room
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** The join-by-code card: for a room id someone sent you. Always visible — no
+ * disclosure to hunt for. */
+function JoinByCodeCard() {
+  const sendLobby = useGameStore((state) => state.sendLobby);
+  const [roomId, setRoomId] = useState('');
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   const join = (): void => {
     const target = roomId.trim();
@@ -377,101 +471,55 @@ function RoomEntry({ view }: { view: LobbyView }) {
   };
 
   return (
+    <section
+      className={cx(s.lobbySection, l.secondaryCard)}
+      aria-label="Join with a room id"
+      data-testid="join-room"
+    >
+      <span className={l.kicker}>Have a room id?</span>
+      <h2 className={l.cardTitle}>Join a friend</h2>
+      <label className={s.field}>
+        <span className={s.fieldLabel}>Room id</span>
+        <input
+          className={s.input}
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Paste the id you were sent"
+          value={roomId}
+          onChange={(event) => setRoomId(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') join();
+          }}
+          data-testid="join-room-input"
+          aria-label="Room id"
+        />
+      </label>
+      {joinError !== null && (
+        <span className={s.errorText} role="alert" data-testid="join-room-error">
+          {joinError}
+        </span>
+      )}
+      <div className={s.buttonRow}>
+        <button type="button" className={s.button} onClick={join} data-testid="join-room-button">
+          Join room
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** The create-a-room / room-directory / join-by-code composition, shown room-less. */
+function RoomEntry({ view }: { view: LobbyView }) {
+  return (
     <>
       {/* Primary path: browse and join an open game. */}
       <RoomDirectory view={view} />
 
       {/* Secondary paths: start your own room, or join a specific id you were sent. */}
       <div className={l.secondary}>
-        {can(view, 'create_room') && (
-          <section
-            className={cx(s.lobbySection, l.secondaryCard)}
-            aria-label="Create a room"
-            data-testid="create-room"
-          >
-            <span className={l.kicker}>Or start your own</span>
-            <h2 className={l.cardTitle}>Create a room</h2>
-            <label className={s.field}>
-              <span className={s.fieldLabel}>Game setup</span>
-              <select
-                className={s.select}
-                value={setupId}
-                data-testid="game-setup-select"
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setSetupId(next);
-                  const found = GAME_SETUPS.find((option) => option.id === next);
-                  if (found) setSeats(found.seats);
-                }}
-              >
-                {GAME_SETUPS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={s.field}>
-              <span className={s.fieldLabel}>Seats</span>
-              <select
-                className={s.select}
-                value={seats}
-                data-testid="seat-count-select"
-                onChange={(event) => setSeats(Number(event.target.value))}
-              >
-                {SEAT_COUNTS.map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className={s.buttonRow}>
-              <button
-                type="button"
-                className={s.button}
-                onClick={create}
-                data-testid="create-room-button"
-              >
-                Create room
-              </button>
-            </div>
-          </section>
-        )}
-
-        {can(view, 'join_room') && (
-          <details className={cx(s.lobbySection, l.secondaryCard)} data-testid="join-room">
-            <summary className={s.joinByIdSummary}>Join by room id</summary>
-            <label className={s.field}>
-              <span className={s.fieldLabel}>Room id</span>
-              <input
-                className={s.input}
-                type="text"
-                autoComplete="off"
-                spellCheck={false}
-                value={roomId}
-                onChange={(event) => setRoomId(event.target.value)}
-                data-testid="join-room-input"
-                aria-label="Room id"
-              />
-            </label>
-            {joinError !== null && (
-              <span className={s.errorText} role="alert" data-testid="join-room-error">
-                {joinError}
-              </span>
-            )}
-            <div className={s.buttonRow}>
-              <button
-                type="button"
-                className={s.button}
-                onClick={join}
-                data-testid="join-room-button"
-              >
-                Join room
-              </button>
-            </div>
-          </details>
-        )}
+        {can(view, 'create_room') && <CreateRoomCard />}
+        {can(view, 'join_room') && <JoinByCodeCard />}
       </div>
     </>
   );
@@ -515,42 +563,57 @@ function DeckTile({
   );
 }
 
-/** One roster seat: identity accent, seat glyph, name, and glyph-coded state. */
-function SeatRow({ view, seat }: { view: LobbyView; seat: SeatView }) {
+/**
+ * One roster row of the players table: who (accented, named), their deck state,
+ * and their readiness — the concept board's player/deck/status columns, from
+ * nothing but the `SeatView`. An open seat is a quiet dashed invitation.
+ */
+function RosterRow({ view, seat }: { view: LobbyView; seat: SeatView }) {
   const occupied = seat.occupied_by !== undefined;
   const isLocal = occupied && seat.occupied_by === view.you;
   return (
     <li
-      className={cx(l.seat, !occupied && l.seatOpen)}
+      className={cx(l.rosterRow, !occupied && l.seatOpen)}
       style={occupied ? seatAccentStyle(seat.seat) : undefined}
       data-testid={`seat-${seat.seat}`}
     >
-      <Glyph name="seat" size={18} className={l.seatGlyph} />
-      <span className={l.seatName}>{occupied ? seatDisplayName(seat) : 'Open seat'}</span>
-      {isLocal && <span className={l.youTag}>You</span>}
-      <span className={l.seatStatus}>
-        {seat.decked === true && (
-          <span className={l.stateChipOn} data-testid={`seat-${seat.seat}-decked`}>
-            <Glyph name="zone-library" size={12} />
-            Decked
-          </span>
-        )}
-        {occupied &&
-          (seat.ready === true ? (
-            <span className={l.stateChipOn} data-testid={`seat-${seat.seat}-ready`}>
-              <Glyph name="ready" size={12} />
-              Ready
-            </span>
-          ) : (
-            <span className={l.stateChip}>Not ready</span>
-          ))}
-        {!occupied && <span className={l.stateChip}>Open</span>}
+      <span className={l.rosterWho}>
+        <Glyph name="seat" size={18} className={l.seatGlyph} />
+        <span className={l.seatName}>{occupied ? seatDisplayName(seat) : 'Open seat'}</span>
+        {isLocal && <span className={l.youTag}>You</span>}
       </span>
+      {occupied ? (
+        <>
+          <span className={l.rosterCell}>
+            {seat.decked === true ? (
+              <span className={l.stateChipOn} data-testid={`seat-${seat.seat}-decked`}>
+                <Glyph name="zone-library" size={12} />
+                Deck submitted
+              </span>
+            ) : (
+              <span className={l.stateChip}>Choosing a deck</span>
+            )}
+          </span>
+          <span className={l.rosterCell}>
+            {seat.ready === true ? (
+              <span className={l.stateChipOn} data-testid={`seat-${seat.seat}-ready`}>
+                <Glyph name="ready" size={12} />
+                Ready
+              </span>
+            ) : (
+              <span className={l.stateChip}>Not ready</span>
+            )}
+          </span>
+        </>
+      ) : (
+        <span className={cx(l.rosterCell, s.muted)}>Waiting for a player…</span>
+      )}
     </li>
   );
 }
 
-/** The room roster + deck/ready controls, shown once in a room. */
+/** The room lobby: header with meta + code chip + Leave, the players table, the
+ * deck tiles, and one centered gold CTA. */
 function RoomPanel({ view }: { view: LobbyView }) {
   const sendLobby = useGameStore((state) => state.sendLobby);
   const room = view.room;
@@ -596,32 +659,49 @@ function RoomPanel({ view }: { view: LobbyView }) {
   return (
     <>
       <section className={s.lobbySection} aria-label="Room" data-testid="room-panel">
-        <h2 className={l.cardTitle}>Room</h2>
-        <span className={l.roomStatus} data-testid="room-status">
-          {filled}/{total} seats filled · {ready} ready
-        </span>
-        <div className={s.roomIdRow}>
-          <span className={s.fieldLabel}>Room id</span>
-          <code className={s.roomIdCode} data-testid="room-id">
-            {room.room_id}
-          </code>
-          <button
-            type="button"
-            className={s.button}
-            onClick={copyRoomId}
-            data-testid="copy-room-id-button"
-            aria-label="Copy room id"
-          >
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+        <div className={l.roomHeader}>
+          <div className={l.roomHeadText}>
+            <h2 className={l.cardTitle}>{setupLabel(room.config.game_setup)}</h2>
+            <span className={l.roomStatus} data-testid="room-status">
+              {filled}/{total} seats filled · {ready} ready
+            </span>
+          </div>
+          <div className={l.roomHeadActions}>
+            <span className={l.codeChip} title="Share this room id to invite a player">
+              <code className={l.codeText} data-testid="room-id">
+                {room.room_id}
+              </code>
+              <button
+                type="button"
+                className={l.codeCopy}
+                onClick={copyRoomId}
+                data-testid="copy-room-id-button"
+                aria-label="Copy room id"
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </span>
+            {can(view, 'leave') && (
+              <button
+                type="button"
+                className={s.button}
+                onClick={() => sendLobby(leaveCommand())}
+                data-testid="leave-room-button"
+              >
+                Leave room
+              </button>
+            )}
+          </div>
         </div>
-        <span className={s.muted}>Share this id so another player can join.</span>
 
         <ul className={s.seatList} data-testid="seat-list">
           {room.seats.map((seat) => (
-            <SeatRow key={seat.seat} view={view} seat={seat} />
+            <RosterRow key={seat.seat} view={view} seat={seat} />
           ))}
         </ul>
+        {filled < total && (
+          <span className={s.muted}>Waiting for players — share the room id to invite.</span>
+        )}
       </section>
 
       {can(view, 'submit_deck') && (
@@ -641,51 +721,57 @@ function RoomPanel({ view }: { view: LobbyView }) {
               />
             ))}
           </div>
-          <div className={s.buttonRow}>
-            <button
-              type="button"
-              className={cx(s.button, !decked && s.buttonPrimary)}
-              onClick={submitDeck}
-              data-testid="submit-deck-button"
-            >
-              {decked ? 'Resubmit deck' : 'Submit deck'}
-            </button>
-          </div>
         </section>
       )}
 
-      {/* The ready bar: gold on the one advance-the-game action; Leave sits apart
-          on the right so the room-exit never neighbors it. */}
-      <div className={l.readyBar}>
-        {can(view, 'ready') && (
-          <button
-            type="button"
-            className={cx(s.button, decked && s.buttonPrimary)}
-            onClick={() => sendLobby(readyCommand(true))}
-            data-testid="ready-button"
-          >
-            Ready
-          </button>
-        )}
+      {/* The advance-the-game area, centered. Every server-offered command
+          renders; gold marks only the NEXT step (submit the picked deck, then
+          Ready) so there is never more than one gold at a time. Once ready, a
+          quiet waiting line and the Not ready fallback. */}
+      <div className={l.ctaArea}>
+        {(() => {
+          const submitOffered = can(view, 'submit_deck');
+          const readyOffered = can(view, 'ready');
+          const next = submitOffered && !decked ? 'submit' : readyOffered ? 'ready' : null;
+          return (
+            <>
+              {submitOffered && (
+                <button
+                  type="button"
+                  className={next === 'submit' ? l.play : s.button}
+                  onClick={submitDeck}
+                  data-testid="submit-deck-button"
+                >
+                  {decked ? 'Resubmit deck' : 'Submit deck'}
+                </button>
+              )}
+              {readyOffered && (
+                <button
+                  type="button"
+                  className={next === 'ready' ? l.play : s.button}
+                  onClick={() => sendLobby(readyCommand(true))}
+                  data-testid="ready-button"
+                >
+                  Ready
+                </button>
+              )}
+            </>
+          );
+        })()}
         {can(view, 'unready') && (
-          <button
-            type="button"
-            className={s.button}
-            onClick={() => sendLobby(readyCommand(false))}
-            data-testid="unready-button"
-          >
-            Not ready
-          </button>
-        )}
-        {can(view, 'leave') && (
-          <button
-            type="button"
-            className={cx(s.button, l.readyBarSpacer)}
-            onClick={() => sendLobby(leaveCommand())}
-            data-testid="leave-room-button"
-          >
-            Leave room
-          </button>
+          <>
+            <span className={s.muted} data-testid="ready-waiting">
+              You&apos;re ready — waiting for the other players…
+            </span>
+            <button
+              type="button"
+              className={s.button}
+              onClick={() => sendLobby(readyCommand(false))}
+              data-testid="unready-button"
+            >
+              Not ready
+            </button>
+          </>
         )}
       </div>
     </>
@@ -710,12 +796,12 @@ export function LobbyScreen() {
       </div>
       <section className={l.lobbyShell} aria-label="Lobby" data-testid="lobby-screen">
         <LobbyHeader onDisconnect={disconnect} />
+        <IdentityRow view={lobby} />
         {lobbyError !== null && (
           <span className={s.errorText} role="alert" data-testid="lobby-error">
             {lobbyError}
           </span>
         )}
-        {can(lobby, 'set_name') && <DisplayNameField view={lobby} />}
         {lobby.room === undefined ? <RoomEntry view={lobby} /> : <RoomPanel view={lobby} />}
       </section>
     </main>
