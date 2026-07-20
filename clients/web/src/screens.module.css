@@ -730,3 +730,143 @@
   gap: var(--rune-space-5);
   padding-top: var(--rune-space-4);
 }
+
+/* ── Deck builder (issue #368) ─────────────────────────────────────────────── */
+/* A modal over the lobby that browses the wire-carried card pool (#367), edits
+ * copy counts, shows the format's advertised rules (display-only), and submits
+ * through the existing `submit_deck` gate. Reuses the inspect backdrop for the
+ * scrim. Every control is a ≥44px button (chrome `.button`); the pool scrolls
+ * inside the panel so the panel itself never grows past the viewport. */
+.builderPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-5);
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  padding: var(--rune-space-8);
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-overlay-bg);
+  border: 1px solid var(--rune-border);
+  box-shadow: var(--rune-elevation-2);
+  box-sizing: border-box;
+}
+.builderHead {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-5);
+}
+.builderCount {
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--rune-text);
+}
+.builderHead .cardTitle {
+  margin-right: auto;
+}
+/* The format's advertised deck rules as quiet, display-only chips. */
+.builderRules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.builderStarters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+/* The scrolling work area: the card pool and the running deck side by side, each
+ * scrolling independently so the panel never overflows the viewport. */
+.builderBody {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--rune-space-6);
+  min-height: 0;
+  flex: 1;
+}
+@media (min-width: 720px) {
+  .builderBody {
+    grid-template-columns: 2fr 1fr;
+  }
+}
+.builderPool {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  max-height: 52vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+.builderCard {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-5);
+  padding: var(--rune-space-4) var(--rune-space-5);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-raised-bg);
+}
+.builderCardInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  margin-right: auto;
+  min-width: 0;
+}
+.builderCardName {
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.builderCardControls {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-3);
+  flex-shrink: 0;
+}
+.builderCardCount {
+  min-width: 2ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.builderDeck {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+  overflow-y: auto;
+  max-height: 52vh;
+  padding: var(--rune-space-5);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border-strong);
+  background: var(--rune-sunken-bg);
+}
+.builderDeckList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+}
+.builderDeckRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--rune-space-4);
+  font-size: var(--rune-type-body);
+}
+.builderFoot {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-5);
+}

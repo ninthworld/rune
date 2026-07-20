@@ -1,0 +1,59 @@
+/**
+ * A representative server→client `CatalogView` frame (issue #367) for the deck-builder
+ * suite (issue #368), mirroring the round-trip fixtures in the wire tests. Written as
+ * raw wire JSON — elided optionals (a basic land's absent cost/P-T, a permissive
+ * format's `None` upper bounds) are omitted exactly as the server omits them, so tests
+ * exercise the client's normalization.
+ */
+import type { CatalogView } from './protocol';
+import { normalizeCatalogView } from './wire';
+
+/** Raw wire catalog: two spells with full characteristics and one basic land. */
+export const CATALOG_JSON = JSON.stringify({
+  catalog_version: 1,
+  cards: [
+    {
+      functional_id: 'serra_angel',
+      name: 'Serra Angel',
+      type_line: 'Creature — Angel',
+      mana_cost: '{3}{W}{W}',
+      rules_text: 'Flying, vigilance',
+      power: '4',
+      toughness: '4',
+      keywords: ['flying', 'vigilance'],
+    },
+    {
+      functional_id: 'shock',
+      name: 'Shock',
+      type_line: 'Instant',
+      mana_cost: '{R}',
+      rules_text: 'Shock deals 2 damage to any target.',
+    },
+    {
+      functional_id: 'forest',
+      name: 'Forest',
+      type_line: 'Basic Land — Forest',
+      rules_text: '{T}: Add {G}.',
+    },
+  ],
+  formats: [
+    {
+      game_setup: '1v1',
+      min_deck_size: 40,
+      max_copies: 4,
+      basic_land_exempt: true,
+      min_seats: 2,
+      max_seats: 2,
+    },
+    {
+      game_setup: 'ffa-4',
+      min_deck_size: 0,
+      basic_land_exempt: true,
+      min_seats: 2,
+      max_seats: 8,
+    },
+  ],
+});
+
+/** The typed, normalized form of {@link CATALOG_JSON}. */
+export const CATALOG_VIEW: CatalogView = normalizeCatalogView(JSON.parse(CATALOG_JSON));
