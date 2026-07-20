@@ -143,6 +143,7 @@ fn keyword_str(keyword: Keyword) -> &'static str {
         Keyword::Trample => "trample",
         Keyword::Deathtouch => "deathtouch",
         Keyword::Lifelink => "lifelink",
+        Keyword::DoubleStrike => "double_strike",
     }
 }
 

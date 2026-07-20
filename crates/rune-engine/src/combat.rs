@@ -20,9 +20,11 @@
 //! simultaneously (CR 510.2). First strike splits combat into two damage steps
 //! (CR 510.5, keyed by [`DamageStep`]); trample (CR 702.19e), deathtouch
 //! (CR 702.2b / 510.1e), and lifelink (CR 702.15e) shape the assignment within a
-//! step. Double strike and player-chosen damage-assignment order are still out of
-//! scope. Every function here is a pure predicate/enumeration over an immutable
-//! [`GameState`] — no I/O, no mutation — consistent with the engine's rules.
+//! step. Double strike (CR 702.4, issue #373): a double striker deals in *both* the
+//! first-strike and the regular step, and the player-chosen damage-assignment order
+//! (issue #346) applies in each. Every function here is a pure predicate/enumeration
+//! over an immutable [`GameState`] — no I/O, no mutation — consistent with the
+//! engine's rules.
 
 use crate::card::Keyword;
 use crate::card_type::CardType;
@@ -344,10 +346,10 @@ pub(crate) enum CombatDamage {
 
 /// Which combat-damage step is being computed (CR 510.5).
 ///
-/// A creature deals its damage in exactly one step in this slice: first-strikers
-/// in the first step, everyone else in the second. Double strike — a creature that
-/// deals in *both* steps — is out of scope; when it lands it becomes a data
-/// addition inside [`deals_in_step`], not a restructuring here.
+/// Most creatures deal in exactly one step: first-strikers in the first step,
+/// everyone else in the second. A creature with double strike (CR 702.4b) deals in
+/// *both* the first-strike and the regular step — the one creature [`deals_in_step`]
+/// admits to both.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DamageStep {
     /// The single combat-damage step of an ordinary combat (no first strike is
@@ -366,27 +368,36 @@ pub(crate) enum DamageStep {
 /// present, a first-striker deals only in [`DamageStep::FirstStrike`] and every
 /// other creature only in [`DamageStep::Regular`].
 ///
-/// Double strike is the one addition this predicate is shaped for: a
-/// double-striker would deal in *both* the first-strike and the regular step, so
-/// it slots in as `has(FirstStrike) || has(DoubleStrike)` for the first step and
-/// `has(DoubleStrike) || !has(FirstStrike)` for the regular one — no caller
-/// changes.
+/// Double strike (CR 702.4b) is the exception that deals in *both* steps: it
+/// participates in the first-strike step alongside first strike, and — unlike plain
+/// first strike — deals again in the regular step. A creature with both first strike
+/// and double strike deals exactly twice, not three times (CR 702.4c): the two
+/// keywords collapse to the same two participations rather than adding a third.
 #[must_use]
 fn deals_in_step(perm: &Permanent, step: DamageStep, db: &CardDatabase) -> bool {
+    let double_strike = has_keyword(perm, Keyword::DoubleStrike, db);
     match step {
         DamageStep::Only => true,
-        DamageStep::FirstStrike => has_keyword(perm, Keyword::FirstStrike, db),
-        DamageStep::Regular => !has_keyword(perm, Keyword::FirstStrike, db),
+        // CR 702.4b / 702.7b: first strike *and* double strike deal in the
+        // first-strike step.
+        DamageStep::FirstStrike => has_keyword(perm, Keyword::FirstStrike, db) || double_strike,
+        // CR 510.5: the regular step is for creatures without first strike — plus
+        // double strikers, which strike a second time here (CR 702.4b).
+        DamageStep::Regular => double_strike || !has_keyword(perm, Keyword::FirstStrike, db),
     }
 }
 
 /// Whether any creature currently in combat (attacking or blocking) has first
-/// strike, so combat needs the two-step damage sequence (CR 510.5). When none do,
-/// a single [`DamageStep::Only`] step suffices.
+/// strike **or double strike**, so combat needs the two-step damage sequence
+/// (CR 510.5). A double striker deals in the first-strike step too (CR 702.4b), so
+/// its mere presence splits combat in two even when no creature has plain first
+/// strike. When none qualify, a single [`DamageStep::Only`] step suffices.
 #[must_use]
 pub(crate) fn combat_has_first_strike(state: &GameState, db: &CardDatabase) -> bool {
     state.battlefield.iter().any(|p| {
-        (p.attacking.is_some() || p.blocking.is_some()) && has_keyword(p, Keyword::FirstStrike, db)
+        (p.attacking.is_some() || p.blocking.is_some())
+            && (has_keyword(p, Keyword::FirstStrike, db)
+                || has_keyword(p, Keyword::DoubleStrike, db))
     })
 }
 
@@ -685,7 +696,13 @@ mod tests {
              "power":4,"toughness":5},
             {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
              "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
-             "power":3,"toughness":2}
+             "power":3,"toughness":2},
+            {"schema_version":1,"functional_id":"test_twinstrike","name":"Test Twinstrike",
+             "types":["creature"],"subtypes":["Cat"],"mana_cost":"{2}{W}","colors":["white"],
+             "power":2,"toughness":2,"keywords":["double_strike"]},
+            {"schema_version":1,"functional_id":"test_paragon","name":"Test Paragon",
+             "types":["creature"],"subtypes":["Human","Knight"],"mana_cost":"{2}{W}{W}","colors":["white"],
+             "power":2,"toughness":2,"keywords":["first_strike","double_strike"]}
         ]"#;
         CardDatabase::from_json(json).unwrap()
     }
@@ -940,6 +957,78 @@ mod tests {
                 amount: 3,
                 deathtouch: false,
             }]
+        );
+    }
+
+    #[test]
+    fn issue_373_double_striker_alone_needs_two_damage_steps_cr_510_5() {
+        // CR 702.4b: a double striker deals in the first-strike step, so its mere
+        // presence splits combat into two steps even when no creature has plain first
+        // strike.
+        let db = keyword_db();
+        let mut state = GameState::new_two_player();
+        let _atk = attacker(&mut state, id_in(&db, "test_twinstrike"), PlayerId(0)); // double strike
+        assert!(
+            combat_has_first_strike(&state, &db),
+            "a lone double striker still needs the two-step sequence (CR 510.5)"
+        );
+    }
+
+    #[test]
+    fn issue_373_unblocked_double_striker_deals_in_both_steps_cr_702_4b() {
+        // CR 702.4b: an unblocked double striker assigns its power in the first-strike
+        // step AND again in the regular step — its power to the defending player twice.
+        let db = keyword_db();
+        let mut state = GameState::new_two_player();
+        let _atk = attacker(&mut state, id_in(&db, "test_twinstrike"), PlayerId(0)); // 2/2 double strike
+        let blocked = blocked_attackers(&state);
+
+        let first = combat_damage(&state, &db, DamageStep::FirstStrike, &blocked);
+        assert_eq!(
+            first,
+            vec![CombatDamage::ToPlayer {
+                player: PlayerId(1),
+                amount: 2,
+            }],
+            "the double striker deals in the first-strike step (CR 702.4b)"
+        );
+        let regular = combat_damage(&state, &db, DamageStep::Regular, &blocked);
+        assert_eq!(
+            regular,
+            vec![CombatDamage::ToPlayer {
+                player: PlayerId(1),
+                amount: 2,
+            }],
+            "and deals its power again in the regular step (CR 702.4b)"
+        );
+    }
+
+    #[test]
+    fn cr_702_4c_double_strike_with_first_strike_deals_exactly_twice() {
+        // CR 702.4c: a creature with both first strike and double strike deals combat
+        // damage exactly twice — once per step, never a third time. Combat has only
+        // the two steps, and the creature deals its power in each, not more.
+        let db = keyword_db();
+        let mut state = GameState::new_two_player();
+        let _atk = attacker(&mut state, id_in(&db, "test_paragon"), PlayerId(0)); // first strike + double strike
+        let blocked = blocked_attackers(&state);
+
+        let first = combat_damage(&state, &db, DamageStep::FirstStrike, &blocked);
+        let regular = combat_damage(&state, &db, DamageStep::Regular, &blocked);
+        // One hit in each step, and there is no third step: exactly twice.
+        assert_eq!(
+            first,
+            vec![CombatDamage::ToPlayer {
+                player: PlayerId(1),
+                amount: 2,
+            }],
+        );
+        assert_eq!(
+            regular,
+            vec![CombatDamage::ToPlayer {
+                player: PlayerId(1),
+                amount: 2,
+            }],
         );
     }
 

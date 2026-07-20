@@ -66,7 +66,7 @@ no Oracle text, flavor, art, or branding.
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `first_strike`,
-`trample`, `deathtouch`, and `lifelink`.
+`trample`, `deathtouch`, `lifelink`, and `double_strike`.
 
 The full `abilities`, `spell_effects`, target, cost, and Aura shapes are the enums in
 `crates/rune-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce
