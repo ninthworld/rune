@@ -564,6 +564,30 @@ pub enum GameOverReason {
     Decked,
     /// A player conceded (CR 104.3a).
     Concede,
+    /// A player was dealt 21 or more combat damage over the game by a single
+    /// commander (CR 903.10a).
+    CommanderDamage,
+}
+
+/// One player's cumulative **combat** damage from one commander this game
+/// (CR 903.10a), as carried in [`GameView::commander_damage`]. **Public
+/// information** — every player and spectator may see it — projected from the
+/// engine's per-designation tally.
+///
+/// The shape is minimal: per damaged player, per commander. A commander is named
+/// by its owning player's id ([`Self::commander`]), since one player designates at
+/// most one commander today; this is the stable key the engine's tally uses, so it
+/// survives the commander's zone changes. A client renders 21 as the lethal
+/// threshold ([`GameOverReason::CommanderDamage`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommanderDamage {
+    /// The commander that dealt the damage, named by its owning player's id — the
+    /// designation key (one commander per player today).
+    pub commander: PlayerId,
+    /// The player that has taken the damage.
+    pub damaged: PlayerId,
+    /// Cumulative combat damage this commander has dealt this player this game.
+    pub amount: u32,
 }
 
 /// The terminal outcome of a game (CR 104.2a), present on a [`GameView`] only once
@@ -707,6 +731,17 @@ pub struct GameView {
     /// label, so an older server that never sends names keeps working.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub player_names: BTreeMap<PlayerId, String>,
+    /// Cumulative **combat** damage each commander has dealt each player this game
+    /// (CR 903.10a, issue #371), one entry per `(commander, damaged)` pair that has
+    /// taken any — see [`CommanderDamage`]. **Public information**, so it is the
+    /// same for every receiver. A player who has taken 21+ from one commander has
+    /// lost (that shows in [`Self::result`] with
+    /// [`GameOverReason::CommanderDamage`]); the running tally lets a client warn
+    /// before then. Additive: omitted (and defaults to empty) so a non-commander
+    /// game — and an older client — is unchanged. Server-computed; never derived by
+    /// the client.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commander_damage: Vec<CommanderDamage>,
 }
 
 /// The state a **spectator** connection receives (ADR 0022, issue #351): a
@@ -773,6 +808,12 @@ pub struct SpectatorView {
     /// seated views carry, so a spectator labels every player without a lobby round-trip.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub player_names: BTreeMap<PlayerId, String>,
+    /// Cumulative commander combat damage per `(commander, damaged)` pair (CR
+    /// 903.10a, issue #371) — the same **public** tally seated views carry (see
+    /// [`GameView::commander_damage`]). Omitted (defaults to empty) in a
+    /// non-commander game.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commander_damage: Vec<CommanderDamage>,
 }
 
 /// The client's chosen action, answered atomically: the `id` of one issued
@@ -1455,6 +1496,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         // Defaults elide.
         let json = serde_json::to_value(&view).unwrap();
@@ -1908,6 +1950,12 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            // Commander combat damage (issue #371): a public per-commander tally.
+            commander_damage: vec![CommanderDamage {
+                commander: "p2".into(),
+                damaged: "p1".into(),
+                amount: 14,
+            }],
         };
 
         let json = serde_json::to_string(&view).unwrap();
@@ -1916,6 +1964,41 @@ mod tests {
         // The receiver's own stats survive the round trip (issue #255).
         assert_eq!(back.me.life, 18);
         assert_eq!(back.me.library_size, 52);
+        // The commander-damage tally round-trips (issue #371).
+        assert_eq!(back.commander_damage[0].amount, 14);
+    }
+
+    #[test]
+    fn issue_371_commander_damage_tally_uses_snake_case_and_elides_when_empty() {
+        // The public commander-damage tally serializes with snake_case keys, and the
+        // `commander_damage` field is omitted entirely when empty (additive shape:
+        // a non-commander game and an older client see no change).
+        let entry = CommanderDamage {
+            commander: "p0".into(),
+            damaged: "p2".into(),
+            amount: 21,
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(json["commander"], "p0");
+        assert_eq!(json["damaged"], "p2");
+        assert_eq!(json["amount"], 21);
+
+        let view: GameView =
+            serde_json::from_str(r#"{"you":"p0","phase":"precombat_main"}"#).unwrap();
+        assert!(view.commander_damage.is_empty());
+        let round = serde_json::to_value(&view).unwrap();
+        assert!(
+            round.get("commander_damage").is_none(),
+            "an empty tally is elided from the wire"
+        );
+    }
+
+    #[test]
+    fn issue_371_commander_damage_loss_reason_is_snake_case() {
+        // CR 903.10a: the commander-damage loss reason mirrors onto the wire as a
+        // snake_case `commander_damage`, distinguishable from the other reasons.
+        let json = serde_json::to_value(GameOverReason::CommanderDamage).unwrap();
+        assert_eq!(json, serde_json::json!("commander_damage"));
     }
 
     #[test]
@@ -1961,6 +2044,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         let json = serde_json::to_string(&view).unwrap();
         let back: GameView = serde_json::from_str(&json).unwrap();
@@ -1992,6 +2076,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         // Empty pool is elided from the wire.
         let json = serde_json::to_value(&view).unwrap();
@@ -2566,6 +2651,7 @@ mod tests {
             result: None,
             log: vec![],
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
         // Redaction is structural: the type has no receiver/decision fields at all.
@@ -2817,6 +2903,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         // Live game: the field elides entirely.
         let json = serde_json::to_value(&view).unwrap();
@@ -2876,6 +2963,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
         // The receiver's own seat id is always present on the wire (like `phase`),
@@ -2973,6 +3061,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         // Empty map elides from the wire.
         assert!(serde_json::to_value(&view)
@@ -3024,6 +3113,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: BTreeMap::new(),
+            commander_damage: Vec::new(),
         };
         // Not rejected: the field elides from the wire (the common case).
         assert!(serde_json::to_value(&view)

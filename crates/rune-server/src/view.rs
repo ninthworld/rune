@@ -22,10 +22,11 @@ use rune_engine::{
 
 use crate::rules_text::{ability_text, effects_description, rules_text};
 use rune_protocol::{
-    CardView, ChooseAction, Counter, GameLogEntry, GameLogEvent, GameOverReason,
-    GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
-    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
-    TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    CardView, ChooseAction, CommanderDamage as CommanderDamageView, Counter, GameLogEntry,
+    GameLogEvent, GameOverReason, GameResult as GameResultView, GameView, LogBlock,
+    LogDamageTarget, LogEntity, OpponentView, Permanent as PermanentView, Phase, Prompt,
+    PromptOption, SelfView, SpectatorView, StackItem, TargetChoice, TargetRequirement, ValidAction,
+    ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -1088,6 +1089,9 @@ pub(crate) fn personalized_view(
         // fills this in after projection (issue #294). Empty here so this pure shim
         // stays name-agnostic and the field elides from the wire by default.
         player_names: std::collections::BTreeMap::new(),
+        // Commander combat-damage tally (CR 903.10a, issue #371): public information,
+        // projected verbatim from the engine's per-designation totals.
+        commander_damage: commander_damage_view(state),
     }
 }
 
@@ -1166,6 +1170,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
         log: log_entries(state, db),
         // Names are a lobby/session concern; the room fills them after projection.
         player_names: std::collections::BTreeMap::new(),
+        // Commander combat-damage tally (CR 903.10a, issue #371): public information a
+        // spectator sees exactly as seated players do.
+        commander_damage: commander_damage_view(state),
     }
 }
 
@@ -1305,7 +1312,24 @@ fn game_over_reason(reason: LossReason) -> GameOverReason {
         LossReason::ZeroLife => GameOverReason::LifeZero,
         LossReason::DrewFromEmptyLibrary => GameOverReason::Decked,
         LossReason::Concede => GameOverReason::Concede,
+        LossReason::CommanderDamage => GameOverReason::CommanderDamage,
     }
+}
+
+/// Project the engine's per-designation commander-damage tally (CR 903.10a, issue
+/// #371) onto the wire [`CommanderDamageView`]. **Public information** — the same
+/// for every receiver — so both seated and spectator views carry it verbatim. Each
+/// commander is named by its owning player's `p{N}` id, the stable designation key.
+fn commander_damage_view(state: &GameState) -> Vec<CommanderDamageView> {
+    state
+        .commander_damage
+        .iter()
+        .map(|entry| CommanderDamageView {
+            commander: player_id(entry.commander),
+            damaged: player_id(entry.damaged),
+            amount: entry.amount,
+        })
+        .collect()
 }
 
 /// Project the engine's terminal [`GameResult`] onto the wire [`GameResultView`],
@@ -3500,5 +3524,35 @@ mod tests {
                 }],
             }
         );
+    }
+
+    #[test]
+    fn issue_371_commander_damage_tally_projects_as_public_information() {
+        // CR 903.10a (issue #371): the engine's per-designation commander-damage
+        // tally is public, so every seated view and the spectator view carry it
+        // verbatim, each commander named by its owning player's `p{N}` id.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_multiplayer(3);
+        // Public tally set directly (the engine's incrementing seam is crate-private).
+        state.commander_damage.push(rune_engine::CommanderDamage {
+            commander: PlayerId(0),
+            damaged: PlayerId(1),
+            amount: 14,
+        });
+
+        let seated = personalized_view(&state, &db, PlayerId(2));
+        assert_eq!(seated.commander_damage.len(), 1);
+        let entry = &seated.commander_damage[0];
+        assert_eq!(entry.commander, player_id(PlayerId(0)));
+        assert_eq!(entry.damaged, player_id(PlayerId(1)));
+        assert_eq!(entry.amount, 14);
+
+        // A spectator sees the same public tally.
+        let spectator = spectator_view(&state, &db);
+        assert_eq!(spectator.commander_damage, seated.commander_damage);
+
+        // A game with no commander damage elides the field entirely.
+        let empty = personalized_view(&GameState::new_two_player(), &db, PlayerId(0));
+        assert!(empty.commander_damage.is_empty());
     }
 }

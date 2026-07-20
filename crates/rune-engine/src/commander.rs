@@ -31,6 +31,19 @@ use crate::mana::ManaCost;
 /// (CR 903.8: "that costs an additional `{2}` for each previous time").
 pub const COMMANDER_TAX_PER_CAST: u32 = 2;
 
+/// How much **combat** damage a single commander must have dealt one player over
+/// the game for that player to lose (CR 903.10a: "21 or more combat damage from
+/// any one commander").
+///
+/// The tally this compares against is cumulative across combats and keyed to the
+/// commander *designation*, so it survives the commander's zone changes and
+/// recasts (a fresh [`PermanentId`](crate::PermanentId) every battlefield entry)
+/// — see [`GameState::commander_damage`](crate::GameState::commander_damage). The
+/// state-based-actions loop ([`crate::sba::run_state_based_actions`]) applies the
+/// loss; in a game of three or more the loser is eliminated through the existing
+/// CR 800.4a leave-the-game path.
+pub const COMMANDER_DAMAGE_LOSS_THRESHOLD: u32 = 21;
+
 /// A player's commander designation and the bookkeeping that outlives every
 /// object the commander becomes (CR 903).
 ///

@@ -841,6 +841,7 @@ mod tests {
             auto_passed: false,
             action_rejected: false,
             player_names: std::collections::BTreeMap::new(),
+            commander_damage: Vec::new(),
             seat_order: Vec::new(),
         }
     }

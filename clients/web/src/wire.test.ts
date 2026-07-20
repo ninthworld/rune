@@ -57,7 +57,25 @@ describe('parseGameView', () => {
       auto_passed: false,
       action_rejected: false,
       player_names: {},
+      commander_damage: [],
     });
+  });
+
+  it('normalizes the public commander-damage tally, dropping malformed entries (issue #371)', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'combat_damage',
+        commander_damage: [
+          { commander: 'p0', damaged: 'p1', amount: 14 },
+          { commander: 'p2', damaged: 'p1' }, // missing amount — dropped
+          'garbage', // not an object — dropped
+        ],
+      }),
+    );
+    expect(view.commander_damage).toEqual([{ commander: 'p0', damaged: 'p1', amount: 14 }]);
+
+    // Omitted entirely (a non-commander game / older server) defaults to `[]`.
+    expect(parseGameView('{"phase":"upkeep"}').commander_damage).toEqual([]);
   });
 
   it('omits result while the game is live', () => {

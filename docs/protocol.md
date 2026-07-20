@@ -52,6 +52,16 @@ redacted before serialization.
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
+| `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
+
+`commander_damage` is the cumulative **combat** damage each commander has dealt each
+player this game (CR 903.10a). Each entry is `{ commander, damaged, amount }`, where
+`commander` and `damaged` are `PlayerId`s — a commander is named by its owning player’s
+id, since one player designates at most one commander today, and that key is stable
+across the commander’s zone changes. Public information (identical for every receiver
+and for spectators); a player who has taken 21 or more from a single commander has lost,
+which surfaces in `result.reason` as `commander_damage`. The list is omitted (defaults to
+`[]`) in a non-commander game, so an older client is unaffected.
 
 `player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
 any in-game surface — the turn indicator, player tiles, zone-browser titles, the
@@ -329,7 +339,8 @@ When the game ends, `result` is present and `valid_actions` is empty:
 }
 ```
 
-`winner` is absent for a draw. `reason` is one of `life_zero`, `decked`, or `concede`.
+`winner` is absent for a draw. `reason` is one of `life_zero`, `decked`, `concede`, or
+`commander_damage` (a player took 21+ combat damage from a single commander, CR 903.10a).
 Further submitted actions are rejected and the final view is re-sent.
 
 ### `SpectatorView`
@@ -340,7 +351,7 @@ the game live with all hidden information redacted. Redaction is **structural**:
 simply has no receiver or decision fields, so a projection cannot leak a hand, a library’s
 contents, a mana pool, or a `valid_actions` list to a spectator. It reuses `GameView`’s public
 component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, `GameLogEntry`,
-`Phase`, `PlayerId`, `GameResult`).
+`Phase`, `PlayerId`, `GameResult`, `CommanderDamage`).
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -357,6 +368,7 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 | `result` | `GameResult?` | Terminal result; absent during a live game |
 | `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent **public** game history |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
+| `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 
 A `SpectatorView` carries **no** `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
 `action_deadline`, `stops`, `auto_passed`, or `action_rejected` — those fields do not exist on

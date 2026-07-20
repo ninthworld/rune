@@ -442,6 +442,34 @@ pub enum Modification {
     GrantKeyword(Keyword),
 }
 
+/// One running total of cumulative **combat** damage a commander has dealt a
+/// player over the game (CR 903.10a).
+///
+/// **Raw stored history, not a derivation** (ADR 0010 §1): "how much combat
+/// damage has this commander dealt this player *so far*" is a fact a bare
+/// snapshot cannot recover — the same reasoning as [`Permanent::damage`] — so it
+/// is stored, in [`GameState::commander_damage`].
+///
+/// The key is the **commander designation** ([`Self::commander`], the owning
+/// player) and the [`damaged`](Self::damaged) player, **never** a
+/// [`PermanentId`]. A commander is minted a fresh `PermanentId` on every
+/// battlefield entry, so keying the tally to a permanent would silently reset it
+/// each time the commander changed zones and re-entered; keying it to the
+/// designation (which one player has at most one of today, so its owner's
+/// [`PlayerId`] identifies it) makes the total survive those zone changes and
+/// recasts, exactly as CR 903.10a's "any one commander" requires.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CommanderDamage {
+    /// The commander that dealt the damage, identified by its owning player — the
+    /// stable designation key (one commander per player today). Survives the
+    /// commander's fresh [`PermanentId`] on every battlefield re-entry.
+    pub commander: PlayerId,
+    /// The player the commander has dealt combat damage to.
+    pub damaged: PlayerId,
+    /// Cumulative combat damage this commander has dealt this player this game.
+    pub amount: u32,
+}
+
 /// The complete, immutable state of a game at one moment.
 ///
 /// Every field is either raw state or a stable id; nothing derivable (current
@@ -531,6 +559,20 @@ pub struct GameState {
     /// ([`crate::sba::run_state_based_actions`]) consumes (drains) it, so it is
     /// empty between combats; non-combat deathtouch is not modeled yet.
     pub deathtouch_struck: Vec<PermanentId>,
+    /// Cumulative **combat** damage each commander has dealt each player over the
+    /// game (CR 903.10a), one entry per `(commander designation, damaged player)`
+    /// pair that has taken any — see [`CommanderDamage`].
+    ///
+    /// **Raw stored history, not a derivation** (ADR 0010 §1): unlike marked
+    /// [`Permanent::damage`] (which clears at cleanup) this total is *never*
+    /// reset — it accumulates for the whole game and outlives the commander's zone
+    /// changes because it is keyed to the designation, not to any battlefield
+    /// object. Fed only by combat damage a commander deals a player (see
+    /// `apply.rs :: apply_combat_batch`); non-combat damage from a commander does
+    /// not count (CR 903.10a). The state-based-actions loop reads it for the CR
+    /// 903.10a loss ([`crate::sba::run_state_based_actions`]). Empty for a game
+    /// with no commanders, so a non-commander game is byte-for-byte unchanged.
+    pub commander_damage: Vec<CommanderDamage>,
     /// Extra turns waiting to be taken, as a stack: the entry pushed last is
     /// taken first (MTG rule 720.1 — the most recently created extra turn
     /// happens first). Each entry is the player who takes that turn.
@@ -601,6 +643,7 @@ impl GameState {
             damage_orders: Vec::new(),
             blockers_declared_by: Vec::new(),
             deathtouch_struck: Vec::new(),
+            commander_damage: Vec::new(),
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
             rng_seed,
@@ -786,6 +829,68 @@ impl GameState {
             });
         }
         true
+    }
+
+    /// The owning player whose commander designation the physical card
+    /// `instance` is, if any (CR 903.3). One player designates at most one
+    /// commander today, so the designation is keyed to — and identified by — that
+    /// owner's [`PlayerId`].
+    ///
+    /// This resolves an on-battlefield commander permanent to its stable
+    /// designation key: a [`CardInstanceId`] never changes across zone moves,
+    /// while a [`PermanentId`] is minted fresh on every battlefield entry, so this
+    /// is what lets the commander-damage tally follow "the same commander" (CR
+    /// 903.10a) rather than resetting when the commander leaves and re-enters play.
+    #[must_use]
+    pub fn commander_owner_of(&self, instance: CardInstanceId) -> Option<PlayerId> {
+        self.players
+            .iter()
+            .enumerate()
+            .find_map(|(seat, player)| match player.commander {
+                Some(commander) if commander.instance == instance => Some(PlayerId(seat)),
+                _ => None,
+            })
+    }
+
+    /// Add `amount` to the cumulative combat damage the commander owned by
+    /// `commander` has dealt `damaged` this game (CR 903.10a), keyed to the
+    /// commander designation and the damaged player so the total survives the
+    /// commander's zone changes and recasts. A zero amount records nothing. Only
+    /// combat damage a commander deals a player routes here (see
+    /// `apply.rs :: apply_combat_batch`).
+    pub(crate) fn add_commander_damage(
+        &mut self,
+        commander: PlayerId,
+        damaged: PlayerId,
+        amount: u32,
+    ) {
+        if amount == 0 {
+            return;
+        }
+        match self
+            .commander_damage
+            .iter_mut()
+            .find(|entry| entry.commander == commander && entry.damaged == damaged)
+        {
+            Some(entry) => entry.amount = entry.amount.saturating_add(amount),
+            None => self.commander_damage.push(CommanderDamage {
+                commander,
+                damaged,
+                amount,
+            }),
+        }
+    }
+
+    /// The cumulative combat damage the commander owned by `commander` has dealt
+    /// `damaged` this game (CR 903.10a); `0` when none is recorded. A pure read of
+    /// the stored [`Self::commander_damage`] tally — used by the view projection
+    /// and the CR 903.10a loss check.
+    #[must_use]
+    pub fn commander_damage_taken(&self, damaged: PlayerId, commander: PlayerId) -> u32 {
+        self.commander_damage
+            .iter()
+            .find(|entry| entry.commander == commander && entry.damaged == damaged)
+            .map_or(0, |entry| entry.amount)
     }
 
     /// Mint a fresh [`CardInstance`] for `card`, drawing a unique

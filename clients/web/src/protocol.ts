@@ -94,6 +94,23 @@ export interface SelfView {
   library_size: number;
 }
 
+/**
+ * One player's cumulative **combat** damage from one commander this game
+ * (CR 903.10a, issue #371), as carried in {@link GameView.commander_damage}.
+ * Public information — every player and spectator sees the same tally. The
+ * commander is named by its owning player's id (one commander per player today),
+ * the stable key that survives the commander's zone changes; the client renders 21
+ * as the lethal threshold. Server-computed; never derived by the client.
+ */
+export interface CommanderDamage {
+  /** The commander that dealt the damage, as its owning player's id. */
+  commander: PlayerId;
+  /** The player that has taken the damage. */
+  damaged: PlayerId;
+  /** Cumulative combat damage this commander has dealt this player this game. */
+  amount: number;
+}
+
 /** A named counter on a permanent. */
 export interface Counter {
   /** Counter name, e.g. `"+1/+1"` or `"loyalty"`. */
@@ -398,14 +415,16 @@ export interface ValidAction {
  * {@link isGameOverReason} validates a wire value against it, so a reason added
  * here can never drift out of the type (and vice versa).
  */
-export const GAME_OVER_REASONS = ['life_zero', 'decked', 'concede'] as const;
+export const GAME_OVER_REASONS = ['life_zero', 'decked', 'concede', 'commander_damage'] as const;
 
 /**
- * Why a game ended (CR 104.3 / CR 704.5), a closed snake_case enum; one of
- * {@link GAME_OVER_REASONS}:
+ * Why a game ended (CR 104.3 / CR 704.5 / CR 903.10a), a closed snake_case enum;
+ * one of {@link GAME_OVER_REASONS}:
  * - `life_zero` — a player was reduced to 0 or less life (CR 704.5a).
  * - `decked` — a player attempted to draw from an empty library (CR 704.5c).
  * - `concede` — a player conceded (CR 104.3a).
+ * - `commander_damage` — a player took 21+ combat damage from one commander
+ *   (CR 903.10a).
  */
 export type GameOverReason = (typeof GAME_OVER_REASONS)[number];
 
@@ -542,6 +561,16 @@ export interface GameView {
    * defaults it to `{}`, so an older server that never sends names keeps working.
    */
   player_names: Record<PlayerId, string>;
+  /**
+   * Cumulative commander combat damage per `(commander, damaged)` pair (CR 903.10a,
+   * issue #371) — public information, the same for every receiver (see
+   * {@link CommanderDamage}). A player who has taken 21+ from one commander has lost
+   * (shown in {@link GameView.result} with reason `commander_damage`); the running
+   * tally lets the client warn before then. Omitted (treated as `[]`) in a
+   * non-commander game or from an older server; {@link normalizeGameView} defaults
+   * it. Server-computed; never derived by the client.
+   */
+  commander_damage: CommanderDamage[];
 }
 
 /**
@@ -580,6 +609,12 @@ export interface SpectatorView {
   log?: GameLogEntry[];
   /** Public display names keyed by player id. */
   player_names: Record<PlayerId, string>;
+  /**
+   * Cumulative commander combat damage per `(commander, damaged)` pair (CR 903.10a,
+   * issue #371) — the same public tally seated views carry (see
+   * {@link CommanderDamage}). Omitted (treated as `[]`) in a non-commander game.
+   */
+  commander_damage: CommanderDamage[];
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   type CatalogCard,
   type CatalogFormat,
   type CatalogView,
+  type CommanderDamage,
   type Counter,
   type GameResult,
   type GameView,
@@ -143,6 +144,29 @@ function normalizeGameResult(payload: unknown): GameResult | undefined {
 }
 
 /**
+ * Normalize the public commander-damage tally (CR 903.10a, issue #371). The server
+ * elides it when empty, so a missing or malformed value degrades to `[]`; each
+ * entry keeps only the well-formed `(commander, damaged, amount)` triple, dropping
+ * anything else so an unexpected shape never breaks rendering. Wire hygiene, not
+ * game logic — the client renders these numbers and derives no terminality itself.
+ */
+function normalizeCommanderDamage(value: unknown): CommanderDamage[] {
+  if (!Array.isArray(value)) return [];
+  const out: CommanderDamage[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    if (
+      typeof raw.commander === 'string' &&
+      typeof raw.damaged === 'string' &&
+      typeof raw.amount === 'number'
+    ) {
+      out.push({ commander: raw.commander, damaged: raw.damaged, amount: raw.amount });
+    }
+  }
+  return out;
+}
+
+/**
  * Normalize an already-parsed payload into a complete {@link GameView}. Missing
  * collections become empty arrays; optional scalars (`priority_player`,
  * `action_deadline`) are carried through untouched, and the terminal `result` is
@@ -199,6 +223,9 @@ export function normalizeGameView(payload: unknown): GameView {
     // empty; default to `{}` so every surface can look a name up and fall back when
     // absent (older servers never send it).
     player_names: normalizeStringMap(payload.player_names),
+    // Commander combat-damage tally (issue #371): public, elided when empty; default
+    // to `[]` so a non-commander game and an older server are unchanged.
+    commander_damage: normalizeCommanderDamage(payload.commander_damage),
   };
 }
 
@@ -231,6 +258,9 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
     result: normalizeGameResult(payload.result),
     log: asArray(payload.log, 'log'),
     player_names: normalizeStringMap(payload.player_names),
+    // Commander combat-damage tally (issue #371): the same public list seated views
+    // carry, elided when empty.
+    commander_damage: normalizeCommanderDamage(payload.commander_damage),
   };
 }
 
