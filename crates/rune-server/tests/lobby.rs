@@ -387,7 +387,10 @@ async fn a_browser_discovers_a_room_joins_it_and_sees_it_start_end_to_end() {
     // Both seats submit a deck and ready up, passing the gate and constructing a game.
     send(
         &mut alice,
-        LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+        LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: decklist(),
+            commander: None,
+        }),
     )
     .await;
     let _ = view_where(&mut alice, |v| {
@@ -402,7 +405,10 @@ async fn a_browser_discovers_a_room_joins_it_and_sees_it_start_end_to_end() {
 
     send(
         &mut bob,
-        LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+        LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: decklist(),
+            commander: None,
+        }),
     )
     .await;
     let _ = view_where(&mut bob, |v| {

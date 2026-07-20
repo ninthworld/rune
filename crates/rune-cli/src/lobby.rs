@@ -198,6 +198,7 @@ impl LobbyConfig {
                 Some(cards) if offers("submit_deck") => {
                     Some(LobbyCommand::SubmitDeck(SubmitDeck {
                         cards: cards.clone(),
+                        commander: None,
                     }))
                 }
                 _ => None,
@@ -504,6 +505,7 @@ where
             };
             Ok(Some(LobbyCommand::SubmitDeck(SubmitDeck {
                 cards: parse_deck(&raw),
+                commander: None,
             })))
         }
         "set_name" => {
@@ -634,7 +636,7 @@ fn describe_command(command: &LobbyCommand) -> String {
         LobbyCommand::SpectateRoom(SpectateRoom { room_id }) => {
             format!("spectating room {room_id}")
         }
-        LobbyCommand::SubmitDeck(SubmitDeck { cards }) => {
+        LobbyCommand::SubmitDeck(SubmitDeck { cards, .. }) => {
             format!("submitting a {}-card deck", cards.len())
         }
         LobbyCommand::Ready(Ready { ready: true }) => "readying up".to_string(),

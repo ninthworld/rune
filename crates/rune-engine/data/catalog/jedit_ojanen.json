@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "functional_id": "jedit_ojanen",
+  "name": "Jedit Ojanen",
+  "supertypes": ["legendary"],
+  "types": ["creature"],
+  "subtypes": ["Cat", "Warrior"],
+  "mana_cost": "{4}{G}{G}",
+  "colors": ["green"],
+  "power": 5,
+  "toughness": 5
+}

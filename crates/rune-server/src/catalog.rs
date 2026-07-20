@@ -176,6 +176,15 @@ mod tests {
         let ffa = find("standard_ffa");
         assert_eq!((ffa.min_seats, ffa.max_seats), (3, 4));
 
+        // The commander format advertises its 100-card singleton rules and 2–4 seats
+        // honestly (issue #372).
+        let commander = find("commander");
+        assert_eq!(commander.min_deck_size, 100);
+        assert_eq!(commander.max_deck_size, Some(100));
+        assert_eq!(commander.max_copies, Some(1));
+        assert!(commander.basic_land_exempt);
+        assert_eq!((commander.min_seats, commander.max_seats), (2, 4));
+
         // Every registered id is advertised, sorted deterministically by id.
         let ids: Vec<&str> = catalog
             .formats
@@ -184,7 +193,14 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            ["1v1", "ffa-4", "standard_2p", "standard_ffa", "starter-1v1"]
+            [
+                "1v1",
+                "commander",
+                "ffa-4",
+                "standard_2p",
+                "standard_ffa",
+                "starter-1v1"
+            ]
         );
     }
 

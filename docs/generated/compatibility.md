@@ -7,7 +7,7 @@
 
 RUNE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (36)
+## Supported cards (37)
 
 Every functional definition in `crates/rune-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).
 
@@ -27,6 +27,7 @@ Every functional definition in `crates/rune-engine/data/catalog/`, in interned o
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `island` | Island | functional definition |
+| `jedit_ojanen` | Jedit Ojanen | functional definition |
 | `jump` | Jump | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |

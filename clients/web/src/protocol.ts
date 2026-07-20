@@ -111,6 +111,21 @@ export interface CommanderDamage {
   amount: number;
 }
 
+/**
+ * The **commander tax** owed on one player's commander (CR 903.8, issue #372), as
+ * carried in {@link GameView.commander_tax}. Public information — the tax climbs
+ * `{2}` per prior cast from the command zone, so every seat sees a recast's cost.
+ * Server-computed; never derived by the client.
+ */
+export interface CommanderTax {
+  /** The commander this tax applies to, as its owning player's id. */
+  commander: PlayerId;
+  /** How many times this commander has been cast from the command zone this game. */
+  casts?: number;
+  /** Generic mana the tax adds to the next cast (`2 * casts`); `0`/omitted at first. */
+  tax?: number;
+}
+
 /** A named counter on a permanent. */
 export interface Counter {
   /** Counter name, e.g. `"+1/+1"` or `"loyalty"`. */
@@ -483,6 +498,13 @@ export interface GameView {
   graveyards: ZonePile[];
   /** Each player's exile zone. */
   exile: ZonePile[];
+  /**
+   * Each player's command zone (CR 903.6, issue #372): the public pile holding
+   * their commander while it is there. Public information; {@link normalizeGameView}
+   * always sets it (to `[]` when the wire omits it for a non-commander game).
+   * Optional on the interface so existing view literals need not restate it.
+   */
+  command?: ZonePile[];
   /** The current turn step. */
   phase: Phase;
   /**
@@ -571,6 +593,13 @@ export interface GameView {
    * it. Server-computed; never derived by the client.
    */
   commander_damage: CommanderDamage[];
+  /**
+   * The commander tax owed on each designated commander (CR 903.8, issue #372) —
+   * public information (see {@link CommanderTax}). {@link normalizeGameView} always
+   * sets it (to `[]` when omitted). Optional on the interface so existing view
+   * literals need not restate it.
+   */
+  commander_tax?: CommanderTax[];
 }
 
 /**
@@ -593,6 +622,12 @@ export interface SpectatorView {
   graveyards: ZonePile[];
   /** Each player's public exile zone. */
   exile: ZonePile[];
+  /**
+   * Each player's public command zone (CR 903.6, issue #372) — the same public pile
+   * seated views carry. {@link normalizeSpectatorView} always sets it (to `[]` when
+   * omitted for a non-commander game).
+   */
+  command?: ZonePile[];
   /** The current turn step. */
   phase: Phase;
   /** The current turn number (1-based). */
@@ -615,6 +650,12 @@ export interface SpectatorView {
    * {@link CommanderDamage}). Omitted (treated as `[]`) in a non-commander game.
    */
   commander_damage: CommanderDamage[];
+  /**
+   * The commander tax owed on each designated commander (CR 903.8, issue #372) — the
+   * same public projection seated views carry. {@link normalizeSpectatorView} always
+   * sets it (to `[]` when omitted for a non-commander game).
+   */
+  commander_tax?: CommanderTax[];
 }
 
 /**
@@ -966,6 +1007,13 @@ export interface SubmitDeckCommand {
   type: 'submit_deck';
   /** The card identities, duplicates repeated; omitted when empty. */
   cards?: CardIdentity[];
+  /**
+   * The card this seat designates as its commander (CR 903.3, issue #372), by the
+   * same `CardIdentity` its decklist uses. Present only for a commander-format deck
+   * and omitted otherwise, so the frame stays the pre-commander shape. The server
+   * validates the designation authoritatively; the client never computes legality.
+   */
+  commander?: CardIdentity;
 }
 
 /** Declare or retract readiness for this connection's seat. */
@@ -1044,10 +1092,18 @@ export function spectateRoomCommand(roomId: RoomId): SpectateRoomCommand {
   return { type: 'spectate_room', room_id: roomId };
 }
 
-/** Build a `submit_deck` command, eliding `cards` when the decklist is empty. */
-export function submitDeckCommand(cards: CardIdentity[]): SubmitDeckCommand {
+/**
+ * Build a `submit_deck` command, eliding `cards` when the decklist is empty and
+ * `commander` when none is designated (issue #372). The designation is a bare
+ * `CardIdentity`; the server validates it.
+ */
+export function submitDeckCommand(
+  cards: CardIdentity[],
+  commander?: CardIdentity,
+): SubmitDeckCommand {
   const message: SubmitDeckCommand = { type: 'submit_deck' };
   if (cards.length > 0) message.cards = cards;
+  if (commander) message.commander = commander;
   return message;
 }
 

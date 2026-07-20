@@ -38,6 +38,7 @@ redacted before serialization.
 | `stack` | `StackItem[]` | Stack objects, bottom first |
 | `graveyards` | `ZonePile[]` | Public ordered graveyards |
 | `exile` | `ZonePile[]` | Public ordered exile zones |
+| `command` | `ZonePile[]` | Public ordered command zones (CR 903.6, issue #372); omitted when empty |
 | `phase` | `Phase` | Current turn step |
 | `turn` | `number` | One-based turn number; `0` only for an empty state |
 | `active_player` | `PlayerId` | Player whose turn it is |
@@ -53,6 +54,11 @@ redacted before serialization.
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
+| `commander_tax` | `CommanderTax[]` | Public per-commander tax owed on the next cast from the command zone (CR 903.8, issue #372); omitted when empty |
+
+`command` is each player's command zone (CR 903.6), carried in the same public `ZonePile`
+shape as `graveyards`/`exile` (`{ player_id, cards }`), one entry per player with a card
+there. Public information; omitted (defaults to `[]`) in a non-commander game.
 
 `commander_damage` is the cumulative **combat** damage each commander has dealt each
 player this game (CR 903.10a). Each entry is `{ commander, damaged, amount }`, where
@@ -62,6 +68,13 @@ across the commander’s zone changes. Public information (identical for every r
 and for spectators); a player who has taken 21 or more from a single commander has lost,
 which surfaces in `result.reason` as `commander_damage`. The list is omitted (defaults to
 `[]`) in a non-commander game, so an older client is unaffected.
+
+`commander_tax` is the commander tax each designation owes (CR 903.8): each entry is
+`{ commander, casts, tax }`, where `commander` is the owning player's `PlayerId`, `casts`
+is how many times that commander has been cast from the command zone this game, and `tax`
+is the generic mana the tax adds to the next such cast (`2 * casts`). `casts` and `tax`
+are omitted when zero. Public information; the list is omitted (defaults to `[]`) in a
+non-commander game.
 
 `player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
 any in-game surface — the turn indicator, player tiles, zone-browser titles, the
@@ -360,6 +373,7 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 | `stack` | `StackItem[]` | Stack objects, bottom first |
 | `graveyards` | `ZonePile[]` | Public ordered graveyards |
 | `exile` | `ZonePile[]` | Public ordered exile zones |
+| `command` | `ZonePile[]` | Public ordered command zones (CR 903.6, issue #372); omitted when empty |
 | `phase` | `Phase` | Current turn step |
 | `turn` | `number` | One-based turn number |
 | `active_player` | `PlayerId` | Player whose turn it is |
@@ -369,6 +383,7 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 | `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent **public** game history |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
+| `commander_tax` | `CommanderTax[]` | Public per-commander tax owed (CR 903.8, issue #372); omitted when empty |
 
 A `SpectatorView` carries **no** `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
 `action_deadline`, `stops`, `auto_passed`, or `action_rejected` — those fields do not exist on
@@ -444,7 +459,7 @@ Lobby commands are tagged by `type`:
 | `create_room` | `config` | Create and occupy a room |
 | `join_room` | `room_id` | Join a listed room or a room identified out of band |
 | `spectate_room` | `room_id` | Watch an in-progress room as an observer (issue #351) |
-| `submit_deck` | `cards` | Submit functional card identities |
+| `submit_deck` | `cards`, optional `commander` | Submit functional card identities, and (commander format) the designated commander |
 | `ready` | `ready` | Set or clear readiness |
 | `set_name` | `name` | Set or change this connection’s public display name |
 | `request_catalog` | none | Request the public card catalog and format deck rules (issue #367) |
@@ -456,11 +471,22 @@ Lobby commands are tagged by `type`:
 { "type": "join_room", "room_id": "r:7f3" }
 { "type": "spectate_room", "room_id": "r:7f3" }
 { "type": "submit_deck", "cards": ["forest", "verdant_scout"] }
+{ "type": "submit_deck", "cards": ["jedit_ojanen", "forest"], "commander": "jedit_ojanen" }
 { "type": "ready", "ready": true }
 { "type": "set_name", "name": "Alice" }
 { "type": "request_catalog" }
 { "type": "leave" }
 ```
+
+`submit_deck`’s optional `commander` names the card the seat designates as its commander
+(CR 903.3, issue #372), by the same `CardIdentity` (`functional_id`) its decklist uses. It is
+present only for a commander-format deck and omitted otherwise, so the frame stays byte-for-byte
+the pre-commander shape for every other format. The server validates the designation
+authoritatively against the room’s format — it must be one of the deck’s cards and, for the
+commander format, a **legendary creature** whose color identity (and every deck card’s) fits the
+rules (see `CatalogFormat` and the deck-legality notes below); an illegal deck or designation is
+rejected with the lobby’s non-fatal error and the seat keeps whatever deck it had. Deck legality
+is server policy — the client never computes it.
 
 `spectate_room` joins a room as a **spectator** (ADR 0022, issue #351): a non-seated observer
 that watches the game live with all hidden information redacted. Unlike `join_room` it does not
