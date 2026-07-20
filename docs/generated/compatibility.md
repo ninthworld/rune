@@ -57,7 +57,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 
 | Excluded | Blocker |
 | --- | --- |
-| Auras that enchant a player or land, or move between hosts | only P/T-granting enchant-creature Auras are modeled |
+| Auras that enchant a player or land, or move between hosts | only P/T- and keyword-granting enchant-creature Auras are modeled |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Planeswalkers | no loyalty counter system or loyalty abilities |
 | Replacement effects | no replacement-effect layer in the rules engine |

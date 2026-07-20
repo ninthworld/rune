@@ -5,7 +5,7 @@
   },
   {
     "name": "Auras that enchant a player or land, or move between hosts",
-    "blocker": "only P/T-granting enchant-creature Auras are modeled"
+    "blocker": "only P/T- and keyword-granting enchant-creature Auras are modeled"
   },
   {
     "name": "Multi-face cards (transform, modal double-faced)",
