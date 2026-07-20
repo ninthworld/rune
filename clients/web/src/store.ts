@@ -29,6 +29,7 @@ import {
   chooseAction,
   helloCommand,
   setStopsMessage,
+  type CatalogView,
   type GameView,
   type LobbyCommand,
   type LobbyView,
@@ -140,6 +141,10 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
       // simply not stored (the server re-sends the view unchanged, per the non-fatal
       // pattern); there is nothing to reconcile into a retry hint here (issue #294).
       return null;
+    case 'request_catalog':
+      // The catalog reply is a `CatalogView`, not a `LobbyView`, and never changes lobby
+      // state; there is nothing to reconcile into a retry hint (issue #367).
+      return null;
     case 'hello':
       // Identity always succeeds; nothing to reconcile.
       return null;
@@ -164,6 +169,15 @@ export interface GameStore {
    * is replaced wholesale on every lobby frame, exactly like {@link view}.
    */
   lobby: LobbyView | null;
+  /**
+   * The public card catalog + format deck rules (issue #367), or `null` until it has
+   * been requested and received. Static reference data the deck builder (#368) browses,
+   * not per-connection lobby state — fetched once with a `request_catalog` command and
+   * replaced wholesale on each {@link CatalogView} frame. Kept separate from
+   * {@link lobby} because it does not ride the pushed `LobbyView` and does not change
+   * with room/seat state.
+   */
+  catalog: CatalogView | null;
   /**
    * A non-fatal, retryable lobby error to surface (e.g. room full/unknown, deck
    * rejected), or `null`. Ephemeral feedback only — never load-bearing: the
@@ -343,6 +357,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     view: null,
     spectatorView: null,
     lobby: null,
+    catalog: null,
     lobbyError: null,
     rejectionNonce: 0,
     status: 'idle',
@@ -451,6 +466,15 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         // correct. A pending `spectate_room` command is satisfied by this frame arriving.
         pendingLobby = null;
         set({ spectatorView: frame.view, view: null, lobby: null, lobbyError: null });
+        return;
+      }
+
+      if (frame.kind === 'catalog') {
+        // A catalog frame (issue #367): static reference data answered to a
+        // `request_catalog`. It is not lobby/game state, so it does not touch `view`,
+        // `spectatorView`, `lobby`, or the pending-command reconciliation — it only
+        // populates `catalog` for the deck builder (#368) to browse.
+        set({ catalog: frame.catalog });
         return;
       }
 

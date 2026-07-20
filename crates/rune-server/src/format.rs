@@ -290,6 +290,13 @@ impl FormatRegistry {
     pub(crate) fn get(&self, game_setup: &str) -> Option<&Format> {
         self.formats.get(game_setup)
     }
+
+    /// Iterate every registered format with its `game_setup` identifier, for the
+    /// lobby catalog projection (issue #367). Unordered — the catalog builder sorts
+    /// by id for a deterministic wire order.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&GameSetupId, &Format)> {
+        self.formats.iter()
+    }
 }
 
 #[cfg(test)]
