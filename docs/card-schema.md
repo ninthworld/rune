@@ -66,7 +66,7 @@ no Oracle text, flavor, art, or branding.
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `first_strike`,
-`trample`, `deathtouch`, and `lifelink`.
+`trample`, `deathtouch`, `lifelink`, and `double_strike`.
 
 ### Granting keywords (continuous, CR 613.1f)
 

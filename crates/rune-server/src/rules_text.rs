@@ -272,6 +272,7 @@ fn keyword_word(keyword: Keyword) -> &'static str {
         Keyword::Trample => "trample",
         Keyword::Deathtouch => "deathtouch",
         Keyword::Lifelink => "lifelink",
+        Keyword::DoubleStrike => "double strike",
     }
 }
 
@@ -464,6 +465,8 @@ mod tests {
         .unwrap();
         assert_eq!(text_of(&inline, "test_baneclaw"), "Trample, deathtouch");
         assert_eq!(text_of(&inline, "test_duelist"), "First strike");
+        // A real double striker in the bundled catalog renders its keyword (CR 702.4).
+        assert_eq!(text_of(&db, "trained_caracal"), "Double strike");
     }
 
     #[test]
