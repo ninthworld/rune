@@ -16,6 +16,7 @@ import {
   type CommanderDamage,
   type CommanderTax,
   type Counter,
+  type DeckRejection,
   type GameResult,
   type GameView,
   type LobbyView,
@@ -386,6 +387,44 @@ function normalizeRoomSummary(payload: unknown): RoomSummary {
 }
 
 /**
+ * Normalize an optional wire {@link DeckRejection} (issue #395). Returns `undefined`
+ * when absent or malformed (a missing `reason`), so an ordinary view stays reason-free.
+ * A recognized `reason` carries its typed fields (numbers/`card` name) through; an
+ * unknown future `reason` is dropped (`undefined`), leaving the lobby's inferred generic
+ * hint to cover it — wire hygiene, not legality.
+ */
+function normalizeDeckRejection(value: unknown): DeckRejection | undefined {
+  if (!isRecord(value) || typeof value.reason !== 'string') return undefined;
+  const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
+  switch (value.reason) {
+    case 'too_few_cards':
+      return { reason: 'too_few_cards', have: num(value.have), min: num(value.min) };
+    case 'too_many_cards':
+      return { reason: 'too_many_cards', have: num(value.have), max: num(value.max) };
+    case 'too_many_copies':
+      return {
+        reason: 'too_many_copies',
+        card: asString(value.card),
+        count: num(value.count),
+        limit: num(value.limit),
+      };
+    case 'missing_commander':
+      return { reason: 'missing_commander' };
+    case 'commander_not_in_deck':
+      return { reason: 'commander_not_in_deck', card: asString(value.card) };
+    case 'commander_not_legendary_creature':
+      return { reason: 'commander_not_legendary_creature', card: asString(value.card) };
+    case 'out_of_identity':
+      return { reason: 'out_of_identity', card: asString(value.card) };
+    case 'unknown_card':
+      return { reason: 'unknown_card', card: asString(value.card) };
+    default:
+      // An unknown future reason: drop it; the inferred generic hint covers the case.
+      return undefined;
+  }
+}
+
+/**
  * Normalize an already-parsed payload into a complete {@link LobbyView}. Missing
  * `session`/`you` default to `''` (like `GameView.you`), `room` stays absent when
  * omitted, and `directory`/`valid_commands` become the empty array. This is wire
@@ -404,6 +443,9 @@ export function normalizeLobbyView(payload: unknown): LobbyView {
   // The connection's own display name (issue #294): present only once set.
   if (typeof payload.name === 'string') view.name = payload.name;
   if (isRecord(payload.room)) view.room = normalizeRoomView(payload.room);
+  // A deck-rejection reason (issue #395): present only on the submitting seat's re-send.
+  const rejection = normalizeDeckRejection(payload.deck_rejection);
+  if (rejection !== undefined) view.deck_rejection = rejection;
   return view;
 }
 

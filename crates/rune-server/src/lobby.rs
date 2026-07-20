@@ -76,9 +76,9 @@ use rune_engine::{
     CardDatabase, CardId, CatalogError, FunctionalId, GameSetup, GameState, PlayerSetup,
 };
 use rune_protocol::{
-    CatalogView, CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig,
-    RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken, SetName, SpectateRoom,
-    SubmitDeck,
+    CatalogView, CreateRoom, DeckRejection, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready,
+    RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken, SetName,
+    SpectateRoom, SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -113,8 +113,10 @@ const MAX_NAME_LEN: usize = 32;
 /// hands off to [`serve_connection`], after which the room speaks `GameView`s.
 #[derive(Clone)]
 pub(crate) enum LobbySignal {
-    /// A fresh pre-game snapshot to serialize and send.
-    View(LobbyView),
+    /// A fresh pre-game snapshot to serialize and send. Boxed so this common variant
+    /// does not bloat every [`LobbySignal`] in the watch channel to the size of a full
+    /// [`LobbyView`] (the terminal `Start`/`Spectate` variants are small).
+    View(Box<LobbyView>),
     /// The gate passed: this connection now owns `seat` of a started room and
     /// should switch to the in-game contract driven by `room`.
     Start {
@@ -658,8 +660,19 @@ impl Lobby {
             LobbyCommand::RequestCatalog => Ok(()),
         };
         // Whether the command succeeded (and already pushed the affected views) or
-        // was rejected, the sender always ends with a fresh, authoritative view.
-        push_view(&registry, token);
+        // was rejected, the sender always ends with a fresh, authoritative view. When
+        // the rejection is a deck-submission verdict (issue #395), that one targeted
+        // re-send — and only it — carries the structured reason, resolved to card
+        // *names* from the sender's own list. No broadcast or roster push ever carries
+        // it, so no other seat or spectator learns why (redaction is structural).
+        match result
+            .as_ref()
+            .err()
+            .and_then(|error| deck_rejection_of(error, &self.inner.db))
+        {
+            Some(rejection) => push_view_with_rejection(&registry, token, rejection),
+            None => push_view(&registry, token),
+        }
         result
     }
 
@@ -1241,6 +1254,9 @@ fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
         room,
         directory: build_directory(registry),
         valid_commands,
+        // Every ordinary view omits the rejection reason; only the targeted re-send to
+        // a seat whose `submit_deck` was just rejected sets it (see `push_view_with_rejection`).
+        deck_rejection: None,
     })
 }
 
@@ -1365,8 +1381,93 @@ fn push_view(registry: &Registry, token: &SessionToken) {
         return;
     }
     if let Some(view) = build_view(registry, token) {
-        let _ = session.outbox.send(Some(LobbySignal::View(view)));
+        let _ = session.outbox.send(Some(LobbySignal::View(Box::new(view))));
     }
+}
+
+/// Push a fresh [`LobbyView`] to one session's outbox carrying a structured
+/// [`DeckRejection`] (issue #395) — the targeted re-send to a seat whose `submit_deck`
+/// was just rejected. Identical to [`push_view`] (same closed-outbox and started-room
+/// guards) except this one view is stamped with the reason. It is the **only** push
+/// that ever sets `deck_rejection`, so the reason reaches exactly the submitting seat
+/// and no other view — the redaction guarantee.
+fn push_view_with_rejection(registry: &Registry, token: &SessionToken, rejection: DeckRejection) {
+    let Some(session) = registry.sessions.get(token) else {
+        return;
+    };
+    if session
+        .room
+        .as_ref()
+        .and_then(|room_id| registry.rooms.get(room_id))
+        .is_some_and(|room| room.game.is_some())
+    {
+        return;
+    }
+    if let Some(mut view) = build_view(registry, token) {
+        view.deck_rejection = Some(rejection);
+        let _ = session.outbox.send(Some(LobbySignal::View(Box::new(view))));
+    }
+}
+
+/// Project a rejected [`LobbyError`] into the wire [`DeckRejection`] the submitting
+/// seat is shown (issue #395), or `None` for a rejection that is not a deck submission
+/// (a full room, an unknown format, an illegal name, …) — those keep the plain
+/// view re-send with no reason. The card-naming variants resolve the offending
+/// [`CardId`] to its **display name** through `db`; that card is always one from the
+/// submitter's own list (a deck card or its own designated commander), never another
+/// seat's deck or any hidden state.
+fn deck_rejection_of(error: &LobbyError, db: &CardDatabase) -> Option<DeckRejection> {
+    match error {
+        // An unresolvable identity is echoed verbatim — it is the submitter's own input.
+        LobbyError::UnknownCard(identity) => Some(DeckRejection::UnknownCard {
+            card: identity.clone(),
+        }),
+        LobbyError::IllegalDeck(deck_error) => Some(deck_rejection_from(deck_error, db)),
+        _ => None,
+    }
+}
+
+/// Map a server-internal [`DeckError`] to its wire [`DeckRejection`], resolving each
+/// offending [`CardId`] to a display name via [`card_name`]. Structured data only — no
+/// server prose; the client renders each variant.
+fn deck_rejection_from(error: &DeckError, db: &CardDatabase) -> DeckRejection {
+    match error {
+        DeckError::BelowMinimum { have, min } => DeckRejection::TooFewCards {
+            have: *have,
+            min: *min,
+        },
+        DeckError::AboveMaximum { have, max } => DeckRejection::TooManyCards {
+            have: *have,
+            max: *max,
+        },
+        DeckError::CopyLimit { card, count, limit } => DeckRejection::TooManyCopies {
+            card: card_name(db, *card),
+            count: *count,
+            limit: *limit,
+        },
+        DeckError::MissingCommander => DeckRejection::MissingCommander,
+        DeckError::CommanderNotInDeck { card } => DeckRejection::CommanderNotInDeck {
+            card: card_name(db, *card),
+        },
+        DeckError::CommanderNotLegendaryCreature { card } => {
+            DeckRejection::CommanderNotLegendaryCreature {
+                card: card_name(db, *card),
+            }
+        }
+        DeckError::OutOfIdentity { card } => DeckRejection::OutOfIdentity {
+            card: card_name(db, *card),
+        },
+    }
+}
+
+/// The display name of a card for a rejection reason, or a stable `card N` fallback if
+/// the id somehow does not resolve (it always does here — the deck's ids were validated
+/// against this same `db` at submit). The name is human-readable and matches how cards
+/// are named everywhere else on the wire (e.g. `CardView::name`).
+fn card_name(db: &CardDatabase, card: CardId) -> String {
+    db.card(card)
+        .map(|data| data.name.clone())
+        .unwrap_or_else(|| format!("card {}", card.0))
 }
 
 /// Push a fresh [`LobbyView`] to every occupant of a room (their shared roster
@@ -1616,6 +1717,27 @@ mod tests {
         "walking_corpse",
     ];
 
+    /// A legal 100-card mono-green commander decklist as wire identities (mirrors the
+    /// `format.rs` acceptance deck): Jedit Ojanen and the catalog's other in-identity
+    /// non-basics, filled to 100 with Forests. The rejection tests perturb one copy.
+    fn commander_decklist() -> Vec<String> {
+        let non_basics = [
+            "jedit_ojanen",
+            "llanowar_elves",
+            "druid_of_the_cowl",
+            "giant_spider",
+            "colossal_dreadmaw",
+            "gigantosaurus",
+            "titanic_growth",
+            "skyscanner",
+        ];
+        let mut cards: Vec<String> = non_basics.iter().map(|slug| wire_id(slug)).collect();
+        while cards.len() < 100 {
+            cards.push(wire_id("forest"));
+        }
+        cards
+    }
+
     /// A card as `SubmitDeck` carries it: its authored `functional_id` (ADR 0018 §3).
     fn wire_id(slug: &str) -> String {
         slug.to_string()
@@ -1690,7 +1812,7 @@ mod tests {
         /// The latest pre-game view pushed to this client (awaiting the next change).
         async fn view(&mut self) -> LobbyView {
             match self.signal().await {
-                LobbySignal::View(view) => view,
+                LobbySignal::View(view) => *view,
                 LobbySignal::Start { .. } | LobbySignal::Spectate { .. } => {
                     panic!("expected a lobby view, got a hand-off")
                 }
@@ -1700,7 +1822,7 @@ mod tests {
         /// The current view without waiting for a further change.
         fn current(&self) -> LobbyView {
             match self.rx.borrow().clone().expect("a signal is present") {
-                LobbySignal::View(view) => view,
+                LobbySignal::View(view) => *view,
                 LobbySignal::Start { .. } | LobbySignal::Spectate { .. } => {
                     panic!("expected a lobby view, got a hand-off")
                 }
@@ -2783,6 +2905,310 @@ mod tests {
             })
         );
         assert!(!alice.current().room.expect("in room").seats[0].decked);
+    }
+
+    // ----------------------------------------------------------------------
+    // Deck-rejection feedback to the submitting seat (issue #395).
+    // ----------------------------------------------------------------------
+
+    /// The last view pushed to `client`, asserting its `deck_rejection` matches
+    /// `expected` — the structured reason delivered to the submitting seat.
+    fn assert_rejection(client: &Client, expected: DeckRejection) {
+        let view = client.current();
+        assert_eq!(
+            view.deck_rejection,
+            Some(expected),
+            "the submitting seat's view carries the structured reason"
+        );
+    }
+
+    #[test]
+    fn issue_395_every_deck_error_class_maps_to_a_wire_reason_naming_its_card() {
+        // The lobby→wire projection is total: every `DeckError` class (and the separate
+        // unknown-card rejection) becomes a `DeckRejection`, and each card-bearing class
+        // resolves its `CardId` to a display name from the submitter's own list. This is
+        // the "one per rejection class" coverage; the integration tests below prove the
+        // delivery and redaction plumbing.
+        let db = CardDatabase::bundled().expect("bundled cards");
+        let ogre = fixture("onakke_ogre");
+        let ogre_name = db.card(ogre).expect("known card").name.clone();
+
+        assert_eq!(
+            deck_rejection_from(&DeckError::BelowMinimum { have: 10, min: 40 }, &db),
+            DeckRejection::TooFewCards { have: 10, min: 40 }
+        );
+        assert_eq!(
+            deck_rejection_from(
+                &DeckError::AboveMaximum {
+                    have: 101,
+                    max: 100
+                },
+                &db
+            ),
+            DeckRejection::TooManyCards {
+                have: 101,
+                max: 100
+            }
+        );
+        assert_eq!(
+            deck_rejection_from(
+                &DeckError::CopyLimit {
+                    card: ogre,
+                    count: 5,
+                    limit: 4
+                },
+                &db
+            ),
+            DeckRejection::TooManyCopies {
+                card: ogre_name.clone(),
+                count: 5,
+                limit: 4
+            }
+        );
+        assert_eq!(
+            deck_rejection_from(&DeckError::MissingCommander, &db),
+            DeckRejection::MissingCommander
+        );
+        assert_eq!(
+            deck_rejection_from(&DeckError::CommanderNotInDeck { card: ogre }, &db),
+            DeckRejection::CommanderNotInDeck {
+                card: ogre_name.clone()
+            }
+        );
+        assert_eq!(
+            deck_rejection_from(
+                &DeckError::CommanderNotLegendaryCreature { card: ogre },
+                &db
+            ),
+            DeckRejection::CommanderNotLegendaryCreature {
+                card: ogre_name.clone()
+            }
+        );
+        assert_eq!(
+            deck_rejection_from(&DeckError::OutOfIdentity { card: ogre }, &db),
+            DeckRejection::OutOfIdentity {
+                card: ogre_name.clone()
+            }
+        );
+        // The unknown-card rejection (a distinct `LobbyError`) echoes the submitter's
+        // own identity string verbatim — nothing to resolve, nothing hidden.
+        assert_eq!(
+            deck_rejection_of(&LobbyError::UnknownCard("no_such_card".into()), &db),
+            Some(DeckRejection::UnknownCard {
+                card: "no_such_card".into()
+            })
+        );
+        // A non-deck rejection carries no reason (the plain view re-send is used).
+        assert_eq!(deck_rejection_of(&LobbyError::RoomFull, &db), None);
+    }
+
+    #[tokio::test]
+    async fn issue_395_an_unknown_card_reason_reaches_the_submitting_seat() {
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair(&lobby).await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: vec![wire_id("forest"), "no_such_card".to_string()],
+                    commander: None,
+                }),
+            )
+            .await
+            .expect_err("unknown card id is rejected");
+        assert_rejection(
+            &alice,
+            DeckRejection::UnknownCard {
+                card: "no_such_card".into(),
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_395_a_wrong_size_reason_reaches_the_submitting_seat() {
+        // starter-1v1 requires 40 cards; ten Forests is below the minimum.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: vec![wire_id("forest"); 10],
+                    commander: None,
+                }),
+            )
+            .await
+            .expect_err("an under-minimum deck is rejected");
+        assert_rejection(&alice, DeckRejection::TooFewCards { have: 10, min: 40 });
+    }
+
+    #[tokio::test]
+    async fn issue_395_a_copy_limit_reason_names_the_offending_card() {
+        // Five copies of a non-basic in an otherwise legal 40-card starter deck: the
+        // reason names the card by its display name (from alice's own list).
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
+        let ogre_name = CardDatabase::bundled()
+            .unwrap()
+            .card(fixture("onakke_ogre"))
+            .unwrap()
+            .name
+            .clone();
+
+        let mut cards = vec![wire_id("onakke_ogre"); 5];
+        for slug in &NON_BASICS[1..] {
+            for _ in 0..4 {
+                cards.push(wire_id(slug));
+            }
+        }
+        for _ in 0..19 {
+            cards.push(wire_id("forest"));
+        }
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards,
+                    commander: None,
+                }),
+            )
+            .await
+            .expect_err("an over-copy-limit deck is rejected");
+        assert_rejection(
+            &alice,
+            DeckRejection::TooManyCopies {
+                card: ogre_name,
+                count: 5,
+                limit: 4,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_395_a_missing_commander_reason_reaches_the_submitting_seat() {
+        // A legal 100-card commander deck submitted with no designation is rejected for
+        // the missing commander (CR 903.3) — the reason has no card to name.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "commander").await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: commander_decklist(),
+                    commander: None,
+                }),
+            )
+            .await
+            .expect_err("a missing commander is rejected");
+        assert_rejection(&alice, DeckRejection::MissingCommander);
+    }
+
+    #[tokio::test]
+    async fn issue_395_an_out_of_identity_reason_names_the_offending_card() {
+        // Swap a Forest for a blue card (Snapping Drake): its color identity is outside
+        // the mono-green commander's (CR 903.4). The reason names the offending card.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "commander").await;
+        let drake_name = CardDatabase::bundled()
+            .unwrap()
+            .card(fixture("snapping_drake"))
+            .unwrap()
+            .name
+            .clone();
+
+        let mut cards = commander_decklist();
+        let forest_pos = cards
+            .iter()
+            .rposition(|c| c == &wire_id("forest"))
+            .expect("deck has forests");
+        cards[forest_pos] = wire_id("snapping_drake");
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards,
+                    commander: Some(wire_id("jedit_ojanen")),
+                }),
+            )
+            .await
+            .expect_err("an out-of-identity card is rejected");
+        assert_rejection(&alice, DeckRejection::OutOfIdentity { card: drake_name });
+    }
+
+    #[tokio::test]
+    async fn issue_395_another_seat_view_stream_is_unchanged_by_a_rejection() {
+        // Redaction: when alice's deck is rejected, only alice is re-pushed a view (with
+        // the reason). Bob's outbox never changes, and his last view carries no reason —
+        // he learns nothing about alice's rejected submission or its contents.
+        let lobby = lobby(4);
+        let (alice, bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
+        // Bob's view is fully drained (seen) before alice acts.
+        assert!(
+            !bob.rx.has_changed().expect("bob outbox live"),
+            "no pending frame for bob before the rejection"
+        );
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: vec![wire_id("forest"); 3],
+                    commander: None,
+                }),
+            )
+            .await
+            .expect_err("an under-minimum deck is rejected");
+
+        // Alice got the structured reason…
+        assert_rejection(&alice, DeckRejection::TooFewCards { have: 3, min: 40 });
+        // …while bob's stream did not advance at all, and his current view is reason-free.
+        assert!(
+            !bob.rx.has_changed().expect("bob outbox live"),
+            "another seat's view stream is untouched by a rejection"
+        );
+        assert!(bob.current().deck_rejection.is_none());
+    }
+
+    #[tokio::test]
+    async fn issue_395_a_corrected_resubmission_succeeds_in_the_same_room() {
+        // The reason is non-fatal: after a rejection, a corrected deck submitted in the
+        // same room session is accepted and clears the seat to ready.
+        let lobby = lobby(4);
+        let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
+
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: vec![wire_id("forest"); 3],
+                    commander: None,
+                }),
+            )
+            .await
+            .expect_err("the first, too-small deck is rejected");
+        assert_rejection(&alice, DeckRejection::TooFewCards { have: 3, min: 40 });
+
+        // Resubmit a legal 40-card deck in the same room: accepted, seat decked, and the
+        // fresh accepted view carries no lingering rejection reason.
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: decklist(),
+                    commander: None,
+                }),
+            )
+            .await
+            .expect("the corrected deck is accepted");
+        let view = alice.current();
+        assert!(view.room.expect("in room").seats[0].decked);
+        assert!(
+            view.deck_rejection.is_none(),
+            "a successful submission carries no rejection reason"
+        );
     }
 
     #[tokio::test]

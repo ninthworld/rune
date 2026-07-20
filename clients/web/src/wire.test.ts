@@ -521,6 +521,32 @@ describe('lobby wire (issue #114)', () => {
     expect(() => normalizeLobbyView(42)).toThrow(ProtocolError);
   });
 
+  it('carries a structured deck_rejection reason with its card name (issue #395)', () => {
+    const view = normalizeLobbyView({
+      session: 's:1',
+      you: 'p1',
+      valid_commands: ['submit_deck', 'leave'],
+      deck_rejection: { reason: 'too_many_copies', card: 'Onakke Ogre', count: 5, limit: 4 },
+    });
+    expect(view.deck_rejection).toEqual({
+      reason: 'too_many_copies',
+      card: 'Onakke Ogre',
+      count: 5,
+      limit: 4,
+    });
+    // A payload-less reason keeps just its tag.
+    const missing = normalizeLobbyView({ deck_rejection: { reason: 'missing_commander' } });
+    expect(missing.deck_rejection).toEqual({ reason: 'missing_commander' });
+  });
+
+  it('omits deck_rejection on an ordinary view and drops an unknown reason (issue #395)', () => {
+    // No field → absent (an ordinary view never carries a reason).
+    expect(normalizeLobbyView(JSON.parse(LOBBY_ROOMLESS_JSON)).deck_rejection).toBeUndefined();
+    // An unknown future reason is dropped so the inferred generic hint covers it.
+    const future = normalizeLobbyView({ deck_rejection: { reason: 'meteor_strike' } });
+    expect(future.deck_rejection).toBeUndefined();
+  });
+
   it('routes a frame with a valid phase to a GameView', () => {
     const frame = parseServerFrame(SAMPLE_GAME_VIEW_JSON);
     expect(frame.kind).toBe('game');

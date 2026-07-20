@@ -12,6 +12,7 @@ import { SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
 import {
   LOBBY_ROOMLESS_JSON,
   LOBBY_ROOM_DECKED_JSON,
+  LOBBY_ROOM_DECK_REJECTED_JSON,
   LOBBY_ROOM_READY_JSON,
   LOBBY_ROOM_UNDECKED_JSON,
 } from './lobby-view.fixture';
@@ -342,6 +343,30 @@ describe('game store', () => {
       socket.emitMessage(LOBBY_ROOM_DECKED_JSON);
       expect(store.getState().lobbyError).toBeNull();
       expect(store.getState().lobby?.room?.seats[0].decked).toBe(true);
+    });
+
+    it('surfaces the structured deck-rejection reason, naming the card (issue #395)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+
+      // Submit a deck; the server rejects it and re-sends the view carrying the
+      // structured reason. The message names the offending card and the numbers —
+      // not the generic "deck was rejected" fallback.
+      store.getState().sendLobby(submitDeckCommand(['onakke_ogre']));
+      socket.emitMessage(LOBBY_ROOM_DECK_REJECTED_JSON);
+
+      const error = store.getState().lobbyError ?? '';
+      expect(error).toContain('Onakke Ogre');
+      expect(error).toContain('5');
+      expect(error).toContain('4');
+      // The seat is preserved and still interactive for a corrected resubmission.
+      expect(store.getState().lobby?.room?.seats[0].decked).not.toBe(true);
+      expect(store.getState().lobby?.valid_commands).toContain('submit_deck');
+
+      // A corrected resubmission that the server accepts clears the reason.
+      store.getState().sendLobby(submitDeckCommand(['onakke_ogre', 'forest']));
+      socket.emitMessage(LOBBY_ROOM_DECKED_JSON);
+      expect(store.getState().lobbyError).toBeNull();
     });
 
     it('reconciles ready → the seat reads ready with no error', () => {

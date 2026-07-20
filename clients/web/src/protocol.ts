@@ -884,7 +884,38 @@ export interface LobbyView {
    * unknown kinds, computing no legality of its own.
    */
   valid_commands: string[];
+  /**
+   * Why this connection's last `submit_deck` was **rejected** (issue #395), as a
+   * structured, human-renderable reason. Present only on the targeted re-send to the
+   * submitting seat (the lobby's non-fatal error pattern); every other view — another
+   * seat's roster push, a directory broadcast, a spectator's view — omits it, so no one
+   * else learns why (and any card it names is only ever one from the submitter's own
+   * list). Absent on every ordinary view. Ephemeral presentation only — the interactive
+   * lobby rebuilds from the rest of the view without it, exactly as `action_rejected` is
+   * to a {@link GameView}.
+   */
+  deck_rejection?: DeckRejection;
 }
+
+/**
+ * Why a submitted decklist was rejected for the room's format, shown to the submitting
+ * seat only (issue #395). A `reason`-tagged union mirroring the server's `DeckRejection`:
+ * each variant carries the numbers behind the violation, and the card-naming variants
+ * carry the offending card's display `name` (always a card from the submitter's own list
+ * — never another seat's deck or any hidden state). The client renders each into its own
+ * copy; it never computes deck legality itself. An unknown future `reason` is not modelled
+ * here — the wire normalizer drops it, leaving the lobby's inferred generic hint to cover
+ * it, so a closed union keeps every known variant narrowable.
+ */
+export type DeckRejection =
+  | { reason: 'too_few_cards'; have: number; min: number }
+  | { reason: 'too_many_cards'; have: number; max: number }
+  | { reason: 'too_many_copies'; card: string; count: number; limit: number }
+  | { reason: 'missing_commander' }
+  | { reason: 'commander_not_in_deck'; card: string }
+  | { reason: 'commander_not_legendary_creature'; card: string }
+  | { reason: 'out_of_identity'; card: string }
+  | { reason: 'unknown_card'; card: string };
 
 /**
  * The current schema version carried in {@link CatalogView.catalog_version}. A single

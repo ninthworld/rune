@@ -31,6 +31,7 @@ import {
   requestCatalogCommand,
   setStopsMessage,
   type CatalogView,
+  type DeckRejection,
   type GameView,
   type LobbyCommand,
   type LobbyView,
@@ -99,6 +100,35 @@ function lobbyCommandSatisfied(kind: PendingLobbyKind, view: LobbyView): boolean
       return seat?.ready === true;
     case 'unready':
       return seat !== undefined && seat.ready !== true;
+  }
+}
+
+/**
+ * Render a server {@link DeckRejection} (issue #395) into the non-fatal message shown
+ * over the deck builder. The server ships structured data; this is the client's own copy
+ * (naming the offending card where the reason carries one), so no legality is computed
+ * here. An unknown future `reason` degrades to the generic deck-rejected line.
+ */
+function deckRejectionMessage(rejection: DeckRejection): string {
+  switch (rejection.reason) {
+    case 'too_few_cards':
+      return `That deck has ${rejection.have} cards — the format needs at least ${rejection.min}. Add cards and submit again.`;
+    case 'too_many_cards':
+      return `That deck has ${rejection.have} cards — the format allows at most ${rejection.max}. Remove cards and submit again.`;
+    case 'too_many_copies':
+      return `Too many copies of ${rejection.card}: ${rejection.count}, but the format allows at most ${rejection.limit}. Adjust and submit again.`;
+    case 'missing_commander':
+      return 'This format needs a designated commander. Pick one and submit again.';
+    case 'commander_not_in_deck':
+      return `Your commander (${rejection.card}) must be one of the deck's cards. Add it and submit again.`;
+    case 'commander_not_legendary_creature':
+      return `Your commander (${rejection.card}) must be a legendary creature. Pick a legal commander and submit again.`;
+    case 'out_of_identity':
+      return `${rejection.card} is outside your commander's color identity. Remove it and submit again.`;
+    case 'unknown_card':
+      return `The card “${rejection.card}” isn't recognized. Remove it and submit again.`;
+    default:
+      return 'That deck was rejected. Adjust it and submit again.';
   }
 }
 
@@ -506,15 +536,18 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         if (lastUrl !== null) persistSession(lobby.session, lastUrl);
       }
 
-      // Reconcile a pending command into a non-fatal error: a rejected command
-      // re-sends the current `LobbyView` unchanged (ADR 0012), so if the expected
-      // effect is absent we surface a retry hint. Success (or no pending command)
-      // clears the hint. This is presentation only — the interactive lobby still
-      // rebuilds from `lobby` alone (nothing load-bearing across messages).
+      // Reconcile a pending command into a non-fatal error. A structured deck-rejection
+      // reason (issue #395) is authoritative when present: it rides only the submitting
+      // seat's re-send, names exactly why `submit_deck` failed, and supersedes the
+      // inferred generic hint. Otherwise a rejected command re-sends the current
+      // `LobbyView` unchanged (ADR 0012), so an absent expected effect surfaces a retry
+      // hint; success (or no pending command) clears it. Presentation only — the
+      // interactive lobby still rebuilds from `lobby` alone (nothing load-bearing).
       const kind = pendingLobby;
       pendingLobby = null;
-      const lobbyError =
-        kind === null
+      const lobbyError = lobby.deck_rejection
+        ? deckRejectionMessage(lobby.deck_rejection)
+        : kind === null
           ? get().lobbyError
           : lobbyCommandSatisfied(kind, lobby)
             ? null

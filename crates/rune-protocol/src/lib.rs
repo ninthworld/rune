@@ -1107,6 +1107,78 @@ pub struct LobbyView {
     /// clients; the client renders exactly these and computes no legality.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub valid_commands: Vec<String>,
+    /// Why this connection's last `submit_deck` was **rejected** (issue #395), as a
+    /// structured, human-renderable reason — wrong size, too many copies, an
+    /// out-of-identity card, or a missing/illegal commander. Carried **only** on the
+    /// targeted re-send to the submitting seat (the lobby's non-fatal error pattern,
+    /// ADR 0012); every other view — a roster push to another seat, a directory
+    /// broadcast, a spectator's view — omits it, so no one else ever learns why (and
+    /// the offending card, when named, is only ever one from the submitter's *own*
+    /// list). `None`/omitted on every view that is not such a re-send. Ephemeral
+    /// presentation only: the interactive lobby still rebuilds from the rest of the
+    /// view, exactly as `action_rejected` is to `GameView`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deck_rejection: Option<DeckRejection>,
+}
+
+/// Why a submitted decklist was rejected for the room's format, delivered to the
+/// **submitting seat only** (issue #395). It mirrors the server's internal deck-legality
+/// verdict as wire-safe structured data: each variant carries the numbers behind the
+/// violation, and the card-naming variants carry the offending card's **display name** —
+/// always a card from the submitter's own list, never another seat's deck or any hidden
+/// state (the redaction constraint). The client renders each variant into its own copy;
+/// the server ships structured data, not prose.
+///
+/// Tagged by a `reason` discriminant so a client can switch on the kind and a new
+/// variant does not break an older one (an unknown `reason` is simply shown generically).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "reason", rename_all = "snake_case")]
+pub enum DeckRejection {
+    /// The deck has fewer cards than the format's minimum.
+    TooFewCards {
+        /// How many cards the submitted deck holds.
+        have: usize,
+        /// The format's minimum legal deck size.
+        min: usize,
+    },
+    /// The deck has more cards than the format's maximum.
+    TooManyCards {
+        /// How many cards the submitted deck holds.
+        have: usize,
+        /// The format's maximum legal deck size.
+        max: usize,
+    },
+    /// A single card appears more times than the format's copy limit allows.
+    TooManyCopies {
+        /// The offending card's display name (from the submitter's own list).
+        card: String,
+        /// How many copies the deck holds.
+        count: usize,
+        /// The format's per-card copy limit.
+        limit: usize,
+    },
+    /// The format requires a designated commander and the submission named none.
+    MissingCommander,
+    /// The designated commander is not among the submitted deck's cards.
+    CommanderNotInDeck {
+        /// The designated card's display name (from the submitter's own designation).
+        card: String,
+    },
+    /// The designated commander is not a legendary creature.
+    CommanderNotLegendaryCreature {
+        /// The designated card's display name.
+        card: String,
+    },
+    /// A card's color identity is not contained in the commander's.
+    OutOfIdentity {
+        /// The offending card's display name (from the submitter's own list).
+        card: String,
+    },
+    /// A submitted card identity resolves to no card the server knows.
+    UnknownCard {
+        /// The unresolvable identity, echoed verbatim from the submission.
+        card: String,
+    },
 }
 
 /// First-contact / reconnect command. Carries a previously issued
@@ -2838,10 +2910,54 @@ mod tests {
             }),
             directory: vec![],
             valid_commands: vec!["submit_deck".into(), "unready".into(), "leave".into()],
+            deck_rejection: None,
         };
         let json = serde_json::to_string(&view).unwrap();
         let back: LobbyView = serde_json::from_str(&json).unwrap();
         assert_eq!(back, view);
+    }
+
+    #[test]
+    fn issue_395_deck_rejection_round_trips_on_the_lobby_view() {
+        // A structured deck-rejection reason rides the submitting seat's re-send: it is
+        // tagged by `reason`, carries the offending numbers/card name, and survives the
+        // trip. A card-naming variant and a payload-less variant are both checked.
+        let view = LobbyView {
+            session: "s:ab12".into(),
+            you: "p1".into(),
+            name: None,
+            room: None,
+            directory: vec![],
+            valid_commands: vec!["submit_deck".into(), "leave".into()],
+            deck_rejection: Some(DeckRejection::TooManyCopies {
+                card: "Llanowar Elves".into(),
+                count: 2,
+                limit: 1,
+            }),
+        };
+        let json = serde_json::to_value(&view).unwrap();
+        // The reason is a tagged object naming the offending card by display name.
+        assert_eq!(
+            json.get("deck_rejection"),
+            Some(&serde_json::json!({
+                "reason": "too_many_copies",
+                "card": "Llanowar Elves",
+                "count": 2,
+                "limit": 1,
+            }))
+        );
+        assert_eq!(serde_json::from_value::<LobbyView>(json).unwrap(), view);
+
+        // A payload-less variant serializes to just its `reason` tag.
+        let missing = serde_json::to_value(DeckRejection::MissingCommander).unwrap();
+        assert_eq!(
+            missing,
+            serde_json::json!({ "reason": "missing_commander" })
+        );
+        assert_eq!(
+            serde_json::from_value::<DeckRejection>(missing).unwrap(),
+            DeckRejection::MissingCommander
+        );
     }
 
     #[test]
@@ -2855,9 +2971,12 @@ mod tests {
             room: None,
             directory: vec![],
             valid_commands: vec!["create_room".into(), "join_room".into()],
+            deck_rejection: None,
         };
         let json = serde_json::to_value(&view).unwrap();
         assert!(json.get("room").is_none());
+        // No deck rejection on an ordinary view: the field elides entirely.
+        assert!(json.get("deck_rejection").is_none());
         // An empty directory elides from the wire, like every other empty collection.
         assert!(json.get("directory").is_none());
         // `session` and `you` are always present on the wire (like `GameView::you`).
@@ -2968,6 +3087,7 @@ mod tests {
             room: None,
             directory: vec![],
             valid_commands: vec!["create_room".into(), "join_room".into()],
+            deck_rejection: None,
         };
         // Empty directory: the field elides entirely.
         assert!(serde_json::to_value(&view)
@@ -3155,6 +3275,7 @@ mod tests {
             room: None,
             directory: vec![],
             valid_commands: vec!["set_name".into(), "create_room".into()],
+            deck_rejection: None,
         };
         let json = serde_json::to_value(&view).unwrap();
         assert_eq!(json.get("name"), Some(&serde_json::json!("Alice")));

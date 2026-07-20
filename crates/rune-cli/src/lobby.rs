@@ -226,8 +226,9 @@ pub(crate) fn parse_deck(raw: &str) -> Vec<String> {
 /// One decoded pre-game frame: either a lobby snapshot to act on, or the first game
 /// view that signals the ready gate passed and the connection is now in a game.
 enum LobbyFrame {
-    /// A fresh full [`LobbyView`] to render/drive.
-    Lobby(LobbyView),
+    /// A fresh full [`LobbyView`] to render/drive. Boxed alongside `Game` so neither
+    /// large view inflates every [`LobbyFrame`] (clippy `large_enum_variant`).
+    Lobby(Box<LobbyView>),
     /// The hand-off: the server switched this socket to the in-game contract.
     /// Boxed: a full [`GameView`] is much larger than a [`LobbyView`], so keeping it
     /// behind a pointer keeps the enum small (clippy `large_enum_variant`).
@@ -254,7 +255,7 @@ where
                         return Ok(Some(LobbyFrame::Game(Box::new(view))));
                     }
                 } else if let Ok(view) = serde_json::from_value::<LobbyView>(value) {
-                    return Ok(Some(LobbyFrame::Lobby(view)));
+                    return Ok(Some(LobbyFrame::Lobby(Box::new(view))));
                 }
             }
             Some(Ok(Message::Close(_))) | None => return Ok(None),
@@ -299,7 +300,7 @@ where
     loop {
         let view = match read_lobby_frame(read).await? {
             Some(LobbyFrame::Game(view)) => return Ok(Some(*view)),
-            Some(LobbyFrame::Lobby(view)) => view,
+            Some(LobbyFrame::Lobby(view)) => *view,
             None => {
                 write_str(output, "\nServer closed the connection. Goodbye.\n").await?;
                 return Ok(None);
@@ -663,6 +664,7 @@ mod tests {
             room: None,
             directory: vec![],
             valid_commands: commands.iter().map(|c| c.to_string()).collect(),
+            deck_rejection: None,
         }
     }
 
@@ -691,6 +693,7 @@ mod tests {
             }),
             directory: vec![],
             valid_commands: commands.iter().map(|c| c.to_string()).collect(),
+            deck_rejection: None,
         }
     }
 

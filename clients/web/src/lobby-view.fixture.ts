@@ -64,6 +64,23 @@ export const LOBBY_ROOM_UNDECKED_JSON = JSON.stringify({
   valid_commands: ['submit_deck', 'leave'],
 });
 
+/**
+ * The re-send after a rejected `submit_deck` (issue #395): seat 0 is still undecked,
+ * and the view carries the structured `deck_rejection` reason — here a too-many-copies
+ * violation naming the offending card. Only the submitting seat's re-send carries this.
+ */
+export const LOBBY_ROOM_DECK_REJECTED_JSON = JSON.stringify({
+  session: 's:ab12',
+  you: 'p1',
+  room: {
+    room_id: 'r:7f3',
+    config: { seats: 2, game_setup: 'starter-1v1' },
+    seats: [{ seat: 0, occupied_by: 'p1' }, { seat: 1 }],
+  },
+  valid_commands: ['submit_deck', 'leave'],
+  deck_rejection: { reason: 'too_many_copies', card: 'Onakke Ogre', count: 5, limit: 4 },
+});
+
 /** After submitting a deck: seat 0 is decked; you may ready up now. */
 export const LOBBY_ROOM_DECKED_JSON = JSON.stringify({
   session: 's:ab12',

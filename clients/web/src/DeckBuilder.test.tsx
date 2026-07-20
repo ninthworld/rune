@@ -176,6 +176,28 @@ describe('DeckBuilder (issue #368)', () => {
     expect(screen.getByTestId('deck-builder-total').textContent).toBe('3 cards');
   });
 
+  it('shows the structured rejection reason naming the card, keeping the built list (issue #395)', () => {
+    // The store renders a server `deck_rejection` into this message; the builder surfaces
+    // it verbatim over the modal without clearing the in-progress deck, so the player can
+    // read exactly which card was over the limit and correct it in place.
+    render(
+      <DeckBuilder
+        catalog={CATALOG_VIEW}
+        format={CATALOG_VIEW.formats[0]}
+        initialCounts={{ shock: 5 }}
+        onSubmit={vi.fn()}
+        onClose={vi.fn()}
+        error="Too many copies of Onakke Ogre: 5, but the format allows at most 4. Adjust and submit again."
+      />,
+    );
+    const banner = screen.getByTestId('deck-builder-error').textContent ?? '';
+    expect(banner).toContain('Onakke Ogre');
+    expect(banner).toContain('4');
+    // Builder state is preserved for correction: the five Shocks are still present.
+    expect(screen.getByTestId('deck-builder-count-shock').textContent).toBe('5');
+    expect(screen.getByTestId('deck-builder-total').textContent).toBe('5 cards');
+  });
+
   it('closes on Escape, backdrop, and Cancel (full keyboard + pointer operability)', () => {
     const onClose = vi.fn();
     render(

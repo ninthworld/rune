@@ -406,9 +406,43 @@ The client distinguishes a `SpectatorView` from a seated `GameView` structurally
 | `room` | `RoomView?` | Current room, if joined |
 | `directory` | `RoomSummary[]` | Public rooms available to browse |
 | `valid_commands` | `string[]` | Only commands currently available |
+| `deck_rejection` | `DeckRejection?` | Why the last `submit_deck` was rejected (issue #395); present only on the re-send to the submitting seat, omitted otherwise |
 
 The client stores `session` per browser tab and echoes it on a later `hello`. It is an
 identity/reconnect handle, not a user account or human authentication credential.
+
+`deck_rejection` carries the **structured reason** a rejected `submit_deck` failed, so the
+submitting player can correct and resubmit (issue #395). It rides **only** the single targeted
+re-send to the seat that submitted — the same non-fatal re-send ADR 0012 already sends — and is
+omitted from every other view: another seat's roster push, a directory broadcast, and a
+spectator's view never carry it, so no one else learns a rejected deck's contents or that it was
+rejected. Any card the reason names is drawn only from the submitter's *own* list (a deck card or
+its own designated commander); a card is named by its display `name`. It is ephemeral
+presentation, never load-bearing — the interactive lobby still rebuilds from the rest of the view,
+exactly as `action_rejected` is to a `GameView`.
+
+A `DeckRejection` is a `reason`-tagged object. Each variant carries the data behind the
+violation:
+
+| `reason` | Extra fields | Meaning |
+| --- | --- | --- |
+| `too_few_cards` | `have`, `min` | Deck is below the format's minimum size |
+| `too_many_cards` | `have`, `max` | Deck is above the format's maximum size |
+| `too_many_copies` | `card`, `count`, `limit` | A card appears more times than the copy limit |
+| `missing_commander` | — | The format requires a commander and none was designated |
+| `commander_not_in_deck` | `card` | The designated commander is not one of the deck's cards |
+| `commander_not_legendary_creature` | `card` | The designated commander is not a legendary creature |
+| `out_of_identity` | `card` | A card's color identity is outside the commander's |
+| `unknown_card` | `card` | A submitted identity resolves to no known card (echoed verbatim) |
+
+```json
+{ "reason": "too_few_cards", "have": 38, "min": 40 }
+{ "reason": "too_many_copies", "card": "Onakke Ogre", "count": 5, "limit": 4 }
+{ "reason": "missing_commander" }
+```
+
+A client tolerates an unknown future `reason` by falling back to a generic "deck rejected"
+message; it never computes deck legality itself (the server stays the sole authority).
 
 `RoomView` contains an opaque `room_id`, a `config`, and the ordered seat roster. The room
 config contains `seats` and an opaque `game_setup` id. The lobby validates a 2–8 seat range,
