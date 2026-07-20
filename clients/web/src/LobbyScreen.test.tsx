@@ -66,6 +66,38 @@ function lastSent(socket: FakeSocket): unknown {
   return JSON.parse(socket.sent[socket.sent.length - 1]);
 }
 
+/**
+ * A catalog frame (issue #367/#394) advertising the given formats' deck rules. The
+ * commander affordance keys off a format's advertised `requires_commander` flag, so a
+ * test emits this to make that fact available rather than relying on a format name.
+ */
+function catalogFrame(formats: Array<Record<string, unknown>>): string {
+  return JSON.stringify({ catalog_version: 1, formats });
+}
+
+/** The commander format advertised with its deck rules, including the #394 flags. */
+const COMMANDER_FORMAT_FACTS = {
+  game_setup: 'commander',
+  min_deck_size: 100,
+  max_deck_size: 100,
+  max_copies: 1,
+  basic_land_exempt: true,
+  requires_commander: true,
+  enforce_color_identity: true,
+  min_seats: 2,
+  max_seats: 4,
+};
+
+/** The 1v1 duel format advertised with no commander requirement (the flag elided). */
+const DUEL_FORMAT_FACTS = {
+  game_setup: '1v1',
+  min_deck_size: 40,
+  max_copies: 4,
+  basic_land_exempt: true,
+  min_seats: 2,
+  max_seats: 2,
+};
+
 afterEach(() => {
   cleanup();
   act(() => useGameStore.getState().disconnect());
@@ -290,6 +322,9 @@ describe('LobbyScreen (issue #114)', () => {
 
   it('designates and submits a commander in the commander format (issue #372)', () => {
     const socket = mountLobby(LOBBY_ROOM_COMMANDER_JSON);
+    // The advertised format requires a commander (issue #394): that fact, not the id,
+    // gates the affordance.
+    act(() => socket.emitMessage(catalogFrame([COMMANDER_FORMAT_FACTS])));
     // Pick the bundled commander deck; its designated commander is surfaced.
     fireEvent.click(screen.getByTestId('deck-tile-green-command'));
     expect(screen.getByTestId('designated-commander').textContent).toContain('Jedit Ojanen');
@@ -306,8 +341,26 @@ describe('LobbyScreen (issue #114)', () => {
 
   it('does not designate or send a commander outside the commander format (issue #372)', () => {
     // The same commander deck picked in a 1v1 room sends no commander, and no
-    // designation chrome appears — the gate is the room's format, not the deck.
+    // designation chrome appears — the gate is the advertised format rule, not the deck.
     const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+    act(() => socket.emitMessage(catalogFrame([DUEL_FORMAT_FACTS])));
+    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    expect(screen.queryByTestId('designated-commander')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('submit-deck-button'));
+    const sent = lastSent(socket) as { type: string; commander?: string };
+    expect(sent.type).toBe('submit_deck');
+    expect(sent.commander).toBeUndefined();
+  });
+
+  it('gates the commander affordance on the advertised flag, not the format name (#394)', () => {
+    // A room whose game_setup is literally "commander" but whose advertised format does
+    // NOT require a commander must neither designate nor send one: the client keys off
+    // the `requires_commander` fact, never the format id.
+    const socket = mountLobby(LOBBY_ROOM_COMMANDER_JSON);
+    act(() =>
+      socket.emitMessage(catalogFrame([{ ...COMMANDER_FORMAT_FACTS, requires_commander: false }])),
+    );
     fireEvent.click(screen.getByTestId('deck-tile-green-command'));
     expect(screen.queryByTestId('designated-commander')).toBeNull();
 
@@ -364,6 +417,7 @@ describe('LobbyScreen (issue #114)', () => {
 
   it('designates and sends the deck commander in a commander-format room (issue #372)', () => {
     const socket = mountLobby(LOBBY_ROOM_COMMANDER_JSON);
+    act(() => socket.emitMessage(catalogFrame([COMMANDER_FORMAT_FACTS])));
 
     // Pick the bundled commander deck; its designated commander surfaces near submit.
     fireEvent.click(screen.getByTestId('deck-tile-green-command'));
@@ -380,6 +434,7 @@ describe('LobbyScreen (issue #114)', () => {
 
   it('does not send a commander in a non-commander room, and shows no designation (#372)', () => {
     const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+    act(() => socket.emitMessage(catalogFrame([DUEL_FORMAT_FACTS])));
 
     // Even picking the commander-capable deck: the 1v1 room never designates a commander.
     fireEvent.click(screen.getByTestId('deck-tile-green-command'));

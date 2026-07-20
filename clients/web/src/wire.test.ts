@@ -801,6 +801,36 @@ describe('catalog wire (issue #367)', () => {
     expect(strict.max_copies).toBe(4);
   });
 
+  it('normalizes the commander deck-rule flags, defaulting absent ones to false (#394)', () => {
+    // Neither advertised format carries the flags, so both normalize to false — an
+    // existing frame (or older server) stays valid.
+    const view = normalizeCatalogView(JSON.parse(CATALOG_JSON));
+    expect(view.formats[0].requires_commander).toBe(false);
+    expect(view.formats[0].enforce_color_identity).toBe(false);
+    expect(view.formats[1].requires_commander).toBe(false);
+    expect(view.formats[1].enforce_color_identity).toBe(false);
+
+    // A format advertising both flags true carries them through unchanged.
+    const commander = normalizeCatalogView({
+      catalog_version: 1,
+      formats: [
+        {
+          game_setup: 'commander',
+          min_deck_size: 100,
+          max_deck_size: 100,
+          max_copies: 1,
+          basic_land_exempt: true,
+          requires_commander: true,
+          enforce_color_identity: true,
+          min_seats: 2,
+          max_seats: 4,
+        },
+      ],
+    }).formats[0];
+    expect(commander.requires_commander).toBe(true);
+    expect(commander.enforce_color_identity).toBe(true);
+  });
+
   it('defaults a missing catalog_version and collections', () => {
     const view = normalizeCatalogView({});
     expect(view.catalog_version).toBe(0);
