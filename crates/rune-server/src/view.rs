@@ -159,7 +159,7 @@ fn keyword_str(keyword: Keyword) -> &'static str {
 /// the engine's escape hatch — keyed, like the catalog itself, on the card's authored
 /// `functional_id` rather than its build-interned handle (ADR 0018 §3), and guaranteed
 /// by the loader to exist whenever the definition declares `scripted: true`.
-fn full_card_view(entity_id: String, data: &CardData) -> CardView {
+pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
     CardView {
         id: entity_id,
         name: data.name.clone(),

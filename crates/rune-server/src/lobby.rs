@@ -76,8 +76,9 @@ use rune_engine::{
     CardDatabase, CardId, CatalogError, FunctionalId, GameSetup, GameState, PlayerSetup,
 };
 use rune_protocol::{
-    CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig, RoomId, RoomState,
-    RoomSummary, RoomView, SeatView, SessionToken, SetName, SpectateRoom, SubmitDeck,
+    CatalogView, CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig,
+    RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken, SetName, SpectateRoom,
+    SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -454,6 +455,16 @@ impl Lobby {
         ))
     }
 
+    /// Build the public card catalog + per-format deck rules (issue #367): every
+    /// supported card with its server-generated rules text, and each advertised format's
+    /// deck rules and seat range, derived from the one embedded [`CardDatabase`] and the
+    /// format registry this lobby owns. Public data only — no deck contents, roster, or
+    /// game state, and no session input at all. Answered as a one-shot [`CatalogView`]
+    /// frame so a lobby-phase connection can browse the pool without joining a room.
+    pub(crate) fn catalog(&self) -> CatalogView {
+        crate::catalog::build_catalog(&self.inner.db, &self.inner.formats)
+    }
+
     /// Register a freshly accepted connection: issue it an unguessable session token
     /// and a public identity, store its `outbox`, and push it its initial
     /// [`LobbyView`] (a roomless view offering `create_room`/`join_room`). Returns a
@@ -635,6 +646,11 @@ impl Lobby {
             }
             LobbyCommand::Ready(Ready { ready }) => self.ready(&mut registry, token, ready),
             LobbyCommand::SetName(SetName { name }) => set_name(&mut registry, token, &name),
+            // A catalog request is answered directly by the serve loop with a one-shot
+            // `CatalogView` (it needs the socket, not this registry), so a request
+            // reaching this router — e.g. a direct call in a test — is a harmless ack
+            // that re-sends the current view (issue #367).
+            LobbyCommand::RequestCatalog => Ok(()),
         };
         // Whether the command succeeded (and already pushed the affected views) or
         // was rejected, the sender always ends with a fresh, authoritative view.
@@ -1404,7 +1420,39 @@ where
             () = &mut shutdown => break,
             incoming = read.next() => match incoming {
                 Some(Ok(Message::Text(text))) => {
-                    forward_lobby_command(&lobby, &mut handle, text.as_str()).await;
+                    match serde_json::from_str::<LobbyCommand>(text.as_str()) {
+                        // The catalog is static reference data, not per-connection lobby
+                        // state (issue #367): answer it directly with a one-shot
+                        // `CatalogView` frame rather than through the latest-value outbox,
+                        // which only carries `LobbyView`s and could drop the response
+                        // under a concurrent directory broadcast.
+                        Ok(LobbyCommand::RequestCatalog) => {
+                            match serde_json::to_string(&lobby.catalog()) {
+                                Ok(json) => {
+                                    if write.send(Message::Text(json)).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                Err(error) => {
+                                    warn!(token = %handle.token, %error, "failed to serialize catalog view");
+                                }
+                            }
+                        }
+                        // A `Hello` may reconnect this connection to a held seat and hand
+                        // back a new identity, so `handle` is updated in place.
+                        Ok(LobbyCommand::Hello(hello)) => {
+                            handle = lobby.hello(&handle, hello.token).await;
+                        }
+                        // Every other command routes through the authoritative registry.
+                        Ok(command) => {
+                            if let Err(error) = lobby.command(&handle.token, command).await {
+                                warn!(token = %handle.token, %error, "rejected lobby command");
+                            }
+                        }
+                        Err(error) => {
+                            warn!(token = %handle.token, %error, "ignoring undecodable lobby command");
+                        }
+                    }
                 }
                 Some(Ok(Message::Ping(payload))) => {
                     if write.send(Message::Pong(payload)).await.is_err() {
@@ -1486,26 +1534,6 @@ where
 
     lobby.disconnect(&handle).await;
     let _ = write.close().await;
-}
-
-/// Decode one JSON [`LobbyCommand`] and route it; malformed frames are logged and
-/// dropped rather than closing the connection.
-///
-/// A `Hello` goes to [`Lobby::hello`], which may reconnect this connection to a held
-/// seat and hand back a new identity — so `handle` is updated in place. Every other
-/// command routes through [`Lobby::command`] against the current handle's token.
-async fn forward_lobby_command(lobby: &Lobby, handle: &mut SessionHandle, text: &str) {
-    match serde_json::from_str::<LobbyCommand>(text) {
-        Ok(LobbyCommand::Hello(hello)) => {
-            *handle = lobby.hello(handle, hello.token).await;
-        }
-        Ok(command) => {
-            if let Err(error) = lobby.command(&handle.token, command).await {
-                warn!(token = %handle.token, %error, "rejected lobby command");
-            }
-        }
-        Err(error) => warn!(token = %handle.token, %error, "ignoring undecodable lobby command"),
-    }
 }
 
 #[cfg(test)]
@@ -1681,6 +1709,31 @@ mod tests {
                 _ => None,
             }
         }
+    }
+
+    #[tokio::test]
+    async fn issue_367_a_lobby_connection_obtains_the_catalog_without_a_room_or_game() {
+        // A fresh, roomless connection can browse the full catalog: every supported card
+        // and every advertised format, with no room joined and no game constructed.
+        let lobby = lobby(4);
+        let alice = Client::connect(&lobby).await;
+        assert!(alice.current().room.is_none(), "no room joined");
+        assert!(!alice.started(), "no game constructed");
+
+        let catalog = lobby.catalog();
+        assert!(!catalog.cards.is_empty(), "the catalog lists cards");
+        assert!(!catalog.formats.is_empty(), "the catalog lists formats");
+        // It projects the whole bundled database.
+        assert_eq!(catalog.cards.len(), CardDatabase::bundled().unwrap().len());
+
+        // Routing the request through the registry is a harmless ack that changes no
+        // lobby state — the connection stays roomless and no game starts (issue #367).
+        lobby
+            .command(&alice.token, LobbyCommand::RequestCatalog)
+            .await
+            .expect("request_catalog is accepted");
+        assert!(alice.current().room.is_none());
+        assert!(!alice.started());
     }
 
     /// Drive two seats to a started game in a lobby pinned to the given overrides,
