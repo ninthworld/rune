@@ -54,10 +54,11 @@ describe('keyword coverage', () => {
     // card.rs `Keyword`), which is a superset of whatever keywords the current
     // catalog happens to ship — the M19 catalog (ADR 0026) uses only a subset, so
     // some glyphs (e.g. first_strike, deathtouch) are valid engine keywords with no
-    // current card. The two invariants: the glyph set is exactly the eight engine
+    // current card. The two invariants: the glyph set is exactly the nine engine
     // keywords, and every keyword a shipped card uses has a glyph (no gaps).
     expect([...glyphKeywords()].sort()).toEqual([
       'deathtouch',
+      'double_strike',
       'first_strike',
       'flying',
       'haste',
@@ -102,6 +103,7 @@ describe('glyph geometry', () => {
       'kw-trample',
       'kw-deathtouch',
       'kw-lifelink',
+      'kw-double_strike',
       'tap',
       'ready',
       'seat',
