@@ -88,9 +88,9 @@ use rune_engine::{
     CardDatabase, CardId, CatalogError, FunctionalId, GameSetup, GameState, PlayerSetup,
 };
 use rune_protocol::{
-    CatalogView, CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RoomConfig,
-    RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken, SetName, SpectateRoom,
-    SubmitDeck,
+    AddAi, CatalogView, CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RemoveAi,
+    RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken, SetName,
+    SpectateRoom, SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -98,6 +98,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tracing::{info, warn};
 
+use crate::ai::{policy_for, serve_ai_seat, AiKind};
 use crate::format::{DeckError, FormatRegistry};
 use crate::room::{
     serve_connection, serve_spectator_connection, AutoPassPolicy, Room, RoomHandle, Seat,
@@ -269,6 +270,13 @@ struct RoomEntry {
     config: RoomConfig,
     /// Per-seat occupancy: the [`SessionToken`] seated at each index, or `None`.
     seats: Vec<Option<SessionToken>>,
+    /// Per-seat **AI opponent** occupancy (issue #415), parallel to
+    /// [`seats`](RoomEntry::seats): `Some` when the host has filled that seat with an AI,
+    /// `None` for a human-or-empty seat. A seat is *occupied* when either vector holds a
+    /// value at its index; a seat is *free to join* only when both are `None`. An AI seat's
+    /// submitted deck lives in the parallel [`gate`](RoomEntry::gate) (decked + ready), just
+    /// like a human's, so the ready gate treats it uniformly.
+    ai_seats: Vec<Option<AiSeat>>,
     /// Per-seat gate state (submitted deck + ready flag), parallel to
     /// [`seats`](RoomEntry::seats). Kept in a separate vector so seat *occupancy*
     /// stays a plain `Vec<Option<SessionToken>>`.
@@ -284,6 +292,20 @@ struct RoomEntry {
     /// once the room's [`game`](RoomEntry::game) is running (there is no pre-game board
     /// to watch), and a spectator is removed on `leave` or disconnect.
     spectators: Vec<SessionToken>,
+}
+
+/// A seat filled with an **AI opponent** (issue #415): the kind of AI playing it and the
+/// public label it shows in the roster and in-game. The seat's deck lives in the parallel
+/// [`SeatGate`] (chosen by the host at [`AddAi`] time), so an AI seat is decked + ready by
+/// construction and passes the ready gate exactly like a human.
+#[derive(Clone)]
+struct AiSeat {
+    /// Which AI policy plays this seat (dispatched by [`policy_for`] at game start).
+    kind: AiKind,
+    /// The public display name for the AI, projected into [`SeatView::name`] and, once the
+    /// game starts, every `GameView::player_names` — so an opponent reads "Random" rather
+    /// than a bare seat label.
+    name: String,
 }
 
 /// One seat's pre-game gate state: the deck it submitted (validated against the
@@ -353,6 +375,22 @@ pub(crate) enum LobbyError {
     /// A lobby command aimed at a room whose game has already started (its seats
     /// speak `GameView`s now, not lobby commands).
     GameStarted,
+    /// `add_ai`/`remove_ai` from a session that is not the room's **host** (the seat 0
+    /// occupant, issue #415). Only the host manages AI seats; a non-host request is a
+    /// non-fatal rejection.
+    NotHost,
+    /// `add_ai`/`remove_ai` naming a seat index outside the room's seat range. Carries the
+    /// offending index.
+    SeatIndexOutOfRange(u8),
+    /// `add_ai` targeting a seat that is already occupied (by a human or an AI, issue
+    /// #415). AI opponents fill only empty seats.
+    SeatOccupied(u8),
+    /// `add_ai` whose `kind` names no AI the server supports (issue #415). Carries the
+    /// offending kind id; the seat is untouched.
+    UnknownAiKind(String),
+    /// `remove_ai` on a seat that holds no AI opponent (issue #415). Carries the seat
+    /// index.
+    NotAiSeat(u8),
     /// `set_name` whose requested display name failed validation (issue #294). Carries
     /// the specific [`NameError`]; the connection keeps whatever name it had and its
     /// current [`LobbyView`] is re-sent unchanged (the non-fatal pattern).
@@ -407,6 +445,11 @@ impl std::fmt::Display for LobbyError {
             Self::IllegalDeck(error) => write!(f, "illegal deck: {error}"),
             Self::NotDecked => write!(f, "seat has not submitted a valid deck"),
             Self::GameStarted => write!(f, "the room's game has already started"),
+            Self::NotHost => write!(f, "only the room host may manage AI seats"),
+            Self::SeatIndexOutOfRange(seat) => write!(f, "seat index {seat} is out of range"),
+            Self::SeatOccupied(seat) => write!(f, "seat {seat} is already occupied"),
+            Self::UnknownAiKind(kind) => write!(f, "unknown AI kind {kind}"),
+            Self::NotAiSeat(seat) => write!(f, "seat {seat} holds no AI opponent"),
             Self::InvalidName(error) => write!(f, "invalid display name: {error}"),
         }
     }
@@ -672,6 +715,20 @@ impl Lobby {
             LobbyCommand::SubmitDeck(SubmitDeck { cards, commander }) => {
                 self.submit_deck(&mut registry, token, &cards, commander.as_deref())
             }
+            LobbyCommand::AddAi(AddAi {
+                seat,
+                kind,
+                cards,
+                commander,
+            }) => self.add_ai(
+                &mut registry,
+                token,
+                seat,
+                &kind,
+                &cards,
+                commander.as_deref(),
+            ),
+            LobbyCommand::RemoveAi(RemoveAi { seat }) => remove_ai(&mut registry, token, seat),
             LobbyCommand::Ready(Ready { ready }) => self.ready(&mut registry, token, ready),
             LobbyCommand::SetName(SetName { name }) => set_name(&mut registry, token, &name),
             // A catalog request is answered directly by the serve loop with a one-shot

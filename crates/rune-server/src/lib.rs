@@ -21,6 +21,7 @@
 //! See `docs/decisions/0008-tokio-websocket-server.md` for the dependency
 //! choices behind this crate.
 
+mod ai;
 mod catalog;
 mod format;
 mod lobby;
@@ -30,6 +31,7 @@ mod rules_text;
 mod test_support;
 mod view;
 
+pub use ai::{ai_options, policy_for, serve_ai_seat, AiKind, AiPolicy, RandomPolicy};
 pub use lobby::{serve_lobby_connection, Lobby};
 pub use room::{
     serve_connection, serve_spectator_connection, AutoPassPolicy, Room, RoomHandle, RoomInput, Seat,

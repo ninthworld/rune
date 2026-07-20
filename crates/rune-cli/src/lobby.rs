@@ -23,8 +23,8 @@
 
 use futures_util::{SinkExt, StreamExt};
 use rune_protocol::{
-    CreateRoom, GameView, JoinRoom, LobbyCommand, LobbyView, Ready, RoomConfig, SetName,
-    SpectateRoom, SubmitDeck,
+    AddAi, CreateRoom, GameView, JoinRoom, LobbyCommand, LobbyView, Ready, RemoveAi, RoomConfig,
+    SetName, SpectateRoom, SubmitDeck,
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
@@ -639,6 +639,17 @@ fn describe_command(command: &LobbyCommand) -> String {
         LobbyCommand::SubmitDeck(SubmitDeck { cards, .. }) => {
             format!("submitting a {}-card deck", cards.len())
         }
+        LobbyCommand::AddAi(AddAi {
+            seat, kind, cards, ..
+        }) => {
+            format!(
+                "seating a {kind:?} AI in seat {seat} with a {}-card deck",
+                cards.len()
+            )
+        }
+        LobbyCommand::RemoveAi(RemoveAi { seat }) => {
+            format!("removing the AI in seat {seat}")
+        }
         LobbyCommand::Ready(Ready { ready: true }) => "readying up".to_string(),
         LobbyCommand::Ready(Ready { ready: false }) => "cancelling ready".to_string(),
         LobbyCommand::SetName(SetName { name }) => format!("setting display name to {name:?}"),
@@ -673,6 +684,7 @@ mod tests {
             name: None,
             decked,
             ready,
+            ai: None,
         }
     }
 

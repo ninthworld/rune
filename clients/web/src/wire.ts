@@ -9,6 +9,7 @@
  * forward compatibility.
  */
 import {
+  type AiOption,
   type CardView,
   type CatalogCard,
   type CatalogFormat,
@@ -350,6 +351,8 @@ function normalizeSeatView(payload: unknown, index: number): SeatView {
   if (typeof record.occupied_by === 'string') seat.occupied_by = record.occupied_by;
   // Display name (issue #294): present only when the occupant has named themselves.
   if (typeof record.name === 'string') seat.name = record.name;
+  // AI opponent kind (issue #415): present only when the seat is filled by an AI.
+  if (typeof record.ai === 'string') seat.ai = record.ai;
   return seat;
 }
 
@@ -456,7 +459,23 @@ export function normalizeCatalogView(payload: unknown): CatalogView {
     catalog_version: typeof payload.catalog_version === 'number' ? payload.catalog_version : 0,
     cards: asArray<unknown>(payload.cards, 'cards').map(normalizeCatalogCard),
     formats: asArray<unknown>(payload.formats, 'formats').map(normalizeCatalogFormat),
+    // AI opponent kinds (issue #415): a missing field is treated as an empty list, so an
+    // older server that ships none leaves the seating UI simply offering nothing.
+    ai_opponents: asArray<unknown>(payload.ai_opponents ?? [], 'ai_opponents').map(
+      normalizeAiOption,
+    ),
   };
+}
+
+/** Normalize one wire {@link AiOption} (issue #415); an absent description stays absent. */
+function normalizeAiOption(payload: unknown): AiOption {
+  const record = isRecord(payload) ? payload : {};
+  const option: AiOption = {
+    id: asString(record.id),
+    name: asString(record.name),
+  };
+  if (typeof record.description === 'string') option.description = record.description;
+  return option;
 }
 
 /**

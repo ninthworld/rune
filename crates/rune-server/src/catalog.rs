@@ -85,6 +85,9 @@ pub(crate) fn build_catalog(db: &CardDatabase, formats: &FormatRegistry) -> Cata
         catalog_version: CATALOG_VERSION,
         cards,
         formats,
+        // Every AI opponent kind a host may seat (issue #415), so a client can present the
+        // choices for `add_ai` from server metadata rather than a hardcoded list.
+        ai_opponents: crate::ai::ai_options(),
     }
 }
 
@@ -234,5 +237,14 @@ mod tests {
     #[test]
     fn catalog_is_versioned() {
         assert_eq!(catalog().catalog_version, CATALOG_VERSION);
+    }
+
+    #[test]
+    fn issue_415_advertises_the_seatable_ai_opponents() {
+        // The catalog lists every AI kind a host may seat, projected from the server's
+        // own registry (the single source of truth), so a client never hardcodes them.
+        let catalog = catalog();
+        assert_eq!(catalog.ai_opponents, crate::ai::ai_options());
+        assert!(catalog.ai_opponents.iter().any(|o| o.id == "random"));
     }
 }

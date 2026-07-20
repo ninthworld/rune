@@ -798,6 +798,15 @@ export interface SeatView {
   decked?: boolean;
   /** Whether this seat has declared itself ready (defaults `false`). */
   ready?: boolean;
+  /**
+   * When this seat is filled by an AI opponent (issue #415), the id of the AI kind
+   * occupying it (e.g. `"random"`) — one of the {@link CatalogView.ai_opponents} ids.
+   * Absent for an empty seat or a human occupant (identified by
+   * {@link SeatView.occupied_by} instead). An AI seat carries no `occupied_by` and always
+   * reports `decked`/`ready` as `true`. A free-form string like the other id fields, so a
+   * newer AI kind never breaks an older client; render the kind's label from the catalog.
+   */
+  ai?: string;
 }
 
 /** The room a connection is in, with its config and full seat roster. */
@@ -975,6 +984,28 @@ export interface CatalogView {
   cards: CatalogCard[];
   /** Every advertised format's deck rules and seat range. */
   formats: CatalogFormat[];
+  /**
+   * Every AI opponent kind a host may seat (issue #415), so a client can present the
+   * choices for {@link AddAiCommand} from server metadata rather than a hardcoded list.
+   * Additive; a client treats a missing field as an empty list.
+   */
+  ai_opponents: AiOption[];
+}
+
+/**
+ * One selectable AI opponent kind a host may seat (issue #415), as listed in a
+ * {@link CatalogView}. A stable {@link AiOption.id} the {@link AddAiCommand} carries plus
+ * display metadata; the set is server-owned, so a client learns the available kinds from
+ * this list rather than hardcoding them.
+ */
+export interface AiOption {
+  /** The stable id of the AI kind — the value {@link AddAiCommand.kind} carries and a
+   * {@link SeatView.ai} reports (e.g. `"random"`). */
+  id: string;
+  /** A short human-readable name for the kind (e.g. `"Random"`). */
+  name: string;
+  /** A one-line description of how the kind plays, for the seating UI. Absent when empty. */
+  description?: string;
 }
 
 /** First-contact / reconnect command; carries a prior token when reconnecting. */
@@ -1028,6 +1059,38 @@ export interface SubmitDeckCommand {
   commander?: CardIdentity;
 }
 
+/**
+ * Fill an empty seat with an AI opponent (issue #415). Host-only: the server accepts it
+ * only from the seat 0 occupant, for an empty seat of the host's own pre-game room. It
+ * names the target `seat`, the `kind` of AI (one of {@link CatalogView.ai_opponents}), and
+ * the deck the AI plays — the same flat identity list a {@link SubmitDeckCommand} carries,
+ * validated authoritatively against the room's format. The client renders the affordance
+ * only when the server advertises `add_ai` in `valid_commands`; it never computes host-ness.
+ */
+export interface AddAiCommand {
+  /** Discriminator. */
+  type: 'add_ai';
+  /** Zero-based index of the seat to fill with an AI opponent. */
+  seat: number;
+  /** The AI kind to seat, one of {@link CatalogView.ai_opponents} ids (e.g. `"random"`). */
+  kind: string;
+  /** The AI's deck as card identities, duplicates repeated; omitted when empty. */
+  cards?: CardIdentity[];
+  /** The AI's designated commander for a commander-format room; omitted otherwise. */
+  commander?: CardIdentity;
+}
+
+/**
+ * Remove an AI opponent from a seat (issue #415), emptying it again. Host-only and
+ * pre-game, the counterpart of {@link AddAiCommand}.
+ */
+export interface RemoveAiCommand {
+  /** Discriminator. */
+  type: 'remove_ai';
+  /** Zero-based index of the AI seat to empty. */
+  seat: number;
+}
+
 /** Declare or retract readiness for this connection's seat. */
 export interface ReadyCommand {
   /** Discriminator. */
@@ -1077,6 +1140,8 @@ export type LobbyCommand =
   | JoinRoomCommand
   | SpectateRoomCommand
   | SubmitDeckCommand
+  | AddAiCommand
+  | RemoveAiCommand
   | ReadyCommand
   | SetNameCommand
   | RequestCatalogCommand
@@ -1117,6 +1182,28 @@ export function submitDeckCommand(
   if (cards.length > 0) message.cards = cards;
   if (commander) message.commander = commander;
   return message;
+}
+
+/**
+ * Build an `add_ai` command seating an AI of `kind` in `seat` with the given deck (issue
+ * #415), eliding `cards` when empty and `commander` when none is designated — the same
+ * shape a `submit_deck` uses.
+ */
+export function addAiCommand(
+  seat: number,
+  kind: string,
+  cards: CardIdentity[],
+  commander?: CardIdentity,
+): AddAiCommand {
+  const message: AddAiCommand = { type: 'add_ai', seat, kind };
+  if (cards.length > 0) message.cards = cards;
+  if (commander) message.commander = commander;
+  return message;
+}
+
+/** Build a `remove_ai` command emptying the AI in `seat` (issue #415). */
+export function removeAiCommand(seat: number): RemoveAiCommand {
+  return { type: 'remove_ai', seat };
 }
 
 /** Build a `ready` command declaring (`true`) or retracting (`false`) readiness. */

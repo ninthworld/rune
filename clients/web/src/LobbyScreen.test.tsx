@@ -9,7 +9,9 @@ import {
   LOBBY_ROOM_ALL_READY_JSON,
   LOBBY_ROOM_COMMANDER_JSON,
   LOBBY_ROOM_DECKED_JSON,
+  LOBBY_ROOM_HOST_CAN_ADD_AI_JSON,
   LOBBY_ROOM_UNDECKED_JSON,
+  LOBBY_ROOM_WITH_AI_JSON,
 } from './lobby-view.fixture';
 import { CATALOG_JSON, CATALOG_VIEW } from './catalog-view.fixture';
 
@@ -556,5 +558,63 @@ describe('LobbyScreen (issue #114)', () => {
     expect(screen.getByTestId('seat-0').textContent).toContain('Alice');
     expect(screen.getByTestId('seat-0').textContent).toContain('You');
     expect(screen.getByTestId('seat-1').textContent).toContain('Player 2');
+  });
+
+  describe('AI opponents (issue #415)', () => {
+    /** A catalog frame advertising a format plus the seatable AI kinds. */
+    function catalogWithAi(): string {
+      return JSON.stringify({
+        catalog_version: 1,
+        formats: [DUEL_FORMAT_FACTS],
+        ai_opponents: [
+          { id: 'random', name: 'Random', description: 'Plays a random legal action.' },
+        ],
+      });
+    }
+
+    it('offers the host an AI seating card and sends add_ai with seat, kind, and deck', () => {
+      const socket = mountLobby(LOBBY_ROOM_HOST_CAN_ADD_AI_JSON);
+      // The card appears only once the catalog's advertised AI kinds arrive.
+      expect(screen.queryByTestId('ai-seating')).toBeNull();
+      act(() => socket.emitMessage(catalogWithAi()));
+
+      // Now the host can pick a kind and seat an AI in the open seat (index 1).
+      expect(screen.getByTestId('ai-seating')).toBeTruthy();
+      expect(screen.getByTestId('ai-kind-random')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('add-ai-button'));
+
+      const sent = lastSent(socket) as {
+        type: string;
+        seat: number;
+        kind: string;
+        cards: string[];
+      };
+      expect(sent.type).toBe('add_ai');
+      expect(sent.seat).toBe(1);
+      expect(sent.kind).toBe('random');
+      expect(sent.cards.length).toBeGreaterThan(0);
+    });
+
+    it('does not offer AI seating when the server does not advertise add_ai', () => {
+      const socket = mountLobby(LOBBY_ROOM_DECKED_JSON); // no add_ai in valid_commands
+      act(() => socket.emitMessage(catalogWithAi()));
+      expect(screen.queryByTestId('ai-seating')).toBeNull();
+    });
+
+    it('renders an AI seat in the roster and lets the host remove it', () => {
+      const socket = mountLobby(LOBBY_ROOM_WITH_AI_JSON);
+      // The AI seat shows as filled, tagged AI, decked and ready — no human occupant.
+      const aiSeat = screen.getByTestId('seat-1');
+      expect(aiSeat.textContent).toContain('Random');
+      expect(screen.getByTestId('seat-1-ai')).toBeTruthy();
+      expect(screen.getByTestId('seat-1-decked')).toBeTruthy();
+      expect(screen.getByTestId('seat-1-ready')).toBeTruthy();
+      // The room reads full: 2/2 seats filled counts the AI.
+      expect(screen.getByTestId('room-status').textContent).toContain('2/2');
+
+      // Removing it sends remove_ai for that seat.
+      fireEvent.click(screen.getByTestId('remove-ai-1-button'));
+      expect(lastSent(socket)).toEqual({ type: 'remove_ai', seat: 1 });
+    });
   });
 });

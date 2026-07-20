@@ -89,6 +89,25 @@ pub struct CatalogFormat {
     pub max_seats: u8,
 }
 
+/// One selectable **AI opponent kind** a host may seat, as listed in a [`CatalogView`]
+/// (issue #415). It is the browse-time description of an AI the host can attach to an
+/// empty seat with [`AddAi`](crate::AddAi): a stable [`id`](AiOption::id) the command
+/// carries, plus display metadata the client renders. The set is server-owned — the
+/// server decides which policies it will run — so a client learns the available kinds
+/// from this list rather than hardcoding them, and a newer kind simply appears here.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AiOption {
+    /// The stable id of the AI kind — the value an [`AddAi::kind`](crate::AddAi::kind)
+    /// carries and a [`SeatView::ai`](crate::SeatView::ai) reports (e.g. `"random"`).
+    pub id: String,
+    /// A short human-readable name for the kind (e.g. `"Random"`).
+    pub name: String,
+    /// A one-line description of how the kind plays, for the seating UI. Omitted from the
+    /// wire when empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+}
+
 /// The public card catalog and format deck rules, a lobby-phase **server → client**
 /// frame answered to a [`LobbyCommand::RequestCatalog`] (issue #367). It is a versioned
 /// single-frame projection of the complete supported card pool and every advertised
@@ -111,6 +130,12 @@ pub struct CatalogView {
     /// empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub formats: Vec<CatalogFormat>,
+    /// Every **AI opponent** kind a host may seat (issue #415), so a client can present
+    /// the choices for [`AddAi`](crate::AddAi). Additive and default-elided: omitted from
+    /// the wire when empty (a client treats a missing field as an empty list), so an older
+    /// server that ships no AI kinds leaves the frame byte-for-byte the pre-#415 shape.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ai_opponents: Vec<AiOption>,
 }
 
 #[cfg(test)]
@@ -169,10 +194,13 @@ mod tests {
                 min_seats: 2,
                 max_seats: 8,
             }],
+            ai_opponents: vec![],
         };
         let json = serde_json::to_value(&view).unwrap();
         // The version is the wire discriminator (a `LobbyView` never carries it).
         assert_eq!(json["catalog_version"], 1);
+        // An empty AI-opponent list elides from the wire (pre-#415 shape).
+        assert_eq!(json.get("ai_opponents"), None);
         // A basic land elides its absent mana cost and P/T; a permissive format elides
         // its `None` upper bounds.
         assert_eq!(json["cards"][1].get("mana_cost"), None);
@@ -222,5 +250,40 @@ mod tests {
         let parsed: CatalogFormat = serde_json::from_value(legacy).unwrap();
         assert!(!parsed.requires_commander);
         assert!(!parsed.enforce_color_identity);
+    }
+
+    #[test]
+    fn issue_415_catalog_advertises_ai_opponent_kinds() {
+        // The catalog lists the AI kinds a host may seat; each entry carries its stable
+        // id, a display name, and an optional description that elides when empty.
+        let view = CatalogView {
+            catalog_version: CATALOG_VERSION,
+            cards: vec![],
+            formats: vec![],
+            ai_opponents: vec![
+                AiOption {
+                    id: "random".into(),
+                    name: "Random".into(),
+                    description: "Plays a random legal action each turn.".into(),
+                },
+                AiOption {
+                    id: "spartan".into(),
+                    name: "Spartan".into(),
+                    description: String::new(),
+                },
+            ],
+        };
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json["ai_opponents"][0]["id"], "random");
+        assert_eq!(json["ai_opponents"][0]["name"], "Random");
+        // An empty description elides from the wire.
+        assert_eq!(json["ai_opponents"][1].get("description"), None);
+        let back: CatalogView = serde_json::from_value(json).unwrap();
+        assert_eq!(back, view);
+
+        // An older frame with no `ai_opponents` field deserializes to an empty list.
+        let legacy = serde_json::json!({ "catalog_version": 1 });
+        let parsed: CatalogView = serde_json::from_value(legacy).unwrap();
+        assert!(parsed.ai_opponents.is_empty());
     }
 }

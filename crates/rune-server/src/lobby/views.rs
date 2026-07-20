@@ -44,7 +44,14 @@ fn build_directory(registry: &Registry) -> Vec<RoomSummary> {
                 // A finished game's task has stopped: drop it from the directory.
                 Some(_) => return None,
             };
-            let filled = room.seats.iter().filter(|seat| seat.is_some()).count();
+            // A seat is filled by a human *or* an AI opponent (issue #415), so both count
+            // toward occupancy in the public directory.
+            let filled = room
+                .seats
+                .iter()
+                .zip(&room.ai_seats)
+                .filter(|(session, ai)| session.is_some() || ai.is_some())
+                .count();
             Some(RoomSummary {
                 room_id: room_id.clone(),
                 config: room.config.clone(),
@@ -88,6 +95,24 @@ fn valid_commands(registry: &Registry, session: &Session) -> Vec<String> {
                 commands.push("ready".to_string());
             }
         }
+        // AI-seat management is host-only (issue #415): the seat 0 occupant may fill an
+        // empty seat with an AI (`add_ai`) whenever one is open, and clear an AI seat
+        // (`remove_ai`) whenever one exists. Advertising these in `valid_commands` is the
+        // only signal the client needs — it renders the affordance from this, never from a
+        // client-side "host" inference.
+        if seat == 0 {
+            let has_empty_seat = room
+                .seats
+                .iter()
+                .zip(&room.ai_seats)
+                .any(|(session, ai)| session.is_none() && ai.is_none());
+            if has_empty_seat {
+                commands.push("add_ai".to_string());
+            }
+            if room.ai_seats.iter().any(Option::is_some) {
+                commands.push("remove_ai".to_string());
+            }
+        }
     }
     commands.push("leave".to_string());
     commands
@@ -104,9 +129,15 @@ fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
         .enumerate()
         .map(|(index, occupant)| {
             let session = occupant.as_ref().and_then(|tok| registry.sessions.get(tok));
+            let ai = room.ai_seats.get(index).and_then(Option::as_ref);
+            // A human occupant is named by its public `PlayerId`; an AI seat (issue #415)
+            // has no session identity and instead reports its kind in `ai`.
             let occupied_by = session.map(|session| session.player.clone());
-            // The occupant's chosen display name (issue #294), public in the roster.
-            let name = session.and_then(|session| session.name.clone());
+            // The occupant's chosen display name (issue #294), public in the roster; for an
+            // AI seat, the kind's own label so the roster reads e.g. "Random".
+            let name = session
+                .and_then(|session| session.name.clone())
+                .or_else(|| ai.map(|ai| ai.name.clone()));
             let gate = room.gate.get(index);
             SeatView {
                 seat: index as u8,
@@ -114,6 +145,8 @@ fn build_room_view(registry: &Registry, room_id: &RoomId) -> Option<RoomView> {
                 name,
                 decked: gate.is_some_and(|g| g.deck.is_some()),
                 ready: gate.is_some_and(|g| g.ready),
+                // The AI kind occupying this seat, if any (a human/empty seat omits it).
+                ai: ai.map(|ai| ai.kind.id().to_string()),
             }
         })
         .collect();
@@ -206,14 +239,21 @@ mod tests {
             Some(initial.you.as_str())
         );
         assert!(room.seats[1].occupied_by.is_none());
-        // No game is constructed: the roster reflects nobody decked or ready.
-        assert!(room.seats.iter().all(|s| !s.decked && !s.ready));
-        // Seated but undecked: the seat may submit a deck or leave, not ready up.
+        // No game is constructed: the roster reflects nobody decked or ready, and no seat
+        // is filled by an AI (issue #415).
+        assert!(room
+            .seats
+            .iter()
+            .all(|s| !s.decked && !s.ready && s.ai.is_none()));
+        // Seated but undecked: the seat may submit a deck or leave, not ready up. As the
+        // host (seat 0) of a room with an open seat, it may also fill it with an AI
+        // opponent (`add_ai`, issue #415).
         assert_eq!(
             view.valid_commands,
             vec![
                 "set_name".to_string(),
                 "submit_deck".to_string(),
+                "add_ai".to_string(),
                 "leave".to_string()
             ]
         );
