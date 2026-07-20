@@ -870,6 +870,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Commander tax owed on a recast (CR 903.8, issue #372): a quiet caption beside the
+   command-zone pile, tabular so the {N} reads cleanly. */
+.cmdTax {
+  font-size: var(--rune-type-caption);
+  color: var(--rune-text-muted);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* Commander-damage tally a player has taken (CR 903.10a, issue #372): a compact
+   caption near the life crest, one `amount/21` entry per attacking commander. Reads
+   as combat pressure aimed here, so it borrows the targeting accent. */
+.cmdDamage {
+  display: inline-flex;
+  gap: 4px;
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  color: var(--rune-accent-targeting, #e0784a);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Card inspect popover ──────────────────────────────────────────────────── */
 .inspectBackdrop {
   position: fixed;

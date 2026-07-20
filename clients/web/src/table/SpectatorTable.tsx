@@ -85,8 +85,11 @@ function asPublicView(spec: SpectatorView): GameView {
     auto_passed: false,
     action_rejected: false,
     player_names: spec.player_names,
-    // The public commander-damage tally carries straight through (issue #371).
+    // The public command zone, damage tally, and recast tax carry straight through so
+    // a spectator renders the same commander chrome as a seated player (issue #371/#372).
+    command: spec.command ?? [],
     commander_damage: spec.commander_damage,
+    commander_tax: spec.commander_tax ?? [],
   };
 }
 
