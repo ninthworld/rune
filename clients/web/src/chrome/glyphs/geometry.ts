@@ -662,6 +662,27 @@ const GLYPH_DEFS = {
       },
     ],
   },
+  'kw-double_strike': {
+    title: 'Double strike',
+    elements: [
+      {
+        kind: 'polyline',
+        points: [
+          [6, 7],
+          [11, 12],
+          [6, 17],
+        ],
+      },
+      {
+        kind: 'polyline',
+        points: [
+          [13, 7],
+          [18, 12],
+          [13, 17],
+        ],
+      },
+    ],
+  },
 
   // ── State + seat/ready markers ──────────────────────────────────────────────
   tap: {

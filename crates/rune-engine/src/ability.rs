@@ -12,6 +12,7 @@
 
 use serde::Deserialize;
 
+use crate::card::Keyword;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
 use crate::stack::StackId;
@@ -219,6 +220,24 @@ pub enum Effect {
         /// The signed amount added to the target's toughness until end of turn.
         toughness: i32,
     },
+    /// Grant the single creature this effect targets a keyword ability **until end
+    /// of turn** — the pump-spell analogue of [`Effect::Pump`] for keywords (e.g.
+    /// `Target creature gains trample until end of turn.`, CR 702). On resolution it
+    /// adds a CR 613 **layer-6** [`Modification::GrantKeyword`](crate::Modification::GrantKeyword)
+    /// keyed to that one permanent, with an `UntilEndOfTurn` duration the cleanup
+    /// step removes (CR 514.2).
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). The granted keyword
+    /// folds into the target's computed keyword set on demand (CR 613.1f) and is
+    /// indistinguishable from a printed keyword; a duplicate grant is redundant, not
+    /// additive.
+    GrantKeyword {
+        /// What this effect is allowed to target (a creature).
+        target: TargetSpec,
+        /// The keyword ability granted until end of turn.
+        keyword: Keyword,
+    },
 }
 
 /// A **non-targeted player reference**: which player an implicit-subject effect
@@ -252,7 +271,8 @@ impl Effect {
             | Effect::DealDamage { target, .. }
             | Effect::Destroy { target }
             | Effect::PutCounters { target, .. }
-            | Effect::Pump { target, .. } => Some(*target),
+            | Effect::Pump { target, .. }
+            | Effect::GrantKeyword { target, .. } => Some(*target),
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
             | Effect::DrawCard { .. }
@@ -611,6 +631,23 @@ mod tests {
                 target: TargetSpec::AnyCreature,
                 power: 3,
                 toughness: 3,
+            }
+        );
+        assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));
+    }
+
+    #[test]
+    fn issue_374_grant_keyword_round_trips_with_its_target_spec() {
+        // The keyword-granting pump verb authors its target spec and the keyword it
+        // grants as card data, and (a targeting effect) reports its spec.
+        use crate::card::Keyword;
+        let json = r#"{"kind":"grant_keyword","target":"any_creature","keyword":"trample"}"#;
+        let effect: Effect = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            effect,
+            Effect::GrantKeyword {
+                target: TargetSpec::AnyCreature,
+                keyword: Keyword::Trample,
             }
         );
         assert_eq!(effect.target_spec(), Some(TargetSpec::AnyCreature));

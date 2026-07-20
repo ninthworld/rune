@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "jump",
+  "name": "Jump",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "grant_keyword",
+      "target": "any_creature",
+      "keyword": "flying"
+    }
+  ]
+}

@@ -28,6 +28,7 @@ import { createStore } from 'zustand/vanilla';
 import {
   chooseAction,
   helloCommand,
+  requestCatalogCommand,
   setStopsMessage,
   type CatalogView,
   type GameView,
@@ -214,6 +215,16 @@ export interface GameStore {
    * client only sends commands the server advertised in `valid_commands`.
    */
   sendLobby: (command: LobbyCommand) => void;
+  /**
+   * Ask the server for the public card catalog + format deck rules (issue #367),
+   * the browsable card pool the deck builder (#368) works from. Sends a one-shot
+   * `request_catalog`; the reply is a {@link CatalogView} frame that lands in
+   * {@link catalog}. It changes no lobby state and needs no reconciliation, so —
+   * unlike {@link sendLobby} — it is not recorded as a pending command. A no-op when
+   * no socket is open. Idempotent to re-request; callers guard on `catalog === null`
+   * to avoid refetching data they already hold.
+   */
+  requestCatalog: () => void;
   /**
    * Send a `ChooseAction` for one of the currently issued `valid_actions`,
    * answered atomically. The chosen action's content-binding `token` is echoed
@@ -416,6 +427,14 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         clearPersistedSession();
       }
       socket.send(JSON.stringify(command));
+    },
+
+    requestCatalog(): void {
+      // Fire-and-forget: the catalog is static reference data, not lobby state, so it
+      // is neither recorded as a pending command nor reconciled — the reply simply
+      // populates `catalog` (see `ingest`). No legality is computed here.
+      if (!socket) return;
+      socket.send(JSON.stringify(requestCatalogCommand()));
     },
 
     choose(action, targets): void {

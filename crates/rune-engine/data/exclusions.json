@@ -4,10 +4,6 @@
     "blocker": "no loyalty counter system or loyalty abilities"
   },
   {
-    "name": "Continuous keyword-granting effects",
-    "blocker": "only printed keywords are modeled; effects that grant keywords are not"
-  },
-  {
     "name": "Auras that enchant a player or land, or move between hosts",
     "blocker": "only P/T-granting enchant-creature Auras are modeled"
   },
@@ -18,9 +14,5 @@
   {
     "name": "Replacement effects",
     "blocker": "no replacement-effect layer in the rules engine"
-  },
-  {
-    "name": "Double strike",
-    "blocker": "a creature deals combat damage in exactly one step; dealing in both the first-strike and regular steps is not modeled (issue #346)"
   }
 ]
