@@ -69,9 +69,10 @@ include!(concat!(env!("OUT_DIR"), "/catalog_manifest.rs"));
 /// A keyword ability printed on a card (CR 702). Closed set, deserialized from
 /// lowercase names (e.g. `"flying"`, `"first_strike"`).
 ///
-/// This is the printed keyword representation the combat and layer systems read;
-/// keyword-granting continuous effects are future work, so a permanent's keywords
-/// are its card's printed [`CardData::keywords`] today. All eight variants are
+/// This is the printed keyword representation the layer system seeds from; a
+/// permanent's *current* keywords are the printed [`CardData::keywords`] unioned
+/// with any granted by continuous effects at CR 613 layer 6 (see
+/// [`characteristics`](crate::characteristics::characteristics)). All eight variants are
 /// enforced: [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
 /// [`Vigilance`](Keyword::Vigilance), and [`Haste`](Keyword::Haste) at
 /// combat-declaration time (keywords I), and
@@ -111,11 +112,12 @@ pub enum Keyword {
 /// power/toughness modification it applies to that object at CR 613 layer 7c.
 ///
 /// The modification is stored as raw signed printed data; the *contribution* to a
-/// host's current P/T is derived on demand from the attachment via
+/// host's current characteristics is derived on demand from the attachment via
 /// [`characteristics`](crate::characteristics::characteristics), never stored
-/// (ADR 0010). Only P/T-granting, enchant-creature Auras are modeled here;
-/// keyword-granting Auras, enchant-player/land, and Aura movement are out of scope.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+/// (ADR 0010). Enchant-creature Auras that grant power/toughness (CR 613.7c) and/or
+/// keyword abilities (CR 613.1f, layer 6) are modeled here; enchant-player/land and
+/// Aura movement are out of scope.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct AuraGrant {
     /// The enchant restriction (CR 303.4a): what this Aura may be attached to,
     /// expressed as the [`TargetSpec`] a target is chosen for at cast (CR 601.2c)
@@ -131,6 +133,13 @@ pub struct AuraGrant {
     /// Defaults to `0`.
     #[serde(default)]
     pub toughness: i32,
+    /// The keyword abilities this Aura grants the enchanted object at CR 613 layer 6
+    /// (CR 613.1f) — e.g. an Aura granting flying. Empty for a P/T-only Aura. Each
+    /// granted keyword is folded into the host's computed keyword set while the Aura
+    /// is attached and is indistinguishable from a printed keyword; the grant
+    /// vanishes the instant the Aura leaves. Redundant grants are idempotent.
+    #[serde(default)]
+    pub keywords: Vec<Keyword>,
 }
 
 /// One functional definition: the static, printing-independent rules object for a
@@ -209,9 +218,11 @@ pub struct CardData {
     #[serde(default)]
     pub aura: Option<AuraGrant>,
     /// The card's printed keyword abilities (CR 702), e.g. flying or haste. Empty
-    /// for a card with none. Read with [`CardData::has_keyword`]; the combat and
-    /// summoning-sickness code consults these directly, since keyword-granting
-    /// continuous effects are not modeled yet.
+    /// for a card with none. Read with [`CardData::has_keyword`] for the *printed*
+    /// set; a permanent's *current* keywords fold these together with any granted by
+    /// continuous effects (CR 613.1f, layer 6) via
+    /// [`characteristics`](crate::characteristics::characteristics), which the combat
+    /// and summoning-sickness code consults.
     #[serde(default)]
     pub keywords: Vec<Keyword>,
     /// Whether this card's behavior is (also) defined in code rather than data
@@ -286,14 +297,16 @@ impl CardData {
     /// (CR 608.2b). Empty for a spell that chooses no targets.
     #[must_use]
     pub fn cast_target_specs(&self) -> Vec<TargetSpec> {
-        let mut specs: Vec<TargetSpec> = self.aura.map(|a| a.enchant).into_iter().collect();
+        let mut specs: Vec<TargetSpec> =
+            self.aura.as_ref().map(|a| a.enchant).into_iter().collect();
         specs.extend(self.spell_effects.iter().filter_map(Effect::target_spec));
         specs
     }
 
-    /// Whether the card has printed keyword ability `keyword` (CR 702). Reads the
-    /// printed [`CardData::keywords`]; keyword-granting continuous effects are
-    /// future work, so this is authoritative for a permanent's keywords today.
+    /// Whether the card has printed keyword ability `keyword` (CR 702). Reads only
+    /// the printed [`CardData::keywords`]. A permanent's *current* keywords also
+    /// include those granted by continuous effects at CR 613 layer 6; read those
+    /// through [`characteristics`](crate::characteristics::characteristics).
     #[must_use]
     pub fn has_keyword(&self, keyword: Keyword) -> bool {
         self.keywords.contains(&keyword)
@@ -819,7 +832,7 @@ mod tests {
     use crate::card_type::{CardType, Supertype};
 
     /// The number of functional definitions in `data/catalog/`.
-    const CATALOG_SIZE: usize = 33;
+    const CATALOG_SIZE: usize = 35;
 
     /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0018 §3).
     fn every_id() -> impl Iterator<Item = CardId> {
@@ -1284,6 +1297,7 @@ mod tests {
                 enchant: TargetSpec::AnyCreature,
                 power: 2,
                 toughness: 2,
+                keywords: vec![],
             })
         );
         // An Aura chooses its enchant target as it is cast (CR 601.2c): one slot.
@@ -1297,6 +1311,7 @@ mod tests {
                 enchant: TargetSpec::AnyCreature,
                 power: -2,
                 toughness: -2,
+                keywords: vec![],
             })
         );
 
@@ -1336,8 +1351,8 @@ mod tests {
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // M19 prints the thirty-three cards; PM19 reprints one — thirty-four printings total.
-        assert_eq!(printings.len(), 34);
+        // M19 prints the thirty-five cards; PM19 reprints one — thirty-six printings total.
+        assert_eq!(printings.len(), 36);
         assert!(!printings.is_empty());
         let ogre = printings.printing("M19", "15").unwrap();
         // The record names onakke_ogre; the loader resolved that to its handle.
