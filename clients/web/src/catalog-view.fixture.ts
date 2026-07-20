@@ -35,6 +35,16 @@ export const CATALOG_JSON = JSON.stringify({
       type_line: 'Basic Land — Forest',
       rules_text: '{T}: Add {G}.',
     },
+    {
+      functional_id: 'arcades_the_strategist',
+      name: 'Arcades the Strategist',
+      type_line: 'Legendary Creature — Elder Dragon',
+      mana_cost: '{2}{G}{W}{U}',
+      rules_text: 'Flying, vigilance',
+      power: '3',
+      toughness: '5',
+      keywords: ['flying', 'vigilance'],
+    },
   ],
   formats: [
     {
@@ -51,6 +61,19 @@ export const CATALOG_JSON = JSON.stringify({
       basic_land_exempt: true,
       min_seats: 2,
       max_seats: 8,
+    },
+    {
+      // A commander format (issue #394/#396): advertises the designation requirement so
+      // a client learns it from metadata rather than hardcoding the format name.
+      game_setup: 'commander',
+      min_deck_size: 100,
+      max_deck_size: 100,
+      max_copies: 1,
+      basic_land_exempt: true,
+      requires_commander: true,
+      enforce_color_identity: true,
+      min_seats: 2,
+      max_seats: 4,
     },
   ],
 });

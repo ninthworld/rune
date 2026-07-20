@@ -793,8 +793,11 @@ function RoomPanel({ view }: { view: LobbyView }) {
           catalog={catalog}
           format={roomFormat}
           initialCounts={decklistCounts(decklistById(deckId) ?? STARTER_DECKLISTS[0])}
+          initialCommander={
+            requiresCommander ? (decklistById(deckId) ?? STARTER_DECKLISTS[0]).commander : undefined
+          }
           error={lobbyError}
-          onSubmit={(cards) => sendLobby(submitDeckCommand(cards))}
+          onSubmit={(cards, commander) => sendLobby(submitDeckCommand(cards, commander))}
           onClose={() => setBuilderOpen(false)}
         />
       )}

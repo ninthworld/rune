@@ -305,6 +305,27 @@ describe('game store', () => {
       expect(socket.sent).toContain(JSON.stringify({ type: 'ready', ready: true }));
     });
 
+    it('sends a builder-designated commander through the unchanged submit_deck gate (#396)', () => {
+      // The deck builder's submit path carries the designation as the second argument;
+      // the store sends it verbatim, so a commander deck reaches the same gate.
+      const { store, socket } = open();
+      store
+        .getState()
+        .sendLobby(
+          submitDeckCommand(
+            ['arcades_the_strategist', 'forest', 'forest'],
+            'arcades_the_strategist',
+          ),
+        );
+      expect(socket.sent).toContain(
+        JSON.stringify({
+          type: 'submit_deck',
+          cards: ['arcades_the_strategist', 'forest', 'forest'],
+          commander: 'arcades_the_strategist',
+        }),
+      );
+    });
+
     it('clears any error when a command takes effect (create → in a room)', () => {
       const { store, socket } = open();
       socket.emitMessage(LOBBY_ROOMLESS_JSON);
@@ -409,8 +430,8 @@ describe('game store', () => {
       socket.emitMessage(CATALOG_JSON);
       const { catalog, lobby, view, lobbyError } = store.getState();
       expect(catalog?.catalog_version).toBe(1);
-      expect(catalog?.cards).toHaveLength(3);
-      expect(catalog?.formats).toHaveLength(2);
+      expect(catalog?.cards).toHaveLength(4);
+      expect(catalog?.formats).toHaveLength(3);
       // The catalog is reference data, not lobby/game state: it does not disturb them.
       expect(lobby).toEqual(lobbyBefore);
       expect(view).toBeNull();
@@ -420,7 +441,7 @@ describe('game store', () => {
     it('replaces the catalog wholesale on a later frame (no merge)', () => {
       const { store, socket } = open();
       socket.emitMessage(CATALOG_JSON);
-      expect(store.getState().catalog?.cards).toHaveLength(3);
+      expect(store.getState().catalog?.cards).toHaveLength(4);
 
       socket.emitMessage(JSON.stringify({ catalog_version: 1, cards: [], formats: [] }));
       expect(store.getState().catalog?.cards).toEqual([]);

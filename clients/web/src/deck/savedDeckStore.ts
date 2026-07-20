@@ -42,6 +42,13 @@ export interface DeckContents {
   readonly name: string;
   /** The deck's card rows (functional_id + count), in stable order. */
   readonly cards: readonly DeckCard[];
+  /**
+   * The card this deck designates as its commander (CR 903.3, issue #396), by the same
+   * `functional_id` one of its rows uses. Present only for a commander-format deck and
+   * omitted otherwise, so a non-commander deck round-trips unchanged. Saving never
+   * implies legality — the server's `submit_deck` gate is the sole authority.
+   */
+  readonly commander?: string;
 }
 
 /** A stored deck: its contents plus the device-local save timestamp. */
@@ -242,7 +249,11 @@ export async function savedDeckExists(name: string): Promise<boolean> {
 export async function saveDeck(contents: DeckContents): Promise<SavedDeck> {
   const name = normalizeDeckName(contents.name);
   if (name === '') throw new Error('A saved deck needs a name.');
-  const deck: SavedDeck = { name, cards: [...contents.cards], updatedAt: store().now() };
+  const base = { name, cards: [...contents.cards], updatedAt: store().now() };
+  // Carry the commander designation only when present, so a non-commander deck stays
+  // the pre-commander shape on disk (no stored `commander: undefined`).
+  const deck: SavedDeck =
+    contents.commander !== undefined ? { ...base, commander: contents.commander } : base;
   await store().db.put(deck);
   return deck;
 }

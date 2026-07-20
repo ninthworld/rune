@@ -865,6 +865,57 @@
   gap: var(--rune-space-4);
   font-size: var(--rune-type-body);
 }
+.builderDeckRowName {
+  margin-right: auto;
+  min-width: 0;
+}
+
+/* ── Commander designation (issue #396) ────────────────────────────────────── */
+/* Shown only when the format advertises `requires_commander`. The chosen commander is
+ * named distinctly in a gold-accented strip; the designated deck row is marked with a
+ * gold badge and a gold left edge so the designation reads at a glance (never color
+ * alone — a "Commander" text badge carries it for assistive tech). */
+.builderCommander {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-3);
+  padding: var(--rune-space-3) var(--rune-space-4);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-gold-border);
+  background: color-mix(in srgb, var(--rune-gold-fill) 16%, transparent);
+}
+.builderCommanderChosen {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  margin-left: auto;
+}
+.builderCommanderName {
+  font-family: var(--rune-font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.builderDeckRowCommander {
+  padding-left: var(--rune-space-3);
+  border-left: 3px solid var(--rune-gold-border);
+}
+.builderCommanderBadge {
+  padding: 2px var(--rune-space-3);
+  border-radius: var(--rune-radius-sm);
+  border: 1px solid var(--rune-gold-border);
+  background: color-mix(in srgb, var(--rune-gold-fill) 24%, transparent);
+  font-size: var(--rune-type-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* A candidate hint (a legendary type line): the designate control is tinted toward gold
+ * so likely commanders stand out — purely advisory, it disables nothing. */
+.builderCommanderCandidate {
+  border-color: var(--rune-gold-border);
+}
 .builderFoot {
   display: flex;
   align-items: center;

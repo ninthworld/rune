@@ -6,6 +6,14 @@
  * counts and the room format's advertised deck rules, and submits the built list
  * through the existing `submit_deck` gate.
  *
+ * Commander designation (issue #396): when the open format advertises
+ * {@link CatalogFormat.requires_commander} (issue #394), the running deck list gains a
+ * per-row designate control and names the chosen commander distinctly; the designation
+ * is changeable/clearable before submit, round-trips through saved/exported decks, and
+ * is carried into `submit_deck`. Eligibility (legendary creature, color identity) stays
+ * SERVER-validated — the builder only HINTS likely candidates from the catalog type
+ * line and never enforces legality (zero client legality — AGENTS.md).
+ *
  * Saved decks (issue #369, ADR 0027): a built deck can be named and saved to the
  * player's device (IndexedDB, `deck/savedDeckStore.ts`), listed on return, loaded
  * back for editing, deleted, and exported/imported as a portable schema-versioned
@@ -66,8 +74,20 @@ interface DeckBuilderProps {
   format?: CatalogFormat;
   /** The counts to seed the builder with on open (a starter deck, or empty). */
   initialCounts: Readonly<Record<CardIdentity, number>>;
-  /** Submit the built list (functional ids, duplicates repeated) through `submit_deck`. */
-  onSubmit: (cards: CardIdentity[]) => void;
+  /**
+   * The commander to seed the designation with on open (issue #396) — e.g. a
+   * commander-format starter's own designation, so the builder doubles as an editing
+   * base. Ignored unless {@link CatalogFormat.requires_commander} is advertised for the
+   * open format. Ephemeral; the player may change or clear it before submit.
+   */
+  initialCommander?: CardIdentity;
+  /**
+   * Submit the built list (functional ids, duplicates repeated) through `submit_deck`.
+   * The `commander` designation (issue #396) is carried only when the open format
+   * advertises {@link CatalogFormat.requires_commander}; the server validates it (zero
+   * client legality — AGENTS.md).
+   */
+  onSubmit: (cards: CardIdentity[], commander?: CardIdentity) => void;
   /** Close the builder without submitting (backdrop, Cancel, or Escape). */
   onClose: () => void;
   /**
@@ -169,10 +189,14 @@ function downloadDeck(name: string, text: string): void {
  */
 function SavedDecksPanel({
   counts,
+  commander,
   onLoad,
 }: {
   counts: Record<CardIdentity, number>;
-  onLoad: (counts: Record<CardIdentity, number>) => void;
+  /** The working deck's commander designation to save alongside its cards (issue #396). */
+  commander: CardIdentity | undefined;
+  /** Load a saved/imported deck back into the builder — its counts and its designation. */
+  onLoad: (counts: Record<CardIdentity, number>, commander: CardIdentity | undefined) => void;
 }) {
   // `null` until the storage probe resolves; `false` means device storage is
   // unavailable and the panel hides. Ephemeral UI state — never load-bearing.
@@ -218,7 +242,9 @@ function SavedDecksPanel({
   };
 
   const persist = async (deckName: string): Promise<void> => {
-    await saveDeck({ name: deckName, cards: countsToCards(counts) });
+    // Carry the commander designation into the saved copy so a commander deck
+    // round-trips (issue #396); `undefined` saves the pre-commander shape.
+    await saveDeck({ name: deckName, cards: countsToCards(counts), commander });
     setConfirmOverwrite(false);
     setStatus(`Saved “${deckName}”.`);
     setError(null);
@@ -252,7 +278,7 @@ function SavedDecksPanel({
   };
 
   const load = (deck: SavedDeck): void => {
-    onLoad(cardsToCounts(deck.cards));
+    onLoad(cardsToCounts(deck.cards), deck.commander);
     setName(deck.name);
     setConfirmOverwrite(false);
     setStatus(`Loaded “${deck.name}” — edit it, then save.`);
@@ -291,7 +317,7 @@ function SavedDecksPanel({
       setStatus(null);
       return;
     }
-    onLoad(cardsToCounts(contents.cards));
+    onLoad(cardsToCounts(contents.cards), contents.commander);
     setName(contents.name);
     setImportText('');
     setConfirmOverwrite(false);
@@ -476,13 +502,23 @@ export function DeckBuilder({
   catalog,
   format,
   initialCounts,
+  initialCommander,
   onSubmit,
   onClose,
   error,
 }: DeckBuilderProps) {
+  // Whether the open format advertises a commander requirement (issue #394/#396): the
+  // sole gate for the designation affordance below. Nothing here computes legality — a
+  // format that does not advertise it shows no designation surface, and the server
+  // remains the only authority on whether a designation is legal.
+  const requiresCommander = format?.requires_commander === true;
+
   // The in-progress deck: identity → copies. Ephemeral local UI state seeded once on
   // open; never load-bearing across messages (the pool it references is server truth).
   const [counts, setCounts] = useState<Record<CardIdentity, number>>(() => ({ ...initialCounts }));
+  // The designated commander (issue #396), or `null` for none. Ephemeral like `counts`;
+  // seeded from the open deck's designation and changeable/clearable before submit.
+  const [commander, setCommander] = useState<CardIdentity | null>(initialCommander ?? null);
   // The card being pin-inspected, if any — ephemeral selection, discarded on close.
   const [inspecting, setInspecting] = useState<CatalogCard | null>(null);
 
@@ -491,22 +527,38 @@ export function DeckBuilder({
 
   // Resolve chosen counts into display rows in the catalog's stable order, then any
   // seeded identity the catalog does not carry (fallback to its raw id as the name),
-  // so a starter-seeded card never silently vanishes from the summary.
+  // so a starter-seeded card never silently vanishes from the summary. Each row carries
+  // its catalog `type_line` so the designation affordance can HINT likely commander
+  // candidates (a legendary type line) — a display hint only, never an enforced gate.
   const deckRows = useMemo(() => {
-    const rows: { id: CardIdentity; name: string; count: number }[] = [];
+    const rows: { id: CardIdentity; name: string; count: number; typeLine: string }[] = [];
     const seen = new Set<CardIdentity>();
     for (const card of cards) {
       const count = counts[card.functional_id] ?? 0;
       if (count > 0) {
-        rows.push({ id: card.functional_id, name: card.name, count });
+        rows.push({ id: card.functional_id, name: card.name, count, typeLine: card.type_line });
         seen.add(card.functional_id);
       }
     }
     for (const [id, count] of Object.entries(counts)) {
-      if (count > 0 && !seen.has(id)) rows.push({ id, name: id, count });
+      if (count > 0 && !seen.has(id)) rows.push({ id, name: id, count, typeLine: '' });
     }
     return rows;
   }, [cards, counts]);
+
+  // Keep the designation honest: if the designated card is no longer in the deck (its
+  // last copy was removed, the deck was cleared, or a different list was loaded that
+  // drops it), clear the designation so a stale commander can never be submitted. The
+  // server still validates; this is only UI hygiene, not a legality check.
+  useEffect(() => {
+    if (commander !== null && !deckRows.some((row) => row.id === commander)) {
+      setCommander(null);
+    }
+  }, [commander, deckRows]);
+
+  // The designated commander's display row, if it is still in the deck.
+  const commanderRow =
+    commander !== null ? deckRows.find((row) => row.id === commander) : undefined;
 
   const setCount = (id: CardIdentity, next: number): void => {
     setCounts((prev) => {
@@ -526,7 +578,10 @@ export function DeckBuilder({
     for (const row of deckRows) {
       for (let i = 0; i < row.count; i += 1) list.push(row.id);
     }
-    onSubmit(list);
+    // Carry the designation only for a commander format (issue #396); otherwise the
+    // frame stays the pre-commander shape. Legality (eligibility, identity) is the
+    // server's — the client never checks it.
+    onSubmit(list, requiresCommander ? (commander ?? undefined) : undefined);
   };
 
   return (
@@ -603,8 +658,16 @@ export function DeckBuilder({
           </div>
 
           {/* Device-local saved decks (#369, ADR 0027): save/load/delete + portable
-              export/import. Hides itself when device storage is unavailable. */}
-          <SavedDecksPanel counts={counts} onLoad={setCounts} />
+              export/import. Carries the commander designation (#396) so a commander deck
+              round-trips. Hides itself when device storage is unavailable. */}
+          <SavedDecksPanel
+            counts={counts}
+            commander={commander ?? undefined}
+            onLoad={(nextCounts, nextCommander) => {
+              setCounts(nextCounts);
+              setCommander(nextCommander ?? null);
+            }}
+          />
 
           {catalog === null ? (
             <p className={s.muted} data-testid="deck-builder-loading">
@@ -678,22 +741,87 @@ export function DeckBuilder({
               {/* The running deck: chosen cards and their copy counts (display only). */}
               <div className={l.builderDeck} data-testid="deck-builder-deck" aria-label="Your deck">
                 <span className={s.fieldLabel}>Your deck · {total} cards</span>
+
+                {/* The commander designation (issue #396), shown only when the format
+                    advertises the requirement. The designated card is named here
+                    distinctly; below, each deck row offers a one-press designate control
+                    and the designated row is marked. Keyboard + touch: all native
+                    ≥44px buttons, nothing hover- or drag-only. */}
+                {requiresCommander && (
+                  <div
+                    className={l.builderCommander}
+                    data-testid="deck-builder-commander"
+                    aria-label="Commander"
+                  >
+                    <span className={s.fieldLabel}>Commander</span>
+                    {commanderRow !== undefined ? (
+                      <span className={l.builderCommanderChosen}>
+                        <span
+                          className={l.builderCommanderName}
+                          data-testid="deck-builder-commander-name"
+                        >
+                          {commanderRow.name}
+                        </span>
+                        <button
+                          type="button"
+                          className={s.button}
+                          onClick={() => setCommander(null)}
+                          data-testid="deck-builder-commander-clear"
+                          aria-label="Clear commander designation"
+                        >
+                          Clear
+                        </button>
+                      </span>
+                    ) : (
+                      <span className={s.muted} data-testid="deck-builder-commander-empty">
+                        Designate a card below as your commander.
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {deckRows.length === 0 ? (
                   <span className={s.muted} data-testid="deck-builder-deck-empty">
                     No cards yet — add from the pool or start from a starter.
                   </span>
                 ) : (
                   <ul className={l.builderDeckList}>
-                    {deckRows.map((row) => (
-                      <li
-                        key={row.id}
-                        className={l.builderDeckRow}
-                        data-testid={`deck-builder-deck-row-${row.id}`}
-                      >
-                        <span className={l.builderCardCount}>{row.count}×</span>
-                        <span>{row.name}</span>
-                      </li>
-                    ))}
+                    {deckRows.map((row) => {
+                      const isCommander = row.id === commander;
+                      // A display-only hint: a legendary type line is the usual commander
+                      // (CR 903.3). This never gates designation — any row can be picked;
+                      // the server rejects an ineligible one.
+                      const candidate = /legendary/i.test(row.typeLine);
+                      return (
+                        <li
+                          key={row.id}
+                          className={cx(l.builderDeckRow, isCommander && l.builderDeckRowCommander)}
+                          data-testid={`deck-builder-deck-row-${row.id}`}
+                        >
+                          <span className={l.builderCardCount}>{row.count}×</span>
+                          <span className={l.builderDeckRowName}>{row.name}</span>
+                          {requiresCommander &&
+                            (isCommander ? (
+                              <span
+                                className={l.builderCommanderBadge}
+                                data-testid={`deck-builder-commander-badge-${row.id}`}
+                              >
+                                Commander
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className={cx(s.button, candidate && l.builderCommanderCandidate)}
+                                onClick={() => setCommander(row.id)}
+                                data-testid={`deck-builder-designate-${row.id}`}
+                                aria-label={`Designate ${row.name} as commander`}
+                              >
+                                {candidate ? 'Commander?' : 'Set commander'}
+                              </button>
+                            ))}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

@@ -12,6 +12,15 @@
  * silently mis-reading an old file. Parsing is strict and total: any malformed or
  * unrecognised input throws {@link DeckDocumentError} so the import UI can report a
  * clear, non-corrupting failure rather than persisting garbage.
+ *
+ * Version history:
+ * - `1` — name + card rows.
+ * - `2` — adds an optional `commander` designation (issue #396): a commander-format
+ *   deck names one of its own cards as its commander (CR 903.3), by the same
+ *   `functional_id` a row uses. A v1 document (no commander) still loads unchanged —
+ *   the loader accepts both versions so a previously exported deck never fails to
+ *   import (ADR 0027 durability contract). The commander is never validated here; the
+ *   server's `submit_deck` gate remains the sole authority on legality.
  */
 import type { DeckCard, DeckContents } from './savedDeckStore';
 
@@ -19,7 +28,15 @@ import type { DeckCard, DeckContents } from './savedDeckStore';
 export const DECK_SCHEMA = 'rune.deck';
 
 /** The current document schema version. Bump on any incompatible shape change. */
-export const DECK_SCHEMA_VERSION = 1;
+export const DECK_SCHEMA_VERSION = 2;
+
+/**
+ * Every document version this loader can read. The current version ({@link
+ * DECK_SCHEMA_VERSION}) is written on export; older listed versions still import so a
+ * previously exported deck never fails (ADR 0027). A version 1 document simply carries
+ * no commander designation.
+ */
+const SUPPORTED_VERSIONS: ReadonlySet<number> = new Set([1, 2]);
 
 /** The on-disk shape of an exported deck (what `serializeDeck` emits). */
 export interface DeckDocument {
@@ -31,6 +48,14 @@ export interface DeckDocument {
   readonly name: string;
   /** The deck's card rows (functional_id + count). */
   readonly cards: readonly DeckCard[];
+  /**
+   * The card this deck designates as its commander (CR 903.3, issue #396), by the same
+   * `functional_id` one of its rows uses. Present only for a commander-format deck
+   * (written at schema version ≥ 2) and omitted otherwise, so a non-commander export
+   * keeps the pre-commander shape. Never validated here — the server's `submit_deck`
+   * gate owns legality.
+   */
+  readonly commander?: string;
 }
 
 /** A strict-parse failure: malformed JSON, wrong schema, or an invalid shape. */
@@ -43,7 +68,7 @@ export class DeckDocumentError extends Error {
 
 /** Build the portable document from a deck's contents (drops storage metadata). */
 export function toDeckDocument(contents: DeckContents): DeckDocument {
-  return {
+  const document: DeckDocument = {
     schema: DECK_SCHEMA,
     version: DECK_SCHEMA_VERSION,
     name: contents.name,
@@ -52,6 +77,11 @@ export function toDeckDocument(contents: DeckContents): DeckDocument {
       count: card.count,
     })),
   };
+  // Emit `commander` only when the deck designates one, so a non-commander export
+  // stays byte-identical to the pre-commander shape (minus the version bump).
+  return contents.commander !== undefined
+    ? { ...document, commander: contents.commander }
+    : document;
 }
 
 /** Serialize a deck's contents to a pretty-printed export document string. */
@@ -84,8 +114,10 @@ function parseCard(value: unknown, index: number): DeckCard {
  * Parse an export document string back into deck contents, strictly. Throws
  * {@link DeckDocumentError} on malformed JSON, a wrong/absent schema tag, an
  * unsupported version, or an invalid card list — never returns a partial deck.
- * The result is plain (name, cards); the caller saves it (which stamps the time)
- * so an import round-trips to an equivalent saved deck.
+ * Accepts every {@link SUPPORTED_VERSIONS} version: a legacy v1 document (no
+ * commander) loads unchanged, a v2 document carries an optional commander (issue
+ * #396). The result is plain (name, cards, optional commander); the caller saves it
+ * (which stamps the time) so an import round-trips to an equivalent saved deck.
  */
 export function parseDeck(text: string): DeckContents {
   let raw: unknown;
@@ -100,7 +132,7 @@ export function parseDeck(text: string): DeckContents {
   if (raw.schema !== DECK_SCHEMA) {
     throw new DeckDocumentError('That file is not a RUNE deck document.');
   }
-  if (raw.version !== DECK_SCHEMA_VERSION) {
+  if (typeof raw.version !== 'number' || !SUPPORTED_VERSIONS.has(raw.version)) {
     throw new DeckDocumentError(`Unsupported deck document version: ${String(raw.version)}.`);
   }
   if (typeof raw.name !== 'string' || raw.name.trim().length === 0) {
@@ -110,5 +142,20 @@ export function parseDeck(text: string): DeckContents {
     throw new DeckDocumentError('The deck document has no card list.');
   }
   const cards = raw.cards.map((card, index) => parseCard(card, index));
-  return { name: raw.name.trim(), cards };
+  // The commander designation is optional (absent in every v1 document, and in a v2
+  // deck that names none). When present it must be a non-empty id; legality is the
+  // server's concern, so we validate only the shape here.
+  const commander = parseCommander(raw.commander);
+  return commander !== undefined
+    ? { name: raw.name.trim(), cards, commander }
+    : { name: raw.name.trim(), cards };
+}
+
+/** Validate an optional commander field: `undefined`/`null` → none, else a non-empty id. */
+function parseCommander(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new DeckDocumentError('The deck document has an invalid commander.');
+  }
+  return value;
 }

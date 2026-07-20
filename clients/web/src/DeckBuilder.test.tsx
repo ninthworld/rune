@@ -296,7 +296,7 @@ describe('DeckBuilder saved decks (issue #369, ADR 0027)', () => {
     const output = (await screen.findByTestId('deck-builder-export-output')) as HTMLTextAreaElement;
     const doc = JSON.parse(output.value);
     expect(doc.schema).toBe('rune.deck');
-    expect(doc.version).toBe(1);
+    expect(doc.version).toBe(2);
 
     // Import round-trips it back into the builder as an equivalent working deck.
     fireEvent.change(screen.getByTestId('deck-builder-import-text'), {
@@ -305,6 +305,159 @@ describe('DeckBuilder saved decks (issue #369, ADR 0027)', () => {
     fireEvent.click(screen.getByTestId('deck-builder-import'));
     await waitFor(() =>
       expect(screen.getByTestId('deck-builder-total').textContent).toBe('3 cards'),
+    );
+  });
+});
+
+/** The advertised commander format from the fixture (its `requires_commander` is true). */
+const COMMANDER_FORMAT = CATALOG_VIEW.formats.find((f) => f.game_setup === 'commander');
+if (COMMANDER_FORMAT === undefined) throw new Error('fixture must advertise a commander format');
+
+describe('DeckBuilder commander designation (issue #396)', () => {
+  it('shows no designation affordance outside a commander format', () => {
+    // The 1v1 format does not advertise requires_commander, so no commander surface.
+    renderBuilder({
+      format: CATALOG_VIEW.formats[0],
+      initialCounts: { arcades_the_strategist: 1 },
+    });
+    expect(screen.queryByTestId('deck-builder-commander')).toBeNull();
+    expect(screen.queryByTestId('deck-builder-designate-arcades_the_strategist')).toBeNull();
+  });
+
+  it('offers designation exactly when the format advertises requires_commander', () => {
+    renderBuilder({ format: COMMANDER_FORMAT, initialCounts: { arcades_the_strategist: 1 } });
+    expect(screen.getByTestId('deck-builder-commander')).toBeDefined();
+    expect(screen.getByTestId('deck-builder-designate-arcades_the_strategist')).toBeDefined();
+    // Nothing designated yet: the strip prompts for a designation.
+    expect(screen.getByTestId('deck-builder-commander-empty')).toBeDefined();
+  });
+
+  it('designates exactly one card, rendering it distinctly, and changing/clearing works', () => {
+    renderBuilder({
+      format: COMMANDER_FORMAT,
+      initialCounts: { arcades_the_strategist: 1, shock: 2 },
+    });
+
+    // Designate the legendary creature: it is named in the commander strip and its deck
+    // row carries a distinct "Commander" badge (not color alone).
+    fireEvent.click(screen.getByTestId('deck-builder-designate-arcades_the_strategist'));
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe(
+      'Arcades the Strategist',
+    );
+    expect(screen.getByTestId('deck-builder-commander-badge-arcades_the_strategist')).toBeDefined();
+    // Exactly one designation: the designated row no longer offers its own designate button.
+    expect(screen.queryByTestId('deck-builder-designate-arcades_the_strategist')).toBeNull();
+
+    // Change the designation to a different card: the badge moves, only one remains.
+    fireEvent.click(screen.getByTestId('deck-builder-designate-shock'));
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe('Shock');
+    expect(screen.getByTestId('deck-builder-commander-badge-shock')).toBeDefined();
+    expect(screen.queryByTestId('deck-builder-commander-badge-arcades_the_strategist')).toBeNull();
+
+    // Clear it: back to the prompt, no badges.
+    fireEvent.click(screen.getByTestId('deck-builder-commander-clear'));
+    expect(screen.getByTestId('deck-builder-commander-empty')).toBeDefined();
+    expect(screen.queryByTestId('deck-builder-commander-badge-shock')).toBeNull();
+  });
+
+  it('hints likely candidates from the catalog type line without gating any card', () => {
+    renderBuilder({
+      format: COMMANDER_FORMAT,
+      initialCounts: { arcades_the_strategist: 1, shock: 2 },
+    });
+    // A legendary type line is hinted as a candidate; a non-legendary card is still
+    // designable (the server, not the client, judges eligibility).
+    expect(
+      screen.getByTestId('deck-builder-designate-arcades_the_strategist').textContent,
+    ).toContain('Commander?');
+    expect(screen.getByTestId('deck-builder-designate-shock').textContent).toContain(
+      'Set commander',
+    );
+  });
+
+  it('clears a designation when its card leaves the deck', () => {
+    renderBuilder({ format: COMMANDER_FORMAT, initialCounts: { arcades_the_strategist: 1 } });
+    fireEvent.click(screen.getByTestId('deck-builder-designate-arcades_the_strategist'));
+    expect(screen.getByTestId('deck-builder-commander-name')).toBeDefined();
+    // Remove the last copy of the commander from the deck: the designation drops.
+    fireEvent.click(screen.getByTestId('deck-builder-remove-arcades_the_strategist'));
+    expect(screen.queryByTestId('deck-builder-commander-name')).toBeNull();
+    expect(screen.getByTestId('deck-builder-commander-empty')).toBeDefined();
+  });
+
+  it('carries the designation through the submit gate only in a commander format', () => {
+    const { onSubmit } = renderBuilder({
+      format: COMMANDER_FORMAT,
+      initialCounts: { arcades_the_strategist: 1, forest: 40 },
+    });
+    fireEvent.click(screen.getByTestId('deck-builder-designate-arcades_the_strategist'));
+    fireEvent.click(screen.getByTestId('deck-builder-submit'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const [cards, commander] = onSubmit.mock.calls[0] as [string[], string | undefined];
+    expect(commander).toBe('arcades_the_strategist');
+    // The commander stays one of the deck's cards (CR 903.3), not removed from the list.
+    expect(cards).toContain('arcades_the_strategist');
+    expect(cards).toHaveLength(41);
+  });
+
+  it('seeds the designation from initialCommander and preserves it across a rejection', () => {
+    // A server rejection arrives as the lobby error; the built list AND the designation
+    // survive for correction (nothing here is cleared by the parent on reject).
+    renderBuilder({
+      format: COMMANDER_FORMAT,
+      initialCounts: { arcades_the_strategist: 1, forest: 40 },
+      initialCommander: 'arcades_the_strategist',
+      error: 'That deck was rejected. Pick a deck and submit again.',
+    });
+    expect(screen.getByTestId('deck-builder-error').textContent).toContain('rejected');
+    // Designation preserved: still named in the strip, still badged in the list.
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe(
+      'Arcades the Strategist',
+    );
+    expect(screen.getByTestId('deck-builder-commander-badge-arcades_the_strategist')).toBeDefined();
+    // And the list itself is preserved.
+    expect(screen.getByTestId('deck-builder-total').textContent).toBe('41 cards');
+  });
+
+  it('round-trips the designation through a saved deck (save then load)', async () => {
+    const db = new MemorySavedDeckDb();
+    configureSavedDeckStore({ db, now: () => 1 });
+    render(
+      <DeckBuilder
+        catalog={CATALOG_VIEW}
+        format={COMMANDER_FORMAT}
+        initialCounts={{ arcades_the_strategist: 1, forest: 40 }}
+        onSubmit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('deck-builder-saved');
+
+    // Designate, name, and save the deck to device storage.
+    fireEvent.click(screen.getByTestId('deck-builder-designate-arcades_the_strategist'));
+    fireEvent.change(screen.getByTestId('deck-builder-deck-name'), {
+      target: { value: 'Arcades' },
+    });
+    fireEvent.click(screen.getByTestId('deck-builder-save'));
+    await screen.findByTestId('deck-builder-saved-row-Arcades');
+
+    // A new session against the same device storage: load it back — the designation
+    // returns with the deck.
+    cleanup();
+    resetSavedDeckStore();
+    configureSavedDeckStore({ db, now: () => 2 });
+    render(
+      <DeckBuilder
+        catalog={CATALOG_VIEW}
+        format={COMMANDER_FORMAT}
+        initialCounts={{}}
+        onSubmit={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(await screen.findByTestId('deck-builder-load-Arcades'));
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe(
+      'Arcades the Strategist',
     );
   });
 });
