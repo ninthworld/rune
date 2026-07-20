@@ -10,20 +10,33 @@ The engine plays deterministic games of two to four players through the real ser
 to a single winner. It includes the turn and priority loops, mana and casting, targets and
 the stack, multiplayer combat — per-attacker attack targets (#341), multi-defender blocker
 declaration in APNAP order (#344), and the attacking player's combat-damage assignment order
-among multiple blockers (CR 510.1, #346) — combat damage, common combat keywords, counters,
-auras, triggers, initial replacement effects, mulligans, the elimination lifecycle for
-players who lose while others remain (CR 800.4a, #342), terminal results, and a structured
-game log recorded in `GameState` (ADR 0021).
+among multiple blockers (CR 510.1, #346) — combat damage, common combat keywords including
+double strike (CR 702.4, #373), continuous keyword-granting effects through the layer system
+(#374), counters, auras, triggers, initial replacement effects, mulligans, the elimination
+lifecycle for players who lose while others remain (CR 800.4a, #342), terminal results, and a
+structured game log recorded in `GameState` (ADR 0021). The commander mechanics are in: a
+designated commander starts in its owner's command zone, casts from there for {2} more per
+prior cast, offers the return-to-command-zone choice when it would hit the graveyard (#370),
+and 21 combat damage from one commander loses the game through the normal elimination
+lifecycle (CR 903.10a, #371). The return-from-exile half of #370 is unreachable until the
+engine gains a battlefield→exile seam (#397).
 
 The server provides explicit rooms, validated deck submission, a ready gate, per-tab
 reconnect, optional decision timers, server-owned priority automation (ADR 0020), free-for-all
 formats that seat 3–4 players on the engine's multiplayer rules (#349), and spectators: an
 observer joins an in-progress room and receives a structurally redacted `SpectatorView`
 (ADR 0022, #343/#351). The multiplayer view contract carries per-attacker attack targets,
-eliminated state, and explicit seat order (#345). The catalog contains 36 functional
-definitions and a complete basic-land cycle; the deterministic, CI-checked compatibility
-report ([`generated/compatibility.md`](generated/compatibility.md), #258) names every
-supported card and excluded mechanic, with a freshness gate that fails `make check` on drift.
+eliminated state, and explicit seat order (#345). A lobby-phase client can fetch the full
+card catalog with server-generated rules text and each format's advertised deck rules (#367),
+and a registered `commander` format enforces 100-card singleton construction, a designated
+legendary-creature commander, color-identity containment computed from structured card data,
+40 starting life, and 2–4 seats (#372) — though rejected decks are re-sent an unchanged view
+with no reason attached (#395), and the advertised format metadata does not yet name the
+commander-specific rules (#394). The catalog contains 37 functional definitions — real Core
+Set 2019 cards (ADR 0026) including the basic-land cycle; the deterministic, CI-checked
+compatibility report ([`generated/compatibility.md`](generated/compatibility.md), #258) names
+every supported card and excluded mechanic, with a freshness gate that fails `make check` on
+drift.
 
 The web client implements the lobby and game flow on the tabletop shell (#293–#301) with the
 comprehension layer (#259–#265), the battlefield-legibility batch (#317–#322), and the
@@ -56,45 +69,59 @@ demotes while a card is selected), and each ability activation is labeled with i
 own generated rules sentence. The front-door screens have landed in the blueprint's
 language (`design/ui-design-notes.md` §Front door): a Play-first landing with the
 server address as an advanced affordance, and the lobby flow — directory, room,
-accented seat roster, starter-deck tiles — in the table's visual system. Still open
-from the blueprint: zone-travel animations and the 4-player phone summary-tile
-composition.
+accented seat roster, starter-deck tiles — in the table's visual system. On the deck
+track, a seated player can open the deck builder, browse the wire-carried catalog with
+rules text and the format's advertised constraints, assemble an arbitrary list, and
+submit it through the unchanged `submit_deck` gate (#368); built decks save device-local
+under a name with portable JSON export/import (ADR 0027, #369). The commander table
+chrome renders the command zone as a pile, the growing recast tax, and per-commander
+damage tallies for every seat (#372). Still open from the blueprint: the bespoke
+zone-to-zone travel choreography (the generic view-diff tween of #334 ships; cards do
+not yet travel between fixed zone homes) and the 4-player phone summary-tile
+composition (#400).
 
 A deterministic, seeded 4-player free-for-all full game runs against the real server in the
-normal test gate, with a mid-game elimination and a single winner (#350). Deck selection is
-still limited to the two bundled starter decks; there is no deck construction, no saved
-decks, and no format beyond the starter duel, the permissive defaults, and the free-for-all.
+normal test gate, with a mid-game elimination and a single winner (#350); no equivalent
+full-game test exists yet for the commander format (#398). The primary commander path has
+one missing link: the deck builder cannot designate a commander (#396), so commander games
+currently require the bundled sample deck, and a rejected deck gives the player no reason
+to correct against (#395). There are no server-side saved decks and no formats beyond the
+starter duel, the permissive defaults, the free-for-all, and commander.
 
 ## Immediate priorities
 
-M4 and M5 are complete. The project's weight shifts to M6 — deck construction and
-format-specific play. Ordered by dependency and product impact:
+M6's first batch — the deck track and the commander foundation — has landed. This batch
+completes the commander user path end to end and backfills the evidence the first batch
+deferred. Ordered by dependency and product impact:
 
-1. The card catalog and format deck rules over the wire
-   ([#367](https://github.com/ninthworld/rune/issues/367)) — independent; the deck
-   builder and commander format consume it.
-2. The deck builder: construct and submit a legal deck from the browsable catalog
-   ([#368](https://github.com/ninthworld/rune/issues/368), blocked by #367).
-3. The saved-decks decision — durable identity and where deck lists live
-   ([#366](https://github.com/ninthworld/rune/issues/366), ADR — can start any time);
-   saved deck lists ([#369](https://github.com/ninthworld/rune/issues/369), blocked by
-   #366 and #368) follow it.
-4. The commander engine roots, in parallel with the deck track: the command zone,
-   commander casting, and tax ([#370](https://github.com/ninthworld/rune/issues/370));
-   then commander damage ([#371](https://github.com/ninthworld/rune/issues/371), blocked
-   by #370).
-5. The commander format — singleton and color-identity validation, 40 life, 2–4 seats,
-   command-zone and damage presentation
-   ([#372](https://github.com/ninthworld/rune/issues/372), blocked by #370/#371, after
-   #367).
-6. Catalog growth while the format work proceeds: double strike
-   ([#373](https://github.com/ninthworld/rune/issues/373)) and continuous
-   keyword-granting effects ([#374](https://github.com/ninthworld/rune/issues/374)) —
-   both independent, each removes a compatibility-report exclusion.
-7. The real-browser smoke path ([#279](https://github.com/ninthworld/rune/issues/279)) —
-   **no longer deferred**: the M5 client batch has landed and the in-game UI is stable;
-   the next client work (#368) touches lobby screens, not the table render path the
-   canary guards. The full E2E suite beyond the canary stays deferred (ADR 0011).
+1. Advertise the commander deck rules in format metadata
+   ([#394](https://github.com/ninthworld/rune/issues/394)) — independent; removes the
+   client's hardcoded format-name check and unlocks the builder work.
+2. A rejected deck tells the player why
+   ([#395](https://github.com/ninthworld/rune/issues/395)) — independent; makes the
+   correct-and-resubmit loop usable, especially for commander's five rejection classes.
+3. Commander designation in the deck builder and saved decks
+   ([#396](https://github.com/ninthworld/rune/issues/396), blocked by #394) — the last
+   missing link in build → save → play commander.
+4. A deterministic commander full game through the real server
+   ([#398](https://github.com/ninthworld/rune/issues/398)) — independent; the
+   format-level proof #350 gave free-for-all.
+5. The battlefield→exile seam so a commander can actually return from exile
+   ([#397](https://github.com/ninthworld/rune/issues/397)) — independent; closes the
+   unreachable half of #370.
+6. Double strike proven against the multi-blocker assignment order
+   ([#399](https://github.com/ninthworld/rune/issues/399)) — independent, small; the one
+   untested #373 acceptance surface.
+7. Catalog growth: a curated M19 slice on shipped mechanics
+   ([#401](https://github.com/ninthworld/rune/issues/401)) — independent; gives the
+   builder and commander a real pool, and may supply #397's exile card.
+8. The 4-player phone summary-tile composition
+   ([#400](https://github.com/ninthworld/rune/issues/400)) — independent; the
+   blueprint's remaining compact-layout item, and the home for commander chrome on
+   phones.
+9. The real-browser smoke path ([#279](https://github.com/ninthworld/rune/issues/279)) —
+   still queued and unblocked; one canary spec, with the full E2E suite beyond it
+   deferred (ADR 0011).
 
 ## Milestones
 
@@ -195,24 +222,22 @@ table (#348), free-for-all formats over the existing 2–8-seat rooms (#349), an
 **Outcome:** players can build decks and play format-specific games on the multiplayer
 foundation.
 
-Active. The first batch covers deck construction and the commander foundation:
+Active. The first batch shipped deck construction and the commander foundation: the card
+catalog and per-format deck rules over the wire (#367), the deck builder (#368), the
+deck-persistence decision (ADR 0027, #366) and device-local saved deck lists with portable
+export (#369), the command zone with commander casting and tax (#370), commander damage
+(CR 903.10a, #371), the commander format — singleton, color identity, 40 life, 2–4 seats,
+command-zone and damage presentation (#372) — and two catalog mechanics that each removed a
+compatibility-report exclusion: double strike (#373) and continuous keyword-granting
+effects (#374).
 
-- protocol/server: the card catalog and per-format deck rules over the wire
-  ([#367](https://github.com/ninthworld/rune/issues/367));
-- client: the deck builder ([#368](https://github.com/ninthworld/rune/issues/368));
-- decision: durable identity and deck persistence
-  ([#366](https://github.com/ninthworld/rune/issues/366), ADR), then saved deck lists
-  ([#369](https://github.com/ninthworld/rune/issues/369));
-- engine: the command zone, commander casting, and tax
-  ([#370](https://github.com/ninthworld/rune/issues/370)) and commander damage
-  ([#371](https://github.com/ninthworld/rune/issues/371));
-- server/protocol/client: the commander format — singleton, color identity, 40 life,
-  2–4 seats ([#372](https://github.com/ninthworld/rune/issues/372)); and
-- catalog: double strike ([#373](https://github.com/ninthworld/rune/issues/373)) and
-  continuous keyword-granting effects
-  ([#374](https://github.com/ninthworld/rune/issues/374)).
+The second batch (see Immediate priorities) completes the commander user path — advertised
+commander rules (#394), rejection reasons (#395), builder designation (#396) — and
+backfills deferred evidence and mechanics: the commander full-game test (#398), the exile
+seam (#397), the double-strike order test (#399), catalog growth (#401), and the phone
+summary tiles (#400).
 
-Later M6 capabilities stay at outcome level until the first batch lands: team seating and
+Later M6 capabilities stay at outcome level until this batch lands: team seating and
 shared-team state for formats such as Two-Headed Giant, larger player layouts, more prompt
 types, expanded automation, and a substantially larger verified card catalog.
 
@@ -226,8 +251,8 @@ work:
 - **The real-card catalog migration** — *done* ([ADR 0026](decisions/0026-real-functional-card-data.md)):
   the bundled catalog ships real Core Set 2019 functional definitions (names + matching
   functional data, no Oracle text/art/branding), so external art resolves by the card's own
-  name and the client-side art mapping (`artMap.json`) is empty by default. Growing the pool
-  beyond one set rides the catalog-over-the-wire work (#367).
+  name and the client-side art mapping (`artMap.json`) is empty by default. The catalog is
+  delivered over the wire (#367); growing the pool is owned by #401.
 - **The bundled RUNE art set** — original, project-owned illustrations under
   `clients/web/public/card-art/` filling the bundled source's manifest.
 - **Server-computed cost payment (auto-tap)** — the engine proposing a payment
