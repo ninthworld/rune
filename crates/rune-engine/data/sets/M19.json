@@ -163,5 +163,15 @@
     "functional_id": "swamp",
     "collector_number": "33",
     "rarity": "common"
+  },
+  {
+    "functional_id": "flight",
+    "collector_number": "34",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "jump",
+    "collector_number": "35",
+    "rarity": "common"
   }
 ]

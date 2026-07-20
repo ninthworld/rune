@@ -7,7 +7,7 @@
 
 RUNE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (34)
+## Supported cards (37)
 
 Every functional definition in `crates/rune-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).
 
@@ -22,11 +22,13 @@ Every functional definition in `crates/rune-engine/data/catalog/`, in interned o
 | `druid_of_the_cowl` | Druid of the Cowl | functional definition |
 | `electrify` | Electrify | functional definition |
 | `fire_elemental` | Fire Elemental | functional definition |
+| `flight` | Flight | functional definition |
 | `forest` | Forest | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `island` | Island | functional definition |
 | `jedit_ojanen` | Jedit Ojanen | functional definition |
+| `jump` | Jump | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |
 | `mountain` | Mountain | functional definition |
@@ -42,21 +44,20 @@ Every functional definition in `crates/rune-engine/data/catalog/`, in interned o
 | `swamp` | Swamp | functional definition |
 | `titanic_growth` | Titanic Growth | functional definition |
 | `tolarian_scholar` | Tolarian Scholar | functional definition |
+| `trained_caracal` | Trained Caracal | functional definition |
 | `tranquil_expanse` | Tranquil Expanse | functional definition |
 | `trusty_packbeast` | Trusty Packbeast | functional definition |
 | `viashino_pyromancer` | Viashino Pyromancer | functional definition |
 | `volcanic_dragon` | Volcanic Dragon | functional definition |
 | `walking_corpse` | Walking Corpse | functional definition |
 
-## Excluded (6)
+## Excluded (4)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/rune-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |
 | Auras that enchant a player or land, or move between hosts | only P/T-granting enchant-creature Auras are modeled |
-| Continuous keyword-granting effects | only printed keywords are modeled; effects that grant keywords are not |
-| Double strike | a creature deals combat damage in exactly one step; dealing in both the first-strike and regular steps is not modeled (issue #346) |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Planeswalkers | no loyalty counter system or loyalty abilities |
 | Replacement effects | no replacement-effect layer in the rules engine |
