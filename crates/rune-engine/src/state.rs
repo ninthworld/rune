@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::card::Keyword;
 use crate::card_type::CardType;
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mulligan::MulliganState;
@@ -418,6 +419,17 @@ pub enum Modification {
         /// Amount added to toughness.
         toughness: i32,
     },
+    /// CR 613 **layer 6** (CR 613.1f): add a keyword ability to the affected
+    /// permanent — an aura granting flying, an anthem granting vigilance, or a
+    /// pump spell granting trample until end of turn. A granted keyword is
+    /// indistinguishable from a printed one everywhere keywords are read
+    /// ([`characteristics`](crate::characteristics::characteristics) folds it into
+    /// the computed keyword set). Redundant grants are idempotent (CR 702.2c-style:
+    /// granting flying twice is simply flying), so this modification never stacks —
+    /// it either adds the keyword or leaves an already-present one unchanged. Layer
+    /// 6 is timestamp-independent for a pure grant, so unlike layer-7c modifiers
+    /// these need not be folded in order.
+    GrantKeyword(Keyword),
 }
 
 /// The complete, immutable state of a game at one moment.
