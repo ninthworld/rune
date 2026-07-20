@@ -21,6 +21,7 @@ import CONTRACT_FIXTURE from '@protocol-fixtures/gameview.json';
 // The terminal counterpart of the canonical fixture: a finished game carrying a
 // `result` and no `valid_actions` (issue #141). Same dual-consumed shape as above.
 import CONTRACT_FIXTURE_OVER from '@protocol-fixtures/gameview-over.json';
+import { submitDeckCommand } from './protocol';
 // The prompt-shapes fixture (issue #156): a mulligan frame carrying `option` +
 // `select_from_zone` prompts, round-tripped by the Rust crate and asserted here.
 import CONTRACT_FIXTURE_PROMPTS from '@protocol-fixtures/gameview-prompts.json';
@@ -43,6 +44,7 @@ describe('parseGameView', () => {
       stack: [],
       graveyards: [],
       exile: [],
+      command: [],
       phase: 'upkeep',
       turn: 0,
       active_player: '',
@@ -58,6 +60,7 @@ describe('parseGameView', () => {
       action_rejected: false,
       player_names: {},
       commander_damage: [],
+      commander_tax: [],
     });
   });
 
@@ -76,6 +79,48 @@ describe('parseGameView', () => {
 
     // Omitted entirely (a non-commander game / older server) defaults to `[]`.
     expect(parseGameView('{"phase":"upkeep"}').commander_damage).toEqual([]);
+  });
+
+  it('builds a submit_deck command carrying the designated commander (issue #372)', () => {
+    // With a commander the frame carries it as a bare identity; without one the
+    // field elides, keeping the pre-commander shape.
+    expect(submitDeckCommand(['jedit_ojanen', 'forest'], 'jedit_ojanen')).toEqual({
+      type: 'submit_deck',
+      cards: ['jedit_ojanen', 'forest'],
+      commander: 'jedit_ojanen',
+    });
+    expect(submitDeckCommand(['onakke_ogre', 'forest'])).toEqual({
+      type: 'submit_deck',
+      cards: ['onakke_ogre', 'forest'],
+    });
+    // An empty deck with no commander elides both fields.
+    expect(submitDeckCommand([])).toEqual({ type: 'submit_deck' });
+  });
+
+  it('normalizes the public command zone and commander tax (issue #372)', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'precombat_main',
+        command: [{ player_id: 'p0', cards: [{ id: 'card_1', name: 'Jedit Ojanen' }] }],
+        commander_tax: [
+          { commander: 'p0', casts: 2, tax: 4 },
+          { commander: 'p1' }, // zero tax elided by the server → defaults to 0/0
+          'garbage', // not an object — dropped
+        ],
+      }),
+    );
+    expect(view.command).toEqual([
+      { player_id: 'p0', cards: [{ id: 'card_1', name: 'Jedit Ojanen' }] },
+    ]);
+    expect(view.commander_tax).toEqual([
+      { commander: 'p0', casts: 2, tax: 4 },
+      { commander: 'p1', casts: 0, tax: 0 },
+    ]);
+
+    // A non-commander game (both fields omitted) defaults each to `[]`.
+    const plain = parseGameView('{"phase":"upkeep"}');
+    expect(plain.command).toEqual([]);
+    expect(plain.commander_tax).toEqual([]);
   });
 
   it('omits result while the game is live', () => {

@@ -14,6 +14,7 @@ import {
   type CatalogFormat,
   type CatalogView,
   type CommanderDamage,
+  type CommanderTax,
   type Counter,
   type GameResult,
   type GameView,
@@ -167,6 +168,29 @@ function normalizeCommanderDamage(value: unknown): CommanderDamage[] {
 }
 
 /**
+ * Normalize the public commander-tax list (CR 903.8, issue #372). The server elides
+ * it when empty, so a missing or malformed value degrades to `[]`; each entry keeps
+ * a well-formed `commander` id and its numeric `casts`/`tax` (defaulting each to `0`
+ * when the server elides a zero), dropping anything else so an unexpected shape never
+ * breaks rendering. Wire hygiene, not game logic — the client renders these numbers.
+ */
+function normalizeCommanderTax(value: unknown): CommanderTax[] {
+  if (!Array.isArray(value)) return [];
+  const out: CommanderTax[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    if (typeof raw.commander === 'string') {
+      out.push({
+        commander: raw.commander,
+        casts: typeof raw.casts === 'number' ? raw.casts : 0,
+        tax: typeof raw.tax === 'number' ? raw.tax : 0,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Normalize an already-parsed payload into a complete {@link GameView}. Missing
  * collections become empty arrays; optional scalars (`priority_player`,
  * `action_deadline`) are carried through untouched, and the terminal `result` is
@@ -192,6 +216,9 @@ export function normalizeGameView(payload: unknown): GameView {
     stack: asArray(payload.stack, 'stack'),
     graveyards: asArray(payload.graveyards, 'graveyards'),
     exile: asArray(payload.exile, 'exile'),
+    // Command zone (CR 903.6, issue #372): the same public pile treatment as
+    // graveyards/exile; elided (defaults to `[]`) for a non-commander game.
+    command: asArray(payload.command, 'command'),
     phase: payload.phase,
     // Turn structure (issue #267): the server owns turn counting and whose turn it
     // is; an older server may omit them, so default to 0/'' (unknown).
@@ -226,6 +253,8 @@ export function normalizeGameView(payload: unknown): GameView {
     // Commander combat-damage tally (issue #371): public, elided when empty; default
     // to `[]` so a non-commander game and an older server are unchanged.
     commander_damage: normalizeCommanderDamage(payload.commander_damage),
+    // Commander tax (issue #372): public, elided when empty; default to `[]`.
+    commander_tax: normalizeCommanderTax(payload.commander_tax),
   };
 }
 
@@ -249,6 +278,8 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
     stack: asArray(payload.stack, 'stack'),
     graveyards: asArray(payload.graveyards, 'graveyards'),
     exile: asArray(payload.exile, 'exile'),
+    // Command zone (issue #372): the same public pile seated views carry.
+    command: asArray(payload.command, 'command'),
     phase: payload.phase,
     turn: typeof payload.turn === 'number' ? payload.turn : 0,
     active_player: typeof payload.active_player === 'string' ? payload.active_player : '',
@@ -261,6 +292,8 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
     // Commander combat-damage tally (issue #371): the same public list seated views
     // carry, elided when empty.
     commander_damage: normalizeCommanderDamage(payload.commander_damage),
+    // Commander tax (issue #372): the same public list seated views carry.
+    commander_tax: normalizeCommanderTax(payload.commander_tax),
   };
 }
 

@@ -109,6 +109,28 @@ fn decklist() -> Vec<String> {
     (0..40).map(|i| STARTER_CARDS[i % 6].to_string()).collect()
 }
 
+/// A legal 100-card commander decklist (issue #372): Jedit Ojanen (a green
+/// legendary creature) as the commander, the catalog's in-identity green (and
+/// colorless) non-basics as singletons, and Forests to fill to exactly 100 — every
+/// card within Jedit's green color identity.
+fn commander_decklist() -> Vec<String> {
+    let non_basics = [
+        "jedit_ojanen",
+        "llanowar_elves",
+        "druid_of_the_cowl",
+        "giant_spider",
+        "colossal_dreadmaw",
+        "gigantosaurus",
+        "titanic_growth",
+        "skyscanner",
+    ];
+    let mut cards: Vec<String> = non_basics.iter().map(|s| s.to_string()).collect();
+    while cards.len() < 100 {
+        cards.push("forest".to_string());
+    }
+    cards
+}
+
 async fn create_two_seat_room(alice: &mut Client) -> RoomId {
     // Alice lands roomless, creates a two-seat room, and learns its shareable id.
     let _ = alice.lobby_view_where(|v| v.room.is_none()).await;
@@ -141,15 +163,21 @@ async fn deck_submit_and_ready_gate_constructs_the_game_and_hands_off_both_seats
 
     // Submit decks: each seat becomes decked and is offered `ready`.
     alice
-        .send(LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }))
+        .send(LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: decklist(),
+            commander: None,
+        }))
         .await;
     let alice_decked = alice
         .lobby_view_where(|v| v.room.as_ref().is_some_and(|r| r.seats[0].decked))
         .await;
     assert!(alice_decked.valid_commands.contains(&"ready".to_string()));
 
-    bob.send(LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }))
-        .await;
+    bob.send(LobbyCommand::SubmitDeck(SubmitDeck {
+        cards: decklist(),
+        commander: None,
+    }))
+    .await;
     let _ = bob
         .lobby_view_where(|v| v.room.as_ref().is_some_and(|r| r.seats[1].decked))
         .await;
@@ -174,4 +202,78 @@ async fn deck_submit_and_ready_gate_constructs_the_game_and_hands_off_both_seats
     assert_eq!(bob_game.you, "p1");
     assert_eq!(bob_game.my_hand.len(), 7);
     assert_eq!(bob_game.opponents[0].library_size, 40 - 7);
+}
+
+#[tokio::test]
+async fn issue_372_commander_game_starts_at_forty_life_with_command_zone_visible() {
+    // A commander room accepts a legal 100-card singleton in-identity deck with a
+    // designated commander, starts every seat at 40 life (CR 903.7), and puts each
+    // commander in a command zone every seat can see (CR 903.6), with the tax owed
+    // (CR 903.8) projected publicly.
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+
+    let mut alice = Client::connect(&lobby).await;
+    let _ = alice.lobby_view_where(|v| v.room.is_none()).await;
+    alice
+        .send(LobbyCommand::CreateRoom(CreateRoom {
+            config: RoomConfig {
+                seats: 2,
+                game_setup: "commander".to_string(),
+            },
+        }))
+        .await;
+    let room_id = alice
+        .lobby_view_where(|v| v.room.is_some())
+        .await
+        .room
+        .expect("alice in room")
+        .room_id;
+
+    let mut bob = Client::connect(&lobby).await;
+    let _ = bob.lobby_view_where(|v| v.room.is_none()).await;
+    bob.send(LobbyCommand::JoinRoom(JoinRoom {
+        room_id: room_id.clone(),
+    }))
+    .await;
+    let _ = bob.lobby_view_where(|v| v.room.is_some()).await;
+
+    // Each seat submits the same legal commander deck, designating Jedit Ojanen.
+    for (client, seat) in [(&mut alice, 0usize), (&mut bob, 1usize)] {
+        client
+            .send(LobbyCommand::SubmitDeck(SubmitDeck {
+                cards: commander_decklist(),
+                commander: Some("jedit_ojanen".to_string()),
+            }))
+            .await;
+        let _ = client
+            .lobby_view_where(|v| v.room.as_ref().is_some_and(|r| r.seats[seat].decked))
+            .await;
+    }
+
+    alice.send(LobbyCommand::Ready(Ready { ready: true })).await;
+    let _ = alice
+        .lobby_view_where(|v| v.room.as_ref().is_some_and(|r| r.seats[0].ready))
+        .await;
+    bob.send(LobbyCommand::Ready(Ready { ready: true })).await;
+
+    let game = alice.first_game_view().await;
+    // 40 starting life (CR 903.7) for the receiver and the opponent.
+    assert_eq!(game.me.life, 40);
+    assert_eq!(game.opponents[0].life, 40);
+    // The command zone is public: both seats' commanders are visible (CR 903.6).
+    assert_eq!(game.command.len(), 2, "both command zones are public");
+    for pile in &game.command {
+        assert_eq!(pile.cards.len(), 1);
+        assert_eq!(pile.cards[0].name, "Jedit Ojanen");
+    }
+    // The commander tax is public and starts at zero (no casts yet, CR 903.8).
+    assert_eq!(game.commander_tax.len(), 2);
+    assert!(game
+        .commander_tax
+        .iter()
+        .all(|t| t.tax == 0 && t.casts == 0));
+    // The commander is set aside, so the library is the 100-card deck minus the
+    // commander minus the seven-card opening hand.
+    assert_eq!(game.my_hand.len(), 7);
+    assert_eq!(game.me.library_size, 100 - 1 - 7);
 }

@@ -19,10 +19,19 @@
 //! basic-land **policy** (that basics are exempt from the copy limit) lives here,
 //! only the datum lives in the engine.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use rune_engine::{CardDatabase, CardId, GameSetup, PlayerSetup, Supertype};
+use rune_engine::{
+    abilities_of, parse_mana_cost, Ability, CardDatabase, CardId, CardType, Color, Effect,
+    GameSetup, PlayerSetup, Supertype,
+};
 use rune_protocol::GameSetupId;
+
+/// The life total each player begins a **commander** game with (CR 903.7): 40.
+/// This is engine *setup data* the server drives, not a rule the engine knows —
+/// it flows through [`GameSetup::starting_life`] like any other format's life
+/// total, so the engine stays free of format policy (ADR 0013 §4).
+pub(crate) const COMMANDER_STARTING_LIFE: i32 = 40;
 
 /// The deck-legality rules of a format: the server policy a submitted decklist is
 /// validated against in the pre-game gate (ADR 0013 §4). None of this is an engine
@@ -41,6 +50,17 @@ pub(crate) struct DeckRules {
     /// exempt from [`max_copies`](DeckRules::max_copies), the usual Magic rule
     /// (CR 100.2a lets a deck hold any number of basic lands).
     pub(crate) basic_land_exempt: bool,
+    /// Whether a legal deck must designate a **commander** that is a legendary
+    /// creature (CR 903.3, 903.5a). Commander-style formats set this; every other
+    /// format leaves it `false` and ignores the designation entirely, so a
+    /// non-commander deck is validated exactly as before (issue #372).
+    pub(crate) require_commander: bool,
+    /// Whether every card's **color identity** must be contained in the
+    /// commander's (CR 903.4 / 903.5c), computed from structured card data only
+    /// (see [`color_identity`]). Meaningful only alongside
+    /// [`require_commander`](DeckRules::require_commander); `false` for
+    /// non-commander formats.
+    pub(crate) enforce_color_identity: bool,
 }
 
 /// A registered format: the engine [`GameSetup`] parameters a room starts its game
@@ -80,6 +100,37 @@ impl Format {
                 max_size: None,
                 max_copies: 4,
                 basic_land_exempt: true,
+                require_commander: false,
+                enforce_color_identity: false,
+            },
+        }
+    }
+
+    /// The **commander** format (`commander`, issue #372): a 100-card singleton
+    /// deck (exactly 100 cards, at most one copy of any non-basic, basics exempt),
+    /// a required commander that must be a legendary creature (CR 903.3/903.5a),
+    /// color-identity containment (CR 903.4), 40 starting life (CR 903.7), seating
+    /// 2–4. Deck legality is server policy (ADR 0013 §4); the engine only receives
+    /// the designated commander in setup and the 40-life `GameSetup`.
+    fn commander() -> Self {
+        Self {
+            // CR 903.7: each player begins with 40 life. The engine is told the
+            // starting life through `GameSetup`; 40 is setup data, not a rule the
+            // engine knows about (ADR 0013 §4).
+            starting_life: COMMANDER_STARTING_LIFE,
+            starting_hand_size: rune_engine::DEFAULT_STARTING_HAND_SIZE,
+            // A commander game seats 2–4 (multiplayer or a duel); partner,
+            // Two-Headed Giant, and >4 seats are out of scope (issue #372).
+            seats: 2..=4,
+            deck_rules: DeckRules {
+                // Exactly 100 cards (CR 903.5a), expressed as a closed size range.
+                min_size: 100,
+                max_size: Some(100),
+                // Singleton: at most one of each non-basic card (CR 903.5b).
+                max_copies: 1,
+                basic_land_exempt: true,
+                require_commander: true,
+                enforce_color_identity: true,
             },
         }
     }
@@ -102,6 +153,8 @@ impl Format {
                 max_size: None,
                 max_copies: usize::MAX,
                 basic_land_exempt: true,
+                require_commander: false,
+                enforce_color_identity: false,
             },
         }
     }
@@ -135,15 +188,24 @@ impl Format {
     ///
     /// `deck` is the fully expanded decklist (one [`CardId`] per physical card, so
     /// four copies of a card appear four times), already resolved against the card
-    /// database by the caller. Validation is server policy only (ADR 0013 §4): it
-    /// checks deck size and, per oracle [`CardId`], the copy limit — basics exempt
-    /// when [`DeckRules::basic_land_exempt`] is set.
+    /// database by the caller; `commander` is the seat's designated commander (CR
+    /// 903.3), or `None` if it designated none. Validation is server policy only
+    /// (ADR 0013 §4): it checks deck size; the per-oracle copy limit (basics exempt
+    /// when [`DeckRules::basic_land_exempt`] is set); and, for a commander format
+    /// ([`DeckRules::require_commander`]), that the designation is one of the deck's
+    /// cards and a **legendary creature** (CR 903.5a) and — when
+    /// [`DeckRules::enforce_color_identity`] is set — that every card's color
+    /// identity is contained in the commander's (CR 903.4). Everything is read from
+    /// structured card data through `db`; nothing parses generated display text.
     ///
     /// # Errors
-    /// Returns the first [`DeckError`] the deck violates: size before copy limits.
+    /// Returns the first [`DeckError`] the deck violates, in this order: size, copy
+    /// limit, commander legality (missing / not in deck / not a legendary creature),
+    /// then color identity. A non-commander format ignores `commander` entirely.
     pub(crate) fn validate_deck(
         &self,
         deck: &[CardId],
+        commander: Option<CardId>,
         db: &CardDatabase,
     ) -> Result<(), DeckError> {
         let rules = &self.deck_rules;
@@ -177,8 +239,94 @@ impl Format {
                 });
             }
         }
+        // Commander-specific legality (CR 903), only for a format that asks for it.
+        if rules.require_commander {
+            let commander = commander.ok_or(DeckError::MissingCommander)?;
+            // The commander is one of the deck's 100 cards (CR 903.3).
+            if !deck.contains(&commander) {
+                return Err(DeckError::CommanderNotInDeck { card: commander });
+            }
+            // It must be a legendary creature (CR 903.5a).
+            if !is_legendary_creature(db, commander) {
+                return Err(DeckError::CommanderNotLegendaryCreature { card: commander });
+            }
+            // Color-identity containment (CR 903.4): every card's identity ⊆ the
+            // commander's, computed from structured data. First offender in deck
+            // order is reported for a deterministic message.
+            if rules.enforce_color_identity {
+                let allowed = color_identity(db, commander);
+                for &card in deck {
+                    if !color_identity(db, card).is_subset(&allowed) {
+                        return Err(DeckError::OutOfIdentity { card });
+                    }
+                }
+            }
+        }
         Ok(())
     }
+}
+
+/// A card's **color identity** (CR 903.4), computed from **structured** card data
+/// only — never from generated display text (issue #372). Three contributors, all
+/// read through the engine's typed [`CardData`]:
+///
+/// 1. the card's color indicator / printed colors (CR 105.2), `CardData::colors`;
+/// 2. the colored mana symbols in its mana cost (`CardData::mana_cost` pips); and
+/// 3. the colored mana symbols in its **rules**, taken from the ability IR: every
+///    [`Effect::AddMana`] is a `{color}` mana symbol printed in a rules ability
+///    (e.g. a land's `{T}: Add {G}`), which is exactly what gives a basic Forest
+///    its green identity.
+///
+/// Colorless mana ([`Effect::AddColorlessMana`]) contributes nothing — colorless is
+/// not a color (CR 105.1) — so an artifact that taps for `{C}` stays identity-empty
+/// and is legal under any commander.
+fn color_identity(db: &CardDatabase, card: CardId) -> HashSet<Color> {
+    let mut identity = HashSet::new();
+    let Some(data) = db.card(card) else {
+        return identity;
+    };
+    // 1. Color indicator / printed colors.
+    identity.extend(data.colors.iter().copied());
+    // 2. Colored mana-cost pips.
+    let cost = parse_mana_cost(&data.mana_cost);
+    for (count, color) in [
+        (cost.white, Color::White),
+        (cost.blue, Color::Blue),
+        (cost.black, Color::Black),
+        (cost.red, Color::Red),
+        (cost.green, Color::Green),
+    ] {
+        if count > 0 {
+            identity.insert(color);
+        }
+    }
+    // 3. Colored mana symbols in the card's rules (its abilities), from the IR.
+    for ability in abilities_of(db, card) {
+        if let Ability::Activated { effects, .. } | Ability::Triggered { effects, .. } = ability {
+            for effect in effects {
+                if let Effect::AddMana { color, .. } = effect {
+                    identity.insert(color);
+                }
+            }
+        }
+    }
+    // A spell ability that itself mints colored mana counts too (CR 903.4).
+    for effect in &data.spell_effects {
+        if let Effect::AddMana { color, .. } = effect {
+            identity.insert(*color);
+        }
+    }
+    identity
+}
+
+/// Whether `card` is a **legendary creature** — carries both the structured
+/// [`Supertype::Legendary`] and the [`CardType::Creature`] type — read through
+/// `db` (CR 903.5a, the default commander eligibility). An unknown id is not one;
+/// the lobby rejects unknown ids before legality is checked.
+fn is_legendary_creature(db: &CardDatabase, card: CardId) -> bool {
+    db.card(card).is_some_and(|data| {
+        data.supertypes.contains(&Supertype::Legendary) && data.has_type(CardType::Creature)
+    })
 }
 
 /// Why a submitted decklist is illegal for a format (ADR 0013 §4). Distinct from
@@ -208,6 +356,24 @@ pub(crate) enum DeckError {
         /// The format's per-card copy limit.
         limit: usize,
     },
+    /// A commander format requires a designated commander (CR 903.3) and the deck
+    /// designated none.
+    MissingCommander,
+    /// The designated commander is not among the submitted deck's cards (CR 903.3).
+    CommanderNotInDeck {
+        /// The designated card the decklist does not contain.
+        card: CardId,
+    },
+    /// The designated commander is not a legendary creature (CR 903.5a).
+    CommanderNotLegendaryCreature {
+        /// The designated card that is not a legendary creature.
+        card: CardId,
+    },
+    /// A card's color identity is not contained in the commander's (CR 903.4).
+    OutOfIdentity {
+        /// The first card (in deck order) outside the commander's color identity.
+        card: CardId,
+    },
 }
 
 impl std::fmt::Display for DeckError {
@@ -222,6 +388,24 @@ impl std::fmt::Display for DeckError {
             Self::CopyLimit { card, count, limit } => write!(
                 f,
                 "card {} appears {count} times, above the {limit}-copy limit",
+                card.0
+            ),
+            Self::MissingCommander => {
+                write!(f, "this format requires a designated commander")
+            }
+            Self::CommanderNotInDeck { card } => write!(
+                f,
+                "the designated commander (card {}) is not in the deck",
+                card.0
+            ),
+            Self::CommanderNotLegendaryCreature { card } => write!(
+                f,
+                "the designated commander (card {}) is not a legendary creature",
+                card.0
+            ),
+            Self::OutOfIdentity { card } => write!(
+                f,
+                "card {} is outside the commander's color identity",
                 card.0
             ),
         }
@@ -261,6 +445,10 @@ impl FormatRegistry {
     /// The identifier of the free-for-all format (issue #349): 3–4 seats.
     const FFA_ID: &'static str = "standard_ffa";
 
+    /// The identifier of the commander format (issue #372): 100-card singleton,
+    /// color identity, 40 life, seats 2–4.
+    const COMMANDER_ID: &'static str = "commander";
+
     /// Build the registry seeded with the competitive starter format
     /// (`starter-1v1`: 40-card minimum, four copies per non-basic, basics exempt)
     /// and the permissive default two-player format (`standard_2p`: no size or copy
@@ -282,6 +470,10 @@ impl FormatRegistry {
         for id in [Self::FFA_ID, "ffa-4"] {
             formats.insert(id.to_string(), Format::open_ffa());
         }
+        // The commander format (issue #372): 100-card singleton with color-identity
+        // containment, a required legendary-creature commander, 40 starting life, and
+        // 2–4 seats. Deck legality is enforced entirely here (ADR 0013 §4).
+        formats.insert(Self::COMMANDER_ID.to_string(), Format::commander());
         Self { formats }
     }
 
@@ -383,7 +575,7 @@ mod tests {
     fn a_legal_deck_including_many_basics_is_accepted() {
         // Twenty basic Forests far exceed the four-copy limit, yet are exempt.
         let format = Format::starter();
-        assert_eq!(format.validate_deck(&legal_deck(), &db()), Ok(()));
+        assert_eq!(format.validate_deck(&legal_deck(), None, &db()), Ok(()));
     }
 
     #[test]
@@ -391,7 +583,7 @@ mod tests {
         let format = Format::starter();
         let small = vec![fixture("forest"); 39];
         assert_eq!(
-            format.validate_deck(&small, &db()),
+            format.validate_deck(&small, None, &db()),
             Err(DeckError::BelowMinimum { have: 39, min: 40 }),
         );
     }
@@ -410,7 +602,7 @@ mod tests {
         }
         assert_eq!(deck.len(), 40);
         assert_eq!(
-            Format::starter().validate_deck(&deck, &db()),
+            Format::starter().validate_deck(&deck, None, &db()),
             Err(DeckError::CopyLimit {
                 card: fixture("onakke_ogre"),
                 count: 5,
@@ -431,10 +623,12 @@ mod tests {
                 max_size: None,
                 max_copies: 4,
                 basic_land_exempt: false,
+                require_commander: false,
+                enforce_color_identity: false,
             },
         };
         assert_eq!(
-            strict.validate_deck(&legal_deck(), &db()),
+            strict.validate_deck(&legal_deck(), None, &db()),
             Err(DeckError::CopyLimit {
                 card: fixture("forest"),
                 count: 20,
@@ -454,12 +648,207 @@ mod tests {
                 max_size: Some(60),
                 max_copies: 4,
                 basic_land_exempt: true,
+                require_commander: false,
+                enforce_color_identity: false,
             },
         };
         let big = vec![fixture("forest"); 61];
         assert_eq!(
-            capped.validate_deck(&big, &db()),
+            capped.validate_deck(&big, None, &db()),
             Err(DeckError::AboveMaximum { have: 61, max: 60 }),
         );
+    }
+
+    // ----------------------------------------------------------------------
+    // Commander format (issue #372): 100-card singleton, color identity, 40 life.
+    // ----------------------------------------------------------------------
+
+    /// A legal 100-card mono-green commander deck for the bundled catalog: Jedit
+    /// Ojanen (a green legendary creature) as the commander, the catalog's unique
+    /// green (and colorless) non-basics, and Forests to fill to 100. Every card is
+    /// within Jedit's green color identity, and every non-basic is a singleton — so
+    /// this is the acceptance-path deck the rejection tests each perturb one way.
+    fn commander_deck() -> Vec<CardId> {
+        // Jedit Ojanen (the commander) plus the catalog's other in-identity
+        // non-basics: mono-green cards and the colorless Skyscanner (empty identity ⊆
+        // green). Each appears exactly once (singleton, CR 903.5b).
+        let non_basics = [
+            "jedit_ojanen",
+            "llanowar_elves",
+            "druid_of_the_cowl",
+            "giant_spider",
+            "colossal_dreadmaw",
+            "gigantosaurus",
+            "titanic_growth",
+            "skyscanner",
+        ];
+        let mut deck: Vec<CardId> = non_basics.iter().map(|slug| fixture(slug)).collect();
+        // Fill to exactly 100 with basic Forests (singleton-exempt, in-identity).
+        while deck.len() < 100 {
+            deck.push(fixture("forest"));
+        }
+        assert_eq!(deck.len(), 100);
+        deck
+    }
+
+    /// The commander (Jedit Ojanen) of [`commander_deck`].
+    fn commander() -> CardId {
+        fixture("jedit_ojanen")
+    }
+
+    #[test]
+    fn issue_372_a_legal_commander_deck_is_accepted() {
+        // The acceptance path: exactly 100 cards, singleton non-basics, a legendary
+        // creature commander, every card within its color identity.
+        assert_eq!(
+            Format::commander().validate_deck(&commander_deck(), Some(commander()), &db()),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn issue_372_commander_format_starts_at_forty_life_and_seats_two_to_four() {
+        let commander = FormatRegistry::with_defaults()
+            .get("commander")
+            .expect("commander format is registered")
+            .clone();
+        assert_eq!(commander.starting_life, COMMANDER_STARTING_LIFE);
+        assert_eq!(commander.starting_life, 40);
+        assert_eq!(commander.seats, 2..=4);
+        // The engine `GameSetup` it builds carries the 40-life total.
+        let setup = commander.game_setup(vec![PlayerSetup::new(commander_deck())], 1);
+        assert_eq!(setup.starting_life, 40);
+    }
+
+    #[test]
+    fn issue_372_a_missing_commander_is_rejected() {
+        assert_eq!(
+            Format::commander().validate_deck(&commander_deck(), None, &db()),
+            Err(DeckError::MissingCommander)
+        );
+    }
+
+    #[test]
+    fn issue_372_a_non_legendary_creature_commander_is_rejected() {
+        // Llanowar Elves is a green creature but not legendary, so it cannot be the
+        // commander (CR 903.5a). It is already one of the deck's cards.
+        let not_legendary = fixture("llanowar_elves");
+        assert_eq!(
+            Format::commander().validate_deck(&commander_deck(), Some(not_legendary), &db()),
+            Err(DeckError::CommanderNotLegendaryCreature {
+                card: not_legendary
+            })
+        );
+    }
+
+    #[test]
+    fn issue_372_a_commander_not_in_the_deck_is_rejected() {
+        // Designate a legendary creature the deck does not contain. Build a 100-card
+        // deck of Forests only (so the designation, not size, is what is wrong).
+        let deck = vec![fixture("forest"); 100];
+        assert_eq!(
+            Format::commander().validate_deck(&deck, Some(commander()), &db()),
+            Err(DeckError::CommanderNotInDeck { card: commander() })
+        );
+    }
+
+    #[test]
+    fn issue_372_a_duplicate_non_basic_is_rejected() {
+        // Two copies of a non-basic breaks the singleton limit (CR 903.5b). Drop one
+        // Forest and add a second Llanowar Elves so the deck is still 100 cards.
+        let mut deck = commander_deck();
+        let forest_pos = deck
+            .iter()
+            .rposition(|&c| c == fixture("forest"))
+            .expect("deck has forests");
+        deck[forest_pos] = fixture("llanowar_elves");
+        assert_eq!(deck.len(), 100);
+        assert_eq!(
+            Format::commander().validate_deck(&deck, Some(commander()), &db()),
+            Err(DeckError::CopyLimit {
+                card: fixture("llanowar_elves"),
+                count: 2,
+                limit: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn issue_372_an_out_of_identity_card_is_rejected() {
+        // Swap a Forest for a blue card (Snapping Drake): its blue color identity is
+        // not contained in the commander's green identity (CR 903.4). Deck stays 100.
+        let mut deck = commander_deck();
+        let forest_pos = deck
+            .iter()
+            .rposition(|&c| c == fixture("forest"))
+            .expect("deck has forests");
+        deck[forest_pos] = fixture("snapping_drake");
+        assert_eq!(deck.len(), 100);
+        assert_eq!(
+            Format::commander().validate_deck(&deck, Some(commander()), &db()),
+            Err(DeckError::OutOfIdentity {
+                card: fixture("snapping_drake"),
+            })
+        );
+    }
+
+    #[test]
+    fn issue_372_a_wrong_size_commander_deck_is_rejected() {
+        // 99 cards is below the exact-100 requirement (a closed size range).
+        let mut deck = commander_deck();
+        deck.pop();
+        assert_eq!(deck.len(), 99);
+        assert_eq!(
+            Format::commander().validate_deck(&deck, Some(commander()), &db()),
+            Err(DeckError::BelowMinimum { have: 99, min: 100 })
+        );
+        // 101 cards is above it.
+        let mut over = commander_deck();
+        over.push(fixture("forest"));
+        assert_eq!(
+            Format::commander().validate_deck(&over, Some(commander()), &db()),
+            Err(DeckError::AboveMaximum {
+                have: 101,
+                max: 100
+            })
+        );
+    }
+
+    #[test]
+    fn issue_372_a_forest_is_green_identity_and_colorless_is_identityless() {
+        // Color identity is computed from structured data: a basic Forest is green
+        // (its intrinsic `{T}: Add {G}` ability, CR 903.4), while a colorless artifact
+        // that taps for {C} has empty identity (colorless is not a color, CR 105.1).
+        let database = db();
+        let forest = color_identity(&database, fixture("forest"));
+        assert!(forest.contains(&Color::Green) && forest.len() == 1);
+        let skyscanner = color_identity(&database, fixture("skyscanner"));
+        assert!(skyscanner.is_empty());
+        // Jedit Ojanen is green (its colored mana-cost pips).
+        assert_eq!(
+            color_identity(&database, commander()),
+            HashSet::from([Color::Green])
+        );
+    }
+
+    #[test]
+    fn issue_372_jedit_ojanen_is_a_legendary_creature() {
+        // The commander eligibility predicate reads structured supertype + type.
+        assert!(is_legendary_creature(&db(), commander()));
+        // A non-legendary creature and a legendary-less card are both ineligible.
+        assert!(!is_legendary_creature(&db(), fixture("llanowar_elves")));
+        assert!(!is_legendary_creature(&db(), fixture("forest")));
+    }
+
+    #[test]
+    fn issue_372_existing_formats_keep_default_life_and_no_commander_rules() {
+        // Regression guard: the non-commander formats are unchanged — 20 life, no
+        // commander requirement, no color-identity enforcement.
+        for id in ["starter-1v1", "standard_2p", "1v1", "standard_ffa", "ffa-4"] {
+            let format = FormatRegistry::with_defaults().get(id).unwrap().clone();
+            assert_eq!(format.starting_life, rune_engine::DEFAULT_STARTING_LIFE);
+            assert!(!format.deck_rules.require_commander);
+            assert!(!format.deck_rules.enforce_color_identity);
+        }
     }
 }

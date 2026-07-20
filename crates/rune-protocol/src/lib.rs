@@ -590,6 +590,26 @@ pub struct CommanderDamage {
     pub amount: u32,
 }
 
+/// The **commander tax** currently owed on one player's commander (CR 903.8), as
+/// carried in [`GameView::commander_tax`] (issue #372). **Public information** —
+/// the tax climbs `{2}` per prior cast from the command zone, so every player can
+/// see how much a recast will cost. Projected from the engine's per-designation
+/// cast count, so it survives the commander's zone changes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommanderTax {
+    /// The commander this tax applies to, named by its owning player's id — the
+    /// designation key (one commander per player today).
+    pub commander: PlayerId,
+    /// How many times this commander has been cast from the command zone this game
+    /// (CR 903.8). Zero before its first cast.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub casts: u32,
+    /// The generic mana the tax adds to the next cast from the command zone: `{2}`
+    /// per prior cast (`2 * casts`). Zero before the first cast.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tax: u32,
+}
+
 /// The terminal outcome of a game (CR 104.2a), present on a [`GameView`] only once
 /// the game is over. While the game is live the field is omitted entirely (the
 /// empty-optional convention), so its mere presence signals game over to a client.
@@ -641,6 +661,13 @@ pub struct GameView {
     /// Each player's exile zone.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exile: Vec<ZonePile>,
+    /// Each player's **command zone** (CR 903.6, issue #372): the public pile
+    /// holding their commander while it is there. **Public information** — every
+    /// seat sees every command zone. One [`ZonePile`] per player that has any card
+    /// in their command zone; empty (and omitted from the wire) for a non-commander
+    /// game or while every commander is elsewhere. Additive, like [`Self::exile`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command: Vec<ZonePile>,
     /// The current turn step.
     pub phase: Phase,
     /// The current turn number (1-based; `0` only in an empty/default state). The
@@ -742,6 +769,13 @@ pub struct GameView {
     /// the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commander_damage: Vec<CommanderDamage>,
+    /// The **commander tax** owed on each designated commander (CR 903.8, issue
+    /// #372), one entry per player with a commander — see [`CommanderTax`]. **Public
+    /// information**: the tax is `{2}` per prior cast from the command zone, so every
+    /// seat sees how much a recast costs. Additive: omitted (and defaults to empty)
+    /// for a non-commander game. Server-computed; never derived by the client.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commander_tax: Vec<CommanderTax>,
 }
 
 /// The state a **spectator** connection receives (ADR 0022, issue #351): a
@@ -781,6 +815,11 @@ pub struct SpectatorView {
     /// Each player's public exile zone.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exile: Vec<ZonePile>,
+    /// Each player's public **command zone** (CR 903.6, issue #372) — the same
+    /// public pile seated views carry (see [`GameView::command`]). Omitted in a
+    /// non-commander game or while every commander is elsewhere.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command: Vec<ZonePile>,
     /// The current turn step.
     pub phase: Phase,
     /// The current turn number (1-based).
@@ -814,6 +853,12 @@ pub struct SpectatorView {
     /// non-commander game.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commander_damage: Vec<CommanderDamage>,
+    /// The **commander tax** owed on each designated commander (CR 903.8, issue
+    /// #372) — the same **public** projection seated views carry (see
+    /// [`GameView::commander_tax`]). Omitted (defaults to empty) in a non-commander
+    /// game.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commander_tax: Vec<CommanderTax>,
 }
 
 /// The client's chosen action, answered atomically: the `id` of one issued
@@ -1113,6 +1158,15 @@ pub struct SubmitDeck {
     /// The card identities that make up the deck, duplicates repeated.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cards: Vec<CardIdentity>,
+    /// The card this seat designates as its **commander** (CR 903.3), named by its
+    /// [`CardIdentity`] — additive for the commander format (issue #372). Omitted
+    /// (`None`) for a non-commander deck, in which case the wire frame is
+    /// byte-for-byte the pre-commander shape, so older clients and non-commander
+    /// formats are unaffected. The server validates that the designation is one of
+    /// the deck's cards and a legendary creature within the format's rules; the
+    /// designation is never legality the client computes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commander: Option<CardIdentity>,
 }
 
 /// Declare (or retract) readiness for this connection's seat. A seat may ready
@@ -1482,6 +1536,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p0".into(),
@@ -1497,6 +1552,7 @@ mod tests {
             action_rejected: false,
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         // Defaults elide.
         let json = serde_json::to_value(&view).unwrap();
@@ -1921,6 +1977,7 @@ mod tests {
                 cards: vec![],
             }],
             exile: vec![],
+            command: vec![],
             phase: Phase::PrecombatMain,
             turn: 3,
             active_player: "p1".into(),
@@ -1956,6 +2013,7 @@ mod tests {
                 damaged: "p1".into(),
                 amount: 14,
             }],
+            commander_tax: Vec::new(),
         };
 
         let json = serde_json::to_string(&view).unwrap();
@@ -1991,6 +2049,43 @@ mod tests {
             round.get("commander_damage").is_none(),
             "an empty tally is elided from the wire"
         );
+    }
+
+    #[test]
+    fn issue_372_command_zone_and_tax_round_trip_and_elide_when_empty() {
+        // The command zone (CR 903.6) rides the same public `ZonePile` shape as
+        // graveyards/exile, and the commander tax (CR 903.8) rides its own additive
+        // list; both are omitted from the wire for a non-commander game.
+        let tax = CommanderTax {
+            commander: "p1".into(),
+            casts: 2,
+            tax: 4,
+        };
+        let json = serde_json::to_value(&tax).unwrap();
+        assert_eq!(json["commander"], "p1");
+        assert_eq!(json["casts"], 2);
+        assert_eq!(json["tax"], 4);
+        let back: CommanderTax = serde_json::from_value(json).unwrap();
+        assert_eq!(back, tax);
+
+        // A minimal view carries neither the command zone nor the tax.
+        let view: GameView =
+            serde_json::from_str(r#"{"you":"p0","phase":"precombat_main"}"#).unwrap();
+        assert!(view.command.is_empty());
+        assert!(view.commander_tax.is_empty());
+        let round = serde_json::to_value(&view).unwrap();
+        assert!(round.get("command").is_none());
+        assert!(round.get("commander_tax").is_none());
+
+        // A zero tax elides `casts`/`tax` but the entry (its presence) still marks a
+        // commander in play.
+        let zero = serde_json::to_value(CommanderTax {
+            commander: "p0".into(),
+            casts: 0,
+            tax: 0,
+        })
+        .unwrap();
+        assert_eq!(zero, serde_json::json!({ "commander": "p0" }));
     }
 
     #[test]
@@ -2030,6 +2125,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::Upkeep,
             turn: 0,
             active_player: String::new(),
@@ -2045,6 +2141,7 @@ mod tests {
             action_rejected: false,
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         let json = serde_json::to_string(&view).unwrap();
         let back: GameView = serde_json::from_str(&json).unwrap();
@@ -2062,6 +2159,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::PrecombatMain,
             turn: 0,
             active_player: String::new(),
@@ -2077,6 +2175,7 @@ mod tests {
             action_rejected: false,
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         // Empty pool is elided from the wire.
         let json = serde_json::to_value(&view).unwrap();
@@ -2456,9 +2555,12 @@ mod tests {
 
     #[test]
     fn lobby_command_submit_deck_round_trips_and_elides_empty() {
-        // A populated decklist round-trips as a flat list of identities.
+        // A populated decklist round-trips as a flat list of identities. With no
+        // commander the `commander` field elides, so the frame is the pre-commander
+        // shape (issue #372, additive).
         let msg = LobbyCommand::SubmitDeck(SubmitDeck {
             cards: vec!["ci_bear".into(), "ci_bear".into(), "ci_forest".into()],
+            commander: None,
         });
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(
@@ -2471,10 +2573,34 @@ mod tests {
         let back: LobbyCommand = serde_json::from_value(json).unwrap();
         assert_eq!(back, msg);
 
-        // An empty decklist elides the `cards` field entirely.
-        let empty = LobbyCommand::SubmitDeck(SubmitDeck { cards: vec![] });
+        // An empty decklist with no commander elides both fields entirely.
+        let empty = LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: vec![],
+            commander: None,
+        });
         let json = serde_json::to_value(&empty).unwrap();
         assert_eq!(json, serde_json::json!({ "type": "submit_deck" }));
+    }
+
+    #[test]
+    fn issue_372_submit_deck_carries_the_designated_commander() {
+        // The commander designation rides the submit-deck frame as a bare
+        // `functional_id` (CR 903.3), present only when designated.
+        let msg = LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: vec!["ci_jedit".into(), "ci_forest".into()],
+            commander: Some("ci_jedit".into()),
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "submit_deck",
+                "cards": ["ci_jedit", "ci_forest"],
+                "commander": "ci_jedit"
+            })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
     }
 
     #[test]
@@ -2643,6 +2769,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::PrecombatMain,
             turn: 9,
             active_player: "p0".into(),
@@ -2652,6 +2779,7 @@ mod tests {
             log: vec![],
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
         // Redaction is structural: the type has no receiver/decision fields at all.
@@ -2889,6 +3017,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::End,
             turn: 0,
             active_player: String::new(),
@@ -2904,6 +3033,7 @@ mod tests {
             action_rejected: false,
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         // Live game: the field elides entirely.
         let json = serde_json::to_value(&view).unwrap();
@@ -2949,6 +3079,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::Upkeep,
             turn: 0,
             active_player: String::new(),
@@ -2964,6 +3095,7 @@ mod tests {
             action_rejected: false,
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         let json = serde_json::to_value(&view).unwrap();
         // The receiver's own seat id is always present on the wire (like `phase`),
@@ -3047,6 +3179,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p1".into(),
@@ -3062,6 +3195,7 @@ mod tests {
             action_rejected: false,
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         // Empty map elides from the wire.
         assert!(serde_json::to_value(&view)
@@ -3099,6 +3233,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p1".into(),
@@ -3114,6 +3249,7 @@ mod tests {
             action_rejected: false,
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
         };
         // Not rejected: the field elides from the wire (the common case).
         assert!(serde_json::to_value(&view)

@@ -270,6 +270,11 @@ struct RoomEntry {
 struct SeatGate {
     /// The seat's validated decklist as engine card ids, or `None` if undecked.
     deck: Option<Vec<CardId>>,
+    /// The seat's designated commander (CR 903.3, issue #372) as an engine card id,
+    /// or `None` if the seat designated none. Only set alongside a validated
+    /// [`deck`](SeatGate::deck); carried here so [`Lobby::start_game`] can hand it to
+    /// [`PlayerSetup::with_commander`]. Never leaves the server as deck contents.
+    commander: Option<CardId>,
     /// Whether the seat has declared itself ready. A seat may ready only once
     /// [`deck`](SeatGate::deck) is `Some`.
     ready: bool,
@@ -641,8 +646,8 @@ impl Lobby {
                 spectate_room(&mut registry, token, &room_id)
             }
             LobbyCommand::Leave => leave_room(&mut registry, token),
-            LobbyCommand::SubmitDeck(SubmitDeck { cards }) => {
-                self.submit_deck(&mut registry, token, &cards)
+            LobbyCommand::SubmitDeck(SubmitDeck { cards, commander }) => {
+                self.submit_deck(&mut registry, token, &cards, commander.as_deref())
             }
             LobbyCommand::Ready(Ready { ready }) => self.ready(&mut registry, token, ready),
             LobbyCommand::SetName(SetName { name }) => set_name(&mut registry, token, &name),
@@ -743,6 +748,7 @@ impl Lobby {
         registry: &mut Registry,
         token: &SessionToken,
         cards: &[String],
+        commander: Option<&str>,
     ) -> Result<(), LobbyError> {
         let (room_id, seat) = seat_of(registry, token)?;
         let room = registry
@@ -760,16 +766,28 @@ impl Lobby {
                 .ok_or_else(|| LobbyError::UnknownCard(identity.clone()))?;
             deck.push(card);
         }
-        // Validate the resolved deck against the room's format before storing it, so
-        // an illegal deck never seats a broken game (ADR 0013 §4). The format is
-        // guaranteed present: `create_room` rejected any unknown `game_setup` id.
+        // Resolve the designated commander (CR 903.3, issue #372) the same way, so an
+        // unknown commander identity is the same typed rejection as an unknown deck
+        // card and leaves the seat's gate untouched.
+        let commander = match commander {
+            Some(identity) => Some(
+                resolve_card(&self.inner.db, identity)
+                    .ok_or_else(|| LobbyError::UnknownCard(identity.to_string()))?,
+            ),
+            None => None,
+        };
+        // Validate the resolved deck (and any commander) against the room's format
+        // before storing it, so an illegal deck never seats a broken game (ADR 0013
+        // §4). The format is guaranteed present: `create_room` rejected any unknown
+        // `game_setup` id.
         if let Some(format) = self.inner.formats.get(&room.config.game_setup) {
             format
-                .validate_deck(&deck, &self.inner.db)
+                .validate_deck(&deck, commander, &self.inner.db)
                 .map_err(LobbyError::IllegalDeck)?;
         }
         if let Some(gate) = room.gate.get_mut(seat) {
             gate.deck = Some(deck);
+            gate.commander = commander;
             gate.ready = false;
         }
         push_room(registry, &room_id);
@@ -840,11 +858,20 @@ impl Lobby {
             return;
         }
 
-        // Build the setup from each seat's deck, in seat order.
+        // Build the setup from each seat's deck, in seat order. A seat that
+        // designated a commander (CR 903.3, issue #372) hands it to the engine, which
+        // sets that copy aside into the command zone (CR 903.6); a seat with none
+        // behaves exactly as before commanders existed.
         let players: Vec<PlayerSetup> = room
             .gate
             .iter()
-            .map(|gate| PlayerSetup::new(gate.deck.clone().unwrap_or_default()))
+            .map(|gate| {
+                let deck = gate.deck.clone().unwrap_or_default();
+                match gate.commander {
+                    Some(commander) => PlayerSetup::with_commander(deck, commander),
+                    None => PlayerSetup::new(deck),
+                }
+            })
             .collect();
         // Seed the shuffle: a pinned override (deterministic games for the e2e
         // suite, ADR 0014 / issue #145) if configured, else a fresh per-game seed.
@@ -1600,7 +1627,10 @@ mod tests {
         lobby
             .command(
                 &client.token,
-                LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: decklist(),
+                    commander: None,
+                }),
             )
             .await
             .expect("valid deck accepted");
@@ -2642,7 +2672,10 @@ mod tests {
         lobby
             .command(
                 &alice.token,
-                LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: decklist(),
+                    commander: None,
+                }),
             )
             .await
             .expect("valid deck accepted");
@@ -2679,6 +2712,7 @@ mod tests {
                 &alice.token,
                 LobbyCommand::SubmitDeck(SubmitDeck {
                     cards: vec![wire_id("forest"), "no_such_card".to_string()],
+                    commander: None,
                 }),
             )
             .await
@@ -2700,6 +2734,7 @@ mod tests {
                 &alice.token,
                 LobbyCommand::SubmitDeck(SubmitDeck {
                     cards: vec![wire_id("forest"); 10],
+                    commander: None,
                 }),
             )
             .await
@@ -2730,7 +2765,13 @@ mod tests {
         assert_eq!(cards.len(), 40);
 
         let err = lobby
-            .command(&alice.token, LobbyCommand::SubmitDeck(SubmitDeck { cards }))
+            .command(
+                &alice.token,
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards,
+                    commander: None,
+                }),
+            )
             .await
             .expect_err("an over-copy-limit deck is rejected");
         assert_eq!(
@@ -2754,7 +2795,10 @@ mod tests {
         lobby
             .command(
                 &alice.token,
-                LobbyCommand::SubmitDeck(SubmitDeck { cards: decklist() }),
+                LobbyCommand::SubmitDeck(SubmitDeck {
+                    cards: decklist(),
+                    commander: None,
+                }),
             )
             .await
             .expect("a legal deck with many basics is accepted");

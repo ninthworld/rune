@@ -990,6 +990,7 @@ mod tests {
             stack: vec![],
             graveyards: vec![],
             exile: vec![],
+            command: vec![],
             phase: Phase::PrecombatMain,
             turn: 1,
             active_player: "p0".into(),
@@ -1004,6 +1005,7 @@ mod tests {
             action_rejected: false,
             player_names: std::collections::BTreeMap::new(),
             commander_damage: Vec::new(),
+            commander_tax: Vec::new(),
             seat_order: Vec::new(),
         }
     }

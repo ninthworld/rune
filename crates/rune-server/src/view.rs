@@ -22,11 +22,11 @@ use rune_engine::{
 
 use crate::rules_text::{ability_text, effects_description, rules_text};
 use rune_protocol::{
-    CardView, ChooseAction, CommanderDamage as CommanderDamageView, Counter, GameLogEntry,
-    GameLogEvent, GameOverReason, GameResult as GameResultView, GameView, LogBlock,
-    LogDamageTarget, LogEntity, OpponentView, Permanent as PermanentView, Phase, Prompt,
-    PromptOption, SelfView, SpectatorView, StackItem, TargetChoice, TargetRequirement, ValidAction,
-    ZonePile,
+    CardView, ChooseAction, CommanderDamage as CommanderDamageView,
+    CommanderTax as CommanderTaxView, Counter, GameLogEntry, GameLogEvent, GameOverReason,
+    GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
+    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 /// The opaque protocol id for a seat (an engine [`PlayerId`]).
@@ -1003,6 +1003,9 @@ pub(crate) fn personalized_view(
         .collect();
     let graveyards = zone_piles(state, |p| &p.graveyard, db);
     let exile = zone_piles(state, |p| &p.exile, db);
+    // The command zone (CR 903.6, issue #372): the same public pile treatment as
+    // graveyards/exile, over each player's command pile.
+    let command = zone_piles(state, |p| &p.command, db);
 
     let mana_pool = state
         .players
@@ -1043,6 +1046,7 @@ pub(crate) fn personalized_view(
         stack,
         graveyards,
         exile,
+        command,
         phase: phase_of(state.step),
         // Turn structure (issue #267): the engine owns turn counting and whose turn
         // it is; the view carries them so the client's phase/turn ribbon renders
@@ -1081,6 +1085,9 @@ pub(crate) fn personalized_view(
         // Commander combat-damage tally (CR 903.10a, issue #371): public information,
         // projected verbatim from the engine's per-designation totals.
         commander_damage: commander_damage_view(state),
+        // Commander tax (CR 903.8, issue #372): public information — {2} per prior
+        // cast from the command zone — projected from each designation's cast count.
+        commander_tax: commander_tax_view(state),
     }
 }
 
@@ -1146,6 +1153,7 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
         stack,
         graveyards: zone_piles(state, |p| &p.graveyard, db),
         exile: zone_piles(state, |p| &p.exile, db),
+        command: zone_piles(state, |p| &p.command, db),
         phase: phase_of(state.step),
         turn: state.turn,
         active_player: player_id(state.active_player),
@@ -1162,6 +1170,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
         // Commander combat-damage tally (CR 903.10a, issue #371): public information a
         // spectator sees exactly as seated players do.
         commander_damage: commander_damage_view(state),
+        // Commander tax (CR 903.8, issue #372): public information a spectator sees
+        // exactly as seated players do.
+        commander_tax: commander_tax_view(state),
     }
 }
 
@@ -1317,6 +1328,26 @@ fn commander_damage_view(state: &GameState) -> Vec<CommanderDamageView> {
             commander: player_id(entry.commander),
             damaged: player_id(entry.damaged),
             amount: entry.amount,
+        })
+        .collect()
+}
+
+/// Project each designated commander's tax (CR 903.8, issue #372) onto the wire
+/// [`CommanderTaxView`]. **Public information** — the tax is `{2}` per prior cast
+/// from the command zone — so both seated and spectator views carry it verbatim.
+/// One entry per player that has a commander designation, named by that player's
+/// `p{N}` id (one commander per player today).
+fn commander_tax_view(state: &GameState) -> Vec<CommanderTaxView> {
+    state
+        .players
+        .iter()
+        .enumerate()
+        .filter_map(|(seat, player)| {
+            player.commander.map(|commander| CommanderTaxView {
+                commander: player_id(PlayerId(seat)),
+                casts: commander.casts,
+                tax: commander.tax_generic(),
+            })
         })
         .collect()
 }

@@ -143,6 +143,7 @@ export const SAMPLE_GAME_VIEW: GameView = {
   stack: [{ id: 's1', controller: 'p2', description: 'Lightning Bolt' }],
   graveyards: [{ player_id: 'p1', cards: [] }],
   exile: [], // filled in by normalization from the omitted wire field
+  command: [], // no command zone in the sample frame; normalization defaults it (issue #372)
   phase: 'precombat_main',
   turn: 5,
   active_player: 'p1',
@@ -167,6 +168,8 @@ export const SAMPLE_GAME_VIEW: GameView = {
   player_names: {},
   // No commander damage in the sample frame; normalization defaults it to `[]` (issue #371).
   commander_damage: [],
+  // No commander tax in the sample frame; normalization defaults it to `[]` (issue #372).
+  commander_tax: [],
 };
 
 /**
