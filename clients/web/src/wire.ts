@@ -10,6 +10,9 @@
  */
 import {
   type CardView,
+  type CatalogCard,
+  type CatalogFormat,
+  type CatalogView,
   type Counter,
   type GameResult,
   type GameView,
@@ -341,15 +344,67 @@ export function normalizeLobbyView(payload: unknown): LobbyView {
   return view;
 }
 
+/** Normalize one wire {@link CatalogCard}, defaulting elided optionals (issue #367). */
+function normalizeCatalogCard(payload: unknown): CatalogCard {
+  const record = isRecord(payload) ? payload : {};
+  const card: CatalogCard = {
+    functional_id: asString(record.functional_id),
+    name: asString(record.name),
+    type_line: asString(record.type_line),
+    rules_text: typeof record.rules_text === 'string' ? record.rules_text : '',
+  };
+  if (typeof record.mana_cost === 'string') card.mana_cost = record.mana_cost;
+  if (typeof record.power === 'string') card.power = record.power;
+  if (typeof record.toughness === 'string') card.toughness = record.toughness;
+  if (Array.isArray(record.keywords)) {
+    card.keywords = record.keywords.filter((k): k is string => typeof k === 'string');
+  }
+  return card;
+}
+
+/** Normalize one wire {@link CatalogFormat}; an absent upper bound stays absent
+ * (`None` = no limit), never invented, so permissiveness reads honestly (issue #367). */
+function normalizeCatalogFormat(payload: unknown): CatalogFormat {
+  const record = isRecord(payload) ? payload : {};
+  const format: CatalogFormat = {
+    game_setup: asString(record.game_setup),
+    min_deck_size: typeof record.min_deck_size === 'number' ? record.min_deck_size : 0,
+    basic_land_exempt: record.basic_land_exempt === true,
+    min_seats: typeof record.min_seats === 'number' ? record.min_seats : 0,
+    max_seats: typeof record.max_seats === 'number' ? record.max_seats : 0,
+  };
+  if (typeof record.max_deck_size === 'number') format.max_deck_size = record.max_deck_size;
+  if (typeof record.max_copies === 'number') format.max_copies = record.max_copies;
+  return format;
+}
+
 /**
- * One decoded server→client frame: either an in-game {@link GameView} or a
- * pre-game {@link LobbyView}. The two are distinguished structurally — a
- * `GameView` always carries a valid {@link Phase}; a `LobbyView` never does — so
- * a single connection can carry both across the lobby→game handoff.
+ * Normalize an already-parsed payload into a complete {@link CatalogView} (issue #367).
+ * Missing `cards`/`formats` become empty arrays and elided per-entry optionals default,
+ * exactly like every other view. Throws {@link ProtocolError} for a non-object payload.
+ */
+export function normalizeCatalogView(payload: unknown): CatalogView {
+  if (!isRecord(payload)) {
+    throw new ProtocolError('CatalogView payload must be a JSON object');
+  }
+  return {
+    catalog_version: typeof payload.catalog_version === 'number' ? payload.catalog_version : 0,
+    cards: asArray<unknown>(payload.cards, 'cards').map(normalizeCatalogCard),
+    formats: asArray<unknown>(payload.formats, 'formats').map(normalizeCatalogFormat),
+  };
+}
+
+/**
+ * One decoded server→client frame: an in-game {@link GameView}, a
+ * {@link SpectatorView}, a pre-game {@link LobbyView}, or a {@link CatalogView}. The
+ * four are distinguished structurally — a `GameView`/`SpectatorView` carries a valid
+ * {@link Phase}, a `CatalogView` carries a `catalog_version` (and no phase), and a
+ * `LobbyView` carries neither — so a single connection can carry all of them.
  */
 export type ServerFrame =
   | { readonly kind: 'game'; readonly view: GameView }
   | { readonly kind: 'spectator'; readonly view: SpectatorView }
+  | { readonly kind: 'catalog'; readonly catalog: CatalogView }
   | { readonly kind: 'lobby'; readonly lobby: LobbyView };
 
 /**
@@ -376,6 +431,11 @@ export function parseServerFrame(raw: string): ServerFrame {
       return { kind: 'spectator', view: normalizeSpectatorView(parsed) };
     }
     return { kind: 'game', view: normalizeGameView(parsed) };
+  }
+  // A catalog frame (issue #367) carries a `catalog_version` and no phase; a `LobbyView`
+  // carries neither, so the version is an unambiguous discriminator between the two.
+  if (isRecord(parsed) && typeof parsed.catalog_version === 'number') {
+    return { kind: 'catalog', catalog: normalizeCatalogView(parsed) };
   }
   return { kind: 'lobby', lobby: normalizeLobbyView(parsed) };
 }
