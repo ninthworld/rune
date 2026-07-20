@@ -178,12 +178,14 @@ fn full_card_view(entity_id: String, data: &CardData) -> CardView {
 }
 
 /// Build the [`CardView`] for a battlefield permanent, projecting its **current**
-/// power/toughness from the engine's computed [`characteristics`] rather than the
-/// printed card (CR 613 layer 7c). This is what makes counters, until-end-of-turn
-/// pumps, and an attached Aura's P/T grant (CR 303.4) visible on the wire: a Boar
-/// enchanted with a `+2/+2` Aura projects as a 5/4, its host P/T reflecting the
-/// modifier. Every other field is the printed projection ([`card_view`]); a
-/// non-creature keeps its absent P/T.
+/// power/toughness (CR 613 layer 7c) and keywords (CR 613.1f, layer 6) from the
+/// engine's computed [`characteristics`] rather than the printed card. This is what
+/// makes counters, until-end-of-turn pumps, and an attached Aura's P/T grant
+/// (CR 303.4) visible on the wire — a Boar enchanted with a `+2/+2` Aura projects as
+/// a 5/4 — and, equally, what makes a granted keyword show up like a printed one: a
+/// creature enchanted with an Aura granting flying projects with `flying`. Every
+/// other field is the printed projection ([`card_view`]); a non-creature keeps its
+/// absent P/T.
 fn permanent_card_view(
     state: &GameState,
     perm: &rune_engine::Permanent,
@@ -193,6 +195,14 @@ fn permanent_card_view(
     let current = characteristics(state, perm.id, db);
     view.power = current.power.map(|p| p.to_string());
     view.toughness = current.toughness.map(|t| t.to_string());
+    // CR 613 layer 6 (CR 613.1f): project the *current* keywords, so a keyword
+    // granted by an Aura, an anthem, or an until-end-of-turn pump appears on the wire
+    // exactly like a printed one.
+    view.keywords = current
+        .keywords
+        .iter()
+        .map(|&kw| keyword_str(kw).to_owned())
+        .collect();
     view
 }
 
@@ -2182,6 +2192,75 @@ mod tests {
         // The empty list elides from the JSON (skip_serializing_if wire shape).
         let json = serde_json::to_value(&vanilla_view.card).unwrap();
         assert!(json.get("keywords").is_none());
+    }
+
+    /// A keyword granted by continuous effect (issue #374) projects onto the
+    /// permanent's card view exactly like a printed one: an Onakke Ogre (no printed
+    /// keyword) enchanted with Flight (an Aura granting flying) shows `flying` on the
+    /// wire, and a second, unenchanted Ogre shows none.
+    #[test]
+    fn issue_374_granted_keyword_projects_onto_the_card_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+
+        let host = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: host,
+            instance: CardInstanceId(0),
+            card: fixture("onakke_ogre"),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: None,
+        });
+        let bystander = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: bystander,
+            instance: CardInstanceId(1),
+            card: fixture("onakke_ogre"),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: None,
+        });
+        // Flight, an Aura granting flying, attached to the host.
+        let aura = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: aura,
+            instance: CardInstanceId(2),
+            card: fixture("flight"),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: Some(host),
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let host_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(host))
+            .expect("host in view");
+        assert_eq!(host_view.card.keywords, vec!["flying".to_string()]);
+
+        let bystander_view = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(bystander))
+            .expect("bystander in view");
+        assert!(bystander_view.card.keywords.is_empty());
     }
 
     /// Every emitted action carries a non-empty content-binding token, and the

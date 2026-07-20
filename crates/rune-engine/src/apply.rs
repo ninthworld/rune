@@ -500,6 +500,15 @@ fn remove_creatures_from_combat(state: &mut GameState) {
 /// selection already validated in [`action_is_legal`].
 fn apply_declare_attackers(state: &mut GameState, attackers: &[Attack], db: &CardDatabase) {
     for attack in attackers {
+        // CR 508.1f / CR 702.20b: whether this attacker has vigilance (printed or
+        // granted at layer 6) is read through the computed characteristics, which
+        // borrows `state` immutably — so it is resolved before the mutable lookup
+        // below rather than while `state.battlefield` is borrowed mutably.
+        let has_vigilance = state
+            .battlefield
+            .iter()
+            .find(|p| p.id == attack.attacker)
+            .is_some_and(|perm| has_keyword(state, perm, Keyword::Vigilance, db));
         if let Some(perm) = state
             .battlefield
             .iter_mut()
@@ -510,7 +519,7 @@ fn apply_declare_attackers(state: &mut GameState, attackers: &[Attack], db: &Car
             perm.attacking = Some(attack.defender);
             // CR 508.1f / CR 702.20b: attacking taps the creature, unless it has
             // vigilance, in which case it attacks without tapping.
-            if !has_keyword(perm, Keyword::Vigilance, db) {
+            if !has_vigilance {
                 perm.tapped = true;
             }
         }
@@ -826,7 +835,8 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
         | Effect::DealDamage { .. }
         | Effect::Destroy { .. }
         | Effect::PutCounters { .. }
-        | Effect::Pump { .. } => {}
+        | Effect::Pump { .. }
+        | Effect::GrantKeyword { .. } => {}
     }
 }
 
@@ -931,6 +941,27 @@ pub(crate) fn apply_targeted_effect(
                             power: *power,
                             toughness: *toughness,
                         },
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                }
+            }
+        }
+        // Grant the targeted creature a keyword until end of turn (CR 514.2): add a
+        // CR 613 layer-6 keyword grant keyed to that one permanent, with an
+        // `UntilEndOfTurn` duration the cleanup step removes (CR 613.1f). The grant
+        // folds into the target's computed keyword set on demand — nothing is written
+        // onto the permanent — so removing it at cleanup reverts the value with
+        // nothing to invalidate (ADR 0010). A duplicate grant is redundant, not
+        // additive. The caller has re-checked the target is still a creature
+        // (CR 608.2b); a permanent that has since left is skipped.
+        Effect::GrantKeyword { keyword, .. } => {
+            if let Target::Permanent(id) = target {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let source = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::GrantKeyword(*keyword),
                         duration: Duration::UntilEndOfTurn,
                     });
                 }
@@ -1605,6 +1636,103 @@ mod tests {
             find_perm(&after, creature).damage,
             0,
             "marked damage was wiped at cleanup"
+        );
+    }
+
+    // ----- Until-end-of-turn keyword grant: resolution and cleanup expiry (issue #374) -----
+
+    /// Push an "until end of turn" grant of `keyword` onto `target`, timestamped by
+    /// a freshly minted object id, and return that id.
+    fn grant_keyword(state: &mut GameState, target: PermanentId, keyword: Keyword) -> u64 {
+        let source = state.mint_id();
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::SpecificPermanent(target),
+            modification: Modification::GrantKeyword(keyword),
+            duration: Duration::UntilEndOfTurn,
+        });
+        source
+    }
+
+    #[test]
+    fn issue_374_grant_keyword_spell_grants_the_keyword_until_end_of_turn_end_to_end() {
+        // Cast Jump (target creature gains flying until end of turn) on a ground
+        // Llanowar Elves: on resolution the creature computes with flying and one
+        // until-end-of-turn layer-6 grant is in force.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let jump = state.new_instance(fixture("jump"));
+        state.players[0].hand = vec![jump];
+        state.players[0].mana_pool.add(Color::Blue, 1);
+
+        // The Elves has no flying before the spell.
+        assert!(!characteristics(&state, creature, &db)
+            .keywords
+            .contains(&Keyword::Flying));
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: jump,
+                targets: vec![Target::Permanent(creature)],
+            },
+            &db,
+        );
+        // Pass twice: the spell resolves and applies its grant.
+        let state = pass_full_round(&state, &db);
+
+        assert!(state.stack.is_empty());
+        assert!(
+            characteristics(&state, creature, &db)
+                .keywords
+                .contains(&Keyword::Flying),
+            "the resolved spell granted flying (CR 613.1f)"
+        );
+        assert_eq!(state.static_effects.len(), 1);
+        assert_eq!(
+            state.static_effects[0].duration,
+            Duration::UntilEndOfTurn,
+            "the grant is an until-end-of-turn effect"
+        );
+        assert!(state.players[0].graveyard.iter().any(|c| c.id == jump.id));
+    }
+
+    #[test]
+    fn issue_374_until_end_of_turn_grant_expires_at_cleanup_cr_514_2() {
+        // CR 514.2: an until-end-of-turn keyword grant ends in the cleanup step. The
+        // grant is present the turn it is made and gone once the turn passes — verified
+        // across the turn boundary.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1; empty hand so no discard.
+        let creature =
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
+        grant_keyword(&mut state, creature, Keyword::Flying);
+
+        // Before cleanup the creature has the granted keyword.
+        assert!(
+            characteristics(&state, creature, &db)
+                .keywords
+                .contains(&Keyword::Flying),
+            "the grant is in force during the turn it was made"
+        );
+
+        // Walk through the cleanup step into the next turn.
+        let after = pass_full_round(&state, &db);
+        assert!(
+            after.static_effects.is_empty(),
+            "the until-end-of-turn grant wore off at cleanup (CR 514.2)"
+        );
+        assert!(
+            !characteristics(&after, creature, &db)
+                .keywords
+                .contains(&Keyword::Flying),
+            "the granted keyword is gone across the turn boundary"
         );
     }
 

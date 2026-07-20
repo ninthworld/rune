@@ -4,10 +4,6 @@
     "blocker": "no loyalty counter system or loyalty abilities"
   },
   {
-    "name": "Continuous keyword-granting effects",
-    "blocker": "only printed keywords are modeled; effects that grant keywords are not"
-  },
-  {
     "name": "Auras that enchant a player or land, or move between hosts",
     "blocker": "only P/T-granting enchant-creature Auras are modeled"
   },

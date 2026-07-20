@@ -18,7 +18,7 @@
 //! callers never change as they are filled in.
 
 use crate::ability::Ability;
-use crate::card::{abilities_of, CardDatabase};
+use crate::card::{abilities_of, CardDatabase, Keyword};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;
 use crate::state::{
@@ -59,6 +59,13 @@ pub struct Characteristics {
     /// The permanent's current ability set, unioning data-driven and scripted
     /// sources via [`abilities_of`].
     pub abilities: Vec<Ability>,
+    /// The permanent's *current* keyword abilities (CR 702): its printed
+    /// [`CardData::keywords`](crate::CardData::keywords) unioned with any granted by
+    /// continuous effects at CR 613 **layer 6** (CR 613.1f) — an attached Aura's
+    /// grant, an anthem, or an until-end-of-turn pump. A granted keyword is
+    /// indistinguishable from a printed one, and duplicates are collapsed (a keyword
+    /// granted twice, or granted atop a printed one, appears once).
+    pub keywords: Vec<Keyword>,
 }
 
 /// Compute the *current* [`Characteristics`] of the permanent identified by
@@ -114,7 +121,77 @@ pub fn characteristics(
                 .saturating_add(static_toughness)
         }),
         abilities: abilities_of(db, perm.card),
+        // CR 613 layer 6 (CR 613.1f): the printed keywords unioned with any granted
+        // continuously. Seeded from the printed set so a granted keyword sits beside
+        // the printed ones and is read the same way everywhere.
+        keywords: current_keywords(state, perm, is_creature, card.keywords.clone(), db),
     }
+}
+
+/// The permanent's *current* keyword set at CR 613 **layer 6** (CR 613.1f):
+/// `printed` plus every keyword granted to `perm` by a continuous effect, with
+/// duplicates collapsed so a redundant grant is idempotent (CR 702, "having a
+/// keyword ability twice is the same as having it once").
+///
+/// Two sources feed the grants, mirroring [`ordered_pt_modifiers`] (ADR 0010 §4):
+/// the stored [`GameState::static_effects`] carrying [`Modification::GrantKeyword`]
+/// (anthems and until-end-of-turn pumps) and, synthesized fresh, each Aura attached
+/// to `perm` whose [`AuraGrant`](crate::AuraGrant) lists keywords (CR 303.4 /
+/// 613.1f). Layer 6 grants are timestamp-independent for a pure keyword grant, so —
+/// unlike the layer-7c P/T folds — no ordering is imposed. `is_creature` gates the
+/// anthem-style "creatures you control" selector.
+fn current_keywords(
+    state: &GameState,
+    perm: &Permanent,
+    is_creature: bool,
+    printed: Vec<Keyword>,
+    db: &CardDatabase,
+) -> Vec<Keyword> {
+    let mut keywords = printed;
+    let mut add = |keyword: Keyword| {
+        if !keywords.contains(&keyword) {
+            keywords.push(keyword);
+        }
+    };
+    // Stored continuous grants (anthems, pumps) that apply to this permanent.
+    for effect in &state.static_effects {
+        if let Modification::GrantKeyword(keyword) = effect.modification {
+            if affects(effect, perm, is_creature) {
+                add(keyword);
+            }
+        }
+    }
+    // CR 303.4 / 613.1f: each Aura attached to `perm` grants its listed keywords
+    // while attached. Derived from the attachment, never stored, so it vanishes the
+    // instant the Aura leaves (ADR 0010).
+    for aura in &state.battlefield {
+        if aura.attached_to == Some(perm.id) {
+            if let Some(grant) = db.card(aura.card).and_then(|c| c.aura.as_ref()) {
+                for &keyword in &grant.keywords {
+                    add(keyword);
+                }
+            }
+        }
+    }
+    keywords
+}
+
+/// Whether the permanent identified by `permanent` currently has keyword `keyword`
+/// (CR 702) — its printed keywords unioned with any granted at CR 613 layer 6
+/// (CR 613.1f). This is the single read path combat, evasion, and combat-damage use,
+/// so a granted keyword is indistinguishable from a printed one. Reads fresh through
+/// [`characteristics`], caching nothing (ADR 0010); a permanent not on the
+/// battlefield has no keywords.
+#[must_use]
+pub(crate) fn permanent_has_keyword(
+    state: &GameState,
+    permanent: PermanentId,
+    keyword: Keyword,
+    db: &CardDatabase,
+) -> bool {
+    characteristics(state, permanent, db)
+        .keywords
+        .contains(&keyword)
 }
 
 /// The net power/toughness shift from `perm`'s `+1/+1` and `-1/-1` counters at
@@ -152,12 +229,16 @@ fn static_pt_delta(
     let mut power = 0_i32;
     let mut toughness = 0_i32;
     for effect in ordered_pt_modifiers(state, perm, is_creature, db) {
-        let Modification::PowerToughness {
+        // Only layer-7c P/T modifications adjust power/toughness; a layer-6
+        // keyword grant that also happens to affect `perm` is skipped here.
+        if let Modification::PowerToughness {
             power: dp,
             toughness: dt,
-        } = effect.modification;
-        power = power.saturating_add(dp);
-        toughness = toughness.saturating_add(dt);
+        } = effect.modification
+        {
+            power = power.saturating_add(dp);
+            toughness = toughness.saturating_add(dt);
+        }
     }
     (power, toughness)
 }
@@ -210,7 +291,7 @@ fn ordered_pt_modifiers(
 /// keyed to that permanent, and disappears when the Aura leaves.
 fn aura_pt_effect(aura: &Permanent, db: &CardDatabase) -> Option<StaticEffect> {
     let host = aura.attached_to?;
-    let grant = db.card(aura.card)?.aura?;
+    let grant = db.card(aura.card)?.aura.as_ref()?;
     Some(StaticEffect {
         source: aura.id.0,
         affects: EffectAffects::SpecificPermanent(host),
@@ -595,6 +676,152 @@ mod tests {
         let ch = characteristics(&state, forest, &db);
         assert_eq!(ch.power, None);
         assert_eq!(ch.toughness, None);
+    }
+
+    /// Add a static "grant `keyword` to the single permanent `target`" continuous
+    /// effect timestamped by `source`, with the given `duration`.
+    fn add_keyword_grant(
+        state: &mut GameState,
+        source: u64,
+        target: PermanentId,
+        keyword: Keyword,
+        duration: Duration,
+    ) {
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::SpecificPermanent(target),
+            modification: Modification::GrantKeyword(keyword),
+            duration,
+        });
+    }
+
+    /// Attach the permanent `aura` to `host` (set its `attached_to`), the way a
+    /// resolving Aura enters (CR 303.4d).
+    fn attach(state: &mut GameState, aura: PermanentId, host: PermanentId) {
+        let aura = state.battlefield.iter_mut().find(|p| p.id == aura).unwrap();
+        aura.attached_to = Some(host);
+    }
+
+    #[test]
+    fn issue_374_aura_grants_flying_folds_into_computed_keywords_cr_613_1f() {
+        // CR 613.1f: an Aura granting flying puts flying into the host's computed
+        // keyword set, indistinguishable from a printed keyword. A bystander creature
+        // with no Aura has none.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, fixture("onakke_ogre"));
+        let bystander = place(&mut state, fixture("onakke_ogre"));
+        let aura = place(&mut state, fixture("flight"));
+        attach(&mut state, aura, host);
+
+        assert!(characteristics(&state, host, &db)
+            .keywords
+            .contains(&Keyword::Flying));
+        assert!(!characteristics(&state, bystander, &db)
+            .keywords
+            .contains(&Keyword::Flying));
+    }
+
+    #[test]
+    fn issue_374_aura_grant_vanishes_when_the_aura_leaves() {
+        // The grant is derived from the attachment (ADR 0010): detach the Aura and
+        // the host's computed keyword set reverts with nothing to prune.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, fixture("onakke_ogre"));
+        let aura = place(&mut state, fixture("flight"));
+        attach(&mut state, aura, host);
+        assert!(characteristics(&state, host, &db)
+            .keywords
+            .contains(&Keyword::Flying));
+
+        // The Aura leaves the battlefield entirely.
+        state.battlefield.retain(|p| p.id != aura);
+        assert!(!characteristics(&state, host, &db)
+            .keywords
+            .contains(&Keyword::Flying));
+    }
+
+    #[test]
+    fn issue_374_specific_permanent_grant_folds_into_computed_keywords() {
+        // A pump-style "target creature gains trample" grant keyed to one permanent
+        // folds into that permanent's keyword set and no other's.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let pumped = place(&mut state, fixture("onakke_ogre"));
+        let bystander = place(&mut state, fixture("onakke_ogre"));
+        add_keyword_grant(
+            &mut state,
+            100,
+            pumped,
+            Keyword::Trample,
+            Duration::UntilEndOfTurn,
+        );
+
+        assert!(characteristics(&state, pumped, &db)
+            .keywords
+            .contains(&Keyword::Trample));
+        assert!(!characteristics(&state, bystander, &db)
+            .keywords
+            .contains(&Keyword::Trample));
+    }
+
+    #[test]
+    fn issue_374_anthem_grant_affects_only_matching_controllers_creatures() {
+        // A "creatures you control have vigilance" grant applies to a matching
+        // controller's creature and not to an opponent's.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let mine = place(&mut state, fixture("onakke_ogre")); // controller PlayerId(0)
+        state.static_effects.push(StaticEffect {
+            source: 100,
+            affects: EffectAffects::CreaturesControlledBy(PlayerId(0)),
+            modification: Modification::GrantKeyword(Keyword::Vigilance),
+            duration: Duration::WhileOnBattlefield,
+        });
+        assert!(characteristics(&state, mine, &db)
+            .keywords
+            .contains(&Keyword::Vigilance));
+
+        // A creature the effect's controller does not control is untouched.
+        state.static_effects[0].affects = EffectAffects::CreaturesControlledBy(PlayerId(1));
+        assert!(!characteristics(&state, mine, &db)
+            .keywords
+            .contains(&Keyword::Vigilance));
+    }
+
+    #[test]
+    fn issue_374_duplicate_keyword_grants_are_redundant_not_stacking() {
+        // CR 702: having a keyword twice is the same as having it once. A printed
+        // flier (Snapping Drake) also granted flying twice appears with flying
+        // exactly once — the grants collapse.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let drake = place(&mut state, fixture("snapping_drake")); // printed flying
+        add_keyword_grant(
+            &mut state,
+            100,
+            drake,
+            Keyword::Flying,
+            Duration::UntilEndOfTurn,
+        );
+        add_keyword_grant(
+            &mut state,
+            200,
+            drake,
+            Keyword::Flying,
+            Duration::WhileOnBattlefield,
+        );
+
+        let ch = characteristics(&state, drake, &db);
+        assert_eq!(
+            ch.keywords
+                .iter()
+                .filter(|&&kw| kw == Keyword::Flying)
+                .count(),
+            1,
+            "flying is present once despite a printed copy and two grants"
+        );
     }
 
     #[test]

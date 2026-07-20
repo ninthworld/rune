@@ -28,7 +28,7 @@
 
 use crate::card::Keyword;
 use crate::card_type::CardType;
-use crate::characteristics::characteristics;
+use crate::characteristics::{characteristics, permanent_has_keyword};
 use crate::id::{PermanentId, PlayerId};
 use crate::phase::Step;
 use crate::state::{GameState, Permanent};
@@ -94,12 +94,18 @@ fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
         .is_some_and(|c| c.has_type(CardType::Creature))
 }
 
-/// Whether `perm` has printed keyword `keyword` (CR 702). Reads the printed card
-/// data; keyword-granting continuous effects are future work, so the printed
-/// keywords are authoritative here (as printed types are in [`is_creature`]).
+/// Whether `perm` currently has keyword `keyword` (CR 702): its printed keywords
+/// unioned with any granted at CR 613 layer 6 (CR 613.1f). Reads through the
+/// computed [`characteristics`], so a keyword granted by an Aura, an anthem, or an
+/// until-end-of-turn pump is enforced in combat exactly like a printed one.
 #[must_use]
-pub(crate) fn has_keyword(perm: &Permanent, keyword: Keyword, db: &CardDatabase) -> bool {
-    db.card(perm.card).is_some_and(|c| c.has_keyword(keyword))
+pub(crate) fn has_keyword(
+    state: &GameState,
+    perm: &Permanent,
+    keyword: Keyword,
+    db: &CardDatabase,
+) -> bool {
+    permanent_has_keyword(state, perm.id, keyword, db)
 }
 
 /// Whether the creature `blocker` may legally be assigned to block `attacker`
@@ -123,14 +129,14 @@ pub(crate) fn blocker_can_block_attacker(
         return false;
     };
     // A non-flying attacker imposes no evasion constraint.
-    if !has_keyword(atk, Keyword::Flying, db) {
+    if !has_keyword(state, atk, Keyword::Flying, db) {
         return true;
     }
     let Some(blk) = state.battlefield.iter().find(|p| p.id == blocker) else {
         return false;
     };
     // CR 702.9c / 702.17b: only flying or reach may block a flyer.
-    has_keyword(blk, Keyword::Flying, db) || has_keyword(blk, Keyword::Reach, db)
+    has_keyword(state, blk, Keyword::Flying, db) || has_keyword(state, blk, Keyword::Reach, db)
 }
 
 /// The permanents the active player may legally declare as attackers right now
@@ -153,7 +159,8 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
                 && !perm.tapped
                 // CR 302.6, with the CR 702.10b haste exemption: a hasty creature
                 // ignores the summoning-sickness attack restriction.
-                && (!has_summoning_sickness(perm, state) || has_keyword(perm, Keyword::Haste, db))
+                && (!has_summoning_sickness(perm, state)
+                    || has_keyword(state, perm, Keyword::Haste, db))
         })
         .map(|perm| perm.id)
         .collect()
@@ -374,16 +381,18 @@ pub(crate) enum DamageStep {
 /// and double strike deals exactly twice, not three times (CR 702.4c): the two
 /// keywords collapse to the same two participations rather than adding a third.
 #[must_use]
-fn deals_in_step(perm: &Permanent, step: DamageStep, db: &CardDatabase) -> bool {
-    let double_strike = has_keyword(perm, Keyword::DoubleStrike, db);
+fn deals_in_step(state: &GameState, perm: &Permanent, step: DamageStep, db: &CardDatabase) -> bool {
+    let double_strike = has_keyword(state, perm, Keyword::DoubleStrike, db);
     match step {
         DamageStep::Only => true,
         // CR 702.4b / 702.7b: first strike *and* double strike deal in the
         // first-strike step.
-        DamageStep::FirstStrike => has_keyword(perm, Keyword::FirstStrike, db) || double_strike,
+        DamageStep::FirstStrike => {
+            has_keyword(state, perm, Keyword::FirstStrike, db) || double_strike
+        }
         // CR 510.5: the regular step is for creatures without first strike — plus
         // double strikers, which strike a second time here (CR 702.4b).
-        DamageStep::Regular => double_strike || !has_keyword(perm, Keyword::FirstStrike, db),
+        DamageStep::Regular => double_strike || !has_keyword(state, perm, Keyword::FirstStrike, db),
     }
 }
 
@@ -396,8 +405,8 @@ fn deals_in_step(perm: &Permanent, step: DamageStep, db: &CardDatabase) -> bool 
 pub(crate) fn combat_has_first_strike(state: &GameState, db: &CardDatabase) -> bool {
     state.battlefield.iter().any(|p| {
         (p.attacking.is_some() || p.blocking.is_some())
-            && (has_keyword(p, Keyword::FirstStrike, db)
-                || has_keyword(p, Keyword::DoubleStrike, db))
+            && (has_keyword(state, p, Keyword::FirstStrike, db)
+                || has_keyword(state, p, Keyword::DoubleStrike, db))
     })
 }
 
@@ -609,10 +618,10 @@ pub(crate) fn combat_damage(
         let defender = attacker.attacking;
         let blockers = blockers_of(state, attacker.id);
         // The attacker's own strike, if it deals in this step.
-        if deals_in_step(attacker, step, db) {
+        if deals_in_step(state, attacker, step, db) {
             let power = combat_power(state, attacker.id, db);
-            let deathtouch = has_keyword(attacker, Keyword::Deathtouch, db);
-            let lifelink = has_keyword(attacker, Keyword::Lifelink, db);
+            let deathtouch = has_keyword(state, attacker, Keyword::Deathtouch, db);
+            let lifelink = has_keyword(state, attacker, Keyword::Lifelink, db);
             let controller = attacker.controller;
             if !blocked.contains(&attacker.id) {
                 // Unblocked: the attacker's damage goes to the player it attacks.
@@ -639,7 +648,7 @@ pub(crate) fn combat_damage(
                 }
                 // CR 702.19e: a trampler assigns its leftover to the defending
                 // player; without trample a blocked creature deals it nowhere.
-                if remaining > 0 && has_keyword(attacker, Keyword::Trample, db) {
+                if remaining > 0 && has_keyword(state, attacker, Keyword::Trample, db) {
                     if let Some(player) = defender {
                         push_player_damage(&mut out, player, remaining, controller, lifelink);
                     }
@@ -652,7 +661,7 @@ pub(crate) fn combat_damage(
             let Some(bperm) = state.battlefield.iter().find(|p| p.id == *blocker) else {
                 continue;
             };
-            if !deals_in_step(bperm, step, db) {
+            if !deals_in_step(state, bperm, step, db) {
                 continue;
             }
             let bp = combat_power(state, *blocker, db);
@@ -661,9 +670,9 @@ pub(crate) fn combat_damage(
                     &mut out,
                     attacker.id,
                     bp,
-                    has_keyword(bperm, Keyword::Deathtouch, db),
+                    has_keyword(state, bperm, Keyword::Deathtouch, db),
                     bperm.controller,
-                    has_keyword(bperm, Keyword::Lifelink, db),
+                    has_keyword(state, bperm, Keyword::Lifelink, db),
                 );
             }
         }
@@ -1055,6 +1064,69 @@ mod tests {
             amount: 4,
             deathtouch: false,
         }));
+    }
+
+    #[test]
+    fn issue_374_aura_granted_flying_makes_host_unblockable_and_reverts_cr_702_9c() {
+        // CR 613.1f + 702.9c: an Aura granting flying makes its host a flier, so a
+        // ground creature cannot block it — exactly as a printed flier. The grant
+        // disappears when the Aura leaves.
+        let db = db(); // bundled catalog, which includes the `flight` Aura
+        let mut state = GameState::new_two_player();
+        let host = creature_card(&mut state, fixture("walking_corpse"), PlayerId(0), 0); // ground
+        let ground = creature_card(&mut state, fixture("walking_corpse"), PlayerId(1), 0);
+        // Baseline: a ground creature can block a ground attacker.
+        assert!(blocker_can_block_attacker(&state, host, ground, &db));
+
+        // Attach Flight (Aura granting flying) to the host.
+        let aura = creature_card(&mut state, fixture("flight"), PlayerId(0), 0);
+        state
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == aura)
+            .unwrap()
+            .attached_to = Some(host);
+        assert!(
+            !blocker_can_block_attacker(&state, host, ground, &db),
+            "the enchanted creature is a flier; a ground creature cannot block it (CR 702.9c)"
+        );
+
+        // The Aura leaves: the grant reverts and the ground creature can block again.
+        state.battlefield.retain(|p| p.id != aura);
+        assert!(
+            blocker_can_block_attacker(&state, host, ground, &db),
+            "removing the Aura reverts the granted flying"
+        );
+    }
+
+    #[test]
+    fn issue_374_granted_deathtouch_is_lethal_in_combat_cr_510_1e() {
+        // CR 613.1f + 510.1e: a granted deathtouch behaves in combat exactly like a
+        // printed one — an attacker with deathtouch granted until end of turn needs
+        // assign only 1 to its blocker to be lethal, flagged deathtouch.
+        use crate::state::{Duration, EffectAffects, Modification, StaticEffect};
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let atk = attacker(&mut state, fixture("onakke_ogre"), PlayerId(0)); // 4/2, no keyword
+        let blk = blocker(&mut state, fixture("colossal_dreadmaw"), PlayerId(1), atk); // 6/6
+        let source = state.mint_id();
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::SpecificPermanent(atk),
+            modification: Modification::GrantKeyword(Keyword::Deathtouch),
+            duration: Duration::UntilEndOfTurn,
+        });
+        let blocked = blocked_attackers(&state);
+
+        let batch = combat_damage(&state, &db, DamageStep::Only, &blocked);
+        assert!(
+            batch.contains(&CombatDamage::ToPermanent {
+                permanent: blk,
+                amount: 1,
+                deathtouch: true,
+            }),
+            "granted deathtouch makes 1 damage lethal to the 6/6 blocker (CR 510.1e)"
+        );
     }
 
     #[test]
