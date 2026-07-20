@@ -60,8 +60,11 @@ a fresh `PermanentId`, which provides zone-change identity.
 
 The lobby supports room configurations with 2–8 seats. A bundled free-for-all format
 (`standard_ffa`) seats 3–4 players and starts real multiplayer games on the engine's
-multiplayer rules (per-attacker attack targets, multi-defender blocking, and elimination);
-the two-player formats remain the default. Room creation validates each format's seat range.
+multiplayer rules (per-attacker attack targets, multi-defender blocking, and elimination),
+and a `commander` format seats 2–4 players with singleton and color-identity deck
+validation, 40 starting life, and the engine's command-zone mechanics; the two-player
+formats remain the default. Room creation validates each format's seat range, and the
+lobby serves the card catalog and each format's deck rules for clients to display.
 
 ### Protocol
 
@@ -112,9 +115,13 @@ so display text cannot silently diverge from executable behavior.
 RUNE currently supports deterministic games of two to four players built around creature
 combat, with spectators. The implemented slice includes the full turn loop, priority, casting
 and mana payment, targets, the stack, per-attacker attack targets, multi-defender blocking,
-combat damage with player-chosen assignment order, common combat keywords, counters, auras,
-triggers, initial replacement effects, mulligans, concessions, loss by life or decking, and
-mid-game elimination in multiplayer games.
+combat damage with player-chosen assignment order, common combat keywords including double
+strike, continuous keyword-granting effects, counters, auras, triggers, initial replacement
+effects, mulligans, concessions, loss by life or decking, and mid-game elimination in
+multiplayer games. On the format side, the lobby serves the card catalog and each format's
+deck rules over the wire, players build and submit decks in a client deck builder with
+device-local saved lists (ADR 0027), and a commander format enforces singleton construction
+and color identity over the engine's command-zone, tax, and commander-damage mechanics.
 
 The project intentionally grows by verified rule slices rather than claiming broad card or
 format compatibility. Tests and the generated, CI-checked compatibility report
