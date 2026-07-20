@@ -233,6 +233,42 @@ connection screen:
   surface — Play on the landing; in the room, Submit deck until decked, then
   Ready. Leave room sits apart from the primary so the exit never neighbors it.
 
+- **The deck builder is a modal over the seat panel** (#368, delivered). Beside
+  the starter tiles, a quiet "Build a deck" button opens a modal that browses the
+  **full** wire-carried card pool (the #367 `CatalogView`, requested once on open
+  and held in the store's `catalog` slice, not the pushed `LobbyView`). Each pool
+  row shows name, cost, and type line with an Inspect control that reuses the
+  universal `CardInspect` treatment (rules text, P/T, keywords — all
+  server-computed), plus ≥44 px −/count/+ controls; a running total and a "Your
+  deck" list mirror the counts. The room format's advertised deck rules
+  (min/max size, copy limit + basic exemption, seat range) render as **display-only**
+  chips — an absent upper bound reads as "no limit" honestly, never a sentinel.
+  Submit sends the built functional-id list through the **same** `submit_deck`
+  gate; a server rejection surfaces through the lobby's existing non-blaming
+  feedback (the `lobbyError` message, shown over the open modal) with the built
+  list **preserved** for correction. Starter decks stay one-tap — both as the
+  existing tiles+Submit path and as in-builder seeds a player loads and edits.
+  Full keyboard (Escape closes; every control is a focusable button) and touch
+  operability, no drag- or hover-only action. Zero game logic: counts and rule
+  chips are informational; the client never computes legality — Submit is always
+  offered and the server is the sole authority.
+
+- **Saved decks live on the device** (#369, ADR 0027). Under the starter seeds the
+  builder carries a saved-decks panel: name the working deck and Save it, then Load,
+  Export, or Delete any previously saved deck from a list, and Import a deck file.
+  Storage is device-local (IndexedDB, beside the ADR 0024 art cache) keyed by a
+  player-chosen name — no server storage, no protocol change, and a saved deck never
+  leaves the device until it is submitted. Portability is one small schema-versioned
+  JSON document (`{ schema, version, name, cards: [{ functional_id, count }] }`);
+  Export downloads it (and shows the text to copy), Import parses it back into the
+  builder as the working deck for review before saving. Saving never implies
+  legality — a saved deck is validated only at submission time by the room format
+  through the same `submit_deck` gate, so a deck saved under one format may be
+  rejected by another without corrupting the saved copy. No silent data loss:
+  overwriting a name and deleting a deck each require an explicit confirm. When
+  device storage is unavailable (private mode, disabled storage) the panel simply
+  hides and the bundled-starters flow still works — never a broken screen.
+
 The lobby composition was refined against a pre-game concept board (players
 table, segmented pickers, centered CTA, room meta header — adopted as
 composition only). Rejected from that board, so the reasoning isn't

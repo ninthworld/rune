@@ -15,6 +15,7 @@ import {
   LOBBY_ROOM_READY_JSON,
   LOBBY_ROOM_UNDECKED_JSON,
 } from './lobby-view.fixture';
+import { CATALOG_JSON } from './catalog-view.fixture';
 
 /**
  * A structural stand-in for the browser `WebSocket`, driven manually so tests
@@ -381,6 +382,58 @@ describe('game store', () => {
 
       expect(sockets[1].sent).toEqual([JSON.stringify({ type: 'hello', token: 's:ab12' })]);
       vi.useRealTimers();
+    });
+  });
+
+  describe('catalog data path (issue #367/#368)', () => {
+    /** Connect + open a store with a fake socket, returning the socket. */
+    function open(): { store: ReturnType<typeof createGameStore>; socket: FakeSocket } {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      return { store, socket: sockets[0] };
+    }
+
+    it('requestCatalog sends a one-shot request_catalog command', () => {
+      const { store, socket } = open();
+      store.getState().requestCatalog();
+      expect(socket.sent).toContain(JSON.stringify({ type: 'request_catalog' }));
+    });
+
+    it('routes a CatalogView frame into `catalog`, leaving lobby/view untouched', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+      const lobbyBefore = store.getState().lobby;
+
+      socket.emitMessage(CATALOG_JSON);
+      const { catalog, lobby, view, lobbyError } = store.getState();
+      expect(catalog?.catalog_version).toBe(1);
+      expect(catalog?.cards).toHaveLength(3);
+      expect(catalog?.formats).toHaveLength(2);
+      // The catalog is reference data, not lobby/game state: it does not disturb them.
+      expect(lobby).toEqual(lobbyBefore);
+      expect(view).toBeNull();
+      expect(lobbyError).toBeNull();
+    });
+
+    it('replaces the catalog wholesale on a later frame (no merge)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(CATALOG_JSON);
+      expect(store.getState().catalog?.cards).toHaveLength(3);
+
+      socket.emitMessage(JSON.stringify({ catalog_version: 1, cards: [], formats: [] }));
+      expect(store.getState().catalog?.cards).toEqual([]);
+    });
+
+    it('does not record request_catalog as a pending command (no false rejection)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+      store.getState().requestCatalog();
+      // A LobbyView arriving after a catalog request must not be mistaken for a
+      // rejected command — request_catalog reconciles to nothing.
+      socket.emitMessage(LOBBY_ROOMLESS_JSON);
+      expect(store.getState().lobbyError).toBeNull();
     });
   });
 

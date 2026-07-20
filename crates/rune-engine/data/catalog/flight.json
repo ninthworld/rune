@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "functional_id": "flight",
+  "name": "Flight",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{U}",
+  "colors": [
+    "blue"
+  ],
+  "aura": {
+    "enchant": "any_creature",
+    "keywords": [
+      "flying"
+    ]
+  }
+}

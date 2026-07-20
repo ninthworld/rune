@@ -28,7 +28,9 @@ import { createStore } from 'zustand/vanilla';
 import {
   chooseAction,
   helloCommand,
+  requestCatalogCommand,
   setStopsMessage,
+  type CatalogView,
   type GameView,
   type LobbyCommand,
   type LobbyView,
@@ -140,6 +142,10 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
       // simply not stored (the server re-sends the view unchanged, per the non-fatal
       // pattern); there is nothing to reconcile into a retry hint here (issue #294).
       return null;
+    case 'request_catalog':
+      // The catalog reply is a `CatalogView`, not a `LobbyView`, and never changes lobby
+      // state; there is nothing to reconcile into a retry hint (issue #367).
+      return null;
     case 'hello':
       // Identity always succeeds; nothing to reconcile.
       return null;
@@ -164,6 +170,15 @@ export interface GameStore {
    * is replaced wholesale on every lobby frame, exactly like {@link view}.
    */
   lobby: LobbyView | null;
+  /**
+   * The public card catalog + format deck rules (issue #367), or `null` until it has
+   * been requested and received. Static reference data the deck builder (#368) browses,
+   * not per-connection lobby state — fetched once with a `request_catalog` command and
+   * replaced wholesale on each {@link CatalogView} frame. Kept separate from
+   * {@link lobby} because it does not ride the pushed `LobbyView` and does not change
+   * with room/seat state.
+   */
+  catalog: CatalogView | null;
   /**
    * A non-fatal, retryable lobby error to surface (e.g. room full/unknown, deck
    * rejected), or `null`. Ephemeral feedback only — never load-bearing: the
@@ -200,6 +215,16 @@ export interface GameStore {
    * client only sends commands the server advertised in `valid_commands`.
    */
   sendLobby: (command: LobbyCommand) => void;
+  /**
+   * Ask the server for the public card catalog + format deck rules (issue #367),
+   * the browsable card pool the deck builder (#368) works from. Sends a one-shot
+   * `request_catalog`; the reply is a {@link CatalogView} frame that lands in
+   * {@link catalog}. It changes no lobby state and needs no reconciliation, so —
+   * unlike {@link sendLobby} — it is not recorded as a pending command. A no-op when
+   * no socket is open. Idempotent to re-request; callers guard on `catalog === null`
+   * to avoid refetching data they already hold.
+   */
+  requestCatalog: () => void;
   /**
    * Send a `ChooseAction` for one of the currently issued `valid_actions`,
    * answered atomically. The chosen action's content-binding `token` is echoed
@@ -343,6 +368,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     view: null,
     spectatorView: null,
     lobby: null,
+    catalog: null,
     lobbyError: null,
     rejectionNonce: 0,
     status: 'idle',
@@ -403,6 +429,14 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       socket.send(JSON.stringify(command));
     },
 
+    requestCatalog(): void {
+      // Fire-and-forget: the catalog is static reference data, not lobby state, so it
+      // is neither recorded as a pending command nor reconciled — the reply simply
+      // populates `catalog` (see `ingest`). No legality is computed here.
+      if (!socket) return;
+      socket.send(JSON.stringify(requestCatalogCommand()));
+    },
+
     choose(action, targets): void {
       // Echo the chosen action id plus its content-binding token verbatim, and
       // the assembled per-slot targets. The server validates all three against
@@ -451,6 +485,15 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         // correct. A pending `spectate_room` command is satisfied by this frame arriving.
         pendingLobby = null;
         set({ spectatorView: frame.view, view: null, lobby: null, lobbyError: null });
+        return;
+      }
+
+      if (frame.kind === 'catalog') {
+        // A catalog frame (issue #367): static reference data answered to a
+        // `request_catalog`. It is not lobby/game state, so it does not touch `view`,
+        // `spectatorView`, `lobby`, or the pending-command reconciliation — it only
+        // populates `catalog` for the deck builder (#368) to browse.
+        set({ catalog: frame.catalog });
         return;
       }
 

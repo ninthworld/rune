@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  normalizeCatalogView,
   normalizeGameView,
   normalizeLobbyView,
   normalizeSpectatorView,
@@ -651,5 +652,100 @@ describe('display names (issue #294)', () => {
     expect(named.name).toBe('Alice');
     const unnamed = normalizeLobbyView({ session: 's:1', you: 'p1' });
     expect(unnamed.name).toBeUndefined();
+  });
+});
+
+describe('catalog wire (issue #367)', () => {
+  // A terse wire catalog: one full creature card and one basic land that elides its
+  // absent mana cost / P/T / keywords, plus a permissive format that omits its `None`
+  // upper bounds and a strict one that carries them.
+  const CATALOG_JSON = JSON.stringify({
+    catalog_version: 1,
+    cards: [
+      {
+        functional_id: 'serra_angel',
+        name: 'Serra Angel',
+        type_line: 'Creature — Angel',
+        mana_cost: '{3}{W}{W}',
+        rules_text: 'Flying, vigilance',
+        power: '4',
+        toughness: '4',
+        keywords: ['flying', 'vigilance'],
+      },
+      {
+        functional_id: 'forest',
+        name: 'Forest',
+        type_line: 'Basic Land — Forest',
+        rules_text: '{T}: Add {G}.',
+      },
+    ],
+    formats: [
+      {
+        game_setup: 'standard_2p',
+        min_deck_size: 0,
+        basic_land_exempt: true,
+        min_seats: 2,
+        max_seats: 8,
+      },
+      {
+        game_setup: 'starter-1v1',
+        min_deck_size: 40,
+        max_copies: 4,
+        basic_land_exempt: true,
+        min_seats: 2,
+        max_seats: 2,
+      },
+    ],
+  });
+
+  it('routes a catalog_version frame (no phase) to a CatalogView', () => {
+    const frame = parseServerFrame(CATALOG_JSON);
+    expect(frame.kind).toBe('catalog');
+    if (frame.kind === 'catalog') {
+      expect(frame.catalog.catalog_version).toBe(1);
+      expect(frame.catalog.cards).toHaveLength(2);
+      expect(frame.catalog.formats).toHaveLength(2);
+    }
+  });
+
+  it('does not route a phase-less, version-less lobby frame to a CatalogView', () => {
+    const frame = parseServerFrame(LOBBY_ROOMLESS_JSON);
+    expect(frame.kind).toBe('lobby');
+  });
+
+  it('normalizes elided card optionals to their defaults', () => {
+    const view = normalizeCatalogView(JSON.parse(CATALOG_JSON));
+    const angel = view.cards[0];
+    expect(angel.mana_cost).toBe('{3}{W}{W}');
+    expect(angel.power).toBe('4');
+    expect(angel.keywords).toEqual(['flying', 'vigilance']);
+    const forest = view.cards[1];
+    expect(forest.mana_cost).toBeUndefined();
+    expect(forest.power).toBeUndefined();
+    expect(forest.toughness).toBeUndefined();
+    expect(forest.keywords).toBeUndefined();
+    expect(forest.rules_text).toBe('{T}: Add {G}.');
+  });
+
+  it('keeps a permissive format’s absent upper bounds absent (honest permissiveness)', () => {
+    const view = normalizeCatalogView(JSON.parse(CATALOG_JSON));
+    const open = view.formats[0];
+    expect(open.min_deck_size).toBe(0);
+    expect(open.max_deck_size).toBeUndefined();
+    expect(open.max_copies).toBeUndefined();
+    const strict = view.formats[1];
+    expect(strict.min_deck_size).toBe(40);
+    expect(strict.max_copies).toBe(4);
+  });
+
+  it('defaults a missing catalog_version and collections', () => {
+    const view = normalizeCatalogView({});
+    expect(view.catalog_version).toBe(0);
+    expect(view.cards).toEqual([]);
+    expect(view.formats).toEqual([]);
+  });
+
+  it('rejects a non-object CatalogView payload', () => {
+    expect(() => normalizeCatalogView(42)).toThrow(ProtocolError);
   });
 });

@@ -19,6 +19,17 @@ the table UI.
 - Effective values (P/T, counters) are displayed exactly as the server computes them.
 - No `localStorage` of game state; server is the source of truth. Device *preferences*
   (e.g. the art source) may persist; they must never be load-bearing for a view.
+- Saved decks (ADR 0027) are an explicit carve-out from the rule above: the deck
+  builder may persist player-authored decks device-local in IndexedDB
+  (`src/deck/savedDeckStore.ts`), keyed by a player-chosen name, with a portable
+  export/import JSON document. They are pre-game *input*, never a rendered view and
+  never load-bearing across messages — the builder and every view must still rebuild
+  fully with the deck store empty. Saving never implies legality: a saved deck is
+  validated only at submission time by the room format through the unchanged
+  `submit_deck` gate. Storage stays on the device (no server storage, no protocol
+  change) and never leaves it until submitted; when storage is unavailable the
+  builder degrades to the bundled starters. Overwriting or deleting a saved deck
+  requires explicit intent (a confirm affordance).
 - Card art (ADR 0024) is a client-local cache keyed by `functional_id` in
   `src/card/art/`: player-selected source, device-local storage, renderers only
   *look up* loaded textures. The UI must render fully with the art store empty, and

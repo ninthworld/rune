@@ -558,6 +558,15 @@ fn remove_creatures_from_combat(state: &mut GameState) {
 /// selection already validated in [`action_is_legal`].
 fn apply_declare_attackers(state: &mut GameState, attackers: &[Attack], db: &CardDatabase) {
     for attack in attackers {
+        // CR 508.1f / CR 702.20b: whether this attacker has vigilance (printed or
+        // granted at layer 6) is read through the computed characteristics, which
+        // borrows `state` immutably — so it is resolved before the mutable lookup
+        // below rather than while `state.battlefield` is borrowed mutably.
+        let has_vigilance = state
+            .battlefield
+            .iter()
+            .find(|p| p.id == attack.attacker)
+            .is_some_and(|perm| has_keyword(state, perm, Keyword::Vigilance, db));
         if let Some(perm) = state
             .battlefield
             .iter_mut()
@@ -568,7 +577,7 @@ fn apply_declare_attackers(state: &mut GameState, attackers: &[Attack], db: &Car
             perm.attacking = Some(attack.defender);
             // CR 508.1f / CR 702.20b: attacking taps the creature, unless it has
             // vigilance, in which case it attacks without tapping.
-            if !has_keyword(perm, Keyword::Vigilance, db) {
+            if !has_vigilance {
                 perm.tapped = true;
             }
         }
@@ -912,7 +921,8 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
         | Effect::DealDamage { .. }
         | Effect::Destroy { .. }
         | Effect::PutCounters { .. }
-        | Effect::Pump { .. } => {}
+        | Effect::Pump { .. }
+        | Effect::GrantKeyword { .. } => {}
     }
 }
 
@@ -1022,6 +1032,27 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // Grant the targeted creature a keyword until end of turn (CR 514.2): add a
+        // CR 613 layer-6 keyword grant keyed to that one permanent, with an
+        // `UntilEndOfTurn` duration the cleanup step removes (CR 613.1f). The grant
+        // folds into the target's computed keyword set on demand — nothing is written
+        // onto the permanent — so removing it at cleanup reverts the value with
+        // nothing to invalidate (ADR 0010). A duplicate grant is redundant, not
+        // additive. The caller has re-checked the target is still a creature
+        // (CR 608.2b); a permanent that has since left is skipped.
+        Effect::GrantKeyword { keyword, .. } => {
+            if let Target::Permanent(id) = target {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let source = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::GrantKeyword(*keyword),
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                }
+            }
+        }
         // Implicit-subject effects do not target; they never reach here.
         Effect::AddMana { .. }
         | Effect::AddColorlessMana { .. }
@@ -1081,7 +1112,16 @@ mod tests {
             {"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
              "types":["creature"],"subtypes":["Horror"],"mana_cost":"{1}{B}","colors":["black"],
              "power":2,"toughness":2,
-             "abilities":[{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}]}
+             "abilities":[{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}]},
+            {"schema_version":1,"functional_id":"test_twinstrike","name":"Test Twinstrike",
+             "types":["creature"],"subtypes":["Cat"],"mana_cost":"{2}{W}","colors":["white"],
+             "power":2,"toughness":2,"keywords":["double_strike"]},
+            {"schema_version":1,"functional_id":"test_twintrample","name":"Test Twintrample",
+             "types":["creature"],"subtypes":["Beast"],"mana_cost":"{3}{G}","colors":["green"],
+             "power":3,"toughness":3,"keywords":["double_strike","trample"]},
+            {"schema_version":1,"functional_id":"test_ward","name":"Test Ward",
+             "types":["creature"],"subtypes":["Soldier"],"mana_cost":"{2}{W}","colors":["white"],
+             "power":3,"toughness":3,"keywords":["first_strike"]}
         ]"#;
         CardDatabase::from_json(json).unwrap()
     }
@@ -1682,6 +1722,103 @@ mod tests {
             find_perm(&after, creature).damage,
             0,
             "marked damage was wiped at cleanup"
+        );
+    }
+
+    // ----- Until-end-of-turn keyword grant: resolution and cleanup expiry (issue #374) -----
+
+    /// Push an "until end of turn" grant of `keyword` onto `target`, timestamped by
+    /// a freshly minted object id, and return that id.
+    fn grant_keyword(state: &mut GameState, target: PermanentId, keyword: Keyword) -> u64 {
+        let source = state.mint_id();
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::SpecificPermanent(target),
+            modification: Modification::GrantKeyword(keyword),
+            duration: Duration::UntilEndOfTurn,
+        });
+        source
+    }
+
+    #[test]
+    fn issue_374_grant_keyword_spell_grants_the_keyword_until_end_of_turn_end_to_end() {
+        // Cast Jump (target creature gains flying until end of turn) on a ground
+        // Llanowar Elves: on resolution the creature computes with flying and one
+        // until-end-of-turn layer-6 grant is in force.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let jump = state.new_instance(fixture("jump"));
+        state.players[0].hand = vec![jump];
+        state.players[0].mana_pool.add(Color::Blue, 1);
+
+        // The Elves has no flying before the spell.
+        assert!(!characteristics(&state, creature, &db)
+            .keywords
+            .contains(&Keyword::Flying));
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: jump,
+                targets: vec![Target::Permanent(creature)],
+            },
+            &db,
+        );
+        // Pass twice: the spell resolves and applies its grant.
+        let state = pass_full_round(&state, &db);
+
+        assert!(state.stack.is_empty());
+        assert!(
+            characteristics(&state, creature, &db)
+                .keywords
+                .contains(&Keyword::Flying),
+            "the resolved spell granted flying (CR 613.1f)"
+        );
+        assert_eq!(state.static_effects.len(), 1);
+        assert_eq!(
+            state.static_effects[0].duration,
+            Duration::UntilEndOfTurn,
+            "the grant is an until-end-of-turn effect"
+        );
+        assert!(state.players[0].graveyard.iter().any(|c| c.id == jump.id));
+    }
+
+    #[test]
+    fn issue_374_until_end_of_turn_grant_expires_at_cleanup_cr_514_2() {
+        // CR 514.2: an until-end-of-turn keyword grant ends in the cleanup step. The
+        // grant is present the turn it is made and gone once the turn passes — verified
+        // across the turn boundary.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1; empty hand so no discard.
+        let creature =
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
+        grant_keyword(&mut state, creature, Keyword::Flying);
+
+        // Before cleanup the creature has the granted keyword.
+        assert!(
+            characteristics(&state, creature, &db)
+                .keywords
+                .contains(&Keyword::Flying),
+            "the grant is in force during the turn it was made"
+        );
+
+        // Walk through the cleanup step into the next turn.
+        let after = pass_full_round(&state, &db);
+        assert!(
+            after.static_effects.is_empty(),
+            "the until-end-of-turn grant wore off at cleanup (CR 514.2)"
+        );
+        assert!(
+            !characteristics(&after, creature, &db)
+                .keywords
+                .contains(&Keyword::Flying),
+            "the granted keyword is gone across the turn boundary"
         );
     }
 
@@ -3631,6 +3768,164 @@ mod tests {
             after.players[1].life,
             def_life + 2,
             "the lifelink blocker's controller gains 2 from its combat damage"
+        );
+    }
+
+    // ----- Double strike (issue #373, CR 702.4) -----
+    // Double strike has no clean M19 representative, so its bodies come from the
+    // inline `combat_db()`: test_twinstrike (2/2 double strike), test_twintrample
+    // (3/3 double strike + trample), test_ward (3/3 first strike, survives a 2/2's
+    // first hit and kills it back).
+
+    #[test]
+    fn issue_373_unblocked_double_striker_deals_its_power_twice_cr_702_4b() {
+        // CR 702.4b: an unblocked double striker deals combat damage in both the
+        // first-strike and the regular step — a 2/2 double striker hits the defending
+        // player for 2 twice, so it loses 4.
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let striker = place_permanent(
+            &mut state,
+            id_in(&db, "test_twinstrike"),
+            PlayerId(0),
+            false,
+            0,
+        );
+
+        let after = run_combat(&state, vec![striker], Vec::new(), &db);
+
+        assert_eq!(
+            after.players[1].life,
+            start_life - 4,
+            "a 2/2 double striker deals its power twice (CR 702.4b)"
+        );
+        assert!(alive(&after, striker), "the unblocked striker is untouched");
+    }
+
+    #[test]
+    fn issue_373_blocked_double_striker_deals_no_regular_damage_without_trample_cr_702_4b() {
+        // CR 702.4b: a 2/2 double striker kills its 3/2 blocker in the first-strike
+        // step (2 ≥ 2). With its blocker dead and no trample, its regular-step strike
+        // has nowhere to go — it deals no damage to anything, and takes none back (the
+        // blocker died before it could strike).
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let striker = place_permanent(
+            &mut state,
+            id_in(&db, "test_twinstrike"),
+            PlayerId(0),
+            false,
+            0,
+        );
+        let boar = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![striker],
+            vec![Block {
+                blocker: boar,
+                attacker: striker,
+            }],
+            &db,
+        );
+
+        assert!(!alive(&after, boar), "the blocker died to first strike");
+        assert!(
+            alive(&after, striker),
+            "the striker survives its dead blocker"
+        );
+        assert_eq!(
+            find_perm(&after, striker).damage,
+            0,
+            "the blocker never struck back (CR 510.5)"
+        );
+        assert_eq!(
+            after.players[1].life, start_life,
+            "a blocked non-trampler's regular strike hits nothing (CR 509.1h)"
+        );
+    }
+
+    #[test]
+    fn issue_373_double_strike_trample_carries_the_regular_strike_over_a_dead_blocker_cr_702_4b() {
+        // CR 702.4b + 702.19e: a 3/3 double-strike trampler blocked by a 3/2 Boar
+        // assigns 2 (lethal) to the Boar and tramples 1 in the first-strike step; the
+        // Boar dies before the regular step, so the whole 3 of the regular strike
+        // tramples to the player. The defender loses 1 + 3 = 4.
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let trampler = place_permanent(
+            &mut state,
+            id_in(&db, "test_twintrample"),
+            PlayerId(0),
+            false,
+            0,
+        );
+        let boar = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![trampler],
+            vec![Block {
+                blocker: boar,
+                attacker: trampler,
+            }],
+            &db,
+        );
+
+        assert!(!alive(&after, boar), "the blocker died to first strike");
+        assert!(alive(&after, trampler), "the trampler survives");
+        assert_eq!(
+            after.players[1].life,
+            start_life - 4,
+            "1 trample excess in the first step, the full 3 over the dead blocker in \
+             the regular step (CR 702.4b/702.19e)"
+        );
+    }
+
+    #[test]
+    fn issue_373_double_striker_slain_in_the_first_step_deals_no_regular_damage_cr_702_4b() {
+        // CR 702.4b: a double striker that dies during/after the first-strike step
+        // deals no regular-step damage. A 2/2 double striker attacks a 3/3 first-strike
+        // blocker: in the first-strike step both deal — the striker marks 2 on the ward
+        // (which survives), the ward's 3 kills the striker. The dead striker never
+        // deals its second hit, so the ward keeps exactly 2 marked (a second hit would
+        // make it 4 and destroy it).
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let striker = place_permanent(
+            &mut state,
+            id_in(&db, "test_twinstrike"),
+            PlayerId(0),
+            false,
+            0,
+        );
+        let ward = place_permanent(&mut state, id_in(&db, "test_ward"), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![striker],
+            vec![Block {
+                blocker: ward,
+                attacker: striker,
+            }],
+            &db,
+        );
+
+        assert!(
+            !alive(&after, striker),
+            "the double striker took lethal first strike"
+        );
+        assert!(
+            alive(&after, ward),
+            "the 3/3 ward survived the one 2-damage hit"
+        );
+        assert_eq!(
+            find_perm(&after, ward).damage,
+            2,
+            "the slain double striker dealt no regular-step damage (CR 702.4b)"
         );
     }
 

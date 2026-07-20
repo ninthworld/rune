@@ -642,6 +642,7 @@ fn describe_command(command: &LobbyCommand) -> String {
         LobbyCommand::SetName(SetName { name }) => format!("setting display name to {name:?}"),
         LobbyCommand::Leave => "leaving the room".to_string(),
         LobbyCommand::Hello(_) => "saying hello".to_string(),
+        LobbyCommand::RequestCatalog => "requesting the card catalog".to_string(),
     }
 }
 
