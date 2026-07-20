@@ -22,3 +22,5 @@ test-results/
 !.vscode/extensions.json
 # Logs
 *.log
+# Agent worktrees (transient git worktrees created for isolated subagent runs)
+.claude/worktrees/
