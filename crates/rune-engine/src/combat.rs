@@ -317,6 +317,13 @@ pub(crate) enum CombatDamage {
         player: PlayerId,
         /// How much damage.
         amount: u32,
+        /// The commander designation of the source, if the striking creature is a
+        /// commander — its owning [`PlayerId`], the stable tally key (CR 903.10a).
+        /// `None` for an ordinary source. When set, the batch application adds this
+        /// hit to the CR 903.10a commander-damage tally
+        /// ([`GameState::add_commander_damage`]); a bare life change alone would
+        /// lose the "which commander dealt it" fact the 21-damage loss needs.
+        source_commander: Option<PlayerId>,
     },
     /// Combat damage a creature deals to another creature: an attacker to its
     /// blockers, or a blocker to the attacker it blocks (CR 510.1c). Marked on
@@ -519,15 +526,22 @@ pub fn pending_damage_order(state: &GameState) -> Option<PlayerId> {
 
 /// Record `amount` combat damage a `source_controller`'s creature deals to
 /// `player`, plus the simultaneous lifelink life gain if the source has it
-/// (CR 702.15e).
+/// (CR 702.15e). `source_commander` carries the source's commander designation
+/// (its owning player) when the striking creature is a commander, so the batch
+/// application can feed the CR 903.10a commander-damage tally (`None` otherwise).
 fn push_player_damage(
     out: &mut Vec<CombatDamage>,
     player: PlayerId,
     amount: u32,
     source_controller: PlayerId,
     lifelink: bool,
+    source_commander: Option<PlayerId>,
 ) {
-    out.push(CombatDamage::ToPlayer { player, amount });
+    out.push(CombatDamage::ToPlayer {
+        player,
+        amount,
+        source_commander,
+    });
     if lifelink && amount > 0 {
         out.push(CombatDamage::GainLife {
             player: source_controller,
@@ -603,11 +617,22 @@ pub(crate) fn combat_damage(
             let deathtouch = has_keyword(attacker, Keyword::Deathtouch, db);
             let lifelink = has_keyword(attacker, Keyword::Lifelink, db);
             let controller = attacker.controller;
+            // CR 903.10a: whether this attacker is a commander (identified by its
+            // stable instance → designation), so its damage to a player counts
+            // toward the 21-combat-damage loss. `None` for an ordinary creature.
+            let source_commander = state.commander_owner_of(attacker.instance);
             if !blocked.contains(&attacker.id) {
                 // Unblocked: the attacker's damage goes to the player it attacks.
                 if power > 0 {
                     if let Some(player) = defender {
-                        push_player_damage(&mut out, player, power, controller, lifelink);
+                        push_player_damage(
+                            &mut out,
+                            player,
+                            power,
+                            controller,
+                            lifelink,
+                            source_commander,
+                        );
                     }
                 }
             } else {
@@ -627,10 +652,18 @@ pub(crate) fn combat_damage(
                     }
                 }
                 // CR 702.19e: a trampler assigns its leftover to the defending
-                // player; without trample a blocked creature deals it nowhere.
+                // player; without trample a blocked creature deals it nowhere. A
+                // trampling commander's overflow still counts toward CR 903.10a.
                 if remaining > 0 && has_keyword(attacker, Keyword::Trample, db) {
                     if let Some(player) = defender {
-                        push_player_damage(&mut out, player, remaining, controller, lifelink);
+                        push_player_damage(
+                            &mut out,
+                            player,
+                            remaining,
+                            controller,
+                            lifelink,
+                            source_commander,
+                        );
                     }
                 }
             }
@@ -988,6 +1021,7 @@ mod tests {
         assert!(batch.contains(&CombatDamage::ToPlayer {
             player: PlayerId(1),
             amount: 4,
+            source_commander: None,
         }));
     }
 
@@ -1026,6 +1060,7 @@ mod tests {
         assert!(batch.contains(&CombatDamage::ToPlayer {
             player: PlayerId(1),
             amount: 2,
+            source_commander: None,
         }));
         assert!(batch.contains(&CombatDamage::GainLife {
             player: PlayerId(0),
@@ -1097,6 +1132,7 @@ mod tests {
             batch.contains(&CombatDamage::ToPlayer {
                 player: PlayerId(1),
                 amount: 4,
+                source_commander: None,
             }),
             "the attacker assigned to seat 1 hits seat 1"
         );
@@ -1104,6 +1140,7 @@ mod tests {
             batch.contains(&CombatDamage::ToPlayer {
                 player: PlayerId(2),
                 amount: 4,
+                source_commander: None,
             }),
             "the attacker assigned to seat 2 hits seat 2"
         );
@@ -1135,6 +1172,7 @@ mod tests {
             batch.contains(&CombatDamage::ToPlayer {
                 player: PlayerId(2),
                 amount: 4,
+                source_commander: None,
             }),
             "trample overflow hits the attacker's own defender (seat 2)"
         );
@@ -1142,6 +1180,7 @@ mod tests {
             !batch.contains(&CombatDamage::ToPlayer {
                 player: PlayerId(1),
                 amount: 4,
+                source_commander: None,
             }),
             "no damage leaks to the other opponent (seat 1)"
         );

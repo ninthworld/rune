@@ -58,7 +58,9 @@ pub use combat::{
     blocker_candidates, blocker_candidates_for, declared_attackers, defender_candidates,
     defending_player, pending_blocker_declarer, pending_damage_order,
 };
-pub use commander::{commander_tax_cost, CommanderState, COMMANDER_TAX_PER_CAST};
+pub use commander::{
+    commander_tax_cost, CommanderState, COMMANDER_DAMAGE_LOSS_THRESHOLD, COMMANDER_TAX_PER_CAST,
+};
 pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
     PlayerId,
@@ -73,8 +75,8 @@ pub use setup::{
 };
 pub use stack::{StackId, StackObject, StackObjectKind};
 pub use state::{
-    CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry, GameResult,
-    GameState, LoggedPermanent, Modification, Permanent, StaticEffect,
+    CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry,
+    GameResult, GameState, LoggedPermanent, Modification, Permanent, StaticEffect,
 };
 pub use triggers::{collect_triggers, Trigger};
 pub use zone::Zone;

@@ -25,6 +25,11 @@ pub enum LossReason {
     DrewFromEmptyLibrary,
     /// CR 104.3a — the player conceded, leaving the game.
     Concede,
+    /// CR 903.10a — the player was dealt 21 or more combat damage over the game
+    /// by a single commander (see
+    /// [`GameState::commander_damage`](crate::GameState::commander_damage) and
+    /// [`COMMANDER_DAMAGE_LOSS_THRESHOLD`](crate::commander::COMMANDER_DAMAGE_LOSS_THRESHOLD)).
+    CommanderDamage,
 }
 
 /// A single player's state: their life total and the zones they own.

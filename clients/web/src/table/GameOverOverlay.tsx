@@ -72,6 +72,8 @@ function reasonText(reason: GameOverReason): string {
       return 'A player drew from an empty library.';
     case 'concede':
       return 'A player conceded.';
+    case 'commander_damage':
+      return 'A player took 21 combat damage from a single commander.';
     default:
       return 'The game has ended.';
   }

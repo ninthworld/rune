@@ -85,6 +85,8 @@ function asPublicView(spec: SpectatorView): GameView {
     auto_passed: false,
     action_rejected: false,
     player_names: spec.player_names,
+    // The public commander-damage tally carries straight through (issue #371).
+    commander_damage: spec.commander_damage,
   };
 }
 

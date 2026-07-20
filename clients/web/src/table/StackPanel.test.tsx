@@ -27,6 +27,7 @@ function viewWith(stack: StackItem[], battlefield: Permanent[] = []): GameView {
     mana_pool: [],
     valid_actions: [],
     player_names: {},
+    commander_damage: [],
   };
 }
 

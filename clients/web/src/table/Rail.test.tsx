@@ -24,6 +24,7 @@ function viewWith(stack: StackItem[], log: GameLogEntry[] = []): GameView {
     valid_actions: [],
     log,
     player_names: {},
+    commander_damage: [],
   };
 }
 

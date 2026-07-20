@@ -165,6 +165,8 @@ export const SAMPLE_GAME_VIEW: GameView = {
   action_rejected: false,
   // No names in the sample wire frame; normalization defaults player_names to `{}`.
   player_names: {},
+  // No commander damage in the sample frame; normalization defaults it to `[]` (issue #371).
+  commander_damage: [],
 };
 
 /**

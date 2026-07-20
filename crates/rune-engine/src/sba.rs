@@ -4,6 +4,7 @@
 
 use crate::ability::Target;
 use crate::characteristics::characteristics;
+use crate::commander::COMMANDER_DAMAGE_LOSS_THRESHOLD;
 use crate::id::{PermanentId, PlayerId};
 use crate::player::LossReason;
 use crate::resolve::target_is_legal;
@@ -20,6 +21,12 @@ use crate::CardDatabase;
 /// - **CR 704.5c** — a player who attempted to draw from an empty library since
 ///   the last check loses the game (decking); the attempt is flagged on the
 ///   player by [`crate::Player::draw`] and consumed here.
+/// - **CR 903.10a** — a player who has been dealt 21 or more combat damage over
+///   the game by a single commander loses. The cumulative per-commander tally is
+///   read from [`GameState::commander_damage`](crate::GameState::commander_damage)
+///   (raw history keyed to the commander designation, so it survives the
+///   commander's zone changes); in a game of three or more the loser is
+///   eliminated through the CR 800.4a path below.
 /// - **CR 704.5f** — a creature with toughness 0 or less is put into its owner's
 ///   graveyard. Unlike CR 704.5g this is not "destruction" (regeneration can't
 ///   save it), but it routes through the same leaves-battlefield seam. A `-X/-X`
@@ -44,6 +51,18 @@ use crate::CardDatabase;
 pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) {
     loop {
         let mut changed = false;
+        // CR 903.10a: a player dealt 21+ combat damage over the game by a single
+        // commander loses. Computed from the per-designation tally before the
+        // players are borrowed mutably below; the tally is keyed to the commander
+        // designation, so it survived every zone change the commander made. Two
+        // different commanders never pool — each `(commander, damaged)` pair is a
+        // separate total, so it is a per-entry threshold, not a per-player sum.
+        let commander_kills: Vec<PlayerId> = state
+            .commander_damage
+            .iter()
+            .filter(|entry| entry.amount >= COMMANDER_DAMAGE_LOSS_THRESHOLD)
+            .map(|entry| entry.damaged)
+            .collect();
         // Losing conditions, unified (CR 704.5). Each marks the player as having
         // lost and records why, exactly once.
         for player in &mut state.players {
@@ -62,6 +81,19 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
                     player.loss_reason = Some(LossReason::DrewFromEmptyLibrary);
                 }
                 changed = true;
+            }
+        }
+        // CR 903.10a: mark each player a commander has dealt 21+ combat damage as
+        // having lost. Done after the borrow above releases; guarded by `has_lost`
+        // so it registers exactly once, then the CR 800.4a block below handles
+        // elimination in a multiplayer game just as for any other loss.
+        for seat in &commander_kills {
+            if let Some(player) = state.players.get_mut(seat.0) {
+                if !player.has_lost {
+                    player.has_lost = true;
+                    player.loss_reason = Some(LossReason::CommanderDamage);
+                    changed = true;
+                }
             }
         }
         // CR 800.4a: a player who lost while two or more players remain *leaves the

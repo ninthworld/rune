@@ -24,6 +24,7 @@ function viewWith(log: GameLogEntry[], names: Record<string, string> = {}): Game
     valid_actions: [],
     log,
     player_names: names,
+    commander_damage: [],
   };
 }
 

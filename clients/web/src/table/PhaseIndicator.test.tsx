@@ -24,6 +24,7 @@ function viewWith(turn: number, activePlayer: string, phase: Phase): GameView {
     mana_pool: [],
     valid_actions: [],
     player_names: {},
+    commander_damage: [],
   };
 }
 

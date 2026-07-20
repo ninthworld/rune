@@ -238,6 +238,7 @@ impl GameState {
             damage_orders: Vec::new(),
             blockers_declared_by: Vec::new(),
             deathtouch_struck: Vec::new(),
+            commander_damage: Vec::new(),
             extra_turns: Vec::new(),
             extra_steps: Vec::new(),
             rng_seed: setup.rng_seed,
