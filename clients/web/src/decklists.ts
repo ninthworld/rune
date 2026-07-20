@@ -80,3 +80,17 @@ export function decklistCards(deck: Decklist): CardIdentity[] {
 export function decklistSize(deck: Decklist): number {
   return deck.entries.reduce((total, entry) => total + entry.count, 0);
 }
+
+/**
+ * Collapse a decklist into `identity → copies` counts — the seed shape the deck
+ * builder (#368) starts from so a starter doubles as an editing base. Pure data
+ * assembly (no legality); duplicate rows for one identity sum. The server still
+ * validates any deck built from it.
+ */
+export function decklistCounts(deck: Decklist): Record<CardIdentity, number> {
+  const counts: Record<CardIdentity, number> = {};
+  for (const entry of deck.entries) {
+    counts[entry.identity] = (counts[entry.identity] ?? 0) + entry.count;
+  }
+  return counts;
+}

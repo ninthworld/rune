@@ -55,7 +55,7 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
         lines.push(finish(&effect_clause(source, effect)));
     }
 
-    if let Some(aura) = data.aura {
+    if let Some(aura) = &data.aura {
         lines.extend(aura_text(aura));
     }
 
@@ -99,9 +99,10 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
     }
 }
 
-/// The Aura's enchant restriction (CR 303.4a) and its static grant (CR 613.7c), as
-/// separate sentences — the grant is omitted when it grants nothing.
-fn aura_text(aura: AuraGrant) -> Vec<String> {
+/// The Aura's enchant restriction (CR 303.4a) and its static grants — a
+/// power/toughness modification (CR 613.7c) and/or granted keywords (CR 613.1f) — as
+/// separate sentences. Each grant sentence is omitted when it grants nothing.
+fn aura_text(aura: &AuraGrant) -> Vec<String> {
     let mut lines = vec![format!("Enchant {}.", object_noun(aura.enchant))];
     if aura.power != 0 || aura.toughness != 0 {
         lines.push(format!(
@@ -109,6 +110,14 @@ fn aura_text(aura: AuraGrant) -> Vec<String> {
             object_noun(aura.enchant),
             aura.power,
             aura.toughness
+        ));
+    }
+    if !aura.keywords.is_empty() {
+        let words: Vec<&str> = aura.keywords.iter().map(|&kw| keyword_word(kw)).collect();
+        lines.push(format!(
+            "Enchanted {} has {}.",
+            object_noun(aura.enchant),
+            words.join(", ")
         ));
     }
     lines
@@ -162,6 +171,11 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
         } => format!(
             "{} gets {power:+}/{toughness:+} until end of turn",
             target_noun(*target)
+        ),
+        Effect::GrantKeyword { target, keyword } => format!(
+            "{} gains {} until end of turn",
+            target_noun(*target),
+            keyword_word(*keyword)
         ),
     }
 }
@@ -258,6 +272,7 @@ fn keyword_word(keyword: Keyword) -> &'static str {
         Keyword::Trample => "trample",
         Keyword::Deathtouch => "deathtouch",
         Keyword::Lifelink => "lifelink",
+        Keyword::DoubleStrike => "double strike",
     }
 }
 
@@ -450,6 +465,8 @@ mod tests {
         .unwrap();
         assert_eq!(text_of(&inline, "test_baneclaw"), "Trample, deathtouch");
         assert_eq!(text_of(&inline, "test_duelist"), "First strike");
+        // A real double striker in the bundled catalog renders its keyword (CR 702.4).
+        assert_eq!(text_of(&db, "trained_caracal"), "Double strike");
     }
 
     #[test]
@@ -474,6 +491,27 @@ mod tests {
         assert_eq!(
             text_of(&db, "test_curse"),
             "Enchant creature.\nEnchanted creature gets -2/-2."
+        );
+    }
+
+    #[test]
+    fn issue_374_a_keyword_granting_aura_states_what_it_grants() {
+        // Flight (bundled): an Aura whose only grant is a keyword reads its enchant
+        // restriction and the keyword it grants (CR 613.1f).
+        let db = bundled();
+        assert_eq!(
+            text_of(&db, "flight"),
+            "Enchant creature.\nEnchanted creature has flying."
+        );
+    }
+
+    #[test]
+    fn issue_374_a_grant_keyword_spell_reads_as_gaining_the_keyword() {
+        // Jump (bundled): "Target creature gains flying until end of turn."
+        let db = bundled();
+        assert_eq!(
+            text_of(&db, "jump"),
+            "Target creature gains flying until end of turn."
         );
     }
 

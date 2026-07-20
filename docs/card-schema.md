@@ -62,11 +62,26 @@ no Oracle text, flavor, art, or branding.
 | `keywords` | no | Supported keyword abilities |
 | `abilities` | no | Activated, triggered, or replacement-style ability IR |
 | `spell_effects` | no | Resolution effects for instants and sorceries |
-| `aura` | no | Aura enchant restriction and static power/toughness grant |
+| `aura` | no | Aura enchant restriction and static power/toughness and/or keyword grant |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `first_strike`,
-`trample`, `deathtouch`, and `lifelink`.
+`trample`, `deathtouch`, `lifelink`, and `double_strike`.
+
+### Granting keywords (continuous, CR 613.1f)
+
+Effects can grant a keyword ability, applied at the layer system's ability-adding
+layer 6 so a granted keyword is indistinguishable from a printed one everywhere
+keywords are read (combat legality, evasion, damage, view projection, generated text):
+
+- An **Aura** (or other static grant) grants for as long as it is attached: list the
+  keywords under `aura.keywords`, e.g. an Aura granting flying is
+  `"aura": {"enchant": "any_creature", "keywords": ["flying"]}`. The `power`/`toughness`
+  and `keywords` grants are independent; either or both may be present.
+- A **spell or ability** grants **until end of turn** with the `grant_keyword` effect,
+  e.g. `{"kind": "grant_keyword", "target": "any_creature", "keyword": "trample"}`. The
+  grant expires in the cleanup step (CR 514.2). Duplicate grants are redundant, not
+  additive. Keyword *removal* and conditional grants are out of scope.
 
 The full `abilities`, `spell_effects`, target, cost, and Aura shapes are the enums in
 `crates/rune-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce

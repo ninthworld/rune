@@ -41,9 +41,11 @@ import {
   STARTER_DECKLISTS,
   decklistCards,
   decklistById,
+  decklistCounts,
   decklistSize,
   type Decklist,
 } from './decklists';
+import { DeckBuilder } from './DeckBuilder';
 import {
   createRoomCommand,
   joinRoomCommand,
@@ -616,9 +618,15 @@ function RosterRow({ view, seat }: { view: LobbyView; seat: SeatView }) {
  * deck tiles, and one centered gold CTA. */
 function RoomPanel({ view }: { view: LobbyView }) {
   const sendLobby = useGameStore((state) => state.sendLobby);
+  const catalog = useGameStore((state) => state.catalog);
+  const requestCatalog = useGameStore((state) => state.requestCatalog);
+  const lobbyError = useGameStore((state) => state.lobbyError);
   const room = view.room;
   const [deckId, setDeckId] = useState(STARTER_DECKLISTS[0].id);
   const [copied, setCopied] = useState(false);
+  // Whether the deck-builder modal (#368) is open — ephemeral UI state, not
+  // load-bearing across messages.
+  const [builderOpen, setBuilderOpen] = useState(false);
 
   // The "Copied" flash is transient chrome; clear it shortly after it shows so the
   // button returns to its idle label (nothing load-bearing).
@@ -655,6 +663,21 @@ function RoomPanel({ view }: { view: LobbyView }) {
     if (deck === undefined) return;
     sendLobby(submitDeckCommand(decklistCards(deck)));
   };
+
+  // Open the deck builder (#368), ensuring the wire-carried card pool is present:
+  // request the catalog once (idempotent; guarded on it not already being loaded).
+  const openBuilder = (): void => {
+    if (catalog === null) requestCatalog();
+    setBuilderOpen(true);
+  };
+
+  // The room's advertised format rules for the builder's display-only panel, matched
+  // from the catalog by the room's `game_setup`. Absent until the catalog arrives or
+  // when the catalog does not carry this setup — the panel then omits the rules.
+  const roomFormat =
+    room !== undefined
+      ? catalog?.formats.find((format) => format.game_setup === room.config.game_setup)
+      : undefined;
 
   return (
     <>
@@ -721,7 +744,30 @@ function RoomPanel({ view }: { view: LobbyView }) {
               />
             ))}
           </div>
+          {/* Build a full deck from the wire-carried card pool (#368), seeded from the
+              picked starter so it doubles as a starting point for editing. */}
+          <div className={s.buttonRow}>
+            <button
+              type="button"
+              className={s.button}
+              onClick={openBuilder}
+              data-testid="open-deck-builder-button"
+            >
+              Build a deck
+            </button>
+          </div>
         </section>
+      )}
+
+      {builderOpen && (
+        <DeckBuilder
+          catalog={catalog}
+          format={roomFormat}
+          initialCounts={decklistCounts(decklistById(deckId) ?? STARTER_DECKLISTS[0])}
+          error={lobbyError}
+          onSubmit={(cards) => sendLobby(submitDeckCommand(cards))}
+          onClose={() => setBuilderOpen(false)}
+        />
       )}
 
       {/* The advance-the-game area, centered. Every server-offered command

@@ -8,7 +8,9 @@ import {
   LOBBY_ROOMLESS_JSON,
   LOBBY_ROOM_ALL_READY_JSON,
   LOBBY_ROOM_DECKED_JSON,
+  LOBBY_ROOM_UNDECKED_JSON,
 } from './lobby-view.fixture';
+import { CATALOG_JSON, CATALOG_VIEW } from './catalog-view.fixture';
 
 /** A manually-driven WebSocket stand-in that records the frames sent to it. */
 class FakeSocket {
@@ -66,7 +68,13 @@ function lastSent(socket: FakeSocket): unknown {
 afterEach(() => {
   cleanup();
   act(() => useGameStore.getState().disconnect());
-  useGameStore.setState({ status: 'idle', view: null, lobby: null, lobbyError: null });
+  useGameStore.setState({
+    status: 'idle',
+    view: null,
+    lobby: null,
+    lobbyError: null,
+    catalog: null,
+  });
 });
 
 describe('LobbyScreen (issue #114)', () => {
@@ -322,6 +330,84 @@ describe('LobbyScreen (issue #114)', () => {
     fireEvent.change(input, { target: { value: 'Alia' } });
     fireEvent.click(screen.getByTestId('set-name-button'));
     expect(lastSent(socket)).toEqual({ type: 'set_name', name: 'Alia' });
+  });
+
+  describe('deck builder (issue #368)', () => {
+    it('opens the builder from the seat panel, requesting the catalog if absent', () => {
+      const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+      // No catalog yet: opening requests it over the #367 command.
+      fireEvent.click(screen.getByTestId('open-deck-builder-button'));
+      expect(lastSent(socket)).toEqual({ type: 'request_catalog' });
+      expect(screen.getByTestId('deck-builder')).toBeDefined();
+      // Before the catalog arrives, a loading state (never a dead screen).
+      expect(screen.getByTestId('deck-builder-loading')).toBeDefined();
+
+      // The catalog frame arrives; every supported card is now browsable.
+      act(() => socket.emitMessage(CATALOG_JSON));
+      for (const card of CATALOG_VIEW.cards) {
+        expect(screen.getByTestId(`deck-builder-card-${card.functional_id}`)).toBeDefined();
+      }
+    });
+
+    it('builds a deck from a seat and submits it through submit_deck', () => {
+      const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+      fireEvent.click(screen.getByTestId('open-deck-builder-button'));
+      act(() => socket.emitMessage(CATALOG_JSON));
+
+      // A card carries its server-computed rules text for browsing (inspect).
+      fireEvent.click(screen.getByTestId('deck-builder-inspect-shock'));
+      expect(screen.getByTestId('card-inspect-rules').textContent).toContain('2 damage');
+      fireEvent.click(screen.getByTestId('card-inspect-close'));
+
+      // Start from an empty deck, assemble an arbitrary list, and submit it through
+      // the existing gate (the builder opens seeded from the picked starter).
+      fireEvent.click(screen.getByTestId('deck-builder-clear'));
+      fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+      fireEvent.click(screen.getByTestId('deck-builder-add-serra_angel'));
+      fireEvent.click(screen.getByTestId('deck-builder-submit'));
+
+      const sent = lastSent(socket) as { type: string; cards: string[] };
+      expect(sent.type).toBe('submit_deck');
+      expect([...sent.cards].sort()).toEqual(['serra_angel', 'shock']);
+    });
+
+    it('surfaces a rejection over the builder and preserves the built list', () => {
+      const socket = mountLobby(LOBBY_ROOM_UNDECKED_JSON);
+      fireEvent.click(screen.getByTestId('open-deck-builder-button'));
+      act(() => socket.emitMessage(CATALOG_JSON));
+
+      fireEvent.click(screen.getByTestId('deck-builder-clear'));
+      fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+      fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+      fireEvent.click(screen.getByTestId('deck-builder-submit'));
+
+      // The server rejects: it re-sends the still-undecked view (ADR 0012).
+      act(() => socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON));
+
+      // The rejection surfaces over the modal, and the built list is preserved.
+      expect(screen.getByTestId('deck-builder-error').textContent).toContain('rejected');
+      expect(screen.getByTestId('deck-builder')).toBeDefined();
+      expect(screen.getByTestId('deck-builder-count-shock').textContent).toBe('2');
+    });
+
+    it('shows the room format’s advertised rules while building', () => {
+      const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+      fireEvent.click(screen.getByTestId('open-deck-builder-button'));
+      act(() => socket.emitMessage(CATALOG_JSON));
+      // The room's game_setup is '1v1' → the strict format's rules show.
+      const rules = screen.getByTestId('deck-builder-format');
+      expect(rules.textContent).toContain('Minimum 40 cards');
+      expect(rules.textContent).toContain('Up to 4 copies');
+    });
+
+    it('still submits a starter deck one-tap, exactly as before', () => {
+      const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+      // The starter tiles + Submit path is unchanged by the builder.
+      fireEvent.click(screen.getByTestId('submit-deck-button'));
+      const sent = lastSent(socket) as { type: string; cards: string[] };
+      expect(sent.type).toBe('submit_deck');
+      expect(sent.cards.length).toBeGreaterThan(0);
+    });
   });
 
   it('labels seats by display name, falling back to "Player N" (issue #294)', () => {
