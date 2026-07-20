@@ -1,5 +1,6 @@
 //! Per-player state and its private zones.
 
+use crate::commander::CommanderState;
 use crate::id::CardInstance;
 use crate::mana::ManaPool;
 use crate::zone::Zone;
@@ -26,11 +27,15 @@ pub enum LossReason {
     Concede,
 }
 
-/// A single player's state: their life total and the four zones they own.
+/// A single player's state: their life total and the zones they own.
 ///
-/// Cards are stored as ordered piles of [`CardInstance`]s, so two copies of the
-/// same printing stay individually addressable; the top of the library is the
-/// last element. The shared battlefield lives on [`crate::GameState`], not here.
+/// The four private zones (library, hand, graveyard, exile) plus the public
+/// command zone (CR 408, holding a designated commander). Cards are stored as
+/// ordered piles of [`CardInstance`]s, so two copies of the same printing stay
+/// individually addressable; the top of the library is the last element. The
+/// shared battlefield lives on [`crate::GameState`], not here. A player's
+/// commander bookkeeping (tax, pending return) rides in
+/// [`commander`](Self::commander); see [`crate::commander`].
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Player {
     /// Current life total. May be negative before state-based actions resolve.
@@ -64,6 +69,19 @@ pub struct Player {
     pub graveyard: Vec<CardInstance>,
     /// Cards this player owns in exile.
     pub exile: Vec<CardInstance>,
+    /// The player's command zone (CR 408), a **public** zone that holds their
+    /// commander while it is there (CR 903.6). Empty for a player with no
+    /// designated commander — the whole zone model is inert unless a
+    /// [`GameSetup`](crate::GameSetup) designates one, so a non-commander game is
+    /// byte-for-byte unchanged. Ordered like the other piles for a stable view.
+    pub command: Vec<CardInstance>,
+    /// This player's commander designation and the per-designation bookkeeping
+    /// that outlives every object the commander becomes — the commander tax count
+    /// (CR 903.8) and the pending return-to-command-zone decision (CR 903.9a).
+    /// `None` for a player with no commander. Kept here, not on any battlefield
+    /// object, because a recast commander is a fresh object but the same
+    /// designation (see [`crate::commander`]).
+    pub commander: Option<CommanderState>,
     /// Unspent mana in the player's pool. Emptied between steps (not yet modeled
     /// for the vertical slice, which spends mana within one step).
     pub mana_pool: ManaPool,
@@ -107,6 +125,7 @@ impl Player {
             Zone::Hand => &self.hand,
             Zone::Graveyard => &self.graveyard,
             Zone::Exile => &self.exile,
+            Zone::Command => &self.command,
         }
     }
 }

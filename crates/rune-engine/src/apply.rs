@@ -15,6 +15,7 @@ use crate::combat::{
     blocked_attackers, combat_damage, combat_has_first_strike, defending_player, has_keyword,
     pending_blocker_declarer, priority_after_step_change, CombatDamage, DamageStep,
 };
+use crate::commander::commander_tax_cost;
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::mulligan::advance_after_keep;
@@ -72,6 +73,10 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         }
         Action::DeclareBlockers { blocks } => apply_declare_blockers(&mut next, blocks),
         Action::OrderCombatDamage { orders } => apply_order_combat_damage(&mut next, orders),
+        Action::ReturnCommanderToCommandZone { card } => {
+            apply_return_commander(&mut next, *card);
+        }
+        Action::DeclineCommanderReturn { card } => apply_decline_commander_return(&mut next, *card),
         Action::Concede => apply_concede(&mut next),
     }
 
@@ -336,6 +341,59 @@ fn apply_concede(state: &mut GameState) {
         player.has_lost = true;
         player.loss_reason.get_or_insert(LossReason::Concede);
     }
+}
+
+/// CR 903.9a (accept): move the priority holder's commander from the graveyard or
+/// exile it went to into their command zone, as a fresh object, and log the move.
+///
+/// The card is found by its stable instance id in whichever of the two zones holds
+/// it, removed, and pushed to the command zone; the pending return decision is
+/// cleared. Its [`crate::CardInstanceId`] carries over unchanged (as it does for
+/// any move between non-battlefield zones), so the commander designation keeps
+/// tracking it; a later recast mints a fresh [`crate::PermanentId`] on battlefield
+/// entry, which is where "fresh object" is observable. Only ever reached for a
+/// commander whose owner holds priority with a pending return (see
+/// [`crate::valid_actions`]); a no-op if the card cannot be found.
+fn apply_return_commander(state: &mut GameState, card: CardInstance) {
+    let owner = state.priority;
+    let Some(player) = state.players.get_mut(owner.0) else {
+        return;
+    };
+    // Take the commander out of the graveyard or exile it currently sits in.
+    let removed = remove_instance(&mut player.graveyard, card.id)
+        .or_else(|| remove_instance(&mut player.exile, card.id));
+    let Some(instance) = removed else {
+        return;
+    };
+    player.command.push(instance);
+    if let Some(commander) = player.commander.as_mut() {
+        commander.return_pending = false;
+    }
+    state.record_event(GameEvent::CommanderReturnedToCommandZone {
+        player: owner,
+        card: instance,
+    });
+}
+
+/// CR 903.9a (decline): leave the commander where it went and clear the pending
+/// return decision, so [`crate::valid_actions`] stops offering the choice and
+/// normal play resumes. Records nothing — the card did not move.
+fn apply_decline_commander_return(state: &mut GameState, _card: CardInstance) {
+    let owner = state.priority;
+    if let Some(commander) = state
+        .players
+        .get_mut(owner.0)
+        .and_then(|p| p.commander.as_mut())
+    {
+        commander.return_pending = false;
+    }
+}
+
+/// Remove and return the first [`CardInstance`] in `pile` with instance id `id`,
+/// or `None` if absent. Preserves the order of the remaining cards.
+fn remove_instance(pile: &mut Vec<CardInstance>, id: CardInstanceId) -> Option<CardInstance> {
+    let pos = pile.iter().position(|c| c.id == id)?;
+    Some(pile.remove(pos))
 }
 
 /// Cleanup step turn-based action (CR 514.2): **simultaneously** remove all
@@ -743,7 +801,24 @@ fn apply_cast_spell(
     let Some(data) = db.card(card.card) else {
         return;
     };
-    let cost = parse_mana_cost(&data.mana_cost);
+    let base = parse_mana_cost(&data.mana_cost);
+    // A commander may be cast from the command zone (CR 903.8); anything else is
+    // cast from hand. Detect which zone this instance is in so the cost carries the
+    // commander tax and the card is removed from the right pile.
+    let from_command = state
+        .players
+        .get(controller.0)
+        .is_some_and(|p| p.command.iter().any(|c| c.id == card.id));
+    let cost = if from_command {
+        let casts = state
+            .players
+            .get(controller.0)
+            .and_then(|p| p.commander.as_ref())
+            .map_or(0, |c| c.casts);
+        commander_tax_cost(&base, casts)
+    } else {
+        base
+    };
     {
         let Some(player) = state.players.get_mut(controller.0) else {
             return;
@@ -751,10 +826,21 @@ fn apply_cast_spell(
         let Some(new_pool) = player.mana_pool.pay(&cost) else {
             return;
         };
-        let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) else {
-            return;
-        };
-        player.hand.remove(pos);
+        if from_command {
+            let Some(pos) = player.command.iter().position(|&c| c.id == card.id) else {
+                return;
+            };
+            player.command.remove(pos);
+            // CR 903.8: each cast from the command zone raises the tax for the next.
+            if let Some(commander) = player.commander.as_mut() {
+                commander.casts += 1;
+            }
+        } else {
+            let Some(pos) = player.hand.iter().position(|&c| c.id == card.id) else {
+                return;
+            };
+            player.hand.remove(pos);
+        }
         player.mana_pool = new_pool;
     }
     let id = state.mint_id();

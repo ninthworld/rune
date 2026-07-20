@@ -19,6 +19,7 @@ mod card_type;
 mod catalog;
 mod characteristics;
 mod combat;
+mod commander;
 pub mod compat;
 #[cfg(test)]
 mod fixtures;
@@ -57,6 +58,7 @@ pub use combat::{
     blocker_candidates, blocker_candidates_for, declared_attackers, defender_candidates,
     defending_player, pending_blocker_declarer, pending_damage_order,
 };
+pub use commander::{commander_tax_cost, CommanderState, COMMANDER_TAX_PER_CAST};
 pub use id::{
     CardId, CardInstance, CardInstanceId, FunctionalId, FunctionalIdError, OracleId, PermanentId,
     PlayerId,
