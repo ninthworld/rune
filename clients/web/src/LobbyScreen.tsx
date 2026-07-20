@@ -47,15 +47,19 @@ import {
 } from './decklists';
 import { DeckBuilder } from './DeckBuilder';
 import {
+  addAiCommand,
   createRoomCommand,
   joinRoomCommand,
+  removeAiCommand,
   spectateRoomCommand,
   leaveCommand,
   readyCommand,
   setNameCommand,
   submitDeckCommand,
+  type AiOption,
   type LobbyView,
   type RoomSummary,
+  type RoomView,
   type SeatView,
 } from './protocol';
 import { seatDisplayName } from './playerNames';
@@ -577,11 +581,23 @@ function DeckTile({
 /**
  * One roster row of the players table: who (accented, named), their deck state,
  * and their readiness — the concept board's player/deck/status columns, from
- * nothing but the `SeatView`. An open seat is a quiet dashed invitation.
+ * nothing but the `SeatView`. An open seat is a quiet dashed invitation; an AI seat
+ * (issue #415) reads as filled, tagged as a computer opponent, with a host-only
+ * Remove control when the server offers `remove_ai`.
  */
-function RosterRow({ view, seat }: { view: LobbyView; seat: SeatView }) {
-  const occupied = seat.occupied_by !== undefined;
-  const isLocal = occupied && seat.occupied_by === view.you;
+function RosterRow({
+  view,
+  seat,
+  onRemoveAi,
+}: {
+  view: LobbyView;
+  seat: SeatView;
+  onRemoveAi?: (seat: number) => void;
+}) {
+  const isAi = seat.ai !== undefined;
+  // An AI seat has no `occupied_by` but is still a filled seat (issue #415).
+  const occupied = seat.occupied_by !== undefined || isAi;
+  const isLocal = seat.occupied_by !== undefined && seat.occupied_by === view.you;
   return (
     <li
       className={cx(l.rosterRow, !occupied && l.seatOpen)}
@@ -590,8 +606,15 @@ function RosterRow({ view, seat }: { view: LobbyView; seat: SeatView }) {
     >
       <span className={l.rosterWho}>
         <Glyph name="seat" size={18} className={l.seatGlyph} />
-        <span className={l.seatName}>{occupied ? seatDisplayName(seat) : 'Open seat'}</span>
+        <span className={l.seatName}>
+          {isAi ? (seat.name ?? 'Computer') : occupied ? seatDisplayName(seat) : 'Open seat'}
+        </span>
         {isLocal && <span className={l.youTag}>You</span>}
+        {isAi && (
+          <span className={l.youTag} data-testid={`seat-${seat.seat}-ai`}>
+            AI
+          </span>
+        )}
       </span>
       {occupied ? (
         <>
@@ -615,11 +638,119 @@ function RosterRow({ view, seat }: { view: LobbyView; seat: SeatView }) {
               <span className={l.stateChip}>Not ready</span>
             )}
           </span>
+          {isAi && onRemoveAi !== undefined && (
+            <button
+              type="button"
+              className={s.button}
+              onClick={() => onRemoveAi(seat.seat)}
+              data-testid={`remove-ai-${seat.seat}-button`}
+            >
+              Remove
+            </button>
+          )}
         </>
       ) : (
         <span className={cx(l.rosterCell, s.muted)}>Waiting for a player…</span>
       )}
     </li>
+  );
+}
+
+/**
+ * The host-only "Add an AI opponent" card (issue #415): pick an open seat, an AI kind
+ * (from the server-advertised {@link CatalogView.ai_opponents}), and a deck, then seat it.
+ * Rendered only when the server offers `add_ai`, so host-ness is never inferred client-side.
+ * The deck the host picks is validated authoritatively server-side, exactly like a human's.
+ */
+function AiSeatingCard({
+  room,
+  aiOptions,
+  requiresCommander,
+  onAddAi,
+}: {
+  room: RoomView;
+  aiOptions: readonly AiOption[];
+  requiresCommander: boolean;
+  onAddAi: (seat: number, kind: string, deck: Decklist) => void;
+}) {
+  const openSeats = room.seats
+    .filter((seat) => seat.occupied_by === undefined && seat.ai === undefined)
+    .map((seat) => seat.seat);
+  const [seat, setSeat] = useState<number | undefined>(openSeats[0]);
+  const [kind, setKind] = useState(aiOptions[0]?.id);
+  const [deckId, setDeckId] = useState(STARTER_DECKLISTS[0].id);
+
+  // The picked seat/kind must stay valid as the roster and catalog change (a seat filled
+  // by someone else, or the catalog arriving) — reconstruct-from-one-view: nothing here is
+  // load-bearing, so fall back to the first still-valid choice.
+  const seatValue = seat !== undefined && openSeats.includes(seat) ? seat : openSeats[0];
+  const kindValue = aiOptions.some((option) => option.id === kind) ? kind : aiOptions[0]?.id;
+
+  if (openSeats.length === 0 || aiOptions.length === 0 || kindValue === undefined) return null;
+
+  const deck = decklistById(deckId) ?? STARTER_DECKLISTS[0];
+  return (
+    <section className={s.lobbySection} aria-label="Add an AI opponent" data-testid="ai-seating">
+      <h2 className={l.cardTitle}>Add an AI opponent</h2>
+      <div className={l.choiceGroup} role="group" aria-label="Seat for the AI opponent">
+        <span className={s.fieldLabel}>Seat</span>
+        <div className={l.segmentRow}>
+          {openSeats.map((index) => (
+            <button
+              key={index}
+              type="button"
+              className={cx(l.segment, index === seatValue && l.segmentOn)}
+              aria-pressed={index === seatValue}
+              onClick={() => setSeat(index)}
+              data-testid={`ai-seat-${index}`}
+            >
+              {index + 1}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={l.choiceGroup} role="group" aria-label="AI opponent kind">
+        <span className={s.fieldLabel}>Opponent</span>
+        <div className={l.segmentRow}>
+          {aiOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={cx(l.segment, option.id === kindValue && l.segmentOn)}
+              aria-pressed={option.id === kindValue}
+              onClick={() => setKind(option.id)}
+              title={option.description}
+              data-testid={`ai-kind-${option.id}`}
+            >
+              {option.name}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className={l.deckGrid} role="group" aria-label="AI deck">
+        {STARTER_DECKLISTS.map((entry) => (
+          <DeckTile
+            key={entry.id}
+            deck={entry}
+            selected={entry.id === deckId}
+            onSelect={setDeckId}
+          />
+        ))}
+      </div>
+      {requiresCommander && commanderName(deck) !== undefined && (
+        <span className={s.muted}>AI commander: {commanderName(deck)}</span>
+      )}
+      <div className={s.buttonRow}>
+        <button
+          type="button"
+          className={s.button}
+          onClick={() => seatValue !== undefined && onAddAi(seatValue, kindValue, deck)}
+          data-testid="add-ai-button"
+        >
+          Add AI to seat {(seatValue ?? 0) + 1}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -658,8 +789,10 @@ function RoomPanel({ view }: { view: LobbyView }) {
   const decked = mySeat?.decked === true;
 
   // Presentation-only counts read straight off the view (no legality computed):
-  // the room's one-line "where are we" summary.
-  const filled = room.seats.filter((seat) => seat.occupied_by !== undefined).length;
+  // the room's one-line "where are we" summary. An AI seat (issue #415) counts as filled.
+  const filled = room.seats.filter(
+    (seat) => seat.occupied_by !== undefined || seat.ai !== undefined,
+  ).length;
   const ready = room.seats.filter((seat) => seat.ready === true).length;
   const total = room.seats.length;
 
@@ -748,13 +881,41 @@ function RoomPanel({ view }: { view: LobbyView }) {
 
         <ul className={s.seatList} data-testid="seat-list">
           {room.seats.map((seat) => (
-            <RosterRow key={seat.seat} view={view} seat={seat} />
+            <RosterRow
+              key={seat.seat}
+              view={view}
+              seat={seat}
+              onRemoveAi={
+                can(view, 'remove_ai') ? (index) => sendLobby(removeAiCommand(index)) : undefined
+              }
+            />
           ))}
         </ul>
         {filled < total && (
           <span className={s.muted}>Waiting for players — share the room id to invite.</span>
         )}
       </section>
+
+      {/* Host-only AI seating (issue #415): offered only when the server advertises
+          `add_ai`, so host-ness is never inferred client-side. The AI's deck is validated
+          authoritatively server-side, exactly like a human's. */}
+      {can(view, 'add_ai') && (catalog?.ai_opponents.length ?? 0) > 0 && (
+        <AiSeatingCard
+          room={room}
+          aiOptions={catalog?.ai_opponents ?? []}
+          requiresCommander={requiresCommander}
+          onAddAi={(seatIndex, kind, deck) =>
+            sendLobby(
+              addAiCommand(
+                seatIndex,
+                kind,
+                decklistCards(deck),
+                requiresCommander ? deck.commander : undefined,
+              ),
+            )
+          }
+        />
+      )}
 
       {can(view, 'submit_deck') && (
         <section

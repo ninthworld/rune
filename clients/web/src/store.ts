@@ -137,6 +137,13 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
       return command.ready ? 'ready' : 'unready';
     case 'leave':
       return 'leave';
+    case 'add_ai':
+    case 'remove_ai':
+      // Host-only AI-seat management (issue #415): a rejected command re-sends the view
+      // unchanged (the non-fatal pattern), and the host reads the result directly from the
+      // roster (the AI seat appears or does not), so there is nothing to reconcile into a
+      // retry hint — like `set_name`.
+      return null;
     case 'set_name':
       // The requested name is not echoed back for comparison, and a rejected name is
       // simply not stored (the server re-sends the view unchanged, per the non-fatal

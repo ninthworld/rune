@@ -55,8 +55,9 @@ a fresh `PermanentId`, which provides zone-change identity.
 - room creation, joining, seats, submitted decks, and the ready gate;
 - format and deck-validation policy;
 - one task per active room;
-- personalized view projection and hidden-information redaction; and
-- optional decision timers and conservative timeout actions.
+- personalized view projection and hidden-information redaction;
+- optional decision timers and conservative timeout actions; and
+- server-driven AI opponents a host can seat (ADR 0028).
 
 The lobby supports room configurations with 2–8 seats. A bundled free-for-all format
 (`standard_ffa`) seats 3–4 players and starts real multiplayer games on the engine's
@@ -64,7 +65,12 @@ multiplayer rules (per-attacker attack targets, multi-defender blocking, and eli
 and a `commander` format seats 2–4 players with singleton and color-identity deck
 validation, 40 starting life, and the engine's command-zone mechanics; the two-player
 formats remain the default. Room creation validates each format's seat range, and the
-lobby serves the card catalog and each format's deck rules for clients to display.
+lobby serves the card catalog and each format's deck rules for clients to display. A host
+may also fill any open seat with a **server-driven AI opponent** (ADR 0028): the AI plays
+its seat through the same protocol path a human does — never a rules authority in the
+engine, never a client-side bot — so a room may seat any mix of humans and AI at any
+supported player count. The first AI kind plays a simple random-legal policy, behind a
+seam built for stronger opponents later.
 
 ### Protocol
 

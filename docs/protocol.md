@@ -422,12 +422,20 @@ Each seat contains:
 - optional public `occupied_by` player id;
 - optional public `name`, the occupant’s chosen display name (issue #294), omitted for
   an empty or unnamed seat;
-- `decked`, indicating a validated deck was submitted; and
-- `ready`.
+- `decked`, indicating a validated deck was submitted;
+- `ready`; and
+- optional `ai`, the id of the **AI opponent** kind filling the seat (issue #415), omitted
+  for an empty or human seat.
 
 Deck contents are private and never appear in another connection’s view. A seat’s `name`
 is public and un-redacted; when it is absent a client falls back to a seat-derived label
 (e.g. `"Player 2"`, using the real `seat` index — never by parsing the opaque id).
+
+A seat filled by an AI opponent (issue #415) carries `ai` set to the AI kind’s id (e.g.
+`"random"`), no `occupied_by` (it is not a session), and `decked`/`ready` both `true` — its
+deck was chosen by the host when it was seated and it is ready by construction. `ai` is a
+free-form string like the other lobby id fields, so a newer AI kind never breaks an older
+client; the kind’s display label comes from the `CatalogView`’s `ai_opponents` list.
 
 ### `RoomSummary`
 
@@ -460,6 +468,8 @@ Lobby commands are tagged by `type`:
 | `join_room` | `room_id` | Join a listed room or a room identified out of band |
 | `spectate_room` | `room_id` | Watch an in-progress room as an observer (issue #351) |
 | `submit_deck` | `cards`, optional `commander` | Submit functional card identities, and (commander format) the designated commander |
+| `add_ai` | `seat`, `kind`, `cards`, optional `commander` | Host-only: fill an empty seat with an AI opponent (issue #415) |
+| `remove_ai` | `seat` | Host-only: empty an AI seat again (issue #415) |
 | `ready` | `ready` | Set or clear readiness |
 | `set_name` | `name` | Set or change this connection’s public display name |
 | `request_catalog` | none | Request the public card catalog and format deck rules (issue #367) |
@@ -472,6 +482,8 @@ Lobby commands are tagged by `type`:
 { "type": "spectate_room", "room_id": "r:7f3" }
 { "type": "submit_deck", "cards": ["forest", "verdant_scout"] }
 { "type": "submit_deck", "cards": ["jedit_ojanen", "forest"], "commander": "jedit_ojanen" }
+{ "type": "add_ai", "seat": 1, "kind": "random", "cards": ["forest", "verdant_scout"] }
+{ "type": "remove_ai", "seat": 1 }
 { "type": "ready", "ready": true }
 { "type": "set_name", "name": "Alice" }
 { "type": "request_catalog" }
@@ -487,6 +499,18 @@ commander format, a **legendary creature** whose color identity (and every deck 
 rules (see `CatalogFormat` and the deck-legality notes below); an illegal deck or designation is
 rejected with the lobby’s non-fatal error and the seat keeps whatever deck it had. Deck legality
 is server policy — the client never computes it.
+
+`add_ai` and `remove_ai` let the room **host** seat and clear **AI opponents** (issue #415, ADR
+0028). They are host-only: the server accepts them only from the seat 0 occupant, and advertises
+them in that connection’s `valid_commands` only when they are legal (`add_ai` while a seat is open,
+`remove_ai` while an AI seat exists) — the client renders the affordance from `valid_commands`, never
+from a client-side notion of “host”. `add_ai` names the target `seat`, the AI `kind` (one of the
+`CatalogView.ai_opponents` ids), and the deck the AI plays — the same flat `cards` list (and optional
+`commander`) a `submit_deck` carries, validated authoritatively against the room’s format. On success
+the seat shows as AI-occupied (`SeatView.ai`) and already decked + ready, and counts as filled for
+the ready gate; the AI plays its own seat once the game starts. `remove_ai` empties an AI seat again.
+Both are pre-game only and rejected once the game has started. This works for any seat count — a room
+may mix human and AI seats, e.g. one human against three AI in a free-for-all.
 
 `spectate_room` joins a room as a **spectator** (ADR 0022, issue #351): a non-seated observer
 that watches the game live with all hidden information redacted. Unlike `join_room` it does not
@@ -533,6 +557,17 @@ by carrying no `phase`.
 | `catalog_version` | `number` | Projection schema version (currently `1`); also the wire discriminator |
 | `cards` | `CatalogCard[]` | Every supported card, in a stable order |
 | `formats` | `CatalogFormat[]` | Every advertised format’s deck rules and seat range |
+| `ai_opponents` | `AiOption[]` | Every AI opponent kind a host may seat (issue #415); omitted/empty when none |
+
+Each `AiOption` describes a seatable **AI opponent** kind (issue #415) — the `kind` an `add_ai`
+carries and a `SeatView.ai` reports — so a client learns the available kinds from server metadata
+rather than hardcoding them:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | `string` | Stable kind id (e.g. `"random"`) — the value `add_ai.kind` / `SeatView.ai` use |
+| `name` | `string` | Short human-readable name (e.g. `"Random"`) |
+| `description` | `string?` | One-line description of how the kind plays; omitted when empty |
 
 Each `CatalogCard` carries a card’s public characteristics — the browse-time counterpart of the
 in-game `CardView`, named by identity rather than a per-game entity id:

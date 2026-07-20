@@ -41,12 +41,12 @@ mod view;
 
 pub use action::{Prompt, PromptOption, TargetRequirement, ValidAction};
 pub use card::{CardView, Counter, OpponentView, Permanent, Phase, SelfView, StackItem, ZonePile};
-pub use catalog::{CatalogCard, CatalogFormat, CatalogView, CATALOG_VERSION};
+pub use catalog::{AiOption, CatalogCard, CatalogFormat, CatalogView, CATALOG_VERSION};
 pub use client::{ChooseAction, ClientMessage, SetStops, TargetChoice};
 pub use lobby::{
-    CardIdentity, CreateRoom, GameSetupId, Hello, JoinRoom, LobbyCommand, LobbyView, Ready,
-    RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken, SetName,
-    SpectateRoom, SubmitDeck,
+    AddAi, CardIdentity, CreateRoom, GameSetupId, Hello, JoinRoom, LobbyCommand, LobbyView, Ready,
+    RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken,
+    SetName, SpectateRoom, SubmitDeck,
 };
 pub use log::{GameLogEntry, GameLogEvent, LogBlock, LogDamageTarget, LogEntity};
 pub use result::{CommanderDamage, CommanderTax, GameOverReason, GameResult};

@@ -483,6 +483,31 @@ describe('lobby wire (issue #114)', () => {
     expect(view).toEqual({ session: '', you: '', directory: [], valid_commands: [] });
   });
 
+  it('normalizes an AI-occupied seat, carrying its kind and no occupant (issue #415)', () => {
+    const view = normalizeLobbyView({
+      session: 's:1',
+      you: 'p1',
+      room: {
+        room_id: 'r:7f3',
+        config: { seats: 2, game_setup: '1v1' },
+        seats: [
+          { seat: 0, occupied_by: 'p1', decked: true },
+          { seat: 1, name: 'Random', decked: true, ready: true, ai: 'random' },
+        ],
+      },
+      valid_commands: ['remove_ai', 'leave'],
+    });
+    expect(view.room?.seats[1]).toEqual({
+      seat: 1,
+      name: 'Random',
+      decked: true,
+      ready: true,
+      ai: 'random',
+    });
+    // A human/empty seat carries no `ai` field.
+    expect(view.room?.seats[0].ai).toBeUndefined();
+  });
+
   it('normalizes the room directory, defaulting an unknown state to gathering (issue #280)', () => {
     const view = normalizeLobbyView(JSON.parse(LOBBY_DIRECTORY_JSON));
     expect(view.room).toBeUndefined();
@@ -836,6 +861,22 @@ describe('catalog wire (issue #367)', () => {
     expect(view.catalog_version).toBe(0);
     expect(view.cards).toEqual([]);
     expect(view.formats).toEqual([]);
+    // A frame with no `ai_opponents` normalizes to an empty list (issue #415).
+    expect(view.ai_opponents).toEqual([]);
+  });
+
+  it('normalizes the advertised AI opponent kinds and elides an empty description (issue #415)', () => {
+    const view = normalizeCatalogView({
+      catalog_version: 1,
+      ai_opponents: [
+        { id: 'random', name: 'Random', description: 'Plays a random legal action.' },
+        { id: 'spartan', name: 'Spartan' },
+      ],
+    });
+    expect(view.ai_opponents).toEqual([
+      { id: 'random', name: 'Random', description: 'Plays a random legal action.' },
+      { id: 'spartan', name: 'Spartan' },
+    ]);
   });
 
   it('rejects a non-object CatalogView payload', () => {

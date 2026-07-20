@@ -73,6 +73,17 @@ pub struct SeatView {
     /// Whether this seat has declared itself ready.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub ready: bool,
+    /// When this seat is filled by an **AI opponent** (issue #415), the id of the AI
+    /// kind occupying it — e.g. `"random"`. `None`/omitted for an empty seat or a
+    /// human occupant; a human seat is identified by [`occupied_by`](SeatView::occupied_by)
+    /// instead. An AI seat carries no [`occupied_by`](SeatView::occupied_by) (it is not
+    /// a session) and always reports `decked`/`ready` as `true` — its deck was chosen by
+    /// the host when it was seated and it is ready by construction. A free-form string
+    /// like the other lobby id fields, so a newer AI kind never breaks an older client;
+    /// the client renders the kind's advertised label from the [`CatalogView`]'s
+    /// [`AiOption`](crate::AiOption) list and needs to parse nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai: Option<String>,
 }
 
 /// The room a connection is currently in, with its config and full seat roster.
@@ -235,6 +246,44 @@ pub struct SubmitDeck {
     pub commander: Option<CardIdentity>,
 }
 
+/// Fill an empty seat with an **AI opponent** (issue #415). A host-only command: the
+/// server accepts it only from the seat 0 occupant, and only for a seat of the host's
+/// own room that is currently empty and whose game has not started. It names the target
+/// [`seat`](AddAi::seat), the [`kind`](AddAi::kind) of AI to seat (one of the ids the
+/// [`CatalogView`](crate::CatalogView) advertises in [`AiOption`](crate::AiOption)), and
+/// the deck the AI will play — the same flat [`CardIdentity`] list (and optional
+/// [`commander`](AddAi::commander)) a human [`SubmitDeck`] carries, validated
+/// authoritatively against the room's format. On success the seat shows as AI-occupied
+/// ([`SeatView::ai`]) and already decked + ready; the AI plays its own seat once the game
+/// starts. Deck legality is server policy — the client never computes it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AddAi {
+    /// The zero-based index of the seat to fill with an AI opponent.
+    pub seat: u8,
+    /// The AI kind to seat, one of the [`CatalogView`](crate::CatalogView)'s advertised
+    /// [`AiOption::id`](crate::AiOption::id)s (e.g. `"random"`).
+    pub kind: String,
+    /// The card identities that make up the AI's deck, duplicates repeated — the same
+    /// shape a human [`SubmitDeck::cards`] carries.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cards: Vec<CardIdentity>,
+    /// The AI's designated **commander** (CR 903.3) for a commander-format room, named by
+    /// its [`CardIdentity`]. Omitted (`None`) for a non-commander deck, exactly like
+    /// [`SubmitDeck::commander`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commander: Option<CardIdentity>,
+}
+
+/// Remove an **AI opponent** from a seat (issue #415), emptying it again. Host-only and
+/// pre-game, the counterpart of [`AddAi`]: the server accepts it only from the seat 0
+/// occupant of the room, and only for a seat that is currently AI-occupied and whose game
+/// has not started. On success the seat is empty and joinable again.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoveAi {
+    /// The zero-based index of the AI seat to empty.
+    pub seat: u8,
+}
+
 /// Declare (or retract) readiness for this connection's seat. A seat may ready
 /// only once it is occupied and has a validated deck; the game is constructed the
 /// instant every seat is simultaneously filled, decked, and ready.
@@ -275,6 +324,10 @@ pub enum LobbyCommand {
     JoinRoom(JoinRoom),
     /// Submit a decklist for this connection's seat.
     SubmitDeck(SubmitDeck),
+    /// Fill an empty seat with an AI opponent (host only, issue #415).
+    AddAi(AddAi),
+    /// Remove an AI opponent from a seat (host only, issue #415).
+    RemoveAi(RemoveAi),
     /// Declare or retract readiness.
     Ready(Ready),
     /// Set or change this connection's public display name (issue #294).
@@ -406,6 +459,78 @@ mod tests {
     }
 
     #[test]
+    fn issue_415_add_ai_command_round_trips_and_elides_empty_deck() {
+        // A populated AI seating carries the seat, kind, deck, and (commander format)
+        // designated commander.
+        let msg = LobbyCommand::AddAi(AddAi {
+            seat: 2,
+            kind: "random".into(),
+            cards: vec!["ci_bear".into(), "ci_forest".into()],
+            commander: Some("ci_jedit".into()),
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "add_ai",
+                "seat": 2,
+                "kind": "random",
+                "cards": ["ci_bear", "ci_forest"],
+                "commander": "ci_jedit"
+            })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+
+        // An empty deck with no commander elides both fields (like `submit_deck`).
+        let bare = LobbyCommand::AddAi(AddAi {
+            seat: 0,
+            kind: "random".into(),
+            cards: vec![],
+            commander: None,
+        });
+        let json = serde_json::to_value(&bare).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "type": "add_ai", "seat": 0, "kind": "random" })
+        );
+    }
+
+    #[test]
+    fn issue_415_remove_ai_command_round_trips() {
+        let msg = LobbyCommand::RemoveAi(RemoveAi { seat: 3 });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json, serde_json::json!({ "type": "remove_ai", "seat": 3 }));
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_415_seat_view_ai_round_trips_and_elides_when_absent() {
+        // An AI seat reports its kind, no occupant, and decked+ready by construction.
+        let ai = SeatView {
+            seat: 1,
+            occupied_by: None,
+            name: Some("Random".into()),
+            decked: true,
+            ready: true,
+            ai: Some("random".into()),
+        };
+        let json = serde_json::to_value(&ai).unwrap();
+        assert_eq!(json.get("ai"), Some(&serde_json::json!("random")));
+        assert_eq!(json.get("occupied_by"), None);
+        assert_eq!(serde_json::from_value::<SeatView>(json).unwrap(), ai);
+
+        // A human/empty seat omits `ai` entirely.
+        let human = SeatView {
+            ai: None,
+            ..ai.clone()
+        };
+        let json = serde_json::to_value(&human).unwrap();
+        assert!(json.get("ai").is_none());
+    }
+
+    #[test]
     fn lobby_command_ready_and_leave_round_trip() {
         let ready = LobbyCommand::Ready(Ready { ready: true });
         let json = serde_json::to_value(&ready).unwrap();
@@ -487,6 +612,7 @@ mod tests {
                         name: Some("Alice".into()),
                         decked: true,
                         ready: true,
+                        ai: None,
                     },
                     SeatView {
                         seat: 1,
@@ -494,6 +620,7 @@ mod tests {
                         name: None,
                         decked: true,
                         ready: false,
+                        ai: None,
                     },
                 ],
             }),
@@ -532,6 +659,7 @@ mod tests {
             name: None,
             decked: false,
             ready: false,
+            ai: None,
         };
         let seat_json = serde_json::to_value(&empty_seat).unwrap();
         assert_eq!(seat_json, serde_json::json!({ "seat": 3 }));
@@ -691,6 +819,7 @@ mod tests {
             name: Some("Alice".into()),
             decked: true,
             ready: false,
+            ai: None,
         };
         let json = serde_json::to_value(&named).unwrap();
         assert_eq!(json.get("name"), Some(&serde_json::json!("Alice")));

@@ -59,6 +59,7 @@ impl Lobby {
             RoomEntry {
                 config,
                 seats,
+                ai_seats: vec![None; seat_count],
                 gate: vec![SeatGate::default(); seat_count],
                 game: None,
                 spectators: Vec::new(),
@@ -139,6 +140,93 @@ impl Lobby {
         Ok(())
     }
 
+    /// Handle `add_ai` (issue #415): the **host** fills an empty seat with an AI
+    /// opponent of `kind` playing the given deck.
+    ///
+    /// Host-only and pre-game, with the same authoritative validation a human seat gets:
+    /// the sender must occupy seat 0 of the room ([`LobbyError::NotHost`]); the game must
+    /// not have started ([`LobbyError::GameStarted`]); the target `seat` must be in range
+    /// ([`LobbyError::SeatIndexOutOfRange`]) and currently empty — no human and no existing
+    /// AI ([`LobbyError::SeatOccupied`]); the `kind` must name a supported AI
+    /// ([`LobbyError::UnknownAiKind`]); and the deck must resolve and be legal for the
+    /// room's format (the same [`LobbyError::UnknownCard`]/[`LobbyError::IllegalDeck`] a
+    /// `submit_deck` yields). On success the seat is AI-occupied and stored decked + ready
+    /// in its gate, so the ready gate treats it exactly like a filled, ready human seat.
+    pub(crate) fn add_ai(
+        &self,
+        registry: &mut Registry,
+        token: &SessionToken,
+        seat: u8,
+        kind: &str,
+        cards: &[String],
+        commander: Option<&str>,
+    ) -> Result<(), LobbyError> {
+        let (room_id, host_seat) = seat_of(registry, token)?;
+        // Only the host (seat 0 occupant) manages AI seats.
+        if host_seat != 0 {
+            return Err(LobbyError::NotHost);
+        }
+        // Resolve the kind before touching the room, so an unknown kind changes nothing.
+        let kind =
+            AiKind::from_id(kind).ok_or_else(|| LobbyError::UnknownAiKind(kind.to_string()))?;
+        // Resolve and validate the AI's deck exactly as a human `submit_deck` does, before
+        // mutating, so a bad card or illegal deck leaves the seat untouched.
+        let mut deck = Vec::with_capacity(cards.len());
+        for identity in cards {
+            let card = resolve_card(&self.inner.db, identity)
+                .ok_or_else(|| LobbyError::UnknownCard(identity.clone()))?;
+            deck.push(card);
+        }
+        let commander = match commander {
+            Some(identity) => Some(
+                resolve_card(&self.inner.db, identity)
+                    .ok_or_else(|| LobbyError::UnknownCard(identity.to_string()))?,
+            ),
+            None => None,
+        };
+
+        let room = registry
+            .rooms
+            .get_mut(&room_id)
+            .ok_or(LobbyError::NotSeated)?;
+        if room.game.is_some() {
+            return Err(LobbyError::GameStarted);
+        }
+        let index = seat as usize;
+        if index >= room.seats.len() {
+            return Err(LobbyError::SeatIndexOutOfRange(seat));
+        }
+        // The target seat must be empty: no human occupant and no existing AI.
+        if room.seats[index].is_some() || room.ai_seats[index].is_some() {
+            return Err(LobbyError::SeatOccupied(seat));
+        }
+        if let Some(format) = self.inner.formats.get(&room.config.game_setup) {
+            format
+                .validate_deck(&deck, commander, &self.inner.db)
+                .map_err(LobbyError::IllegalDeck)?;
+        }
+
+        room.ai_seats[index] = Some(AiSeat {
+            kind,
+            name: kind.name().to_string(),
+        });
+        // Store the AI's deck in the gate, decked + ready, so the ready gate and game
+        // construction read it uniformly with human seats.
+        if let Some(gate) = room.gate.get_mut(index) {
+            gate.deck = Some(deck);
+            gate.commander = commander;
+            gate.ready = true;
+        }
+        // Everyone browsing sees the new occupancy count; the room's occupants see the
+        // AI seat in their roster.
+        broadcast_views(registry);
+        // Adding the AI may complete the gate (it fills, decks, and readies a seat in one
+        // step), so attempt to start the game just like a human readying up does.
+        self.start_game(registry, &room_id);
+        info!(%token, %room_id, seat, kind = kind.id(), "host seated an AI opponent");
+        Ok(())
+    }
+
     /// Handle `ready`: toggle the seat's ready flag, then — when readying up completes
     /// the gate — construct the game and hand every seat off to the in-game contract.
     ///
@@ -192,12 +280,17 @@ impl Lobby {
         let Some(room) = registry.rooms.get(room_id) else {
             return;
         };
-        // Gate: every seat filled, decked, and ready.
-        let ready_to_start = room
-            .seats
-            .iter()
-            .zip(&room.gate)
-            .all(|(occupant, gate)| occupant.is_some() && gate.deck.is_some() && gate.ready);
+        // Gate: every seat filled (by a human or an AI, issue #415), decked, and ready.
+        // An AI seat is stored decked + ready in its gate at `add_ai` time, so it satisfies
+        // the same gate a human does.
+        let ready_to_start =
+            room.seats
+                .iter()
+                .zip(&room.ai_seats)
+                .zip(&room.gate)
+                .all(|((session, ai), gate)| {
+                    (session.is_some() || ai.is_some()) && gate.deck.is_some() && gate.ready
+                });
         if !ready_to_start {
             return;
         }
@@ -233,16 +326,19 @@ impl Lobby {
             setup.starting_life = life;
         }
         // Each seat's chosen display name in seat order (issue #294), so the room can
-        // label players in every `GameView::player_names`. A seat with no name is `None`
-        // and simply has no entry in the projected map.
+        // label players in every `GameView::player_names`. A human seat with no name is
+        // `None`; an AI seat (issue #415) contributes its kind's label so an opponent reads
+        // "Random" rather than a bare seat label.
         let player_names: Vec<Option<String>> = room
             .seats
             .iter()
-            .map(|occupant| {
-                occupant
+            .zip(&room.ai_seats)
+            .map(|(session, ai)| {
+                session
                     .as_ref()
                     .and_then(|token| registry.sessions.get(token))
                     .and_then(|session| session.name.clone())
+                    .or_else(|| ai.as_ref().map(|ai| ai.name.clone()))
             })
             .collect();
         let db = self.inner.db.clone();
@@ -263,7 +359,7 @@ impl Lobby {
             .with_auto_pass(AutoPassPolicy::On)
             .spawn();
 
-        // Hand every seated session off to the in-game contract.
+        // Hand every seated *human* session off to the in-game contract.
         let occupants: Vec<(Seat, SessionToken)> = room
             .seats
             .iter()
@@ -277,6 +373,31 @@ impl Lobby {
                     room: handle.clone(),
                 }));
             }
+        }
+        // Spawn an in-process driver for every **AI seat** (issue #415): the server-side
+        // sibling of a human's `serve_connection`. Each AI plays its own seat from a policy
+        // seeded off the game seed (so a pinned seed replays the AI identically, issue
+        // #145), joining the room and reacting to its `GameView`s until the game ends.
+        let ai_occupants: Vec<(Seat, AiKind)> = room
+            .ai_seats
+            .iter()
+            .enumerate()
+            .filter_map(|(seat, ai)| ai.as_ref().map(|ai| (seat, ai.kind)))
+            .collect();
+        for (seat, kind) in ai_occupants {
+            // Distinct per-seat sub-seed so two AI seats in one game do not draw the same
+            // stream, while the whole game stays reproducible under a pinned seed.
+            let ai_seed = seed
+                ^ (seat as u64)
+                    .wrapping_add(1)
+                    .wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            let policy = policy_for(kind, ai_seed);
+            tokio::spawn(serve_ai_seat(
+                seat,
+                handle.clone(),
+                policy,
+                std::future::pending::<()>(),
+            ));
         }
         // Mark the room started so it rejects further lobby commands and is never
         // reaped as empty. The task handle keeps the room alive alongside the
@@ -310,10 +431,13 @@ pub(crate) fn join_room(
         .rooms
         .get_mut(room_id)
         .ok_or(LobbyError::UnknownRoom)?;
+    // A seat is joinable only when it holds neither a human nor an AI (issue #415), so a
+    // joiner never lands in a seat the host filled with an AI opponent.
     let seat = room
         .seats
         .iter()
-        .position(Option::is_none)
+        .zip(&room.ai_seats)
+        .position(|(session, ai)| session.is_none() && ai.is_none())
         .ok_or(LobbyError::RoomFull)?;
     room.seats[seat] = Some(token.clone());
     if let Some(session) = registry.sessions.get_mut(token) {
@@ -412,6 +536,47 @@ pub(crate) fn leave_room(registry: &mut Registry, token: &SessionToken) -> Resul
     Ok(())
 }
 
+/// Handle `remove_ai` (issue #415): the **host** empties an AI-occupied seat again.
+///
+/// Host-only and pre-game, the counterpart of [`Lobby::add_ai`]: the sender must occupy
+/// seat 0 ([`LobbyError::NotHost`]); the game must not have started
+/// ([`LobbyError::GameStarted`]); the target `seat` must be in range
+/// ([`LobbyError::SeatIndexOutOfRange`]) and currently hold an AI
+/// ([`LobbyError::NotAiSeat`]). On success the AI and its gated deck are cleared, so the
+/// seat is empty and joinable again.
+pub(crate) fn remove_ai(
+    registry: &mut Registry,
+    token: &SessionToken,
+    seat: u8,
+) -> Result<(), LobbyError> {
+    let (room_id, host_seat) = seat_of(registry, token)?;
+    if host_seat != 0 {
+        return Err(LobbyError::NotHost);
+    }
+    let room = registry
+        .rooms
+        .get_mut(&room_id)
+        .ok_or(LobbyError::NotSeated)?;
+    if room.game.is_some() {
+        return Err(LobbyError::GameStarted);
+    }
+    let index = seat as usize;
+    if index >= room.ai_seats.len() {
+        return Err(LobbyError::SeatIndexOutOfRange(seat));
+    }
+    if room.ai_seats[index].is_none() {
+        return Err(LobbyError::NotAiSeat(seat));
+    }
+    room.ai_seats[index] = None;
+    if let Some(gate) = room.gate.get_mut(index) {
+        *gate = SeatGate::default();
+    }
+    // The seat is empty and joinable again: re-project to occupants and browsers.
+    broadcast_views(registry);
+    info!(%token, %room_id, seat, "host removed an AI opponent");
+    Ok(())
+}
+
 /// Handle `set_name`: validate the requested display name and store it on the
 /// session (issue #294). On success the affected views are re-pushed — the sender's
 /// own, and, if it is seated, the whole room roster so every occupant sees the new
@@ -445,6 +610,377 @@ mod tests {
     use super::*;
     use crate::lobby::test_support::*;
     use crate::test_support::fixture;
+
+    /// `add_ai` filling `seat` of the sender's room with a `random` AI playing a valid deck.
+    fn add_random_ai(seat: u8) -> LobbyCommand {
+        LobbyCommand::AddAi(rune_protocol::AddAi {
+            seat,
+            kind: "random".to_string(),
+            cards: decklist(),
+            commander: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn issue_415_host_fills_an_empty_seat_with_an_ai() {
+        // The host seats a random AI in the open seat: the roster shows it AI-occupied,
+        // decked, and ready, with no human occupant, and the host is now also offered
+        // `remove_ai`.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("alice creates");
+        let _ = alice.view().await;
+
+        lobby
+            .command(&alice.token, add_random_ai(1))
+            .await
+            .expect("host seats an AI");
+        let view = alice.current();
+        let room = view.room.expect("alice in room");
+        let ai_seat = &room.seats[1];
+        assert_eq!(ai_seat.ai.as_deref(), Some("random"));
+        assert!(ai_seat.occupied_by.is_none(), "an AI seat has no player id");
+        assert!(
+            ai_seat.decked && ai_seat.ready,
+            "an AI seat is decked and ready"
+        );
+        assert_eq!(ai_seat.name.as_deref(), Some("Random"));
+        // The room is now full, so `add_ai` is no longer offered, but `remove_ai` is.
+        assert!(view.valid_commands.contains(&"remove_ai".to_string()));
+        assert!(!view.valid_commands.contains(&"add_ai".to_string()));
+        // No game yet — alice has not decked/readied her own seat.
+        assert!(!alice.started());
+    }
+
+    #[tokio::test]
+    async fn issue_415_only_the_host_may_add_or_remove_ai() {
+        // In a 3-seat free-for-all, alice hosts (seat 0), bob joins (seat 1); seat 2 is
+        // open. A non-host (bob) may not seat or remove an AI.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: config_with(3, "standard_ffa"),
+                }),
+            )
+            .await
+            .expect("alice creates a 3-seat FFA");
+        let room_id = alice.view().await.room.expect("alice in room").room_id;
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(
+                &bob.token,
+                LobbyCommand::JoinRoom(JoinRoom {
+                    room_id: room_id.clone(),
+                }),
+            )
+            .await
+            .expect("bob joins");
+        let _ = bob.view().await;
+
+        // Bob is not the host, so neither AI command is even offered to him, and issuing
+        // one is a typed rejection.
+        assert!(!bob.current().valid_commands.contains(&"add_ai".to_string()));
+        assert_eq!(
+            lobby.command(&bob.token, add_random_ai(2)).await,
+            Err(LobbyError::NotHost)
+        );
+        assert_eq!(
+            lobby
+                .command(
+                    &bob.token,
+                    LobbyCommand::RemoveAi(rune_protocol::RemoveAi { seat: 2 })
+                )
+                .await,
+            Err(LobbyError::NotHost)
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_415_add_ai_validates_kind_seat_and_occupancy() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("alice creates");
+        let _ = alice.view().await;
+
+        // An unknown AI kind is rejected and seats nothing.
+        assert_eq!(
+            lobby
+                .command(
+                    &alice.token,
+                    LobbyCommand::AddAi(rune_protocol::AddAi {
+                        seat: 1,
+                        kind: "sentient_singularity".to_string(),
+                        cards: decklist(),
+                        commander: None,
+                    })
+                )
+                .await,
+            Err(LobbyError::UnknownAiKind(
+                "sentient_singularity".to_string()
+            ))
+        );
+        // A seat index past the room's seat range is rejected.
+        assert_eq!(
+            lobby.command(&alice.token, add_random_ai(9)).await,
+            Err(LobbyError::SeatIndexOutOfRange(9))
+        );
+        // The host's own occupied seat cannot be overwritten with an AI.
+        assert_eq!(
+            lobby.command(&alice.token, add_random_ai(0)).await,
+            Err(LobbyError::SeatOccupied(0))
+        );
+        // And an AI seat cannot be doubly filled.
+        lobby
+            .command(&alice.token, add_random_ai(1))
+            .await
+            .expect("first AI seats");
+        assert_eq!(
+            lobby.command(&alice.token, add_random_ai(1)).await,
+            Err(LobbyError::SeatOccupied(1))
+        );
+        assert_eq!(
+            alice.current().room.unwrap().seats[1].ai.as_deref(),
+            Some("random")
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_415_add_ai_rejects_an_illegal_deck_and_seats_nothing() {
+        // The AI's deck is validated against the room's format exactly like a human's: a
+        // too-small deck for `starter-1v1` is rejected, and the seat stays empty.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: config_with(2, "starter-1v1"),
+                }),
+            )
+            .await
+            .expect("alice creates");
+        let _ = alice.view().await;
+
+        let err = lobby
+            .command(
+                &alice.token,
+                LobbyCommand::AddAi(rune_protocol::AddAi {
+                    seat: 1,
+                    kind: "random".to_string(),
+                    cards: vec![wire_id("forest"); 10],
+                    commander: None,
+                }),
+            )
+            .await
+            .expect_err("an under-minimum AI deck is rejected");
+        assert_eq!(
+            err,
+            LobbyError::IllegalDeck(DeckError::BelowMinimum { have: 10, min: 40 })
+        );
+        assert!(alice.current().room.unwrap().seats[1].ai.is_none());
+    }
+
+    #[tokio::test]
+    async fn issue_415_a_human_joiner_never_lands_in_an_ai_seat() {
+        // Alice hosts a 3-seat FFA and seats an AI in seat 1; a joiner takes seat 2, never
+        // the AI's seat 1.
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom {
+                    config: config_with(3, "standard_ffa"),
+                }),
+            )
+            .await
+            .expect("alice creates a 3-seat FFA");
+        let room_id = alice.view().await.room.expect("alice in room").room_id;
+        lobby
+            .command(&alice.token, add_random_ai(1))
+            .await
+            .expect("host seats an AI in seat 1");
+        let _ = alice.view().await;
+
+        let mut bob = Client::connect(&lobby).await;
+        let _ = bob.view().await;
+        lobby
+            .command(&bob.token, LobbyCommand::JoinRoom(JoinRoom { room_id }))
+            .await
+            .expect("bob joins");
+        let room = bob.view().await.room.expect("bob in room");
+        assert_eq!(
+            room.seats[1].ai.as_deref(),
+            Some("random"),
+            "seat 1 is still the AI"
+        );
+        assert_eq!(
+            room.seats[2].occupied_by.as_deref(),
+            Some(bob.current().you.as_str()),
+            "the joiner took the open seat 2, not the AI seat",
+        );
+    }
+
+    #[tokio::test]
+    async fn issue_415_remove_ai_empties_the_seat_again() {
+        let lobby = lobby(4);
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("alice creates");
+        let _ = alice.view().await;
+        lobby
+            .command(&alice.token, add_random_ai(1))
+            .await
+            .expect("seats an AI");
+        assert_eq!(
+            alice.current().room.unwrap().seats[1].ai.as_deref(),
+            Some("random")
+        );
+
+        // Removing a non-AI seat is a typed error; removing the AI empties it.
+        assert_eq!(
+            lobby
+                .command(
+                    &alice.token,
+                    LobbyCommand::RemoveAi(rune_protocol::RemoveAi { seat: 0 })
+                )
+                .await,
+            Err(LobbyError::NotAiSeat(0))
+        );
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::RemoveAi(rune_protocol::RemoveAi { seat: 1 }),
+            )
+            .await
+            .expect("removes the AI");
+        let view = alice.current();
+        assert!(
+            view.room.unwrap().seats[1].ai.is_none(),
+            "seat 1 is empty again"
+        );
+        // With an open seat once more, `add_ai` is offered again and `remove_ai` is not.
+        assert!(view.valid_commands.contains(&"add_ai".to_string()));
+        assert!(!view.valid_commands.contains(&"remove_ai".to_string()));
+    }
+
+    #[tokio::test]
+    async fn issue_415_a_human_plus_an_ai_starts_and_the_ai_drives_its_own_seat() {
+        // The end-to-end proof that the AI *plays*: a 1-human + 1-AI game starts, and the
+        // AI seat's own driver keeps at the mulligan on its own — the human (seat 0) only
+        // ever answers its own decisions, yet the game advances past the pre-game mulligan
+        // into turn 1, which is possible only if the AI (seat 1) also acted.
+        let lobby = Lobby::bundled_with_overrides(4, Some(0x5EED), None).expect("bundled cards");
+        let mut alice = Client::connect(&lobby).await;
+        let _ = alice.view().await;
+        lobby
+            .command(
+                &alice.token,
+                LobbyCommand::CreateRoom(CreateRoom { config: config(2) }),
+            )
+            .await
+            .expect("alice creates");
+        let _ = alice.view().await;
+        submit_valid_deck(&lobby, &alice).await;
+        lobby
+            .command(&alice.token, LobbyCommand::Ready(Ready { ready: true }))
+            .await
+            .expect("alice readies");
+        // Seating the AI fills the last seat, decked and ready, so the gate passes and the
+        // game is constructed with an AI driver spawned for seat 1.
+        lobby
+            .command(&alice.token, add_random_ai(1))
+            .await
+            .expect("host seats the AI and the game starts");
+        assert!(alice.started(), "the game started");
+
+        // Join seat 0 (the human) and drive only its own mulligan keep. The AI drives seat
+        // 1 independently in its spawned task.
+        let handle = alice.start_handle().expect("game constructed");
+        let (tx, mut rx) = watch::channel::<Option<rune_protocol::GameView>>(None);
+        assert!(handle.send(crate::RoomInput::Join {
+            seat: 0,
+            outbox: tx
+        }));
+
+        // Answer seat 0's mulligan keep, and watch for the game to progress past the
+        // mulligan — a play_land / pass / cast action on offer means turn 1 has begun,
+        // which requires the AI seat to have kept too.
+        let reached_turn_one = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let view = {
+                    let latest = rx.borrow_and_update().clone();
+                    match latest {
+                        Some(view) => view,
+                        None => {
+                            rx.changed().await.expect("a view is pushed");
+                            continue;
+                        }
+                    }
+                };
+                // A post-mulligan actionable view offers ordinary priority actions.
+                if view.valid_actions.iter().any(|a| {
+                    matches!(
+                        a.kind.as_str(),
+                        "play_land" | "pass_priority" | "cast_spell"
+                    )
+                }) {
+                    return true;
+                }
+                // Otherwise answer our own mulligan keep, if that is what is on offer.
+                if let Some(decision) = view
+                    .valid_actions
+                    .iter()
+                    .find(|a| a.kind == "mulligan_decision")
+                {
+                    handle.send(crate::RoomInput::Message {
+                        seat: 0,
+                        message: rune_protocol::ClientMessage::ChooseAction(
+                            rune_protocol::ChooseAction {
+                                action_id: decision.id.clone(),
+                                token: decision.token.clone(),
+                                targets: vec![rune_protocol::TargetChoice {
+                                    slot: "decision".to_string(),
+                                    chosen: vec!["keep".to_string()],
+                                }],
+                            },
+                        ),
+                    });
+                }
+                rx.changed().await.expect("the game advances");
+            }
+        })
+        .await
+        .expect("the game reaches turn 1 without stalling on the AI's mulligan");
+        assert!(reached_turn_one, "turn 1 began, so the AI kept on its own");
+    }
 
     #[tokio::test]
     async fn issue_351_spectating_a_gathering_room_is_rejected_non_fatally() {

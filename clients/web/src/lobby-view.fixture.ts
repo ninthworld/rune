@@ -89,6 +89,41 @@ export const LOBBY_ROOM_READY_JSON = JSON.stringify({
 });
 
 /**
+ * Host view of a room with an open seat (issue #415): you (p1) are the host at seat 0,
+ * so the server offers `add_ai` alongside submit/leave. Seat 1 is open, awaiting a human
+ * or an AI opponent.
+ */
+export const LOBBY_ROOM_HOST_CAN_ADD_AI_JSON = JSON.stringify({
+  session: 's:ab12',
+  you: 'p1',
+  room: {
+    room_id: 'r:7f3',
+    config: { seats: 2, game_setup: '1v1' },
+    seats: [{ seat: 0, occupied_by: 'p1', decked: true }, { seat: 1 }],
+  },
+  valid_commands: ['submit_deck', 'ready', 'add_ai', 'leave'],
+});
+
+/**
+ * Host view once seat 1 is filled by a `random` AI opponent (issue #415): the AI seat
+ * carries `ai`, no `occupied_by`, and is decked + ready by construction. The server now
+ * offers `remove_ai` (and no longer `add_ai`, the room being full).
+ */
+export const LOBBY_ROOM_WITH_AI_JSON = JSON.stringify({
+  session: 's:ab12',
+  you: 'p1',
+  room: {
+    room_id: 'r:7f3',
+    config: { seats: 2, game_setup: '1v1' },
+    seats: [
+      { seat: 0, occupied_by: 'p1', decked: true },
+      { seat: 1, name: 'Random', decked: true, ready: true, ai: 'random' },
+    ],
+  },
+  valid_commands: ['submit_deck', 'ready', 'remove_ai', 'leave'],
+});
+
+/**
  * A commander-format room (issue #372): you (p1) hold seat 0, undecked; you may
  * submit a deck or leave. The `game_setup` is `commander`, which is what gates the
  * client into designating and sending a deck's commander.
