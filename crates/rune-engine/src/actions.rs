@@ -1322,14 +1322,14 @@ mod tests {
 
     // ----- Spell targets at cast + the first counterspell (issue #148) -----
     //
-    // Runic Negation ({U} instant, "Counter target spell." — a
-    // `CounterSpell { SpellOnStack }` spell effect); a vanilla Thornback Boar is the
+    // Cancel ({1}{U}{U} instant, "Counter target spell." — a
+    // `CounterSpell { SpellOnStack }` spell effect); a vanilla Onakke Ogre is the
     // creature spell it counters.
     fn counterspell_id() -> CardId {
-        fixture("runic_negation")
+        fixture("cancel")
     }
     fn creature_id() -> CardId {
-        fixture("thornback_boar")
+        fixture("onakke_ogre")
     }
 
     /// A two-player game at player 0's precombat main with a Runic Negation in
@@ -1349,7 +1349,8 @@ mod tests {
         });
         let negation = state.new_instance(counterspell_id());
         state.players[0].hand = vec![negation];
-        state.players[0].mana_pool.add(Color::Blue, 1);
+        state.players[0].mana_pool.add(Color::Blue, 2);
+        state.players[0].mana_pool.colorless = 1;
         (state, negation, sid)
     }
 
@@ -1382,7 +1383,8 @@ mod tests {
         state.step = Step::PrecombatMain;
         let negation = state.new_instance(counterspell_id());
         state.players[0].hand = vec![negation];
-        state.players[0].mana_pool.add(Color::Blue, 1);
+        state.players[0].mana_pool.add(Color::Blue, 2);
+        state.players[0].mana_pool.colorless = 1;
 
         assert!(
             !valid_actions(&state, &db)
@@ -1413,7 +1415,8 @@ mod tests {
         });
         let negation = state.new_instance(counterspell_id());
         state.players[0].hand = vec![negation];
-        state.players[0].mana_pool.add(Color::Blue, 1);
+        state.players[0].mana_pool.add(Color::Blue, 2);
+        state.players[0].mana_pool.colorless = 1;
 
         // The ability is not a candidate, so the slot is empty and no cast is offered.
         assert!(legal_targets_for_spec(TargetSpec::SpellOnStack, &state, &db).is_empty());
@@ -1450,7 +1453,7 @@ mod tests {
         state.turn = 2;
         state.step = Step::DeclareAttackers;
         state.active_player = PlayerId(0);
-        let atk = put_on_battlefield(&mut state, fixture("verdant_scout"));
+        let atk = put_on_battlefield(&mut state, fixture("walking_corpse"));
 
         let attack = |defender| {
             [Attack {

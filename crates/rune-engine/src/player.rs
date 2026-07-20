@@ -121,11 +121,11 @@ mod tests {
     fn player_zone_accessor_matches_fields() {
         let hand_card = CardInstance {
             id: CardInstanceId(7),
-            card: fixture("quickfire_bolt"),
+            card: fixture("lightning_strike"),
         };
         let grave_card = CardInstance {
             id: CardInstanceId(9),
-            card: fixture("copper_lodestone"),
+            card: fixture("shock"),
         };
         let mut player = Player::new();
         player.hand.push(hand_card);

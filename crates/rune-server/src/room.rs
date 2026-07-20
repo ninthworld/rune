@@ -938,20 +938,20 @@ mod tests {
     }
 
     /// A two-player game in the precombat main phase where player 0 holds a Forest
-    /// and a Verdant Scout and player 1 holds a single card. Enough to exercise
+    /// and a creature and player 1 holds a single card. Enough to exercise
     /// hidden-zone redaction and a real (non-pass) action.
     fn dealt_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let p0_hand = vec![
             state.new_instance(fixture("forest")),
-            state.new_instance(fixture("verdant_scout")),
+            state.new_instance(fixture("walking_corpse")),
         ];
-        let p0_lib = vec![state.new_instance(fixture("thornback_boar"))];
-        let p1_hand = vec![state.new_instance(fixture("thornback_boar"))];
+        let p0_lib = vec![state.new_instance(fixture("onakke_ogre"))];
+        let p1_hand = vec![state.new_instance(fixture("onakke_ogre"))];
         let p1_lib = vec![
-            state.new_instance(fixture("thornback_boar")),
-            state.new_instance(fixture("thornback_boar")),
+            state.new_instance(fixture("onakke_ogre")),
+            state.new_instance(fixture("onakke_ogre")),
         ];
         state.players[0].hand = p0_hand;
         state.players[0].library = p0_lib;
@@ -1575,7 +1575,7 @@ mod tests {
         state.step = Step::Upkeep;
         for seat in 0..2 {
             let lib: Vec<_> = (0..12)
-                .map(|_| state.new_instance(fixture("thornback_boar")))
+                .map(|_| state.new_instance(fixture("onakke_ogre")))
                 .collect();
             state.players[seat].library = lib;
         }
@@ -1832,11 +1832,12 @@ mod tests {
         // turn; the engine reports it non-idle, so the room never passes for it.
         let mut state = GameState::new_two_player();
         state.step = Step::Upkeep; // seat 0's turn, seat 1 may respond at instant speed
-        let bolt = state.new_instance(fixture("runic_negation"));
+        let bolt = state.new_instance(fixture("cancel"));
         state.players[1].hand = vec![bolt];
-        state.players[1].mana_pool.add(rune_engine::Color::Blue, 1);
+        // `cancel` costs {1}{U}{U}; three blue pays both blue pips and the generic.
+        state.players[1].mana_pool.add(rune_engine::Color::Blue, 3);
         // Something on the stack for the counterspell to legally target.
-        let boar = state.new_instance(fixture("thornback_boar"));
+        let boar = state.new_instance(fixture("onakke_ogre"));
         let sid = rune_engine::StackId(state.mint_id());
         state.stack.push(rune_engine::StackObject {
             id: sid,

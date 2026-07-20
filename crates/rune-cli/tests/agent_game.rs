@@ -32,23 +32,25 @@ use rune_protocol::{ChooseAction, ClientMessage, GameLogEvent, GameView};
 use rune_server::{AutoPassPolicy, Room, RoomInput};
 use tokio::sync::watch;
 
-/// A 40-card starter deck over the bundled ids 1..=6 (green creatures + Forest), the
-/// same list the engine's mulligan and the CLI lobby tests use.
-/// The six bundled cards these decks are built from: five green creatures and a Forest
-/// to cast them with. Named by authored `functional_id` (ADR 0018 §3) — a `CardId` is
-/// interned from the catalog's sort order, so an integer deck would silently become a
-/// different (and, with no land in it, unplayable) deck the next time a card is added.
+/// A 40-card mono-red starter deck over six bundled cards (red creatures and burn +
+/// Mountain), the same list the engine's mulligan and the CLI lobby tests use.
+/// The six bundled cards these decks are built from: three red creatures and two burn
+/// spells, plus a Mountain to cast them with — every card castable off Mountains so the
+/// deterministic agent plays the deck to completion. Named by authored `functional_id`
+/// (ADR 0018 §3) — a `CardId` is interned from the catalog's sort order, so an integer
+/// deck would silently become a different (and, with no land in it, unplayable) deck the
+/// next time a card is added.
 const STARTER_CARDS: [&str; 6] = [
-    "thornback_boar",
-    "riverbank_otter",
-    "emberfang_jackal",
-    "stonehide_basilisk",
-    "forest",
-    "verdant_scout",
+    "onakke_ogre",
+    "fire_elemental",
+    "shock",
+    "lightning_strike",
+    "mountain",
+    "viashino_pyromancer",
 ];
 
-/// A 40-card starter deck (green creatures + Forest), resolved from the catalog by
-/// authored identity.
+/// A 40-card mono-red starter deck (red creatures and burn + Mountain), resolved from
+/// the catalog by authored identity.
 fn decklist(db: &CardDatabase) -> Vec<CardId> {
     (0..40)
         .map(|i| {

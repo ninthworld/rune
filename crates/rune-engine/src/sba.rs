@@ -220,7 +220,7 @@ mod tests {
     use super::*;
     use crate::actions::Action;
     use crate::apply_action;
-    use crate::fixtures::fixture;
+    use crate::fixtures::{fixture, id_in};
     use crate::id::{CardId, PlayerId};
     use crate::state::{CounterKind, Permanent};
     use crate::CardDatabase;
@@ -228,6 +228,28 @@ mod tests {
     /// The bundled card database, for tests that need oracle data.
     fn db() -> CardDatabase {
         CardDatabase::bundled().unwrap()
+    }
+
+    /// An inline catalog of P/T Auras and their hosts. P/T-only Auras have no clean
+    /// M19 representative, so the Aura state-based-action tests build their own
+    /// definitions (ADR 0026): `test_aegis` (+2/+2), `test_curse` (-2/-2), a 3/2
+    /// `test_boar`, and a 1/1 `test_scout`.
+    fn aura_db() -> CardDatabase {
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
+             "aura":{"enchant":"any_creature","power":2,"toughness":2}},
+            {"schema_version":1,"functional_id":"test_curse","name":"Test Curse",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{B}","colors":["black"],
+             "aura":{"enchant":"any_creature","power":-2,"toughness":-2}},
+            {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
+             "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
+             "power":3,"toughness":2},
+            {"schema_version":1,"functional_id":"test_scout","name":"Test Scout",
+             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
+             "power":1,"toughness":1}
+        ]"#;
+        CardDatabase::from_json(json).unwrap()
     }
 
     /// Place a permanent of `card` under `controller` with `damage` marked; return
@@ -259,11 +281,11 @@ mod tests {
     #[test]
     fn cr_704_5g_creature_with_lethal_marked_damage_is_destroyed() {
         // CR 704.5g: a creature with damage marked greater than or equal to its
-        // toughness is destroyed and put into its owner's graveyard. Thornback
-        // Boar is a 3/2; two marked damage is lethal.
+        // toughness is destroyed and put into its owner's graveyard. Onakke Ogre
+        // is a 4/2; two marked damage is lethal.
         let db = db();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"), PlayerId(0), 2);
+        let boar = place(&mut state, fixture("onakke_ogre"), PlayerId(0), 2);
 
         run_state_based_actions(&mut state, &db);
 
@@ -280,11 +302,11 @@ mod tests {
 
     #[test]
     fn cr_704_5g_creature_below_lethal_survives() {
-        // CR 704.5g: damage below toughness is not lethal. A 3/2 Boar with one
+        // CR 704.5g: damage below toughness is not lethal. A 4/2 Ogre with one
         // marked damage stays on the battlefield.
         let db = db();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"), PlayerId(0), 1);
+        let boar = place(&mut state, fixture("onakke_ogre"), PlayerId(0), 1);
 
         run_state_based_actions(&mut state, &db);
 
@@ -295,11 +317,11 @@ mod tests {
     #[test]
     fn cr_704_5g_lethality_reads_current_toughness_with_counters() {
         // CR 704.5g reads *current* toughness (CR 613 layer 7c). A +1/+1 counter
-        // makes the 3/2 Boar a 3/3, so two damage is no longer lethal — but three
+        // makes the 4/2 Ogre a 5/3, so two damage is no longer lethal — but three
         // is. This proves the SBA folds counters in, not the printed toughness.
         let db = db();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"), PlayerId(0), 2);
+        let boar = place(&mut state, fixture("onakke_ogre"), PlayerId(0), 2);
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == boar) {
             perm.counters.insert(CounterKind::PlusOnePlusOne, 1);
         }
@@ -307,7 +329,7 @@ mod tests {
         run_state_based_actions(&mut state, &db);
         assert!(
             state.battlefield.iter().any(|p| p.id == boar),
-            "2 damage is not lethal to a 3/3 (printed 3/2 + counter)"
+            "2 damage is not lethal to a 5/3 (printed 4/2 + counter)"
         );
 
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == boar) {
@@ -316,7 +338,7 @@ mod tests {
         run_state_based_actions(&mut state, &db);
         assert!(
             !state.battlefield.iter().any(|p| p.id == boar),
-            "3 damage is lethal to a 3/3 (CR 704.5g)"
+            "3 damage is lethal to a 5/3 (CR 704.5g)"
         );
     }
 
@@ -324,10 +346,10 @@ mod tests {
     fn cr_704_5h_deathtouch_struck_creature_is_destroyed_below_lethal_damage() {
         // CR 704.5h: a creature flagged as struck by a deathtouch source is
         // destroyed even though its 1 marked damage is far below its toughness. The
-        // Basilisk (4/5) survives 1 marked damage by CR 704.5g but not the flag.
+        // Giant Spider (2/4) survives 1 marked damage by CR 704.5g but not the flag.
         let db = db();
         let mut state = GameState::new_two_player();
-        let basilisk = place(&mut state, fixture("stonehide_basilisk"), PlayerId(0), 1); // 1 marked damage
+        let basilisk = place(&mut state, fixture("giant_spider"), PlayerId(0), 1); // 1 marked damage
         state.deathtouch_struck.push(basilisk);
 
         run_state_based_actions(&mut state, &db);
@@ -408,8 +430,8 @@ mod tests {
 
     // ----- Aura state-based actions (issue #152) -----
     //
-    // Fixtures: 29 Ironbark Aegis (+2/+2 Aura), 30 Witherbrand Curse (-2/-2 Aura),
-    // 1 Thornback Boar (3/2), 6 Verdant Scout (1/1).
+    // Backed by `aura_db()`: test_aegis (+2/+2 Aura), test_curse (-2/-2 Aura), a 3/2
+    // test_boar, and a 1/1 test_scout — P/T Auras have no clean M19 card (ADR 0026).
 
     /// Place an Aura of `card` attached to `host` under player 0's control, and
     /// return its fresh id.
@@ -428,10 +450,10 @@ mod tests {
         // damage; the same state-based-actions fixed point moves the host and then
         // its now-orphaned Aura, and the Aura's +2/+2 modifier is gone.
         use crate::characteristics::characteristics;
-        let db = db();
+        let db = aura_db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, fixture("thornback_boar"), PlayerId(0), 4); // 3/2 with 4 damage
-        let aura = place_aura(&mut state, fixture("ironbark_aegis"), host); // +2/+2
+        let host = place(&mut state, id_in(&db, "test_boar"), PlayerId(0), 4); // 3/2 with 4 damage
+        let aura = place_aura(&mut state, id_in(&db, "test_aegis"), host); // +2/+2
 
         // Before SBAs the Aura buffs the host to a 5/4; 4 marked damage is lethal.
         assert_eq!(characteristics(&state, host, &db).toughness, Some(4));
@@ -454,9 +476,9 @@ mod tests {
     fn cr_704_5n_aura_attached_to_nothing_is_put_into_the_graveyard() {
         // CR 704.5n: an Aura that is not attached to anything (its `attached_to` is
         // `None`) is put into its owner's graveyard.
-        let db = db();
+        let db = aura_db();
         let mut state = GameState::new_two_player();
-        let aura = place(&mut state, fixture("ironbark_aegis"), PlayerId(0), 0); // unattached
+        let aura = place(&mut state, id_in(&db, "test_aegis"), PlayerId(0), 0); // unattached
 
         run_state_based_actions(&mut state, &db);
 
@@ -469,15 +491,15 @@ mod tests {
 
     #[test]
     fn cr_704_5f_minus_x_aura_reduces_toughness_to_zero_and_kills_the_host() {
-        // CR 704.5f (with CR 613.7c and CR 704.5m): a -2/-2 Aura on a 3/2 Boar drops
+        // CR 704.5f (with CR 613.7c and CR 704.5m): a -2/-2 Aura on a 3/2 host drops
         // its current toughness to 0, so the creature is put into the graveyard as a
         // state-based action (CR 704.5f — no marked damage, no "destruction"), and
         // its now-orphaned Aura follows (CR 704.5m) in the same fixed point.
         use crate::characteristics::characteristics;
-        let db = db();
+        let db = aura_db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, fixture("thornback_boar"), PlayerId(0), 0); // 3/2, no damage
-        let aura = place_aura(&mut state, fixture("witherbrand_curse"), host); // -2/-2
+        let host = place(&mut state, id_in(&db, "test_boar"), PlayerId(0), 0); // 3/2, no damage
+        let aura = place_aura(&mut state, id_in(&db, "test_curse"), host); // -2/-2
 
         // Current toughness is 2 + (-2) = 0 before the SBA runs.
         assert_eq!(characteristics(&state, host, &db).toughness, Some(0));
@@ -500,10 +522,10 @@ mod tests {
         // A legally-attached Aura on a healthy creature is left alone: neither the
         // host nor the Aura is a state-based action, and the buff persists.
         use crate::characteristics::characteristics;
-        let db = db();
+        let db = aura_db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, fixture("verdant_scout"), PlayerId(0), 0); // 1/1 Scout
-        let aura = place_aura(&mut state, fixture("ironbark_aegis"), host); // +2/+2
+        let host = place(&mut state, id_in(&db, "test_scout"), PlayerId(0), 0); // 1/1
+        let aura = place_aura(&mut state, id_in(&db, "test_aegis"), host); // +2/+2
 
         run_state_based_actions(&mut state, &db);
 
@@ -527,8 +549,8 @@ mod tests {
         // are removed and the game continues with no terminal result.
         let db = db();
         let mut state = GameState::new_multiplayer(3);
-        let perm = place(&mut state, fixture("thornback_boar"), PlayerId(1), 0);
-        state.players[1].hand = vec![state.new_instance(fixture("verdant_scout"))];
+        let perm = place(&mut state, fixture("onakke_ogre"), PlayerId(1), 0);
+        state.players[1].hand = vec![state.new_instance(fixture("walking_corpse"))];
         state.players[1].library = vec![state.new_instance(fixture("forest"))];
         state.players[1].life = 0;
 
@@ -572,11 +594,11 @@ mod tests {
         // CR 800.4a + 704.5m: an eliminated player's Aura attached to a survivor's
         // creature leaves with its owner; a survivor's Aura orphaned by the departed
         // player's creature leaving goes to its owner's graveyard.
-        let db = db();
+        let db = aura_db();
         let mut state = GameState::new_multiplayer(3);
         // Survivor (seat 0) creature enchanted by the doomed player's (seat 1) Aura.
-        let survivor_creature = place(&mut state, fixture("verdant_scout"), PlayerId(0), 0);
-        let doomed_aura = place(&mut state, fixture("ironbark_aegis"), PlayerId(1), 0);
+        let survivor_creature = place(&mut state, id_in(&db, "test_scout"), PlayerId(0), 0);
+        let doomed_aura = place(&mut state, id_in(&db, "test_aegis"), PlayerId(1), 0);
         if let Some(a) = state.battlefield.iter_mut().find(|p| p.id == doomed_aura) {
             a.attached_to = Some(survivor_creature);
         }
@@ -601,7 +623,7 @@ mod tests {
         // stays false.
         let db = db();
         let mut state = GameState::new_two_player();
-        let perm = place(&mut state, fixture("thornback_boar"), PlayerId(1), 0);
+        let perm = place(&mut state, fixture("onakke_ogre"), PlayerId(1), 0);
         state.players[1].life = 0;
 
         run_state_based_actions(&mut state, &db);
@@ -646,7 +668,7 @@ mod tests {
         let db = db();
         let mut state = GameState::new_multiplayer(3);
         // Seat 0's attacker is attacking seat 1, who is about to be eliminated.
-        let attacker = place(&mut state, fixture("thornback_boar"), PlayerId(0), 0);
+        let attacker = place(&mut state, fixture("onakke_ogre"), PlayerId(0), 0);
         if let Some(a) = state.battlefield.iter_mut().find(|p| p.id == attacker) {
             a.attacking = Some(PlayerId(1));
         }

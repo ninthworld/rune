@@ -951,7 +951,7 @@ mod tests {
 
     use super::*;
     use crate::actions::valid_actions;
-    use crate::fixtures::fixture;
+    use crate::fixtures::{fixture, id_in};
     use crate::id::CardId;
     use crate::mana::Color;
     use crate::phase::Step;
@@ -961,15 +961,54 @@ mod tests {
         CardDatabase::bundled().unwrap()
     }
 
+    /// An inline combat catalog whose bodies carry the exact P/T and keywords the
+    /// old invented combat fixtures had, so the damage/life arithmetic the combat
+    /// tests assert stays unchanged. First strike, deathtouch, trample, lifelink and
+    /// a bare "when this dies, draw" have no clean M19 representative, so the combat
+    /// and dies-trigger tests build their own definitions (ADR 0025).
+    fn combat_db() -> CardDatabase {
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
+             "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
+             "power":3,"toughness":2},
+            {"schema_version":1,"functional_id":"test_basilisk","name":"Test Basilisk",
+             "types":["creature"],"subtypes":["Basilisk"],"mana_cost":"{4}{G}","colors":["green"],
+             "power":4,"toughness":5},
+            {"schema_version":1,"functional_id":"test_otter","name":"Test Otter",
+             "types":["creature"],"subtypes":["Otter"],"mana_cost":"{1}{U}","colors":["blue"],
+             "power":1,"toughness":3},
+            {"schema_version":1,"functional_id":"test_duelist","name":"Test Duelist",
+             "types":["creature"],"subtypes":["Human","Knight"],"mana_cost":"{1}{W}","colors":["white"],
+             "power":2,"toughness":2,"keywords":["first_strike"]},
+            {"schema_version":1,"functional_id":"test_adder","name":"Test Adder",
+             "types":["creature"],"subtypes":["Snake"],"mana_cost":"{G}","colors":["green"],
+             "power":1,"toughness":1,"keywords":["deathtouch"]},
+            {"schema_version":1,"functional_id":"test_trampler","name":"Test Trampler",
+             "types":["creature"],"subtypes":["Beast"],"mana_cost":"{4}{G}","colors":["green"],
+             "power":5,"toughness":4,"keywords":["trample"]},
+            {"schema_version":1,"functional_id":"test_baneclaw","name":"Test Baneclaw",
+             "types":["creature"],"subtypes":["Beast"],"mana_cost":"{2}{G}{G}","colors":["green"],
+             "power":4,"toughness":4,"keywords":["trample","deathtouch"]},
+            {"schema_version":1,"functional_id":"test_lifelinker","name":"Test Lifelinker",
+             "types":["creature"],"subtypes":["Cleric"],"mana_cost":"{2}{W}","colors":["white"],
+             "power":2,"toughness":3,"keywords":["lifelink"]},
+            {"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
+             "types":["creature"],"subtypes":["Horror"],"mana_cost":"{1}{B}","colors":["black"],
+             "power":2,"toughness":2,
+             "abilities":[{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}]}
+        ]"#;
+        CardDatabase::from_json(json).unwrap()
+    }
+
     /// A two-player game in the precombat main phase with player 0 holding a
-    /// Forest and Verdant Scout, and one card to draw in the library. Each card
+    /// Forest and Llanowar Elves, and one card to draw in the library. Each card
     /// is a freshly minted [`CardInstance`] so copies stay distinguishable.
     fn slice_state() -> GameState {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let forest = state.new_instance(fixture("forest"));
-        let scout = state.new_instance(fixture("verdant_scout"));
-        let draw = state.new_instance(fixture("thornback_boar"));
+        let scout = state.new_instance(fixture("llanowar_elves"));
+        let draw = state.new_instance(fixture("onakke_ogre"));
         state.players[0].hand = vec![forest, scout];
         state.players[0].library = vec![draw];
         state
@@ -1108,7 +1147,7 @@ mod tests {
         let db = db();
         let mut state = slice_state();
         state.players[0].mana_pool.add(Color::Green, 1);
-        let scout = hand_instance(&state, 0, fixture("verdant_scout"));
+        let scout = hand_instance(&state, 0, fixture("llanowar_elves"));
         let after = apply_action(
             &state,
             &Action::CastSpell {
@@ -1124,42 +1163,40 @@ mod tests {
 
     #[test]
     fn issue_card_effects_etb_draw_end_to_end() {
-        // Full vertical slice: play Forest, tap for {G}, cast Verdant Scout,
-        // resolve it (ETB triggers), then resolve the trigger (controller draws).
+        // Full vertical slice: three Forests already in play tap for {G}{G}{G}, cast
+        // Skyscanner ({3}, an ETB "draw a card"), resolve it (ETB triggers), then
+        // resolve the trigger (controller draws).
         let db = db();
-        let state = slice_state();
-        let forest_card = hand_instance(&state, 0, fixture("forest"));
-        let scout_card = hand_instance(&state, 0, fixture("verdant_scout"));
-        let draw_card = state.players[0].library[0];
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let forests: Vec<PermanentId> = (0..3)
+            .map(|_| place_permanent(&mut state, fixture("forest"), PlayerId(0), false, 0))
+            .collect();
+        let scanner = state.new_instance(fixture("skyscanner"));
+        let draw_card = state.new_instance(fixture("onakke_ogre"));
+        state.players[0].hand = vec![scanner];
+        state.players[0].library = vec![draw_card];
 
-        // Play Forest.
-        let state = apply_action(&state, &Action::PlayLand { card: forest_card }, &db);
-        assert_eq!(state.battlefield.len(), 1);
-        assert!(state.land_played);
-        // The land keeps its hand instance identity on the battlefield.
-        assert_eq!(state.battlefield[0].instance, forest_card.id);
-        let forest = state.battlefield[0].id;
-
-        // Tap Forest for {G} (mana ability resolves immediately).
-        let state = apply_action(
-            &state,
-            &Action::ActivateAbility {
-                permanent: forest,
-                index: 0,
-                targets: Vec::new(),
-            },
-            &db,
-        );
-        assert!(state.battlefield[0].tapped);
-        assert_eq!(state.players[0].mana_pool.green, 1);
+        // Tap the three Forests for {G} each (mana abilities resolve immediately).
+        for forest in forests {
+            state = apply_action(
+                &state,
+                &Action::ActivateAbility {
+                    permanent: forest,
+                    index: 0,
+                    targets: Vec::new(),
+                },
+                &db,
+            );
+        }
+        assert_eq!(state.players[0].mana_pool.green, 3);
         assert!(state.stack.is_empty());
-        assert_eq!(state.priority, PlayerId(0));
 
-        // Cast Verdant Scout.
+        // Cast Skyscanner ({3} paid from the three green).
         let state = apply_action(
             &state,
             &Action::CastSpell {
-                card: scout_card,
+                card: scanner,
                 targets: Vec::new(),
             },
             &db,
@@ -1173,28 +1210,28 @@ mod tests {
         assert!(state
             .battlefield
             .iter()
-            .any(|p| p.card == fixture("verdant_scout")));
+            .any(|p| p.card == fixture("skyscanner")));
         assert_eq!(state.stack.len(), 1);
 
         // Pass twice more: the ETB ability resolves and player 0 draws.
         let state = apply_action(&state, &Action::PassPriority, &db);
         let state = apply_action(&state, &Action::PassPriority, &db);
         assert!(state.stack.is_empty());
-        assert!(state.players[0].hand.contains(&draw_card));
+        assert!(state.players[0].hand.iter().any(|c| c.id == draw_card.id));
         assert!(state.players[0].library.is_empty());
     }
 
     #[test]
     fn issue_155_tapland_enters_tapped_with_no_untapped_window_cr_614_1c() {
         // CR 614.1c/614.12: a land with an "enters tapped" self-replacement is tapped
-        // the instant it is on the battlefield. Verdant Sanctuary (id 31) is played as
-        // a land (CR 116.2a): the resulting permanent is already tapped, and because a
-        // {T} mana ability is unpayable while tapped, no action to tap it for mana is
+        // the instant it is on the battlefield. Tranquil Expanse is played as a land
+        // (CR 116.2a): the resulting permanent is already tapped, and because a {T}
+        // mana ability is unpayable while tapped, no action to tap it for mana is
         // offered this same priority window — there is no observable untapped state.
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let land = state.new_instance(fixture("verdant_sanctuary"));
+        let land = state.new_instance(fixture("tranquil_expanse"));
         state.players[0].hand = vec![land];
 
         let after = apply_action(&state, &Action::PlayLand { card: land }, &db);
@@ -1331,7 +1368,7 @@ mod tests {
         state.active_player = PlayerId(1);
         state.priority = PlayerId(1);
         state.step = Step::Upkeep;
-        let card = state.new_instance(fixture("thornback_boar"));
+        let card = state.new_instance(fixture("onakke_ogre"));
         state.players[1].library = vec![card];
 
         let after = pass_full_round(&state, &db);
@@ -1352,7 +1389,7 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::Upkeep; // turn 1, player 0 (the starting player).
-        let card = state.new_instance(fixture("thornback_boar"));
+        let card = state.new_instance(fixture("onakke_ogre"));
         state.players[0].library = vec![card];
 
         let after = pass_full_round(&state, &db);
@@ -1376,7 +1413,7 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::End; // player 0, turn 1.
         let hand: Vec<CardInstance> = (0..9)
-            .map(|_| state.new_instance(fixture("thornback_boar")))
+            .map(|_| state.new_instance(fixture("onakke_ogre")))
             .collect();
         state.players[0].hand = hand.clone();
 
@@ -1432,7 +1469,7 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::End; // player 0, turn 1.
         let hand: Vec<CardInstance> = (0..MAX_HAND_SIZE)
-            .map(|_| state.new_instance(fixture("thornback_boar")))
+            .map(|_| state.new_instance(fixture("onakke_ogre")))
             .collect();
         state.players[0].hand = hand;
 
@@ -1480,19 +1517,21 @@ mod tests {
 
     #[test]
     fn issue_150_pump_spell_boosts_its_target_until_end_of_turn_end_to_end() {
-        // Cast the Titanroot Surge fixture (+3/+3 until end of turn) on a 1/1
-        // Verdant Scout: on resolution the creature computes as a 4/4 and one
-        // until-end-of-turn layer-7c modifier is in force.
+        // Cast Titanic Growth (+4/+4 until end of turn) on a 1/1 Llanowar Elves: on
+        // resolution the creature computes as a 5/5 and one until-end-of-turn layer-7c
+        // modifier is in force.
         use crate::characteristics::characteristics;
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let creature = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
-        let surge = state.new_instance(fixture("titanroot_surge"));
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let surge = state.new_instance(fixture("titanic_growth"));
         state.players[0].hand = vec![surge];
         state.players[0].mana_pool.add(Color::Green, 1);
+        state.players[0].mana_pool.colorless = 2;
 
-        // The scout is a printed 1/1 before the pump.
+        // The Elves is a printed 1/1 before the pump.
         assert_eq!(characteristics(&state, creature, &db).power, Some(1));
 
         let state = apply_action(
@@ -1508,8 +1547,8 @@ mod tests {
 
         assert!(state.stack.is_empty());
         let ch = characteristics(&state, creature, &db);
-        assert_eq!(ch.power, Some(4), "printed 1 + 3 until end of turn");
-        assert_eq!(ch.toughness, Some(4));
+        assert_eq!(ch.power, Some(5), "printed 1 + 4 until end of turn");
+        assert_eq!(ch.toughness, Some(5));
         assert_eq!(state.static_effects.len(), 1);
         assert_eq!(
             state.static_effects[0].duration,
@@ -1530,7 +1569,8 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::End; // player 0, turn 1; empty hand so no discard.
-        let creature = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 3);
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 3);
         pump(&mut state, creature, 3, 3);
 
         // Mid-turn: 4/4 with 3 marked damage is not lethal, so state-based actions
@@ -1567,7 +1607,8 @@ mod tests {
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::End; // player 0, turn 1; empty hand.
-        let creature = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
         let first = pump(&mut state, creature, 2, 2);
         let second = pump(&mut state, creature, 1, 1);
         assert!(second > first, "the later pump has the later timestamp");
@@ -1594,7 +1635,8 @@ mod tests {
         // prunes its now-orphaned pump in the same pass.
         let db = db();
         let mut state = GameState::new_two_player();
-        let creature = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 5);
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 5);
         pump(&mut state, creature, 3, 3); // 1/1 -> 4/4, but 5 damage is lethal
 
         run_state_based_actions(&mut state, &db);
@@ -1617,7 +1659,7 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::End; // player 0, turn 1; empty hand.
         let _creature =
-            place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
         let source = state.mint_id();
         state.static_effects.push(StaticEffect {
             source,
@@ -1641,19 +1683,27 @@ mod tests {
 
     #[test]
     fn issue_152_minus_x_aura_cast_kills_its_host_and_follows_it_cr_704_5f() {
-        // Full slice through the real cast path: cast Witherbrand Curse (-2/-2 Aura)
-        // on a 3/2 Boar. On resolution the Aura enters attached, its -2/-2 drops the
-        // host's current toughness to 0, and the pipeline's state-based-actions loop
-        // puts the host into the graveyard (CR 704.5f) and its now-orphaned Aura with
-        // it (CR 704.5m) — both gone in the same fixed point, the modifier vanishing
-        // with the Aura.
+        // Full slice through the real cast path: cast a -2/-2 Aura on a 3/2 host. On
+        // resolution the Aura enters attached, its -2/-2 drops the host's current
+        // toughness to 0, and the pipeline's state-based-actions loop puts the host
+        // into the graveyard (CR 704.5f) and its now-orphaned Aura with it (CR
+        // 704.5m) — both gone in the same fixed point, the modifier vanishing with the
+        // Aura. P/T Auras have no clean M19 card, so this is inline (ADR 0025).
         use crate::ability::Target;
         use crate::characteristics::characteristics;
-        let db = db();
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_curse","name":"Test Curse",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{B}","colors":["black"],
+             "aura":{"enchant":"any_creature","power":-2,"toughness":-2}},
+            {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
+             "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
+             "power":3,"toughness":2}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
-        let host = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0); // 3/2
-        let curse = state.new_instance(fixture("witherbrand_curse")); // -2/-2 Aura, {B}
+        let host = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(0), false, 0); // 3/2
+        let curse = state.new_instance(id_in(&db, "test_curse")); // -2/-2 Aura, {B}
         state.players[0].hand = vec![curse];
         state.players[0].mana_pool.add(Color::Black, 1);
 
@@ -1679,7 +1729,7 @@ mod tests {
             !state
                 .battlefield
                 .iter()
-                .any(|p| p.card == fixture("witherbrand_curse")),
+                .any(|p| p.card == id_in(&db, "test_curse")),
             "the Aura follows its dead host to the graveyard (CR 704.5m)"
         );
         assert!(
@@ -1722,7 +1772,8 @@ mod tests {
         // (no vigilance modeled yet).
         let db = db();
         let mut state = at_declare_attackers();
-        let attacker = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let attacker =
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
 
         // Before declaring, the only action offered to the active player is the
         // declaration itself — no pass, no other action (a turn-based choice).
@@ -1760,7 +1811,8 @@ mod tests {
         // step past its turn-based action without tapping anything.
         let db = db();
         let mut state = at_declare_attackers();
-        let creature = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let creature =
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
 
         let after = apply_action(
             &state,
@@ -1783,7 +1835,7 @@ mod tests {
         // candidate, and naming it is an illegal declaration (a no-op).
         let db = db();
         let mut state = at_declare_attackers();
-        let sick = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let sick = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
         let this_turn = state.turn;
         set_entered_turn(&mut state, sick, this_turn);
 
@@ -1803,7 +1855,7 @@ mod tests {
         // CR 508.1a: only untapped creatures can be declared as attackers.
         let db = db();
         let mut state = at_declare_attackers();
-        let tapped = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), true, 0);
+        let tapped = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), true, 0);
 
         assert!(attacker_candidates(&state, &db).is_empty());
         let after = apply_action(
@@ -1822,11 +1874,12 @@ mod tests {
         // creature; several blockers may be assigned to the same attacker.
         let db = db();
         let mut state = at_declare_attackers();
-        let attacker = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let attacker =
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
         let blocker_a =
-            place_permanent(&mut state, fixture("verdant_scout"), PlayerId(1), false, 0);
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(1), false, 0);
         let blocker_b =
-            place_permanent(&mut state, fixture("verdant_scout"), PlayerId(1), false, 0);
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(1), false, 0);
 
         // Declare the attacker, then pass to the declare-blockers step.
         let state = apply_action(
@@ -1878,9 +1931,10 @@ mod tests {
         // CR 509.1a: a tapped creature can't be declared as a blocker.
         let db = db();
         let mut state = at_declare_attackers();
-        let attacker = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let attacker =
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
         let tapped_blocker =
-            place_permanent(&mut state, fixture("verdant_scout"), PlayerId(1), true, 0);
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(1), true, 0);
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
@@ -1910,10 +1964,11 @@ mod tests {
         // to a creature that is not attacking is an illegal declaration (a no-op).
         let db = db();
         let mut state = at_declare_attackers();
-        let attacker = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let attacker =
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
         let non_attacker =
-            place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
-        let blocker = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(1), false, 0);
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(1), false, 0);
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
@@ -1942,9 +1997,9 @@ mod tests {
         // same creature cannot appear as a blocker twice in one declaration.
         let db = db();
         let mut state = at_declare_attackers();
-        let atk_a = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
-        let atk_b = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
-        let blocker = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(1), false, 0);
+        let atk_a = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
+        let atk_b = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(1), false, 0);
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
@@ -1981,7 +2036,7 @@ mod tests {
         let db = db();
         let mut state = at_declare_attackers();
         let _attacker =
-            place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+            place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
 
         // The non-active player has no actions during the pre-declaration window.
         let mut defender_view = state.clone();
@@ -1992,25 +2047,13 @@ mod tests {
     #[test]
     fn issue_117_end_of_combat_removes_creatures_from_combat_cr_511_3() {
         // CR 511.3: at end of combat, all creatures are removed from combat — the
-        // attacking flag and blocking assignments are cleared. Uses Stonehide
-        // Basilisks (4/5) so both survive the combat-damage step (issue #118) and
-        // are still on the battlefield to check at end of combat.
+        // attacking flag and blocking assignments are cleared. Uses Giant Spiders
+        // (2/4) so both survive the combat-damage step (issue #118) and are still on
+        // the battlefield to check at end of combat.
         let db = db();
         let mut state = at_declare_attackers();
-        let attacker = place_permanent(
-            &mut state,
-            fixture("stonehide_basilisk"),
-            PlayerId(0),
-            false,
-            0,
-        );
-        let blocker = place_permanent(
-            &mut state,
-            fixture("stonehide_basilisk"),
-            PlayerId(1),
-            false,
-            0,
-        );
+        let attacker = place_permanent(&mut state, fixture("giant_spider"), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, fixture("giant_spider"), PlayerId(1), false, 0);
 
         // Declare attackers, pass to declare blockers, declare a block, then pass
         // through combat-damage into end-of-combat.
@@ -2045,18 +2088,12 @@ mod tests {
     fn issue_153_vigilant_attacker_stays_untapped_and_can_block_next_turn_cr_702_20b() {
         // CR 702.20b: a creature with vigilance doesn't tap when it attacks, so it
         // stays untapped through combat and is available to block on the opponent's
-        // next turn (an untapped creature can block, CR 509.1a). Ironwatch Sentinel
-        // (id 20) has vigilance; Verdant Scout (id 6) is a plain control.
+        // next turn (an untapped creature can block, CR 509.1a). Serra Angel has
+        // vigilance; Walking Corpse is a plain control.
         let db = db();
         let mut state = at_declare_attackers();
-        let vigilant = place_permanent(
-            &mut state,
-            fixture("ironwatch_sentinel"),
-            PlayerId(0),
-            false,
-            0,
-        );
-        let plain = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(0), false, 0);
+        let vigilant = place_permanent(&mut state, fixture("serra_angel"), PlayerId(0), false, 0);
+        let plain = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
 
         let after = apply_action(
             &state,
@@ -2082,7 +2119,7 @@ mod tests {
         defense.step = Step::DeclareBlockers;
         let opp_attacker = place_permanent(
             &mut defense,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(1),
             false,
             0,
@@ -2103,13 +2140,13 @@ mod tests {
     #[test]
     fn issue_153_hasty_creature_attacks_the_turn_it_enters_cr_702_10b() {
         // CR 702.10b: a creature with haste ignores the summoning-sickness attack
-        // restriction, so Emberrush Raider (id 21) may attack even though it entered
+        // restriction, so Volcanic Dragon may attack even though it entered
         // this very turn — where a non-hasty creature could not (CR 302.6).
         let db = db();
         let mut state = at_declare_attackers();
         let hasty = place_permanent(
             &mut state,
-            fixture("emberrush_raider"),
+            fixture("volcanic_dragon"),
             PlayerId(0),
             false,
             0,
@@ -2138,26 +2175,13 @@ mod tests {
     #[test]
     fn issue_153_ground_creature_cannot_block_a_flyer_cr_702_9c() {
         // CR 702.9c / 702.17b: a ground creature assigned to block a flyer is an
-        // illegal declaration (a no-op); a reach creature may block it. Skywhisker
-        // Drake (id 18) flies, Bramblefang Spider (id 19) has reach, Verdant Scout
-        // (id 6) is a ground creature.
+        // illegal declaration (a no-op); a reach creature may block it. Snapping
+        // Drake flies, Giant Spider has reach, Walking Corpse is a ground creature.
         let db = db();
         let mut state = at_declare_attackers();
-        let flyer = place_permanent(
-            &mut state,
-            fixture("skywhisker_drake"),
-            PlayerId(0),
-            false,
-            0,
-        );
-        let ground = place_permanent(&mut state, fixture("verdant_scout"), PlayerId(1), false, 0);
-        let reacher = place_permanent(
-            &mut state,
-            fixture("bramblefang_spider"),
-            PlayerId(1),
-            false,
-            0,
-        );
+        let flyer = place_permanent(&mut state, fixture("snapping_drake"), PlayerId(0), false, 0);
+        let ground = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(1), false, 0);
+        let reacher = place_permanent(&mut state, fixture("giant_spider"), PlayerId(1), false, 0);
 
         let state = apply_action(
             &state,
@@ -2285,12 +2309,11 @@ mod tests {
         // blocked by two 2-toughness creatures kills whichever it orders FIRST (it
         // takes the lethal 2; the second takes the leftover 1 and survives), so the
         // chosen order — not battlefield order — decides the casualty.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
-        let attacker =
-            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0);
-        let blk_a = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
-        let blk_b = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let attacker = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(0), false, 0);
+        let blk_a = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
+        let blk_b = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
 
         let state = apply_action(
             &state,
@@ -2359,11 +2382,10 @@ mod tests {
         // CR 510.1: an attacker blocked by one creature has no assignment choice, so
         // no ordering decision is offered — the declare-blockers priority round opens
         // straight away.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
-        let attacker =
-            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0);
-        let blocker = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let attacker = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
         let state = apply_action(
             &state,
             &Action::DeclareAttackers {
@@ -2388,11 +2410,10 @@ mod tests {
     #[test]
     fn issue_118_unblocked_attacker_damages_the_defending_player_cr_510_1c() {
         // CR 510.1c: an unblocked attacker assigns its combat damage to the player
-        // it is attacking. A 3/2 Thornback Boar hits the defender for 3.
-        let db = db();
+        // it is attacking. A 3/2 test Boar hits the defender for 3.
+        let db = combat_db();
         let mut state = at_declare_attackers();
-        let attacker =
-            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0);
+        let attacker = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(0), false, 0);
         let start_life = state.players[1].life;
 
         let after = run_combat(&state, vec![attacker], Vec::new(), &db);
@@ -2411,13 +2432,12 @@ mod tests {
     fn issue_118_blocked_attacker_and_blocker_deal_lethal_and_both_die_cr_510_704_5g() {
         // CR 510.1c: a blocked attacker and its blocker deal combat damage to each
         // other. CR 704.5g: each takes lethal damage and is destroyed. Two 3/2
-        // Boars trade — both go to their owners' graveyards, and the defending
+        // test Boars trade — both go to their owners' graveyards, and the defending
         // player takes no damage.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
-        let attacker =
-            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0);
-        let blocker = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let attacker = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(0), false, 0);
+        let blocker = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
         let start_life = state.players[1].life;
 
         let after = run_combat(
@@ -2444,19 +2464,17 @@ mod tests {
         // lethal-per-blocker (2 each) — killing both — while the blockers deal a
         // combined 6 back, lethal to the 5-toughness attacker (CR 704.5g). All
         // three creatures are destroyed.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let attacker = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(0),
             false,
             0,
         );
-        let blocker_a =
-            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
-        let blocker_b =
-            place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let blocker_a = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
+        let blocker_b = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
 
         let after = run_combat(
             &state,
@@ -2489,29 +2507,17 @@ mod tests {
         // Otters assigns 3 (lethal) to the first Otter and the remaining 1 to the
         // second, so only the first dies; the leftover cannot spill further (no
         // trample). The Basilisk survives the 1+1 it takes, with that damage marked.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let attacker = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(0),
             false,
             0,
         );
-        let first = place_permanent(
-            &mut state,
-            fixture("riverbank_otter"),
-            PlayerId(1),
-            false,
-            0,
-        );
-        let second = place_permanent(
-            &mut state,
-            fixture("riverbank_otter"),
-            PlayerId(1),
-            false,
-            0,
-        );
+        let first = place_permanent(&mut state, id_in(&db, "test_otter"), PlayerId(1), false, 0);
+        let second = place_permanent(&mut state, id_in(&db, "test_otter"), PlayerId(1), false, 0);
 
         let after = run_combat(
             &state,
@@ -2558,12 +2564,12 @@ mod tests {
         // CR 704.5a: a player at 0 or less life loses. Unblocked combat damage
         // (CR 510) reduces life, and the same SBA loop that runs after the action
         // registers the loss. Defender at 3 life takes 4 from a Basilisk and loses.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         state.players[1].life = 3;
         let attacker = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(0),
             false,
             0,
@@ -2584,22 +2590,16 @@ mod tests {
         // CR 514.2: marked damage is removed at cleanup. A 4/5 Basilisk that
         // survives combat carries marked damage through the rest of the turn; by
         // the time the turn passes to the opponent, its combat cleanup has wiped it.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let attacker = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(0),
             false,
             0,
         );
-        let blocker = place_permanent(
-            &mut state,
-            fixture("riverbank_otter"),
-            PlayerId(1),
-            false,
-            0,
-        );
+        let blocker = place_permanent(&mut state, id_in(&db, "test_otter"), PlayerId(1), false, 0);
 
         let mut state = run_combat(
             &state,
@@ -2670,7 +2670,7 @@ mod tests {
         state.active_player = PlayerId(1);
         state.priority = PlayerId(1);
         state.step = Step::Upkeep;
-        let card = state.new_instance(fixture("thornback_boar"));
+        let card = state.new_instance(fixture("onakke_ogre"));
         state.players[1].library = vec![card];
 
         let after = pass_full_round(&state, &db);
@@ -2727,7 +2727,7 @@ mod tests {
     #[test]
     fn issue_148_counterspell_counters_a_creature_spell_end_to_end_cr_701_5() {
         // A creature spell (player 1) waits on the stack; player 0, holding
-        // priority, casts Runic Negation ({U} instant, id 11) targeting it. The
+        // priority, casts Cancel ({1}{U}{U} instant) targeting it. The
         // counterspell records its target at cast (CR 601.2c) and, resolving first
         // (LIFO), removes the creature spell to its owner's graveyard without
         // resolving (CR 701.5a) — the creature never enters the battlefield.
@@ -2735,8 +2735,8 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
 
-        // Player 1's Thornback Boar (vanilla creature, id 1) on the stack.
-        let boar = state.new_instance(fixture("thornback_boar"));
+        // Player 1's Onakke Ogre (vanilla creature) on the stack.
+        let boar = state.new_instance(fixture("onakke_ogre"));
         let boar_sid = StackId(state.mint_id());
         state.stack.push(StackObject {
             id: boar_sid,
@@ -2745,10 +2745,11 @@ mod tests {
             targets: Vec::new(),
         });
 
-        // Player 0 holds priority with the counterspell and {U}.
-        let negation = state.new_instance(fixture("runic_negation"));
+        // Player 0 holds priority with the counterspell and {1}{U}{U}.
+        let negation = state.new_instance(fixture("cancel"));
         state.players[0].hand = vec![negation];
-        state.players[0].mana_pool.add(Color::Blue, 1);
+        state.players[0].mana_pool.add(Color::Blue, 2);
+        state.players[0].mana_pool.colorless = 1;
         state.priority = PlayerId(0);
 
         // Cast the counterspell targeting the creature spell (CR 601.2c).
@@ -2770,7 +2771,10 @@ mod tests {
             vec![Target::Spell(boar_sid)],
             "the chosen target is recorded on the stack at cast (CR 601.2c)"
         );
-        assert_eq!(state.players[0].mana_pool.blue, 0, "the {{U}} was paid");
+        assert_eq!(
+            state.players[0].mana_pool.blue, 0,
+            "the {{1}}{{U}}{{U}} was paid"
+        );
 
         // Both pass: the counterspell resolves first and counters the creature.
         let state = apply_action(&state, &Action::PassPriority, &db);
@@ -2781,7 +2785,7 @@ mod tests {
             state
                 .battlefield
                 .iter()
-                .all(|p| p.card != fixture("thornback_boar")),
+                .all(|p| p.card != fixture("onakke_ogre")),
             "the countered creature never entered the battlefield (CR 701.5a)"
         );
         assert!(
@@ -2808,9 +2812,9 @@ mod tests {
         state.step = Step::PrecombatMain;
 
         // Bottom of the stack: player 0's counterspell aimed at the creature above.
-        let negation = state.new_instance(fixture("runic_negation"));
+        let negation = state.new_instance(fixture("cancel"));
         let neg_sid = StackId(state.mint_id());
-        let boar = state.new_instance(fixture("thornback_boar"));
+        let boar = state.new_instance(fixture("onakke_ogre"));
         let boar_sid = StackId(state.mint_id());
         state.stack.push(StackObject {
             id: neg_sid,
@@ -2833,7 +2837,7 @@ mod tests {
             state
                 .battlefield
                 .iter()
-                .any(|p| p.card == fixture("thornback_boar")),
+                .any(|p| p.card == fixture("onakke_ogre")),
             "the creature spell resolved onto the battlefield"
         );
 
@@ -2845,7 +2849,7 @@ mod tests {
             state
                 .battlefield
                 .iter()
-                .any(|p| p.card == fixture("thornback_boar")),
+                .any(|p| p.card == fixture("onakke_ogre")),
             "the creature survives — nothing was countered"
         );
         assert!(
@@ -2874,9 +2878,9 @@ mod tests {
         // lethal damage; the CR 704.5g state-based action then destroys it.
         let db = db();
         let mut state = main_phase_p0();
-        // Thornback Boar is a 3/2; Cinder Shock deals exactly 2 → lethal.
-        let boar = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
-        let shock = state.new_instance(fixture("cinder_shock"));
+        // Onakke Ogre is a 4/2; Shock deals exactly 2 → lethal to its toughness.
+        let boar = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let shock = state.new_instance(fixture("shock"));
         state.players[0].hand = vec![shock];
         state.players[0].mana_pool.add(Color::Red, 1);
 
@@ -2909,7 +2913,7 @@ mod tests {
         let db = db();
         let mut state = main_phase_p0();
         state.players[1].life = 2;
-        let shock = state.new_instance(fixture("cinder_shock"));
+        let shock = state.new_instance(fixture("shock"));
         state.players[0].hand = vec![shock];
         state.players[0].mana_pool.add(Color::Red, 1);
 
@@ -2931,15 +2935,16 @@ mod tests {
     // ----- Wiring the four functionless cards (issue #256) -----
 
     #[test]
-    fn issue_256_quickfire_bolt_deals_three_to_any_target() {
-        // Quickfire Bolt is a {R} bolt — 3 damage to any target, distinct from Cinder
+    fn issue_256_lightning_strike_deals_three_to_any_target() {
+        // Lightning Strike is a {1}{R} bolt — 3 damage to any target, distinct from
         // Shock's 2. Aimed at a player on 3 life, it drops them to 0 (CR 704.5a).
         let db = db();
         let mut state = main_phase_p0();
         state.players[1].life = 3;
-        let bolt = state.new_instance(fixture("quickfire_bolt"));
+        let bolt = state.new_instance(fixture("lightning_strike"));
         state.players[0].hand = vec![bolt];
         state.players[0].mana_pool.add(Color::Red, 1);
+        state.players[0].mana_pool.colorless = 1;
 
         let state = apply_action(
             &state,
@@ -2956,18 +2961,19 @@ mod tests {
     }
 
     #[test]
-    fn issue_256_hurried_study_draws_two_cards() {
-        // Hurried Study is a {U} sorcery that draws two — DrawCard flowing through the
+    fn issue_256_divination_draws_two_cards() {
+        // Divination is a {2}{U} sorcery that draws two — DrawCard flowing through the
         // spell-resolution path (until now it was only ever a triggered-ability effect,
         // so this proves the cast → resolve routing).
         let db = db();
         let mut state = main_phase_p0();
-        let study = state.new_instance(fixture("hurried_study"));
+        let study = state.new_instance(fixture("divination"));
         state.players[0].hand = vec![study];
         let first = state.new_instance(fixture("forest"));
         let second = state.new_instance(fixture("forest"));
         state.players[0].library = vec![first, second];
         state.players[0].mana_pool.add(Color::Blue, 1);
+        state.players[0].mana_pool.colorless = 2;
 
         let state = apply_action(
             &state,
@@ -2985,14 +2991,19 @@ mod tests {
     }
 
     #[test]
-    fn issue_256_verdant_blessing_gains_life_when_it_enters() {
-        // Verdant Blessing is a {G} enchantment whose enters-the-battlefield trigger
-        // gains its controller 4 life — an ETB trigger on a *non-creature* permanent,
-        // and GainLife as an ability effect rather than a spell effect.
-        let db = db();
+    fn issue_256_enchantment_etb_gains_life_when_it_enters() {
+        // A {G} enchantment whose enters-the-battlefield trigger gains its controller
+        // 4 life — an ETB trigger on a *non-creature* permanent, and GainLife as an
+        // ability effect rather than a spell effect. No M19 card carries this, so it
+        // is exercised inline (ADR 0025).
+        let json = r#"[{"schema_version":1,"functional_id":"test_blessing","name":"Test Blessing",
+            "types":["enchantment"],"subtypes":[],"mana_cost":"{G}","colors":["green"],
+            "abilities":[{"type":"triggered","event":"self_enters_battlefield",
+              "effects":[{"kind":"gain_life","player_ref":"controller","amount":4}]}]}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = main_phase_p0();
         let life_before = state.players[0].life;
-        let blessing = state.new_instance(fixture("verdant_blessing"));
+        let blessing = state.new_instance(id_in(&db, "test_blessing"));
         state.players[0].hand = vec![blessing];
         state.players[0].mana_pool.add(Color::Green, 1);
 
@@ -3009,7 +3020,7 @@ mod tests {
         assert!(state
             .battlefield
             .iter()
-            .any(|p| p.card == fixture("verdant_blessing")));
+            .any(|p| p.card == id_in(&db, "test_blessing")));
         assert_eq!(state.stack.len(), 1, "its ETB trigger is on the stack");
 
         // Pass twice more: the trigger resolves and the controller gains 4 life.
@@ -3019,14 +3030,19 @@ mod tests {
     }
 
     #[test]
-    fn issue_256_copper_lodestone_taps_for_colorless_mana() {
-        // Copper Lodestone is a {1} mana rock — {T}: Add {C}. Its ability is a mana
-        // ability, so it resolves immediately without using the stack (CR 605.3).
-        let db = db();
+    fn issue_256_mana_rock_taps_for_colorless_mana() {
+        // A {1} mana rock — {T}: Add {C}. Its ability is a mana ability, so it
+        // resolves immediately without using the stack (CR 605.3). The colorless-mana
+        // verb has no M19 representative, so it is exercised inline (ADR 0025).
+        let json = r#"[{"schema_version":1,"functional_id":"test_lodestone","name":"Test Lodestone",
+            "types":["artifact"],"mana_cost":"{1}","colors":[],
+            "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
+              "effects":[{"kind":"add_colorless_mana","amount":1}]}]}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = main_phase_p0();
         let lodestone = place_permanent(
             &mut state,
-            fixture("copper_lodestone"),
+            id_in(&db, "test_lodestone"),
             PlayerId(0),
             false,
             0,
@@ -3050,12 +3066,12 @@ mod tests {
     fn issue_149_destroy_puts_a_creature_in_its_owners_graveyard_cr_701_7() {
         let db = db();
         let mut state = main_phase_p0();
-        let boar = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
-        // Sunder Ray is a {2}{W} sorcery: white for the pip, green covers the {2}.
-        let ray = state.new_instance(fixture("sunder_ray"));
+        let boar = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        // Murder is a {1}{B}{B} instant: two black pips and one generic.
+        let ray = state.new_instance(fixture("murder"));
         state.players[0].hand = vec![ray];
-        state.players[0].mana_pool.add(Color::White, 1);
-        state.players[0].mana_pool.add(Color::Green, 2);
+        state.players[0].mana_pool.add(Color::Black, 2);
+        state.players[0].mana_pool.colorless = 1;
 
         let state = apply_action(
             &state,
@@ -3074,18 +3090,18 @@ mod tests {
         assert!(state.players[1]
             .graveyard
             .iter()
-            .any(|c| c.card == fixture("thornback_boar")));
+            .any(|c| c.card == fixture("onakke_ogre")));
     }
 
     #[test]
     fn issue_149_destroy_fizzles_if_its_target_left_first_cr_608_2b() {
         let db = db();
         let mut state = main_phase_p0();
-        let boar = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
-        let ray = state.new_instance(fixture("sunder_ray"));
+        let boar = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let ray = state.new_instance(fixture("murder"));
         state.players[0].hand = vec![ray];
-        state.players[0].mana_pool.add(Color::White, 1);
-        state.players[0].mana_pool.add(Color::Green, 2);
+        state.players[0].mana_pool.add(Color::Black, 2);
+        state.players[0].mana_pool.colorless = 1;
 
         let mut state = apply_action(
             &state,
@@ -3110,11 +3126,20 @@ mod tests {
     fn issue_149_minus_one_counter_lowers_toughness_to_lethal_cr_704_5g() {
         // A -1/-1 counter folds into computed toughness (CR 613.7c). A 3/2 with 1
         // marked damage is not lethal (1 < 2); after a -1/-1 counter it is a 2/1
-        // and 1 damage is lethal (1 ≥ 1), so the SBA destroys it.
-        let db = db();
+        // and 1 damage is lethal (1 ≥ 1), so the SBA destroys it. The -1/-1 counter
+        // spell has no M19 representative, so both cards are inline (ADR 0025).
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
+             "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],
+             "power":3,"toughness":2},
+            {"schema_version":1,"functional_id":"test_wither","name":"Test Wither",
+             "types":["sorcery"],"mana_cost":"{B}","colors":["black"],
+             "spell_effects":[{"kind":"put_counters","target":"any_creature","counter":"minus_one_minus_one","count":1}]}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = main_phase_p0();
-        let boar = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 1);
-        let touch = state.new_instance(fixture("withering_touch")); // Withering Touch {B}, -1/-1
+        let boar = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 1);
+        let touch = state.new_instance(id_in(&db, "test_wither")); // {B} sorcery, -1/-1
         state.players[0].hand = vec![touch];
         state.players[0].mana_pool.add(Color::Black, 1);
 
@@ -3140,8 +3165,10 @@ mod tests {
         let db = db();
         let mut state = main_phase_p0();
         state.players[0].life = 1;
-        let balm = state.new_instance(fixture("soothing_balm")); // Soothing Balm {W}, gain 3
+        let balm = state.new_instance(fixture("revitalize")); // Revitalize {W}: gain 3, draw 1
         state.players[0].hand = vec![balm];
+        // Revitalize also draws, so seed a card to avoid decking out (CR 704.5c).
+        state.players[0].library = vec![state.new_instance(fixture("forest"))];
         state.players[0].mana_pool.add(Color::White, 1);
 
         let state = apply_action(
@@ -3160,10 +3187,14 @@ mod tests {
 
     #[test]
     fn issue_149_life_loss_to_exactly_zero_triggers_the_loss_cr_704_5a() {
-        let db = db();
+        // The lose-life verb has no M19 representative, so it is exercised inline.
+        let json = r#"[{"schema_version":1,"functional_id":"test_drain","name":"Test Drain",
+            "types":["instant"],"mana_cost":"{B}","colors":["black"],
+            "spell_effects":[{"kind":"lose_life","player_ref":"controller","amount":2}]}]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = main_phase_p0();
         state.players[0].life = 2;
-        let ordeal = state.new_instance(fixture("vexing_ordeal")); // Vexing Ordeal {B}, lose 2
+        let ordeal = state.new_instance(id_in(&db, "test_drain")); // {B} instant, lose 2
         state.players[0].hand = vec![ordeal];
         state.players[0].mana_pool.add(Color::Black, 1);
 
@@ -3183,8 +3214,10 @@ mod tests {
     }
 
     // ----- Combat II: first strike / trample / deathtouch / lifelink (issue #154) -----
-    // Fixture ids: 22 first strike (2/2), 23 trample (5/4), 24 deathtouch (1/1),
-    // 25 lifelink (2/3), 26 trample+deathtouch (4/4); 1 Boar (3/2), 4 Basilisk (4/5).
+    // These keywords have no clean M19 representative, so the bodies come from the
+    // inline `combat_db()`: test_duelist first strike (2/2), test_trampler trample
+    // (5/4), test_adder deathtouch (1/1), test_lifelinker lifelink (2/3),
+    // test_baneclaw trample+deathtouch (4/4); test_boar (3/2), test_basilisk (4/5).
 
     #[test]
     fn issue_154_first_striker_kills_its_blocker_before_it_strikes_back_cr_510_5() {
@@ -3192,16 +3225,16 @@ mod tests {
         // 3/2 Boar (2 ≥ 2) before the regular step — so the Boar deals no damage
         // back and the first striker survives untouched, though a 3/2 would
         // otherwise have killed it.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let striker = place_permanent(
             &mut state,
-            fixture("dawnblade_duelist"),
+            id_in(&db, "test_duelist"),
             PlayerId(0),
             false,
             0,
         );
-        let boar = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let boar = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
 
         let after = run_combat(
             &state,
@@ -3229,18 +3262,18 @@ mod tests {
     fn issue_154_two_first_strikers_still_trade_cr_510_5() {
         // CR 510.5: two 2/2 first strikers both deal in the first-strike step, so
         // they trade normally — each deals lethal to the other simultaneously.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let attacker = place_permanent(
             &mut state,
-            fixture("dawnblade_duelist"),
+            id_in(&db, "test_duelist"),
             PlayerId(0),
             false,
             0,
         );
         let blocker = place_permanent(
             &mut state,
-            fixture("dawnblade_duelist"),
+            id_in(&db, "test_duelist"),
             PlayerId(1),
             false,
             0,
@@ -3268,16 +3301,16 @@ mod tests {
         // CR 702.2b / 704.5h: a 1/1 deathtouch blocker deals 1 to a 4/5 attacker,
         // which is not lethal by toughness (1 < 5) but is lethal by deathtouch — the
         // Basilisk is destroyed. The 1/1 dies to the Basilisk's 4 (CR 704.5g).
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let basilisk = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(0),
             false,
             0,
         );
-        let adder = place_permanent(&mut state, fixture("nettle_adder"), PlayerId(1), false, 0);
+        let adder = place_permanent(&mut state, id_in(&db, "test_adder"), PlayerId(1), false, 0);
 
         let after = run_combat(
             &state,
@@ -3308,12 +3341,12 @@ mod tests {
         // Acceptance: a deathtouch 1/1 kills a large creature in combat. The 1/1
         // attacker assigns 1 (deathtouch-lethal) to a 4/5 blocker; the blocker is
         // destroyed by CR 704.5h.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
-        let adder = place_permanent(&mut state, fixture("nettle_adder"), PlayerId(0), false, 0);
+        let adder = place_permanent(&mut state, id_in(&db, "test_adder"), PlayerId(0), false, 0);
         let basilisk = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(1),
             false,
             0,
@@ -3339,17 +3372,17 @@ mod tests {
     fn issue_154_trample_over_a_chump_block_hits_the_player_cr_702_19e() {
         // CR 702.19e: a blocked 5/4 trampler assigns 2 (lethal) to a 3/2 Boar and
         // tramples the remaining 3 to the defending player.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let start_life = state.players[1].life;
         let trampler = place_permanent(
             &mut state,
-            fixture("gorehorn_ravager"),
+            id_in(&db, "test_trampler"),
             PlayerId(0),
             false,
             0,
         );
-        let chump = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
+        let chump = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
 
         let after = run_combat(
             &state,
@@ -3375,19 +3408,19 @@ mod tests {
         // blocked by a 4/5 Basilisk assigns all 5 to the Basilisk (still 5 short of
         // absorbing? no — 5 ≥ 5 toughness) with none left over, so the player takes
         // nothing.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let start_life = state.players[1].life;
         let trampler = place_permanent(
             &mut state,
-            fixture("gorehorn_ravager"),
+            id_in(&db, "test_trampler"),
             PlayerId(0),
             false,
             0,
         ); // 5/4
         let wall = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(1),
             false,
             0,
@@ -3415,19 +3448,19 @@ mod tests {
         // CR 510.1e + 702.19e: a 4/4 trample+deathtouch attacker needs assign only 1
         // to a 4/5 blocker (deathtouch makes 1 lethal), tramping the other 3 over to
         // the player; the blocker is destroyed by CR 704.5h.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let start_life = state.players[1].life;
         let baneclaw = place_permanent(
             &mut state,
-            fixture("viridian_baneclaw"),
+            id_in(&db, "test_baneclaw"),
             PlayerId(0),
             false,
             0,
         ); // 4/4
         let blocker = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(1),
             false,
             0,
@@ -3459,13 +3492,13 @@ mod tests {
         // CR 702.15e: a lifelink source gains its controller life equal to the
         // damage, simultaneously. An unblocked 2/3 lifelinker hits player 1 for 2
         // and its controller (player 0) gains 2.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
         let atk_life = state.players[0].life;
         let def_life = state.players[1].life;
         let cleric = place_permanent(
             &mut state,
-            fixture("cleric_of_the_sunwell"),
+            id_in(&db, "test_lifelinker"),
             PlayerId(0),
             false,
             0,
@@ -3486,12 +3519,12 @@ mod tests {
         // CR 702.15e: lifelink applies to any damage the source deals, including a
         // blocker's damage to the attacker. A 2/3 lifelink blocker deals 2 to a 3/2
         // Boar and its controller gains 2, even as the blocker dies to the Boar.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
-        let boar = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), false, 0);
+        let boar = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(0), false, 0);
         let cleric = place_permanent(
             &mut state,
-            fixture("cleric_of_the_sunwell"),
+            id_in(&db, "test_lifelinker"),
             PlayerId(1),
             false,
             0,
@@ -3536,21 +3569,21 @@ mod tests {
         });
     }
 
-    /// A precombat-main two-player game with the dies fixture (Cryptvine Lurker,
-    /// id 28, a 2/2) on the battlefield under player 0 with `damage` marked, and a
-    /// single card in player 0's library to draw. Returns the state and the
-    /// lurker's id.
-    fn state_with_lurker(damage: u32) -> (GameState, PermanentId, CardInstance) {
+    /// A precombat-main two-player game with the dies fixture (`test_lurker`, a
+    /// 2/2 with a self-dies draw) on the battlefield under player 0 with `damage`
+    /// marked, and a single card in player 0's library to draw. Cards are resolved
+    /// from `db` (a [`combat_db`]). Returns the state and the lurker's id.
+    fn state_with_lurker(db: &CardDatabase, damage: u32) -> (GameState, PermanentId, CardInstance) {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let lurker = place_permanent(
             &mut state,
-            fixture("cryptvine_lurker"),
+            id_in(db, "test_lurker"),
             PlayerId(0),
             false,
             damage,
         );
-        let draw = state.new_instance(fixture("thornback_boar"));
+        let draw = state.new_instance(id_in(db, "test_boar"));
         state.players[0].library = vec![draw];
         (state, lurker, draw)
     }
@@ -3560,23 +3593,17 @@ mod tests {
         // CR 700.4 / 603.6c: a creature put into a graveyard by lethal combat
         // damage (CR 704.5g) dies, firing its dies trigger. The 2/2 Lurker attacks
         // into a 4/5 Basilisk blocker, takes 4, and dies; its controller then draws.
-        let db = db();
+        let db = combat_db();
         let mut state = at_declare_attackers();
-        let lurker = place_permanent(
-            &mut state,
-            fixture("cryptvine_lurker"),
-            PlayerId(0),
-            false,
-            0,
-        );
+        let lurker = place_permanent(&mut state, id_in(&db, "test_lurker"), PlayerId(0), false, 0);
         let blocker = place_permanent(
             &mut state,
-            fixture("stonehide_basilisk"),
+            id_in(&db, "test_basilisk"),
             PlayerId(1),
             false,
             0,
         );
-        let draw = state.new_instance(fixture("thornback_boar"));
+        let draw = state.new_instance(id_in(&db, "test_boar"));
         state.players[0].library = vec![draw];
 
         let after = run_combat(
@@ -3613,8 +3640,8 @@ mod tests {
         // through the same seam, so the dies trigger fires exactly as it does for a
         // combat death.
         use crate::ability::TargetSpec;
-        let db = db();
-        let (mut state, lurker, draw) = state_with_lurker(0);
+        let db = combat_db();
+        let (mut state, lurker, draw) = state_with_lurker(&db, 0);
         push_ability(
             &mut state,
             lurker,
@@ -3644,8 +3671,8 @@ mod tests {
         // the dies trigger fires.
         use crate::ability::TargetSpec;
         use crate::state::CounterKind;
-        let db = db();
-        let (mut state, lurker, draw) = state_with_lurker(1);
+        let db = combat_db();
+        let (mut state, lurker, draw) = state_with_lurker(&db, 1);
         push_ability(
             &mut state,
             lurker,
@@ -3681,8 +3708,8 @@ mod tests {
         // the stack with a player holding priority and the draw has not happened; it
         // resolves only once priority passes around.
         use crate::ability::TargetSpec;
-        let db = db();
-        let (mut state, lurker, draw) = state_with_lurker(0);
+        let db = combat_db();
+        let (mut state, lurker, draw) = state_with_lurker(&db, 0);
         push_ability(
             &mut state,
             lurker,
@@ -3752,8 +3779,8 @@ mod tests {
         state.step = Step::DeclareBlockers;
         state.active_player = PlayerId(0);
         state.attackers_declared = true;
-        let atk_a = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), true, 0);
-        let atk_b = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(0), true, 0);
+        let atk_a = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(0), true, 0);
+        let atk_b = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(0), true, 0);
         for (id, defender) in [(atk_a, PlayerId(1)), (atk_b, PlayerId(2))] {
             state
                 .battlefield
@@ -3762,8 +3789,8 @@ mod tests {
                 .unwrap()
                 .attacking = Some(defender);
         }
-        let blk1 = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(1), false, 0);
-        let blk2 = place_permanent(&mut state, fixture("thornback_boar"), PlayerId(2), false, 0);
+        let blk1 = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let blk2 = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(2), false, 0);
         state.priority = pending_blocker_declarer(&state).unwrap();
         (state, atk_a, atk_b, blk1, blk2)
     }
@@ -3866,9 +3893,9 @@ mod tests {
         for _ in 0..3 {
             state = apply_action(&state, &Action::PassPriority, &db);
         }
-        // Attacker A (3/2) and its blocker (3/2) traded; seat 2 took 3 from the
+        // Attacker A (4/2) and its blocker (4/2) traded; seat 2 took 4 from the
         // unblocked attacker B.
-        assert_eq!(state.players[2].life, 17, "unblocked attacker B hit seat 2");
+        assert_eq!(state.players[2].life, 16, "unblocked attacker B hit seat 2");
         assert_eq!(
             state.players[1].life, 20,
             "seat 1 blocked its attacker, so took no damage"

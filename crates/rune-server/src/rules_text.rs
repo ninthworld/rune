@@ -314,7 +314,7 @@ mod tests {
         // Nothing is invented for a card with no rules: the empty string is the honest
         // answer, and the wire omits the field entirely.
         let db = bundled();
-        assert_eq!(text_of(&db, "thornback_boar"), "");
+        assert_eq!(text_of(&db, "onakke_ogre"), "");
     }
 
     #[test]
@@ -324,104 +324,172 @@ mod tests {
         // Two separate mana abilities are two separate lines — the IR has two, so the
         // text says two, rather than collapsing them into a choice the card cannot make.
         assert_eq!(
-            text_of(&db, "verdant_sanctuary"),
-            "Verdant Sanctuary enters the battlefield tapped.\n{T}: Add {G}.\n{T}: Add {W}."
+            text_of(&db, "tranquil_expanse"),
+            "Tranquil Expanse enters the battlefield tapped.\n{T}: Add {G}.\n{T}: Add {W}."
         );
     }
 
     #[test]
     fn triggered_abilities_name_their_condition_and_effects() {
         let db = bundled();
+        // A real ETB trigger from the catalog.
         assert_eq!(
-            text_of(&db, "verdant_scout"),
-            "When Verdant Scout enters the battlefield, draw a card."
+            text_of(&db, "viashino_pyromancer"),
+            "When Viashino Pyromancer enters the battlefield, \
+             Viashino Pyromancer deals 2 damage to target player."
+        );
+        // The dies trigger and the ETB-put-counter trigger have no clean M19 card, so
+        // they are exercised inline (ADR 0026).
+        let inline = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
+                 "types":["creature"],"subtypes":["Horror"],"mana_cost":"{1}{B}","colors":["black"],
+                 "power":2,"toughness":2,
+                 "abilities":[{"type":"triggered","event":"self_dies",
+                   "effects":[{"kind":"draw_card","count":1}]}]},
+                {"schema_version":1,"functional_id":"test_sprite","name":"Test Sprite",
+                 "types":["creature"],"subtypes":["Faerie"],"mana_cost":"{1}{G}","colors":["green"],
+                 "power":1,"toughness":1,
+                 "abilities":[{"type":"triggered","event":"self_enters_battlefield",
+                   "effects":[{"kind":"put_counters","target":"any_creature","counter":"plus_one_plus_one","count":1}]}]}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&inline, "test_lurker"),
+            "When Test Lurker dies, draw a card."
         );
         assert_eq!(
-            text_of(&db, "cryptvine_lurker"),
-            "When Cryptvine Lurker dies, draw a card."
-        );
-        assert_eq!(
-            text_of(&db, "thornweft_sprite"),
-            "When Thornweft Sprite enters the battlefield, put a +1/+1 counter on target creature."
+            text_of(&inline, "test_sprite"),
+            "When Test Sprite enters the battlefield, put a +1/+1 counter on target creature."
         );
     }
 
     #[test]
     fn spell_effects_read_as_sentences() {
         let db = bundled();
-        assert_eq!(text_of(&db, "runic_negation"), "Counter target spell.");
+        assert_eq!(text_of(&db, "cancel"), "Counter target spell.");
+        assert_eq!(text_of(&db, "shock"), "Shock deals 2 damage to any target.");
+        assert_eq!(text_of(&db, "murder"), "Destroy target creature.");
+        // A two-effect spell reads as two sentences, in order.
+        assert_eq!(text_of(&db, "revitalize"), "You gain 3 life.\nDraw a card.");
         assert_eq!(
-            text_of(&db, "cinder_shock"),
-            "Cinder Shock deals 2 damage to any target."
+            text_of(&db, "titanic_growth"),
+            "Target creature gets +4/+4 until end of turn."
         );
-        assert_eq!(text_of(&db, "sunder_ray"), "Destroy target creature.");
-        assert_eq!(text_of(&db, "soothing_balm"), "You gain 3 life.");
-        assert_eq!(text_of(&db, "vexing_ordeal"), "You lose 2 life.");
+        // Life loss and a -1/-1 counter have no clean M19 card — exercised inline.
+        let inline = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_drain","name":"Test Drain",
+                 "types":["instant"],"mana_cost":"{B}","colors":["black"],
+                 "spell_effects":[{"kind":"lose_life","player_ref":"controller","amount":2}]},
+                {"schema_version":1,"functional_id":"test_wither","name":"Test Wither",
+                 "types":["sorcery"],"mana_cost":"{B}","colors":["black"],
+                 "spell_effects":[{"kind":"put_counters","target":"any_creature","counter":"minus_one_minus_one","count":1}]}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(text_of(&inline, "test_drain"), "You lose 2 life.");
         assert_eq!(
-            text_of(&db, "withering_touch"),
+            text_of(&inline, "test_wither"),
             "Put a -1/-1 counter on target creature."
-        );
-        assert_eq!(
-            text_of(&db, "titanroot_surge"),
-            "Target creature gets +3/+3 until end of turn."
         );
     }
 
     #[test]
-    fn issue_256_the_four_wired_cards_generate_non_empty_text() {
-        // The four formerly functionless cards now render real rules text from their IR
-        // (ADR 0018 §7) — no more blank cards.
+    fn spells_generate_non_empty_text() {
+        // Every card that does something renders real rules text from its IR (ADR 0018 §7).
         let db = bundled();
         assert_eq!(
-            text_of(&db, "quickfire_bolt"),
-            "Quickfire Bolt deals 3 damage to any target."
+            text_of(&db, "lightning_strike"),
+            "Lightning Strike deals 3 damage to any target."
         );
-        assert_eq!(text_of(&db, "hurried_study"), "Draw two cards.");
         assert_eq!(
-            text_of(&db, "verdant_blessing"),
-            "When Verdant Blessing enters the battlefield, you gain 4 life."
+            text_of(&db, "electrify"),
+            "Electrify deals 4 damage to target creature."
         );
-        // A mana rock: colorless mana reads as {C}, the colorless counterpart of {G}.
-        assert_eq!(text_of(&db, "copper_lodestone"), "{T}: Add {C}.");
+        assert_eq!(text_of(&db, "divination"), "Draw two cards.");
         for card in [
-            "quickfire_bolt",
-            "hurried_study",
-            "verdant_blessing",
-            "copper_lodestone",
+            "lightning_strike",
+            "electrify",
+            "divination",
+            "murder",
+            "shock",
         ] {
             assert!(!text_of(&db, card).is_empty(), "{card} generated no text");
         }
+        // A mana rock: colorless mana reads as {C}, the colorless counterpart of {G}.
+        // No M19 card produces {C}, so it is exercised inline (ADR 0026).
+        let inline = CardDatabase::from_json(
+            r#"[{"schema_version":1,"functional_id":"test_lodestone","name":"Test Lodestone",
+                "types":["artifact"],"mana_cost":"{1}","colors":[],
+                "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
+                  "effects":[{"kind":"add_colorless_mana","amount":1}]}]}]"#,
+        )
+        .unwrap();
+        assert_eq!(text_of(&inline, "test_lodestone"), "{T}: Add {C}.");
     }
 
     #[test]
     fn keywords_join_as_one_clause() {
         let db = bundled();
-        assert_eq!(text_of(&db, "skywhisker_drake"), "Flying");
+        assert_eq!(text_of(&db, "snapping_drake"), "Flying");
         // Multiple keywords are one comma list, in printed order.
-        assert_eq!(text_of(&db, "viridian_baneclaw"), "Trample, deathtouch");
-        assert_eq!(text_of(&db, "dawnblade_duelist"), "First strike");
+        assert_eq!(text_of(&db, "serra_angel"), "Flying, vigilance");
+        // Trample+deathtouch and lone first strike have no clean M19 card — inline.
+        let inline = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_baneclaw","name":"Test Baneclaw",
+                 "types":["creature"],"subtypes":["Beast"],"mana_cost":"{2}{B}{G}","colors":["black","green"],
+                 "power":4,"toughness":4,"keywords":["trample","deathtouch"]},
+                {"schema_version":1,"functional_id":"test_duelist","name":"Test Duelist",
+                 "types":["creature"],"subtypes":["Human","Knight"],"mana_cost":"{1}{W}","colors":["white"],
+                 "power":2,"toughness":2,"keywords":["first_strike"]}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(text_of(&inline, "test_baneclaw"), "Trample, deathtouch");
+        assert_eq!(text_of(&inline, "test_duelist"), "First strike");
     }
 
     #[test]
     fn an_aura_states_its_restriction_and_its_grant() {
-        let db = bundled();
+        // P/T Auras have no clean M19 card, so they are exercised inline (ADR 0026).
+        let db = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
+                 "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
+                 "aura":{"enchant":"any_creature","power":2,"toughness":2}},
+                {"schema_version":1,"functional_id":"test_curse","name":"Test Curse",
+                 "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{B}","colors":["black"],
+                 "aura":{"enchant":"any_creature","power":-2,"toughness":-2}}
+            ]"#,
+        )
+        .unwrap();
         assert_eq!(
-            text_of(&db, "ironbark_aegis"),
+            text_of(&db, "test_aegis"),
             "Enchant creature.\nEnchanted creature gets +2/+2."
         );
         // A shrinking Aura reads with its signs intact.
         assert_eq!(
-            text_of(&db, "witherbrand_curse"),
+            text_of(&db, "test_curse"),
             "Enchant creature.\nEnchanted creature gets -2/-2."
         );
     }
 
     #[test]
     fn a_replacement_reads_as_a_statement_about_entering() {
-        let db = bundled();
+        // An enters-with-counters card has no clean M19 representative — inline.
+        let db = CardDatabase::from_json(
+            r#"[{"schema_version":1,"functional_id":"test_hatchling","name":"Test Hatchling",
+                "types":["creature"],"subtypes":["Insect"],"mana_cost":"{1}{G}","colors":["green"],
+                "power":0,"toughness":0,
+                "abilities":[{"type":"enters_with_counters","counter":"plus_one_plus_one","count":2}]}]"#,
+        )
+        .unwrap();
         assert_eq!(
-            text_of(&db, "bramble_hatchling"),
-            "Bramble Hatchling enters the battlefield with two +1/+1 counters on it."
+            text_of(&db, "test_hatchling"),
+            "Test Hatchling enters the battlefield with two +1/+1 counters on it."
         );
     }
 
@@ -466,10 +534,10 @@ mod tests {
         // Behavior written in Rust is opaque to the formatter, so a scripted card
         // supplies its own words (ADR 0018 §7) — and they are what a player sees.
         let db = bundled();
-        let boar = db
-            .card_id(&FunctionalId::try_from("thornback_boar".to_string()).unwrap())
+        let ogre = db
+            .card_id(&FunctionalId::try_from("onakke_ogre".to_string()).unwrap())
             .unwrap();
-        let data = db.card(boar).unwrap();
+        let data = db.card(ogre).unwrap();
         assert_eq!(
             rules_text(data, Some("Whenever this attacks, draw a card.")),
             "Whenever this attacks, draw a card."

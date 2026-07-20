@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "functional_id": "skyscanner",
+  "name": "Skyscanner",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Thopter"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "power": 1,
+  "toughness": 1,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -49,10 +49,26 @@ describe('keyword coverage', () => {
     }
   });
 
-  it('the glyph keyword set exactly matches the catalog keyword set', () => {
-    // "Exactly matches" (issue #317 scope): no catalog keyword lacks a glyph, and no
-    // keyword glyph is orphaned without a card that uses it.
-    expect([...glyphKeywords()].sort()).toEqual([...catalogKeywords()].sort());
+  it('the glyph vocabulary mirrors the engine keyword set and covers the catalog', () => {
+    // The glyph vocabulary mirrors the engine's closed keyword set (ability.rs /
+    // card.rs `Keyword`), which is a superset of whatever keywords the current
+    // catalog happens to ship — the M19 catalog (ADR 0026) uses only a subset, so
+    // some glyphs (e.g. first_strike, deathtouch) are valid engine keywords with no
+    // current card. The two invariants: the glyph set is exactly the eight engine
+    // keywords, and every keyword a shipped card uses has a glyph (no gaps).
+    expect([...glyphKeywords()].sort()).toEqual([
+      'deathtouch',
+      'first_strike',
+      'flying',
+      'haste',
+      'lifelink',
+      'reach',
+      'trample',
+      'vigilance',
+    ]);
+    for (const kw of catalogKeywords()) {
+      expect(glyphKeywords().has(kw), `catalog keyword "${kw}" has no glyph`).toBe(true);
+    }
   });
 
   it('maps a keyword wire name to its `kw-` glyph', () => {

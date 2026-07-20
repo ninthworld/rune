@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "fire_elemental",
+  "name": "Fire Elemental",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elemental"
+  ],
+  "mana_cost": "{3}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 5,
+  "toughness": 4
+}

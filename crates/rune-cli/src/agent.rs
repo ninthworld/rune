@@ -324,6 +324,27 @@ fn toughness_of(perm: &Permanent) -> i64 {
         .unwrap_or(0)
 }
 
+/// Whether a permanent has printed keyword `keyword` (matched against the view's
+/// wire keyword names, e.g. `"flying"`, `"reach"`).
+fn has_keyword(perm: &Permanent, keyword: &str) -> bool {
+    perm.card.keywords.iter().any(|k| k == keyword)
+}
+
+/// Whether `blocker` may legally be declared to block `attacker` given evasion
+/// (CR 509.1b / 702.9c / 702.17b): a flying attacker can be blocked only by a
+/// creature with flying or reach; any creature can block a non-flying attacker. The
+/// engine does not pre-filter block candidates by evasion (it enforces it only when
+/// the declaration is submitted), so the agent applies the same rule to avoid
+/// picking — and endlessly resubmitting — an illegal block.
+fn can_legally_block(attacker: Option<&Permanent>, blocker: &Permanent) -> bool {
+    match attacker {
+        Some(atk) if has_keyword(atk, "flying") => {
+            has_keyword(blocker, "flying") || has_keyword(blocker, "reach")
+        }
+        _ => true,
+    }
+}
+
 /// Fill every choice slot of `action` — its target `requirements` and its
 /// [`Prompt`] slots — with a legal selection, one [`TargetChoice`] per slot, per the
 /// [`RuleBasedAgent`] policy. `None` only when a **mandatory** slot cannot be filled
@@ -460,6 +481,13 @@ fn block_selection(
         .filter(|id| !used_blockers.contains(*id))
         .find_map(|id| {
             let perm = permanent_in_play(view, id)?;
+            // Evasion (CR 509.1b): a flyer can be blocked only by flying or reach. The
+            // engine offers every untapped creature as a candidate and enforces
+            // evasion only when the declaration is submitted (combat.rs), so the agent
+            // must not pick an illegal blocker — resubmitting one would stall combat.
+            if !can_legally_block(attacker.as_ref(), perm) {
+                return None;
+            }
             let survives = toughness_of(perm) > attacker_power;
             let kills = power_of(perm) >= attacker_toughness && attacker_toughness > 0;
             (survives || kills).then(|| id.clone())
@@ -1429,6 +1457,61 @@ mod tests {
         let all: Vec<&String> = big.iter().chain(small.iter()).collect();
         assert_eq!(all.iter().filter(|id| **id == "perm_blk_good").count(), 1);
         assert!(!all.iter().any(|id| **id == "perm_blk_weak"));
+    }
+
+    #[test]
+    fn blockers_selection_respects_flying_evasion() {
+        // CR 509.1b: a flying attacker can be blocked only by flying or reach. The
+        // engine offers every untapped creature as a block candidate and enforces
+        // evasion only on submission, so the agent must skip a ground blocker of a
+        // flyer — declaring it would be illegal and re-offered forever.
+        let with_keyword = |id: &str, controller: &str, p: i64, t: i64, kw: &str| Permanent {
+            card: CardView {
+                keywords: vec![kw.to_string()],
+                ..creature_perm(id, controller, p, t).card
+            },
+            ..creature_perm(id, controller, p, t)
+        };
+        let flyer = Permanent {
+            attacking: true,
+            ..with_keyword("perm_atk", "p1", 4, 4, "flying")
+        };
+        // A 6/6 ground creature would survive the flyer (profitable by P/T) but cannot
+        // legally block it.
+        let ground = creature_perm("perm_ground", "p0", 6, 6);
+
+        let block_action = |candidates: Vec<&str>| ValidAction {
+            requirements: vec![TargetRequirement {
+                slot: "block_atk".into(),
+                prompt: "Choose blockers".into(),
+                candidates: candidates.into_iter().map(str::to_string).collect(),
+            }],
+            ..action("a0", "declare_blockers", vec![])
+        };
+
+        // Only the ground blocker is a candidate: no legal block, so declare none.
+        let mut view = view_with_actions(vec![block_action(vec!["perm_ground"])]);
+        view.you = "p0".into();
+        view.battlefield = vec![flyer.clone(), ground.clone()];
+        let picked = choose_action(&view).unwrap();
+        let answers = fill_answers(&view, picked).unwrap();
+        assert!(
+            chosen_for(&answers, "block_atk").is_empty(),
+            "a ground creature cannot block a flyer"
+        );
+
+        // Add a profitable reacher: it is the legal, chosen blocker.
+        let reacher = with_keyword("perm_reach", "p0", 5, 5, "reach"); // survives the 4/4 flyer
+        let mut view2 = view_with_actions(vec![block_action(vec!["perm_ground", "perm_reach"])]);
+        view2.you = "p0".into();
+        view2.battlefield = vec![flyer, ground, reacher];
+        let picked2 = choose_action(&view2).unwrap();
+        let answers2 = fill_answers(&view2, picked2).unwrap();
+        assert_eq!(
+            chosen_for(&answers2, "block_atk"),
+            ["perm_reach"],
+            "a reach creature can block the flyer"
+        );
     }
 
     #[test]

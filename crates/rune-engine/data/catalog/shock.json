@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "shock",
+  "name": "Shock",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_target",
+      "amount": 2
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "druid_of_the_cowl",
+  "name": "Druid of the Cowl",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Druid"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 1,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana",
+          "color": "green",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "onakke_ogre",
+  "name": "Onakke Ogre",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Ogre",
+    "Warrior"
+  ],
+  "mana_cost": "{2}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 4,
+  "toughness": 2
+}

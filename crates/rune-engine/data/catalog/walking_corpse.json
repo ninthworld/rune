@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "walking_corpse",
+  "name": "Walking Corpse",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Zombie"
+  ],
+  "mana_cost": "{1}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 2,
+  "toughness": 2
+}

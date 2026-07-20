@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "revitalize",
+  "name": "Revitalize",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "gain_life",
+      "player_ref": "controller",
+      "amount": 3
+    },
+    {
+      "kind": "draw_card",
+      "count": 1
+    }
+  ]
+}

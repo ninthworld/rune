@@ -307,36 +307,36 @@ mod tests {
 
     #[test]
     fn issue_150_pump_boosts_only_its_specific_target() {
-        // A "+3/+3 until end of turn" pump aimed at one Boar makes it a 6/5 and
-        // leaves a second, unpumped Boar at its printed 3/2 (the effect is keyed
+        // A "+3/+3 until end of turn" pump aimed at one Ogre makes it a 7/5 and
+        // leaves a second, unpumped Ogre at its printed 4/2 (the effect is keyed
         // to a specific permanent id, not a controller-wide selector).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let pumped = place(&mut state, fixture("thornback_boar"));
-        let bystander = place(&mut state, fixture("thornback_boar"));
+        let pumped = place(&mut state, fixture("onakke_ogre"));
+        let bystander = place(&mut state, fixture("onakke_ogre"));
         add_pump(&mut state, 100, pumped, 3, 3);
 
         let ch = characteristics(&state, pumped, &db);
-        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.power, Some(7));
         assert_eq!(ch.toughness, Some(5));
         let other = characteristics(&state, bystander, &db);
-        assert_eq!(other.power, Some(3));
+        assert_eq!(other.power, Some(4));
         assert_eq!(other.toughness, Some(2));
     }
 
     #[test]
     fn issue_150_two_pumps_on_one_target_stack_in_timestamp_order() {
-        // Two pumps on the same Boar sum (they are additive) and fold in ascending
-        // timestamp order (CR 613.7) regardless of insertion order — printed 3/2 +
-        // (+2/+0) + (+1/+2) = 6/4.
+        // Two pumps on the same Ogre sum (they are additive) and fold in ascending
+        // timestamp order (CR 613.7) regardless of insertion order — printed 4/2 +
+        // (+2/+0) + (+1/+2) = 7/4.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         add_pump(&mut state, 200, boar, 1, 2); // later timestamp, inserted first
         add_pump(&mut state, 100, boar, 2, 0);
 
         let ch = characteristics(&state, boar, &db);
-        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.power, Some(7));
         assert_eq!(ch.toughness, Some(4));
 
         let perm = state.battlefield.iter().find(|p| p.id == boar).unwrap();
@@ -363,19 +363,19 @@ mod tests {
 
     #[test]
     fn vanilla_creature_current_pt_and_types_equal_printed() {
-        // Thornback Boar (CardId 1): a 3/2 Creature — Boar with no modifiers, so
-        // its current characteristics are exactly its printed ones.
+        // Onakke Ogre: a 4/2 Creature — Ogre Warrior with no modifiers, so its
+        // current characteristics are exactly its printed ones.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
 
         let ch = characteristics(&state, boar, &db);
-        let printed = db.card(fixture("thornback_boar")).unwrap();
-        assert_eq!(ch.power, Some(3));
+        let printed = db.card(fixture("onakke_ogre")).unwrap();
+        assert_eq!(ch.power, Some(4));
         assert_eq!(ch.toughness, Some(2));
         assert_eq!(ch.types, vec![CardType::Creature]);
-        assert_eq!(ch.subtypes, vec!["Boar".to_string()]);
-        assert_eq!(ch.mana_cost, "{2}{G}");
+        assert_eq!(ch.subtypes, vec!["Ogre".to_string(), "Warrior".to_string()]);
+        assert_eq!(ch.mana_cost, "{2}{R}");
         // Every field mirrors the printed seed in this slice.
         assert_eq!(ch.supertypes, printed.supertypes);
         assert_eq!(ch.power, printed.power);
@@ -385,14 +385,14 @@ mod tests {
 
     #[test]
     fn plus_one_counters_add_to_printed_power_and_toughness() {
-        // Thornback Boar is a printed 3/2. Three +1/+1 counters make it a 6/5.
+        // Onakke Ogre is a printed 4/2. Three +1/+1 counters make it a 7/5.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 3);
 
         let ch = characteristics(&state, boar, &db);
-        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.power, Some(7));
         assert_eq!(ch.toughness, Some(5));
         // Only P/T shifts; the printed types are untouched by counters.
         assert_eq!(ch.types, vec![CardType::Creature]);
@@ -400,15 +400,15 @@ mod tests {
 
     #[test]
     fn mixed_plus_and_minus_counters_net_correctly() {
-        // 3/2 Boar with two +1/+1 and one -1/-1 nets +1/+1 overall -> 4/3.
+        // 4/2 Ogre with two +1/+1 and one -1/-1 nets +1/+1 overall -> 5/3.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 2);
         set_counters(&mut state, boar, CounterKind::MinusOneMinusOne, 1);
 
         let ch = characteristics(&state, boar, &db);
-        assert_eq!(ch.power, Some(4));
+        assert_eq!(ch.power, Some(5));
         assert_eq!(ch.toughness, Some(3));
     }
 
@@ -416,14 +416,14 @@ mod tests {
     fn minus_counters_can_drive_power_and_toughness_negative() {
         // Counters are folded verbatim; SBAs (a 0-or-less-toughness creature
         // dying, annihilation of +1/+1 vs -1/-1) are not this slice's concern,
-        // so three -1/-1 on a 3/2 computes a raw 0/-1.
+        // so three -1/-1 on a 4/2 computes a raw 1/-1.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         set_counters(&mut state, boar, CounterKind::MinusOneMinusOne, 3);
 
         let ch = characteristics(&state, boar, &db);
-        assert_eq!(ch.power, Some(0));
+        assert_eq!(ch.power, Some(1));
         assert_eq!(ch.toughness, Some(-1));
     }
 
@@ -444,7 +444,7 @@ mod tests {
     #[test]
     fn counter_count_defaults_to_zero_and_reports_stored_counts() {
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         let find = |state: &GameState| {
             state
                 .battlefield
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn basic_land_has_no_power_or_toughness_and_keeps_its_ability() {
-        // Forest (CardId 5): a Basic Land with a mana ability and no P/T. Abilities
+        // Forest: a Basic Land with a mana ability and no P/T. Abilities
         // route through abilities_of, so the land's {T}: Add {G} is present.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
@@ -507,17 +507,17 @@ mod tests {
 
     #[test]
     fn single_static_modifier_stacks_on_printed_pt_and_counters() {
-        // Thornback Boar is a printed 3/2. One +1/+1 counter and one static
-        // +2/+2 anthem controlled by its controller compute 3+1+2 / 2+1+2 = 6/5,
+        // Onakke Ogre is a printed 4/2. One +1/+1 counter and one static
+        // +2/+2 anthem controlled by its controller compute 4+1+2 / 2+1+2 = 7/5,
         // exercising "printed + counters + modifier" together (ADR 0010 §3).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         set_counters(&mut state, boar, CounterKind::PlusOnePlusOne, 1);
         add_anthem(&mut state, 100, PlayerId(0), 2, 2);
 
         let ch = characteristics(&state, boar, &db);
-        assert_eq!(ch.power, Some(6));
+        assert_eq!(ch.power, Some(7));
         assert_eq!(ch.toughness, Some(5));
         // Only P/T shifts; static modifiers never touch the printed types.
         assert_eq!(ch.types, vec![CardType::Creature]);
@@ -530,15 +530,15 @@ mod tests {
         // them in ascending-timestamp order regardless of insertion order.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         // Inserted later-timestamp first to prove the pipeline sorts, not reads
         // insertion order.
         add_anthem(&mut state, 200, PlayerId(0), 0, 3); // +0/+3
         add_anthem(&mut state, 100, PlayerId(0), 4, 0); // +4/+0
 
-        // Printed 3/2 + (+4/+0) + (+0/+3) = 7/5.
+        // Printed 4/2 + (+4/+0) + (+0/+3) = 8/5.
         let ch = characteristics(&state, boar, &db);
-        assert_eq!(ch.power, Some(7));
+        assert_eq!(ch.power, Some(8));
         assert_eq!(ch.toughness, Some(5));
 
         // The ordering is deterministic: ascending timestamp (source id), not the
@@ -553,20 +553,20 @@ mod tests {
 
     #[test]
     fn removing_the_source_reverts_the_computed_value() {
-        // With the anthem in force the Boar is a 5/4; dropping the effect (its
-        // source leaving) reverts to the printed 3/2 with nothing cached to stale.
+        // With the anthem in force the Ogre is a 6/4; dropping the effect (its
+        // source leaving) reverts to the printed 4/2 with nothing cached to stale.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         add_anthem(&mut state, 100, PlayerId(0), 2, 2);
 
         let boosted = characteristics(&state, boar, &db);
-        assert_eq!(boosted.power, Some(5));
+        assert_eq!(boosted.power, Some(6));
         assert_eq!(boosted.toughness, Some(4));
 
         state.static_effects.clear();
         let reverted = characteristics(&state, boar, &db);
-        assert_eq!(reverted.power, Some(3));
+        assert_eq!(reverted.power, Some(4));
         assert_eq!(reverted.toughness, Some(2));
     }
 
@@ -575,11 +575,11 @@ mod tests {
         // An anthem for player 1 does not touch player 0's creature.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar")); // controlled by player 0
+        let boar = place(&mut state, fixture("onakke_ogre")); // controlled by player 0
         add_anthem(&mut state, 100, PlayerId(1), 5, 5);
 
         let ch = characteristics(&state, boar, &db);
-        assert_eq!(ch.power, Some(3));
+        assert_eq!(ch.power, Some(4));
         assert_eq!(ch.toughness, Some(2));
     }
 
@@ -602,7 +602,7 @@ mod tests {
         // Two calls agree and the state is untouched — the function is a pure query.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar = place(&mut state, fixture("thornback_boar"));
+        let boar = place(&mut state, fixture("onakke_ogre"));
         let before = state.clone();
 
         let first = characteristics(&state, boar, &db);

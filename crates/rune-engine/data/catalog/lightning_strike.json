@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "lightning_strike",
+  "name": "Lightning Strike",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_target",
+      "amount": 3
+    }
+  ]
+}

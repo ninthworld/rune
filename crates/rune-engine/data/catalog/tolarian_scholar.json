@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "tolarian_scholar",
+  "name": "Tolarian Scholar",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Wizard"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 2,
+  "toughness": 3
+}

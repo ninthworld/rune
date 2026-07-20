@@ -117,11 +117,11 @@ fn config(seats: u8) -> RoomConfig {
 fn decklist() -> Vec<String> {
     let mut cards = Vec::new();
     for slug in [
-        "thornback_boar",
-        "riverbank_otter",
-        "emberfang_jackal",
-        "stonehide_basilisk",
-        "verdant_scout",
+        "onakke_ogre",
+        "snapping_drake",
+        "fire_elemental",
+        "giant_spider",
+        "walking_corpse",
     ] {
         for _ in 0..4 {
             cards.push(slug.to_string());

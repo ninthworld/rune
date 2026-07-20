@@ -253,12 +253,12 @@ mod tests {
     /// moment one is authored ahead of it.
     fn sample_decklist() -> Vec<CardId> {
         const CARDS: [&str; 6] = [
-            "thornback_boar",
-            "riverbank_otter",
-            "emberfang_jackal",
-            "stonehide_basilisk",
+            "onakke_ogre",
+            "fire_elemental",
+            "snapping_drake",
+            "giant_spider",
             "forest",
-            "verdant_scout",
+            "llanowar_elves",
         ];
         (0..40).map(|i| fixture(CARDS[i % 6])).collect()
     }

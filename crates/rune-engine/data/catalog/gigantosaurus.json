@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "gigantosaurus",
+  "name": "Gigantosaurus",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dinosaur"
+  ],
+  "mana_cost": "{G}{G}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 10,
+  "toughness": 10
+}

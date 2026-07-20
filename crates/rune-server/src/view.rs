@@ -1805,15 +1805,24 @@ mod tests {
     /// layer-7c grant (CR 303.4 / 613.7c, issue #152) rather than the printed value.
     #[test]
     fn issue_152_aura_boosted_host_projects_current_pt() {
-        let db = CardDatabase::bundled().unwrap();
+        // P/T Auras have no clean M19 card, so this is exercised inline (ADR 0026):
+        // a 1/1 host enchanted with a +2/+2 Aura.
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_scout","name":"Test Scout",
+             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
+             "power":1,"toughness":1},
+            {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
+             "aura":{"enchant":"any_creature","power":2,"toughness":2}}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = GameState::new_two_player();
 
-        // A 1/1 Verdant Scout (id 6) enchanted with Ironbark Aegis (+2/+2 Aura, 29).
         let host = PermanentId(state.mint_id());
         state.battlefield.push(rune_engine::Permanent {
             id: host,
             instance: CardInstanceId(0),
-            card: fixture("verdant_scout"),
+            card: id_in(&db, "test_scout"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1827,7 +1836,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: aura,
             instance: CardInstanceId(1),
-            card: fixture("ironbark_aegis"),
+            card: id_in(&db, "test_aegis"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -1958,7 +1967,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: attacker,
             instance: CardInstanceId(0),
-            card: fixture("verdant_scout"),
+            card: fixture("walking_corpse"),
             controller: PlayerId(0),
             tapped: true,
             entered_turn: 0,
@@ -1972,7 +1981,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: blocker,
             instance: CardInstanceId(1),
-            card: fixture("verdant_scout"),
+            card: fixture("walking_corpse"),
             controller: PlayerId(1),
             tapped: false,
             entered_turn: 0,
@@ -2016,7 +2025,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: damaged,
             instance: CardInstanceId(0),
-            card: fixture("thornback_boar"),
+            card: fixture("onakke_ogre"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -2050,7 +2059,16 @@ mod tests {
     fn issue_333_aura_attachment_projects_into_the_view() {
         use std::collections::BTreeMap;
 
-        let db = CardDatabase::bundled().unwrap();
+        // P/T Auras have no clean M19 card, so this is exercised inline (ADR 0026).
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_scout","name":"Test Scout",
+             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
+             "power":1,"toughness":1},
+            {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
+             "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{1}{G}","colors":["green"],
+             "aura":{"enchant":"any_creature","power":2,"toughness":2}}
+        ]"#;
+        let db = CardDatabase::from_json(json).unwrap();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
 
@@ -2059,7 +2077,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: host,
             instance: CardInstanceId(0),
-            card: fixture("verdant_scout"),
+            card: id_in(&db, "test_scout"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -2073,7 +2091,7 @@ mod tests {
         // The Aura spell resolves off the stack attached to the host (CR 303.4d),
         // exactly as the engine's aura-resolution path produces it — no shortcut of
         // hand-populating `attached_to`.
-        let aura = state.new_instance(fixture("ironbark_aegis"));
+        let aura = state.new_instance(id_in(&db, "test_aegis"));
         let sid = state.mint_id();
         state.stack.push(StackObject {
             id: StackId(sid),
@@ -2111,7 +2129,7 @@ mod tests {
 
     /// A permanent's printed keywords (issue #153) project onto its card view as
     /// lowercase wire names for the client to render, and a keyword-less card omits
-    /// the field. Skywhisker Drake (id 18) has flying; Thornback Boar (id 1) has none.
+    /// the field. Snapping Drake has flying; Onakke Ogre has none.
     #[test]
     fn issue_153_keywords_project_onto_the_card_view() {
         let db = CardDatabase::bundled().unwrap();
@@ -2121,7 +2139,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: flyer,
             instance: CardInstanceId(0),
-            card: fixture("skywhisker_drake"),
+            card: fixture("snapping_drake"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -2135,7 +2153,7 @@ mod tests {
         state.battlefield.push(rune_engine::Permanent {
             id: vanilla,
             instance: CardInstanceId(1),
-            card: fixture("thornback_boar"),
+            card: fixture("onakke_ogre"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -2350,8 +2368,8 @@ mod tests {
         // Enter the mulligan phase with seat 0 deciding; give both seats hands.
         state.players[0].hand = vec![state.new_instance(fixture("forest"))];
         state.players[1].hand = vec![
-            state.new_instance(fixture("verdant_scout")),
-            state.new_instance(fixture("thornback_boar")),
+            state.new_instance(fixture("walking_corpse")),
+            state.new_instance(fixture("onakke_ogre")),
         ];
         state.mulligan = Some(rune_engine::MulliganState::new(2, 7));
 
@@ -2474,9 +2492,9 @@ mod tests {
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
         let c0 = state.new_instance(fixture("forest"));
-        let c1 = state.new_instance(fixture("verdant_scout"));
+        let c1 = state.new_instance(fixture("walking_corpse"));
         state.players[0].hand = vec![c0, c1];
-        state.players[1].hand = vec![state.new_instance(fixture("thornback_boar"))];
+        state.players[1].hand = vec![state.new_instance(fixture("onakke_ogre"))];
         // Seat 0 has taken one mulligan, so a keep now owes one bottomed card.
         let mut mull = rune_engine::MulliganState::new(2, 7);
         mull.decisions[0].taken = 1;
@@ -2693,14 +2711,14 @@ mod tests {
         // plus a tapped one that is not a candidate.
         let attacker = put_permanent(
             &mut state,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(0),
             false,
             false,
         );
         let _tapped = put_permanent(
             &mut state,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(0),
             true,
             false,
@@ -2768,14 +2786,14 @@ mod tests {
         state.priority = PlayerId(1);
         let attacker = put_permanent(
             &mut state,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(0),
             true,
             true,
         );
         let blocker = put_permanent(
             &mut state,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(1),
             false,
             false,
@@ -2829,8 +2847,8 @@ mod tests {
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
 
-        // Verdant Scout (an ETB-draw creature) in hand, a Forest on the battlefield.
-        let scout = state.new_instance(fixture("verdant_scout"));
+        // Skyscanner (a flying ETB-draw creature) in hand, a Forest on the battlefield.
+        let scout = state.new_instance(fixture("skyscanner"));
         state.players[0].hand = vec![scout];
         let forest = put_permanent(&mut state, fixture("forest"), PlayerId(0), false, false);
 
@@ -2839,13 +2857,13 @@ mod tests {
         let scout_view = view
             .my_hand
             .iter()
-            .find(|c| c.name == "Verdant Scout")
-            .expect("the scout is in hand");
+            .find(|c| c.name == "Skyscanner")
+            .expect("the skyscanner is in hand");
         assert_eq!(
-            scout_view.rules_text, "When Verdant Scout enters the battlefield, draw a card.",
-            "the trigger's words are generated from its IR, not stored"
+            scout_view.rules_text, "Flying\nWhen Skyscanner enters the battlefield, draw a card.",
+            "the keyword and trigger words are generated from its IR, not stored"
         );
-        assert_eq!(scout_view.functional_id, "verdant_scout");
+        assert_eq!(scout_view.functional_id, "skyscanner");
 
         let forest_view = view
             .battlefield
@@ -2858,17 +2876,11 @@ mod tests {
 
         // A vanilla card claims no rules — and the field is omitted from the wire
         // rather than sent as an empty string.
-        let boar = full_card_view(
-            "c9".to_string(),
-            db.card(fixture("thornback_boar")).unwrap(),
-        );
+        let boar = full_card_view("c9".to_string(), db.card(fixture("onakke_ogre")).unwrap());
         assert_eq!(boar.rules_text, "");
         let json = serde_json::to_string(&boar).expect("a card view serializes");
         assert!(!json.contains("rules_text"), "{json}");
-        assert!(
-            json.contains(r#""functional_id":"thornback_boar""#),
-            "{json}"
-        );
+        assert!(json.contains(r#""functional_id":"onakke_ogre""#), "{json}");
     }
 
     #[test]
@@ -3037,7 +3049,7 @@ mod tests {
         use rune_engine::{GameEvent, GameLogEntry, LoggedPermanent};
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        let boar_card = fixture("thornback_boar");
+        let boar_card = fixture("onakke_ogre");
         let attacker = PermanentId(7);
         // The event records the combatant's identity; the permanent itself is *not* on
         // the battlefield (it has already left play).
@@ -3128,23 +3140,17 @@ mod tests {
         state.priority = PlayerId(0);
         state.attackers_declared = true;
         state.blockers_declared = true;
-        let attacker = put_permanent(
-            &mut state,
-            fixture("thornback_boar"),
-            PlayerId(0),
-            true,
-            true,
-        );
+        let attacker = put_permanent(&mut state, fixture("onakke_ogre"), PlayerId(0), true, true);
         let blk_a = put_permanent(
             &mut state,
-            fixture("thornback_boar"),
+            fixture("onakke_ogre"),
             PlayerId(1),
             false,
             false,
         );
         let blk_b = put_permanent(
             &mut state,
-            fixture("thornback_boar"),
+            fixture("onakke_ogre"),
             PlayerId(1),
             false,
             false,
@@ -3204,7 +3210,7 @@ mod tests {
         // Seat 0 attacks seat 2. Seat 1 has been eliminated.
         let attacker = put_permanent(
             &mut state,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(0),
             true,
             false,
@@ -3264,15 +3270,15 @@ mod tests {
         // Distinctive hands per seat, so a leak of any seat's hand would be visible.
         let hand0 = vec![
             state.new_instance(fixture("forest")),
-            state.new_instance(fixture("thornback_boar")),
+            state.new_instance(fixture("onakke_ogre")),
         ];
-        let hand1 = vec![state.new_instance(fixture("riverbank_otter"))];
+        let hand1 = vec![state.new_instance(fixture("snapping_drake"))];
         state.players[0].hand = hand0.clone();
         state.players[1].hand = hand1.clone();
         state.players[2].has_lost = true;
         let perm = put_permanent(
             &mut state,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(0),
             false,
             false,
@@ -3340,7 +3346,7 @@ mod tests {
         state.priority = PlayerId(0);
         let attacker = put_permanent(
             &mut state,
-            fixture("verdant_scout"),
+            fixture("walking_corpse"),
             PlayerId(0),
             false,
             false,

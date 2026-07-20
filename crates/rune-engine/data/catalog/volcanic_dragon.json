@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "functional_id": "volcanic_dragon",
+  "name": "Volcanic Dragon",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dragon"
+  ],
+  "mana_cost": "{4}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "keywords": [
+    "flying",
+    "haste"
+  ]
+}

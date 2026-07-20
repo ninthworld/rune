@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "murder",
+  "name": "Murder",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "destroy",
+      "target": "any_creature"
+    }
+  ]
+}

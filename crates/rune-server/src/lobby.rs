@@ -1554,11 +1554,11 @@ mod tests {
 
     /// The five non-basic cards these deck tests build with.
     const NON_BASICS: [&str; 5] = [
-        "thornback_boar",
-        "riverbank_otter",
-        "emberfang_jackal",
-        "stonehide_basilisk",
-        "verdant_scout",
+        "onakke_ogre",
+        "snapping_drake",
+        "fire_elemental",
+        "giant_spider",
+        "walking_corpse",
     ];
 
     /// A card as `SubmitDeck` carries it: its authored `functional_id` (ADR 0018 §3).
@@ -2665,7 +2665,7 @@ mod tests {
         let lobby = lobby(4);
         let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
 
-        let mut cards = vec![wire_id("thornback_boar"); 5];
+        let mut cards = vec![wire_id("onakke_ogre"); 5];
         for slug in &NON_BASICS[1..] {
             for _ in 0..4 {
                 cards.push(wire_id(slug));
@@ -2683,7 +2683,7 @@ mod tests {
         assert_eq!(
             err,
             LobbyError::IllegalDeck(DeckError::CopyLimit {
-                card: fixture("thornback_boar"),
+                card: fixture("onakke_ogre"),
                 count: 5,
                 limit: 4,
             })
