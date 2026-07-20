@@ -1302,6 +1302,20 @@ pub struct CatalogFormat {
     /// Whether basic lands are exempt from [`max_copies`](CatalogFormat::max_copies) (the
     /// usual Magic rule, CR 100.2a).
     pub basic_land_exempt: bool,
+    /// Whether a legal deck must designate a **commander** (CR 903.3), projected from
+    /// the server's deck rules so a client learns the requirement from advertised
+    /// metadata instead of hardcoding the format name (issue #394). Additive and
+    /// default-elided: omitted (and defaults to `false`) for a non-commander format, so
+    /// the frame stays byte-for-byte the pre-#394 shape.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub requires_commander: bool,
+    /// Whether the format enforces **color-identity containment** — every card's color
+    /// identity must fit within the commander's (CR 903.4). Projected from the server's
+    /// deck rules (issue #394). Meaningful only alongside
+    /// [`requires_commander`](CatalogFormat::requires_commander). Additive and
+    /// default-elided, like [`requires_commander`](CatalogFormat::requires_commander).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub enforce_color_identity: bool,
     /// Fewest seats a room using this format may be created with (inclusive).
     pub min_seats: u8,
     /// Most seats a room using this format may be created with (inclusive).
@@ -2089,6 +2103,40 @@ mod tests {
     }
 
     #[test]
+    fn issue_372_command_zone_pile_round_trips_with_its_commander() {
+        // A populated command zone (CR 903.6) carries a public `ZonePile` per player,
+        // exactly like graveyards/exile: its commander card round-trips verbatim under
+        // the `command` key. (The elide-when-empty case is covered above; this is the
+        // populated round-trip the field previously lacked.)
+        let mut view: GameView =
+            serde_json::from_str(r#"{"you":"p0","phase":"precombat_main"}"#).unwrap();
+        view.command = vec![ZonePile {
+            player_id: "p0".into(),
+            cards: vec![CardView {
+                id: "c9".into(),
+                name: "Jedit Ojanen".into(),
+                type_line: "Legendary Creature — Cat Warrior".into(),
+                mana_cost: Some("{4}{G}{G}".into()),
+                rules_text: String::new(),
+                functional_id: "jedit_ojanen".into(),
+                power: Some("5".into()),
+                toughness: Some("5".into()),
+                keywords: vec![],
+            }],
+        }];
+        let json = serde_json::to_value(&view).unwrap();
+        // The populated zone rides the wire under `command`, one pile per player.
+        assert_eq!(json["command"][0]["player_id"], "p0");
+        assert_eq!(
+            json["command"][0]["cards"][0]["functional_id"],
+            "jedit_ojanen"
+        );
+        let back: GameView = serde_json::from_value(json).unwrap();
+        assert_eq!(back.command, view.command);
+        assert_eq!(back, view);
+    }
+
+    #[test]
     fn issue_371_commander_damage_loss_reason_is_snake_case() {
         // CR 903.10a: the commander-damage loss reason mirrors onto the wire as a
         // snake_case `commander_damage`, distinguishable from the other reasons.
@@ -2662,6 +2710,8 @@ mod tests {
                 max_deck_size: None,
                 max_copies: None,
                 basic_land_exempt: true,
+                requires_commander: false,
+                enforce_color_identity: false,
                 min_seats: 2,
                 max_seats: 8,
             }],
@@ -2677,8 +2727,47 @@ mod tests {
         assert_eq!(json["formats"][0].get("max_copies"), None);
         assert_eq!(json["formats"][0].get("max_deck_size"), None);
         assert_eq!(json["formats"][0]["min_deck_size"], 0);
+        // The additive #394 flags are default-elided: a non-commander format writes
+        // neither, so the frame stays byte-for-byte the pre-#394 shape.
+        assert_eq!(json["formats"][0].get("requires_commander"), None);
+        assert_eq!(json["formats"][0].get("enforce_color_identity"), None);
         let back: CatalogView = serde_json::from_value(json).unwrap();
         assert_eq!(back, view);
+    }
+
+    #[test]
+    fn issue_394_catalog_format_advertises_commander_deck_rules() {
+        // A commander format advertises both deck-rule facts as `true`, and they ride
+        // the wire so a client learns the requirement from metadata, not a format name.
+        let format = CatalogFormat {
+            game_setup: "commander".into(),
+            min_deck_size: 100,
+            max_deck_size: Some(100),
+            max_copies: Some(1),
+            basic_land_exempt: true,
+            requires_commander: true,
+            enforce_color_identity: true,
+            min_seats: 2,
+            max_seats: 4,
+        };
+        let json = serde_json::to_value(&format).unwrap();
+        assert_eq!(json["requires_commander"], true);
+        assert_eq!(json["enforce_color_identity"], true);
+        let back: CatalogFormat = serde_json::from_value(json).unwrap();
+        assert_eq!(back, format);
+
+        // An older frame that omits both flags still deserializes, defaulting each to
+        // `false` (backward compatibility).
+        let legacy = serde_json::json!({
+            "game_setup": "standard_2p",
+            "min_deck_size": 0,
+            "basic_land_exempt": true,
+            "min_seats": 2,
+            "max_seats": 8,
+        });
+        let parsed: CatalogFormat = serde_json::from_value(legacy).unwrap();
+        assert!(!parsed.requires_commander);
+        assert!(!parsed.enforce_color_identity);
     }
 
     #[test]

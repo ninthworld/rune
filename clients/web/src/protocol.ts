@@ -941,6 +941,18 @@ export interface CatalogFormat {
   max_copies?: number;
   /** Whether basic lands are exempt from {@link CatalogFormat.max_copies} (CR 100.2a). */
   basic_land_exempt: boolean;
+  /**
+   * Whether a legal deck must designate a **commander** (CR 903.3), advertised so a
+   * client learns the requirement from format metadata instead of hardcoding the format
+   * name (issue #394). Default-elided on the wire; normalized to `false` when absent.
+   */
+  requires_commander: boolean;
+  /**
+   * Whether the format enforces **color-identity containment** — every card's color
+   * identity must fit within the commander's (CR 903.4, issue #394). Meaningful only
+   * alongside {@link CatalogFormat.requires_commander}. Default-elided; `false` when absent.
+   */
+  enforce_color_identity: boolean;
   /** Fewest seats a room using this format may have (inclusive). */
   min_seats: number;
   /** Most seats a room using this format may have (inclusive). */

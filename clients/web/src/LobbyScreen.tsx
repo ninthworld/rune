@@ -90,11 +90,6 @@ const GAME_SETUPS: readonly GameSetupOption[] = [
   { id: 'commander', label: 'Commander', seats: 4 },
 ];
 
-/** The `game_setup` id that designates the commander format (issue #372). A deck's
- * `commander` is sent only in this format; sending one otherwise would wrongly set a
- * card aside. The id is server-owned — this is the client's single match point. */
-const COMMANDER_FORMAT = 'commander';
-
 /** The display name of a deck's designated commander (issue #372): resolved from the
  * deck's own rows by matching identity, presentation only. `undefined` when the deck
  * designates none, or the identity is somehow not among its rows. */
@@ -650,6 +645,14 @@ function RoomPanel({ view }: { view: LobbyView }) {
     return () => clearTimeout(timer);
   }, [copied]);
 
+  // Ensure the advertised format metadata is available while seated: the room panel
+  // keys the commander affordance off the catalog's `requires_commander` flag (issue
+  // #394), and a deck can be picked and submitted here without ever opening the builder.
+  // Request the catalog once when absent (idempotent; the reply just populates it).
+  useEffect(() => {
+    if (catalog === null) requestCatalog();
+  }, [catalog, requestCatalog]);
+
   if (room === undefined) return null;
   const mySeat = room.seats.find((seat) => seat.occupied_by === view.you);
   const decked = mySeat?.decked === true;
@@ -672,18 +675,29 @@ function RoomPanel({ view }: { view: LobbyView }) {
     }
   };
 
-  // The commander is designated (and sent) only in the commander format — sending one
-  // in another format would wrongly set a card aside (issue #372). The format id is
-  // server-owned; the client just matches it. Legality stays server-side.
-  const isCommanderFormat = room.config.game_setup === COMMANDER_FORMAT;
+  // The room's advertised format rules, matched from the catalog by the room's
+  // `game_setup`. Feeds both the builder's display-only panel and the commander
+  // affordance below. Absent until the catalog arrives or when the catalog does not
+  // carry this setup — the panel then omits the rules.
+  const roomFormat =
+    room !== undefined
+      ? catalog?.formats.find((format) => format.game_setup === room.config.game_setup)
+      : undefined;
+
+  // Whether this room's format requires a designated commander is learned from the
+  // advertised format metadata (issue #394), not a hardcoded format name: the catalog
+  // projects the server's deck rules. A deck's `commander` is sent only when the format
+  // requires one; sending it otherwise would wrongly set a card aside (issue #372).
+  // Legality stays server-side.
+  const requiresCommander = roomFormat?.requires_commander === true;
   const selectedDeck = decklistById(deckId);
   const designatedCommander =
-    isCommanderFormat && selectedDeck ? commanderName(selectedDeck) : undefined;
+    requiresCommander && selectedDeck ? commanderName(selectedDeck) : undefined;
 
   const submitDeck = (): void => {
     const deck = decklistById(deckId);
     if (deck === undefined) return;
-    const commander = room.config.game_setup === COMMANDER_FORMAT ? deck.commander : undefined;
+    const commander = requiresCommander ? deck.commander : undefined;
     sendLobby(submitDeckCommand(decklistCards(deck), commander));
   };
 
@@ -693,14 +707,6 @@ function RoomPanel({ view }: { view: LobbyView }) {
     if (catalog === null) requestCatalog();
     setBuilderOpen(true);
   };
-
-  // The room's advertised format rules for the builder's display-only panel, matched
-  // from the catalog by the room's `game_setup`. Absent until the catalog arrives or
-  // when the catalog does not carry this setup — the panel then omits the rules.
-  const roomFormat =
-    room !== undefined
-      ? catalog?.formats.find((format) => format.game_setup === room.config.game_setup)
-      : undefined;
 
   return (
     <>

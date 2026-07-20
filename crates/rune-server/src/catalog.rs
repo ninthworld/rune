@@ -57,6 +57,8 @@ fn catalog_format(game_setup: &str, format: &Format) -> CatalogFormat {
         max_copies: (rules.max_copies != usize::MAX)
             .then(|| u32::try_from(rules.max_copies).unwrap_or(u32::MAX)),
         basic_land_exempt: rules.basic_land_exempt,
+        requires_commander: rules.require_commander,
+        enforce_color_identity: rules.enforce_color_identity,
         min_seats: *format.seats.start(),
         max_seats: *format.seats.end(),
     }
@@ -170,6 +172,9 @@ mod tests {
         assert_eq!(starter.max_deck_size, None);
         assert_eq!(starter.max_copies, Some(4));
         assert!(starter.basic_land_exempt);
+        // A non-commander format advertises both #394 flags false.
+        assert!(!starter.requires_commander);
+        assert!(!starter.enforce_color_identity);
         assert_eq!((starter.min_seats, starter.max_seats), (2, 2));
 
         // The free-for-all format seats 3–4 (issue #349).
@@ -183,6 +188,10 @@ mod tests {
         assert_eq!(commander.max_deck_size, Some(100));
         assert_eq!(commander.max_copies, Some(1));
         assert!(commander.basic_land_exempt);
+        // The commander format advertises BOTH #394 deck-rule facts as true, projected
+        // from the server's `DeckRules` (the single source of truth).
+        assert!(commander.requires_commander);
+        assert!(commander.enforce_color_identity);
         assert_eq!((commander.min_seats, commander.max_seats), (2, 4));
 
         // Every registered id is advertised, sorted deterministically by id.
@@ -217,6 +226,9 @@ mod tests {
         assert_eq!(open.min_deck_size, 0);
         assert_eq!(open.max_deck_size, None);
         assert_eq!(open.max_copies, None);
+        // A permissive/open format requires no commander and enforces no color identity.
+        assert!(!open.requires_commander);
+        assert!(!open.enforce_color_identity);
     }
 
     #[test]
