@@ -49,6 +49,18 @@ describe('ZonePile (issue #319)', () => {
     expect(container.querySelector('svg[data-glyph="zone-graveyard"]')).not.toBeNull();
   });
 
+  it('renders the command zone as its own labelled pile with the crown glyph (issue #372)', () => {
+    const { container } = render(
+      <ZonePile zone="command" playerLabel="p1 (you)" count={1} testId="cmd" />,
+    );
+    const pile = screen.getByTestId('cmd');
+    // The command zone is a static pile (no browser), named for assistive tech.
+    expect(pile.tagName).not.toBe('BUTTON');
+    expect(pile.getAttribute('aria-label')).toBe('p1 (you) command (1)');
+    expect(pile.textContent).toContain('command');
+    expect(container.querySelector('svg[data-glyph="zone-command"]')).not.toBeNull();
+  });
+
   it('hosts a face-up card in the pile frame without layout change (future reveal)', () => {
     render(
       <ZonePile

@@ -49,6 +49,23 @@
         { "identity": "cancel", "name": "Cancel", "count": 4 },
         { "identity": "island", "name": "Island", "count": 20 }
       ]
+    },
+    {
+      "id": "green-command",
+      "name": "Verdant Sovereign",
+      "summary": "Mono-green commander: Jedit Ojanen leads a singleton stomp of ramp and fatties.",
+      "commander": "jedit_ojanen",
+      "entries": [
+        { "identity": "jedit_ojanen", "name": "Jedit Ojanen", "count": 1 },
+        { "identity": "llanowar_elves", "name": "Llanowar Elves", "count": 1 },
+        { "identity": "druid_of_the_cowl", "name": "Druid of the Cowl", "count": 1 },
+        { "identity": "giant_spider", "name": "Giant Spider", "count": 1 },
+        { "identity": "colossal_dreadmaw", "name": "Colossal Dreadmaw", "count": 1 },
+        { "identity": "gigantosaurus", "name": "Gigantosaurus", "count": 1 },
+        { "identity": "titanic_growth", "name": "Titanic Growth", "count": 1 },
+        { "identity": "skyscanner", "name": "Skyscanner", "count": 1 },
+        { "identity": "forest", "name": "Forest", "count": 92 }
+      ]
     }
   ]
 }

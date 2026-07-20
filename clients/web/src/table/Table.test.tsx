@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import {
   BOTTOM_GAME_VIEW_JSON,
+  COMMANDER_GAME_VIEW_JSON,
   DECLARE_ATTACKERS_GAME_VIEW_JSON,
   DECLARE_ATTACKERS_MULTIPLAYER_GAME_VIEW_JSON,
   DECLARE_BLOCKERS_GAME_VIEW_JSON,
@@ -1496,5 +1497,32 @@ describe('Table game log (issue #260)', () => {
     // A reference still highlights the player's tile in the read-only terminal state.
     fireEvent.click(within(log).getByTestId('log-ref-p2'));
     expect(screen.getByTestId('tile-p2').getAttribute('data-highlighted')).toBe('true');
+  });
+});
+
+describe('Table commander chrome (issue #372)', () => {
+  it('renders the command-zone piles, the recast tax, and the commander-damage tally', () => {
+    seed(COMMANDER_GAME_VIEW_JSON);
+    render(<Table />);
+
+    // The receiver's own command zone rides with their bottom-shell piles.
+    const mePiles = screen.getByTestId('me-piles');
+    expect(within(mePiles).getByTestId('command-pile-p1')).toBeDefined();
+
+    // The opponent's command zone shows on their panel, with the {2} recast tax beside it.
+    expect(screen.getByTestId('command-pile-p2')).toBeDefined();
+    expect(screen.getByTestId('cmd-tax-p2').textContent).toContain('Tax {2}');
+
+    // The commander damage the receiver has taken reads as `amount/21`.
+    expect(screen.getByTestId('cmd-damage-p1').textContent).toContain('7/21');
+  });
+
+  it('shows no commander chrome in a plain (non-commander) frame', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<Table />);
+    expect(screen.queryByTestId('command-pile-p1')).toBeNull();
+    expect(screen.queryByTestId('command-pile-p2')).toBeNull();
+    expect(screen.queryByTestId('cmd-tax-p2')).toBeNull();
+    expect(screen.queryByTestId('cmd-damage-p1')).toBeNull();
   });
 });

@@ -329,6 +329,24 @@ const GLYPH_DEFS = {
       },
     ],
   },
+  // The command zone (issue #372): a crown, for the commander it holds.
+  'zone-command': {
+    title: 'Command',
+    elements: [
+      {
+        kind: 'polygon',
+        points: [
+          [5, 8],
+          [9, 13],
+          [12, 6],
+          [15, 13],
+          [19, 8],
+          [19, 18],
+          [5, 18],
+        ],
+      },
+    ],
+  },
 
   // ── Phase groups (turn indicator) ───────────────────────────────────────────
   'phase-beginning': {

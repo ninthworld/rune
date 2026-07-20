@@ -207,6 +207,12 @@ export interface ZoneCounts {
   /** Exile size — opens the exile browser (issue #262). */
   exile: number;
   /**
+   * Command-zone size (CR 903.6, issue #372) — how many of this player's cards sit
+   * in the command zone (their commander, while it is there). Omitted (treated as
+   * absent) in a non-commander game, so the pile only appears where one exists.
+   */
+  command?: number;
+  /**
    * The graveyard's top card, when the pile is non-empty. Graveyard contents are
    * public in the view (`GameView.graveyards`), so the pile can show what died last
    * in place — filling the `faceUp` slot the pile layout reserved (§Zone piles)
@@ -392,6 +398,9 @@ export function zoneCountsOf(view: GameView, playerId: PlayerId, isLocal: boolea
     : (view.opponents.find((o) => o.player_id === playerId)?.library_size ?? 0);
   const graveyardCards = view.graveyards.find((g) => g.player_id === playerId)?.cards ?? [];
   const exile = view.exile.find((e) => e.player_id === playerId)?.cards.length ?? 0;
+  // The command zone (issue #372) is public, like graveyard/exile; count this
+  // player's entry, defaulting to 0 in a non-commander game (`command` omitted).
+  const command = (view.command ?? []).find((c) => c.player_id === playerId)?.cards.length ?? 0;
   // The graveyard is ordered and public; its last card is the top of the pile, shown
   // face-up in place (§Zone piles — a pile is a place where a card can be shown).
   const topCard = graveyardCards.length > 0 ? graveyardCards[graveyardCards.length - 1] : undefined;
@@ -399,6 +408,7 @@ export function zoneCountsOf(view: GameView, playerId: PlayerId, isLocal: boolea
     library,
     graveyard: graveyardCards.length,
     exile,
+    command,
     graveyardTop: topCard
       ? { name: topCard.name, colorIdentity: deriveColorIdentity(topCard) }
       : undefined,

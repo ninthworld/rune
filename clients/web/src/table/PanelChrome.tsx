@@ -75,9 +75,73 @@ function attackersOn(view: GameView, playerId: PlayerId): number {
   return view.battlefield.filter((perm) => perm.attacking_player === playerId).length;
 }
 
+/** 21 combat damage from one commander is lethal (CR 903.10a) — the tally's denominator. */
+export const COMMANDER_DAMAGE_LETHAL = 21;
+
+/**
+ * A compact `amount/21` tally of the commander damage `playerId` has taken this game
+ * (issue #372), one entry per attacking commander, straight from the public
+ * `commander_damage` list. Renders nothing when the player has taken none, so a
+ * non-commander game (or an untouched player) shows no chrome.
+ */
+export function CommanderDamageTally({ view, playerId }: { view: GameView; playerId: PlayerId }) {
+  const taken = (view.commander_damage ?? []).filter((d) => d.damaged === playerId);
+  if (taken.length === 0) return null;
+  return (
+    <span className={s.cmdDamage} data-testid={`cmd-damage-${playerId}`} title="Commander damage">
+      {taken.map((d) => (
+        <span key={d.commander}>
+          {d.amount}/{COMMANDER_DAMAGE_LETHAL}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** The identity-accent custom property the panel chrome classes read. */
 function accentStyle(accent: string): CSSProperties {
   return { '--identity-accent': accent } as CSSProperties;
+}
+
+/**
+ * A player's command-zone pile plus its recast tax (issue #372), rendered only when
+ * the player has a command-zone entry OR a tracked commander tax — so the pile shows
+ * even with the commander currently out of the zone (count 0, tax still owed), and
+ * never appears in a non-commander game. The pile reuses the shared static treatment;
+ * the tax (`{N}`) rides beside it when > 0. All public, straight from the view.
+ */
+export function CommandPile({
+  view,
+  playerId,
+  playerLabel,
+  count,
+}: {
+  view: GameView;
+  playerId: PlayerId;
+  playerLabel: string;
+  count: number;
+}) {
+  const hasEntry = (view.command ?? []).some((pile) => pile.player_id === playerId);
+  const taxEntry = (view.commander_tax ?? []).find((t) => t.commander === playerId);
+  if (!hasEntry && taxEntry === undefined) return null;
+  const tax = taxEntry?.tax ?? 0;
+  return (
+    <>
+      <ZonePile
+        zone="command"
+        playerLabel={playerLabel}
+        count={count}
+        testId={`command-pile-${playerId}`}
+      />
+      {tax > 0 && (
+        <span className={s.cmdTax} data-testid={`cmd-tax-${playerId}`}>
+          Tax {'{'}
+          {tax}
+          {'}'}
+        </span>
+      )}
+    </>
+  );
 }
 
 /** A panel header's content: crest (opponents), nameplate, and secondary meta. */
@@ -95,6 +159,10 @@ function headerContent(view: GameView, band: Band): ReactNode {
           </span>
         </span>
       )}
+      {/* Commander damage taken (issue #372), near the life crest — a second lethal
+          clock alongside life. The receiver's own tally lives in the bottom shell's
+          MePanel, so the local band skips it here (as with the life crest). */}
+      {!band.isLocal && <CommanderDamageTally view={view} playerId={band.playerId} />}
       <span className={s.panelName} data-testid={`hud-name-${band.playerId}`}>
         {band.label}
       </span>
@@ -254,6 +322,12 @@ export function PanelChrome({ view, scene, onOpenZone, targeting, highlightedId 
                 count={band.zones.exile}
                 onOpen={onOpenZone ? () => onOpenZone(band.playerId, 'exile') : undefined}
                 testId={onOpenZone ? `table-exile-${band.playerId}` : `exile-pile-${band.playerId}`}
+              />
+              <CommandPile
+                view={view}
+                playerId={band.playerId}
+                playerLabel={band.label}
+                count={band.zones.command ?? 0}
               />
             </div>
           )}

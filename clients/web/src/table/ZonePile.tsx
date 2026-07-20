@@ -21,14 +21,16 @@ import { Glyph, type GlyphName } from '../chrome/glyphs';
 import { PALETTE, type ColorIdentity } from '../tokens';
 import s from './chrome.module.css';
 
-/** The three board-region zones, each with a glyph and a count home. */
-export type PileZone = 'library' | 'graveyard' | 'exile';
+/** The board-region zones, each with a glyph and a count home. The command zone
+ * (issue #372) joins the library/graveyard/exile piles wherever a player has one. */
+export type PileZone = 'library' | 'graveyard' | 'exile' | 'command';
 
 /** The glyph that identifies each pile. */
 const ZONE_GLYPH: Record<PileZone, GlyphName> = {
   library: 'zone-library',
   graveyard: 'zone-graveyard',
   exile: 'zone-exile',
+  command: 'zone-command',
 };
 
 /** Human labels for the accessible name. */
@@ -36,6 +38,7 @@ const ZONE_NAME: Record<PileZone, string> = {
   library: 'library',
   graveyard: 'graveyard',
   exile: 'exile',
+  command: 'command',
 };
 
 interface ZonePileProps {

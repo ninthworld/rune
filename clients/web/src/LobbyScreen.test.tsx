@@ -7,6 +7,7 @@ import {
   LOBBY_DIRECTORY_JSON,
   LOBBY_ROOMLESS_JSON,
   LOBBY_ROOM_ALL_READY_JSON,
+  LOBBY_ROOM_COMMANDER_JSON,
   LOBBY_ROOM_DECKED_JSON,
 } from './lobby-view.fixture';
 
@@ -279,6 +280,35 @@ describe('LobbyScreen (issue #114)', () => {
     expect(sent.cards).toHaveLength(decklistSize(picked));
   });
 
+  it('designates and submits a commander in the commander format (issue #372)', () => {
+    const socket = mountLobby(LOBBY_ROOM_COMMANDER_JSON);
+    // Pick the bundled commander deck; its designated commander is surfaced.
+    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    expect(screen.getByTestId('designated-commander').textContent).toContain('Jedit Ojanen');
+
+    // Submitting carries the commander identity alongside the 100-card list.
+    fireEvent.click(screen.getByTestId('submit-deck-button'));
+    const sent = lastSent(socket) as { type: string; cards: string[]; commander?: string };
+    expect(sent.type).toBe('submit_deck');
+    expect(sent.commander).toBe('jedit_ojanen');
+    expect(sent.cards).toHaveLength(100);
+    // The commander stays one of the deck's cards (CR 903.3), not removed from the list.
+    expect(sent.cards).toContain('jedit_ojanen');
+  });
+
+  it('does not designate or send a commander outside the commander format (issue #372)', () => {
+    // The same commander deck picked in a 1v1 room sends no commander, and no
+    // designation chrome appears — the gate is the room's format, not the deck.
+    const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    expect(screen.queryByTestId('designated-commander')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('submit-deck-button'));
+    const sent = lastSent(socket) as { type: string; commander?: string };
+    expect(sent.type).toBe('submit_deck');
+    expect(sent.commander).toBeUndefined();
+  });
+
   it('summarizes the room state in one line (seats filled and ready counts)', () => {
     mountLobby(LOBBY_ROOM_ALL_READY_JSON);
     expect(screen.getByTestId('room-status').textContent).toBe('2/2 seats filled · 2 ready');
@@ -322,6 +352,45 @@ describe('LobbyScreen (issue #114)', () => {
     fireEvent.change(input, { target: { value: 'Alia' } });
     fireEvent.click(screen.getByTestId('set-name-button'));
     expect(lastSent(socket)).toEqual({ type: 'set_name', name: 'Alia' });
+  });
+
+  it('designates and sends the deck commander in a commander-format room (issue #372)', () => {
+    const socket = mountLobby(LOBBY_ROOM_COMMANDER_JSON);
+
+    // Pick the bundled commander deck; its designated commander surfaces near submit.
+    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    expect(screen.getByTestId('designated-commander').textContent).toContain('Jedit Ojanen');
+
+    // Submitting carries the commander identity alongside the 100-card list.
+    fireEvent.click(screen.getByTestId('submit-deck-button'));
+    const sent = lastSent(socket) as { type: string; cards: string[]; commander?: string };
+    expect(sent.type).toBe('submit_deck');
+    expect(sent.commander).toBe('jedit_ojanen');
+    // The commander stays one of the deck's cards (CR 903.3), not removed from the list.
+    expect(sent.cards).toContain('jedit_ojanen');
+  });
+
+  it('does not send a commander in a non-commander room, and shows no designation (#372)', () => {
+    const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
+
+    // Even picking the commander-capable deck: the 1v1 room never designates a commander.
+    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    expect(screen.queryByTestId('designated-commander')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('submit-deck-button'));
+    const sent = lastSent(socket) as { type: string; commander?: string };
+    expect(sent.type).toBe('submit_deck');
+    expect(sent.commander).toBeUndefined();
+  });
+
+  it('offers the commander game-setup when creating a room (issue #372)', () => {
+    const socket = mountLobby(LOBBY_ROOMLESS_JSON);
+    fireEvent.click(screen.getByTestId('game-setup-commander'));
+    fireEvent.click(screen.getByTestId('create-room-button'));
+    expect(lastSent(socket)).toEqual({
+      type: 'create_room',
+      config: { seats: 4, game_setup: 'commander' },
+    });
   });
 
   it('labels seats by display name, falling back to "Player N" (issue #294)', () => {

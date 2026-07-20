@@ -12,7 +12,12 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 import type { GameView, PlayerId } from '../protocol';
-import type { BrowsableZone, PlayerTargeting } from './PanelChrome';
+import {
+  CommanderDamageTally,
+  CommandPile,
+  type BrowsableZone,
+  type PlayerTargeting,
+} from './PanelChrome';
 import { cx } from '../chrome/cx';
 import { identityAccent } from './identityAccents';
 import { playerName } from '../playerNames';
@@ -76,6 +81,8 @@ export function MePanel({ view, localId, condensed, onOpenZone, targeting, highl
               Attacked ×{attacked}
             </div>
           )}
+          {/* Commander damage the receiver has taken (issue #372), near their crest. */}
+          {localId !== undefined && <CommanderDamageTally view={view} playerId={localId} />}
         </div>
       </div>
       {view.mana_pool.length > 0 && (
@@ -114,6 +121,12 @@ export function MePanel({ view, localId, condensed, onOpenZone, targeting, highl
             count={zones.exile}
             onOpen={onOpenZone ? () => onOpenZone(localId, 'exile') : undefined}
             testId={onOpenZone ? `table-exile-${localId}` : `exile-pile-${localId}`}
+          />
+          <CommandPile
+            view={view}
+            playerId={localId}
+            playerLabel={name}
+            count={zones.command ?? 0}
           />
         </div>
       )}

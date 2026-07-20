@@ -85,7 +85,21 @@ interface GameSetupOption {
 const GAME_SETUPS: readonly GameSetupOption[] = [
   { id: '1v1', label: '1v1 Duel', seats: 2 },
   { id: 'ffa-4', label: 'Free-for-all (4)', seats: 4 },
+  { id: 'commander', label: 'Commander', seats: 4 },
 ];
+
+/** The `game_setup` id that designates the commander format (issue #372). A deck's
+ * `commander` is sent only in this format; sending one otherwise would wrongly set a
+ * card aside. The id is server-owned — this is the client's single match point. */
+const COMMANDER_FORMAT = 'commander';
+
+/** The display name of a deck's designated commander (issue #372): resolved from the
+ * deck's own rows by matching identity, presentation only. `undefined` when the deck
+ * designates none, or the identity is somehow not among its rows. */
+function commanderName(deck: Decklist): string | undefined {
+  if (deck.commander === undefined) return undefined;
+  return deck.entries.find((entry) => entry.identity === deck.commander)?.name;
+}
 
 /** The seat counts the lobby offers, matching the protocol's `2..=8` range. */
 const SEAT_COUNTS = [2, 3, 4, 5, 6, 7, 8] as const;
@@ -650,10 +664,19 @@ function RoomPanel({ view }: { view: LobbyView }) {
     }
   };
 
+  // The commander is designated (and sent) only in the commander format — sending one
+  // in another format would wrongly set a card aside (issue #372). The format id is
+  // server-owned; the client just matches it. Legality stays server-side.
+  const isCommanderFormat = room.config.game_setup === COMMANDER_FORMAT;
+  const selectedDeck = decklistById(deckId);
+  const designatedCommander =
+    isCommanderFormat && selectedDeck ? commanderName(selectedDeck) : undefined;
+
   const submitDeck = (): void => {
     const deck = decklistById(deckId);
     if (deck === undefined) return;
-    sendLobby(submitDeckCommand(decklistCards(deck)));
+    const commander = room.config.game_setup === COMMANDER_FORMAT ? deck.commander : undefined;
+    sendLobby(submitDeckCommand(decklistCards(deck), commander));
   };
 
   return (
@@ -729,6 +752,14 @@ function RoomPanel({ view }: { view: LobbyView }) {
           Ready) so there is never more than one gold at a time. Once ready, a
           quiet waiting line and the Not ready fallback. */}
       <div className={l.ctaArea}>
+        {/* The designated commander (issue #372): shown only in the commander format,
+            resolved from the picked deck's own rows — informational, the identity is
+            still what `submit_deck` carries. */}
+        {designatedCommander !== undefined && (
+          <span className={s.muted} data-testid="designated-commander">
+            Commander: {designatedCommander}
+          </span>
+        )}
         {(() => {
           const submitOffered = can(view, 'submit_deck');
           const readyOffered = can(view, 'ready');

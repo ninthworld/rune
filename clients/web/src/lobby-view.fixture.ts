@@ -88,6 +88,22 @@ export const LOBBY_ROOM_READY_JSON = JSON.stringify({
   valid_commands: ['submit_deck', 'unready', 'leave'],
 });
 
+/**
+ * A commander-format room (issue #372): you (p1) hold seat 0, undecked; you may
+ * submit a deck or leave. The `game_setup` is `commander`, which is what gates the
+ * client into designating and sending a deck's commander.
+ */
+export const LOBBY_ROOM_COMMANDER_JSON = JSON.stringify({
+  session: 's:ab12',
+  you: 'p1',
+  room: {
+    room_id: 'r:cmd',
+    config: { seats: 4, game_setup: 'commander' },
+    seats: [{ seat: 0, occupied_by: 'p1' }, { seat: 1 }, { seat: 2 }, { seat: 3 }],
+  },
+  valid_commands: ['submit_deck', 'leave'],
+});
+
 /** A full room where both seats are filled, decked, and ready. */
 export const LOBBY_ROOM_ALL_READY_JSON = JSON.stringify({
   session: 's:ab12',

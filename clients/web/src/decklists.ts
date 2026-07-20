@@ -41,6 +41,14 @@ export interface Decklist {
   readonly name: string;
   /** One-line flavor/summary shown under the name; presentation only. */
   readonly summary: string;
+  /**
+   * The card this deck designates as its commander (CR 903.3, issue #372), by the
+   * same opaque `CardIdentity` its `entries` use — the commander stays one of the
+   * deck's 100 cards, it is not removed from the list. Present only on a
+   * commander-format deck and omitted otherwise. JSON-provided and never parsed
+   * here: the client echoes it to the server, which owns commander legality.
+   */
+  readonly commander?: CardIdentity;
   /** The deck's `(identity, name, count)` rows. */
   readonly entries: readonly DeckEntry[];
 }
