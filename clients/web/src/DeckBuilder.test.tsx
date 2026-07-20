@@ -1,10 +1,33 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { DeckBuilder } from './DeckBuilder';
 import { STARTER_DECKLISTS, decklistCounts, decklistSize } from './decklists';
 import { CATALOG_VIEW } from './catalog-view.fixture';
+import {
+  MemorySavedDeckDb,
+  configureSavedDeckStore,
+  loadSavedDeck,
+  resetSavedDeckStore,
+  saveDeck,
+  type SavedDeckDb,
+} from './deck/savedDeckStore';
 
-afterEach(cleanup);
+// A default in-memory saved-deck store for every test so the builder's panel never
+// touches real IndexedDB; individual saved-deck tests reconfigure with their own db.
+beforeEach(() => {
+  configureSavedDeckStore({ db: new MemorySavedDeckDb(), now: () => 1 });
+});
+
+afterEach(() => {
+  cleanup();
+  resetSavedDeckStore();
+});
+
+/** A backing store whose operations reject — the "storage unavailable" case. */
+function failingDb(): SavedDeckDb {
+  const fail = (): Promise<never> => Promise.reject(new Error('storage unavailable'));
+  return { getAll: fail, get: fail, put: fail, delete: fail };
+}
 
 /** Render the builder over the fixture catalog with sensible defaults. */
 function renderBuilder(overrides: Partial<Parameters<typeof DeckBuilder>[0]> = {}): {
@@ -168,5 +191,120 @@ describe('DeckBuilder (issue #368)', () => {
     fireEvent.click(screen.getByTestId('deck-builder-cancel'));
     fireEvent.click(screen.getByTestId('deck-builder-backdrop'));
     expect(onClose).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('DeckBuilder saved decks (issue #369, ADR 0027)', () => {
+  it('saves a built deck under a name and lists it on return in a new session', async () => {
+    // The device's storage (one MemorySavedDeckDb instance) outlives the singleton.
+    const db = new MemorySavedDeckDb();
+    configureSavedDeckStore({ db, now: () => 1 });
+    renderBuilder();
+    await screen.findByTestId('deck-builder-saved');
+
+    fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+    fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+    fireEvent.change(screen.getByTestId('deck-builder-deck-name'), {
+      target: { value: 'My Burn' },
+    });
+    fireEvent.click(screen.getByTestId('deck-builder-save'));
+    await screen.findByTestId('deck-builder-saved-row-My Burn');
+
+    // New session: drop the singleton and re-open a fresh builder against the same
+    // device storage — the saved deck is still there.
+    cleanup();
+    resetSavedDeckStore();
+    configureSavedDeckStore({ db, now: () => 2 });
+    renderBuilder();
+    expect(await screen.findByTestId('deck-builder-saved-row-My Burn')).toBeDefined();
+  });
+
+  it('loads a saved deck, edits it, re-saves with an overwrite confirm, then deletes it', async () => {
+    const db = new MemorySavedDeckDb();
+    configureSavedDeckStore({ db, now: () => 1 });
+    await saveDeck({ name: 'Angels', cards: [{ functional_id: 'serra_angel', count: 2 }] });
+    renderBuilder();
+    await screen.findByTestId('deck-builder-saved-row-Angels');
+
+    // Load it into the builder.
+    fireEvent.click(screen.getByTestId('deck-builder-load-Angels'));
+    expect(screen.getByTestId('deck-builder-total').textContent).toBe('2 cards');
+
+    // Edit: add a Shock, then re-save under the same name — overwrite needs intent.
+    fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+    expect(screen.getByTestId('deck-builder-total').textContent).toBe('3 cards');
+    fireEvent.click(screen.getByTestId('deck-builder-save'));
+    // No silent data loss: an explicit overwrite confirmation is required.
+    fireEvent.click(await screen.findByTestId('deck-builder-overwrite-confirm'));
+    await waitFor(async () => {
+      const reloaded = await loadSavedDeck('Angels');
+      expect(reloaded?.cards.reduce((n, c) => n + c.count, 0)).toBe(3);
+    });
+
+    // Delete, also behind an explicit confirm.
+    fireEvent.click(screen.getByTestId('deck-builder-delete-Angels'));
+    fireEvent.click(screen.getByTestId('deck-builder-delete-confirm-Angels'));
+    await waitFor(() => expect(screen.queryByTestId('deck-builder-saved-row-Angels')).toBeNull());
+    expect(await loadSavedDeck('Angels')).toBeUndefined();
+  });
+
+  it('submits a saved deck through the unchanged submit_deck gate without corrupting the saved copy', async () => {
+    const db = new MemorySavedDeckDb();
+    configureSavedDeckStore({ db, now: () => 1 });
+    await saveDeck({ name: 'Test', cards: [{ functional_id: 'shock', count: 4 }] });
+    const { onSubmit } = renderBuilder();
+    await screen.findByTestId('deck-builder-saved-row-Test');
+
+    fireEvent.click(screen.getByTestId('deck-builder-load-Test'));
+    fireEvent.click(screen.getByTestId('deck-builder-submit'));
+    // Submission is the same flat identity list the existing gate carries.
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const cards = onSubmit.mock.calls[0][0] as string[];
+    expect(cards.filter((c) => c === 'shock')).toHaveLength(4);
+
+    // A format rejection (a server-side submit_deck outcome) never touches the saved
+    // copy — it remains intact for re-submission to a different format.
+    expect((await loadSavedDeck('Test'))?.cards).toEqual([{ functional_id: 'shock', count: 4 }]);
+  });
+
+  it('degrades to the bundled-starters experience when device storage is unavailable', async () => {
+    configureSavedDeckStore({ db: failingDb() });
+    const { onSubmit } = renderBuilder();
+    // The storage probe rejects: the panel hides rather than breaking the screen.
+    await waitFor(() => expect(screen.queryByTestId('deck-builder-saved')).toBeNull());
+    // The bundled-starters flow still works end to end.
+    fireEvent.click(screen.getByTestId(`deck-builder-starter-${STARTER_DECKLISTS[0].id}`));
+    fireEvent.click(screen.getByTestId('deck-builder-submit'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('exports the versioned JSON and imports it back into an equivalent deck', async () => {
+    const db = new MemorySavedDeckDb();
+    configureSavedDeckStore({ db, now: () => 1 });
+    await saveDeck({
+      name: 'Export Me',
+      cards: [
+        { functional_id: 'shock', count: 2 },
+        { functional_id: 'serra_angel', count: 1 },
+      ],
+    });
+    renderBuilder();
+    await screen.findByTestId('deck-builder-saved-row-Export Me');
+
+    // Export produces the schema-versioned document.
+    fireEvent.click(screen.getByTestId('deck-builder-export-Export Me'));
+    const output = (await screen.findByTestId('deck-builder-export-output')) as HTMLTextAreaElement;
+    const doc = JSON.parse(output.value);
+    expect(doc.schema).toBe('rune.deck');
+    expect(doc.version).toBe(1);
+
+    // Import round-trips it back into the builder as an equivalent working deck.
+    fireEvent.change(screen.getByTestId('deck-builder-import-text'), {
+      target: { value: output.value },
+    });
+    fireEvent.click(screen.getByTestId('deck-builder-import'));
+    await waitFor(() =>
+      expect(screen.getByTestId('deck-builder-total').textContent).toBe('3 cards'),
+    );
   });
 });

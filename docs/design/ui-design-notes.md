@@ -253,6 +253,22 @@ connection screen:
   chips are informational; the client never computes legality — Submit is always
   offered and the server is the sole authority.
 
+- **Saved decks live on the device** (#369, ADR 0027). Under the starter seeds the
+  builder carries a saved-decks panel: name the working deck and Save it, then Load,
+  Export, or Delete any previously saved deck from a list, and Import a deck file.
+  Storage is device-local (IndexedDB, beside the ADR 0024 art cache) keyed by a
+  player-chosen name — no server storage, no protocol change, and a saved deck never
+  leaves the device until it is submitted. Portability is one small schema-versioned
+  JSON document (`{ schema, version, name, cards: [{ functional_id, count }] }`);
+  Export downloads it (and shows the text to copy), Import parses it back into the
+  builder as the working deck for review before saving. Saving never implies
+  legality — a saved deck is validated only at submission time by the room format
+  through the same `submit_deck` gate, so a deck saved under one format may be
+  rejected by another without corrupting the saved copy. No silent data loss:
+  overwriting a name and deleting a deck each require an explicit confirm. When
+  device storage is unavailable (private mode, disabled storage) the panel simply
+  hides and the bundled-starters flow still works — never a broken screen.
+
 The lobby composition was refined against a pre-game concept board (players
 table, segmented pickers, centered CTA, room meta header — adopted as
 composition only). Rejected from that board, so the reasoning isn't
