@@ -433,6 +433,8 @@ function normalizeCatalogFormat(payload: unknown): CatalogFormat {
     game_setup: asString(record.game_setup),
     min_deck_size: typeof record.min_deck_size === 'number' ? record.min_deck_size : 0,
     basic_land_exempt: record.basic_land_exempt === true,
+    requires_commander: record.requires_commander === true,
+    enforce_color_identity: record.enforce_color_identity === true,
     min_seats: typeof record.min_seats === 'number' ? record.min_seats : 0,
     max_seats: typeof record.max_seats === 'number' ? record.max_seats : 0,
   };
