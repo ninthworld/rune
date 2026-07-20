@@ -995,7 +995,16 @@ mod tests {
             {"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
              "types":["creature"],"subtypes":["Horror"],"mana_cost":"{1}{B}","colors":["black"],
              "power":2,"toughness":2,
-             "abilities":[{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}]}
+             "abilities":[{"type":"triggered","event":"self_dies","effects":[{"kind":"draw_card","count":1}]}]},
+            {"schema_version":1,"functional_id":"test_twinstrike","name":"Test Twinstrike",
+             "types":["creature"],"subtypes":["Cat"],"mana_cost":"{2}{W}","colors":["white"],
+             "power":2,"toughness":2,"keywords":["double_strike"]},
+            {"schema_version":1,"functional_id":"test_twintrample","name":"Test Twintrample",
+             "types":["creature"],"subtypes":["Beast"],"mana_cost":"{3}{G}","colors":["green"],
+             "power":3,"toughness":3,"keywords":["double_strike","trample"]},
+            {"schema_version":1,"functional_id":"test_ward","name":"Test Ward",
+             "types":["creature"],"subtypes":["Soldier"],"mana_cost":"{2}{W}","colors":["white"],
+             "power":3,"toughness":3,"keywords":["first_strike"]}
         ]"#;
         CardDatabase::from_json(json).unwrap()
     }
@@ -3545,6 +3554,164 @@ mod tests {
             after.players[1].life,
             def_life + 2,
             "the lifelink blocker's controller gains 2 from its combat damage"
+        );
+    }
+
+    // ----- Double strike (issue #373, CR 702.4) -----
+    // Double strike has no clean M19 representative, so its bodies come from the
+    // inline `combat_db()`: test_twinstrike (2/2 double strike), test_twintrample
+    // (3/3 double strike + trample), test_ward (3/3 first strike, survives a 2/2's
+    // first hit and kills it back).
+
+    #[test]
+    fn issue_373_unblocked_double_striker_deals_its_power_twice_cr_702_4b() {
+        // CR 702.4b: an unblocked double striker deals combat damage in both the
+        // first-strike and the regular step — a 2/2 double striker hits the defending
+        // player for 2 twice, so it loses 4.
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let striker = place_permanent(
+            &mut state,
+            id_in(&db, "test_twinstrike"),
+            PlayerId(0),
+            false,
+            0,
+        );
+
+        let after = run_combat(&state, vec![striker], Vec::new(), &db);
+
+        assert_eq!(
+            after.players[1].life,
+            start_life - 4,
+            "a 2/2 double striker deals its power twice (CR 702.4b)"
+        );
+        assert!(alive(&after, striker), "the unblocked striker is untouched");
+    }
+
+    #[test]
+    fn issue_373_blocked_double_striker_deals_no_regular_damage_without_trample_cr_702_4b() {
+        // CR 702.4b: a 2/2 double striker kills its 3/2 blocker in the first-strike
+        // step (2 ≥ 2). With its blocker dead and no trample, its regular-step strike
+        // has nowhere to go — it deals no damage to anything, and takes none back (the
+        // blocker died before it could strike).
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let striker = place_permanent(
+            &mut state,
+            id_in(&db, "test_twinstrike"),
+            PlayerId(0),
+            false,
+            0,
+        );
+        let boar = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![striker],
+            vec![Block {
+                blocker: boar,
+                attacker: striker,
+            }],
+            &db,
+        );
+
+        assert!(!alive(&after, boar), "the blocker died to first strike");
+        assert!(
+            alive(&after, striker),
+            "the striker survives its dead blocker"
+        );
+        assert_eq!(
+            find_perm(&after, striker).damage,
+            0,
+            "the blocker never struck back (CR 510.5)"
+        );
+        assert_eq!(
+            after.players[1].life, start_life,
+            "a blocked non-trampler's regular strike hits nothing (CR 509.1h)"
+        );
+    }
+
+    #[test]
+    fn issue_373_double_strike_trample_carries_the_regular_strike_over_a_dead_blocker_cr_702_4b() {
+        // CR 702.4b + 702.19e: a 3/3 double-strike trampler blocked by a 3/2 Boar
+        // assigns 2 (lethal) to the Boar and tramples 1 in the first-strike step; the
+        // Boar dies before the regular step, so the whole 3 of the regular strike
+        // tramples to the player. The defender loses 1 + 3 = 4.
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let start_life = state.players[1].life;
+        let trampler = place_permanent(
+            &mut state,
+            id_in(&db, "test_twintrample"),
+            PlayerId(0),
+            false,
+            0,
+        );
+        let boar = place_permanent(&mut state, id_in(&db, "test_boar"), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![trampler],
+            vec![Block {
+                blocker: boar,
+                attacker: trampler,
+            }],
+            &db,
+        );
+
+        assert!(!alive(&after, boar), "the blocker died to first strike");
+        assert!(alive(&after, trampler), "the trampler survives");
+        assert_eq!(
+            after.players[1].life,
+            start_life - 4,
+            "1 trample excess in the first step, the full 3 over the dead blocker in \
+             the regular step (CR 702.4b/702.19e)"
+        );
+    }
+
+    #[test]
+    fn issue_373_double_striker_slain_in_the_first_step_deals_no_regular_damage_cr_702_4b() {
+        // CR 702.4b: a double striker that dies during/after the first-strike step
+        // deals no regular-step damage. A 2/2 double striker attacks a 3/3 first-strike
+        // blocker: in the first-strike step both deal — the striker marks 2 on the ward
+        // (which survives), the ward's 3 kills the striker. The dead striker never
+        // deals its second hit, so the ward keeps exactly 2 marked (a second hit would
+        // make it 4 and destroy it).
+        let db = combat_db();
+        let mut state = at_declare_attackers();
+        let striker = place_permanent(
+            &mut state,
+            id_in(&db, "test_twinstrike"),
+            PlayerId(0),
+            false,
+            0,
+        );
+        let ward = place_permanent(&mut state, id_in(&db, "test_ward"), PlayerId(1), false, 0);
+
+        let after = run_combat(
+            &state,
+            vec![striker],
+            vec![Block {
+                blocker: ward,
+                attacker: striker,
+            }],
+            &db,
+        );
+
+        assert!(
+            !alive(&after, striker),
+            "the double striker took lethal first strike"
+        );
+        assert!(
+            alive(&after, ward),
+            "the 3/3 ward survived the one 2-damage hit"
+        );
+        assert_eq!(
+            find_perm(&after, ward).damage,
+            2,
+            "the slain double striker dealt no regular-step damage (CR 702.4b)"
         );
     }
 

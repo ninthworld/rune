@@ -71,13 +71,14 @@ include!(concat!(env!("OUT_DIR"), "/catalog_manifest.rs"));
 ///
 /// This is the printed keyword representation the combat and layer systems read;
 /// keyword-granting continuous effects are future work, so a permanent's keywords
-/// are its card's printed [`CardData::keywords`] today. All eight variants are
+/// are its card's printed [`CardData::keywords`] today. All nine variants are
 /// enforced: [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
 /// [`Vigilance`](Keyword::Vigilance), and [`Haste`](Keyword::Haste) at
 /// combat-declaration time (keywords I), and
 /// [`FirstStrike`](Keyword::FirstStrike), [`Trample`](Keyword::Trample),
-/// [`Deathtouch`](Keyword::Deathtouch), and [`Lifelink`](Keyword::Lifelink) at
-/// combat-damage time (keywords II — see [`crate::combat::combat_damage`]).
+/// [`Deathtouch`](Keyword::Deathtouch), [`Lifelink`](Keyword::Lifelink), and
+/// [`DoubleStrike`](Keyword::DoubleStrike) at combat-damage time (keywords II — see
+/// [`crate::combat::combat_damage`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Keyword {
@@ -99,6 +100,9 @@ pub enum Keyword {
     /// Lifelink (CR 702.15): damage it deals also gains its controller that much
     /// life.
     Lifelink,
+    /// Double strike (CR 702.4): deals combat damage in *both* the first-strike and
+    /// the regular combat-damage step.
+    DoubleStrike,
 }
 
 /// The enchant ability and static power/toughness grant of an Aura (CR 303.4).
@@ -819,7 +823,7 @@ mod tests {
     use crate::card_type::{CardType, Supertype};
 
     /// The number of functional definitions in `data/catalog/`.
-    const CATALOG_SIZE: usize = 33;
+    const CATALOG_SIZE: usize = 34;
 
     /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0018 §3).
     fn every_id() -> impl Iterator<Item = CardId> {
@@ -1309,13 +1313,13 @@ mod tests {
     }
 
     #[test]
-    fn all_eight_keyword_variants_deserialize_from_snake_case() {
+    fn all_nine_keyword_variants_deserialize_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
-        // four data-only variants keywords II will enforce (CR 702).
+        // five combat-damage variants keywords II enforces (CR 702).
         let json = r#"[{"schema_version":1,"functional_id":"every_keyword","name":"Every Keyword","types":["creature"],
             "mana_cost":"","power":1,"toughness":1,
             "keywords":["flying","reach","vigilance","haste","first_strike",
-                        "trample","deathtouch","lifelink"]}]"#;
+                        "trample","deathtouch","lifelink","double_strike"]}]"#;
         let db = CardDatabase::from_json(json).unwrap();
         let card = card_named(&db, "every_keyword");
         for kw in [
@@ -1327,6 +1331,7 @@ mod tests {
             Keyword::Trample,
             Keyword::Deathtouch,
             Keyword::Lifelink,
+            Keyword::DoubleStrike,
         ] {
             assert!(card.has_keyword(kw), "expected keyword {kw:?}");
         }
