@@ -14,6 +14,7 @@ use crate::combat::{
     blocker_can_block_attacker, blocker_candidates_for, declared_attackers, defender_candidates,
     pending_blocker_declarer, pending_damage_order,
 };
+use crate::commander::commander_tax_cost;
 use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
 use crate::phase::Step;
@@ -139,6 +140,27 @@ pub enum Action {
         /// One blocker ordering per multi-blocked attacker.
         orders: Vec<DamageOrder>,
     },
+    /// Accept the CR 903.9a choice: move the commander from the graveyard or exile
+    /// it went to into its owner's command zone instead. Offered only to the
+    /// commander's owner while a return decision is pending (the commander sits in
+    /// a graveyard or exile awaiting the choice — see [`valid_actions`]). Applying
+    /// it removes the card from wherever it is and puts it in the command zone as a
+    /// fresh object (it will mint a fresh [`PermanentId`] if recast), and logs the
+    /// movement.
+    ReturnCommanderToCommandZone {
+        /// The commander card to move to the command zone. Names the physical copy
+        /// so the owner's commander is unambiguous.
+        card: CardInstance,
+    },
+    /// Decline the CR 903.9a choice: leave the commander where it went (the
+    /// graveyard or exile). Offered alongside [`Action::ReturnCommanderToCommandZone`]
+    /// while a return decision is pending; applying it simply clears the pending
+    /// decision so the commander stays put. This is the decline-compatible default,
+    /// so priority automation always has a legal way forward and never stalls.
+    DeclineCommanderReturn {
+        /// The commander card whose return is declined.
+        card: CardInstance,
+    },
     /// Concede the game (CR 104.3a). Always offered to the acting seat, in every
     /// phase and step, so a player may leave at any time. Applying it marks the
     /// conceding player as having lost; the game then becomes terminal with the
@@ -207,6 +229,9 @@ impl Action {
             | Action::DeclareAttackers { .. }
             | Action::DeclareBlockers { .. }
             | Action::OrderCombatDamage { .. }
+            // The commander-return decisions carry only a card, no target slots.
+            | Action::ReturnCommanderToCommandZone { .. }
+            | Action::DeclineCommanderReturn { .. }
             // Concede carries no selection.
             | Action::Concede => &[],
         }
@@ -294,6 +319,32 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     if let Some(mut actions) = crate::mulligan::mulligan_actions(state) {
         offer_concede(&mut actions);
         return actions;
+    }
+
+    // Commander return decision (CR 903.9a): when the priority holder's commander
+    // is sitting in a graveyard or exile awaiting the choice, that decision is the
+    // only thing they may take — offered like the cleanup discard and combat
+    // declarations, a discrete choice rather than something taken with priority.
+    // Both accept and decline are always available, so any priority automation can
+    // pick decline and move on (it never stalls). Not a replacement effect: the
+    // commander already moved; this offers to move it again to the command zone.
+    if let Some(commander) = state
+        .players
+        .get(priority.0)
+        .and_then(|p| p.commander.as_ref())
+    {
+        if commander.return_pending {
+            let card = CardInstance {
+                id: commander.instance,
+                card: commander.card,
+            };
+            let mut actions = vec![
+                Action::ReturnCommanderToCommandZone { card },
+                Action::DeclineCommanderReturn { card },
+            ];
+            offer_concede(&mut actions);
+            return actions;
+        }
     }
 
     // Cleanup step: no player receives priority (CR 514.3). The only choice is
@@ -410,6 +461,38 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                         card,
                         targets: Vec::new(),
                     });
+                }
+            }
+        }
+
+        // Cast the commander from the command zone (CR 903.8). It is offered as a
+        // normal [`Action::CastSpell`] naming the command-zone copy — the same
+        // stack object and resolution path as a hand cast, never a parallel casting
+        // pipeline — subject to the same timing (instant vs. sorcery speed) and to
+        // its cost *plus the commander tax*: {2} generic for each previous cast from
+        // the command zone this game. Payability is checked against that taxed cost,
+        // so the offer and the charge (in `apply_cast_spell`) always agree.
+        if let Some(commander) = &player.commander {
+            for &card in &player.command {
+                let Some(data) = db.card(card.card) else {
+                    continue;
+                };
+                if !is_castable_spell(data) {
+                    continue;
+                }
+                let timing_ok = data.has_type(CardType::Instant) || sorcery_speed;
+                let cost = commander_tax_cost(&parse_mana_cost(&data.mana_cost), commander.casts);
+                if timing_ok && player.mana_pool.can_pay(&cost) {
+                    let castable = data
+                        .cast_target_specs()
+                        .into_iter()
+                        .all(|spec| !legal_targets_for_spec(spec, state, db).is_empty());
+                    if castable {
+                        actions.push(Action::CastSpell {
+                            card,
+                            targets: Vec::new(),
+                        });
+                    }
                 }
             }
         }

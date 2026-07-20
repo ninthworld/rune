@@ -856,6 +856,21 @@ fn valid_action_view(
             Vec::new(),
             Vec::new(),
         ),
+        // Commander return decisions (CR 903.9a): the owner may move a commander
+        // that went to a graveyard or exile into their command zone, or decline.
+        // Subject is the commander card so the client can render it on that card.
+        Action::ReturnCommanderToCommandZone { card } => (
+            "return_commander_to_command_zone".to_string(),
+            format!("Move {} to the command zone", card_name(card.card, db)),
+            vec![card_entity_id(card.id)],
+            Vec::new(),
+        ),
+        Action::DeclineCommanderReturn { card } => (
+            "decline_commander_return".to_string(),
+            format!("Leave {} where it is", card_name(card.card, db)),
+            vec![card_entity_id(card.id)],
+            Vec::new(),
+        ),
         // Concede (CR 104.3a): a subject-less action always offered to the acting
         // seat, rendered in the action bar (ADR 0004).
         Action::Concede => (
@@ -1155,9 +1170,8 @@ fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEntry> {
     state
         .log
         .iter()
-        .map(|entry| GameLogEntry {
-            sequence: entry.sequence,
-            event: match &entry.event {
+        .filter_map(|entry| {
+            let event = match &entry.event {
                 GameEvent::SpellCast { player, card } => GameLogEvent::SpellCast {
                     player: player_id(*player),
                     card: log_card(card.id, card.card, db),
@@ -1227,7 +1241,16 @@ fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEntry> {
                 GameEvent::GameOver { result } => GameLogEvent::GameOver {
                     result: result_view(result.clone()),
                 },
-            },
+                // CR 903.9a commander return is recorded in the engine log, but its
+                // wire exposure is deferred to the commander-format slice (#372) to
+                // keep this change engine-focused and the protocol contract stable;
+                // it is omitted from the projected wire log for now.
+                GameEvent::CommanderReturnedToCommandZone { .. } => return None,
+            };
+            Some(GameLogEntry {
+                sequence: entry.sequence,
+                event,
+            })
         })
         .collect()
 }

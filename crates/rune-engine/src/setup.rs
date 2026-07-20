@@ -41,13 +41,36 @@ pub const DEFAULT_STARTING_HAND_SIZE: usize = 7;
 pub struct PlayerSetup {
     /// The player's deck as card-database ids, one entry per card.
     pub decklist: Vec<CardId>,
+    /// The card this player designates as their commander (CR 903.3), or `None`
+    /// for a player without one. It must be one of the [`decklist`](Self::decklist)
+    /// entries; at setup that physical copy is placed in the command zone (CR
+    /// 903.6) and the *rest* of the deck is shuffled into the library. Which
+    /// physical instance becomes the commander is chosen here by setup — the first
+    /// decklist entry matching this card. Deck legality (singleton, color
+    /// identity) is not checked; that stays server-side (ADR 0013 §4).
+    pub commander: Option<CardId>,
 }
 
 impl PlayerSetup {
-    /// A setup for a player bringing `decklist` (one [`CardId`] per physical card).
+    /// A setup for a player bringing `decklist` (one [`CardId`] per physical card)
+    /// and **no** commander — behaves exactly as before commanders existed.
     #[must_use]
     pub fn new(decklist: Vec<CardId>) -> Self {
-        Self { decklist }
+        Self {
+            decklist,
+            commander: None,
+        }
+    }
+
+    /// A setup for a player bringing `decklist` and designating `commander` (which
+    /// must be one of the decklist entries, CR 903.3). At construction the matching
+    /// physical copy is set aside into the command zone.
+    #[must_use]
+    pub fn with_commander(decklist: Vec<CardId>, commander: CardId) -> Self {
+        Self {
+            decklist,
+            commander: Some(commander),
+        }
     }
 }
 
@@ -119,6 +142,15 @@ pub enum SetupError {
         /// The card id that did not resolve.
         card: CardId,
     },
+    /// A player designated a commander (CR 903.3) that is not one of their
+    /// decklist entries. Carries the offending seat and the designated card so
+    /// the caller can report which deck is at fault.
+    CommanderNotInDeck {
+        /// The seat whose commander is not in their deck.
+        player: PlayerId,
+        /// The designated commander card that the decklist does not contain.
+        card: CardId,
+    },
 }
 
 impl fmt::Display for SetupError {
@@ -127,6 +159,11 @@ impl fmt::Display for SetupError {
             Self::UnknownCard { player, card } => write!(
                 f,
                 "player {}'s decklist references unknown card id {}",
+                player.0, card.0
+            ),
+            Self::CommanderNotInDeck { player, card } => write!(
+                f,
+                "player {}'s designated commander (card id {}) is not in their deck",
                 player.0, card.0
             ),
         }
@@ -171,6 +208,17 @@ impl GameState {
                     });
                 }
             }
+            // A designated commander must be one of the deck's cards (CR 903.3).
+            // Its id already resolved above (it is a decklist entry), so this is
+            // the only extra validation the command zone introduces.
+            if let Some(commander) = player.commander {
+                if !player.decklist.contains(&commander) {
+                    return Err(SetupError::CommanderNotInDeck {
+                        player: PlayerId(seat),
+                        card: commander,
+                    });
+                }
+            }
         }
 
         let mut state = Self {
@@ -206,11 +254,23 @@ impl GameState {
                 life: setup.starting_life,
                 ..Player::default()
             };
-            // Mint a distinct instance per decklist entry, then shuffle the
-            // library (CR 103.3) and draw the opening hand off the top (CR 103.5).
+            // Mint a distinct instance per decklist entry. A designated commander's
+            // matching copy is set aside into the command zone (CR 903.6) instead of
+            // the library, and the designation is recorded (CR 903.3); every other
+            // card goes to the library, which is then shuffled (CR 103.3) and the
+            // opening hand drawn off the top (CR 103.5). With no commander this is
+            // byte-for-byte the pre-commander behavior.
+            let mut commander_taken = false;
             for &card in &player_setup.decklist {
                 let instance = state.new_instance(card);
-                player.library.push(instance);
+                if !commander_taken && player_setup.commander == Some(card) {
+                    commander_taken = true;
+                    player.commander =
+                        Some(crate::commander::CommanderState::new(card, instance.id));
+                    player.command.push(instance);
+                } else {
+                    player.library.push(instance);
+                }
             }
             rng.shuffle(&mut player.library);
             let draw = setup.starting_hand_size.min(player.library.len());
@@ -391,6 +451,90 @@ mod tests {
         let state = GameState::new(&setup, &db()).unwrap();
         assert_eq!(state.players[0].hand.len(), 2);
         assert!(state.players[0].library.is_empty());
+    }
+
+    #[test]
+    fn cr_903_6_designated_commander_starts_in_the_command_zone() {
+        // CR 903.6: a designated commander begins the game in the command zone, and
+        // the rest of the deck is shuffled into the library. Library size is the
+        // deck minus the commander minus the opening hand.
+        let db = db();
+        let commander = fixture("llanowar_elves"); // appears in sample_decklist
+        let setup = GameSetup::new(
+            vec![
+                PlayerSetup::with_commander(sample_decklist(), commander),
+                PlayerSetup::new(sample_decklist()),
+            ],
+            77,
+        );
+        let state = GameState::new(&setup, &db).unwrap();
+
+        // Seat 0's commander sits in the command zone, designated with no tax yet.
+        assert_eq!(state.players[0].command.len(), 1);
+        assert_eq!(state.players[0].command[0].card, commander);
+        let designation = state.players[0].commander.unwrap();
+        assert_eq!(designation.card, commander);
+        assert_eq!(designation.instance, state.players[0].command[0].id);
+        assert_eq!(designation.casts, 0);
+        assert!(!designation.return_pending);
+
+        // The library is the deck minus the commander minus the opening hand.
+        assert_eq!(state.players[0].hand.len(), DEFAULT_STARTING_HAND_SIZE);
+        assert_eq!(
+            state.players[0].library.len(),
+            40 - 1 - DEFAULT_STARTING_HAND_SIZE
+        );
+        // The commander instance is not in any other zone.
+        let commander_instance = designation.instance;
+        assert!(!state.players[0]
+            .library
+            .iter()
+            .chain(&state.players[0].hand)
+            .any(|c| c.id == commander_instance));
+
+        // Seat 1 designated nothing: its command zone is empty and it has no
+        // designation — exactly as before commanders existed.
+        assert!(state.players[1].command.is_empty());
+        assert!(state.players[1].commander.is_none());
+        assert_eq!(
+            state.players[1].library.len(),
+            40 - DEFAULT_STARTING_HAND_SIZE
+        );
+    }
+
+    #[test]
+    fn issue_370_no_designation_is_identical_to_the_pre_commander_setup() {
+        // A setup with no commander must behave exactly as today: every card in the
+        // library/hand, empty command zones, no designation.
+        let db = db();
+        let setup = GameSetup::two_player(sample_decklist(), sample_decklist(), 5);
+        let state = GameState::new(&setup, &db).unwrap();
+        for player in &state.players {
+            assert!(player.command.is_empty());
+            assert!(player.commander.is_none());
+            assert_eq!(player.library.len(), 40 - DEFAULT_STARTING_HAND_SIZE);
+            assert_eq!(player.hand.len(), DEFAULT_STARTING_HAND_SIZE);
+        }
+    }
+
+    #[test]
+    fn commander_not_in_deck_is_rejected() {
+        // A designated commander must be one of the deck's cards (CR 903.3).
+        let db = db();
+        // `island` is not one of the six cards `sample_decklist` cycles through.
+        let absent = fixture("island");
+        let setup = GameSetup::new(
+            vec![PlayerSetup::with_commander(sample_decklist(), absent)],
+            0,
+        );
+        let err = GameState::new(&setup, &db).unwrap_err();
+        assert_eq!(
+            err,
+            SetupError::CommanderNotInDeck {
+                player: PlayerId(0),
+                card: absent,
+            }
+        );
     }
 
     #[test]

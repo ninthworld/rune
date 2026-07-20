@@ -191,6 +191,16 @@ pub enum GameEvent {
         /// Why they lost (CR 104.3 / 704.5).
         reason: LossReason,
     },
+    /// A commander was moved from a graveyard or exile to its owner's command
+    /// zone under CR 903.9a, at that owner's choice. Records the movement so a
+    /// client can show where the commander went; declining the return records
+    /// nothing (the card simply stays where it was).
+    CommanderReturnedToCommandZone {
+        /// The commander's owner, who made the choice.
+        player: PlayerId,
+        /// The physical commander card that moved to the command zone.
+        card: CardInstance,
+    },
     /// The game reached its terminal result.
     GameOver {
         /// Already-derived terminal result.
@@ -661,6 +671,21 @@ impl GameState {
                 id: perm.instance,
                 card: perm.card,
             });
+            // CR 903.9a: a commander that would go to a graveyard may instead be
+            // returned to the command zone by its owner. This is not a replacement
+            // effect (the compatibility report's replacement-effects exclusion must
+            // stay true); the card really moves to the graveyard, and the choice is
+            // offered at the next state-based check. Flag the pending decision so
+            // [`crate::valid_actions`] surfaces it.
+            if owner
+                .commander
+                .as_ref()
+                .is_some_and(|c| c.instance == perm.instance)
+            {
+                if let Some(commander) = owner.commander.as_mut() {
+                    commander.return_pending = true;
+                }
+            }
         }
         Some(perm)
     }
@@ -839,18 +864,25 @@ impl GameState {
         if self.stack.len() != before {
             changed = true;
         }
-        // Their hand, library, graveyard, and exile are no longer part of the game.
+        // Their hand, library, graveyard, exile, and command zone are no longer
+        // part of the game (CR 800.4a).
         if let Some(player) = self.players.get_mut(seat.0) {
             for zone in [
                 &mut player.hand,
                 &mut player.library,
                 &mut player.graveyard,
                 &mut player.exile,
+                &mut player.command,
             ] {
                 if !zone.is_empty() {
                     zone.clear();
                     changed = true;
                 }
+            }
+            // The departed player's commander designation leaves the game with
+            // them; drop any pending return so no stale choice lingers.
+            if player.commander.take().is_some() {
+                changed = true;
             }
         }
         changed

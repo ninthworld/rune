@@ -1,9 +1,11 @@
 //! Zone identifiers.
 
-/// One of a player's four private zones.
+/// One of a player's owned zones.
 ///
-/// The shared battlefield is not listed here because it is owned by the game,
-/// not by a player (see [`crate::GameState::battlefield`]).
+/// Most are private to the player; [`Zone::Command`] is a **public** zone
+/// (CR 408) holding their commander. The shared battlefield is not listed here
+/// because it is owned by the game, not by a player (see
+/// [`crate::GameState::battlefield`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Zone {
     /// The player's deck, face down.
@@ -14,4 +16,8 @@ pub enum Zone {
     Graveyard,
     /// Cards the player owns that have been exiled.
     Exile,
+    /// The player's command zone (CR 408): a public zone that holds their
+    /// commander while it is there (CR 903.6). Empty for a player with no
+    /// designated commander.
+    Command,
 }
