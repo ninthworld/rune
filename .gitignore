@@ -22,3 +22,6 @@ test-results/
 !.vscode/extensions.json
 # Logs
 *.log
+
+# Claude Code worktree isolation scratch (harness-managed)
+.claude/worktrees/
