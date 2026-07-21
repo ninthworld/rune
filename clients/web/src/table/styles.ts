@@ -270,6 +270,25 @@ export function panelHeaderBox(rect: Rect): CSSProperties {
 }
 
 /**
+ * The collapse control for an expanded summary tile (issue #400): a touch-sized
+ * button parked at the right edge of the expanded opponent's header strip, so the
+ * player can restore the tiles. Geometry only; the look is `chrome.module.css`.
+ */
+export function tileCollapseBox(headerRect: Rect): CSSProperties {
+  const size = Math.min(TOUCH, Math.max(24, headerRect.h));
+  return {
+    position: 'absolute',
+    left: headerRect.x + headerRect.w - size - 2,
+    top: headerRect.y + Math.max(0, (headerRect.h - size) / 2),
+    width: size,
+    height: size,
+    boxSizing: 'border-box',
+    // The chrome layer is pointer-events: none; the control opts back in.
+    pointerEvents: 'auto',
+  };
+}
+
+/**
  * The zone-pile column (§Zone piles): the panel-edge strip where the library /
  * graveyard / exile stack parks as table furniture. Geometry only; the pile look
  * is `chrome.module.css`.

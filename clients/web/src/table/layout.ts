@@ -43,6 +43,20 @@ export type Pointer = 'coarse' | 'fine';
  * how regions condense — never the anatomy's ownership rules (ADR 0023). */
 export type Composition = 'full' | 'compact';
 
+/**
+ * Which opponent (if any) is expanded in the phone-portrait summary-tile
+ * composition (issue #400). `opponent` indexes {@link orderedOpponentIds} — the
+ * seat-order opponent list the scene lays panels in — so the expanded frame lands
+ * on that opponent in place. Purely a presentation input: it is **ephemeral UI
+ * state, never load-bearing** (a fresh view resets it), and the layout stays a pure
+ * function of `(viewport, playerCount, focus)`. Ignored outside the tile
+ * composition (full/duel geometries always render every battlefield in full).
+ */
+export interface LayoutFocus {
+  /** The expanded opponent's index in seat order, or a negative value for none. */
+  opponent: number;
+}
+
 /** Stable region identities. Downstream work anchors to these names, never to
  * incidental DOM structure. */
 export type RegionId =
@@ -75,6 +89,14 @@ export interface TableLayout {
   orientation: 'portrait' | 'landscape';
   /** The resolved composition (full anatomy vs the phone change of kind). */
   composition: Composition;
+  /**
+   * Whether the phone-portrait **summary-tile composition** is active (issue #400):
+   * the compact composition with two or more opponents, where every un-focused
+   * opponent collapses to a crest/name/counts tile and one may be expanded in place.
+   * A compact duel (one opponent) keeps both battlefields in full, so this is false
+   * there and on every full-composition geometry.
+   */
+  summaryTiles: boolean;
   /** Every chrome region, keyed by its stable identity. On `compact` the rail is
    * a zero-width rect (its content lives behind top-bar chips as sheets); the
    * region identity itself never disappears (chrome never reorders). */
@@ -115,6 +137,10 @@ const L = {
   compactActionBarH: 52,
   compactHandH: 158,
   compactMeStripH: 28,
+  /** Summary-tile height (issue #400): a collapsed opponent's crest/name/counts
+   * tile on the phone-portrait multiplayer composition. Comfortably above the 44px
+   * touch minimum so the whole tile is one tap target. */
+  compactTileH: 62,
   /** Opponent row height bounds (full composition). */
   oppRowMin: 176,
   oppRowFrac: 0.44,
@@ -185,7 +211,7 @@ function tiersFor(
  * pairwise disjoint (the canvas region underlies the bottom-shell chrome regions,
  * but no chrome region overlaps another and card areas never sit under chrome).
  */
-export function layout(viewport: Viewport, playerCount: number): TableLayout {
+export function layout(viewport: Viewport, playerCount: number, focus?: LayoutFocus): TableLayout {
   const width = Math.max(1, Math.floor(viewport.width));
   const height = Math.max(1, Math.floor(viewport.height));
   const pointer: Pointer = viewport.pointer ?? 'fine';
@@ -198,7 +224,7 @@ export function layout(viewport: Viewport, playerCount: number): TableLayout {
 
   return composition === 'full'
     ? fullLayout(width, height, pointer, seats, opponents, aspect, orientation)
-    : compactLayout(width, height, pointer, seats, opponents, aspect, orientation);
+    : compactLayout(width, height, pointer, seats, opponents, aspect, orientation, focus);
 }
 
 /** The full (laptop/tablet) anatomy. */
@@ -312,6 +338,7 @@ function fullLayout(
     aspect,
     orientation,
     composition: 'full',
+    summaryTiles: false,
     regions: {
       topBar: { id: 'topBar', rect: topBar },
       canvas: { id: 'canvas', rect: canvas },
@@ -336,6 +363,7 @@ function compactLayout(
   opponents: number,
   aspect: number,
   orientation: 'portrait' | 'landscape',
+  focus?: LayoutFocus,
 ): TableLayout {
   const pad = 6;
   const gap = 6;
@@ -378,28 +406,66 @@ function compactLayout(
   };
   const toCanvas = (r: Rect): Rect => ({ x: r.x - canvas.x, y: r.y - canvas.y, w: r.w, h: r.h });
 
-  // Panels stack vertically; the receiver's is slightly larger (mock: 5:6). With
-  // several opponents each shares the opponent portion evenly.
-  const youShare = 6 / (5 * opponents + 6);
-  const youH = Math.floor(boardH * youShare);
-  const oppH = Math.floor((boardH - youH - gap * opponents) / opponents);
+  // Two or more opponents change kind again on the phone (issue #400): rather than
+  // stacking three or four mini battlefields no one can read, opponents collapse to
+  // crest/name/counts **summary tiles**, and at most one is **expanded in place**.
+  // A compact duel (one opponent) keeps both battlefields in full (blueprint §Phone
+  // portrait). The receiver's battlefield always stays a full panel at the bottom.
+  const summaryTiles = opponents >= 2;
   const opponentFrames: PanelFrame[] = [];
-  for (let i = 0; i < opponents; i += 1) {
-    const rect: Rect = {
+  let you: PanelFrame;
+
+  if (!summaryTiles) {
+    // Compact duel: both battlefields stacked, the receiver's slightly larger
+    // (mock 5:6).
+    const youShare = 6 / (5 * opponents + 6);
+    const youH = Math.floor(boardH * youShare);
+    const oppH = Math.floor((boardH - youH - gap * opponents) / opponents);
+    for (let i = 0; i < opponents; i += 1) {
+      const rect: Rect = { x: pad, y: contentTop + i * (oppH + gap), w: width - pad * 2, h: oppH };
+      opponentFrames.push(frame(toCanvas(rect), Math.min(L.pilesColW, 44)));
+    }
+    const youRect: Rect = {
       x: pad,
-      y: contentTop + i * (oppH + gap),
+      y: contentTop + opponents * (oppH + gap),
       w: width - pad * 2,
-      h: oppH,
+      h: youH,
     };
-    opponentFrames.push(frame(toCanvas(rect), Math.min(L.pilesColW, 44)));
+    you = frame(toCanvas(youRect), Math.min(L.pilesColW, 44));
+  } else {
+    // Summary-tile composition: every un-focused opponent is a fixed-height tile;
+    // the focused opponent (if any) expands in place, sharing the freed board with
+    // the receiver, who keeps the larger share (their board is "yours"). With no
+    // opponent expanded the receiver takes all the freed board.
+    const focusIdx =
+      focus && focus.opponent >= 0 && focus.opponent < opponents ? focus.opponent : -1;
+    const tileH = Math.min(L.compactTileH, Math.max(0, boardH));
+    const collapsedCount = focusIdx >= 0 ? opponents - 1 : opponents;
+    const remaining = Math.max(0, boardH - collapsedCount * tileH - gap * opponents);
+    const expandedH = focusIdx >= 0 ? Math.max(tileH, Math.floor(remaining * 0.46)) : 0;
+    const youH = Math.max(0, remaining - expandedH);
+    let y = contentTop;
+    for (let i = 0; i < opponents; i += 1) {
+      const collapsed = i !== focusIdx;
+      const h = collapsed ? tileH : expandedH;
+      const local = toCanvas({ x: pad, y, w: width - pad * 2, h });
+      if (collapsed) {
+        // A tile has no battlefield: zero its card area, but keep the header
+        // spanning the whole tile so the chrome layer lays crest/name/counts on it.
+        opponentFrames.push({
+          rect: local,
+          header: local,
+          content: { x: local.x, y: local.y + local.h, w: 0, h: 0 },
+          piles: { x: local.x + local.w, y: local.y, w: 0, h: 0 },
+          summary: true,
+        });
+      } else {
+        opponentFrames.push(frame(local, Math.min(L.pilesColW, 44)));
+      }
+      y += h + gap;
+    }
+    you = frame(toCanvas({ x: pad, y, w: width - pad * 2, h: youH }), Math.min(L.pilesColW, 44));
   }
-  const youRect: Rect = {
-    x: pad,
-    y: contentTop + opponents * (oppH + gap),
-    w: width - pad * 2,
-    h: youH,
-  };
-  const you = frame(toCanvas(youRect), Math.min(L.pilesColW, 44));
 
   const handRect: Rect = {
     x: handPanel.x + pad,
@@ -428,6 +494,7 @@ function compactLayout(
     aspect,
     orientation,
     composition: 'compact',
+    summaryTiles,
     regions: {
       topBar: { id: 'topBar', rect: topBar },
       canvas: { id: 'canvas', rect: canvas },

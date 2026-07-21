@@ -2301,6 +2301,109 @@ button.zonePile:focus-visible {
   margin-right: 3px;
 }
 
+/* ── Phone-portrait summary tiles + focus (issue #400) ──────────────────────
+ * A collapsed opponent's whole battlefield condenses to a crest/name/counts
+ * tile that expands in place on tap/keyboard. The expand/collapse transition
+ * reads the shared motion token, so `prefers-reduced-motion` neutralizes it
+ * globally (base.css); `[data-animate='false']` snaps it explicitly too. */
+.summaryTile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 1px solid var(--rune-border);
+  border-radius: 6px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--identity-accent, var(--rune-border-strong)) 12%, transparent),
+    var(--rune-region-bg-soft, rgba(255, 255, 255, 0.022))
+  );
+  color: var(--rune-text);
+  text-align: left;
+  overflow: hidden;
+  transition:
+    transform var(--rune-transition),
+    opacity var(--rune-transition),
+    border-color var(--rune-transition);
+}
+.summaryTile::before,
+.summaryTile::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+}
+.summaryTile::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid var(--identity-accent, var(--rune-border-strong));
+  border-left: 1px solid var(--identity-accent, var(--rune-border-strong));
+  border-top-left-radius: 6px;
+}
+.summaryTile::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1px solid var(--identity-accent, var(--rune-border-strong));
+  border-right: 1px solid var(--identity-accent, var(--rune-border-strong));
+  border-bottom-right-radius: 6px;
+}
+button.summaryTile:hover {
+  border-color: var(--identity-accent, var(--rune-border-strong));
+}
+button.summaryTile:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 1px;
+}
+.summaryTile[data-animate='false'] {
+  transition: none;
+}
+.summaryTileBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.summaryTileTop {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+  min-width: 0;
+}
+.summaryTileCounts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--rune-space-4);
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-caption);
+}
+.summaryCount {
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+/* The collapse control on the expanded opponent's header. */
+.tileCollapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rune-border);
+  border-radius: 6px;
+  background: var(--rune-region-bg-soft, rgba(255, 255, 255, 0.04));
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-caption);
+  cursor: pointer;
+}
+.tileCollapse:hover {
+  color: var(--rune-text);
+  border-color: var(--identity-accent, var(--rune-border-strong));
+}
+.tileCollapse:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 1px;
+}
+
 /* ── Canvas / rail / dock region wrappers ── */
 .regionCanvas {
   overflow: hidden;

@@ -284,6 +284,96 @@ describe('opponent panel reflow (composition, never reordering)', () => {
   });
 });
 
+describe('phone-portrait summary-tile composition + focus (issue #400)', () => {
+  const PHONE: Viewport = { width: 390, height: 844, pointer: 'coarse' };
+
+  it('collapses opponents to summary tiles only at phone-portrait with 3–4 seats', () => {
+    // A duel keeps both battlefields in full (no tiles).
+    expect(layout(PHONE, 2).summaryTiles).toBe(false);
+    expect(layout(PHONE, 2).scene.opponents.every((f) => !f.summary)).toBe(true);
+    // 3 and 4 seats change kind to summary tiles.
+    for (const seats of [3, 4]) {
+      const computed = layout(PHONE, seats);
+      expect(computed.composition).toBe('compact');
+      expect(computed.summaryTiles).toBe(true);
+      expect(computed.scene.opponents).toHaveLength(seats - 1);
+      // Every opponent frame is a collapsed tile when none is focused.
+      expect(computed.scene.opponents.every((f) => f.summary === true)).toBe(true);
+      // Tiles carry no card area; the receiver keeps a full battlefield below them.
+      for (const tile of computed.scene.opponents) {
+        expect(tile.content.w).toBe(0);
+        expect(tile.content.h).toBe(0);
+        expect(tile.rect.h).toBeGreaterThanOrEqual(44); // one touch-sized tap target
+        expect(tile.rect.y + tile.rect.h).toBeLessThanOrEqual(computed.scene.you.rect.y);
+      }
+      expect(computed.scene.you.summary).toBeFalsy();
+      expect(rectArea(computed.scene.you.content)).toBeGreaterThan(0);
+    }
+  });
+
+  it('never resolves the tile composition on the full composition, whatever the seats', () => {
+    for (const seats of [3, 4]) {
+      const computed = layout({ width: 1280, height: 800 }, seats);
+      expect(computed.summaryTiles).toBe(false);
+      expect(computed.scene.opponents.every((f) => !f.summary)).toBe(true);
+    }
+  });
+
+  for (const seats of [3, 4]) {
+    describe(`${seats} seats @ phone-portrait`, () => {
+      it('expands exactly the focused opponent in place, tiling the rest', () => {
+        const opponents = seats - 1;
+        const focusIdx = opponents - 1; // the last opponent
+        const computed = layout(PHONE, seats, { opponent: focusIdx });
+        computed.scene.opponents.forEach((frame, i) => {
+          if (i === focusIdx) {
+            expect(frame.summary).toBeFalsy();
+            expect(rectArea(frame.content)).toBeGreaterThan(0);
+          } else {
+            expect(frame.summary).toBe(true);
+            expect(frame.content.w).toBe(0);
+          }
+        });
+        // The expanded battlefield is taller than a collapsed tile.
+        const collapsed = computed.scene.opponents.find((_, i) => i !== focusIdx)!;
+        expect(computed.scene.opponents[focusIdx]!.rect.h).toBeGreaterThan(collapsed.rect.h);
+      });
+
+      it('keeps opponent frames + receiver non-overlapping and top-to-bottom in seat order', () => {
+        const computed = layout(PHONE, seats, { opponent: 0 });
+        const frames = [...computed.scene.opponents, computed.scene.you];
+        for (let i = 1; i < frames.length; i += 1) {
+          // Each frame starts at or below the previous frame's bottom (stacked).
+          expect(frames[i]!.rect.y).toBeGreaterThanOrEqual(
+            frames[i - 1]!.rect.y + frames[i - 1]!.rect.h,
+          );
+        }
+        // Every frame stays inside the carved canvas.
+        for (const f of frames) {
+          expect(f.rect.x).toBeGreaterThanOrEqual(0);
+          expect(f.rect.y).toBeGreaterThanOrEqual(0);
+          expect(f.rect.y + f.rect.h).toBeLessThanOrEqual(computed.scene.height + 1);
+        }
+      });
+    });
+  }
+
+  it('ignores an out-of-range focus index (no opponent expands)', () => {
+    const computed = layout(PHONE, 4, { opponent: 9 });
+    expect(computed.scene.opponents.every((f) => f.summary === true)).toBe(true);
+  });
+
+  it('ignores focus entirely on the full composition (focus is presentation, not geometry)', () => {
+    const withFocus = layout({ width: 1280, height: 800 }, 4, { opponent: 1 });
+    const without = layout({ width: 1280, height: 800 }, 4);
+    expect(withFocus).toEqual(without);
+  });
+
+  it('is deterministic for a given focus (ephemeral, but pure)', () => {
+    expect(layout(PHONE, 4, { opponent: 1 })).toEqual(layout(PHONE, 4, { opponent: 1 }));
+  });
+});
+
 describe('layout is a pure, deterministic function', () => {
   it('returns identical output for identical input', () => {
     const a = layout({ width: 1440, height: 900, pointer: 'fine' }, 3);
@@ -320,7 +410,12 @@ describe('the carved scene geometry feeds the scene with no horizontal scroll', 
         const controllers = Array.from({ length: playerCount }, (_, i) => `p${i + 1}`);
         const scene = buildTableScene(boardView(controllers, 30), undefined, computed.scene);
         const rects = scene.bands.flatMap((b) => b.cards).map((c) => c.rect);
-        expect(rects.length).toBe(playerCount * 30);
+        // Every rendered band lays its 30 permanents; a collapsed summary tile
+        // (phone-portrait multiplayer, issue #400) renders none — so the rendered
+        // count follows the non-summary bands, and the no-scroll invariant holds for
+        // exactly the cards that are drawn.
+        const renderedBands = scene.bands.filter((b) => !b.summary).length;
+        expect(rects.length).toBe(renderedBands * 30);
         for (const rect of rects) {
           expect(rect.x).toBeGreaterThanOrEqual(0);
           expect(rect.x + rect.w).toBeLessThanOrEqual(scene.width);
