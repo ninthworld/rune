@@ -49,6 +49,25 @@ describe('savedDeckStore (ADR 0027)', () => {
     });
   });
 
+  it('persists and reads back a designated commander (issue #396)', async () => {
+    configureSavedDeckStore({ db: new MemorySavedDeckDb(), now: () => 1000 });
+    await saveDeck({
+      name: 'Jedit',
+      cards: countsToCards({ jedit_ojanen: 1, forest: 99 }),
+      commander: 'jedit_ojanen',
+    });
+    const reloaded = await loadSavedDeck('Jedit');
+    expect(reloaded?.commander).toBe('jedit_ojanen');
+  });
+
+  it('stores no commander field for a non-commander deck', async () => {
+    configureSavedDeckStore({ db: new MemorySavedDeckDb(), now: () => 1000 });
+    await saveDeck({ name: 'Burn', cards: countsToCards({ shock: 4 }) });
+    const reloaded = await loadSavedDeck('Burn');
+    expect(reloaded?.commander).toBeUndefined();
+    expect('commander' in (reloaded ?? {})).toBe(false);
+  });
+
   it('keeps a saved deck across a new session on the same device', async () => {
     // The device's IndexedDB survives a reload: the store singleton resets but the
     // backing db instance is the same device storage.
