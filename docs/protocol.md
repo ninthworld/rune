@@ -94,7 +94,8 @@ each complete `GameView`, which means reconnecting clients never need an accumul
 local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
 `spell_fizzled`, `attackers_declared`, `blockers_declared`, `mulligan`, `hand_kept`,
 `life_changed`, `damage_dealt`, `cards_drawn`, `permanent_died`, `step_changed`,
-`player_eliminated`, and `game_over`. Named `LogEntity` references have an opaque `id`
+`player_eliminated`, `commander_returned_to_command_zone`, and `game_over`. Named
+`LogEntity` references have an opaque `id`
 and server-supplied
 `name`; the id may be used for presentational highlighting only. The `name` on every
 reference is fixed at the moment the event was recorded, so an entry naming a permanent
@@ -117,6 +118,12 @@ other permanent moving to a graveyard is a zone change, not a death.
 lost while two or more players remained, so play continues without them and their
 objects are removed. It is distinct from `game_over`, which fires only once one player
 is left: a two-player loss produces `game_over` alone, never `player_eliminated`.
+
+`commander_returned_to_command_zone` (with the owning `player` id and the commander
+`card` as a `LogEntity`) marks a commander its owner chose to move from a graveyard or
+exile back to the command zone (CR 903.9a). The commander is designated openly and moves
+between public zones, so the card is named like any other zone-movement event; declining
+the return moves nothing and records no event.
 
 `Phase` is a snake-case enum:
 
