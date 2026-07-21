@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "prodigious_growth",
+  "name": "Prodigious Growth",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{4}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "aura": {
+    "enchant": "any_creature",
+    "power": 7,
+    "toughness": 7,
+    "keywords": [
+      "trample"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "aegis_of_the_heavens",
+  "name": "Aegis of the Heavens",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "pump",
+      "target": "any_creature",
+      "power": 1,
+      "toughness": 7
+    }
+  ]
+}

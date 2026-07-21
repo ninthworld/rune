@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "oakenform",
+  "name": "Oakenform",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "aura": {
+    "enchant": "any_creature",
+    "power": 3,
+    "toughness": 3
+  }
+}

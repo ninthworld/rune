@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "functional_id": "pelakka_wurm",
+  "name": "Pelakka Wurm",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Wurm"
+  ],
+  "mana_cost": "{4}{G}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 7,
+  "toughness": 7,
+  "keywords": [
+    "trample"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 7
+        }
+      ]
+    },
+    {
+      "type": "triggered",
+      "event": "self_dies",
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

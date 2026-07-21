@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "functional_id": "field_creeper",
+  "name": "Field Creeper",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Scarecrow"
+  ],
+  "mana_cost": "{2}",
+  "colors": [],
+  "power": 2,
+  "toughness": 1
+}

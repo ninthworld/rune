@@ -173,5 +173,125 @@
     "functional_id": "jump",
     "collector_number": "35",
     "rarity": "common"
+  },
+  {
+    "functional_id": "aegis_of_the_heavens",
+    "collector_number": "36",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "daybreak_chaplain",
+    "collector_number": "37",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "knight_of_the_tusk",
+    "collector_number": "38",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "knight_s_pledge",
+    "collector_number": "39",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "loxodon_line_breaker",
+    "collector_number": "40",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "mighty_leap",
+    "collector_number": "41",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "oreskos_swiftclaw",
+    "collector_number": "42",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "bogstomper",
+    "collector_number": "43",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "lich_s_caress",
+    "collector_number": "44",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "skeleton_archer",
+    "collector_number": "45",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "strangling_spores",
+    "collector_number": "46",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "havoc_devils",
+    "collector_number": "47",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "hostile_minotaur",
+    "collector_number": "48",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "lava_axe",
+    "collector_number": "49",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "sure_strike",
+    "collector_number": "50",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "centaur_courser",
+    "collector_number": "51",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "greenwood_sentinel",
+    "collector_number": "52",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "highland_game",
+    "collector_number": "53",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "oakenform",
+    "collector_number": "54",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "pelakka_wurm",
+    "collector_number": "55",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "prodigious_growth",
+    "collector_number": "56",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "rhox_oracle",
+    "collector_number": "57",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "vigilant_baloth",
+    "collector_number": "58",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "field_creeper",
+    "collector_number": "59",
+    "rarity": "common"
   }
 ]

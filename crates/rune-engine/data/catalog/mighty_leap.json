@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "functional_id": "mighty_leap",
+  "name": "Mighty Leap",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "pump",
+      "target": "any_creature",
+      "power": 2,
+      "toughness": 2
+    },
+    {
+      "kind": "grant_keyword",
+      "target": "any_creature",
+      "keyword": "flying"
+    }
+  ]
+}

@@ -836,7 +836,7 @@ mod tests {
     use crate::card_type::{CardType, Supertype};
 
     /// The number of functional definitions in `data/catalog/`.
-    const CATALOG_SIZE: usize = 37;
+    const CATALOG_SIZE: usize = 61;
 
     /// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0018 §3).
     fn every_id() -> impl Iterator<Item = CardId> {
@@ -1356,8 +1356,8 @@ mod tests {
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // M19 prints the thirty-five cards; PM19 reprints one — thirty-six printings total.
-        assert_eq!(printings.len(), 36);
+        // M19 prints fifty-nine cards; PM19 reprints one — sixty printings total.
+        assert_eq!(printings.len(), 60);
         assert!(!printings.is_empty());
         let ogre = printings.printing("M19", "15").unwrap();
         // The record names onakke_ogre; the loader resolved that to its handle.

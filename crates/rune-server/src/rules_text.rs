@@ -583,6 +583,78 @@ mod tests {
     }
 
     #[test]
+    fn issue_401_new_m19_cards_generate_their_rules_text() {
+        // The M19 slice of issue #401 puts several IR shapes onto *shipped* cards
+        // that previously only had inline `test_*` coverage: a P/T Aura, a
+        // P/T-and-keyword Aura, damage aimed only at a player, a negative pump, and
+        // multi-effect pump/grant spells. Each renders from its structured data.
+        let db = bundled();
+
+        // A single-keyword body and a bare lifelink body.
+        assert_eq!(text_of(&db, "daybreak_chaplain"), "Lifelink");
+
+        // The first shipped P/T Auras (previously only `test_aegis`/`test_curse`).
+        assert_eq!(
+            text_of(&db, "knight_s_pledge"),
+            "Enchant creature.\nEnchanted creature gets +2/+2."
+        );
+        assert_eq!(
+            text_of(&db, "oakenform"),
+            "Enchant creature.\nEnchanted creature gets +3/+3."
+        );
+        // A P/T *and* keyword Aura in one.
+        assert_eq!(
+            text_of(&db, "prodigious_growth"),
+            "Enchant creature.\nEnchanted creature gets +7/+7.\nEnchanted creature has trample."
+        );
+
+        // Burn aimed only at a player exercises the `target player` damage phrase.
+        assert_eq!(
+            text_of(&db, "lava_axe"),
+            "Lava Axe deals 5 damage to target player."
+        );
+
+        // A negative pump keeps its signs.
+        assert_eq!(
+            text_of(&db, "strangling_spores"),
+            "Target creature gets -3/-3 until end of turn."
+        );
+
+        // Two-effect combat tricks render one sentence per effect, in order.
+        assert_eq!(
+            text_of(&db, "mighty_leap"),
+            "Target creature gets +2/+2 until end of turn.\n\
+             Target creature gains flying until end of turn."
+        );
+        assert_eq!(
+            text_of(&db, "sure_strike"),
+            "Target creature gets +3/+0 until end of turn.\n\
+             Target creature gains first strike until end of turn."
+        );
+
+        // A destroy-and-gain sorcery, and the two trigger shapes on shipped bodies.
+        assert_eq!(
+            text_of(&db, "lich_s_caress"),
+            "Destroy target creature.\nYou gain 3 life."
+        );
+        assert_eq!(
+            text_of(&db, "highland_game"),
+            "When Highland Game dies, you gain 2 life."
+        );
+        assert_eq!(
+            text_of(&db, "skeleton_archer"),
+            "When Skeleton Archer enters the battlefield, \
+             Skeleton Archer deals 1 damage to any target."
+        );
+        assert_eq!(
+            text_of(&db, "pelakka_wurm"),
+            "Trample\n\
+             When Pelakka Wurm enters the battlefield, you gain 7 life.\n\
+             When Pelakka Wurm dies, draw a card."
+        );
+    }
+
+    #[test]
     fn the_stack_description_speaks_the_same_vocabulary() {
         let db = bundled();
         let forest = db

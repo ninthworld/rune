@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "lich_s_caress",
+  "name": "Lich's Caress",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "destroy",
+      "target": "any_creature"
+    },
+    {
+      "kind": "gain_life",
+      "player_ref": "controller",
+      "amount": 3
+    }
+  ]
+}

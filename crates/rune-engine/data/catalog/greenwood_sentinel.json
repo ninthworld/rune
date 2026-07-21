@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "functional_id": "greenwood_sentinel",
+  "name": "Greenwood Sentinel",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Scout"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "keywords": [
+    "vigilance"
+  ]
+}

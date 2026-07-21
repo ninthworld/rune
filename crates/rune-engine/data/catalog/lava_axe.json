@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "lava_axe",
+  "name": "Lava Axe",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{4}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "deal_damage",
+      "target": "any_player",
+      "amount": 5
+    }
+  ]
+}

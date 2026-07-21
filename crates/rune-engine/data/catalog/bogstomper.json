@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "bogstomper",
+  "name": "Bogstomper",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Beast"
+  ],
+  "mana_cost": "{4}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 6,
+  "toughness": 5
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "functional_id": "rhox_oracle",
+  "name": "Rhox Oracle",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Rhino",
+    "Monk"
+  ],
+  "mana_cost": "{4}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 4,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

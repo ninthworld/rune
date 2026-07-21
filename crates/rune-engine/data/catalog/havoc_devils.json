@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "havoc_devils",
+  "name": "Havoc Devils",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Devil"
+  ],
+  "mana_cost": "{2}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 4,
+  "toughness": 3,
+  "keywords": [
+    "trample"
+  ]
+}

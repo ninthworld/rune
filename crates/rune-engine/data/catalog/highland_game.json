@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "functional_id": "highland_game",
+  "name": "Highland Game",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elk"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_dies",
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 2
+        }
+      ]
+    }
+  ]
+}
