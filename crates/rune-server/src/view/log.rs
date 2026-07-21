@@ -14,7 +14,7 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
     state
         .log
         .iter()
-        .filter_map(|entry| {
+        .map(|entry| {
             let event = match &entry.event {
                 GameEvent::SpellCast { player, card } => GameLogEvent::SpellCast {
                     player: player_id(*player),
@@ -85,16 +85,22 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
                 GameEvent::GameOver { result } => GameLogEvent::GameOver {
                     result: result_view(result.clone()),
                 },
-                // CR 903.9a commander return is recorded in the engine log, but its
-                // wire exposure is deferred to the commander-format slice (#372) to
-                // keep this change engine-focused and the protocol contract stable;
-                // it is omitted from the projected wire log for now.
-                GameEvent::CommanderReturnedToCommandZone { .. } => return None,
+                // CR 903.9a: the commander's owner returned it from a graveyard or
+                // exile to the command zone. The commander card is public (designated
+                // openly, moving between public zones), so it is named exactly like the
+                // other zone-movement events — the identity recorded in the event, never
+                // re-resolved against the current board.
+                GameEvent::CommanderReturnedToCommandZone { player, card } => {
+                    GameLogEvent::CommanderReturnedToCommandZone {
+                        player: player_id(*player),
+                        card: log_card(card.id, card.card, db),
+                    }
+                }
             };
-            Some(GameLogEntry {
+            GameLogEntry {
                 sequence: entry.sequence,
                 event,
-            })
+            }
         })
         .collect()
 }
@@ -304,6 +310,44 @@ mod tests {
         };
         assert_eq!(player, &player_id(PlayerId(1)));
         assert_eq!(reason, &GameOverReason::LifeZero);
+    }
+
+    #[test]
+    fn issue_397_commander_return_projects_a_zone_movement_log_event() {
+        // CR 903.9a (issue #397): a commander returned from a graveyard or exile to the
+        // command zone projects as a `commander_returned_to_command_zone` wire event,
+        // naming the commander card from the identity recorded in the event — the same
+        // public treatment other zone-movement events get.
+        use rune_engine::{CardInstance, GameEvent, GameLogEntry};
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let commander = state.new_instance(fixture("onakke_ogre"));
+        state.log.push(GameLogEntry {
+            sequence: 1,
+            event: GameEvent::CommanderReturnedToCommandZone {
+                player: PlayerId(0),
+                card: CardInstance {
+                    id: commander.id,
+                    card: commander.card,
+                },
+            },
+        });
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let GameLogEvent::CommanderReturnedToCommandZone { player, card } = &view.log[0].event
+        else {
+            panic!("expected a commander_returned_to_command_zone event");
+        };
+        assert_eq!(player, &player_id(PlayerId(0)));
+        assert_eq!(
+            card.name,
+            db.card(commander.card).unwrap().name,
+            "the commander is named from the recorded identity"
+        );
+
+        // The same public event reaches a spectator's log verbatim.
+        let spectator = spectator_view(&state, &db);
+        assert_eq!(spectator.log, view.log);
     }
 
     #[test]

@@ -606,6 +606,25 @@ pub struct GameState {
     pub next_log_sequence: u64,
 }
 
+/// Flag the CR 903.9a return-to-command-zone decision on `owner` when the object that
+/// just left the battlefield is their commander.
+///
+/// A commander that would be put into a graveyard **or** exile may instead be moved to
+/// the command zone by its owner (CR 903.9a). This is not a replacement effect (the
+/// compatibility report's replacement-effects exclusion must stay true): the card
+/// really moves to the zone it was headed for, and the choice is offered at the next
+/// state-based check. Both zone seams ([`GameState::move_permanent_to_graveyard`] and
+/// [`GameState::move_permanent_to_exile`]) call this so the pending decision is raised
+/// identically no matter which zone the commander went to, and
+/// [`crate::valid_actions`] surfaces it.
+fn flag_commander_return(owner: &mut Player, instance: CardInstanceId) {
+    if let Some(commander) = owner.commander.as_mut() {
+        if commander.instance == instance {
+            commander.return_pending = true;
+        }
+    }
+}
+
 impl GameState {
     /// An initial two-player game: turn 1, player 0 to act, at the [`Step::Untap`]
     /// step of the first turn. Both players start with **empty** libraries and
@@ -726,21 +745,36 @@ impl GameState {
                 id: perm.instance,
                 card: perm.card,
             });
-            // CR 903.9a: a commander that would go to a graveyard may instead be
-            // returned to the command zone by its owner. This is not a replacement
-            // effect (the compatibility report's replacement-effects exclusion must
-            // stay true); the card really moves to the graveyard, and the choice is
-            // offered at the next state-based check. Flag the pending decision so
-            // [`crate::valid_actions`] surfaces it.
-            if owner
-                .commander
-                .as_ref()
-                .is_some_and(|c| c.instance == perm.instance)
-            {
-                if let Some(commander) = owner.commander.as_mut() {
-                    commander.return_pending = true;
-                }
-            }
+            flag_commander_return(owner, perm.instance);
+        }
+        Some(perm)
+    }
+
+    /// Move the permanent `id` from the battlefield to its owner's exile zone — the
+    /// single leaves-battlefield → exile seam that effect resolution (an exile-removal
+    /// spell or ability, [`crate::apply`]) and any future state-based path route
+    /// through, mirroring [`Self::move_permanent_to_graveyard`] (CR 406.2 / CR 700.4).
+    /// Keeping exile behind one seam is what lets a commander's owner ever be offered
+    /// the CR 903.9a return, and makes every exile observed uniformly by the diff-based
+    /// trigger collector ([`crate::triggers`]).
+    ///
+    /// Identity semantics are exactly the graveyard seam's: the physical
+    /// [`CardInstance`] carries over unchanged while the battlefield [`PermanentId`]
+    /// is dropped, so a later return to any zone is a brand-new object (a fresh
+    /// [`PermanentId`] is minted only on battlefield re-entry). Ownership apart from
+    /// control is not tracked yet, so the controller stands in as the owner (the same
+    /// shim the graveyard seam uses). Returns the permanent that moved (so a caller can
+    /// inspect its identity), or `None` when no permanent with that id was on the
+    /// battlefield. A bare zone move that records no log event of its own.
+    pub(crate) fn move_permanent_to_exile(&mut self, id: PermanentId) -> Option<Permanent> {
+        let pos = self.battlefield.iter().position(|p| p.id == id)?;
+        let perm = self.battlefield.remove(pos);
+        if let Some(owner) = self.players.get_mut(perm.controller.0) {
+            owner.exile.push(CardInstance {
+                id: perm.instance,
+                card: perm.card,
+            });
+            flag_commander_return(owner, perm.instance);
         }
         Some(perm)
     }

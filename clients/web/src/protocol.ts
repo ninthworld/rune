@@ -242,6 +242,7 @@ export type GameLogEvent =
   | { type: 'permanent_died'; permanent: LogEntity }
   | { type: 'step_changed'; turn: number; active_player: PlayerId; phase: Phase }
   | { type: 'player_eliminated'; player: PlayerId; reason: GameOverReason }
+  | { type: 'commander_returned_to_command_zone'; player: PlayerId; card: LogEntity }
   | { type: 'game_over'; result: GameResult };
 
 /** One sequence-numbered entry in the authoritative recent game-history window. */

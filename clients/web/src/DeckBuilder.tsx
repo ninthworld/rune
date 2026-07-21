@@ -66,8 +66,18 @@ interface DeckBuilderProps {
   format?: CatalogFormat;
   /** The counts to seed the builder with on open (a starter deck, or empty). */
   initialCounts: Readonly<Record<CardIdentity, number>>;
-  /** Submit the built list (functional ids, duplicates repeated) through `submit_deck`. */
-  onSubmit: (cards: CardIdentity[]) => void;
+  /**
+   * The commander to seed the designation with on open (issue #396), or absent for
+   * none — a starter deck's designated commander, or a loaded saved deck's. Only
+   * meaningful when the format requires a commander; ignored otherwise.
+   */
+  initialCommander?: CardIdentity;
+  /**
+   * Submit the built list (functional ids, duplicates repeated) through `submit_deck`,
+   * carrying the designated `commander` (issue #396) when the format requires one and a
+   * card is designated. The client never computes legality — the server validates both.
+   */
+  onSubmit: (cards: CardIdentity[], commander?: CardIdentity) => void;
   /** Close the builder without submitting (backdrop, Cancel, or Escape). */
   onClose: () => void;
   /**
@@ -169,10 +179,14 @@ function downloadDeck(name: string, text: string): void {
  */
 function SavedDecksPanel({
   counts,
+  commander,
   onLoad,
 }: {
   counts: Record<CardIdentity, number>;
-  onLoad: (counts: Record<CardIdentity, number>) => void;
+  /** The working deck's designated commander (issue #396), saved with it; `null` for none. */
+  commander: CardIdentity | null;
+  /** Load a saved/imported deck's counts and its designation into the builder. */
+  onLoad: (counts: Record<CardIdentity, number>, commander: CardIdentity | null) => void;
 }) {
   // `null` until the storage probe resolves; `false` means device storage is
   // unavailable and the panel hides. Ephemeral UI state — never load-bearing.
@@ -218,7 +232,11 @@ function SavedDecksPanel({
   };
 
   const persist = async (deckName: string): Promise<void> => {
-    await saveDeck({ name: deckName, cards: countsToCards(counts) });
+    await saveDeck({
+      name: deckName,
+      cards: countsToCards(counts),
+      ...(commander !== null ? { commander } : {}),
+    });
     setConfirmOverwrite(false);
     setStatus(`Saved “${deckName}”.`);
     setError(null);
@@ -252,7 +270,7 @@ function SavedDecksPanel({
   };
 
   const load = (deck: SavedDeck): void => {
-    onLoad(cardsToCounts(deck.cards));
+    onLoad(cardsToCounts(deck.cards), deck.commander ?? null);
     setName(deck.name);
     setConfirmOverwrite(false);
     setStatus(`Loaded “${deck.name}” — edit it, then save.`);
@@ -291,7 +309,7 @@ function SavedDecksPanel({
       setStatus(null);
       return;
     }
-    onLoad(cardsToCounts(contents.cards));
+    onLoad(cardsToCounts(contents.cards), contents.commander ?? null);
     setName(contents.name);
     setImportText('');
     setConfirmOverwrite(false);
@@ -476,6 +494,7 @@ export function DeckBuilder({
   catalog,
   format,
   initialCounts,
+  initialCommander,
   onSubmit,
   onClose,
   error,
@@ -483,30 +502,78 @@ export function DeckBuilder({
   // The in-progress deck: identity → copies. Ephemeral local UI state seeded once on
   // open; never load-bearing across messages (the pool it references is server truth).
   const [counts, setCounts] = useState<Record<CardIdentity, number>>(() => ({ ...initialCounts }));
+  // The designated commander (issue #396, CR 903.3), or `null` for none. Ephemeral UI
+  // state seeded once on open. The client relays it verbatim and computes NO legality —
+  // eligibility (legendary creature, color identity) is validated server-side.
+  const [commander, setCommander] = useState<CardIdentity | null>(() => initialCommander ?? null);
   // The card being pin-inspected, if any — ephemeral selection, discarded on close.
   const [inspecting, setInspecting] = useState<CatalogCard | null>(null);
 
   const cards = useMemo(() => catalog?.cards ?? [], [catalog]);
   const total = totalCount(counts);
 
+  // Whether this room's format requires a commander is learned from the advertised
+  // format metadata (issue #394), never a hardcoded format name. Only then is the
+  // designation affordance shown and the commander submitted.
+  const requiresCommander = format?.requires_commander === true;
+
+  // A display-only lookup of catalog type lines, used ONLY to hint likely commander
+  // candidates (a legendary creature) in the running list — ordering/hinting, never
+  // legality. The server is the sole authority on what may be a commander.
+  const typeLines = useMemo(() => {
+    const map: Record<CardIdentity, string> = {};
+    for (const card of cards) map[card.functional_id] = card.type_line;
+    return map;
+  }, [cards]);
+
   // Resolve chosen counts into display rows in the catalog's stable order, then any
   // seeded identity the catalog does not carry (fallback to its raw id as the name),
   // so a starter-seeded card never silently vanishes from the summary.
   const deckRows = useMemo(() => {
-    const rows: { id: CardIdentity; name: string; count: number }[] = [];
+    // A card is *hinted* as a commander candidate when its catalog type line reads as a
+    // legendary creature (CR 903.3). This is a display hint only — the affordance is
+    // still offered on every row, and the server alone decides legality.
+    const isCandidate = (id: CardIdentity): boolean => {
+      const line = typeLines[id]?.toLowerCase() ?? '';
+      return line.includes('legendary') && line.includes('creature');
+    };
+    const rows: {
+      id: CardIdentity;
+      name: string;
+      count: number;
+      isCommanderCandidate: boolean;
+    }[] = [];
     const seen = new Set<CardIdentity>();
     for (const card of cards) {
       const count = counts[card.functional_id] ?? 0;
       if (count > 0) {
-        rows.push({ id: card.functional_id, name: card.name, count });
+        rows.push({
+          id: card.functional_id,
+          name: card.name,
+          count,
+          isCommanderCandidate: isCandidate(card.functional_id),
+        });
         seen.add(card.functional_id);
       }
     }
     for (const [id, count] of Object.entries(counts)) {
-      if (count > 0 && !seen.has(id)) rows.push({ id, name: id, count });
+      if (count > 0 && !seen.has(id)) {
+        rows.push({ id, name: id, count, isCommanderCandidate: isCandidate(id) });
+      }
     }
-    return rows;
-  }, [cards, counts]);
+    // Order commander candidates first so a designation is quick to find, without
+    // changing the underlying counts (presentation only).
+    return requiresCommander
+      ? [...rows].sort((a, b) => Number(b.isCommanderCandidate) - Number(a.isCommanderCandidate))
+      : rows;
+  }, [cards, counts, typeLines, requiresCommander]);
+
+  // Clear a designation whose card has left the deck (its count dropped to 0), so the
+  // builder never carries a commander the list no longer holds. Pure reconciliation of
+  // ephemeral UI state — no legality decided here.
+  useEffect(() => {
+    if (commander !== null && (counts[commander] ?? 0) === 0) setCommander(null);
+  }, [commander, counts]);
 
   const setCount = (id: CardIdentity, next: number): void => {
     setCounts((prev) => {
@@ -526,8 +593,15 @@ export function DeckBuilder({
     for (const row of deckRows) {
       for (let i = 0; i < row.count; i += 1) list.push(row.id);
     }
-    onSubmit(list);
+    // Carry the designation only in a commander format and only when one is set; the
+    // server validates it (and rejects a missing/illegal one) — no legality here.
+    onSubmit(list, requiresCommander && commander !== null ? commander : undefined);
   };
+
+  // The designated commander's display name for the header line, resolved from the deck
+  // rows (or falling back to the raw identity). Presentation only.
+  const commanderName =
+    commander !== null ? (deckRows.find((row) => row.id === commander)?.name ?? commander) : null;
 
   return (
     <>
@@ -604,7 +678,14 @@ export function DeckBuilder({
 
           {/* Device-local saved decks (#369, ADR 0027): save/load/delete + portable
               export/import. Hides itself when device storage is unavailable. */}
-          <SavedDecksPanel counts={counts} onLoad={setCounts} />
+          <SavedDecksPanel
+            counts={counts}
+            commander={commander}
+            onLoad={(loadedCounts, loadedCommander) => {
+              setCounts(loadedCounts);
+              setCommander(loadedCommander);
+            }}
+          />
 
           {catalog === null ? (
             <p className={s.muted} data-testid="deck-builder-loading">
@@ -678,22 +759,94 @@ export function DeckBuilder({
               {/* The running deck: chosen cards and their copy counts (display only). */}
               <div className={l.builderDeck} data-testid="deck-builder-deck" aria-label="Your deck">
                 <span className={s.fieldLabel}>Your deck · {total} cards</span>
+
+                {/* The commander designation status (issue #396), shown only when the
+                    room's format advertises the requirement (#394). Informational — the
+                    server validates the designation on submit. */}
+                {requiresCommander && (
+                  <div
+                    className={l.builderCommander}
+                    data-testid="deck-builder-commander-status"
+                    role="status"
+                  >
+                    {commanderName !== null ? (
+                      <>
+                        <span className={s.muted}>Commander</span>
+                        <span
+                          className={l.builderCommanderName}
+                          data-testid="deck-builder-commander-name"
+                        >
+                          {commanderName}
+                        </span>
+                        <button
+                          type="button"
+                          className={s.button}
+                          onClick={() => setCommander(null)}
+                          data-testid="deck-builder-commander-clear"
+                          aria-label="Clear the designated commander"
+                        >
+                          Clear
+                        </button>
+                      </>
+                    ) : (
+                      <span className={s.muted} data-testid="deck-builder-commander-none">
+                        Designate a commander from your deck below.
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {deckRows.length === 0 ? (
                   <span className={s.muted} data-testid="deck-builder-deck-empty">
                     No cards yet — add from the pool or start from a starter.
                   </span>
                 ) : (
                   <ul className={l.builderDeckList}>
-                    {deckRows.map((row) => (
-                      <li
-                        key={row.id}
-                        className={l.builderDeckRow}
-                        data-testid={`deck-builder-deck-row-${row.id}`}
-                      >
-                        <span className={l.builderCardCount}>{row.count}×</span>
-                        <span>{row.name}</span>
-                      </li>
-                    ))}
+                    {deckRows.map((row) => {
+                      const isCommander = requiresCommander && commander === row.id;
+                      return (
+                        <li
+                          key={row.id}
+                          className={cx(l.builderDeckRow, isCommander && l.builderDeckRowCommander)}
+                          data-testid={`deck-builder-deck-row-${row.id}`}
+                        >
+                          <span className={l.builderCardCount}>{row.count}×</span>
+                          <span className={l.builderDeckRowName}>{row.name}</span>
+                          {isCommander && (
+                            <span
+                              className={l.builderCommanderBadge}
+                              data-testid={`deck-builder-commander-badge-${row.id}`}
+                            >
+                              Commander
+                            </span>
+                          )}
+                          {requiresCommander && !isCommander && row.isCommanderCandidate && (
+                            <span
+                              className={s.muted}
+                              data-testid={`deck-builder-commander-hint-${row.id}`}
+                            >
+                              Legendary
+                            </span>
+                          )}
+                          {requiresCommander && (
+                            <button
+                              type="button"
+                              className={cx(s.button, l.builderDesignate)}
+                              aria-pressed={isCommander}
+                              onClick={() => setCommander(isCommander ? null : row.id)}
+                              data-testid={`deck-builder-designate-${row.id}`}
+                              aria-label={
+                                isCommander
+                                  ? `${row.name} is the commander — clear designation`
+                                  : `Designate ${row.name} as commander`
+                              }
+                            >
+                              {isCommander ? 'Commander' : 'Make commander'}
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

@@ -259,15 +259,36 @@ connection screen:
   Storage is device-local (IndexedDB, beside the ADR 0024 art cache) keyed by a
   player-chosen name — no server storage, no protocol change, and a saved deck never
   leaves the device until it is submitted. Portability is one small schema-versioned
-  JSON document (`{ schema, version, name, cards: [{ functional_id, count }] }`);
-  Export downloads it (and shows the text to copy), Import parses it back into the
-  builder as the working deck for review before saving. Saving never implies
+  JSON document (`{ schema, version, name, cards: [{ functional_id, count }],
+  commander? }`); Export downloads it (and shows the text to copy), Import parses it
+  back into the builder as the working deck for review before saving. The document is
+  at **v2** since #396 — the optional `commander` field is the only addition, and the
+  parser still reads a **v1** file (which never carried one), so the bump strands no
+  device-local deck (ADR 0027's durability contract). Saving never implies
   legality — a saved deck is validated only at submission time by the room format
   through the same `submit_deck` gate, so a deck saved under one format may be
   rejected by another without corrupting the saved copy. No silent data loss:
   overwriting a name and deleting a deck each require an explicit confirm. When
   device storage is unavailable (private mode, disabled storage) the panel simply
   hides and the bundled-starters flow still works — never a broken screen.
+
+- **Designating a commander in the builder** (#396, CR 903.3). The affordance appears
+  **only** when the room's advertised format requires a commander — keyed off the
+  catalog format's `requires_commander` flag (#394), never a hardcoded format name; a
+  non-commander format shows nothing extra. In a commander room the "Your deck" list
+  gives each row a ≥44 px "Make commander" button (an `aria-pressed` toggle) and floats
+  a gold status line naming the current commander with a Clear control; the designated
+  row is marked distinctly (gold outline + a "Commander" badge). Exactly one card is
+  ever designated — picking another moves it — and removing the designated card's last
+  copy clears the designation. Structured catalog data (the type line) is used **only**
+  to hint and float likely candidates (a legendary creature reads "Legendary" and sorts
+  first); it never gates the choice — any card is designatable and the server alone
+  decides eligibility and color identity. Submit carries the designation through the
+  **unchanged** `submit_deck` gate (`submitDeckCommand(cards, commander)`); a rejection
+  surfaces over the modal with both the list and the designation preserved for
+  correction. The designation persists with a saved deck and rides the export/import
+  document (v2), so a commander deck round-trips. Zero client legality throughout — the
+  builder only relays the designation.
 
 The lobby composition was refined against a pre-game concept board (players
 table, segmented pickers, centered CTA, room meta header — adopted as
