@@ -344,6 +344,58 @@ describe('game store', () => {
       expect(store.getState().lobby?.room?.seats[0].decked).toBe(true);
     });
 
+    it('shows the server’s specific deck-rejection reason and keeps it across the re-sent view (issue #395)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+
+      // Submit a deck; the server rejects it with a structured reason frame, followed
+      // by the unchanged undecked view (ADR 0012). The explicit reason is displayed
+      // and is not clobbered by the generic inference from the re-sent view.
+      store.getState().sendLobby(submitDeckCommand(['onakke_ogre', 'onakke_ogre']));
+      socket.emitMessage(
+        JSON.stringify({
+          lobby_error: {
+            code: 'copy_limit',
+            reason: 'Onakke Ogre appears 5 times, above the 4-copy limit',
+            card: 'onakke_ogre',
+          },
+        }),
+      );
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+      expect(store.getState().lobbyError).toBe(
+        'Onakke Ogre appears 5 times, above the 4-copy limit',
+      );
+      // The builder state is not disturbed: still in the room, still undecked, still
+      // able to resubmit.
+      expect(store.getState().lobby?.room?.seats[0].decked).toBe(false);
+
+      // A corrected resubmission succeeds in the same session and clears the reason.
+      store.getState().sendLobby(submitDeckCommand(['onakke_ogre', 'forest']));
+      socket.emitMessage(LOBBY_ROOM_DECKED_JSON);
+      expect(store.getState().lobbyError).toBeNull();
+      expect(store.getState().lobby?.room?.seats[0].decked).toBe(true);
+    });
+
+    it('shows the specific reason regardless of frame order (view before error) (issue #395)', () => {
+      const { store, socket } = open();
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+
+      // The re-sent view arrives first (generic inference), then the explicit reason
+      // frame — the explicit reason still wins.
+      store.getState().sendLobby(submitDeckCommand(['forest']));
+      socket.emitMessage(LOBBY_ROOM_UNDECKED_JSON);
+      expect(store.getState().lobbyError).toContain('deck was rejected');
+      socket.emitMessage(
+        JSON.stringify({
+          lobby_error: {
+            code: 'below_minimum',
+            reason: 'deck has 1 cards, below the 40-card minimum',
+          },
+        }),
+      );
+      expect(store.getState().lobbyError).toBe('deck has 1 cards, below the 40-card minimum');
+    });
+
     it('reconciles ready → the seat reads ready with no error', () => {
       const { store, socket } = open();
       socket.emitMessage(LOBBY_ROOM_DECKED_JSON);

@@ -176,6 +176,31 @@ describe('DeckBuilder (issue #368)', () => {
     expect(screen.getByTestId('deck-builder-total').textContent).toBe('3 cards');
   });
 
+  it('displays the server’s specific deck-rejection reason, naming the card, with state preserved (issue #395)', () => {
+    // The structured reason (rendered by the server from deck-legality data) flows in
+    // through the same `error` prop; the builder shows it verbatim, keeps the built
+    // list for correction, and still offers Submit (no client-side legality gate).
+    const onSubmit = vi.fn();
+    render(
+      <DeckBuilder
+        catalog={CATALOG_VIEW}
+        format={CATALOG_VIEW.formats[0]}
+        initialCounts={{ shock: 5 }}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+        error="Shock appears 5 times, above the 4-copy limit"
+      />,
+    );
+    const shown = screen.getByTestId('deck-builder-error').textContent ?? '';
+    expect(shown).toContain('Shock');
+    expect(shown).toContain('above the 4-copy limit');
+    // Builder state preserved for correction.
+    expect(screen.getByTestId('deck-builder-count-shock').textContent).toBe('5');
+    // Submit stays available — the client never pre-validates legality.
+    fireEvent.click(screen.getByTestId('deck-builder-submit'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it('closes on Escape, backdrop, and Cancel (full keyboard + pointer operability)', () => {
     const onClose = vi.fn();
     render(

@@ -896,6 +896,45 @@ export interface LobbyView {
 }
 
 /**
+ * A structured, human-readable explanation of why a lobby command was rejected
+ * (issue #395), pushed to the rejecting connection only. The primary case is a
+ * rejected `submit_deck`: {@link LobbyRejection.reason} is the server's own
+ * explanation (safe to display verbatim — the client composes no prose of its own),
+ * {@link LobbyRejection.code} is a stable class id, and {@link LobbyRejection.card}
+ * names the offending card by its identity when one specific card is at fault. The
+ * named card is always from the sender's own submission — never another seat's deck.
+ */
+export interface LobbyRejection {
+  /**
+   * Stable machine code for the rejection class, e.g. `"below_minimum"`,
+   * `"above_maximum"`, `"copy_limit"`, `"missing_commander"`,
+   * `"commander_not_in_deck"`, `"commander_not_legendary_creature"`,
+   * `"out_of_identity"`, or `"unknown_card"`. Free-form so a newer server can add a
+   * class without breaking an older client, which falls back to {@link LobbyRejection.reason}.
+   */
+  code: string;
+  /** Human-readable reason, safe to display verbatim. */
+  reason: string;
+  /**
+   * The offending card's identity (`functional_id`), present only when the rejection
+   * is about one specific card (a copy-limit or color-identity violation, or an
+   * illegal/absent commander designation). Absent otherwise.
+   */
+  card?: CardIdentity;
+}
+
+/**
+ * The server→client frame carrying a {@link LobbyRejection} to the connection whose
+ * command was rejected (issue #395). Its single `lobby_error` key distinguishes it on
+ * the wire from every other frame; an older client that ignores it simply keeps its
+ * current {@link LobbyView}, so the feedback is additive.
+ */
+export interface LobbyErrorFrame {
+  /** The structured rejection reason for the receiving connection. */
+  lobby_error: LobbyRejection;
+}
+
+/**
  * The current schema version carried in {@link CatalogView.catalog_version}. A single
  * frame carries the whole catalog today; the version leaves room to add paging later
  * without breaking older clients (issue #367).

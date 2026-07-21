@@ -82,6 +82,229 @@ impl Client {
             }
         }
     }
+
+    /// Read frames until a structured lobby-error frame (issue #395) arrives,
+    /// returning its `lobby_error` object. Asserts no `GameView` slips through first.
+    async fn next_lobby_error(&mut self) -> serde_json::Value {
+        loop {
+            let value = self.next_json().await;
+            assert!(
+                value.get("phase").is_none(),
+                "unexpected game view while awaiting a lobby error: {value}"
+            );
+            if let Some(error) = value.get("lobby_error") {
+                return error.clone();
+            }
+        }
+    }
+}
+
+/// A room config for a specific `game_setup` format (issue #395 rejection tests).
+fn config_in(seats: u8, game_setup: &str) -> RoomConfig {
+    RoomConfig {
+        seats,
+        game_setup: game_setup.to_string(),
+    }
+}
+
+/// Open a fresh room under `game_setup` with `alice` as the seat-0 host, returning its
+/// id. The caller submits (bad) decks straight through the seat.
+async fn create_room_under(alice: &mut Client, game_setup: &str) -> RoomId {
+    let _ = alice.lobby_view_where(|v| v.room.is_none()).await;
+    alice
+        .send(LobbyCommand::CreateRoom(CreateRoom {
+            config: config_in(2, game_setup),
+        }))
+        .await;
+    alice
+        .lobby_view_where(|v| v.room.is_some())
+        .await
+        .room
+        .expect("alice in room")
+        .room_id
+}
+
+/// Submit `cards`/`commander` to a fresh `game_setup` room and return the structured
+/// rejection the submitting seat receives (issue #395).
+async fn rejection_for(
+    lobby: &Lobby,
+    game_setup: &str,
+    cards: Vec<String>,
+    commander: Option<String>,
+) -> serde_json::Value {
+    let mut alice = Client::connect(lobby).await;
+    let _ = create_room_under(&mut alice, game_setup).await;
+    alice
+        .send(LobbyCommand::SubmitDeck(SubmitDeck { cards, commander }))
+        .await;
+    alice.next_lobby_error().await
+}
+
+#[tokio::test]
+async fn issue_395_below_minimum_deck_is_rejected_with_a_reason() {
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+    // Ten Forests: well under the starter format's 40-card minimum.
+    let error = rejection_for(&lobby, "starter-1v1", vec!["forest".to_string(); 10], None).await;
+    assert_eq!(error["code"], "below_minimum");
+    assert_eq!(
+        error["reason"],
+        "deck has 10 cards, below the 40-card minimum"
+    );
+    // A size rejection names no specific card.
+    assert!(error.get("card").is_none());
+}
+
+#[tokio::test]
+async fn issue_395_copy_limit_deck_is_rejected_naming_the_card() {
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+    // Five Onakke Ogre (over the 4-copy limit) plus 35 Forests = 40 cards.
+    let mut cards = vec!["onakke_ogre".to_string(); 5];
+    cards.extend(std::iter::repeat_n("forest".to_string(), 35));
+    let error = rejection_for(&lobby, "starter-1v1", cards, None).await;
+    assert_eq!(error["code"], "copy_limit");
+    // The reason names the card by its display name, and `card` is its identity.
+    assert_eq!(error["card"], "onakke_ogre");
+    assert_eq!(
+        error["reason"],
+        "Onakke Ogre appears 5 times, above the 4-copy limit"
+    );
+}
+
+#[tokio::test]
+async fn issue_395_unknown_card_is_rejected_with_the_identity() {
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+    let error = rejection_for(
+        &lobby,
+        "starter-1v1",
+        vec!["no_such_card".to_string()],
+        None,
+    )
+    .await;
+    assert_eq!(error["code"], "unknown_card");
+    assert_eq!(error["card"], "no_such_card");
+    assert_eq!(error["reason"], "unknown card identity no_such_card");
+}
+
+#[tokio::test]
+async fn issue_395_above_maximum_commander_deck_is_rejected() {
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+    // 101 cards: one over the exact-100 commander size.
+    let mut cards = commander_decklist();
+    cards.push("forest".to_string());
+    let error = rejection_for(&lobby, "commander", cards, Some("jedit_ojanen".to_string())).await;
+    assert_eq!(error["code"], "above_maximum");
+    assert_eq!(
+        error["reason"],
+        "deck has 101 cards, above the 100-card maximum"
+    );
+    assert!(error.get("card").is_none());
+}
+
+#[tokio::test]
+async fn issue_395_missing_commander_is_rejected() {
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+    let error = rejection_for(&lobby, "commander", commander_decklist(), None).await;
+    assert_eq!(error["code"], "missing_commander");
+    assert!(error.get("card").is_none());
+}
+
+#[tokio::test]
+async fn issue_395_illegal_commander_is_rejected_naming_the_designation() {
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+    // Llanowar Elves is in the deck but is not legendary, so it cannot be the commander.
+    let error = rejection_for(
+        &lobby,
+        "commander",
+        commander_decklist(),
+        Some("llanowar_elves".to_string()),
+    )
+    .await;
+    assert_eq!(error["code"], "commander_not_legendary_creature");
+    assert_eq!(error["card"], "llanowar_elves");
+
+    // A commander the deck does not contain names the designation too.
+    let not_in_deck = rejection_for(
+        &lobby,
+        "commander",
+        vec!["forest".to_string(); 100],
+        Some("jedit_ojanen".to_string()),
+    )
+    .await;
+    assert_eq!(not_in_deck["code"], "commander_not_in_deck");
+    assert_eq!(not_in_deck["card"], "jedit_ojanen");
+}
+
+#[tokio::test]
+async fn issue_395_out_of_identity_card_is_rejected_naming_it() {
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+    // Swap a Forest for a blue card: outside Jedit Ojanen's green identity.
+    let mut cards = commander_decklist();
+    let last = cards.len() - 1;
+    cards[last] = "snapping_drake".to_string();
+    let error = rejection_for(&lobby, "commander", cards, Some("jedit_ojanen".to_string())).await;
+    assert_eq!(error["code"], "out_of_identity");
+    assert_eq!(error["card"], "snapping_drake");
+}
+
+#[tokio::test]
+async fn issue_395_a_seats_rejection_reaches_no_other_seat_and_a_fix_resubmits() {
+    // Redaction (issue #395): one seat's rejected deck is delivered to that seat only —
+    // no other seat's frame stream carries the reason or names the offending card — and
+    // the builder can correct and resubmit successfully in the same room session.
+    let lobby = Lobby::bundled(Lobby::DEFAULT_MAX_ROOMS).expect("bundled cards");
+
+    let mut alice = Client::connect(&lobby).await;
+    let room_id = create_room_under(&mut alice, "starter-1v1").await;
+
+    let mut bob = Client::connect(&lobby).await;
+    let _ = bob.lobby_view_where(|v| v.room.is_none()).await;
+    bob.send(LobbyCommand::JoinRoom(JoinRoom {
+        room_id: room_id.clone(),
+    }))
+    .await;
+    let _ = bob.lobby_view_where(|v| v.room.is_some()).await;
+
+    // Alice submits an illegal deck (five Onakke Ogre + 35 Forests) and gets the reason.
+    let mut bad = vec!["onakke_ogre".to_string(); 5];
+    bad.extend(std::iter::repeat_n("forest".to_string(), 35));
+    alice
+        .send(LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: bad,
+            commander: None,
+        }))
+        .await;
+    let error = alice.next_lobby_error().await;
+    assert_eq!(error["code"], "copy_limit");
+    assert_eq!(error["card"], "onakke_ogre");
+
+    // Alice corrects the list (four Onakke Ogre) and resubmits — accepted in the same
+    // room session, her seat becomes decked.
+    let mut good = vec!["onakke_ogre".to_string(); 4];
+    good.extend(std::iter::repeat_n("forest".to_string(), 36));
+    alice
+        .send(LobbyCommand::SubmitDeck(SubmitDeck {
+            cards: good,
+            commander: None,
+        }))
+        .await;
+    let _ = alice
+        .lobby_view_where(|v| v.room.as_ref().is_some_and(|r| r.seats[0].decked))
+        .await;
+
+    // Bob's whole frame stream, up to seeing Alice decked from her *valid* resubmit,
+    // never carried a lobby-error frame — the rejection did not leak to his seat. Had
+    // it leaked, a `lobby_error` frame would arrive before the decked roster update.
+    loop {
+        let value = bob.next_json().await;
+        assert!(
+            value.get("lobby_error").is_none(),
+            "another seat's rejection leaked to bob: {value}"
+        );
+        let view: LobbyView = serde_json::from_value(value).expect("valid LobbyView");
+        if view.room.as_ref().is_some_and(|r| r.seats[0].decked) {
+            break;
+        }
+    }
 }
 
 fn config(seats: u8) -> RoomConfig {
