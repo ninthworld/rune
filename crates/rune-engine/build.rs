@@ -210,7 +210,7 @@ fn render_manifest(definitions: &[Definition], sets: &[Set]) -> Result<String, B
          // value, interned to CardId(0..n) (ADR 0018 §3).\n\n",
     );
 
-    writeln!(out, "const CATALOG: &[CatalogEntry] = &[")?;
+    writeln!(out, "pub(crate) const CATALOG: &[CatalogEntry] = &[")?;
     for (index, definition) in definitions.iter().enumerate() {
         let path = definition
             .path
@@ -224,7 +224,7 @@ fn render_manifest(definitions: &[Definition], sets: &[Set]) -> Result<String, B
     }
     writeln!(out, "];\n")?;
 
-    writeln!(out, "const SET_MANIFEST: &[SetSnapshot] = &[")?;
+    writeln!(out, "pub(crate) const SET_MANIFEST: &[SetSnapshot] = &[")?;
     for set in sets {
         let path = set.path.to_str().ok_or("set path is not UTF-8")?;
         writeln!(
