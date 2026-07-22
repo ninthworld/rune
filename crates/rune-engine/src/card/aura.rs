@@ -47,6 +47,8 @@ pub struct AuraGrant {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use super::*;
     use crate::card_type::CardType;
 
