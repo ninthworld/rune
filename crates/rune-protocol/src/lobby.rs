@@ -186,6 +186,52 @@ pub struct LobbyView {
     pub valid_commands: Vec<String>,
 }
 
+/// A structured, human-readable explanation of why a lobby command was rejected
+/// (issue #395). It is pushed to the **rejecting connection only**, following the
+/// lobby's non-fatal error pattern (ADR 0012): the seat's [`LobbyView`] is otherwise
+/// unchanged, so this is ephemeral feedback the client shows and never load-bearing
+/// state.
+///
+/// The primary case is a rejected [`SubmitDeck`]: `reason` is the server's own
+/// human-readable explanation (rendered from structured deck-legality data — the
+/// server invents no new prose), `code` is a stable `snake_case` class id a client
+/// may branch on without parsing the reason, and `card` names the offending card by
+/// its [`CardIdentity`] when the rejection is about one specific card. `card` is only
+/// ever a card from the **sender's own** submitted list or commander designation —
+/// never another seat's deck or any hidden state.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LobbyRejection {
+    /// A stable machine code for the rejection class, e.g. `"below_minimum"`,
+    /// `"above_maximum"`, `"copy_limit"`, `"missing_commander"`,
+    /// `"commander_not_in_deck"`, `"commander_not_legendary_creature"`,
+    /// `"out_of_identity"`, or `"unknown_card"`. A free-form string (like the other
+    /// lobby id fields) so a newer server can add a class without breaking an older
+    /// client, which falls back to rendering [`reason`](LobbyRejection::reason).
+    pub code: String,
+    /// A human-readable reason, safe to display verbatim — the same explanation the
+    /// server derives from structured deck-legality data (it composes no prose beyond
+    /// this). Naming a specific card, it uses the card's display name.
+    pub reason: String,
+    /// The offending card's [`CardIdentity`] (`functional_id`), present only when the
+    /// rejection is about one specific card (a copy-limit or color-identity violation,
+    /// or an illegal/absent commander designation). Always a card from the sender's
+    /// own submission — never another seat's. Omitted otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<CardIdentity>,
+}
+
+/// The server→client frame that carries a [`LobbyRejection`] to the connection whose
+/// command was rejected (issue #395). Its single `lobby_error` key distinguishes it
+/// on the wire from every other server frame (`LobbyView`, `GameView`,
+/// `SpectatorView`, `CatalogView`), which carry no such field. An older client that
+/// does not recognize the frame simply ignores it and keeps its current
+/// [`LobbyView`], so the feedback is additive.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LobbyErrorFrame {
+    /// The structured rejection reason for the receiving connection.
+    pub lobby_error: LobbyRejection,
+}
+
 /// First-contact / reconnect command. Carries a previously issued
 /// [`SessionToken`] when reconnecting; omitted (`None`) on a fresh connection, in
 /// which case the server issues a new identity.
@@ -831,6 +877,51 @@ mod tests {
         };
         let json = serde_json::to_value(&unnamed).unwrap();
         assert!(json.get("name").is_none());
+    }
+
+    #[test]
+    fn issue_395_lobby_error_frame_round_trips_with_a_named_card() {
+        // A copy-limit rejection names the offending card by its identity and carries a
+        // stable code plus the human-readable reason.
+        let frame = LobbyErrorFrame {
+            lobby_error: LobbyRejection {
+                code: "copy_limit".into(),
+                reason: "Onakke Ogre appears 5 times, above the 4-copy limit".into(),
+                card: Some("onakke_ogre".into()),
+            },
+        };
+        let json = serde_json::to_value(&frame).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "lobby_error": {
+                    "code": "copy_limit",
+                    "reason": "Onakke Ogre appears 5 times, above the 4-copy limit",
+                    "card": "onakke_ogre"
+                }
+            })
+        );
+        // The `lobby_error` key is the on-wire discriminator; no other frame has it.
+        assert!(json.get("lobby_error").is_some());
+        let back: LobbyErrorFrame = serde_json::from_value(json).unwrap();
+        assert_eq!(back, frame);
+    }
+
+    #[test]
+    fn issue_395_lobby_error_frame_elides_card_when_not_card_specific() {
+        // A size rejection names no card, so `card` elides from the wire entirely.
+        let frame = LobbyErrorFrame {
+            lobby_error: LobbyRejection {
+                code: "below_minimum".into(),
+                reason: "deck has 39 cards, below the 40-card minimum".into(),
+                card: None,
+            },
+        };
+        let json = serde_json::to_value(&frame).unwrap();
+        assert!(json["lobby_error"].get("card").is_none());
+        let back: LobbyErrorFrame = serde_json::from_value(json).unwrap();
+        assert_eq!(back, frame);
+        assert_eq!(back.lobby_error.card, None);
     }
 
     #[test]

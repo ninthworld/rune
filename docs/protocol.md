@@ -546,6 +546,39 @@ and ready.
 The directory provides room discovery, not matchmaking; the server never pairs players
 automatically.
 
+### `LobbyErrorFrame` (deck-rejection reason)
+
+When a `submit_deck` (or a host’s `add_ai`) deck is rejected, the server sends the **rejecting
+connection only** a structured, human-readable reason (issue #395) in addition to re-sending its
+unchanged `LobbyView` (the non-fatal pattern above). Other seats and spectators receive nothing
+about the rejected deck — the reason rides the sender’s own socket, and any named card is always
+one of the sender’s own submitted cards, never another seat’s hidden deck.
+
+The frame is a single object under a `lobby_error` key — the on-wire discriminator, carried by no
+other frame (`LobbyView`, `GameView`, `SpectatorView`, `CatalogView`):
+
+```json
+{ "lobby_error": { "code": "copy_limit", "reason": "Onakke Ogre appears 5 times, above the 4-copy limit", "card": "onakke_ogre" } }
+```
+
+`LobbyRejection` fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `code` | `string` | Stable `snake_case` rejection class (see below); free-form so a newer class never breaks an older client |
+| `reason` | `string` | Human-readable explanation, safe to display verbatim; the server derives it from structured deck-legality data and composes no other prose |
+| `card` | `CardIdentity?` | The offending card’s `functional_id`, present only when one specific card is at fault; omitted otherwise |
+
+`code` is one of `below_minimum`, `above_maximum`, `copy_limit`, `missing_commander`,
+`commander_not_in_deck`, `commander_not_legendary_creature`, `out_of_identity` (the deck-legality
+classes), or `unknown_card` (a decklist identity that does not resolve). `card` is present for
+`copy_limit`, `out_of_identity`, `commander_not_in_deck`, `commander_not_legendary_creature`, and
+`unknown_card`; the size and missing-commander classes name no card. The client shows `reason`
+and keeps its builder state so the list can be corrected and resubmitted in the same room session;
+an older client that does not recognize the frame simply ignores it and keeps its `LobbyView`, so
+the feedback is additive. The client computes no legality of its own — this reason is the server’s
+authoritative explanation, not a client-side pre-validation.
+
 ### `CatalogView`
 
 `request_catalog` asks for the public card catalog and per-format deck rules (issue #367), so a

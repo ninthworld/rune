@@ -883,3 +883,43 @@ describe('catalog wire (issue #367)', () => {
     expect(() => normalizeCatalogView(42)).toThrow(ProtocolError);
   });
 });
+
+describe('lobby error wire (issue #395)', () => {
+  it('routes a lobby_error frame to a structured rejection', () => {
+    const json = JSON.stringify({
+      lobby_error: {
+        code: 'copy_limit',
+        reason: 'Onakke Ogre appears 5 times, above the 4-copy limit',
+        card: 'onakke_ogre',
+      },
+    });
+    const frame = parseServerFrame(json);
+    expect(frame.kind).toBe('lobby_error');
+    if (frame.kind === 'lobby_error') {
+      expect(frame.rejection.code).toBe('copy_limit');
+      expect(frame.rejection.reason).toBe('Onakke Ogre appears 5 times, above the 4-copy limit');
+      expect(frame.rejection.card).toBe('onakke_ogre');
+    }
+  });
+
+  it('leaves card absent for a rejection that names no card', () => {
+    const json = JSON.stringify({
+      lobby_error: {
+        code: 'below_minimum',
+        reason: 'deck has 39 cards, below the 40-card minimum',
+      },
+    });
+    const frame = parseServerFrame(json);
+    expect(frame.kind).toBe('lobby_error');
+    if (frame.kind === 'lobby_error') {
+      expect(frame.rejection.card).toBeUndefined();
+      expect(frame.rejection.code).toBe('below_minimum');
+    }
+  });
+
+  it('does not mistake a plain LobbyView for a lobby_error frame', () => {
+    // A LobbyView carries no `lobby_error` key, so it still routes to `lobby`.
+    const frame = parseServerFrame(LOBBY_ROOMLESS_JSON);
+    expect(frame.kind).toBe('lobby');
+  });
+});

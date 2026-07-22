@@ -44,9 +44,9 @@ pub use card::{CardView, Counter, OpponentView, Permanent, Phase, SelfView, Stac
 pub use catalog::{AiOption, CatalogCard, CatalogFormat, CatalogView, CATALOG_VERSION};
 pub use client::{ChooseAction, ClientMessage, SetStops, TargetChoice};
 pub use lobby::{
-    AddAi, CardIdentity, CreateRoom, GameSetupId, Hello, JoinRoom, LobbyCommand, LobbyView, Ready,
-    RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken,
-    SetName, SpectateRoom, SubmitDeck,
+    AddAi, CardIdentity, CreateRoom, GameSetupId, Hello, JoinRoom, LobbyCommand, LobbyErrorFrame,
+    LobbyRejection, LobbyView, Ready, RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary,
+    RoomView, SeatView, SessionToken, SetName, SpectateRoom, SubmitDeck,
 };
 pub use log::{GameLogEntry, GameLogEvent, LogBlock, LogDamageTarget, LogEntity};
 pub use result::{CommanderDamage, CommanderTax, GameOverReason, GameResult};
