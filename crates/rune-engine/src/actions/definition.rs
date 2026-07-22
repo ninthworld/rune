@@ -193,7 +193,7 @@ pub struct Block {
 impl Action {
     /// The chosen targets carried by this action, in slot order; empty for an
     /// action that carries none.
-    pub(crate) fn targets(&self) -> &[Target] {
+    pub(super) fn targets(&self) -> &[Target] {
         match self {
             Action::ActivateAbility { targets, .. } | Action::CastSpell { targets, .. } => targets,
             // `Keep::bottom` is a mulligan sub-choice, not a target selection; it
@@ -220,7 +220,7 @@ impl Action {
     /// This action with its chosen targets cleared — its *requirement* form, the
     /// shape [`crate::valid_actions`] advertises. Target-carrying variants drop their
     /// selection; every other variant is returned unchanged.
-    pub(crate) fn without_targets(&self) -> Action {
+    pub(super) fn without_targets(&self) -> Action {
         match self {
             Action::ActivateAbility {
                 permanent, index, ..
