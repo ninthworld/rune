@@ -540,6 +540,35 @@ attack (one attacker at each of two opponents, issue #347) renders each attacker
 treatment in its own band and its link to the blocker in the attacked opponent's
 area, so who-attacks-whom stays legible on a crowded multi-opponent board.
 
+**Phone-portrait summary tiles + focus (issue #400).** Three or four full opponent
+bands do not fit a phone at once, so the compact composition changes kind a second
+time (the blueprint's "summary tiles + focus mode"): each un-focused opponent
+collapses to a fixed-height **summary tile** carrying only crest/life, name,
+hand/library counts, the command-zone count and commander-damage tallies where a
+commander game is in play, and the active-turn/attacked markers — everything the
+table owes about that seat except the drawn board. The receiver keeps the full
+anatomy at the bottom (turn pill, sheets, hand fan, action bar, identity strip), so
+the one action home never moves. A compact duel still shows **both battlefields in
+full** — tiles engage only at two or more opponents.
+
+- **Expand in place.** Activating a tile — tap, click, or keyboard select/confirm —
+  expands that opponent's battlefield where its tile sat, in the same seat order,
+  sharing the freed board height with the receiver (who keeps the larger share). A
+  collapse control on the expanded header restores the tiles; both directions are
+  pointer- and keyboard-operable, and after the tile ↔ panel swap DOM focus moves to
+  the newly-relevant control so the focus order survives expansion.
+- **Never hide an offered action.** Because a collapsed tile draws no cards, an
+  offered board interaction could otherwise be unreachable. The composition resolves
+  this from the view alone: any opponent whose battlefield holds an action subject or
+  a target candidate is **auto-expanded** (pinned open — no manual collapse), so the
+  board a decision needs is always shown, and any other candidate board is one tap
+  away.
+- **Ephemeral, never load-bearing.** The manual expansion is ephemeral UI state,
+  dropped on the next view like every other selection, so a refresh mid-focus
+  reconstructs cleanly (the decision-driven auto-expansion re-derives from the view).
+  The expand/collapse transition reads the shared motion token, so
+  `prefers-reduced-motion` snaps it.
+
 ## Action routing
 
 Every entity-owned action has a `subject`. Entity-subject actions render as the entity's

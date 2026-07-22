@@ -104,6 +104,7 @@ function scene(cards: RenderedCard[], hand: RenderedCard[] = []): TableScene {
         accent: '#3E9C9C',
         pileRect: { x: 520, y: 40, w: 68, h: 120 },
         densityRung: 0,
+        summary: false,
       },
     ],
     hand,

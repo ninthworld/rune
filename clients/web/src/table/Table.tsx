@@ -36,7 +36,7 @@ import { playerName } from '../playerNames';
 import { publishScene, publishView } from '../testHooks';
 import { ActionDock } from './ActionDock';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
-import { PanelChrome, type BrowsableZone } from './PanelChrome';
+import { PanelChrome, type BrowsableZone, type TileFocus } from './PanelChrome';
 import { CardInspect, type InspectTarget } from './CardInspect';
 import { EntityOverlay } from './EntityOverlay';
 import { GameOverOverlay } from './GameOverOverlay';
@@ -49,6 +49,7 @@ import { TopBar, type RailSheet } from './TopBar';
 import { ZoneBrowser } from './ZoneBrowser';
 import {
   buildTableScene,
+  orderedOpponentIds,
   type Rect,
   type RenderedCard,
   type TableScene,
@@ -119,6 +120,54 @@ function useViewport(): Required<Viewport> {
     return () => window.removeEventListener('resize', onResize);
   }, []);
   return viewport;
+}
+
+/**
+ * Whether the environment asks for reduced motion (`prefers-reduced-motion`). Drives
+ * the summary-tile expand/collapse snap (issue #400). Read via a media query, absent
+ * → false (SSR/older jsdom), and kept live so a mid-session OS change is honored.
+ */
+function useReducedMotion(): boolean {
+  const query = '(prefers-reduced-motion: reduce)';
+  const read = (): boolean =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false;
+  const [reduced, setReduced] = useState(read);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia(query);
+    const onChange = (): void => setReduced(mq.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+  return reduced;
+}
+
+/**
+ * The opponents (by id) whose *battlefield* carries an offered card-level
+ * interaction in the current view (issue #400): a permanent that is the subject of
+ * a `valid_action` or a candidate of one of its requirement slots. On the
+ * phone-portrait summary-tile composition these boards must stay reachable, so the
+ * first such opponent is expanded automatically — the collapse never hides an
+ * offered action. Derived purely from the view (candidates on the receiver's own
+ * board, hand, or non-board zones are handled elsewhere and excluded here).
+ */
+function opponentsWithBoardCandidates(view: GameView): Set<PlayerId> {
+  const offered = new Set<EntityId>();
+  for (const action of view.valid_actions) {
+    for (const subjectId of action.subject ?? []) offered.add(subjectId);
+    for (const req of action.requirements ?? []) {
+      for (const candidate of req.candidates ?? []) offered.add(candidate);
+    }
+  }
+  const localId = view.you || undefined;
+  const result = new Set<PlayerId>();
+  if (offered.size === 0) return result;
+  for (const perm of view.battlefield) {
+    if (perm.controller !== localId && offered.has(perm.id)) result.add(perm.controller);
+  }
+  return result;
 }
 
 /** Find a rendered card anywhere in the scene by entity id. */
@@ -244,6 +293,16 @@ export function Table() {
   // The rail sheet open on the compact composition (blueprint §Phone portrait):
   // the stack or the log, opened from the top bar's chips. Ephemeral presentation.
   const [railSheet, setRailSheet] = useState<RailSheet | null>(null);
+  // The opponent the player has manually **expanded** on the phone-portrait
+  // summary-tile composition (issue #400), if any. Purely ephemeral focus state —
+  // never load-bearing: it is dropped on the next view (below) so a refresh
+  // mid-focus reconstructs cleanly, and a decision auto-expands the needed board
+  // regardless. Only meaningful in the tile composition.
+  const [focusedTileId, setFocusedTileId] = useState<PlayerId | null>(null);
+  // The control to move DOM focus to after an expand/collapse (issue #400), so the
+  // focus order survives the tile ↔ panel swap: expanding lands on the new collapse
+  // control, collapsing returns to the restored tile. A data-testid; transient.
+  const [pendingTileFocus, setPendingTileFocus] = useState<string | null>(null);
   // Whether the keyboard shortcut reference overlay is open (issue #266). Ephemeral
   // UI, not game state — toggled with `?`.
   const [showHelp, setShowHelp] = useState(false);
@@ -284,6 +343,7 @@ export function Table() {
     setBrowsing(null);
     setRailSheet(null);
     setHighlightedId(null);
+    setFocusedTileId(null);
   }, [view]);
 
   // Escape abandons the topmost ephemeral surface, mirroring the targeting-mode
@@ -302,11 +362,22 @@ export function Table() {
       else if (railSheet) setRailSheet(null);
       else if (multiSelect) setMultiSelect(null);
       else if (targeting) setTargeting(null);
+      else if (focusedTileId !== null) setFocusedTileId(null);
       else setSelectedId(null);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showHelp, showArtSettings, inspectedId, peekId, browsing, railSheet, multiSelect, targeting]);
+  }, [
+    showHelp,
+    showArtSettings,
+    inspectedId,
+    peekId,
+    browsing,
+    railSheet,
+    multiSelect,
+    targeting,
+    focusedTileId,
+  ]);
 
   // Keyboard parity for core play (issue #266). Every binding maps to an
   // interaction the pointer already has — no new game semantics, all client-side:
@@ -413,12 +484,65 @@ export function Table() {
   }, [view, choose, targeting, multiSelect, showHelp]);
 
   const viewport = useViewport();
+  const reducedMotion = useReducedMotion();
   // The number of seats the shell carves panels for: the receiver plus opponents.
   const playerCount = view ? view.opponents.length + 1 : 2;
+
+  // Summary-tile focus (issue #400), resolved purely from the view plus the ephemeral
+  // manual pick. `orderedOpp` is the seat-order opponent list the shell/scene index
+  // frames by, so the expanded id maps to one opponent frame. The expanded opponent
+  // is the one the player manually opened, else the first with an offered board
+  // interaction (auto-expanded so no offered action is ever hidden). Only meaningful
+  // in the tile composition; ignored elsewhere by the layout.
+  const orderedOpp = useMemo(() => (view ? orderedOpponentIds(view) : []), [view]);
+  const forcedFocusId = useMemo<PlayerId | null>(() => {
+    if (!view) return null;
+    const withCandidates = opponentsWithBoardCandidates(view);
+    return orderedOpp.find((id) => withCandidates.has(id)) ?? null;
+  }, [view, orderedOpp]);
+  const manualFocusId =
+    focusedTileId !== null && orderedOpp.includes(focusedTileId) ? focusedTileId : null;
+  const expandedOpponentId = manualFocusId ?? forcedFocusId;
+  const focusIndex = expandedOpponentId !== null ? orderedOpp.indexOf(expandedOpponentId) : -1;
+
   // The carved shell (ADR 0023): chrome region rects + the scene geometry. Pure
-  // function of the measured viewport and seat count — regions never reorder.
-  const shell = useMemo(() => layout(viewport, playerCount), [viewport, playerCount]);
+  // function of the measured viewport, seat count, and (tile composition only) which
+  // opponent is expanded — regions never reorder.
+  const shell = useMemo(
+    () => layout(viewport, playerCount, focusIndex >= 0 ? { opponent: focusIndex } : undefined),
+    [viewport, playerCount, focusIndex],
+  );
   const compact = shell.composition === 'compact';
+
+  // Toggle a summary tile (issue #400): expand a collapsed opponent, or collapse the
+  // manually-expanded one. After the tile ↔ panel swap, move DOM focus to the newly
+  // relevant control so the focus order survives expansion (keyboard parity).
+  const toggleTileFocus = (playerId: PlayerId): void => {
+    if (expandedOpponentId === playerId && forcedFocusId !== playerId) {
+      setPendingTileFocus(`tile-focus-${playerId}`);
+      setFocusedTileId(null);
+    } else {
+      setPendingTileFocus(`tile-collapse-${playerId}`);
+      setFocusedTileId(playerId);
+    }
+  };
+  // The tile-focus controls handed to the panel chrome — present only in the tile
+  // composition. `pinned` marks an expansion forced by an offered decision (its board
+  // must stay reachable, so it shows no manual collapse control).
+  const tileFocus: TileFocus | undefined = shell.summaryTiles
+    ? {
+        expandedId: expandedOpponentId,
+        pinned: manualFocusId === null && forcedFocusId !== null,
+        onToggle: toggleTileFocus,
+      }
+    : undefined;
+  // Move focus onto the post-toggle control once it has mounted (issue #400).
+  useEffect(() => {
+    if (pendingTileFocus === null) return;
+    const el = mainRef.current?.querySelector<HTMLElement>(`[data-testid="${pendingTileFocus}"]`);
+    el?.focus();
+    setPendingTileFocus(null);
+  }, [pendingTileFocus, expandedOpponentId]);
 
   // The region geometry the spatial focus model navigates by (issue #301): map each
   // tagged shell region to its layout rect, so `focus.ts` orders/adjoins regions the
@@ -678,6 +802,7 @@ export function Table() {
               scene={scene}
               onOpenZone={openZone}
               highlightedId={highlightedId}
+              reducedMotion={reducedMotion}
             />
             {/* Read-only game-over board: no select/target interaction (the server
                 offers no actions once the game is over), but every card stays
@@ -1017,6 +1142,8 @@ export function Table() {
             onOpenZone={openZone}
             targeting={playerTargeting}
             highlightedId={highlightedId}
+            focus={tileFocus}
+            reducedMotion={reducedMotion}
           />
           <EntityOverlay
             scene={scene}

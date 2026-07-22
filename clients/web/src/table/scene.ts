@@ -66,6 +66,15 @@ export interface PanelFrame {
   header: Rect;
   content: Rect;
   piles: Rect;
+  /**
+   * Whether this opponent frame is a **collapsed summary tile** (issue #400): the
+   * phone-portrait multiplayer composition demotes every un-focused opponent to a
+   * crest/name/counts tile with no card area (`content`/`piles` are zero-sized).
+   * Undefined on the full/duel compositions and on the receiver's own frame — those
+   * always render a full battlefield. Set by the layout; the scene builder skips
+   * card-laying for a summary frame and the chrome layer renders the tile.
+   */
+  summary?: boolean;
 }
 
 /** The card-surface geometry the shell layout carves for the scene builder:
@@ -262,6 +271,14 @@ export interface Band {
   /** The density-ladder rung this panel resolved (0 = full tier, 1 = stepped
    * down, 2 = stepped down + vertically compressed). Presentation metadata. */
   densityRung: number;
+  /**
+   * Whether this band is a **collapsed summary tile** (issue #400, phone-portrait
+   * multiplayer): it carries the controller's identity + counts but no rendered
+   * cards, and the chrome layer draws it as a tap-to-focus tile instead of a full
+   * battlefield. False for the receiver, every full/duel-composition panel, and the
+   * one opponent currently expanded in place.
+   */
+  summary: boolean;
 }
 
 /** The local player's hand row as a labeled, bounded region (issue #278). */
@@ -373,6 +390,26 @@ export function defaultSceneGeometry(
  */
 function localPlayerIdOf(view: GameView): PlayerId | undefined {
   return view.you || undefined;
+}
+
+/**
+ * The opponents in the table's stable **seat order** (`view.seat_order`, issue
+ * #345), excluding the receiver — the exact order the scene lays opponent panels
+ * and the shell carves opponent frames, so an index into this list addresses one
+ * opponent frame. Falls back to `view.opponents` order where the server sent no
+ * seat order, and appends any opponent the seat order omits so none is dropped.
+ * Shared by the scene builder and the table's focus/expansion mapping (issue #400).
+ */
+export function orderedOpponentIds(view: GameView): PlayerId[] {
+  const localPlayerId = localPlayerIdOf(view);
+  const opponentIds = view.opponents.map((o) => o.player_id);
+  const opponentSet = new Set(opponentIds);
+  const seatOrderOpponents = view.seat_order.filter(
+    (id) => id !== localPlayerId && opponentSet.has(id),
+  );
+  return seatOrderOpponents.length > 0
+    ? [...seatOrderOpponents, ...opponentIds.filter((id) => !seatOrderOpponents.includes(id))]
+    : opponentIds;
 }
 
 /**
@@ -844,15 +881,7 @@ export function buildTableScene(
   // (issue #348) — then the local player. Every opponent gets a panel even with no
   // permanents. Any controller the seat order somehow omits is appended
   // defensively so its permanents always render.
-  const opponentIds = view.opponents.map((o) => o.player_id);
-  const opponentSet = new Set(opponentIds);
-  const seatOrderOpponents = view.seat_order.filter(
-    (id) => id !== localPlayerId && opponentSet.has(id),
-  );
-  const orderedOpponents =
-    seatOrderOpponents.length > 0
-      ? [...seatOrderOpponents, ...opponentIds.filter((id) => !seatOrderOpponents.includes(id))]
-      : opponentIds;
+  const orderedOpponents = orderedOpponentIds(view);
   const ordered: PlayerId[] = [...orderedOpponents];
   for (const controller of byController.keys()) {
     if (!ordered.includes(controller) && controller !== localPlayerId) ordered.push(controller);
@@ -947,6 +976,28 @@ export function buildTableScene(
   ordered.forEach((playerId, index) => {
     const frame = frames[Math.min(index, frames.length - 1)] ?? geometry.you;
     const perms = byController.get(playerId) ?? [];
+    // A collapsed summary tile (issue #400): no cards are laid — the chrome layer
+    // draws identity + counts and a tap-to-focus affordance. Its permanents still
+    // exist in the view (and remain reachable by expanding the tile), so nothing is
+    // dropped from the reconstructable state; they simply are not drawn here.
+    if (frame.summary) {
+      bands.push({
+        playerId,
+        isLocal: false,
+        cards: [],
+        rows: [],
+        isEmpty: perms.length === 0,
+        label: bandLabel(view, playerId, false),
+        zones: zoneCountsOf(view, playerId, false),
+        accent: identityAccent(view, playerId),
+        rect: frame.rect,
+        headerRect: frame.header,
+        pileRect: frame.piles,
+        densityRung: 0,
+        summary: true,
+      });
+      return;
+    }
     const laid = layPanel(renderablesFor(perms), frame.content, geometry.tiers.opp);
     bands.push({
       playerId,
@@ -961,6 +1012,7 @@ export function buildTableScene(
       headerRect: frame.header,
       pileRect: frame.piles,
       densityRung: laid.densityRung,
+      summary: false,
     });
   });
   if (localPlayerId !== undefined) {
@@ -979,6 +1031,7 @@ export function buildTableScene(
       headerRect: geometry.you.header,
       pileRect: geometry.you.piles,
       densityRung: laid.densityRung,
+      summary: false,
     });
   }
 
