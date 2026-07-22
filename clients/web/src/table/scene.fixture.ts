@@ -1,5 +1,5 @@
-import { normalizeGameView } from "../wire";
-import type { GameView } from "../protocol";
+import { normalizeGameView } from '../wire';
+import type { GameView } from '../protocol';
 import {
   buildTableScene,
   defaultSceneGeometry,
@@ -7,7 +7,7 @@ import {
   type SceneGeometry,
   type TableScene,
   type TargetingScene,
-} from "./scene";
+} from './scene';
 
 /** The default carved geometry for a duel (the same carve the live shell makes). */
 export const GEO = defaultSceneGeometry();
@@ -15,11 +15,7 @@ export const GEO = defaultSceneGeometry();
 export const GEO4 = defaultSceneGeometry(4);
 
 /** Build a scene against the default duel geometry (most tests' shell). */
-export function build(
-  view: GameView,
-  selectedId?: string,
-  targeting?: TargetingScene,
-): TableScene {
+export function build(view: GameView, selectedId?: string, targeting?: TargetingScene): TableScene {
   return buildTableScene(view, selectedId, GEO, targeting);
 }
 
@@ -41,7 +37,7 @@ export function panelGeometry(contentW: number): SceneGeometry {
     opponents: [frame(0)],
     you: frame(950),
     hand: { x: 16, y: 1900, w: contentW, h: 100 },
-    tiers: { you: "field", opp: "support" },
+    tiers: { you: 'field', opp: 'support' },
     handFan: false,
   };
 }
@@ -62,16 +58,16 @@ export interface PermSpec {
 /** A `GameView` with `p1` local, holding the given permanents (issue #318). */
 export function permBoard(
   perms: PermSpec[],
-  validActions: GameView["valid_actions"] = [],
+  validActions: GameView['valid_actions'] = [],
 ): GameView {
   return normalizeGameView({
-    you: "p1",
+    you: 'p1',
     my_hand: [],
-    opponents: [{ player_id: "p2", hand_size: 0, life: 20, library_size: 40 }],
+    opponents: [{ player_id: 'p2', hand_size: 0, life: 20, library_size: 40 }],
     battlefield: perms.map((p) => ({
       id: p.id,
-      controller: p.controller ?? "p1",
-      owner: p.controller ?? "p1",
+      controller: p.controller ?? 'p1',
+      owner: p.controller ?? 'p1',
       tapped: p.tapped,
       attached_to: p.attached_to,
       card: {
@@ -82,16 +78,13 @@ export function permBoard(
         toughness: p.toughness,
       },
     })),
-    phase: "precombat_main",
+    phase: 'precombat_main',
     valid_actions: validActions,
   });
 }
 
 /** A `GameView` whose battlefield holds `perController` permanents for each id. */
-export function boardView(
-  controllers: string[],
-  perController: number,
-): GameView {
+export function boardView(controllers: string[], perController: number): GameView {
   const battlefield = controllers.flatMap((controller) =>
     Array.from({ length: perController }, (_, i) => ({
       id: `${controller}_perm_${i}`,
@@ -100,9 +93,9 @@ export function boardView(
       card: {
         id: `${controller}_perm_${i}`,
         name: `Servo ${i}`,
-        type_line: "Artifact Creature — Servo",
-        power: "1",
-        toughness: "1",
+        type_line: 'Artifact Creature — Servo',
+        power: '1',
+        toughness: '1',
       },
     })),
   );
@@ -116,7 +109,7 @@ export function boardView(
       library_size: 40,
     })),
     battlefield,
-    phase: "precombat_main",
+    phase: 'precombat_main',
     valid_actions: [],
   });
 }
