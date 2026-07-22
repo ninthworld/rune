@@ -72,6 +72,8 @@ pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent)
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use super::*;
     use crate::ability::{Ability, Effect, TriggerCondition};
 
