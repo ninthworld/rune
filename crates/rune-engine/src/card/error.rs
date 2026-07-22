@@ -115,6 +115,8 @@ impl From<Violation> for CatalogError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use super::*;
     use crate::card::CardDatabase;
 
