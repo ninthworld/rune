@@ -11,7 +11,7 @@ use super::{card_in_hand, mana_value_of, permanent_in_play};
 
 /// Fill every choice slot of `action` — its target `requirements` and its
 /// [`Prompt`] slots — with a legal selection, one [`TargetChoice`] per slot, per the
-/// [`RuleBasedAgent`] policy. `None` only when a **mandatory** slot cannot be filled
+/// [`RuleBasedAgent`](super::RuleBasedAgent) policy. `None` only when a **mandatory** slot cannot be filled
 /// (an option with no options, or an ability-target slot with no candidates), which
 /// the loop turns into a safe pass. A plain action (no slots) yields an empty
 /// selection, so plain actions are unchanged.
