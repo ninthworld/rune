@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::panic)]
-
 //! Shared test utilities and fixtures.
 
 #![cfg(test)]
