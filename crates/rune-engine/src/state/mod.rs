@@ -17,6 +17,7 @@
 mod log;
 mod query;
 mod setup;
+#[cfg(test)]
 mod tests;
 mod turn;
 mod types;
