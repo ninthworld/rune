@@ -6,17 +6,17 @@ import type { EntityId } from './index.js';
 import type { Phase } from './view.js';
 
 /**
- * The player's answer to one choice slot — a {@link TargetRequirement}} or a
- * {@link Prompt}} — keyed back to the slot by `slot`. The same shape answers every
+ * The player's answer to one choice slot — a {@link TargetRequirement} or a
+ * {@link Prompt} — keyed back to the slot by `slot`. The same shape answers every
  * slot kind; each id must be one of that slot's advertised candidates / options /
  * items or the server treats the action as a no-op.
  */
 export interface TargetChoice {
-  /** The {@link TargetRequirement}} or {@link Prompt}} slot this answers. */
+  /** The {@link TargetRequirement} or {@link Prompt} slot this answers. */
   slot: string;
   /**
    * The entity ids chosen for this slot: a target id; the chosen
-   * {@link PromptOption.id}} for an option; the selected ids for a select-from-zone;
+   * {@link PromptOption.id} for an option; the selected ids for a select-from-zone;
    * or the full ordering for an order prompt.
    */
   chosen?: EntityId[];
@@ -24,8 +24,8 @@ export interface TargetChoice {
 
 /**
  * The client's chosen action, answered atomically: the `id` of one issued
- * `valid_actions` entry, its content-binding {@link ChooseAction.token}} echoed
- * verbatim, and one {@link ChooseAction.targets}} entry per requirement slot.
+ * `valid_actions` entry, its content-binding {@link ChooseAction.token} echoed
+ * verbatim, and one {@link ChooseAction.targets} entry per requirement slot.
  * Serializes with a `type` discriminator (`{"type":"choose_action", ...}`),
  * matching the `ClientMessage::ChooseAction` variant. `token` and `targets` are
  * omitted when empty, so a plain action's message is just the id.
@@ -33,11 +33,11 @@ export interface TargetChoice {
 export interface ChooseAction {
   /** Discriminator for the client→server message envelope. */
   type: 'choose_action';
-  /** The `id` of the chosen {@link ValidAction}}. */
+  /** The `id` of the chosen {@link ValidAction}. */
   action_id: string;
-  /** The chosen action's {@link ValidAction.token}}, echoed verbatim (or omitted). */
+  /** The chosen action's {@link ValidAction.token}, echoed verbatim (or omitted). */
   token?: string;
-  /** One entry per {@link ValidAction.requirements}} slot; omitted when empty. */
+  /** One entry per {@link ValidAction.requirements} slot; omitted when empty. */
   targets?: TargetChoice[];
 }
 
@@ -62,11 +62,11 @@ export function chooseAction(
  * Set (or replace) this connection's **priority-stop preferences** (issue #264): the
  * steps at which the seat wants priority even when it has no meaningful action, so
  * basic auto-pass does not skip it there. Serializes with the same tagged envelope as
- * {@link ChooseAction}} (`{"type":"set_stops", ...}`), matching the
+ * {@link ChooseAction} (`{"type":"set_stops", ...}`), matching the
  * `ClientMessage::SetStops` variant. The set replaces the seat's current one wholesale;
  * an empty set (omitted `stops`) clears all stops. Server-authoritative and
  * reconnect-durable — the server stores it per seat and reflects it in
- * {@link GameView.stops}}; the client computes no legality here.
+ * {@link GameView.stops}; the client computes no legality here.
  */
 export interface SetStopsMessage {
   /** Discriminator for the client→server message envelope. */
