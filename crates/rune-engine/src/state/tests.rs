@@ -263,11 +263,14 @@ fn issue_342_turn_rotation_skips_an_eliminated_seat_across_full_turns() {
     state.players[1].has_lost = true;
     state.active_player = PlayerId(0);
 
-    state.begin_next_turn();
+    state.step = Step::Cleanup;
+    state = state.advance();
     assert_eq!(state.active_player, PlayerId(2), "seat 1 is skipped");
-    state.begin_next_turn();
+    state.step = Step::Cleanup;
+    state = state.advance();
     assert_eq!(state.active_player, PlayerId(0), "wraps past seat 1");
-    state.begin_next_turn();
+    state.step = Step::Cleanup;
+    state = state.advance();
     assert_eq!(state.active_player, PlayerId(2));
 }
 
@@ -280,7 +283,8 @@ fn issue_342_extra_turn_owed_to_an_eliminated_player_is_discarded() {
     state.players[1].has_lost = true;
     state.extra_turns.push(PlayerId(1)); // owed to the now-eliminated seat 1
 
-    state.begin_next_turn();
+    state.step = Step::Cleanup;
+    state = state.advance();
     assert_eq!(
         state.active_player,
         PlayerId(2),
