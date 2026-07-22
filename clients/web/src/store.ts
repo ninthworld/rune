@@ -504,6 +504,19 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         return;
       }
 
+      if (frame.kind === 'lobby_error') {
+        // A structured lobby-error frame (issue #395): the server's own human-readable
+        // reason a command (e.g. `submit_deck`) was rejected, delivered to this seat
+        // only. Surface it verbatim as the non-fatal `lobbyError` and clear the pending
+        // command so the unchanged `LobbyView` re-sent alongside it (ADR 0012) does not
+        // overwrite this specific reason with a generic inferred hint — the explicit
+        // reason wins regardless of frame order. Ephemeral, never load-bearing: the
+        // lobby UI still rebuilds from `lobby` alone.
+        pendingLobby = null;
+        set({ lobbyError: frame.rejection.reason });
+        return;
+      }
+
       const lobby = frame.lobby;
       // Remember the session token to echo on a later reconnecting `Hello`, both
       // in-closure (in-page auto-reconnect) and, paired with the server URL, in

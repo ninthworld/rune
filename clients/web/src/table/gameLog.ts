@@ -149,6 +149,8 @@ export function describeEvent(event: GameLogEvent, view: NamingView): LogSegment
       ];
     case 'permanent_died':
       return [entity(event.permanent), ' died.'];
+    case 'commander_returned_to_command_zone':
+      return [player(view, event.player), ' returns ', entity(event.card), ' to the command zone.'];
     case 'step_changed':
       return [
         `Turn ${event.turn}, ${phaseLabel(event.phase)} — `,

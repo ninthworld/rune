@@ -119,6 +119,16 @@ pub enum GameLogEvent {
         /// Why they lost (CR 104.3 / 704.5).
         reason: GameOverReason,
     },
+    /// A commander was returned from a graveyard or exile to its owner's command
+    /// zone at that owner's choice (CR 903.9a). The card is publicly identified — a
+    /// commander is designated openly and moves between public zones — so its name
+    /// is carried like any other zone-movement event.
+    CommanderReturnedToCommandZone {
+        /// The commander's owner, who made the choice.
+        player: PlayerId,
+        /// The commander card that moved to the command zone.
+        card: LogEntity,
+    },
     /// The game ended with this already-decided result.
     GameOver {
         /// The terminal result.
@@ -231,11 +241,39 @@ mod tests {
                 player: "p2".into(),
                 reason: GameOverReason::LifeZero,
             },
+            GameLogEvent::CommanderReturnedToCommandZone {
+                player: "p0".into(),
+                card: LogEntity {
+                    id: "card_5".into(),
+                    name: "Jedit Ojanen".into(),
+                },
+            },
         ] {
             let text = serde_json::to_string(&event).unwrap();
             let back: GameLogEvent = serde_json::from_str(&text).unwrap();
             assert_eq!(event, back);
         }
+    }
+
+    #[test]
+    fn issue_397_commander_returned_event_tags_its_type_and_names_the_card() {
+        // The CR 903.9a return log event (issue #397) serializes under its snake_case
+        // `type` and names the moved commander like any other zone-movement event.
+        let event = GameLogEvent::CommanderReturnedToCommandZone {
+            player: "p1".into(),
+            card: LogEntity {
+                id: "card_2".into(),
+                name: "Jedit Ojanen".into(),
+            },
+        };
+        assert_eq!(
+            serde_json::to_value(&event).unwrap(),
+            serde_json::json!({
+                "type": "commander_returned_to_command_zone",
+                "player": "p1",
+                "card": { "id": "card_2", "name": "Jedit Ojanen" },
+            })
+        );
     }
 
     #[test]

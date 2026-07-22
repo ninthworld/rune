@@ -376,39 +376,101 @@ pub(crate) enum DeckError {
     },
 }
 
-impl std::fmt::Display for DeckError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl DeckError {
+    /// The offending [`CardId`] this rejection is about, if any. Size and
+    /// missing-commander rejections name no specific card and return `None`; every
+    /// card-specific variant returns the card at fault.
+    pub(crate) fn card(&self) -> Option<CardId> {
+        match self {
+            Self::BelowMinimum { .. } | Self::AboveMaximum { .. } | Self::MissingCommander => None,
+            Self::CopyLimit { card, .. }
+            | Self::CommanderNotInDeck { card }
+            | Self::CommanderNotLegendaryCreature { card }
+            | Self::OutOfIdentity { card } => Some(*card),
+        }
+    }
+
+    /// A stable `snake_case` machine code for this rejection class, mirrored on the
+    /// wire in [`LobbyRejection::code`] so a client can branch without parsing the
+    /// human-readable reason (issue #395).
+    pub(crate) fn code(&self) -> &'static str {
+        match self {
+            Self::BelowMinimum { .. } => "below_minimum",
+            Self::AboveMaximum { .. } => "above_maximum",
+            Self::CopyLimit { .. } => "copy_limit",
+            Self::MissingCommander => "missing_commander",
+            Self::CommanderNotInDeck { .. } => "commander_not_in_deck",
+            Self::CommanderNotLegendaryCreature { .. } => "commander_not_legendary_creature",
+            Self::OutOfIdentity { .. } => "out_of_identity",
+        }
+    }
+
+    /// Render this rejection into its human-readable sentence, naming any offending
+    /// card through `card_label`. This is the single source of the wording: the
+    /// [`Display`](std::fmt::Display) impl labels a card by its raw [`CardId`] (for
+    /// logs), while [`to_rejection`](DeckError::to_rejection) labels it by the card's
+    /// display name (for the player). No new sentence templates are added anywhere —
+    /// both callers reuse these (issue #395).
+    fn render(&self, card_label: impl Fn(CardId) -> String) -> String {
         match self {
             Self::BelowMinimum { have, min } => {
-                write!(f, "deck has {have} cards, below the {min}-card minimum")
+                format!("deck has {have} cards, below the {min}-card minimum")
             }
             Self::AboveMaximum { have, max } => {
-                write!(f, "deck has {have} cards, above the {max}-card maximum")
+                format!("deck has {have} cards, above the {max}-card maximum")
             }
-            Self::CopyLimit { card, count, limit } => write!(
-                f,
-                "card {} appears {count} times, above the {limit}-copy limit",
-                card.0
+            Self::CopyLimit { card, count, limit } => format!(
+                "{} appears {count} times, above the {limit}-copy limit",
+                card_label(*card)
             ),
-            Self::MissingCommander => {
-                write!(f, "this format requires a designated commander")
-            }
-            Self::CommanderNotInDeck { card } => write!(
-                f,
-                "the designated commander (card {}) is not in the deck",
-                card.0
+            Self::MissingCommander => "this format requires a designated commander".to_string(),
+            Self::CommanderNotInDeck { card } => format!(
+                "the designated commander ({}) is not in the deck",
+                card_label(*card)
             ),
-            Self::CommanderNotLegendaryCreature { card } => write!(
-                f,
-                "the designated commander (card {}) is not a legendary creature",
-                card.0
+            Self::CommanderNotLegendaryCreature { card } => format!(
+                "the designated commander ({}) is not a legendary creature",
+                card_label(*card)
             ),
-            Self::OutOfIdentity { card } => write!(
-                f,
-                "card {} is outside the commander's color identity",
-                card.0
+            Self::OutOfIdentity { card } => format!(
+                "{} is outside the commander's color identity",
+                card_label(*card)
             ),
         }
+    }
+
+    /// Project this rejection into the wire [`LobbyRejection`] delivered to the
+    /// rejecting seat only (issue #395), resolving the offending [`CardId`] through
+    /// `db` to name it by its display name in the reason and to carry its stable
+    /// [`CardIdentity`] (`functional_id`). The reason reuses the same wording the
+    /// server logs (see [`render`](DeckError::render)); nothing new is invented. The
+    /// named card is always one of the sender's own submitted cards, so no other
+    /// seat's hidden state leaks.
+    pub(crate) fn to_rejection(&self, db: &CardDatabase) -> rune_protocol::LobbyRejection {
+        let reason = self.render(|card| card_display_name(db, card));
+        rune_protocol::LobbyRejection {
+            code: self.code().to_string(),
+            reason,
+            card: self
+                .card()
+                .and_then(|card| db.card(card))
+                .map(|data| data.functional_id.as_str().to_string()),
+        }
+    }
+}
+
+/// A card's display name for a player-facing message, read through `db`. Falls back
+/// to the raw [`CardId`] label only if the id does not resolve (the lobby rejects
+/// unknown ids before deck legality, so this is a defensive default).
+fn card_display_name(db: &CardDatabase, card: CardId) -> String {
+    db.card(card)
+        .map(|data| data.name.clone())
+        .unwrap_or_else(|| format!("card {}", card.0))
+}
+
+impl std::fmt::Display for DeckError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.render(|card| format!("card {}", card.0)))
     }
 }
 
@@ -838,6 +900,121 @@ mod tests {
         // A non-legendary creature and a legendary-less card are both ineligible.
         assert!(!is_legendary_creature(&db(), fixture("llanowar_elves")));
         assert!(!is_legendary_creature(&db(), fixture("forest")));
+    }
+
+    // ----------------------------------------------------------------------
+    // Structured rejection reasons reaching the wire (issue #395).
+    // ----------------------------------------------------------------------
+
+    /// The display name the bundled database gives `slug`, used to assert a rejection
+    /// reason names the offending card by name rather than a raw interned id.
+    fn name_of(slug: &str) -> String {
+        db().card(fixture(slug)).expect("bundled card").name.clone()
+    }
+
+    #[test]
+    fn issue_395_size_rejection_names_no_card_and_carries_a_code() {
+        // A below-minimum rejection is not about any one card: the wire reason has the
+        // stable class code and the human sentence, and no `card`.
+        let rejection = DeckError::BelowMinimum { have: 39, min: 40 }.to_rejection(&db());
+        assert_eq!(rejection.code, "below_minimum");
+        assert_eq!(rejection.card, None);
+        assert_eq!(
+            rejection.reason,
+            "deck has 39 cards, below the 40-card minimum"
+        );
+
+        let over = DeckError::AboveMaximum {
+            have: 101,
+            max: 100,
+        }
+        .to_rejection(&db());
+        assert_eq!(over.code, "above_maximum");
+        assert_eq!(over.card, None);
+    }
+
+    #[test]
+    fn issue_395_copy_limit_rejection_names_the_offending_card_by_name_and_identity() {
+        // The wire reason names the card by its display name (never the raw CardId),
+        // and `card` carries its stable functional_id — both drawn from the sender's
+        // own submission.
+        let rejection = DeckError::CopyLimit {
+            card: fixture("onakke_ogre"),
+            count: 5,
+            limit: 4,
+        }
+        .to_rejection(&db());
+        assert_eq!(rejection.code, "copy_limit");
+        assert_eq!(rejection.card.as_deref(), Some("onakke_ogre"));
+        assert_eq!(
+            rejection.reason,
+            format!(
+                "{} appears 5 times, above the 4-copy limit",
+                name_of("onakke_ogre")
+            )
+        );
+        // Never the internal interned id.
+        assert!(!rejection
+            .reason
+            .contains(&format!("card {}", fixture("onakke_ogre").0)));
+    }
+
+    #[test]
+    fn issue_395_commander_rejections_carry_class_codes_and_the_named_card() {
+        let db = db();
+        // Missing commander: a required designation, about no card.
+        let missing = DeckError::MissingCommander.to_rejection(&db);
+        assert_eq!(missing.code, "missing_commander");
+        assert_eq!(missing.card, None);
+
+        // Not a legendary creature: names the illegal designation (Llanowar Elves).
+        let not_legendary = DeckError::CommanderNotLegendaryCreature {
+            card: fixture("llanowar_elves"),
+        }
+        .to_rejection(&db);
+        assert_eq!(not_legendary.code, "commander_not_legendary_creature");
+        assert_eq!(not_legendary.card.as_deref(), Some("llanowar_elves"));
+        assert!(not_legendary.reason.contains(&name_of("llanowar_elves")));
+
+        // Not in the deck: names the designated commander (Jedit Ojanen).
+        let not_in_deck = DeckError::CommanderNotInDeck {
+            card: fixture("jedit_ojanen"),
+        }
+        .to_rejection(&db);
+        assert_eq!(not_in_deck.code, "commander_not_in_deck");
+        assert_eq!(not_in_deck.card.as_deref(), Some("jedit_ojanen"));
+
+        // Out of identity: names the offending deck card (Snapping Drake).
+        let out = DeckError::OutOfIdentity {
+            card: fixture("snapping_drake"),
+        }
+        .to_rejection(&db);
+        assert_eq!(out.code, "out_of_identity");
+        assert_eq!(out.card.as_deref(), Some("snapping_drake"));
+        assert!(out.reason.contains(&name_of("snapping_drake")));
+    }
+
+    #[test]
+    fn issue_395_display_for_logs_is_unchanged_and_uses_the_raw_id() {
+        // The `Display` impl (used only for server logs) still labels a card by its raw
+        // CardId, so the wire naming refactor did not disturb the log wording.
+        let display = DeckError::CopyLimit {
+            card: fixture("onakke_ogre"),
+            count: 5,
+            limit: 4,
+        }
+        .to_string();
+        assert_eq!(
+            display,
+            format!(
+                "card {} appears 5 times, above the 4-copy limit",
+                fixture("onakke_ogre").0
+            )
+        );
+        assert_eq!(
+            DeckError::BelowMinimum { have: 39, min: 40 }.to_string(),
+            "deck has 39 cards, below the 40-card minimum"
+        );
     }
 
     #[test]
