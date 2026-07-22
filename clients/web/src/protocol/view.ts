@@ -10,7 +10,7 @@ import type { GameLogEntry } from './log.js';
 
 /**
  * Every `Phase` value in turn order, for runtime validation of the wire. This is
- * the single source of truth: the {@link Phase}} union is derived from it, so a
+ * the single source of truth: the {@link Phase} union is derived from it, so a
  * value added here can never drift out of the type (and vice versa). Mirrors the
  * `Phase` enum's snake_case serde encoding in `crates/rune-protocol/src/lib.rs`.
  */
@@ -29,28 +29,28 @@ export const PHASES = [
   'cleanup',
 ] as const;
 
-/** The current turn step; one of {@link PHASES}}. */
+/** The current turn step; one of {@link PHASES}. */
 export type Phase = (typeof PHASES)[number];
 
 /**
  * The personalized state the server sends after every change. A client must be
  * able to fully reconstruct its UI from a single `GameView` — no client state is
  * load-bearing across messages. Optional collections may be omitted on the wire
- * and MUST be treated as their empty default (see {@link normalizeGameView}}).
+ * and MUST be treated as their empty default (see {@link normalizeGameView}).
  */
 export interface GameView {
   /**
    * The receiver's own seat entity id (the `p{N}` form used for players
    * throughout the view). The client uses this to identify itself rather than
    * inferring it from the zones. An older server may omit it on the wire, in
-   * which case {@link normalizeGameView}} defaults it to `''`.
+   * which case {@link normalizeGameView} defaults it to `''`.
    */
   you: PlayerId;
   /** Full card objects for the receiving player only. */
   my_hand: CardView[];
   /**
    * The receiver's own public stats (life total, library size) — see
-   * {@link SelfView}}. An older server may omit it; {@link normalizeGameView}}
+   * {@link SelfView}. An older server may omit it; {@link normalizeGameView}
    * defaults it to a zero placeholder.
    */
   me: SelfView;
@@ -66,7 +66,7 @@ export interface GameView {
   exile: ZonePile[];
   /**
    * Each player's command zone (CR 903.6, issue #372): the public pile holding
-   * their commander while it is there. Public information; {@link normalizeGameView}}
+   * their commander while it is there. Public information; {@link normalizeGameView}
    * always sets it (to `[]` when the wire omits it for a non-commander game).
    * Optional on the interface so existing view literals need not restate it.
    */
@@ -76,13 +76,13 @@ export interface GameView {
   /**
    * The current turn number (1-based; `0` only in an empty/pre-game state). The
    * server owns turn counting — the client renders this and never counts turns
-   * itself. Defaulted to `0` by {@link normalizeGameView}} when an older server
+   * itself. Defaulted to `0` by {@link normalizeGameView} when an older server
    * omits it.
    */
   turn: number;
   /**
    * The player whose turn it is (the active player), as a `p{N}` id. Distinct from
-   * {@link GameView.priority_player}}: the active player owns the turn even while an
+   * {@link GameView.priority_player}: the active player owns the turn even while an
    * opponent holds priority. Defaulted to `''` (unknown) when an older server omits
    * it.
    */
@@ -90,7 +90,7 @@ export interface GameView {
   /**
    * The table's seat order: every player id (`p0`, `p1`, …) in seat order, including
    * the receiver and any eliminated players (issue #345). The explicit ordering the
-   * multiplayer table layout relies on. Defaulted to `[]` by {@link normalizeGameView}}
+   * multiplayer table layout relies on. Defaulted to `[]` by {@link normalizeGameView}
    * when an older server omits it.
    */
   seat_order: PlayerId[];
@@ -116,9 +116,9 @@ export interface GameView {
    * action, so basic auto-pass does not skip them there. Carried on the view so the
    * per-phase stops UI is reconstructable from a single message and survives reconnect
    * (the preferences live on the server, not in client memory). The client renders
-   * toggles from this and answers with a {@link SetStopsMessage}}. Omitted (treated as
+   * toggles from this and answers with a {@link SetStopsMessage}. Omitted (treated as
    * empty — "stop nowhere", the default) by the server when empty;
-   * {@link normalizeGameView}} defaults it to `[]`.
+   * {@link normalizeGameView} defaults it to `[]`.
    */
   stops?: Phase[];
   /**
@@ -133,35 +133,35 @@ export interface GameView {
    * Whether this view answers a **rejected in-game action** by the receiver (issue
    * #265): a stale-view race meant the chosen action was no longer on offer, so the
    * server re-sent the current state unchanged and flagged that one re-send. Advisory
-   * and transient like {@link auto_passed}} — `valid_actions` already reflects the true
+   * and transient like {@link auto_passed} — `valid_actions` already reflects the true
    * legal set, so the client shows only a brief, non-blaming "the game moved on" toast
    * (ephemeral presentation, never load-bearing). Omitted (treated as `false`) on every
-   * normal broadcast and resync; {@link normalizeGameView}} defaults it to `false`.
+   * normal broadcast and resync; {@link normalizeGameView} defaults it to `false`.
    */
   action_rejected?: boolean;
   /**
-   * Public display names keyed by {@link PlayerId}} (issue #294): every player who has
+   * Public display names keyed by {@link PlayerId} (issue #294): every player who has
    * chosen a name maps to it, so any in-game surface (turn indicator, player tiles,
    * zone-browser titles, game-over verdict) can label any player — `you`, an opponent,
    * the active/priority player, a winner — without a lobby round-trip. Names never
    * replace the `p{N}` id an action echoes back. A player with no name has no entry;
-   * the server omits the field entirely when empty and {@link normalizeGameView}}
+   * the server omits the field entirely when empty and {@link normalizeGameView}
    * defaults it to `{}`, so an older server that never sends names keeps working.
    */
   player_names: Record<PlayerId, string>;
   /**
    * Cumulative commander combat damage per `(commander, damaged)` pair (CR 903.10a,
    * issue #371) — public information, the same for every receiver (see
-   * {@link CommanderDamage}}). A player who has taken 21+ from one commander has lost
-   * (shown in {@link GameView.result}} with reason `commander_damage`); the running
+   * {@link CommanderDamage}). A player who has taken 21+ from one commander has lost
+   * (shown in {@link GameView.result} with reason `commander_damage`); the running
    * tally lets the client warn before then. Omitted (treated as `[]`) in a
-   * non-commander game or from an older server; {@link normalizeGameView}} defaults
+   * non-commander game or from an older server; {@link normalizeGameView} defaults
    * it. Server-computed; never derived by the client.
    */
   commander_damage: CommanderDamage[];
   /**
    * The commander tax owed on each designated commander (CR 903.8, issue #372) —
-   * public information (see {@link CommanderTax}}). {@link normalizeGameView}}
+   * public information (see {@link CommanderTax}). {@link normalizeGameView}
    * always sets it (to `[]` when omitted). Optional on the interface so existing view
    * literals need not restate it.
    */
