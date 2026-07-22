@@ -176,6 +176,31 @@ describe('DeckBuilder (issue #368)', () => {
     expect(screen.getByTestId('deck-builder-total').textContent).toBe('3 cards');
   });
 
+  it('displays the server’s specific deck-rejection reason, naming the card, with state preserved (issue #395)', () => {
+    // The structured reason (rendered by the server from deck-legality data) flows in
+    // through the same `error` prop; the builder shows it verbatim, keeps the built
+    // list for correction, and still offers Submit (no client-side legality gate).
+    const onSubmit = vi.fn();
+    render(
+      <DeckBuilder
+        catalog={CATALOG_VIEW}
+        format={CATALOG_VIEW.formats[0]}
+        initialCounts={{ shock: 5 }}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+        error="Shock appears 5 times, above the 4-copy limit"
+      />,
+    );
+    const shown = screen.getByTestId('deck-builder-error').textContent ?? '';
+    expect(shown).toContain('Shock');
+    expect(shown).toContain('above the 4-copy limit');
+    // Builder state preserved for correction.
+    expect(screen.getByTestId('deck-builder-count-shock').textContent).toBe('5');
+    // Submit stays available — the client never pre-validates legality.
+    fireEvent.click(screen.getByTestId('deck-builder-submit'));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it('closes on Escape, backdrop, and Cancel (full keyboard + pointer operability)', () => {
     const onClose = vi.fn();
     render(
@@ -191,6 +216,142 @@ describe('DeckBuilder (issue #368)', () => {
     fireEvent.click(screen.getByTestId('deck-builder-cancel'));
     fireEvent.click(screen.getByTestId('deck-builder-backdrop'));
     expect(onClose).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('DeckBuilder commander designation (issue #396)', () => {
+  // The commander format advertised in the fixture: requires a commander (#394).
+  const COMMANDER_FORMAT = CATALOG_VIEW.formats[2];
+
+  it('shows no designation affordance when the format does not require a commander', () => {
+    // A non-commander format (the 1v1 duel): with a legendary creature in the deck, the
+    // builder still offers no designation control (gated by the advertised flag, #394).
+    renderBuilder({ format: CATALOG_VIEW.formats[0], initialCounts: { jedit_ojanen: 1 } });
+    expect(screen.queryByTestId('deck-builder-commander-status')).toBeNull();
+    expect(screen.queryByTestId('deck-builder-designate-jedit_ojanen')).toBeNull();
+  });
+
+  it('lets the player designate exactly one card, rendering it distinctly', () => {
+    renderBuilder({
+      format: COMMANDER_FORMAT,
+      initialCounts: { jedit_ojanen: 1, serra_angel: 1 },
+    });
+    // No commander yet: the status prompts for one.
+    expect(screen.getByTestId('deck-builder-commander-none')).toBeDefined();
+
+    // Designate the legendary creature.
+    fireEvent.click(screen.getByTestId('deck-builder-designate-jedit_ojanen'));
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe('Jedit Ojanen');
+    expect(screen.getByTestId('deck-builder-commander-badge-jedit_ojanen')).toBeDefined();
+    const designate = screen.getByTestId('deck-builder-designate-jedit_ojanen');
+    expect(designate.getAttribute('aria-pressed')).toBe('true');
+
+    // Designating another card moves the designation — never two at once.
+    fireEvent.click(screen.getByTestId('deck-builder-designate-serra_angel'));
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe('Serra Angel');
+    expect(screen.queryByTestId('deck-builder-commander-badge-jedit_ojanen')).toBeNull();
+    expect(screen.getByTestId('deck-builder-commander-badge-serra_angel')).toBeDefined();
+  });
+
+  it('clears the designation on demand before submit', () => {
+    renderBuilder({ format: COMMANDER_FORMAT, initialCounts: { jedit_ojanen: 1 } });
+    fireEvent.click(screen.getByTestId('deck-builder-designate-jedit_ojanen'));
+    expect(screen.getByTestId('deck-builder-commander-name')).toBeDefined();
+    fireEvent.click(screen.getByTestId('deck-builder-commander-clear'));
+    expect(screen.queryByTestId('deck-builder-commander-name')).toBeNull();
+    expect(screen.getByTestId('deck-builder-commander-none')).toBeDefined();
+  });
+
+  it('submits the built list carrying the designated commander', () => {
+    const { onSubmit } = renderBuilder({
+      format: COMMANDER_FORMAT,
+      initialCounts: { jedit_ojanen: 1, forest: 2 },
+    });
+    fireEvent.click(screen.getByTestId('deck-builder-designate-jedit_ojanen'));
+    fireEvent.click(screen.getByTestId('deck-builder-submit'));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const [cards, commander] = onSubmit.mock.calls[0] as [string[], string | undefined];
+    expect(cards.filter((c) => c === 'jedit_ojanen')).toHaveLength(1);
+    expect(cards.filter((c) => c === 'forest')).toHaveLength(2);
+    expect(commander).toBe('jedit_ojanen');
+  });
+
+  it('never sends a commander in a non-commander format even if one was seeded', () => {
+    const { onSubmit } = renderBuilder({
+      format: CATALOG_VIEW.formats[0],
+      initialCounts: { jedit_ojanen: 1 },
+      initialCommander: 'jedit_ojanen',
+    });
+    fireEvent.click(screen.getByTestId('deck-builder-submit'));
+    const [, commander] = onSubmit.mock.calls[0] as [string[], string | undefined];
+    expect(commander).toBeUndefined();
+  });
+
+  it('drops a designation whose card is removed from the deck', () => {
+    renderBuilder({ format: COMMANDER_FORMAT, initialCounts: { jedit_ojanen: 1 } });
+    fireEvent.click(screen.getByTestId('deck-builder-designate-jedit_ojanen'));
+    expect(screen.getByTestId('deck-builder-commander-name')).toBeDefined();
+    // Remove the last copy: the designation clears rather than referencing a card the
+    // deck no longer holds.
+    fireEvent.click(screen.getByTestId('deck-builder-remove-jedit_ojanen'));
+    expect(screen.queryByTestId('deck-builder-commander-name')).toBeNull();
+  });
+
+  it('seeds the designation from the starting deck and preserves it across a rejection', () => {
+    // A server rejection surfaces as the lobby error over the modal; the built list AND
+    // the designation must survive for correction (paired with #395).
+    render(
+      <DeckBuilder
+        catalog={CATALOG_VIEW}
+        format={COMMANDER_FORMAT}
+        initialCounts={{ jedit_ojanen: 1, forest: 2 }}
+        initialCommander="jedit_ojanen"
+        onSubmit={vi.fn()}
+        onClose={vi.fn()}
+        error="That deck was rejected. Designate a legal commander and submit again."
+      />,
+    );
+    expect(screen.getByTestId('deck-builder-error').textContent).toContain('rejected');
+    // State preserved: the designation and the list are both intact.
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe('Jedit Ojanen');
+    expect(screen.getByTestId('deck-builder-count-forest').textContent).toBe('2');
+  });
+
+  it('hints likely candidates from the catalog type line without enforcing legality', () => {
+    renderBuilder({
+      format: COMMANDER_FORMAT,
+      initialCounts: { jedit_ojanen: 1, shock: 1 },
+    });
+    // The legendary creature is hinted; a non-legendary is not — but both remain
+    // designatable (the server, not the client, decides eligibility).
+    expect(screen.getByTestId('deck-builder-commander-hint-jedit_ojanen')).toBeDefined();
+    expect(screen.queryByTestId('deck-builder-commander-hint-shock')).toBeNull();
+    expect(screen.getByTestId('deck-builder-designate-shock')).toBeDefined();
+  });
+
+  it('round-trips a designation through save and load', async () => {
+    const db = new MemorySavedDeckDb();
+    configureSavedDeckStore({ db, now: () => 1 });
+    renderBuilder({ format: COMMANDER_FORMAT, initialCounts: { jedit_ojanen: 1, forest: 2 } });
+    await screen.findByTestId('deck-builder-saved');
+
+    fireEvent.click(screen.getByTestId('deck-builder-designate-jedit_ojanen'));
+    fireEvent.change(screen.getByTestId('deck-builder-deck-name'), {
+      target: { value: 'My General' },
+    });
+    fireEvent.click(screen.getByTestId('deck-builder-save'));
+    await waitFor(async () =>
+      expect((await loadSavedDeck('My General'))?.commander).toBe('jedit_ojanen'),
+    );
+
+    // Reload it into a fresh builder: the designation comes back with the list.
+    cleanup();
+    resetSavedDeckStore();
+    configureSavedDeckStore({ db, now: () => 2 });
+    renderBuilder({ format: COMMANDER_FORMAT });
+    fireEvent.click(await screen.findByTestId('deck-builder-load-My General'));
+    expect(screen.getByTestId('deck-builder-commander-name').textContent).toBe('Jedit Ojanen');
   });
 });
 
@@ -296,7 +457,7 @@ describe('DeckBuilder saved decks (issue #369, ADR 0027)', () => {
     const output = (await screen.findByTestId('deck-builder-export-output')) as HTMLTextAreaElement;
     const doc = JSON.parse(output.value);
     expect(doc.schema).toBe('rune.deck');
-    expect(doc.version).toBe(1);
+    expect(doc.version).toBe(2);
 
     // Import round-trips it back into the builder as an equivalent working deck.
     fireEvent.change(screen.getByTestId('deck-builder-import-text'), {

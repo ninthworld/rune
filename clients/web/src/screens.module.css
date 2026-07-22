@@ -861,9 +861,53 @@
 }
 .builderDeckRow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--rune-space-4);
   font-size: var(--rune-type-body);
+}
+.builderDeckRowName {
+  margin-right: auto;
+  min-width: 0;
+}
+
+/* ── Commander designation (issue #396, CR 903.3) ──────────────────────────── */
+/* Shown only when the room's format advertises the requirement (#394). The
+ * designation is relayed to the server verbatim — no legality is decided here. */
+.builderCommander {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-3);
+  padding: var(--rune-space-3) var(--rune-space-4);
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-gold-border);
+  background: var(--rune-gold-fill);
+}
+.builderCommanderName {
+  font-family: var(--rune-font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--rune-accent-gold);
+}
+/* The designated row, marked distinctly so the commander reads apart from the 99. */
+.builderDeckRowCommander {
+  padding: var(--rune-space-2) var(--rune-space-3);
+  border-radius: var(--rune-radius-sm);
+  border: 1px solid var(--rune-gold-border);
+  background: var(--rune-gold-fill);
+}
+.builderCommanderBadge {
+  padding: 0 var(--rune-space-3);
+  border-radius: var(--rune-radius-pill, 999px);
+  border: 1px solid var(--rune-gold-border);
+  color: var(--rune-accent-gold);
+  font-size: var(--rune-type-caption, 0.75rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.builderDesignate {
+  flex-shrink: 0;
 }
 .builderFoot {
   display: flex;

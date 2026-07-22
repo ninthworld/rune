@@ -30,6 +30,15 @@ export const CATALOG_JSON = JSON.stringify({
       rules_text: 'Shock deals 2 damage to any target.',
     },
     {
+      functional_id: 'jedit_ojanen',
+      name: 'Jedit Ojanen',
+      type_line: 'Legendary Creature — Cat Warrior',
+      mana_cost: '{4}{G}{G}',
+      rules_text: '',
+      power: '5',
+      toughness: '5',
+    },
+    {
       functional_id: 'forest',
       name: 'Forest',
       type_line: 'Basic Land — Forest',
@@ -51,6 +60,17 @@ export const CATALOG_JSON = JSON.stringify({
       basic_land_exempt: true,
       min_seats: 2,
       max_seats: 8,
+    },
+    {
+      game_setup: 'commander',
+      min_deck_size: 100,
+      max_deck_size: 100,
+      max_copies: 1,
+      basic_land_exempt: true,
+      requires_commander: true,
+      enforce_color_identity: true,
+      min_seats: 2,
+      max_seats: 4,
     },
   ],
 });

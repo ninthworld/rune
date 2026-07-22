@@ -149,6 +149,7 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             format!("{source} deals {amount} damage to {}", target_noun(*target))
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
+        Effect::Exile { target } => format!("exile {}", target_noun(*target)),
         Effect::GainLife { player_ref, amount } => {
             format!("{} {amount} life", conjugate(*player_ref, "gain"))
         }

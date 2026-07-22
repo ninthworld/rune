@@ -70,13 +70,14 @@ pub struct CommanderState {
     pub casts: u32,
     /// Whether a CR 903.9a return-to-command-zone decision is currently owed to
     /// this commander's owner because the commander is sitting in a graveyard or
-    /// exile and the owner has not yet decided. Set when the commander changes
-    /// zones to a graveyard or exile
-    /// ([`GameState::move_permanent_to_graveyard`](crate::GameState)), cleared
-    /// when the owner accepts (moving it to the command zone) or declines
-    /// (leaving it where it went). Raw stored state: a bare snapshot cannot tell
-    /// "the commander is in the graveyard *and a choice is still pending*" from
-    /// "…and the owner already declined".
+    /// exile and the owner has not yet decided. Set when the commander leaves the
+    /// battlefield for a graveyard
+    /// ([`GameState::move_permanent_to_graveyard`](crate::GameState)) or for exile
+    /// ([`GameState::move_permanent_to_exile`](crate::GameState)) — the two
+    /// battlefield-leaves seams both flag it identically — and cleared when the owner
+    /// accepts (moving it to the command zone) or declines (leaving it where it went).
+    /// Raw stored state: a bare snapshot cannot tell "the commander is in the graveyard
+    /// or exile *and a choice is still pending*" from "…and the owner already declined".
     pub return_pending: bool,
 }
 

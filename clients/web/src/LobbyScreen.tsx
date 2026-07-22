@@ -954,8 +954,14 @@ function RoomPanel({ view }: { view: LobbyView }) {
           catalog={catalog}
           format={roomFormat}
           initialCounts={decklistCounts(decklistById(deckId) ?? STARTER_DECKLISTS[0])}
+          // Seed the designation from the picked starter's commander in a commander
+          // format, so opening the builder over a starter keeps a legal starting point
+          // to edit (issue #396). Omitted otherwise — the builder shows no affordance.
+          initialCommander={
+            requiresCommander ? (decklistById(deckId) ?? STARTER_DECKLISTS[0]).commander : undefined
+          }
           error={lobbyError}
-          onSubmit={(cards) => sendLobby(submitDeckCommand(cards))}
+          onSubmit={(cards, commander) => sendLobby(submitDeckCommand(cards, commander))}
           onClose={() => setBuilderOpen(false)}
         />
       )}

@@ -9,7 +9,8 @@
 
 use rune_engine::{
     apply_action, valid_actions, Action, CardDatabase, CardId, CardInstance, Color, CommanderState,
-    GameEvent, GameState, Permanent, PermanentId, PlayerId, Step,
+    Effect, GameEvent, GameState, Permanent, PermanentId, PlayerId, StackId, StackObject,
+    StackObjectKind, Step, Target, TargetSpec,
 };
 
 /// An inline catalog with a legendary creature commander costing `{G}` and a
@@ -151,19 +152,38 @@ fn cr_903_8_each_recast_costs_two_generic_more() {
     }
 }
 
-/// Put player 0's commander onto the battlefield as a fresh permanent, returning
-/// the state and its permanent id. The designation already exists on the player.
-fn commander_on_battlefield(state: &mut GameState, commander: CardInstance) -> PermanentId {
+/// Put `instance` onto the battlefield under player 0 as a fresh permanent, returning
+/// its minted permanent id. Used for both a designated commander and a plain
+/// permanent, so the seam can be exercised on each.
+fn put_permanent_on_battlefield(state: &mut GameState, instance: CardInstance) -> PermanentId {
     let id = PermanentId(state.mint_id());
     state.battlefield.push(Permanent {
         id,
-        instance: commander.id,
-        card: commander.card,
+        instance: instance.id,
+        card: instance.card,
         controller: PlayerId(0),
         entered_turn: 0,
         ..Permanent::default()
     });
     id
+}
+
+/// Push an "exile target permanent" ability onto the stack aimed at `target`, so the
+/// next two priority passes resolve it through the real effect-resolution path
+/// ([`apply_action`] → resolve → the battlefield→exile seam). Player 0 controls it.
+fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
+    let sid = state.mint_id();
+    state.stack.push(StackObject {
+        id: StackId(sid),
+        controller: PlayerId(0),
+        kind: StackObjectKind::Ability {
+            source: target,
+            effects: vec![Effect::Exile {
+                target: TargetSpec::AnyPermanent,
+            }],
+        },
+        targets: vec![Target::Permanent(target)],
+    });
 }
 
 #[test]
@@ -174,7 +194,7 @@ fn cr_903_9a_a_destroyed_commander_flags_the_return_decision() {
     let db = db();
     let (mut state, commander) = commander_in_command_zone(&db, 1);
     state.players[0].command.clear(); // it is on the battlefield, not the command zone
-    let perm = commander_on_battlefield(&mut state, commander);
+    let perm = put_permanent_on_battlefield(&mut state, commander);
     // Mark lethal damage (a 2/2 with 2 damage) so the SBA loop destroys it.
     state
         .battlefield
@@ -206,18 +226,15 @@ fn cr_903_9a_a_destroyed_commander_flags_the_return_decision() {
     assert_eq!(state.players[0].commander.unwrap().casts, 1);
 }
 
-/// A scaffold where player 0's commander is already sitting in `zone_is_exile`'s
-/// zone (graveyard or exile) with the return decision pending and player 0 holding
-/// priority. Returns the state and the commander instance.
-fn commander_awaiting_return(db: &CardDatabase, in_exile: bool) -> (GameState, CardInstance) {
+/// A scaffold where player 0's commander is already sitting in their graveyard with
+/// the return decision pending and player 0 holding priority. Returns the state and
+/// the commander instance. The exile side of CR 903.9a is exercised at the real
+/// battlefield→exile boundary instead (see the exile tests below).
+fn commander_awaiting_return(db: &CardDatabase) -> (GameState, CardInstance) {
     let mut state = GameState::new_two_player();
     state.step = Step::PrecombatMain;
     let commander = state.new_instance(cid(db, "test_general"));
-    if in_exile {
-        state.players[0].exile.push(commander);
-    } else {
-        state.players[0].graveyard.push(commander);
-    }
+    state.players[0].graveyard.push(commander);
     state.players[0].commander = Some(CommanderState {
         return_pending: true,
         ..CommanderState::new(commander.card, commander.id)
@@ -231,7 +248,7 @@ fn cr_903_9a_owner_is_offered_the_return_choice_and_accepting_moves_it_from_the_
     // concede. Accepting moves the commander to the command zone as a fresh object
     // (its instance id carries over), clears the decision, and logs the movement.
     let db = db();
-    let (state, commander) = commander_awaiting_return(&db, false);
+    let (state, commander) = commander_awaiting_return(&db);
 
     let offered = valid_actions(&state, &db);
     assert_eq!(
@@ -277,34 +294,11 @@ fn cr_903_9a_owner_is_offered_the_return_choice_and_accepting_moves_it_from_the_
 }
 
 #[test]
-fn cr_903_9a_accepting_returns_a_commander_from_exile_too() {
-    // The return works identically whether the commander went to a graveyard or to
-    // exile (CR 903.9a covers both).
-    let db = db();
-    let (state, commander) = commander_awaiting_return(&db, true);
-    assert!(valid_actions(&state, &db)
-        .contains(&Action::ReturnCommanderToCommandZone { card: commander }));
-
-    let after = apply_action(
-        &state,
-        &Action::ReturnCommanderToCommandZone { card: commander },
-        &db,
-    );
-    assert_eq!(
-        after.players[0].command,
-        vec![commander],
-        "moved from exile to command"
-    );
-    assert!(after.players[0].exile.is_empty(), "no longer in exile");
-    assert!(!after.players[0].commander.unwrap().return_pending);
-}
-
-#[test]
 fn cr_903_9a_declining_leaves_the_commander_where_it_went() {
     // Declining clears the decision and leaves the commander in the graveyard; the
     // owner then resumes normal play (the choice is not offered again).
     let db = db();
-    let (state, commander) = commander_awaiting_return(&db, false);
+    let (state, commander) = commander_awaiting_return(&db);
 
     let after = apply_action(
         &state,
@@ -328,4 +322,152 @@ fn cr_903_9a_declining_leaves_the_commander_where_it_went() {
     assert!(valid_actions(&after, &db).contains(&Action::PassPriority));
     assert!(!valid_actions(&after, &db)
         .contains(&Action::ReturnCommanderToCommandZone { card: commander }));
+}
+
+// ----- The battlefield→exile seam end to end (issue #397) -----
+//
+// The exile side of CR 903.9a is proven at the *real* boundary: an exile effect
+// resolves through [`apply_action`], moving the commander off the battlefield into
+// exile via the one battlefield→exile seam — no hand-set `return_pending`.
+
+#[test]
+fn cr_903_9a_exiling_the_commander_flags_the_return_and_accepting_moves_it_from_exile() {
+    // An exile effect resolving onto the commander moves it to its owner's exile and
+    // flags the CR 903.9a return; accepting puts it in the command zone as a fresh
+    // object (its instance id carries over), and both the engine log records it.
+    let db = db();
+    let (mut state, commander) = commander_in_command_zone(&db, 1);
+    state.players[0].command.clear(); // it is on the battlefield, not the command zone
+    let perm = put_permanent_on_battlefield(&mut state, commander);
+    exile_ability_targeting(&mut state, perm);
+
+    // Both players pass: the exile ability resolves, moving the commander into exile
+    // and flagging its owner's decision — the seam is the battlefield-leaves move.
+    let state = apply_action(&state, &Action::PassPriority, &db);
+    let state = apply_action(&state, &Action::PassPriority, &db);
+
+    assert!(
+        !state.battlefield.iter().any(|p| p.id == perm),
+        "it left the battlefield"
+    );
+    assert!(
+        state.players[0].exile.iter().any(|c| c.id == commander.id),
+        "it went to exile"
+    );
+    assert!(
+        state.players[0].commander.unwrap().return_pending,
+        "its owner is owed the CR 903.9a return decision"
+    );
+    // The tax count is untouched by the exile — it is keyed to the designation.
+    assert_eq!(state.players[0].commander.unwrap().casts, 1);
+
+    // The owner is offered the return; accepting moves it to the command zone.
+    assert!(valid_actions(&state, &db)
+        .contains(&Action::ReturnCommanderToCommandZone { card: commander }));
+    let after = apply_action(
+        &state,
+        &Action::ReturnCommanderToCommandZone { card: commander },
+        &db,
+    );
+    assert_eq!(
+        after.players[0].command,
+        vec![commander],
+        "now in the command zone"
+    );
+    assert!(after.players[0].exile.is_empty(), "no longer in exile");
+    assert!(
+        !after.players[0].commander.unwrap().return_pending,
+        "decision resolved"
+    );
+    assert!(
+        after.log.iter().any(|e| matches!(
+            &e.event,
+            GameEvent::CommanderReturnedToCommandZone { player, card }
+                if *player == PlayerId(0) && card.id == commander.id
+        )),
+        "the movement is recorded in the log"
+    );
+    // Fresh object: back in the command zone it is castable again, at the taxed cost
+    // ({2}{G} after one prior cast — the tax survived the exile and return).
+    let mut recast = after;
+    recast.players[0].mana_pool.add(Color::Green, 1);
+    recast.players[0].mana_pool.colorless = 2;
+    assert!(cast_offered(&recast, &db, commander));
+}
+
+#[test]
+fn cr_903_9a_declining_leaves_the_exiled_commander_in_exile() {
+    // Declining after a real exile leaves the commander in exile and clears the
+    // decision, logging nothing (the card did not move); normal play resumes.
+    let db = db();
+    let (mut state, commander) = commander_in_command_zone(&db, 0);
+    state.players[0].command.clear();
+    let perm = put_permanent_on_battlefield(&mut state, commander);
+    exile_ability_targeting(&mut state, perm);
+
+    let state = apply_action(&state, &Action::PassPriority, &db);
+    let state = apply_action(&state, &Action::PassPriority, &db);
+    assert!(state.players[0].commander.unwrap().return_pending);
+
+    let after = apply_action(
+        &state,
+        &Action::DeclineCommanderReturn { card: commander },
+        &db,
+    );
+    assert!(
+        after.players[0].exile.iter().any(|c| c.id == commander.id),
+        "it stayed in exile"
+    );
+    assert!(
+        after.players[0].command.is_empty(),
+        "not moved to the command zone"
+    );
+    assert!(
+        !after.players[0].commander.unwrap().return_pending,
+        "decision resolved"
+    );
+    assert!(
+        !after
+            .log
+            .iter()
+            .any(|e| matches!(e.event, GameEvent::CommanderReturnedToCommandZone { .. })),
+        "declining records no movement event"
+    );
+    // Normal play resumes: the return choice is gone, passing priority is offered.
+    assert!(valid_actions(&after, &db).contains(&Action::PassPriority));
+    assert!(!valid_actions(&after, &db)
+        .contains(&Action::ReturnCommanderToCommandZone { card: commander }));
+}
+
+#[test]
+fn a_non_commander_permanent_exiled_through_the_seam_lands_in_exile_with_zone_change_identity() {
+    // A permanent with no commander designation exiled through the seam simply lands
+    // in its owner's exile as its physical instance — the battlefield `PermanentId` is
+    // dropped, the same fresh-identity rule every zone change follows — and no return
+    // decision is owed to anyone.
+    let db = db();
+    let mut state = GameState::new_two_player();
+    state.step = Step::PrecombatMain;
+    let ally = state.new_instance(cid(&db, "test_ally"));
+    let perm = put_permanent_on_battlefield(&mut state, ally);
+    exile_ability_targeting(&mut state, perm);
+
+    let state = apply_action(&state, &Action::PassPriority, &db);
+    let state = apply_action(&state, &Action::PassPriority, &db);
+
+    assert!(
+        !state.battlefield.iter().any(|p| p.id == perm),
+        "it left the battlefield"
+    );
+    assert_eq!(
+        state.players[0].exile,
+        vec![ally],
+        "its physical instance is in exile (a new PermanentId only on re-entry)"
+    );
+    assert!(
+        state.players[0].commander.is_none() && state.players[1].commander.is_none(),
+        "there is no commander designation to owe a return"
+    );
+    // No return choice exists anywhere: ordinary priority play is what's offered.
+    assert!(valid_actions(&state, &db).contains(&Action::PassPriority));
 }

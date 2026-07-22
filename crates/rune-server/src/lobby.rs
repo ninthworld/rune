@@ -368,7 +368,10 @@ pub(crate) enum LobbyError {
     UnknownCard(String),
     /// `submit_deck` whose decklist is illegal for the room's format (ADR 0013 §4):
     /// too few or too many cards, or too many copies of a non-basic card. Carries a
-    /// [`DeckError`] naming the violation; the seat keeps whatever deck it had.
+    /// [`DeckError`] naming the violation; the seat keeps whatever deck it had. The
+    /// structured reason is delivered to the rejecting seat alone as a
+    /// [`LobbyErrorFrame`](rune_protocol::LobbyErrorFrame) (issue #395, see
+    /// [`Lobby::deck_rejection`]).
     IllegalDeck(DeckError),
     /// `ready` (up) on a seat that has not yet submitted a valid deck.
     NotDecked,
@@ -742,6 +745,31 @@ impl Lobby {
         push_view(&registry, token);
         result
     }
+
+    /// Project a rejected command's [`LobbyError`] into the structured, human-readable
+    /// [`LobbyRejection`] the serve loop delivers to the **rejecting connection only**
+    /// (issue #395), or `None` when the rejection carries no deck reason worth naming.
+    ///
+    /// Only deck-content rejections are surfaced this way: an illegal decklist
+    /// ([`LobbyError::IllegalDeck`], with the structured [`DeckError`] reason) and an
+    /// unresolvable card identity ([`LobbyError::UnknownCard`]). Both name a card from
+    /// the **sender's own** submission, so nothing about another seat's deck or hidden
+    /// state can leak. Every other rejection returns `None`; the client still infers a
+    /// generic retry hint from the unchanged re-sent view (ADR 0012).
+    pub(crate) fn deck_rejection(
+        &self,
+        error: &LobbyError,
+    ) -> Option<rune_protocol::LobbyRejection> {
+        match error {
+            LobbyError::IllegalDeck(deck_error) => Some(deck_error.to_rejection(&self.inner.db)),
+            LobbyError::UnknownCard(identity) => Some(rune_protocol::LobbyRejection {
+                code: "unknown_card".to_string(),
+                reason: format!("unknown card identity {identity}"),
+                card: Some(identity.clone()),
+            }),
+            _ => None,
+        }
+    }
 }
 
 /// Bridge a live WebSocket connection to the lobby for its pre-game phase.
@@ -822,6 +850,27 @@ where
                         // Every other command routes through the authoritative registry.
                         Ok(command) => {
                             if let Err(error) = lobby.command(&handle.token, command).await {
+                                // A deck-content rejection carries a structured reason
+                                // for the submitting seat alone (issue #395): send it as
+                                // its own frame, out-of-band from the latest-value outbox
+                                // (which would coalesce it away under the re-sent view),
+                                // exactly like the one-shot catalog reply. Redaction is
+                                // automatic — it rides this connection's own socket only.
+                                if let Some(rejection) = lobby.deck_rejection(&error) {
+                                    let frame = rune_protocol::LobbyErrorFrame {
+                                        lobby_error: rejection,
+                                    };
+                                    match serde_json::to_string(&frame) {
+                                        Ok(json) => {
+                                            if write.send(Message::Text(json)).await.is_err() {
+                                                break;
+                                            }
+                                        }
+                                        Err(error) => {
+                                            warn!(token = %handle.token, %error, "failed to serialize lobby error");
+                                        }
+                                    }
+                                }
                                 warn!(token = %handle.token, %error, "rejected lobby command");
                             }
                         }

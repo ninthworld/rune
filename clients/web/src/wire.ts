@@ -19,6 +19,7 @@ import {
   type Counter,
   type GameResult,
   type GameView,
+  type LobbyRejection,
   type LobbyView,
   type Permanent,
   PHASES,
@@ -479,16 +480,34 @@ function normalizeAiOption(payload: unknown): AiOption {
 }
 
 /**
+ * Normalize a wire {@link LobbyRejection} (issue #395): `code`/`reason` default to
+ * `''` and `card` stays absent when the rejection names no specific card. Wire
+ * hygiene only — the reason is displayed verbatim and no legality is derived.
+ */
+function normalizeLobbyRejection(payload: unknown): LobbyRejection {
+  const record = isRecord(payload) ? payload : {};
+  const rejection: LobbyRejection = {
+    code: asString(record.code),
+    reason: asString(record.reason),
+  };
+  if (typeof record.card === 'string') rejection.card = record.card;
+  return rejection;
+}
+
+/**
  * One decoded server→client frame: an in-game {@link GameView}, a
- * {@link SpectatorView}, a pre-game {@link LobbyView}, or a {@link CatalogView}. The
- * four are distinguished structurally — a `GameView`/`SpectatorView` carries a valid
- * {@link Phase}, a `CatalogView` carries a `catalog_version` (and no phase), and a
- * `LobbyView` carries neither — so a single connection can carry all of them.
+ * {@link SpectatorView}, a pre-game {@link LobbyView}, a {@link CatalogView}, or a
+ * {@link LobbyErrorFrame}. They are distinguished structurally — a
+ * `GameView`/`SpectatorView` carries a valid {@link Phase}, a `CatalogView` carries a
+ * `catalog_version` (and no phase), a lobby-error frame carries a `lobby_error`
+ * object, and a `LobbyView` carries none of these — so a single connection can carry
+ * all of them.
  */
 export type ServerFrame =
   | { readonly kind: 'game'; readonly view: GameView }
   | { readonly kind: 'spectator'; readonly view: SpectatorView }
   | { readonly kind: 'catalog'; readonly catalog: CatalogView }
+  | { readonly kind: 'lobby_error'; readonly rejection: LobbyRejection }
   | { readonly kind: 'lobby'; readonly lobby: LobbyView };
 
 /**
@@ -520,6 +539,11 @@ export function parseServerFrame(raw: string): ServerFrame {
   // carries neither, so the version is an unambiguous discriminator between the two.
   if (isRecord(parsed) && typeof parsed.catalog_version === 'number') {
     return { kind: 'catalog', catalog: normalizeCatalogView(parsed) };
+  }
+  // A lobby-error frame (issue #395) carries a `lobby_error` object and no phase; no
+  // `LobbyView` carries that key, so it is an unambiguous discriminator.
+  if (isRecord(parsed) && isRecord(parsed.lobby_error)) {
+    return { kind: 'lobby_error', rejection: normalizeLobbyRejection(parsed.lobby_error) };
   }
   return { kind: 'lobby', lobby: normalizeLobbyView(parsed) };
 }

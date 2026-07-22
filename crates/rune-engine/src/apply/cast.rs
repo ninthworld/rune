@@ -236,6 +236,7 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
         | Effect::CounterSpell { .. }
         | Effect::DealDamage { .. }
         | Effect::Destroy { .. }
+        | Effect::Exile { .. }
         | Effect::PutCounters { .. }
         | Effect::Pump { .. }
         | Effect::GrantKeyword { .. } => {}
@@ -308,6 +309,16 @@ pub(crate) fn apply_targeted_effect(
         Effect::Destroy { .. } => {
             if let Target::Permanent(id) = target {
                 state.destroy_permanent(id, db);
+            }
+        }
+        // Exile the targeted permanent (CR 406.2 / CR 701.19): move it from the
+        // battlefield to its owner's exile zone through the one battlefield→exile seam
+        // ([`GameState::move_permanent_to_exile`]) — the exile counterpart of the
+        // graveyard path `Destroy` uses. A commander exiled here is flagged for the
+        // CR 903.9a return-to-command-zone decision by that seam.
+        Effect::Exile { .. } => {
+            if let Target::Permanent(id) = target {
+                state.move_permanent_to_exile(id);
             }
         }
         // Put counters on the targeted permanent (CR 122). Current power/toughness

@@ -166,6 +166,20 @@ pub enum Effect {
         /// What this effect is allowed to target (typically a creature).
         target: TargetSpec,
     },
+    /// Exile the single permanent this effect targets (CR 406.2 / CR 701.19): it is
+    /// moved from the battlefield to its owner's exile zone through the one
+    /// battlefield→exile seam ([`crate::GameState::move_permanent_to_exile`]), the
+    /// exile counterpart of [`Effect::Destroy`]'s graveyard path. A commander so
+    /// exiled offers its owner the CR 903.9a return-to-command-zone choice.
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b) — an exile whose target
+    /// has already left fizzles. Exile-matters riders (impulse draw, flicker, "until
+    /// this leaves") are out of scope: the object simply goes to exile and stays.
+    Exile {
+        /// What this effect is allowed to target (typically a creature or permanent).
+        target: TargetSpec,
+    },
     /// The referenced player gains `amount` life (CR 119.3). The subject is a
     /// non-targeted [`PlayerRef`] (like [`Effect::DrawCard`]'s implicit
     /// controller), so this effect chooses no target.
@@ -270,6 +284,7 @@ impl Effect {
             | Effect::CounterSpell { target }
             | Effect::DealDamage { target, .. }
             | Effect::Destroy { target }
+            | Effect::Exile { target }
             | Effect::PutCounters { target, .. }
             | Effect::Pump { target, .. }
             | Effect::GrantKeyword { target, .. } => Some(*target),

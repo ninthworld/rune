@@ -171,7 +171,7 @@ Each panel picks its own rung — one hoarding opponent never shrinks the others
 | --- | --- | --- |
 | Desktop / laptop landscape | full anatomy | full anatomy |
 | Tablet landscape | full anatomy | full anatomy (floor; ladder engaged) |
-| Phone / portrait | full anatomy, fan + sheets | **summary tiles + focus mode** (opponents collapse to crest/name/counts tiles; tapping one expands that battlefield) — designed, not yet mocked |
+| Phone / portrait | full anatomy, fan + sheets | **summary tiles + focus mode** (opponents collapse to crest/name/counts tiles; tapping one expands that battlefield in place) — **shipped** (issue #400); see [`ui-design-notes.md`](ui-design-notes.md) §Multiplayer table |
 
 ## Superseded and preserved
 
@@ -191,7 +191,12 @@ Each panel picks its own rung — one hoarding opponent never shrinks the others
    advanced/settings affordance.~~ **Delivered** — the Play-first landing and
    the polished lobby flow; decisions recorded in
    [`ui-design-notes.md`](ui-design-notes.md) §Front door.
-2. The 4-player phone/portrait summary-tile + focus-mode composition (mock).
+2. ~~The 4-player phone/portrait summary-tile + focus-mode composition.~~
+   **Delivered** (issue #400) — opponents collapse to crest/name/counts tiles with
+   tap/keyboard focus-to-expand, commander chrome intact, and a decision auto-expands
+   the board it needs; decisions recorded in
+   [`ui-design-notes.md`](ui-design-notes.md) §Multiplayer table. A polished visual
+   mock remains a nice-to-have.
 3. Targeting-drag and stack-response states on phone (mock).
 4. The texture-skin question — explicitly deferred; revisit only after the
    flat-but-deliberate surface ships and reads.
