@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameLogEntry, GameLogEvent } from '../protocol';
-import { describeEvent, groupEntries, isRef, phaseLabel, type LogSegment } from './gameLog';
+import { describeEvent, groupEntries, isRef, phaseLabel, type LogSegment } from './logComposition';
 
 /** A naming view exposing the display-name map the composer reads. */
 const NAMES = { player_names: { p1: 'Alice', p2: 'Bob' } };

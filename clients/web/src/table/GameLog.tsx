@@ -24,7 +24,13 @@
 import { useEffect, useRef, useState } from 'react';
 import type { EntityId, GameLogEntry, GameView } from '../protocol';
 import { cx } from '../chrome/cx';
-import { describeEvent, groupEntries, isRef, type LogGroup, type LogSegment } from './gameLog';
+import {
+  describeEvent,
+  groupEntries,
+  isRef,
+  type LogGroup,
+  type LogSegment,
+} from './logComposition';
 import s from './chrome.module.css';
 
 interface Props {
