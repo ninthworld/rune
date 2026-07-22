@@ -28,7 +28,7 @@ use crate::{ConfigError, LobbyConfig, SessionError, WsRead, WsWrite};
 
 /// The `kind` string the server uses for the pass-priority action
 /// (`rune-server`'s `view.rs`). The safe default prefers this action.
-pub(crate) const PASS_PRIORITY_KIND: &str = "pass_priority";
+const PASS_PRIORITY_KIND: &str = "pass_priority";
 
 /// Environment variable naming the agent decision deadline, in seconds. Overridden
 /// by the `--agent-timeout` flag; ignored unless agent mode is enabled.
