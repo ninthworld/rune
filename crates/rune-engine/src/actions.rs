@@ -4,7 +4,7 @@
 //! computes, pull-based, exactly which are legal for the current priority
 //! holder. [`crate::apply_action`] validates a chosen action against this set —
 //! and, for a targeted action, against freshly computed legal target sets — in
-//! [`crate::apply_action`] before applying it.
+//! [`action_is_legal`] before applying it.
 
 mod definition;
 mod generation;
