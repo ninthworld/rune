@@ -259,10 +259,7 @@ mod tests {
                 entry.functional_id
             );
         }
-        assert_eq!(
-            catalog::CATALOG.len(),
-            crate::card::tests::CATALOG_SIZE
-        );
+        assert_eq!(catalog::CATALOG.len(), crate::card::tests::CATALOG_SIZE);
     }
 
     #[test]
