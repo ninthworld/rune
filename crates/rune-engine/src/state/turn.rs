@@ -33,7 +33,7 @@ impl GameState {
     /// one, to the next player in seating order, and reset to [`Step::Untap`].
     ///
     /// A no-op on a seatless state, so player rotation never divides by zero.
-    pub(crate) fn begin_next_turn(&mut self) {
+    fn begin_next_turn(&mut self) {
         if self.players.is_empty() {
             return;
         }
