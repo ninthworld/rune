@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "vigilant_baloth",
+  "name": "Vigilant Baloth",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Beast"
+  ],
+  "mana_cost": "{3}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 5,
+  "toughness": 5,
+  "keywords": [
+    "vigilance"
+  ]
+}

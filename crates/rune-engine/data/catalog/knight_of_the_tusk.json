@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "functional_id": "knight_of_the_tusk",
+  "name": "Knight of the Tusk",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Knight"
+  ],
+  "mana_cost": "{4}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 3,
+  "toughness": 7,
+  "keywords": [
+    "vigilance"
+  ]
+}

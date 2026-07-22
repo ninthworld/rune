@@ -1402,4 +1402,403 @@ mod tests {
         assert!(state.players[0].has_lost);
         assert_eq!(state.players[0].loss_reason, Some(LossReason::ZeroLife));
     }
+
+    // === issue #401: behavior of the nontrivial M19 catalog additions ===
+    // Vanilla and single-keyword bodies (Loxodon Line Breaker, Havoc Devils,
+    // Daybreak Chaplain, …) reuse mechanics already covered by the generic
+    // keyword/combat tests, so only the cards that *do* something get a boundary
+    // test here. Skeleton Archer's ETB "deal 1 damage to any target" is omitted:
+    // like Viashino Pyromancer it is a triggered ability, and triggers carry no
+    // chosen targets until issue #71 — so its damage is exercised only by the
+    // rules-text generator, not end-to-end.
+
+    #[test]
+    fn issue_401_aegis_of_the_heavens_pumps_plus_one_plus_seven() {
+        // Aegis of the Heavens: a {1}{W} instant, +1/+7 until end of turn.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = main_phase_p0();
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let aegis = state.new_instance(fixture("aegis_of_the_heavens"));
+        state.players[0].hand = vec![aegis];
+        state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: aegis,
+                targets: vec![Target::Permanent(creature)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let ch = characteristics(&state, creature, &db);
+        assert_eq!(ch.power, Some(2), "printed 1 + 1");
+        assert_eq!(ch.toughness, Some(8), "printed 1 + 7");
+    }
+
+    #[test]
+    fn issue_401_mighty_leap_pumps_and_grants_flying_in_one_spell() {
+        // Mighty Leap: +2/+2 *and* gains flying until end of turn — two spell
+        // effects, so the cast supplies the same creature as the target of each
+        // (the pump slot and the grant slot).
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = main_phase_p0();
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let leap = state.new_instance(fixture("mighty_leap"));
+        state.players[0].hand = vec![leap];
+        state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: leap,
+                targets: vec![Target::Permanent(creature), Target::Permanent(creature)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let ch = characteristics(&state, creature, &db);
+        assert_eq!(ch.power, Some(3), "1 + 2");
+        assert_eq!(ch.toughness, Some(3));
+        assert!(
+            ch.keywords.contains(&Keyword::Flying),
+            "the same spell granted flying (CR 613.1f)"
+        );
+    }
+
+    #[test]
+    fn issue_401_sure_strike_pumps_power_and_grants_first_strike() {
+        // Sure Strike: +3/+0 and gains first strike until end of turn.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = main_phase_p0();
+        let creature =
+            place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let strike = state.new_instance(fixture("sure_strike"));
+        state.players[0].hand = vec![strike];
+        state.players[0].mana_pool.add(Color::Red, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: strike,
+                targets: vec![Target::Permanent(creature), Target::Permanent(creature)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let ch = characteristics(&state, creature, &db);
+        assert_eq!(ch.power, Some(4), "1 + 3");
+        assert_eq!(ch.toughness, Some(1), "toughness unchanged");
+        assert!(ch.keywords.contains(&Keyword::FirstStrike));
+    }
+
+    #[test]
+    fn issue_401_strangling_spores_shrinks_a_creature_to_death_cr_704_5f() {
+        // Strangling Spores: target creature gets -3/-3 until end of turn — a
+        // negative pump. A 4/2 Onakke Ogre drops to a 1/-1, and the CR 704.5f
+        // zero-toughness state-based action puts it into the graveyard.
+        let db = db();
+        let mut state = main_phase_p0();
+        let ogre = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let spores = state.new_instance(fixture("strangling_spores"));
+        state.players[0].hand = vec![spores];
+        state.players[0].mana_pool.add(Color::Black, 1);
+        state.players[0].mana_pool.colorless = 3;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: spores,
+                targets: vec![Target::Permanent(ogre)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == ogre),
+            "-3/-3 dropped toughness to 0 or less (CR 704.5f)"
+        );
+        assert_eq!(state.players[1].graveyard.len(), 1);
+    }
+
+    #[test]
+    fn issue_401_knights_pledge_aura_boosts_its_host_plus_two_plus_two() {
+        // Knight's Pledge: a bundled +2/+2 Aura — the first shipped P/T Aura.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = main_phase_p0();
+        let host = place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let pledge = state.new_instance(fixture("knight_s_pledge"));
+        state.players[0].hand = vec![pledge];
+        state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: pledge,
+                targets: vec![Target::Permanent(host)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let ch = characteristics(&state, host, &db);
+        assert_eq!(ch.power, Some(3), "printed 1 + 2 while enchanted");
+        assert_eq!(ch.toughness, Some(3));
+        assert!(
+            state
+                .battlefield
+                .iter()
+                .any(|p| p.card == fixture("knight_s_pledge") && p.attached_to == Some(host)),
+            "the Aura entered attached to its host (CR 303.4d)"
+        );
+    }
+
+    #[test]
+    fn issue_401_oakenform_aura_boosts_its_host_plus_three_plus_three() {
+        // Oakenform: a bundled +3/+3 Aura.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = main_phase_p0();
+        let host = place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let oak = state.new_instance(fixture("oakenform"));
+        state.players[0].hand = vec![oak];
+        state.players[0].mana_pool.add(Color::Green, 1);
+        state.players[0].mana_pool.colorless = 2;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: oak,
+                targets: vec![Target::Permanent(host)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let ch = characteristics(&state, host, &db);
+        assert_eq!(ch.power, Some(4), "1 + 3");
+        assert_eq!(ch.toughness, Some(4));
+    }
+
+    #[test]
+    fn issue_401_prodigious_growth_aura_grants_p_t_and_trample() {
+        // Prodigious Growth: +7/+7 *and* trample — a P/T-and-keyword Aura in one.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = main_phase_p0();
+        let host = place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let growth = state.new_instance(fixture("prodigious_growth"));
+        state.players[0].hand = vec![growth];
+        state.players[0].mana_pool.add(Color::Green, 2);
+        state.players[0].mana_pool.colorless = 4;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: growth,
+                targets: vec![Target::Permanent(host)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        let ch = characteristics(&state, host, &db);
+        assert_eq!(ch.power, Some(8), "1 + 7");
+        assert_eq!(ch.toughness, Some(8));
+        assert!(
+            ch.keywords.contains(&Keyword::Trample),
+            "the Aura grants trample (CR 613.1f) alongside its P/T"
+        );
+    }
+
+    #[test]
+    fn issue_401_lichs_caress_destroys_a_creature_and_gains_three_life() {
+        // Lich's Caress: destroy target creature, then you gain 3 life.
+        let db = db();
+        let mut state = main_phase_p0();
+        let life_before = state.players[0].life;
+        let victim = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let caress = state.new_instance(fixture("lich_s_caress"));
+        state.players[0].hand = vec![caress];
+        state.players[0].mana_pool.add(Color::Black, 2);
+        state.players[0].mana_pool.colorless = 3;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: caress,
+                targets: vec![Target::Permanent(victim)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert!(
+            !state.battlefield.iter().any(|p| p.id == victim),
+            "the targeted creature is destroyed (CR 701.7)"
+        );
+        assert_eq!(
+            state.players[0].life,
+            life_before + 3,
+            "and its controller gains 3 life"
+        );
+    }
+
+    #[test]
+    fn issue_401_lava_axe_deals_five_to_a_player() {
+        // Lava Axe: 5 damage to target player (planeswalkers are unmodeled, so the
+        // spec is `any_player`) — the first shipped burn aimed only at a player.
+        let db = db();
+        let mut state = main_phase_p0();
+        state.players[1].life = 20;
+        let axe = state.new_instance(fixture("lava_axe"));
+        state.players[0].hand = vec![axe];
+        state.players[0].mana_pool.add(Color::Red, 1);
+        state.players[0].mana_pool.colorless = 4;
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: axe,
+                targets: vec![Target::Player(PlayerId(1))],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        assert_eq!(state.players[1].life, 15, "20 - 5 (CR 120.3a)");
+    }
+
+    #[test]
+    fn issue_401_highland_game_gains_two_life_when_it_dies() {
+        // Highland Game: "When Highland Game dies, you gain 2 life." Killed by a
+        // Destroy effect, its dies trigger resolves and its controller gains 2.
+        use crate::ability::TargetSpec;
+        let db = db();
+        let mut state = main_phase_p0();
+        let life_before = state.players[0].life;
+        let elk = place_permanent(&mut state, fixture("highland_game"), PlayerId(0), false, 0);
+        push_ability(
+            &mut state,
+            elk,
+            vec![Effect::Destroy {
+                target: TargetSpec::AnyCreature,
+            }],
+            vec![Target::Permanent(elk)],
+        );
+
+        // Resolve the destroy: the Elk dies and its dies trigger lands on the stack.
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(!alive(&state, elk), "the Destroy killed the Elk");
+        assert_eq!(state.stack.len(), 1, "the dies trigger is on the stack");
+
+        // Resolve the dies trigger.
+        let state = pass_full_round(&state, &db);
+        assert!(state.stack.is_empty());
+        assert_eq!(state.players[0].life, life_before + 2);
+    }
+
+    #[test]
+    fn issue_401_rhox_oracle_draws_a_card_when_it_enters() {
+        // Rhox Oracle: a {4}{G} 4/2 whose ETB draws a card.
+        let db = db();
+        let mut state = main_phase_p0();
+        let oracle = state.new_instance(fixture("rhox_oracle"));
+        let card = state.new_instance(fixture("forest"));
+        state.players[0].hand = vec![oracle];
+        state.players[0].library = vec![card];
+        state.players[0].mana_pool.add(Color::Green, 1);
+        state.players[0].mana_pool.colorless = 4;
+
+        // Cast; pass twice so it resolves and its ETB trigger goes on the stack.
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: oracle,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+        assert!(state
+            .battlefield
+            .iter()
+            .any(|p| p.card == fixture("rhox_oracle")));
+        assert_eq!(state.stack.len(), 1, "its ETB trigger is on the stack");
+
+        // Pass twice more: the trigger resolves and player 0 draws.
+        let state = pass_full_round(&state, &db);
+        assert!(state.stack.is_empty());
+        assert!(state.players[0].hand.contains(&card));
+    }
+
+    #[test]
+    fn issue_401_pelakka_wurm_gains_seven_life_on_etb_and_draws_when_it_dies() {
+        // Pelakka Wurm carries two triggers: ETB gain 7 life, and dies draw a card.
+        use crate::ability::TargetSpec;
+        let db = db();
+
+        // ETB: cast it and resolve the enters trigger.
+        let mut state = main_phase_p0();
+        let life_before = state.players[0].life;
+        let wurm = state.new_instance(fixture("pelakka_wurm"));
+        state.players[0].hand = vec![wurm];
+        state.players[0].mana_pool.add(Color::Green, 3);
+        state.players[0].mana_pool.colorless = 4;
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: wurm,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db); // resolves the creature; ETB on stack
+        assert_eq!(
+            state.stack.len(),
+            1,
+            "the ETB gain-life trigger is on the stack"
+        );
+        let state = pass_full_round(&state, &db); // resolves the ETB trigger
+        assert_eq!(state.players[0].life, life_before + 7);
+
+        // Dies: place one and destroy it, then resolve the dies-draw trigger.
+        let mut state = main_phase_p0();
+        let onbf = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(0), false, 0);
+        let card = state.new_instance(fixture("forest"));
+        state.players[0].library = vec![card];
+        push_ability(
+            &mut state,
+            onbf,
+            vec![Effect::Destroy {
+                target: TargetSpec::AnyCreature,
+            }],
+            vec![Target::Permanent(onbf)],
+        );
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        let state = apply_action(&state, &Action::PassPriority, &db);
+        assert!(!alive(&state, onbf), "the Wurm died to the Destroy");
+        assert_eq!(
+            state.stack.len(),
+            1,
+            "the dies-draw trigger is on the stack"
+        );
+        let state = pass_full_round(&state, &db);
+        assert!(state.players[0].hand.contains(&card));
+    }
 }

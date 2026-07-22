@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "functional_id": "skeleton_archer",
+  "name": "Skeleton Archer",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Skeleton",
+    "Archer"
+  ],
+  "mana_cost": "{3}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "target": "any_target",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

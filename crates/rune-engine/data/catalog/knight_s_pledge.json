@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "knight_s_pledge",
+  "name": "Knight's Pledge",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{1}{W}",
+  "colors": [
+    "white"
+  ],
+  "aura": {
+    "enchant": "any_creature",
+    "power": 2,
+    "toughness": 2
+  }
+}
