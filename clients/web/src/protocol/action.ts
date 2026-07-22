@@ -91,7 +91,7 @@ export interface OrderPrompt {
  * {@link TargetRequirement} slot pattern (slot + prompt + candidates, bound by the
  * action's content {@link ValidAction.token}, ADR 0009) to three richer shapes.
  * The `kind` tag discriminates the shape on the wire; every shape is answered by a
- * {@link TargetChoice}} keyed by `slot` and submitted atomically. Clients tolerate
+ * {@link TargetChoice} keyed by `slot` and submitted atomically. Clients tolerate
  * an unknown future `kind`.
  */
 export type Prompt = OptionPrompt | SelectFromZonePrompt | OrderPrompt;
@@ -102,9 +102,9 @@ export type Prompt = OptionPrompt | SelectFromZonePrompt | OrderPrompt;
  * ON the entity rather than in a global bar (ADR 0004).
  *
  * A multi-step action (a targeted spell/ability) also carries an ordered
- * {@link ValidAction.requirements}} list, and/or a {@link ValidAction.prompts}} list
+ * {@link ValidAction.requirements} list, and/or a {@link ValidAction.prompts} list
  * of the non-target choice shapes, that the client walks as one prompt queue, plus
- * a content-binding {@link ValidAction.token}} it echoes verbatim in the answer
+ * a content-binding {@link ValidAction.token} it echoes verbatim in the answer
  * (ADR 0009 §Protocol). All are absent for a plain, no-choice action.
  */
 export interface ValidAction {
@@ -130,21 +130,21 @@ export interface ValidAction {
   /**
    * Ordered choice steps this action requires before it can be taken — one per
    * target slot. The client walks them as a prompt queue and answers every slot
-   * **atomically** in a single {@link ChooseAction}}, never a stateful
+   * **atomically** in a single {@link ChooseAction}, never a stateful
    * multi-message handshake. Absent/empty for a plain action.
    */
   requirements?: TargetRequirement[];
   /**
    * Non-target choice slots this action poses (option / select_from_zone / order,
-   * issue #156), a generalization of {@link ValidAction.requirements}}. The client
+   * issue #156), a generalization of {@link ValidAction.requirements}. The client
    * walks them as part of the same prompt queue and answers each slot with a
-   * {@link TargetChoice}} keyed by `slot`. Absent for a plain action.
+   * {@link TargetChoice} keyed by `slot`. Absent for a plain action.
    */
   prompts?: Prompt[];
   /**
    * Content-binding token: an opaque server-issued value bound to this action's
    * exact content (subject + requirements + prompts). The client echoes it back
-   * **verbatim** in {@link ChooseAction.token}} and never parses or derives it; the
+   * **verbatim** in {@link ChooseAction.token} and never parses or derives it; the
    * server rejects an answer whose token does not match. Absent only for a legacy
    * unbound action.
    */
