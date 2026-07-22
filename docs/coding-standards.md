@@ -45,6 +45,23 @@ Enforced by `make client-check`. See [`clients/web/AGENTS.md`](../clients/web/AG
 - **No game logic.** The client renders `GameView` and echoes an `action_id`.
   It never computes legality, cost, or effect (`AGENTS.md` hard rule).
 
+## File size
+
+Keep files small enough that a reader can hold one in their head. Target well under
+~500 lines. Treat **~800 lines as a soft ceiling** that should prompt a split, and
+**1000+ lines as a hard smell** to break up before adding more code.
+
+- **Split along cohesive seams.** When a file approaches the ceiling, move cohesive
+  groups into submodules with crate-root (or module-root) re-exports so the public API
+  is unchanged. This is pure code motion — tests and fixtures move with the code they
+  exercise. See #78 (engine `lib.rs`) and #406 (protocol `lib.rs`) for the worked
+  recipe.
+- **Tests and fixtures count.** A file that is mostly tests still gets split — the
+  historical offenders were ~75% tests.
+- **Cohesion, not a `wc -l` gate.** This is guidance, not a hard line-count check. A
+  single cohesive match table or generated file may legitimately be long; the point is
+  to stop *unrelated* concerns from piling into one file.
+
 ## Cross-cutting
 
 - **Tests.** Test every behavior change. Protocol shapes need round-trip tests; engine
