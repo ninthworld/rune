@@ -19,7 +19,7 @@ pub use fill::fill_answers;
 
 /// A deterministic, network-free **rule-based agent** that plays a full, legal
 /// game to completion from a [`GameView`] alone (issue #159). It replaces the
-/// pass-only [`PassPriorityAgent`] as the binary's opponent so two `--agent`
+/// pass-only [`PassPriorityAgent`](super::PassPriorityAgent) as the binary's opponent so two `--agent`
 /// processes finish a real game.
 ///
 /// Its priority policy, over whichever actions the server offers:
