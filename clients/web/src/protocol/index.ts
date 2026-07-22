@@ -3,8 +3,8 @@
  *
  * These are the wire shapes the server and every client share (see
  * `docs/protocol.md` and `crates/rune-protocol/src/lib.rs`). The client is a dumb
- * renderer: it displays a {@link GameView}} and echoes back a `ChooseAction` with
- * the `id` of one issued {@link ValidAction}}. It never computes legality, cost,
+ * renderer: it displays a {@link GameView} and echoes back a `ChooseAction` with
+ * the `id` of one issued {@link ValidAction}. It never computes legality, cost,
  * or effect — all displayed characteristics are server-computed.
  *
  * Any change to these shapes is a contract change: it must update the Rust crate
