@@ -1,0 +1,60 @@
+name: Agent Task Implementation
+
+# Owner-only implementation runner for issues carrying the `agent-task` label.
+# Start a task by commenting exactly `/run-agent` on the issue. Unlike the public
+# read-only @claude workflow, this workflow may create a branch and pull request.
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: agent-task-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    if: |
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == '/run-agent' &&
+      contains(github.event.issue.labels.*.name, 'agent-task')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Implement issue with Claude Code
+        uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          base_branch: main
+          track_progress: true
+          prompt: |
+            Implement GitHub issue #${{ github.event.issue.number }} in this repository.
+
+            Read the complete issue first and follow AGENTS.md, CLAUDE.md, and all
+            scoped repository instructions. Treat the issue scope and acceptance
+            criteria as strict requirements.
+
+            Work as a focused implementation agent:
+            - make only the changes requested by the issue;
+            - preserve behavior and public API when the issue is a pure refactor;
+            - run the most relevant formatting, lint, test, documentation, and build
+              checks available in the environment;
+            - do not merge anything;
+            - create exactly one branch and one draft pull request targeting `main`;
+            - link the issue and parent #410 in the PR description;
+            - include verification evidence, before/after file sizes, and test counts;
+            - call out any check that could not run rather than claiming it passed.
+          claude_args: |
+            --model haiku
+            --max-turns 80
+            --allowedTools "Bash(cargo *),Bash(make *),Bash(npm *),Bash(wc *),Bash(find *),Bash(rg *),Bash(ls *),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Edit,Write,Read,Glob,Grep"
