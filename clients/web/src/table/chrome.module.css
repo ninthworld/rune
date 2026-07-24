@@ -1310,6 +1310,49 @@
   color: var(--rune-text-muted);
 }
 
+/* ── Sound and haptics (issue #507) ────────────────────────────────────────── */
+/* Master volume plus a switch per taxonomy category, inside the same overlay. */
+.settingsSliderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-3);
+  min-height: var(--rune-touch);
+  padding: 10px 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
+  background: var(--rune-raised-bg);
+}
+.settingsSlider {
+  flex: 1;
+  min-width: 0;
+  height: var(--rune-touch);
+  accent-color: var(--rune-accent, var(--rune-border-strong));
+  cursor: pointer;
+}
+.settingsSlider:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.settingsCategories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-3);
+}
+.settingsCategory {
+  min-height: var(--rune-touch);
+  padding: 8px 12px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid var(--rune-border);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-caption);
+  text-align: left;
+  cursor: pointer;
+}
+.settingsCategory[aria-checked='true'] {
+  color: var(--rune-text);
+}
+
 /* ── Action tray (issue #298) ──────────────────────────────────────────────── */
 /* Floats above the hand: an elevated tier-3 surface (shadow/border) so it reads as
  * chrome resting on the board, not a detached document row. */

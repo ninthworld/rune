@@ -63,6 +63,16 @@ the table UI.
   They only scale effects/environment/motion; the scene (plane, staging, cards,
   tap/travel motion) is never degraded at any level. See
   `docs/design/presentation-budgets.md` §Quality levels.
+- Sound and haptics (issue #507) are hooks on the **same** effect taxonomy as the
+  visual grammar, in `src/table/audio/`, subscribing to the presentation intents
+  the scene already derives. They are optional, independently muted, and **never
+  load-bearing**: no registered asset ⇒ complete silence and zero errors, nothing
+  on the reconciler path is awaited, and no playback failure may reach the scene
+  or input. Reduced motion never silences audio (independent channels); batch
+  events collapse to one sound per batch window. Preferences live beside the #505
+  ones in `src/table/settings/audioSettings.ts`. No audio asset ships — see
+  ADR 0031, and put the first one under the `lazy/` prefix so `npm run budget`
+  keeps passing.
 - Touch first: 44px minimum targets; no action reachable only by drag or hover.
 
 ## Commands

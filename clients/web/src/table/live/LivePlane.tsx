@@ -23,6 +23,7 @@ import { planeDisplayData } from '../planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../planeReconciler';
 import { EffectsLayer, type EffectDensity, type EffectQuality } from '../effects';
 import { EffectsSurface } from '../EffectsSurface';
+import { presentAudio } from '../audio';
 import { LivePlaneControls, type LivePlaneInteractionProps } from './LivePlaneControls';
 import {
   deriveGameViewPresentation,
@@ -395,6 +396,10 @@ export function LivePlane({
         );
       }
       startMotion();
+      // The sound/haptic hooks (issue #507) subscribe to this same intent
+      // stream. Fire-and-forget by contract: never awaited, never able to throw
+      // out, and silent by default — the scene is already complete without it.
+      presentAudio(presentation);
       onPresentation?.(presentation);
     }
 

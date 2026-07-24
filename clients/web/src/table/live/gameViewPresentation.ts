@@ -89,6 +89,18 @@ export interface GameViewPresentation {
   motions: GameViewMotionIntent[];
   transients: TransientInvocation[];
   persistent: PersistentEffect[];
+  /**
+   * The authoritative log entries this transition introduced — the exact
+   * entries the motion/transient passes above consumed, exposed once so a
+   * secondary channel reads the same stream instead of re-diffing the log.
+   *
+   * The sound/haptic hooks (`../audio`, issue #507) need it for the session
+   * moments the scene deliberately leaves to their own chrome: `game_over` and
+   * `player_eliminated` produce no motion, but they are the taxonomy's
+   * `victory`/`destroy` cues. Empty on a first mount or a reconnect rebuild,
+   * where nothing is replayed.
+   */
+  events: GameLogEntry[];
 }
 
 interface ZoneLocation {
@@ -568,16 +580,10 @@ export function deriveGameViewPresentation(
 ): GameViewPresentation {
   const motions: GameViewMotionIntent[] = [];
   const transients: TransientInvocation[] = [];
+  const events = previous === undefined ? [] : newLogEntries(previous, current);
   if (previous !== undefined) {
     const activity: SeatActivity = new Set();
-    addLogIntents(
-      newLogEntries(previous, current),
-      previous,
-      current,
-      motions,
-      transients,
-      activity,
-    );
+    addLogIntents(events, previous, current, motions, transients, activity);
     addDiffIntents(previous, current, motions, transients, activity);
     if (staging.previousFocusSeat !== staging.focusSeat && staging.focusSeat !== undefined) {
       pushMotion(motions, 'focus', staging.focusSeat, { to: seatRef(staging.focusSeat) });
@@ -594,6 +600,7 @@ export function deriveGameViewPresentation(
     motions,
     transients,
     persistent: persistentEffects(current, staging.targetingPaths ?? []),
+    events,
   };
 }
 

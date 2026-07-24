@@ -14,6 +14,7 @@
 import { useEffect } from 'react';
 import { cx } from '../chrome/cx';
 import type { EffectDensity, EffectQuality } from './effects';
+import { AudioSettingsPanel } from './settings/AudioSettingsPanel';
 import { usePresentationSettings } from './settings/usePresentationSettings';
 import {
   getQualityDetection,
@@ -163,6 +164,11 @@ export function PresentationSettings({ onClose }: Props) {
           active={settings.motion}
           onPick={setMotion}
         />
+
+        {/* Sound and haptics (issue #507). Independent of Motion above: reduced
+            motion is an accessibility request about animation, never a request
+            for silence — the two channels are controlled separately. */}
+        <AudioSettingsPanel />
 
         <div className={s.artActionsRow}>
           <button
