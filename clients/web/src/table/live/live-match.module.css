@@ -257,3 +257,23 @@
     transform: translateX(-50%);
   }
 }
+
+/*
+ * The "you are here" cue after a reconnect/resync rebuild (visual-system §8):
+ * a single non-blocking pulse on the phase pill, paired with the active-crest
+ * pulse the effects layer plays. Reduced motion never sets the orienting flag,
+ * so this rule can never run there.
+ */
+.shell[data-orienting='true'] [data-testid='phase-indicator'] {
+  animation: orientPulse 300ms ease-out;
+}
+
+@keyframes orientPulse {
+  from {
+    box-shadow: 0 0 0 0 rgb(242 201 76 / 65%);
+  }
+
+  to {
+    box-shadow: 0 0 0 8px rgb(242 201 76 / 0%);
+  }
+}

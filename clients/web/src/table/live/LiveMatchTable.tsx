@@ -7,6 +7,7 @@
  * only route actions and candidates already present in the latest GameView.
  */
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -63,6 +64,7 @@ import {
 import { LivePlane } from './LivePlane';
 import type { LivePlaneInteractionProps } from './LivePlaneControls';
 import type { TargetingPresentationPath } from './gameViewPresentation';
+import { ORIENTATION_PULSE_MS, type PresentationMode } from './presentationMode';
 import styles from './live-match.module.css';
 
 /** Tunable presentation inputs. Preferences can replace these defaults later. */
@@ -91,6 +93,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
   const setStops = useGameStore((state) => state.setStops);
   const disconnect = useGameStore((state) => state.disconnect);
   const rejectionNonce = useGameStore((state) => state.rejectionNonce);
+  const sessionEpoch = useGameStore((state) => state.sessionEpoch);
   const artVersion = useSyncExternalStore(subscribeArt, getArtVersion);
   const viewport = useViewport();
   const reducedMotion = useReducedMotion();
@@ -105,7 +108,9 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
   const [showArtSettings, setShowArtSettings] = useState(false);
   const [previewTargetId, setPreviewTargetId] = useState<EntityId | PlayerId | null>(null);
   const [handDrag, setHandDrag] = useState<HandDrag | null>(null);
+  const [orienting, setOrienting] = useState(false);
   const swallowClick = useRef(false);
+  const orientTimer = useRef<number | null>(null);
   const dragCleanup = useRef<(() => void) | null>(null);
   const focusedEntity = useRef<EntityId | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -157,8 +162,25 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
   useEffect(
     () => () => {
       dragCleanup.current?.();
+      if (orientTimer.current !== null) window.clearTimeout(orientTimer.current);
     },
     [],
+  );
+
+  // The "you are here" phase-pill pulse after a reconnect/resync rebuild
+  // (visual-system §8). The active-crest half plays on the effects layer; this
+  // flags the shell so the phase pill pulses too. Reduced motion gets neither.
+  const handlePresentationMode = useCallback(
+    (mode: PresentationMode): void => {
+      if (mode !== 'rebuild' || reducedMotion) return;
+      setOrienting(true);
+      if (orientTimer.current !== null) window.clearTimeout(orientTimer.current);
+      orientTimer.current = window.setTimeout(() => {
+        orientTimer.current = null;
+        setOrienting(false);
+      }, ORIENTATION_PULSE_MS);
+    },
+    [reducedMotion],
   );
 
   useEffect(() => {
@@ -535,6 +557,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
       data-testid="live-match-table"
       data-mode={mode}
       data-composition={compact ? 'compact' : 'full'}
+      data-orienting={orienting || undefined}
       onFocusCapture={(event) => {
         focusedEntity.current =
           (event.target as HTMLElement).closest<HTMLElement>('[data-entity]')?.dataset.entity ??
@@ -568,8 +591,10 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
           density={density}
           reducedMotion={reducedMotion}
           artVersion={artVersion}
+          sessionEpoch={sessionEpoch}
           targetingPaths={targetingPaths}
           onPlane={publishPlane}
+          onMode={handlePresentationMode}
           interaction={planeInteraction}
         />
       </section>
