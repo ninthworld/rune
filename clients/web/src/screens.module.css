@@ -270,6 +270,31 @@
   outline-offset: 2px;
 }
 
+/* Front-door display-settings affordance (issue #505): a low-key text button,
+ * matching the "Server settings" disclosure weight so neither competes with Play. */
+.settingsButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--rune-touch);
+  padding: 0 var(--rune-space-4);
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+.settingsButton:hover {
+  color: var(--rune-text);
+}
+.settingsButton:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+
 /* ── Lobby header ──────────────────────────────────────────────────────────── */
 /* A compact brand bar: lockup left, session actions (Disconnect) right — the
  * lobby's one chrome row, so the flow below stays about finding a game. */
