@@ -1,0 +1,449 @@
+/*
+ * The DOM card face (issue #479). Structure only — every color and size flows
+ * in as a CSS custom property from `theme.ts` (which reads `src/tokens.ts`);
+ * no color literal lives here (ADR 0019 discipline, #480 swap point).
+ *
+ * Budget shape (presentation-budgets §Performance, ≤ 12 nodes per
+ * battlefield-tier face — a hard, input-independent ceiling): all state
+ * channels are zero-node —
+ *   rings              → box-shadow on .inner
+ *   ×N splayed pile    → layered box-shadow on .inner
+ *   elevation shadow   → box-shadow on .inner (snaps; only transform/opacity animate)
+ *   actionable bar     → .inner::before        monogram → .inner::after
+ *   attacking bar      → .name::before         blocking bar → .name::after
+ *   ability marker dot → .type::before
+ *   tap / dim / lift   → transform + opacity on .inner
+ * — and no battlefield element scales with its input: the mana cost is ONE
+ * pill (.cost), all badges consolidate into ONE row (.badgeRow), and the
+ * keyword strip is one svg with combined paths plus a capped +N.
+ *
+ * Stacking: full-card art paints at z-index 0 and every overlay element (and
+ * the gold bar pseudo) at z-index 1, so no server-computed channel is ever
+ * covered by an illustration (ADR 0024: overlays stay authoritative).
+ *
+ * Transform readiness (ADR 0030): transitions are transform/opacity-only and
+ * reduced motion snaps them; the face renders identically flat and on the
+ * perspective plane (translateZ is a no-op without a perspective ancestor).
+ */
+
+.face {
+  position: relative;
+  width: var(--foot-w);
+  height: var(--foot-h);
+  transform-style: preserve-3d;
+  font-family: system-ui, sans-serif;
+}
+
+.inner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--face-w);
+  height: var(--face-h);
+  transform: translate(-50%, -50%) rotate(var(--tap-rot)) translateZ(var(--lift));
+  opacity: var(--face-alpha);
+  border: var(--face-border-w) solid var(--face-accent);
+  border-radius: var(--face-radius);
+  background:
+    linear-gradient(
+        color-mix(in srgb, var(--face-accent) var(--face-header-alpha), transparent),
+        color-mix(in srgb, var(--face-accent) var(--face-header-alpha), transparent)
+      )
+      top / 100% var(--face-header-h) no-repeat,
+    var(--face-body);
+  --ring-shadow: 0 0 0 0 transparent;
+  --splay-shadow: 0 0 0 0 transparent;
+  box-shadow: var(--ring-shadow), var(--splay-shadow), var(--elev-shadow);
+  /* Badges are the only in-flow children (everything else is absolute), so the
+   * flex row lays the corner badges right-to-left with zero wrapper nodes. */
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 4px;
+  transition:
+    transform var(--motion-micro) ease,
+    opacity var(--motion-micro) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inner {
+    transition: none;
+  }
+}
+
+/* ── Zero-node state channels ─────────────────────────────────────────────── */
+
+.selected .inner {
+  --ring-shadow: 0 0 0 var(--ring-w) var(--selection);
+}
+
+/* Targeting wins over selection when both apply (carried precedence). */
+.targeting .inner {
+  --ring-shadow: 0 0 0 var(--ring-w) var(--targeting);
+}
+
+/* ×N stacks read as a slightly splayed physical pile (visual-system §5). */
+.stacked .inner {
+  --splay-shadow:
+    2px -2px 0 0 var(--face-body), 3px -3px 0 1px var(--face-accent), 5px -5px 0 0 var(--face-body),
+    6px -6px 0 1px var(--face-accent);
+}
+
+/* Gold "you can act" edge bar — the unique bottom-edge shape. Stacks above
+ * full-card art (z-index 1 vs the image's 0). */
+.inner::before {
+  content: none;
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 0;
+  height: var(--edge-h);
+  border-radius: calc(var(--edge-h) / 2);
+  background: var(--gold);
+  z-index: 1;
+}
+
+.actionable .inner::before {
+  content: '';
+}
+
+/* Procedural monogram — the art-window placeholder, never the identity. */
+.inner::after {
+  content: attr(data-monogram);
+  position: absolute;
+  left: 50%;
+  top: calc(50% + var(--face-header-h) / 2);
+  transform: translate(-50%, -50%);
+  font-size: var(--face-mono-size);
+  font-weight: 700;
+  color: var(--face-accent);
+  opacity: var(--face-mono-alpha);
+  pointer-events: none;
+}
+
+/* Attacker: top edge bar (a different edge from the gold bar, shape channel). */
+.name::before,
+.name::after {
+  content: none;
+  position: absolute;
+}
+
+.attacking .name::before {
+  content: '';
+  left: -5px;
+  right: -5px;
+  top: -5px;
+  height: var(--edge-h);
+  border-radius: calc(var(--edge-h) / 2);
+  background: var(--attacking);
+}
+
+/* Blocker: left edge bar. */
+.blocking .name::after {
+  content: '';
+  left: -7px;
+  top: -3px;
+  width: var(--edge-h);
+  height: calc(var(--face-h) - 4px);
+  border-radius: calc(var(--edge-h) / 2);
+  background: var(--blocking);
+}
+
+/* Latent activated-ability marker: the quiet dot, distinct from the gold bar. */
+.type::before {
+  content: none;
+  position: absolute;
+}
+
+.hasAbility .type::before {
+  content: '';
+  left: 0;
+  bottom: -9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ability-marker);
+}
+
+/* ── Face content (absolute within .inner) ────────────────────────────────── */
+
+/* Every content element rides above art (full-card images sit at z-index 0),
+ * so the authoritative overlays are never covered by an illustration. */
+.name,
+.cost,
+.pip,
+.type,
+.keywords,
+.pt,
+.badge,
+.chipName,
+.chipGlyph {
+  z-index: 1;
+}
+
+.name {
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  top: 5px;
+  font-size: var(--face-name-size);
+  font-weight: 600;
+  color: var(--face-name-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The battlefield-tier mana cost: one bounded pill for any number of symbols
+ * (the node budget never scales with input); symbols are the channel. */
+.cost {
+  position: absolute;
+  left: 7px;
+  top: calc(9px + var(--face-name-size));
+  padding: 0 5px;
+  border-radius: calc(var(--face-pip-size) / 2 + 2px);
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: calc(var(--face-pip-size) + 2px);
+  white-space: nowrap;
+  max-width: calc(100% - 14px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pip {
+  position: absolute;
+  top: calc(9px + var(--face-name-size));
+  left: calc(7px + var(--pip-i) * (var(--face-pip-size) + 4px));
+  width: calc(var(--face-pip-size) + 2px);
+  height: calc(var(--face-pip-size) + 2px);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--pip-bg);
+  color: var(--pip-fg);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.type {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 18px;
+  font-size: var(--face-type-size);
+  color: var(--face-type-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.keywords {
+  position: absolute;
+  left: 7px;
+  bottom: calc(22px + var(--face-type-size));
+  height: var(--face-pip-size);
+  width: auto;
+  color: var(--keyword-color);
+}
+
+.keywordOverflow {
+  fill: currentColor;
+  stroke: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pt {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--face-accent);
+  color: var(--face-pt-text);
+  font-size: var(--face-name-size);
+  font-weight: 700;
+}
+
+.badge {
+  margin-top: -8px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badge:first-child {
+  margin-right: 6px;
+}
+
+.badgePlain {
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  box-shadow: 0 0 0 1px var(--badge-stroke);
+}
+
+.badgeCounter {
+  background: var(--counter-bg);
+  color: var(--counter-text);
+}
+
+.badgeDamage {
+  background: var(--damage-bg);
+  color: var(--damage-text);
+}
+
+.badgeBlocked {
+  background: var(--blocking);
+  color: var(--badge-text);
+}
+
+/* The battlefield-tier consolidated badge row: ONE node for every badge, the
+ * labels joined with a middle dot — text is the kind channel, so nothing is
+ * lost when the per-badge accents step aside for the node budget. */
+.badgeRow {
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  box-shadow: 0 0 0 1px var(--badge-stroke);
+  max-width: calc(100% + 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Art (ADR 0024 — modes unchanged; the face only shows what is loaded) ── */
+
+.artFull {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: calc(var(--face-radius) - 1px);
+  z-index: 0;
+}
+
+.artWindow {
+  position: absolute;
+  left: var(--art-inset);
+  right: var(--art-inset);
+  top: calc(var(--face-header-h) + var(--art-top-gap));
+  bottom: calc(var(--face-type-size) + var(--art-bottom-reserve));
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius: var(--art-radius);
+}
+
+/* Card-body scrim so identity text/glyphs stay legible over any art. */
+.overArt {
+  background: color-mix(in srgb, var(--face-body) var(--art-scrim), transparent);
+  border-radius: var(--art-radius);
+}
+
+/* ── Chip tier (digest budget: frame color, name/glyph, tap) ─────────────── */
+
+.chipName {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: var(--face-name-size);
+  color: var(--face-name-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chipGlyph {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+  color: var(--face-accent);
+}
+
+/* ── Inspect tier (fixed screen-space reading panel; budget-exempt) ──────── */
+
+.inspect {
+  width: var(--face-w);
+  height: auto;
+}
+
+.inspectInner {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--face-w) * 1.4);
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px;
+}
+
+.inspectInner .name,
+.inspectInner .type {
+  position: static;
+  white-space: normal;
+}
+
+.inspectInner .name {
+  font-size: var(--face-name-size);
+  padding-right: 0;
+}
+
+.inspectCost {
+  display: flex;
+  gap: 4px;
+}
+
+.pipFlow {
+  position: static;
+}
+
+.inspectArt {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--art-radius);
+}
+
+.rules {
+  font-size: var(--face-rules-size);
+  line-height: 1.5;
+  color: var(--face-name-text);
+  white-space: pre-wrap;
+}
+
+.inspectFooter {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--face-pip-size);
+}
+
+.inspectFooter .keywords {
+  position: static;
+}
+
+.ptFlow {
+  position: static;
+}
+
+.inspectInner .badge {
+  margin: 0;
+  align-self: flex-end;
+}
