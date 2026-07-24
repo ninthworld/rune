@@ -10,12 +10,26 @@
  * `node scripts/checkLoadBudget.js [distDir] [--json]`.
  */
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { evaluateLoadBudget, formatLoadBudgetReport } from './loadBudget.js';
 
-const packageRoot = fileURLToPath(new URL('..', import.meta.url));
+/**
+ * Resolve the build output directory to measure. An explicit argument is
+ * resolved against the working directory — `resolve` returns an absolute
+ * argument unchanged, where `join` would have concatenated it onto the cwd —
+ * and with no argument the gate measures this package's own `dist/`, which is
+ * the path CI takes.
+ *
+ * @param {string | undefined} arg
+ * @param {string} cwd
+ * @param {string} packageRoot
+ * @returns {string}
+ */
+export function resolveDistDir(arg, cwd, packageRoot) {
+  return arg ? resolve(cwd, arg) : join(packageRoot, 'dist');
+}
 
 /**
  * Collect every built file as a POSIX-style path relative to the output root.
@@ -53,7 +67,8 @@ function main() {
   const args = process.argv.slice(2);
   const json = args.includes('--json');
   const distArg = args.find((arg) => !arg.startsWith('--'));
-  const distDir = distArg ? join(process.cwd(), distArg) : join(packageRoot, 'dist');
+  const packageRoot = fileURLToPath(new URL('..', import.meta.url));
+  const distDir = resolveDistDir(distArg, process.cwd(), packageRoot);
 
   // The fixture harness (`/fixtures/2.5d`) is tree-shaken out of a normal
   // production build and pulls its scenario data in when it is not. Measuring
@@ -100,4 +115,6 @@ function main() {
   }
 }
 
-main();
+// Run only when invoked as the command, so the unit test can import
+// `resolveDistDir` without the gate measuring anything.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
