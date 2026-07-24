@@ -167,6 +167,12 @@ describe('App connection gating (issues #103, #114)', () => {
       act(() => sockets[1].emitOpen());
       act(() => sockets[1].emitMessage(LOBBY_ROOMLESS_JSON));
       expect(screen.getByTestId('lobby-screen')).toBeDefined();
+
+      // The last-match ribbon's record (issue #506) survives the deferral: its
+      // producer runs inside `leaveGame`, so staging the recede only moves when
+      // that one call happens — it is not duplicated or lost — and the outcome
+      // it reports is the one the verdict panel staged.
+      expect(useGameStore.getState().lastMatch?.outcome).toBe('defeat');
     } finally {
       vi.useRealTimers();
     }

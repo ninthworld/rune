@@ -210,6 +210,31 @@ describe('LiveMatchTable postgame exit (issues #452 + #509)', () => {
     expect(leaveGame).toHaveBeenCalledTimes(1);
   });
 
+  it('still leaves when the shell unmounts inside the recede window', () => {
+    // Regression: the recede's completion lived only on a `setTimeout` that the
+    // unmount cleanup cancelled, so any teardown inside the ~400 ms window
+    // dropped the exit on the floor and stranded the player on the finished
+    // game — issue #452's dead end with a narrower window. The exit is owed the
+    // moment it is asked for, and tearing the clock down now honors it.
+    vi.useFakeTimers();
+    const leaveGame = vi.fn();
+    seed(GAME_OVER_WIN_JSON);
+    useGameStore.setState({ leaveGame });
+    const { unmount } = render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByTestId('game-over-leave'));
+    expect(leaveGame).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(leaveGame).toHaveBeenCalledTimes(1);
+    // …and the cancelled timer cannot fire a second transition afterwards.
+    act(() => {
+      vi.advanceTimersByTime(momentBudgetMs('return-to-lobby') * 3);
+    });
+    expect(leaveGame).toHaveBeenCalledTimes(1);
+  });
+
   it('cuts straight to the lobby under reduced motion (§8 RM form)', () => {
     setOsReducedMotion(true);
     const leaveGame = vi.fn();

@@ -54,16 +54,33 @@ export function useSessionMoments(reducedMotion: boolean, onLeave?: () => void):
   // Once the exit is committed the shell is on its way out; later view
   // transitions must not restage an entry moment over the recede.
   const leavingRef = useRef(false);
+  // An exit the player already asked for, held until it runs. It outlives the
+  // clock deliberately: the recede is presentation, the transition is not.
+  const pendingLeaveRef = useRef<(() => void) | null>(null);
   const reducedRef = useRef(reducedMotion);
   const onLeaveRef = useRef(onLeave);
   reducedRef.current = reducedMotion;
   onLeaveRef.current = onLeave;
 
+  /** Cancel the staging clock. Deliberately does not touch a pending exit. */
   const clearClock = useCallback((): void => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = null;
     detachRef.current?.();
     detachRef.current = null;
+  }, []);
+
+  /**
+   * Run the pending exit, exactly once. Called when the recede lands **and**
+   * when the clock is torn down with an exit still owed — cancelling the timer
+   * must never swallow the transition. Dropping it would strand the player on
+   * the finished game with no way out: the very dead end issue #452 removed,
+   * only with a ≤ 400 ms window. Idempotent, so the two callers cannot double-run.
+   */
+  const runPendingLeave = useCallback((): void => {
+    const pending = pendingLeaveRef.current;
+    pendingLeaveRef.current = null;
+    pending?.();
   }, []);
 
   const stage = useCallback(
@@ -116,10 +133,19 @@ export function useSessionMoments(reducedMotion: boolean, onLeave?: () => void):
   const leave = useCallback((): void => {
     if (leavingRef.current) return;
     leavingRef.current = true;
-    stage('return-to-lobby', () => onLeaveRef.current?.());
-  }, [stage]);
+    // Owed before the clock starts, so every path out of the window — the timer
+    // landing, or an unmount cancelling it — still hands off.
+    pendingLeaveRef.current = () => onLeaveRef.current?.();
+    stage('return-to-lobby', runPendingLeave);
+  }, [runPendingLeave, stage]);
 
-  useEffect(() => clearClock, [clearClock]);
+  useEffect(
+    () => () => {
+      clearClock();
+      runPendingLeave();
+    },
+    [clearClock, runPendingLeave],
+  );
 
   return { moment, notePresentationMode, leave };
 }

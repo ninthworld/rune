@@ -5,8 +5,10 @@
  * pinned here so a drift fails CI rather than a review eye.
  */
 import { describe, expect, it } from 'vitest';
-import type { GameResult } from '../../protocol';
+import { SAMPLE_GAME_VIEW } from '../../game-view.fixture';
+import type { GameResult, GameView } from '../../protocol';
 import { SCENE_HUES, SCENE_SESSION, SCENE_SKIP_THRESHOLD_MS } from '../../sceneTokens';
+import { lastMatchOf } from '../../store';
 import type { PresentationMode } from './presentationMode';
 import {
   demandsSkip,
@@ -115,6 +117,43 @@ describe('session moments — verdict classification', () => {
     // just does not wear a personal victory or defeat.
     expect(verdictMoment(win, '')).toBe('draw');
     expect(verdictMoment(drawn, '')).toBe('draw');
+  });
+});
+
+describe('session moments — agreement with the last-match ribbon (issue #506)', () => {
+  // `verdictMoment` (the staged verdict) and `lastMatchOf` (the lobby ribbon)
+  // both classify victory/defeat/draw from the same `result` + `you`. They are
+  // shown one after the other across the same exit, so a disagreement would be
+  // a visible contradiction: "Victory" on the panel, "Defeat" on the ribbon.
+  const seated = (you: string, result: GameResult): GameView => {
+    const view = structuredClone(SAMPLE_GAME_VIEW);
+    return { ...view, you, seat_order: ['p1', 'p2'], result };
+  };
+
+  const results: GameResult[] = [
+    { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+    { winner: 'p2', losers: ['p1'], reason: 'concede' },
+    { winner: 'p1', losers: ['p2'], reason: 'decked' },
+    { losers: ['p1', 'p2'], reason: 'life_zero' },
+  ];
+
+  it('classifies every seated outcome identically to lastMatchOf', () => {
+    for (const result of results) {
+      for (const you of ['p1', 'p2']) {
+        const summary = lastMatchOf(seated(you, result), null);
+        expect(summary).not.toBeNull();
+        expect(summary!.outcome).toBe(verdictMoment(result, you));
+      }
+    }
+  });
+
+  it('leaves the receiver-less case outside the ribbon’s domain entirely', () => {
+    // The only input on which the two classifiers *could* differ is `you: ''`,
+    // where the verdict stays neutral rather than staging someone else's loss.
+    // A spectator holds no `view`, so `lastMatchOf` reports nothing at all —
+    // the divergence is unreachable rather than merely unlikely.
+    expect(verdictMoment(results[0]!, '')).toBe('draw');
+    expect(lastMatchOf(null, null)).toBeNull();
   });
 });
 
