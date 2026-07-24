@@ -7,15 +7,21 @@
  *   `select_from_zone` (graveyard/library candidates with the chosen ones marked),
  *   shown through {@link PromptSurface}.
  * - An **option picker**: the named choices of an option slot (e.g. a mulligan's
- *   keep / take-another), each disabled while a paired count slot is not yet
- *   submittable (e.g. bottoming incomplete).
+ *   keep / take-another), each disabled until the slots *that* choice requires are
+ *   answered (a keep owing a bottoming waits for exactly the owed cards).
+ *
+ * An option picker with no sheet-mode slot floats over a pick the player makes on
+ * the scene itself (mulligan bottoming is chosen from the hand). The sheet then
+ * hands pointer events through to what is underneath (issue #451) — as a full-
+ * viewport scrim it used to swallow every click on the very cards being chosen,
+ * which is what left the mulligan looking selectable but unanswerable.
  *
  * Pure render of the session already assembled by the caller — it submits nothing
  * itself, only routing toggles/reorders/option-picks back through the handlers.
  */
 import type { GameView } from '../protocol';
 import { PromptSurface } from './PromptSurface';
-import { activeChosen as msActiveChosen, hasOptions, optionsSubmittable } from './multiSelect';
+import { activeChosen as msActiveChosen, hasOptions, optionSubmittable } from './multiSelect';
 import type { MultiSelectSession, MultiSelectSlot } from './multiSelect';
 import { cardNameOf } from './tableView';
 import s from './chrome.module.css';
@@ -58,8 +64,16 @@ export function DecisionSheet({
         }))
       : [];
 
+  // Nothing is answered in the sheet itself: the picks are on the scene, so the
+  // scrim must let them through (the panel keeps its own pointer events).
+  const passThrough = !(sheetMode && msSlot);
+
   return (
-    <div className={s.sheetBackdrop} data-testid="decision-sheet">
+    <div
+      className={s.sheetBackdrop}
+      data-testid="decision-sheet"
+      data-pointer-through={passThrough || undefined}
+    >
       <div className={s.sheetPanel}>
         {sheetMode && msSlot && (
           <PromptSurface
@@ -79,7 +93,7 @@ export function DecisionSheet({
                 key={option.id}
                 type="button"
                 onClick={() => onChooseOption(option.id)}
-                disabled={!optionsSubmittable(multiSelect)}
+                disabled={!optionSubmittable(multiSelect, option)}
                 data-testid={`multiselect-option-${option.id}`}
                 className={s.optionButton}
               >

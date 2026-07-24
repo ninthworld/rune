@@ -90,29 +90,40 @@ fn next_id(next: &mut usize) -> String {
 /// [`Action::Mulligan`]/[`Action::Keep`] are folded into one `mulligan_decision`
 /// action carrying an option slot (`decision`) whose two choices are *keep* and
 /// *mulligan*. When a bottoming is owed (the seat has mulliganed), the same action
-/// also carries the [`bottom_requirement`] multi-select slot from issue #140, so a
-/// keep answer selects which cards to bottom; [`resolve_action`] binds *keep* to
-/// [`Action::Keep`] with those cards and *mulligan* to [`Action::Mulligan`].
+/// also carries the [`keep_prompts`] bottoming slot, so a keep answer selects which
+/// cards to bottom; [`resolve_action`] binds *keep* to [`Action::Keep`] with those
+/// cards and *mulligan* to [`Action::Mulligan`].
+///
+/// Only *keep* owes that bottoming — taking another hand bottoms nothing — so the
+/// keep choice names the slot in its [`PromptOption::requires`] (issue #451). That
+/// is what lets a client offer both choices honestly: keep only once the exact
+/// owed count is picked, mulligan at any time.
 fn build_mulligan_decision(state: &GameState, id: String) -> Projected {
     let kind = "mulligan_decision".to_string();
     let subject: Vec<String> = Vec::new();
-    // The bottoming is projected exactly as issue #140 did — as a `requirements`
-    // multi-select slot — so a keep still binds through [`bind_keep`] unchanged.
-    let requirements = keep_requirements(state, &Action::Keep { bottom: Vec::new() });
-    let prompts = vec![Prompt::Option {
+    let requirements: Vec<TargetRequirement> = Vec::new();
+    let bottoming = keep_prompts(state, &Action::Keep { bottom: Vec::new() });
+    let keep_requires: Vec<String> = bottoming
+        .iter()
+        .map(|_| BOTTOM_SLOT.to_string())
+        .collect::<Vec<_>>();
+    let mut prompts = vec![Prompt::Option {
         slot: "decision".to_string(),
         prompt: "Keep this hand or take a mulligan?".to_string(),
         options: vec![
             PromptOption {
                 id: "keep".to_string(),
                 label: "Keep this hand".to_string(),
+                requires: keep_requires,
             },
             PromptOption {
                 id: "mulligan".to_string(),
                 label: "Mulligan".to_string(),
+                requires: Vec::new(),
             },
         ],
     }];
+    prompts.extend(bottoming);
     let token = content_token(&kind, &subject, &requirements, &prompts);
     Projected {
         view: ValidAction {
@@ -249,9 +260,9 @@ fn valid_action_view(
         ),
         // Pre-game London mulligan decisions (CR 103.5). Subject-less, so the
         // client renders them in the action bar (ADR 0004). A `Mulligan` has no
-        // sub-choice; a `Keep` carries the bottoming multi-select slot (candidates
-        // = the deciding seat's hand card entity ids, count = mulligans taken) when
-        // one is owed, and nothing for a first-hand keep.
+        // sub-choice; a `Keep` carries the bottoming select-from-zone slot
+        // (candidates = the deciding seat's hand card entity ids, count = mulligans
+        // taken) when one is owed, and nothing for a first-hand keep.
         Action::Mulligan => (
             "mulligan".to_string(),
             "Mulligan".to_string(),
@@ -262,7 +273,7 @@ fn valid_action_view(
             "keep".to_string(),
             "Keep hand".to_string(),
             Vec::new(),
-            keep_requirements(state, action),
+            Vec::new(),
         ),
         // Combat declarations (CR 508/509) are subject-less choices offered to the
         // priority holder, carrying their multi-select candidate `requirements` from
@@ -317,9 +328,11 @@ fn valid_action_view(
     };
     // Most 1:1 engine-action projections carry no `prompts`; the combat-damage
     // ordering action (issue #346) carries one `order` prompt per multi-blocked
-    // attacker, each a permutation over that attacker's blockers.
+    // attacker, each a permutation over that attacker's blockers, and a mulligan
+    // `Keep` carries its owed bottoming as a select-from-zone slot (CR 103.5).
     let prompts: Vec<Prompt> = match action {
         Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
+        Action::Keep { .. } => keep_prompts(state, action),
         _ => Vec::new(),
     };
     // One-gesture mana (ADR 0025): mark the activation of a mana ability
@@ -535,14 +548,40 @@ mod tests {
             .find(|a| a.kind == "mulligan_decision")
             .expect("the deciding seat is offered a mulligan decision");
 
-        // The bottoming rides #140's `requirements` "bottom" slot (candidates = the
-        // hand cards, count implied by the owed mulligans).
-        assert_eq!(decision.requirements.len(), 1, "one bottoming slot");
-        assert_eq!(decision.requirements[0].slot, "bottom");
+        // The bottoming rides a `select_from_zone` prompt over the hand carrying the
+        // exact owed count (issue #451 — it used to ride a countless `requirements`
+        // slot, leaving a client to guess "how many" from the prompt text).
+        assert!(decision.requirements.is_empty(), "no target requirement");
+        let Prompt::SelectFromZone {
+            slot,
+            zone,
+            owner,
+            count,
+            candidates,
+            ..
+        } = &decision.prompts[1]
+        else {
+            panic!("the bottoming is a select_from_zone prompt");
+        };
+        assert_eq!(slot, "bottom");
+        assert_eq!(zone, "hand");
+        assert_eq!(owner, &player_id(PlayerId(0)));
+        assert_eq!(*count, 1, "one mulligan taken owes one bottomed card");
         assert_eq!(
-            decision.requirements[0].candidates,
-            vec![card_entity_id(c0.id), card_entity_id(c1.id)],
+            candidates,
+            &vec![card_entity_id(c0.id), card_entity_id(c1.id)],
         );
+
+        // Only *keep* owes that slot, so the option says so and *mulligan* does not
+        // (issue #451): this is what lets a client gate keep on the exact count while
+        // leaving take-another available at zero.
+        let Prompt::Option { options, .. } = &decision.prompts[0] else {
+            panic!("the decision is an option prompt");
+        };
+        assert_eq!(options[0].id, "keep");
+        assert_eq!(options[0].requires, vec!["bottom".to_string()]);
+        assert_eq!(options[1].id, "mulligan");
+        assert!(options[1].requires.is_empty());
 
         // A keep naming one card to bottom resolves to a Keep bottoming exactly it.
         let choose = ChooseAction {
@@ -579,6 +618,64 @@ mod tests {
             }],
         };
         assert!(resolve_action(&state, &db, PlayerId(0), &empty_keep).is_none());
+
+        // A keep naming *more* cards than the owed count is rejected just as firmly
+        // (issue #451): the wire now advertises the count, so a client can keep this
+        // answer from ever being sent, and the server still refuses it if one does.
+        let over_keep = ChooseAction {
+            action_id: decision.id.clone(),
+            token: decision.token.clone(),
+            targets: vec![
+                TargetChoice {
+                    slot: "decision".to_string(),
+                    chosen: vec!["keep".to_string()],
+                },
+                TargetChoice {
+                    slot: "bottom".to_string(),
+                    chosen: vec![card_entity_id(c0.id), card_entity_id(c1.id)],
+                },
+            ],
+        };
+        assert!(resolve_action(&state, &db, PlayerId(0), &over_keep).is_none());
+    }
+
+    /// A first-hand mulligan decision owes no bottoming, so it carries the option
+    /// slot alone and its *keep* choice requires nothing (issue #451): keeping the
+    /// opening seven must never be gated behind a selection that was never asked for.
+    #[test]
+    fn first_hand_mulligan_decision_owes_no_bottoming_and_keep_requires_nothing() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        let c0 = state.new_instance(fixture("forest"));
+        state.players[0].hand = vec![c0];
+        state.mulligan = Some(rune_engine::MulliganState::new(2, 7));
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let decision = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "mulligan_decision")
+            .expect("the deciding seat is offered a mulligan decision");
+
+        assert_eq!(decision.prompts.len(), 1, "the option slot alone");
+        let Prompt::Option { options, .. } = &decision.prompts[0] else {
+            panic!("the decision is an option prompt");
+        };
+        assert!(options.iter().all(|option| option.requires.is_empty()));
+
+        // And that keep resolves with no bottoming at all.
+        let choose = ChooseAction {
+            action_id: decision.id.clone(),
+            token: decision.token.clone(),
+            targets: vec![TargetChoice {
+                slot: "decision".to_string(),
+                chosen: vec!["keep".to_string()],
+            }],
+        };
+        assert_eq!(
+            resolve_action(&state, &db, PlayerId(0), &choose),
+            Some(Action::Keep { bottom: vec![] }),
+        );
     }
 
     /// The cleanup discard-to-maximum (CR 514.1) collapses the engine's per-card

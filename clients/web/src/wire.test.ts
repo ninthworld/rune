@@ -391,7 +391,8 @@ describe('cross-language contract fixture (issue #56)', () => {
         slot: 'decision',
         prompt: 'Keep this hand or take a mulligan?',
         options: [
-          { id: 'keep', label: 'Keep this hand' },
+          // Only keep owes the bottoming slot (issue #451); mulligan omits the field.
+          { id: 'keep', label: 'Keep this hand', requires: ['bottom'] },
           { id: 'mulligan', label: 'Mulligan' },
         ],
       },

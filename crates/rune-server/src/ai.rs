@@ -239,11 +239,6 @@ impl RandomPolicy {
                 // Declare no blocks: always legal, and it keeps the simple AI from ever
                 // submitting an illegal (e.g. evasion-violating) block that would stall.
                 Vec::new()
-            } else if req.slot == "bottom" {
-                // Mulligan bottoming (we always keep, so effectively unreachable): bottom
-                // the required number of arbitrary cards.
-                let count = leading_count(&req.prompt).unwrap_or(req.candidates.len());
-                self.take_random(&req.candidates, count)
             } else {
                 // A mandatory ability/spell target slot (`t0`, `t1`, …): one random legal
                 // candidate. No candidate means the action cannot be answered.
@@ -346,15 +341,6 @@ impl AiPolicy for RandomPolicy {
             .iter()
             .find_map(|action| self.choose_action(view, action))
     }
-}
-
-/// The leading integer of a prompt like `"Put 2 card(s) on the bottom …"` (→ `2`), or
-/// `None` if it opens with no number. Lets a bottoming honor a count the wire requirement
-/// does not carry as a field.
-fn leading_count(prompt: &str) -> Option<usize> {
-    prompt
-        .split_whitespace()
-        .find_map(|word| word.parse::<usize>().ok())
 }
 
 /// Drive an **AI seat** to completion over a running [`Room`](crate::Room) (issue #415).
@@ -557,10 +543,12 @@ mod tests {
                     PromptOption {
                         id: "keep".into(),
                         label: "Keep this hand".into(),
+                        requires: Vec::new(),
                     },
                     PromptOption {
                         id: "mulligan".into(),
                         label: "Mulligan".into(),
+                        requires: Vec::new(),
                     },
                 ],
             }],

@@ -2705,6 +2705,17 @@ button.summaryTile:focus-visible {
     align-items: center;
   }
 }
+/* A sheet that only offers named choices sits over a pick made on the scene (a
+   mulligan's bottoming is chosen from the hand, issue #451). The scrim must pass
+   clicks through to those cards — its own panel takes pointer events back — and it
+   anchors to the top so it never sits on the hand it is asking about. */
+.sheetBackdrop[data-pointer-through='true'] {
+  pointer-events: none;
+  align-items: flex-start;
+}
+.sheetBackdrop[data-pointer-through='true'] > * {
+  pointer-events: auto;
+}
 .sheetPanel {
   position: relative;
   display: flex;

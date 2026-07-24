@@ -275,12 +275,19 @@ Non-target choices use tagged `prompts`:
 
 | `kind` | Fields | Answer |
 | --- | --- | --- |
-| `option` | `slot`, `prompt`, `options[{id,label}]` | One option id |
+| `option` | `slot`, `prompt`, `options[{id,label,requires}]` | One option id |
 | `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `candidates` | Exactly `count` candidate ids |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
 
-`option` is used for choices such as keep or mulligan. `select_from_zone` supports choices
-such as discarding or bottoming cards. `order` requests a permutation of its `items`; the
+`option` is used for choices such as keep or mulligan. An option's `requires` (issue #451)
+lists the action's other slots **that choice** owes an answer to, and is omitted when it owes
+none: the `mulligan_decision` action carries the `decision` option slot plus, once the seat
+has mulliganed, a `select_from_zone` `bottom` slot over its hand, and only the *keep* choice
+requires `bottom` — taking another hand bottoms nothing. A client enables a choice once every
+slot it requires holds exactly the advertised number of ids; the server enforces the same
+coupling on resolution, so `requires` changes no legality, it only keeps a client from
+offering an answer that must be rejected. `select_from_zone` supports choices such as
+discarding or bottoming cards. `order` requests a permutation of its `items`; the
 `order_combat_damage` action emits one `order` prompt per attacker blocked by two or more
 creatures, so its controller chooses the combat-damage assignment order (CR 510.1, issue
 #346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
