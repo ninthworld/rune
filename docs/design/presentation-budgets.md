@@ -50,6 +50,26 @@ density. Auto-detected on first run, always user-overridable in settings.
   shipped contract, carried forward). An **effect-density control** is
   likewise available independent of the quality level.
 
+### First-run auto-detection (implemented, issue #505)
+
+The settings surface (`clients/web/src/table/PresentationSettings.tsx`, backed by
+the device-local `table/settings/presentationSettings.ts`, reachable from both the
+front door and the in-match game menu) picks a starting quality level on first run
+and always lets the player override it — the chosen level is shown, never applied
+silently, and every choice persists device-local (the ADR 0024 / ADR 0027 idiom,
+no protocol change). The heuristic is deliberately conservative — misdetecting a
+capable device down to Lite is worse than starting at Standard:
+
+- **Default: Standard.** No signal, or any healthy-capability reading, starts here.
+- **Drop to Lite** only on a clear low-capability signal, in order: `saveData`
+  (Data Saver on) → `navigator.deviceMemory < 4` GB → `navigator.hardwareConcurrency
+  ≤ 2` cores.
+- **High is never auto-selected** — it is an explicit opt-in.
+
+Density defaults to `reduced` and motion to `system` (follow the OS); the motion
+preference composes with `prefers-reduced-motion` as **OS-on OR user-on ⇒ reduced**,
+with a `full` override that keeps motion even when the OS reduces it.
+
 ## Performance budgets
 
 | Budget | Desktop | Tablet / phone (mid) | Floor (Lite) |

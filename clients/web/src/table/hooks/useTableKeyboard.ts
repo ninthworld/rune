@@ -24,6 +24,7 @@ export interface TableKeyboardParams {
   targeting: TargetingSession | null;
   multiSelect: MultiSelectSession | null;
   showHelp: boolean;
+  showSettings: boolean;
   showArtSettings: boolean;
   inspectedId: EntityId | null;
   peekId: EntityId | null;
@@ -43,6 +44,7 @@ export interface TableKeyboardParams {
   setRailSheet: React.Dispatch<React.SetStateAction<RailSheet | null>>;
   setFocusedTileId: React.Dispatch<React.SetStateAction<PlayerId | null>>;
   setShowHelp: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowSettings: React.Dispatch<React.SetStateAction<boolean>>;
   setShowArtSettings: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -53,6 +55,7 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
     targeting,
     multiSelect,
     showHelp,
+    showSettings,
     showArtSettings,
     inspectedId,
     peekId,
@@ -70,6 +73,7 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
     setRailSheet,
     setFocusedTileId,
     setShowHelp,
+    setShowSettings,
     setShowArtSettings,
   } = params;
 
@@ -82,6 +86,7 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       if (showHelp) setShowHelp(false);
+      else if (showSettings) setShowSettings(false);
       else if (showArtSettings) setShowArtSettings(false);
       else if (inspectedId !== null) setInspectedId(null);
       else if (peekId !== null) setPeekId(null);
@@ -98,6 +103,7 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     showHelp,
+    showSettings,
     showArtSettings,
     inspectedId,
     peekId,

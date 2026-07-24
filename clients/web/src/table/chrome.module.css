@@ -1293,6 +1293,23 @@
   color: var(--rune-text-muted);
 }
 
+/* ── Presentation settings (issue #505) ────────────────────────────────────── */
+/* One labelled block per control (quality / density / motion) inside the shared
+ * overlay panel chrome; each block reuses the card-art option-card picker. */
+.settingsGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+.settingsGroupLabel {
+  margin: 0;
+  font-size: var(--rune-type-caption);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+
 /* ── Action tray (issue #298) ──────────────────────────────────────────────── */
 /* Floats above the hand: an elevated tier-3 surface (shadow/border) so it reads as
  * chrome resting on the board, not a detached document row. */

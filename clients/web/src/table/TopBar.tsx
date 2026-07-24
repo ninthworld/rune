@@ -34,6 +34,8 @@ interface Props {
   onChoose?: (action: ValidAction) => void;
   /** Open the keyboard shortcut reference. */
   onShowShortcuts?: () => void;
+  /** Open the display settings overlay (issue #505). */
+  onShowSettings?: () => void;
   /** Open the card-art settings overlay (ADR 0024). */
   onShowArtSettings?: () => void;
 }
@@ -54,6 +56,7 @@ export function TopBar({
   concede,
   onChoose,
   onShowShortcuts,
+  onShowSettings,
   onShowArtSettings,
 }: Props) {
   const attacked = attackersOnMe(view, localId);
@@ -101,6 +104,7 @@ export function TopBar({
             concede={concede}
             onChoose={onChoose}
             onShowShortcuts={onShowShortcuts}
+            onShowSettings={onShowSettings}
             onShowArtSettings={onShowArtSettings}
           />
         )}
