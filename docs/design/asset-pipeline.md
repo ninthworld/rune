@@ -18,7 +18,7 @@ what falls back when data is missing. Style authority is
 | Card backs | piles, hidden cards, travel ghosts | one raster + procedural fallback | shared across themes |
 | Badges, icons, cursors, selection treatments | scene + chrome | SVG / the existing glyph language, extended | glyphs stay single-source (`chrome/glyphs/geometry.ts` model) |
 | Effect sprites/sheets | effects layer (WebGL) | packed atlases | pooled; caps per quality level (High ≤ 400 live particles, Standard ≤ 150, Lite ≤ 40) |
-| Audio (later) | audio hooks | Opus + AAC fallback | event taxonomy below; independently muted; never load-bearing |
+| Audio (assets pending) | audio hooks — **implemented**, `clients/web/src/table/audio/` | Opus + AAC fallback | event taxonomy below; independently muted; never load-bearing. No asset ships yet; the hook layer is silent until one is registered |
 | Fonts | identity moments | WOFF2 | ≤ 60 KB total (today ~14 KB) |
 
 Everything above ships with the client bundle, content-hashed and cached
@@ -81,6 +81,52 @@ not assumed here.
 Audio and haptic hooks share this exact taxonomy: one event category → an
 optional sound/haptic id, independently muted, never load-bearing
 (the visual + log channels always stand alone).
+
+### The sound and haptic hook layer (issue #507, implemented)
+
+`clients/web/src/table/audio/` subscribes to the **same intent stream** the
+visual channel consumes (`live/gameViewPresentation.ts`) rather than
+re-reading the view, so the two channels cannot drift. Motion classes map onto
+the visual-system §9 taxonomy, and the two session moments the scene leaves to
+their own chrome come from the transition's log entries:
+
+| Cue category | Presentation intents / log events |
+| --- | --- |
+| draw | `draw` |
+| play | `play`, `zone-travel`, `battlefield-entry`, `token-batch` |
+| tap | `tap`, `untap` |
+| cast | `cast` |
+| resolve | `resolve`, `counter`, `fizzle` |
+| impact | `damage`, `heal`, `attack`, `block`, `counter-change` |
+| destroy | `death`, `PlayerEliminated` |
+| priority | `priority` |
+| phase | `phase`, `turn` |
+| victory | `GameOver` |
+
+The `focus` motion class is deliberately unmapped: the staging cue is the
+client's own camera move, not a game event, and audio never narrates something
+the server did not say.
+
+Binding behavior:
+
+- **Batch collapse.** Cues are grouped by `(category, batch window)` and emitted
+  once per group, mirroring the visual stagger budget (`SCENE_BATCH.windowMs`).
+  A thirty-token swarm stages as thirty arrivals and makes **one** sound.
+- **Reduced motion is not silence.** Motion and audio are independent channels;
+  reduced motion only zeroes the stagger, collapsing cues onto the window's
+  leading edge. Silencing is the settings surface's job.
+- **Never load-bearing.** No registered asset ⇒ complete silence and zero
+  errors. Nothing is awaited on the reconciler path, a suspended context is
+  resumed on the first user gesture (and its cue dropped, never queued), and
+  every failure below the hook is contained.
+- **Controls.** Master mute (default **on**), master volume, a mute per
+  category, and an opt-in Vibration API channel behind the same per-category
+  switches — device-local, in the issue #505 display settings surface.
+- **Assets.** None bundled: a placeholder set would need a manufactured ADR 0031
+  provenance story and would cost load budget, so development uses a generated
+  tone bank that folds out of production builds. The first real asset registers
+  through `WebAudioSink.load` and belongs under the `lazy/` prefix, outside the
+  first-match budget.
 
 ## Delivery, caching, versioning
 

@@ -268,11 +268,20 @@ happened.
 
 ## 9. Sound and haptic hooks
 
-Concept-level only (production is separate work; delivery via #471's
-pipeline): motion classes above define the **event taxonomy** —
+Motion classes above define the **event taxonomy** —
 draw/play/tap/cast/resolve/impact/destroy/priority/phase/victory — and every
 hook is optional, independently muted, and never load-bearing for
 comprehension (the visual + log channels stand alone).
+
+**Status (issue #507): the hook layer is implemented and silent.**
+`clients/web/src/table/audio/` maps this taxonomy off the same presentation
+intents the scene animates, with master/per-category mute and volume plus an
+opt-in Vibration API channel in the display settings. Reduced motion does **not**
+silence audio — they are independent channels — and batch events collapse to one
+sound per batch window, mirroring the visual stagger budget. Sound assets are
+still separate work under ADR 0031; nothing is bundled today, so every category
+resolves to silence. The category→intent mapping lives in
+[`asset-pipeline.md`](asset-pipeline.md) §The sound and haptic hook layer.
 
 ## 10. Carried vs redesigned
 
