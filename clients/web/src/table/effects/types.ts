@@ -46,14 +46,7 @@ export const DENSITY_SCALE: Record<EffectDensity, number> = {
  */
 export type EffectAnchor = { ref: string } | { rect: Rect };
 
-/**
- * Generic transient categories: play once, retire themselves.
- *
- * `off-focus-ping` carries the layout-model's "off-focus activity is never
- * silent" channel (issue #501): a quiet rune ping at an acting non-focused
- * seat's crest cluster — or its summary tile on compact geometry, which shares
- * the same `seat:<id>` anchor.
- */
+/** Generic transient categories: play once, retire themselves. */
 export type TransientCategory =
   | 'impact'
   | 'damage'
@@ -65,8 +58,7 @@ export type TransientCategory =
   | 'draw'
   | 'counter-change'
   | 'battlefield-entry'
-  | 'flow'
-  | 'off-focus-ping';
+  | 'flow';
 
 /**
  * One transient invocation — a category plus parameters the client already has

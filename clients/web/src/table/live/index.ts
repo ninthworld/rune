@@ -10,4 +10,3 @@ export {
   type PresentationStaging,
   type TargetingPresentationPath,
 } from './gameViewPresentation';
-export { offFocusPings, type SeatActivity } from './offFocusActivity';

@@ -16,7 +16,7 @@ import {
   SCENE_SEAT_ACCENTS,
   SCENE_THEMES,
 } from '../../sceneTokens';
-import type { GameView, PlayerId } from '../../protocol';
+import type { GameView } from '../../protocol';
 import { stagePlane, type PlaneRegion, type PlaneStagingState, type StagedPlane } from '../plane';
 import { cardFaceRenderer } from '../planeFaceRenderer';
 import { planeDisplayData } from '../planeDisplayData';
@@ -54,7 +54,6 @@ const sceneStyle: SceneStyle = {
   '--text': SCENE_NEUTRALS.text,
   '--gold': SCENE_HUES.gold.value,
   '--blue': SCENE_HUES.blue.value,
-  '--orange': SCENE_HUES.orange.value,
   '--seat-azure': SCENE_SEAT_ACCENTS[0],
   '--seat-amethyst': SCENE_SEAT_ACCENTS[3],
   '--seat-teal': SCENE_SEAT_ACCENTS[5],
@@ -146,17 +145,6 @@ function refreshVisualAnchors(
     anchors.set(`seat:${tile.seat}`, { ...tile.crest, x: tile.crest.x + dx, y: tile.crest.y + dy });
     anchors.set(`pile:${tile.seat}`, visual ?? tile.rect);
   }
-  // Off-focus combat staging (issue #501): a permanent the ladder did not draw
-  // individually — a digest-rung wing's board, a compact seat behind its tile —
-  // still anchors at its controller's crest, which is staged at every rung. An
-  // attack path from an unstaged attacker therefore draws to the defender's
-  // crest instead of being retired for an unresolvable endpoint, so combat
-  // against or by any seat is visible regardless of which board holds focus.
-  for (const permanent of view.battlefield) {
-    if (anchors.has(permanent.id)) continue;
-    const crest = anchors.get(`seat:${permanent.controller}`);
-    if (crest) anchors.set(permanent.id, crest);
-  }
   if (plane.receiver) {
     anchors.set(`hand:${view.you}`, {
       x: plane.receiver.rect.x + plane.receiver.rect.w / 2 - 24,
@@ -202,7 +190,7 @@ export function LivePlane({
   const stagingRef = useRef(staging);
   const targetingPathsRef = useRef(targetingPaths);
   const previousViewRef = useRef<GameView>();
-  const previousFocusRef = useRef<PlayerId>();
+  const previousFocusRef = useRef(staging?.focusSeat);
   // The transport generation last presented, and the current one, read inside the
   // reconcile effect without re-running it on a bare epoch bump (the rebuild is
   // driven by the *view* that arrives after a reconnect, not the bump itself).
@@ -305,7 +293,7 @@ export function LivePlane({
     // its own treatment) — only persistent paths for a mid-game first frame.
     effectsLayer.setPersistent(
       deriveGameViewPresentation(undefined, viewRef.current, {
-        focusSeat: planeRef.current.focusSeat,
+        focusSeat: stagingRef.current?.focusSeat,
         targetingPaths: targetingPathsRef.current,
         quality,
         reducedMotion,
@@ -339,7 +327,7 @@ export function LivePlane({
     // discontinuity, never carried across a rebuild.
     const currentPersistent = (): GameViewPresentation['persistent'] =>
       deriveGameViewPresentation(undefined, view, {
-        focusSeat: plane.focusSeat,
+        focusSeat: staging?.focusSeat,
         targetingPaths,
         quality,
         reducedMotion,
@@ -378,9 +366,7 @@ export function LivePlane({
       const previousAnchors = new Map(anchorsRef.current);
       const presentation = deriveGameViewPresentation(previousViewRef.current, view, {
         previousFocusSeat: previousFocusRef.current,
-        // The focus the plane RESOLVED (manual or default relevance), so the
-        // staging cue and the off-focus channel agree with what is staged.
-        focusSeat: plane.focusSeat,
+        focusSeat: staging?.focusSeat,
         targetingPaths,
         quality,
         reducedMotion,
@@ -401,7 +387,7 @@ export function LivePlane({
     onModeRef.current?.(mode);
     onPlane?.(plane);
     previousViewRef.current = view;
-    previousFocusRef.current = plane.focusSeat;
+    previousFocusRef.current = staging?.focusSeat;
     presentedEpochRef.current = sessionEpochRef.current;
   }, [
     artVersion,
@@ -412,6 +398,7 @@ export function LivePlane({
     plane,
     quality,
     reducedMotion,
+    staging?.focusSeat,
     startMotion,
     targetingPaths,
     view,

@@ -8,18 +8,12 @@ import type { EntityId, GameView, PlayerId } from '../../protocol';
  * Precedence:
  * 1. **Manual focus** — the ephemeral seat the player activated, honored when it
  *    names a current opponent (eliminated seats stay focusable: their public
- *    zones remain browsable). Nothing below ever overrides it.
+ *    zones remain browsable).
  * 2. **The first candidate-bearing board** — while a prompt's candidates sit on
  *    an opponent's battlefield, the far side stages the first such seat in seat
  *    order, for context only (candidates pierce every rung, so answering never
  *    *requires* this or any focus change).
- * 3. **The first attacked opponent** — a defender is auto-focus-eligible
- *    (layout-model §Stress dispositions, "Multi-attacker, multi-defender"): with
- *    no manual focus held, combat aimed at a seat pulls that board to the far
- *    side. Combat staging itself never depends on this — paths and the attacked
- *    ring draw at every rung regardless of focus — so the rule only chooses
- *    which board is *expanded* while the attack stands.
- * 4. **Default relevance** — the active opponent during their turn; otherwise
+ * 3. **Default relevance** — the active opponent during their turn; otherwise
  *    the next non-eliminated opponent in turn order after the active seat (the
  *    receiver, on their own turn).
  */
@@ -39,14 +33,6 @@ export function resolveFocusSeat(
     );
     if (bearing !== undefined) return bearing;
   }
-
-  // `attacking_player` is omitted only in a duel (the sole opponent is the only
-  // defender) and a duel never reaches here, so the declared defender is the
-  // whole rule at three or more players.
-  const attacked = opponents.find((seat) =>
-    view.battlefield.some((p) => p.attacking === true && p.attacking_player === seat),
-  );
-  if (attacked !== undefined) return attacked;
 
   const eliminated = new Set(view.opponents.filter((o) => o.eliminated).map((o) => o.player_id));
   const live = opponents.filter((seat) => !eliminated.has(seat));

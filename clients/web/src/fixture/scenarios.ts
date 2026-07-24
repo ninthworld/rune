@@ -5,7 +5,7 @@
  */
 import type { CardView, GameView, Permanent, PlayerId, StackItem } from '../protocol';
 import { normalizeGameView } from '../wire';
-import { bears, menagerie, seatTable, type PlanePermSpec } from '../table/plane.fixture';
+import { basics, bears, menagerie, seatTable, type PlanePermSpec } from '../table/plane.fixture';
 import type { PlaneStagingState, PlaneViewport } from '../table/plane';
 import type { PersistentEffect, TransientInvocation } from '../table/effects';
 import { SCENE_HUES } from '../sceneTokens';
@@ -337,6 +337,45 @@ const tokens = furnish(
     ],
   }),
 );
+
+/** The five basic kinds, one per seat, so every land pile has its own glyph. */
+const BASIC_KINDS = ['Forest', 'Island', 'Mountain', 'Plains', 'Swamp'] as const;
+
+/**
+ * One seat's share of a stress board: `distinct` unfoldable creatures, one
+ * token swarm, and one basic-land stack — so the ×N pile treatment and the
+ * un-foldable worst case are both exercised on the same board.
+ */
+function stressSeat(seat: PlayerId, index: number, mix: [number, number, number]): PlanePermSpec[] {
+  const [distinct, swarm, lands] = mix;
+  return [
+    ...menagerie(seat, distinct),
+    ...bears(seat, swarm, { prefix: `${seat}-swarm` }),
+    ...basics(seat, lands, BASIC_KINDS[index % BASIC_KINDS.length]!),
+  ];
+}
+
+/** ~120 permanents over four Commander boards (presentation-budgets §Stress). */
+const commander120 = furnish(
+  seatTable({
+    opponents: 3,
+    perms: ['p1', 'p2', 'p3', 'p4'].flatMap((seat, index) => stressSeat(seat, index, [12, 12, 6])),
+    active: 'p2',
+  }),
+  { priority: 'p1' },
+);
+
+/** The 240-permanent degenerate board: mostly pairwise-distinct permanents, so
+ * folding cannot rescue the node count and the budget is measured honestly. */
+const degenerate240 = furnish(
+  seatTable({
+    opponents: 3,
+    perms: ['p1', 'p2', 'p3', 'p4'].flatMap((seat, index) => stressSeat(seat, index, [40, 12, 8])),
+    active: 'p2',
+  }),
+  { priority: 'p1' },
+);
+
 const three = furnish(
   seatTable({
     opponents: 2,
@@ -442,9 +481,15 @@ export const FIXTURE_SCENARIOS: readonly FixtureScenario[] = [
   {
     id: 'tokens',
     label: 'Token wall',
-    description: '160 permanents exercising independent folding and wrapping ladders.',
+    description:
+      'Folding and wrapping ladders at 160 permanents, then the two documented ' +
+      'stress boards: ~120-permanent Commander and the 240-permanent degenerate board.',
     viewport: WIDE,
-    frames: [{ label: 'Token stress', view: tokens }],
+    frames: [
+      { label: 'Token stress', view: tokens },
+      { label: '120-permanent Commander board', view: commander120 },
+      { label: '240-permanent degenerate board', view: degenerate240 },
+    ],
   },
   {
     id: 'big-hand',

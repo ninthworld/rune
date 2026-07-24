@@ -89,62 +89,12 @@ describe('stagePlane focus model (issue #478, layout-model §Focus model)', () =
     const view = seatTable({
       opponents: 3,
       active: 'p2',
-      perms: [{ id: 'p2_atk', controller: 'p2', attacking: true, attacking_player: 'p1' }],
-    });
-    const plane = stage(view);
-    expect(plane.farSide?.active).toBe(true);
-    // Combat against the receiver marks the receiver's own band, and no wing.
-    expect(plane.receiver?.attacked).toBe(true);
-    expect(plane.wings.every((w) => !w.attacked)).toBe(true);
-  });
-
-  it('auto-focuses an attacked defender ahead of default relevance', () => {
-    // p2 is the active opponent (default focus) but attacks the p3 wing: the
-    // defender is auto-focus-eligible (layout-model §Stress dispositions).
-    const view = seatTable({
-      opponents: 3,
-      active: 'p2',
       perms: [{ id: 'p2_atk', controller: 'p2', attacking: true, attacking_player: 'p3' }],
     });
     const plane = stage(view);
-    expect(plane.focusSeat).toBe('p3');
-    expect(plane.farSide?.attacked).toBe(true);
-    // Combat staging never depended on that: the attacker's own seat keeps its
-    // wing, and only the attacked seat wears the ring.
-    expect(plane.wings.find((w) => w.seat === 'p2')?.active).toBe(true);
+    expect(plane.farSide?.active).toBe(true);
+    // Combat against a wing seat is never silent: the wing wears the ring.
+    expect(plane.wings.find((w) => w.seat === 'p3')?.attacked).toBe(true);
     expect(plane.wings.find((w) => w.seat === 'p4')?.attacked).toBe(false);
-  });
-
-  it('never lets an attacked seat override manual focus or a candidate board', () => {
-    const view = seatTable({
-      opponents: 3,
-      active: 'p1',
-      perms: [
-        { id: 'p2_atk', controller: 'p2', attacking: true, attacking_player: 'p3' },
-        ...menagerie('p4', 1),
-      ],
-    });
-    expect(stage(view, undefined, { focusSeat: 'p2' }).focusSeat).toBe('p2');
-    expect(stage(view, undefined, { candidates: ['p4_beast_0'] }).focusSeat).toBe('p4');
-    // With neither held, the attacked defender takes the far side.
-    expect(stage(view).focusSeat).toBe('p3');
-  });
-
-  it('stages every attacked seat at once under multi-attacker, multi-defender', () => {
-    const view = seatTable({
-      opponents: 4,
-      active: 'p2',
-      perms: [
-        { id: 'p2_atk', controller: 'p2', attacking: true, attacking_player: 'p3' },
-        { id: 'p5_atk', controller: 'p5', attacking: true, attacking_player: 'p4' },
-      ],
-    });
-    const plane = stage(view);
-    // One board is focused (the first attacked seat in seat order), but every
-    // attacked seat wears its ring — including wings at the digest rung.
-    expect(plane.focusSeat).toBe('p3');
-    expect(plane.farSide?.attacked).toBe(true);
-    expect(plane.wings.find((w) => w.seat === 'p4')?.attacked).toBe(true);
-    expect(plane.wings.find((w) => w.seat === 'p2')?.attacked).toBe(false);
   });
 });

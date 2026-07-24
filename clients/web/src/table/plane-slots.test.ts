@@ -197,16 +197,9 @@ describe('stagePlane compact change-of-kind (rung 5, phone portrait)', () => {
     const view = seatTable({
       opponents: 3,
       active: 'p1',
-      perms: [
-        { id: 'p1_atk', controller: 'p1', attacking: true, attacking_player: 'p3' },
-        { id: 'p1_atk_2', controller: 'p1', attacking: true, attacking_player: 'p4' },
-      ],
+      perms: [{ id: 'p1_atk', controller: 'p1', attacking: true, attacking_player: 'p4' }],
     });
     const plane = stage(view, PHONE);
-    // The first attacked seat is auto-focus-eligible and takes the drawn board;
-    // the second stays a tile and wears its ring all the same — combat against
-    // any seat is staged regardless of focus.
-    expect(plane.focusSeat).toBe('p3');
     expect(plane.tiles.find((t) => t.seat === 'p4')?.attacked).toBe(true);
   });
 

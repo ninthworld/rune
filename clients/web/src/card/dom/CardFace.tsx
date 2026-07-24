@@ -15,7 +15,8 @@
  *   battlefield-tier face — a hard, input-independent ceiling): every state
  *   channel is zero-node — rings are box-shadows, edge bars and the monogram
  *   and the ability marker are pseudo-elements, tap/dim/elevation are
- *   transform + opacity, the ×N splay is layered box-shadow — and no element
+ *   transform + opacity, the ×N pile's splayed card edges are layered
+ *   box-shadow (deepening with the fold, capped) — and no element
  *   scales with its input: the keyword strip is one `<svg>` with combined
  *   paths and a capped `+N`, the mana cost is one bounded pill, and every
  *   badge consolidates into one row (the colored per-symbol/per-badge
@@ -32,7 +33,7 @@ import { parseManaCost, type CardDisplayData } from '../cardFactory';
 import { keywordGlyphName, type GlyphName } from '../../chrome/glyphs';
 import { cx } from '../../chrome/cx';
 import { glyphStripGeometry } from './glyphStrip';
-import { cardFaceVars, faceMetrics, type CardFaceTier } from './theme';
+import { cardFaceVars, faceMetrics, splayLayers, type CardFaceTier } from './theme';
 import s from './card-face.module.css';
 
 /** The elevation ladder of visual-system §3: resting on the plane, lifted by
@@ -218,6 +219,9 @@ function stateAttrs(data: CardDisplayData, tier: CardFaceTier, elevation: CardEl
     'data-dimmed': data.dimmed ? true : undefined,
     'data-ability': data.hasActivatedAbility ? true : undefined,
     'data-stack': (data.stackCount ?? 1) > 1 ? data.stackCount : undefined,
+    // The pile's drawn depth (visual-system §5) — capped, so it never scales
+    // with the fold; the ×N badge carries the exact count.
+    'data-splay': splayLayers(data.stackCount) || undefined,
   };
 }
 

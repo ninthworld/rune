@@ -143,6 +143,7 @@ describe('PlaneReconciler add/update/move/remove (by entity id)', () => {
     r.reconcile(planeOf(view));
     expect(r.lastStats).toEqual({
       created: 0,
+      adopted: 0,
       updatedFaces: 0,
       moved: 0,
       removed: 0,
