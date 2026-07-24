@@ -26,8 +26,9 @@
   Focus rules exercised here (see docs/design/layout-model.md):
     - at 3+ players exactly one opponent is focused (expanded);
     - clicking any peripheral crest or board re-stages focus (ephemeral state);
-    - a decision subject on an unfocused board auto-focuses it (simulated by
-      the combat scenario's "attacked" defender).
+    - prompt candidates PIERCE every rung: candidate objects render
+      individually and pickable in place (see the six scenario's digest-wing
+      candidate), so answering a prompt never requires a focus change.
 
   Written state -> stagePlane(state, geometry) -> render; no DOM readback.
 -->
