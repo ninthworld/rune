@@ -32,6 +32,10 @@ export const EFFECT_TIMING = {
   impactMs: 450,
   resolutionMs: 500,
   reducedHoldMs: 200,
+  /** The off-focus crest ping (visual-system §8, "Off-focus activity": ≤300 ms). */
+  offFocusPingMs: 300,
+  /** Its reduced-motion form: the static ping badge, held ≥1 s (same row). */
+  offFocusHoldMs: 1000,
   /** Dash-crawl period of a pending path (full dash+gap cycle). */
   dashPeriodMs: 900,
   dashLen: 12,
@@ -40,6 +44,14 @@ export const EFFECT_TIMING = {
 
 /** Base particle count of a magnitude-1 impact burst at full density. */
 const BURST_BASE = 24;
+
+/**
+ * The off-focus rune ping's geometry: a ring plus evenly spaced radial spokes.
+ * The spokes are the cue's **shape channel** — no state is color-only at any
+ * quality level (visual-system §7) — and they are strokes, never particles, so
+ * the ping stays inside Lite's pulse-and-flash vocabulary.
+ */
+const PING = { radius: 15, spokes: 4, spokeInner: 0.55, spokeOuter: 1.2, badgeRadius: 4 } as const;
 
 /** Options for {@link EffectsLayer}. */
 export interface EffectsLayerOptions {
@@ -148,6 +160,12 @@ export class EffectsLayer {
 
   private durationFor(invocation: TransientInvocation): number {
     const { reducedMotion } = this.options;
+    // The off-focus ping keeps its own row of the motion grammar: a ≤300 ms
+    // pulse, and a static badge held ≥1 s instead under reduced motion — the
+    // one reduced-motion form that outlives the generic flash.
+    if (invocation.category === 'off-focus-ping') {
+      return reducedMotion ? EFFECT_TIMING.offFocusHoldMs : EFFECT_TIMING.offFocusPingMs;
+    }
     return reducedMotion
       ? EFFECT_TIMING.reducedHoldMs
       : invocation.category === 'impact' || invocation.category === 'damage'
@@ -360,6 +378,10 @@ export class EffectsLayer {
   /** The ops of one live transient at eased progress `t`. */
   private transientOps(ops: DrawOp[], transient: LiveTransient, center: Point, t: number): void {
     const { invocation } = transient;
+    if (invocation.category === 'off-focus-ping') {
+      pingOps(ops, invocation, center, t, this.options.reducedMotion);
+      return;
+    }
     const magnitude = invocation.magnitude ?? 1;
     const ease = 1 - (1 - t) * (1 - t);
     const alpha = Math.max(0.05, 1 - t);
@@ -409,6 +431,63 @@ export class EffectsLayer {
 /** A stroked segment op. */
 function segment(category: string, from: Point, to: Point, color: string, width: number): DrawOp {
   return { op: 'segment', category, from, to, color, width, alpha: 0.9 };
+}
+
+/**
+ * The off-focus crest ping (visual-system §8, "Off-focus activity"): a quiet
+ * rune mark at the acting seat's crest — a ring that breathes outward once,
+ * plus {@link PING}`.spokes` radial strokes that give the cue a shape channel
+ * of its own (§7: never color-only). Under reduced motion it is a **static
+ * badge**: the same mark at rest with a filled center, drawn once and held for
+ * {@link EFFECT_TIMING.offFocusHoldMs}. It never spawns particles, so Lite and
+ * `minimal` density render it unchanged.
+ */
+function pingOps(
+  ops: DrawOp[],
+  invocation: TransientInvocation,
+  center: Point,
+  t: number,
+  reducedMotion: boolean,
+): void {
+  const ease = 1 - (1 - t) * (1 - t);
+  const radius = reducedMotion ? PING.radius : PING.radius * (0.55 + 0.45 * ease);
+  const alpha = reducedMotion ? 0.9 : Math.max(0.1, 1 - t);
+  const { category, accent } = invocation;
+  ops.push({
+    op: 'circle',
+    category,
+    x: center.x,
+    y: center.y,
+    r: radius,
+    color: accent,
+    alpha,
+    fill: false,
+  });
+  for (let spoke = 0; spoke < PING.spokes; spoke += 1) {
+    const angle = (spoke * 2 * Math.PI) / PING.spokes + Math.PI / 4;
+    const at = (scale: number): Point => ({
+      x: center.x + Math.cos(angle) * radius * scale,
+      y: center.y + Math.sin(angle) * radius * scale,
+    });
+    ops.push({
+      ...segment(category, at(PING.spokeInner), at(PING.spokeOuter), accent, 2),
+      alpha,
+    });
+  }
+  if (reducedMotion) {
+    // The badge's held center: a filled mark that reads at a glance without
+    // any animation, distinct from the hollow pulsing ring.
+    ops.push({
+      op: 'circle',
+      category,
+      x: center.x,
+      y: center.y,
+      r: PING.badgeRadius,
+      color: accent,
+      alpha,
+      fill: true,
+    });
+  }
 }
 
 /** `'#RRGGBB'` token to the numeric color Pixi expects. */

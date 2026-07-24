@@ -42,6 +42,16 @@ export const SCENE_NEUTRALS = {
   lineStrong: 'rgba(232, 230, 225, 0.14)',
   /** Primary text. */
   text: '#E8E6E1',
+  /**
+   * Secondary/supporting text — captions, metadata, quiet status lines. Added
+   * for the pregame surfaces under `docs/design/front-door-and-lobby.md` §5.0
+   * ("if a value is needed and absent, it is added to `sceneTokens.ts` under its
+   * lockstep test, not invented in CSS"), mirroring the shipped chrome token
+   * `--rune-text-muted` so screen space reads one grey. It stays **body text**,
+   * not an indicator: the contrast gate holds it to ≥ 4.5:1 on every foundation
+   * surface, exactly like {@link text}.
+   */
+  textMuted: '#9BA0A8',
 } as const;
 
 // ── §2 Frame accents — carried verbatim from the card set ────────────────────

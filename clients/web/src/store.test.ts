@@ -8,7 +8,13 @@ import {
   readyCommand,
   submitDeckCommand,
 } from './protocol';
-import { GAME_OVER_LOSS_JSON, SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
+import {
+  GAME_OVER_DRAW_JSON,
+  GAME_OVER_LOSS_JSON,
+  GAME_OVER_WIN_JSON,
+  SAMPLE_GAME_VIEW,
+  SAMPLE_GAME_VIEW_JSON,
+} from './game-view.fixture';
 import {
   LOBBY_ROOMLESS_JSON,
   LOBBY_ROOM_DECKED_JSON,
@@ -255,6 +261,126 @@ describe('game store', () => {
       store.getState().leaveGame();
       expect(store.getState().view).toBeNull();
       expect(store.getState().status).toBe('closed');
+    });
+  });
+
+  /**
+   * The producer half of the lobby's last-match ribbon
+   * (`docs/design/front-door-and-lobby.md` §5.5 / §9 follow-up 2, issue #506).
+   * The record has to be read on the way out, because the teardown destroys both
+   * the terminal `GameView` and the room's last `LobbyView`.
+   */
+  describe('the last-match ribbon record (issue #506)', () => {
+    /** Play a finished game in a real room, then take #452's exit. */
+    function leaveAFinishedGame(terminalJson: string): ReturnType<typeof createGameStore> {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      // The room the game was played in — this is the only place the setup id and
+      // seat count exist; `GameView` deliberately carries neither.
+      sockets[0].emitMessage(LOBBY_ROOM_DECKED_JSON);
+      sockets[0].emitMessage(terminalJson);
+      store.getState().leaveGame();
+      return store;
+    }
+
+    it('records the outcome, opponents, and setup from the terminal view on the way out', () => {
+      // A terminal frame as the real server sends it: names ride the view (#294)
+      // and `seat_order` is explicit (#345).
+      const store = leaveAFinishedGame(
+        JSON.stringify({
+          you: 'p1',
+          opponents: [{ player_id: 'p2', hand_size: 3, life: 0, library_size: 40 }],
+          player_names: { p1: 'Alice', p2: 'Bob' },
+          seat_order: ['p1', 'p2'],
+          phase: 'end',
+          valid_actions: [],
+          result: { winner: 'p2', losers: ['p1'], reason: 'life_zero' },
+        }),
+      );
+      expect(store.getState().lastMatch).toEqual({
+        outcome: 'defeat',
+        opponents: ['Bob'],
+        // The setup and seat count come from the ROOM — `GameView` carries neither.
+        gameSetup: '1v1',
+        seats: 2,
+      });
+      // …and it survives the reconnect the exit performs, because the landing it
+      // reports on is on the far side of it.
+      expect(store.getState().status).toBe('connecting');
+      expect(store.getState().view).toBeNull();
+    });
+
+    it('falls back to a seat-derived name, never a raw opaque player id', () => {
+      const store = leaveAFinishedGame(
+        JSON.stringify({
+          you: 'p1',
+          opponents: [{ player_id: 'p2', hand_size: 3, life: 0, library_size: 40 }],
+          seat_order: ['p1', 'p2'],
+          phase: 'end',
+          valid_actions: [],
+          result: { winner: 'p1', losers: ['p2'], reason: 'decked' },
+        }),
+      );
+      expect(store.getState().lastMatch?.opponents).toEqual(['Player 2']);
+    });
+
+    it('drops an opponent it can name neither way rather than printing an id', () => {
+      // No names and no seat order (an older server): the ribbon says less.
+      const store = leaveAFinishedGame(GAME_OVER_LOSS_JSON);
+      expect(store.getState().lastMatch?.opponents).toEqual([]);
+      // The rest of the record still stands.
+      expect(store.getState().lastMatch?.gameSetup).toBe('1v1');
+    });
+
+    it('phrases a win and a draw from the receiver’s seat, exactly as the overlay does', () => {
+      expect(leaveAFinishedGame(GAME_OVER_WIN_JSON).getState().lastMatch?.outcome).toBe('victory');
+      expect(leaveAFinishedGame(GAME_OVER_DRAW_JSON).getState().lastMatch?.outcome).toBe('draw');
+    });
+
+    it('suppresses the ribbon when there is no server to return to', () => {
+      // §5.5's degenerate case: the exit routes to the front door in its
+      // disconnected state, and the ribbon must not claim a landing that is not
+      // happening.
+      const store = createGameStore();
+      store.getState().ingest(GAME_OVER_LOSS_JSON);
+      store.getState().leaveGame();
+      expect(store.getState().lastMatch).toBeNull();
+    });
+
+    it('records nothing when leaving a spectated game', () => {
+      // A spectator holds no `view` and played no match, so there is no result to
+      // report — the ribbon can never claim one the server did not decide.
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      store
+        .getState()
+        .ingest('{"phase":"end","players":[{"player_id":"p0","hand_size":0,"life":0}]}');
+
+      store.getState().leaveGame();
+      expect(store.getState().spectatorView).toBeNull();
+      expect(store.getState().lastMatch).toBeNull();
+    });
+
+    it('records nothing for a game the server has not ended', () => {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
+
+      store.getState().leaveGame();
+      expect(store.getState().lastMatch).toBeNull();
+    });
+
+    it('drops the record on an explicit disconnect — it is session-scoped ephemera', () => {
+      const store = leaveAFinishedGame(GAME_OVER_LOSS_JSON);
+      expect(store.getState().lastMatch).not.toBeNull();
+      store.getState().disconnect();
+      expect(store.getState().lastMatch).toBeNull();
     });
   });
 

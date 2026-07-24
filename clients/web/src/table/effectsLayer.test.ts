@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Rect } from './scene';
 import { COMBAT_LINK, SURFACES } from '../tokens';
-import { SCENE_HUES } from '../sceneTokens';
+import { SCENE_HUES, SCENE_SEAT_ACCENTS } from '../sceneTokens';
 import {
   EFFECT_TIMING,
   EffectsLayer,
@@ -205,6 +205,75 @@ describe('EffectsLayer v1 vocabulary (data-driven categories)', () => {
     for (const op of layer.lastProgram) {
       expect(op.category).toBe('impact');
       expect(op.color).toBe(SCENE_HUES.red.value);
+    }
+  });
+});
+
+describe('EffectsLayer off-focus crest ping (issue #501)', () => {
+  /** A layer whose one anchor is an off-focus seat's crest cluster. */
+  function crest(opts: { reducedMotion?: boolean; quality?: EffectQuality } = {}) {
+    return make({
+      ...opts,
+      rects: new Map<string, Rect>([['seat:p3', { x: 300, y: 40, w: 52, h: 52 }]]),
+    });
+  }
+
+  it('draws a quiet rune ping: a ring plus its shape-channel spokes', () => {
+    const { layer } = crest();
+    layer.spawn({
+      category: 'off-focus-ping',
+      target: { ref: 'seat:p3' },
+      accent: SCENE_SEAT_ACCENTS[2]!,
+    });
+    layer.advance(0);
+
+    const rings = layer.lastProgram.filter((op) => op.op === 'circle');
+    const spokes = layer.lastProgram.filter((op) => op.op === 'segment');
+    expect(rings).toHaveLength(1);
+    expect(rings[0]!.op === 'circle' && rings[0]!.fill).toBe(false);
+    // Never color-only (visual-system §7): the mark carries its own shape.
+    expect(spokes.length).toBeGreaterThan(1);
+    for (const op of layer.lastProgram) {
+      expect(op.category).toBe('off-focus-ping');
+      expect(op.color).toBe(SCENE_SEAT_ACCENTS[2]);
+    }
+    // Its own row of the motion grammar: ≤300 ms, inside the batch window.
+    expect(EFFECT_TIMING.offFocusPingMs).toBeLessThanOrEqual(300);
+    expect(layer.advance(EFFECT_TIMING.offFocusPingMs + 1)).toBe(true);
+    expect(layer.hasLiveEffects()).toBe(false);
+  });
+
+  it('holds the static ping badge for at least a second under reduced motion', () => {
+    const { layer } = crest({ reducedMotion: true });
+    layer.spawn({
+      category: 'off-focus-ping',
+      target: { ref: 'seat:p3' },
+      accent: SCENE_SEAT_ACCENTS[2]!,
+    });
+    expect(EFFECT_TIMING.offFocusHoldMs).toBeGreaterThanOrEqual(1000);
+
+    expect(layer.advance(0)).toBe(true);
+    const badge = layer.lastProgram;
+    // A badge, not a pulse: the filled center distinguishes it, and it costs
+    // nothing per frame across the whole hold.
+    expect(badge.some((op) => op.op === 'circle' && op.fill)).toBe(true);
+    expect(layer.advance(999)).toBe(false);
+    expect(layer.lastProgram).toEqual(badge);
+    expect(layer.advance(EFFECT_TIMING.offFocusHoldMs + 1)).toBe(true);
+    expect(layer.hasLiveEffects()).toBe(false);
+  });
+
+  it('spawns no particles at Lite or minimal density (pulse-only vocabulary)', () => {
+    for (const options of [{ quality: 'lite' as const }, { quality: 'high' as const }]) {
+      const { layer } = crest(options);
+      layer.spawn({
+        category: 'off-focus-ping',
+        target: { ref: 'seat:p3' },
+        accent: SCENE_SEAT_ACCENTS[2]!,
+      });
+      layer.advance(0);
+      expect(layer.stats.liveParticles).toBe(0);
+      expect(layer.lastProgram.filter((op) => op.op === 'circle' && op.fill)).toHaveLength(0);
     }
   });
 });

@@ -89,6 +89,19 @@ treatment (public zones stay browsable).
   quiet crest ping + log entry from the motion grammar, and combat against
   any seat draws its paths and attacked ring regardless of focus.
 
+  **Implemented (Phase 3, #501):** the presentation adapter credits the acting
+  seat for every log entry and view diff, and emits one batched crest ping per
+  off-focus seat (`table/live/offFocusActivity.ts`), anchored at `seat:<id>` —
+  the wing's crest cluster, or the summary tile's mini-crest on compact
+  geometry. The effects layer draws it as the rune mark of the motion grammar's
+  "Off-focus activity" row (≤300 ms; a static badge held ≥1 s under reduced
+  motion; strokes only, so Lite stays pulse-only). Combat staging no longer
+  depends on focus: a permanent the ladder did not draw individually anchors at
+  its controller's crest, so paths from a digest wing still terminate at the
+  defender's crest, and the attacked ring rides every seat's crest and tile. A
+  seat under attack is auto-focus-eligible in `plane/focus.ts`, below manual
+  focus and the candidate-bearing board.
+
 ## Camera
 
 The camera is the plane's single perspective transform (ADR 0030) — fixed

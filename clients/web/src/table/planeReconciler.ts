@@ -646,7 +646,7 @@ export class PlaneReconciler {
 
     for (const region of planeRegions(plane)) {
       upsert(`region:${region.seat}`, 'region', region.rect, regionMeta(region));
-      upsert(`crest:${region.seat}`, 'crest', region.crest, { seat: region.seat });
+      upsert(`crest:${region.seat}`, 'crest', region.crest, crestMeta(region));
       upsert(`piles:${region.seat}`, 'piles', region.piles, pilesMeta(region));
     }
     for (const tile of plane.tiles) {
@@ -844,6 +844,23 @@ function regionMeta(region: PlaneRegion): Record<string, string> {
     meta.digestLands = String(region.digest.lands);
   }
   return meta;
+}
+
+/**
+ * A crest cluster's non-geometry inputs. The crest is staged at every count and
+ * every rung, so the markers that must never degrade away ride it: the seat's
+ * life/hand readout, the priority glow, and the **attacked ring** — combat
+ * against any seat is drawn regardless of which board holds focus
+ * (layout-model §Focus model, "off-focus activity is never silent").
+ */
+function crestMeta(region: PlaneRegion): Record<string, string> {
+  return {
+    seat: region.seat,
+    life: String(region.life),
+    hand: String(region.handCount),
+    attacked: String(region.attacked),
+    priority: String(region.priority),
+  };
 }
 
 /** A seat's zone-pile counts as data attributes (the authoritative pile data a

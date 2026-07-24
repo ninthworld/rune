@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_GAME_VIEW } from '../../game-view.fixture';
 import type { GameResult, GameView, Permanent } from '../../protocol';
-import { SCENE_BATCH, SCENE_HUES, SCENE_MOTION } from '../../sceneTokens';
-import { deriveGameViewPresentation, freezeDepartedEffectAnchors } from './gameViewPresentation';
+import { SCENE_BATCH, SCENE_HUES, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
+import { TRANSIENT_CAP } from '../effects';
+import {
+  deriveGameViewPresentation,
+  freezeDepartedEffectAnchors,
+  type GameViewPresentation,
+} from './gameViewPresentation';
 import { momentBudgetMs, momentCapMs } from './sessionMoments';
 
 function view(): GameView {
@@ -32,6 +37,31 @@ function token(id: string, controller = 'p1'): Permanent {
     ...base,
     card: { ...base.card, name: 'Spirit', functional_id: 'spirit_token', type_line: 'Creature' },
   };
+}
+
+/**
+ * A four-seat table on the same sample frame: `p1` receives, `p2` is focused,
+ * `p3`/`p4` are off-focus wings (or summary tiles on compact geometry).
+ */
+function table(): GameView {
+  const seated = view();
+  seated.seat_order = ['p1', 'p2', 'p3', 'p4'];
+  seated.opponents = ['p2', 'p3', 'p4'].map((player_id) => ({
+    player_id,
+    hand_size: 7,
+    life: 40,
+    library_size: 53,
+    graveyard_size: 0,
+  }));
+  seated.log = [];
+  return seated;
+}
+
+/** The anchors every off-focus ping in a presentation landed on. */
+function pingedSeats(presentation: GameViewPresentation): string[] {
+  return presentation.transients
+    .filter((invocation) => invocation.category === 'off-focus-ping')
+    .map((invocation) => ('ref' in invocation.target ? invocation.target.ref : ''));
 }
 
 describe('deriveGameViewPresentation', () => {
@@ -576,6 +606,56 @@ describe('deriveGameViewPresentation', () => {
     }
   });
 
+  it('emits a session moment and an off-focus ping from the same transition', () => {
+    // The two channels are independent (issues #501 and #509 landed together):
+    // a wing seat acting still earns its quiet crest ping in the very transition
+    // that carries a session moment, and the moment still carries its own cue.
+    const previous = table();
+    const current = table();
+    const result: GameResult = { winner: 'p1', losers: ['p2', 'p3', 'p4'], reason: 'life_zero' };
+    current.result = result;
+    current.log = [
+      { sequence: 40, event: { type: 'hand_kept', player: 'p1' } },
+      { sequence: 41, event: { type: 'spell_cast', player: 'p3', card: { id: 'x', name: 'X' } } },
+      { sequence: 42, event: { type: 'game_over', result } },
+    ];
+
+    const presentation = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    // Both session-moment intents…
+    expect(presentation.motions).toContainEqual(
+      expect.objectContaining({ category: 'hand-kept', from: 'hand:p1', to: 'pile:p1' }),
+    );
+    expect(presentation.motions).toContainEqual(
+      expect.objectContaining({ category: 'verdict', to: 'seat:p1' }),
+    );
+    // …and the off-focus wing's ping, unshifted ahead of the batch as #501
+    // requires so a cap can never drop it.
+    expect(pingedSeats(presentation)).toEqual(['seat:p3']);
+    expect(presentation.transients[0]?.category).toBe('off-focus-ping');
+  });
+
+  it('never credits a session moment itself as off-focus seat activity', () => {
+    // A session moment already lands its own cue on the acting seat's crest;
+    // crediting the channel too would double-pulse one crest in one transition.
+    const previous = table();
+    const current = table();
+    const result: GameResult = { winner: 'p3', losers: ['p1', 'p2', 'p4'], reason: 'decked' };
+    current.result = result;
+    current.log = [
+      { sequence: 40, event: { type: 'mulligan', player: 'p3' } },
+      { sequence: 41, event: { type: 'hand_kept', player: 'p4' } },
+      { sequence: 42, event: { type: 'game_over', result } },
+    ];
+
+    const presentation = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    expect(pingedSeats(presentation)).toEqual([]);
+    expect(presentation.motions.map((motion) => motion.category)).toEqual(
+      expect.arrayContaining(['mulligan', 'hand-kept', 'verdict']),
+    );
+  });
+
   it('accepts server-driven targeting paths and emits a focus staging cue', () => {
     const previous = view();
     const current = view();
@@ -595,5 +675,171 @@ describe('deriveGameViewPresentation', () => {
       to: { ref: 'seat:p2' },
       accent: '#E0784A',
     });
+  });
+});
+
+/**
+ * The off-focus activity channel (issue #501, layout-model §Focus model:
+ * "off-focus activity is never silent"). The ping's anchor is the seat
+ * reference, which the plane resolves to the wing's crest cluster or — on
+ * compact geometry — the seat's summary tile; the derivation is the same.
+ */
+describe('deriveGameViewPresentation off-focus staging', () => {
+  it('pings a wing seat that casts, without touching receiver or focus staging', () => {
+    const previous = table();
+    const current = table();
+    current.log = [
+      { sequence: 40, event: { type: 'spell_cast', player: 'p3', card: { id: 'x', name: 'X' } } },
+      { sequence: 41, event: { type: 'cards_drawn', player: 'p1', count: 1 } },
+      { sequence: 42, event: { type: 'spell_cast', player: 'p2', card: { id: 'y', name: 'Y' } } },
+    ];
+
+    const result = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    // Only the off-focus wing pings; the receiver and the focused seat keep
+    // exactly the presentation they had before this channel existed.
+    expect(pingedSeats(result)).toEqual(['seat:p3']);
+    expect(result.transients).toContainEqual(
+      expect.objectContaining({ category: 'cast', target: { ref: 'seat:p2' } }),
+    );
+    expect(result.transients).toContainEqual(
+      expect.objectContaining({ category: 'draw', target: { ref: 'seat:p1' } }),
+    );
+  });
+
+  it('pings a wing seat for a trigger-shaped resolution and for a zone change', () => {
+    const previous = table();
+    const current = table();
+    // No `trigger` event exists in the log taxonomy: a triggered ability reaches
+    // the client as a stack resolution plus the zone change it caused.
+    current.log = [
+      {
+        sequence: 40,
+        event: { type: 'spell_resolved', player: 'p4', card: { id: 'z', name: 'Z' } },
+      },
+    ];
+    current.graveyards = [
+      { player_id: 'p3', cards: [{ id: 'gone', name: 'Gone', type_line: 'Creature' }] },
+    ];
+
+    const result = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    expect(pingedSeats(result)).toEqual(['seat:p3', 'seat:p4']);
+  });
+
+  it('pings a wing seat whose board changes with no log entry at all', () => {
+    const previous = table();
+    const current = table();
+    current.battlefield = [
+      ...previous.battlefield,
+      { ...permanent('wing-token', 'p4'), tapped: false },
+    ];
+
+    const result = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    expect(pingedSeats(result)).toEqual(['seat:p4']);
+  });
+
+  it('batches a busy wing into exactly one ping, ahead of the capped batch', () => {
+    const previous = table();
+    const current = table();
+    current.log = [
+      { sequence: 40, event: { type: 'cards_drawn', player: 'p3', count: 3 } },
+      { sequence: 41, event: { type: 'spell_cast', player: 'p3', card: { id: 'x', name: 'X' } } },
+      {
+        sequence: 42,
+        event: { type: 'spell_resolved', player: 'p3', card: { id: 'x', name: 'X' } },
+      },
+    ];
+    current.battlefield = [
+      ...previous.battlefield,
+      permanent('a', 'p3'),
+      permanent('b', 'p3'),
+      permanent('c', 'p3'),
+    ];
+
+    const result = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    // One cue per seat, never a stack of pulses — and first in the batch, so a
+    // dense moment can never push the "never silent" guarantee past the cap.
+    expect(pingedSeats(result)).toEqual(['seat:p3']);
+    expect(result.transients[0]?.category).toBe('off-focus-ping');
+  });
+
+  it('credits a token swarm on a wing once, not once per token (#502)', () => {
+    const previous = table();
+    const current = table();
+    current.battlefield = [
+      ...previous.battlefield,
+      ...Array.from({ length: 30 }, (_, index) => token(`spirit-${index}`, 'p3')),
+    ];
+
+    const result = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    // The swarm stages as a token batch, and the wing that grew it is credited
+    // exactly once: the ping is per seat, never per arrival.
+    expect(result.motions.filter((motion) => motion.category === 'token-batch')).toHaveLength(30);
+    expect(pingedSeats(result)).toEqual(['seat:p3']);
+    // Leading the batch is what keeps the guarantee: the swarm's own entry
+    // transients outnumber the Lite transient cap, so a ping appended after
+    // them would be dropped before it ever drew.
+    expect(result.transients[0]?.category).toBe('off-focus-ping');
+    expect(result.transients.length).toBeGreaterThan(TRANSIENT_CAP.lite);
+  });
+
+  it('never pings the receiver, the focused seat, or a duel opponent', () => {
+    const focused = table();
+    focused.log = [
+      { sequence: 40, event: { type: 'spell_cast', player: 'p2', card: { id: 'x', name: 'X' } } },
+      { sequence: 41, event: { type: 'spell_cast', player: 'p1', card: { id: 'y', name: 'Y' } } },
+    ];
+    expect(pingedSeats(deriveGameViewPresentation(table(), focused, { focusSeat: 'p2' }))).toEqual(
+      [],
+    );
+
+    // A duel stages both boards: there is no off-focus seat to be silent.
+    const previous = view();
+    const duel = view();
+    duel.log = [
+      ...(previous.log ?? []),
+      { sequence: 40, event: { type: 'spell_cast', player: 'p2', card: { id: 'x', name: 'X' } } },
+    ];
+    expect(pingedSeats(deriveGameViewPresentation(previous, duel))).toEqual([]);
+  });
+
+  it("wears the acting seat's identity accent, in stable seat order", () => {
+    const previous = table();
+    const current = table();
+    current.log = [
+      { sequence: 40, event: { type: 'cards_drawn', player: 'p4', count: 1 } },
+      { sequence: 41, event: { type: 'cards_drawn', player: 'p3', count: 1 } },
+    ];
+
+    const result = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    expect(result.transients.slice(0, 2)).toEqual([
+      { category: 'off-focus-ping', target: { ref: 'seat:p3' }, accent: SCENE_SEAT_ACCENTS[2] },
+      { category: 'off-focus-ping', target: { ref: 'seat:p4' }, accent: SCENE_SEAT_ACCENTS[3] },
+    ]);
+  });
+
+  it('stages combat against a wing seat regardless of which board holds focus', () => {
+    const current = table();
+    current.battlefield = [
+      { ...permanent('wing-attacker', 'p4'), attacking: true, attacking_player: 'p3' },
+    ];
+
+    const result = deriveGameViewPresentation(undefined, current, { focusSeat: 'p2' });
+
+    // Neither end of the attack is the focused seat; the path is drawn anyway,
+    // terminating at the defending wing's crest.
+    expect(result.persistent).toContainEqual(
+      expect.objectContaining({
+        id: 'attack:wing-attacker',
+        category: 'attack-path',
+        from: { ref: 'wing-attacker' },
+        to: { ref: 'seat:p3' },
+      }),
+    );
   });
 });
