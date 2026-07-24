@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { GameOverReason, GameResult } from '../protocol';
 import { GameOverOverlay } from './GameOverOverlay';
 
@@ -50,6 +50,23 @@ describe('GameOverOverlay reason text (each losing condition)', () => {
   it.each(cases)('phrases the %s reason', (reason, matcher) => {
     renderOverlay('p1', { winner: 'p1', losers: ['p2'], reason });
     expect(screen.getByTestId('game-over-reason').textContent).toMatch(matcher);
+  });
+
+  it('offers a way out of every terminal state (issue #452)', () => {
+    // Regression: the verdict rendered as text alone, with no control anywhere on
+    // the in-game path to leave — win, loss, draw, and concede alike dead-ended.
+    const cases: GameResult[] = [
+      { winner: 'p1', losers: ['p2'], reason: 'life_zero' },
+      { winner: 'p2', losers: ['p1'], reason: 'concede' },
+      { losers: ['p1', 'p2'], reason: 'life_zero' },
+    ];
+    for (const result of cases) {
+      const onLeave = vi.fn();
+      render(<GameOverOverlay result={result} you="p1" names={{}} onLeave={onLeave} />);
+      fireEvent.click(screen.getByTestId('game-over-leave'));
+      expect(onLeave).toHaveBeenCalledTimes(1);
+      cleanup();
+    }
   });
 
   it('falls back generically for an unrecognized future reason', () => {

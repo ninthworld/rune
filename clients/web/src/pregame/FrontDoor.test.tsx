@@ -36,7 +36,13 @@ beforeEach(() => sessionStorage.clear());
 afterEach(() => {
   cleanup();
   act(() => useGameStore.getState().disconnect());
-  useGameStore.setState({ status: 'idle', view: null, lobby: null, reclaimingSession: false });
+  useGameStore.setState({
+    status: 'idle',
+    view: null,
+    lobby: null,
+    reclaimingSession: false,
+    lastMatch: null,
+  });
   sessionStorage.clear();
 });
 
@@ -68,6 +74,26 @@ describe('Front door — criterion 14: reclaiming vs connecting', () => {
 
     expect(screen.getByTestId('connection-status').textContent).toContain('Opening a connection');
     expect(screen.getByTestId('connection-status').textContent).not.toContain('Reclaiming');
+  });
+
+  it('reads “Returning to the lobby” while #452’s postgame exit reconnects', () => {
+    // The exit closes the bridged match socket and reopens the server, so the
+    // landing is reached ACROSS a reconnect (front-door-and-lobby §2, as
+    // shipped). The front door is passed through and says so rather than
+    // reading as a detour. Derived from the pending record — no extra state.
+    act(() => {
+      useGameStore.getState().connect('ws://back:9000', {
+        createSocket: factory,
+        autoReconnect: false,
+      });
+      useGameStore
+        .getState()
+        .recordLastMatch({ outcome: 'victory', opponents: ['Bob'], gameSetup: '1v1', seats: 2 });
+    });
+    render(<ConnectionScreen />);
+
+    expect(screen.getByTestId('connection-status').textContent).toContain('Returning to the lobby');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
   });
 
   it('drops the reclaim state as soon as the socket answers', () => {

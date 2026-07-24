@@ -297,6 +297,52 @@ describe('Lobby place — the last-match ribbon (criterion 24)', () => {
     expect(socket.sent.length).toBeGreaterThan(0);
   });
 
+  it('lands on the ribbon after #452’s postgame exit, across the reconnect', () => {
+    // The whole path, through the real store: a room, a finished game, the
+    // game-over exit (which closes the bridged socket and reopens the server),
+    // and the lobby landing on the far side of it. Nothing but the ribbon
+    // crosses — the transition assumes no same-session hand-off.
+    const sockets: FakeSocket[] = [];
+    const factory: SocketFactory = () => {
+      const s = new FakeSocket();
+      sockets.push(s);
+      return s as unknown as WebSocket;
+    };
+    act(() =>
+      useGameStore.getState().connect('ws://test', { createSocket: factory, autoReconnect: false }),
+    );
+    act(() => sockets[0]!.emitOpen());
+    act(() => sockets[0]!.emitMessage(LOBBY_ROOM_DECKED_JSON));
+    act(() =>
+      sockets[0]!.emitMessage(
+        JSON.stringify({
+          you: 'p1',
+          opponents: [{ player_id: 'p2', hand_size: 0, life: 0, library_size: 40 }],
+          player_names: { p1: 'Alice', p2: 'Bob' },
+          seat_order: ['p1', 'p2'],
+          phase: 'end',
+          valid_actions: [],
+          result: { winner: 'p1', losers: ['p2'], reason: 'decked' },
+        }),
+      ),
+    );
+
+    // #452's exit, then the reopened session's first LobbyView.
+    act(() => useGameStore.getState().leaveGame());
+    act(() => sockets[1]!.emitOpen());
+    act(() => sockets[1]!.emitMessage(LOBBY_DIRECTORY_JSON));
+    render(<LobbyScreen />);
+
+    expect(screen.getByTestId('lobby-screen')).toBeDefined();
+    expect(screen.getByTestId('last-match-outcome').textContent).toBe('Victory');
+    expect(screen.getByTestId('last-match-ribbon').textContent).toContain('Bob');
+    // Play again is pre-filled from the finished room, which only the LobbyView
+    // knew — proof the record was read before the teardown.
+    fireEvent.click(screen.getByTestId('last-match-play-again'));
+    expect(screen.getByTestId('game-setup-1v1').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('seat-count-2').getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('renders the lobby identically and fully functional with the ribbon absent (the reload case)', () => {
     // #506 ships the RENDERING ahead of #452/#509 producing the record, so the
     // lobby must be complete without it — the ribbon may never be the only

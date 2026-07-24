@@ -152,9 +152,22 @@ Rules that hold in every place:
   environment behind it is already the match's environment, so the crossing has
   no style boundary — the panels leave and the table assembles on the same sky.
 - **Match → Lobby (postgame).** The verdict is part of the terminal `GameView`
-  and stays in the match (§5.5). Its exit sends `leave` and clears `view`
-  (#452's store transition); the scene recedes per visual-system §8 "Return to
-  lobby" and the Lobby place rises with a **last-match ribbon**.
+  and stays in the match (§5.5). Its exit **closes the socket and reopens the
+  same server**, clearing `view` (#452's store transition); the scene recedes
+  per visual-system §8 "Return to lobby" and the Lobby place rises with a
+  **last-match ribbon**.
+
+  > **Correction (#452/#506, as shipped).** An earlier draft of this document
+  > said the exit "sends `leave` (already advertised)". That is not possible on
+  > a match connection: once a socket is bridged to a room, `serve_connection`
+  > routes every decoded message to the room as `RoomInput::Message`
+  > (`crates/rune-server/src/room/connection.rs:18-24`), so the lobby never sees
+  > a `leave`. Closing the socket *is* how the seat leaves — the bridge sends
+  > `RoomInput::Leave` on exit — and the client then reopens the same server for
+  > a fresh `Hello` and its own first `LobbyView`. Still **no protocol change**;
+  > the landing is simply reached across a reconnect, so nothing in the
+  > transition may assume a same-session hand-off. (§5.6's spectator exit is a
+  > genuine `leave` and is unaffected: a spectator connection is not bridged.)
 - **Reconnect.** `restoreSession()` on mount puts the front door in a
   *Reclaiming your seat* state rather than the generic connecting state. Where
   the reclaimed session lands — front door, lobby, room, match, or watching — is
@@ -364,11 +377,15 @@ gains one thing from this document: the exit is the *only* gold on that overlay,
 and the overlay also exposes the session menu (§6) so settings are reachable at
 game over (P7).
 
-**Beat two — the landing, in the lobby.** The exit sends `leave` (already
-advertised) and clears `view`. The scene recedes per visual-system §8 "Return to
-lobby" (≤ 400 ms; reduced motion cuts) and the **Lobby** place rises on the same
-environment. On arrival the lobby shows a **last-match ribbon** above the
-directory:
+**Beat two — the landing, in the lobby.** The exit closes the socket — which is
+how a bridged match connection gives up its seat (see the correction in §2) —
+clears `view`, and reopens the same server. The scene recedes per visual-system
+§8 "Return to lobby" (≤ 400 ms; reduced motion cuts) and the **Lobby** place
+rises on the reopened session's first `LobbyView`. Because the landing is on the
+far side of a reconnect, the environment is re-mounted rather than carried, and
+the ribbon is the *only* thing that crosses; the front door's connecting state
+is passed through and says so ("Returning to the lobby…"). On arrival the lobby
+shows a **last-match ribbon** above the directory:
 
 - one line — outcome word in the matching §2 hue family (Victory in the gold
   family, Defeat in the red *loss moment* family, Draw neutral) plus the
@@ -635,10 +652,13 @@ Work this direction implies that is **not** #506's:
    store transition that clears `spectatorView` on `leave`. No protocol change
    (`lobby/commands.rs:512-524` already handles it). Should land before or with
    the #506 restyle so the spectate entry point is not a trap.
-2. **The last-match ribbon's producer.** #452 clears `view`; #509 stages the
-   verdict and the return. One of them must also write the ephemeral
-   outcome/opponents/setup record the ribbon reads. Recorded here so it does not
-   fall between the two issues.
+2. ~~**The last-match ribbon's producer.**~~ **Closed by #506.** #452's
+   `GameStore.leaveGame` now writes the ephemeral outcome/opponents/setup record
+   on the same transition that clears `view`, reading it from the terminal
+   `GameView` plus the room's last `LobbyView` *before* the teardown destroys
+   both (`store.ts` `lastMatchOf`). It is suppressed when there is no result to
+   report — leaving a spectated game, or an exit with no server to return to.
+   #509 stages the moment; it does not need to produce the record.
 3. **A real rematch.** Returning a finished room to `gathering`, or a
    `rematch` command that mints a new room seeded with the same seats, is a
    protocol change (ADR 0012 amendment + `rune-protocol` + `docs/protocol.md` +

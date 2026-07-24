@@ -49,8 +49,12 @@ export interface MultiSelectControls {
    * until every slot's constraint is met (e.g. exactly N bottomed, or a full order).
    */
   confirm?: { label: string; enabled: boolean; onConfirm: () => void };
-  /** Abandon the in-progress selection, restoring the neutral state. */
-  onCancel: () => void;
+  /**
+   * Abandon the in-progress selection, restoring the neutral state. Absent for a
+   * decision the view forces (issue #451): there is no neutral state to return to,
+   * so no cancel is offered rather than one that re-opens what it just closed.
+   */
+  onCancel?: () => void;
 }
 
 interface Props {
@@ -118,14 +122,16 @@ export function ActionDock({
               {multiSelect.confirm.label}
             </button>
           )}
-          <button
-            type="button"
-            onClick={multiSelect.onCancel}
-            data-testid="multiselect-cancel"
-            className={cx(s.dockButton, s.dockButtonGhost)}
-          >
-            Cancel
-          </button>
+          {multiSelect.onCancel && (
+            <button
+              type="button"
+              onClick={multiSelect.onCancel}
+              data-testid="multiselect-cancel"
+              className={cx(s.dockButton, s.dockButtonGhost)}
+            >
+              Cancel
+            </button>
+          )}
         </>
       ) : onCancelTargeting ? (
         // Targeting mode: the dock is dedicated to cancelling the in-progress pick.

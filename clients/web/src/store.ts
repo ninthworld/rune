@@ -41,6 +41,7 @@ import {
   type TargetChoice,
   type ValidAction,
 } from './protocol';
+import { playerName } from './playerNames';
 import { parseServerFrame } from './wire';
 
 /** Connection lifecycle for status display only (never load-bearing game state). */
@@ -181,6 +182,56 @@ export interface LastMatchSummary {
   seats?: number;
 }
 
+/**
+ * Build the ribbon's record from the terminal `GameView` plus the last
+ * `LobbyView` still in hand (issue #506; the producer half of
+ * `front-door-and-lobby.md` §9 follow-up 2).
+ *
+ * Pure and total: `null` whenever there is nothing to report — no view, or a
+ * view the server has not marked terminal. That covers leaving a *spectated*
+ * game (a spectator holds no `view` and played no match) and any future exit
+ * from an unfinished one, so the ribbon can never claim a result the server did
+ * not decide. **No game logic**: the outcome is a formatting of the server's
+ * already-decided `result`, classified exactly as `GameOverOverlay` does.
+ *
+ * The setup label and seat count come from the room's own `LobbyView`, not the
+ * game view — `GameView` deliberately carries no `game_setup` — with the seat
+ * count falling back to the view's `seat_order`, which is the same number by
+ * construction (a game starts only once every seat is filled).
+ */
+export function lastMatchOf(
+  view: GameView | null,
+  lobby: LobbyView | null,
+): LastMatchSummary | null {
+  const result = view?.result;
+  if (view === null || result === undefined) return null;
+
+  const outcome: LastMatchSummary['outcome'] =
+    result.winner === undefined ? 'draw' : result.winner === view.you ? 'victory' : 'defeat';
+
+  // Name the opponents the way every other surface does: their chosen display
+  // name, else a seat-derived `Player N` from their position in `seat_order` (a
+  // real field, never parsed from the opaque id). A player the view names
+  // neither way is dropped rather than shown as a raw id — the ribbon would
+  // rather say less than print `p2` at someone.
+  const opponents = view.opponents
+    .map((opponent) => {
+      const named = playerName(view, opponent.player_id);
+      if (named !== opponent.player_id) return named;
+      const seat = view.seat_order.indexOf(opponent.player_id);
+      return seat < 0 ? undefined : `Player ${seat + 1}`;
+    })
+    .filter((name): name is string => name !== undefined);
+
+  const config = lobby?.room?.config;
+  return {
+    outcome,
+    opponents,
+    gameSetup: config?.game_setup,
+    seats: config?.seats ?? (view.seat_order.length > 0 ? view.seat_order.length : undefined),
+  };
+}
+
 /** The networking store's shape. */
 export interface GameStore {
   /** The latest personalized view, or `null` before the first message. */
@@ -268,9 +319,29 @@ export interface GameStore {
   /** Close the connection intentionally; suppresses auto-reconnect. */
   disconnect: () => void;
   /**
-   * Record the finished game the lobby's last-match ribbon reports (#452/#509
-   * call this on the transition that clears {@link view}). Purely ephemeral
-   * presentation — see {@link LastMatchSummary}.
+   * Leave the game this connection is in and go back to the lobby (issue #452).
+   *
+   * This is the counterpart of {@link disconnect} that {@link view} never had: it
+   * gives up the seat (closing the socket is what tells the room the seat left) and
+   * **clears the terminal view**, so the app's existing gates route on instead of
+   * pinning the player to the game-over screen forever. It then reopens the same
+   * server so they land back in the lobby; with no server to return to it simply
+   * ends at the connection screen. Either way the next screen is interactive.
+   *
+   * A client-session action like {@link disconnect}, not game state — the terminal
+   * `GameView` is still the only thing the game-over screen renders from, and a
+   * reconnect that replays it shows exactly the same screen with the same exit.
+   *
+   * On the way out it also records {@link lastMatch} from the terminal view, which
+   * is the lobby's last-match ribbon (issue #506): the reading has to happen here,
+   * before the teardown, because the view it comes from is gone afterwards.
+   */
+  leaveGame: () => void;
+  /**
+   * Record the finished game the lobby's last-match ribbon reports. Called by
+   * {@link leaveGame} on the transition that clears {@link view}, and available
+   * to any other producer. Purely ephemeral presentation — see
+   * {@link LastMatchSummary}.
    */
   recordLastMatch: (summary: LastMatchSummary) => void;
   /** Drop the last-match ribbon (dismissed, or superseded by a new room). */
@@ -491,7 +562,15 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       // later reload starts fresh at the connection screen (issue #254).
       lastSession = null;
       clearPersistedSession();
-      set({ status: 'closed', lobby: null, lobbyError: null, reclaimingSession: false });
+      // An explicit disconnect ends the session, and the last-match ribbon is
+      // session-scoped ephemera: it goes with it (issue #506).
+      set({
+        status: 'closed',
+        lobby: null,
+        lobbyError: null,
+        reclaimingSession: false,
+        lastMatch: null,
+      });
     },
 
     recordLastMatch(summary): void {
@@ -500,6 +579,33 @@ const initializer: StateCreator<GameStore> = (set, get) => {
 
     dismissLastMatch(): void {
       set({ lastMatch: null });
+    },
+
+    leaveGame(): void {
+      // Where to come back to, read before the disconnect clears the transport.
+      const url = lastUrl;
+      const options = lastOptions;
+      // Read the ribbon's record NOW, while the terminal view and the room's
+      // last `LobbyView` are both still in hand — the teardown below destroys
+      // both (issue #506, closing front-door-and-lobby §9 follow-up 2). With no
+      // server to return to, the exit lands on the front door in its
+      // disconnected state and the ribbon is suppressed (§5.5 degenerate case).
+      const summary = url !== null ? lastMatchOf(get().view, get().lobby) : null;
+      // Give up the seat: an in-game connection is bridged to its room, so closing
+      // the socket is how the seat leaves (the server sends `Leave` on the drop).
+      // This also spends the reconnect credential, so a later reload cannot reclaim
+      // a game that is over.
+      get().disconnect();
+      // Drop the terminal view: while it is held, the app renders the game screen no
+      // matter what the socket is doing — the dead end of issue #452.
+      set({ view: null, spectatorView: null });
+      // Return to the lobby by reopening the same server (a fresh `Hello` gets a
+      // fresh session and its own first `LobbyView`).
+      if (url !== null) get().connect(url, options);
+      // After `connect`, which resets the ephemeral per-connection flags: the
+      // ribbon deliberately survives this reconnect, because the landing it
+      // reports on is on the far side of it.
+      if (summary !== null) set({ lastMatch: summary });
     },
 
     sendLobby(command): void {

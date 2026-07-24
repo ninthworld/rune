@@ -5,7 +5,7 @@
  * client stays a pure renderer of `valid_actions[]` (AGENTS.md hard rule). Kept
  * separate from the component so the table body stays focused on wiring.
  */
-import type { EntityId, GameView, PlayerId } from '../protocol';
+import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
 import type { InspectTarget } from './CardInspect';
 import type { Binding } from './ShortcutHelp';
 import type { RenderedCard, TableScene } from './scene';
@@ -82,6 +82,27 @@ export function demandsDecision(view: GameView): boolean {
       (action.subject === undefined || action.subject.length === 0) &&
       ((action.requirements?.length ?? 0) > 0 || (action.prompts?.length ?? 0) > 0),
   );
+}
+
+/**
+ * The decision the view leaves the receiver no way around (issue #451): the single
+ * offered action — concede aside, which the server offers at every moment (CR
+ * 104.3a) and the shell routes to the game menu — when it is subject-less and poses
+ * choice slots. The pre-game mulligan is the case that matters: its keep/bottom
+ * decision is all the server offers, so hiding it behind a dock button the player
+ * must find (and can dismiss) leaves the game unanswerable. The shell opens this
+ * decision with the view and keeps it open.
+ *
+ * `null` whenever there is any other move to make, so this never takes the table
+ * over while the player has a choice of what to do. Presentation routing only: it
+ * decides which offered action is *presented*, never what is legal.
+ */
+export function forcedDecision(view: GameView): ValidAction | null {
+  const offered = view.valid_actions.filter((action) => action.type !== 'concede');
+  const only = offered.length === 1 ? offered[0] : undefined;
+  if (only === undefined || (only.subject?.length ?? 0) > 0) return null;
+  const poses = (only.requirements?.length ?? 0) > 0 || (only.prompts?.length ?? 0) > 0;
+  return poses ? only : null;
 }
 
 /**

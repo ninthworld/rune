@@ -41,3 +41,12 @@ The same frame summarizer and limits run under Vitest with controlled
 timestamps. `scenarios.test.ts` rebuilds every scenario through the real
 `PlaneReconciler` + `CardFace` stack and enforces the reconnect and DOM
 ceilings without requiring WebGL.
+
+## Real-hardware runs
+
+`../../scripts/deviceBudgetProbe.js` is pasted into a console attached to the
+device under test; it drives the hook across the stress scenarios and prints a
+Markdown evidence table. The step-by-step procedure — building the harness for a
+device, attaching the console, the quality-level passes — is
+`docs/design/presentation-budgets.md` §Real-hardware validation, which also
+holds the tables the runs fill in.

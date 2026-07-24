@@ -10,8 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { SCENE_BATCH, SCENE_MOTION } from '../sceneTokens';
 import { stagePlane, type StagedPlane } from './plane';
-import { seatTable, menagerie, DESKTOP } from './plane.fixture';
-import { PlaneReconciler, type PlaneFaceRenderer } from './planeReconciler';
+import { seatTable, menagerie, DESKTOP, type PlanePermSpec } from './plane.fixture';
+import { PlaneReconciler, planeRenders, type PlaneFaceRenderer } from './planeReconciler';
 
 const TRAVEL = SCENE_MOTION.zoneTravel.ms;
 const STAGING = SCENE_MOTION.staging.ms;
@@ -238,6 +238,124 @@ describe('PlaneReconciler travel ghosts (zone changes)', () => {
     r.advance(SCENE_BATCH.windowMs);
     expect(r.hasPendingAnimations()).toBe(false);
     expect(r.root.querySelector('[data-ghost]')).toBeNull();
+  });
+});
+
+describe('PlaneReconciler ×N pile membership (visual-system §5)', () => {
+  /** Identical bears under caller-chosen ids — enough of them that the
+   * degradation ladder really folds them into one ×N pile (rung 2). */
+  function bearPile(ids: readonly string[]): PlanePermSpec[] {
+    return ids.map((id) => ({ id, controller: 'p2', name: 'Bear' }));
+  }
+
+  const ALL = Array.from({ length: 40 }, (_, index) => `bear-${index}`);
+
+  /** The single folded render of a staged plane (fails loudly if none folded). */
+  function foldOf(plane: StagedPlane) {
+    const fold = planeRenders(plane).find((render) => render.stackCount > 1);
+    expect(fold, 'the ladder should fold identical bears into a pile').toBeDefined();
+    return fold!;
+  }
+
+  /** Where each live ghost is travelling to (its start rect is its layout box;
+   * the destination it eases toward is published as `data-travel-to`). */
+  function ghostDestinations(r: PlaneReconciler): string[] {
+    return [...r.root.querySelectorAll<HTMLElement>('[data-ghost]')].map(
+      (el) => el.dataset.travelTo ?? '',
+    );
+  }
+
+  it('folds identical permanents into one splayed pile render', () => {
+    const plane = planeOf(bearPile(ALL));
+    const fold = foldOf(plane);
+    expect(fold.stackCount).toBe(ALL.length);
+    expect(fold.memberIds).toHaveLength(ALL.length);
+    expect(planeRenders(plane)).toHaveLength(1);
+  });
+
+  it('travels a permanent into the pile it folds into, not to the zone piles', () => {
+    const r = animated();
+    // A selection forces one bear to render individually beside the pile…
+    const unfolded = planeOf(bearPile(ALL), { selectedId: 'bear-39' });
+    r.reconcile(unfolded);
+    r.advance(0);
+    r.advance(SCENE_BATCH.windowMs + TRAVEL);
+    expect(r.elementFor('bear-39')).toBeDefined();
+
+    // …and dropping the selection folds it back in.
+    const folded = planeOf(bearPile(ALL));
+    const pile = foldOf(folded);
+    r.reconcile(folded);
+    expect(r.elementFor('bear-39')).toBeUndefined();
+    expect(pile.memberIds).toContain('bear-39');
+    // Its departing ghost aims at the pile's rect — travel into the stack —
+    // rather than at the seat's zone-pile home.
+    expect(ghostDestinations(r)).toContain(`${pile.rect.x},${pile.rect.y}`);
+  });
+
+  it('travels a permanent out of the pile when it unfolds', () => {
+    const r = animated();
+    r.reconcile(planeOf(bearPile(ALL)));
+    r.advance(0);
+    r.advance(SCENE_BATCH.windowMs + TRAVEL);
+    expect(r.hasPendingAnimations()).toBe(false);
+
+    // A selection forces one member out of the fold; the pile keeps the rest.
+    const unfolded = planeOf(bearPile(ALL), { selectedId: 'bear-39' });
+    const pile = foldOf(unfolded);
+    r.reconcile(unfolded);
+    expect(r.elementFor('bear-39')).toBeDefined();
+    // Its entrance ghost rises out of the pile that was standing for it —
+    // starting on the pile's rect, easing to the card's own slot — rather than
+    // out of the seat's zone-pile home.
+    const ghost = r.root.querySelector<HTMLElement>('[data-ghost]')!;
+    const target = r.targetFor('bear-39')!;
+    expect(ghost.style.left).toBe(`${pile.rect.x}px`);
+    expect(ghost.style.top).toBe(`${pile.rect.y}px`);
+    expect(ghost.dataset.travelTo).toBe(`${target.x},${target.y}`);
+  });
+
+  it('hands the pile to its next member when the representative departs', () => {
+    const r = animated();
+    const before = planeOf(bearPile(ALL));
+    r.reconcile(before);
+    r.advance(0);
+    r.advance(SCENE_BATCH.windowMs + TRAVEL);
+    const representative = foldOf(before).entityId;
+    const el = r.elementFor(representative)!;
+
+    // The representative itself leaves the battlefield: the pile is one card
+    // lighter, and the next member stands for it.
+    const after = planeOf(bearPile(ALL.filter((id) => id !== representative)));
+    r.reconcile(after);
+    const next = foldOf(after).entityId;
+    expect(next).not.toBe(representative);
+
+    // The same element carries on — no removal, no fresh entrance, so nothing
+    // flashes in the pile's rect.
+    expect(r.elementFor(representative)).toBeUndefined();
+    expect(r.elementFor(next)).toBe(el);
+    expect(el.dataset.entityId).toBe(next);
+    expect(r.lastStats).toMatchObject({ adopted: 1, created: 0, removed: 0 });
+    expect(el.style.opacity).toBe('');
+    expect(r.root.querySelectorAll('[data-ghost]')).toHaveLength(0);
+    expect(r.root.querySelectorAll('[data-entity-id]')).toHaveLength(1);
+  });
+
+  it('keeps the swap byte-identical to a fresh mount of the same plane', () => {
+    const r = animated();
+    const before = planeOf(bearPile(ALL));
+    r.reconcile(before);
+    r.advance(0);
+    r.advance(SCENE_BATCH.windowMs + TRAVEL);
+    const after = planeOf(bearPile(ALL.filter((id) => id !== foldOf(before).entityId)));
+    r.reconcile(after);
+    r.advance(SCENE_BATCH.windowMs * 2);
+    r.advance(SCENE_BATCH.windowMs * 4);
+
+    const plain = new PlaneReconciler(document.createElement('div'), { face: face() });
+    plain.reconcile(after);
+    expect(r.root.innerHTML).toBe(plain.root.innerHTML);
   });
 });
 

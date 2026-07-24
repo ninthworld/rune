@@ -30,6 +30,14 @@ export interface PromptOption {
   id: string;
   /** Human-readable label to render for this choice. */
   label: string;
+  /**
+   * The action's other slots **this choice** owes an answer to (issue #451): a
+   * mulligan's *keep* requires the `bottom` slot filled to its exact `count`,
+   * while *mulligan* requires nothing. The client enables the choice only once
+   * every listed slot is exactly satisfied — it reads the coupling the server
+   * states and derives none of its own. Absent when the choice owes nothing.
+   */
+  requires?: string[];
 }
 
 /**

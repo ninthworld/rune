@@ -104,6 +104,12 @@ function ServerSettings({
 export function FrontDoor() {
   const status = useGameStore((state) => state.status);
   const reclaiming = useGameStore((state) => state.reclaimingSession);
+  // A pending last-match record while connecting means #452's postgame exit is
+  // in flight: it gives up the seat and REOPENS the server, so the lobby landing
+  // is reached across a reconnect rather than handed off in-session. Saying so
+  // is honest and stops the front door reading as a detour on the way back.
+  // Derived, not stored: no record, no claim.
+  const returning = useGameStore((state) => state.lastMatch !== null);
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
   const [url, setUrl] = useState(initialServerUrl);
@@ -136,10 +142,14 @@ export function FrontDoor() {
           <Brand />
           <span className={cx(p.statePill, p.stateConnecting)}>
             <span className={cx(p.dot, p.dotLive)} />
-            {reclaiming ? 'Reclaiming' : 'Connecting'}
+            {reclaiming ? 'Reclaiming' : returning ? 'Returning' : 'Connecting'}
           </span>
           <span className={p.muted} data-testid="connection-status">
-            {reclaiming ? `Reclaiming your seat at ${url}` : `Opening a connection to ${url}`}
+            {reclaiming
+              ? `Reclaiming your seat at ${url}`
+              : returning
+                ? 'Returning to the lobby…'
+                : `Opening a connection to ${url}`}
           </span>
           <div className={p.buttonRow}>
             <button type="button" className={p.button} onClick={disconnect}>
