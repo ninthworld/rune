@@ -6,9 +6,9 @@
  * Contract (ADR 0030 layer 3):
  * - **Passive**: `pointer-events: none`, `aria-hidden` — never a hit target,
  *   never announced; interactivity and reading live below/above it.
- * - **Zero idle cost**: the Pixi ticker runs only while the layer has live
- *   effects — the layer's `wake` callback restarts it, and it stops itself
- *   the moment an `advance` reports idle. No per-frame work while nothing is
+ * - **Zero idle cost**: the Pixi ticker runs only while the layer needs a
+ *   frame. Static reduced-motion holds schedule one retirement wake instead of
+ *   polling; mutations restart it. No per-frame work while nothing is
  *   animating, no render passes on a clean surface.
  * - Pixi owns its own canvas; React owns only the container `<div>` (the
  *   carried StrictMode-safe mount shape). Where no WebGL context exists
@@ -35,6 +35,7 @@ export function EffectsSurface({ layer, width, height }: Props) {
   useEffect(() => {
     const host = containerRef.current;
     if (!host) return;
+    let wakeTimer: number | undefined;
     try {
       const app = new Application({
         backgroundAlpha: 0,
@@ -54,16 +55,26 @@ export function EffectsSurface({ layer, width, height }: Props) {
       appRef.current = app;
 
       // Render-on-demand: each tick advances the layer (which draws only when
-      // needed) and the ticker stops the moment no further frame is NEEDED —
-      // a drawn static link or reduced-motion form is live but costs nothing
-      // (`createEffectsTicker` carries the tested stop policy). The layer's
-      // `wake` restarts the ticker on any new work — zero idle cost.
+      // needed) and stops immediately when no continuous frame is needed.
+      // Static reduced-motion holds schedule one wake at expiry; any mutation
+      // cancels that timer and restarts the ticker immediately.
       const tick = createEffectsTicker(layer, {
         render: () => app.render(),
+        scheduleWake: (delayMs) => {
+          if (wakeTimer !== undefined) window.clearTimeout(wakeTimer);
+          wakeTimer = window.setTimeout(() => {
+            wakeTimer = undefined;
+            if (!app.ticker.started) app.ticker.start();
+          }, delayMs);
+        },
         stop: () => app.ticker.stop(),
       });
       app.ticker.add(() => tick(performance.now()));
       layer.wake = () => {
+        if (wakeTimer !== undefined) {
+          window.clearTimeout(wakeTimer);
+          wakeTimer = undefined;
+        }
         if (!app.ticker.started) app.ticker.start();
       };
       layer.wake();
@@ -73,6 +84,7 @@ export function EffectsSurface({ layer, width, height }: Props) {
     }
     return () => {
       layer.wake = undefined;
+      if (wakeTimer !== undefined) window.clearTimeout(wakeTimer);
       const app = appRef.current;
       if (app) {
         app.stage.removeChild(layer.root);
