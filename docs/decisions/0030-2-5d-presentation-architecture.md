@@ -87,6 +87,16 @@ incremental** (full rebuilds are reserved for reconnect/fast-forward).
   (retargeted at the DOM scene, same invariants), and
   `table/BattlefieldCanvas.tsx` (→ effects-layer mount). The scene package,
   interaction hooks, store, tokens split, glyphs, and test harness carry over.
+  **Status (Phase 2 exit, #494):** the legacy Pixi *match* surface —
+  `table/Table.tsx` and `table/GameOverTable.tsx` — and its behavioural tests are
+  removed; normal matches now mount the 2.5D `LiveMatchTable` by default. The
+  shared Pixi renderer (`cardFactory`'s `buildCardDisplay`/`buildChipDisplay`,
+  `sceneReconciler.ts`, `BattlefieldCanvas.tsx`, `EntityOverlay`, `PanelChrome`)
+  is *retained* because the read-only spectate mode (`SpectatorTable`, ADR 0022)
+  still renders through it; retiring it is completed by migrating the spectator
+  view onto the DOM scene plane (follow-up). `cardFactory.ts` keeps its shared,
+  pure card-data model (`CardDisplayData`, `cardVisualSignature`, `parseManaCost`),
+  which the DOM card component consumes.
 - Phase 1 of the redesign (issue #464) can be split into implementation
   issues against this architecture; the visual system (#469) and layout
   designs (#470) style and stage it without re-deciding it.
