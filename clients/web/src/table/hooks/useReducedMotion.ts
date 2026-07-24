@@ -4,11 +4,12 @@
  * query is read live (a mid-session OS change is honored) and absent → false
  * (SSR / older jsdom).
  *
- * Composition (`resolveReducedMotion`): for the `system` and `reduced`
- * preferences, **OS-on OR user-on ⇒ reduced**; `full` is an explicit opt-in
- * that keeps full motion even when the OS asks to reduce. Called with no
- * argument it defaults to `system`, so existing OS-only callers (e.g. the #400
- * summary-tile snap) are unchanged.
+ * Composition (`resolveReducedMotion`): **OS-on OR user-on ⇒ reduced**. The OS
+ * request is authoritative — an accessibility setting is never overridden by an
+ * in-app preference — so `full` prefers full motion only when the OS allows it,
+ * still yielding to an OS "reduce". Called with no argument it defaults to
+ * `system`, so existing OS-only callers (e.g. the #400 summary-tile snap) are
+ * unchanged.
  */
 import { useEffect, useState } from 'react';
 import { resolveReducedMotion, type MotionPreference } from '../settings/presentationSettings';

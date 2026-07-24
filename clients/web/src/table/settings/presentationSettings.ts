@@ -23,11 +23,14 @@ import type { EffectDensity, EffectQuality } from '../effects';
 /**
  * The motion preference, composed with the OS `prefers-reduced-motion` query:
  * - `system` — follow the OS setting.
- * - `reduced` — force reduced motion regardless of the OS.
- * - `full` — an explicit opt-in to full motion that overrides an OS "reduce".
+ * - `reduced` — force reduced motion even with the OS setting off.
+ * - `full` — prefer full motion when the OS allows it.
  *
- * The reduced-motion contract (snap every animation to its end state with zero
- * layout or state difference) is unchanged; this only chooses *when* it engages.
+ * The OS request is authoritative: an accessibility setting is never overridden
+ * by an in-app preference, so `full` still yields to an OS "reduce" (issue #505;
+ * **OS-on OR user-on ⇒ reduced**). The reduced-motion contract (snap every
+ * animation to its end state with zero layout or state difference) is unchanged;
+ * this only chooses *when* it engages.
  */
 export type MotionPreference = 'system' | 'reduced' | 'full';
 
@@ -150,15 +153,15 @@ export function detectDefaultQuality(
 
 /**
  * Compose the motion preference with the OS `prefers-reduced-motion` query.
- * `reduced` forces reduced motion; `full` is an explicit override that keeps
- * full motion even when the OS asks to reduce; `system` follows the OS — so for
- * the system/reduced cases, **OS-on OR user-on ⇒ reduced** (the budgets'
- * orthogonal reduced-motion control).
+ * The OS request is authoritative — an accessibility setting is never overridden
+ * by an in-app preference — so any OS "reduce" yields reduced motion regardless
+ * of the preference. `reduced` additionally forces the snap with the OS setting
+ * off; `full` and `system` follow the OS. In short, **OS-on OR user-on ⇒
+ * reduced** (the budgets' orthogonal reduced-motion control).
  */
 export function resolveReducedMotion(osReduced: boolean, motion: MotionPreference): boolean {
-  if (motion === 'reduced') return true;
-  if (motion === 'full') return false;
-  return osReduced;
+  if (osReduced) return true;
+  return motion === 'reduced';
 }
 
 interface StoreState {

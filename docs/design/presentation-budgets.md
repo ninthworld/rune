@@ -67,8 +67,10 @@ capable device down to Lite is worse than starting at Standard:
 - **High is never auto-selected** — it is an explicit opt-in.
 
 Density defaults to `reduced` and motion to `system` (follow the OS); the motion
-preference composes with `prefers-reduced-motion` as **OS-on OR user-on ⇒ reduced**,
-with a `full` override that keeps motion even when the OS reduces it.
+preference composes with `prefers-reduced-motion` as **OS-on OR user-on ⇒ reduced**.
+The OS request is authoritative — an accessibility setting is never overridden by an
+in-app preference — so `reduced` forces the snap even with the OS setting off, while
+`full` prefers motion only when the OS allows it and still yields to an OS "reduce".
 
 ## Performance budgets
 

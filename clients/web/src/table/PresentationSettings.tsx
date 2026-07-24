@@ -59,7 +59,11 @@ const DENSITY_OPTIONS: { value: EffectDensity; label: string; description: strin
 const MOTION_OPTIONS: { value: MotionPreference; label: string; description: string }[] = [
   { value: 'system', label: 'System', description: 'Follow this device’s reduced-motion setting.' },
   { value: 'reduced', label: 'Reduced', description: 'Snap every animation to its end state.' },
-  { value: 'full', label: 'Full', description: 'Keep full motion even if the system reduces it.' },
+  {
+    value: 'full',
+    label: 'Full',
+    description: 'Prefer full motion — the device’s reduced-motion setting still wins.',
+  },
 ];
 
 /** One labelled radiogroup of option cards (mirrors the card-art picker chrome). */

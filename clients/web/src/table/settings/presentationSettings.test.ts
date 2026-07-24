@@ -53,7 +53,8 @@ describe('resolveReducedMotion (OS × user composition)', () => {
     { motion: 'reduced', os: false, expected: true },
     { motion: 'reduced', os: true, expected: true },
     { motion: 'full', os: false, expected: false },
-    { motion: 'full', os: true, expected: false },
+    // OS reduced-motion is authoritative — `full` cannot override an accessibility setting.
+    { motion: 'full', os: true, expected: true },
   ];
   it.each(cases)('motion=$motion os=$os ⇒ $expected', ({ motion, os, expected }) => {
     expect(resolveReducedMotion(os, motion)).toBe(expected);
