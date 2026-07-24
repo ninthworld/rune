@@ -111,10 +111,11 @@ direction-and-feasibility work of the 2.5D presentation pivot
   [ADR 0030](decisions/0030-2-5d-presentation-architecture.md) selects the DOM-scene /
   WebGL-effects architecture on the spike's evidence
   ([`design/spike-2-5d-findings.md`](design/spike-2-5d-findings.md)).
-- Performance, device, animation, and accessibility budgets
-  ([#468](https://github.com/ninthworld/rune/issues/468)) — the spike supplies the
-  software floor and the measurement harness; per-device numbers on real hardware
-  remain.
+- ~~Performance, device, animation, and accessibility budgets~~
+  ([#468](https://github.com/ninthworld/rune/issues/468)) — **documented** in
+  [`design/presentation-budgets.md`](design/presentation-budgets.md), grounded in the
+  spike's measurements plus CPU-throttled runs; real-hardware re-validation is owed
+  before the Phase 2 exit.
 - The 2.5D visual system and motion grammar
   ([#469](https://github.com/ninthworld/rune/issues/469)).
 - Layout concepts for two- through six-player, mobile, and stress-case boards
