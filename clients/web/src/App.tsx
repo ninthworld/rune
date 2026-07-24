@@ -26,8 +26,7 @@
  * interactive screen (the connection screen), never a dead one.
  */
 import { useEffect } from 'react';
-import { ConnectionScreen } from './ConnectionScreen';
-import { LobbyScreen } from './LobbyScreen';
+import { FrontDoor, LobbyContent, PregameStage, pregamePlace } from './pregame';
 import { useGameStore } from './store';
 import { LiveMatchTable } from './table/live';
 import { SpectatorTable } from './table/SpectatorTable';
@@ -56,10 +55,17 @@ export function App() {
   if (spectatorView !== null) {
     return <SpectatorTable view={spectatorView} />;
   }
-  // Socket open (or a lobby frame already in hand): drive the pre-game lobby. The
-  // lobby screen covers the pre-first-frame wait with its own fallback.
-  if (status === 'open' || lobby !== null) {
-    return <LobbyScreen />;
-  }
-  return <ConnectionScreen />;
+
+  // Front door, Lobby, and Room are three places on ONE stage
+  // (`docs/design/front-door-and-lobby.md` §4.1). The stage — and with it the
+  // environment backdrop — is mounted here, once, so a place change moves
+  // content and never re-mounts the world; that is what makes the crossing into
+  // the match invisible. Which place shows is derived from the socket status
+  // plus the latest `LobbyView`, never stored.
+  const place = pregamePlace(status, lobby?.room !== undefined, lobby !== null);
+  return (
+    <PregameStage place={place}>
+      {place === 'front-door' ? <FrontDoor /> : <LobbyContent />}
+    </PregameStage>
+  );
 }

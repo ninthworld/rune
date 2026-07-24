@@ -1,0 +1,441 @@
+/*
+ * The pregame STAGE and its shared vocabulary — the 2.5D environment the front
+ * door, lobby, and room all sit on, plus the surface and control primitives
+ * those places are built from (issue #506;
+ * `docs/design/front-door-and-lobby.md` §5.0).
+ *
+ * The places themselves live in `pregamePlaces.module.css`, which composes the
+ * primitives here; `styles.ts` merges the two into the one flat class map the
+ * components import. The split is for file size only — the two class sets are
+ * disjoint.
+ *
+ * The carved-panel treatment of `screens.module.css` (line-work borders with
+ * accent corner notches over a chrome vignette) is retired: depth comes from
+ * the elevation ladder, not from drawn ornament (visual-system §1.1/§3).
+ *
+ * Every color, shadow, duration, and easing in this file is a `--pregame-*`
+ * custom property published by `pregameScene.ts` from `sceneTokens.ts` — this
+ * module introduces **no literal hex and no literal duration** (§8 criterion 3).
+ * Geometry, spacing, radii, type scale, and the 44 px touch floor still read the
+ * shared chrome tokens (`chrome/tokens.css`), which are shape, not palette.
+ *
+ * Reduced motion is handled at the token level: `--pregame-motion-*` resolve to
+ * `0ms`, so every transition and animation below snaps to its end state with no
+ * layout or state difference.
+ */
+
+/* ── The shared stage ──────────────────────────────────────────────────────── */
+/* One stage, three places (§5.0). The environment is mounted ONCE and never
+ * re-mounts across a place change; only the content layer swaps. */
+.stage {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 1fr;
+  isolation: isolate;
+  background: var(--pregame-sky-base);
+  color: var(--pregame-text);
+  font-family: var(--rune-font-body);
+  box-sizing: border-box;
+}
+
+/* Layer 1 — the environment: the same recipe as the match's backdrop
+ * (`table/live/live-plane.module.css` .environment/.sky/.ground/.arenaEdge),
+ * fed by the default theme's slots. Pure CSS gradients: zero asset bytes, so
+ * the ≤ 4 MB first-match download and ≤ 5 s cold start are unaffected. */
+.environment {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    180deg,
+    var(--pregame-sky-top),
+    var(--pregame-sky-horizon) 52%,
+    var(--pregame-sky-base)
+  );
+}
+
+.sky {
+  position: absolute;
+  inset: 0;
+}
+
+.sky::before,
+.sky::after {
+  content: '';
+  position: absolute;
+  width: 44%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(45px);
+  opacity: 0.16;
+}
+
+.sky::before {
+  left: 5%;
+  top: -18%;
+  background: var(--pregame-glow);
+}
+
+.sky::after {
+  right: 5%;
+  top: -23%;
+  background: var(--pregame-seat-3);
+}
+
+/* Environmental animation is the only motion the quality level scales here — a
+ * slow ambient drift of the sky glows, stepping on → reduced → off across the
+ * levels (presentation-budgets §Quality levels) via [data-environment]. The
+ * CONTENT layer is identical at all three. */
+@keyframes ambientDrift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(2.5%, 1.5%, 0);
+  }
+}
+
+/* The drift periods are derived from the `staging` token (×30 = 12 s, ×60 =
+ * 24 s — the same periods the match's environment uses) rather than written as
+ * literals, so reduced motion collapses them to zero at the token level like
+ * everything else in this file. */
+.environment[data-environment='on'] .sky::before,
+.environment[data-environment='on'] .sky::after {
+  animation: ambientDrift calc(var(--pregame-motion-staging) * 30) ease-in-out infinite alternate;
+}
+
+.environment[data-environment='reduced'] .sky::before,
+.environment[data-environment='reduced'] .sky::after {
+  animation: ambientDrift calc(var(--pregame-motion-staging) * 60) ease-in-out infinite alternate;
+}
+
+.environment[data-environment='on'] .sky::after,
+.environment[data-environment='reduced'] .sky::after {
+  animation-direction: alternate-reverse;
+}
+
+/* Off (Lite, or any reduced-motion state): the backdrop is static. */
+.environment[data-environment='off'] .sky::before,
+.environment[data-environment='off'] .sky::after {
+  animation: none;
+}
+
+.ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 18%;
+  height: 43%;
+  background:
+    radial-gradient(ellipse at 20% 100%, var(--pregame-far-ground) 0 35%, transparent 36%),
+    radial-gradient(ellipse at 75% 100%, var(--pregame-far-ground) 0 42%, transparent 43%);
+  opacity: 0.9;
+}
+
+.arenaEdge {
+  position: absolute;
+  top: 46%;
+  left: 3%;
+  right: 3%;
+  bottom: -6%;
+  border: 1px solid var(--pregame-line-strong);
+  border-radius: 48% 48% 7% 7% / 20% 20% 5% 5%;
+  background: linear-gradient(180deg, var(--pregame-arena), transparent 70%);
+  opacity: 0.75;
+}
+
+/* Layer 2 — content. The place's composition in screen space; the only layer a
+ * place change touches. */
+.content {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+/* §5.8 place changes run at the `staging` class (400 ms, ≤ 500 ms cap); reduced
+ * motion resolves the duration to 0 and the destination simply appears. The
+ * animation is opacity/transform only and never blocks hit-testing, so the new
+ * place's controls are live on the frame the state changes (criterion 17). */
+@keyframes placeRise {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.place {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-height: 0;
+  animation: placeRise var(--pregame-motion-staging) var(--pregame-ease-staging) both;
+}
+
+/* ── Shared surfaces ───────────────────────────────────────────────────────── */
+/* Panels are the raised neutral with line-work bounds, resting at the screen
+ * elevation. No corner notches, no carved ornament. */
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-7);
+  box-sizing: border-box;
+  padding: var(--rune-space-9);
+  border: 1px solid var(--pregame-line);
+  border-radius: var(--rune-radius-lg);
+  background: var(--pregame-raised);
+  box-shadow: var(--pregame-elev-screen);
+}
+
+.kicker {
+  font-size: var(--rune-type-micro);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--pregame-text-muted);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-title);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--pregame-text);
+}
+
+.muted {
+  font-size: var(--rune-type-caption);
+  color: var(--pregame-text-muted);
+}
+
+.error {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  color: var(--pregame-red);
+}
+
+/* ── Controls ──────────────────────────────────────────────────────────────── */
+/* Every affordance clears the 44 px floor in both dimensions, in every input
+ * mode, and grows rather than truncating at 125 % text scaling. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--rune-space-4);
+  min-height: var(--rune-touch);
+  min-width: var(--rune-touch);
+  padding: var(--rune-space-4) var(--rune-space-8);
+  box-sizing: border-box;
+  border: 1px solid var(--pregame-line-strong);
+  border-radius: var(--rune-radius-md);
+  background: var(--pregame-surface);
+  color: var(--pregame-text);
+  font-family: inherit;
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--pregame-elev-rest);
+  transition:
+    box-shadow var(--pregame-motion-micro) var(--pregame-ease-micro),
+    transform var(--pregame-motion-micro) var(--pregame-ease-micro),
+    border-color var(--pregame-motion-micro) var(--pregame-ease-micro);
+}
+
+.button:hover,
+.button:focus-visible {
+  box-shadow: var(--pregame-elev-lifted);
+  transform: translateY(-2px);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--pregame-blue);
+  outline-offset: 2px;
+}
+
+.button:active {
+  box-shadow: var(--pregame-elev-held);
+  transform: none;
+}
+
+.button[aria-busy='true'] {
+  box-shadow: var(--pregame-elev-held);
+}
+
+/* Gold — "you can act". Exactly one advance-the-game control wears it per
+ * place, in every state (§4.4, criterion 10). The display face and the tracking
+ * are the non-color channel that says "this is the next step". */
+.gold {
+  composes: button;
+  min-height: 52px;
+  padding: var(--rune-space-5) var(--rune-space-10);
+  border-color: var(--pregame-gold);
+  background: color-mix(in srgb, var(--pregame-gold) 16%, var(--pregame-raised));
+  color: var(--pregame-text);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-heading);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.gold:hover,
+.gold:focus-visible {
+  background: color-mix(in srgb, var(--pregame-gold) 26%, var(--pregame-raised));
+}
+
+.gold:focus-visible {
+  outline-color: var(--pregame-gold);
+}
+
+.quiet {
+  composes: button;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--pregame-text-muted);
+  font-weight: 600;
+}
+
+.quiet:hover,
+.quiet:focus-visible {
+  border-color: var(--pregame-line-strong);
+  color: var(--pregame-text);
+  box-shadow: none;
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--rune-space-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+
+.fieldLabel {
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  color: var(--pregame-text-muted);
+}
+
+.input {
+  min-height: var(--rune-touch);
+  box-sizing: border-box;
+  padding: var(--rune-space-4) var(--rune-space-6);
+  border: 1px solid var(--pregame-line-strong);
+  border-radius: var(--rune-radius-md);
+  background: var(--pregame-surface);
+  color: var(--pregame-text);
+  font-family: inherit;
+  font-size: var(--rune-type-body);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--pregame-blue);
+  outline-offset: 1px;
+}
+
+/* Segmented pickers and choice tiles: every option is one visible press, never
+ * a dropdown. They rest, lift on hover/keyboard focus, and hold when selected —
+ * the same ladder the deck grid uses. */
+.segmentRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-3);
+}
+
+.segment {
+  composes: button;
+  padding: var(--rune-space-4) var(--rune-space-6);
+}
+
+.segmentOn {
+  border-color: var(--pregame-blue);
+  box-shadow:
+    inset 0 0 0 1px var(--pregame-blue),
+    var(--pregame-elev-held);
+  background: color-mix(in srgb, var(--pregame-blue) 10%, var(--pregame-surface));
+}
+
+.choiceRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-5);
+}
+
+.choiceTile {
+  composes: button;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--rune-space-2);
+  padding: var(--rune-space-6) var(--rune-space-7);
+  text-align: left;
+}
+
+.choiceName {
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.choiceMeta {
+  font-size: var(--rune-type-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pregame-text-muted);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--rune-space-2);
+  padding: var(--rune-space-2) var(--rune-space-5);
+  border: 1px solid var(--pregame-line-strong);
+  border-radius: var(--rune-radius-pill);
+  font-size: var(--rune-type-caption);
+  font-weight: 600;
+  color: var(--pregame-text-muted);
+}
+
+/* Rejected command (§5.8 last row): a ≤ 3 px shake, 2 cycles, inside the
+ * 200 ms window — never a color-only signal, never a blocking modal. Reduced
+ * motion resolves the duration to 0, leaving the server's message alone. */
+@keyframes rejectShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+.rejected {
+  animation: rejectShake var(--pregame-motion-reject) var(--pregame-ease-reject) 2;
+}
