@@ -8,6 +8,7 @@ vi.mock('./table/EffectsSurface', () => ({
 vi.mock('./table/effects', () => ({
   EffectsLayer: class {
     setPersistent(): void {}
+    replaceTransients(): void {}
     trackMotion(): void {}
   },
 }));

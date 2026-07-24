@@ -23,6 +23,13 @@ import { planeDisplayData } from '../planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../planeReconciler';
 import { EffectsLayer, type EffectDensity, type EffectQuality } from '../effects';
 import { EffectsSurface } from '../EffectsSurface';
+import { LivePlaneControls, type LivePlaneInteractionProps } from './LivePlaneControls';
+import {
+  deriveGameViewPresentation,
+  freezeDepartedEffectAnchors,
+  type GameViewPresentation,
+  type TargetingPresentationPath,
+} from './gameViewPresentation';
 import styles from './live-plane.module.css';
 
 type SceneStyle = CSSProperties & Record<`--${string}`, string | number>;
@@ -65,8 +72,14 @@ export interface LivePlaneProps {
   reducedMotion: boolean;
   /** Art-store version; a change rechecks DOM face signatures. */
   artVersion?: number;
+  /** Server-driven pending target paths assembled by the interaction adapter. */
+  targetingPaths?: readonly TargetingPresentationPath[];
   /** Publish the current pure plane to test/read-only consumers. */
   onPlane?: (plane: StagedPlane) => void;
+  /** Publish the pure view-delta adapter result to controlled tests/consumers. */
+  onPresentation?: (presentation: GameViewPresentation) => void;
+  /** Server-authoritative semantic controls layered over staged destinations. */
+  interaction?: LivePlaneInteractionProps;
 }
 
 function initialSize(): PlaneSize {
@@ -77,21 +90,54 @@ function initialSize(): PlaneSize {
   };
 }
 
-function anchorPlane(
+function refreshVisualAnchors(
   anchors: Map<string, { x: number; y: number; w: number; h: number }>,
   plane: StagedPlane,
   reconciler: PlaneReconciler,
+  view: GameView,
 ): void {
   anchors.clear();
   for (const render of planeRenders(plane)) {
-    const rect = reconciler.targetFor(render.entityId);
-    if (rect) anchors.set(render.entityId, rect);
+    const rect = reconciler.visualFor(render.entityId);
+    if (rect) {
+      for (const memberId of render.memberIds) anchors.set(memberId, rect);
+    }
   }
   const addRegion = (region: PlaneRegion): void => {
-    anchors.set(`seat:${region.seat}`, region.crest);
+    anchors.set(
+      `seat:${region.seat}`,
+      reconciler.chromeVisualFor(`crest:${region.seat}`) ?? region.crest,
+    );
+    anchors.set(
+      `pile:${region.seat}`,
+      reconciler.chromeVisualFor(`piles:${region.seat}`) ?? region.piles,
+    );
   };
   for (const region of planeRegions(plane)) addRegion(region);
-  for (const tile of plane.tiles) anchors.set(`seat:${tile.seat}`, tile.crest);
+  for (const tile of plane.tiles) {
+    const visual = reconciler.chromeVisualFor(`tile:${tile.seat}`);
+    const dx = visual === undefined ? 0 : visual.x - tile.rect.x;
+    const dy = visual === undefined ? 0 : visual.y - tile.rect.y;
+    anchors.set(`seat:${tile.seat}`, { ...tile.crest, x: tile.crest.x + dx, y: tile.crest.y + dy });
+    anchors.set(`pile:${tile.seat}`, visual ?? tile.rect);
+  }
+  if (plane.receiver) {
+    anchors.set(`hand:${view.you}`, {
+      x: plane.receiver.rect.x + plane.receiver.rect.w / 2 - 24,
+      y: Math.min(plane.height - 8, plane.receiver.rect.y + plane.receiver.rect.h),
+      w: 48,
+      h: 68,
+    });
+  }
+  for (let index = 0; index < view.stack.length; index += 1) {
+    const item = view.stack[index]!;
+    anchors.set(`stack:${item.id}`, {
+      x: plane.corridor.x + plane.corridor.w / 2 - 24 + index * 3,
+      y: plane.corridor.y + plane.corridor.h / 2 - 34 - index * 3,
+      w: 48,
+      h: 68,
+    });
+  }
 }
 
 /** Render the latest live match view on the Phase 1 scene stack. */
@@ -102,7 +148,10 @@ export function LivePlane({
   density,
   reducedMotion,
   artVersion,
+  targetingPaths,
   onPlane,
+  onPresentation,
+  interaction,
 }: LivePlaneProps) {
   const [size, setSize] = useState<PlaneSize>(initialSize);
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -112,8 +161,12 @@ export function LivePlane({
   const anchorsRef = useRef(new Map<string, { x: number; y: number; w: number; h: number }>());
   const viewRef = useRef(view);
   const stagingRef = useRef(staging);
+  const targetingPathsRef = useRef(targetingPaths);
+  const previousViewRef = useRef<GameView>();
+  const previousFocusRef = useRef(staging?.focusSeat);
   viewRef.current = view;
   stagingRef.current = staging;
+  targetingPathsRef.current = targetingPaths;
 
   const plane = useMemo(() => stagePlane(view, size, staging), [size, staging, view]);
   const planeRef = useRef(plane);
@@ -140,6 +193,7 @@ export function LivePlane({
       }
       reconciler.advance(now);
       const moving = reconciler.hasPendingAnimations();
+      refreshVisualAnchors(anchorsRef.current, planeRef.current, reconciler, viewRef.current);
       effectsLayer.trackMotion(moving);
       if (moving) {
         rafRef.current = window.requestAnimationFrame(tick);
@@ -165,8 +219,15 @@ export function LivePlane({
     reconcilerRef.current = reconciler;
     // First frame is a reconnect-safe complete scene: no enter/travel motion.
     reconciler.rebuild(planeRef.current);
-    anchorPlane(anchorsRef.current, planeRef.current, reconciler);
-    effectsLayer.setPersistent([]);
+    refreshVisualAnchors(anchorsRef.current, planeRef.current, reconciler, viewRef.current);
+    effectsLayer.setPersistent(
+      deriveGameViewPresentation(undefined, viewRef.current, {
+        focusSeat: stagingRef.current?.focusSeat,
+        targetingPaths: targetingPathsRef.current,
+        quality,
+        reducedMotion,
+      }).persistent,
+    );
     return () => {
       if (rafRef.current !== 0) window.cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
@@ -174,16 +235,48 @@ export function LivePlane({
       root.replaceChildren();
       if (reconcilerRef.current === reconciler) reconcilerRef.current = null;
     };
-  }, [effectsLayer, reducedMotion]);
+  }, [effectsLayer, quality, reducedMotion]);
 
   useLayoutEffect(() => {
     const reconciler = reconcilerRef.current;
     if (!reconciler) return;
-    reconciler.reconcile(plane);
-    anchorPlane(anchorsRef.current, plane, reconciler);
+    const previousAnchors = new Map(anchorsRef.current);
+    const presentation = deriveGameViewPresentation(previousViewRef.current, view, {
+      previousFocusSeat: previousFocusRef.current,
+      focusSeat: staging?.focusSeat,
+      targetingPaths,
+      quality,
+      reducedMotion,
+    });
+    if (previousViewRef.current !== undefined && previousViewRef.current !== view) {
+      reconciler.discardMotionProxies();
+    }
+    reconciler.reconcile(plane, presentation.motions);
+    refreshVisualAnchors(anchorsRef.current, plane, reconciler, view);
+    effectsLayer.setPersistent(presentation.persistent);
+    if (previousViewRef.current !== undefined && previousViewRef.current !== view) {
+      effectsLayer.replaceTransients(
+        freezeDepartedEffectAnchors(presentation.transients, previousAnchors, anchorsRef.current),
+      );
+    }
     startMotion();
     onPlane?.(plane);
-  }, [artVersion, onPlane, plane, startMotion]);
+    onPresentation?.(presentation);
+    previousViewRef.current = view;
+    previousFocusRef.current = staging?.focusSeat;
+  }, [
+    artVersion,
+    effectsLayer,
+    onPlane,
+    onPresentation,
+    plane,
+    quality,
+    reducedMotion,
+    staging?.focusSeat,
+    startMotion,
+    targetingPaths,
+    view,
+  ]);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -227,6 +320,7 @@ export function LivePlane({
       <div className={styles.camera}>
         <div className={styles.tiltedPlane}>
           <div ref={planeRootRef} className={styles.plane} data-testid="live-plane-dom" />
+          {interaction && <LivePlaneControls view={view} plane={plane} interaction={interaction} />}
           <div className={styles.effects}>
             <EffectsSurface
               key={`${quality}:${density}:${String(reducedMotion)}`}

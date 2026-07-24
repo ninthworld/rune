@@ -594,10 +594,11 @@ interactivity (the card is the button); the tray holds only global actions plus 
 contextual echo of the selected entity's actions. The tray is O(1) regardless of
 hand size. Interaction is select-then-confirm everywhere (tap/click twice, or
 Enter), which unifies mouse, touch, keyboard, and controller focus. Direct
-activation (ADR 0025) rides the same single gesture: a sole flagged mana
-ability fires on the first activation, a combat-declaration candidate enters
-its declaration pre-toggled, and the selected entity's sole action fires on the
-second activation — the dock stays the labeled disambiguator.
+activation (ADR 0025) keeps the reversible combat-declaration shortcut and fires
+the selected entity's sole action on the second activation. Mana abilities also
+require that deliberate select-then-activate path (#463), with the dock as the
+labeled single-press confirmation after selection and the disambiguator for
+multiple actions.
 
 ## Input capability model
 

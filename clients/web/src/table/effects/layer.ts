@@ -1,5 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
 import { COMBAT_LINK } from '../../tokens';
+import { SCENE_BATCH } from '../../sceneTokens';
 import type { Rect } from '../scene';
 import { doubledStroke } from '../combatLinks';
 import {
@@ -14,6 +15,7 @@ import {
 import {
   DENSITY_SCALE,
   PARTICLE_CAP,
+  TRANSIENT_CAP,
   type DrawOp,
   type EffectDensity,
   type EffectQuality,
@@ -62,6 +64,8 @@ interface LiveTransient {
   /** Particles this burst holds from the pool (0 at Lite / minimal density). */
   particleCount: number;
   duration: number;
+  /** Simultaneous-batch delay, inside the ≤800 ms total window. */
+  delay: number;
   start?: number;
 }
 
@@ -88,7 +92,7 @@ export class EffectsLayer {
   readonly root: Container;
 
   /** Observable behavior for the budget tests: total draws and live particles. */
-  readonly stats = { draws: 0, liveParticles: 0 };
+  readonly stats = { draws: 0, liveParticles: 0, liveTransients: 0 };
 
   /** Called when the layer gains work — the mount restarts its ticker on this. */
   wake?: () => void;
@@ -114,23 +118,64 @@ export class EffectsLayer {
 
   /** Spawn one transient effect (impact burst, resolution pulse). */
   spawn(invocation: TransientInvocation): void {
-    const { reducedMotion, quality, density } = this.options;
-    const duration = reducedMotion
+    this.spawnOne(invocation, 0);
+  }
+
+  /**
+   * Replace the transient sequence for a newer authoritative view. This is the
+   * fast-forward/interrupt contract: presentation never buffers old views.
+   * Simultaneous invocations stagger inside the normative ≤800 ms window;
+   * overflow items share the last delay and land together.
+   */
+  replaceTransients(invocations: readonly TransientInvocation[]): void {
+    this.transients = [];
+    this.stats.liveParticles = 0;
+    this.stats.liveTransients = 0;
+    const capped = invocations.slice(0, TRANSIENT_CAP[this.options.quality]);
+    for (let index = 0; index < capped.length; index += 1) {
+      const invocation = capped[index]!;
+      const duration = this.durationFor(invocation);
+      const delay =
+        this.options.reducedMotion || this.options.quality === 'lite'
+          ? 0
+          : Math.min(index * SCENE_BATCH.staggerMs, Math.max(0, SCENE_BATCH.windowMs - duration));
+      this.spawnOne(invocation, delay);
+    }
+    // Even an empty replacement must erase pixels from an interrupted batch.
+    this.dirty = true;
+    this.wake?.();
+  }
+
+  private durationFor(invocation: TransientInvocation): number {
+    const { reducedMotion } = this.options;
+    return reducedMotion
       ? EFFECT_TIMING.reducedHoldMs
-      : invocation.category === 'impact'
+      : invocation.category === 'impact' || invocation.category === 'damage'
         ? EFFECT_TIMING.impactMs
         : EFFECT_TIMING.resolutionMs;
+  }
+
+  private spawnOne(invocation: TransientInvocation, delay: number): void {
+    const { reducedMotion, quality, density } = this.options;
+    if (this.transients.length >= TRANSIENT_CAP[quality]) return;
+    const duration = this.durationFor(invocation);
     // Particle budget: Lite and reduced motion render pulses/flashes only;
     // density scales the count; the pooled cap for the quality level is never
     // exceeded across live bursts.
     const wanted =
-      quality === 'lite' || reducedMotion || invocation.category !== 'impact'
+      quality === 'lite' ||
+      reducedMotion ||
+      (invocation.category !== 'impact' &&
+        invocation.category !== 'damage' &&
+        invocation.category !== 'death' &&
+        invocation.category !== 'battlefield-entry')
         ? 0
         : Math.round(BURST_BASE * (invocation.magnitude ?? 1) * DENSITY_SCALE[density]);
     const free = PARTICLE_CAP[quality] - this.stats.liveParticles;
     const particleCount = Math.max(0, Math.min(wanted, free));
     this.stats.liveParticles += particleCount;
-    this.transients.push({ invocation, particleCount, duration });
+    this.transients.push({ invocation, particleCount, duration, delay });
+    this.stats.liveTransients += 1;
     this.dirty = true;
     this.wake?.();
   }
@@ -191,7 +236,7 @@ export class EffectsLayer {
     let delay: number | undefined;
     for (const transient of this.transients) {
       const start = transient.start ?? now;
-      const remaining = Math.max(0, transient.duration - (now - start));
+      const remaining = Math.max(0, transient.delay + transient.duration - (now - start));
       delay = delay === undefined ? remaining : Math.min(delay, remaining);
     }
     return delay;
@@ -207,12 +252,13 @@ export class EffectsLayer {
     let expired = false;
     for (const transient of this.transients) {
       if (transient.start === undefined) transient.start = now;
-      if (now - transient.start >= transient.duration) expired = true;
+      if (now - transient.start >= transient.delay + transient.duration) expired = true;
     }
     if (expired) {
       this.transients = this.transients.filter((t) => {
-        const done = t.start !== undefined && now - t.start >= t.duration;
+        const done = t.start !== undefined && now - t.start >= t.delay + t.duration;
         if (done) this.stats.liveParticles -= t.particleCount;
+        if (done) this.stats.liveTransients -= 1;
         return !done;
       });
     }
@@ -295,7 +341,17 @@ export class EffectsLayer {
         ? 1
         : transient.start === undefined
           ? 0
-          : Math.min(1, (now - transient.start) / transient.duration);
+          : Math.max(
+              0,
+              Math.min(1, (now - transient.start - transient.delay) / transient.duration),
+            );
+      if (
+        !reducedMotion &&
+        transient.start !== undefined &&
+        now - transient.start < transient.delay
+      ) {
+        continue;
+      }
       this.transientOps(ops, transient, center, reducedMotion ? 0.35 : t);
     }
     return ops;
@@ -340,6 +396,7 @@ export class EffectsLayer {
     this.persistentKey = '[]';
     this.tracking = false;
     this.stats.liveParticles = 0;
+    this.stats.liveTransients = 0;
     this.lastProgram = [];
     this.graphics.clear();
     // Pixi is render-on-demand: clearing Graphics alone does not update the

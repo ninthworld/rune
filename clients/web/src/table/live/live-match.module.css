@@ -81,7 +81,6 @@
 .hand {
   position: relative;
   overflow: hidden;
-  pointer-events: none;
   background:
     radial-gradient(ellipse at 50% 100%, rgb(78 154 155 / 12%), transparent 65%),
     var(--rune-sunken-bg);
@@ -101,10 +100,31 @@
   position: absolute;
   left: var(--hand-left);
   bottom: -72px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
   width: 132px;
+  color: inherit;
+  background: transparent;
   transform: translateX(-50%) rotate(var(--hand-angle));
   transform-origin: 50% 110%;
   filter: drop-shadow(0 8px 12px rgb(0 0 0 / 44%));
+  cursor: pointer;
+}
+
+.handCard[aria-pressed='true'] {
+  z-index: 4;
+  outline: 3px solid var(--rune-selection);
+  outline-offset: 2px;
+  transform: translateX(-50%) translateY(-20px) rotate(var(--hand-angle));
+}
+
+.handCard:focus-visible {
+  z-index: 5;
+  outline: 3px solid var(--rune-accent-gold);
+  outline-offset: 3px;
 }
 
 .decisions {
@@ -155,6 +175,21 @@
   background: transparent;
   font-size: 24px;
   cursor: pointer;
+}
+
+.dragGhost {
+  position: fixed;
+  z-index: 90;
+  width: 104px;
+  min-height: 64px;
+  padding: 10px;
+  border: 2px solid var(--rune-accent-gold);
+  border-radius: 8px;
+  color: var(--rune-text);
+  background: var(--rune-raised-bg);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+  translate: -50% -50%;
+  pointer-events: none;
 }
 
 .waiting {
