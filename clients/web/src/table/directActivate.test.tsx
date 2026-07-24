@@ -3,7 +3,7 @@
  * shortcuts select→dock where intent is unambiguous —
  *
  * 1. a combat-declaration candidate enters the declaration pre-toggled,
- * 2. a sole server-flagged mana ability fires on the first activation,
+ * 2. a server-flagged mana ability still requires deliberate activation,
  * 3. the already-selected entity's sole action fires on the second activation.
  *
  * All three ride the entity's single click/tap/keyboard-activate handler, so
@@ -108,10 +108,14 @@ function seed(json: string): ReturnType<typeof vi.fn> {
 }
 
 describe('direct entity activation (ADR 0025)', () => {
-  it('fires a sole flagged mana ability on the FIRST activation — tap the land, get the mana', () => {
+  it('selects a sole flagged mana ability first, then fires on deliberate activation', () => {
     const choose = seed(MANA_VIEW_JSON);
     render(<Table />);
-    fireEvent.click(screen.getByTestId('entity-perm_f'));
+    const entity = screen.getByTestId('entity-perm_f');
+    fireEvent.click(entity);
+    expect(choose).not.toHaveBeenCalled();
+    expect(entity.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(entity);
     expect(choose).toHaveBeenCalledTimes(1);
     expect(choose.mock.calls[0]![0].id).toBe('a2');
   });

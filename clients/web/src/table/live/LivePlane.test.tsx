@@ -3,12 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SAMPLE_GAME_VIEW } from '../../game-view.fixture';
 import { LivePlane } from './LivePlane';
 
+const effectsMock = vi.hoisted(() => ({
+  rects: undefined as
+    undefined | ((ref: string) => { x: number; y: number; w: number; h: number } | undefined),
+}));
+
 vi.mock('../EffectsSurface', () => ({
   EffectsSurface: () => <div data-testid="effects-surface" aria-hidden="true" />,
 }));
 vi.mock('../effects', () => ({
   EffectsLayer: class {
+    constructor(options: { rects: typeof effectsMock.rects }) {
+      effectsMock.rects = options.rects;
+    }
     setPersistent(): void {}
+    replaceTransients(): void {}
     trackMotion(): void {}
   },
 }));
@@ -22,6 +31,30 @@ describe('LivePlane', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    effectsMock.rects = undefined;
+  });
+
+  it('maps every folded member id to its representative visual rect', () => {
+    const first = { ...SAMPLE_GAME_VIEW.battlefield[0]!, tapped: false };
+    const copies = Array.from({ length: 20 }, (_, index) => {
+      const id = index === 0 ? 'perm_xyz' : `perm_folded_${index}`;
+      return { ...first, id, card: { ...first.card, id } };
+    });
+    render(
+      <LivePlane
+        view={{
+          ...SAMPLE_GAME_VIEW,
+          battlefield: copies,
+          valid_actions: [],
+        }}
+        quality="standard"
+        density="reduced"
+        reducedMotion
+      />,
+    );
+
+    expect(effectsMock.rects?.('perm_xyz')).toBeDefined();
+    expect(effectsMock.rects?.('perm_folded_19')).toEqual(effectsMock.rects?.('perm_xyz'));
   });
 
   it('mounts a complete production plane from one GameView without entrance motion', () => {

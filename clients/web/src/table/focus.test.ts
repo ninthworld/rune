@@ -75,6 +75,24 @@ describe('collectFocusRegions', () => {
     expect(regions).toHaveLength(1);
     expect(regions[0].items).toEqual([enabled]);
   });
+
+  it('promotes staged controls to per-item regions using destination rects', () => {
+    const div = region('battlefield', 0);
+    const right = document.createElement('button');
+    right.dataset.focusKey = 'entity:right';
+    const left = document.createElement('button');
+    left.dataset.focusKey = 'entity:left';
+    // Append in the opposite order to prove staged geometry wins over DOM order.
+    div.append(right, left);
+    const geometry = new Map(GEOMETRY);
+    geometry.set('entity:right', { x: 700, y: 300, w: 60, h: 90 });
+    geometry.set('entity:left', { x: 100, y: 300, w: 60, h: 90 });
+
+    const regions = collectFocusRegions(document, geometry);
+
+    expect(regions.map((entry) => entry.id)).toEqual(['entity:left', 'entity:right']);
+    expect(nextFocus(regions, left, 'right')).toBe(right);
+  });
 });
 
 describe('nextFocus — within a region (along-axis)', () => {

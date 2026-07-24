@@ -1,24 +1,62 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SAMPLE_GAME_VIEW_JSON } from '../../game-view.fixture';
+import {
+  DECLARE_ATTACKERS_GAME_VIEW_JSON,
+  MULLIGAN_GAME_VIEW_JSON,
+  SAMPLE_GAME_VIEW_JSON,
+  TARGETING_GAME_VIEW_JSON,
+} from '../../game-view.fixture';
+import type { TargetChoice, ValidAction } from '../../protocol';
 import { useGameStore } from '../../store';
 import { registerTableTestHooks, seed } from '../table-test-support';
 import { LiveMatchTable } from './LiveMatchTable';
+
+const effectsMock = vi.hoisted(() => ({ persistent: [] as unknown[][] }));
 
 vi.mock('../EffectsSurface', () => ({
   EffectsSurface: () => <div data-testid="effects-surface" aria-hidden="true" />,
 }));
 vi.mock('../effects', () => ({
   EffectsLayer: class {
-    setPersistent(): void {}
+    setPersistent(effects: unknown[]): void {
+      effectsMock.persistent.push(effects);
+    }
+    replaceTransients(): void {}
     trackMotion(): void {}
   },
 }));
 
 registerTableTestHooks();
 
+const MANA_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [],
+  opponents: [{ player_id: 'p2', hand_size: 0, life: 20, library_size: 40 }],
+  battlefield: [
+    {
+      id: 'perm_f',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'c_f', name: 'Forest', type_line: 'Basic Land — Forest' },
+    },
+  ],
+  phase: 'precombat_main',
+  valid_actions: [
+    { id: 'a1', type: 'pass_priority', label: 'Pass', token: 'h:pass' },
+    {
+      id: 'a2',
+      type: 'activate_ability',
+      label: '{T}: Add {G}.',
+      subject: ['perm_f'],
+      mana_ability: true,
+      token: 'h:tap',
+    },
+  ],
+});
+
 describe('LiveMatchTable', () => {
   beforeEach(() => {
+    effectsMock.persistent = [];
     vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
     vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
   });
@@ -59,5 +97,240 @@ describe('LiveMatchTable', () => {
 
     act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
     expect(document.querySelector('[data-entity-id="perm_xyz"] [data-selected="true"]')).toBeNull();
+  });
+
+  it('restores entity focus across a fresh view and falls back spatially if it leaves', async () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+    const entity = document.querySelector<HTMLElement>('[data-entity="perm_xyz"]')!;
+    expect(entity).not.toBeNull();
+    entity.focus();
+
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
+    await waitFor(() =>
+      expect((document.activeElement as HTMLElement).dataset.entity).toBe('perm_xyz'),
+    );
+
+    const departed = JSON.parse(SAMPLE_GAME_VIEW_JSON) as Record<string, unknown>;
+    departed.battlefield = [];
+    act(() => useGameStore.getState().ingest(JSON.stringify(departed)));
+    await waitFor(() => {
+      expect(document.activeElement).toBeInstanceOf(HTMLButtonElement);
+      expect(screen.getByTestId('live-match-table').contains(document.activeElement)).toBe(true);
+      expect((document.activeElement as HTMLElement).dataset.entity).not.toBe('perm_xyz');
+    });
+  });
+
+  it('requires deliberate activation for a flagged mana ability', () => {
+    const choose = seed(MANA_VIEW_JSON);
+    render(<LiveMatchTable />);
+    const land = screen.getByTestId('entity-perm_f');
+
+    fireEvent.click(land);
+    expect(choose).not.toHaveBeenCalled();
+    expect(land.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '{T}: Add {G}.' })).toBeTruthy();
+
+    fireEvent.click(land);
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect(choose.mock.calls[0]![0]).toEqual(expect.objectContaining({ id: 'a2' }));
+  });
+
+  it('offers the same deliberate mana path to touch and the accessible dock', () => {
+    const choose = seed(MANA_VIEW_JSON);
+    render(<LiveMatchTable />);
+    const land = screen.getByTestId('entity-perm_f');
+
+    fireEvent.pointerDown(land, { pointerType: 'touch', button: 0 });
+    fireEvent.click(land);
+    expect(choose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '{T}: Add {G}.' }));
+    expect(choose.mock.calls[0]![0]).toEqual(expect.objectContaining({ id: 'a2' }));
+  });
+
+  it('uses keyboard activation and spatial focus on destination controls', () => {
+    const choose = seed(MANA_VIEW_JSON);
+    render(<LiveMatchTable />);
+    const land = screen.getByTestId('entity-perm_f');
+    land.focus();
+
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose).not.toHaveBeenCalled();
+    expect(land.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(choose.mock.calls[0]![0]).toEqual(expect.objectContaining({ id: 'a2' }));
+  });
+
+  it('routes a targeted hand action through the dock and submits its pick atomically', () => {
+    const choose = seed(TARGETING_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByTestId('live-hand-card-c3'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast Lightning Bolt' }));
+    expect(choose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('targeting-prompt').textContent).toContain(
+      'target creature or player',
+    );
+
+    fireEvent.click(screen.getByTestId('target-perm_xyz'));
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action).toEqual(expect.objectContaining({ id: 'a3', token: 'h:9f2c' }));
+    expect(targets).toEqual([{ slot: 't0', chosen: ['perm_xyz'] }]);
+  });
+
+  it('previews a one-target path from the hand to the focused legal candidate', () => {
+    seed(TARGETING_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+    fireEvent.click(screen.getByTestId('live-hand-card-c3'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast Lightning Bolt' }));
+    fireEvent.pointerEnter(screen.getByTestId('target-perm_xyz'));
+
+    expect(effectsMock.persistent.at(-1)).toContainEqual(
+      expect.objectContaining({
+        category: 'targeting-path',
+        from: { ref: 'hand:p1' },
+        to: { ref: 'perm_xyz' },
+      }),
+    );
+  });
+
+  it('targets player crests from the same server-enumerated target slot', () => {
+    const choose = seed(TARGETING_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByTestId('live-hand-card-c3'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast Lightning Bolt' }));
+    fireEvent.click(screen.getByTestId('target-player-p2'));
+
+    const [, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(targets).toEqual([{ slot: 't0', chosen: ['p2'] }]);
+  });
+
+  it('enters combat from a candidate, toggles, and confirms one atomic declaration', () => {
+    const choose = seed(DECLARE_ATTACKERS_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByTestId('entity-atk_1'));
+    expect(choose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('target-atk_1').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTestId('target-atk_2'));
+    fireEvent.click(screen.getByTestId('multiselect-confirm'));
+
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action).toEqual(expect.objectContaining({ id: 'a5', token: 'h:atk0' }));
+    expect(targets).toEqual([{ slot: 'attackers', chosen: ['atk_1', 'atk_2'] }]);
+  });
+
+  it('keeps option/count prompts on the shared atomic decision surface', () => {
+    const choose = seed(MULLIGAN_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep or mulligan' }));
+    fireEvent.click(screen.getByTestId('live-hand-card-card_a'));
+    fireEvent.click(screen.getByTestId('multiselect-option-keep'));
+
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action).toEqual(expect.objectContaining({ token: 'h:mull' }));
+    expect(targets).toEqual([
+      { slot: 'decision', chosen: ['keep'] },
+      { slot: 'bottom', chosen: ['card_a'] },
+    ]);
+  });
+
+  it('clears an in-progress target session on the next complete view', () => {
+    const choose = seed(TARGETING_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+    fireEvent.click(screen.getByTestId('live-hand-card-c3'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast Lightning Bolt' }));
+    expect(screen.getByTestId('target-perm_xyz')).toBeTruthy();
+
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
+    expect(screen.queryByTestId('target-perm_xyz')).toBeNull();
+    expect(screen.queryByTestId('targeting-prompt')).toBeNull();
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('keeps drag-to-play as a pointer enhancement over the universal path', () => {
+    const raw = JSON.parse(SAMPLE_GAME_VIEW_JSON) as Record<string, unknown>;
+    raw.valid_actions = [
+      {
+        id: 'play-c1',
+        type: 'cast_spell',
+        label: 'Cast Llanowar Elves',
+        subject: ['c1'],
+        token: 'h:play',
+      },
+    ];
+    const choose = seed(JSON.stringify(raw));
+    render(<LiveMatchTable />);
+    const hand = screen.getByTestId('live-hand-card-c1');
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: vi.fn(() => screen.getByTestId('drop-board')),
+    });
+
+    fireEvent.pointerDown(hand, { button: 0, clientX: 40, clientY: 500 });
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 420 });
+    expect(screen.getByTestId('drag-ghost')).toBeTruthy();
+    expect(screen.getByTestId('drop-board')).toBeTruthy();
+    fireEvent.pointerUp(window, { clientX: 120, clientY: 240 });
+
+    expect(choose.mock.calls[0]![0]).toEqual(expect.objectContaining({ id: 'play-c1' }));
+  });
+
+  it('does not play an untargeted hand card onto an opponent region', () => {
+    const raw = JSON.parse(SAMPLE_GAME_VIEW_JSON) as Record<string, unknown>;
+    raw.valid_actions = [
+      {
+        id: 'play-c1',
+        type: 'cast_spell',
+        label: 'Cast Llanowar Elves',
+        subject: ['c1'],
+        token: 'h:play',
+      },
+    ];
+    const choose = seed(JSON.stringify(raw));
+    render(<LiveMatchTable />);
+    const hand = screen.getByTestId('live-hand-card-c1');
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: vi.fn(() => screen.getByTestId('focus-seat-p2')),
+    });
+
+    fireEvent.pointerDown(hand, { button: 0, clientX: 40, clientY: 500 });
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 420 });
+    fireEvent.pointerUp(window, { clientX: 120, clientY: 240 });
+
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('discards an armed drag when a newer authoritative view arrives', () => {
+    const raw = JSON.parse(SAMPLE_GAME_VIEW_JSON) as Record<string, unknown>;
+    raw.valid_actions = [
+      {
+        id: 'play-c1',
+        type: 'cast_spell',
+        label: 'Cast Llanowar Elves',
+        subject: ['c1'],
+        token: 'h:stale',
+      },
+    ];
+    const choose = seed(JSON.stringify(raw));
+    render(<LiveMatchTable />);
+    const hand = screen.getByTestId('live-hand-card-c1');
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: vi.fn(() => screen.getByTestId('drop-board')),
+    });
+
+    fireEvent.pointerDown(hand, { button: 0, clientX: 40, clientY: 500 });
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 420 });
+    expect(screen.getByTestId('drag-ghost')).toBeTruthy();
+
+    act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
+    expect(screen.queryByTestId('drag-ghost')).toBeNull();
+    fireEvent.pointerUp(window, { clientX: 120, clientY: 240 });
+
+    expect(choose).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,13 @@ export const PARTICLE_CAP: Record<EffectQuality, number> = {
   lite: 40,
 };
 
+/** Maximum simultaneous transient invocations (rings/flashes included). */
+export const TRANSIENT_CAP: Record<EffectQuality, number> = {
+  high: 64,
+  standard: 32,
+  lite: 8,
+};
+
 /**
  * The effect-density control, available **independently of the quality level**
  * (presentation-budgets §Quality levels): a straight multiplier on spawn
@@ -39,8 +46,19 @@ export const DENSITY_SCALE: Record<EffectDensity, number> = {
  */
 export type EffectAnchor = { ref: string } | { rect: Rect };
 
-/** The transient v1 categories: play once, retire themselves. */
-export type TransientCategory = 'impact' | 'resolution';
+/** Generic transient categories: play once, retire themselves. */
+export type TransientCategory =
+  | 'impact'
+  | 'damage'
+  | 'healing'
+  | 'resolution'
+  | 'cast'
+  | 'counter'
+  | 'death'
+  | 'draw'
+  | 'counter-change'
+  | 'battlefield-entry'
+  | 'flow';
 
 /**
  * One transient invocation — a category plus parameters the client already has

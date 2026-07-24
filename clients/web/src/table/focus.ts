@@ -121,6 +121,19 @@ export function collectFocusRegions(root: ParentNode, geometry: Map<string, Rect
     if (!id) continue;
     const items = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
     if (items.length === 0) continue;
+    const keyed = items
+      .map((item) => {
+        const key = item.dataset.focusKey;
+        const rect = key ? geometry.get(key) : undefined;
+        return key && rect ? { key, rect, item } : null;
+      })
+      .filter((entry): entry is { key: string; rect: Rect; item: HTMLElement } => entry !== null);
+    if (keyed.length > 0) {
+      for (const entry of keyed) {
+        regions.push({ id: entry.key, rect: entry.rect, items: [entry.item] });
+      }
+      continue;
+    }
     const rect = geometry.get(id) ?? domRect(container);
     regions.push({ id, rect, items });
   }

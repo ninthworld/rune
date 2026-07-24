@@ -60,14 +60,22 @@ describe('PlaneReconciler FLIP travel (input never gated)', () => {
     const offset = offsetOf(el)!;
     expect(target.x + offset.dx).toBeCloseTo(before.x);
     expect(target.y + offset.dy).toBeCloseTo(before.y);
+    // Effects follow current pixels through the separate visual seam; input
+    // keeps using targetFor's already-authoritative destination.
+    expect(r.visualFor('p2_beast_0')).toMatchObject({
+      x: expect.closeTo(before.x),
+      y: expect.closeTo(before.y),
+    });
 
     r.advance(TRAVEL); // anchor the clock
     r.advance(TRAVEL + TRAVEL / 2);
     const mid = offsetOf(el);
     if (mid) expect(Math.abs(mid.dx)).toBeLessThan(Math.abs(offset.dx));
+    expect(r.visualFor('p2_beast_0')!.x).not.toBe(target.x);
 
     r.advance(TRAVEL * 3);
     expect(el.style.transform).toBe('');
+    expect(r.visualFor('p2_beast_0')).toEqual(target);
     expect(r.hasPendingAnimations()).toBe(false);
   });
 
@@ -112,6 +120,65 @@ describe('PlaneReconciler FLIP travel (input never gated)', () => {
 });
 
 describe('PlaneReconciler travel ghosts (zone changes)', () => {
+  it('renders cross-surface draw/cast travel even without a battlefield wrapper', () => {
+    const r = animated();
+    const empty = planeOf([]);
+    r.reconcile(empty);
+
+    r.reconcile(empty, [
+      {
+        entityId: 'drawn-card',
+        category: 'draw',
+        from: 'pile:p2',
+        to: 'hand:p2',
+        durationMs: TRAVEL,
+        delayMs: 0,
+      },
+    ]);
+
+    const proxy = r.root.querySelector<HTMLElement>('[data-motion-proxy="draw"]')!;
+    expect(proxy).not.toBeNull();
+    expect(proxy.dataset.entityId).toBeUndefined();
+    expect(proxy.dataset.motionEntity).toBe('drawn-card');
+    expect(proxy.style.pointerEvents).toBe('none');
+    r.advance(0);
+    r.advance(TRAVEL / 2);
+    expect(proxy.style.transform).toContain('translate');
+    r.advance(TRAVEL);
+    expect(r.root.querySelector('[data-motion-proxy="draw"]')).toBeNull();
+  });
+
+  it('discards an older cross-surface proxy when a newer view supersedes it', () => {
+    const r = animated();
+    const empty = planeOf([]);
+    r.reconcile(empty, [
+      {
+        entityId: 'old-card',
+        category: 'cast',
+        from: 'hand:p2',
+        to: 'stack:old-card',
+        durationMs: TRAVEL,
+        delayMs: 0,
+      },
+    ]);
+    expect(r.root.querySelector('[data-motion-entity="old-card"]')).not.toBeNull();
+
+    r.discardMotionProxies();
+    r.reconcile(empty, [
+      {
+        entityId: 'new-card',
+        category: 'draw',
+        from: 'pile:p2',
+        to: 'hand:p2',
+        durationMs: TRAVEL,
+        delayMs: 0,
+      },
+    ]);
+
+    expect(r.root.querySelector('[data-motion-entity="old-card"]')).toBeNull();
+    expect(r.root.querySelector('[data-motion-entity="new-card"]')).not.toBeNull();
+  });
+
   it('enters at the final rect, fading up while a ghost travels from the piles', () => {
     const r = animated();
     r.reconcile(planeOf(menagerie('p2', 1)));

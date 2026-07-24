@@ -540,9 +540,10 @@ export function Table() {
   //
   // 1. A combat-declaration candidate ENTERS the declaration with itself
   //    pre-toggled on the first activation (reversible until Confirm).
-  // 2. A sole offered action the server flagged as a mana ability (CR 605)
-  //    fires on the first activation — tap the land, get the mana.
-  // 3. Otherwise the first activation selects (inspect + dock, as ever), and
+  // 2. Every ability, including a server-flagged mana ability, first selects.
+  //    This deliberate step prevents an accidental tap that cannot legally be
+  //    undone (#463); the dock remains the immediate accessible confirmation.
+  // 3. The first activation selects (inspect + dock, as ever), and
   //    activating the already-selected entity again fires its sole action —
   //    entering targeting mode if it has slots. Several actions keep the dock
   //    as the disambiguator (the repeat activation is then a no-op).
@@ -565,10 +566,6 @@ export function Table() {
       return;
     }
     const sole = card.actions.length === 1 ? card.actions[0] : undefined;
-    if (sole?.mana_ability) {
-      fire(sole);
-      return;
-    }
     if (selectedId !== id) {
       setSelectedId(id);
       return;

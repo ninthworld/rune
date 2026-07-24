@@ -62,8 +62,8 @@
   align-items: flex-start;
   gap: 4px;
   transition:
-    transform var(--motion-micro) ease,
-    opacity var(--motion-micro) ease;
+    transform var(--motion-card, var(--motion-micro)) ease var(--motion-card-delay, 0ms),
+    opacity var(--motion-card, var(--motion-micro)) ease var(--motion-card-delay, 0ms);
 }
 
 @media (prefers-reduced-motion: reduce) {

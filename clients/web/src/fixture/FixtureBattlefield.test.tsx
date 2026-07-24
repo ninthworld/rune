@@ -9,6 +9,7 @@ vi.mock('../table/effects', () => ({
   EffectsLayer: class {
     setPersistent(): void {}
     spawn(): void {}
+    replaceTransients(): void {}
     trackMotion(): void {}
   },
 }));

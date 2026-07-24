@@ -13,6 +13,7 @@ import {
   EFFECT_TIMING,
   EffectsLayer,
   PARTICLE_CAP,
+  TRANSIENT_CAP,
   createEffectsTicker,
   type EffectDensity,
   type EffectQuality,
@@ -427,6 +428,74 @@ describe('EffectsLayer endpoint tracking and reduced motion', () => {
     expect(layer.advance(0)).toBe(true); // the static flash frame
     expect(layer.advance(100)).toBe(false); // held — zero work
     expect(layer.advance(EFFECT_TIMING.reducedHoldMs + 1)).toBe(true); // retire redraw
+    expect(layer.hasLiveEffects()).toBe(false);
+  });
+});
+
+describe('EffectsLayer authoritative transient batches', () => {
+  it('replaces an in-flight batch when a newer view arrives', () => {
+    const { layer } = make();
+    layer.replaceTransients([
+      { category: 'damage', target: { ref: 'atk' }, accent: SCENE_HUES.red.value },
+      { category: 'death', target: { ref: 'blk' }, accent: SCENE_HUES.red.value },
+    ]);
+    layer.advance(0);
+    expect(layer.hasLiveEffects()).toBe(true);
+
+    layer.replaceTransients([
+      { category: 'healing', target: { ref: 'atk' }, accent: SCENE_HUES.green.value },
+    ]);
+    layer.advance(16);
+    expect(new Set(layer.lastProgram.map((op) => op.category))).toEqual(new Set(['healing']));
+  });
+
+  it('caps a dense batch to the total presentation window', () => {
+    const { layer } = make();
+    layer.replaceTransients(
+      Array.from({ length: 100 }, () => ({
+        category: 'battlefield-entry' as const,
+        target: { ref: 'atk' as const },
+        accent: SCENE_HUES.green.value,
+      })),
+    );
+    layer.advance(0);
+    expect(layer.stats.liveTransients).toBe(TRANSIENT_CAP.high);
+    expect(layer.hasLiveEffects()).toBe(true);
+    layer.advance(799);
+    expect(layer.hasLiveEffects()).toBe(true);
+    layer.advance(801);
+    expect(layer.hasLiveEffects()).toBe(false);
+  });
+
+  it('caps rings and flashes as well as particles at every quality', () => {
+    const { layer } = make({ quality: 'lite' });
+    layer.replaceTransients(
+      Array.from({ length: 100 }, () => ({
+        category: 'flow' as const,
+        target: { ref: 'atk' as const },
+        accent: SCENE_HUES.gold.value,
+      })),
+    );
+    expect(layer.stats.liveParticles).toBe(0);
+    expect(layer.stats.liveTransients).toBe(TRANSIENT_CAP.lite);
+    layer.advance(0);
+    expect(layer.lastProgram).toHaveLength(TRANSIENT_CAP.lite);
+  });
+
+  it('snaps the whole batch under reduced motion with no staggered animation', () => {
+    const { layer } = make({ reducedMotion: true });
+    layer.replaceTransients(
+      Array.from({ length: 8 }, () => ({
+        category: 'damage' as const,
+        target: { ref: 'atk' as const },
+        accent: SCENE_HUES.red.value,
+      })),
+    );
+    expect(layer.advance(0)).toBe(true);
+    const staticFrame = layer.lastProgram;
+    expect(layer.advance(100)).toBe(false);
+    expect(layer.lastProgram).toEqual(staticFrame);
+    expect(layer.advance(EFFECT_TIMING.reducedHoldMs + 1)).toBe(true);
     expect(layer.hasLiveEffects()).toBe(false);
   });
 });

@@ -36,13 +36,15 @@ One **direct-activation vocabulary**, layered on the universal single gesture
    because a declaration is reversible until confirmed. Only the two combat
    declarations participate; other multi-select flows (mulligan bottoming, zone
    selections) keep their explicit entry.
-2. **One-gesture mana.** The server marks the activation of a **mana ability**
+2. **Deliberate mana activation.** The server marks the activation of a **mana ability**
    (CR 605.1a: no targets, no stack, only mana production) with a new optional
-   `ValidAction.mana_ability` flag, computed by the engine's existing classifier.
-   When an entity's sole offered action carries the flag, the first activation
-   fires it — tap the land, get the mana. The client keys off the flag alone and
-   never classifies abilities.
-3. **Second activation fires the sole action.** Otherwise the first activation
+   `ValidAction.mana_ability` flag, computed by the engine's existing classifier,
+   but the client does not fire it on the first activation. Playtesting found that
+   a stray click could spend a land with no legal undo (#463). The first activation
+   therefore selects the land and exposes the labeled action in the dock; a second
+   activation of the selected land, or one activation of that dock control, fires
+   it. The client still never classifies abilities.
+3. **Second activation fires the sole action.** The first activation
    selects (inspect + dock exactly as before); activating the already-selected
    entity again fires its single offered action — entering targeting mode if it
    carries requirement slots. An entity with several actions keeps the dock as
@@ -58,10 +60,10 @@ event.
 
 ## Consequences
 
-- Paying {5}{G}{G} drops from 14 pointer actions to 7 clicks on the lands
-  themselves; declaring attackers starts on the attackers. The dock remains the
-  authoritative, labeled home for every action and the only home for ambiguous
-  ones.
+- Mana activation requires deliberate confirmation (select then activate, or
+  select then use the dock), avoiding irreversible accidental taps; declaring
+  attackers still starts on the attackers. The dock remains the authoritative,
+  labeled home for every action and the only home for ambiguous ones.
 - The protocol gains one optional, backward-compatible field (`mana_ability`,
   omitted when false). Older clients ignore it; older servers simply never set
   it and the client falls back to select-then-act.

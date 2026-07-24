@@ -79,6 +79,18 @@ export interface PlaneReconcilerOptions {
   animate?: boolean | Partial<PlaneAnimation>;
 }
 
+/** Optional semantic hint from the GameView presentation adapter (#492). */
+export interface PlaneMotionHint {
+  entityId?: EntityId;
+  category: string;
+  /** Semantic source anchor (`hand:*`, `stack:*`, `pile:*`, seat, or entity). */
+  from?: string;
+  /** Semantic destination anchor (`hand:*`, `stack:*`, `pile:*`, seat, or entity). */
+  to?: string;
+  durationMs: number;
+  delayMs: number;
+}
+
 /** What one reconcile actually did — the zero-work-when-nothing-changes gate. */
 export interface ReconcileStats {
   /** Entity wrappers created. */
@@ -247,7 +259,7 @@ export class PlaneReconciler {
    * travel ghosts then decay under {@link advance}. Unchanged elements are not
    * touched at all.
    */
-  reconcile(plane: StagedPlane): void {
+  reconcile(plane: StagedPlane, motionHints: readonly PlaneMotionHint[] = []): void {
     const stats: ReconcileStats = { ...ZERO_STATS };
     const anim = this.animating ? this.animation! : null;
 
@@ -255,6 +267,26 @@ export class PlaneReconciler {
 
     // ── Entities, by id ─────────────────────────────────────────────────────
     const renders = planeRenders(plane);
+    const futureRects = new Map<EntityId, Rect>();
+    for (const render of renders) {
+      for (const memberId of render.memberIds) futureRects.set(memberId, render.rect);
+    }
+    const hints = new Map(
+      motionHints
+        .filter(
+          (hint): hint is PlaneMotionHint & { entityId: EntityId } => hint.entityId !== undefined,
+        )
+        .map((hint) => [hint.entityId, hint]),
+    );
+    const routes = new Map<EntityId, { hint: PlaneMotionHint; from?: Rect; to?: Rect }>();
+    for (const [entityId, hint] of hints) {
+      routes.set(entityId, {
+        hint,
+        from: hint.from ? this.resolveMotionRef(hint.from, plane, futureRects) : undefined,
+        to: hint.to ? this.resolveMotionRef(hint.to, plane, futureRects) : undefined,
+      });
+    }
+    const consumedRoutes = new Set<EntityId>();
     const present = new Set<EntityId>();
     const orderedIds: EntityId[] = [];
     let batchIndex = 0;
@@ -266,8 +298,10 @@ export class PlaneReconciler {
       this.targets.set(render.entityId, render.rect);
       const signature = this.face.signature(render);
       const cached = this.cards.get(render.entityId);
+      const hint = hints.get(render.entityId);
 
       if (cached) {
+        applyMotionHint(cached.el, hint);
         // Sync the wrapper's staging facts (the ladder can re-tier a card; a
         // prompt can make it a candidate). Values only — the attribute set is
         // fixed at creation, so serialization order never drifts from fresh.
@@ -292,8 +326,8 @@ export class PlaneReconciler {
               el: cached.el,
               dx: fromX - render.rect.x,
               dy: fromY - render.rect.y,
-              duration: anim.travelMs,
-              delay: 0,
+              duration: hint?.durationMs ?? anim.travelMs,
+              delay: hint?.delayMs ?? 0,
             });
           }
           cached.rect = render.rect;
@@ -306,6 +340,7 @@ export class PlaneReconciler {
         el.dataset.seat = render.seat;
         el.dataset.tier = render.tier;
         el.dataset.candidate = String(render.candidate);
+        applyMotionHint(el, hint);
         applyRect(el, render.rect);
         this.face.render(el, render);
         this.entityLayer.appendChild(el);
@@ -317,12 +352,14 @@ export class PlaneReconciler {
         });
         stats.created += 1;
         if (anim) {
-          const delay = batchDelay(batchIndex, anim);
+          const delay = hint?.delayMs ?? batchDelay(batchIndex, anim);
           batchIndex += 1;
           el.style.opacity = '0';
-          this.enters.set(render.entityId, { el, duration: anim.travelMs, delay });
-          const from = this.travelHome(plane, render.seat);
-          if (from) this.spawnGhost(el, from, render.rect, false, anim.travelMs, delay);
+          const duration = hint?.durationMs ?? anim.travelMs;
+          this.enters.set(render.entityId, { el, duration, delay });
+          const from = routes.get(render.entityId)?.from ?? this.travelHome(plane, render.seat);
+          if (from) this.spawnGhost(el, from, render.rect, false, duration, delay);
+          consumedRoutes.add(render.entityId);
         }
       }
     }
@@ -333,16 +370,36 @@ export class PlaneReconciler {
     for (const [entityId, cached] of this.cards) {
       if (present.has(entityId)) continue;
       if (anim) {
-        const to = this.travelHome(plane, cached.seat) ?? cached.rect;
-        const delay = batchDelay(batchIndex, anim);
+        const hint = hints.get(entityId);
+        const to = routes.get(entityId)?.to ?? this.travelHome(plane, cached.seat) ?? cached.rect;
+        const delay = hint?.delayMs ?? batchDelay(batchIndex, anim);
         batchIndex += 1;
-        this.spawnGhost(cached.el, cached.rect, to, true, anim.travelMs, delay);
+        this.spawnGhost(cached.el, cached.rect, to, true, hint?.durationMs ?? anim.travelMs, delay);
+        consumedRoutes.add(entityId);
       }
       cached.el.remove();
       this.cards.delete(entityId);
       this.cardMoves.delete(entityId);
       this.enters.delete(entityId);
       stats.removed += 1;
+    }
+
+    // Some semantic travel never has a battlefield wrapper at either endpoint
+    // (draw pile→hand, hand→stack, stack→graveyard). Render a generic passive
+    // proxy so those authoritative transitions are visible rather than merely
+    // recorded as intents. It has no entity id and can never receive input.
+    if (anim) {
+      for (const [entityId, route] of routes) {
+        if (consumedRoutes.has(entityId) || !route.from || !route.to) continue;
+        this.spawnMotionProxy(
+          entityId,
+          route.hint.category,
+          route.from,
+          route.to,
+          route.hint.durationMs,
+          route.hint.delayMs,
+        );
+      }
     }
 
     // Reassert draw order only when it actually changed (zero-work rule).
@@ -434,10 +491,35 @@ export class PlaneReconciler {
     );
   }
 
+  /** Drop cross-surface proxies from an older authoritative view immediately. */
+  discardMotionProxies(): void {
+    this.ghosts = this.ghosts.filter((ghost) => {
+      if (ghost.el.dataset.motionProxy === undefined) return true;
+      ghost.el.remove();
+      return false;
+    });
+  }
+
   /** The authoritative rect of an entity from the latest reconcile — available
    * immediately, independent of any in-flight offset. */
   targetFor(entityId: EntityId): Rect | undefined {
     return this.targets.get(entityId);
+  }
+
+  /**
+   * The entity's current visual rect, including an in-flight FLIP offset.
+   * This is deliberately distinct from {@link targetFor}: effects follow the
+   * pixels while pointer/focus routing addresses the authoritative destination.
+   */
+  visualFor(entityId: EntityId): Rect | undefined {
+    const cached = this.cards.get(entityId);
+    return cached ? visualRect(cached.rect, cached.el) : undefined;
+  }
+
+  /** Current visual rect of reconciled chrome (`crest:<seat>`, `piles:<seat>`). */
+  chromeVisualFor(key: string): Rect | undefined {
+    const cached = this.chrome.get(key);
+    return cached ? visualRect(cached.rect, cached.el) : undefined;
   }
 
   /** The entity's wrapper element, if staged (never a ghost on its way out). */
@@ -598,6 +680,44 @@ export class PlaneReconciler {
     return plane.tiles.find((t) => t.seat === seat)?.rect;
   }
 
+  /** Resolve a semantic motion reference into the plane coordinate space. */
+  private resolveMotionRef(
+    ref: string,
+    plane: StagedPlane,
+    futureRects: ReadonlyMap<EntityId, Rect>,
+  ): Rect | undefined {
+    const future = futureRects.get(ref);
+    if (future) return future;
+    const card = this.cards.get(ref);
+    if (card) return visualRect(card.rect, card.el);
+
+    const [kind, id] = ref.split(':', 2);
+    if (!id) return undefined;
+    const region = planeRegions(plane).find((candidate) => candidate.seat === id);
+    const tile = plane.tiles.find((candidate) => candidate.seat === id);
+    if (kind === 'seat') return region?.crest ?? tile?.crest;
+    if (kind === 'pile') return region?.piles ?? tile?.rect;
+    if (kind === 'hand') {
+      const home = region?.rect ?? tile?.rect;
+      if (!home) return undefined;
+      return {
+        x: home.x + home.w / 2 - 24,
+        y: Math.min(plane.height - 8, home.y + home.h),
+        w: 48,
+        h: 68,
+      };
+    }
+    if (kind === 'stack') {
+      return {
+        x: plane.corridor.x + plane.corridor.w / 2 - 24,
+        y: plane.corridor.y + plane.corridor.h / 2 - 34,
+        w: 48,
+        h: 68,
+      };
+    }
+    return undefined;
+  }
+
   /** Spawn a decorative travel ghost cloned from an entity wrapper. */
   private spawnGhost(
     el: HTMLElement,
@@ -618,6 +738,31 @@ export class PlaneReconciler {
     this.ghosts.push({ el: ghost, from, to, fadeOut, duration, delay });
   }
 
+  /** Spawn a generic card-shaped travel proxy for cross-surface motion. */
+  private spawnMotionProxy(
+    entityId: EntityId,
+    category: string,
+    from: Rect,
+    to: Rect,
+    duration: number,
+    delay: number,
+  ): void {
+    const proxy = this.root.ownerDocument.createElement('div');
+    proxy.dataset.ghost = 'true';
+    proxy.dataset.motionProxy = category;
+    proxy.dataset.motionEntity = entityId;
+    proxy.style.position = 'absolute';
+    proxy.style.pointerEvents = 'none';
+    proxy.style.opacity = '0.82';
+    proxy.style.border = '2px solid var(--gold, #f2c94c)';
+    proxy.style.borderRadius = '7px';
+    proxy.style.background = 'var(--raised, #202938)';
+    proxy.style.boxShadow = '0 8px 18px rgb(0 0 0 / 35%)';
+    applyRect(proxy, { ...from, w: to.w, h: to.h });
+    this.ghostLayer.appendChild(proxy);
+    this.ghosts.push({ el: proxy, from, to, fadeOut: false, duration, delay });
+  }
+
   /** Whether the entity layer's child order already matches `orderedIds`. */
   private orderMatches(orderedIds: EntityId[]): boolean {
     const children = this.entityLayer.children;
@@ -636,6 +781,31 @@ function progress(tween: { start?: number; delay: number; duration: number }, no
   if (tween.start === undefined) tween.start = now;
   if (tween.duration <= 0) return 1;
   return clamp01((now - tween.start - tween.delay) / tween.duration);
+}
+
+/** Apply the reconciler-owned FLIP translate to an authoritative rect. */
+function visualRect(rect: Rect, el: HTMLElement): Rect {
+  const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(el.style.transform);
+  if (!match) return rect;
+  return { ...rect, x: rect.x + Number(match[1]), y: rect.y + Number(match[2]) };
+}
+
+/** Expose the active grammar class to CSS/card consumers; clear it on the next
+ * view so a rapid update cannot leave stale semantic animation state behind. */
+function applyMotionHint(el: HTMLElement, hint: PlaneMotionHint | undefined): void {
+  if (!hint) {
+    delete el.dataset.motion;
+    el.style.removeProperty('--motion-ms');
+    el.style.removeProperty('--motion-delay-ms');
+    el.style.removeProperty('--motion-card');
+    el.style.removeProperty('--motion-card-delay');
+    return;
+  }
+  el.dataset.motion = hint.category;
+  el.style.setProperty('--motion-ms', `${hint.durationMs}ms`);
+  el.style.setProperty('--motion-delay-ms', `${hint.delayMs}ms`);
+  el.style.setProperty('--motion-card', `${hint.durationMs}ms`);
+  el.style.setProperty('--motion-card-delay', `${hint.delayMs}ms`);
 }
 
 /** The batch-stagger delay for the `index`-th simultaneous item: per-item

@@ -10,6 +10,7 @@
  */
 export {
   PARTICLE_CAP,
+  TRANSIENT_CAP,
   DENSITY_SCALE,
   type EffectQuality,
   type EffectDensity,

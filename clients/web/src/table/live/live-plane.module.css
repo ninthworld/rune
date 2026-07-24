@@ -102,6 +102,84 @@
   pointer-events: none;
 }
 
+.controls {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.controlRegion {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dropBoard {
+  position: absolute;
+  z-index: 1;
+  border: 4px solid var(--gold);
+  border-radius: 18px;
+  box-shadow: inset 0 0 34px rgb(242 201 76 / 16%);
+  pointer-events: auto;
+}
+
+.dropTarget {
+  position: absolute;
+  z-index: 30;
+  box-sizing: border-box;
+  border: 4px solid var(--gold);
+  border-radius: 9px;
+  box-shadow: 0 0 0 4px rgb(242 201 76 / 18%);
+  pointer-events: none;
+}
+
+.entityControl,
+.targetControl,
+.inspectControl,
+.crestControl,
+.tileControl,
+.zoneControl {
+  position: absolute;
+  box-sizing: border-box;
+  /* The plane is scaled to .985 and tilted 4deg. 45 logical px projects to
+     slightly more than the 44 CSS-px input floor on both axes. */
+  min-width: 45px;
+  min-height: 45px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: transparent;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.entityControl[aria-pressed='true'] {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.targetControl {
+  outline: 3px dashed var(--gold);
+  outline-offset: 2px;
+}
+
+.targetControl[aria-pressed='true'] {
+  outline-style: solid;
+  box-shadow: 0 0 0 4px rgb(242 201 76 / 20%);
+}
+
+.entityControl:focus-visible,
+.targetControl:focus-visible,
+.inspectControl:focus-visible,
+.crestControl:focus-visible,
+.tileControl:focus-visible,
+.zoneControl:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
 .plane > [data-layer] {
   position: absolute;
   inset: 0;
