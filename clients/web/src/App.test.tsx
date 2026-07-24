@@ -90,6 +90,7 @@ describe('App connection gating (issues #103, #114)', () => {
     // first GameView (game constructed): the full table replaces the lobby.
     act(() => sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON));
     expect(screen.getByTestId('action-bar')).toBeDefined();
+    expect(screen.queryByTestId('live-match-table')).toBeNull();
     expect(screen.queryByTestId('lobby-screen')).toBeNull();
   });
 

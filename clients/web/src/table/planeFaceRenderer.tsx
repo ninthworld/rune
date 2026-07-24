@@ -24,6 +24,7 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server';
 import { cardVisualSignature, type CardDisplayData } from '../card/cardFactory';
+import { textureForArtKey } from '../card/art/artStore';
 import { CardFace } from '../card/dom';
 import type { PlaneRender } from './plane';
 import type { PlaneFaceRenderer } from './planeReconciler';
@@ -43,7 +44,10 @@ export function cardFaceRenderer(
   return {
     signature: (render) => cardVisualSignature(faceData(render), render.tier),
     render: (el, render) => {
-      const markup = renderToStaticMarkup(<CardFace data={faceData(render)} tier={render.tier} />);
+      const data = faceData(render);
+      const published = textureForArtKey(data.artKey);
+      const art = published ? { url: published.url, full: published.full } : undefined;
+      const markup = renderToStaticMarkup(<CardFace data={data} tier={render.tier} art={art} />);
       const current = el.firstElementChild;
       if (!current) {
         el.innerHTML = markup;

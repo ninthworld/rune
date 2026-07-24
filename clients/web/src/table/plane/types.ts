@@ -146,6 +146,10 @@ export interface PlaneRegion {
   digest?: WingDigest;
   /** The seat's display label (controller name; "(you)"-marked for the receiver). */
   label: string;
+  /** Life total, straight from the personalized view. */
+  life: number;
+  /** Visible hand count (the receiver's actual hand length or an opponent's public count). */
+  handCount: number;
   /** Whether the seat has been eliminated — the slot stays, with the eliminated
    * treatment (public zones remain browsable). */
   eliminated: boolean;
@@ -210,7 +214,7 @@ export interface SummaryTileSlot {
  * The staged plane: pure scene data — fixed slots, per-region ladder outcomes,
  * and individually addressable renders — for one view + viewport + ephemeral
  * staging state. Consumed by the Phase 1 renderer issues; until then only the
- * fixture battlefield reads it.
+ * fixture battlefield and the Phase 2 live match composition read it.
  */
 export interface StagedPlane {
   /** Logical plane width (equals the viewport's). */

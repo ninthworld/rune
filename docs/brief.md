@@ -94,10 +94,12 @@ The Rust types in `rune-protocol`, their TypeScript mirror, and
 
 ### Clients
 
-The web client in `clients/web` uses React for controls and information surfaces and Pixi
-for the table and card visuals. Both layers render the same normalized `GameView` and
-share visual tokens. The client may hold ephemeral UI state—selection, an open inspector,
-or a reconnect token—but never authoritative game state or computed legality.
+The web client in `clients/web` uses React DOM for controls, information surfaces, cards,
+and the 2.5D scene plane; Pixi is a passive effects overlay (ADR 0030). The legacy
+Pixi-table composition remains a gated parity path during the Phase 2 migration. Every
+layer renders the same normalized `GameView` and shares visual tokens. The client may
+hold ephemeral UI state—selection, an open inspector, or a reconnect token—but never
+authoritative game state or computed legality.
 
 The terminal client in `crates/rune-cli` proves that the protocol is independent of the
 web UI. It can prompt a human from the issued action list or let a deterministic agent

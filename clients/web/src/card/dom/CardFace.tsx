@@ -24,9 +24,8 @@
  *   surfaces) and on the perspective plane; all state transitions are
  *   transform/opacity-only and `prefers-reduced-motion` snaps them.
  *
- * The Pixi factory stays untouched and shipping until Phase 2 retires it; no
- * production surface swaps renderers here (the fixture battlefield, #483, is
- * the visual consumer).
+ * The legacy Pixi factory stays available as the parity path until the Phase 2
+ * exit; the live 2.5D composition and its fixture both consume this component.
  */
 import type { CSSProperties } from 'react';
 import { parseManaCost, type CardDisplayData } from '../cardFactory';
