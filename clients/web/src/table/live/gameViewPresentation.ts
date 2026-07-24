@@ -313,6 +313,39 @@ function addLogIntents(
   }
 }
 
+/**
+ * The permanents of one view transition that appear as a **swarm**: two or more
+ * that entered the battlefield with no prior visible location and that a player
+ * cannot tell apart (same controller, same identity, same type line).
+ *
+ * This is a presentation read of the view diff, never a rules derivation — the
+ * wire carries no token bit, and nothing here decides what a permanent *is*.
+ * Identical multiples arriving at once are exactly what the batch-staging
+ * budget calls a token swarm, and exactly what the ×N fold then piles up, so
+ * they stage as one batch instead of N unrelated arrivals. A lone appearance
+ * (a reanimation, a morph flip, an unknown effect) stays a generic
+ * `battlefield-entry`.
+ */
+function swarmEntries(
+  before: ReadonlyMap<EntityId, ZoneLocation>,
+  current: GameView,
+): Set<EntityId> {
+  const byIdentity = new Map<string, EntityId[]>();
+  for (const permanent of current.battlefield) {
+    if (before.has(permanent.id)) continue;
+    const identity = permanent.card.functional_id ?? permanent.card.name;
+    const key = `${permanent.controller}|${identity}|${permanent.card.type_line}`;
+    const group = byIdentity.get(key);
+    if (group) group.push(permanent.id);
+    else byIdentity.set(key, [permanent.id]);
+  }
+  const swarm = new Set<EntityId>();
+  for (const group of byIdentity.values()) {
+    if (group.length > 1) for (const id of group) swarm.add(id);
+  }
+  return swarm;
+}
+
 function addDiffIntents(
   previous: GameView,
   current: GameView,
@@ -321,6 +354,7 @@ function addDiffIntents(
 ): void {
   const before = visibleLocations(previous);
   const after = visibleLocations(current);
+  const swarm = swarmEntries(before, current);
   for (const [id, destination] of after) {
     const source = before.get(id);
     if (source?.zone === destination.zone && source.seat === destination.seat) continue;
@@ -329,7 +363,7 @@ function addDiffIntents(
     else if (source?.zone === 'hand' && destination.zone === 'stack') category = 'cast';
     else if (source?.zone === 'hand' && destination.zone === 'battlefield') category = 'play';
     else if (destination.zone === 'battlefield' && source === undefined)
-      category = 'battlefield-entry';
+      category = swarm.has(id) ? 'token-batch' : 'battlefield-entry';
     pushMotion(motions, category, id, {
       entityId: id,
       ...(source === undefined ? {} : { from: locationAnchor(source, id) }),

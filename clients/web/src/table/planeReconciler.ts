@@ -15,11 +15,16 @@
  *   its authoritative rect the moment a plane reconciles; motion is only a
  *   decaying `transform` offset (FLIP), so destination rects — and
  *   {@link PlaneReconciler.targetFor} — are addressable at 0 ms.
+ * - **×N piles are objects, not renders.** A permanent joining a fold travels
+ *   into the pile standing for it and one leaving a fold rises out of it
+ *   (never a teleport to the zone piles), and when a fold's representative
+ *   departs the pile's wrapper is re-keyed onto the next member — no removal
+ *   and re-entrance flashing over each other in the same rect.
  * - **A newer scene retargets or discards in-flight motion**: a mid-flight
  *   reconcile re-anchors the offset from the current visual position; a
  *   departed entity's motion is dropped with it.
  * - **Reduced motion snaps**, byte-identical to the un-animated path; the
- *   collapse rides the scene tokens ({@link sceneMotionMs}).
+ *   collapse rides the scene tokens (see `planeMotion.ts`).
  * - **Zero work when nothing changes** (ADR 0030): an unchanged plane touches
  *   no element ({@link PlaneReconciler.lastStats} proves it), and `advance` is
  *   inert with nothing in flight — the spike's full-re-render travel-storm
@@ -40,12 +45,30 @@
  * deterministically. Card faces render through an injected
  * {@link PlaneFaceRenderer} (the CardFace-consuming default lives in
  * `planeFaceRenderer.tsx`); the reconciler itself owns only geometry and
- * lifecycle. The shipped Pixi reconciler is untouched and keeps shipping.
+ * lifecycle, with the tween shapes, easing, and batch-stagger clamp it drives
+ * living in `planeMotion.ts`. The shipped Pixi reconciler is untouched and
+ * keeps shipping.
  */
 import type { EntityId, PlayerId } from '../protocol';
-import { SCENE_BATCH, SCENE_MOTION, sceneMotionMs } from '../sceneTokens';
 import type { Rect } from './scene';
 import type { PlaneRegion, PlaneRender, StagedPlane, SummaryTileSlot } from './plane';
+import {
+  applyMotionHint,
+  applyRect,
+  batchDelay,
+  easeOutCubic,
+  progress,
+  resolvePlaneAnimation,
+  sameRect,
+  visualRect,
+  type EnterTween,
+  type FlipTween,
+  type GhostTween,
+  type PlaneAnimation,
+  type PlaneMotionHint,
+} from './planeMotion';
+
+export type { PlaneAnimation, PlaneMotionHint } from './planeMotion';
 
 /** Renders a card face into (and re-renders it within) an entity wrapper.
  * `signature` is the "same-looking card" key: equal signatures ⇒ `render` may
@@ -57,20 +80,6 @@ export interface PlaneFaceRenderer {
   render(el: HTMLElement, render: PlaneRender): void;
 }
 
-/** Resolved animation settings (durations seed from the #480 scene tokens). */
-export interface PlaneAnimation {
-  /** `prefers-reduced-motion`: every transition snaps; nothing else differs. */
-  reducedMotion: boolean;
-  /** Card move / travel-ghost duration (zone-travel class), ms. */
-  travelMs: number;
-  /** Region slot / focus re-staging duration (staging class), ms. */
-  stagingMs: number;
-  /** Per-item batch stagger, ms. */
-  staggerMs: number;
-  /** Total batch window, ms — items beyond it land together. */
-  windowMs: number;
-}
-
 /** Options for {@link PlaneReconciler}. Omit `animate` for the snap default. */
 export interface PlaneReconcilerOptions {
   /** The face renderer every entity wrapper draws through. */
@@ -79,22 +88,12 @@ export interface PlaneReconcilerOptions {
   animate?: boolean | Partial<PlaneAnimation>;
 }
 
-/** Optional semantic hint from the GameView presentation adapter (#492). */
-export interface PlaneMotionHint {
-  entityId?: EntityId;
-  category: string;
-  /** Semantic source anchor (`hand:*`, `stack:*`, `pile:*`, seat, or entity). */
-  from?: string;
-  /** Semantic destination anchor (`hand:*`, `stack:*`, `pile:*`, seat, or entity). */
-  to?: string;
-  durationMs: number;
-  delayMs: number;
-}
-
 /** What one reconcile actually did — the zero-work-when-nothing-changes gate. */
 export interface ReconcileStats {
   /** Entity wrappers created. */
   created: number;
+  /** Wrappers re-keyed onto a new representative of the same ×N pile. */
+  adopted: number;
   /** Faces re-rendered because their signature changed. */
   updatedFaces: number;
   /** Entity wrappers whose rect moved. */
@@ -109,57 +108,13 @@ export interface ReconcileStats {
 
 const ZERO_STATS: ReconcileStats = {
   created: 0,
+  adopted: 0,
   updatedFaces: 0,
   moved: 0,
   removed: 0,
   chrome: 0,
   reordered: false,
 };
-
-/** Clamp to the unit interval. */
-function clamp01(t: number): number {
-  return t < 0 ? 0 : t > 1 ? 1 : t;
-}
-
-/** Ease-out cubic — the JS form of the tokens' decelerate curve. */
-function easeOutCubic(t: number): number {
-  const u = 1 - t;
-  return 1 - u * u * u;
-}
-
-/** A decaying FLIP offset: the element's layout box is already at its final
- * rect; only this transform offset animates to zero. */
-interface FlipTween {
-  el: HTMLElement;
-  /** Offset from the final rect at tween start (the "invert" of FLIP). */
-  dx: number;
-  dy: number;
-  duration: number;
-  /** Batch-stagger delay before the tween begins, ms. */
-  delay: number;
-  /** First `advance` timestamp; set lazily so `reconcile` needs no clock. */
-  start?: number;
-}
-
-/** A travel ghost: a decorative clone easing between two rects, then removed. */
-interface GhostTween {
-  el: HTMLElement;
-  from: Rect;
-  to: Rect;
-  /** Whether the ghost fades out as it travels (a leaving entity). */
-  fadeOut: boolean;
-  duration: number;
-  delay: number;
-  start?: number;
-}
-
-/** An entering wrapper's fade-up (opacity only; the box is already in place). */
-interface EnterTween {
-  el: HTMLElement;
-  duration: number;
-  delay: number;
-  start?: number;
-}
 
 /** Every staged region, in stable plane order. */
 export function planeRegions(plane: StagedPlane): PlaneRegion[] {
@@ -175,19 +130,6 @@ export function planeRenders(plane: StagedPlane): PlaneRender[] {
     ...planeRegions(plane).flatMap((r) => r.renders),
     ...plane.tiles.flatMap((t) => t.candidates),
   ];
-}
-
-/** Apply a rect to an element's layout box (the authoritative position). */
-function applyRect(el: HTMLElement, rect: Rect): void {
-  el.style.left = `${rect.x}px`;
-  el.style.top = `${rect.y}px`;
-  el.style.width = `${rect.w}px`;
-  el.style.height = `${rect.h}px`;
-}
-
-/** Rect equality. */
-function sameRect(a: Rect, b: Rect): boolean {
-  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
 /** One cached chrome element (region, crest, piles, tile) and its inputs. */
@@ -222,6 +164,16 @@ export class PlaneReconciler {
   private readonly chrome = new Map<string, CachedChrome>();
   private readonly cards = new Map<EntityId, CachedCard>();
   private readonly targets = new Map<EntityId, Rect>();
+
+  /**
+   * Who stood for whom in the previous plane: every folded member mapped to its
+   * ×N representative (the representative itself is not an entry). This is what
+   * makes pile membership *travel* — a permanent joining a fold flies to the
+   * pile it disappears into, one leaving a fold flies out of it, and a
+   * representative that departs hands its wrapper to the next member instead of
+   * flashing a removal and a fresh entrance in the same rect.
+   */
+  private membership = new Map<EntityId, EntityId>();
 
   private readonly cardMoves = new Map<EntityId, FlipTween>();
   private readonly chromeMoves = new Map<string, FlipTween>();
@@ -303,6 +255,21 @@ export class PlaneReconciler {
     let batchIndex = 0;
     this.targets.clear();
 
+    // The incoming plane's fold membership, resolved before any element is
+    // touched: which ids it stages, and which permanent each folded member is
+    // now represented by. Pile arrivals and departures read off this.
+    const nextIds = new Set<EntityId>();
+    const nextMembership = new Map<EntityId, EntityId>();
+    // Where a departed representative's pile stood, kept for the siblings that
+    // unfold in the same view (only the first of them inherits the wrapper).
+    const vacated = new Map<EntityId, Rect>();
+    for (const render of renders) {
+      nextIds.add(render.entityId);
+      for (const memberId of render.memberIds) {
+        if (memberId !== render.entityId) nextMembership.set(memberId, render.entityId);
+      }
+    }
+
     for (const render of renders) {
       present.add(render.entityId);
       orderedIds.push(render.entityId);
@@ -344,45 +311,107 @@ export class PlaneReconciler {
           cached.rect = render.rect;
           stats.moved += 1;
         }
-      } else {
-        const el = this.root.ownerDocument.createElement('div');
-        el.style.position = 'absolute';
+        continue;
+      }
+
+      // A fold whose representative departed continues as its next member: the
+      // pile is the same physical object, one card lighter, so its wrapper is
+      // re-keyed rather than destroyed and rebuilt in the same rect (which
+      // would flash a leave ghost and an entrance fade over each other).
+      const previousRep = this.membership.get(render.entityId);
+      const inherited =
+        previousRep !== undefined && !nextIds.has(previousRep)
+          ? this.cards.get(previousRep)
+          : undefined;
+      if (inherited && previousRep !== undefined) {
+        const el = inherited.el;
         el.dataset.entityId = render.entityId;
-        el.dataset.seat = render.seat;
-        el.dataset.tier = render.tier;
-        el.dataset.candidate = String(render.candidate);
-        if (hint) applyMotionHint(el, hint);
-        applyRect(el, render.rect);
-        this.face.render(el, render);
-        this.entityLayer.appendChild(el);
-        this.cards.set(render.entityId, {
-          el,
-          signature,
-          rect: render.rect,
-          seat: render.seat,
-        });
-        stats.created += 1;
-        if (anim) {
-          const delay = hint?.delayMs ?? batchDelay(batchIndex, anim);
-          batchIndex += 1;
-          el.style.opacity = '0';
-          const duration = hint?.durationMs ?? anim.travelMs;
-          this.enters.set(render.entityId, { el, duration, delay });
-          const from = routes.get(render.entityId)?.from ?? this.travelHome(plane, render.seat);
-          if (from) this.spawnGhost(el, from, render.rect, false, duration, delay);
-          consumedRoutes.add(render.entityId);
+        if (el.dataset.seat !== render.seat) el.dataset.seat = render.seat;
+        if (el.dataset.tier !== render.tier) el.dataset.tier = render.tier;
+        const candidate = String(render.candidate);
+        if (el.dataset.candidate !== candidate) el.dataset.candidate = candidate;
+        if (hint || el.dataset.motion !== undefined) applyMotionHint(el, hint);
+        if (inherited.signature !== signature) {
+          this.face.render(el, render);
+          stats.updatedFaces += 1;
         }
+        // Carry any in-flight motion across the swap, so neither the pile's
+        // travel nor its entrance restarts under the new key.
+        const offset = anim ? this.currentOffset(previousRep, inherited) : null;
+        const fromX = inherited.rect.x + (offset?.dx ?? 0);
+        const fromY = inherited.rect.y + (offset?.dy ?? 0);
+        const enter = this.enters.get(previousRep);
+        vacated.set(previousRep, inherited.rect);
+        this.cardMoves.delete(previousRep);
+        this.enters.delete(previousRep);
+        this.cards.delete(previousRep);
+        if (enter) this.enters.set(render.entityId, enter);
+        this.cards.set(render.entityId, { el, signature, rect: render.rect, seat: render.seat });
+        applyRect(el, render.rect);
+        if (anim && (fromX !== render.rect.x || fromY !== render.rect.y)) {
+          this.startFlip(this.cardMoves, render.entityId, {
+            el,
+            dx: fromX - render.rect.x,
+            dy: fromY - render.rect.y,
+            duration: hint?.durationMs ?? anim.travelMs,
+            delay: hint?.delayMs ?? 0,
+          });
+        }
+        stats.adopted += 1;
+        continue;
+      }
+
+      const el = this.root.ownerDocument.createElement('div');
+      el.style.position = 'absolute';
+      el.dataset.entityId = render.entityId;
+      el.dataset.seat = render.seat;
+      el.dataset.tier = render.tier;
+      el.dataset.candidate = String(render.candidate);
+      if (hint) applyMotionHint(el, hint);
+      applyRect(el, render.rect);
+      this.face.render(el, render);
+      this.entityLayer.appendChild(el);
+      this.cards.set(render.entityId, {
+        el,
+        signature,
+        rect: render.rect,
+        seat: render.seat,
+      });
+      stats.created += 1;
+      if (anim) {
+        const delay = hint?.delayMs ?? batchDelay(batchIndex, anim);
+        batchIndex += 1;
+        el.style.opacity = '0';
+        const duration = hint?.durationMs ?? anim.travelMs;
+        this.enters.set(render.entityId, { el, duration, delay });
+        // Leaving a fold is travel, not a teleport: a member that unfolds rises
+        // out of the pile that was standing for it, not out of the zone piles.
+        const leftPile =
+          previousRep === undefined
+            ? undefined
+            : (this.cards.get(previousRep)?.rect ?? vacated.get(previousRep));
+        const from =
+          routes.get(render.entityId)?.from ?? leftPile ?? this.travelHome(plane, render.seat);
+        if (from) this.spawnGhost(el, from, render.rect, false, duration, delay);
+        consumedRoutes.add(render.entityId);
       }
     }
 
     // Retire entities absent from this plane. The wrapper (and with it the hit
     // box) is removed immediately — a leaving card is never addressable — and,
-    // when animating, a decorative ghost travels to the seat's zone home.
+    // when animating, a decorative ghost travels to the seat's zone home (or,
+    // for a permanent that only folded away, into the pile now standing for it).
     for (const [entityId, cached] of this.cards) {
       if (present.has(entityId)) continue;
       if (anim) {
         const hint = hints.get(entityId);
-        const to = routes.get(entityId)?.to ?? this.travelHome(plane, cached.seat) ?? cached.rect;
+        const joinedPile = nextMembership.get(entityId);
+        const pileRect = joinedPile === undefined ? undefined : this.targets.get(joinedPile);
+        const to =
+          routes.get(entityId)?.to ??
+          pileRect ??
+          this.travelHome(plane, cached.seat) ??
+          cached.rect;
         const delay = hint?.delayMs ?? batchDelay(batchIndex, anim);
         batchIndex += 1;
         this.spawnGhost(cached.el, cached.rect, to, true, hint?.durationMs ?? anim.travelMs, delay);
@@ -419,6 +448,7 @@ export class PlaneReconciler {
       stats.reordered = true;
     }
 
+    this.membership = nextMembership;
     this.lastStats = stats;
   }
 
@@ -546,6 +576,7 @@ export class PlaneReconciler {
     this.cards.clear();
     this.chrome.clear();
     this.targets.clear();
+    this.membership.clear();
     this.cardMoves.clear();
     this.chromeMoves.clear();
     this.enters.clear();
@@ -740,6 +771,10 @@ export class PlaneReconciler {
   ): void {
     const ghost = el.cloneNode(true) as HTMLElement;
     ghost.dataset.ghost = 'true';
+    // The applied rect is where the ghost *starts* (its travel is a transform),
+    // so the destination is published for inspection: it is what distinguishes
+    // travel into a pile from travel to the seat's zone home.
+    ghost.dataset.travelTo = `${to.x},${to.y}`;
     delete ghost.dataset.entityId;
     ghost.style.pointerEvents = 'none';
     ghost.style.opacity = '1';
@@ -783,47 +818,6 @@ export class PlaneReconciler {
     }
     return true;
   }
-}
-
-/** Lazily anchor a tween's clock and return its progress, or `null` before its
- * first `advance`. The batch-stagger delay holds progress at zero until it
- * elapses (so staggered items land inside the window, later ones together). */
-function progress(tween: { start?: number; delay: number; duration: number }, now: number): number {
-  if (tween.start === undefined) tween.start = now;
-  if (tween.duration <= 0) return 1;
-  return clamp01((now - tween.start - tween.delay) / tween.duration);
-}
-
-/** Apply the reconciler-owned FLIP translate to an authoritative rect. */
-function visualRect(rect: Rect, el: HTMLElement): Rect {
-  const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(el.style.transform);
-  if (!match) return rect;
-  return { ...rect, x: rect.x + Number(match[1]), y: rect.y + Number(match[2]) };
-}
-
-/** Expose the active grammar class to CSS/card consumers; clear it on the next
- * view so a rapid update cannot leave stale semantic animation state behind. */
-function applyMotionHint(el: HTMLElement, hint: PlaneMotionHint | undefined): void {
-  if (!hint) {
-    delete el.dataset.motion;
-    el.style.removeProperty('--motion-ms');
-    el.style.removeProperty('--motion-delay-ms');
-    el.style.removeProperty('--motion-card');
-    el.style.removeProperty('--motion-card-delay');
-    return;
-  }
-  el.dataset.motion = hint.category;
-  el.style.setProperty('--motion-ms', `${hint.durationMs}ms`);
-  el.style.setProperty('--motion-delay-ms', `${hint.delayMs}ms`);
-  el.style.setProperty('--motion-card', `${hint.durationMs}ms`);
-  el.style.setProperty('--motion-card-delay', `${hint.delayMs}ms`);
-}
-
-/** The batch-stagger delay for the `index`-th simultaneous item: per-item
- * stagger, clamped so every item completes inside the total window (items
- * beyond the window land together at its edge). */
-function batchDelay(index: number, anim: PlaneAnimation): number {
-  return Math.min(index * anim.staggerMs, Math.max(0, anim.windowMs - anim.travelMs));
 }
 
 /** A region's non-geometry inputs as data attributes. */
@@ -888,25 +882,4 @@ function tileMeta(tile: SummaryTileSlot): Record<string, string> {
     priority: String(tile.priority),
     ...zonesMeta(tile.zones),
   };
-}
-
-/** Resolve the `animate` option: token-seeded defaults, `null` when absent. */
-function resolvePlaneAnimation(animate: PlaneReconcilerOptions['animate']): PlaneAnimation | null {
-  if (!animate) return null;
-  const defaults: PlaneAnimation = {
-    reducedMotion: false,
-    travelMs: SCENE_MOTION.zoneTravel.ms,
-    stagingMs: SCENE_MOTION.staging.ms,
-    staggerMs: SCENE_BATCH.staggerMs,
-    windowMs: SCENE_BATCH.windowMs,
-  };
-  if (animate === true) return defaults;
-  const resolved = { ...defaults, ...animate };
-  // The reduced-motion collapse rides the tokens: zero duration ⇒ every
-  // transition completes on its first advance with no intermediate state.
-  if (resolved.reducedMotion) {
-    resolved.travelMs = sceneMotionMs('zoneTravel', true);
-    resolved.stagingMs = sceneMotionMs('staging', true);
-  }
-  return resolved;
 }

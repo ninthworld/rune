@@ -70,6 +70,8 @@ describe('CardFace non-color state channels (visual-system §7)', () => {
       expect(root.dataset[key]).toBe('true');
     }
     expect(root.dataset.stack).toBe('3');
+    // A fold also publishes its drawn pile depth (visual-system §5).
+    expect(root.dataset.splay).toBe('2');
   });
 
   it('rotates a tapped card ~25° and reserves the swept footprint', () => {

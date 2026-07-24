@@ -6,6 +6,7 @@
  */
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { SPLAY } from '../../tokens';
 import type { CardDisplayData } from '../cardFactory';
 import { CardFace } from './CardFace';
 import { BATTLEFIELD_TIERS, faceFootprint, type CardFaceTier } from './theme';
@@ -246,6 +247,98 @@ describe('CardFace DOM node budget (presentation-budgets §Performance)', () => 
     expect(nodeCount(stacked)).toBe(single + 1);
     expect(stacked.textContent).toContain('×14');
     expect(stacked.dataset.stack).toBe('14');
+  });
+});
+
+describe('CardFace ×N pile (visual-system §5: a splayed physical pile)', () => {
+  /** The composed pile shadow a face publishes, or '' when it is not a fold. */
+  const splayOf = (root: HTMLElement): string => root.style.getPropertyValue('--splay-layers');
+
+  it('splays one card edge per hidden member, so depth grows with the fold', () => {
+    const single = renderFace(bear(), 'field');
+    expect(single.dataset.splay).toBeUndefined();
+    expect(splayOf(single)).toBe('');
+    cleanup();
+
+    let previous = 0;
+    for (const [count, layers] of [
+      [2, 1],
+      [3, 2],
+      [4, 3],
+    ] as const) {
+      const root = renderFace(bear({ stackCount: count }), 'field');
+      expect(root.dataset.splay).toBe(String(layers));
+      // Two shadow layers per hidden card: its body fill and its accent edge,
+      // each offset further up-and-right than the last.
+      const shadow = splayOf(root);
+      expect(shadow.split(',')).toHaveLength(layers * 2);
+      expect(shadow.length).toBeGreaterThan(previous);
+      previous = shadow.length;
+      cleanup();
+    }
+  });
+
+  it('offsets each card by the specified 2–3 px and paints only token colors', () => {
+    const root = renderFace(bear({ stackCount: 4 }), 'field');
+    const offsets = [...splayOf(root).matchAll(/(-?\d+)px (-?\d+)px/g)].map(([, x, y]) => ({
+      x: Number(x),
+      y: Number(y),
+    }));
+    // Up-and-right, monotonically deeper, in 2–3 px steps.
+    for (const [index, offset] of offsets.entries()) {
+      expect(offset.x).toBe(-offset.y);
+      expect(offset.x).toBeGreaterThanOrEqual(1);
+      if (index > 0) {
+        const step = offset.x - offsets[index - 1]!.x;
+        expect(step).toBeGreaterThanOrEqual(1);
+        expect(step).toBeLessThanOrEqual(3);
+      }
+    }
+    expect(offsets.at(-1)!.x).toBeLessThanOrEqual(SPLAY.maxLayers * SPLAY.stepPx + SPLAY.edgePx);
+    // Every layer paints through the face's own token custom properties.
+    expect(splayOf(root)).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(/i);
+    expect(splayOf(root)).toContain('var(--face-body)');
+    expect(splayOf(root)).toContain('var(--face-accent)');
+  });
+
+  it('caps the pile silhouette while the badge carries the exact count', () => {
+    const four = renderFace(bear({ stackCount: 4 }), 'field');
+    const capped = splayOf(four);
+    cleanup();
+    const forty = renderFace(bear({ stackCount: 40 }), 'field');
+    expect(splayOf(forty)).toBe(capped);
+    expect(forty.dataset.splay).toBe(String(SPLAY.maxLayers));
+    expect(forty.textContent).toContain('×40');
+  });
+
+  it('costs zero DOM nodes at every depth, at every battlefield tier', () => {
+    for (const tier of BATTLEFIELD_TIERS) {
+      const flat = nodeCount(renderFace(bear({ stackCount: 2 }), tier));
+      cleanup();
+      const deep = nodeCount(renderFace(bear({ stackCount: 240 }), tier));
+      expect(deep).toBe(flat);
+      expect(deep).toBeLessThanOrEqual(12);
+      cleanup();
+    }
+  });
+
+  it('piles a basic-land fold exactly like any other permanent (#463(b))', () => {
+    const root = renderFace(
+      bear({
+        name: 'Plains',
+        typeLine: 'Basic Land — Plains',
+        landGlyph: 'land-plains',
+        colorIdentity: 'W',
+        manaCost: undefined,
+        power: undefined,
+        toughness: undefined,
+        stackCount: 4,
+      }),
+      'chip',
+    );
+    expect(root.dataset.splay).toBe('3');
+    expect(root.textContent).toContain('×4');
+    expect(nodeCount(root)).toBeLessThanOrEqual(12);
   });
 });
 

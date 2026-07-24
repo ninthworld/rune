@@ -3,6 +3,7 @@ import {
   FrameBudgetSampler,
   fixtureBudget,
   fixtureBudgetReport,
+  maxCardFaceNodes,
   summarizeFrameDeltas,
 } from './metrics';
 
@@ -13,13 +14,26 @@ describe('fixture presentation budgets', () => {
       maxP95Ms: 16.7,
       maxRebuildMs: 50,
       maxDomNodes: 15_000,
+      maxFaceNodes: 12,
     });
     expect(fixtureBudget('lite', true)).toEqual({
       minFps: 30,
       maxP95Ms: 33.3,
       maxRebuildMs: 100,
       maxDomNodes: 15_000,
+      maxFaceNodes: 12,
     });
+  });
+
+  it('reports the largest staged card face, ignoring empty wrappers', () => {
+    const root = document.createElement('div');
+    root.innerHTML =
+      '<div data-entity-id="a"><div><span></span></div></div>' +
+      '<div data-entity-id="b"><div><span><i></i></span><span></span></div></div>' +
+      '<div data-entity-id="c"></div>';
+    // The deepest face is root + 2 spans + 1 nested <i> = 4 elements.
+    expect(maxCardFaceNodes(root)).toBe(4);
+    expect(maxCardFaceNodes(document.createElement('div'))).toBe(0);
   });
 
   it('summarizes controlled RAF deltas without a wall clock', () => {
@@ -51,6 +65,7 @@ describe('fixture presentation budgets', () => {
       tween: { samples: 60, fps: 60, p95Ms: 16.6 },
       rebuildMs: 12,
       domNodes: 1200,
+      faceNodes: 11,
     });
     expect(passing.passes).toBe(true);
 
@@ -58,6 +73,12 @@ describe('fixture presentation budgets', () => {
       fixtureBudgetReport({
         ...passing,
         domNodes: 15_001,
+      }).passes,
+    ).toBe(false);
+    expect(
+      fixtureBudgetReport({
+        ...passing,
+        faceNodes: 13,
       }).passes,
     ).toBe(false);
   });
