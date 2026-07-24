@@ -105,6 +105,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
   const choose = useGameStore((state) => state.choose);
   const setStops = useGameStore((state) => state.setStops);
   const disconnect = useGameStore((state) => state.disconnect);
+  const leaveGame = useGameStore((state) => state.leaveGame);
   const rejectionNonce = useGameStore((state) => state.rejectionNonce);
   const sessionEpoch = useGameStore((state) => state.sessionEpoch);
   const artVersion = useSyncExternalStore(subscribeArt, getArtVersion);
@@ -816,7 +817,12 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
       {showSettings && <PresentationSettings onClose={() => setShowSettings(false)} />}
       {showArtSettings && <ArtSettings onClose={() => setShowArtSettings(false)} />}
       {view.result && (
-        <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
+        <GameOverOverlay
+          result={view.result}
+          you={view.you}
+          names={view.player_names}
+          onLeave={leaveGame}
+        />
       )}
       <RejectionToast nonce={rejectionNonce} />
     </main>

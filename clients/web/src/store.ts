@@ -229,6 +229,21 @@ export interface GameStore {
   /** Close the connection intentionally; suppresses auto-reconnect. */
   disconnect: () => void;
   /**
+   * Leave the game this connection is in and go back to the lobby (issue #452).
+   *
+   * This is the counterpart of {@link disconnect} that {@link view} never had: it
+   * gives up the seat (closing the socket is what tells the room the seat left) and
+   * **clears the terminal view**, so the app's existing gates route on instead of
+   * pinning the player to the game-over screen forever. It then reopens the same
+   * server so they land back in the lobby; with no server to return to it simply
+   * ends at the connection screen. Either way the next screen is interactive.
+   *
+   * A client-session action like {@link disconnect}, not game state — the terminal
+   * `GameView` is still the only thing the game-over screen renders from, and a
+   * reconnect that replays it shows exactly the same screen with the same exit.
+   */
+  leaveGame: () => void;
+  /**
    * Send one {@link LobbyCommand} (create/join/submit-deck/ready/leave). The
    * command is recorded so the next `LobbyView` can be reconciled into a
    * non-fatal error if the server rejected it. No legality is computed here — the
@@ -437,6 +452,23 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       lastSession = null;
       clearPersistedSession();
       set({ status: 'closed', lobby: null, lobbyError: null });
+    },
+
+    leaveGame(): void {
+      // Where to come back to, read before the disconnect clears the transport.
+      const url = lastUrl;
+      const options = lastOptions;
+      // Give up the seat: an in-game connection is bridged to its room, so closing
+      // the socket is how the seat leaves (the server sends `Leave` on the drop).
+      // This also spends the reconnect credential, so a later reload cannot reclaim
+      // a game that is over.
+      get().disconnect();
+      // Drop the terminal view: while it is held, the app renders the game screen no
+      // matter what the socket is doing — the dead end of issue #452.
+      set({ view: null, spectatorView: null });
+      // Return to the lobby by reopening the same server (a fresh `Hello` gets a
+      // fresh session and its own first `LobbyView`).
+      if (url !== null) get().connect(url, options);
     },
 
     sendLobby(command): void {

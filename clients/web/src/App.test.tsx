@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { App } from './App';
 import { useGameStore, type SocketFactory } from './store';
-import { SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
+import { GAME_OVER_LOSS_JSON, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
 import { LOBBY_ROOMLESS_JSON } from './lobby-view.fixture';
 
 // The in-game screen is the 2.5D match table (#494); mock its passive Pixi
@@ -137,6 +137,28 @@ describe('App connection gating (issues #103, #114)', () => {
     fireEvent.click(screen.getByTestId('lobby-disconnect-button'));
     expect(screen.getByTestId('connection-screen')).toBeDefined();
     expect(screen.queryByTestId('lobby-screen')).toBeNull();
+  });
+
+  it('leaves a finished game and lands back in the lobby (issue #452)', () => {
+    const { factory, sockets } = recordingFactory();
+    render(<App />);
+
+    connectWith(factory);
+    act(() => sockets[0].emitOpen());
+    act(() => sockets[0].emitMessage(LOBBY_ROOMLESS_JSON));
+    act(() => sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON));
+    // The game ends (this frame is equally the one a reconnect into a finished
+    // game replays, and the one a concede produces — there is no special case).
+    act(() => sockets[0].emitMessage(GAME_OVER_LOSS_JSON));
+    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+
+    // The verdict's exit routes back out; nothing pins the app to the dead screen.
+    fireEvent.click(screen.getByTestId('game-over-leave'));
+    expect(screen.queryByTestId('game-over-overlay')).toBeNull();
+    expect(screen.queryByTestId('live-match-table')).toBeNull();
+    act(() => sockets[1].emitOpen());
+    act(() => sockets[1].emitMessage(LOBBY_ROOMLESS_JSON));
+    expect(screen.getByTestId('lobby-screen')).toBeDefined();
   });
 
   it('shows a retry after the connection closes (error surfaces as a close)', () => {

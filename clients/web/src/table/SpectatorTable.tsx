@@ -84,6 +84,7 @@ function asPublicView(spec: SpectatorView): GameView {
 /** The read-only spectate table (ADR 0022, issue #351; ADR 0030 plane, issue #504). */
 export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
   const sessionEpoch = useGameStore((state) => state.sessionEpoch);
+  const leaveGame = useGameStore((state) => state.leaveGame);
   const artVersion = useSyncExternalStore(subscribeArt, getArtVersion);
   const viewport = useViewport();
   const reducedMotion = useReducedMotion();
@@ -211,7 +212,15 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
       )}
       {inspectTarget && <CardInspect target={inspectTarget} onClose={() => setInspectedId(null)} />}
       {/* The terminal verdict, shown to the spectator with no personal "you" framing. */}
-      {spec.result && <GameOverOverlay result={spec.result} you="" names={spec.player_names} />}
+      {/* A spectator watching a finished game needs the same way out (issue #452). */}
+      {spec.result && (
+        <GameOverOverlay
+          result={spec.result}
+          you=""
+          names={spec.player_names}
+          onLeave={leaveGame}
+        />
+      )}
     </main>
   );
 }
