@@ -12,11 +12,14 @@
  *   {@link cardFaceVars} as CSS custom properties (ADR 0019); the provisional
  *   elevation/motion seeds live in `theme.ts` as the #480 swap point.
  * - **Budget-shaped DOM** (presentation-budgets §Performance: ≤ 12 nodes per
- *   battlefield-tier face): every state channel is zero-node — rings are
- *   box-shadows, edge bars and the monogram and the ability marker are
- *   pseudo-elements, tap/dim/elevation are transform + opacity, the ×N splay is
- *   layered box-shadow — and the keyword strip is one `<svg>` with combined
- *   paths from the shared glyph geometry.
+ *   battlefield-tier face — a hard, input-independent ceiling): every state
+ *   channel is zero-node — rings are box-shadows, edge bars and the monogram
+ *   and the ability marker are pseudo-elements, tap/dim/elevation are
+ *   transform + opacity, the ×N splay is layered box-shadow — and no element
+ *   scales with its input: the keyword strip is one `<svg>` with combined
+ *   paths and a capped `+N`, the mana cost is one bounded pill, and every
+ *   badge consolidates into one row (the colored per-symbol/per-badge
+ *   rendering stays at the budget-exempt hand/inspect tiers).
  * - **Transform readiness** (ADR 0030): the face renders correctly flat (chrome
  *   surfaces) and on the perspective plane; all state transitions are
  *   transform/opacity-only and `prefers-reduced-motion` snaps them.
@@ -93,6 +96,31 @@ function badgeSpecs(data: CardDisplayData): BadgeSpec[] {
   return badges;
 }
 
+/**
+ * The badge row. At the battlefield tiers every badge consolidates into ONE
+ * bounded node (labels joined with a middle dot) so counters, damage, blocked,
+ * and ×N can never scale the face past the node budget — each badge is text,
+ * so the kind stays legible without per-badge color (non-color channel rule).
+ * The screen-space tiers keep one colored span per badge.
+ */
+function Badges({ badges, consolidated }: { badges: BadgeSpec[]; consolidated: boolean }) {
+  if (badges.length === 0) return null;
+  if (consolidated) {
+    return (
+      <span className={cx(s.badge, s.badgeRow)}>{badges.map((b) => b.label).join(' · ')}</span>
+    );
+  }
+  return (
+    <>
+      {badges.map((b) => (
+        <span key={b.key} className={cx(s.badge, b.className)}>
+          {b.label}
+        </span>
+      ))}
+    </>
+  );
+}
+
 /** The capped keyword strip: shown glyph names plus the `+N` overflow count. */
 function keywordStrip(
   data: CardDisplayData,
@@ -107,7 +135,11 @@ function keywordStrip(
   return { names: names.slice(0, capacity - 1), overflow: names.length - (capacity - 1) };
 }
 
-/** The mana-cost pips as budget-lean absolute spans (no wrapper element). */
+/**
+ * The mana cost at the screen-space tiers (hand, inspect): one colored disc
+ * span per symbol, swatched from the `PIP` tokens via {@link parseManaCost}.
+ * Budget-exempt — the battlefield tiers render {@link CostPill} instead.
+ */
 function Pips({ data, flow }: { data: CardDisplayData; flow?: boolean }) {
   if (!data.manaCost) return null;
   return (
@@ -129,6 +161,22 @@ function Pips({ data, flow }: { data: CardDisplayData; flow?: boolean }) {
       ))}
     </>
   );
+}
+
+/**
+ * The mana cost at the battlefield tiers: ONE bounded node regardless of the
+ * number of symbols (the ≤ 12-node budget is a hard per-face ceiling, so no
+ * face element may scale with its input). The symbols read as text separated
+ * by a middle dot — the symbol letters themselves are the information channel
+ * (never color-only, ui-requirements §10); the per-symbol disc swatches remain
+ * at the screen-space hand/inspect tiers where costs are read closely.
+ */
+function CostPill({ data }: { data: CardDisplayData }) {
+  if (!data.manaCost) return null;
+  const label = parseManaCost(data.manaCost)
+    .map((pip) => pip.symbol)
+    .join('·');
+  return <div className={s.cost}>{label}</div>;
 }
 
 /** The one-svg keyword strip (combined paths; `+N` overflow tag). */
@@ -240,11 +288,7 @@ export function CardFace({
             ) : (
               <div className={cx(s.chipName, art && s.overArt)}>{data.name}</div>
             ))}
-          {badges.map((b) => (
-            <span key={b.key} className={cx(s.badge, b.className)}>
-              {b.label}
-            </span>
-          ))}
+          <Badges badges={badges} consolidated />
         </div>
       </div>
     );
@@ -254,22 +298,19 @@ export function CardFace({
     <div {...rootProps}>
       <div className={s.inner} data-monogram={full || windowArt ? '' : data.name.slice(0, 1)}>
         {full && <img className={s.artFull} src={art!.url} alt="" />}
-        {/* The name node always exists (empty in full-card mode): its
-            pseudo-elements carry the combat edge bars, which overlay every
-            face mode unchanged. */}
+        {/* The name and type nodes always exist (empty in full-card mode):
+            their pseudo-elements carry the combat edge bars and the latent
+            ability marker, and the art image stacks below every overlay — so
+            each server-computed channel survives every face mode unchanged. */}
         <div className={s.name}>{full ? '' : data.name}</div>
-        {!full && <Pips data={data} />}
+        {!full && (tier === 'hand' ? <Pips data={data} /> : <CostPill data={data} />)}
         {windowArt && <img className={s.artWindow} src={windowArt.url} alt="" />}
-        {!full && <div className={cx(s.type, windowArt && s.overArt)}>{data.typeLine}</div>}
+        <div className={cx(s.type, windowArt && s.overArt)}>{full ? '' : data.typeLine}</div>
         <KeywordStrip names={strip.names} overflow={strip.overflow} />
         {data.power !== undefined && data.toughness !== undefined && (
           <div className={s.pt}>{`${data.power}/${data.toughness}`}</div>
         )}
-        {badges.map((b) => (
-          <span key={b.key} className={cx(s.badge, b.className)}>
-            {b.label}
-          </span>
-        ))}
+        <Badges badges={badges} consolidated={tier !== 'hand'} />
       </div>
     </div>
   );
@@ -345,11 +386,7 @@ function InspectFace({
             <div className={cx(s.pt, s.ptFlow)}>{`${data.power}/${data.toughness}`}</div>
           )}
         </div>
-        {badges.map((b) => (
-          <span key={b.key} className={cx(s.badge, b.className)}>
-            {b.label}
-          </span>
-        ))}
+        <Badges badges={badges} consolidated={false} />
       </div>
     </div>
   );

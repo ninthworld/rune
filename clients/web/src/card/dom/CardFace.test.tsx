@@ -123,28 +123,84 @@ describe('CardFace information budget per tier (ui-design-notes §Card render)',
 });
 
 describe('CardFace DOM node budget (presentation-budgets §Performance)', () => {
-  it('keeps a fully-loaded battlefield face within 12 element nodes', () => {
-    // Every state channel lit at once, cost, a keyword mixing stroke+fill
-    // primitives, a counter badge AND a damage badge: the maximal face the
-    // budget guarantees.
-    const data = bear({
-      keywords: ['flying', 'deathtouch'],
-      counters: [{ kind: '+1/+1', count: 2 }],
-      markedDamage: 2,
+  /** The maximum-supported face: every channel lit, a five-symbol cost, a
+   * keyword overflow mixing stroke+fill primitives, four badge kinds at once,
+   * and an ×N stack. The ceiling is hard and input-independent, so THIS is the
+   * face the budget test measures — not a favorable fixture. */
+  const maximal = () =>
+    bear({
+      manaCost: '{2}{G}{G}{W}{W}',
+      keywords: [
+        'flying',
+        'deathtouch',
+        'reach',
+        'vigilance',
+        'haste',
+        'trample',
+        'lifelink',
+        'first_strike',
+        'double_strike',
+      ],
+      counters: [
+        { kind: '+1/+1', count: 3 },
+        { kind: 'charge', count: 2 },
+        { kind: 'stun', count: 1 },
+      ],
+      markedDamage: 4,
+      blockedBy: 3,
+      stackCount: 5,
+      summoningSick: true,
       tapped: true,
       selected: true,
+      targeting: true,
+      dimmed: true,
       actionable: true,
       attacking: true,
+      blocking: true,
       hasActivatedAbility: true,
     });
+
+  it('keeps the maximum-supported battlefield face within 12 element nodes', () => {
     for (const tier of BATTLEFIELD_TIERS.filter((t) => t !== 'chip')) {
-      const root = renderFace(data, tier);
+      // Window art included where the tier draws it — the absolute worst case.
+      const root = renderFace(maximal(), tier, { art: { url: 'blob:art' } });
       expect(nodeCount(root)).toBeLessThanOrEqual(12);
       cleanup();
     }
   });
 
-  it('keeps the chip within the budget with room to spare', () => {
+  it('never scales the face with its inputs (hard ceiling, not typical-case)', () => {
+    const small = nodeCount(renderFace(bear({ counters: [{ kind: '+1/+1', count: 1 }] }), 'field'));
+    cleanup();
+    // Five cost symbols instead of two, three badge kinds instead of one: the
+    // cost pill and the consolidated badge row keep the count identical.
+    const large = nodeCount(
+      renderFace(
+        bear({
+          manaCost: '{2}{G}{G}{W}{W}',
+          counters: [
+            { kind: '+1/+1', count: 3 },
+            { kind: 'charge', count: 2 },
+          ],
+          markedDamage: 4,
+          blockedBy: 2,
+          stackCount: 9,
+        }),
+        'field',
+      ),
+    );
+    expect(large).toBe(small);
+  });
+
+  it('keeps every badge and cost symbol readable in the consolidated nodes', () => {
+    const root = renderFace(maximal(), 'field');
+    expect(root.textContent).toContain('2·G·G·W·W');
+    for (const label of ['+1/+1 ×3', 'charge ×2', 'stun', '4 dmg', 'blocked ×3', '×5', 'zz']) {
+      expect(root.textContent).toContain(label);
+    }
+  });
+
+  it('keeps the chip within the budget at its maximum inputs', () => {
     const root = renderFace(
       bear({
         name: 'Forest',
@@ -152,11 +208,13 @@ describe('CardFace DOM node budget (presentation-budgets §Performance)', () => 
         landGlyph: 'land-forest',
         tapped: true,
         actionable: true,
+        selected: true,
         stackCount: 4,
       }),
       'chip',
+      { art: { url: 'blob:art' } },
     );
-    expect(nodeCount(root)).toBeLessThanOrEqual(6);
+    expect(nodeCount(root)).toBeLessThanOrEqual(8);
   });
 
   it('adds ZERO nodes for every non-content state channel', () => {

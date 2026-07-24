@@ -16,6 +16,7 @@ import type { CardDisplayData } from '../cardFactory';
 import { CardFace, type CardFaceProps } from './CardFace';
 import { PROVISIONAL, faceAlpha } from './theme';
 import { glyphStripGeometry } from './glyphStrip';
+import s from './card-face.module.css';
 
 afterEach(cleanup);
 
@@ -146,6 +147,25 @@ describe('CardFace art modes (ADR 0024, unchanged)', () => {
     expect(root.dataset.selected).toBe('true');
     expect(root.getAttribute('aria-label')).toBe('Runeclaw Bear');
   });
+
+  it('keeps the actionable bar and ability marker anchored above full art', () => {
+    const root = renderFace(bear({ actionable: true, hasActivatedAbility: true }), {
+      tier: 'support',
+      art: { url: 'blob:full-card', full: true },
+    });
+    // The channels stay lit…
+    expect(root.dataset.actionable).toBe('true');
+    expect(root.dataset.ability).toBe('true');
+    // …and their pseudo-element anchors exist even in full-card mode: the name
+    // (combat bars) and the type (ability marker dot) elements are always
+    // rendered, empty, so the channels have somewhere to draw.
+    const inner1 = inner(root);
+    expect(inner1.getElementsByClassName(s.name)).toHaveLength(1);
+    expect(inner1.getElementsByClassName(s.type)).toHaveLength(1);
+    // The image stacks below every overlay (z-index 0 vs 1) — asserted at the
+    // stylesheet level below, since jsdom does not compute stacking.
+    expect(root.querySelector('img')?.className).toContain(s.artFull);
+  });
 });
 
 describe('CardFace keyword strip geometry (one svg, combined paths)', () => {
@@ -195,5 +215,17 @@ describe('CardFace motion contract (ADR 0030: transform/opacity only)', () => {
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
     expect(rules).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(rules).not.toMatch(/rgba?\(/);
+  });
+
+  it('stacks full-card art below every overlay (image 0, overlays 1)', () => {
+    // jsdom computes no stacking, so the contract is pinned at the source: the
+    // full-art image sits at z-index 0 and the content/overlay layer (name,
+    // type, cost, P/T, badges, the gold-bar pseudo) at z-index 1.
+    const artRule = css.match(/\.artFull\s*\{[^}]*\}/s)?.[0] ?? '';
+    expect(artRule).toContain('z-index: 0');
+    const overlayRule = css.match(/\.name,[\s\S]*?\{[^}]*\}/)?.[0] ?? '';
+    expect(overlayRule).toContain('z-index: 1');
+    const goldBarRule = css.match(/\.inner::before\s*\{[^}]*\}/s)?.[0] ?? '';
+    expect(goldBarRule).toContain('z-index: 1');
   });
 });

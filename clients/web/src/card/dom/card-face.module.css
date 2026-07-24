@@ -4,7 +4,8 @@
  * no color literal lives here (ADR 0019 discipline, #480 swap point).
  *
  * Budget shape (presentation-budgets §Performance, ≤ 12 nodes per
- * battlefield-tier face): all state channels are zero-node —
+ * battlefield-tier face — a hard, input-independent ceiling): all state
+ * channels are zero-node —
  *   rings              → box-shadow on .inner
  *   ×N splayed pile    → layered box-shadow on .inner
  *   elevation shadow   → box-shadow on .inner (snaps; only transform/opacity animate)
@@ -12,6 +13,13 @@
  *   attacking bar      → .name::before         blocking bar → .name::after
  *   ability marker dot → .type::before
  *   tap / dim / lift   → transform + opacity on .inner
+ * — and no battlefield element scales with its input: the mana cost is ONE
+ * pill (.cost), all badges consolidate into ONE row (.badgeRow), and the
+ * keyword strip is one svg with combined paths plus a capped +N.
+ *
+ * Stacking: full-card art paints at z-index 0 and every overlay element (and
+ * the gold bar pseudo) at z-index 1, so no server-computed channel is ever
+ * covered by an illustration (ADR 0024: overlays stay authoritative).
  *
  * Transform readiness (ADR 0030): transitions are transform/opacity-only and
  * reduced motion snaps them; the face renders identically flat and on the
@@ -82,7 +90,8 @@
     6px -6px 0 1px var(--face-accent);
 }
 
-/* Gold "you can act" edge bar — the unique bottom-edge shape. */
+/* Gold "you can act" edge bar — the unique bottom-edge shape. Stacks above
+ * full-card art (z-index 1 vs the image's 0). */
 .inner::before {
   content: none;
   position: absolute;
@@ -92,6 +101,7 @@
   height: var(--edge-h);
   border-radius: calc(var(--edge-h) / 2);
   background: var(--gold);
+  z-index: 1;
 }
 
 .actionable .inner::before {
@@ -158,6 +168,20 @@
 
 /* ── Face content (absolute within .inner) ────────────────────────────────── */
 
+/* Every content element rides above art (full-card images sit at z-index 0),
+ * so the authoritative overlays are never covered by an illustration. */
+.name,
+.cost,
+.pip,
+.type,
+.keywords,
+.pt,
+.badge,
+.chipName,
+.chipGlyph {
+  z-index: 1;
+}
+
 .name {
   position: absolute;
   left: 7px;
@@ -167,6 +191,25 @@
   font-weight: 600;
   color: var(--face-name-text);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The battlefield-tier mana cost: one bounded pill for any number of symbols
+ * (the node budget never scales with input); symbols are the channel. */
+.cost {
+  position: absolute;
+  left: 7px;
+  top: calc(9px + var(--face-name-size));
+  padding: 0 5px;
+  border-radius: calc(var(--face-pip-size) / 2 + 2px);
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: calc(var(--face-pip-size) + 2px);
+  white-space: nowrap;
+  max-width: calc(100% - 14px);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -260,6 +303,18 @@
   color: var(--badge-text);
 }
 
+/* The battlefield-tier consolidated badge row: ONE node for every badge, the
+ * labels joined with a middle dot — text is the kind channel, so nothing is
+ * lost when the per-badge accents step aside for the node budget. */
+.badgeRow {
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  box-shadow: 0 0 0 1px var(--badge-stroke);
+  max-width: calc(100% + 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Art (ADR 0024 — modes unchanged; the face only shows what is loaded) ── */
 
 .artFull {
@@ -269,6 +324,7 @@
   height: 100%;
   object-fit: cover;
   border-radius: calc(var(--face-radius) - 1px);
+  z-index: 0;
 }
 
 .artWindow {
