@@ -48,6 +48,40 @@
   background: var(--seat-amethyst);
 }
 
+/* Environmental animation is the only motion the quality level scales here — a
+ * slow ambient drift of the sky glows. It steps on → reduced → off across
+ * levels (presentation-budgets §Quality levels) via the [data-environment]
+ * attribute the plane sets; the scene itself never animates from this. */
+@keyframes ambientDrift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(2.5%, 1.5%, 0);
+  }
+}
+
+.environment[data-environment='on'] .sky::before,
+.environment[data-environment='on'] .sky::after {
+  animation: ambientDrift 12s ease-in-out infinite alternate;
+}
+
+.environment[data-environment='reduced'] .sky::before,
+.environment[data-environment='reduced'] .sky::after {
+  animation: ambientDrift 24s ease-in-out infinite alternate;
+}
+
+.environment[data-environment='on'] .sky::after,
+.environment[data-environment='reduced'] .sky::after {
+  animation-direction: alternate-reverse;
+}
+
+/* Off (Lite, or any reduced-motion state): the backdrop is static. */
+.environment[data-environment='off'] .sky::before,
+.environment[data-environment='off'] .sky::after {
+  animation: none;
+}
+
 .ground {
   top: 18%;
   height: 43%;
@@ -344,5 +378,9 @@
 @media (prefers-reduced-motion: reduce) {
   .tiltedPlane {
     transition: none !important;
+  }
+  .sky::before,
+  .sky::after {
+    animation: none !important;
   }
 }

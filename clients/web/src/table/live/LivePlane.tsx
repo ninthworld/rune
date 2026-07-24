@@ -211,6 +211,12 @@ export function LivePlane({
   const planeRef = useRef(plane);
   planeRef.current = plane;
 
+  // Environmental animation steps on → reduced → off across quality levels
+  // (presentation-budgets §Quality levels); reduced motion turns it off at any
+  // level. Purely the ambient backdrop — the scene is never touched.
+  const environmentMotion =
+    reducedMotion || quality === 'lite' ? 'off' : quality === 'high' ? 'on' : 'reduced';
+
   const effectsLayer = useMemo(
     () =>
       new EffectsLayer({
@@ -431,7 +437,12 @@ export function LivePlane({
       style={sceneStyle}
       aria-label="2.5D battlefield"
     >
-      <div className={styles.environment} aria-hidden="true">
+      <div
+        className={styles.environment}
+        data-environment={environmentMotion}
+        data-testid="live-environment"
+        aria-hidden="true"
+      >
         <div className={styles.sky} />
         <div className={styles.ground} />
         <div className={styles.arenaEdge} />

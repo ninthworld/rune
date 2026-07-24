@@ -45,6 +45,13 @@ the table UI.
   `src/card/art/`: player-selected source, device-local storage, renderers only
   *look up* loaded textures. The UI must render fully with the art store empty, and
   nothing under `public/card-art/` may be anything but project-owned originals.
+- Presentation settings (issue #505) — quality level, effect density, motion —
+  are device preferences in `src/table/settings/presentationSettings.ts` (the same
+  device-local, no-protocol idiom as art/decks), surfaced by
+  `src/table/PresentationSettings.tsx` from both the front door and the game menu.
+  They only scale effects/environment/motion; the scene (plane, staging, cards,
+  tap/travel motion) is never degraded at any level. See
+  `docs/design/presentation-budgets.md` §Quality levels.
 - Touch first: 44px minimum targets; no action reachable only by drag or hover.
 
 ## Commands

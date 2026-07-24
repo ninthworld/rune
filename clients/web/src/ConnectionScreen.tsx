@@ -33,6 +33,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useGameStore } from './store';
+import { PresentationSettings } from './table/PresentationSettings';
 import { RuneMark } from './chrome/RuneMark';
 import { cx } from './chrome/cx';
 import s from './table/chrome.module.css';
@@ -113,6 +114,7 @@ export function ConnectionScreen() {
   const disconnect = useGameStore((state) => state.disconnect);
   const [url, setUrl] = useState(initialServerUrl);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showDisplaySettings, setShowDisplaySettings] = useState(false);
 
   // A failed connection opens Server settings: the address is the likely fix,
   // so it should be on screen next to the Retry (never a dead end).
@@ -190,7 +192,18 @@ export function ConnectionScreen() {
           onChange={setUrl}
           onSubmit={attempt}
         />
+        <button
+          type="button"
+          className={l.settingsButton}
+          data-testid="front-door-settings"
+          onClick={() => setShowDisplaySettings(true)}
+        >
+          Display settings
+        </button>
       </section>
+      {showDisplaySettings && (
+        <PresentationSettings onClose={() => setShowDisplaySettings(false)} />
+      )}
     </main>
   );
 }

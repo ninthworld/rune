@@ -23,6 +23,7 @@ import { selectPendingPrompt, useGameStore } from '../../store';
 import { publishPlane, publishScene, publishView } from '../../testHooks';
 import { ActionDock } from '../ActionDock';
 import { ArtSettings } from '../ArtSettings';
+import { PresentationSettings } from '../PresentationSettings';
 import { CardInspect } from '../CardInspect';
 import { DecisionSheet } from '../DecisionSheet';
 import { GameOverOverlay } from '../GameOverOverlay';
@@ -35,6 +36,8 @@ import { ShortcutHelp } from '../ShortcutHelp';
 import { TopBar, type RailSheet } from '../TopBar';
 import { ZoneBrowser } from '../ZoneBrowser';
 import type { EffectDensity, EffectQuality } from '../effects';
+import type { MotionPreference } from '../settings/presentationSettings';
+import { usePresentationSettings } from '../settings/usePresentationSettings';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useTableInteractions } from '../hooks/useTableInteractions';
 import { useTableKeyboard } from '../hooks/useTableKeyboard';
@@ -67,10 +70,15 @@ import type { TargetingPresentationPath } from './gameViewPresentation';
 import { ORIENTATION_PULSE_MS, type PresentationMode } from './presentationMode';
 import styles from './live-match.module.css';
 
-/** Tunable presentation inputs. Preferences can replace these defaults later. */
+/**
+ * Presentation inputs. Left unset, they come from the device-local presentation
+ * settings (issue #505) — the props are an explicit override seam for tests and
+ * embedding.
+ */
 export interface LiveMatchTableProps {
   quality?: EffectQuality;
   density?: EffectDensity;
+  motion?: MotionPreference;
 }
 
 interface OpenZone {
@@ -87,7 +95,11 @@ interface HandDrag {
 }
 
 /** Render a real personalized match on the 2.5D scene stack. */
-export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: LiveMatchTableProps) {
+export function LiveMatchTable(props: LiveMatchTableProps = {}) {
+  const settings = usePresentationSettings();
+  const quality = props.quality ?? settings.quality;
+  const density = props.density ?? settings.density;
+  const motion = props.motion ?? settings.motion;
   const view = useGameStore((state) => state.view);
   const choose = useGameStore((state) => state.choose);
   const setStops = useGameStore((state) => state.setStops);
@@ -96,7 +108,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
   const sessionEpoch = useGameStore((state) => state.sessionEpoch);
   const artVersion = useSyncExternalStore(subscribeArt, getArtVersion);
   const viewport = useViewport();
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = useReducedMotion(motion);
   const [highlightedId, setHighlightedId] = useState<EntityId | null>(null);
   const [focusedSeat, setFocusedSeat] = useState<PlayerId | null>(null);
   const [pendingSeatFocus, setPendingSeatFocus] = useState<PlayerId | null>(null);
@@ -105,6 +117,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
   const [browsing, setBrowsing] = useState<OpenZone | null>(null);
   const [railSheet, setRailSheet] = useState<RailSheet | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showArtSettings, setShowArtSettings] = useState(false);
   const [previewTargetId, setPreviewTargetId] = useState<EntityId | PlayerId | null>(null);
   const [handDrag, setHandDrag] = useState<HandDrag | null>(null);
@@ -223,6 +236,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
     targeting,
     multiSelect,
     showHelp,
+    showSettings,
     showArtSettings,
     inspectedId,
     peekId,
@@ -240,6 +254,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
     setRailSheet,
     setFocusedTileId: setFocusedSeat,
     setShowHelp,
+    setShowSettings,
     setShowArtSettings,
   });
 
@@ -575,6 +590,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
           concede={view.valid_actions.find((action) => action.type === 'concede')}
           onChoose={choose}
           onShowShortcuts={() => setShowHelp(true)}
+          onShowSettings={() => setShowSettings(true)}
           onShowArtSettings={() => setShowArtSettings(true)}
         />
       </header>
@@ -778,6 +794,7 @@ export function LiveMatchTable({ quality = 'standard', density = 'reduced' }: Li
         />
       )}
       {showHelp && <ShortcutHelp bindings={shortcuts} onClose={() => setShowHelp(false)} />}
+      {showSettings && <PresentationSettings onClose={() => setShowSettings(false)} />}
       {showArtSettings && <ArtSettings onClose={() => setShowArtSettings(false)} />}
       {view.result && (
         <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
