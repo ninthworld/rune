@@ -23,11 +23,19 @@ interface Props {
   onChoose: (action: ValidAction) => void;
   /** Open the keyboard-shortcut reference overlay (issue #266). */
   onShowShortcuts: () => void;
+  /** Open the display settings overlay (issue #505); absent hides the item. */
+  onShowSettings?: () => void;
   /** Open the card-art settings overlay (ADR 0024); absent hides the item. */
   onShowArtSettings?: () => void;
 }
 
-export function GameMenu({ concede, onChoose, onShowShortcuts, onShowArtSettings }: Props) {
+export function GameMenu({
+  concede,
+  onChoose,
+  onShowShortcuts,
+  onShowSettings,
+  onShowArtSettings,
+}: Props) {
   const [open, setOpen] = useState(false);
   // Concede arms a confirm step; it disarms whenever the drawer closes.
   const [confirming, setConfirming] = useState(false);
@@ -82,6 +90,20 @@ export function GameMenu({ concede, onChoose, onShowShortcuts, onShowArtSettings
             >
               Keyboard shortcuts
             </button>
+            {onShowSettings && (
+              <button
+                type="button"
+                role="menuitem"
+                className={s.menuItem}
+                data-testid="menu-settings"
+                onClick={() => {
+                  close();
+                  onShowSettings();
+                }}
+              >
+                Display settings
+              </button>
+            )}
             {onShowArtSettings && (
               <button
                 type="button"
