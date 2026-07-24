@@ -308,6 +308,19 @@
     0 7px 16px rgb(0 0 0 / 45%);
 }
 
+/* The attacked ring (layout-model §Focus model): combat against ANY seat draws
+   its ring, at every count and every rung, whichever board holds focus. The
+   ring is a shape channel — the threat accent only colors it (visual-system
+   §7, no state is color-only). It follows the priority rule so a seat that is
+   both under attack and holding priority reads as attacked. */
+.plane [data-slot='crest'][data-attacked='true'] {
+  border-color: var(--orange);
+  box-shadow:
+    0 0 0 3px var(--surface-base),
+    0 0 0 6px rgb(224 120 74 / 72%),
+    0 7px 16px rgb(0 0 0 / 45%);
+}
+
 .plane [data-slot='piles'] {
   z-index: 4;
   border: 1px solid rgb(232 230 225 / 16%);
@@ -355,6 +368,16 @@
   translate: 0 -50%;
   color: rgb(232 230 225 / 58%);
   font: 700 8px/1 var(--rune-font-display);
+}
+
+/* The same ring on compact geometry, where a peripheral seat is a summary
+   tile: an attacked seat wears it there too (layout-model rung 5). */
+.plane [data-slot='tile'][data-attacked='true'] {
+  border-color: var(--orange);
+  border-left-color: var(--orange);
+  box-shadow:
+    0 0 0 2px rgb(224 120 74 / 62%),
+    var(--shadow-rest);
 }
 
 .plane [data-layer='entities'] {

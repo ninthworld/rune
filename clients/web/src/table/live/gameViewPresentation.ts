@@ -5,11 +5,17 @@
  * It never predicts a rule outcome or keeps a gameplay queue. Structured log
  * entries provide semantic causes where the protocol has them; view diffs
  * provide the documented generic fallback for tap/counter/zone changes.
+ *
+ * Both passes also credit the acting seat, which feeds the off-focus activity
+ * channel (`./offFocusActivity`, issue #501): activity by a seat that is
+ * neither the receiver nor the focused opponent earns one quiet crest ping, so
+ * a wing or tile seat is never silent.
  */
 import type { EntityId, GameLogEntry, GameView, Permanent, PlayerId } from '../../protocol';
 import { SCENE_BATCH, SCENE_HUES, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
 import type { EffectQuality, PersistentEffect, TransientInvocation } from '../effects';
 import type { Rect } from '../scene';
+import { offFocusPings, type SeatActivity } from './offFocusActivity';
 
 /** A generic motion class understood by the DOM plane and screen-space consumers. */
 export type GameViewMotionCategory =
@@ -63,7 +69,13 @@ export interface TargetingPresentationPath {
 
 /** Ephemeral staging inputs; none are authoritative gameplay state. */
 export interface PresentationStaging {
+  /** The seat the plane focused for the previous view (staging cue only). */
   previousFocusSeat?: PlayerId;
+  /**
+   * The focused opponent the plane **resolved** for this view (manual focus or
+   * the derived default, `StagedPlane.focusSeat`) — the staging cue's
+   * destination, and the seat the off-focus channel excludes.
+   */
   focusSeat?: PlayerId;
   targetingPaths?: readonly TargetingPresentationPath[];
   /** Quality controls batch density, never scene/state fidelity. */
@@ -191,14 +203,21 @@ function addLogIntents(
   current: GameView,
   motions: GameViewMotionIntent[],
   transients: TransientInvocation[],
+  activity: SeatActivity,
 ): void {
   const previousPermanents = new Map(
     previous.battlefield.map((permanent) => [permanent.id, permanent]),
   );
   for (const { sequence, event } of entries) {
     const key = String(sequence);
+    // Credit the acting seat for the off-focus channel. Table-wide flow
+    // (step/priority), the loss moments that already land on their own crest
+    // (life/damage/elimination), and the session moments with dedicated chrome
+    // are deliberately not seat activity — the ping means "this seat did
+    // something over there", not "something happened".
     switch (event.type) {
       case 'spell_cast':
+        activity.add(event.player);
         pushMotion(motions, 'cast', key, {
           entityId: event.card.id,
           from: entityRef(event.card.id),
@@ -207,6 +226,7 @@ function addLogIntents(
         transient(transients, 'cast', seatRef(event.player), seatAccent(current, event.player));
         break;
       case 'spell_resolved':
+        activity.add(event.player);
         pushMotion(motions, 'resolve', key, { entityId: event.card.id });
         transient(
           transients,
@@ -220,16 +240,19 @@ function addLogIntents(
       case 'spell_countered':
       case 'spell_fizzled': {
         const category = event.type === 'spell_countered' ? 'counter' : 'fizzle';
+        activity.add(event.player);
         pushMotion(motions, category, key, { entityId: event.card.id });
         transient(transients, 'counter', seatRef(event.player), SCENE_HUES.orange.value);
         break;
       }
       case 'attackers_declared':
+        activity.add(event.player);
         for (const attacker of event.attackers) {
           pushMotion(motions, 'attack', `${key}:${attacker.id}`, { entityId: attacker.id });
         }
         break;
       case 'blockers_declared':
+        activity.add(event.player);
         for (const { blocker, attacker } of event.blocks) {
           pushMotion(motions, 'block', `${key}:${blocker.id}`, {
             entityId: blocker.id,
@@ -263,6 +286,7 @@ function addLogIntents(
         break;
       }
       case 'cards_drawn':
+        activity.add(event.player);
         pushMotion(motions, 'draw', key, {
           from: pileRef(event.player),
           to: handRef(event.player),
@@ -278,6 +302,7 @@ function addLogIntents(
         break;
       case 'permanent_died': {
         const seat = previousPermanents.get(event.permanent.id)?.controller;
+        if (seat !== undefined) activity.add(seat);
         pushMotion(motions, 'death', key, {
           entityId: event.permanent.id,
           from: entityRef(event.permanent.id),
@@ -298,6 +323,7 @@ function addLogIntents(
         transient(transients, 'death', seatRef(event.player), SCENE_HUES.red.value);
         break;
       case 'commander_returned_to_command_zone':
+        activity.add(event.player);
         pushMotion(motions, 'zone-travel', key, {
           entityId: event.card.id,
           to: pileRef(event.player),
@@ -351,6 +377,7 @@ function addDiffIntents(
   current: GameView,
   motions: GameViewMotionIntent[],
   transients: TransientInvocation[],
+  activity: SeatActivity,
 ): void {
   const before = visibleLocations(previous);
   const after = visibleLocations(current);
@@ -358,6 +385,10 @@ function addDiffIntents(
   for (const [id, destination] of after) {
     const source = before.get(id);
     if (source?.zone === destination.zone && source.seat === destination.seat) continue;
+    // A zone change is its seat's activity at both ends (a card leaving one
+    // seat's zone for another's is visible movement on both boards).
+    activity.add(destination.seat);
+    if (source !== undefined) activity.add(source.seat);
     let category: GameViewMotionCategory = 'zone-travel';
     if (destination.zone === 'hand' && source === undefined) category = 'draw';
     else if (source?.zone === 'hand' && destination.zone === 'stack') category = 'cast';
@@ -377,6 +408,7 @@ function addDiffIntents(
   for (const permanent of current.battlefield) {
     const prior = previousPermanents.get(permanent.id);
     if (!prior) {
+      activity.add(permanent.controller);
       transient(
         transients,
         'battlefield-entry',
@@ -386,6 +418,7 @@ function addDiffIntents(
       continue;
     }
     if (Boolean(prior.tapped) !== Boolean(permanent.tapped)) {
+      activity.add(permanent.controller);
       pushMotion(motions, permanent.tapped ? 'tap' : 'untap', permanent.id, {
         entityId: permanent.id,
       });
@@ -397,6 +430,7 @@ function addDiffIntents(
       permanent.card.power !== prior.card.power ||
       permanent.card.toughness !== prior.card.toughness;
     if (countersChanged || powerChanged) {
+      activity.add(permanent.controller);
       pushMotion(motions, 'counter-change', permanent.id, {
         entityId: permanent.id,
         magnitude: counterDelta,
@@ -410,9 +444,11 @@ function addDiffIntents(
       );
     }
     if (!prior.attacking && permanent.attacking) {
+      activity.add(permanent.controller);
       pushMotion(motions, 'attack', permanent.id, { entityId: permanent.id });
     }
     if (prior.blocking !== permanent.blocking && permanent.blocking !== undefined) {
+      activity.add(permanent.controller);
       pushMotion(motions, 'block', permanent.id, {
         entityId: permanent.id,
         from: entityRef(permanent.id),
@@ -533,11 +569,25 @@ export function deriveGameViewPresentation(
   const motions: GameViewMotionIntent[] = [];
   const transients: TransientInvocation[] = [];
   if (previous !== undefined) {
-    addLogIntents(newLogEntries(previous, current), previous, current, motions, transients);
-    addDiffIntents(previous, current, motions, transients);
+    const activity: SeatActivity = new Set();
+    addLogIntents(
+      newLogEntries(previous, current),
+      previous,
+      current,
+      motions,
+      transients,
+      activity,
+    );
+    addDiffIntents(previous, current, motions, transients, activity);
     if (staging.previousFocusSeat !== staging.focusSeat && staging.focusSeat !== undefined) {
       pushMotion(motions, 'focus', staging.focusSeat, { to: seatRef(staging.focusSeat) });
     }
+    // The off-focus channel leads the batch: "never silent" is a guarantee, so
+    // a crest ping is never the invocation a dense moment pushes past the
+    // quality level's transient cap.
+    transients.unshift(
+      ...offFocusPings(current, activity, staging.focusSeat, (seat) => seatAccent(current, seat)),
+    );
     applyBatchDelays(motions, staging);
   }
   return {
