@@ -11,15 +11,18 @@ the table UI.
 - Actions have subjects: entity-subject actions render on the entity; the action bar
   holds only global actions plus a contextual echo of the selection. Never enumerate
   per-card actions as bar buttons (docs/decisions/0004).
-- Rendering split (ADR 0030): the shipped match is the 2.5D composition
-  (`table/live/`) — cards and the scene plane render in React DOM, with Pixi
-  reserved for passive effects; React DOM also owns controls, prompts, player
-  information, browsers, and inspect surfaces. The legacy ADR 0003 Pixi match
-  table was retired at the Phase 2 exit (#494). The Pixi scene stack
-  (`BattlefieldCanvas`, `sceneReconciler`, the `cardFactory` draw path) survives
-  only for the read-only spectate mode (`SpectatorTable`) until it migrates too.
-- All card colors/sizes come from `src/tokens.ts`. Both renderers (Pixi + HTML)
-  read the same constants; never inline card colors.
+- Rendering split (ADR 0030): there is **one** rendering stack. Cards and the
+  scene plane render in React DOM (`table/live/` stages via `plane/` + the DOM
+  `card/dom/CardFace`, reconciled by `table/planeReconciler.ts`); Pixi is reserved
+  for the passive effects overlay (`table/effects/`, `EffectsSurface`). React DOM
+  also owns controls, prompts, player information, browsers, and inspect surfaces.
+  The legacy Pixi scene stack was fully retired: the ADR 0003 match table at the
+  Phase 2 exit (#494), and the read-only spectate mode (`SpectatorTable`) at
+  Phase 4 (#504) — it now rides the same `LivePlane` stack, staged receiver-less.
+  `card/cardFactory.ts` is a **pure data model only** (`CardDisplayData`,
+  `cardVisualSignature` — the live fold key — `parseManaCost`); it draws nothing.
+- All card colors/sizes come from `src/tokens.ts`; the DOM card renderer reads the
+  same constants — never inline card colors.
 - The whole in-game UI must rebuild from one `GameView` and its pending prompt.
 - Effective values (P/T, counters) are displayed exactly as the server computes them.
 - No `localStorage` of game state; server is the source of truth. Device *preferences*

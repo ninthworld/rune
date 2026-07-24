@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameView } from '../protocol';
-import { rectsOverlap } from './layout';
+import { rectsOverlap } from './scene';
 import { PHONE, seatTable, bears, menagerie, stage } from './plane.fixture';
 
 /** A 4-player table (focused p2) with the given battlefield. */

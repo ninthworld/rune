@@ -1,11 +1,10 @@
 /**
  * The RUNE procedural glyph language (issue #317). One authored geometry source
- * (`geometry.ts`) rendered by two consumers: the DOM `<Glyph>` component and the
- * Pixi `buildGlyphDisplay` drawer (ADR 0003). See `docs/design/ui-design-notes.md`
- * (§Identity, §Card render) for the vocabulary and its intended consumers.
+ * (`geometry.ts`) rendered by the DOM `<Glyph>` component. The former Pixi
+ * `buildGlyphDisplay` drawer (ADR 0003) was retired with the legacy scene stack
+ * (issue #504). See `docs/design/ui-design-notes.md` (§Identity, §Card render).
  */
 export { Glyph, type GlyphProps } from './Glyph';
-export { buildGlyphDisplay, type GlyphDrawOptions } from './pixi';
 export {
   GLYPHS,
   GLYPH_NAMES,

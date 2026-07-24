@@ -89,14 +89,21 @@ incremental** (full rebuilds are reserved for reconnect/fast-forward).
   interaction hooks, store, tokens split, glyphs, and test harness carry over.
   **Status (Phase 2 exit, #494):** the legacy Pixi *match* surface —
   `table/Table.tsx` and `table/GameOverTable.tsx` — and its behavioural tests are
-  removed; normal matches now mount the 2.5D `LiveMatchTable` by default. The
-  shared Pixi renderer (`cardFactory`'s `buildCardDisplay`/`buildChipDisplay`,
-  `sceneReconciler.ts`, `BattlefieldCanvas.tsx`, `EntityOverlay`, `PanelChrome`)
-  is *retained* because the read-only spectate mode (`SpectatorTable`, ADR 0022)
-  still renders through it; retiring it is completed by migrating the spectator
-  view onto the DOM scene plane (follow-up). `cardFactory.ts` keeps its shared,
-  pure card-data model (`CardDisplayData`, `cardVisualSignature`, `parseManaCost`),
-  which the DOM card component consumes.
+  removed; normal matches now mount the 2.5D `LiveMatchTable` by default.
+  **Status (Phase 4, #504): the retirement is complete.** The read-only spectate
+  mode (`SpectatorTable`, ADR 0022) now rides the same live stack players do — it
+  stages the `SpectatorView`'s seats receiver-less on `stagePlane`, reconciles
+  through `PlaneReconciler`, and renders effects through the shared overlay — so
+  the whole legacy Pixi card-rendering stack is **deleted**:
+  `cardFactory`'s `buildCardDisplay`/`buildChipDisplay` draw path, `card/bitmapText`,
+  `chrome/glyphs/pixi`, `table/sceneReconciler.ts`, `table/BattlefieldCanvas.tsx`,
+  `table/EntityOverlay.tsx`, `table/scene/builder.ts`, `table/scene/row-layout.ts`,
+  and `table/layout.ts`, with their tests. Pixi remains only for the passive
+  effects overlay (`table/effects/`, `EffectsSurface`). `cardFactory.ts` keeps its
+  shared, pure card-data model (`CardDisplayData`, `cardVisualSignature`,
+  `parseManaCost`), which the DOM card component and the plane fold key consume;
+  the surviving scene helpers (`scene/types`, `geometry`, `band-helpers`,
+  `card-helpers`, `action-helpers`) still feed the live plane path.
 - Phase 1 of the redesign (issue #464) can be split into implementation
   issues against this architecture; the visual system (#469) and layout
   designs (#470) style and stage it without re-deciding it.

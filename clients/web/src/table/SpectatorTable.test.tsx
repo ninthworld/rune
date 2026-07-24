@@ -1,11 +1,25 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { normalizeSpectatorView } from '../wire';
 import type { SpectatorView } from '../protocol';
+import { useGameStore } from '../store';
 import { SpectatorTable } from './SpectatorTable';
 
+// The passive effects overlay is Pixi/WebGL; the spectator composition rides the
+// same live stack players do, so the same headless mocks apply (issue #504).
+vi.mock('./EffectsSurface', () => ({
+  EffectsSurface: () => <div data-testid="effects-surface" aria-hidden="true" />,
+}));
+vi.mock('./effects', () => ({
+  EffectsLayer: class {
+    setPersistent(): void {}
+    replaceTransients(): void {}
+    trackMotion(): void {}
+  },
+}));
+
 /** A live 3-seat spectator view: one eliminated seat, a permanent on the board, and
- * public graveyard piles — the read fixture the spectate-mode tests build on. */
+ * a public graveyard pile — the read fixture the spectate-mode tests build on. */
 function spectatorView(overrides: Partial<Record<string, unknown>> = {}): SpectatorView {
   return normalizeSpectatorView({
     players: [
@@ -44,47 +58,51 @@ function spectatorView(overrides: Partial<Record<string, unknown>> = {}): Specta
   });
 }
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+});
+afterEach(() => {
+  cleanup();
+  useGameStore.setState({ spectatorView: null, sessionEpoch: 0 });
+  vi.restoreAllMocks();
+});
 
-describe('SpectatorTable (ADR 0022, issue #351)', () => {
-  it('renders the read-only fixed shell: top bar, badge, and no action surfaces', () => {
+describe('SpectatorTable (ADR 0022 / ADR 0030 plane, issue #504)', () => {
+  it('renders the read-only fixed shell on the live plane: top bar, badge, effects', () => {
     render(<SpectatorTable view={spectatorView()} />);
-    // The spectate shell rides the fixed anatomy: top bar up top, the badge where
-    // the receiver's identity panel would live…
     expect(screen.getByTestId('spectator-table')).toBeDefined();
     expect(screen.getByTestId('top-bar')).toBeDefined();
+    expect(screen.getByTestId('live-2-5d-plane')).toBeDefined();
+    expect(screen.getByTestId('effects-surface')).toBeDefined();
     expect(screen.getByTestId('spectator-badge').textContent).toContain('Spectating');
-    // …but there is no action tray and no local hand/dock — nothing to play…
-    expect(screen.queryByTestId('action-bar')).toBeNull();
-    expect(screen.queryByTestId('local-dock')).toBeNull();
-    expect(screen.queryByTestId('hud-mana')).toBeNull();
-    // …and nothing on the board is selectable or targetable: the public permanent
-    // carries only its transparent inspect surface.
+    // No canvas card renderer survives; Pixi is effects-only.
+    expect(document.querySelector('canvas')).toBeNull();
+  });
+
+  it('offers no action affordances: a public permanent is inspect-only', () => {
+    render(<SpectatorTable view={spectatorView()} />);
+    // Nothing is playable or targetable — the permanent carries only its
+    // transparent inspect surface (the live control layer degrades to inspect
+    // because the public view has no valid_actions and no candidates).
     expect(screen.queryByTestId('entity-perm_1')).toBeNull();
     expect(screen.queryByTestId('target-perm_1')).toBeNull();
     expect(screen.getByTestId('inspect-surface-perm_1')).toBeDefined();
+    // No hand, no action dock.
+    expect(screen.queryByTestId('live-hand')).toBeNull();
+    expect(screen.queryByTestId('action-bar')).toBeNull();
   });
 
-  it('gives every seat its own bounded player panel (no privileged "self")', () => {
+  it('stages every seat as an opponent with a read-only focus control', () => {
     render(<SpectatorTable view={spectatorView()} />);
-    const chrome = screen.getByTestId('panel-chrome');
-    // With no receiver, the scene folds the you-frame into the pool: all three
-    // seats get a panel, a header tile, and their public zone piles.
+    // Receiver-less staging: every seat gets a focus-seat control, and focus
+    // switching is a live-only presentation change (no action fires).
     for (const id of ['p0', 'p1', 'p2']) {
-      expect(within(chrome).getByTestId(`player-panel-${id}`)).toBeDefined();
-      expect(within(chrome).getByTestId(`tile-${id}`)).toBeDefined();
-      expect(within(chrome).getByTestId(`pile-column-${id}`)).toBeDefined();
+      expect(screen.getByTestId(`focus-seat-${id}`)).toBeDefined();
     }
-    expect(within(chrome).getByTestId('hud-life-p0').textContent).toBe('18');
-  });
-
-  it('reconstructs the public board from one view (mid-game join)', () => {
-    // A fresh mount from a single SpectatorView renders the board — no history needed.
-    render(<SpectatorTable view={spectatorView()} />);
-    // The public permanent is inspectable (a read-only surface exists for it).
+    fireEvent.click(screen.getByTestId('focus-seat-p2'));
+    // The board is still fully reconstructed after a focus switch.
     expect(screen.getByTestId('inspect-surface-perm_1')).toBeDefined();
-    // The opponent's public graveyard pile is browsable on the board.
-    expect(screen.getByTestId('table-graveyard-p0')).toBeDefined();
   });
 
   it('browses a public graveyard from its board pile', () => {
@@ -103,8 +121,6 @@ describe('SpectatorTable (ADR 0022, issue #351)', () => {
 
   it('docks the rail with the quiet empty-stack state and the log', () => {
     render(<SpectatorTable view={spectatorView()} />);
-    // The rail is carved into the shell: both sections present, the empty stack
-    // showing its designed quiet state rather than vanishing.
     const rail = screen.getByTestId('rail');
     expect(within(rail).getByTestId('rail-stack')).toBeDefined();
     expect(within(rail).getByTestId('rail-activity')).toBeDefined();
@@ -144,5 +160,27 @@ describe('SpectatorTable (ADR 0022, issue #351)', () => {
       />,
     );
     expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+  });
+
+  it('rebuilds the complete board through the reconnect path and flashes the cue', async () => {
+    act(() => {
+      useGameStore.setState({ sessionEpoch: 1 });
+    });
+    const { rerender } = render(<SpectatorTable view={spectatorView()} />);
+    const shell = screen.getByTestId('spectator-table');
+    expect(shell.getAttribute('data-orienting')).toBeNull();
+
+    // A transport-generation discontinuity plus a fresh frame: the same
+    // rebuild()/skipTransitions() path players use.
+    act(() => {
+      useGameStore.setState((state) => ({ sessionEpoch: state.sessionEpoch + 1 }));
+    });
+    rerender(<SpectatorTable view={spectatorView()} />);
+
+    // The complete latest board is present from the one reconnect view…
+    expect(screen.getByTestId('inspect-surface-perm_1')).toBeDefined();
+    expect(shell.getAttribute('data-orienting')).toBe('true');
+    // …and the cue is non-blocking: it retires itself.
+    await waitFor(() => expect(shell.getAttribute('data-orienting')).toBeNull());
   });
 });
