@@ -922,9 +922,67 @@
   font-size: var(--rune-type-body);
   animation: builderZoneTravel var(--deck-motion-zone, 320ms) var(--deck-ease-zone, ease) both;
 }
+/* Keyed by the count-change tick, so a copy add/remove re-settles the pile in the
+ * zone class (reduced motion → 0ms via the token, snapping instantly). */
 .builderDeckRowFace {
   display: inline-flex;
   flex-shrink: 0;
+  animation: builderPileSettle var(--deck-motion-zone, 320ms) var(--deck-ease-zone, ease) both;
+}
+@keyframes builderPileSettle {
+  from {
+    transform: scale(0.86);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+/* The deck-row count pip bumps when copies change (micro class), keyed by the same
+ * tick. Scoped to the row so the pool's count markers are unaffected. */
+.builderDeckRow .builderCardCount {
+  animation: builderCountBump var(--deck-motion-micro, 120ms) var(--deck-ease-micro, ease) both;
+}
+@keyframes builderCountBump {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* A removed row is held one zone-travel duration so its exit plays before unmount;
+ * reduced motion drops it immediately (the hook never mounts a leaving row at 0ms). */
+.builderDeckRowLeaving {
+  animation: builderZoneLeave var(--deck-motion-zone, 320ms) var(--deck-ease-zone, ease) both;
+  pointer-events: none;
+}
+@keyframes builderZoneLeave {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+/* A brief designation pulse when a row's commander status flips (micro class). */
+.builderDeckRowDesignating {
+  animation: builderDesignatePulse var(--deck-motion-micro, 120ms) var(--deck-ease-micro, ease) both;
+}
+@keyframes builderDesignatePulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--rune-gold-border, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--rune-gold-border, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 var(--rune-gold-border, transparent);
+  }
 }
 .builderDeckRowName {
   margin-right: auto;

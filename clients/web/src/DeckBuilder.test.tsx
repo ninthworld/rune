@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { DeckBuilder } from './DeckBuilder';
 import { STARTER_DECKLISTS, decklistCounts, decklistSize } from './decklists';
 import { CATALOG_VIEW } from './catalog-view.fixture';
@@ -485,5 +485,100 @@ describe('DeckBuilder saved decks (issue #369, ADR 0027)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('deck-builder-total').textContent).toBe('3 cards'),
     );
+  });
+});
+
+describe('DeckBuilder deck-list motion (issue #508 — add/remove/designate)', () => {
+  const COMMANDER_FORMAT = CATALOG_VIEW.formats[2];
+
+  /** Stub `matchMedia` so `prefers-reduced-motion` reports the given state. */
+  function stubReducedMotion(reduced: boolean): void {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('reduce') ? reduced : false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const seq = (id: string): string | null =>
+    screen.getByTestId(`deck-builder-deck-row-${id}`).getAttribute('data-change-seq');
+
+  it('mounts a new card row as an enter (change-seq 0) and ticks it only on copy changes', () => {
+    renderBuilder();
+    // A brand-new card row is an enter, not a count change — the mount animation owns it.
+    fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+    expect(seq('shock')).toBe('0');
+    // Adding and removing copies of the SAME card keeps the row and ticks the seq,
+    // so the view re-triggers the count animation React would otherwise swallow.
+    fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+    expect(seq('shock')).toBe('1');
+    fireEvent.click(screen.getByTestId('deck-builder-remove-shock'));
+    expect(seq('shock')).toBe('2');
+    // A different card entering is its own mount (seq 0) and leaves shock's seq intact.
+    fireEvent.click(screen.getByTestId('deck-builder-add-serra_angel'));
+    expect(seq('serra_angel')).toBe('0');
+    expect(seq('shock')).toBe('2');
+  });
+
+  it('holds a removed row through its exit before unmounting (motion on)', () => {
+    vi.useFakeTimers();
+    try {
+      renderBuilder();
+      fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+      fireEvent.click(screen.getByTestId('deck-builder-remove-shock'));
+      // The final copy is gone from the counts, but the row is held, marked leaving,
+      // so its zone-travel exit can play.
+      const row = screen.getByTestId('deck-builder-deck-row-shock');
+      expect(row.getAttribute('data-phase')).toBe('leaving');
+      // After one zone-travel duration it unmounts.
+      act(() => vi.advanceTimersByTime(400));
+      expect(screen.queryByTestId('deck-builder-deck-row-shock')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a removed row immediately under reduced motion (snap, no exit)', () => {
+    stubReducedMotion(true);
+    renderBuilder();
+    fireEvent.click(screen.getByTestId('deck-builder-add-shock'));
+    fireEvent.click(screen.getByTestId('deck-builder-remove-shock'));
+    expect(screen.queryByTestId('deck-builder-deck-row-shock')).toBeNull();
+  });
+
+  it('plays a designation transition when a row’s commander status flips', () => {
+    vi.useFakeTimers();
+    try {
+      renderBuilder({ format: COMMANDER_FORMAT, initialCounts: { jedit_ojanen: 1 } });
+      fireEvent.click(screen.getByTestId('deck-builder-designate-jedit_ojanen'));
+      const row = screen.getByTestId('deck-builder-deck-row-jedit_ojanen');
+      expect(row.getAttribute('data-designating')).toBe('true');
+      // The micro-class pulse clears itself; the designation (functional state) stays.
+      act(() => vi.advanceTimersByTime(200));
+      expect(
+        screen.getByTestId('deck-builder-deck-row-jedit_ojanen').getAttribute('data-designating'),
+      ).toBeNull();
+      expect(
+        screen.getByTestId('deck-builder-designate-jedit_ojanen').getAttribute('aria-pressed'),
+      ).toBe('true');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('snaps designation under reduced motion (no transition, state intact)', () => {
+    stubReducedMotion(true);
+    renderBuilder({ format: COMMANDER_FORMAT, initialCounts: { jedit_ojanen: 1 } });
+    fireEvent.click(screen.getByTestId('deck-builder-designate-jedit_ojanen'));
+    const row = screen.getByTestId('deck-builder-deck-row-jedit_ojanen');
+    expect(row.getAttribute('data-designating')).toBeNull();
+    expect(
+      screen.getByTestId('deck-builder-designate-jedit_ojanen').getAttribute('aria-pressed'),
+    ).toBe('true');
   });
 });

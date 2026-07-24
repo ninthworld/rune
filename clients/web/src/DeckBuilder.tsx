@@ -38,7 +38,7 @@
  * Touch + keyboard: every control is a native ≥44px button, no action is drag- or
  * hover-only, and Escape closes the modal. Starter decks are offered as one-tap seeds.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { STARTER_DECKLISTS, decklistCounts } from './decklists';
 import { CardInspect } from './table/CardInspect';
 import { CardFace } from './card/dom';
@@ -49,8 +49,10 @@ import {
   fallbackDisplayData,
 } from './deck/catalogCard';
 import { deckCardArt, deckSceneVars } from './deck/deckScene';
+import { useDeckRowTransitions } from './deck/deckRowTransitions';
 import { SavedDecksPanel } from './deck/builder/SavedDecksPanel';
 import { useReducedMotion } from './table/hooks/useReducedMotion';
+import { sceneMotionMs } from './sceneTokens';
 import { cx } from './chrome/cx';
 import s from './table/chrome.module.css';
 import l from './screens.module.css';
@@ -195,6 +197,9 @@ function DeckRow({
   name,
   count,
   card,
+  phase,
+  changeSeq,
+  reducedMotion,
   requiresCommander,
   isCommander,
   isCandidate,
@@ -204,6 +209,11 @@ function DeckRow({
   name: string;
   count: number;
   card: CatalogCard | undefined;
+  /** Transition phase from {@link useDeckRowTransitions}: a `leaving` row is animating out. */
+  phase: 'present' | 'leaving';
+  /** Ticks on each copy-count change (0 at mount), re-triggering the count animation. */
+  changeSeq: number;
+  reducedMotion: boolean;
   requiresCommander: boolean;
   isCommander: boolean;
   isCandidate: boolean;
@@ -213,15 +223,40 @@ function DeckRow({
     () => (card ? catalogCardToDisplayData(card) : fallbackDisplayData(id, name)),
     [card, id, name],
   );
+  // A brief designation transition (micro class) when this row's commander status
+  // flips — otherwise designating only swapped the elevation with no motion. Reduced
+  // motion snaps (no transient class), matching the carried contract.
+  const [designating, setDesignating] = useState(false);
+  const prevCommander = useRef(isCommander);
+  useEffect(() => {
+    if (prevCommander.current === isCommander) return;
+    prevCommander.current = isCommander;
+    if (reducedMotion) return;
+    setDesignating(true);
+    const timer = setTimeout(() => setDesignating(false), sceneMotionMs('micro', reducedMotion));
+    return () => clearTimeout(timer);
+  }, [isCommander, reducedMotion]);
   return (
     <li
-      className={cx(l.builderDeckRow, isCommander && l.builderDeckRowCommander)}
+      className={cx(
+        l.builderDeckRow,
+        isCommander && l.builderDeckRowCommander,
+        phase === 'leaving' && l.builderDeckRowLeaving,
+        designating && l.builderDeckRowDesignating,
+      )}
       data-testid={`deck-builder-deck-row-${id}`}
+      data-phase={phase}
+      data-change-seq={changeSeq}
+      data-designating={designating || undefined}
     >
-      <span className={l.builderDeckRowFace} aria-hidden="true">
+      {/* Keyed by the count-change tick so a copy add/remove re-settles the pile
+          (zone class); the enter of a brand-new row is the row's own mount animation. */}
+      <span key={`face-${changeSeq}`} className={l.builderDeckRowFace} aria-hidden="true">
         <CardFace data={data} tier="chip" elevation={isCommander ? 'held' : 'rest'} />
       </span>
-      <span className={l.builderCardCount}>{count}×</span>
+      <span key={`count-${changeSeq}`} className={l.builderCardCount}>
+        {count}×
+      </span>
       <span className={l.builderDeckRowName}>{name}</span>
       {isCommander && (
         <span
@@ -331,6 +366,12 @@ export function DeckBuilder({
       ? [...rows].sort((a, b) => Number(b.isCommanderCandidate) - Number(a.isCommanderCandidate))
       : rows;
   }, [cards, counts, cardById, requiresCommander]);
+
+  // Fold the source-of-truth rows into a render list that animates the three state
+  // changes React's keyed list would otherwise swallow: a new card enters, a copy
+  // add/remove re-triggers via `changeSeq`, and a removed row is held one zone-travel
+  // duration so its exit plays (dropped immediately under reduced motion).
+  const renderRows = useDeckRowTransitions(deckRows, sceneMotionMs('zoneTravel', reducedMotion));
 
   // Clear a designation whose card has left the deck (its count dropped to 0), so the
   // builder never carries a commander the list no longer holds.
@@ -510,21 +551,26 @@ export function DeckBuilder({
                   </div>
                 )}
 
-                {deckRows.length === 0 ? (
+                {renderRows.length === 0 ? (
                   <span className={s.muted} data-testid="deck-builder-deck-empty">
                     No cards yet — add from the pool or start from a starter.
                   </span>
                 ) : (
                   <ul className={l.builderDeckList}>
-                    {deckRows.map((row) => (
+                    {renderRows.map((row) => (
                       <DeckRow
                         key={row.id}
                         id={row.id}
                         name={row.name}
                         count={row.count}
                         card={cardById[row.id]}
+                        phase={row.phase}
+                        changeSeq={row.changeSeq}
+                        reducedMotion={reducedMotion}
                         requiresCommander={requiresCommander}
-                        isCommander={requiresCommander && commander === row.id}
+                        isCommander={
+                          requiresCommander && row.phase === 'present' && commander === row.id
+                        }
                         isCandidate={row.isCommanderCandidate}
                         onDesignate={() => setCommander(commander === row.id ? null : row.id)}
                       />
