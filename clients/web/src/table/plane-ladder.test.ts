@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameView } from '../protocol';
-import { rectsOverlap } from './layout';
+import { rectsOverlap } from './scene';
 import { PLANE } from './plane';
 import { PHONE, seatTable, bears, menagerie, stage } from './plane.fixture';
 

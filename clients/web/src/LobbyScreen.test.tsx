@@ -309,6 +309,15 @@ describe('LobbyScreen (issue #114)', () => {
     expect(first.getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('dresses deck selection in the builder’s 2.5D scene tokens (#508)', () => {
+    mountLobby(LOBBY_ROOM_DECKED_JSON);
+    // The deck-select group carries the scene elevation ladder as a --deck-* var, so
+    // the tiles read in the same visual language as the deck builder.
+    const group = screen.getByRole('group', { name: 'Starter decks' }) as HTMLElement;
+    expect(group.style.getPropertyValue('--deck-elev-rest')).not.toBe('');
+    expect(group.style.getPropertyValue('--deck-elev-lifted')).not.toBe('');
+  });
+
   it('submits the deck picked on a tile (the tile drives the submitted list)', () => {
     const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
     const picked = STARTER_DECKLISTS[STARTER_DECKLISTS.length - 1];

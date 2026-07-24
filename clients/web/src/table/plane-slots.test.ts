@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rectsOverlap } from './layout';
+import { rectsOverlap } from './scene';
 import { PLANE } from './plane';
 import {
   DESKTOP,

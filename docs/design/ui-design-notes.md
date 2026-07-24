@@ -251,6 +251,20 @@ connection screen:
   surface — Play on the landing; in the room, Submit deck until decked, then
   Ready. Leave room sits apart from the primary so the exit never neighbors it.
 
+> **Superseded by the 2.5D visual system (#508).** The deck-track surfaces below —
+> the starter tiles and the deck builder — keep their behavior and testids verbatim,
+> but their *presentation* now follows [`visual-system.md`](visual-system.md): every
+> card surface (the browsable pool and the running deck list) renders through the one
+> DOM card renderer (`card/dom/CardFace.tsx`) at its tier (field for the pool, chip
+> for the list) instead of bespoke name/cost/type rows; panels ride the scene
+> elevation ladder; add/remove/designate animate in the motion grammar (zone-travel /
+> micro, reduced-motion snaps); and a server rejection reads as a clear, non-blaming
+> attention state (§7). Colors, shadows, and durations flow from `sceneTokens.ts`
+> through `deck/deckScene.ts`. The builder is split into `deck/builder/` (the saved-
+> decks panel) and `deck/catalogCard.ts` (the catalog→display mapping) behind the
+> unchanged `DeckBuilder` root. The prose below is the record of *what the surfaces
+> do*, not of how they now look.
+
 - **The deck builder is a modal over the seat panel** (#368, delivered). Beside
   the starter tiles, a quiet "Build a deck" button opens a modal that browses the
   **full** wire-carried card pool (the #367 `CatalogView`, requested once on open
