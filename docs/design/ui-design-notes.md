@@ -16,11 +16,13 @@
 > restraint, and §Concept-board decisions' rejection of painted texture — is
 > **superseded by the 2.5D presentation pivot**
 > ([ADR 0029](../decisions/0029-2-5d-presentation-direction.md), issue #464).
-> Those sections stay below as the record of the shipped client, and this
-> document remains the shipped client's reference until the redesign's visual
-> system (issue #469) replaces it. The accessibility, legality, and
-> zero-client-logic constraints recorded here are direction-independent and
-> stay binding.
+> The redesign's design authority for look and motion is now
+> [`visual-system.md`](visual-system.md) (issue #469); this document stays as
+> the **shipped client's record**, and remains the authoritative source the
+> visual system explicitly carries forward for the card-face information
+> budget, the glyph language, combat indicator shapes, and the frame-accent
+> values. The accessibility, legality, and zero-client-logic constraints
+> recorded here are direction-independent and stay binding.
 
 The design source of truth for the web client's presentation vocabulary. The full
 capability list is in [`ui-requirements.md`](ui-requirements.md); the screen

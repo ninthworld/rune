@@ -116,8 +116,11 @@ direction-and-feasibility work of the 2.5D presentation pivot
   [`design/presentation-budgets.md`](design/presentation-budgets.md), grounded in the
   spike's measurements plus CPU-throttled runs; real-hardware re-validation is owed
   before the Phase 2 exit.
-- The 2.5D visual system and motion grammar
-  ([#469](https://github.com/ninthworld/rune/issues/469)).
+- ~~The 2.5D visual system and motion grammar~~
+  ([#469](https://github.com/ninthworld/rune/issues/469)) — **documented** in
+  [`design/visual-system.md`](design/visual-system.md): style pillars, color and
+  depth systems, environment and identity treatments, the non-color state-channel
+  table, and the normative motion grammar inside the budget caps.
 - Layout concepts for two- through six-player, mobile, and stress-case boards
   ([#470](https://github.com/ninthworld/rune/issues/470)).
 - Asset and effects pipeline groundwork
