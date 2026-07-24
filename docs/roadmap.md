@@ -99,9 +99,9 @@ same effort.
 
 ## Immediate priorities
 
-Two tracks run in parallel: the M6 commander batch below, and M7's Phase 0 — the
-direction-and-feasibility work of the 2.5D presentation pivot
-([#464](https://github.com/ninthworld/rune/issues/464)):
+Two tracks run in parallel: the M6 commander batch below, and the 2.5D
+presentation pivot ([#464](https://github.com/ninthworld/rune/issues/464)),
+whose Phase 0 — direction and feasibility — has now fully landed:
 
 - ~~Supersede the graphics-light direction in the docs~~
   ([#466](https://github.com/ninthworld/rune/issues/466)) — **landed**
@@ -126,9 +126,17 @@ direction-and-feasibility work of the 2.5D presentation pivot
   [`design/layout-model.md`](design/layout-model.md) (staging slots per player
   count, the focus model, and the degradation ladder), with the staging prototype
   and captured mocks in [`ui-concepts/layouts-v1/`](ui-concepts/layouts-v1/).
-- Asset and effects pipeline groundwork
-  ([#471](https://github.com/ninthworld/rune/issues/471)) — licensing, effect
-  taxonomy, and delivery research ahead of any production assets.
+- ~~Asset and effects pipeline groundwork~~
+  ([#471](https://github.com/ninthworld/rune/issues/471)) — **documented**:
+  provenance/licensing/delivery policy in
+  [ADR 0031](decisions/0031-bundled-asset-policy.md) and the inventory, effect
+  taxonomy (mapped to the real `GameLogEvent` vocabulary and view-diff channel),
+  and fallback rules in [`design/asset-pipeline.md`](design/asset-pipeline.md).
+
+**Phase 0 is complete.** The next M7 step is splitting Phase 1 (visual
+foundation) into implementation issues against the five merged foundations:
+ADR 0030's architecture, the budgets, the visual system, the layout model, and
+the asset policy.
 
 M6's first batch — the deck track and the commander foundation — has landed. This batch
 completes the commander user path end to end and backfills the evidence the first batch
@@ -319,11 +327,11 @@ whole UI still reconstructs from one view.
 
 Delivery is phased (see #464 for the full phase plan):
 
-- **Phase 0 — direction and feasibility** (the current batch, child issues
+- **Phase 0 — direction and feasibility** — **complete** (child issues
   [#466](https://github.com/ninthworld/rune/issues/466)–[#471](https://github.com/ninthworld/rune/issues/471)):
-  supersede the graphics-light requirements, run the rendering/animation architecture
-  spike, define budgets, design the visual system and motion grammar, produce the
-  2–6-player and mobile layout concepts, and ground the asset/effects pipeline.
+  the graphics-light requirements superseded (ADR 0029), the architecture spike and
+  its selection (ADR 0030), the budgets, the visual system and motion grammar, the
+  2–6-player and mobile layout model, and the asset policy/pipeline (ADR 0031).
 - **Phase 1 — visual foundation:** tokens, scene composition, cards, zones, controls,
   and the basic motion system; a fixture-driven battlefield reproducing the baseline
   composition.
