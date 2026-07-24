@@ -66,6 +66,26 @@ describe('PlaneReconciler add/update/move/remove (by entity id)', () => {
     expect(r.lastStats.created).toBe(planeRenders(plane).length);
   });
 
+  it('rides the never-degrading markers on every seat crest', () => {
+    // The crest is staged at every count and rung, so the markers that can
+    // never degrade away ride it — including the attacked ring, which combat
+    // against any seat draws regardless of focus (layout-model §Focus model).
+    const view = seatTable({
+      opponents: 3,
+      active: 'p2',
+      perms: [{ id: 'p2_atk', controller: 'p2', attacking: true, attacking_player: 'p4' }],
+    });
+    const r = make();
+    r.reconcile(planeOf(view));
+    const crest = (seat: string): Element | null =>
+      r.root.querySelector(`[data-slot="crest"][data-seat="${seat}"]`);
+
+    expect(crest('p4')?.getAttribute('data-attacked')).toBe('true');
+    expect(crest('p3')?.getAttribute('data-attacked')).toBe('false');
+    expect(crest('p2')?.getAttribute('data-life')).toBe('40');
+    expect(crest('p2')?.getAttribute('data-hand')).toBe('3');
+  });
+
   it('moves a wrapper in place on a position-only change — no face re-render', () => {
     const face = testFace();
     const r = make(face);
