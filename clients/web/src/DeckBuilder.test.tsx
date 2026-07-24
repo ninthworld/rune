@@ -60,8 +60,26 @@ describe('DeckBuilder (issue #368)', () => {
   it('shows each card’s cost and type line for browsing', () => {
     renderBuilder();
     const angel = screen.getByTestId('deck-builder-card-serra_angel');
-    expect(angel.textContent).toContain('{3}{W}{W}');
+    // The cost renders through the shared CardFace cost pill (symbols joined by ·)
+    // rather than the raw brace string; the type line renders verbatim.
+    expect(angel.textContent).toContain('3·W·W');
     expect(angel.textContent).toContain('Creature — Angel');
+  });
+
+  it('renders every card surface through the shared DOM card component (#508)', () => {
+    renderBuilder({ initialCounts: { serra_angel: 1 } });
+    // Pool entries render a field-tier CardFace (role=img labelled by the card).
+    const pool = screen.getByTestId('deck-builder-card-serra_angel');
+    const poolFace = pool.querySelector('[data-tier="field"]');
+    expect(poolFace).not.toBeNull();
+    expect(poolFace?.getAttribute('role')).toBe('img');
+    expect(poolFace?.getAttribute('aria-label')).toBe('Serra Angel');
+    // Running-deck entries render a chip-tier CardFace — no bespoke card markup.
+    const deckRow = screen.getByTestId('deck-builder-deck-row-serra_angel');
+    expect(deckRow.querySelector('[data-tier="chip"]')).not.toBeNull();
+    // The panel carries the scene-token elevation ladder (a --deck-* custom property).
+    const panel = screen.getByTestId('deck-builder');
+    expect(panel.style.getPropertyValue('--deck-elev-held')).not.toBe('');
   });
 
   it('inspects a card with its rules text through the shared inspect treatment', () => {
