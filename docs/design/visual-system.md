@@ -66,18 +66,22 @@ B `#77688C`, R `#C05B4D`, G `#57935F`, multicolor `#C9A84C`, colorless
 `#8C949C`, land `#A08A6E`. Frame accents belong to the card and never encode
 ownership.
 
-**Interaction accents** — one hue per meaning, never shared:
+**Interaction accents** — organized as **semantic hue families**: each hue
+family owns one meaning-group, and distinct states *within* a family are
+separated by the shape channels of §7, never by hue alone:
 
-| Meaning | Value | Shape channel (see §7) |
-| --- | --- | --- |
-| Actionable now (server-offered) | gold `#F2C94C` | bottom edge bar |
-| Selection | blue `#7FB2E5` | ring |
-| Targeting / combat threat | orange `#E0784A` | ring + drawn path |
-| Damage / destruction moment | `#D9574A` | impact flash + badge |
-| Healing / growth moment | `#6FAF78` | soft rise pulse |
+| Hue family | Value | States in the family | Shape channels (see §7) |
+| --- | --- | --- | --- |
+| Gold — "you can act" | `#F2C94C` | offered interactions; the priority holder | bottom edge bar (cards); crest glow (priority) |
+| Blue — "your attention" | `#7FB2E5` | selection | ring |
+| Orange — "threat / intent" | `#E0784A` | targeting; attack and block relationships | ring + drawn path; top/left edge bars |
+| Red — "loss moment" | `#D9574A` | damage, destruction | impact flash + badge |
+| Green — "gain moment" | `#6FAF78` | healing, growth | soft rise pulse + delta chip |
 
-Gold stays disciplined: it marks *the* next action and priority, nothing
-decorative. Selection and targeting never share a hue because they co-occur.
+Gold stays disciplined: it marks **every currently offered interaction**
+(`valid_actions` may offer several at once — all of them carry the
+treatment) and the priority holder, and is never decorative. Selection keeps
+a hue family of its own because it co-occurs with targeting on screen.
 
 **Seat identity accents** — six muted jewel tones (extending the shipped
 four) assigned deterministically by seat order: `#4D7EC9` azure, `#B0563F`
@@ -135,9 +139,11 @@ provides one (ADR 0024 unchanged). What changes is presence, not content:
   ~25° rotation + dim, footprint pre-reserved, one treatment at every tier.
 - **In hand** cards stand in screen space in a curved fan, largest tier;
   hovering/focusing straightens and raises the card above its neighbors.
-- **On the stack** an object is a screen-space mini card attached to the
-  stack rail, wearing its controller's seat accent as an edge stripe (a
-  stack entry references *who*, so the accent is correct there).
+- **On the stack** an object is a screen-space mini card seated in a
+  stack-rail slot; the **slot wrapper** — not the card face — wears the
+  controller's seat accent as an edge stripe, so "who controls this entry"
+  reads at a glance while the never-on-cards rule of §2 holds without
+  exception.
 - **Inspect** is a fixed-size screen-space panel at every geometry
   (budget rule: inspection never depends on battlefield card size).
 - ×N stacks render as a slightly splayed physical pile (2–3 px offsets) with
@@ -184,11 +190,23 @@ The binding table (budgets: no state is color-only at any quality level):
 ## 8. Motion grammar
 
 Principles, then the vocabulary. Every duration fits its
-[budget class](presentation-budgets.md#animation-budgets); every motion is
-interruptible, collapses under fast-forward, and has a defined
-reduced-motion (RM) form — the default RM form is "snap to end state" unless
-stated. Motion states **causality**: source → effect → consequence, in
-order, so a player who missed the log still reads what happened.
+[budget class](presentation-budgets.md#animation-budgets), and two distinct
+contracts apply to every row:
+
+- **Interruptibility (always, no exceptions):** a newer authoritative view
+  retargets or discards any in-flight motion, fast-forward collapses
+  everything to the latest state, and no motion ever gates input.
+- **Skippability (per class, the default):** motions that complete in
+  ≤ 600 ms are **not individually user-skippable** — they are shorter than a
+  deliberate skip and remain interruptible as above. Every composition that
+  may exceed 600 ms end-to-end is **user-skippable** (input or setting) and
+  is explicitly marked *skippable* in its row. No unmarked row may compose
+  past 600 ms.
+
+Each row defines a reduced-motion (RM) form — the default is "snap to end
+state" unless stated. Motion states **causality**: source → effect →
+consequence, in order, so a player who missed the log still reads what
+happened.
 
 ### Object motions
 
@@ -197,12 +215,13 @@ order, so a player who missed the log still reads what happened.
 | Draw | card rises from library pile, arcs to its fan slot, neighbors reflow | 250–350 ms | appears in slot |
 | Play land / permanent | card lifts from fan, arcs onto its row, row closes around it, soft contact settle | 300–400 ms | appears in row |
 | Cast (goes to stack) | card lifts, shrinks toward the stack rail, stack entry slides in | 300–400 ms | entry appears |
-| Resolve | stack entry expands briefly toward its destination, then travel/effect | ≤400 ms + effect ≤600 ms | state applies, badge blink |
+| Resolve | stack entry expands toward its destination while the effect plays — expansion and effect **overlap**, ≤600 ms combined; a multi-part resolution that must compose longer is *skippable* | ≤600 ms total | state applies, badge blink |
+| Ability / trigger to stack | a rune chip rises from the source permanent to a stack-rail slot (the synthetic entry), source pulses once | 200–300 ms | entry appears + source badge |
 | Countered / fizzle | stack entry crumples (scale + rotate ~5°) and falls out | 250–350 ms | entry vanishes + log emphasis |
 | To graveyard (destroy/sacrifice/discard) | card tips flat, slides to the pile, pile count ticks | 300–400 ms | pile count ticks |
 | Exile | card lifts and fades through a violet rune iris | 300–400 ms | vanishes + pile tick |
 | Reveal / look-at | card flips up in place or to a screen-space strip | 200–300 ms | shown immediately |
-| Token creation | token scales up from its source with a brief rune circle | 200–300 ms each, batched | tokens appear |
+| Token creation | token scales up from its source with a brief rune circle | 200–300 ms each; a batch uses the budget stagger window and is *skippable* | tokens appear |
 | Zone migration (type change moves rows) | eased slide between rows (carried behavior) | 250–350 ms | repositions |
 
 ### Feedback motions
@@ -215,6 +234,7 @@ order, so a player who missed the log still reads what happened.
 | Targeting path | path draws from source to pointer/candidate, dash crawl while pending | draw ≤150 ms | full path, static dash |
 | Illegal attempt | ≤3 px horizontal shake, 2 cycles | ≤200 ms | toast only |
 | Counters / P/T change | badge pop (scale 1→1.2→1) + delta chip floating up | 200–300 ms | badge updates |
+| Healing / growth | green rise pulse (§2 gain family) on the object or life crest + floating delta chip | 200–300 ms | badge/crest updates |
 
 ### Combat
 
@@ -240,7 +260,7 @@ order, so a player who missed the log still reads what happened.
 | Motion | Choreography | Duration | RM form |
 | --- | --- | --- | --- |
 | Game start | environment fades up, regions assemble outward from center, libraries settle, opening hands deal with budgeted stagger | ≤800 ms total window, skippable | scene appears |
-| Mulligan | hand sweeps back to library, redraw deals | within travel budgets | hands swap |
+| Mulligan | hand sweeps back to library, redraw deals; the composed sweep+deal is *skippable* | within travel budgets | hands swap |
 | Reconnect / fast-forward | latest view renders complete, then a single "you are here" pulse on the phase pill and active crest | rebuild per budget, pulse ≤300 ms | no pulse |
 | Concede / defeat | player's region plays the eliminated treatment; for the local player, a quiet full-screen dim into the verdict panel | ≤600 ms | verdict panel |
 | Victory | gold rune bloom behind the verdict panel — celebratory, not gaudy | ≤800 ms, skippable | verdict panel |
