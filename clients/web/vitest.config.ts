@@ -32,6 +32,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    // `scripts/` holds the build-output gates (issue #510): plain ESM JavaScript,
+    // because CI runs them with bare `node` against `dist/` with no bundler in
+    // the loop. Their pure halves are unit-tested here alongside the client.
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.js'],
   },
 });

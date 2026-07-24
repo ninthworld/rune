@@ -10,8 +10,19 @@ Evidence base: the architecture spike's measurements
 ([`spike-2-5d-findings.md`](spike-2-5d-findings.md)) plus CPU-throttled runs
 recorded below. All in-container numbers are a **software-rendering floor**
 (headless Chromium, SwiftShader, no GPU); CPU throttle is the low-end-device
-proxy available here. The re-validation obligations on real hardware are
-listed at the end.
+proxy available here.
+
+Two evidence tracks, with different standing:
+
+- **Frame, memory, and timing budgets** are still carried by the container
+  proxy, which is **provisional and non-binding** — see
+  [§Measured evidence](#measured-evidence--in-container-proxy-provisional-non-binding).
+  They bind on the device classes named in
+  [§Real-hardware validation](#real-hardware-validation--outstanding), which is
+  outstanding.
+- **Load and asset budgets** are enforced on the built production bundle by CI
+  on every change — see
+  [§Enforcement](#enforcement-ci-load-budget-gate-issue-510).
 
 ## Device and browser envelope
 
@@ -120,6 +131,54 @@ cache-forever URLs; a match must be fully playable before any optional asset
 and versioning policy are issue #471's deliverable and must fit these size
 ceilings.
 
+### Enforcement (CI load-budget gate, issue #510)
+
+The three size budgets are checked by `clients/web/scripts/checkLoadBudget.js`
+(`npm run budget`). It rides `make client-check` immediately after
+`npm run build`, so the Client CI job measures the **built production bundle in
+`dist/`** — never dev-server output — and fails on any violation. The ceilings
+live in `clients/web/scripts/loadBudget.js` and nowhere else; that module is
+pure and unit-tested (`loadBudget.test.js`) including the over-budget paths, so
+the failure behaviour itself is covered.
+
+How a built file is counted:
+
+| Class | Matches | Counted as | Budgets |
+| --- | --- | --- | --- |
+| `code` | `.js`, `.mjs`, `.css`, `.html` | gzipped (zlib default level, what a CDN compresses with on the fly) | interactive bundle, first match |
+| `font` | `.woff2`, `.woff`, `.ttf`, `.otf` | transfer size (already compressed) | fonts, first match |
+| `asset` | everything else that ships | gzipped, or raw for already-compressed formats | first match |
+| `deferred` | `card-art/**` (ADR 0024, player-side and opt-in) and `lazy/**` | not counted | none |
+
+The classification is deliberately fail-closed: an unrecognized file lands in
+`asset` and counts against the first-match set. Keeping something out of that
+set is an explicit act — put it under `lazy/`, the convention for alternate
+environment themes and audio, which must never block a playable match. The gate
+also refuses to run against a build made with `VITE_RUNE_FIXTURE_HARNESS=true`,
+since that bundle carries the fixture route and is not what ships.
+
+Measured at commit `e0598dc` (the Phase 3 client, `npm run build`):
+
+| Budget | Ceiling | Measured | Used | Headroom |
+| --- | --- | --- | --- | --- |
+| Interactive code bundle (gzipped, excl. art/audio) | ≤ 1.0 MB | 298.75 kB | 29.9 % | 701.25 kB |
+| Bundled fonts | ≤ 60 KB | 14.52 kB | 24.2 % | 45.48 kB |
+| First-match download at default quality | ≤ 4 MB | 313.27 kB | 7.8 % | 3.69 MB |
+
+Composition: `index.js` 282.27 kB gzipped (913.13 kB raw), `index.css`
+16.22 kB gzipped (96.86 kB raw), `index.html` 0.26 kB gzipped, `rune-display`
+woff2 14.52 kB. No tuning was needed to land inside the ceilings.
+
+Two load budgets are **not** covered by this gate and stay owed to the
+real-hardware runs below, because neither is a property of a build artifact:
+
+- One environment theme ≤ 1.5 MB — no theme asset ships yet; the scene is
+  generated from CSS and tokens. The gate will count a theme file the moment
+  one exists (as `asset`, or `deferred` if it is placed under `lazy/`).
+- Cold start → interactive lobby ≤ 5 s and lobby → match presentation ready
+  ≤ 2 s — device-and-network timings, measured per
+  [§Real-hardware validation](#real-hardware-validation--outstanding).
+
 ## Animation budgets
 
 Durations are Standard-quality defaults; High may stagger more richly within
@@ -162,7 +221,15 @@ the same caps; reduced motion snaps everything.
   layout or state difference; prompt and log text stays in the DOM for
   screen readers.
 
-## Measured evidence (in-container floor)
+## Measured evidence — in-container proxy (provisional, non-binding)
+
+> **Provisional.** Every number in this section comes from headless Chromium
+> with software rendering and a CPU throttle, in a container with no GPU. It is
+> a useful floor and a regression tripwire, and it is **not** evidence that any
+> frame, heap, or rebuild budget is met. Nothing here satisfies the budgets
+> document: the binding record is the device-class evidence in
+> [§Real-hardware validation](#real-hardware-validation--outstanding), which
+> replaces these rows once it exists.
 
 Unthrottled software rendering (from the spike):
 idle/tween **~55–60 fps at up to 245 perspective DOM cards**; full-viewport
@@ -188,13 +255,136 @@ within the harness's sampling resolution, so it is recorded as at the line,
 not a pass, and is one more reason the floor budgets bind on the real
 hardware runs below rather than on this proxy.
 
-## Re-validation obligations
+## Real-hardware validation — OUTSTANDING
 
-Before the Phase 2 (playable vertical slice) exit of #464, re-run the
-harness scenarios (`window.__spike` in
+**Status: not done, and owed by a human.** No measurement on any of the three
+required device classes has been recorded. Physical hardware cannot be reached
+from the agent sandbox, so issue #510 landed only its agent-implementable half
+— the CI load-budget gate above and this procedure. Until the tables below are
+filled in:
+
+- the frame, heap, rebuild, DOM, and cold-start budgets have **no binding
+  evidence**, only the container proxy marked provisional above;
+- the at-the-line 4× mass-untap p95 (33.4 ms against the ≤ 33.3 ms Lite cap)
+  stands **unresolved**; and
+- the Phase 4 exit gate (#511) **cannot claim** the presentation-budget
+  criterion.
+
+Everything the runs need is in place: the fixture harness, the probe script,
+and the skeleton tables. What is missing is the devices.
+
+### Required device classes
+
+| Class | Requirement | Quality levels to run | Status |
+| --- | --- | --- | --- |
+| A — mid-tier Android phone | ~2019 mid-tier (e.g. Pixel 3a / Galaxy A50 class), Android Chrome | Standard and Lite | outstanding |
+| B — recent iPhone or iPad | Current iOS/iPadOS Safari | Standard and Lite | outstanding |
+| C — integrated-GPU laptop | No discrete GPU; evergreen Chrome or Safari | Standard, plus Lite for the floor tier | outstanding |
+
+### Procedure
+
+Repeatable, and the same on every class. Record the client commit with each
+run.
+
+1. **Build the harness bundle** (measurement only — the CI gate refuses to
+   size this build):
+   `cd clients/web && VITE_RUNE_FIXTURE_HARNESS=true npm run build`
+   then serve it on the LAN: `npm run preview -- --host`.
+2. **Open the fixture on the device**:
+   `http://<host>:4173/fixtures/2.5d?scenario=commander4&quality=standard`.
+3. **Attach a console** to that page — Android Chrome via desktop Chrome's
+   `chrome://inspect`; iOS Safari via macOS Safari's Develop menu; the laptop
+   via its own devtools.
+4. **Paste** [`clients/web/scripts/deviceBudgetProbe.js`](../../clients/web/scripts/deviceBudgetProbe.js)
+   into the console, then run:
+   `await runeDeviceBudgetProbe({ label: 'Pixel 3a — Android 12, Chrome 126' })`.
+   It walks the required scenarios, reads the live
+   [`fixture/metrics.ts`](../../clients/web/src/fixture/metrics.ts) report for
+   each, and prints a Markdown table. Paste it into this document under the
+   matching class below.
+5. **Repeat at `?quality=lite`** — the level is read from the URL at mount, so
+   it takes a reload — and paste that block too.
+6. **Mass-untap verdict**: on class A at Lite, select `commander4`, step the
+   sequence to the tap/untap frames (`selectFrame`), and let the probe sample
+   the tween. Record the p95 against the ≤ 33.3 ms Lite cap and state a verdict
+   in §Verdicts below. This is the specific at-the-line result carried over
+   from the proxy run.
+7. **Real client, not just the fixture**: play a four-player Commander game on
+   each class and record cold start → interactive lobby and lobby → match
+   presentation ready, with the device on a throttled 4G profile for class A.
+8. **Every miss gets a disposition** — fixed, or an exception recorded here
+   with its rationale and a linked follow-up issue. A blank row is not a pass.
+
+### Evidence — class A, mid-tier Android phone (~2019)
+
+**Device:** _pending_  **User agent:** _pending_  **Viewport / DPR:** _pending_
+**Client commit:** _pending_  **Run date:** _pending_
+
+| Scenario | Quality | Idle fps | Idle p95 ms | Tween fps | Tween p95 ms | Rebuild ms | DOM nodes | Heap MB | Verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| commander4 | — | — | — | — | — | — | — | — | outstanding |
+| six | — | — | — | — | — | — | — | — | outstanding |
+| tokens | — | — | — | — | — | — | — | — | outstanding |
+| big-hand | — | — | — | — | — | — | — | — | outstanding |
+| combat-web | — | — | — | — | — | — | — | — | outstanding |
+| deep-stack | — | — | — | — | — | — | — | — | outstanding |
+| phone | — | — | — | — | — | — | — | — | outstanding |
+
+### Evidence — class B, recent iPhone / iPad Safari
+
+**Device:** _pending_  **User agent:** _pending_  **Viewport / DPR:** _pending_
+**Client commit:** _pending_  **Run date:** _pending_
+
+| Scenario | Quality | Idle fps | Idle p95 ms | Tween fps | Tween p95 ms | Rebuild ms | DOM nodes | Heap MB | Verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| commander4 | — | — | — | — | — | — | — | — | outstanding |
+| six | — | — | — | — | — | — | — | — | outstanding |
+| tokens | — | — | — | — | — | — | — | — | outstanding |
+| big-hand | — | — | — | — | — | — | — | — | outstanding |
+| combat-web | — | — | — | — | — | — | — | — | outstanding |
+| deep-stack | — | — | — | — | — | — | — | — | outstanding |
+| phone | — | — | — | — | — | — | — | — | outstanding |
+
+Safari does not expose `performance.memory`, so the heap column stays blank on
+this class; record heap from the Web Inspector's Timelines instead.
+
+### Evidence — class C, integrated-GPU laptop
+
+**Device:** _pending_  **User agent:** _pending_  **Viewport / DPR:** _pending_
+**Client commit:** _pending_  **Run date:** _pending_
+
+| Scenario | Quality | Idle fps | Idle p95 ms | Tween fps | Tween p95 ms | Rebuild ms | DOM nodes | Heap MB | Verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| commander4 | — | — | — | — | — | — | — | — | outstanding |
+| six | — | — | — | — | — | — | — | — | outstanding |
+| tokens | — | — | — | — | — | — | — | — | outstanding |
+| big-hand | — | — | — | — | — | — | — | — | outstanding |
+| combat-web | — | — | — | — | — | — | — | — | outstanding |
+| deep-stack | — | — | — | — | — | — | — | — | outstanding |
+| phone | — | — | — | — | — | — | — | — | outstanding |
+
+### Load timings on real hardware
+
+| Measurement | Budget | Class A (4G) | Class B | Class C | Status |
+| --- | --- | --- | --- | --- | --- |
+| Cold start → interactive lobby | ≤ 5 s | — | — | — | outstanding |
+| Lobby → match presentation ready (theme cached) | ≤ 2 s | — | — | — | outstanding |
+| One environment theme (compressed) | ≤ 1.5 MB | n/a — no theme asset ships yet | n/a | n/a | n/a |
+
+The three size budgets in the same table are covered by CI and need no device
+run; see [§Enforcement](#enforcement-ci-load-budget-gate-issue-510).
+
+### Verdicts
+
+| Question | Verdict | Evidence |
+| --- | --- | --- |
+| Mass-untap tween p95 on real Lite-class hardware (proxy: 33.4 ms vs ≤ 33.3 ms cap — at the line, not a pass) | **outstanding** | — |
+| Every frame/heap/rebuild/DOM budget row on classes A, B, C | **outstanding** | — |
+| Interactive bundle, fonts, first-match size | **pass** | CI gate, [§Enforcement](#enforcement-ci-load-budget-gate-issue-510) |
+
+The spike harness (`window.__spike` in
 [`prototypes/ui-2-5d-spike-v1.html`](../../prototypes/ui-2-5d-spike-v1.html),
-protocol in [`spike-2-5d-findings.md`](spike-2-5d-findings.md)) on real
-hardware: one mid-tier Android phone (~2019), one recent iPhone/iPad Safari,
-one integrated-GPU laptop — plus the real client once its scene exists. Frame
-budgets bind on those devices, not on the container proxy. Load budgets are
-verified against the built bundle in CI once the Phase 1 client exists.
+protocol in [`spike-2-5d-findings.md`](spike-2-5d-findings.md)) remains
+available for a like-for-like comparison against the original spike numbers,
+but the shipped client's fixture route is the primary harness now — it exercises
+the real `PlaneReconciler` + `CardFace` stack.

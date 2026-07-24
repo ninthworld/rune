@@ -61,6 +61,9 @@ the table UI.
 - `npm run lint:fix` — auto-fix ESLint + write Prettier formatting
 - `npm run typecheck` — strict TS
 - `npm run build` — typecheck + production build (CI runs this)
+- `npm run budget` — load-budget gate on the built `dist/` (CI runs this after
+  `build`); ceilings live in `scripts/loadBudget.js`, rationale in
+  `docs/design/presentation-budgets.md` §Load and asset budgets
 - `npm run dev` — Vite dev server
 
 Use Prettier for formatting; see [`docs/coding-standards.md`](../../docs/coding-standards.md).
