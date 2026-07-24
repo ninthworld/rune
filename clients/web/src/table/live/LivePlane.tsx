@@ -30,7 +30,20 @@ import {
   type GameViewPresentation,
   type TargetingPresentationPath,
 } from './gameViewPresentation';
+import {
+  determinePresentationMode,
+  orientationCue,
+  rebuildBudgetMs,
+  SCENE_DOM_CEILING,
+  type PresentationMode,
+  type RebuildSample,
+} from './presentationMode';
 import styles from './live-plane.module.css';
+
+/** Monotonic clock for rebuild timing; degrades to 0 where unavailable. */
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : 0;
+}
 
 type SceneStyle = CSSProperties & Record<`--${string}`, string | number>;
 
@@ -72,12 +85,23 @@ export interface LivePlaneProps {
   reducedMotion: boolean;
   /** Art-store version; a change rechecks DOM face signatures. */
   artVersion?: number;
+  /**
+   * The store's transport generation ({@link GameStore.sessionEpoch}). A view
+   * arriving under a higher epoch than the one last presented is a reconnect /
+   * resync discontinuity and is rebuilt from scratch rather than reconciled
+   * (issue #493). Omitted ⇒ every in-session view reconciles incrementally.
+   */
+  sessionEpoch?: number;
   /** Server-driven pending target paths assembled by the interaction adapter. */
   targetingPaths?: readonly TargetingPresentationPath[];
   /** Publish the current pure plane to test/read-only consumers. */
   onPlane?: (plane: StagedPlane) => void;
   /** Publish the pure view-delta adapter result to controlled tests/consumers. */
   onPresentation?: (presentation: GameViewPresentation) => void;
+  /** Notified with the mode chosen for each presented view (initial/reconcile/rebuild/fast-forward). */
+  onMode?: (mode: PresentationMode) => void;
+  /** Notified with the measured budget sample after each full rebuild / collapse. */
+  onRebuild?: (sample: RebuildSample) => void;
   /** Server-authoritative semantic controls layered over staged destinations. */
   interaction?: LivePlaneInteractionProps;
 }
@@ -148,9 +172,12 @@ export function LivePlane({
   density,
   reducedMotion,
   artVersion,
+  sessionEpoch,
   targetingPaths,
   onPlane,
   onPresentation,
+  onMode,
+  onRebuild,
   interaction,
 }: LivePlaneProps) {
   const [size, setSize] = useState<PlaneSize>(initialSize);
@@ -164,9 +191,21 @@ export function LivePlane({
   const targetingPathsRef = useRef(targetingPaths);
   const previousViewRef = useRef<GameView>();
   const previousFocusRef = useRef(staging?.focusSeat);
+  // The transport generation last presented, and the current one, read inside the
+  // reconcile effect without re-running it on a bare epoch bump (the rebuild is
+  // driven by the *view* that arrives after a reconnect, not the bump itself).
+  const presentedEpochRef = useRef(sessionEpoch ?? 0);
+  const sessionEpochRef = useRef(sessionEpoch ?? 0);
+  // Instrumentation callbacks read via refs so their identity never re-runs the
+  // reconcile effect (which would spuriously re-present the same view).
+  const onModeRef = useRef(onMode);
+  const onRebuildRef = useRef(onRebuild);
   viewRef.current = view;
   stagingRef.current = staging;
   targetingPathsRef.current = targetingPaths;
+  sessionEpochRef.current = sessionEpoch ?? 0;
+  onModeRef.current = onMode;
+  onRebuildRef.current = onRebuild;
 
   const plane = useMemo(() => stagePlane(view, size, staging), [size, staging, view]);
   const planeRef = useRef(plane);
@@ -206,6 +245,27 @@ export function LivePlane({
     }
   }, [effectsLayer]);
 
+  const emitRebuildSample = useCallback(
+    (mode: PresentationMode, start: number, compact: boolean, root: HTMLElement): void => {
+      const report = onRebuildRef.current;
+      if (!report) return;
+      const durationMs = monotonicNow() - start;
+      // Count the reconciled scene subtree — the DOM that scales with the board,
+      // which the ≤15k budget governs (chrome is fixed and lives outside it).
+      const domNodes = root.querySelectorAll('*').length;
+      const budgetMs = rebuildBudgetMs(compact);
+      report({
+        mode,
+        durationMs,
+        domNodes,
+        budgetMs,
+        withinBudget: durationMs <= budgetMs,
+        withinDomCeiling: domNodes <= SCENE_DOM_CEILING,
+      });
+    },
+    [],
+  );
+
   useLayoutEffect(() => {
     const root = planeRootRef.current;
     if (!root) return;
@@ -218,8 +278,13 @@ export function LivePlane({
     });
     reconcilerRef.current = reconciler;
     // First frame is a reconnect-safe complete scene: no enter/travel motion.
+    const start = monotonicNow();
     reconciler.rebuild(planeRef.current);
+    anchorsRef.current.clear();
     refreshVisualAnchors(anchorsRef.current, planeRef.current, reconciler, viewRef.current);
+    // A fresh reconciler starts with no live effects; there is nothing yet to
+    // clear, and the initial mount carries no orientation cue (game start owns
+    // its own treatment) — only persistent paths for a mid-game first frame.
     effectsLayer.setPersistent(
       deriveGameViewPresentation(undefined, viewRef.current, {
         focusSeat: stagingRef.current?.focusSeat,
@@ -228,6 +293,9 @@ export function LivePlane({
         reducedMotion,
       }).persistent,
     );
+    presentedEpochRef.current = sessionEpochRef.current;
+    emitRebuildSample('initial', start, planeRef.current.compact, root);
+    onModeRef.current?.('initial');
     return () => {
       if (rafRef.current !== 0) window.cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
@@ -235,38 +303,90 @@ export function LivePlane({
       root.replaceChildren();
       if (reconcilerRef.current === reconciler) reconcilerRef.current = null;
     };
-  }, [effectsLayer, quality, reducedMotion]);
+  }, [effectsLayer, emitRebuildSample, quality, reducedMotion]);
 
   useLayoutEffect(() => {
     const reconciler = reconcilerRef.current;
     if (!reconciler) return;
-    const previousAnchors = new Map(anchorsRef.current);
-    const presentation = deriveGameViewPresentation(previousViewRef.current, view, {
-      previousFocusSeat: previousFocusRef.current,
-      focusSeat: staging?.focusSeat,
-      targetingPaths,
-      quality,
-      reducedMotion,
+    const root = planeRootRef.current;
+    const hasPreviousView = previousViewRef.current !== undefined;
+    const superseding = hasPreviousView && previousViewRef.current !== view;
+    const mode = determinePresentationMode({
+      hasPreviousView,
+      discontinuity: hasPreviousView && sessionEpochRef.current !== presentedEpochRef.current,
+      presentationBusy: superseding && reconciler.hasPendingAnimations(),
     });
-    if (previousViewRef.current !== undefined && previousViewRef.current !== view) {
+    // Persistent paths/links are a pure function of the current view — always
+    // rebuilt from it alone so combat/targeting overlays are correct after any
+    // discontinuity, never carried across a rebuild.
+    const currentPersistent = (): GameViewPresentation['persistent'] =>
+      deriveGameViewPresentation(undefined, view, {
+        focusSeat: staging?.focusSeat,
+        targetingPaths,
+        quality,
+        reducedMotion,
+      }).persistent;
+
+    if (mode === 'rebuild') {
+      // Reconnect / resync: rebuild the latest complete view with motion
+      // suppressed, clearing every ghost, transient, path, and cached anchor
+      // before the rebuilt scene is exposed. Ephemeral selection/prompt UI is
+      // cleared in parallel by LiveMatchTable's per-view reset.
+      const start = monotonicNow();
       reconciler.discardMotionProxies();
+      reconciler.rebuild(plane);
+      anchorsRef.current.clear();
+      refreshVisualAnchors(anchorsRef.current, plane, reconciler, view);
+      // The single non-blocking "you are here" cue on the active crest; reduced
+      // motion receives the complete final state with no pulse.
+      effectsLayer.replaceTransients(orientationCue(view, reducedMotion));
+      effectsLayer.setPersistent(currentPersistent());
+      if (root) emitRebuildSample('rebuild', start, plane.compact, root);
+    } else if (mode === 'fast-forward') {
+      // A newer view outran the prior transition: collapse to it. Snap the
+      // in-flight motion onto its final layout, drop obsolete proxies and
+      // transients, and reconcile the newest plane without catch-up travel —
+      // gameplay is never queued behind animation.
+      const start = monotonicNow();
+      reconciler.skipTransitions();
+      reconciler.discardMotionProxies();
+      reconciler.reconcile(plane, [], true);
+      refreshVisualAnchors(anchorsRef.current, plane, reconciler, view);
+      effectsLayer.replaceTransients([]);
+      effectsLayer.setPersistent(currentPersistent());
+      if (root) emitRebuildSample('fast-forward', start, plane.compact, root);
+    } else {
+      // initial | reconcile — the ordinary incremental animated path.
+      const previousAnchors = new Map(anchorsRef.current);
+      const presentation = deriveGameViewPresentation(previousViewRef.current, view, {
+        previousFocusSeat: previousFocusRef.current,
+        focusSeat: staging?.focusSeat,
+        targetingPaths,
+        quality,
+        reducedMotion,
+      });
+      if (superseding) reconciler.discardMotionProxies();
+      reconciler.reconcile(plane, presentation.motions);
+      refreshVisualAnchors(anchorsRef.current, plane, reconciler, view);
+      effectsLayer.setPersistent(presentation.persistent);
+      if (superseding) {
+        effectsLayer.replaceTransients(
+          freezeDepartedEffectAnchors(presentation.transients, previousAnchors, anchorsRef.current),
+        );
+      }
+      startMotion();
+      onPresentation?.(presentation);
     }
-    reconciler.reconcile(plane, presentation.motions);
-    refreshVisualAnchors(anchorsRef.current, plane, reconciler, view);
-    effectsLayer.setPersistent(presentation.persistent);
-    if (previousViewRef.current !== undefined && previousViewRef.current !== view) {
-      effectsLayer.replaceTransients(
-        freezeDepartedEffectAnchors(presentation.transients, previousAnchors, anchorsRef.current),
-      );
-    }
-    startMotion();
+
+    onModeRef.current?.(mode);
     onPlane?.(plane);
-    onPresentation?.(presentation);
     previousViewRef.current = view;
     previousFocusRef.current = staging?.focusSeat;
+    presentedEpochRef.current = sessionEpochRef.current;
   }, [
     artVersion,
     effectsLayer,
+    emitRebuildSample,
     onPlane,
     onPresentation,
     plane,

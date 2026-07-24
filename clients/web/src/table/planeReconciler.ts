@@ -258,10 +258,19 @@ export class PlaneReconciler {
    * authoritative rect before this returns; with animation, FLIP offsets and
    * travel ghosts then decay under {@link advance}. Unchanged elements are not
    * touched at all.
+   *
+   * `suppressMotion` snaps this one reconcile to its final layout without a full
+   * teardown — the fast-forward collapse (#493) when a newer view arrives before
+   * the prior transition settled: destinations apply immediately, no catch-up
+   * travel is spawned, yet the cache and unchanged elements are kept.
    */
-  reconcile(plane: StagedPlane, motionHints: readonly PlaneMotionHint[] = []): void {
+  reconcile(
+    plane: StagedPlane,
+    motionHints: readonly PlaneMotionHint[] = [],
+    suppressMotion = false,
+  ): void {
     const stats: ReconcileStats = { ...ZERO_STATS };
-    const anim = this.animating ? this.animation! : null;
+    const anim = this.animating && !suppressMotion ? this.animation! : null;
 
     this.reconcileChrome(plane, stats, anim);
 

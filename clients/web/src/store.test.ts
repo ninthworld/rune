@@ -245,6 +245,27 @@ describe('game store', () => {
       vi.advanceTimersByTime(1000);
       expect(sockets).toHaveLength(1);
     });
+
+    it('bumps sessionEpoch on the first connect and on every reconnect (the discontinuity signal)', () => {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      expect(store.getState().sessionEpoch).toBe(0);
+
+      store.getState().connect('ws://test', { createSocket: factory, reconnectDelayMs: 10 });
+      const firstEpoch = store.getState().sessionEpoch;
+      expect(firstEpoch).toBe(1);
+
+      sockets[0].emitOpen();
+      sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
+      // An ordinary in-session view does not advance the epoch.
+      expect(store.getState().sessionEpoch).toBe(firstEpoch);
+
+      // An unexpected drop + auto-reconnect opens a new transport generation.
+      sockets[0].drop();
+      vi.advanceTimersByTime(10);
+      expect(sockets).toHaveLength(2);
+      expect(store.getState().sessionEpoch).toBe(firstEpoch + 1);
+    });
   });
 
   describe('lobby (issue #114)', () => {

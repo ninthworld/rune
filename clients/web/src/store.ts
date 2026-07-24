@@ -203,6 +203,19 @@ export interface GameStore {
   rejectionNonce: number;
   /** Current connection lifecycle state. */
   status: ConnectionStatus;
+  /**
+   * A monotonically increasing transport generation, bumped once each time a new
+   * socket is opened — the first connect, every auto-reconnect after an unexpected
+   * close, and a tab-restore {@link GameStore.restoreSession}. It lets a view
+   * consumer tell an ordinary in-session update (same epoch as the last view it
+   * presented) from a **reconnect/resync discontinuity** (a higher epoch), which is
+   * the signal the 2.5D scene uses to choose a full rebuild over an incremental
+   * reconcile (issue #493). Ephemeral connection metadata like {@link status}: it is
+   * never rendered, nothing is reconstructed from it, and the server's latest
+   * `GameView` remains the only durable state — a stale epoch only ever chooses a
+   * *harmless* extra rebuild of that same latest view.
+   */
+  sessionEpoch: number;
   /** Open (or replace) the connection to `url`. */
   connect: (url: string, options?: ConnectOptions) => void;
   /**
@@ -330,7 +343,9 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     lastUrl = url;
     lastOptions = options;
     intentionalClose = false;
-    set({ status: 'connecting' });
+    // Each opened socket is a new transport generation: bump the epoch so the first
+    // view after a (re)connect is recognizable as a discontinuity (issue #493).
+    set((state) => ({ status: 'connecting', sessionEpoch: state.sessionEpoch + 1 }));
 
     const factory = options.createSocket ?? defaultSocketFactory;
     const s = factory(url);
@@ -379,6 +394,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     lobbyError: null,
     rejectionNonce: 0,
     status: 'idle',
+    sessionEpoch: 0,
 
     connect(url, options = {}): void {
       clearReconnect();
