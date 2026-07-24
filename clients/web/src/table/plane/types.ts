@@ -182,8 +182,20 @@ export interface SummaryTileSlot {
   handCount: number;
   /** The seat's pile counts. */
   zones: ZoneCounts;
-  /** The candidate strip: prompt candidates staged individually in the tile. */
+  /**
+   * The candidate strip: prompt candidates staged individually inside the tile,
+   * wrapped into rows bounded by the tile's width and by the tile column's
+   * growth budget (the column never reaches into the receiver's band).
+   */
   candidates: PlaneRender[];
+  /**
+   * How many of the seat's prompt candidates could not stage inside the bounded
+   * strip allocation (0 normally). They stay addressable through the tile's
+   * ≥ 44 px activation, which opens the zone-browser-style pick surface listing
+   * every candidate — the carried interaction guarantee that folding, digests,
+   * and tiles never remove a pick (layout-model §Interaction guarantees).
+   */
+  candidateOverflow: number;
   /** Whether the seat has been eliminated. */
   eliminated: boolean;
   /** Whether any attacker is attacking this seat. */

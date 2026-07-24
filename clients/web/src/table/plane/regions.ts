@@ -1,8 +1,13 @@
 import type { EntityId, Permanent, PlayerId, ValidAction } from '../../protocol';
-import type { RenderTier } from '../../card/cardFactory';
+import { cardVisualSignature, type RenderTier } from '../../card/cardFactory';
 import type { Rect, SurfaceTier, BandRowKind } from '../scene/types';
 import { tiersForSurface, stepDown, actionsFor } from '../scene/action-helpers';
-import { rowKindForType, actionFingerprint } from '../scene/card-helpers';
+import {
+  rowKindForType,
+  actionFingerprint,
+  toDisplayData,
+  basicLandGlyph,
+} from '../scene/card-helpers';
 import { cellSize } from '../scene/geometry';
 import { PLANE, insetRect, hitRectFor } from './metrics';
 import type { LadderRung, PlaneRender, WingDigest } from './types';
@@ -61,11 +66,35 @@ interface StageGroup {
 }
 
 /**
- * Fold identical-full-state permanents into ×N groups (ladder rung 2). The
- * grouping key is the carried key of the shipped client's `groupStacks`: the
- * card's full visual state plus its offered-action fingerprint — so a stack
- * never hides a differing card, and a forced item (candidate, selection, combat
- * participant, attachment) always stays its own individually addressable group.
+ * The carried ×N grouping key, shared byte-for-byte with the shipped client's
+ * `groupStacks`: the card's **full visual signature** (`cardVisualSignature`,
+ * which covers every renderer-visible input — type line, P/T, counters, tap,
+ * keywords, damage, the `rules_text`-derived ability marker, and the
+ * `functional_id`-derived art key) plus the offered-action fingerprint. Two
+ * permanents fold only when a player could not tell their renders apart. Forced
+ * items never reach this, so the interactive flags are their foldable defaults.
+ */
+function foldKey(item: StageItem): string {
+  const { perm } = item;
+  const data = toDisplayData(perm.card, {
+    tapped: perm.tapped,
+    counters: perm.counters,
+    selected: false,
+    actionable: item.fingerprint !== '',
+    landGlyph: item.row === 'lands' ? basicLandGlyph(perm.card.type_line) : undefined,
+    attacking: perm.attacking,
+    attackingPlayer: perm.attacking_player,
+    blocking: perm.blocking !== undefined,
+    markedDamage: perm.damage,
+  });
+  return `${cardVisualSignature(data)}|${item.fingerprint}`;
+}
+
+/**
+ * Fold identical-full-state permanents into ×N groups (ladder rung 2) under the
+ * carried {@link foldKey} — a stack never hides a differing card, and a forced
+ * item (candidate, selection, combat participant, attachment) always stays its
+ * own individually addressable group.
  */
 function groupItems(items: StageItem[], fold: boolean): StageGroup[] {
   if (!fold) return items.map((item) => ({ item, memberIds: [item.perm.id] }));
@@ -76,18 +105,7 @@ function groupItems(items: StageItem[], fold: boolean): StageGroup[] {
       groups.push({ item, memberIds: [item.perm.id] });
       continue;
     }
-    const { card } = item.perm;
-    const key = `${JSON.stringify([
-      card.name,
-      card.type_line,
-      card.mana_cost ?? null,
-      card.power ?? null,
-      card.toughness ?? null,
-      card.keywords ?? [],
-      item.perm.tapped ?? false,
-      item.perm.damage ?? 0,
-      (item.perm.counters ?? []).map((c) => [c.kind, c.count]),
-    ])}|${item.fingerprint}`;
+    const key = foldKey(item);
     const index = at.get(key);
     if (index === undefined) {
       at.set(key, groups.length);

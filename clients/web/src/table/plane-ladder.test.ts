@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameView } from '../protocol';
+import { rectsOverlap } from './layout';
 import { PHONE, seatTable, bears, menagerie, stage } from './plane.fixture';
 
 /** A 4-player table (focused p2) with the given battlefield. */
@@ -46,6 +47,25 @@ describe('stagePlane degradation ladder (issue #478, layout-model §Ladder)', ()
     const piles = plane.farSide!.renders.filter((r) => r.stackCount > 1);
     expect(piles.map((p) => p.stackCount).sort((a, b) => a - b)).toEqual([3, 10]);
     expect(piles.find((p) => p.stackCount === 3)?.tapped).toBe(true);
+  });
+
+  it('never folds visually distinct same-name permanents (full visual signature)', () => {
+    // Same name, type, and P/T — but three carry printed rules text whose
+    // cost/effect colon draws the latent activated-ability marker on the face.
+    // The carried `cardVisualSignature` key must keep them out of the plain
+    // pile: a stack never hides a card that renders differently.
+    const perms = [
+      ...bears('p2', 17),
+      ...bears('p2', 3, { prefix: 'abil' }).map((p) => ({
+        ...p,
+        rules_text: '{T}: Add {G}.',
+      })),
+    ];
+    const plane = stage(fourSeat(perms));
+    expect(plane.farSide?.rung).toBe(2);
+    const piles = plane.farSide!.renders;
+    expect(piles.map((p) => p.stackCount).sort((a, b) => a - b)).toEqual([3, 17]);
+    expect(piles.flatMap((p) => p.memberIds)).toHaveLength(20);
   });
 
   it('carries the offered-action fingerprint in the ×N grouping key', () => {
@@ -201,9 +221,53 @@ describe('stagePlane candidate piercing (issue #478, layout-model §Focus)', () 
     expect(candidate.hitRect.w).toBeGreaterThanOrEqual(44);
     // The strip lives inside the grown tile, so the tile stays one touch home.
     expect(candidate.rect.y + candidate.rect.h).toBeLessThanOrEqual(tile.rect.y + tile.rect.h);
+    expect(tile.candidateOverflow).toBe(0);
     // A tile without candidates keeps its compact height.
     const other = plane.tiles.find((t) => t.seat === 'p3')!;
     expect(other.candidates).toHaveLength(0);
     expect(other.rect.h).toBeLessThan(tile.rect.h);
+  });
+
+  it('wraps and bounds a multi-candidate strip inside the tile allocation', () => {
+    const view = seatTable({ opponents: 3, active: 'p2', perms: menagerie('p4', 4) });
+    const plane = stage(view, PHONE, {
+      focusSeat: 'p2',
+      candidates: ['p4_beast_0', 'p4_beast_1', 'p4_beast_2', 'p4_beast_3'],
+    });
+    const tile = plane.tiles.find((t) => t.seat === 'p4')!;
+    // Three candidates fit one wrapped row inside the 390 px tile; the column's
+    // growth budget grants no second row, so the fourth reports as overflow —
+    // reachable through the tile's pick surface, never drawn into the corridor.
+    expect(tile.candidates.length + tile.candidateOverflow).toBe(4);
+    expect(tile.candidates.length).toBeGreaterThan(0);
+    expect(tile.candidateOverflow).toBeGreaterThan(0);
+    for (const c of tile.candidates) {
+      expect(c.rect.x).toBeGreaterThanOrEqual(tile.rect.x);
+      expect(c.rect.x + c.rect.w).toBeLessThanOrEqual(tile.rect.x + tile.rect.w);
+      expect(c.rect.y + c.rect.h).toBeLessThanOrEqual(tile.rect.y + tile.rect.h);
+    }
+    // The grown column still ends above the receiver's band.
+    const receiver = plane.receiver!.rect;
+    for (const t of plane.tiles) {
+      expect(t.rect.y + t.rect.h).toBeLessThanOrEqual(receiver.y);
+      expect(rectsOverlap(t.rect, receiver)).toBe(false);
+      expect(rectsOverlap(t.rect, plane.corridor)).toBe(false);
+    }
+  });
+
+  it('never grows the tile column into the receiver at six players', () => {
+    // Four tiles leave no strip budget at 390×844: the candidate reports as
+    // overflow instead of pushing the column over the receiver band.
+    const view = seatTable({ opponents: 5, active: 'p2', perms: menagerie('p3', 2) });
+    const plane = stage(view, PHONE, { focusSeat: 'p2', candidates: ['p3_beast_0'] });
+    expect(plane.tiles).toHaveLength(4);
+    const tile = plane.tiles.find((t) => t.seat === 'p3')!;
+    expect(tile.candidates).toHaveLength(0);
+    expect(tile.candidateOverflow).toBe(1);
+    const receiver = plane.receiver!.rect;
+    for (const t of plane.tiles) {
+      expect(t.rect.y + t.rect.h).toBeLessThanOrEqual(receiver.y);
+      expect(rectsOverlap(t.rect, receiver)).toBe(false);
+    }
   });
 });

@@ -23,6 +23,7 @@ export interface PlanePermSpec {
   tapped?: boolean;
   power?: string;
   toughness?: string;
+  rules_text?: string;
   attacking?: boolean;
   attacking_player?: string;
   blocking?: string;
@@ -74,6 +75,7 @@ export function seatTable(opts: {
           type_line: typeLine,
           power: p.power ?? (isCreature ? '2' : undefined),
           toughness: p.toughness ?? (isCreature ? '2' : undefined),
+          rules_text: p.rules_text,
         },
       };
     }),

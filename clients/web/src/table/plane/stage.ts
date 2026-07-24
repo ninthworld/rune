@@ -162,8 +162,17 @@ export function stagePlane(
     makeRegion(wing.seat, 'wing', wing.rect, wing.surface, wing),
   );
 
+  // The tile column's growth budget: strips may spend only the slack between
+  // the carved column and the receiver's band, so a grown tile can never push
+  // the column into the receiver (the fixed slots stay non-overlapping).
+  const lastTile = slots.tiles[slots.tiles.length - 1];
+  let stripSlack =
+    lastTile !== undefined && slots.receiver !== undefined
+      ? Math.max(0, slots.receiver.y - (lastTile.rect.y + lastTile.rect.h))
+      : 0;
   const tiles: SummaryTileSlot[] = slots.tiles.map(({ seat, rect }) => {
-    const strip = tileCandidates(seat, itemsOf(seat), rect);
+    const strip = tileCandidates(seat, itemsOf(seat), rect, stripSlack);
+    stripSlack -= strip.rect.h - rect.h;
     const opponent = view.opponents.find((o) => o.player_id === seat);
     return {
       seat,
@@ -174,6 +183,7 @@ export function stagePlane(
       handCount: opponent?.hand_size ?? 0,
       zones: zoneCountsOf(view, seat, false),
       candidates: strip.candidates,
+      candidateOverflow: strip.overflow,
       ...flagsOf(seat),
     };
   });
@@ -207,26 +217,49 @@ export function stagePlane(
   };
 }
 
+/** The strip's own height for `rows` candidate rows (0 when no rows fit). */
+function stripHeight(rows: number): number {
+  if (rows === 0) return 0;
+  return PLANE.compact.tile.stripGap + rows * TIER.mini.h + (rows - 1) * PLANE.rowGap + 8;
+}
+
 /**
  * A summary tile's candidate strip: prompt candidates stage individually inside
- * the tile, which grows below its header row to hold them — so the candidates
- * stay pickable in place and the corridor beside the tile column stays clear.
+ * the tile, which grows below its header row to hold them — wrapping into rows
+ * bounded by the tile's width, growing only inside the column's `slack` budget
+ * (never past the receiver's band), so the strip can never spill into the
+ * corridor or another slot. Candidates beyond the granted allocation are
+ * reported as `overflow`: the tile's ≥ 44 px activation opens the
+ * zone-browser-style pick surface listing every candidate (the carried
+ * interaction guarantee — a pick is never removed, layout-model §Interaction
+ * guarantees), so each remains addressable without a focus change.
  */
 function tileCandidates(
   seat: PlayerId,
   items: StageItem[],
   rect: Rect,
-): { rect: Rect; candidates: PlaneRender[] } {
+  slack: number,
+): { rect: Rect; candidates: PlaneRender[]; overflow: number } {
   const picks = items.filter((item) => item.candidate);
-  if (picks.length === 0) return { rect, candidates: [] };
-  const gap = PLANE.compact.tile.stripGap;
-  const candidates: PlaneRender[] = picks.map((item, i) => {
-    const size = { w: TIER.mini.w, h: TIER.mini.h };
+  if (picks.length === 0) return { rect, candidates: [], overflow: 0 };
+  const innerW = rect.w - 16;
+  const perRow = Math.max(1, Math.floor((innerW + PLANE.cardGap) / (TIER.mini.w + PLANE.cardGap)));
+  const rowsNeeded = Math.ceil(picks.length / perRow);
+  let rows = 0;
+  while (rows < rowsNeeded && stripHeight(rows + 1) <= slack) rows += 1;
+  const staged = picks.slice(0, rows * perRow);
+  const candidates: PlaneRender[] = staged.map((item, i) => {
+    const row = Math.floor(i / perRow);
+    const col = i % perRow;
     const r: Rect = {
-      x: rect.x + 8 + i * (size.w + PLANE.cardGap),
-      y: rect.y + PLANE.compact.tile.h + gap,
-      w: size.w,
-      h: size.h,
+      x: rect.x + 8 + col * (TIER.mini.w + PLANE.cardGap),
+      y:
+        rect.y +
+        PLANE.compact.tile.h +
+        PLANE.compact.tile.stripGap +
+        row * (TIER.mini.h + PLANE.rowGap),
+      w: TIER.mini.w,
+      h: TIER.mini.h,
     };
     return {
       entityId: item.perm.id,
@@ -245,6 +278,6 @@ function tileCandidates(
       attachedTo: item.perm.attached_to,
     };
   });
-  const grown: Rect = { ...rect, h: PLANE.compact.tile.h + gap + TIER.mini.h + 8 };
-  return { rect: grown, candidates };
+  const grown: Rect = { ...rect, h: PLANE.compact.tile.h + stripHeight(rows) };
+  return { rect: grown, candidates, overflow: picks.length - staged.length };
 }
