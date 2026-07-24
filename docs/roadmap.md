@@ -103,15 +103,18 @@ Two tracks run in parallel: the M6 commander batch below, and M7's Phase 0 — t
 direction-and-feasibility work of the 2.5D presentation pivot
 ([#464](https://github.com/ninthworld/rune/issues/464)):
 
-- Supersede the graphics-light direction in the docs
-  ([#466](https://github.com/ninthworld/rune/issues/466)) — unblocks every other
-  redesign issue from the abandoned constraints.
-- The rendering and animation architecture spike
-  ([#467](https://github.com/ninthworld/rune/issues/467)) — the gate before any large
-  client rewrite; no rendering library is mandated until it concludes.
+- ~~Supersede the graphics-light direction in the docs~~
+  ([#466](https://github.com/ninthworld/rune/issues/466)) — **landed**
+  ([ADR 0029](decisions/0029-2-5d-presentation-direction.md)).
+- ~~The rendering and animation architecture spike~~
+  ([#467](https://github.com/ninthworld/rune/issues/467)) — **concluded**:
+  [ADR 0030](decisions/0030-2-5d-presentation-architecture.md) selects the DOM-scene /
+  WebGL-effects architecture on the spike's evidence
+  ([`design/spike-2-5d-findings.md`](design/spike-2-5d-findings.md)).
 - Performance, device, animation, and accessibility budgets
-  ([#468](https://github.com/ninthworld/rune/issues/468)) — draftable now, finalized
-  against the spike's measurements.
+  ([#468](https://github.com/ninthworld/rune/issues/468)) — the spike supplies the
+  software floor and the measurement harness; per-device numbers on real hardware
+  remain.
 - The 2.5D visual system and motion grammar
   ([#469](https://github.com/ninthworld/rune/issues/469)).
 - Layout concepts for two- through six-player, mobile, and stress-case boards

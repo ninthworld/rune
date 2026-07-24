@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RUNE — 2.5D presentation architecture spike v1 (issue #467)</title>
+<!--
+  Reference-only spike prototype for the 2.5D presentation pivot (ADR 0029, issue #467).
+  Never import from prototypes/ into production.
+
+  What this file demonstrates, dependency-free (no CDN, no assets):
+    - A perspective battlefield plane (CSS 3D) with an illustrated CSS-gradient
+      environment: focused opponent expanded top, two peripheral opponents staged
+      beside it, the receiver anchored at the bottom. 4-player Commander composition.
+    - Cards as DOM elements ON the tilted plane (foreshortening for free), with
+      lift (translateZ), tilt, layered shadows, tap rotation, and hover tactility.
+    - A curved, tactile hand fan (screen-space overlay, not on the plane).
+    - Travel animations (library->hand, hand->battlefield) via FLIP between two
+      pure renders of an immutable state object.
+    - A passive 2D-canvas effects overlay: targeting/attack bezier arrows with
+      animated dashes and a particle burst — pointer-events: none, never a hit target.
+    - One-state reconstruction: the whole scene re-renders from `state` alone
+      (reconnect/fast-forward demo rebuilds instantly with animations suppressed).
+    - Reduced motion: every transition collapses to a snap, no layout difference.
+    - A stress mode (~120 permanents) with an FPS meter and a `window.__spike`
+      API used by the headless measurement harness (see the spike findings doc).
+
+  Interaction stays state -> render: demo buttons mutate `state`, then call
+  render(). Nothing reads back from the DOM to decide legality or layout.
+-->
+<style>
+  :root {
+    /* Palette lifted from docs/design/ui-design-notes.md (record of shipped tokens). */
+    --board: #15171a; --card: #23262b; --name: #e8e6e1;
+    --gold: #f2c94c; --select: #7fb2e5; --target: #e0784a;
+    --w: #cfc7ac; --u: #4e86c1; --b: #77688c; --r: #c05b4d; --g: #57935f; --land: #a08a6e;
+    --dur: 320ms;
+  }
+  .reduced-motion { --dur: 0ms; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font: 13px/1.35 system-ui, sans-serif; color: var(--name);
+    background: var(--board); user-select: none;
+  }
+
+  /* ---- Illustrated environment: layered gradients, no raster assets ---- */
+  #env { position: fixed; inset: 0; }
+  #env .sky {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 90% at 50% -10%, #2c3a55 0%, #1b2233 45%, #12141c 100%);
+  }
+  #env .glow {
+    position: absolute; left: 50%; top: 34%; width: 70vw; height: 34vh;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(50% 50% at 50% 50%, rgba(124, 152, 210, .18), transparent 70%);
+  }
+  #env .ridge { position: absolute; left: 0; right: 0; height: 22vh; }
+  #env .ridge.far {
+    top: 24%;
+    background: radial-gradient(140% 100% at 50% 100%, transparent 55%, #1a2130 56%, #161c29 100%);
+    filter: blur(1px); opacity: .8;
+  }
+  #env .ridge.near {
+    top: 30%;
+    background: radial-gradient(160% 100% at 50% 100%, transparent 60%, #141925 61%, #10141d 100%);
+  }
+  #env .vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 120% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+
+  /* ---- The battlefield plane ---- */
+  #stage {
+    position: fixed; inset: 0;
+    perspective: 1500px; perspective-origin: 50% 32%;
+  }
+  #table {
+    position: absolute; left: 50%; top: 55%;
+    width: 1280px; height: 760px;
+    transform: translate(-50%, -50%) rotateX(32deg);
+    transform-style: preserve-3d;
+  }
+  #table .felt {
+    position: absolute; inset: -80px -160px;
+    border-radius: 48px;
+    background:
+      radial-gradient(80% 70% at 50% 42%, #232c3a 0%, #1b212d 55%, #151a24 100%);
+    box-shadow: 0 0 0 2px rgba(232, 230, 225, .05), 0 60px 120px rgba(0,0,0,.6);
+  }
+  #table .centerline {
+    position: absolute; left: 8%; right: 8%; top: 46%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(232,230,225,.14), transparent);
+  }
+
+  /* Player regions live on the plane; preserve-3d so cards can lift off it. */
+  .region { position: absolute; transform-style: preserve-3d; }
+  .region .zone-label {
+    position: absolute; top: -16px; left: 4px;
+    font-size: 10px; letter-spacing: .14em; text-transform: uppercase; opacity: .35;
+  }
+  .region .lane {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: rgba(232,230,225,.025);
+    box-shadow: inset 0 0 0 1px rgba(232,230,225,.06);
+  }
+  .region.owned .lane { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .row { position: absolute; left: 12px; right: 12px; display: flex; gap: 8px; transform-style: preserve-3d; }
+
+  /* ---- Cards (procedural faces only) ---- */
+  .card {
+    position: relative; width: var(--cw, 84px); height: calc(var(--cw, 84px) * 1.4);
+    border-radius: 7px; background: var(--card);
+    box-shadow:
+      0 1px 0 rgba(232,230,225,.08) inset,
+      0 0 0 1.5px color-mix(in srgb, var(--frame) 75%, #000 25%),
+      0 10px 14px rgba(0,0,0,.45);
+    transform-style: preserve-3d;
+    transition: transform var(--dur) cubic-bezier(.2,.9,.25,1.2), box-shadow var(--dur) ease;
+    flex: none;
+  }
+  .card .band {
+    position: absolute; left: 5px; right: 5px; top: 5px; height: 16px;
+    border-radius: 4px; padding: 2px 4px;
+    font-size: 9px; font-weight: 600; white-space: nowrap; overflow: hidden;
+    background: color-mix(in srgb, var(--frame) 16%, transparent);
+  }
+  .card .art {
+    position: absolute; left: 5px; right: 5px; top: 24px; bottom: 26px;
+    border-radius: 4px; display: grid; place-items: center;
+    font-size: 26px; font-weight: 700; color: color-mix(in srgb, var(--frame) 55%, transparent);
+    background:
+      radial-gradient(90% 80% at 50% 30%, color-mix(in srgb, var(--frame) 26%, transparent), transparent 75%),
+      linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.3));
+  }
+  .card .pt {
+    position: absolute; right: 4px; bottom: 4px; padding: 1px 5px;
+    border-radius: 8px; font-size: 9px; font-weight: 700;
+    background: rgba(0,0,0,.55); box-shadow: 0 0 0 1px color-mix(in srgb, var(--frame) 60%, transparent);
+  }
+  .card .cost {
+    position: absolute; left: 4px; bottom: 4px; width: 14px; height: 14px;
+    border-radius: 50%; font-size: 9px; font-weight: 700; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--frame) 30%, #000 30%);
+  }
+  .card.tapped { transform: rotate(25deg) translateZ(2px); filter: brightness(.8); }
+  .card.selected { box-shadow: 0 0 0 2.5px var(--select), 0 14px 18px rgba(0,0,0,.5); }
+  .card.targeted { box-shadow: 0 0 0 2.5px var(--target), 0 14px 18px rgba(0,0,0,.5); }
+  .card.playable::after {
+    content: ""; position: absolute; left: 6px; right: 6px; bottom: -1px; height: 3px;
+    border-radius: 2px; background: var(--gold); box-shadow: 0 0 8px var(--gold);
+  }
+  /* Battlefield tactility: cards lift off the plane toward the camera on hover. */
+  .region .card:hover { transform: translateZ(26px); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--frame) 75%, #000 25%), 0 26px 30px rgba(0,0,0,.55); }
+  .region .card.tapped:hover { transform: rotate(25deg) translateZ(26px); }
+
+  /* ---- Piles ---- */
+  .pile {
+    position: absolute; width: 54px; height: 76px; border-radius: 6px;
+    background: repeating-linear-gradient(0deg, #262a31 0 3px, #202329 3px 6px);
+    box-shadow: 0 0 0 1px rgba(232,230,225,.12), 0 8px 10px rgba(0,0,0,.4);
+  }
+  .pile .count {
+    position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px;
+    border-radius: 9px; display: grid; place-items: center; font-size: 10px; font-weight: 700;
+    background: #0d0f13; box-shadow: 0 0 0 1px rgba(232,230,225,.25);
+  }
+  .pile .tag { position: absolute; bottom: -14px; left: 0; right: 0; text-align: center; font-size: 8px; letter-spacing: .1em; opacity: .4; }
+
+  /* ---- Portraits: identity integrated into the battlefield ---- */
+  .portrait { position: absolute; width: 120px; text-align: center; transform-style: preserve-3d; }
+  .portrait .crest {
+    width: 64px; height: 64px; margin: 0 auto; border-radius: 50%;
+    display: grid; place-items: center; font-size: 22px; font-weight: 800;
+    background: radial-gradient(60% 60% at 50% 35%, #2d3340, #191d26);
+    box-shadow: 0 0 0 3px var(--accent), 0 10px 16px rgba(0,0,0,.5);
+    transition: box-shadow var(--dur) ease;
+  }
+  .portrait.priority .crest { box-shadow: 0 0 0 3px var(--gold), 0 0 22px color-mix(in srgb, var(--gold) 55%, transparent), 0 10px 16px rgba(0,0,0,.5); }
+  .portrait.attacked .crest { box-shadow: 0 0 0 3px var(--target), 0 0 24px color-mix(in srgb, var(--target) 60%, transparent); }
+  .portrait .who { margin-top: 4px; font-size: 11px; font-weight: 600; }
+  .portrait .stats { font-size: 10px; opacity: .75; }
+  .portrait .life {
+    display: inline-block; margin-top: 2px; padding: 1px 8px; border-radius: 4px;
+    font-weight: 800; font-size: 13px;
+    background: #0d0f13; box-shadow: 0 0 0 1px var(--accent);
+    clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%);
+  }
+
+  /* ---- Screen-space chrome: hand fan, phase pill, action dock ---- */
+  #hand {
+    position: fixed; left: 50%; bottom: -30px; width: 720px; height: 220px;
+    transform: translateX(-50%); pointer-events: none;
+  }
+  #hand .card {
+    position: absolute; left: 50%; bottom: 0; --cw: 118px;
+    transform-origin: 50% 120%;
+    transform: translateX(-50%) rotate(var(--fan)) translateY(var(--sink));
+    pointer-events: auto; cursor: pointer;
+  }
+  #hand .card:hover, #hand .card.selected {
+    transform: translateX(-50%) rotate(0deg) translateY(-64px) scale(1.16);
+    z-index: 40;
+  }
+  #phase {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    padding: 5px 16px; border-radius: 16px; font-size: 12px; letter-spacing: .08em;
+    background: rgba(13,15,19,.8); box-shadow: 0 0 0 1px rgba(232,230,225,.15);
+  }
+  #phase b { color: var(--gold); }
+  #dock {
+    position: fixed; right: 22px; bottom: 26px; display: flex; flex-direction: column; gap: 8px;
+  }
+  #dock .act {
+    padding: 10px 18px; border-radius: 8px; border: 0; cursor: pointer;
+    font: 700 13px system-ui; color: #1a1405; background: var(--gold);
+    box-shadow: 0 6px 14px rgba(0,0,0,.4);
+  }
+  #dock .act.quiet { background: #2a2e36; color: var(--name); font-weight: 500; }
+
+  /* ---- Spike controls / meter ---- */
+  #controls {
+    position: fixed; left: 14px; top: 14px; width: 200px; display: flex; flex-direction: column; gap: 5px;
+    font-size: 12px; z-index: 60;
+  }
+  #controls button {
+    text-align: left; padding: 6px 9px; border: 0; border-radius: 6px; cursor: pointer;
+    background: rgba(13,15,19,.85); color: var(--name);
+    box-shadow: 0 0 0 1px rgba(232,230,225,.14);
+  }
+  #controls button:hover { box-shadow: 0 0 0 1px var(--select); }
+  #meter {
+    position: fixed; left: 14px; bottom: 14px; padding: 8px 10px; border-radius: 6px;
+    font: 11px/1.5 ui-monospace, monospace; background: rgba(13,15,19,.85);
+    box-shadow: 0 0 0 1px rgba(232,230,225,.14); z-index: 60; white-space: pre;
+  }
+
+  /* Effects overlay: never a hit target. */
+  #fx { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+
+  /* Travel ghosts animate in screen space above everything. */
+  .ghost { position: fixed; z-index: 55; pointer-events: none; margin: 0; transition: none; }
+</style>
+</head>
+<body>
+<div id="env">
+  <div class="sky"></div><div class="glow"></div>
+  <div class="ridge far"></div><div class="ridge near"></div>
+  <div class="vignette"></div>
+</div>
+
+<div id="stage"><div id="table">
+  <div class="felt"></div><div class="centerline"></div>
+</div></div>
+
+<canvas id="fx"></canvas>
+<div id="hand"></div>
+<div id="phase">Turn 6 · <b>Your main phase</b> · you have priority</div>
+<div id="dock">
+  <button class="act quiet" id="menuBtn">Menu</button>
+  <button class="act" id="passBtn">Pass priority</button>
+</div>
+
+<div id="controls">
+  <button data-demo="draw">Draw card (library → hand)</button>
+  <button data-demo="play">Play selected/first card</button>
+  <button data-demo="tap">Tap / untap your lands</button>
+  <button data-demo="cast">Cast with target (arrow + burst)</button>
+  <button data-demo="attack">Declare attack (paths to player)</button>
+  <button data-demo="focus">Focus next opponent</button>
+  <button data-demo="stress">Stress board (~120 permanents)</button>
+  <button data-demo="mass">Mass untap (stress tween)</button>
+  <button data-demo="reconnect">Reconnect (rebuild from state)</button>
+  <button data-demo="motion">Toggle reduced motion</button>
+</div>
+<div id="meter">fps --</div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------ state --
+ * One immutable-ish state object; render(state) rebuilds the scene from it
+ * alone (the one-view reconstruction invariant). Demos mutate + re-render.
+ */
+const FRAMES = { W: "--w", U: "--u", B: "--b", R: "--r", G: "--g", L: "--land" };
+const ACCENTS = ["#4d7ec9", "#b0563f", "#4f8f5c", "#8b6fb0"];
+let nextId = 1;
+function mkCard(name, frame, opts = {}) {
+  return Object.assign({ id: "c" + nextId++, name, frame, tapped: false, pt: null, cost: null }, opts);
+}
+function starterBoard(seed) {
+  const c = [], l = [];
+  for (let i = 0; i < 3 + (seed % 2); i++)
+    c.push(mkCard(["Ridge Wolf", "Dawn Herald", "Moor Shade", "Emberkin"][i % 4], "WUBRG"[(seed + i) % 5], { pt: (1 + i) + "/" + (2 + (i % 2)), cost: 1 + i }));
+  for (let i = 0; i < 4; i++) l.push(mkCard("Land", "L", { tapped: false }));
+  return { creatures: c, lands: l };
+}
+const state = {
+  reducedMotion: false,
+  focused: 1, // seat index of the focused opponent
+  players: [0, 1, 2, 3].map(i => ({
+    seat: i, you: i === 0,
+    name: ["You", "Imogen", "Tam", "Sorel"][i],
+    life: [40, 34, 27, 40][i],
+    accent: ACCENTS[i],
+    priority: i === 0,
+    attacked: false,
+    library: 87 - i * 3, grave: 4 + i,
+    board: starterBoard(i + 1),
+    hand: i === 0
+      ? [mkCard("Emberkin", "R", { pt: "2/1", cost: 2 }), mkCard("Gale Sprite", "U", { pt: "1/3", cost: 3 }),
+         mkCard("Land", "L"), mkCard("Dawn Herald", "W", { pt: "2/2", cost: 2 }), mkCard("Moor Shade", "B", { pt: "3/2", cost: 4 })]
+      : { count: 5 + i },
+  })),
+  selected: null,
+};
+
+/* ------------------------------------------------------- scene geometry --
+ * Regions on the 1280x760 table plane. The focused opponent gets the wide
+ * expanded band across the top; peripheral opponents stage smaller at the
+ * upper corners; the receiver owns the bottom. The middle stays clear as
+ * the interaction area.
+ */
+function regionsFor(st) {
+  const opp = st.players.filter(p => !p.you);
+  const per = opp.filter(p => p.seat !== st.focused);
+  return [
+    { p: st.players[0], x: 160, y: 470, w: 960, h: 250, tier: 92, rows: 2 },
+    { p: st.players.find(q => q.seat === st.focused), x: 250, y: 40, w: 780, h: 220, tier: 76, rows: 2 },
+    { p: per[0], x: -55, y: 130, w: 290, h: 290, tier: 54, rows: 2, side: -1 },
+    { p: per[1], x: 1045, y: 130, w: 290, h: 290, tier: 54, rows: 2, side: 1 },
+  ].filter(r => r.p);
+}
+
+/* ------------------------------------------------------------- rendering -- */
+const table = document.getElementById("table");
+const handEl = document.getElementById("hand");
+function el(tag, cls, parent) { const e = document.createElement(tag); if (cls) e.className = cls; parent && parent.appendChild(e); return e; }
+
+function cardEl(c, tier) {
+  const d = el("div", "card");
+  d.id = c.id;
+  d.style.setProperty("--cw", tier + "px");
+  d.style.setProperty("--frame", `var(${FRAMES[c.frame] || "--w"})`);
+  if (c.tapped) d.classList.add("tapped");
+  if (state.selected === c.id) d.classList.add("selected");
+  const band = el("div", "band", d); band.textContent = c.name;
+  const art = el("div", "art", d); art.textContent = c.name[0];
+  if (c.pt) { const pt = el("div", "pt", d); pt.textContent = c.pt; }
+  if (c.cost != null) { const k = el("div", "cost", d); k.textContent = c.cost; }
+  return d;
+}
+
+function render() {
+  document.body.classList.toggle("reduced-motion", state.reducedMotion || prefersReduced());
+  table.querySelectorAll(".region, .portrait, .pile").forEach(n => n.remove());
+  for (const r of regionsFor(state)) {
+    const reg = el("div", "region" + (r.p.you ? " owned" : ""), table);
+    reg.style.cssText = `left:${r.x}px; top:${r.y}px; width:${r.w}px; height:${r.h}px; --accent:${r.p.accent}`;
+    el("div", "lane", reg);
+    const label = el("div", "zone-label", reg);
+    label.textContent = r.p.you ? "Your battlefield" : r.p.name + (r.p.seat === state.focused ? " — focused" : "");
+    const rows = [
+      { cards: r.p.board.creatures, y: 14 },
+      { cards: r.p.board.lands, y: r.h / 2 + 8 },
+    ];
+    for (const row of rows) {
+      const rw = el("div", "row", reg);
+      rw.style.top = row.y + "px";
+      rw.style.justifyContent = "center";
+      for (const c of row.cards) rw.appendChild(cardEl(c, row === rows[0] ? r.tier : r.tier * 0.72));
+    }
+    // Portrait + piles integrated at the region edge.
+    const po = el("div", "portrait" + (r.p.priority ? " priority" : "") + (r.p.attacked ? " attacked" : ""), table);
+    po.id = "portrait-" + r.p.seat;
+    po.style.cssText = `left:${r.p.you ? r.x - 130 : r.x + r.w / 2 - 60}px; top:${r.p.you ? r.y + 40 : r.y - 24}px; --accent:${r.p.accent}`;
+    const crest = el("div", "crest", po); crest.textContent = r.p.name[0];
+    el("div", "who", po).textContent = r.p.name;
+    el("div", "stats", po).textContent = (r.p.you ? state.players[0].hand.length : r.p.hand.count) + " in hand";
+    el("div", "life", po).textContent = r.p.life;
+    const pile = el("div", "pile", table);
+    pile.id = "library-" + r.p.seat;
+    pile.style.cssText = `left:${r.x + r.w - 46}px; top:${r.y + r.h - 60}px;`;
+    el("div", "count", pile).textContent = r.p.library;
+    el("div", "tag", pile).textContent = "library";
+  }
+  // Hand fan (receiver only, screen space).
+  handEl.innerHTML = "";
+  const hand = state.players[0].hand;
+  hand.forEach((c, i) => {
+    const mid = (hand.length - 1) / 2, off = i - mid;
+    const d = cardEl(c, 118);
+    d.style.setProperty("--fan", off * 7 + "deg");
+    d.style.setProperty("--sink", Math.abs(off) * 14 + "px");
+    d.style.left = `calc(50% + ${off * 92}px)`;
+    d.classList.add("playable");
+    d.onclick = () => { state.selected = state.selected === c.id ? null : c.id; render(); };
+    handEl.appendChild(d);
+  });
+}
+function prefersReduced() { return matchMedia("(prefers-reduced-motion: reduce)").matches; }
+// ?flat=1 renders the identical scene without perspective — a control that
+// isolates what the 3D plane itself costs on a given renderer.
+if (new URLSearchParams(location.search).get("flat")) {
+  table.style.transform = "translate(-50%, -50%)";
+  document.getElementById("stage").style.perspective = "none";
+}
+
+/* ------------------------------------------------ FLIP travel animation --
+ * A zone change is two renders of authoritative state; the travel is a
+ * screen-space ghost interpolating between the old and new rects. Input is
+ * never gated on it: the real element exists at its destination immediately.
+ */
+function rectOf(id) { const n = document.getElementById(id); return n && n.getBoundingClientRect(); }
+function travel(cardId, fromRect) {
+  const toN = document.getElementById(cardId);
+  if (!toN || !fromRect || state.reducedMotion || prefersReduced()) return;
+  const to = toN.getBoundingClientRect();
+  const ghost = toN.cloneNode(true);
+  ghost.classList.add("ghost");
+  ghost.style.left = fromRect.left + "px"; ghost.style.top = fromRect.top + "px";
+  ghost.style.width = fromRect.width + "px"; ghost.style.height = fromRect.height + "px";
+  document.body.appendChild(ghost);
+  toN.style.visibility = "hidden";
+  const dx = to.left - fromRect.left, dy = to.top - fromRect.top;
+  const anim = ghost.animate([
+    { transform: "translate(0,0) rotateZ(0deg)", offset: 0 },
+    { transform: `translate(${dx * .5}px, ${dy * .5 - 60}px) rotateZ(${dx > 0 ? 6 : -6}deg)`, offset: .5 },
+    { transform: `translate(${dx}px, ${dy}px) rotateZ(0deg)`, offset: 1 },
+  ], { duration: 380, easing: "cubic-bezier(.2,.8,.3,1)" });
+  anim.onfinish = () => { ghost.remove(); toN.style.visibility = ""; };
+}
+
+/* ----------------------------------------------------- effects overlay -- */
+const fx = document.getElementById("fx"), ctx = fx.getContext("2d");
+function sizeFx() { fx.width = innerWidth * devicePixelRatio; fx.height = innerHeight * devicePixelRatio; ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); }
+addEventListener("resize", sizeFx); sizeFx();
+const arrows = [], particles = [];
+function addArrow(fromId, toId, color, ttl) { arrows.push({ fromId, toId, color, until: performance.now() + (ttl || 2400) }); fxDirty = true; }
+function burst(x, y, color) {
+  for (let i = 0; i < 42; i++) {
+    const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 180;
+    particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, life: .9, color });
+  }
+  fxDirty = true;
+}
+let lastT = performance.now();
+const frameLog = [];
+let fxDirty = false; // finding: the effects overlay must idle at zero cost
+function tick(t) {
+  const dt = Math.min(.05, (t - lastT) / 1000); lastT = t;
+  frameLog.push(t); if (frameLog.length > 600) frameLog.shift();
+  if (!arrows.length && !particles.length && !fxDirty) {
+    updateMeter();
+    requestAnimationFrame(tick);
+    return;
+  }
+  ctx.clearRect(0, 0, innerWidth, innerHeight);
+  fxDirty = arrows.length > 0 || particles.length > 0;
+  const now = performance.now();
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const a = arrows[i];
+    const f = rectOf(a.fromId), g = rectOf(a.toId);
+    if (now > a.until || !f || !g) { arrows.splice(i, 1); continue; }
+    drawArrow(f.left + f.width / 2, f.top + f.height / 2, g.left + g.width / 2, g.top + g.height / 2, a.color, now);
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt; if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.vy += 320 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+  updateMeter();
+  requestAnimationFrame(tick);
+}
+function drawArrow(x1, y1, x2, y2, color, now) {
+  const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - 90;
+  ctx.strokeStyle = color; ctx.lineWidth = 3.5; ctx.lineCap = "round";
+  ctx.setLineDash([14, 10]); ctx.lineDashOffset = -(now / 24) % 24;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(mx, my, x2, y2); ctx.stroke();
+  ctx.setLineDash([]);
+  const ang = Math.atan2(y2 - my, x2 - mx);
+  ctx.fillStyle = color; ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 14 * Math.cos(ang - .4), y2 - 14 * Math.sin(ang - .4));
+  ctx.lineTo(x2 - 14 * Math.cos(ang + .4), y2 - 14 * Math.sin(ang + .4));
+  ctx.fill();
+}
+requestAnimationFrame(tick);
+
+/* ---------------------------------------------------------------- meter -- */
+const meter = document.getElementById("meter");
+let meterAt = 0;
+function fpsOver(ms) {
+  const now = frameLog[frameLog.length - 1] || 0, cut = now - ms;
+  const fr = frameLog.filter(t => t >= cut);
+  if (fr.length < 2) return { fps: 0, p95: 0 };
+  const deltas = fr.slice(1).map((t, i) => t - fr[i]).sort((a, b) => a - b);
+  return {
+    fps: 1000 / (deltas.reduce((s, d) => s + d, 0) / deltas.length),
+    p95: deltas[Math.floor(deltas.length * .95)],
+  };
+}
+function updateMeter() {
+  const now = performance.now();
+  if (now - meterAt < 250) return; meterAt = now;
+  const m = fpsOver(2000);
+  const n = document.querySelectorAll(".card").length;
+  meter.textContent = `fps ${m.fps.toFixed(0)}  p95 ${m.p95.toFixed(1)}ms\ncards ${n}  arrows ${arrows.length}  parts ${particles.length}`;
+}
+
+/* ---------------------------------------------------------------- demos -- */
+function draw() {
+  const from = rectOf("library-0");
+  state.players[0].hand.push(mkCard(["Gale Sprite", "Ridge Wolf", "Land"][Math.floor(Math.random() * 3)], "ULG"[Math.floor(Math.random() * 3)], { pt: "2/2", cost: 2 }));
+  state.players[0].library--;
+  render();
+  const c = state.players[0].hand[state.players[0].hand.length - 1];
+  travel(c.id, from);
+}
+function play() {
+  const hand = state.players[0].hand;
+  if (!hand.length) return;
+  const i = Math.max(0, hand.findIndex(c => c.id === state.selected));
+  const [c] = hand.splice(i, 1);
+  const from = rectOf(c.id);
+  state.selected = null;
+  (c.frame === "L" ? state.players[0].board.lands : state.players[0].board.creatures).push(c);
+  render();
+  travel(c.id, from);
+}
+function tapLands() {
+  const lands = state.players[0].board.lands;
+  const to = !lands.every(l => l.tapped);
+  lands.forEach(l => l.tapped = to);
+  render(); // tap is a CSS transition on the re-rendered class
+}
+function cast() {
+  const src = state.players[0].hand[0] || state.players[0].board.creatures[0];
+  const foe = state.players.find(p => p.seat === state.focused);
+  const tgt = foe.board.creatures[0];
+  if (!src || !tgt) return;
+  addArrow(src.id, tgt.id, getComputedStyle(document.body).getPropertyValue("--target").trim() || "#e0784a", 1600);
+  document.getElementById(tgt.id)?.classList.add("targeted");
+  setTimeout(() => {
+    const g = rectOf(tgt.id);
+    if (g) burst(g.left + g.width / 2, g.top + g.height / 2, "#e0784a");
+  }, state.reducedMotion ? 0 : 900);
+}
+function attack() {
+  const foe = state.players.find(p => p.seat === state.focused);
+  foe.attacked = true;
+  const atk = state.players[0].board.creatures.slice(0, 2);
+  atk.forEach(c => c.tapped = true);
+  render();
+  atk.forEach(c => addArrow(c.id, "portrait-" + foe.seat, "#e0784a", 2600));
+  setTimeout(() => { foe.attacked = false; render(); }, 2700);
+}
+function focusNext() {
+  const opp = state.players.filter(p => !p.you).map(p => p.seat);
+  state.focused = opp[(opp.indexOf(state.focused) + 1) % opp.length];
+  render(); // regions swap homes; a production reconciler would FLIP them too
+}
+function stress(n) {
+  n = n || 120;
+  const per = Math.floor(n / 4);
+  for (const p of state.players) {
+    p.board.creatures = []; p.board.lands = [];
+    for (let i = 0; i < per * .6; i++)
+      p.board.creatures.push(mkCard("Wolf " + i, "WUBRG"[i % 5], { pt: "2/2", cost: 2, tapped: i % 3 === 0 }));
+    for (let i = 0; i < per * .4; i++)
+      p.board.lands.push(mkCard("Land", "L", { tapped: i % 2 === 0 }));
+  }
+  render();
+}
+function massUntap() {
+  for (const p of state.players) [...p.board.creatures, ...p.board.lands].forEach(c => c.tapped = false);
+  render();
+}
+function reconnect() {
+  // Fast-forward: a fresh client renders the same state with zero animation.
+  const json = JSON.stringify(state); // proves the scene is serializable state
+  table.querySelectorAll(".region, .portrait, .pile").forEach(n => n.remove());
+  handEl.innerHTML = "";
+  const t0 = performance.now();
+  Object.assign(state, JSON.parse(json));
+  render();
+  console.log("reconnect rebuild in", (performance.now() - t0).toFixed(1), "ms");
+}
+document.getElementById("controls").addEventListener("click", e => {
+  const d = e.target.dataset.demo;
+  if (!d) return;
+  ({ draw, play, tap: tapLands, cast, attack, focus: focusNext,
+     stress: () => stress(120), mass: massUntap, reconnect,
+     motion: () => { state.reducedMotion = !state.reducedMotion; render(); } })[d]();
+});
+document.getElementById("passBtn").onclick = () => {
+  state.players.forEach((p, i) => p.priority = false);
+  state.players[Math.floor(Math.random() * 4)].priority = true;
+  render();
+};
+
+/* ------------------------------------------------- headless harness API -- */
+window.__spike = {
+  stress, massUntap, cast, attack, draw, play, reconnect,
+  cards: () => document.querySelectorAll(".card").length,
+  fps: ms => fpsOver(ms || 3000),
+  resetFrames: () => { frameLog.length = 0; },
+  reconnectMs: () => { const t0 = performance.now(); reconnect(); return performance.now() - t0; },
+};
+
+render();
+</script>
+</body>
+</html>
