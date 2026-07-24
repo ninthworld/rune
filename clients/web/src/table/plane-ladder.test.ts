@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GameView } from '../protocol';
 import { rectsOverlap } from './scene';
+import { PLANE } from './plane';
 import { PHONE, seatTable, bears, menagerie, stage } from './plane.fixture';
 
 /** A 4-player table (focused p2) with the given battlefield. */
@@ -154,6 +155,32 @@ describe('stagePlane wing digest (rung 4, all-category counts)', () => {
     expect(wing.digest).toEqual({ creatures: 2, others: 0, lands: 0 });
     // No card renders at the digest rung without a prompt.
     expect(wing.renders).toHaveLength(0);
+  });
+});
+
+describe('stagePlane digest threshold (issue #500, layout-model §ladder rung 4)', () => {
+  it('records the digest width threshold between the single and double wing slots', () => {
+    // The recorded threshold: a wing slot narrower than 0.225·W (288 px at the
+    // 1280 reference) digests from baseline. The double wing (5–6 players) falls
+    // below it; the single wing (3–4 players) stays above it.
+    expect(PLANE.wing.digestBelowWidthFrac).toBe(0.225);
+    expect(PLANE.wing.double.w).toBeLessThan(PLANE.wing.digestBelowWidthFrac);
+    expect(PLANE.wing.single.w).toBeGreaterThan(PLANE.wing.digestBelowWidthFrac);
+  });
+
+  it('digests the sub-threshold (double) wing from baseline but draws the single wing', () => {
+    // 5 players → two wings per side → the double slot is below the threshold.
+    const five = stage(seatTable({ opponents: 4, active: 'p2', perms: menagerie('p3', 3) }));
+    const fiveWing = five.wings.find((w) => w.seat === 'p3')!;
+    expect(fiveWing.rung).toBe(4);
+    expect(fiveWing.digest).toEqual({ creatures: 3, others: 0, lands: 0 });
+    expect(fiveWing.renders).toHaveLength(0);
+    // 4 players → one wing per side → the single slot stays above the threshold.
+    const four = stage(seatTable({ opponents: 3, active: 'p2', perms: menagerie('p3', 3) }));
+    const fourWing = four.wings.find((w) => w.seat === 'p3')!;
+    expect(fourWing.rung).toBeLessThan(4);
+    expect(fourWing.digest).toBeUndefined();
+    expect(fourWing.renders.length).toBeGreaterThan(0);
   });
 });
 

@@ -11,7 +11,11 @@ describe('2.5D fixture scenarios', () => {
     expect(FIXTURE_SCENARIOS.map((scenario) => scenario.id)).toEqual([
       'commander4',
       'duel',
+      'three',
+      'five',
       'six',
+      'ultrawide',
+      'tablet',
       'tokens',
       'big-hand',
       'combat-web',
@@ -64,9 +68,14 @@ describe('2.5D fixture scenarios', () => {
       const reconciler = new PlaneReconciler(root, { face: renderer });
 
       // Warm the renderer before measuring the reconnect/full-rebuild path.
+      // This measures JS execution of the rebuild in jsdom (no real layout), so the
+      // number tracks CI-runner CPU availability, not the presentation budget itself
+      // (real rebuild timing is the browser harness's job, #499). Take the best of a
+      // wide sample so a contended-runner slice can't flake the heaviest scenario at
+      // the budget boundary; the ≤50 ms budget it checks is unchanged.
       reconciler.rebuild(plane);
       const rebuildMs = Math.min(
-        ...Array.from({ length: 3 }, () => {
+        ...Array.from({ length: 15 }, () => {
           const started = performance.now();
           reconciler.rebuild(plane);
           return performance.now() - started;

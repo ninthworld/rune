@@ -13,6 +13,12 @@ import {
 export const DESKTOP: PlaneViewport = { width: 1280, height: 800 };
 /** The phone-portrait reference plane (390×844). */
 export const PHONE: PlaneViewport = { width: 390, height: 844 };
+/** A 16:9 reference plane at the ultrawide height (surplus-width baseline). */
+export const WIDE16: PlaneViewport = { width: 1920, height: 1080 };
+/** A 21:9 ultrawide reference plane (presentation-budgets §Device envelope). */
+export const ULTRAWIDE: PlaneViewport = { width: 2560, height: 1080 };
+/** The tablet-landscape reference plane at the geometry floor (1180×820). */
+export const TABLET: PlaneViewport = { width: 1180, height: 820 };
 
 /** A minimal permanent spec for staging tests. */
 export interface PlanePermSpec {

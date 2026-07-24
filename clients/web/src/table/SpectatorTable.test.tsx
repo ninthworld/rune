@@ -58,7 +58,15 @@ function spectatorView(overrides: Partial<Record<string, unknown>> = {}): Specta
   });
 }
 
+// Stage at the desktop reference geometry (1280×800, the same figure `useViewport`
+// falls back to under SSR). jsdom's incidental 1024×768 default sits below the
+// tablet floor (`compactFloorWidth` 1180, #500), which changes the staging kind to
+// the compact summary-tile branch — not the full desktop staging these tests assert.
+const originalInnerWidth = window.innerWidth;
+const originalInnerHeight = window.innerHeight;
 beforeEach(() => {
+  Object.defineProperty(window, 'innerWidth', { value: 1280, configurable: true, writable: true });
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true, writable: true });
   vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
   vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
 });
@@ -66,6 +74,16 @@ afterEach(() => {
   cleanup();
   useGameStore.setState({ spectatorView: null, sessionEpoch: 0 });
   vi.restoreAllMocks();
+  Object.defineProperty(window, 'innerWidth', {
+    value: originalInnerWidth,
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(window, 'innerHeight', {
+    value: originalInnerHeight,
+    configurable: true,
+    writable: true,
+  });
 });
 
 describe('SpectatorTable (ADR 0022 / ADR 0030 plane, issue #504)', () => {
