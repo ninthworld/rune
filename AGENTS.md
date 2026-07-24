@@ -38,12 +38,19 @@ before changing code; [`docs/brief.md`](docs/brief.md) defines the product and a
 ## Commands
 
 - `make check` — fast Engine and Client gate.
-- `make verify` — complete pre-merge gate: `make check` plus `cargo-deny`.
+- `make verify` — complete pre-merge gate: `make check` plus `cargo-deny` and `make e2e`.
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make client-check` — lint + typecheck + test + build in `clients/web`
 - `make deny` — dependency policy and advisory checks.
+- `make e2e` — the browser smoke canary (real Chromium + real `rune-server`).
 - `scripts/bootstrap.sh` — verify local prerequisites.
+
+**CI surface.** `make check` is the fast gate, not the whole of CI: since #279 the
+required checks are `Engine` + `Client` (`make check`), `cargo-deny` (`make deny`), and
+`E2E` (`make e2e`, the browser canary of ADR 0011). `make check` stays browser-free and
+as fast as it was; `make verify` composes all of them, so one local command still matches
+what must pass. A green `make check` alone does not mean "done".
 
 ## Workflow
 
