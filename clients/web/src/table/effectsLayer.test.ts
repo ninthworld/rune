@@ -259,10 +259,13 @@ describe('EffectsLayer particle budgets (quality caps × density control)', () =
 describe('EffectsLayer ticker stop policy (createEffectsTicker)', () => {
   /** Drive the extracted mount tick against counting host hooks. */
   function ticker(layer: EffectsLayer) {
-    const host = { renders: 0, stops: 0 };
+    const host = { renders: 0, stops: 0, wakeDelays: [] as number[] };
     const tick = createEffectsTicker(layer, {
       render: () => {
         host.renders += 1;
+      },
+      scheduleWake: (delayMs) => {
+        host.wakeDelays.push(delayMs);
       },
       stop: () => {
         host.stops += 1;
@@ -283,12 +286,10 @@ describe('EffectsLayer ticker stop policy (createEffectsTicker)', () => {
         accent: COMBAT_LINK.color,
       },
     ]);
-    tick(0); // draws the link
-    expect(host.renders).toBe(1);
-    expect(host.stops).toBe(0);
-    tick(16); // nothing needed: the link is live but static — stop
+    tick(0); // draws the link, then stops immediately because it is static
     expect(host.renders).toBe(1);
     expect(host.stops).toBe(1);
+    expect(host.wakeDelays).toEqual([]);
   });
 
   it('stops after the static frame of a reduced-motion path', () => {
@@ -304,22 +305,24 @@ describe('EffectsLayer ticker stop policy (createEffectsTicker)', () => {
       },
     ]);
     tick(0);
-    tick(16);
     expect(host.renders).toBe(1);
     expect(host.stops).toBe(1);
+    expect(host.wakeDelays).toEqual([]);
   });
 
-  it('keeps ticking through a reduced-motion hold until the flash retires', () => {
+  it('sleeps through a reduced-motion hold and wakes once to retire it', () => {
     const { layer } = make({ reducedMotion: true });
     const { tick, host } = ticker(layer);
     layer.spawn({ category: 'impact', target: { ref: 'atk' }, accent: SCENE_HUES.red.value });
-    tick(0); // the flash frame
-    tick(100); // held: no draw, but expiry is pending — must NOT stop yet
-    expect(host.stops).toBe(0);
-    tick(EFFECT_TIMING.reducedHoldMs + 1); // expiry redraw
-    tick(EFFECT_TIMING.reducedHoldMs + 17); // now idle — stop
-    expect(host.renders).toBe(2);
+    tick(0); // draw the flash, schedule expiry, and stop
+    expect(host.renders).toBe(1);
     expect(host.stops).toBe(1);
+    expect(host.wakeDelays).toEqual([EFFECT_TIMING.reducedHoldMs]);
+
+    tick(EFFECT_TIMING.reducedHoldMs + 1); // simulate the scheduled retirement wake
+    expect(host.renders).toBe(2);
+    expect(host.stops).toBe(2);
+    expect(host.wakeDelays).toEqual([EFFECT_TIMING.reducedHoldMs]);
   });
 
   it('runs a live crawl continuously and never stops it', () => {
@@ -337,6 +340,34 @@ describe('EffectsLayer ticker stop policy (createEffectsTicker)', () => {
     for (let frame = 0; frame < 5; frame += 1) tick(frame * 16);
     expect(host.renders).toBe(5);
     expect(host.stops).toBe(0);
+    expect(host.wakeDelays).toEqual([]);
+  });
+
+  it('renders an empty frame when clear removes already-presented pixels', () => {
+    const { layer } = make();
+    const { tick, host } = ticker(layer);
+    layer.setPersistent([
+      {
+        id: 'link:blk',
+        category: 'blocker-link',
+        from: { ref: 'blk' },
+        to: { ref: 'atk' },
+        accent: COMBAT_LINK.color,
+      },
+    ]);
+    tick(0);
+    let wakes = 0;
+    layer.wake = () => {
+      wakes += 1;
+    };
+
+    layer.clear();
+    expect(wakes).toBe(1);
+    expect(layer.needsFrame()).toBe(true);
+    tick(16);
+    expect(layer.lastProgram).toEqual([]);
+    expect(host.renders).toBe(2);
+    expect(host.stops).toBe(2);
   });
 });
 
@@ -360,8 +391,12 @@ describe('EffectsLayer endpoint tracking and reduced motion', () => {
     expect(layer.advance(16)).toBe(true);
     expect(layer.lastProgram).not.toEqual(before);
 
+    const midTween = layer.lastProgram;
+    rects.set('atk', { x: 240, y: 380, w: 66, h: 92 }); // final position between ticks
     layer.trackMotion(false);
-    layer.advance(32);
+    expect(layer.needsFrame()).toBe(true);
+    expect(layer.advance(32)).toBe(true);
+    expect(layer.lastProgram).not.toEqual(midTween);
     expect(layer.advance(48)).toBe(false); // back to render-on-demand
   });
 
