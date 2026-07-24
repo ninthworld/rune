@@ -2,9 +2,10 @@
  * RUNE web client shell.
  *
  * Architecture (see AGENTS.md in this package):
- * - One full-bleed Pixi canvas renders battlefield/hand/stack.
- * - React DOM islands render everything readable/clickable that is not a card.
- * - Both layers render from the latest GameView; no client-side game logic.
+ * - The ADR 0030 path renders battlefield cards in a DOM scene plane and keeps
+ *   Pixi as a passive effects overlay; the legacy table remains a parity gate.
+ * - React DOM owns screen chrome and every readable/clickable surface.
+ * - Every layer renders from the latest GameView; no client-side game logic.
  *
  * The shell branches on the store's lifecycle, walking the never-a-dead-screen
  * flow address → lobby → game:
@@ -16,7 +17,7 @@
  *   seat roster, deck, ready) from the latest `LobbyView`, with its own
  *   interactive "entering the lobby…" fallback before the first frame.
  * - The instant the first `GameView` arrives (the game is constructed) it mounts
- *   the {@link Table}, which reconstructs the whole UI from that view.
+ *   the selected table composition, which reconstructs the whole UI from that view.
  *
  * The gates are purely presentational; the `GameView`/`LobbyView` remain the only
  * load-bearing state, and a disconnect from either screen falls back to an
@@ -26,8 +27,12 @@ import { useEffect } from 'react';
 import { ConnectionScreen } from './ConnectionScreen';
 import { LobbyScreen } from './LobbyScreen';
 import { useGameStore } from './store';
+import { LiveMatchTable } from './table/live';
 import { Table } from './table/Table';
 import { SpectatorTable } from './table/SpectatorTable';
+
+/** Safe parity gate until the Phase 2 exit retires the legacy table (#494). */
+const LIVE_2_5D_MATCH_ENABLED = import.meta.env.VITE_RUNE_2_5D_MATCH === 'true';
 
 export function App() {
   const status = useGameStore((state) => state.status);
@@ -46,7 +51,7 @@ export function App() {
   // A GameView means the game has been constructed: mount the table (in-game
   // contract for the life of the game).
   if (view !== null) {
-    return <Table />;
+    return LIVE_2_5D_MATCH_ENABLED ? <LiveMatchTable /> : <Table />;
   }
   // A SpectatorView means this connection is watching a live game (ADR 0022, issue
   // #351): mount the read-only spectate mode.

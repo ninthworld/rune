@@ -103,6 +103,7 @@ export function stagePlane(
     wing?: WingSlotFrame,
   ): PlaneRegion => {
     const isReceiver = kind === 'receiver';
+    const opponent = view.opponents.find((entry) => entry.player_id === seat);
     const content = stageRegionContent(
       seat,
       itemsOf(seat),
@@ -145,6 +146,8 @@ export function stagePlane(
       renders: content.renders,
       digest: content.digest,
       label: bandLabel(view, seat, seat === receiverSeat),
+      life: isReceiver ? view.me.life : (opponent?.life ?? 0),
+      handCount: isReceiver ? view.my_hand.length : (opponent?.hand_size ?? 0),
       focused: !duel && kind === 'far',
       ...flagsOf(seat),
     };

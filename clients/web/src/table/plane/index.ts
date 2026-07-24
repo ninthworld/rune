@@ -22,8 +22,9 @@
  *   the phone-portrait branch, staging summary-tile slots.
  *
  * Geometry only: WebGL/DOM-free, no legality, every interactive rect ≥ 44 px.
- * The shipped `buildTableScene` client is untouched — this package is consumed
- * only by the fixture battlefield until the Phase 2 renderer wiring.
+ * The shipped `buildTableScene` client remains the parity path through Phase 2;
+ * this package is consumed by both the fixture battlefield and the opt-in live
+ * match composition.
  */
 
 export type {

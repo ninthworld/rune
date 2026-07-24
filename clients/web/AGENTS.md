@@ -11,8 +11,10 @@ the table UI.
 - Actions have subjects: entity-subject actions render on the entity; the action bar
   holds only global actions plus a contextual echo of the selection. Never enumerate
   per-card actions as bar buttons (docs/decisions/0004).
-- DOM/canvas split (ADR 0003): Pixi renders cards and table visuals; React DOM renders
-  controls, prompts, player information, browsers, and inspect surfaces.
+- Rendering split (ADR 0030): the 2.5D path renders cards and the scene plane in
+  React DOM, with Pixi reserved for passive effects; React DOM also owns controls,
+  prompts, player information, browsers, and inspect surfaces. The legacy
+  ADR 0003 Pixi table remains only as the parity path through the Phase 2 exit.
 - All card colors/sizes come from `src/tokens.ts`. Both renderers (Pixi + HTML)
   read the same constants; never inline card colors.
 - The whole in-game UI must rebuild from one `GameView` and its pending prompt.

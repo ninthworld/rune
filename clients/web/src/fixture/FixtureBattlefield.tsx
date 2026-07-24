@@ -8,7 +8,6 @@ import {
   type CSSProperties,
 } from 'react';
 import { CardFace } from '../card/dom';
-import type { CardDisplayData } from '../card/cardFactory';
 import {
   DEFAULT_SCENE_THEME,
   SCENE_ELEVATION,
@@ -17,18 +16,13 @@ import {
   SCENE_SEAT_ACCENTS,
   SCENE_THEMES,
 } from '../sceneTokens';
-import { basicLandGlyph, rowKindForType, toDisplayData } from '../table/scene/card-helpers';
-import { stagePlane, type PlaneRegion, type PlaneRender, type StagedPlane } from '../table/plane';
+import { stagePlane, type PlaneRegion, type StagedPlane } from '../table/plane';
 import { cardFaceRenderer } from '../table/planeFaceRenderer';
+import { domCardArt, handDisplayData, planeDisplayData } from '../table/planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../table/planeReconciler';
 import { EffectsLayer, type EffectDensity, type EffectQuality } from '../table/effects';
 import { EffectsSurface } from '../table/EffectsSurface';
-import {
-  FIXTURE_SCENARIOS,
-  fixtureScenario,
-  type FixtureFrame,
-  type FixtureScenario,
-} from './scenarios';
+import { FIXTURE_SCENARIOS, fixtureScenario, type FixtureScenario } from './scenarios';
 import { FrameBudgetSampler, fixtureBudgetReport, type FixtureBudgetReport } from './metrics';
 import styles from './fixture-battlefield.module.css';
 
@@ -90,41 +84,6 @@ function initialQuality(): EffectQuality {
   if (typeof window === 'undefined') return 'standard';
   const value = new URLSearchParams(window.location.search).get('quality');
   return value === 'high' || value === 'lite' ? value : 'standard';
-}
-
-function displayData(frame: FixtureFrame, render: PlaneRender): CardDisplayData {
-  const permanent = frame.view.battlefield.find((entry) => entry.id === render.entityId);
-  if (!permanent) {
-    return {
-      name: render.name,
-      typeLine: 'Permanent',
-      colorIdentity: 'C',
-      targeting: render.candidate,
-    };
-  }
-  const blockerCount = frame.view.battlefield.filter(
-    (entry) => entry.blocking === permanent.id,
-  ).length;
-  const row = rowKindForType(permanent.card.type_line);
-  return toDisplayData(permanent.card, {
-    tapped: permanent.tapped,
-    counters: permanent.counters,
-    selected: frame.staging?.selectedId === permanent.id,
-    actionable: frame.view.valid_actions.some((action) => action.subject?.includes(permanent.id)),
-    landGlyph: row === 'lands' ? basicLandGlyph(permanent.card.type_line) : undefined,
-    attacking: permanent.attacking,
-    attackingPlayer: permanent.attacking_player,
-    blocking: permanent.blocking !== undefined,
-    blockedBy: blockerCount,
-    markedDamage: permanent.damage,
-  });
-}
-
-function handData(card: FixtureFrame['view']['my_hand'][number]): CardDisplayData {
-  return toDisplayData(card, {
-    selected: false,
-    actionable: false,
-  });
 }
 
 function anchorPlane(
@@ -237,7 +196,9 @@ export function FixtureBattlefield() {
     if (!root) return;
     root.replaceChildren();
     const reconciler = new PlaneReconciler(root, {
-      face: cardFaceRenderer((render) => displayData(frameRef.current, render)),
+      face: cardFaceRenderer((render) =>
+        planeDisplayData(frameRef.current.view, frameRef.current.staging, render),
+      ),
       animate: { reducedMotion },
     });
     reconcilerRef.current = reconciler;
@@ -475,7 +436,11 @@ export function FixtureBattlefield() {
                     } as SceneStyle
                   }
                 >
-                  <CardFace data={handData(entry)} tier="hand" />
+                  <CardFace
+                    data={handDisplayData(frame.view, entry)}
+                    tier="hand"
+                    art={domCardArt(entry)}
+                  />
                 </div>
               );
             })}

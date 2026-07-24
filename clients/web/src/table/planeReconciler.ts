@@ -653,6 +653,8 @@ function regionMeta(region: PlaneRegion): Record<string, string> {
     rung: String(region.rung),
     surface: region.surface,
     label: region.label,
+    life: String(region.life),
+    hand: String(region.handCount),
     focused: String(region.focused),
     eliminated: String(region.eliminated),
     attacked: String(region.attacked),

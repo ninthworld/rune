@@ -57,6 +57,12 @@ describe('PlaneReconciler add/update/move/remove (by entity id)', () => {
     expect(r.root.querySelectorAll('[data-slot="region"]')).toHaveLength(4);
     expect(r.root.querySelectorAll('[data-slot="crest"]')).toHaveLength(4);
     expect(r.root.querySelectorAll('[data-slot="piles"]')).toHaveLength(4);
+    expect(
+      r.root.querySelector('[data-slot="region"][data-seat="p2"]')?.getAttribute('data-life'),
+    ).toBe('40');
+    expect(
+      r.root.querySelector('[data-slot="region"][data-seat="p2"]')?.getAttribute('data-hand'),
+    ).toBe('3');
     expect(r.lastStats.created).toBe(planeRenders(plane).length);
   });
 
