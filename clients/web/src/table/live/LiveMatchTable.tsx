@@ -7,7 +7,6 @@
  * only route actions and candidates already present in the latest GameView.
  */
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -68,7 +67,7 @@ import {
 import { LivePlane } from './LivePlane';
 import type { LivePlaneInteractionProps } from './LivePlaneControls';
 import type { TargetingPresentationPath } from './gameViewPresentation';
-import { ORIENTATION_PULSE_MS, type PresentationMode } from './presentationMode';
+import { useSessionMoments } from './useSessionMoments';
 import styles from './live-match.module.css';
 
 /**
@@ -123,9 +122,10 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
   const [showArtSettings, setShowArtSettings] = useState(false);
   const [previewTargetId, setPreviewTargetId] = useState<EntityId | PlayerId | null>(null);
   const [handDrag, setHandDrag] = useState<HandDrag | null>(null);
-  const [orienting, setOrienting] = useState(false);
+  // The §8 session moments the shell owns: the game-start assembly, the
+  // reconnect acknowledgment, and the recede that hands off to the lobby.
+  const { moment, notePresentationMode, leave } = useSessionMoments(reducedMotion, leaveGame);
   const swallowClick = useRef(false);
-  const orientTimer = useRef<number | null>(null);
   const dragCleanup = useRef<(() => void) | null>(null);
   const focusedEntity = useRef<EntityId | null>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -189,29 +189,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forced, multiSelect]);
 
-  useEffect(
-    () => () => {
-      dragCleanup.current?.();
-      if (orientTimer.current !== null) window.clearTimeout(orientTimer.current);
-    },
-    [],
-  );
-
-  // The "you are here" phase-pill pulse after a reconnect/resync rebuild
-  // (visual-system §8). The active-crest half plays on the effects layer; this
-  // flags the shell so the phase pill pulses too. Reduced motion gets neither.
-  const handlePresentationMode = useCallback(
-    (mode: PresentationMode): void => {
-      if (mode !== 'rebuild' || reducedMotion) return;
-      setOrienting(true);
-      if (orientTimer.current !== null) window.clearTimeout(orientTimer.current);
-      orientTimer.current = window.setTimeout(() => {
-        orientTimer.current = null;
-        setOrienting(false);
-      }, ORIENTATION_PULSE_MS);
-    },
-    [reducedMotion],
-  );
+  useEffect(() => () => dragCleanup.current?.(), []);
 
   useEffect(() => {
     const id = focusedEntity.current;
@@ -585,6 +563,13 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     />
   );
 
+  // The shell's session-moment flags (visual-system §8, issue #509), all pure
+  // CSS staging over an unchanged, fully interactive tree:
+  // - `data-moment` — the entry assembly, the reconnect cue, or the exit recede.
+  // - `data-orienting` — the reconnect half the phase pill wears (carried).
+  // - `data-forced-decision` — the mulligan card moment: while the view forces
+  //   the opening-hand decision the hand is *presented*, lifted forward so the
+  //   cards being kept or bottomed read as the subject of the question.
   return (
     <main
       ref={mainRef}
@@ -592,7 +577,9 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
       data-testid="live-match-table"
       data-mode={mode}
       data-composition={compact ? 'compact' : 'full'}
-      data-orienting={orienting || undefined}
+      data-moment={moment ?? undefined}
+      data-orienting={moment === 'reconnect' || undefined}
+      data-forced-decision={forced === null ? undefined : 'true'}
       onFocusCapture={(event) => {
         focusedEntity.current =
           (event.target as HTMLElement).closest<HTMLElement>('[data-entity]')?.dataset.entity ??
@@ -630,7 +617,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           sessionEpoch={sessionEpoch}
           targetingPaths={targetingPaths}
           onPlane={publishPlane}
-          onMode={handlePresentationMode}
+          onMode={notePresentationMode}
           interaction={planeInteraction}
         />
       </section>
@@ -821,7 +808,8 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           result={view.result}
           you={view.you}
           names={view.player_names}
-          onLeave={leaveGame}
+          reducedMotion={reducedMotion}
+          onLeave={leave}
         />
       )}
       <RejectionToast nonce={rejectionNonce} />

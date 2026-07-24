@@ -223,6 +223,64 @@ export const SCENE_MOTION = {
 /** A motion grammar class name. */
 export type SceneMotionClass = keyof typeof SCENE_MOTION;
 
+/**
+ * The skip threshold of the motion grammar (visual-system §8): a composition
+ * completing in ≤ 600 ms is shorter than a deliberate skip and is **not**
+ * individually user-skippable; anything that may run past it must be.
+ */
+export const SCENE_SKIP_THRESHOLD_MS = 600;
+
+/** One session moment: its staged duration, the §8 cap, and skippability. */
+export interface SessionMomentSpec {
+  /** Standard-motion staged duration, ms. */
+  ms: number;
+  /** The class's budget cap, ms — binding; the test pins `ms ≤ cap`. */
+  cap: number;
+  /**
+   * Whether the composition may run past {@link SCENE_SKIP_THRESHOLD_MS} and so
+   * must be user-skippable (input or setting). Mirrors the *skippable* marks of
+   * the §8 "Session moments" table; a row at or under the threshold is never
+   * marked, and is still interruptible by a newer authoritative view.
+   */
+  skippable: boolean;
+}
+
+/**
+ * The §8 "Session moments" rows as data (issue #509) — the moments that open
+ * and close a game, capped exactly as the grammar states them. These are
+ * *presentation* windows on events the server already decided; nothing here
+ * gates input, and every one collapses to zero under reduced motion through
+ * {@link sessionMomentMs}.
+ */
+export const SCENE_SESSION = {
+  /** Game start: environment fades up, regions assemble, hands deal. */
+  gameStart: { ms: 800, cap: 800, skippable: true },
+  /** Mulligan: hand sweeps back to library, redraw deals. */
+  mulligan: { ms: 320, cap: 400, skippable: true },
+  /** Keeping a hand: the kept hand settles, bottomed cards travel to library. */
+  handKept: { ms: 320, cap: 400, skippable: false },
+  /** Reconnect / fast-forward: the single "you are here" pulse after a rebuild. */
+  reconnect: { ms: 300, cap: 300, skippable: false },
+  /** Concede / defeat: the quiet dim into the verdict panel (loss family). */
+  defeat: { ms: 600, cap: 600, skippable: false },
+  /** Victory: the gold rune bloom behind the verdict panel. */
+  victory: { ms: 800, cap: 800, skippable: true },
+  /** Return to lobby: the scene recedes (scale down + dim) into the lobby. */
+  returnToLobby: { ms: 400, cap: 400, skippable: false },
+} as const satisfies Record<string, SessionMomentSpec>;
+
+/** A session-moment class name. */
+export type SceneSessionClass = keyof typeof SCENE_SESSION;
+
+/**
+ * A session moment's duration with the reduced-motion collapse wired at the
+ * token level, exactly as {@link sceneMotionMs} does for the object classes:
+ * reduced motion snaps straight to the end state with no staging at all.
+ */
+export function sessionMomentMs(cls: SceneSessionClass, reducedMotion: boolean): number {
+  return reducedMotion ? 0 : SCENE_SESSION[cls].ms;
+}
+
 /** Simultaneous-batch staging (mass untap, board wipe, token swarm). */
 export const SCENE_BATCH = {
   /** Per-item stagger, ms (budget cap 80). */

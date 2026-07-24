@@ -1485,6 +1485,100 @@
   background: rgba(242, 201, 76, 0.2);
 }
 
+/* ── The verdict as a session moment (visual-system §8, issue #509) ────────────
+ *
+ * Restraint is the requirement: a defeat or concede is a quiet dim into the
+ * panel (§2 loss family), a victory is a single disciplined gold rune bloom, and
+ * a draw stays neutral. There is no confetti and no per-outcome sound of
+ * triumph. Every rule is opacity/transform only over a panel that is mounted,
+ * focused, and clickable from its first frame — the exit is reachable while the
+ * moment plays, and the moment is skippable (`data-staging` drops on input).
+ * `--rune-verdict-ms` is 0 under reduced motion, and the guard below makes that
+ * explicit even where a stale attribute might survive. */
+.gameOverBloom {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: min(72vmin, 560px);
+  height: min(72vmin, 560px);
+  margin: auto;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gameOverBackdrop[data-moment='victory'] .gameOverBloom {
+  background: radial-gradient(
+    circle,
+    rgb(242 201 76 / 26%) 0%,
+    rgb(242 201 76 / 10%) 42%,
+    transparent 68%
+  );
+  animation: verdictBloom var(--rune-verdict-ms, 800ms) cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+.gameOverBackdrop[data-staging='true'] {
+  animation: verdictDim var(--rune-verdict-ms, 600ms) ease-out both;
+}
+
+.gameOverBackdrop[data-staging='true'] .gameOverPanel {
+  animation: verdictPanel var(--rune-verdict-ms, 600ms) cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+@keyframes verdictDim {
+  from {
+    background: transparent;
+  }
+
+  to {
+    background: var(--rune-scrim-strong);
+  }
+}
+
+/* The panel never starts fully transparent: the exit must be visible, not only
+   present, from the moment the verdict is on screen. */
+@keyframes verdictPanel {
+  from {
+    opacity: 0.45;
+    transform: translateY(10px) scale(0.98);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes verdictBloom {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+
+  55% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+
+  to {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gameOverBackdrop,
+  .gameOverBackdrop .gameOverPanel,
+  .gameOverBackdrop .gameOverBloom {
+    animation: none;
+  }
+}
+
 /* ── Stack panel ───────────────────────────────────────────────────────────────
  * A section WITHIN the stack & activity rail (issue #299): the rail wrapper owns the
  * surface tier, elevation, and padding, so the panel itself is a transparent, full-

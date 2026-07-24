@@ -259,10 +259,19 @@
 }
 
 /*
- * The "you are here" cue after a reconnect/resync rebuild (visual-system §8):
- * a single non-blocking pulse on the phase pill, paired with the active-crest
- * pulse the effects layer plays. Reduced motion never sets the orienting flag,
- * so this rule can never run there.
+ * ── Session moments (visual-system §8, issue #509) ────────────────────────────
+ *
+ * Every rule below is opacity/transform/filter only, on elements that stay
+ * mounted, enabled, and hit-testable throughout: a session moment never gates
+ * input. The shell's `data-moment` is set by `useSessionMoments`, which never
+ * sets it at all under reduced motion — so none of these rules can run there,
+ * and the RM form is simply the settled scene.
+ */
+
+/*
+ * The "you are here" cue after a reconnect/resync rebuild: a single
+ * non-blocking pulse on the phase pill, paired with the active-crest pulse the
+ * effects layer plays.
  */
 .shell[data-orienting='true'] [data-testid='phase-indicator'] {
   animation: orientPulse 300ms ease-out;
@@ -275,5 +284,113 @@
 
   to {
     box-shadow: 0 0 0 8px rgb(242 201 76 / 0%);
+  }
+}
+
+/*
+ * Game start (≤ 800 ms, skippable): the environment fades up and the regions
+ * assemble outward from center. The scene and the player's own controls carry
+ * the assembly; the top bar stays put so the match is legible from frame one.
+ * Skipping (any pointer/key input) drops `data-moment`, which ends the
+ * animation on its final values — the settled scene.
+ */
+.shell[data-moment='game-start'] .scene {
+  animation: momentAssemble 800ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+.shell[data-moment='game-start'] .bottom,
+.shell[data-moment='game-start'] .rail {
+  animation: momentRise 800ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+@keyframes momentAssemble {
+  from {
+    opacity: 0.25;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes momentRise {
+  from {
+    opacity: 0.3;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * Return to lobby (≤ 400 ms): the scene recedes — scale down + dim — and the
+ * store transition runs when it lands. RM form is a cut, which is what an unset
+ * `data-moment` already gives.
+ */
+.shell[data-moment='return-to-lobby'] .scene,
+.shell[data-moment='return-to-lobby'] .bottom,
+.shell[data-moment='return-to-lobby'] .rail,
+.shell[data-moment='return-to-lobby'] .top {
+  animation: momentRecede 400ms cubic-bezier(0.3, 0, 0.8, 0.15) both;
+}
+
+@keyframes momentRecede {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0.2;
+    transform: scale(0.94);
+  }
+}
+
+/*
+ * The mulligan card moment: while the view forces the opening-hand decision the
+ * hand is presented — lifted forward and lit a touch so the cards being kept or
+ * bottomed read as the subject of the question. A held state, not an animation:
+ * it persists for as long as the server is waiting, and the cards underneath
+ * keep every one of their hit boxes.
+ */
+.shell[data-forced-decision='true'] .hand {
+  z-index: 12;
+  filter: brightness(1.08);
+  transition: filter 120ms ease-out;
+}
+
+.shell[data-forced-decision='true'] .handCard {
+  transform: translateX(-50%) translateY(-14px) rotate(var(--hand-angle));
+  transition: transform 400ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+
+.shell[data-forced-decision='true'] .handCard[aria-pressed='true'] {
+  transform: translateX(-50%) translateY(-34px) rotate(var(--hand-angle));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-moment] .scene,
+  .shell[data-moment] .bottom,
+  .shell[data-moment] .rail,
+  .shell[data-moment] .top {
+    animation: none;
+  }
+
+  .shell[data-forced-decision='true'] .hand,
+  .shell[data-forced-decision='true'] .handCard {
+    transition: none;
+  }
+
+  .shell[data-forced-decision='true'] .handCard {
+    transform: translateX(-50%);
+  }
+
+  .shell[data-forced-decision='true'] .handCard[aria-pressed='true'] {
+    transform: translateX(-50%);
   }
 }

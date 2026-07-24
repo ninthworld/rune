@@ -19,7 +19,7 @@
  * first frame through the same `rebuild()` / `skipTransitions()` path players use
  * (driven by the store's transport generation).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { collectArtCards, getArtVersion, noteCards, subscribeArt } from '../card/art/artStore';
 import type { EntityId, GameView, PlayerId, SpectatorView } from '../protocol';
 import { playerName } from '../playerNames';
@@ -34,7 +34,7 @@ import { useReducedMotion } from './hooks/useReducedMotion';
 import { useViewport } from './hooks/useViewport';
 import { LivePlane } from './live';
 import type { LivePlaneInteractionProps } from './live/LivePlaneControls';
-import { ORIENTATION_PULSE_MS, type PresentationMode } from './live/presentationMode';
+import { useSessionMoments } from './live/useSessionMoments';
 import { resolveInspect } from './tableView';
 import styles from './spectator.module.css';
 
@@ -93,8 +93,10 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
   const [focusedSeat, setFocusedSeat] = useState<PlayerId | null>(null);
   const [inspectedId, setInspectedId] = useState<EntityId | null>(null);
   const [browsing, setBrowsing] = useState<OpenZone | null>(null);
-  const [orienting, setOrienting] = useState(false);
-  const orientTimer = useRef<number | null>(null);
+  // The §8 session moments (issue #509): a spectator gets the same entry
+  // assembly, the same reconnect acknowledgment, and the same recede on the way
+  // back to the lobby that a seated player does.
+  const { moment, notePresentationMode, leave } = useSessionMoments(reducedMotion, leaveGame);
 
   useEffect(() => {
     noteCards(collectArtCards(publicView));
@@ -106,28 +108,6 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
     setInspectedId(null);
     setBrowsing(null);
   }, [spec]);
-
-  useEffect(
-    () => () => {
-      if (orientTimer.current !== null) window.clearTimeout(orientTimer.current);
-    },
-    [],
-  );
-
-  // The single non-blocking "you are here" pulse after a reconnect/resync rebuild
-  // (visual-system §8); reduced motion gets the complete final state with no pulse.
-  const handlePresentationMode = useCallback(
-    (mode: PresentationMode): void => {
-      if (mode !== 'rebuild' || reducedMotion) return;
-      setOrienting(true);
-      if (orientTimer.current !== null) window.clearTimeout(orientTimer.current);
-      orientTimer.current = window.setTimeout(() => {
-        orientTimer.current = null;
-        setOrienting(false);
-      }, ORIENTATION_PULSE_MS);
-    },
-    [reducedMotion],
-  );
 
   const compact = viewport.width < 900;
   const inspectTarget = inspectedId !== null ? resolveInspect(publicView, inspectedId) : null;
@@ -168,7 +148,8 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
       data-testid="spectator-table"
       data-mode="overview"
       data-composition={compact ? 'compact' : 'full'}
-      data-orienting={orienting || undefined}
+      data-moment={moment ?? undefined}
+      data-orienting={moment === 'reconnect' || undefined}
     >
       <header className={styles.top}>
         <TopBar view={publicView} mode="overview" compact={compact} />
@@ -183,7 +164,7 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
           reducedMotion={reducedMotion}
           artVersion={artVersion}
           sessionEpoch={sessionEpoch}
-          onMode={handlePresentationMode}
+          onMode={notePresentationMode}
           interaction={interaction}
         />
       </section>
@@ -218,7 +199,8 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
           result={spec.result}
           you=""
           names={spec.player_names}
-          onLeave={leaveGame}
+          reducedMotion={reducedMotion}
+          onLeave={leave}
         />
       )}
     </main>

@@ -24,7 +24,7 @@
  *   animations.
  */
 import type { GameView } from '../../protocol';
-import { SCENE_HUES } from '../../sceneTokens';
+import { SCENE_HUES, SCENE_SESSION } from '../../sceneTokens';
 import type { TransientInvocation } from '../effects';
 
 /** The production presentation mode for one authoritative view transition. */
@@ -77,9 +77,10 @@ export const SCENE_DOM_CEILING = 15_000;
 /**
  * Duration of the post-rebuild "you are here" pulse, in ms (visual-system §8:
  * "pulse ≤ 300 ms"). Kept in sync with the `orientPulse` keyframe in
- * `live-match.module.css`.
+ * `live-match.module.css`, and read from the session-moment token set (issue
+ * #509) so the reconnect row has one home with the other §8 moments.
  */
-export const ORIENTATION_PULSE_MS = 300;
+export const ORIENTATION_PULSE_MS = SCENE_SESSION.reconnect.ms;
 
 /** Pick the rebuild budget for the current composition tier. */
 export function rebuildBudgetMs(compact: boolean): number {

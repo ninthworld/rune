@@ -10,3 +10,17 @@ export {
   type PresentationStaging,
   type TargetingPresentationPath,
 } from './gameViewPresentation';
+export {
+  demandsSkip,
+  entryMoment,
+  isSkippable,
+  momentAccent,
+  momentBudgetMs,
+  momentCapMs,
+  momentDurationMs,
+  verdictMoment,
+  type EntryMoment,
+  type SessionMoment,
+  type VerdictMoment,
+} from './sessionMoments';
+export { useSessionMoments, type SessionMomentsApi } from './useSessionMoments';
