@@ -336,7 +336,11 @@ Delivery is phased (see #464 for the full phase plan):
   and the basic motion system; a fixture-driven battlefield reproducing the baseline
   composition.
 - **Phase 2 — playable vertical slice:** a real match on the new presentation through
-  one complete action loop, with reconnect fast-forward verified.
+  one complete action loop, with reconnect fast-forward verified. At the Phase 2
+  exit ([#494](https://github.com/ninthworld/rune/issues/494)) the 2.5D table
+  becomes the default match presentation and the legacy Pixi match table is
+  retired; the browser-e2e slice, real-hardware budget re-validation, and the
+  spectator's own migration off Pixi carry forward as follow-ups.
 - **Phase 3 — multiplayer and stress cases:** four-player Commander as the primary
   experience; two- through six-player layouts and large boards validated.
 - **Phase 4 — full-client migration and polish:** lobby, deckbuilding, settings, and

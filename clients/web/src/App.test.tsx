@@ -1,9 +1,22 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { App } from './App';
 import { useGameStore, type SocketFactory } from './store';
 import { SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
 import { LOBBY_ROOMLESS_JSON } from './lobby-view.fixture';
+
+// The in-game screen is the 2.5D match table (#494); mock its passive Pixi
+// effects layer so it mounts headless, exactly as the live-table suites do.
+vi.mock('./table/EffectsSurface', () => ({
+  EffectsSurface: () => <div data-testid="effects-surface" aria-hidden="true" />,
+}));
+vi.mock('./table/effects', () => ({
+  EffectsLayer: class {
+    setPersistent(): void {}
+    replaceTransients(): void {}
+    trackMotion(): void {}
+  },
+}));
 
 /**
  * A manually-driven stand-in for the browser `WebSocket` (same shape store.test.ts
@@ -49,10 +62,16 @@ function connectWith(factory: SocketFactory): void {
   );
 }
 
+beforeEach(() => {
+  vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+  vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+});
+
 afterEach(() => {
   cleanup();
   act(() => useGameStore.getState().disconnect());
   useGameStore.setState({ status: 'idle', view: null, lobby: null, lobbyError: null });
+  vi.restoreAllMocks();
 });
 
 describe('App connection gating (issues #103, #114)', () => {
@@ -87,10 +106,10 @@ describe('App connection gating (issues #103, #114)', () => {
     expect(screen.getByTestId('lobby-screen')).toBeDefined();
     expect(screen.queryByTestId('lobby-waiting')).toBeNull();
 
-    // first GameView (game constructed): the full table replaces the lobby.
+    // first GameView (game constructed): the 2.5D match table replaces the lobby.
     act(() => sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON));
-    expect(screen.getByTestId('action-bar')).toBeDefined();
-    expect(screen.queryByTestId('live-match-table')).toBeNull();
+    expect(screen.getByTestId('live-match-table')).toBeDefined();
+    expect(screen.getByTestId('live-2-5d-plane')).toBeDefined();
     expect(screen.queryByTestId('lobby-screen')).toBeNull();
   });
 

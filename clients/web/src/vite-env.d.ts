@@ -20,11 +20,6 @@ interface ImportMetaEnv {
    * production builds leave it inaccessible.
    */
   readonly VITE_RUNE_FIXTURE_HARNESS?: string;
-  /**
-   * Opts real in-game routes into the ADR 0030 2.5D composition while the
-   * legacy Pixi table remains the safe default through the Phase 2 exit.
-   */
-  readonly VITE_RUNE_2_5D_MATCH?: string;
 }
 
 interface ImportMeta {

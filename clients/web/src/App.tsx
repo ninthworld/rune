@@ -2,8 +2,10 @@
  * RUNE web client shell.
  *
  * Architecture (see AGENTS.md in this package):
- * - The ADR 0030 path renders battlefield cards in a DOM scene plane and keeps
- *   Pixi as a passive effects overlay; the legacy table remains a parity gate.
+ * - The shipped match is the ADR 0030 2.5D composition: battlefield cards render
+ *   in a DOM scene plane with Pixi kept as a passive effects overlay (#494 retired
+ *   the legacy ADR 0003 Pixi match table). The read-only spectate mode still rides
+ *   the Pixi scene until its own migration.
  * - React DOM owns screen chrome and every readable/clickable surface.
  * - Every layer renders from the latest GameView; no client-side game logic.
  *
@@ -28,11 +30,7 @@ import { ConnectionScreen } from './ConnectionScreen';
 import { LobbyScreen } from './LobbyScreen';
 import { useGameStore } from './store';
 import { LiveMatchTable } from './table/live';
-import { Table } from './table/Table';
 import { SpectatorTable } from './table/SpectatorTable';
-
-/** Safe parity gate until the Phase 2 exit retires the legacy table (#494). */
-const LIVE_2_5D_MATCH_ENABLED = import.meta.env.VITE_RUNE_2_5D_MATCH === 'true';
 
 export function App() {
   const status = useGameStore((state) => state.status);
@@ -48,10 +46,10 @@ export function App() {
     useGameStore.getState().restoreSession();
   }, []);
 
-  // A GameView means the game has been constructed: mount the table (in-game
-  // contract for the life of the game).
+  // A GameView means the game has been constructed: mount the 2.5D match table
+  // (in-game contract for the life of the game).
   if (view !== null) {
-    return LIVE_2_5D_MATCH_ENABLED ? <LiveMatchTable /> : <Table />;
+    return <LiveMatchTable />;
   }
   // A SpectatorView means this connection is watching a live game (ADR 0022, issue
   // #351): mount the read-only spectate mode.
