@@ -112,3 +112,57 @@
     box-shadow: 0 0 0 8px rgb(242 201 76 / 0%);
   }
 }
+
+/*
+ * Session moments (visual-system §8, issue #509). A spectator's table opens and
+ * closes with the same staging a seated player's does: the scene assembles on
+ * entry (≤ 800 ms, skippable) and recedes into the lobby on the way out
+ * (≤ 400 ms). Opacity/transform only, over a tree that stays mounted and
+ * hit-testable; `useSessionMoments` never sets `data-moment` under reduced
+ * motion, so neither rule can run there.
+ */
+.shell[data-moment='game-start'] .scene,
+.shell[data-moment='game-start'] .bottom,
+.shell[data-moment='game-start'] .rail {
+  animation: momentAssemble 800ms cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+@keyframes momentAssemble {
+  from {
+    opacity: 0.25;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.shell[data-moment='return-to-lobby'] .scene,
+.shell[data-moment='return-to-lobby'] .bottom,
+.shell[data-moment='return-to-lobby'] .rail,
+.shell[data-moment='return-to-lobby'] .top {
+  animation: momentRecede 400ms cubic-bezier(0.3, 0, 0.8, 0.15) both;
+}
+
+@keyframes momentRecede {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0.2;
+    transform: scale(0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-moment] .scene,
+  .shell[data-moment] .bottom,
+  .shell[data-moment] .rail,
+  .shell[data-moment] .top {
+    animation: none;
+  }
+}

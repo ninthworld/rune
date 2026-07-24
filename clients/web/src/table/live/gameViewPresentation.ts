@@ -16,6 +16,7 @@ import { SCENE_BATCH, SCENE_HUES, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../..
 import type { EffectQuality, PersistentEffect, TransientInvocation } from '../effects';
 import type { Rect } from '../scene';
 import { offFocusPings, type SeatActivity } from './offFocusActivity';
+import { momentAccent, momentBudgetMs, verdictMoment } from './sessionMoments';
 
 /** A generic motion class understood by the DOM plane and screen-space consumers. */
 export type GameViewMotionCategory =
@@ -39,7 +40,13 @@ export type GameViewMotionCategory =
   | 'priority'
   | 'phase'
   | 'turn'
-  | 'focus';
+  | 'focus'
+  // Session moments (visual-system §8, issue #509): the pre-game mulligan pair
+  // and the terminal verdict. They describe events the server already recorded
+  // in the log — the client never decides a keep, a bottoming, or a winner.
+  | 'mulligan'
+  | 'hand-kept'
+  | 'verdict';
 
 /** One deterministic, interruptible motion request. */
 export interface GameViewMotionIntent {
@@ -153,6 +160,10 @@ function visibleLocations(view: GameView): Map<EntityId, ZoneLocation> {
 }
 
 function motionDuration(category: GameViewMotionCategory): number {
+  // Session moments read their window from the §8 token rows (issue #509). The
+  // verdict's window depends on the outcome, so it is passed explicitly.
+  if (category === 'mulligan') return momentBudgetMs('mulligan');
+  if (category === 'hand-kept') return momentBudgetMs('hand-kept');
   if (category === 'tap' || category === 'untap') return SCENE_MOTION.tapUntap.ms;
   if (category === 'priority' || category === 'phase' || category === 'turn') {
     return SCENE_MOTION.turnFlow.ms;
@@ -170,15 +181,28 @@ function motionDuration(category: GameViewMotionCategory): number {
   return SCENE_MOTION.zoneTravel.ms;
 }
 
+/** Motion inputs a caller supplies, with an optional per-intent duration. */
+type MotionInput = Omit<GameViewMotionIntent, 'id' | 'category' | 'durationMs' | 'delayMs'> & {
+  /** Overrides the category default (the verdict window varies by outcome). */
+  durationMs?: number;
+};
+
 function pushMotion(
   motions: GameViewMotionIntent[],
   category: GameViewMotionCategory,
   key: string,
-  input: Omit<GameViewMotionIntent, 'id' | 'category' | 'durationMs' | 'delayMs'> = {},
+  input: MotionInput = {},
 ): void {
   const id = `${category}:${key}`;
   if (motions.some((motion) => motion.id === id)) return;
-  motions.push({ id, category, durationMs: motionDuration(category), delayMs: 0, ...input });
+  const { durationMs, ...rest } = input;
+  motions.push({
+    id,
+    category,
+    durationMs: durationMs ?? motionDuration(category),
+    delayMs: 0,
+    ...rest,
+  });
 }
 
 function counterTotal(permanent: Permanent): number {
@@ -224,9 +248,13 @@ function addLogIntents(
     const key = String(sequence);
     // Credit the acting seat for the off-focus channel. Table-wide flow
     // (step/priority), the loss moments that already land on their own crest
-    // (life/damage/elimination), and the session moments with dedicated chrome
-    // are deliberately not seat activity — the ping means "this seat did
-    // something over there", not "something happened".
+    // (life/damage/elimination), and the session moments (issue #509) are
+    // deliberately not seat activity — the ping means "this seat did something
+    // over there", not "something happened". The session moments now emit real
+    // intents, but each already lands its own cue on the acting seat's crest,
+    // so crediting them too would double-pulse one crest in one transition.
+    // Off-focus pings from *other* events in the same transition are unaffected
+    // and still emit alongside a session moment.
     switch (event.type) {
       case 'spell_cast':
         activity.add(event.player);
@@ -341,12 +369,50 @@ function addLogIntents(
           to: pileRef(event.player),
         });
         break;
-      case 'game_over':
+      // ── Session moments (visual-system §8, issue #509) ───────────────────
       case 'mulligan':
-      case 'hand_kept':
-        // These session moments remain state-first; their dedicated chrome owns
-        // the verdict/pregame treatments. No speculative scene motion is added.
+        // "hand sweeps back to library, redraw deals". The redraw arrives as the
+        // next view's own hand; this intent carries the sweep, hand → library.
+        pushMotion(motions, 'mulligan', key, {
+          from: handRef(event.player),
+          to: pileRef(event.player),
+        });
+        transient(transients, 'flow', seatRef(event.player), momentAccent('mulligan'));
         break;
+      case 'hand_kept':
+        // Keeping resolves the London mulligan: the kept hand settles and the
+        // bottomed cards travel to the library. The library is not a visible
+        // zone and the wire never names which cards were bottomed, so this
+        // aggregate travel — the same shape `cards_drawn` uses — is the honest
+        // carrier. Nothing is guessed about the hand's contents.
+        pushMotion(motions, 'hand-kept', key, {
+          from: handRef(event.player),
+          to: pileRef(event.player),
+        });
+        transient(transients, 'draw', seatRef(event.player), seatAccent(current, event.player));
+        break;
+      case 'game_over': {
+        // The verdict, staged from the receiving seat exactly as the verdict
+        // panel phrases it. Restraint is the requirement: victory is the
+        // disciplined gold bloom, a loss wears the §2 loss-moment family, and a
+        // draw stays neutral. The client formats a decided result — it never
+        // decides terminality or a winner.
+        const moment = verdictMoment(event.result, current.you);
+        const anchor = current.you !== '' ? current.you : event.result.winner;
+        pushMotion(motions, 'verdict', key, {
+          durationMs: momentBudgetMs(moment),
+          ...(anchor === undefined ? {} : { to: seatRef(anchor) }),
+        });
+        if (anchor !== undefined) {
+          transient(
+            transients,
+            moment === 'victory' ? 'resolution' : moment === 'defeat' ? 'death' : 'flow',
+            seatRef(anchor),
+            momentAccent(moment),
+          );
+        }
+        break;
+      }
     }
   }
 }
@@ -497,6 +563,11 @@ function applyBatchDelays(motions: GameViewMotionIntent[], staging: Presentation
     'death',
     'counter-change',
     'token-batch',
+    // A multiplayer pre-game resolves several seats at once; the sweeps and
+    // settles stage as one batch inside the same 80/800 ms window rather than
+    // firing on top of each other.
+    'mulligan',
+    'hand-kept',
   ]);
   const counters = new Map<GameViewMotionCategory, number>();
   for (const motion of motions) {

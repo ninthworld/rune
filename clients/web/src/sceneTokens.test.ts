@@ -18,11 +18,15 @@ import {
   SCENE_FOCUS_DIM,
   SCENE_MOTION,
   SCENE_BATCH,
+  SCENE_SESSION,
+  SCENE_SKIP_THRESHOLD_MS,
   SCENE_THEMES,
   DEFAULT_SCENE_THEME,
   sceneMotionMs,
+  sessionMomentMs,
   contrastRatio,
   type SceneMotionClass,
+  type SceneSessionClass,
   type SemanticState,
 } from './sceneTokens';
 
@@ -215,6 +219,41 @@ describe('scene tokens — §8 motion classes inside the budget caps', () => {
     for (const cls of Object.keys(SCENE_MOTION) as SceneMotionClass[]) {
       expect(sceneMotionMs(cls, true)).toBe(0);
       expect(sceneMotionMs(cls, false)).toBe(SCENE_MOTION[cls].ms);
+    }
+  });
+});
+
+describe('scene tokens — §8 session moments inside the budget caps', () => {
+  /** The binding caps from visual-system §8 "Session moments", per row. */
+  const SESSION_CAPS: Record<SceneSessionClass, number> = {
+    gameStart: 800,
+    mulligan: 400,
+    handKept: 400,
+    reconnect: 300,
+    defeat: 600,
+    victory: 800,
+    returnToLobby: 400,
+  };
+
+  it('keeps every session moment inside its documented window', () => {
+    for (const [cls, spec] of Object.entries(SCENE_SESSION)) {
+      expect(spec.cap).toBe(SESSION_CAPS[cls as SceneSessionClass]);
+      expect(spec.ms).toBeLessThanOrEqual(spec.cap);
+      expect(spec.ms).toBeGreaterThan(0);
+    }
+  });
+
+  it('marks the rows that can compose past the skip threshold as skippable', () => {
+    expect(SCENE_SKIP_THRESHOLD_MS).toBe(600);
+    for (const spec of Object.values(SCENE_SESSION)) {
+      if (spec.cap > SCENE_SKIP_THRESHOLD_MS) expect(spec.skippable).toBe(true);
+    }
+  });
+
+  it('collapses every session moment to zero under reduced motion', () => {
+    for (const cls of Object.keys(SCENE_SESSION) as SceneSessionClass[]) {
+      expect(sessionMomentMs(cls, true)).toBe(0);
+      expect(sessionMomentMs(cls, false)).toBe(SCENE_SESSION[cls].ms);
     }
   });
 });

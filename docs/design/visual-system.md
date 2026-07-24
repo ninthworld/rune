@@ -266,6 +266,19 @@ happened.
 | Victory | gold rune bloom behind the verdict panel — celebratory, not gaudy | ≤800 ms, skippable | verdict panel |
 | Return to lobby | scene recedes (scale down + dim) into the lobby surface | ≤400 ms | cut |
 
+**Implemented (issue #509).** Every row above is shipped on the live and
+spectator tables. The budgets, skippability marks, and hue families are data in
+`clients/web/src/sceneTokens.ts` (`SCENE_SESSION`, `SCENE_SKIP_THRESHOLD_MS`),
+named and classified by `clients/web/src/table/live/sessionMoments.ts`, clocked
+by `useSessionMoments`, and rendered as CSS on the shell's `data-moment` /
+`data-forced-decision` flags plus the verdict panel's own staging. The mulligan
+and verdict halves that belong to the view delta (`mulligan`, `hand_kept`,
+`game_over`) emit real presentation intents from `deriveGameViewPresentation` —
+they were deliberate state-first stubs before. Two carried notes: the mulligan's
+bottomed cards travel as one aggregate hand → library intent because the wire
+never names which cards were bottomed (nothing is guessed), and a receiver-less
+(spectator) view is told who won without wearing anyone's victory or defeat.
+
 ## 9. Sound and haptic hooks
 
 Motion classes above define the **event taxonomy** —

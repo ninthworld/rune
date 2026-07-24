@@ -178,6 +178,37 @@ describe('SpectatorTable (ADR 0022 / ADR 0030 plane, issue #504)', () => {
       />,
     );
     expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+    // A spectator watches someone else's game, so the verdict is shared without
+    // being staged as their own victory or defeat (issue #509; #504 owns
+    // anything beyond the shared panel).
+    expect(screen.getByTestId('game-over-overlay').dataset.moment).toBe('draw');
+  });
+
+  it('recedes into the lobby on the way out (issues #452 + #509)', () => {
+    vi.useFakeTimers();
+    try {
+      const leaveGame = vi.fn();
+      useGameStore.setState({ leaveGame });
+      render(
+        <SpectatorTable
+          view={spectatorView({
+            result: { winner: 'p2', losers: ['p0', 'p1'], reason: 'life_zero' },
+          })}
+        />,
+      );
+      const shell = screen.getByTestId('spectator-table');
+
+      fireEvent.click(screen.getByTestId('game-over-leave'));
+
+      expect(shell.dataset.moment).toBe('return-to-lobby');
+      expect(leaveGame).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(leaveGame).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rebuilds the complete board through the reconnect path and flashes the cue', async () => {

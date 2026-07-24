@@ -15,9 +15,25 @@
  * and until it offered an exit there was none anywhere on the in-game path, so the
  * verdict was a dead screen. Leaving is a client-session action (like disconnect),
  * never a game action: no `valid_actions` entry is invented for it.
+ *
+ * The verdict is a **session moment** (issue #509, `docs/design/visual-system.md`
+ * §8): a quiet dim into the panel for a defeat or concede (≤ 600 ms, the §2 loss
+ * family), a disciplined gold rune bloom for a victory (≤ 800 ms, *skippable* —
+ * no confetti). The staging is opacity/transform only over a panel that is
+ * mounted, focused, and clickable from its first frame, so the exit is reachable
+ * throughout and reduced motion sees the settled panel with no staged frame at
+ * all. Concede needs no special case anywhere: the server reports it as an
+ * ordinary terminal result whose reason is `concede`.
  */
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { GameResult, GameOverReason, PlayerId } from '../protocol';
 import { cx } from '../chrome/cx';
+import {
+  isSkippable,
+  momentDurationMs,
+  verdictMoment,
+  type VerdictMoment,
+} from './live/sessionMoments';
 import s from './chrome.module.css';
 
 interface Props {
@@ -36,6 +52,12 @@ interface Props {
    * verdict alone.
    */
   onLeave?: () => void;
+  /**
+   * Collapse the verdict staging to its end state (issue #509). Composed by the
+   * caller from the OS `prefers-reduced-motion` query and the device-local motion
+   * preference; unset behaves as full motion.
+   */
+  reducedMotion?: boolean;
 }
 
 /** The three outcomes the overlay phrases, from the receiving player's seat. */
@@ -91,13 +113,58 @@ function reasonText(reason: GameOverReason): string {
   }
 }
 
-export function GameOverOverlay({ result, you, names, onLeave }: Props) {
+/**
+ * Stage the verdict moment, ending early on any deliberate input for the rows
+ * §8 marks *skippable* (victory). Returns whether the entry is still staging;
+ * `false` from the first frame under reduced motion. The staged flag never
+ * gates anything — the panel and its exit render identically either way.
+ */
+function useVerdictStaging(
+  moment: VerdictMoment,
+  reducedMotion: boolean,
+): { staging: boolean; durationMs: number } {
+  const durationMs = momentDurationMs(moment, reducedMotion);
+  const [staging, setStaging] = useState(durationMs > 0);
+  useEffect(() => {
+    if (!staging) return;
+    const settle = (): void => setStaging(false);
+    const timer = window.setTimeout(settle, durationMs);
+    const skippable = isSkippable(moment);
+    if (skippable) {
+      window.addEventListener('pointerdown', settle);
+      window.addEventListener('keydown', settle);
+    }
+    return () => {
+      window.clearTimeout(timer);
+      if (!skippable) return;
+      window.removeEventListener('pointerdown', settle);
+      window.removeEventListener('keydown', settle);
+    };
+  }, [durationMs, moment, staging]);
+  return { staging, durationMs };
+}
+
+export function GameOverOverlay({ result, you, names, onLeave, reducedMotion = false }: Props) {
   const outcome = outcomeFor(result, you);
   const headlineTint =
     outcome === 'win' ? s.gameOverWin : outcome === 'loss' ? s.gameOverLoss : s.gameOverNeutral;
+  // The staged moment is classified independently of the headline phrasing: a
+  // receiver-less view (a spectator) is still told who won, but nobody else's
+  // victory or defeat is staged as theirs — the shared verdict is all a
+  // spectator gets (issue #504 owns anything beyond it).
+  const moment = verdictMoment(result, you);
+  const { staging, durationMs } = useVerdictStaging(moment, reducedMotion);
 
   return (
-    <div className={s.gameOverBackdrop} data-testid="game-over-overlay">
+    <div
+      className={s.gameOverBackdrop}
+      data-testid="game-over-overlay"
+      data-moment={moment}
+      data-staging={staging || undefined}
+      style={{ '--rune-verdict-ms': `${durationMs}ms` } as CSSProperties}
+    >
+      {/* The §8 victory bloom, behind the panel; CSS gates it on the moment. */}
+      <div className={s.gameOverBloom} aria-hidden="true" />
       <div
         role="alertdialog"
         aria-label="Game over"

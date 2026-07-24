@@ -140,25 +140,42 @@ describe('App connection gating (issues #103, #114)', () => {
   });
 
   it('leaves a finished game and lands back in the lobby (issue #452)', () => {
-    const { factory, sockets } = recordingFactory();
-    render(<App />);
+    vi.useFakeTimers();
+    try {
+      const { factory, sockets } = recordingFactory();
+      render(<App />);
 
-    connectWith(factory);
-    act(() => sockets[0].emitOpen());
-    act(() => sockets[0].emitMessage(LOBBY_ROOMLESS_JSON));
-    act(() => sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON));
-    // The game ends (this frame is equally the one a reconnect into a finished
-    // game replays, and the one a concede produces — there is no special case).
-    act(() => sockets[0].emitMessage(GAME_OVER_LOSS_JSON));
-    expect(screen.getByTestId('game-over-overlay')).toBeDefined();
+      connectWith(factory);
+      act(() => sockets[0].emitOpen());
+      act(() => sockets[0].emitMessage(LOBBY_ROOMLESS_JSON));
+      act(() => sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON));
+      // The game ends (this frame is equally the one a reconnect into a finished
+      // game replays, and the one a concede produces — there is no special case).
+      act(() => sockets[0].emitMessage(GAME_OVER_LOSS_JSON));
+      expect(screen.getByTestId('game-over-overlay')).toBeDefined();
 
-    // The verdict's exit routes back out; nothing pins the app to the dead screen.
-    fireEvent.click(screen.getByTestId('game-over-leave'));
-    expect(screen.queryByTestId('game-over-overlay')).toBeNull();
-    expect(screen.queryByTestId('live-match-table')).toBeNull();
-    act(() => sockets[1].emitOpen());
-    act(() => sockets[1].emitMessage(LOBBY_ROOMLESS_JSON));
-    expect(screen.getByTestId('lobby-screen')).toBeDefined();
+      // The verdict's exit routes back out; nothing pins the app to the dead
+      // screen. The scene first recedes into the lobby — the §8 "Return to
+      // lobby" moment (issue #509) — and the store transition runs when it
+      // lands, so the exit is one bounded ≤ 400 ms hand-off, not a hang.
+      fireEvent.click(screen.getByTestId('game-over-leave'));
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(screen.queryByTestId('game-over-overlay')).toBeNull();
+      expect(screen.queryByTestId('live-match-table')).toBeNull();
+      act(() => sockets[1].emitOpen());
+      act(() => sockets[1].emitMessage(LOBBY_ROOMLESS_JSON));
+      expect(screen.getByTestId('lobby-screen')).toBeDefined();
+
+      // The last-match ribbon's record (issue #506) survives the deferral: its
+      // producer runs inside `leaveGame`, so staging the recede only moves when
+      // that one call happens — it is not duplicated or lost — and the outcome
+      // it reports is the one the verdict panel staged.
+      expect(useGameStore.getState().lastMatch?.outcome).toBe('defeat');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a retry after the connection closes (error surfaces as a close)', () => {

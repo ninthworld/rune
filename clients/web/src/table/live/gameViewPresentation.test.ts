@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_GAME_VIEW } from '../../game-view.fixture';
-import type { GameView, Permanent } from '../../protocol';
-import { SCENE_BATCH, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
+import type { GameResult, GameView, Permanent } from '../../protocol';
+import { SCENE_BATCH, SCENE_HUES, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
 import { TRANSIENT_CAP } from '../effects';
 import {
   deriveGameViewPresentation,
   freezeDepartedEffectAnchors,
   type GameViewPresentation,
 } from './gameViewPresentation';
+import { momentBudgetMs, momentCapMs } from './sessionMoments';
 
 function view(): GameView {
   return structuredClone(SAMPLE_GAME_VIEW);
@@ -381,6 +382,278 @@ describe('deriveGameViewPresentation', () => {
     );
 
     expect(result[0]!.target).toEqual({ rect: oldRect });
+  });
+
+  // ── Session moments (visual-system §8, issue #509) ────────────────────────
+  //
+  // `game_over`, `mulligan`, and `hand_kept` were deliberately state-first
+  // stubs: the adapter recognized them and emitted nothing. They now carry real
+  // intents, inside the §8 windows, still derived only from what the server
+  // already recorded in the log.
+
+  it('sweeps the hand back to the library on a mulligan', () => {
+    const previous = view();
+    const current = view();
+    current.log = [
+      ...(previous.log ?? []),
+      { sequence: 37, event: { type: 'mulligan', player: 'p1' } },
+    ];
+
+    const result = deriveGameViewPresentation(previous, current);
+
+    expect(result.motions).toContainEqual(
+      expect.objectContaining({
+        category: 'mulligan',
+        from: 'hand:p1',
+        to: 'pile:p1',
+        durationMs: momentBudgetMs('mulligan'),
+      }),
+    );
+    expect(result.transients).toContainEqual(
+      expect.objectContaining({ category: 'flow', target: { ref: 'seat:p1' } }),
+    );
+  });
+
+  it('travels the bottomed cards to the library when a hand is kept', () => {
+    const previous = view();
+    const current = view();
+    current.log = [
+      ...(previous.log ?? []),
+      { sequence: 37, event: { type: 'hand_kept', player: 'p1' } },
+    ];
+
+    const result = deriveGameViewPresentation(previous, current);
+
+    expect(result.motions).toContainEqual(
+      expect.objectContaining({
+        category: 'hand-kept',
+        from: 'hand:p1',
+        to: 'pile:p1',
+        durationMs: momentBudgetMs('hand-kept'),
+      }),
+    );
+    expect(result.transients).toContainEqual(
+      expect.objectContaining({ category: 'draw', target: { ref: 'seat:p1' } }),
+    );
+  });
+
+  it('stages a multiplayer pre-game as one batch inside the 80/800 ms caps', () => {
+    const previous = view();
+    const current = view();
+    current.log = [
+      ...(previous.log ?? []),
+      ...['p1', 'p2', 'p3', 'p4'].map((player, index) => ({
+        sequence: 40 + index,
+        event: { type: 'hand_kept' as const, player },
+      })),
+    ];
+
+    const result = deriveGameViewPresentation(previous, current);
+    const batch = result.motions.filter((motion) => motion.category === 'hand-kept');
+
+    expect(batch).toHaveLength(4);
+    const delays = batch.map((motion) => motion.delayMs).sort((a, b) => a - b);
+    expect(delays[0]).toBe(0);
+    for (const [index, delay] of delays.entries()) {
+      if (index === 0) continue;
+      expect(delay - delays[index - 1]!).toBeLessThanOrEqual(SCENE_BATCH.staggerCap);
+    }
+    expect(
+      Math.max(...batch.map((motion) => motion.delayMs + motion.durationMs)),
+    ).toBeLessThanOrEqual(SCENE_BATCH.windowMs);
+  });
+
+  it('snaps the pre-game batch under Lite and reduced motion', () => {
+    const previous = view();
+    const current = view();
+    current.log = [
+      ...(previous.log ?? []),
+      { sequence: 40, event: { type: 'mulligan', player: 'p1' } },
+      { sequence: 41, event: { type: 'hand_kept', player: 'p2' } },
+    ];
+
+    for (const staging of [{ quality: 'lite' as const }, { reducedMotion: true }]) {
+      const result = deriveGameViewPresentation(previous, current, staging);
+      const pregame = result.motions.filter(
+        (motion) => motion.category === 'mulligan' || motion.category === 'hand-kept',
+      );
+      expect(pregame).toHaveLength(2);
+      expect(pregame.every((motion) => motion.delayMs === 0)).toBe(true);
+    }
+  });
+
+  it('stages a victory as the gold bloom inside the ≤ 800 ms window', () => {
+    const previous = view();
+    const current = view();
+    const result: GameResult = { winner: 'p1', losers: ['p2'], reason: 'life_zero' };
+    current.result = result;
+    current.log = [...(previous.log ?? []), { sequence: 37, event: { type: 'game_over', result } }];
+
+    const presentation = deriveGameViewPresentation(previous, current);
+    const verdict = presentation.motions.find((motion) => motion.category === 'verdict');
+
+    expect(verdict).toMatchObject({ to: 'seat:p1', durationMs: momentBudgetMs('victory') });
+    expect(verdict!.durationMs).toBeLessThanOrEqual(momentCapMs('victory'));
+    expect(presentation.transients).toContainEqual(
+      expect.objectContaining({
+        category: 'resolution',
+        target: { ref: 'seat:p1' },
+        accent: SCENE_HUES.gold.value,
+      }),
+    );
+  });
+
+  it('stages a defeat in the loss-moment family inside the ≤ 600 ms window', () => {
+    const previous = view();
+    const current = view();
+    // A conceded game is an ordinary terminal result — no client special case.
+    const result: GameResult = { winner: 'p2', losers: ['p1'], reason: 'concede' };
+    current.result = result;
+    current.log = [...(previous.log ?? []), { sequence: 37, event: { type: 'game_over', result } }];
+
+    const presentation = deriveGameViewPresentation(previous, current);
+    const verdict = presentation.motions.find((motion) => motion.category === 'verdict');
+
+    expect(verdict).toMatchObject({ to: 'seat:p1', durationMs: momentBudgetMs('defeat') });
+    expect(verdict!.durationMs).toBeLessThanOrEqual(momentCapMs('defeat'));
+    expect(presentation.transients).toContainEqual(
+      expect.objectContaining({
+        category: 'death',
+        target: { ref: 'seat:p1' },
+        accent: SCENE_HUES.red.value,
+      }),
+    );
+  });
+
+  it('keeps a draw neutral and never invents a winner', () => {
+    const previous = view();
+    const current = view();
+    const result: GameResult = { losers: ['p1', 'p2'], reason: 'life_zero' };
+    current.result = result;
+    current.log = [...(previous.log ?? []), { sequence: 37, event: { type: 'game_over', result } }];
+
+    const presentation = deriveGameViewPresentation(previous, current);
+
+    expect(presentation.motions).toContainEqual(
+      expect.objectContaining({ category: 'verdict', to: 'seat:p1' }),
+    );
+    expect(
+      presentation.transients.some(
+        (effect) =>
+          effect.accent === SCENE_HUES.red.value &&
+          effect.target &&
+          'ref' in effect.target &&
+          effect.target.ref === 'seat:p1',
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps an elimination distinct from the end of the game', () => {
+    // A player leaving a multiplayer game is not a session moment: it keeps the
+    // existing `player_eliminated` treatment and emits no verdict.
+    const previous = view();
+    const current = view();
+    current.log = [
+      ...(previous.log ?? []),
+      { sequence: 37, event: { type: 'player_eliminated', player: 'p2', reason: 'life_zero' } },
+    ];
+
+    const presentation = deriveGameViewPresentation(previous, current);
+
+    expect(presentation.motions.some((motion) => motion.category === 'verdict')).toBe(false);
+    expect(presentation.transients).toContainEqual(
+      expect.objectContaining({ category: 'death', target: { ref: 'seat:p2' } }),
+    );
+  });
+
+  it('stages a receiver-less (spectator) verdict on the winner, never a defeat', () => {
+    const previous = view();
+    previous.you = '';
+    const current = view();
+    current.you = '';
+    const result: GameResult = { winner: 'p2', losers: ['p1'], reason: 'decked' };
+    current.result = result;
+    current.log = [...(previous.log ?? []), { sequence: 37, event: { type: 'game_over', result } }];
+
+    const presentation = deriveGameViewPresentation(previous, current);
+
+    expect(presentation.motions).toContainEqual(
+      expect.objectContaining({ category: 'verdict', to: 'seat:p2' }),
+    );
+    expect(presentation.transients.some((effect) => effect.category === 'death')).toBe(false);
+  });
+
+  it('keeps every session-moment intent inside the ≤ 800 ms window', () => {
+    const previous = view();
+    const current = view();
+    const result: GameResult = { winner: 'p1', losers: ['p2'], reason: 'life_zero' };
+    current.result = result;
+    current.log = [
+      ...(previous.log ?? []),
+      { sequence: 37, event: { type: 'mulligan', player: 'p1' } },
+      { sequence: 38, event: { type: 'hand_kept', player: 'p1' } },
+      { sequence: 39, event: { type: 'game_over', result } },
+    ];
+
+    const presentation = deriveGameViewPresentation(previous, current);
+    const moments = presentation.motions.filter((motion) =>
+      ['mulligan', 'hand-kept', 'verdict'].includes(motion.category),
+    );
+
+    expect(moments).toHaveLength(3);
+    for (const motion of moments) {
+      expect(motion.delayMs + motion.durationMs).toBeLessThanOrEqual(SCENE_BATCH.windowMs);
+    }
+  });
+
+  it('emits a session moment and an off-focus ping from the same transition', () => {
+    // The two channels are independent (issues #501 and #509 landed together):
+    // a wing seat acting still earns its quiet crest ping in the very transition
+    // that carries a session moment, and the moment still carries its own cue.
+    const previous = table();
+    const current = table();
+    const result: GameResult = { winner: 'p1', losers: ['p2', 'p3', 'p4'], reason: 'life_zero' };
+    current.result = result;
+    current.log = [
+      { sequence: 40, event: { type: 'hand_kept', player: 'p1' } },
+      { sequence: 41, event: { type: 'spell_cast', player: 'p3', card: { id: 'x', name: 'X' } } },
+      { sequence: 42, event: { type: 'game_over', result } },
+    ];
+
+    const presentation = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    // Both session-moment intents…
+    expect(presentation.motions).toContainEqual(
+      expect.objectContaining({ category: 'hand-kept', from: 'hand:p1', to: 'pile:p1' }),
+    );
+    expect(presentation.motions).toContainEqual(
+      expect.objectContaining({ category: 'verdict', to: 'seat:p1' }),
+    );
+    // …and the off-focus wing's ping, unshifted ahead of the batch as #501
+    // requires so a cap can never drop it.
+    expect(pingedSeats(presentation)).toEqual(['seat:p3']);
+    expect(presentation.transients[0]?.category).toBe('off-focus-ping');
+  });
+
+  it('never credits a session moment itself as off-focus seat activity', () => {
+    // A session moment already lands its own cue on the acting seat's crest;
+    // crediting the channel too would double-pulse one crest in one transition.
+    const previous = table();
+    const current = table();
+    const result: GameResult = { winner: 'p3', losers: ['p1', 'p2', 'p4'], reason: 'decked' };
+    current.result = result;
+    current.log = [
+      { sequence: 40, event: { type: 'mulligan', player: 'p3' } },
+      { sequence: 41, event: { type: 'hand_kept', player: 'p4' } },
+      { sequence: 42, event: { type: 'game_over', result } },
+    ];
+
+    const presentation = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    expect(pingedSeats(presentation)).toEqual([]);
+    expect(presentation.motions.map((motion) => motion.category)).toEqual(
+      expect.arrayContaining(['mulligan', 'hand-kept', 'verdict']),
+    );
   });
 
   it('accepts server-driven targeting paths and emits a focus staging cue', () => {
