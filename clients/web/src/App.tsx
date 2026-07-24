@@ -4,8 +4,8 @@
  * Architecture (see AGENTS.md in this package):
  * - The shipped match is the ADR 0030 2.5D composition: battlefield cards render
  *   in a DOM scene plane with Pixi kept as a passive effects overlay (#494 retired
- *   the legacy ADR 0003 Pixi match table). The read-only spectate mode still rides
- *   the Pixi scene until its own migration.
+ *   the legacy ADR 0003 Pixi match table). The read-only spectate mode rides the
+ *   same DOM scene plane, staged receiver-less (#504 retired the legacy stack).
  * - React DOM owns screen chrome and every readable/clickable surface.
  * - Every layer renders from the latest GameView; no client-side game logic.
  *

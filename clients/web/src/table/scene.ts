@@ -1,6 +1,7 @@
 /**
- * GameView → table scene mapping (fixed-shell anatomy, ADR 0023).
- * Re-exports from focused scene-model modules.
+ * Shared pure scene-model helpers (ADR 0030), re-exported from the focused
+ * scene-model modules. The legacy GameView→`TableScene` builder was retired with
+ * the Pixi scene stack (#504); the live 2.5D DOM plane consumes these helpers.
  */
 export {
   type Rect,
@@ -18,8 +19,7 @@ export {
   type AttackTarget,
   type TableScene,
   M,
-  DEFAULT_VIEWPORT_WIDTH,
-  defaultSceneGeometry,
+  rectsOverlap,
   cellSize,
   tappedFootprint,
   localPlayerIdOf,
@@ -36,8 +36,4 @@ export {
   declarationFor,
   tiersForSurface,
   stepDown,
-  flowRow,
-  layPanel,
-  layHand,
-  buildTableScene,
 } from './scene/index';

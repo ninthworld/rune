@@ -4,11 +4,25 @@
  * layout itself stays a pure function — this only feeds it the live geometry).
  * Pointer precision is a capability, not a device (detected via a media query,
  * absent → `fine`), per ui-requirements §Input capability model.
+ *
+ * The `Viewport`/`Pointer` shapes lived on the retired `layout.ts` (the legacy
+ * shell-carving module removed with the Pixi scene stack, issue #504); they now
+ * live here, the sole surviving consumer.
  */
 import { useEffect, useState } from 'react';
-import type { Viewport } from '../layout';
 
-function detectPointer(): Viewport['pointer'] {
+/** Pointer precision capability (never a device list). */
+export type Pointer = 'fine' | 'coarse';
+
+/** Measured viewport geometry plus detected input capability. */
+export interface Viewport {
+  width: number;
+  height: number;
+  /** Pointer precision, if detected; defaults to `fine` when absent (SSR/tests). */
+  pointer?: Pointer;
+}
+
+function detectPointer(): Pointer {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'fine';
   return window.matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine';
 }

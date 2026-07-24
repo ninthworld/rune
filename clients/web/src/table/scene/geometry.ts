@@ -1,7 +1,6 @@
 import type { RenderTier } from '../../card/cardFactory';
 import { TAP, TIER } from '../../tokens';
-import { layout } from '../layout';
-import type { SceneGeometry } from './types';
+import type { Rect } from './types';
 
 /** Layout metrics (logical px). Card sizes come from the TIER tokens. */
 export const M = {
@@ -14,24 +13,12 @@ export const M = {
   handLift: 12,
 } as const;
 
-/**
- * Default logical width used when tests build a scene without a measured shell
- * (see {@link defaultSceneGeometry}).
- */
-export const DEFAULT_VIEWPORT_WIDTH = 1280;
-
-/**
- * A geometry for callers with no measured shell (tests, fixtures): the full
- * composition carved by the real layout function at the default viewport.
- * Implemented via `layout()` so tests exercise the same carve as the live table.
- * (The import is cycle-safe: `layout.ts` imports only *types* from this module,
- * which are erased at compile time.)
- */
-export function defaultSceneGeometry(
-  playerCount = 2,
-  viewport: { width: number; height: number } = { width: DEFAULT_VIEWPORT_WIDTH, height: 800 },
-): SceneGeometry {
-  return layout(viewport, playerCount).scene;
+/** Whether two rects overlap on a positive area (touching edges do not count).
+ * The plane's fixed slots and staged regions are pairwise disjoint by
+ * construction; the plane suites assert that with this shared helper (it lived on
+ * the retired `layout.ts` until #504 moved it onto the surviving scene model). */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 /**
