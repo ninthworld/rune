@@ -26,9 +26,15 @@
  * atomically with the action's content-binding token — one `ChooseAction`, never
  * a multi-message handshake. The in-progress selection is ephemeral and discarded
  * on the next view, so the UI stays reconstructable from one GameView + prompt.
+ *
+ * This module is the composition root only. The ephemeral selection state machine
+ * and action wiring live in `hooks/useTableInteractions`; the two global keyboard
+ * listeners in `hooks/useTableKeyboard`; the viewport/reduced-motion trackers in
+ * `hooks/`; the pure view derivations in `tableView`; and the game-over screen in
+ * `GameOverTable` — all preserving the exact DOM/behavior this file wires together.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { EntityId, GameView, PlayerId, ValidAction } from '../protocol';
+import type { EntityId, PlayerId } from '../protocol';
 import { collectArtCards, getArtVersion, noteCards, subscribeArt } from '../card/art/artStore';
 import { ArtSettings } from './ArtSettings';
 import { selectPendingPrompt, useGameStore } from '../store';
@@ -37,228 +43,49 @@ import { publishScene, publishView } from '../testHooks';
 import { ActionDock } from './ActionDock';
 import { BattlefieldCanvas } from './BattlefieldCanvas';
 import { PanelChrome, type BrowsableZone, type TileFocus } from './PanelChrome';
-import { CardInspect, type InspectTarget } from './CardInspect';
+import { CardInspect } from './CardInspect';
+import { DecisionSheet } from './DecisionSheet';
 import { EntityOverlay } from './EntityOverlay';
-import { GameOverOverlay } from './GameOverOverlay';
+import { GameOverTable } from './GameOverTable';
 import { MePanel } from './MePanel';
 import { PromptStrip, type MultiSelectBanner, type TargetingBanner } from './PromptStrip';
 import { RejectionToast } from './RejectionToast';
-import { ShortcutHelp, type Binding } from './ShortcutHelp';
+import { ShortcutHelp } from './ShortcutHelp';
 import { Rail } from './Rail';
 import { TopBar, type RailSheet } from './TopBar';
 import { ZoneBrowser } from './ZoneBrowser';
-import {
-  buildTableScene,
-  orderedOpponentIds,
-  type Rect,
-  type RenderedCard,
-  type TableScene,
-  type TargetingScene,
-} from './scene';
-import {
-  activeCandidates,
-  activeRequirement,
-  assembleTargets,
-  beginTargeting,
-  pick,
-  requiresTargets,
-  type TargetingSession,
-} from './targeting';
+import { buildTableScene, orderedOpponentIds, type Rect, type TargetingScene } from './scene';
+import { activeCandidates, activeRequirement } from './targeting';
 import {
   activeAttacker as msActiveAttacker,
   activeCandidates as msActiveCandidates,
   activeChosen as msActiveChosen,
   activeSlot as msActiveSlot,
-  advance as msAdvance,
   allSlotsSatisfied,
-  assembleChoices,
   beginMultiSelect,
   hasOptions,
   isLastSlot,
-  isMultiSelect,
-  moveInActiveSlot as msMove,
-  optionsSubmittable,
   toggle as msToggle,
-  type MultiSelectSession,
 } from './multiSelect';
-import { PromptSurface } from './PromptSurface';
-import { layout, type RegionId, type Viewport } from './layout';
-import { collectFocusRegions, nextFocus, type FocusDir } from './focus';
-import { regionBox, sceneBox, shellBox } from './styles';
+import { layout, type RegionId } from './layout';
 import { identityAccent } from './identityAccents';
+import { useViewport } from './hooks/useViewport';
+import { useReducedMotion } from './hooks/useReducedMotion';
+import { useTableInteractions } from './hooks/useTableInteractions';
+import { useTableKeyboard } from './hooks/useTableKeyboard';
+import {
+  buildShortcutBindings,
+  demandsDecision,
+  findCard,
+  isOnCanvas,
+  opponentsWithBoardCandidates,
+  resolveInspect,
+} from './tableView';
+import { regionBox, sceneBox, shellBox } from './styles';
 import s from './chrome.module.css';
 
 /** The table's presentation mode (issue #267). */
 export type TableMode = 'overview' | 'focus';
-
-/**
- * The measured viewport (width, height, pointer precision) the shell lays out
- * from, tracking the window so the whole table re-lays-out live on resize (the
- * layout itself stays a pure function — this only feeds it the live geometry).
- * Pointer precision is a capability, not a device (detected via a media query,
- * absent → `fine`), per ui-requirements §Input capability model.
- */
-function detectPointer(): Viewport['pointer'] {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'fine';
-  return window.matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine';
-}
-
-function useViewport(): Required<Viewport> {
-  const read = (): Required<Viewport> =>
-    typeof window === 'undefined'
-      ? { width: 1280, height: 800, pointer: 'fine' }
-      : {
-          width: window.innerWidth,
-          height: window.innerHeight,
-          pointer: detectPointer() ?? 'fine',
-        };
-  const [viewport, setViewport] = useState(read);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const onResize = (): void => setViewport(read());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-  return viewport;
-}
-
-/**
- * Whether the environment asks for reduced motion (`prefers-reduced-motion`). Drives
- * the summary-tile expand/collapse snap (issue #400). Read via a media query, absent
- * → false (SSR/older jsdom), and kept live so a mid-session OS change is honored.
- */
-function useReducedMotion(): boolean {
-  const query = '(prefers-reduced-motion: reduce)';
-  const read = (): boolean =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(query).matches
-      : false;
-  const [reduced, setReduced] = useState(read);
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const mq = window.matchMedia(query);
-    const onChange = (): void => setReduced(mq.matches);
-    mq.addEventListener?.('change', onChange);
-    return () => mq.removeEventListener?.('change', onChange);
-  }, []);
-  return reduced;
-}
-
-/**
- * The opponents (by id) whose *battlefield* carries an offered card-level
- * interaction in the current view (issue #400): a permanent that is the subject of
- * a `valid_action` or a candidate of one of its requirement slots. On the
- * phone-portrait summary-tile composition these boards must stay reachable, so the
- * first such opponent is expanded automatically — the collapse never hides an
- * offered action. Derived purely from the view (candidates on the receiver's own
- * board, hand, or non-board zones are handled elsewhere and excluded here).
- */
-function opponentsWithBoardCandidates(view: GameView): Set<PlayerId> {
-  const offered = new Set<EntityId>();
-  for (const action of view.valid_actions) {
-    for (const subjectId of action.subject ?? []) offered.add(subjectId);
-    for (const req of action.requirements ?? []) {
-      for (const candidate of req.candidates ?? []) offered.add(candidate);
-    }
-  }
-  const localId = view.you || undefined;
-  const result = new Set<PlayerId>();
-  if (offered.size === 0) return result;
-  for (const perm of view.battlefield) {
-    if (perm.controller !== localId && offered.has(perm.id)) result.add(perm.controller);
-  }
-  return result;
-}
-
-/** Find a rendered card anywhere in the scene by entity id. */
-function findCard(scene: TableScene, id: EntityId | null): RenderedCard | undefined {
-  if (id === null) return undefined;
-  for (const band of scene.bands) {
-    const hit = band.cards.find((card) => card.entityId === id);
-    if (hit) return hit;
-  }
-  return scene.hand.find((card) => card.entityId === id);
-}
-
-/**
- * A display-name lookup across every zone whose cards the view exposes (hand,
- * battlefield, graveyards, exile). Used to label the decision sheet's rows for a
- * `select_from_zone`/`order` over a non-canvas zone; an id with no known card
- * (e.g. a hidden library card or an abstract ordered trigger) falls back to its id.
- */
-function cardNameOf(view: GameView, id: EntityId): string {
-  for (const card of view.my_hand) if (card.id === id) return card.name;
-  for (const perm of view.battlefield) if (perm.id === id) return perm.card.name;
-  for (const pile of view.graveyards)
-    for (const card of pile.cards) if (card.id === id) return card.name;
-  for (const pile of view.exile)
-    for (const card of pile.cards) if (card.id === id) return card.name;
-  return id;
-}
-
-/** Whether an id is rendered as a canvas card (hand or battlefield) in this view. */
-function isOnCanvas(view: GameView, id: EntityId): boolean {
-  return view.my_hand.some((card) => card.id === id) || view.battlefield.some((p) => p.id === id);
-}
-
-/**
- * Whether the view itself poses a forced decision (issue #267): a subject-less
- * action carrying target requirements or non-target prompts — a mulligan, discard,
- * order, mode choice, or a combat declaration the server is asking the receiver to
- * resolve. These land the table in focus mode straight from the view (so a fresh
- * mount is in the right mode), independent of any in-progress client selection. A
- * subject action (e.g. casting a targeted spell from a card) is the player's
- * optional move, not a forced decision, so it does not by itself force focus.
- */
-function demandsDecision(view: GameView): boolean {
-  return view.valid_actions.some(
-    (action) =>
-      (action.subject === undefined || action.subject.length === 0) &&
-      ((action.requirements?.length ?? 0) > 0 || (action.prompts?.length ?? 0) > 0),
-  );
-}
-
-/**
- * Resolve an entity id to what the inspect popover should show (issue #261),
- * searching every zone whose objects the view carries: the receiver's hand, the
- * battlefield (a permanent contributes its current face plus dynamic state), the
- * public graveyard/exile piles, and the stack. Presentation-only lookup over data
- * already in the view — it derives nothing. Returns `null` for an id that is not
- * inspectable in this view (e.g. it left its zone on a fresh frame).
- */
-function resolveInspect(view: GameView, id: EntityId): InspectTarget | null {
-  for (const card of view.my_hand) if (card.id === id) return { kind: 'card', card };
-  for (const perm of view.battlefield) {
-    if (perm.id === id) {
-      // Attachment relationship (issue #333), resolved from the view for both sides:
-      // the host this permanent is attached to (if visible), and the attachments this
-      // permanent hosts. Presentation-only lookup — the client derives no rules.
-      const host =
-        perm.attached_to !== undefined
-          ? view.battlefield.find((p) => p.id === perm.attached_to)
-          : undefined;
-      const attachments = view.battlefield
-        .filter((p) => p.attached_to === perm.id)
-        .map((p) => ({ id: p.id, name: p.card.name }));
-      return {
-        kind: 'card',
-        card: perm.card,
-        tapped: perm.tapped,
-        counters: perm.counters,
-        attachedTo: host ? { id: host.id, name: host.card.name } : undefined,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      };
-    }
-  }
-  for (const pile of view.graveyards) {
-    for (const card of pile.cards) if (card.id === id) return { kind: 'card', card };
-  }
-  for (const pile of view.exile) {
-    for (const card of pile.cards) if (card.id === id) return { kind: 'card', card };
-  }
-  for (const item of view.stack) if (item.id === id) return { kind: 'stack', item };
-  return null;
-}
 
 export function Table() {
   const view = useGameStore((state) => state.view);
@@ -269,14 +96,35 @@ export function Table() {
   // server flags a view as answering a rejected action. Feeds the transient toast below;
   // purely ephemeral presentation, nothing the table reconstructs from.
   const rejectionNonce = useGameStore((state) => state.rejectionNonce);
-  const [selectedId, setSelectedId] = useState<EntityId | null>(null);
+
+  // The ephemeral selection state machine and action-submission wiring (ADR 0025):
+  // the in-progress selection, targeting session, and multi-select session — none of
+  // it load-bearing across messages (cleared by the view-reset effect below).
+  const {
+    selectedId,
+    setSelectedId,
+    targeting,
+    setTargeting,
+    multiSelect,
+    setMultiSelect,
+    fire,
+    fireOnTarget,
+    pickTarget,
+    toggleCandidate,
+    pickDefender,
+    advanceSlot,
+    confirmMultiSelect,
+    moveOrder,
+    chooseOption,
+    cancelTargeting,
+    cancelMultiSelect,
+  } = useTableInteractions(choose);
+
   // The entity a game-log reference last highlighted, if any (issue #260): a permanent
   // rings on the canvas and a player's panel lights up. Purely presentational — it opens
   // no actions and derives nothing — and ephemeral like every other selection here
   // (dropped on the next view below), so the table stays reconstructable from one view.
   const [highlightedId, setHighlightedId] = useState<EntityId | null>(null);
-  const [targeting, setTargeting] = useState<TargetingSession | null>(null);
-  const [multiSelect, setMultiSelect] = useState<MultiSelectSession | null>(null);
   // The entity whose **pinned** inspect panel is open, if any (issue #261). Ephemeral
   // presentation state like every selection here — never load-bearing across
   // messages (dropped on the next view below).
@@ -344,144 +192,36 @@ export function Table() {
     setRailSheet(null);
     setHighlightedId(null);
     setFocusedTileId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  // Escape abandons the topmost ephemeral surface, mirroring the targeting-mode
-  // Cancel affordance (keyboard parity). An open inspect popover closes first (it
-  // sits above everything, including an open zone browser), then the zone browser
-  // or rail sheet, then a multi-select, then a targeting session, then the current
-  // selection; a plain view ignores the key.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      if (showHelp) setShowHelp(false);
-      else if (showArtSettings) setShowArtSettings(false);
-      else if (inspectedId !== null) setInspectedId(null);
-      else if (peekId !== null) setPeekId(null);
-      else if (browsing) setBrowsing(null);
-      else if (railSheet) setRailSheet(null);
-      else if (multiSelect) setMultiSelect(null);
-      else if (targeting) setTargeting(null);
-      else if (focusedTileId !== null) setFocusedTileId(null);
-      else setSelectedId(null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [
+  // Escape dismissal and keyboard parity for core play (issues #266): two always-on
+  // window key listeners that only ever act on what is on screen / in `valid_actions`.
+  useTableKeyboard({
+    view,
+    choose,
+    targeting,
+    multiSelect,
     showHelp,
     showArtSettings,
     inspectedId,
     peekId,
     browsing,
     railSheet,
-    multiSelect,
-    targeting,
     focusedTileId,
-  ]);
-
-  // Keyboard parity for core play (issue #266). Every binding maps to an
-  // interaction the pointer already has — no new game semantics, all client-side:
-  //
-  // - Arrows move focus among the table's controls (never trapped: plain DOM focus,
-  //   Tab still works natively); Enter/Space activate the focused control, reusing
-  //   its own click handler (select, target-pick, multi-select toggle, confirm, …).
-  // - Enter with nothing focused confirms an enabled multi-select (the primary
-  //   pending action). `P` passes priority when that action is offered and no
-  //   selection is in progress. `I` inspects the focused card. `?` toggles help.
-  //
-  // Shortcuts are inert when no matching action exists — the handlers only ever act
-  // on what is actually on screen / in `valid_actions`.
-  useEffect(() => {
-    const moveFocus = (dir: FocusDir, event: KeyboardEvent): void => {
-      const root = mainRef.current;
-      if (!root) return;
-      const regions = collectFocusRegions(root, focusGeometryRef.current);
-      const next = nextFocus(regions, document.activeElement, dir);
-      if (!next) return;
-      event.preventDefault();
-      next.focus();
-    };
-
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const targetTag = (event.target as HTMLElement | null)?.tagName;
-      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') return;
-
-      // `?` toggles the shortcut reference regardless of context.
-      if (event.key === '?') {
-        event.preventDefault();
-        setShowHelp((open) => !open);
-        return;
-      }
-      // While the help overlay is open, other shortcuts are inert (Escape closes it,
-      // handled above); the native focus ring keeps the overlay usable.
-      if (showHelp || !view) return;
-
-      const root = mainRef.current;
-      const active = document.activeElement;
-      const focusedButton =
-        active instanceof HTMLButtonElement && root?.contains(active) ? active : null;
-
-      switch (event.key) {
-        case 'Enter':
-        case ' ':
-        case 'Spacebar': {
-          if (focusedButton) {
-            event.preventDefault();
-            focusedButton.click();
-            return;
-          }
-          // Nothing focused: activate the primary pending action — an enabled
-          // multi-select confirm (the ubiquitous "commit this decision").
-          const confirm = root?.querySelector<HTMLButtonElement>(
-            '[data-testid="multiselect-confirm"]:not([disabled])',
-          );
-          if (confirm) {
-            event.preventDefault();
-            confirm.click();
-          }
-          return;
-        }
-        case 'ArrowRight':
-          moveFocus('right', event);
-          return;
-        case 'ArrowDown':
-          moveFocus('down', event);
-          return;
-        case 'ArrowLeft':
-          moveFocus('left', event);
-          return;
-        case 'ArrowUp':
-          moveFocus('up', event);
-          return;
-        case 'p':
-        case 'P': {
-          // Pass/decline: only when the action is offered and no target/multi-select
-          // pick is mid-flight (Escape backs out of those first).
-          const selecting = targeting !== null || multiSelect !== null;
-          const pass = view.valid_actions.find((action) => action.type === 'pass_priority');
-          if (pass && !selecting) {
-            event.preventDefault();
-            choose(pass);
-          }
-          return;
-        }
-        case 'i':
-        case 'I': {
-          const id = active instanceof HTMLElement ? active.getAttribute('data-entity') : null;
-          if (id) {
-            event.preventDefault();
-            setInspectedId(id);
-          }
-          return;
-        }
-        default:
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [view, choose, targeting, multiSelect, showHelp]);
+    mainRef,
+    focusGeometryRef,
+    setSelectedId,
+    setTargeting,
+    setMultiSelect,
+    setInspectedId,
+    setPeekId,
+    setBrowsing,
+    setRailSheet,
+    setFocusedTileId,
+    setShowHelp,
+    setShowArtSettings,
+  });
 
   const viewport = useViewport();
   const reducedMotion = useReducedMotion();
@@ -691,30 +431,7 @@ export function Table() {
     view.valid_actions.some((action) => action.type === 'pass_priority') &&
     targeting === null &&
     multiSelect === null;
-  const shortcutBindings: Binding[] = [
-    {
-      id: 'arrows',
-      keys: '← → ↑ ↓',
-      description: 'Move focus across regions and items',
-      available: true,
-    },
-    {
-      id: 'enter',
-      keys: 'Enter',
-      description: 'Activate focused control / confirm',
-      available: true,
-    },
-    {
-      id: 'space',
-      keys: 'Space',
-      description: 'Toggle / activate focused control',
-      available: true,
-    },
-    { id: 'pass', keys: 'P', description: 'Pass priority', available: passOffered },
-    { id: 'inspect', keys: 'I', description: 'Inspect the focused card', available: true },
-    { id: 'escape', keys: 'Esc', description: 'Cancel or close', available: true },
-    { id: 'toggle-help', keys: '?', description: 'Toggle this help', available: true },
-  ];
+  const shortcutBindings = buildShortcutBindings(passOffered);
 
   // Toggle the game-log highlight for an entity/player (issue #260): clicking a
   // reference lights up its object; clicking the same one again clears it. Purely
@@ -784,57 +501,21 @@ export function Table() {
   // never reorder between states).
   if (view.result) {
     return (
-      <main
-        className={s.shell}
-        data-testid="table-game-over"
-        data-mode="overview"
-        data-composition={shell.composition}
-        style={shellBox(viewport.width, viewport.height)}
-      >
-        <div style={regionBox(r.topBar.rect)}>
-          <TopBar view={view} mode="overview" localId={localId} compact={compact} />
-        </div>
-        <div style={regionBox(r.canvas.rect)} className={s.regionCanvas}>
-          <div style={sceneBox(scene.width, scene.height)}>
-            <BattlefieldCanvas scene={scene} isolatedId={highlightedId} />
-            <PanelChrome
-              view={view}
-              scene={scene}
-              onOpenZone={openZone}
-              highlightedId={highlightedId}
-              reducedMotion={reducedMotion}
-            />
-            {/* Read-only game-over board: no select/target interaction (the server
-                offers no actions once the game is over), but every card stays
-                inspectable, so the overlay renders inspect handles only (#261). */}
-            <EntityOverlay
-              scene={scene}
-              selectedId={null}
-              targeting={false}
-              pointer={viewport.pointer}
-              onSelect={() => {}}
-              onPickTarget={() => {}}
-              onPeek={setPeekId}
-              onPinInspect={setInspectedId}
-            />
-          </div>
-        </div>
-        {!compact && (
-          <div style={regionBox(r.rail.rect)} className={s.regionRail}>
-            <Rail
-              view={view}
-              onInspect={setInspectedId}
-              onHighlight={highlight}
-              highlightedId={highlightedId}
-            />
-          </div>
-        )}
-        <div style={regionBox(r.mePanel.rect)}>
-          <MePanel view={view} localId={localId} condensed={compact} onOpenZone={openZone} />
-        </div>
-        <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
-        {overlays}
-      </main>
+      <GameOverTable
+        view={view}
+        result={view.result}
+        scene={scene}
+        shell={shell}
+        viewport={viewport}
+        localId={localId}
+        highlightedId={highlightedId}
+        reducedMotion={reducedMotion}
+        onOpenZone={openZone}
+        onInspect={setInspectedId}
+        onPeek={setPeekId}
+        onHighlight={highlight}
+        overlays={overlays}
+      />
     );
   }
 
@@ -852,124 +533,6 @@ export function Table() {
   // whether a decision is being resolved — never from history. Drives only
   // presentation (emphasis; the region placement is mode-invariant).
   const mode: TableMode = selecting || demandsDecision(view) ? 'focus' : 'overview';
-
-  // Fire an action: a multi-select declaration (combat / bottoming) opens the
-  // toggle-and-confirm flow; a single-target action opens targeting mode; a plain
-  // action is submitted immediately (token echoed, no targets).
-  const fire = (action: ValidAction): void => {
-    if (isMultiSelect(action)) {
-      setSelectedId(null);
-      setTargeting(null);
-      setMultiSelect(beginMultiSelect(action));
-      return;
-    }
-    if (requiresTargets(action)) {
-      setSelectedId(null);
-      setMultiSelect(null);
-      setTargeting(beginTargeting(action));
-      return;
-    }
-    choose(action);
-    setSelectedId(null);
-  };
-
-  // Fire a targeted action with its first target already chosen — the drag-to-play
-  // drop on a candidate (blueprint §Interaction model): cast + first target in one
-  // gesture. A single-slot spell submits atomically right here; a multi-slot one
-  // continues in the ordinary targeting flow for its remaining slots. The dropped
-  // target is always one of the server-enumerated slot-0 candidates (the overlay
-  // only offers those), and `pick` re-checks it against the session's active slot.
-  const fireOnTarget = (action: ValidAction, target: EntityId): void => {
-    if (!requiresTargets(action)) {
-      fire(action);
-      return;
-    }
-    setSelectedId(null);
-    setMultiSelect(null);
-    const advanced = pick(beginTargeting(action), target);
-    const targets = assembleTargets(advanced);
-    if (targets !== null) {
-      choose(advanced.action, targets);
-      setTargeting(null);
-    } else {
-      setTargeting(advanced);
-    }
-  };
-
-  // Pick a target for the active slot. When the last slot is filled, assemble and
-  // submit the whole answer atomically (action token + one choice per slot).
-  function pickTarget(entityId: EntityId): void {
-    if (!targeting) return;
-    const advanced = pick(targeting, entityId);
-    const targets = assembleTargets(advanced);
-    if (targets !== null) {
-      choose(advanced.action, targets);
-      setTargeting(null);
-    } else {
-      setTargeting(advanced);
-    }
-  }
-
-  // Toggle a candidate into (or out of) the active multi-select slot. Nothing is
-  // submitted until the player confirms (or picks an option).
-  const toggleCandidate = (entityId: EntityId): void => {
-    if (!multiSelect) return;
-    setMultiSelect(msToggle(multiSelect, entityId));
-  };
-
-  // Assign a defending player to the attacker of the active `defender` slot (issue
-  // #347), then advance to the next declared attacker awaiting a target. A defender is
-  // a single choice, so the pick replaces any prior one; after the last attacker the
-  // advance clamps and Confirm submits the whole declaration atomically.
-  const pickDefender = (playerId: EntityId): void => {
-    if (!multiSelect) return;
-    setMultiSelect((prev) => (prev ? msAdvance(msToggle(prev, playerId)) : prev));
-  };
-
-  // The player-panel pick contract (issue #347): a single-target player *targeting*
-  // slot, or a multiplayer per-attacker *defender* pick — both choose a player from
-  // their panel header (or the identity panel), so they share the same affordance
-  // and differ only in the pick handler. Absent when no player choice is active.
-  const playerTargeting =
-    multiSelect && defenderSlot
-      ? { candidates: msActiveCandidates(multiSelect), onPick: pickDefender }
-      : targeting
-        ? { candidates: activeCandidates(targeting), onPick: pickTarget }
-        : undefined;
-
-  // Advance to the next walked slot (per-attacker blocker assignment).
-  const advanceSlot = (): void => {
-    if (!multiSelect) return;
-    setMultiSelect(msAdvance(multiSelect));
-  };
-
-  // Confirm the whole selection atomically (used when there is no option prompt).
-  const confirmMultiSelect = (): void => {
-    if (!multiSelect) return;
-    choose(multiSelect.action, assembleChoices(multiSelect));
-    setMultiSelect(null);
-  };
-
-  // Move an item one step within the active `order` slot (issue #157). Nothing is
-  // submitted until the player confirms — reordering only edits the pending answer.
-  const moveOrder = (entityId: EntityId, direction: -1 | 1): void => {
-    if (!multiSelect) return;
-    setMultiSelect(msMove(multiSelect, entityId, direction));
-  };
-
-  // Submit an option decision (the sheet's modal picker, e.g. mulligan keep/take-
-  // another) together with the current per-slot selection (e.g. the bottomed cards)
-  // in one atomic answer, keyed by the option slot the server posed.
-  const chooseOption = (optionId: string): void => {
-    if (!multiSelect) return;
-    const optionSlot = multiSelect.options[0];
-    const extra = optionSlot ? [{ slot: optionSlot.slot, chosen: [optionId] }] : [];
-    choose(multiSelect.action, assembleChoices(multiSelect, extra));
-    setMultiSelect(null);
-  };
-
-  const cancelTargeting = (): void => setTargeting(null);
-  const cancelMultiSelect = (): void => setMultiSelect(null);
 
   // Direct activation (ADR 0025): one gesture vocabulary — click, tap, or
   // keyboard activate — that shortcuts the select→dock round trip wherever the
@@ -1024,6 +587,17 @@ export function Table() {
         }
       : null;
 
+  // The player-panel pick contract (issue #347): a single-target player *targeting*
+  // slot, or a multiplayer per-attacker *defender* pick — both choose a player from
+  // their panel header (or the identity panel), so they share the same affordance
+  // and differ only in the pick handler. Absent when no player choice is active.
+  const playerTargeting =
+    multiSelect && defenderSlot
+      ? { candidates: msActiveCandidates(multiSelect), onPick: pickDefender }
+      : targeting
+        ? { candidates: activeCandidates(targeting), onPick: pickTarget }
+        : undefined;
+
   // The option decision (if any) renders in the decision sheet: its named choices
   // plus the count affordance that blocks submit while a paired count slot is
   // partially filled (e.g. a mulligan whose bottoming is not yet complete).
@@ -1054,56 +628,6 @@ export function Table() {
         onCancel: cancelMultiSelect,
       }
     : undefined;
-
-  // The decision sheet's rows for a sheet-mode slot: an `order` list (items
-  // in current order) or a non-canvas `select_from_zone` (candidates with chosen).
-  const surfaceChosen = multiSelect ? msActiveChosen(multiSelect) : [];
-  const surfaceItems =
-    sheetMode && msSlot
-      ? (msSlot.kind === 'order' ? surfaceChosen : msSlot.candidates).map((id) => ({
-          id,
-          label: cardNameOf(view, id),
-          chosen: surfaceChosen.includes(id),
-        }))
-      : [];
-
-  // The option picker's named choices (issue #157), rendered in the decision sheet
-  // — one of the only layers permitted to cover the shell, viewport-clamped.
-  const optionControls = multiSelect && hasOptions(multiSelect) ? multiSelect.options[0] : null;
-  const decisionSheet =
-    (sheetMode && msSlot) || optionControls ? (
-      <div className={s.sheetBackdrop} data-testid="decision-sheet">
-        <div className={s.sheetPanel}>
-          {sheetMode && msSlot && (
-            <PromptSurface
-              mode={msSlot.kind === 'order' ? 'order' : 'select'}
-              prompt={msSlot.prompt}
-              zone={msSlot.zone}
-              items={surfaceItems}
-              onToggle={toggleCandidate}
-              onMove={moveOrder}
-            />
-          )}
-          {multiSelect && optionControls && (
-            <div className={s.sheetOptions} data-testid="multiselect-options">
-              {optionControls.prompt !== undefined && <span>{optionControls.prompt}</span>}
-              {(optionControls.options ?? []).map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => chooseOption(option.id)}
-                  disabled={!optionsSubmittable(multiSelect)}
-                  data-testid={`multiselect-option-${option.id}`}
-                  className={s.optionButton}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    ) : null;
 
   return (
     <main
@@ -1231,7 +755,15 @@ export function Table() {
           deadline={selecting ? undefined : prompt?.deadline}
         />
       </div>
-      {decisionSheet}
+      <DecisionSheet
+        view={view}
+        multiSelect={multiSelect}
+        sheetMode={sheetMode}
+        msSlot={msSlot}
+        onToggle={toggleCandidate}
+        onMove={moveOrder}
+        onChooseOption={chooseOption}
+      />
       {overlays}
     </main>
   );
