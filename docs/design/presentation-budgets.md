@@ -29,8 +29,8 @@ remains a future capability, not a layout constraint).
 
 ## Quality levels
 
-Three levels plus one orthogonal toggle. Auto-detected on first run,
-always user-overridable in settings.
+Three levels plus two orthogonal controls — reduced motion and effect
+density. Auto-detected on first run, always user-overridable in settings.
 
 | | High | Standard | Lite (floor) |
 | --- | --- | --- | --- |
@@ -156,10 +156,15 @@ CPU-throttled (low-end proxy, same harness, software rendering):
 | 2D-canvas arrows + bursts @125 | 9.3 fps | 8.1 fps |
 | Reconnect rebuild | 10–43 ms | 10–30 ms |
 
-Reading: the scene path meets the 30 fps floor with roughly 6× margin even
-under combined software rendering and 6× CPU throttle; the reconnect budget
-holds with ≥2× margin; and the 2D-canvas effects path fails every tier, which
-is why ADR 0030's WebGL-effects rule is a budget-level requirement.
+Reading: the scene path stays above the 30 fps floor (48–57 fps,
+~1.6–1.9× headroom) even under the combined handicap of software rendering
+and a 6× CPU throttle; the reconnect budget holds with ≥2× margin; and the
+2D-canvas effects path fails every tier, which is why ADR 0030's
+WebGL-effects rule is a budget-level requirement. One at-the-line result:
+the 4× mass-untap p95 (33.4 ms) grazes the floor-tier p95 cap (≤ 33.3 ms) —
+within the harness's sampling resolution, so it is recorded as at the line,
+not a pass, and is one more reason the floor budgets bind on the real
+hardware runs below rather than on this proxy.
 
 ## Re-validation obligations
 
