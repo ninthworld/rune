@@ -523,7 +523,7 @@ export class PlaneReconciler {
     for (const region of planeRegions(plane)) {
       upsert(`region:${region.seat}`, 'region', region.rect, regionMeta(region));
       upsert(`crest:${region.seat}`, 'crest', region.crest, { seat: region.seat });
-      upsert(`piles:${region.seat}`, 'piles', region.piles, { seat: region.seat });
+      upsert(`piles:${region.seat}`, 'piles', region.piles, pilesMeta(region));
     }
     for (const tile of plane.tiles) {
       upsert(`tile:${tile.seat}`, 'tile', tile.rect, tileMeta(tile));
@@ -669,7 +669,29 @@ function regionMeta(region: PlaneRegion): Record<string, string> {
   return meta;
 }
 
-/** A compact tile's non-geometry inputs as data attributes. */
+/** A seat's zone-pile counts as data attributes (the authoritative pile data a
+ * draw or a battlefield→graveyard move must reconcile, slots unmoved). */
+function zonesMeta(zones: PlaneRegion['zones']): Record<string, string> {
+  const meta: Record<string, string> = {
+    library: String(zones.library),
+    graveyard: String(zones.graveyard),
+    exile: String(zones.exile),
+    command: String(zones.command ?? 0),
+  };
+  if (zones.graveyardTop) {
+    meta.top = zones.graveyardTop.name;
+    meta.topColor = zones.graveyardTop.colorIdentity;
+  }
+  return meta;
+}
+
+/** A pile cluster's non-geometry inputs as data attributes. */
+function pilesMeta(region: PlaneRegion): Record<string, string> {
+  return { seat: region.seat, ...zonesMeta(region.zones) };
+}
+
+/** A compact tile's non-geometry inputs as data attributes (a tile owes the
+ * seat's zone counts too — they are its whole summary). */
 function tileMeta(tile: SummaryTileSlot): Record<string, string> {
   return {
     seat: tile.seat,
@@ -681,6 +703,7 @@ function tileMeta(tile: SummaryTileSlot): Record<string, string> {
     attacked: String(tile.attacked),
     active: String(tile.active),
     priority: String(tile.priority),
+    ...zonesMeta(tile.zones),
   };
 }
 

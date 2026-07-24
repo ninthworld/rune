@@ -167,6 +167,53 @@ describe('PlaneReconciler fresh-mount equivalence (the cache is never load-beari
     }
   });
 
+  it('preserves the transform-bearing face node across a tap change (real CardFace)', () => {
+    // A tap re-render must MORPH the existing face, not replace it: the
+    // CSS transition on the face's inner node needs a persistent element to
+    // interpolate the ~25° rotation on (tap/untap motion class). Under
+    // reduced motion the face's own media query snaps it — the end state
+    // below is byte-identical either way.
+    const untapped = seatTable({
+      opponents: 1,
+      perms: [{ id: 'b1', controller: 'p2', name: 'Bear' }],
+    });
+    const tapped = seatTable({
+      opponents: 1,
+      perms: [{ id: 'b1', controller: 'p2', name: 'Bear', tapped: true }],
+    });
+    let current = untapped;
+    const makeFace = () =>
+      cardFaceRenderer((render) => {
+        const perm = current.battlefield.find((p) => p.id === render.entityId)!;
+        return toDisplayData(perm.card, {
+          tapped: perm.tapped,
+          counters: perm.counters,
+          selected: false,
+          actionable: false,
+        });
+      });
+
+    const r = new PlaneReconciler(document.createElement('div'), { face: makeFace() });
+    r.reconcile(planeOf(untapped));
+    const faceRoot = r.elementFor('b1')!.firstElementChild as HTMLElement;
+    const inner = faceRoot.querySelector<HTMLElement>('[data-monogram]')!;
+    expect(faceRoot.style.getPropertyValue('--tap-rot')).toBe('0deg');
+
+    current = tapped;
+    r.reconcile(planeOf(tapped));
+    // Same element instances: the rotation var changed ON the persistent
+    // nodes, so the face's transform transition has a "from" to tween from.
+    expect(r.elementFor('b1')!.firstElementChild).toBe(faceRoot);
+    expect(faceRoot.querySelector('[data-monogram]')).toBe(inner);
+    expect(faceRoot.dataset.tapped).toBe('true');
+    expect(faceRoot.style.getPropertyValue('--tap-rot')).not.toBe('0deg');
+    // The morphed DOM is byte-identical to a fresh render (the reduced-motion
+    // and no-residue guarantee).
+    const fresh = new PlaneReconciler(document.createElement('div'), { face: makeFace() });
+    fresh.reconcile(planeOf(tapped));
+    expect(r.root.innerHTML).toBe(fresh.root.innerHTML);
+  });
+
   it('matches a fresh mount through the real CardFace renderer (consumes #479)', () => {
     const makeFace = (view: GameView) => {
       const byId = new Map(view.battlefield.map((p) => [p.id, p]));
@@ -202,6 +249,49 @@ describe('PlaneReconciler fresh-mount equivalence (the cache is never load-beari
     incremental.reconcile(planeOf(view));
     incremental.reconcile(planeOf(moved));
     expect(incremental.root.innerHTML).toBe(freshMount(planeOf(moved), () => makeFace(moved)));
+  });
+
+  it('reconciles zone-only updates into the pile and tile chrome (slots unmoved)', () => {
+    const r = make();
+    const before = seatTable({ opponents: 1, perms: menagerie('p2', 2) });
+    r.reconcile(planeOf(before));
+    const pile = r.root.querySelector<HTMLElement>('[data-key="piles:p2"]')!;
+    expect(pile.dataset.library).toBe('60');
+    expect(pile.dataset.graveyard).toBe('0');
+    expect(pile.dataset.top).toBeUndefined();
+
+    // A draw and a death: library shrinks, the graveyard gains a top card —
+    // no slot or render moves, but the pile data is authoritative and must
+    // reconcile (and count as work).
+    const after = seatTable({ opponents: 1, perms: menagerie('p2', 2) });
+    after.opponents[0]!.library_size = 59;
+    after.graveyards = [
+      {
+        player_id: 'p2',
+        cards: [{ id: 'g1', name: 'Shock', type_line: 'Instant', mana_cost: '{R}' }],
+      },
+    ];
+    r.reconcile(planeOf(after));
+    expect(r.lastStats.chrome).toBeGreaterThan(0);
+    expect(pile.dataset.library).toBe('59');
+    expect(pile.dataset.graveyard).toBe('1');
+    expect(pile.dataset.top).toBe('Shock');
+    expect(pile.dataset.topColor).toBe('R');
+    expect(r.root.innerHTML).toBe(freshMount(planeOf(after)));
+  });
+
+  it('carries the zone counts on compact summary tiles too', () => {
+    const r = make();
+    const view = seatTable({ opponents: 3, active: 'p2' });
+    r.reconcile(stagePlane(view, { width: 390, height: 844 }));
+    const tile = r.root.querySelector<HTMLElement>('[data-key="tile:p3"]')!;
+    expect(tile.dataset.library).toBe('60');
+
+    const after = seatTable({ opponents: 3, active: 'p2' });
+    after.opponents.find((o) => o.player_id === 'p3')!.library_size = 42;
+    r.reconcile(stagePlane(after, { width: 390, height: 844 }));
+    expect(tile.dataset.library).toBe('42');
+    expect(r.lastStats.chrome).toBeGreaterThan(0);
   });
 
   it('rebuild() (reconnect/fast-forward) equals a fresh mount and drops the cache', () => {
