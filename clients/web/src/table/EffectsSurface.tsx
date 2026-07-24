@@ -17,7 +17,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { Application } from 'pixi.js';
-import type { EffectsLayer } from './effects';
+import { createEffectsTicker, type EffectsLayer } from './effects';
 
 interface Props {
   /** The effects layer to host; the caller owns it and spawns into it. */
@@ -53,15 +53,16 @@ export function EffectsSurface({ layer, width, height }: Props) {
       app.stage.addChild(layer.root);
       appRef.current = app;
 
-      // The ticker runs only while effects are live: each tick advances the
-      // layer (which draws only when needed) and renders; the moment the layer
-      // reports idle with nothing live, the ticker stops — zero idle cost.
-      const tick = (): void => {
-        const drew = layer.advance(performance.now());
-        if (drew) app.render();
-        if (!drew && !layer.hasLiveEffects()) app.ticker.stop();
-      };
-      app.ticker.add(tick);
+      // Render-on-demand: each tick advances the layer (which draws only when
+      // needed) and the ticker stops the moment no further frame is NEEDED —
+      // a drawn static link or reduced-motion form is live but costs nothing
+      // (`createEffectsTicker` carries the tested stop policy). The layer's
+      // `wake` restarts the ticker on any new work — zero idle cost.
+      const tick = createEffectsTicker(layer, {
+        render: () => app.render(),
+        stop: () => app.ticker.stop(),
+      });
+      app.ticker.add(() => tick(performance.now()));
       layer.wake = () => {
         if (!app.ticker.started) app.ticker.start();
       };

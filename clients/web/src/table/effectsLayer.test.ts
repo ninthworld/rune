@@ -13,6 +13,7 @@ import {
   EFFECT_TIMING,
   EffectsLayer,
   PARTICLE_CAP,
+  createEffectsTicker,
   type EffectDensity,
   type EffectQuality,
 } from './effects';
@@ -113,7 +114,7 @@ describe('EffectsLayer v1 vocabulary (data-driven categories)', () => {
     expect(layer.advance(32)).toBe(false);
   });
 
-  it('drops an effect whose endpoint left play instead of drawing stale', () => {
+  it('retires an effect whose endpoint left play — no stale line, no idle leak', () => {
     const { layer } = make();
     layer.setPersistent([
       {
@@ -126,6 +127,50 @@ describe('EffectsLayer v1 vocabulary (data-driven categories)', () => {
     ]);
     layer.advance(0);
     expect(layer.lastProgram).toHaveLength(0);
+    // The unresolved path is retired from the live set, not just the program:
+    // it must never keep "animating" an empty frame forever.
+    expect(layer.hasLiveEffects()).toBe(false);
+    expect(layer.needsFrame()).toBe(false);
+    expect(layer.advance(16)).toBe(false);
+    expect(layer.advance(32)).toBe(false);
+    // A new authoritative set (same value) re-attempts the effect.
+    layer.setPersistent([
+      {
+        id: 'path:x',
+        category: 'attack-path',
+        from: { ref: 'atk' },
+        to: { ref: 'gone' },
+        accent: SURFACES.targeting,
+      },
+    ]);
+    expect(layer.advance(48)).toBe(true);
+  });
+
+  it('keeps resolvable effects while retiring the unresolvable in one set', () => {
+    const { layer } = make();
+    layer.setPersistent([
+      {
+        id: 'link:blk',
+        category: 'blocker-link',
+        from: { ref: 'blk' },
+        to: { ref: 'atk' },
+        accent: COMBAT_LINK.color,
+      },
+      {
+        id: 'path:x',
+        category: 'attack-path',
+        from: { ref: 'atk' },
+        to: { ref: 'gone' },
+        accent: SURFACES.targeting,
+      },
+    ]);
+    layer.advance(0);
+    // The link drew; the unresolved path retired — and with only static
+    // geometry left, no further frames are needed.
+    expect(layer.lastProgram.filter((op) => op.op === 'segment')).toHaveLength(2);
+    expect(layer.hasLiveEffects()).toBe(true);
+    expect(layer.needsFrame()).toBe(false);
+    expect(layer.advance(16)).toBe(false);
   });
 
   it('reconciles the persistent set by value — an unchanged set costs nothing', () => {
@@ -208,6 +253,90 @@ describe('EffectsLayer particle budgets (quality caps × density control)', () =
       accent: SCENE_HUES.red.value,
     });
     expect(minimal.layer.stats.liveParticles).toBe(0);
+  });
+});
+
+describe('EffectsLayer ticker stop policy (createEffectsTicker)', () => {
+  /** Drive the extracted mount tick against counting host hooks. */
+  function ticker(layer: EffectsLayer) {
+    const host = { renders: 0, stops: 0 };
+    const tick = createEffectsTicker(layer, {
+      render: () => {
+        host.renders += 1;
+      },
+      stop: () => {
+        host.stops += 1;
+      },
+    });
+    return { tick, host };
+  }
+
+  it('stops after the first clean frame of a static blocker link', () => {
+    const { layer } = make();
+    const { tick, host } = ticker(layer);
+    layer.setPersistent([
+      {
+        id: 'link:blk',
+        category: 'blocker-link',
+        from: { ref: 'blk' },
+        to: { ref: 'atk' },
+        accent: COMBAT_LINK.color,
+      },
+    ]);
+    tick(0); // draws the link
+    expect(host.renders).toBe(1);
+    expect(host.stops).toBe(0);
+    tick(16); // nothing needed: the link is live but static — stop
+    expect(host.renders).toBe(1);
+    expect(host.stops).toBe(1);
+  });
+
+  it('stops after the static frame of a reduced-motion path', () => {
+    const { layer } = make({ reducedMotion: true });
+    const { tick, host } = ticker(layer);
+    layer.setPersistent([
+      {
+        id: 'path:a1',
+        category: 'targeting-path',
+        from: { ref: 'atk' },
+        to: { ref: 'blk' },
+        accent: SURFACES.targeting,
+      },
+    ]);
+    tick(0);
+    tick(16);
+    expect(host.renders).toBe(1);
+    expect(host.stops).toBe(1);
+  });
+
+  it('keeps ticking through a reduced-motion hold until the flash retires', () => {
+    const { layer } = make({ reducedMotion: true });
+    const { tick, host } = ticker(layer);
+    layer.spawn({ category: 'impact', target: { ref: 'atk' }, accent: SCENE_HUES.red.value });
+    tick(0); // the flash frame
+    tick(100); // held: no draw, but expiry is pending — must NOT stop yet
+    expect(host.stops).toBe(0);
+    tick(EFFECT_TIMING.reducedHoldMs + 1); // expiry redraw
+    tick(EFFECT_TIMING.reducedHoldMs + 17); // now idle — stop
+    expect(host.renders).toBe(2);
+    expect(host.stops).toBe(1);
+  });
+
+  it('runs a live crawl continuously and never stops it', () => {
+    const { layer } = make();
+    const { tick, host } = ticker(layer);
+    layer.setPersistent([
+      {
+        id: 'path:a1',
+        category: 'targeting-path',
+        from: { ref: 'atk' },
+        to: { ref: 'blk' },
+        accent: SURFACES.targeting,
+      },
+    ]);
+    for (let frame = 0; frame < 5; frame += 1) tick(frame * 16);
+    expect(host.renders).toBe(5);
+    expect(host.stops).toBe(0);
   });
 });
 

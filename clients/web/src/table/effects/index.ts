@@ -32,4 +32,10 @@ export {
   type BurstParticle,
 } from './geometry';
 
-export { EffectsLayer, EFFECT_TIMING, drawProgram, type EffectsLayerOptions } from './layer';
+export {
+  EffectsLayer,
+  EFFECT_TIMING,
+  drawProgram,
+  createEffectsTicker,
+  type EffectsLayerOptions,
+} from './layer';

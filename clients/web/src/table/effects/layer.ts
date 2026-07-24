@@ -164,9 +164,22 @@ export class EffectsLayer {
     }
   }
 
-  /** Whether anything is live (the mount keeps its ticker running only then). */
+  /** Whether anything is visible/live (persistent effects included, even when
+   * their geometry is static and costs no further frames). */
   hasLiveEffects(): boolean {
     return this.transients.length > 0 || this.persistent.length > 0 || this.tracking;
+  }
+
+  /**
+   * Whether another animation frame is needed — distinct from
+   * {@link hasLiveEffects}: a drawn static blocker link or reduced-motion path
+   * is live but needs nothing, so the mount's ticker may stop after its first
+   * clean frame. True while something is undrawn (`dirty`), a transient awaits
+   * its expiry, or a per-frame animation (dash crawl, tracking) is running.
+   * Every mutation calls {@link wake}, so stopping on false never strands work.
+   */
+  needsFrame(): boolean {
+    return this.dirty || this.transients.length > 0 || this.isAnimating();
   }
 
   /**
@@ -209,12 +222,17 @@ export class EffectsLayer {
   private buildProgram(now: number): DrawOp[] {
     const { rects, reducedMotion } = this.options;
     const ops: DrawOp[] = [];
+    const retained: PersistentEffect[] = [];
 
     for (const effect of this.persistent) {
       const from = anchorCenter(effect.from, rects);
       const to = anchorCenter(effect.to, rects);
-      // An unresolvable endpoint drops the effect — never a stale line.
+      // An unresolvable endpoint RETIRES the effect — never a stale line, and
+      // never an idle leak (a dropped-but-live path would otherwise keep
+      // "animating" an empty program forever). It comes back only through a
+      // new authoritative setPersistent.
       if (!from || !to) continue;
+      retained.push(effect);
       if (effect.category === 'blocker-link') {
         for (const [a, b] of doubledStroke(from, to)) {
           ops.push(segment(effect.category, a, b, effect.accent, COMBAT_LINK.strokeWidth));
@@ -249,6 +267,10 @@ export class EffectsLayer {
       for (const [a, b] of arrowHead(curve)) {
         ops.push(segment(effect.category, a, b, effect.accent, 3));
       }
+    }
+    if (retained.length !== this.persistent.length) {
+      this.persistent = retained;
+      this.persistentKey = JSON.stringify(retained);
     }
 
     for (const transient of this.transients) {
@@ -317,6 +339,25 @@ function segment(category: string, from: Point, to: Point, color: string, width:
 /** `'#RRGGBB'` token to the numeric color Pixi expects. */
 function hexColor(hex: string): number {
   return parseInt(hex.replace('#', ''), 16);
+}
+
+/**
+ * The render-on-demand tick the effects mount drives its Pixi ticker with,
+ * extracted so the stop policy is testable without a GL context: advance the
+ * layer, render only when it drew, and **stop the ticker the moment no further
+ * frame is needed** — a drawn static blocker link or reduced-motion form is
+ * live but costs nothing (`needsFrame`, not `hasLiveEffects`, is the stop
+ * gate). Every layer mutation calls `wake`, so stopping never strands work.
+ */
+export function createEffectsTicker(
+  layer: EffectsLayer,
+  host: { render(): void; stop(): void },
+): (now: number) => void {
+  return (now: number) => {
+    const drew = layer.advance(now);
+    if (drew) host.render();
+    if (!drew && !layer.needsFrame()) host.stop();
+  };
 }
 
 /**
