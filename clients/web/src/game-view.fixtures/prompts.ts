@@ -9,9 +9,13 @@
  * A wire frame owing mulligan bottoming (issue #143/#156, CR 103.5 London): the
  * subject-less `mulligan_decision` action carries an `option` prompt (keep /
  * take-another) AND a `select_from_zone` bottoming prompt (`count: 1`) over the
- * receiver's hand. The client renders the option minimally as a submit trigger
- * (rich option UX is #157) and enforces the bottoming `count` client-side only as a
- * UX affordance — the option buttons are blocked while the bottom pick is partial.
+ * receiver's hand. Only *keep* owes that bottoming, so it names the slot in its
+ * `requires` (issue #451) — the client keeps keep disabled until exactly the owed
+ * card is picked, while take-another stays available at zero. The counted slot is
+ * still a UX affordance only: the server re-checks it on resolution.
+ *
+ * Concede rides alongside (the server offers it at every moment, CR 104.3a), which
+ * is what makes the mulligan the *only* real choice on the frame.
  */
 export const MULLIGAN_GAME_VIEW_JSON = JSON.stringify({
   you: 'p1',
@@ -42,7 +46,7 @@ export const MULLIGAN_GAME_VIEW_JSON = JSON.stringify({
           slot: 'decision',
           prompt: 'Keep this hand or take a mulligan?',
           options: [
-            { id: 'keep', label: 'Keep this hand' },
+            { id: 'keep', label: 'Keep this hand', requires: ['bottom'] },
             { id: 'mulligan', label: 'Mulligan' },
           ],
         },
@@ -57,6 +61,7 @@ export const MULLIGAN_GAME_VIEW_JSON = JSON.stringify({
         },
       ],
     },
+    { id: 'a1', type: 'concede', label: 'Concede', token: 'h:concede' },
   ],
 });
 

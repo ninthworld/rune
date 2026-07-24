@@ -23,7 +23,12 @@ import { PlaneReconciler, planeRegions, planeRenders } from '../table/planeRecon
 import { EffectsLayer, type EffectDensity, type EffectQuality } from '../table/effects';
 import { EffectsSurface } from '../table/EffectsSurface';
 import { FIXTURE_SCENARIOS, fixtureScenario, type FixtureScenario } from './scenarios';
-import { FrameBudgetSampler, fixtureBudgetReport, type FixtureBudgetReport } from './metrics';
+import {
+  FrameBudgetSampler,
+  fixtureBudgetReport,
+  maxCardFaceNodes,
+  type FixtureBudgetReport,
+} from './metrics';
 import styles from './fixture-battlefield.module.css';
 
 /** Dev/test-only window surface used by screenshot and budget automation. */
@@ -113,6 +118,7 @@ export function FixtureBattlefield() {
   const [playing, setPlaying] = useState(false);
   const [scale, setScale] = useState(1);
   const [rebuildMs, setRebuildMs] = useState(0);
+  const [faceNodes, setFaceNodes] = useState(0);
   const [, setReportTick] = useState(0);
 
   const scenario = fixtureScenario(scenarioId);
@@ -157,6 +163,7 @@ export function FixtureBattlefield() {
     tween: samplerRef.current.tweenSummary(),
     rebuildMs,
     domNodes: typeof document === 'undefined' ? 0 : document.querySelectorAll('*').length,
+    faceNodes,
   });
 
   const selectScenario = useCallback((id: string) => {
@@ -188,6 +195,7 @@ export function FixtureBattlefield() {
     const elapsed = performance.now() - started;
     anchorPlane(anchorsRef.current, planeRef.current, reconciler);
     setRebuildMs(elapsed);
+    setFaceNodes(maxCardFaceNodes(reconciler.root));
     return elapsed;
   }, []);
 
@@ -206,6 +214,7 @@ export function FixtureBattlefield() {
     reconciler.rebuild(planeRef.current);
     setRebuildMs(performance.now() - started);
     anchorPlane(anchorsRef.current, planeRef.current, reconciler);
+    setFaceNodes(maxCardFaceNodes(root));
     return () => {
       reconciler.clear();
       root.replaceChildren();
@@ -218,6 +227,7 @@ export function FixtureBattlefield() {
     if (!reconciler) return;
     reconciler.reconcile(plane);
     anchorPlane(anchorsRef.current, plane, reconciler);
+    setFaceNodes(maxCardFaceNodes(reconciler.root));
     effectsLayer.setPersistent(frame.effects ?? []);
     const transientKey = `${scenario.id}:${safeFrameIndex}`;
     if (frame.transient && transientKeyRef.current !== transientKey) {
@@ -497,6 +507,10 @@ export function FixtureBattlefield() {
           <div>
             <dt>DOM</dt>
             <dd>{report.domNodes.toLocaleString()} nodes</dd>
+          </div>
+          <div>
+            <dt>Face</dt>
+            <dd>{report.faceNodes} nodes</dd>
           </div>
         </dl>
       </footer>

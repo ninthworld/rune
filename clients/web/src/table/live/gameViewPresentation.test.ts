@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SAMPLE_GAME_VIEW } from '../../game-view.fixture';
 import type { GameView, Permanent } from '../../protocol';
 import { SCENE_BATCH, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
+import { TRANSIENT_CAP } from '../effects';
 import {
   deriveGameViewPresentation,
   freezeDepartedEffectAnchors,
@@ -24,6 +25,16 @@ function permanent(id: string, controller = 'p1'): Permanent {
       power: '1',
       toughness: '1',
     },
+  };
+}
+
+/** A member of a swarm: same identity and controller as its siblings, so the
+ * adapter reads a simultaneous multiple as one batch (never a rules claim). */
+function token(id: string, controller = 'p1'): Permanent {
+  const base = permanent(id, controller);
+  return {
+    ...base,
+    card: { ...base.card, name: 'Spirit', functional_id: 'spirit_token', type_line: 'Creature' },
   };
 }
 
@@ -169,8 +180,9 @@ describe('deriveGameViewPresentation', () => {
         expect.objectContaining({ category: 'zone-travel', entityId: 'grave-card' }),
       ]),
     );
-    // The wire has no token/destruction-reason bit: appearance and pile travel
-    // deliberately stay generic rather than guessing gameplay semantics.
+    // The wire has no token/destruction-reason bit: a LONE appearance and pile
+    // travel stay generic rather than guessing gameplay semantics (only
+    // simultaneous identical multiples read as a swarm — see the batch tests).
     expect(result.transients).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ category: 'counter-change' }),
@@ -234,6 +246,75 @@ describe('deriveGameViewPresentation', () => {
           motion.delayMs + motion.durationMs === SCENE_BATCH.windowMs,
       ),
     ).toBe(true);
+  });
+
+  it('stages simultaneous identical arrivals as one token batch', () => {
+    const previous = view();
+    previous.log = [];
+    previous.battlefield = [];
+    const current = view();
+    current.log = [];
+    current.battlefield = [
+      ...Array.from({ length: 12 }, (_, index) => token(`spirit-${index}`)),
+      // A lone appearance is not a swarm; it keeps the generic entry cue.
+      permanent('reanimated'),
+    ];
+
+    const result = deriveGameViewPresentation(previous, current);
+    const batch = result.motions.filter((motion) => motion.category === 'token-batch');
+
+    expect(batch).toHaveLength(12);
+    expect(result.motions).toContainEqual(
+      expect.objectContaining({ category: 'battlefield-entry', entityId: 'reanimated' }),
+    );
+    // ≤ 80 ms stagger per item, ≤ 800 ms total window (presentation-budgets).
+    const delays = [...new Set(batch.map((motion) => motion.delayMs))].sort((a, b) => a - b);
+    for (const [index, delay] of delays.entries()) {
+      if (index === 0) continue;
+      expect(delay - delays[index - 1]!).toBeLessThanOrEqual(SCENE_BATCH.staggerCap);
+    }
+    expect(delays[0]).toBe(0);
+    expect(
+      Math.max(...batch.map((motion) => motion.delayMs + motion.durationMs)),
+    ).toBeLessThanOrEqual(SCENE_BATCH.windowMs);
+  });
+
+  it('never reads a swarm across controllers, identities, or a known origin', () => {
+    const previous = view();
+    previous.log = [];
+    previous.battlefield = [];
+    previous.graveyards = [
+      { player_id: 'p1', cards: [{ id: 'returning', name: 'Spirit', type_line: 'Creature' }] },
+    ];
+    const current = view();
+    current.log = [];
+    current.graveyards = [];
+    current.battlefield = [token('mine', 'p1'), token('theirs', 'p2'), token('returning')];
+
+    const result = deriveGameViewPresentation(previous, current);
+
+    // Different controllers are different swarms; a card that travelled from a
+    // visible zone is zone travel, not an appearance at all.
+    expect(result.motions.some((motion) => motion.category === 'token-batch')).toBe(false);
+    expect(result.motions).toContainEqual(
+      expect.objectContaining({ category: 'zone-travel', entityId: 'returning' }),
+    );
+  });
+
+  it('snaps a token batch under Lite and reduced motion', () => {
+    const previous = view();
+    previous.log = [];
+    previous.battlefield = [];
+    const current = view();
+    current.log = [];
+    current.battlefield = Array.from({ length: 30 }, (_, index) => token(`spirit-${index}`));
+
+    for (const staging of [{ quality: 'lite' as const }, { reducedMotion: true }]) {
+      const result = deriveGameViewPresentation(previous, current, staging);
+      const batch = result.motions.filter((motion) => motion.category === 'token-batch');
+      expect(batch).toHaveLength(30);
+      expect(batch.every((motion) => motion.delayMs === 0)).toBe(true);
+    }
   });
 
   it('maps damage/healing/death without guessing an ambiguous zone-change reason', () => {
@@ -410,6 +491,27 @@ describe('deriveGameViewPresentation off-focus staging', () => {
     // dense moment can never push the "never silent" guarantee past the cap.
     expect(pingedSeats(result)).toEqual(['seat:p3']);
     expect(result.transients[0]?.category).toBe('off-focus-ping');
+  });
+
+  it('credits a token swarm on a wing once, not once per token (#502)', () => {
+    const previous = table();
+    const current = table();
+    current.battlefield = [
+      ...previous.battlefield,
+      ...Array.from({ length: 30 }, (_, index) => token(`spirit-${index}`, 'p3')),
+    ];
+
+    const result = deriveGameViewPresentation(previous, current, { focusSeat: 'p2' });
+
+    // The swarm stages as a token batch, and the wing that grew it is credited
+    // exactly once: the ping is per seat, never per arrival.
+    expect(result.motions.filter((motion) => motion.category === 'token-batch')).toHaveLength(30);
+    expect(pingedSeats(result)).toEqual(['seat:p3']);
+    // Leading the batch is what keeps the guarantee: the swarm's own entry
+    // transients outnumber the Lite transient cap, so a ping appended after
+    // them would be dropped before it ever drew.
+    expect(result.transients[0]?.category).toBe('off-focus-ping');
+    expect(result.transients.length).toBeGreaterThan(TRANSIENT_CAP.lite);
   });
 
   it('never pings the receiver, the focused seat, or a duel opponent', () => {

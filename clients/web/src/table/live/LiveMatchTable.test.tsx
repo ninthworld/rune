@@ -5,6 +5,7 @@ import {
   MULLIGAN_GAME_VIEW_JSON,
   SAMPLE_GAME_VIEW_JSON,
   TARGETING_GAME_VIEW_JSON,
+  ZONE_SELECT_GAME_VIEW_JSON,
 } from '../../game-view.fixture';
 import type { TargetChoice, ValidAction } from '../../protocol';
 import { useGameStore } from '../../store';
@@ -225,7 +226,6 @@ describe('LiveMatchTable', () => {
     const choose = seed(MULLIGAN_GAME_VIEW_JSON);
     render(<LiveMatchTable />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Keep or mulligan' }));
     fireEvent.click(screen.getByTestId('live-hand-card-card_a'));
     fireEvent.click(screen.getByTestId('multiselect-option-keep'));
 
@@ -235,6 +235,63 @@ describe('LiveMatchTable', () => {
       { slot: 'decision', chosen: ['keep'] },
       { slot: 'bottom', chosen: ['card_a'] },
     ]);
+  });
+
+  it('presents a forced decision with the view and keeps it there (issue #451)', () => {
+    // The mulligan used to hide behind a dock button that every server frame
+    // closed — including the resync answering a rejection and the fresh hand a
+    // mulligan deals — so the player had to rediscover it after each click.
+    seed(MULLIGAN_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    expect(screen.getByTestId('multiselect-options')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Keep or mulligan' })).toBeNull();
+    // Nothing to fall back to, so no cancel that would re-open itself.
+    expect(screen.queryByTestId('multiselect-cancel')).toBeNull();
+
+    // A fresh frame (a new hand, or the resync after a rejection) re-presents it.
+    act(() => useGameStore.getState().ingest(MULLIGAN_GAME_VIEW_JSON));
+    expect(screen.getByTestId('multiselect-options')).toBeTruthy();
+    expect(screen.getByTestId('live-hand-card-card_a').getAttribute('aria-pressed')).toBe('false');
+
+    // Escape cannot dismiss the only thing the server is waiting on.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByTestId('multiselect-options')).toBeTruthy();
+  });
+
+  it('gates Keep on the exact bottoming count, picked on the scene (issue #451)', () => {
+    const choose = seed(MULLIGAN_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+    const keep = screen.getByTestId('multiselect-option-keep') as HTMLButtonElement;
+    const another = screen.getByTestId('multiselect-option-mulligan') as HTMLButtonElement;
+
+    // One card is owed and none is picked: keep is closed, take-another is open.
+    expect(keep.disabled).toBe(true);
+    expect(another.disabled).toBe(false);
+
+    // The sheet floats over the hand it is asking about, so it must not swallow
+    // the clicks that answer it (the scrim used to, with no `pointer-events`).
+    expect(screen.getByTestId('decision-sheet').dataset.pointerThrough).toBe('true');
+
+    fireEvent.click(screen.getByTestId('live-hand-card-card_a'));
+    expect(screen.getByTestId('live-hand-card-card_a').getAttribute('aria-pressed')).toBe('true');
+    expect(keep.disabled).toBe(false);
+
+    // Over the owed count neither choice is offered — the server would reject both.
+    fireEvent.click(screen.getByTestId('live-hand-card-card_b'));
+    expect(keep.disabled).toBe(true);
+    expect(another.disabled).toBe(true);
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('keeps its scrim for a decision answered in the sheet itself', () => {
+    // The pass-through is scoped to picks made on the scene: a decision whose
+    // candidates live in the sheet (a non-board zone) still owns the surface.
+    seed(ZONE_SELECT_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Return a card to hand' }));
+    expect(screen.getByTestId('decision-sheet').dataset.pointerThrough).toBeUndefined();
   });
 
   it('clears an in-progress target session on the next complete view', () => {

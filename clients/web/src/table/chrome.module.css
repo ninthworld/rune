@@ -1465,6 +1465,25 @@
   font-size: var(--rune-type-body-lg);
   color: var(--rune-text-muted);
 }
+/* The way out of a finished game (issue #452): the one action on the verdict, so it
+   carries the primary weight and a full-width touch target. */
+.gameOverExit {
+  min-height: var(--rune-touch);
+  width: 100%;
+  padding: 0 16px;
+  border-radius: var(--rune-radius-md);
+  border: 1px solid rgba(242, 201, 76, 0.65);
+  background: rgba(242, 201, 76, 0.13);
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.gameOverExit:hover {
+  background: rgba(242, 201, 76, 0.2);
+}
 
 /* ── Stack panel ───────────────────────────────────────────────────────────────
  * A section WITHIN the stack & activity rail (issue #299): the rail wrapper owns the
@@ -2704,6 +2723,17 @@ button.summaryTile:focus-visible {
   .sheetBackdrop {
     align-items: center;
   }
+}
+/* A sheet that only offers named choices sits over a pick made on the scene (a
+   mulligan's bottoming is chosen from the hand, issue #451). The scrim must pass
+   clicks through to those cards — its own panel takes pointer events back — and it
+   anchors to the top so it never sits on the hand it is asking about. */
+.sheetBackdrop[data-pointer-through='true'] {
+  pointer-events: none;
+  align-items: flex-start;
+}
+.sheetBackdrop[data-pointer-through='true'] > * {
+  pointer-events: auto;
 }
 .sheetPanel {
   position: relative;

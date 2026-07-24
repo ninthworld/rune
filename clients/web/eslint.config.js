@@ -27,5 +27,21 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
+  // Build-output gates run under Node against `dist/` (issue #510).
+  {
+    files: ['scripts/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.node,
+    },
+  },
+  // The device probe is pasted into a browser console on the device under test,
+  // so it is browser code that happens to live beside the Node scripts.
+  {
+    files: ['scripts/deviceBudgetProbe.js', 'scripts/deviceBudgetProbe.test.js'],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
   prettier,
 );

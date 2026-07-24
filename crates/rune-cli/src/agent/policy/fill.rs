@@ -33,11 +33,6 @@ pub fn fill_answers(view: &GameView, action: &ValidAction) -> Option<Vec<TargetC
             defender_selection(req)
         } else if req.slot.starts_with("block_") {
             block_selection(view, req, &mut used_blockers)
-        } else if req.slot == "bottom" {
-            // Mulligan bottoming (we never mulligan, so rarely hit): bottom the
-            // required count of lowest mana-value cards.
-            let count = leading_count(&req.prompt).unwrap_or(req.candidates.len());
-            lowest_mana_value_ids(view, &req.candidates, count)
         } else {
             // An ability-target slot (`t0`, `t1`, …): a single mandatory target.
             vec![target_preference(view, req)?]
@@ -266,15 +261,6 @@ fn sorted_by_mana_value(view: &GameView, candidates: &[String], descending: bool
     ids
 }
 
-/// The leading integer of a prompt like `"Put 2 card(s) on the bottom …"` (→ `2`),
-/// or `None` if the prompt opens with no number. Lets the agent honor a bottoming
-/// count the wire requirement does not carry as a field.
-fn leading_count(prompt: &str) -> Option<usize> {
-    prompt
-        .split_whitespace()
-        .find_map(|word| word.parse::<usize>().ok())
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -494,10 +480,12 @@ mod tests {
                 PromptOption {
                     id: "mulligan".into(),
                     label: "Mulligan".into(),
+                    requires: Vec::new(),
                 },
                 PromptOption {
                     id: "keep".into(),
                     label: "Keep".into(),
+                    requires: Vec::new(),
                 },
             ],
         };
@@ -518,10 +506,12 @@ mod tests {
                     PromptOption {
                         id: "a".into(),
                         label: "A".into(),
+                        requires: Vec::new(),
                     },
                     PromptOption {
                         id: "b".into(),
                         label: "B".into(),
+                        requires: Vec::new(),
                     },
                 ],
             }],

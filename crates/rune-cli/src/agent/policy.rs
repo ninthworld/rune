@@ -350,10 +350,12 @@ mod tests {
                     PromptOption {
                         id: "keep".into(),
                         label: "Keep this hand".into(),
+                        requires: Vec::new(),
                     },
                     PromptOption {
                         id: "mulligan".into(),
                         label: "Mulligan".into(),
+                        requires: Vec::new(),
                     },
                 ],
             }],
@@ -552,10 +554,12 @@ mod tests {
                     PromptOption {
                         id: "keep".into(),
                         label: "Keep".into(),
+                        requires: Vec::new(),
                     },
                     PromptOption {
                         id: "mulligan".into(),
                         label: "Mulligan".into(),
+                        requires: Vec::new(),
                     },
                 ],
             }],

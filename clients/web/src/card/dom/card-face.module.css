@@ -7,7 +7,8 @@
  * battlefield-tier face — a hard, input-independent ceiling): all state
  * channels are zero-node —
  *   rings              → box-shadow on .inner
- *   ×N splayed pile    → layered box-shadow on .inner
+ *   ×N splayed pile    → layered box-shadow on .inner (one edge per hidden
+ *                        member, capped — never an extra card subtree)
  *   elevation shadow   → box-shadow on .inner (snaps; only transform/opacity animate)
  *   actionable bar     → .inner::before        monogram → .inner::after
  *   attacking bar      → .name::before         blocking bar → .name::after
@@ -85,11 +86,12 @@
   --ring-shadow: 0 0 0 var(--ring-w) var(--targeting);
 }
 
-/* ×N stacks read as a slightly splayed physical pile (visual-system §5). */
+/* ×N stacks read as a slightly splayed physical pile (visual-system §5): one
+ * offset card edge per hidden member (deepening with the fold, capped by
+ * SPLAY.maxLayers), composed in `theme.ts` and published as --splay-layers.
+ * Layered box-shadows, so the pile adds no element at any count. */
 .stacked .inner {
-  --splay-shadow:
-    2px -2px 0 0 var(--face-body), 3px -3px 0 1px var(--face-accent), 5px -5px 0 0 var(--face-body),
-    6px -6px 0 1px var(--face-accent);
+  --splay-shadow: var(--splay-layers, 0 0 0 0 transparent);
 }
 
 /* Gold "you can act" edge bar — the unique bottom-edge shape. Stacks above

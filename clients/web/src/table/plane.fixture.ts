@@ -106,6 +106,26 @@ export function bears(
   }));
 }
 
+/**
+ * `n` identical basic lands of one kind for one controller — the ×N fold's
+ * canonical case (visual-system §5: "four Plains should look like a stack of
+ * Plains"). They fold exactly like {@link bears}; only the row differs.
+ */
+export function basics(
+  controller: string,
+  n: number,
+  kind: 'Plains' | 'Island' | 'Swamp' | 'Mountain' | 'Forest',
+  opts: { tapped?: boolean; prefix?: string } = {},
+): PlanePermSpec[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `${opts.prefix ?? controller}_${kind.toLowerCase()}_${i}`,
+    controller,
+    name: kind,
+    type_line: `Basic Land — ${kind}`,
+    tapped: opts.tapped,
+  }));
+}
+
 /** `n` pairwise-distinct creatures for one controller (they never fold). */
 export function menagerie(controller: string, n: number): PlanePermSpec[] {
   return Array.from({ length: n }, (_, i) => ({

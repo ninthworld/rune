@@ -7,6 +7,7 @@ import {
   INDICATORS,
   PALETTE,
   PT_TEXT,
+  SPLAY,
   SURFACES,
   TAP,
   TIER,
@@ -83,6 +84,34 @@ export function faceFootprint(tier: CardFaceTier, tapped: boolean): { w: number;
 }
 
 /**
+ * How many card edges the pile draws behind the top card for a fold of
+ * `stackCount` members: one per hidden member, capped at {@link SPLAY.maxLayers}
+ * so a 40-token fold keeps the same bounded silhouette as a 4-Plains fold (the
+ * ×N badge carries the exact count).
+ */
+export function splayLayers(stackCount: number | undefined): number {
+  const hidden = (stackCount ?? 1) - 1;
+  return hidden <= 0 ? 0 : Math.min(hidden, SPLAY.maxLayers);
+}
+
+/**
+ * The layered box-shadow that draws a fold as a physical pile (visual-system
+ * §5): each hidden card contributes a body fill offset up-and-right plus its
+ * accent edge one step further out, so depth reads as paper rather than
+ * arithmetic. Zero elements at any count — the whole pile is one `box-shadow`.
+ */
+export function splayShadow(layers: number): string {
+  const parts: string[] = [];
+  for (let i = 1; i <= layers; i += 1) {
+    const body = i * SPLAY.stepPx;
+    const edge = body + SPLAY.edgePx;
+    parts.push(`${body}px ${-body}px 0 0 var(--face-body)`);
+    parts.push(`${edge}px ${-edge}px 0 1px var(--face-accent)`);
+  }
+  return parts.join(', ');
+}
+
+/**
  * The CSS custom properties one face renders through. Every color and size the
  * stylesheet uses flows through here from the shared tokens (`src/tokens.ts`) —
  * the ADR 0019 discipline: no hex literal ever lands in the component or its
@@ -96,7 +125,11 @@ export function cardFaceVars(
   const m = faceMetrics(tier);
   const footprint = faceFootprint(tier, data.tapped ?? false);
   const accent = PALETTE[data.colorIdentity];
+  const layers = splayLayers(data.stackCount);
   return {
+    // Only a fold publishes the pile layers; an unfolded face leaves the
+    // stylesheet's transparent default in place.
+    ...(layers > 0 ? { '--splay-layers': splayShadow(layers) } : {}),
     '--face-w': `${m.w}px`,
     '--face-h': m.h !== undefined ? `${m.h}px` : 'auto',
     '--foot-w': `${footprint.w}px`,

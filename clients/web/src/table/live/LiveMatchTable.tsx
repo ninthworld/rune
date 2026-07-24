@@ -61,6 +61,7 @@ import {
   buildShortcutBindings,
   cardNameOf,
   demandsDecision,
+  forcedDecision,
   isOnCanvas,
   resolveInspect,
 } from '../tableView';
@@ -104,6 +105,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
   const choose = useGameStore((state) => state.choose);
   const setStops = useGameStore((state) => state.setStops);
   const disconnect = useGameStore((state) => state.disconnect);
+  const leaveGame = useGameStore((state) => state.leaveGame);
   const rejectionNonce = useGameStore((state) => state.rejectionNonce);
   const sessionEpoch = useGameStore((state) => state.sessionEpoch);
   const artVersion = useSyncExternalStore(subscribeArt, getArtVersion);
@@ -171,6 +173,21 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     // The setters are stable; the latest complete view is the sole reset trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+
+  // …but a decision the view forces (the pre-game mulligan) is re-opened straight
+  // away, and re-opens if it is dismissed (issue #451). The reset above drops the
+  // session on *every* frame — including the resync answering a rejection and the
+  // fresh hand a mulligan deals — which left the player hunting for a dock button
+  // after each click, and able to close the only thing the server was waiting on.
+  // The session itself stays ephemeral: it is rebuilt from the view's own action.
+  const forced = view ? forcedDecision(view) : null;
+  useEffect(() => {
+    if (forced === null || multiSelect !== null) return;
+    setMultiSelect(beginMultiSelect(forced));
+    // The setter is stable; re-opening is driven by the forced action and whether a
+    // session is currently open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forced, multiSelect]);
 
   useEffect(
     () => () => {
@@ -430,7 +447,10 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
               enabled: allSlotsSatisfied(multiSelect),
               onConfirm: confirmMultiSelect,
             },
-        onCancel: cancelMultiSelect,
+        // A forced decision has nothing to fall back to, so it offers no cancel
+        // (issue #451) — the answer is the only way out, and the dock never shows a
+        // control that would immediately undo itself.
+        onCancel: forced === null ? cancelMultiSelect : undefined,
       }
     : undefined;
 
@@ -797,7 +817,12 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
       {showSettings && <PresentationSettings onClose={() => setShowSettings(false)} />}
       {showArtSettings && <ArtSettings onClose={() => setShowArtSettings(false)} />}
       {view.result && (
-        <GameOverOverlay result={view.result} you={view.you} names={view.player_names} />
+        <GameOverOverlay
+          result={view.result}
+          you={view.you}
+          names={view.player_names}
+          onLeave={leaveGame}
+        />
       )}
       <RejectionToast nonce={rejectionNonce} />
     </main>
