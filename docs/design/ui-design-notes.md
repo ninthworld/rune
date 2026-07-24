@@ -8,6 +8,19 @@
 > disagree, the blueprint wins. This document remains authoritative for the
 > card tokens and palette, the card-face information budget, combat indicator
 > shapes, the identity layer, zone-pile semantics, and legal constraints.
+>
+> **Visual direction superseded (July 2026).** The graphics-light stance this
+> document carries as direction — §Design stance's "mood via tokens and
+> procedural geometry, never surface weight" and its rejection of illustrated
+> surface treatment, §Visual hierarchy's "no 3D, no particle noise" effects
+> restraint, and §Concept-board decisions' rejection of painted texture — is
+> **superseded by the 2.5D presentation pivot**
+> ([ADR 0029](../decisions/0029-2-5d-presentation-direction.md), issue #464).
+> Those sections stay below as the record of the shipped client, and this
+> document remains the shipped client's reference until the redesign's visual
+> system (issue #469) replaces it. The accessibility, legality, and
+> zero-client-logic constraints recorded here are direction-independent and
+> stay binding.
 
 The design source of truth for the web client's presentation vocabulary. The full
 capability list is in [`ui-requirements.md`](ui-requirements.md); the screen
@@ -148,9 +161,12 @@ subset of Rajdhani, SIL OFL 1.1; angular, geometric, rune-adjacent), served with
 client bundle as a ~14 KB WOFF2 (no network fetch), `font-display: swap` so identity
 text is never invisible and there is no blocking layout shift. The asset, its OFL
 license text, and a provenance note live in
-[`clients/web/src/chrome/fonts/`](../../clients/web/src/chrome/fonts/). Effects remain restrained per the
-brief (no 3D, no particle noise): elevation, tint, and motion that always honors
-`prefers-reduced-motion`.
+[`clients/web/src/chrome/fonts/`](../../clients/web/src/chrome/fonts/). The shipped
+client's effects are restrained to elevation, tint, and motion; the "no 3D, no
+particle noise" ceiling that imposed this is superseded by the 2.5D direction
+([ADR 0029](../decisions/0029-2-5d-presentation-direction.md)) — the redesign's
+effects budget is owned by its visual system and budget docs (issues #468–#469).
+Honoring `prefers-reduced-motion` remains absolute under every direction.
 
 ## Identity
 

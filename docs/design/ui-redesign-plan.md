@@ -10,6 +10,11 @@
 > Still open from here: **F2** — screenshot checks in the real-browser canary
 > (#279). The audit and phase text below are kept as the record of what was
 > found and why each change was made.
+>
+> **Note (July 2026):** the "graphics too heavy/textured" rejection recorded in
+> the critique table below is itself superseded as direction by the 2.5D
+> presentation pivot ([ADR 0029](../decisions/0029-2-5d-presentation-direction.md),
+> issue #464). It stands only as the record of the decision made at the time.
 
 A delivery plan, not a new design. The design source of truth stays
 [`ui-design-notes.md`](ui-design-notes.md); its §Concept-board decisions section already

@@ -88,7 +88,37 @@ currently require the bundled sample deck, and a rejected deck gives the player 
 to correct against (#395). There are no server-side saved decks and no formats beyond the
 starter duel, the permissive defaults, the free-for-all, and commander.
 
+On the presentation side, a direction decision has been made: the client pivots from the
+graphics-light tabletop toward a **polished 2.5D presentation** — illustrated, tactile,
+animated — anchored on the approved baseline image
+([`ui-concepts/rune-2.5d-interface-baseline.jpg`](ui-concepts/rune-2.5d-interface-baseline.jpg)),
+recorded in [ADR 0029](decisions/0029-2-5d-presentation-direction.md) and tracked by the
+master issue [#464](https://github.com/ninthworld/rune/issues/464) (milestone M7 below).
+The playtest findings of [#450](https://github.com/ninthworld/rune/issues/450) feed the
+same effort.
+
 ## Immediate priorities
+
+Two tracks run in parallel: the M6 commander batch below, and M7's Phase 0 — the
+direction-and-feasibility work of the 2.5D presentation pivot
+([#464](https://github.com/ninthworld/rune/issues/464)):
+
+- Supersede the graphics-light direction in the docs
+  ([#466](https://github.com/ninthworld/rune/issues/466)) — unblocks every other
+  redesign issue from the abandoned constraints.
+- The rendering and animation architecture spike
+  ([#467](https://github.com/ninthworld/rune/issues/467)) — the gate before any large
+  client rewrite; no rendering library is mandated until it concludes.
+- Performance, device, animation, and accessibility budgets
+  ([#468](https://github.com/ninthworld/rune/issues/468)) — draftable now, finalized
+  against the spike's measurements.
+- The 2.5D visual system and motion grammar
+  ([#469](https://github.com/ninthworld/rune/issues/469)).
+- Layout concepts for two- through six-player, mobile, and stress-case boards
+  ([#470](https://github.com/ninthworld/rune/issues/470)).
+- Asset and effects pipeline groundwork
+  ([#471](https://github.com/ninthworld/rune/issues/471)) — licensing, effect
+  taxonomy, and delivery research ahead of any production assets.
 
 M6's first batch — the deck track and the commander foundation — has landed. This batch
 completes the commander user path end to end and backfills the evidence the first batch
@@ -262,7 +292,46 @@ work:
 
 Official imagery remains excluded from the project's own distribution permanently.
 
-### M7 — Beyond the browser
+### M7 — A living table
+
+**Outcome:** RUNE looks and feels like a game — a polished 2.5D presentation where cards
+and actions are tactile and consequential, four-player Commander is the primary staged
+experience, and rules clarity comes from motion, staging, and spatial relationships
+rather than a debug panel.
+
+The master issue is [#464](https://github.com/ninthworld/rune/issues/464); the direction
+decision is [ADR 0029](decisions/0029-2-5d-presentation-direction.md), anchored on the
+approved baseline
+([`ui-concepts/rune-2.5d-interface-baseline.jpg`](ui-concepts/rune-2.5d-interface-baseline.jpg)).
+The engine, protocol, and server are out of scope: engine speed stays
+presentation-independent, headless and AI-only games never wait for animation, and the
+whole UI still reconstructs from one view.
+
+Delivery is phased (see #464 for the full phase plan):
+
+- **Phase 0 — direction and feasibility** (the current batch, child issues
+  [#466](https://github.com/ninthworld/rune/issues/466)–[#471](https://github.com/ninthworld/rune/issues/471)):
+  supersede the graphics-light requirements, run the rendering/animation architecture
+  spike, define budgets, design the visual system and motion grammar, produce the
+  2–6-player and mobile layout concepts, and ground the asset/effects pipeline.
+- **Phase 1 — visual foundation:** tokens, scene composition, cards, zones, controls,
+  and the basic motion system; a fixture-driven battlefield reproducing the baseline
+  composition.
+- **Phase 2 — playable vertical slice:** a real match on the new presentation through
+  one complete action loop, with reconnect fast-forward verified.
+- **Phase 3 — multiplayer and stress cases:** four-player Commander as the primary
+  experience; two- through six-player layouts and large boards validated.
+- **Phase 4 — full-client migration and polish:** lobby, deckbuilding, settings, and
+  postgame in the same visual system; superseded components and docs retired.
+
+Implementation issues beyond Phase 0 are split only after the spike and designs land —
+the milestone deliberately avoids committing to a rendering library or component plan
+before the evidence exists. The playtest findings of
+[#450](https://github.com/ninthworld/rune/issues/450) that are presentation-shaped
+(turn/phase comprehension, combat staging, animation and feedback, land interaction)
+resolve inside this milestone; its engine bugs stay independent fixes.
+
+### M8 — Beyond the browser
 
 **Outcome:** the same engine and protocol support additional shells without forking rules.
 

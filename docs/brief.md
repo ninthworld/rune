@@ -21,8 +21,10 @@ in [`protocol.md`](protocol.md), card authoring lives in
   view without retaining authoritative state across messages.
 - **Structured cards.** Card behavior is authored as validated data and executed by the
   engine. Display rules text is generated from that behavior.
-- **Accessible presentation without official assets.** Cards are rendered procedurally
-  from server-supplied data.
+- **Accessible presentation without official assets.** Cards are rendered from
+  server-supplied data, procedurally by default; presentation quality is a product goal
+  under the 2.5D direction ([ADR 0029](decisions/0029-2-5d-presentation-direction.md)),
+  but never at the cost of accessibility or official-asset constraints.
 
 ## Architecture
 
@@ -146,6 +148,13 @@ Planned growth proceeds in this order:
    foundation.
 6. Reuse the same engine and protocol in desktop, offline, or additional client shells.
 
+Alongside this sequence, the client presentation is pivoting from its original
+graphics-light direction to a **polished 2.5D presentation** — illustrated, tactile,
+animated, with depth from perspective, layering, shadows, and motion — tracked as a
+roadmap milestone ([ADR 0029](decisions/0029-2-5d-presentation-direction.md), issue
+#464). The pivot changes presentation only: engine determinism, server authority,
+accessibility, and the legal constraints below are unchanged.
+
 These are directions, not promises about a particular framework, hosting topology, capacity,
 or release date. Architecture changes require an ADR.
 
@@ -189,6 +198,8 @@ distribution policy above.
 - Collection ownership and marketplace features
 - Official card presentation or branding
 - Client-side rules evaluation
-- A 3D or effects-heavy presentation
+- A *requirement* for fully modeled 3D environments or characters (the client targets a
+  2.5D presentation — [ADR 0029](decisions/0029-2-5d-presentation-direction.md); the
+  earlier blanket exclusion of an effects-capable presentation is superseded)
 - Monetization
 - Ante, subgames, and novelty mechanics in the current roadmap
