@@ -172,6 +172,26 @@ export const FRAME = {
 } as const;
 
 /**
+ * The ×N pile splay (`docs/design/visual-system.md` §5: a fold renders as "a
+ * slightly splayed physical pile (2–3 px offsets) with the count badge" —
+ * four Plains look like a stack of Plains, not a card wearing arithmetic).
+ *
+ * One card edge is drawn per hidden member, offset up-and-right by `stepPx`
+ * with its accent edge `edgePx` further out, so the pile deepens with the fold
+ * up to `maxLayers`; the count badge carries the exact N beyond that. The
+ * edges are box-shadow layers, so a pile costs ZERO extra DOM nodes at any
+ * count (presentation-budgets §Performance: ≤ 12 nodes per card face).
+ */
+export const SPLAY = {
+  /** Offset between successive cards in the pile, px (spec: 2–3 px). */
+  stepPx: 2,
+  /** How much further out each card's accent edge sits, px. */
+  edgePx: 1,
+  /** Card edges drawn behind the top card, capping the pile's silhouette. */
+  maxLayers: 3,
+} as const;
+
+/**
  * Typography tokens. `charWidthRatio` is the average glyph advance as a fraction
  * of font size; the Pixi factory uses it to estimate text extents for layout so
  * it never needs a live canvas/GPU text measurement (keeps it headless-testable).

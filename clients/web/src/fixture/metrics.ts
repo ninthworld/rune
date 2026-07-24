@@ -20,6 +20,8 @@ export interface FixtureBudget {
   maxRebuildMs: number;
   /** Maximum scene DOM nodes. */
   maxDomNodes: number;
+  /** Maximum element nodes in any one battlefield-tier card face. */
+  maxFaceNodes: number;
 }
 
 /** One summarized frame sample set. */
@@ -48,6 +50,8 @@ export interface FixtureBudgetReport {
   rebuildMs: number;
   /** Current document DOM node count. */
   domNodes: number;
+  /** Largest element count of any staged card face (0 with nothing staged). */
+  faceNodes: number;
   /** Resolved limits for this run. */
   budget: FixtureBudget;
   /** Whether every measurement with enough samples is within budget. */
@@ -64,7 +68,26 @@ export function fixtureBudget(quality: EffectQuality, compact: boolean): Fixture
     maxP95Ms: lite ? 33.3 : 16.7,
     maxRebuildMs: compact ? 100 : 50,
     maxDomNodes: 15_000,
+    maxFaceNodes: 12,
   };
+}
+
+/**
+ * The largest element count of any staged card face under `root` (the face root
+ * itself included) — the per-face half of the scene DOM budget
+ * (presentation-budgets §Performance: ≤ 12 nodes per card face at battlefield
+ * tiers). Each entity wrapper holds exactly one face, so this is what an ×N
+ * pile, an art window, or a lit state channel would have to inflate to breach
+ * the budget on a 240-permanent board.
+ */
+export function maxCardFaceNodes(root: ParentNode): number {
+  let largest = 0;
+  for (const wrapper of root.querySelectorAll('[data-entity-id]')) {
+    const face = wrapper.firstElementChild;
+    if (face === null) continue;
+    largest = Math.max(largest, face.querySelectorAll('*').length + 1);
+  }
+  return largest;
 }
 
 /** Summarize frame-to-frame deltas. Empty and single-frame sets stay neutral. */
@@ -96,6 +119,7 @@ export function fixtureBudgetReport(input: {
   tween: FrameSummary;
   rebuildMs: number;
   domNodes: number;
+  faceNodes: number;
 }): FixtureBudgetReport {
   const budget = fixtureBudget(input.quality, input.compact);
   return {
@@ -105,7 +129,8 @@ export function fixtureBudgetReport(input: {
       frameSummaryPasses(input.idle, budget) &&
       frameSummaryPasses(input.tween, budget) &&
       input.rebuildMs <= budget.maxRebuildMs &&
-      input.domNodes <= budget.maxDomNodes,
+      input.domNodes <= budget.maxDomNodes &&
+      input.faceNodes <= budget.maxFaceNodes,
   };
 }
 
