@@ -2,7 +2,7 @@
 
 These standards apply to all code. The architectural rules in [`AGENTS.md`](../AGENTS.md)
 take precedence. `make check` runs the fast Engine and Client checks; `make verify` adds
-the required dependency-policy checks and the browser smoke canary, and is the pre-merge
+the required dependency-policy checks and the browser suite, and is the pre-merge
 gate.
 
 ## Baseline
@@ -81,7 +81,7 @@ Keep files small enough that a reader can hold one in their head. Target well un
 
 ```
 make check    # fast gate — run constantly while working (no browser)
-make e2e      # browser smoke canary (ADR 0011) — its own CI job
+make e2e      # browser suite: smoke canary + four-player slice (ADR 0011) — its own CI job
 make verify   # full pre-merge gate — check + cargo-deny + e2e, before opening a PR
 ```
 

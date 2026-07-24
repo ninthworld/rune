@@ -2,10 +2,10 @@
 
 # The complete local pre-merge gate: everything required before a PR merges into
 # `main`. Composes the existing targets 1:1 with the required GitHub checks —
-# `check` (Engine + Client), `deny` (cargo-deny), and `e2e` (the browser smoke
-# canary) — so there is a single command whose coverage matches CI.
+# `check` (Engine + Client), `deny` (cargo-deny), and `e2e` (the browser suite)
+# — so there is a single command whose coverage matches CI.
 # `make check` remains the fast inner loop and stays browser-free.
-verify: check deny e2e ## Full pre-merge verification: Engine + Client + cargo-deny + browser smoke (mirrors every required GitHub check)
+verify: check deny e2e ## Full pre-merge verification: Engine + Client + cargo-deny + browser suite (mirrors every required GitHub check)
 
 check: engine-lint engine-test client-check client-audit ## Fast inner-loop gate: everything the Engine + Client CI jobs run (cargo-deny is separate — see `verify`)
 
@@ -51,8 +51,9 @@ deny:
 e2e-install: client-install
 	cd clients/web/e2e && npm ci
 
-# The browser smoke canary (issue #279, ADR 0011): one spec, a real Chromium, two
-# browser contexts, and the real `rune-server` binary. Deliberately OUT of
+# The browser suite (ADR 0011): the smoke canary (#279, two contexts) and the
+# four-player vertical slice (#499, four contexts, run twice — once with reduced
+# motion), both against the real `rune-server` binary. Deliberately OUT of
 # `make check` — it needs a browser, a Vite server, and a compiled server — and
 # in `make verify`, matching the separate `E2E` CI job. The e2e toolchain lives
 # in its own package (`clients/web/e2e`) so it never lands in the fast gate's

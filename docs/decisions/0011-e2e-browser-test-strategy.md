@@ -12,15 +12,38 @@
 > on an OS-assigned port with a pinned `--rng-seed`, the `clients/web/e2e/` layout, the
 > read-only `window.__RUNE_TEST__` hook as the canvas/scene assertion surface, and the
 > separate-job CI placement (with `make verify` composing it). Still deferred: the mock-WS
-> fixture tier, screenshot baselines, and any suite beyond the one canary — the wider matrix
-> waits until the in-game UI settles. The strategy below is unchanged and remains the
-> blueprint.
+> fixture tier and the wider matrix, which waits until the in-game UI settles. The strategy
+> below is unchanged and remains the blueprint.
 >
 > One deviation the canary makes deliberately: it runs against the **Vite dev server**, not
 > `vite preview`. The regression it guards is React StrictMode's development-only
 > double-invoke of effects, which a production bundle never performs — a preview-only canary
 > would be structurally unable to see its own bug. The preview target stands for the wider
 > suite when that lands.
+>
+> **Note (the multiplayer vertical slice, issue #499):** the suite is no longer only a
+> canary. `clients/web/e2e/four-player.spec.ts` is **one** scenario — four real browser
+> contexts against one seeded `rune-server` — that walks the whole coherent loop of a
+> four-seat pod: mulligan, explicit main-phase priority, a land, a deliberate mana
+> activation, a targeted spell placed on the stack and resolved, an attack declared against
+> one of several legal defending players, blockers, damage and death, a disconnect/reconnect
+> with live combat on the board, and the turn boundary. It runs twice — once with
+> `prefers-reduced-motion: reduce` — and both passes are required to reach the same
+> decisions, the same final state, and the same pixels. The scenario helpers live in
+> `clients/web/e2e/support/` (`table.ts` for in-match gestures, `drive.ts` for the bounded
+> travel driver, `shots.ts` for the screenshot leg) and are meant to be extended, not
+> re-written, by the six-player stress coverage the Phase 3 exit gate owns.
+>
+> That spec settles the "optional screenshot baselines" paragraph below with a deliberate
+> deviation: **no baseline PNGs are committed.** A committed image compares against whatever
+> machine produced it, so a runner with a different font stack, freetype build, or GPU fails
+> the suite for reasons that have nothing to do with RUNE. Instead stability is proved inside
+> every run, on two axes that can both genuinely fail: the same pinned state captured twice
+> with real frames in between must be byte-identical (nothing is still animating, nothing is
+> time-dependent), and the same pinned state of the two independent passes must be
+> byte-identical (the "stable across two consecutive runs" property, asserted rather than
+> hoped for). Structural assertions on the derived scene stay primary either way, exactly as
+> this ADR requires.
 
 ## Context
 

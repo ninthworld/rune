@@ -93,12 +93,25 @@ Use Prettier for formatting; see [`docs/coding-standards.md`](../../docs/coding-
 
 - Co-located Vitest specs (`src/**/*.test.ts{,x}`) run in jsdom and cover everything
   headless: stores, wire shapes, pure scene/plane derivation, and DOM components.
-- **`e2e/` is the browser smoke canary** (ADR 0011, issue #279) — its own npm package so
-  the Playwright toolchain never enters the fast gate's install. One spec drives real
-  Chromium and a real seeded `rune-server` through front door → lobby → match, and asserts
-  what jsdom structurally cannot: that the effects surface holds a live, attached WebGL
-  canvas and that the scene plane is populated. Run it with `make e2e` (from the repository
+- **`e2e/` is the browser suite** (ADR 0011) — its own npm package so the Playwright
+  toolchain never enters the fast gate's install. Run it with `make e2e` (from the repository
   root); it is **not** part of `make check`, and rides `make verify` plus the `E2E` CI job.
+  Two specs, and only two:
+  - `smoke.spec.ts` — the canary (issue #279). Two contexts through front door → lobby →
+    match, asserting what jsdom structurally cannot: a live, attached WebGL canvas and a
+    populated scene plane.
+  - `four-player.spec.ts` — the multiplayer vertical slice (issue #499). **One** scenario,
+    four contexts, run twice (the second with `prefers-reduced-motion: reduce`): the full
+    loop of a four-seat pod — mulligan, explicit main-phase priority, a land, a deliberate
+    mana activation, a targeted spell on the stack and resolved, an attack declared against
+    one of several legal defending players, blockers, damage/death, a disconnect/reconnect
+    with live combat on the board, and the turn boundary. Both passes must reach the same
+    decisions, the same final state, and the same pixels.
+- Scenario helpers live in `e2e/support/`: `client.ts` (front door, lobby, room, the basics),
+  `table.ts` (in-match gestures — mana, casting, attackers + defender, blockers), `drive.ts`
+  (the bounded driver that makes the *travel* moves nothing asserts on), `render.ts` (canvas
+  and plane probes), `shots.ts` (the screenshot leg), `hook.ts` (the read-only hook mirror).
+  Extend them rather than writing a parallel set — the six-player coverage builds on these.
 - Two rules bind the e2e suite as hard as the client itself: **no test-only production
   control path** (every move is a click on a rendered control — `window.__RUNE_TEST__` is
   read-only and is used only to decide *which* control to click), and **no client-side

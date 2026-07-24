@@ -35,6 +35,15 @@ export const RNG_SEED = 279;
 /** Fixed starting life: low enough that no scripted game can outlive its budget. */
 export const STARTING_LIFE = 5;
 
+/** What a launch may pin, per spec. Both are server/operator flags, never
+ * client-settable, so nothing in the client is aware the run is scripted. */
+export interface RuneServerOptions {
+  /** Engine shuffle seed (ADR 0014). Defaults to {@link RNG_SEED}. */
+  rngSeed?: number;
+  /** Starting life for every seat. Defaults to {@link STARTING_LIFE}. */
+  startingLife?: number;
+}
+
 /** How long to wait for the server to announce its listen address. */
 const STARTUP_TIMEOUT_MS = 30_000;
 
@@ -59,7 +68,11 @@ const ANSI = /\[[0-9;]*m/g;
  *
  * Set `RUNE_SERVER_BIN` to point at a different build (e.g. a release binary).
  */
-export async function startRuneServer(): Promise<RuneServerProcess> {
+export async function startRuneServer(
+  options: RuneServerOptions = {},
+): Promise<RuneServerProcess> {
+  const rngSeed = options.rngSeed ?? RNG_SEED;
+  const startingLife = options.startingLife ?? STARTING_LIFE;
   const binary = process.env.RUNE_SERVER_BIN ?? DEFAULT_BINARY;
   if (!existsSync(binary)) {
     throw new Error(
@@ -75,9 +88,9 @@ export async function startRuneServer(): Promise<RuneServerProcess> {
       '--addr',
       '127.0.0.1:0',
       '--rng-seed',
-      String(RNG_SEED),
+      String(rngSeed),
       '--starting-life',
-      String(STARTING_LIFE),
+      String(startingLife),
     ],
     {
       cwd: REPO_ROOT,

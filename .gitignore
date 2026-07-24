@@ -4,6 +4,9 @@
 # Node
 node_modules/
 dist/
+# The e2e preview build (ADR 0011) — kept out of `dist/` so `npm run budget`
+# keeps measuring the shipped artifact and not the hooks-enabled one.
+dist-e2e/
 *.tsbuildinfo
 # Playwright e2e (ADR 0011) run artifacts
 playwright-report/

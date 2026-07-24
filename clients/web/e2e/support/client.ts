@@ -56,9 +56,13 @@ export async function waitForOfferedAction(
   return action;
 }
 
-/** Connect through the front door, typing the address a player would type. */
-export async function connect(page: Page, serverUrl: string): Promise<void> {
-  await page.goto('/');
+/**
+ * Connect through the front door, typing the address a player would type.
+ * `origin` overrides the config's `baseURL` — the four-player slice runs against
+ * the preview build rather than the canary's dev server (`support/targets.ts`).
+ */
+export async function connect(page: Page, serverUrl: string, origin?: string): Promise<void> {
+  await page.goto(origin === undefined ? '/' : `${origin}/`);
   await expect(page.getByTestId('connection-screen')).toBeVisible();
   // The address lives behind the "Server settings" disclosure — open it the way
   // a player pointing at another server would.
@@ -68,15 +72,28 @@ export async function connect(page: Page, serverUrl: string): Promise<void> {
   await expect(page.getByTestId('lobby-screen')).toBeVisible();
 }
 
-/** Create a two-seat duel room and return the room id shown in its header. */
-export async function createDuelRoom(page: Page): Promise<string> {
-  await page.getByTestId('game-setup-1v1').click();
-  await page.getByTestId('seat-count-2').click();
+/**
+ * Create a room from the lobby's Start-a-game card the way a host does — pick
+ * the game-type tile, pick the seat count, press Create — and return the room id
+ * shown in its header.
+ *
+ * `setup` is the opaque `game_setup` id the tile carries; the suite never
+ * interprets it, and the server is the only thing that validates it against a
+ * seat count (`crates/rune-server/src/format.rs`).
+ */
+export async function createRoom(page: Page, setup: string, seats: number): Promise<string> {
+  await page.getByTestId(`game-setup-${setup}`).click();
+  await page.getByTestId(`seat-count-${seats}`).click();
   await page.getByTestId('create-room-button').click();
   await expect(page.getByTestId('room-panel')).toBeVisible();
   const roomId = (await page.getByTestId('room-id').innerText()).trim();
   expect(roomId, 'the room header should show a joinable room id').not.toBe('');
   return roomId;
+}
+
+/** Create a two-seat duel room and return the room id shown in its header. */
+export async function createDuelRoom(page: Page): Promise<string> {
+  return createRoom(page, '1v1', 2);
 }
 
 /** Join an existing room by pasting its id, as an invited player would. */
@@ -92,11 +109,16 @@ function ownSeatRow(page: Page): Locator {
 }
 
 /**
- * Submit the pre-selected starter deck and ready up. Waits for the server to
- * acknowledge the deck (the roster's own row flips to "Deck submitted") before
- * readying, so the two commands can never race.
+ * Submit a starter deck and ready up. Waits for the server to acknowledge the
+ * deck (the roster's own row flips to "Deck submitted") before readying, so the
+ * two commands can never race.
+ *
+ * `deckId` names one of the bundled starter tiles; omitted, whichever tile the
+ * room pre-selects is submitted. Naming it keeps a scenario from silently
+ * depending on the order of `starter-decks.json`.
  */
-export async function submitDeckAndReady(page: Page): Promise<void> {
+export async function submitDeckAndReady(page: Page, deckId?: string): Promise<void> {
+  if (deckId !== undefined) await page.getByTestId(`deck-tile-${deckId}`).click();
   await page.getByTestId('submit-deck-button').click();
   await expect(ownSeatRow(page)).toContainText('Deck submitted');
   await page.getByTestId('ready-button').click();
@@ -129,7 +151,7 @@ export async function keepOpeningHand(page: Page): Promise<void> {
  * Deliberately not `{ force: true }`: forcing would also "pass" on a card that
  * is completely buried, which is a genuine UI bug this suite should report.
  */
-async function clickReachablePoint(page: Page, target: Locator): Promise<void> {
+export async function clickReachablePoint(page: Page, target: Locator): Promise<void> {
   await target.waitFor({ state: 'visible' });
   const point = await target.evaluate((el) => {
     const rect = el.getBoundingClientRect();
@@ -167,17 +189,25 @@ export interface PlayedLand {
  * seat's control, and reports both ids — the battlefield object is a new
  * entity, so the hand id must not be carried across the move.
  */
-export async function playLandThroughUi(page: Page): Promise<PlayedLand> {
-  const action = await waitForOfferedAction(page, 'play_land');
+export async function playLandThroughUi(page: Page, known?: HookView): Promise<PlayedLand> {
+  const action =
+    known?.valid_actions.find((candidate) => candidate.type === 'play_land') ??
+    (await waitForOfferedAction(page, 'play_land'));
   const handCardId = action.subject?.[0];
   if (handCardId === undefined) throw new Error('play_land was offered without a subject card');
-  const before = await page.evaluate((id) => {
-    const view = window.__RUNE_TEST__?.view;
-    return {
-      name: view?.my_hand.find((card) => card.id === id)?.name ?? null,
-      battlefield: view?.battlefield.map((permanent) => permanent.id) ?? [],
-    };
-  }, handCardId);
+  const before =
+    known === undefined
+      ? await page.evaluate((id) => {
+          const view = window.__RUNE_TEST__?.view;
+          return {
+            name: view?.my_hand.find((card) => card.id === id)?.name ?? null,
+            battlefield: view?.battlefield.map((permanent) => permanent.id) ?? [],
+          };
+        }, handCardId)
+      : {
+          name: known.my_hand.find((card) => card.id === handCardId)?.name ?? null,
+          battlefield: known.battlefield.map((permanent) => permanent.id),
+        };
   if (before.name === null) throw new Error(`the play_land subject ${handCardId} is not in hand`);
 
   await clickReachablePoint(page, page.getByTestId(`live-hand-card-${handCardId}`));
@@ -273,13 +303,45 @@ export async function openDeclarationIfOffered(page: Page): Promise<boolean> {
   }
 }
 
-/** A cheap identity for "the view has moved on", used to wait on server progress. */
-async function viewStamp(page: Page): Promise<string> {
+/**
+ * A cheap identity for "the view has moved on", used to wait on server progress.
+ * Pure, so a caller that already holds a view spends no round trip on it.
+ */
+export function stampOf(view: HookView | null): string {
+  if (view === null) return 'none';
+  return `${view.turn}|${view.phase}|${view.valid_actions.map((a) => a.id).join(',')}`;
+}
+
+/** {@link stampOf} for the view a page has published right now. */
+export async function viewStamp(page: Page): Promise<string> {
   return page.evaluate(() => {
     const view = window.__RUNE_TEST__?.view;
     if (!view) return 'none';
     return `${view.turn}|${view.phase}|${view.valid_actions.map((a) => a.id).join(',')}`;
   });
+}
+
+/**
+ * Wait until this seat's published view moves past `previous` (a {@link viewStamp}).
+ * The generic "my move landed" wait, for a gesture with no more specific effect
+ * to watch for. A condition wait, never a sleep.
+ */
+export async function waitForStampChange(
+  page: Page,
+  previous: string,
+  timeout = 20_000,
+): Promise<void> {
+  await page.waitForFunction(
+    (before) => {
+      const view = window.__RUNE_TEST__?.view;
+      const stamp = view
+        ? `${view.turn}|${view.phase}|${view.valid_actions.map((a) => a.id).join(',')}`
+        : 'none';
+      return stamp !== before;
+    },
+    previous,
+    { timeout },
+  );
 }
 
 /** Wait until any seat's published view changes; a condition wait, not a sleep. */
@@ -371,17 +433,7 @@ export async function passPriorityThroughDock(pages: Page[]): Promise<void> {
   expect(clicked, "the dock should render the server's pass action as a clickable control").toBe(
     true,
   );
-  await page.waitForFunction(
-    (previous) => {
-      const view = window.__RUNE_TEST__?.view;
-      const stamp = view
-        ? `${view.turn}|${view.phase}|${view.valid_actions.map((a) => a.id).join(',')}`
-        : 'none';
-      return stamp !== previous;
-    },
-    before,
-    { timeout: 20_000 },
-  );
+  await waitForStampChange(page, before);
 }
 
 /** What crossing a turn boundary cost, in real clicks. */
