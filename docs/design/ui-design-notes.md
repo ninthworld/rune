@@ -209,6 +209,15 @@ Delivered (front-door batch; `ui-blueprint.md` open item 1). The pre-game screen
 are the blueprint's "front-door screens in this language", replacing the IP-entry
 connection screen:
 
+> **Direction superseded by [`front-door-and-lobby.md`](front-door-and-lobby.md)**
+> (issue #461). That document walks the shipped flow below, records what confuses
+> players in it, and fixes the pregame/postgame direction the 2.5D migration
+> builds — one persistent environment stage carrying four places (front door,
+> lobby, room, match) with the postgame landing back in the lobby. The prose here
+> stays the record of the *shipped* client's behavior and testids; its composition
+> (the carved panels, the single-column room, the CTA at the end of the scroll) is
+> replaced when #506 lands.
+
 - **The landing leads with Play, not an address.** The brand lockup (mark +
   display-face wordmark) sits in a carved panel — the table panels' line-work
   border with accent corner notches — over the same tier-1 vignette and faint

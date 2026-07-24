@@ -344,7 +344,12 @@ Delivery is phased (see #464 for the full phase plan):
 - **Phase 3 — multiplayer and stress cases:** four-player Commander as the primary
   experience; two- through six-player layouts and large boards validated.
 - **Phase 4 — full-client migration and polish:** lobby, deckbuilding, settings, and
-  postgame in the same visual system; superseded components and docs retired.
+  postgame in the same visual system; superseded components and docs retired. The
+  pregame and postgame flow it migrates to is decided in
+  [`design/front-door-and-lobby.md`](design/front-door-and-lobby.md) (issue
+  [#461](https://github.com/ninthworld/rune/issues/461)): the four places of
+  home → lobby → room → match → back, the postgame landing, and the composition
+  [#506](https://github.com/ninthworld/rune/issues/506) implements.
 
 Implementation issues beyond Phase 0 are split only after the spike and designs land —
 the milestone deliberately avoids committing to a rendering library or component plan
