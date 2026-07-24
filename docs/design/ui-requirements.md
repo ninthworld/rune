@@ -4,6 +4,11 @@ The RUNE web client must present any supported game state and collect choices wi
 implementing game rules. This document describes target capabilities, not a claim that each
 one is implemented. Current delivery status belongs in [`../roadmap.md`](../roadmap.md).
 
+These capabilities are presentation-independent and remain binding under the 2.5D
+presentation direction ([ADR 0029](../decisions/0029-2-5d-presentation-direction.md),
+issue #464): the redesign changes how states look and move, never whether they are
+representable, inspectable, accessible, and server-authoritative.
+
 ## Architectural requirements
 
 - The server is authoritative. The client renders `GameView` and sends an issued action id

@@ -1,6 +1,18 @@
 # UI blueprint — the fixed-shell tabletop
 
-**This document is the design authority for the client's screen anatomy,
+> **Visual direction superseded (July 2026).** Commitment 3's
+> "flat-but-deliberate" surface — and the deferred texture-skin question in
+> Open design items — are **superseded by the 2.5D presentation pivot**
+> ([ADR 0029](../decisions/0029-2-5d-presentation-direction.md), issue #464):
+> the target is now an illustrated, tactile, animated 2.5D presentation
+> anchored on
+> [`../ui-concepts/rune-2.5d-interface-baseline.jpg`](../ui-concepts/rune-2.5d-interface-baseline.jpg).
+> The anatomy, interaction model, and requirement matrix below remain the
+> authority **for the shipped client** until the redesign's architecture spike
+> (issue #467) and layout designs (issue #470) decide what survives into the
+> new presentation; do not build *new* work to the flat surface.
+
+**This document is the design authority for the shipped client's screen anatomy,
 interaction model, and presentation vocabulary.** It was produced by the July 2026
 design investigation: three high-fidelity mocks at the three load-bearing
 geometries, each against a deliberately hostile game state, iterated with the
@@ -39,7 +51,10 @@ requirement matrix; what varies per geometry is composition, not language.**
    *entity* is still the selection surface and `subject` still routes actions;
    what changed is that the offered actions render in the dock rather than on a
    per-card popup, and the dock stays O(1).
-3. **Flat-but-deliberate, animation-first.** The surface is structural, not
+3. **Flat-but-deliberate, animation-first.** *(Surface half superseded by
+   [ADR 0029](../decisions/0029-2-5d-presentation-direction.md) — the target
+   surface is now the illustrated 2.5D direction; the animation-first half
+   stands and carries forward.)* The surface is structural, not
    textured: line-work panel borders with corner notches, per-player identity
    accents, layered dark gradients, one type system, gold = actionable, orange =
    targeting. Painted texture stays a *deferrable skin* (token-driven, decided
@@ -198,5 +213,8 @@ Each panel picks its own rung — one hoarding opponent never shrinks the others
    [`ui-design-notes.md`](ui-design-notes.md) §Multiplayer table. A polished visual
    mock remains a nice-to-have.
 3. Targeting-drag and stack-response states on phone (mock).
-4. The texture-skin question — explicitly deferred; revisit only after the
-   flat-but-deliberate surface ships and reads.
+4. ~~The texture-skin question — explicitly deferred; revisit only after the
+   flat-but-deliberate surface ships and reads.~~ **Superseded** by the 2.5D
+   presentation pivot ([ADR 0029](../decisions/0029-2-5d-presentation-direction.md),
+   issue #464): the answer is the illustrated 2.5D direction, designed under
+   issue #469.
