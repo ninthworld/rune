@@ -51,15 +51,26 @@ pub(crate) fn defender_slot(attacker: PermanentId) -> String {
     format!("defend_{}", attacker.0)
 }
 
-/// The bottoming requirement slot for a mulligan [`Action::Keep`] (CR 103.5,
-/// London): the [`bottom_requirement`] candidates (the deciding seat's hand cards)
-/// projected as a single multi-select slot asking for `count` cards. Empty for a
-/// first-hand keep (nothing owed), so that keep stays a plain, choice-free action.
-pub(crate) fn keep_requirements(state: &GameState, action: &Action) -> Vec<TargetRequirement> {
+/// The slot id of the mulligan bottoming pick (CR 103.5, London).
+pub(crate) const BOTTOM_SLOT: &str = "bottom";
+
+/// The bottoming slot for a mulligan [`Action::Keep`] (CR 103.5, London): the
+/// [`bottom_requirement`] candidates (the deciding seat's hand cards) projected as a
+/// single [`Prompt::SelectFromZone`] over that hand carrying the **exact owed
+/// count** — the shape `docs/protocol.md` and the cross-language contract fixture
+/// have always documented for bottoming. It rode a `requirements` slot until issue
+/// #451: that shape carries no count, so a client could only recover "how many" by
+/// parsing the prompt text and could not stop a wrong-sized keep before sending it.
+/// Empty for a first-hand keep (nothing owed), so that keep stays a plain,
+/// choice-free action.
+pub(crate) fn keep_prompts(state: &GameState, action: &Action) -> Vec<Prompt> {
     match bottom_requirement(state, action) {
-        Some(req) => vec![TargetRequirement {
-            slot: "bottom".to_string(),
+        Some(req) => vec![Prompt::SelectFromZone {
+            slot: BOTTOM_SLOT.to_string(),
             prompt: format!("Put {} card(s) on the bottom of your library", req.count),
+            zone: "hand".to_string(),
+            owner: player_id(state.priority),
+            count: count(req.count),
             candidates: req.candidates.into_iter().map(target_entity_id).collect(),
         }],
         None => Vec::new(),

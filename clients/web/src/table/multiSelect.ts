@@ -30,7 +30,9 @@
  *
  * The keep/take-another **`option`** prompt is collected separately and answered by
  * the caller with the chosen option id; issue #157 renders it as a modal picker in
- * the prompt banner (the richer UX #143 deferred).
+ * the prompt banner (the richer UX #143 deferred). Each named choice carries the
+ * slots it `requires` (issue #451) — the server-stated coupling that gates *keep*
+ * on a complete bottoming while leaving *mulligan* available at zero.
  */
 import type { EntityId, Prompt, PromptOption, TargetChoice, ValidAction } from '../protocol';
 
@@ -323,16 +325,26 @@ export function allSlotsSatisfied(session: MultiSelectSession): boolean {
 }
 
 /**
- * Whether an option submit is allowed: no `count` slot is left **partially** filled
- * (each is either untouched or exactly satisfied). This is the client-side count
- * affordance for mulligan bottoming — a partial bottom pick blocks the keep/take-
- * another buttons — without encoding which option means "keep" (that gating is #157).
+ * Whether **this named choice** may be submitted right now (issue #451).
+ *
+ * Two rules, both read off the server's own answer shape — no legality is derived:
+ *
+ * - Every slot the option declares in {@link PromptOption.requires} must be exactly
+ *   satisfied. A mulligan's *keep* requires the `bottom` slot, so it stays disabled
+ *   until exactly the owed number of cards is picked; *mulligan* requires nothing,
+ *   so it stays available at zero. Until the server carried that coupling the
+ *   client could only allow both at zero, and a keep with an unfilled bottoming was
+ *   one click away from a guaranteed `action_rejected`.
+ * - No other `count` slot may be left **partially** filled (untouched or exactly
+ *   satisfied), so a half-finished pick never rides along with an option answer.
  */
-export function optionsSubmittable(session: MultiSelectSession): boolean {
+export function optionSubmittable(session: MultiSelectSession, option: PromptOption): boolean {
+  const required = option.requires ?? [];
   return session.slots.every((slot, i) => {
+    const chosen = session.chosen[i] ?? [];
+    if (required.includes(slot.slot)) return slotSatisfied(slot, chosen);
     if (slot.kind !== 'count') return true;
-    const n = (session.chosen[i] ?? []).length;
-    return n === 0 || n === (slot.count ?? 0);
+    return chosen.length === 0 || chosen.length === (slot.count ?? 0);
   });
 }
 

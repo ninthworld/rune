@@ -28,7 +28,7 @@
           "slot": "decision",
           "prompt": "Keep this hand or take a mulligan?",
           "options": [
-            { "id": "keep", "label": "Keep this hand" },
+            { "id": "keep", "label": "Keep this hand", "requires": ["bottom"] },
             { "id": "mulligan", "label": "Mulligan" }
           ]
         },

@@ -210,7 +210,7 @@ fn permanent_in(candidates: &[PermanentId], id: &str) -> Option<PermanentId> {
 /// [`Action::Mulligan`] or *keep* to [`Action::Keep`], threading any bottoming
 /// selection through [`bind_keep`]. `None` if the option slot is unanswered, answered
 /// with an unknown id, or (for a keep that owes a bottoming) the `bottom` slot is not
-/// filled from its freshly recomputed candidates.
+/// filled with exactly its advertised `count` from the freshly recomputed candidates.
 pub(crate) fn bind_mulligan_decision(
     state: &GameState,
     offered: &ValidAction,
@@ -222,15 +222,22 @@ pub(crate) fn bind_mulligan_decision(
     match pick.as_str() {
         "mulligan" => Some(Action::Mulligan),
         "keep" => {
-            // Any owed bottoming slot must be filled from its current candidates
-            // (the extra `decision` prompt slot is ignored). The engine re-checks the
-            // exact owed count in `apply_action` (CR 103.5).
-            let bottoming_ok = offered.requirements.iter().all(|req| {
-                targets.iter().any(|choice| {
-                    choice.slot == req.slot
-                        && !choice.chosen.is_empty()
-                        && choice.chosen.iter().all(|id| req.candidates.contains(id))
-                })
+            // Any owed bottoming slot must be filled with exactly its advertised
+            // `count`, drawn from its current candidates (the `decision` option slot
+            // itself poses no such constraint). The engine re-checks the owed count in
+            // `apply_action` (CR 103.5).
+            let bottoming_ok = offered.prompts.iter().all(|prompt| match prompt {
+                Prompt::SelectFromZone {
+                    slot,
+                    count: owed,
+                    candidates,
+                    ..
+                } => targets.iter().any(|choice| {
+                    choice.slot == *slot
+                        && count(choice.chosen.len()) == *owed
+                        && choice.chosen.iter().all(|id| candidates.contains(id))
+                }),
+                _ => true,
             });
             if !bottoming_ok {
                 return None;

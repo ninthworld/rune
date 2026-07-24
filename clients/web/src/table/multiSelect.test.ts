@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ValidAction } from '../protocol';
+import type { PromptOption, ValidAction } from '../protocol';
 import {
   activeCandidates,
   activeChosen,
@@ -13,7 +13,7 @@ import {
   isLastSlot,
   isMultiSelect,
   moveInActiveSlot,
-  optionsSubmittable,
+  optionSubmittable,
   toggle,
 } from './multiSelect';
 
@@ -42,7 +42,15 @@ const blockers: ValidAction = {
   ],
 };
 
-/** Mulligan: an option decision plus a count-1 bottoming select_from_zone. */
+/** The mulligan's *keep*: it owes the bottoming slot (issue #451). */
+const keep: PromptOption = { id: 'keep', label: 'Keep this hand', requires: ['bottom'] };
+/** The mulligan's *take another*: it bottoms nothing, so it owes no slot. */
+const takeAnother: PromptOption = { id: 'mulligan', label: 'Mulligan' };
+
+/**
+ * Mulligan: an option decision plus a count-1 bottoming select_from_zone, with the
+ * *keep* choice declaring that it owes the bottoming slot (issue #451).
+ */
 const mulligan: ValidAction = {
   id: 'a0',
   type: 'mulligan_decision',
@@ -53,10 +61,7 @@ const mulligan: ValidAction = {
       kind: 'option',
       slot: 'decision',
       prompt: 'Keep this hand or take a mulligan?',
-      options: [
-        { id: 'keep', label: 'Keep this hand' },
-        { id: 'mulligan', label: 'Mulligan' },
-      ],
+      options: [keep, takeAnother],
     },
     {
       kind: 'select_from_zone',
@@ -192,18 +197,13 @@ describe('bottoming: count-bounded select_from_zone', () => {
     expect(activeSlot(s)?.kind).toBe('count');
     expect(activeSlot(s)?.count).toBe(1);
 
-    // Nothing chosen: not exactly-count, but no partial pick either (mulligan ok).
     expect(allSlotsSatisfied(s)).toBe(false);
-    expect(optionsSubmittable(s)).toBe(true);
 
     s = toggle(s, 'card_a');
     expect(allSlotsSatisfied(s)).toBe(true);
-    expect(optionsSubmittable(s)).toBe(true);
 
-    // Over-count is a partial/invalid pick: options are blocked until fixed.
     s = toggle(s, 'card_b');
     expect(allSlotsSatisfied(s)).toBe(false);
-    expect(optionsSubmittable(s)).toBe(false);
 
     s = toggle(s, 'card_b');
     // Keep answers both the decision and the bottoming slot atomically.
@@ -211,6 +211,24 @@ describe('bottoming: count-bounded select_from_zone', () => {
       { slot: 'decision', chosen: ['keep'] },
       { slot: 'bottom', chosen: ['card_a'] },
     ]);
+  });
+
+  it('offers keep only at exactly the owed count, take-another always (issue #451)', () => {
+    // Regression: keep used to be enabled at zero bottomed cards, which sent an
+    // answer the server is obliged to reject ("action not allowed", no way out).
+    let s = beginMultiSelect(mulligan);
+    expect(optionSubmittable(s, keep)).toBe(false);
+    expect(optionSubmittable(s, takeAnother)).toBe(true);
+
+    // Exactly the owed card: keep opens, and taking another hand is still fine.
+    s = toggle(s, 'card_a');
+    expect(optionSubmittable(s, keep)).toBe(true);
+    expect(optionSubmittable(s, takeAnother)).toBe(true);
+
+    // Over-count is neither: a partial pick blocks every option.
+    s = toggle(s, 'card_b');
+    expect(optionSubmittable(s, keep)).toBe(false);
+    expect(optionSubmittable(s, takeAnother)).toBe(false);
   });
 });
 
@@ -221,8 +239,8 @@ describe('option: a standalone modal decision (issue #157)', () => {
     expect(s.slots).toEqual([]);
     expect(activeSlot(s)).toBeNull();
     expect(s.options[0]?.options.map((o) => o.id)).toEqual(['draw', 'gain']);
-    // With no count slot to gate it, the option is always submittable.
-    expect(optionsSubmittable(s)).toBe(true);
+    // A choice that requires no slot, in a session with no slots to require.
+    expect(optionSubmittable(s, { id: 'draw', label: 'Draw a card' })).toBe(true);
     // The caller supplies the chosen option id; there are no walked-slot choices.
     expect(assembleChoices(s, [{ slot: 'mode', chosen: ['gain'] }])).toEqual([
       { slot: 'mode', chosen: ['gain'] },

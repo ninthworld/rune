@@ -9,6 +9,12 @@
  * refresh + reconnect that replays the terminal view shows the exact same screen.
  * The client never decides a winner or terminality — it only formats the server's
  * already-decided result (zero game logic, AGENTS.md hard rule).
+ *
+ * It also carries the way out (issue #452). Every terminal state reaches this
+ * overlay — win, loss, draw, a conceded game, and a reconnect into a finished one —
+ * and until it offered an exit there was none anywhere on the in-game path, so the
+ * verdict was a dead screen. Leaving is a client-session action (like disconnect),
+ * never a game action: no `valid_actions` entry is invented for it.
  */
 import type { GameResult, GameOverReason, PlayerId } from '../protocol';
 import { cx } from '../chrome/cx';
@@ -24,6 +30,12 @@ interface Props {
    * used to name the winner. A player with no entry falls back to their raw id.
    */
   names: Record<PlayerId, string>;
+  /**
+   * Leave the finished game and return to the lobby (issue #452). Absent only where
+   * there is no session to leave (a preview/embedded render), which then shows the
+   * verdict alone.
+   */
+  onLeave?: () => void;
 }
 
 /** The three outcomes the overlay phrases, from the receiving player's seat. */
@@ -79,7 +91,7 @@ function reasonText(reason: GameOverReason): string {
   }
 }
 
-export function GameOverOverlay({ result, you, names }: Props) {
+export function GameOverOverlay({ result, you, names, onLeave }: Props) {
   const outcome = outcomeFor(result, you);
   const headlineTint =
     outcome === 'win' ? s.gameOverWin : outcome === 'loss' ? s.gameOverLoss : s.gameOverNeutral;
@@ -101,6 +113,17 @@ export function GameOverOverlay({ result, you, names }: Props) {
         <p className={s.gameOverReason} data-testid="game-over-reason">
           {reasonText(result.reason)}
         </p>
+        {onLeave && (
+          <button
+            type="button"
+            className={s.gameOverExit}
+            data-testid="game-over-leave"
+            onClick={onLeave}
+            autoFocus
+          >
+            Return to lobby
+          </button>
+        )}
       </div>
     </div>
   );

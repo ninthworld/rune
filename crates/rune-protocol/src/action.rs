@@ -102,6 +102,16 @@ pub struct PromptOption {
     pub id: String,
     /// Human-readable label to render for this choice.
     pub label: String,
+    /// The action's other slots **this choice** owes an answer to (issue #451): a
+    /// mulligan's *keep* requires the `bottom` slot filled to its exact `count`,
+    /// while *mulligan* requires nothing. Without it a client cannot tell which
+    /// named choice owes which slot, so it either blocks a legal choice or offers
+    /// one the server must reject. This states a coupling the server already
+    /// enforces on resolution; the client only enables or disables the choice
+    /// accordingly and derives no legality of its own. Empty for a self-contained
+    /// choice, and omitted from the wire then.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
 }
 
 /// A non-target choice slot a [`ValidAction`] may pose, a **generalization of the
@@ -265,7 +275,9 @@ mod tests {
     #[test]
     fn option_prompt_round_trips_and_tags_its_kind() {
         // `option` (mulligan keep/take-another): a slot listing named choices, tagged
-        // `kind: "option"` on the wire, answered with the chosen option id.
+        // `kind: "option"` on the wire, answered with the chosen option id. A choice
+        // that owes another slot names it in `requires` (issue #451); one that owes
+        // nothing omits the field entirely.
         let prompt = Prompt::Option {
             slot: "decision".into(),
             prompt: "Keep this hand or take a mulligan?".into(),
@@ -273,10 +285,12 @@ mod tests {
                 PromptOption {
                     id: "keep".into(),
                     label: "Keep this hand".into(),
+                    requires: vec!["bottom".into()],
                 },
                 PromptOption {
                     id: "mulligan".into(),
                     label: "Mulligan".into(),
+                    requires: vec![],
                 },
             ],
         };
@@ -288,13 +302,22 @@ mod tests {
                 "slot": "decision",
                 "prompt": "Keep this hand or take a mulligan?",
                 "options": [
-                    { "id": "keep", "label": "Keep this hand" },
+                    { "id": "keep", "label": "Keep this hand", "requires": ["bottom"] },
                     { "id": "mulligan", "label": "Mulligan" }
                 ]
             })
         );
         let back: Prompt = serde_json::from_value(json).unwrap();
         assert_eq!(back, prompt);
+    }
+
+    #[test]
+    fn legacy_option_without_requires_deserializes_as_self_contained() {
+        // A payload from a server that predates the coupling field omits it; the
+        // choice must default to "owes no other slot" rather than failing to decode.
+        let json = r#"{ "id": "keep", "label": "Keep this hand" }"#;
+        let option: PromptOption = serde_json::from_str(json).unwrap();
+        assert!(option.requires.is_empty());
     }
 
     #[test]
@@ -369,10 +392,12 @@ mod tests {
                         PromptOption {
                             id: "keep".into(),
                             label: "Keep".into(),
+                            requires: vec!["bottom".into()],
                         },
                         PromptOption {
                             id: "mulligan".into(),
                             label: "Mulligan".into(),
+                            requires: vec![],
                         },
                     ],
                 },
@@ -470,6 +495,9 @@ mod tests {
             options.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
             ["keep", "mulligan"],
         );
+        // Keeping owes the bottoming slot; taking another hand owes nothing (#451).
+        assert_eq!(options[0].requires, ["bottom".to_string()]);
+        assert!(options[1].requires.is_empty());
 
         // Second slot: the `select_from_zone` bottoming over the hand.
         let Prompt::SelectFromZone {

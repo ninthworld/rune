@@ -8,7 +8,7 @@ import {
   readyCommand,
   submitDeckCommand,
 } from './protocol';
-import { SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
+import { GAME_OVER_LOSS_JSON, SAMPLE_GAME_VIEW, SAMPLE_GAME_VIEW_JSON } from './game-view.fixture';
 import {
   LOBBY_ROOMLESS_JSON,
   LOBBY_ROOM_DECKED_JSON,
@@ -205,6 +205,57 @@ describe('game store', () => {
 
     store.getState().disconnect();
     expect(store.getState().status).toBe('closed');
+  });
+
+  describe('leaving a finished game (issue #452)', () => {
+    it('clears the terminal view, gives up the seat, and reopens the lobby', () => {
+      // Regression: nothing ever cleared `view`, so once a terminal frame arrived
+      // the app was pinned to the game-over screen whatever the socket did.
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      sockets[0].emitMessage(GAME_OVER_LOSS_JSON);
+      expect(store.getState().view?.result?.reason).toBe('life_zero');
+
+      store.getState().leaveGame();
+
+      // The seat is given up (closing the socket is what tells the room) and the
+      // view is gone, so the app's `view !== null` gate no longer holds it.
+      expect(sockets[0].closed).toBe(true);
+      expect(store.getState().view).toBeNull();
+      // …and a fresh transport is opened back to the same server for the lobby.
+      expect(sockets).toHaveLength(2);
+      expect(store.getState().status).toBe('connecting');
+      sockets[1].emitOpen();
+      sockets[1].emitMessage(LOBBY_ROOMLESS_JSON);
+      expect(store.getState().lobby).not.toBeNull();
+    });
+
+    it('leaves a spectated game the same way', () => {
+      const store = createGameStore();
+      const { factory, sockets } = recordingFactory();
+      store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+      sockets[0].emitOpen();
+      store
+        .getState()
+        .ingest('{"phase":"end","players":[{"player_id":"p0","hand_size":0,"life":0}]}');
+      expect(store.getState().spectatorView).not.toBeNull();
+
+      store.getState().leaveGame();
+      expect(store.getState().spectatorView).toBeNull();
+    });
+
+    it('ends at the connection screen when there is no server to return to', () => {
+      // Nothing was ever connected (a replayed view in a test harness): leaving must
+      // still clear the view and land on an interactive screen, not reopen nothing.
+      const store = createGameStore();
+      store.getState().ingest(GAME_OVER_LOSS_JSON);
+
+      store.getState().leaveGame();
+      expect(store.getState().view).toBeNull();
+      expect(store.getState().status).toBe('closed');
+    });
   });
 
   describe('reconnect', () => {
