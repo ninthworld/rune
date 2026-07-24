@@ -11,7 +11,11 @@ describe('2.5D fixture scenarios', () => {
     expect(FIXTURE_SCENARIOS.map((scenario) => scenario.id)).toEqual([
       'commander4',
       'duel',
+      'three',
+      'five',
       'six',
+      'ultrawide',
+      'tablet',
       'tokens',
       'big-hand',
       'combat-web',

@@ -113,7 +113,7 @@ the others (carried rule). In order:
 3. **Row wrapping** — rows wrap within the region's slot; the slot's height
    is fixed by the stage, so wrapping trades row height, not neighbor
    space.
-4. **Digest rung** (wings only) — below a width/count threshold a wing
+4. **Digest rung** (wings only) — below the digest width threshold a wing
    board stops drawing cards and shows its **digest**: a count chip for
    **every battlefield permanent category present** — creatures (including
    folded tokens), **other permanents** (artifacts, enchantments,
@@ -126,6 +126,17 @@ the others (carried rule). In order:
    inspect — and **prompt candidates pierce the rung** (rendered
    individually, per the focus model), so nothing a decision needs is ever
    behind the digest. The far side and the receiver never digest.
+
+   **Digest threshold (Phase 3, #500):** a wing digests from baseline when its
+   carved slot is narrower than **0.225 · W** (288 px at the 1280 reference).
+   The two-per-side (double) wing slot is 0.21 · W and the one-per-side (single)
+   wing slot is 0.24 · W, so the threshold sits exactly between them: two-per-side
+   staging (5–6 players) is the digest baseline, and one-per-side staging (3–4
+   players) draws a full board. Because both wing widths and the threshold are
+   fractions of W, the boundary is aspect-independent — it holds identically at
+   16:9, 21:9, and the tablet floor. A single wing that overflows even after the
+   full ladder (tier step-down → fold → wrap) still falls to the digest, so the
+   threshold governs the baseline while the ladder governs overflow.
 5. **Compact change-of-kind** (phone portrait, 3+ players) — the receiver
    keeps the full anatomy at the bottom (fan, dock, prompt strip — the one
    action home never moves); the focused opponent keeps a drawn board; every
@@ -163,8 +174,23 @@ focus, tiles, and crests through the same select/confirm verbs.
   and the staging tween in the reconciler.
 - **#471** supplies environment art composed around the fixed slot groups
   (the corridor and wings constrain where environmental detail may live).
-- Open for Phase 1 tuning, not re-decision: the 5-player asymmetric wing
-  split (2+1) needs playtest validation; ultrawide should spend surplus
-  width on the wings before the corridor; tablet landscape sits between
-  desktop staging and the compact change-of-kind and keeps desktop staging
-  per the budgets' geometry floor (1180×820).
+- **Resolved in Phase 3 (#500)** — the three items that were open for tuning,
+  now decided and pinned by `plane-slots.test.ts` / `plane-ladder.test.ts`:
+  - **5-player wing split — validated as-is (2 left, 1 right, digest).** The
+    asymmetric 2+1 split stages cleanly at the 1280×800 desktop floor: the two
+    stacked left wings (ranks 0 and 1) do not overlap and the lower wing clears
+    the receiver band, all three wings keep a live ≥ 44 px crest, and every wing
+    is a digest baseline (the double slot is below the digest threshold). No
+    geometry change was needed.
+  - **Ultrawide surplus width goes to the wings before the corridor.** Beyond
+    the corridor's max aspect (16:9), the focused far side and the center
+    corridor stop widening: the central column is capped at `H × 16/9` and
+    centered, and the surplus horizontal width falls into the side gutters, where
+    the wings — still full-width fractions of W — spend it. At 21:9 the corridor
+    matches its 16:9 width while every wing is strictly wider. A duel keeps its
+    full-width far side (no wings to fund).
+  - **Tablet landscape holds desktop staging at the floor.** The compact
+    change-of-kind engages on portrait geometry or on a landscape viewport
+    narrower than the tablet floor width (1180 px). At 1180×820 and every wider
+    desktop geometry, full multiplayer staging (far side + wings) holds; below
+    1180 px wide, multiplayer changes kind to the summary-tile branch.

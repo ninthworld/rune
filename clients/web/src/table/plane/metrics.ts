@@ -27,6 +27,24 @@ export const PLANE = {
   duelFar: { x: 0.12, y: 0.02, w: 0.76, h: 0.34 },
   /** The far side at 3+ players: the focused opponent, top center. */
   far: { x: 0.2, y: 0.02, w: 0.6, h: 0.34 },
+  /**
+   * Ultrawide surplus-width policy (layout-model §Hand-offs and open items):
+   * beyond this aspect the focused far side and the center corridor stop
+   * widening — the central column is capped at `H × corridorMaxAspect`, centered,
+   * and the surplus horizontal width falls into the side gutters, where the wings
+   * (still full-width fractions of W) spend it. 16:9 is the widest standard
+   * desktop aspect that stages at full width; 16:10, 3:2, and narrower all fall
+   * below it, so only true 21:9 ultrawide redistributes width. A duel has no
+   * wings and keeps its full-width far side. */
+  corridorMaxAspect: 16 / 9,
+  /**
+   * The tablet-landscape geometry floor (layout-model §Hand-offs, ui-blueprint
+   * §Tablet landscape): the smallest landscape width that still shows full
+   * desktop multiplayer staging (three opponent battlefields in full). At or
+   * above it desktop staging holds; below it multiplayer changes kind — the
+   * compact branch engages. The tablet-landscape reference (1180×820) sits at
+   * this floor; the 1280×800 desktop reference sits above it. */
+  compactFloorWidth: 1180,
   /** Wing staging: outward from the top, up to two per side. */
   wing: {
     /** First wing rank's top, as a fraction of H. */
@@ -38,6 +56,15 @@ export const PLANE = {
     single: { w: 0.24, h: 0.4 },
     /** Two wings per side (5–6 players): the digest-rung wing. */
     double: { w: 0.21, h: 0.25 },
+    /**
+     * The digest threshold (layout-model §The degradation ladder, rung 4): a
+     * wing whose slot is narrower than this fraction of W stops drawing its
+     * board and digests from the start. The double wing (0.21·W, 269 px at the
+     * 1280 reference) falls below it; the single wing (0.24·W, 307 px) stays
+     * above — so two-per-side staging (5–6 players) is exactly the digest
+     * baseline, aspect-independently (both widths and the threshold scale with
+     * W). The far side and the receiver never digest. */
+    digestBelowWidthFrac: 0.225,
     /** Vertical gap between wing ranks, as a fraction of H. */
     rankGap: 0.03,
   },
@@ -53,11 +80,15 @@ export const PLANE = {
 } as const;
 
 /**
- * Whether the viewport takes the phone-portrait staging branch (the compact
- * change-of-kind at 3+ players): portrait orientation, per layout-model rung 5.
+ * Whether the viewport takes the compact change-of-kind staging branch (the
+ * compact change-of-kind at 3+ players, layout-model rung 5): portrait
+ * orientation (phones), or a landscape viewport below the tablet-landscape
+ * geometry floor (`compactFloorWidth`) — the width below which full multiplayer
+ * anatomy no longer fits and multiplayer changes kind. Tablet landscape at the
+ * floor (1180×820) and every desktop geometry stay on full desktop staging.
  */
-export function isPhoneGeometry(viewport: PlaneViewport): boolean {
-  return viewport.height > viewport.width;
+export function isCompactGeometry(viewport: PlaneViewport): boolean {
+  return viewport.height > viewport.width || viewport.width < PLANE.compactFloorWidth;
 }
 
 /** A rect inset by `by` on every side (clamped to non-negative dimensions). */

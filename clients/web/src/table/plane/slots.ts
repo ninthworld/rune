@@ -57,18 +57,32 @@ export function carveSlots(
 
   const duel = peripherals.length === 0;
   const farSpec = duel ? PLANE.duelFar : PLANE.far;
+
+  // Ultrawide surplus-width policy (layout-model §Hand-offs and open items):
+  // beyond `corridorMaxAspect` the multiplayer far side and the center corridor
+  // stop widening. The central column is capped at `H × corridorMaxAspect` and
+  // centered; the surplus horizontal width falls into the side gutters, where
+  // the wings (still full-width fractions of W below) spend it — surplus goes to
+  // the wings before the corridor. A duel keeps its full-width far side (no
+  // wings to spend surplus on).
+  const centralW = !duel && W > H * PLANE.corridorMaxAspect ? H * PLANE.corridorMaxAspect : W;
+  const centralX = (W - centralW) / 2;
+  const farX = centralX + centralW * farSpec.x;
+  const farW = centralW * farSpec.w;
   const far =
     farSeat === undefined
       ? undefined
       : {
-          rect: { x: W * farSpec.x, y: H * farSpec.y, w: W * farSpec.w, h: H * farSpec.h },
+          rect: { x: farX, y: H * farSpec.y, w: farW, h: H * farSpec.h },
           surface: (duel ? 'field' : 'support') as SurfaceTier,
         };
 
-  // Up to two wings per side, alternating left/right in seat order; two per
-  // side drops the wing to the smaller, digest-baseline slot.
+  // Up to two wings per side, alternating left/right in seat order; a wing whose
+  // slot is narrower than the digest threshold (`digestBelowWidthFrac`) stages
+  // at the smaller, digest-baseline slot — two-per-side staging by construction.
   const perSide = Math.ceil(peripherals.length / 2);
   const spec = perSide > 1 ? PLANE.wing.double : PLANE.wing.single;
+  const digestBaseline = spec.w < PLANE.wing.digestBelowWidthFrac;
   const w = W * spec.w;
   const h = H * spec.h;
   const wings: WingSlotFrame[] = peripherals.map((seat, i) => {
@@ -81,18 +95,19 @@ export function carveSlots(
       rect: { x, y, w, h },
       side,
       rank,
-      surface: perSide > 1 ? 'mini' : 'support',
-      digestBaseline: perSide > 1,
+      surface: digestBaseline ? 'mini' : 'support',
+      digestBaseline,
     };
   });
 
-  // The corridor spans the far side's width, from its bottom edge down to the
-  // receiver's band. Wing inner edges stay outside it via the plane-edge bleed.
+  // The corridor spans the (capped) far side's width, from its bottom edge down
+  // to the receiver's band. Wing inner edges stay outside it via the plane-edge
+  // bleed, and the ultrawide surplus widens the gutter between them.
   const farBottom = far ? far.rect.y + far.rect.h : 0;
   const corridor: Rect = {
-    x: W * farSpec.x,
+    x: farX,
     y: farBottom,
-    w: W * farSpec.w,
+    w: farW,
     h: Math.max(0, (receiver ? receiver.y : H) - farBottom),
   };
 

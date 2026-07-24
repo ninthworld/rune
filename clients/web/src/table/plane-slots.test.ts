@@ -4,6 +4,9 @@ import { PLANE } from './plane';
 import {
   DESKTOP,
   PHONE,
+  WIDE16,
+  ULTRAWIDE,
+  TABLET,
   seatTable,
   bears,
   menagerie,
@@ -214,4 +217,115 @@ describe('stagePlane compact change-of-kind (rung 5, phone portrait)', () => {
       expect(rectsOverlap(rect, plane.corridor)).toBe(false);
     }
   });
+});
+
+describe('stagePlane ultrawide surplus-width policy (issue #500, layout-model §Hand-offs)', () => {
+  it('spends surplus width on the wings, not the corridor', () => {
+    const view = seatTable({ opponents: 5, active: 'p2' });
+    const wide = stage(view, WIDE16);
+    const ultra = stage(view, ULTRAWIDE);
+    // The focused far side and the center corridor are capped at the corridor's
+    // max aspect — the 21:9 surplus never widens them past the 16:9 baseline.
+    expect(ultra.corridor.w).toBeCloseTo(wide.corridor.w, 5);
+    expect(ultra.farSide!.rect.w).toBeCloseTo(wide.farSide!.rect.w, 5);
+    // The capped central column stays centered in the ultrawide plane.
+    expect(ultra.corridor.x + ultra.corridor.w / 2).toBeCloseTo(ULTRAWIDE.width / 2, 5);
+    // Every wing is wider at ultrawide — the surplus lands on the wings first.
+    expect(ultra.wings).toHaveLength(wide.wings.length);
+    for (let i = 0; i < ultra.wings.length; i += 1) {
+      expect(ultra.wings[i]!.rect.w).toBeGreaterThan(wide.wings[i]!.rect.w);
+    }
+  });
+
+  it('a duel keeps the full-width far side at ultrawide (no wings to fund)', () => {
+    const plane = stage(seatTable({ opponents: 1, perms: bears('p2', 2) }), ULTRAWIDE);
+    expect(plane.wings).toHaveLength(0);
+    // Far side spans the same width as the receiver band — uncapped, full width.
+    expect(plane.farSide!.rect.w).toBeCloseTo(plane.receiver!.rect.w, 5);
+  });
+});
+
+describe('stagePlane tablet-landscape floor (issue #500, layout-model §Hand-offs)', () => {
+  it('holds full desktop staging at the 1180×820 floor', () => {
+    const plane = stage(seatTable({ opponents: 3, active: 'p2' }), TABLET);
+    expect(plane.compact).toBe(false);
+    expect(plane.tiles).toHaveLength(0);
+    expect(plane.farSide?.seat).toBe('p2');
+    expect(plane.wings.map((w) => w.seat)).toEqual(['p3', 'p4']);
+    // The desktop wing rung (a drawn board), not the compact change-of-kind.
+    expect(plane.wings.every((w) => w.rung < 4)).toBe(true);
+  });
+
+  it('engages the compact branch below the floor width', () => {
+    const belowFloor = { width: PLANE.compactFloorWidth - 80, height: 820 };
+    const plane = stage(seatTable({ opponents: 3, active: 'p2' }), belowFloor);
+    expect(plane.compact).toBe(true);
+    expect(plane.wings).toHaveLength(0);
+    expect(plane.tiles.map((t) => t.seat)).toEqual(['p3', 'p4']);
+  });
+});
+
+describe('stagePlane five-player 2+1 wing split (issue #500 — validated as-is)', () => {
+  it('stages 2 left / 1 right digest wings that fit above the receiver, no overlap', () => {
+    const plane = stage(
+      seatTable({
+        opponents: 4,
+        active: 'p2',
+        perms: [...menagerie('p3', 6), ...menagerie('p5', 5)],
+      }),
+    );
+    expect(plane.wings.map((w) => [w.side, w.rank])).toEqual([
+      ['left', 0],
+      ['right', 0],
+      ['left', 1],
+    ]);
+    expect(plane.wings.every((w) => w.digest !== undefined)).toBe(true);
+    // The two stacked left wings never overlap each other…
+    const left = plane.wings.filter((w) => w.side === 'left');
+    expect(rectsOverlap(left[0]!.rect, left[1]!.rect)).toBe(false);
+    // …and every wing clears the receiver band with a live crest.
+    for (const wing of plane.wings) {
+      expect(wing.rect.y + wing.rect.h).toBeLessThanOrEqual(plane.receiver!.rect.y);
+      expect(wing.crest.w).toBeGreaterThanOrEqual(PLANE.minHit);
+      expect(wing.crest.h).toBeGreaterThanOrEqual(PLANE.minHit);
+    }
+  });
+});
+
+describe('stagePlane standing invariants at every count and geometry (issue #500)', () => {
+  const geometries = [
+    ['desktop', DESKTOP],
+    ['wide16', WIDE16],
+    ['ultrawide', ULTRAWIDE],
+    ['tablet', TABLET],
+  ] as const;
+  for (const [label, viewport] of geometries) {
+    for (const opponents of [1, 2, 3, 4, 5]) {
+      it(`stages ${opponents + 1} players at ${label}: no overlap, crests + piles ≥ 44 px`, () => {
+        const perms = [...menagerie('p1', 6), ...menagerie('p2', 8), ...bears('p3', 10)];
+        const plane = stage(seatTable({ opponents, active: 'p2', perms }), viewport);
+        // No focus branch to compact here — every landscape geometry is desktop.
+        expect(plane.compact).toBe(false);
+        const regions = regionsOf(plane);
+        for (let i = 0; i < regions.length; i += 1) {
+          for (let j = i + 1; j < regions.length; j += 1) {
+            expect(rectsOverlap(regions[i]!.rect, regions[j]!.rect)).toBe(false);
+          }
+        }
+        for (const region of regions) {
+          expect(region.crest.w).toBeGreaterThanOrEqual(PLANE.minHit);
+          expect(region.crest.h).toBeGreaterThanOrEqual(PLANE.minHit);
+          expect(region.piles.w).toBeGreaterThanOrEqual(PLANE.minHit);
+          expect(region.piles.h).toBeGreaterThanOrEqual(PLANE.minHit);
+          for (const render of region.renders) {
+            expect(render.hitRect.w).toBeGreaterThanOrEqual(PLANE.minHit);
+            expect(render.hitRect.h).toBeGreaterThanOrEqual(PLANE.minHit);
+          }
+        }
+        for (const rect of allPlaneRects(plane)) {
+          expect(rectsOverlap(rect, plane.corridor)).toBe(false);
+        }
+      });
+    }
+  }
 });

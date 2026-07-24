@@ -41,6 +41,10 @@ export interface FixtureScenario {
 const DESKTOP = { width: 1280, height: 800 };
 const WIDE = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
+/** 21:9 ultrawide — surplus width goes to the wings, not the corridor. */
+const ULTRAWIDE = { width: 2560, height: 1080 };
+/** Tablet landscape at the geometry floor — full desktop staging holds. */
+const TABLET = { width: 1180, height: 820 };
 
 function card(
   id: string,
@@ -333,6 +337,39 @@ const tokens = furnish(
     ],
   }),
 );
+const three = furnish(
+  seatTable({
+    opponents: 2,
+    perms: [...menagerie('p1', 5), ...menagerie('p2', 6), ...menagerie('p3', 4)],
+    active: 'p2',
+  }),
+  { priority: 'p1' },
+);
+const five = furnish(
+  seatTable({
+    opponents: 4,
+    perms: [
+      ...menagerie('p1', 5),
+      ...menagerie('p2', 6),
+      ...menagerie('p3', 4),
+      ...menagerie('p4', 3),
+      ...menagerie('p5', 5),
+    ],
+    active: 'p2',
+  }),
+  { priority: 'p1' },
+);
+const ultrawide = furnish(
+  seatTable({
+    opponents: 5,
+    perms: Array.from({ length: 6 }, (_, index) => menagerie(`p${index + 1}`, 6)).flat(),
+    active: 'p3',
+  }),
+  { priority: 'p3' },
+);
+const tablet = furnish(seatTable({ opponents: 3, perms: namedBoard(), active: 'p2' }), {
+  priority: 'p1',
+});
 const bigHand = { ...commanderView(), my_hand: hand(16, 'wide-hand') };
 const combat = furnish(seatTable({ opponents: 3, perms: combatSpecs(), active: 'p1' }), {
   phase: 'declare_blockers',
@@ -368,11 +405,39 @@ export const FIXTURE_SCENARIOS: readonly FixtureScenario[] = [
     frames: [{ label: 'Duel board', view: duel }],
   },
   {
+    id: 'three',
+    label: 'Three players',
+    description: 'Focused far side plus one full-board wing on a single side.',
+    viewport: WIDE,
+    frames: [{ label: 'Three-seat stage', view: three, staging: { focusSeat: 'p2' } }],
+  },
+  {
+    id: 'five',
+    label: 'Five players',
+    description: 'Focused far side plus the 2-left / 1-right digest wing split.',
+    viewport: WIDE,
+    frames: [{ label: 'Five-seat 2+1 split', view: five, staging: { focusSeat: 'p2' } }],
+  },
+  {
     id: 'six',
     label: 'Six players',
     description: 'Focused far side plus two digest wings per side.',
     viewport: WIDE,
     frames: [{ label: 'Six-seat digest', view: six, staging: { focusSeat: 'p5' } }],
+  },
+  {
+    id: 'ultrawide',
+    label: 'Ultrawide 21:9',
+    description: 'Surplus width spent on the wings; the corridor stays capped.',
+    viewport: ULTRAWIDE,
+    frames: [{ label: 'Ultrawide six-seat', view: ultrawide, staging: { focusSeat: 'p3' } }],
+  },
+  {
+    id: 'tablet',
+    label: 'Tablet landscape',
+    description: 'Full desktop four-player staging held at the 1180×820 floor.',
+    viewport: TABLET,
+    frames: [{ label: 'Tablet four-player', view: tablet, staging: { focusSeat: 'p2' } }],
   },
   {
     id: 'tokens',

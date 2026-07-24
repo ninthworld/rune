@@ -7,7 +7,7 @@ import {
   bandLabel,
   zoneCountsOf,
 } from '../scene/band-helpers';
-import { PLANE, isPhoneGeometry, hitRectFor } from './metrics';
+import { PLANE, isCompactGeometry, hitRectFor } from './metrics';
 import { carveSlots, carveCompactSlots, type WingSlotFrame } from './slots';
 import { resolveFocusSeat } from './focus';
 import { buildStageItems, stageRegionContent, type StageItem } from './regions';
@@ -79,7 +79,7 @@ export function stagePlane(
   const focusSeat = resolveFocusSeat(view, opponents, staging.focusSeat, candidates);
   const farSeat = duel ? opponents[0] : focusSeat;
   const peripherals = opponents.filter((seat) => seat !== farSeat);
-  const compact = isPhoneGeometry(viewport) && opponents.length >= 2;
+  const compact = isCompactGeometry(viewport) && opponents.length >= 2;
 
   const attacked = attackedSeats(view, receiverSeat, duel);
   const eliminated = new Set(view.opponents.filter((o) => o.eliminated).map((o) => o.player_id));

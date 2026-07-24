@@ -40,7 +40,7 @@ export type {
   StagedPlane,
 } from './types';
 
-export { PLANE, isPhoneGeometry, insetRect, hitRectFor } from './metrics';
+export { PLANE, isCompactGeometry, insetRect, hitRectFor } from './metrics';
 
 export { carveSlots, carveCompactSlots } from './slots';
 export type { WingSlotFrame, PlaneSlotFrames } from './slots';
