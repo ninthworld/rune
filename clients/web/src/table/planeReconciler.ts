@@ -267,10 +267,6 @@ export class PlaneReconciler {
 
     // ── Entities, by id ─────────────────────────────────────────────────────
     const renders = planeRenders(plane);
-    const futureRects = new Map<EntityId, Rect>();
-    for (const render of renders) {
-      for (const memberId of render.memberIds) futureRects.set(memberId, render.rect);
-    }
     const hints = new Map(
       motionHints
         .filter(
@@ -279,12 +275,18 @@ export class PlaneReconciler {
         .map((hint) => [hint.entityId, hint]),
     );
     const routes = new Map<EntityId, { hint: PlaneMotionHint; from?: Rect; to?: Rect }>();
-    for (const [entityId, hint] of hints) {
-      routes.set(entityId, {
-        hint,
-        from: hint.from ? this.resolveMotionRef(hint.from, plane, futureRects) : undefined,
-        to: hint.to ? this.resolveMotionRef(hint.to, plane, futureRects) : undefined,
-      });
+    if (hints.size > 0) {
+      const futureRects = new Map<EntityId, Rect>();
+      for (const render of renders) {
+        for (const memberId of render.memberIds) futureRects.set(memberId, render.rect);
+      }
+      for (const [entityId, hint] of hints) {
+        routes.set(entityId, {
+          hint,
+          from: hint.from ? this.resolveMotionRef(hint.from, plane, futureRects) : undefined,
+          to: hint.to ? this.resolveMotionRef(hint.to, plane, futureRects) : undefined,
+        });
+      }
     }
     const consumedRoutes = new Set<EntityId>();
     const present = new Set<EntityId>();
@@ -301,7 +303,7 @@ export class PlaneReconciler {
       const hint = hints.get(render.entityId);
 
       if (cached) {
-        applyMotionHint(cached.el, hint);
+        if (hint || cached.el.dataset.motion !== undefined) applyMotionHint(cached.el, hint);
         // Sync the wrapper's staging facts (the ladder can re-tier a card; a
         // prompt can make it a candidate). Values only — the attribute set is
         // fixed at creation, so serialization order never drifts from fresh.
@@ -340,7 +342,7 @@ export class PlaneReconciler {
         el.dataset.seat = render.seat;
         el.dataset.tier = render.tier;
         el.dataset.candidate = String(render.candidate);
-        applyMotionHint(el, hint);
+        if (hint) applyMotionHint(el, hint);
         applyRect(el, render.rect);
         this.face.render(el, render);
         this.entityLayer.appendChild(el);

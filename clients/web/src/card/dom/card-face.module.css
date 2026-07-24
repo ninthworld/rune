@@ -53,6 +53,8 @@
     var(--face-body);
   --ring-shadow: 0 0 0 0 transparent;
   --splay-shadow: 0 0 0 0 transparent;
+  --motion-card: var(--motion-micro);
+  --motion-card-delay: 0ms;
   box-shadow: var(--ring-shadow), var(--splay-shadow), var(--elev-shadow);
   /* Badges are the only in-flow children (everything else is absolute), so the
    * flex row lays the corner badges right-to-left with zero wrapper nodes. */
@@ -62,8 +64,8 @@
   align-items: flex-start;
   gap: 4px;
   transition:
-    transform var(--motion-card, var(--motion-micro)) ease var(--motion-card-delay, 0ms),
-    opacity var(--motion-card, var(--motion-micro)) ease var(--motion-card-delay, 0ms);
+    transform var(--motion-card) ease var(--motion-card-delay),
+    opacity var(--motion-card) ease var(--motion-card-delay);
 }
 
 @media (prefers-reduced-motion: reduce) {
