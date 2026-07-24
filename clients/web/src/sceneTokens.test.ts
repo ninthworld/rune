@@ -82,6 +82,56 @@ describe('scene tokens — contrast floors (presentation-budgets §Accessibility
     }
   });
 
+  it('keeps secondary text ≥ 4.5:1 on every foundation surface (it is text, not an indicator)', () => {
+    // `textMuted` carries captions and status lines on the pregame surfaces
+    // (front-door-and-lobby §5.0), so it is held to the TEXT floor, not the
+    // 3:1 indicator floor.
+    for (const surface of [
+      SCENE_NEUTRALS.ink,
+      SCENE_NEUTRALS.surfaceTop,
+      SCENE_NEUTRALS.surfaceBase,
+      SCENE_NEUTRALS.raised,
+    ]) {
+      expect(contrastRatio(SCENE_NEUTRALS.textMuted, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('keeps the pregame surfaces inside their floors (front-door-and-lobby §8.22)', () => {
+    // Every pregame element sits on a scene SURFACE — panels and the header bar
+    // on `raised`, rows and the identity strip on `surface`, the crest chip's
+    // fill over `ink`. The environment is always at least one panel behind, so
+    // these are the pairs the pregame surfaces actually introduce. (Text over
+    // the environment slots themselves is gated by the theme test above.)
+    const pregameSurfaces = [
+      SCENE_NEUTRALS.raised,
+      SCENE_NEUTRALS.surfaceBase,
+      SCENE_NEUTRALS.surfaceTop,
+      SCENE_NEUTRALS.ink,
+    ];
+    for (const surface of pregameSurfaces) {
+      expect(contrastRatio(SCENE_NEUTRALS.text, surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(SCENE_NEUTRALS.textMuted, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+    // Seat accents are indicator-class: rings, stripes, and occupancy pips only.
+    // They must clear 3:1 on every surface they are drawn over — and they never
+    // carry text (§5.10), which is why 3:1 is the right floor.
+    for (const accent of SCENE_SEAT_ACCENTS) {
+      for (const surface of pregameSurfaces) {
+        expect(contrastRatio(accent, surface)).toBeGreaterThanOrEqual(3);
+      }
+    }
+    // The ready bar's gold, selection blue, and the ribbon's outcome hues over a
+    // pregame panel or row.
+    for (const hue of [SCENE_HUES.gold, SCENE_HUES.blue, SCENE_HUES.red, SCENE_HUES.green]) {
+      for (const surface of [SCENE_NEUTRALS.raised, SCENE_NEUTRALS.surfaceBase]) {
+        expect(contrastRatio(hue.value, surface)).toBeGreaterThanOrEqual(3);
+      }
+    }
+    // The default theme's slots still back the stage behind those panels.
+    const theme = SCENE_THEMES[DEFAULT_SCENE_THEME];
+    expect(contrastRatio(SCENE_NEUTRALS.text, theme.skyBase)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('keeps primary text ≥ 4.5:1 on every slot of every theme (no per-theme retuning)', () => {
     for (const theme of Object.values(SCENE_THEMES)) {
       for (const slot of [

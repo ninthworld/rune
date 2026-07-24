@@ -45,10 +45,21 @@ the table UI.
   `src/card/art/`: player-selected source, device-local storage, renderers only
   *look up* loaded textures. The UI must render fully with the art store empty, and
   nothing under `public/card-art/` may be anything but project-owned originals.
+- Pregame (issue #506) lives in `src/pregame/`: the front door, lobby, and room
+  are content compositions on **one** `PregameStage`, which mounts the scene
+  environment once (`App.tsx`) so a place change never re-mounts the backdrop.
+  All pregame color/shadow/duration flows from `sceneTokens.ts` through
+  `pregame/pregameScene.ts` as `--pregame-*` properties — the `deckScene.ts`
+  mold; no literal hex or duration belongs in `pregame.module.css`. Seat accents
+  come from `SCENE_SEAT_ACCENTS[seat]`, the same index the match uses, so a
+  seat's color survives the ready gate. `LobbyScreen.tsx` / `ConnectionScreen.tsx`
+  are thin mount points over that composition. `screens.module.css` is now the
+  deck-surface stylesheet only. See `docs/design/front-door-and-lobby.md`.
 - Presentation settings (issue #505) — quality level, effect density, motion —
   are device preferences in `src/table/settings/presentationSettings.ts` (the same
   device-local, no-protocol idiom as art/decks), surfaced by
-  `src/table/PresentationSettings.tsx` from both the front door and the game menu.
+  `src/table/PresentationSettings.tsx` from the front door, the pregame session
+  menu (lobby and room), and the in-match game menu.
   They only scale effects/environment/motion; the scene (plane, staging, cards,
   tap/travel motion) is never degraded at any level. See
   `docs/design/presentation-budgets.md` §Quality levels.

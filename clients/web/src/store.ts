@@ -159,6 +159,28 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
   }
 }
 
+/**
+ * The record the lobby's **last-match ribbon** renders after a finished game
+ * (`docs/design/front-door-and-lobby.md` §5.5).
+ *
+ * Presentation-only, explicitly ephemeral state in the exact `lobbyError` idiom:
+ * it is written on the same transition that clears {@link GameStore.view}, it is
+ * never persisted, and it may never be the only place a piece of information
+ * exists. The lobby rebuilds completely from {@link GameStore.lobby} alone with
+ * it absent, and no control's availability depends on it — a reload simply loses
+ * the ribbon and loses nothing else.
+ */
+export interface LastMatchSummary {
+  /** The outcome family the ribbon tints (the WORD always carries the meaning). */
+  outcome: 'victory' | 'defeat' | 'draw';
+  /** The opponents' display names, as the finished view named them. */
+  opponents: readonly string[];
+  /** The finished room's opaque `game_setup` id, for the Play-again pre-fill. */
+  gameSetup?: string;
+  /** The finished room's seat count, for the Play-again pre-fill. */
+  seats?: number;
+}
+
 /** The networking store's shape. */
 export interface GameStore {
   /** The latest personalized view, or `null` before the first message. */
@@ -192,6 +214,23 @@ export interface GameStore {
    * interactive lobby UI rebuilds from {@link lobby} alone without it.
    */
   lobbyError: string | null;
+  /**
+   * The finished game the lobby's last-match ribbon reports, or `null`. Written
+   * on the transition that clears {@link view} (#452/#509 produce it) and by
+   * {@link recordLastMatch}; cleared by {@link dismissLastMatch}, by joining or
+   * creating any room, and by a reload (it is never persisted). See
+   * {@link LastMatchSummary} — ephemeral presentation, never load-bearing.
+   */
+  lastMatch: LastMatchSummary | null;
+  /**
+   * Whether the connection currently being opened is a **seat reclaim** — a
+   * {@link restoreSession} attempt replaying a stored token — rather than a
+   * fresh, user-driven connect. The front door reads it for its connecting copy
+   * (`front-door-and-lobby.md` §5.1). Ephemeral connection metadata like
+   * {@link status}: nothing is reconstructed from it, and the socket lifecycle
+   * is identical either way.
+   */
+  reclaimingSession: boolean;
   /**
    * A monotonically increasing counter, bumped each time the server pushes a view
    * flagging the receiver's last in-game action as **rejected** (issue #265). It is
@@ -228,6 +267,14 @@ export interface GameStore {
   restoreSession: (options?: ConnectOptions) => boolean;
   /** Close the connection intentionally; suppresses auto-reconnect. */
   disconnect: () => void;
+  /**
+   * Record the finished game the lobby's last-match ribbon reports (#452/#509
+   * call this on the transition that clears {@link view}). Purely ephemeral
+   * presentation — see {@link LastMatchSummary}.
+   */
+  recordLastMatch: (summary: LastMatchSummary) => void;
+  /** Drop the last-match ribbon (dismissed, or superseded by a new room). */
+  dismissLastMatch: () => void;
   /**
    * Send one {@link LobbyCommand} (create/join/submit-deck/ready/leave). The
    * command is recorded so the next `LobbyView` can be reconciled into a
@@ -353,7 +400,9 @@ const initializer: StateCreator<GameStore> = (set, get) => {
 
     s.onopen = (): void => {
       if (socket !== s) return;
-      set({ status: 'open' });
+      // The reclaim attempt is over the moment the socket is up: where the
+      // session lands is entirely the server's answer in the returned view.
+      set({ status: 'open', reclaimingSession: false });
       // Open the lobby handshake: greet the server (echoing a prior session token
       // when reconnecting). The server replies with the first `LobbyView`. This is
       // the pre-game analogue of the connection simply waiting for a `GameView`.
@@ -370,7 +419,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       // Drop any pre-game lobby state: a closed socket returns to the interactive
       // connection screen (never a dead lobby whose buttons cannot send). In-game
       // `view` is untouched so a reconnecting game still replaces it wholesale.
-      set({ status: 'closed', lobby: null, lobbyError: null });
+      set({ status: 'closed', lobby: null, lobbyError: null, reclaimingSession: false });
       const autoReconnect = options.autoReconnect ?? true;
       if (!intentionalClose && autoReconnect && lastUrl !== null) {
         clearReconnect();
@@ -392,6 +441,8 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     lobby: null,
     catalog: null,
     lobbyError: null,
+    lastMatch: null,
+    reclaimingSession: false,
     rejectionNonce: 0,
     status: 'idle',
     sessionEpoch: 0,
@@ -404,9 +455,10 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         socket = null;
       }
       // Start the pre-game flow clean: the fresh connection will `Hello` and
-      // receive its own first `LobbyView`.
+      // receive its own first `LobbyView`. A user-driven connect is never a seat
+      // reclaim, so the front door shows its ordinary connecting copy.
       pendingLobby = null;
-      set({ lobby: null, lobbyError: null });
+      set({ lobby: null, lobbyError: null, reclaimingSession: false });
       open(url, options);
     },
 
@@ -419,7 +471,10 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       // the same URL exactly as `connect` would (Hello → first LobbyView/GameView).
       lastSession = persisted.token;
       pendingLobby = null;
-      set({ lobby: null, lobbyError: null });
+      // The front door says *Reclaiming your seat* rather than the generic
+      // connecting copy while this attempt is in flight (#506, P11). Copy only:
+      // the socket lifecycle below is byte-identical to `connect`.
+      set({ lobby: null, lobbyError: null, reclaimingSession: true });
       open(persisted.url, options);
       return true;
     },
@@ -436,12 +491,25 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       // later reload starts fresh at the connection screen (issue #254).
       lastSession = null;
       clearPersistedSession();
-      set({ status: 'closed', lobby: null, lobbyError: null });
+      set({ status: 'closed', lobby: null, lobbyError: null, reclaimingSession: false });
+    },
+
+    recordLastMatch(summary): void {
+      set({ lastMatch: summary });
+    },
+
+    dismissLastMatch(): void {
+      set({ lastMatch: null });
     },
 
     sendLobby(command): void {
       if (!socket) return;
       pendingLobby = pendingKindOf(command);
+      // Entering any room supersedes the previous game's ribbon (§5.5's
+      // dismissal list). Ephemeral only — nothing else keys off it.
+      if (command.type === 'create_room' || command.type === 'join_room') {
+        set({ lastMatch: null });
+      }
       // Leaving the room gives up the seat, so the reconnect credential is spent:
       // drop it (the live socket keeps working via the in-closure token; only a hard
       // reload is affected, which should then start fresh — issue #254).

@@ -209,14 +209,25 @@ Delivered (front-door batch; `ui-blueprint.md` open item 1). The pre-game screen
 are the blueprint's "front-door screens in this language", replacing the IP-entry
 connection screen:
 
-> **Direction superseded by [`front-door-and-lobby.md`](front-door-and-lobby.md)**
-> (issue #461). That document walks the shipped flow below, records what confuses
-> players in it, and fixes the pregame/postgame direction the 2.5D migration
-> builds — one persistent environment stage carrying four places (front door,
-> lobby, room, match) with the postgame landing back in the lobby. The prose here
-> stays the record of the *shipped* client's behavior and testids; its composition
-> (the carved panels, the single-column room, the CTA at the end of the scroll) is
-> replaced when #506 lands.
+> **Composition superseded — shipped July 2026 (issue #506).**
+> [`front-door-and-lobby.md`](front-door-and-lobby.md) (issue #461) is the
+> design authority for these screens, and its §5 composition has now **landed**:
+> one persistent environment stage carrying the front door, lobby, and room,
+> built from `sceneTokens.ts` and the same layer recipe as the match's backdrop
+> (`clients/web/src/pregame/`). The carved panels, the chrome vignette, the
+> single-column room, and the CTA at the end of the scroll described below are
+> **retired** — the room's advance-the-game control now lives in a pinned ready
+> bar that also states the gate in words, seats wear `SCENE_SEAT_ACCENTS` from
+> the same index the match uses, and a session menu carries settings across the
+> whole pregame span.
+>
+> Per the ADR 0029 pattern, the prose below **stays as the record of the shipped
+> client's behavior**, not its current dressing: the behavioral commitments it
+> fixed — one gold CTA, choices as visible presses, glyph-coded state, never a
+> dead screen, `valid_commands` as the only source of interactivity — were
+> carried forward verbatim, and every `LobbyScreen`/`ConnectionScreen` test it
+> describes still passes unmigrated. Read it for *what the screens do*; read
+> `front-door-and-lobby.md` §5 for *what they look like*.
 
 - **The landing leads with Play, not an address.** The brand lockup (mark +
   display-face wordmark) sits in a carved panel — the table panels' line-work
