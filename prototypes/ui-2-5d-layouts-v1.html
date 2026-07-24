@@ -17,9 +17,11 @@
     commander4  - 4-player Commander (primary target): focused + 2 peripherals
     six         - 6 players: focused + 4 peripherals stacked 2 per side
     tokens      - 4p stress: ~150 permanents, xN piles, digest-row rung
-    bighand     - 16-card hand fan compression
+    bighand     - 16-card hand: fan compression + paging at the 44px floor
     combat      - 4p multi-attacker web: different defenders, crossing paths
-    phone       - 390x844 frame: receiver full + focused board + summary tiles
+    stackweb    - 8-deep mixed stack rail + gang block + stack-entry target
+    phone       - 390x844 frame: receiver full + focused board + summary
+                  tiles + the stack sheet open at depth 8
 
   Focus rules exercised here (see docs/design/layout-model.md):
     - at 3+ players exactly one opponent is focused (expanded);
@@ -125,9 +127,12 @@
   .portrait .cmd { display: inline-block; margin-left: 3px; padding: 0 5px; border-radius: 3px; font-size: 9px; font-weight: 700;
     background: #0d0f13; box-shadow: 0 0 0 1px rgba(232,230,225,.3); }
 
-  /* Phone summary tiles (compact change-of-kind) */
-  .tile { position: absolute; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px;
-    background: rgba(13,15,19,.8); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); cursor: pointer; }
+  /* Phone summary tiles (compact change-of-kind); ≥44px touch floor.
+     These are chrome and render in screen space in production; this
+     prototype draws them on the tilted plane, so the min-height is
+     over-provisioned (56px) to project to ≥44 screen px under rotateX(30°). */
+  .tile { position: absolute; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px;
+    min-height: 56px; background: rgba(13,15,19,.8); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); cursor: pointer; }
   .tile .mini-crest { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800;
     background: radial-gradient(60% 60% at 50% 35%, #2d3340, #191d26); box-shadow: 0 0 0 2px var(--accent); }
   .tile .t-name { font-size: 11px; font-weight: 600; }
@@ -146,7 +151,39 @@
     font-size: 11.5px; letter-spacing: .07em; background: rgba(13,15,19,.8); box-shadow: 0 0 0 1px rgba(232,230,225,.15); white-space: nowrap; }
   #phasebar b { color: var(--gold); }
   #dockBtn { position: absolute; right: 18px; bottom: 22px; padding: 9px 16px; border-radius: 8px; border: 0;
+    min-height: 44px; min-width: 44px;
     font: 700 12.5px system-ui; color: #1a1405; background: var(--gold); box-shadow: 0 6px 14px rgba(0,0,0,.4); }
+
+  .card.targeted { box-shadow: 0 0 0 2.5px var(--target), 0 0 0 1.4px color-mix(in srgb, var(--frame) 75%, #000 25%), 0 8px 12px rgba(0,0,0,.45); }
+
+  /* Screen-space stack rail (desktop) / stack sheet (phone). Entries are
+     compact rows at depth (the rail's own condensing rung); the slot wrapper
+     — never the card face — wears the controller accent stripe. */
+  #stackrail { position: absolute; right: 14px; top: 84px; width: 168px; display: none; flex-direction: column; gap: 5px; z-index: 45; }
+  #stackrail.open, #stacksheet.open { display: flex; }
+  #stacksheet { position: absolute; left: 5%; right: 5%; top: 44%; max-height: 32%; display: none; flex-direction: column; gap: 4px;
+    padding: 8px; border-radius: 12px; overflow-y: auto; z-index: 45;
+    background: rgba(13,15,19,.92); box-shadow: 0 0 0 1px rgba(232,230,225,.18), 0 18px 40px rgba(0,0,0,.6); }
+  .srail-title { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; opacity: .55; padding: 2px 2px 0; }
+  .sentry { display: flex; align-items: center; gap: 7px; min-height: 44px; padding: 4px 7px 4px 0; border-radius: 7px;
+    background: rgba(20,23,29,.92); box-shadow: 0 0 0 1px rgba(232,230,225,.12);
+    border-left: 4px solid var(--accent); }
+  .sentry .s-art { width: 30px; height: 38px; border-radius: 4px; margin-left: 6px; flex: none; display: grid; place-items: center;
+    font-size: 15px; font-weight: 800; color: color-mix(in srgb, var(--frame) 60%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--frame) 22%, #1a1d23), #16181d);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--frame) 55%, transparent); }
+  .sentry .s-art.ability { border-radius: 50%; width: 30px; height: 30px; font-size: 13px; }
+  .sentry .s-name { font-size: 10.5px; font-weight: 600; line-height: 1.25; }
+  .sentry .s-kind { font-size: 8.5px; opacity: .6; }
+  .sentry.top { box-shadow: 0 0 0 1.5px var(--gold); }
+
+  /* Hand paging: engages when exposed fan spacing would drop below 44px. */
+  #handNav { position: absolute; left: 50%; transform: translateX(-50%); bottom: 178px; display: none; gap: 6px; align-items: center;
+    z-index: 46; font-size: 11px; }
+  #handNav.open { display: flex; }
+  #handNav button { min-width: 44px; min-height: 44px; border: 0; border-radius: 8px; cursor: pointer;
+    background: rgba(13,15,19,.88); color: var(--name); font-size: 16px; box-shadow: 0 0 0 1px rgba(232,230,225,.2); }
+  #handNav .pg { padding: 0 6px; opacity: .85; }
 
   #fx { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
 
@@ -166,7 +203,10 @@
   <div id="env"><div class="sky"></div><div class="ridge"></div><div class="vignette"></div></div>
   <div id="stage"><div id="table"><div class="felt"></div></div></div>
   <canvas id="fx"></canvas>
+  <div id="stackrail"></div>
+  <div id="stacksheet"></div>
   <div id="hand"></div>
+  <div id="handNav"></div>
   <div id="phasebar">Turn 6 · <b>Your main phase</b></div>
   <button id="dockBtn">Pass priority</button>
 </div>
@@ -210,9 +250,11 @@ const SCENARIOS = {
   },
   six: {
     label: "6 players",
-    note: "Focused + four peripherals, two per side, stacked. Peripheral boards drop to the digest rung (type counts) at this width; every crest remains selectable.",
+    note: "Focused + four peripherals, two per side. Wings drop to the digest rung: counts for EVERY permanent category (⚔ creatures, ◆ other permanents, ▲ lands) + piles. A prompt candidate PIERCES the digest — Bree's board renders its candidate card individually (orange ring), pickable without any focus change.",
     make: () => {
       const p = basePlayers(6, { commander: true });
+      p.forEach((q, i) => { if (i > 0) q.board.others = 2 + (i % 3); }); // artifacts/enchantments/etc.
+      p[4].board.candidate = mk("Moor Shade", "B", { pt: "3/2", targeted: true }); // Bree
       return { players: p, focused: 2, phone: false, hand: 5, commander: true, forceDigest: true };
     },
   },
@@ -232,8 +274,8 @@ const SCENARIOS = {
   },
   bighand: {
     label: "16-card hand",
-    note: "Large-hand compression: the fan tightens spacing and rotation instead of shrinking cards below the readable tier; hover/focus still lifts one card clear of the fan.",
-    make: () => ({ players: basePlayers(4, { commander: true }), focused: 1, phone: false, hand: 16, commander: true }),
+    note: "Large-hand compression: the fan tightens spacing before size — and when exposed spacing would drop below the 44px floor, the fan PAGES (8 per page here, ‹ › controls ≥44px). No sub-44px selection strips, and the board stays visible.",
+    make: () => ({ players: basePlayers(4, { commander: true }), focused: 1, phone: false, hand: 16, commander: true, handPage: 0 }),
   },
   combat: {
     label: "4p combat web",
@@ -242,20 +284,52 @@ const SCENARIOS = {
       const p = basePlayers(4, { commander: true });
       p[0].board.creatures.forEach((c, i) => { if (i < 2) { c.attacking = i === 0 ? 1 : 3; c.tapped = true; } });
       p[1].attacked = true; p[3].attacked = true;
-      p[1].board.creatures[0].blocking = true;
+      p[1].board.creatures[0].blocking = p[0].board.creatures[0].id;
       return { players: p, focused: 1, phone: false, hand: 5, commander: true, combat: true };
     },
   },
   phone: {
     label: "Phone portrait (4p)",
-    note: "The compact change-of-kind: receiver keeps the full anatomy at the bottom; the focused opponent keeps a drawn board; other opponents collapse to summary tiles (crest, life, counts, attacked marker). Activating a tile re-stages focus in place.",
+    note: "The compact change-of-kind: receiver keeps the full anatomy (≥44px tiles/dock); focused opponent keeps a drawn board; others are summary tiles. The stack opens as a scrollable sheet — shown open with 8 entries to prove depth stays readable at 390px.",
     make: () => {
       const p = basePlayers(4, { commander: true });
       p[3].attacked = true;
-      return { players: p, focused: 1, phone: true, hand: 5, commander: true };
+      return { players: p, focused: 1, phone: true, hand: 5, commander: true, stack: mkStack(), stackOpen: true };
+    },
+  },
+  stackweb: {
+    label: "8-deep stack + complex block",
+    note: "Deep mixed stack (5 spells + 3 abilities, compact rows, controller stripe on the SLOT, gold = resolves next) beside the phase/action chrome. Complex combat: three blockers gang one attacker, a second attacker blocked once; the top stack ability targets a blocker (arrow).",
+    make: () => {
+      const p = basePlayers(4, { commander: true });
+      const [a1, a2] = p[0].board.creatures;
+      a1.attacking = 1; a1.tapped = true; a2.attacking = 1; a2.tapped = true;
+      p[1].attacked = true;
+      p[1].board.creatures = creatures(5, 1);
+      p[1].board.creatures[0].blocking = a1.id;
+      p[1].board.creatures[1].blocking = a1.id;
+      p[1].board.creatures[2].blocking = a1.id;
+      p[1].board.creatures[3].blocking = a2.id;
+      p[1].board.creatures[1].targeted = true; // the top stack ability aims here
+      return { players: p, focused: 1, phone: false, hand: 5, commander: true, combat: true,
+               stack: mkStack(), stackOpen: true, stackTargetsBlocker: true };
     },
   },
 };
+
+function mkStack() {
+  // Resolution order: index 0 resolves next (top of the rail/sheet).
+  return [
+    { kind: "ability", name: "Tap: add {G}", src: "Ridge Wolf", frame: "G", controller: 2 },
+    { kind: "spell", name: "Counterspell", frame: "U", controller: 3 },
+    { kind: "ability", name: "Trigger: +1/+1 counter", src: "Dawn Herald", frame: "W", controller: 1 },
+    { kind: "spell", name: "Shock", frame: "R", controller: 0 },
+    { kind: "spell", name: "Giant Growth", frame: "G", controller: 1 },
+    { kind: "ability", name: "Sacrifice: draw a card", src: "Moor Shade", frame: "B", controller: 2 },
+    { kind: "spell", name: "Cancel", frame: "U", controller: 0 },
+    { kind: "spell", name: "Lightning Strike", frame: "R", controller: 3 },
+  ];
+}
 
 /* -------------------------------------------------------- the stager --
  * stagePlane(state, geo) -> region placements on the plane.
@@ -273,7 +347,7 @@ function stagePlane(st, geo) {
     // Compact change-of-kind: focused board + summary tiles.
     const foc = opp.find(p => p.seat === st.focused) || opp[0];
     out.push({ p: foc, x: W * 0.06, y: 8, w: W * 0.88, h: H * 0.34, tier: 46, kind: "board" });
-    opp.filter(p => p !== foc).forEach((p, i) => out.push({ p, kind: "tile", x: W * 0.06, y: H * 0.36 + 14 + i * 52, w: W * 0.5 }));
+    opp.filter(p => p !== foc).forEach((p, i) => out.push({ p, kind: "tile", x: W * 0.06, y: H * 0.36 + 14 + i * 66, w: W * 0.5 }));
     return out;
   }
 
@@ -313,6 +387,7 @@ function cardEl(c, tier) {
   if (c.tapped) d.classList.add("tapped");
   if (c.attacking != null) d.classList.add("attacking");
   if (c.blocking) d.classList.add("blocking");
+  if (c.targeted) d.classList.add("targeted");
   el("div", "band", d).textContent = c.name;
   el("div", "art", d).textContent = c.name[0];
   if (c.pt) el("div", "pt", d).textContent = c.pt;
@@ -346,12 +421,20 @@ function render() {
 
     if (r.digest && state.forceDigest) {
       // Digest rung: type counts instead of cards.
+      // Digest = counts for EVERY permanent category + piles; a prompt
+      // candidate pierces the rung and renders individually, in place.
       const b = r.p.board;
-      const d1 = el("div", "digest", reg); d1.style.top = r.h * 0.46 + "px";
+      const d1 = el("div", "digest", reg); d1.style.top = (b.candidate ? r.h * 0.14 : r.h * 0.46) + "px";
       const nCre = b.creatures.length + (b.stacks || []).reduce((s, x) => s + x.n, 0);
-      d1.innerHTML = `<span class="chip">⚔ ${nCre}</span><span class="chip">▲ ${b.lands.length}</span>`;
-      const d2 = el("div", "digest", reg); d2.style.top = r.h * 0.72 + "px";
+      d1.innerHTML = `<span class="chip">⚔ ${nCre}</span><span class="chip">◆ ${b.others || 0}</span><span class="chip">▲ ${b.lands.length}</span>`;
+      const d2 = el("div", "digest", reg); d2.style.top = (b.candidate ? r.h * 0.82 : r.h * 0.72) + "px";
       d2.innerHTML = `<span class="chip">yard ${4 + r.p.seat}</span>`;
+      if (b.candidate) {
+        const rw = el("div", "row", reg); rw.style.top = r.h * 0.3 + "px";
+        const c = cardEl(b.candidate, Math.max(56, r.tier));
+        c.classList.add("targeted");
+        rw.appendChild(c);
+      }
     } else {
       const rows = [
         { items: r.p.board.creatures, stacks: r.p.board.stacks || [], y: 12, tier: r.tier },
@@ -388,22 +471,65 @@ function render() {
     el("div", "count", pile).textContent = r.p.library;
   }
 
-  // Hand fan with large-hand compression.
+  // Hand fan with large-hand compression; pages before spacing drops below
+  // the 44px interaction floor (layout-model.md, Large hands).
   handEl.innerHTML = "";
-  const n = state.hand, tier = state.phone ? 92 : 112;
-  const spread = Math.min(92, (state.phone ? 300 : 620) / Math.max(1, n - 1));
-  const rot = Math.min(7, 64 / Math.max(1, n - 1));
-  for (let i = 0; i < n; i++) {
-    const mid = (n - 1) / 2, off = i - mid;
-    const c = mk(["Emberkin", "Gale Sprite", "Land", "Dawn Herald", "Moor Shade"][i % 5], "RULWB"[i % 5], { pt: "2/2" });
+  const nav = document.getElementById("handNav");
+  const total = state.hand, tier = state.phone ? 92 : 112;
+  const base = state.phone ? 300 : 620;
+  const FLOOR = 44;
+  const pages = Math.max(1, Math.ceil(((total - 1) * FLOOR) / base));
+  const pageSize = Math.ceil(total / pages);
+  const page = Math.min(state.handPage || 0, pages - 1);
+  const start = page * pageSize;
+  const cards = Math.min(pageSize, total - start);
+  nav.classList.toggle("open", pages > 1);
+  if (pages > 1) {
+    nav.innerHTML = "";
+    const prev = el("button", "", nav); prev.textContent = "‹";
+    prev.onclick = () => { state.handPage = (page - 1 + pages) % pages; render(); };
+    el("span", "pg", nav).textContent = `Hand ${page + 1}/${pages} · ${total} cards`;
+    const next = el("button", "", nav); next.textContent = "›";
+    next.onclick = () => { state.handPage = (page + 1) % pages; render(); };
+  }
+  const spread = Math.min(92, base / Math.max(1, cards - 1));
+  const rot = Math.min(7, 64 / Math.max(1, cards - 1));
+  for (let i = 0; i < cards; i++) {
+    const mid = (cards - 1) / 2, off = i - mid;
+    const gi = start + i;
+    const c = mk(["Emberkin", "Gale Sprite", "Land", "Dawn Herald", "Moor Shade"][gi % 5], "RULWB"[gi % 5], { pt: "2/2" });
     const d = cardEl(c, tier);
     d.classList.add("playable");
     d.style.setProperty("--fan", off * rot + "deg");
-    d.style.setProperty("--sink", Math.abs(off) * (n > 10 ? 8 : 14) + "px");
+    d.style.setProperty("--sink", Math.abs(off) * (cards > 10 ? 8 : 14) + "px");
     d.style.left = `calc(50% + ${off * spread}px)`;
     handEl.appendChild(d);
   }
+
+  renderStack();
   drawPaths();
+}
+
+function renderStack() {
+  const rail = document.getElementById("stackrail"), sheet = document.getElementById("stacksheet");
+  rail.classList.remove("open"); sheet.classList.remove("open");
+  rail.innerHTML = ""; sheet.innerHTML = "";
+  if (!state.stack || !state.stackOpen) return;
+  const home = state.phone ? sheet : rail;
+  home.classList.add("open");
+  el("div", "srail-title", home).textContent = `Stack (${state.stack.length}) — top resolves first`;
+  state.stack.forEach((s, i) => {
+    const e = el("div", "sentry" + (i === 0 ? " top" : ""), home);
+    e.id = "stack-" + i;
+    e.style.setProperty("--accent", ACCENTS[s.controller]);
+    e.style.setProperty("--frame", `var(${FRAMES[s.frame] || "--w"})`);
+    const art = el("div", "s-art" + (s.kind === "ability" ? " ability" : ""), e);
+    art.textContent = s.kind === "ability" ? "ᚱ" : s.name[0];
+    const col = el("div", "", e);
+    el("div", "s-name", col).textContent = s.name;
+    el("div", "s-kind", col).textContent =
+      (s.kind === "ability" ? `ability — ${s.src}` : "spell") + ` · ${NAMES[s.controller]}`;
+  });
 }
 
 /* ------------------------------------------------ combat path overlay -- */
@@ -413,22 +539,48 @@ function drawPaths() {
   fx.width = box.width * devicePixelRatio; fx.height = box.height * devicePixelRatio;
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   ctx.clearRect(0, 0, box.width, box.height);
-  if (!state.combat) return;
-  for (const p of state.players) for (const c of p.board.creatures) {
-    if (c.attacking == null) continue;
-    const f = document.getElementById(c.id)?.getBoundingClientRect();
-    const g = document.getElementById("portrait-" + c.attacking)?.getBoundingClientRect();
-    if (!f || !g) continue;
-    const x1 = f.left + f.width / 2 - box.left, y1 = f.top + f.height / 2 - box.top;
-    const x2 = g.left + g.width / 2 - box.left, y2 = g.top + 26 - box.top;
+  const center = id => {
+    const r = document.getElementById(id)?.getBoundingClientRect();
+    return r && { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top, top: r.top - box.top };
+  };
+  function arrow(x1, y1, x2, y2, color) {
     const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - 80;
-    ctx.strokeStyle = "#e0784a"; ctx.lineWidth = 3; ctx.setLineDash([12, 9]); ctx.lineCap = "round";
+    ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([12, 9]); ctx.lineCap = "round";
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(mx, my, x2, y2); ctx.stroke();
     ctx.setLineDash([]);
     const ang = Math.atan2(y2 - my, x2 - mx);
-    ctx.fillStyle = "#e0784a"; ctx.beginPath(); ctx.moveTo(x2, y2);
+    ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(x2, y2);
     ctx.lineTo(x2 - 12 * Math.cos(ang - .4), y2 - 12 * Math.sin(ang - .4));
     ctx.lineTo(x2 - 12 * Math.cos(ang + .4), y2 - 12 * Math.sin(ang + .4)); ctx.fill();
+  }
+  if (state.combat) {
+    for (const p of state.players) for (const c of p.board.creatures) {
+      // Attack paths terminate at the defender's crest.
+      if (c.attacking != null) {
+        const f = center(c.id), g = center("portrait-" + c.attacking);
+        if (f && g) arrow(f.x, f.y, g.x, g.top + 26, "#e0784a");
+      }
+      // Blocker→attacker links: doubled parallel stroke (carried shape).
+      if (typeof c.blocking === "string") {
+        const f = center(c.id), g = center(c.blocking);
+        if (f && g) {
+          const dx = g.x - f.x, dy = g.y - f.y, len = Math.hypot(dx, dy) || 1;
+          const ox = (-dy / len) * 2.2, oy = (dx / len) * 2.2;
+          ctx.strokeStyle = "#7fb2e5"; ctx.lineWidth = 1.8; ctx.lineCap = "round";
+          for (const s of [1, -1]) {
+            ctx.beginPath(); ctx.moveTo(f.x + ox * s, f.y + oy * s); ctx.lineTo(g.x + ox * s, g.y + oy * s); ctx.stroke();
+          }
+          ctx.fillStyle = "#7fb2e5"; ctx.beginPath(); ctx.arc(f.x, f.y, 4, 0, 7); ctx.fill();
+        }
+      }
+    }
+  }
+  // The top stack ability targeting a battlefield object.
+  if (state.stackTargetsBlocker) {
+    const src = center("stack-0");
+    const tgt = state.players.flatMap(p => p.board.creatures).find(c => c.targeted);
+    const g = tgt && center(tgt.id);
+    if (src && g) arrow(src.x, src.y, g.x, g.y, "#e0784a");
   }
 }
 addEventListener("resize", () => state && drawPaths());

@@ -21,9 +21,10 @@ committed concept mocks in
 | `layout-commander4-v1.jpg` | 4-player Commander — the primary target |
 | `layout-six-v1.jpg` | 6 players — digest rung, two peripherals per side |
 | `layout-tokens-v1.jpg` | ~150 permanents — ×N piles, wrapping rows |
-| `layout-bighand-v1.jpg` | 16-card hand — fan compression |
+| `layout-bighand-v1.jpg` | 16-card hand — fan compression + 44 px paging |
 | `layout-combat-v1.jpg` | multi-attacker web across two defenders |
-| `layout-phone-v1.jpg` | phone portrait — summary tiles + focused board |
+| `layout-stackweb-v1.jpg` | 8-deep mixed stack rail + gang block + stack-entry targeting |
+| `layout-phone-v1.jpg` | phone portrait — summary tiles, focused board, stack sheet open |
 
 The mocks are layout evidence, not visual-quality targets — surface
 treatment, art, and finish come from the visual system and Phase 1.
@@ -75,12 +76,15 @@ treatment (public zones stay browsable).
   far side. Manual focus is ephemeral presentation state: dropped on the
   next view and re-derived, exactly like selection (one-view
   reconstruction).
-- **Decision auto-focus** (carried from the shipped compact model, now
-  global): a seat whose board holds a decision subject or a target
-  candidate is auto-staged — never hidden behind a rung — so an offered
-  action is always reachable. With candidates on several boards, the far
-  side takes the first and the others mark their crests/tiles with the
-  candidate treatment; each is one activation from expansion.
+- **Candidates pierce every rung** (the one mechanism; carried intent from
+  the shipped compact model, made consistent with single focus): a prompt's
+  candidate objects **always render individually and pickable in place**, at
+  every rung — a digest wing renders its candidate cards on top of its
+  digest chips, and a phone summary tile grows a candidate strip. Answering
+  a prompt therefore **never requires a focus change**; the far side stages
+  the first candidate-bearing board for context only, and focus remains
+  exactly one board. (Proven in the six-player mock: a digest wing renders
+  its ringed candidate beside its chips.)
 - **Off-focus activity is never silent**: a wing seat's action fires the
   quiet crest ping + log entry from the motion grammar, and combat against
   any seat draws its paths and attacked ring regardless of focus.
@@ -110,10 +114,18 @@ the others (carried rule). In order:
    is fixed by the stage, so wrapping trades row height, not neighbor
    space.
 4. **Digest rung** (wings only) — below a width/count threshold a wing
-   board stops drawing cards and shows its **digest**: creature and land
-   counts, pile counts, and its combat/status markers. The full board is
-   one activation away (manual focus), and decision auto-focus bypasses the
-   rung entirely. The far side and the receiver never digest.
+   board stops drawing cards and shows its **digest**: a count chip for
+   **every battlefield permanent category present** — creatures (including
+   folded tokens), **other permanents** (artifacts, enchantments,
+   planeswalkers, battles), and lands — plus pile counts. A board is never
+   summarized to fewer categories than it holds, so a
+   noncreature-heavy board can never read as empty. Load-bearing state
+   stays visible at the rung: combat participation and attacked/priority
+   markers ride the crest and drawn paths, attachment and detailed state
+   remain one activation away (manual focus) and always available through
+   inspect — and **prompt candidates pierce the rung** (rendered
+   individually, per the focus model), so nothing a decision needs is ever
+   behind the digest. The far side and the receiver never digest.
 5. **Compact change-of-kind** (phone portrait, 3+ players) — the receiver
    keeps the full anatomy at the bottom (fan, dock, prompt strip — the one
    action home never moves); the focused opponent keeps a drawn board; every
@@ -128,12 +140,12 @@ the others (carried rule). In order:
 | Stress case (#464 workstream 4) | Mechanism (mock) |
 | --- | --- |
 | Many identical tokens | ×N piles at rung 2; a swarm batch animates within the budget window (`tokens`) |
-| Wide/tall boards | wrapping at rung 3, then tier step-down (`tokens`) |
-| Large hands | the fan compresses spacing and rotation before card size; focus/hover lifts one card clear at full tier; below ~44 px spacing the fan pages (`bighand`) |
-| Six visible players | wings at the digest rung; crests always live (`six`) |
+| Wide/tall boards | the ladder in its stated order — tier step-down (rung 1), then ×N folding (rung 2), with wrapping (rung 3) absorbing what remains inside the fixed slot (`tokens`) |
+| Large hands | the fan compresses spacing and rotation before card size; when exposed spacing would drop below the 44 px floor, the fan **pages** (page size derived from the floor, ≥44 px page controls, board stays visible); focus/hover lifts one card clear at full tier (`bighand`) |
+| Six visible players | wings at the digest rung with all-category counts; crests always live; a candidate pierces the digest (`six`) |
 | Multi-attacker, multi-defender | paths terminate at defender crests; every attacked seat wears the ring; a defender wing is auto-focus-eligible (`combat`) |
-| Complex stack | the stack rail is screen space (visual system §5) and unaffected by plane staging; entries reference seats by accent stripe on the slot wrapper |
-| Phone portrait | rung 5 (`phone`) |
+| Deep mixed stack + complex block | the screen-space stack rail condenses to compact rows at depth (controller accent on the **slot**, gold marks the next to resolve) and fits beside the phase/action chrome; three blockers gang one attacker with doubled-stroke links while a stack ability targets a blocker (`stackweb`); on phone the stack opens as a scrollable sheet, readable at depth 8 (`phone`) |
+| Phone portrait | rung 5, with ≥44 px tiles, dock, and sheet rows (`phone`) |
 
 ## Interaction guarantees
 
