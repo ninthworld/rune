@@ -4,6 +4,8 @@
  * one the connection screen consumes for its default server URL.
  */
 interface ImportMetaEnv {
+  /** Vite's built-in development-mode flag. */
+  readonly DEV: boolean;
   /** Default RUNE server WebSocket URL; falls back to `ws://localhost:9000`. */
   readonly VITE_RUNE_SERVER_URL?: string;
   /**
@@ -12,6 +14,12 @@ interface ImportMetaEnv {
    * in production builds, so the hook is never live for players.
    */
   readonly VITE_RUNE_TEST_HOOKS?: string;
+  /**
+   * Enables the isolated `/fixtures/2.5d` integration route in a production
+   * preview build. Development builds enable it automatically; normal
+   * production builds leave it inaccessible.
+   */
+  readonly VITE_RUNE_FIXTURE_HARNESS?: string;
 }
 
 interface ImportMeta {
