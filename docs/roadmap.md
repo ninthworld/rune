@@ -121,8 +121,11 @@ direction-and-feasibility work of the 2.5D presentation pivot
   [`design/visual-system.md`](design/visual-system.md): style pillars, color and
   depth systems, environment and identity treatments, the non-color state-channel
   table, and the normative motion grammar inside the budget caps.
-- Layout concepts for two- through six-player, mobile, and stress-case boards
-  ([#470](https://github.com/ninthworld/rune/issues/470)).
+- ~~Layout concepts for two- through six-player, mobile, and stress-case boards~~
+  ([#470](https://github.com/ninthworld/rune/issues/470)) — **documented** in
+  [`design/layout-model.md`](design/layout-model.md) (staging slots per player
+  count, the focus model, and the degradation ladder), with the staging prototype
+  and captured mocks in [`ui-concepts/layouts-v1/`](ui-concepts/layouts-v1/).
 - Asset and effects pipeline groundwork
   ([#471](https://github.com/ninthworld/rune/issues/471)) — licensing, effect
   taxonomy, and delivery research ahead of any production assets.

@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RUNE — 2.5D layout concepts v1 (issue #470)</title>
+<!--
+  Reference-only layout-concept prototype for the 2.5D pivot (issue #470,
+  under ADR 0029/0030 and docs/design/visual-system.md). Never import from
+  prototypes/ into production.
+
+  What this file demonstrates: ONE staging function (stagePlane) placing every
+  seat's region on the battlefield plane for 2-6 players, plus the degradation
+  ladder and the compact change-of-kind, across selectable scenarios:
+
+    duel        - 2 players: opponent full-wide, no focus concept needed
+    commander4  - 4-player Commander (primary target): focused + 2 peripherals
+    six         - 6 players: focused + 4 peripherals stacked 2 per side
+    tokens      - 4p stress: ~150 permanents, xN piles, digest-row rung
+    bighand     - 16-card hand fan compression
+    combat      - 4p multi-attacker web: different defenders, crossing paths
+    phone       - 390x844 frame: receiver full + focused board + summary tiles
+
+  Focus rules exercised here (see docs/design/layout-model.md):
+    - at 3+ players exactly one opponent is focused (expanded);
+    - clicking any peripheral crest or board re-stages focus (ephemeral state);
+    - a decision subject on an unfocused board auto-focuses it (simulated by
+      the combat scenario's "attacked" defender).
+
+  Written state -> stagePlane(state, geometry) -> render; no DOM readback.
+-->
+<style>
+  :root {
+    --board: #15171a; --card: #23262b; --name: #e8e6e1;
+    --gold: #f2c94c; --select: #7fb2e5; --target: #e0784a;
+    --w: #cfc7ac; --u: #4e86c1; --b: #77688c; --r: #c05b4d; --g: #57935f; --land: #a08a6e;
+    --dur: 280ms;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font: 13px/1.35 system-ui, sans-serif; color: var(--name); background: var(--board); user-select: none; }
+
+  #env { position: absolute; inset: 0; }
+  #env .sky { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% -10%, #2c3a55 0%, #1b2233 45%, #12141c 100%); }
+  #env .ridge { position: absolute; left: 0; right: 0; height: 22vh; top: 26%;
+    background: radial-gradient(150% 100% at 50% 100%, transparent 58%, #161c29 59%, #10141d 100%); }
+  #env .vignette { position: absolute; inset: 0; background: radial-gradient(120% 120% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%); }
+
+  #viewport { position: fixed; inset: 0; }
+  /* The phone scenario nests the whole world in a device frame. */
+  #viewport.phone {
+    inset: auto; width: 390px; height: 844px; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 24px; overflow: hidden;
+    box-shadow: 0 0 0 8px #000, 0 30px 80px rgba(0,0,0,.8);
+  }
+
+  #stage { position: absolute; inset: 0; perspective: 1500px; perspective-origin: 50% 30%; }
+  #viewport.phone #stage { perspective: 900px; }
+  #table { position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%) rotateX(30deg); transform-style: preserve-3d; }
+  #table .felt { position: absolute; inset: -70px -140px; border-radius: 44px;
+    background: radial-gradient(80% 70% at 50% 42%, #232c3a 0%, #1b212d 55%, #151a24 100%);
+    box-shadow: 0 0 0 2px rgba(232,230,225,.05), 0 60px 120px rgba(0,0,0,.6); }
+
+  .region { position: absolute; transform-style: preserve-3d; transition: all var(--dur) ease; }
+  .region .lane { position: absolute; inset: 0; border-radius: 12px; background: rgba(232,230,225,.025);
+    box-shadow: inset 0 0 0 1px rgba(232,230,225,.06); }
+  .region.owned .lane { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .region.focusable { cursor: pointer; }
+  .region.focusable:hover .lane { box-shadow: inset 0 0 0 1px var(--select); }
+  .region .zone-label { position: absolute; top: -15px; left: 4px; font-size: 10px; letter-spacing: .13em; text-transform: uppercase; opacity: .35; }
+  .row { position: absolute; left: 10px; right: 10px; display: flex; gap: 6px; justify-content: center; transform-style: preserve-3d; }
+
+  .card { position: relative; width: var(--cw, 84px); height: calc(var(--cw, 84px) * 1.4); flex: none;
+    border-radius: 6px; background: var(--card); transform-style: preserve-3d;
+    box-shadow: 0 1px 0 rgba(232,230,225,.08) inset, 0 0 0 1.4px color-mix(in srgb, var(--frame) 75%, #000 25%), 0 8px 12px rgba(0,0,0,.45);
+    transition: transform var(--dur) ease; }
+  .card .band { position: absolute; left: 4px; right: 4px; top: 4px; height: 14px; border-radius: 3px; padding: 1px 3px;
+    font-size: 8.5px; font-weight: 600; white-space: nowrap; overflow: hidden;
+    background: color-mix(in srgb, var(--frame) 16%, transparent); }
+  .card .art { position: absolute; left: 4px; right: 4px; top: 21px; bottom: 22px; border-radius: 3px;
+    display: grid; place-items: center; font-size: 22px; font-weight: 700;
+    color: color-mix(in srgb, var(--frame) 55%, transparent);
+    background: radial-gradient(90% 80% at 50% 30%, color-mix(in srgb, var(--frame) 26%, transparent), transparent 75%),
+                linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.3)); }
+  .card .pt { position: absolute; right: 3px; bottom: 3px; padding: 0 4px; border-radius: 7px; font-size: 8.5px; font-weight: 700;
+    background: rgba(0,0,0,.55); box-shadow: 0 0 0 1px color-mix(in srgb, var(--frame) 60%, transparent); }
+  /* Rotation must reserve footprint (carried rule): approximate with margin. */
+  .card.tapped { transform: rotate(25deg); filter: brightness(.8); margin: 0 calc(var(--cw, 84px) * .14); }
+  .card.attacking { box-shadow: 0 -3px 0 var(--target), 0 0 0 1.4px color-mix(in srgb, var(--frame) 75%, #000 25%), 0 8px 12px rgba(0,0,0,.45); }
+  .card.blocking { box-shadow: -3px 0 0 var(--select), 0 0 0 1.4px color-mix(in srgb, var(--frame) 75%, #000 25%), 0 8px 12px rgba(0,0,0,.45); }
+
+  /* xN pile: a splayed physical stack (visual-system §5) */
+  .stackN { position: relative; flex: none; width: var(--cw); height: calc(var(--cw) * 1.4); transform-style: preserve-3d; }
+  .stackN .card { position: absolute; left: 0; top: 0; }
+  .stackN .card:nth-child(2) { transform: translate(2px, -2px); }
+  .stackN .card:nth-child(3) { transform: translate(4px, -4px); }
+  .stackN .n { position: absolute; right: -6px; top: -8px; z-index: 2; min-width: 20px; height: 20px; padding: 0 4px;
+    border-radius: 10px; display: grid; place-items: center; font-size: 10px; font-weight: 800;
+    background: #0d0f13; box-shadow: 0 0 0 1px rgba(232,230,225,.3); }
+
+  /* Digest row: the peripheral compression rung — type counts, not cards */
+  .digest { position: absolute; left: 10px; right: 10px; display: flex; gap: 5px; justify-content: center; }
+  .digest .chip { padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+    background: rgba(13,15,19,.7); box-shadow: 0 0 0 1px rgba(232,230,225,.18); }
+
+  .pile { position: absolute; width: 44px; height: 62px; border-radius: 5px;
+    background: repeating-linear-gradient(0deg, #262a31 0 3px, #202329 3px 6px);
+    box-shadow: 0 0 0 1px rgba(232,230,225,.12), 0 6px 8px rgba(0,0,0,.4); }
+  .pile .count { position: absolute; right: -6px; top: -6px; min-width: 17px; height: 17px; border-radius: 9px;
+    display: grid; place-items: center; font-size: 9px; font-weight: 700; background: #0d0f13;
+    box-shadow: 0 0 0 1px rgba(232,230,225,.25); }
+
+  .portrait { position: absolute; width: 108px; text-align: center; transform-style: preserve-3d; cursor: pointer; transition: all var(--dur) ease; }
+  .portrait .crest { width: 52px; height: 52px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center;
+    font-size: 19px; font-weight: 800; background: radial-gradient(60% 60% at 50% 35%, #2d3340, #191d26);
+    box-shadow: 0 0 0 3px var(--accent), 0 8px 14px rgba(0,0,0,.5); }
+  .portrait.priority .crest { box-shadow: 0 0 0 3px var(--gold), 0 0 20px color-mix(in srgb, var(--gold) 55%, transparent); }
+  .portrait.attacked .crest { box-shadow: 0 0 0 3px var(--target), 0 0 22px color-mix(in srgb, var(--target) 60%, transparent); }
+  .portrait .who { margin-top: 3px; font-size: 10.5px; font-weight: 600; }
+  .portrait .stats { font-size: 9px; opacity: .75; }
+  .portrait .life { display: inline-block; margin-top: 1px; padding: 0 7px; border-radius: 3px; font-weight: 800; font-size: 12px;
+    background: #0d0f13; box-shadow: 0 0 0 1px var(--accent);
+    clip-path: polygon(8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%, 0 50%); }
+  .portrait .cmd { display: inline-block; margin-left: 3px; padding: 0 5px; border-radius: 3px; font-size: 9px; font-weight: 700;
+    background: #0d0f13; box-shadow: 0 0 0 1px rgba(232,230,225,.3); }
+
+  /* Phone summary tiles (compact change-of-kind) */
+  .tile { position: absolute; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px;
+    background: rgba(13,15,19,.8); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent); cursor: pointer; }
+  .tile .mini-crest { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800;
+    background: radial-gradient(60% 60% at 50% 35%, #2d3340, #191d26); box-shadow: 0 0 0 2px var(--accent); }
+  .tile .t-name { font-size: 11px; font-weight: 600; }
+  .tile .t-stats { font-size: 9.5px; opacity: .75; }
+  .tile.attacked { box-shadow: 0 0 0 2px var(--target); }
+
+  #hand { position: absolute; left: 50%; bottom: -26px; width: 700px; height: 200px; transform: translateX(-50%); pointer-events: none; }
+  #viewport.phone #hand { width: 380px; bottom: -18px; }
+  #hand .card { position: absolute; left: 50%; bottom: 0; transform-origin: 50% 120%;
+    transform: translateX(-50%) rotate(var(--fan)) translateY(var(--sink)); pointer-events: auto; }
+  #hand .card:hover { transform: translateX(-50%) rotate(0) translateY(-58px) scale(1.15); z-index: 40; }
+  #hand .card.playable::after { content: ""; position: absolute; left: 5px; right: 5px; bottom: -1px; height: 3px; border-radius: 2px;
+    background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+
+  #phasebar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); padding: 4px 14px; border-radius: 14px;
+    font-size: 11.5px; letter-spacing: .07em; background: rgba(13,15,19,.8); box-shadow: 0 0 0 1px rgba(232,230,225,.15); white-space: nowrap; }
+  #phasebar b { color: var(--gold); }
+  #dockBtn { position: absolute; right: 18px; bottom: 22px; padding: 9px 16px; border-radius: 8px; border: 0;
+    font: 700 12.5px system-ui; color: #1a1405; background: var(--gold); box-shadow: 0 6px 14px rgba(0,0,0,.4); }
+
+  #fx { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
+
+  #controls { position: fixed; left: 12px; top: 12px; width: 190px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; z-index: 60; }
+  #controls button { text-align: left; padding: 5px 8px; border: 0; border-radius: 6px; cursor: pointer;
+    background: rgba(13,15,19,.85); color: var(--name); box-shadow: 0 0 0 1px rgba(232,230,225,.14); }
+  #controls button.on { box-shadow: 0 0 0 1.5px var(--gold); }
+  #note { position: fixed; left: 12px; bottom: 12px; width: 300px; padding: 8px 10px; border-radius: 6px; font-size: 11px; line-height: 1.45;
+    background: rgba(13,15,19,.85); box-shadow: 0 0 0 1px rgba(232,230,225,.14); z-index: 60; opacity: .9; }
+</style>
+</head>
+<body>
+<div id="controls"></div>
+<div id="note"></div>
+
+<div id="viewport">
+  <div id="env"><div class="sky"></div><div class="ridge"></div><div class="vignette"></div></div>
+  <div id="stage"><div id="table"><div class="felt"></div></div></div>
+  <canvas id="fx"></canvas>
+  <div id="hand"></div>
+  <div id="phasebar">Turn 6 · <b>Your main phase</b></div>
+  <button id="dockBtn">Pass priority</button>
+</div>
+
+<script>
+"use strict";
+const FRAMES = { W: "--w", U: "--u", B: "--b", R: "--r", G: "--g", L: "--land" };
+const ACCENTS = ["#4d7ec9", "#b0563f", "#4f8f5c", "#8b6fb0", "#c08b3e", "#4e9a9b"];
+const NAMES = ["You", "Imogen", "Tam", "Sorel", "Bree", "Kellan"];
+let uid = 1;
+const mk = (name, frame, o = {}) => Object.assign({ id: "c" + uid++, name, frame }, o);
+
+function creatures(n, seed) {
+  return Array.from({ length: n }, (_, i) =>
+    mk(["Ridge Wolf", "Dawn Herald", "Moor Shade", "Emberkin", "Gale Sprite"][(seed + i) % 5], "WUBRG"[(seed + i) % 5],
+       { pt: (1 + i % 4) + "/" + (2 + i % 3), tapped: i % 4 === 0 }));
+}
+const lands = n => Array.from({ length: n }, (_, i) => mk("Land", "L", { tapped: i % 3 === 0 }));
+
+function basePlayers(n, o = {}) {
+  return Array.from({ length: n }, (_, i) => ({
+    seat: i, you: i === 0, name: NAMES[i], accent: ACCENTS[i],
+    life: o.commander ? 40 - i * 3 : 20 - i * 2, priority: i === 0,
+    library: 88 - i * 4, handCount: 4 + (i % 3), commanderTax: o.commander ? (i % 3) * 2 : null,
+    attacked: false,
+    board: { creatures: creatures(3 + (i % 2), i), lands: lands(3 + (i % 3)), stacks: [] },
+  }));
+}
+
+/* ----------------------------------------------------------- scenarios -- */
+const SCENARIOS = {
+  duel: {
+    label: "2p duel",
+    note: "Two players: the opponent owns the full far side — no focus concept exists at 2p. Both boards run large tiers.",
+    make: () => ({ players: basePlayers(2), focused: 1, phone: false, hand: 5 }),
+  },
+  commander4: {
+    label: "4p Commander (primary)",
+    note: "The primary target. Focused opponent expanded top; two peripheral opponents staged at the sides at a smaller tier; commander tax on every crest; center corridor stays clear for interaction.",
+    make: () => ({ players: basePlayers(4, { commander: true }), focused: 1, phone: false, hand: 6, commander: true }),
+  },
+  six: {
+    label: "6 players",
+    note: "Focused + four peripherals, two per side, stacked. Peripheral boards drop to the digest rung (type counts) at this width; every crest remains selectable.",
+    make: () => {
+      const p = basePlayers(6, { commander: true });
+      return { players: p, focused: 2, phone: false, hand: 5, commander: true, forceDigest: true };
+    },
+  },
+  tokens: {
+    label: "4p token stress",
+    note: "~150 permanents. Identical-state permanents fold to splayed ×N piles (grouping key carried from the shipped client, incl. action fingerprint); rows wrap before any region grows past its stage slot.",
+    make: () => {
+      const p = basePlayers(4, { commander: true });
+      p[1].board.stacks = [{ card: mk("Saproling", "G", { pt: "1/1" }), n: 38 }, { card: mk("Soldier", "W", { pt: "1/1" }), n: 22 }];
+      p[1].board.creatures = creatures(6, 1);
+      p[0].board.stacks = [{ card: mk("Goblin", "R", { pt: "1/1" }), n: 27 }];
+      p[0].board.creatures = creatures(7, 0);
+      p[0].board.lands = lands(9);
+      p[3].board.stacks = [{ card: mk("Zombie", "B", { pt: "2/2" }), n: 41 }];
+      return { players: p, focused: 1, phone: false, hand: 6, commander: true };
+    },
+  },
+  bighand: {
+    label: "16-card hand",
+    note: "Large-hand compression: the fan tightens spacing and rotation instead of shrinking cards below the readable tier; hover/focus still lifts one card clear of the fan.",
+    make: () => ({ players: basePlayers(4, { commander: true }), focused: 1, phone: false, hand: 16, commander: true }),
+  },
+  combat: {
+    label: "4p combat web",
+    note: "Multi-attacker, multi-defender: your two attackers hit different opponents; a peripheral defender under attack is auto-focus-eligible (its crest wears the attacked ring; its board is one activation from expansion). Paths terminate at crests.",
+    make: () => {
+      const p = basePlayers(4, { commander: true });
+      p[0].board.creatures.forEach((c, i) => { if (i < 2) { c.attacking = i === 0 ? 1 : 3; c.tapped = true; } });
+      p[1].attacked = true; p[3].attacked = true;
+      p[1].board.creatures[0].blocking = true;
+      return { players: p, focused: 1, phone: false, hand: 5, commander: true, combat: true };
+    },
+  },
+  phone: {
+    label: "Phone portrait (4p)",
+    note: "The compact change-of-kind: receiver keeps the full anatomy at the bottom; the focused opponent keeps a drawn board; other opponents collapse to summary tiles (crest, life, counts, attacked marker). Activating a tile re-stages focus in place.",
+    make: () => {
+      const p = basePlayers(4, { commander: true });
+      p[3].attacked = true;
+      return { players: p, focused: 1, phone: true, hand: 5, commander: true };
+    },
+  },
+};
+
+/* -------------------------------------------------------- the stager --
+ * stagePlane(state, geo) -> region placements on the plane.
+ * THIS function is the concept #470 delivers; the written model lives in
+ * docs/design/layout-model.md.
+ */
+function stagePlane(st, geo) {
+  const { W, H } = geo; // plane size
+  const out = [];
+  const opp = st.players.filter(p => !p.you);
+  const receiverH = st.phone ? H * 0.42 : H * 0.33;
+  out.push({ p: st.players[0], x: W * 0.12, y: H - receiverH, w: W * 0.76, h: receiverH - 10, tier: st.phone ? 64 : 92, kind: "board" });
+
+  if (st.phone) {
+    // Compact change-of-kind: focused board + summary tiles.
+    const foc = opp.find(p => p.seat === st.focused) || opp[0];
+    out.push({ p: foc, x: W * 0.06, y: 8, w: W * 0.88, h: H * 0.34, tier: 46, kind: "board" });
+    opp.filter(p => p !== foc).forEach((p, i) => out.push({ p, kind: "tile", x: W * 0.06, y: H * 0.36 + 14 + i * 52, w: W * 0.5 }));
+    return out;
+  }
+
+  if (opp.length === 1) {
+    out.push({ p: opp[0], x: W * 0.12, y: 16, w: W * 0.76, h: H * 0.34, tier: 80, kind: "board" });
+    return out;
+  }
+
+  const foc = opp.find(p => p.seat === st.focused) || opp[0];
+  const per = opp.filter(p => p !== foc);
+  out.push({ p: foc, x: W * 0.2, y: 16, w: W * 0.6, h: H * 0.3, tier: 74, kind: "board", focused: true });
+
+  // Peripherals: up to two per side, outward from the top.
+  const perSide = Math.ceil(per.length / 2);
+  per.forEach((p, i) => {
+    const side = i % 2 === 0 ? -1 : 1;           // alternate left/right
+    const rank = Math.floor(i / 2);              // 0 = upper, 1 = lower
+    const w = W * (perSide > 1 ? 0.21 : 0.24);
+    const h = perSide > 1 ? H * 0.26 : H * 0.4;
+    const x = side < 0 ? -w * 0.28 : W - w * 0.72;
+    const y = 90 + rank * (h + 26);
+    out.push({ p, x, y, w, h, tier: perSide > 1 ? 40 : 52, kind: "board", peripheral: true,
+               digest: perSide > 1 || undefined });
+  });
+  return out;
+}
+
+/* ------------------------------------------------------------- render -- */
+const table = document.getElementById("table"), handEl = document.getElementById("hand");
+const viewport = document.getElementById("viewport");
+function el(t, c, p) { const e = document.createElement(t); if (c) e.className = c; p && p.appendChild(e); return e; }
+
+function cardEl(c, tier) {
+  const d = el("div", "card");
+  d.id = c.id; d.style.setProperty("--cw", tier + "px");
+  d.style.setProperty("--frame", `var(${FRAMES[c.frame] || "--w"})`);
+  if (c.tapped) d.classList.add("tapped");
+  if (c.attacking != null) d.classList.add("attacking");
+  if (c.blocking) d.classList.add("blocking");
+  el("div", "band", d).textContent = c.name;
+  el("div", "art", d).textContent = c.name[0];
+  if (c.pt) el("div", "pt", d).textContent = c.pt;
+  return d;
+}
+
+let state = null;
+function render() {
+  viewport.classList.toggle("phone", !!state.phone);
+  const geo = state.phone ? { W: 360, H: 560 } : { W: 1280, H: 760 };
+  table.style.width = geo.W + "px"; table.style.height = geo.H + "px";
+  table.querySelectorAll(".region, .portrait, .pile, .tile").forEach(n => n.remove());
+
+  for (const r of stagePlane(state, geo)) {
+    if (r.kind === "tile") {
+      const t = el("div", "tile" + (r.p.attacked ? " attacked" : ""), table);
+      t.style.cssText = `left:${r.x}px; top:${r.y}px; --accent:${r.p.accent}`;
+      t.onclick = () => { state.focused = r.p.seat; render(); };
+      el("div", "mini-crest", t).textContent = r.p.name[0];
+      const col = el("div", "", t);
+      el("div", "t-name", col).textContent = r.p.name;
+      el("div", "t-stats", col).textContent = `${r.p.life} life · ${r.p.handCount} hand · lib ${r.p.library}` + (r.p.attacked ? " · ATTACKED" : "");
+      continue;
+    }
+    const reg = el("div", "region" + (r.p.you ? " owned" : "") + (r.peripheral ? " focusable" : ""), table);
+    reg.style.cssText = `left:${r.x}px; top:${r.y}px; width:${r.w}px; height:${r.h}px; --accent:${r.p.accent}`;
+    el("div", "lane", reg);
+    el("div", "zone-label", reg).textContent =
+      r.p.you ? "Your battlefield" : r.p.name + (r.focused ? " — focused" : "");
+    if (r.peripheral) reg.onclick = () => { state.focused = r.p.seat; render(); };
+
+    if (r.digest && state.forceDigest) {
+      // Digest rung: type counts instead of cards.
+      const b = r.p.board;
+      const d1 = el("div", "digest", reg); d1.style.top = r.h * 0.46 + "px";
+      const nCre = b.creatures.length + (b.stacks || []).reduce((s, x) => s + x.n, 0);
+      d1.innerHTML = `<span class="chip">⚔ ${nCre}</span><span class="chip">▲ ${b.lands.length}</span>`;
+      const d2 = el("div", "digest", reg); d2.style.top = r.h * 0.72 + "px";
+      d2.innerHTML = `<span class="chip">yard ${4 + r.p.seat}</span>`;
+    } else {
+      const rows = [
+        { items: r.p.board.creatures, stacks: r.p.board.stacks || [], y: 12, tier: r.tier },
+        { items: r.p.board.lands, stacks: [], y: r.h / 2 + 6, tier: r.tier * 0.72 },
+      ];
+      for (const row of rows) {
+        const rw = el("div", "row", reg); rw.style.top = row.y + "px"; rw.style.flexWrap = "wrap";
+        for (const s of row.stacks) {
+          const sn = el("div", "stackN", rw); sn.style.setProperty("--cw", row.tier + "px");
+          for (let i = 0; i < Math.min(3, s.n); i++) sn.appendChild(cardEl({ ...s.card, id: s.card.id + "_" + i }, row.tier));
+          el("div", "n", sn).textContent = "×" + s.n;
+        }
+        for (const c of row.items) rw.appendChild(cardEl(c, row.tier));
+      }
+    }
+
+    // Crest cluster + library pile at the region edge.
+    const po = el("div", "portrait" + (r.p.priority ? " priority" : "") + (r.p.attacked ? " attacked" : ""), table);
+    po.id = "portrait-" + r.p.seat;
+    // Receiver crest sits left of their board; on the phone frame there is no
+    // side margin, so it tucks into the region's top-left corner instead.
+    const px = r.p.you ? (state.phone ? r.x - 24 : r.x - 116) : r.x + r.w / 2 - 54;
+    const py = r.p.you ? (state.phone ? r.y + 4 : r.y + 30) : r.y - 54;
+    po.style.cssText = `left:${px}px; top:${py}px; --accent:${r.p.accent}`;
+    if (!r.p.you) po.onclick = () => { state.focused = r.p.seat; render(); };
+    el("div", "crest", po).textContent = r.p.name[0];
+    el("div", "who", po).textContent = r.p.name;
+    el("div", "stats", po).textContent = `${r.p.handCount} hand`;
+    el("div", "life", po).textContent = r.p.life;
+    if (state.commander && r.p.commanderTax != null) el("div", "cmd", po).textContent = "C+" + r.p.commanderTax;
+    const pile = el("div", "pile", table);
+    pile.id = "library-" + r.p.seat;
+    pile.style.cssText = `left:${r.x + r.w - 38}px; top:${r.y + r.h - 50}px;`;
+    el("div", "count", pile).textContent = r.p.library;
+  }
+
+  // Hand fan with large-hand compression.
+  handEl.innerHTML = "";
+  const n = state.hand, tier = state.phone ? 92 : 112;
+  const spread = Math.min(92, (state.phone ? 300 : 620) / Math.max(1, n - 1));
+  const rot = Math.min(7, 64 / Math.max(1, n - 1));
+  for (let i = 0; i < n; i++) {
+    const mid = (n - 1) / 2, off = i - mid;
+    const c = mk(["Emberkin", "Gale Sprite", "Land", "Dawn Herald", "Moor Shade"][i % 5], "RULWB"[i % 5], { pt: "2/2" });
+    const d = cardEl(c, tier);
+    d.classList.add("playable");
+    d.style.setProperty("--fan", off * rot + "deg");
+    d.style.setProperty("--sink", Math.abs(off) * (n > 10 ? 8 : 14) + "px");
+    d.style.left = `calc(50% + ${off * spread}px)`;
+    handEl.appendChild(d);
+  }
+  drawPaths();
+}
+
+/* ------------------------------------------------ combat path overlay -- */
+const fx = document.getElementById("fx"), ctx = fx.getContext("2d");
+function drawPaths() {
+  const box = viewport.getBoundingClientRect();
+  fx.width = box.width * devicePixelRatio; fx.height = box.height * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx.clearRect(0, 0, box.width, box.height);
+  if (!state.combat) return;
+  for (const p of state.players) for (const c of p.board.creatures) {
+    if (c.attacking == null) continue;
+    const f = document.getElementById(c.id)?.getBoundingClientRect();
+    const g = document.getElementById("portrait-" + c.attacking)?.getBoundingClientRect();
+    if (!f || !g) continue;
+    const x1 = f.left + f.width / 2 - box.left, y1 = f.top + f.height / 2 - box.top;
+    const x2 = g.left + g.width / 2 - box.left, y2 = g.top + 26 - box.top;
+    const mx = (x1 + x2) / 2, my = Math.min(y1, y2) - 80;
+    ctx.strokeStyle = "#e0784a"; ctx.lineWidth = 3; ctx.setLineDash([12, 9]); ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(mx, my, x2, y2); ctx.stroke();
+    ctx.setLineDash([]);
+    const ang = Math.atan2(y2 - my, x2 - mx);
+    ctx.fillStyle = "#e0784a"; ctx.beginPath(); ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 12 * Math.cos(ang - .4), y2 - 12 * Math.sin(ang - .4));
+    ctx.lineTo(x2 - 12 * Math.cos(ang + .4), y2 - 12 * Math.sin(ang + .4)); ctx.fill();
+  }
+}
+addEventListener("resize", () => state && drawPaths());
+
+/* ------------------------------------------------------------ controls -- */
+const controls = document.getElementById("controls"), note = document.getElementById("note");
+let current = "commander4";
+function setScenario(key) {
+  current = key; uid = 1;
+  state = SCENARIOS[key].make();
+  note.textContent = SCENARIOS[key].note;
+  controls.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.k === key));
+  render();
+  requestAnimationFrame(drawPaths); // paths after layout settles
+}
+for (const [k, s] of Object.entries(SCENARIOS)) {
+  const b = el("button", "", controls); b.dataset.k = k; b.textContent = s.label;
+  b.onclick = () => setScenario(k);
+}
+window.__layout = { setScenario, scenarios: Object.keys(SCENARIOS) };
+setScenario(current);
+</script>
+</body>
+</html>
