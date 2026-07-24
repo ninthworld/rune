@@ -168,8 +168,20 @@ deferred. Ordered by dependency and product impact:
    blueprint's remaining compact-layout item, and the home for commander chrome on
    phones.
 9. The real-browser smoke path ([#279](https://github.com/ninthworld/rune/issues/279)) —
-   still queued and unblocked; one canary spec, with the full E2E suite beyond it
-   deferred (ADR 0011).
+   **shipped**; one canary spec, with the full E2E suite beyond it deferred (ADR 0011).
+
+> **The browser suite is back — as one canary, not a matrix.** #279 restored the harness
+> the earlier removal took out: `clients/web/e2e/` (Playwright + pinned Chromium), a
+> launcher for a real seeded `rune-server` on an OS-assigned port, `make e2e`, and the
+> `E2E` CI job that runs on every PR. It is *one* spec: two browser contexts walk the
+> shipped path into a match, assert the table actually renders (a live, attached WebGL
+> canvas and a populated scene plane — the guard the invisible-table bug slipped past),
+> play a land through the rendered hand card and dock chip, and carry the game across a
+> turn boundary through rendered controls. `make check` stays browser-free and as fast as
+> before; `make verify` composes the canary. The wider ADR 0011 matrix — mock-WS fixture
+> tier, screenshot baselines, full-game runs — is still deferred until the in-game UI
+> settles. The four-player Commander vertical slice
+> ([#499](https://github.com/ninthworld/rune/issues/499)) builds on this harness.
 
 ## Milestones
 
@@ -188,8 +200,9 @@ enter an id directly.
 
 The engine, protocol, and UI flows are implemented and covered by unit and integration tests.
 Reliable canvas rendering and a visible failure state are shipped, as are action
-discoverability and table geography (#277, #278). The real-browser smoke path (#279) is the
-one open item; it is now unblocked (see Immediate priorities).
+discoverability and table geography (#277, #278). The real-browser smoke path (#279) has
+landed: a Playwright canary drives real Chromium through the shipped path into a match on
+every PR (see Immediate priorities).
 
 ### M3 — A real card pool
 

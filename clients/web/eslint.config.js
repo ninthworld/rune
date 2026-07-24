@@ -43,5 +43,20 @@ export default tseslint.config(
       globals: globals.browser,
     },
   },
+  // The browser smoke suite (`e2e/`, ADR 0011 / issue #279) is Playwright code:
+  // it runs in Node but its `page.evaluate` callbacks are browser code, so it
+  // needs both global sets. Two React rules do not apply to it — Playwright's
+  // fixture signature is `async ({}, use)`, which is neither an empty pattern
+  // bug nor a React hook.
+  {
+    files: ['e2e/**/*.ts'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+    rules: {
+      'no-empty-pattern': 'off',
+      'react-hooks/rules-of-hooks': 'off',
+    },
+  },
   prettier,
 );
