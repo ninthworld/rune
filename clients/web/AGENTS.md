@@ -13,8 +13,11 @@ the table UI.
   per-card actions as bar buttons (docs/decisions/0004).
 - Rendering split (ADR 0030): there is **one** rendering stack. Cards and the
   scene plane render in React DOM (`table/live/` stages via `plane/` + the DOM
-  `card/dom/CardFace`, reconciled by `table/planeReconciler.ts`); Pixi is reserved
-  for the passive effects overlay (`table/effects/`, `EffectsSurface`). React DOM
+  `card/dom/CardFace`, reconciled by `table/planeReconciler.ts`); no Pixi remains
+  in the card/scene render path. Pixi survives only *outside* it — the passive
+  effects overlay (`table/effects/`, `EffectsSurface`) and the ADR 0024 art
+  texture cache (`card/art/artStore.ts` loads card art into a Pixi `Texture` the
+  DOM renderer looks up). React DOM
   also owns controls, prompts, player information, browsers, and inspect surfaces.
   The legacy Pixi scene stack was fully retired: the ADR 0003 match table at the
   Phase 2 exit (#494), and the read-only spectate mode (`SpectatorTable`) at

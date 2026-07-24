@@ -98,8 +98,11 @@ incremental** (full rebuilds are reserved for reconnect/fast-forward).
   `cardFactory`'s `buildCardDisplay`/`buildChipDisplay` draw path, `card/bitmapText`,
   `chrome/glyphs/pixi`, `table/sceneReconciler.ts`, `table/BattlefieldCanvas.tsx`,
   `table/EntityOverlay.tsx`, `table/scene/builder.ts`, `table/scene/row-layout.ts`,
-  and `table/layout.ts`, with their tests. Pixi remains only for the passive
-  effects overlay (`table/effects/`, `EffectsSurface`). `cardFactory.ts` keeps its
+  and `table/layout.ts`, with their tests. No Pixi remains in the card/scene
+  render path; it survives only outside it — the passive effects overlay
+  (`table/effects/`, `EffectsSurface`) and the pre-existing ADR 0024 art texture
+  cache (`card/art/artStore.ts`, which loads card art into a Pixi `Texture`).
+  `cardFactory.ts` keeps its
   shared, pure card-data model (`CardDisplayData`, `cardVisualSignature`,
   `parseManaCost`), which the DOM card component and the plane fold key consume;
   the surviving scene helpers (`scene/types`, `geometry`, `band-helpers`,
