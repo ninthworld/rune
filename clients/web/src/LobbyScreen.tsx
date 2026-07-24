@@ -69,6 +69,8 @@ import { RuneMark } from './chrome/RuneMark';
 import { Glyph } from './chrome/glyphs';
 import type { GlyphName } from './chrome/glyphs';
 import { IDENTITY_ACCENTS } from './table/identityAccents';
+import { useReducedMotion } from './table/hooks/useReducedMotion';
+import { deckSceneVars } from './deck/deckScene';
 import { PALETTE } from './tokens';
 import s from './table/chrome.module.css';
 import l from './screens.module.css';
@@ -761,6 +763,7 @@ function RoomPanel({ view }: { view: LobbyView }) {
   const catalog = useGameStore((state) => state.catalog);
   const requestCatalog = useGameStore((state) => state.requestCatalog);
   const lobbyError = useGameStore((state) => state.lobbyError);
+  const reducedMotion = useReducedMotion();
   const room = view.room;
   const [deckId, setDeckId] = useState(STARTER_DECKLISTS[0].id);
   const [copied, setCopied] = useState(false);
@@ -924,7 +927,15 @@ function RoomPanel({ view }: { view: LobbyView }) {
           data-testid="deck-select-section"
         >
           <h2 className={l.cardTitle}>Choose a deck</h2>
-          <div className={l.deckGrid} role="group" aria-label="Starter decks">
+          {/* The deck tiles ride the 2.5D visual system (#508): the scene tokens
+              here light the elevation ladder + micro motion the tiles read, keeping
+              lobby deck selection consistent with the builder. */}
+          <div
+            className={l.deckGrid}
+            role="group"
+            aria-label="Starter decks"
+            style={deckSceneVars(reducedMotion)}
+          >
             {STARTER_DECKLISTS.map((deck) => (
               <DeckTile
                 key={deck.id}
