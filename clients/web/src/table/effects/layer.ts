@@ -158,10 +158,10 @@ export class EffectsLayer {
     const track = moving && !this.options.reducedMotion;
     if (track === this.tracking) return;
     this.tracking = track;
-    if (track) {
-      this.dirty = true;
-      this.wake?.();
-    }
+    // Redraw on both edges. In particular, the final reconciler rect may land
+    // between animation frames, so turning tracking off must commit it once.
+    this.dirty = true;
+    this.wake?.();
   }
 
   /** Whether anything is visible/live (persistent effects included, even when
@@ -173,13 +173,28 @@ export class EffectsLayer {
   /**
    * Whether another animation frame is needed — distinct from
    * {@link hasLiveEffects}: a drawn static blocker link or reduced-motion path
-   * is live but needs nothing, so the mount's ticker may stop after its first
-   * clean frame. True while something is undrawn (`dirty`), a transient awaits
-   * its expiry, or a per-frame animation (dash crawl, tracking) is running.
-   * Every mutation calls {@link wake}, so stopping on false never strands work.
+   * is live but needs nothing, so the mount's ticker may stop immediately.
+   * True while something is undrawn (`dirty`) or a per-frame animation (dash
+   * crawl, tracking, or a full-motion transient) is running. Static transient
+   * expiry is scheduled separately through {@link nextWakeIn}.
    */
   needsFrame(): boolean {
-    return this.dirty || this.transients.length > 0 || this.isAnimating();
+    return this.dirty || this.isAnimating();
+  }
+
+  /**
+   * Milliseconds until the next transient expires. The mount uses this only
+   * when {@link needsFrame} is false, letting a reduced-motion flash sleep
+   * between its single visible frame and its retirement frame.
+   */
+  nextWakeIn(now: number): number | undefined {
+    let delay: number | undefined;
+    for (const transient of this.transients) {
+      const start = transient.start ?? now;
+      const remaining = Math.max(0, transient.duration - (now - start));
+      delay = delay === undefined ? remaining : Math.min(delay, remaining);
+    }
+    return delay;
   }
 
   /**
@@ -318,7 +333,7 @@ export class EffectsLayer {
     }
   }
 
-  /** Drop every live effect and clear the surface. */
+  /** Drop every live effect and render the cleared surface once. */
   clear(): void {
     this.transients = [];
     this.persistent = [];
@@ -327,7 +342,10 @@ export class EffectsLayer {
     this.stats.liveParticles = 0;
     this.lastProgram = [];
     this.graphics.clear();
-    this.dirty = false;
+    // Pixi is render-on-demand: clearing Graphics alone does not update the
+    // canvas, so wake one empty draw to remove any pixels already presented.
+    this.dirty = true;
+    this.wake?.();
   }
 }
 
@@ -347,16 +365,22 @@ function hexColor(hex: string): number {
  * layer, render only when it drew, and **stop the ticker the moment no further
  * frame is needed** — a drawn static blocker link or reduced-motion form is
  * live but costs nothing (`needsFrame`, not `hasLiveEffects`, is the stop
- * gate). Every layer mutation calls `wake`, so stopping never strands work.
+ * gate). Static transient expiry gets one scheduled wake instead of polling
+ * every Pixi frame. Every layer mutation calls `wake`, so stopping never
+ * strands work.
  */
 export function createEffectsTicker(
   layer: EffectsLayer,
-  host: { render(): void; stop(): void },
+  host: { render(): void; scheduleWake(delayMs: number): void; stop(): void },
 ): (now: number) => void {
   return (now: number) => {
     const drew = layer.advance(now);
     if (drew) host.render();
-    if (!drew && !layer.needsFrame()) host.stop();
+    if (!layer.needsFrame()) {
+      const delay = layer.nextWakeIn(now);
+      if (delay !== undefined) host.scheduleWake(delay);
+      host.stop();
+    }
   };
 }
 
