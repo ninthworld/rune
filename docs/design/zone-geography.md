@@ -139,7 +139,8 @@ The rack lives on the seat's **outer flank**, never in the central interaction c
 
 1. The rack is anchored to its region's outer edge and grows **outward-then-along**; it
    may bleed past the plane edge exactly like a wing slot, and never overlaps another
-   region (ADR 0023's by-construction rule).
+   region ([ADR 0032](../decisions/0032-contextual-shell-anatomy.md); zone homes stay
+   stable, and non-overlap is asserted by the layer contract, not assumed).
 2. **Clearance rule:** the union of the rack's four hit rects, expanded by a 12 px halo,
    must not intersect `PlaneSlotFrames.corridor`. A rack that cannot satisfy this inside
    its region digests (§6) — it never trims a zone away.

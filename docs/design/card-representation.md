@@ -252,7 +252,7 @@ One decided representation per surface. No implementation PR chooses ad hoc.
 | Surface | Silhouette | Bands present | Cost | Rules | P/T | Distinctive |
 | --- | --- | --- | --- | --- | --- | --- |
 | **Hand** | 0.715 full card | title, art, type, rules | yes (disc) | yes | plate, overhanging | fan member, screen space |
-| **Selected hand** | same, elevation `held` | same | yes | yes | yes | violet ring + glow; straightens, lifts, grows one tier; actions appear in the dock, never over the card |
+| **Selected hand** | same, elevation `held` | same | yes | yes | yes | blue ring + glow; straightens, lifts, grows one tier; actions appear in the dock, never over the card |
 | **Battlefield creature** | 1.00 permanent | title, art, status | **no** | **no** | plate | glyph plates carry ability identity |
 | **Battlefield noncreature** | 1.00 permanent | title, art, status | **no** | **no** | none (band keeps glyph plates) | attachments cluster with host (§7.6) |
 | **Battlefield land** | 1.45 **resource tile** | art only, framed | no | no | no | no title bar; tap state and the mana glyph plate (bottom-left) only; expands to the full card on focus/inspect; a nonbasic or actionable land **never** collapses to an anonymous chip |
@@ -298,10 +298,10 @@ of the card width `W` or height `H`; the face resolves them to px per tier.
 | `RUNE_GOLD` | `rule` | `#C7A46A` | lit gold hairline |
 | | `ruleShade` | `#8A7042` | shadow side |
 | | `plateRim` | `#B9955E` | plate rim |
-| `INDICATORS` (extend) | `selectRing` | `#8B6DD3` | violet selection core (measured) |
-| | `selectGlow` | `#CFB0F3` | violet outer bloom |
-| | `targetPath` | `#60A1D7` | drawn targeting path (measured) |
-| | `targetReticle` | `#7FC3F0` | reticle on the chosen target |
+| `INDICATORS` (extend) | `selectRing` | `#7FB2E5` | selection core — canonical `SURFACES.selection` (`visual-system.md` §2) |
+| | `selectGlow` | `#7FB2E5` | selection outer bloom — same hue at bloom alpha; spread, not hue, separates it from the ring |
+| | `targetPath` | `#E0784A` | drawn targeting path — canonical `SURFACES.targeting` |
+| | `targetReticle` | `#E0784A` | reticle on the chosen target — same hue; geometry separates it from the path |
 | | `counterBg` / `counterText` | `#2A5436` / `#EAF3E9` | counter badge (measured green) |
 | | `damageBg` / `damageText` | `#8E3A2A` / `#F6E7E4` | damage badge (measured red) |
 | `SPLAY` (amend) | `stepX` `stepY` | `0.055` `0.030` | ÷ W — down-and-**left**, replacing the current 2 px up-and-right |
@@ -321,8 +321,8 @@ of the card width `W` or height `H`; the face resolves them to px per tier.
 | --- | --- | --- | --- |
 | 1 | **Normal** | — | Resting: contact shadow, full opacity, no overlay. |
 | 2 | **Tapped** | rotation + dim | `TAP.angle` (25°) clockwise, `FRAME.tappedAlpha`. Footprint pre-reserved. One treatment at every tier and for every seat. A declared attacker keeps full opacity while tapped. |
-| 3 | **Selected** | **violet ring** + elevation | 0.021 · W ring in `INDICATORS.selectRing` following the outer radius, plus a soft outer bloom in `selectGlow` at ~0.05 · W spread; elevation `held`; the card straightens. |
-| 4 | **Targeted** (chosen target) | **blue path + reticle** | A drawn path in `targetPath` terminates in a circular reticle (`targetReticle`, diameter 0.24 · W, 0.016 · W stroke) centred on the target's art window. Path and reticle live on the scene layer, above every face. |
+| 3 | **Selected** | **blue ring** + elevation | 0.021 · W ring in `INDICATORS.selectRing` following the outer radius, plus a soft outer bloom in `selectGlow` at ~0.05 · W spread; elevation `held`; the card straightens. The sheet draws this ring and bloom **violet**; the maintainer's ruling assigns selection blue and supersedes the sheet (§15.1). Geometry is transcribed unchanged. |
+| 4 | **Targeted** (chosen target) | **orange path + reticle** | A drawn path in `targetPath` terminates in a circular reticle (`targetReticle`, diameter 0.24 · W, 0.016 · W stroke) centred on the target's art window. Path and reticle live on the scene layer, above every face. The sheet draws both **blue**; the ruling assigns targeting orange and supersedes the sheet (§15.1). Geometry is transcribed unchanged. |
 | 5 | **Counters + damage** | shaped badges | Counter badge: rounded rect, `counterBg`, two lines (`kind` over `×N`), docked **lower-left** of the art window. Damage badge: **torn/cracked silhouette** — deliberately not a rounded rect — `damageBg`, single numeral, docked **lower-right** of the art window. Both seat wholly inside the art window so the status band, glyph plates, and P/T plate stay visible (**[D]**, see §15.2). |
 | 6 | **Attachment** | physical cluster | Attached permanents render as cards at **0.70 × the host's size**, offset down-and-right by `(0.42 · W, 0.30 · H)` from the host's box, stacked behind one another at `(0.06 · W, 0.06 · H)` per additional attachment, drawn **below** the host in z-order. A thin light connector runs host → attachment. The cluster moves, taps, and folds as one unit. |
 | 7 | **Identical stack** | splayed pile + count | Top card at full fidelity; up to 3 card edges behind it, offset **down-and-left** per `SPLAY`; `×N` tab on the top edge (§7.4, **[D]** — the sheet also shows bottom-right; rejected because bottom-right is the P/T channel). |
@@ -335,7 +335,7 @@ of the card width `W` or height `H`; the face resolves them to px per tier.
 | --- | --- | --- | --- |
 | **Hover / keyboard focus** | — | elevation | Elevation `lifted` (`PROVISIONAL.lift.lifted`), 80–150 ms. No ring, no tint — hover must never be mistaken for selection. |
 | **Actionable** | gold `AFFORDANCE.actionable` | **bottom edge bar** | Carried unchanged from the shipped client and `visual-system.md` §7: a solid bar of `AFFORDANCE.edgeHeight` across the bottom edge, riding the status band's lower rule. Driven only by `valid_actions[]` containing an action for this entity. |
-| **Target candidate** | orange `SURFACES.targeting` | ring + steady beacon pulse | Full-perimeter ring at 0.016 · W; reduced motion renders the ring static. Distinct from the violet selection ring by hue *and* weight, and from the chosen target by the absence of a path. |
+| **Target candidate** | orange `SURFACES.targeting` | ring + steady beacon pulse | Full-perimeter ring at 0.016 · W; reduced motion renders the ring static. Distinct from the blue selection ring by hue *and* weight, and from the chosen target — which shares the orange targeting hue — by the absence of a path and reticle. |
 | **Attacking** | `INDICATORS.attackingBar` | **top edge bar** + outgoing path + 6° tilt | Carried from #332. Full opacity retained while tapped. |
 | **Blocking** | `INDICATORS.blockingBar` | **left edge bar** + doubled-stroke link | Carried from #332/#339. |
 | **Unavailable / ineligible** | — | dim | `FRAME.dimmedAlpha` multiplicative, non-interactive, during an active prompt only. |
@@ -689,15 +689,29 @@ Every "needs a protocol field" row is a contract change:
 
 Recorded here rather than fixed in the other documents, per this issue's scope.
 
-### 15.1 Selection and targeting hues contradict `visual-system.md` §2/§7
+### 15.1 Selection and targeting hues — **resolved by maintainer ruling**
 
-`visual-system.md` assigns **blue** `#7FB2E5` to selection and **orange**
-`#E0784A` to targeting. All three approved baselines show **violet** selection
-rings (states panel 3; Stonehide Behemoth in the overview and the interface
-baseline) and **blue** targeting paths and reticles (states panel 4; the cast arc
-in both scene images). This document follows the images (§5, §6.1) and keeps
-orange for *target candidate* only. **`visual-system.md` §2 and §7 need a
-matching edit; it is not made here.**
+**Ruling: selection is blue `#7FB2E5`; targeting is orange `#E0784A`**, per
+`visual-system.md` §2/§7. This document now follows the ruling throughout
+(§4, §5, §6.1, §6.2, and decision 9 of §16). No edit to `visual-system.md` is
+owed.
+
+The conflict, kept for the record: `visual-system.md` assigned **blue**
+`#7FB2E5` to selection and **orange** `#E0784A` to targeting, while all three
+approved baselines show **violet** selection rings (states panel 3; Stonehide
+Behemoth in the overview and the interface baseline) and **blue** targeting
+paths and reticles (states panel 4; the cast arc in both scene images). This
+document originally followed the images and kept orange for *target candidate*
+only. **Rejected alternative:** the baselines' violet selection / blue
+targeting. The sheets' violet and blue are now read as illustrative licence;
+their geometry — ring weight, bloom spread, reticle diameter, path routing —
+is transcribed unchanged, because only the hue assignment moved.
+
+Consequence to hold in implementation: *target candidate* and *chosen target*
+now share the orange targeting family, exactly as `visual-system.md` §7
+intends. They are separated by shape alone — candidate = ring + steady beacon
+pulse; chosen = ring + drawn path terminating in a reticle. Selection keeps the
+blue family to itself on the card face.
 
 ### 15.2 Panel 5 badges occlude the P/T plate
 
@@ -733,8 +747,11 @@ top-right circular badge at `support` and `mini` (§7.2).
 ### 15.6 The interface baseline's cyan permanent rims are unexplained
 
 The local battlefield row in `rune-2.5d-interface-baseline.jpg` shows a cyan/teal
-rim on four of five permanents with no legend. It is not selection (violet), not
-targeting (blue path), and not the gold actionable bar. **This spec does not
+rim on four of five permanents with no legend. It is not selection (blue ring +
+elevation), not targeting (orange), and not the gold actionable bar. Under the
+§15.1 ruling the rim now sits in the **same hue family as selection**, which
+raises the cost of adopting it: any future meaning for the cyan rim must be
+separated from selection by shape, not hue. **This spec does not
 adopt it**; actionable keeps the gold bottom edge bar of `visual-system.md` §7 and
 the shipped `AFFORDANCE` token. **Open question for the maintainer:** what does
 the cyan rim mean, and does it replace or accompany the gold bar?
@@ -786,8 +803,9 @@ or inconsistent. This is the maintainer's review list.
    (§15.2).
 8. **Counter badges degrade to compact top-right circles** at `support`/`mini`
    (§15.5).
-9. **Selection = violet ring + bloom; chosen target = blue path + reticle; target
-   candidate = orange ring** (§15.1).
+9. **Selection = blue ring + bloom; chosen target = orange path + reticle; target
+   candidate = orange ring** (§15.1, maintainer ruling — the baselines' violet
+   selection and blue targeting are the rejected alternative).
 10. **Hover/focus is elevation only** — no ring, no tint.
 11. **Actionable stays the gold bottom edge bar**; the baseline's cyan rim is not
     adopted (§15.6).

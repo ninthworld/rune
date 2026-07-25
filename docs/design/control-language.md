@@ -775,13 +775,24 @@ cluster's primary in blue enamel. Proposed resolution: gold remains the
 reserved for the **single cluster primary**, which is a control, not an entity.
 `visual-system.md` §2 would gain that sentence.
 
-**C2 — Targeting is drawn blue, not orange.** Zones panels 7/8 draw the
+**C2 — Targeting is drawn blue, not orange. Resolved by maintainer ruling:
+blue selection, orange targeting.** Zones panels 7/8 draw the
 selected/targeted creature with a blue ring and a blue tether; `visual-system.md`
-§7 assigns orange `#E0784A` to target candidate / chosen target and blue to
-selection. This spec keeps the visual system (orange for candidates and the
-chosen-target path, blue for selection and the drag rim) and reads the
-baseline's blue tether as the *source selection's* accent. Needs sign-off; if
-the baseline wins, `visual-system.md` §7 must change.
+§7 assigns orange `#E0784A` to target candidate / chosen target and blue
+`#7FB2E5` to selection. The visual system wins; the baselines' blue tether is
+the **rejected alternative**, read as the *source selection's* accent. This spec
+already kept the visual system (orange for candidates and the chosen-target
+path, blue for selection and the drag rim) and needs no change. `visual-system.md`
+§7 stands as written.
+
+Consequence: the drag rim (`--rune-drag-glow` `#2485F0`) and the origin-slot
+dash (`--rune-origin-dash` `#5E90C5`) sit in the **same blue family as
+selection** (`--rune-selection` `#7FB2E5`), and a dragged card is normally also
+the selected one. They are separated by shape and placement, never by hue — the
+selection ring is a stroke on the card's own outline plus elevation 2; the drag
+rim is the 3 px rim + 10 px bloom of a card that tilts toward travel and follows
+the pointer (§6.2 stage 2); the origin dash is a dashed outline with an upward
+arrow glyph left in the *vacated slot* (§6.2 stage 2a). No third hue is introduced.
 
 **C3 — Drop green/red vs. the gain/loss hue families.** `visual-system.md` §2
 owns green for "gain moment" and red for "loss moment". The zones baseline uses
@@ -794,13 +805,22 @@ but the hue families table should be amended to name the drop pair explicitly.
 themselves to grow, the cluster's vertical rhythm changes and panel 7's
 proportions shift.
 
-**C5 — Where the one action home lives.** ADR 0023 and
+**C5 — Where the one action home lives. Resolved by
+[ADR 0032](../decisions/0032-contextual-shell-anatomy.md).** ADR 0023 and
 [`ui-blueprint.md`](ui-blueprint.md) put the action dock **beside the hand**;
 `ActionDock.tsx` implements that. Both baselines put the primary, the utility
 pill, and the plaque in a **lower-right control cluster**. This spec follows the
 later, approved baselines: the *commitment* ("one action home") is preserved,
-its *location* moves. That is an ADR-0023 amendment and a real refactor of
-`ActionDock.tsx` — flagged, not performed here.
+its *location* moves.
+
+ADR 0032 supersedes ADR 0023 and performs that move, so this is no longer an
+open conflict. It went further than the location, because the conflict was
+wider than this section could see: ADR 0023's anatomy is *permanent* regions,
+and every contextual surface this document specifies contradicts it. ADR 0032
+removes the permanent top bar, bottom dock, and right rail, and replaces
+"regions never overlap by construction" with a tested layer contract — *a layer
+may only be covered by a layer the player explicitly invoked and can dismiss
+without answering it.* The refactor of `ActionDock.tsx` is #534's.
 
 **C6 — The phase indicator's position.** `PhaseIndicator.tsx` renders
 top-center; the baseline plaque sits at the foot of the control cluster. If the
@@ -840,7 +860,9 @@ former would be a new derived value the client may not compute.
   proposals, and recording GAP-1/GAP-9 (takeback, draw offer) and GAP-4
   (general unavailability reason) as noted-not-proposed. GAP-8 stays with
   ADR 0020's M6 deferral.
-- **ADR amendment** for C5 (the action home's location) before the dock moves.
+- **ADR 0032** ([contextual shell anatomy](../decisions/0032-contextual-shell-anatomy.md))
+  supersedes ADR 0023 and settles C5. #534 performs the dock's move and the
+  removal of the permanent top bar, bottom dock, and right rail.
 - **Browser verification** of real pointer/touch thresholds, hit-box overlap at
   the tablet floor, and the drag snap-back arc belongs to the maintainer;
   automated coverage for this spec stops at jsdom/Vitest (derivation tables,
