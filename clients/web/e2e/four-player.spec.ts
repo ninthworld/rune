@@ -102,10 +102,10 @@ interface PassOutcome {
   };
   /** The blocks the defending seat declared. */
   blockerNames: string[];
-  /** Every seat's life once the combat resolved. */
-  livesAfterCombat: number[];
-  /** Card names in every graveyard once the combat resolved, seat by seat. */
-  graveyardsAfterCombat: string[][];
+  /** Every seat's life where the pass stopped (past the turn boundary). */
+  livesAtEnd: number[];
+  /** Card names in every seat's own graveyard where the pass stopped. */
+  graveyardsAtEnd: string[][];
   /** The turn the attack happened on, and the turn the pod ran on to. */
   turns: { attack: number; final: number };
   /** The pinned screenshots, by name. */
@@ -415,28 +415,98 @@ async function playPod(
         });
 
       const beforeDamage = await readView(defender);
+      const blockerIds = blocks.map((block) => block.blockerId);
       const blockerNames = blocks.map((block) => nameOf(beforeDamage!, block.blockerId));
       const attackerName = nameOf(beforeAttack!, declared.attackerId);
-      return { declared, attacker, defender, attackTurn, attackerName, blockerNames };
+      return {
+        declared,
+        attacker,
+        defender,
+        attackTurn,
+        attackerName,
+        blockerIds,
+        blockerNames,
+      };
     });
 
-    await test.step(`${pass.label}: the assignment stays visible through damage`, async () => {
-      // Carry the combat to damage. The assignment must still be readable at the
-      // moment damage is dealt — that is #457's browser criterion.
+    await test.step(`${pass.label}: the assignment is legible while combat is live`, async () => {
+      // #457's browser criterion, half one: with blockers declared and damage not
+      // yet dealt, the assignment is readable — in the authoritative view, in the
+      // staged scene, and on the defending player's own screen.
+      //
+      // Asserted *here*, at the declare-blockers step, and not at the damage step,
+      // because this is the last point the state is guaranteed to be observable at
+      // all. The room settles every auto-passable seat before it broadcasts
+      // (`room/driver.rs`, `settle_auto_passes` then `broadcast`) and rooms the
+      // lobby creates run with auto-pass on, so a step where no seat has a
+      // meaningful action is never published to any client. Casting is
+      // sorcery-gated (`actions/generation.rs`), so only a seat holding an instant
+      // and the mana for it keeps the combat-damage step observable — which is a
+      // property of the seed's opening hands, not of the client under test. The
+      // declare-blockers step, by contrast, is a decision this suite itself
+      // answers, so it is always broadcast.
+      const view = await readView(combat.attacker);
+      const attacking = view?.battlefield.find(
+        (permanent) => permanent.id === combat.declared.attackerId,
+      );
+      expect(attacking, 'the declared attacker is on the board with blockers declared').toBeDefined();
+      expect(attacking!.attacking, 'and reads as attacking').toBe(true);
+      expect(attacking!.attacking_player, 'against the defending seat that was clicked').toBe(
+        combat.declared.defenderId,
+      );
+
+      // The same fact in the *rendered* scene, not only the view.
+      const plane = await readPlane(combat.attacker);
+      const regions = [plane?.receiver, plane?.farSide, ...(plane?.wings ?? [])];
+      expect(
+        regions
+          .flatMap((region) => region?.renders ?? [])
+          .some((render) => render.memberIds.includes(attacking!.id) && render.attacking),
+        'the scene should stage the attacker with its combat treatment',
+      ).toBe(true);
+      expect(
+        regions.find((region) => region?.seat === combat.declared.defenderId)?.attacked,
+        'the defending seat should wear the attacked marker',
+      ).toBe(true);
+      await expect(
+        combat.defender.getByTestId('topbar-attacked'),
+        "the defending seat's own screen should say it is under attack",
+      ).toBeVisible();
+
+      shots['combat-assignment'] = await captureStable(
+        combat.attacker,
+        `${pass.label}-combat-assignment`,
+        info,
+      );
+    });
+
+    await test.step(`${pass.label}: the assignment is honored through damage`, async () => {
+      // #457's browser criterion, half two: carry the combat to damage and require
+      // that the damage went where the declaration sent it.
+      //
+      // This is deliberately *not* "the attacker still reads as attacking at the
+      // damage step". Two engine facts rule that formulation out. The end-of-combat
+      // step's turn-based action clears `attacking` on every permanent
+      // (`apply/combat.rs#remove_creatures_from_combat`, run on entering
+      // `Step::EndCombat`, which follows `Step::CombatDamage` in `phase.rs`), so a
+      // stop that accepted `end_combat` could only ever contradict itself. And an
+      // attacker that traded with its blocker is not on the battlefield to read at
+      // all. So the assertion is made on the thing that survives both: *where the
+      // damage landed*. A defending player this suite never named could not be the
+      // one whose creature took it.
       await driveUntil(
         seats,
         (views) => {
           const view = views[seats.indexOf(combat.attacker)];
           if (view === null || view === undefined) return null;
-          const reachedDamage = view.phase === 'combat_damage' || view.phase === 'end_combat';
-          return reachedDamage ? view.phase : null;
+          // Damage is dealt as the combat-damage step's turn-based action, so any
+          // view at or past that step has already had it applied.
+          const dealt = ['combat_damage', 'end_combat', 'postcombat_main', 'end', 'cleanup'];
+          return dealt.includes(view.phase) ? view.phase : null;
         },
-        { what: 'the combat damage step' },
+        { what: 'a view at or past the combat damage step' },
       );
 
-      // Damage really landed: something took marked combat damage, or something
-      // died to it. Without this the step could pass over a combat where nothing
-      // happened at all.
       const attackerView = await readView(combat.attacker);
       const marked = (attackerView?.battlefield ?? []).some(
         (permanent) => (permanent.damage ?? 0) > 0,
@@ -446,37 +516,24 @@ async function playPod(
       );
       expect(marked || buried, 'combat damage should have been dealt').toBe(true);
 
-      // …and the assignment is still on screen while it is being dealt. Asserted
-      // unconditionally: this is #457's browser criterion, and a version that
-      // shrugged when the attacker had died would not be one.
-      const still = attackerView?.battlefield.find(
-        (permanent) => permanent.id === combat.declared.attackerId,
-      );
-      expect(still, 'the attacker should still be on the board at the damage step').toBeDefined();
-      expect(still!.attacking, 'and should still read as attacking').toBe(true);
-      expect(still!.attacking_player, 'against the defending seat that was clicked').toBe(
-        combat.declared.defenderId,
-      );
-
-      // The same fact in the *rendered* scene, not only the view: the staged
-      // attacker keeps its combat treatment and the defending seat keeps its
-      // attacked marker, at the damage step.
-      const plane = await readPlane(combat.attacker);
-      const regions = [plane?.receiver, plane?.farSide, ...(plane?.wings ?? [])];
+      // The blocker this suite declared is the object the attacker's damage was
+      // assigned to (CR 510.1a), so it carries marked damage or it died to it.
+      // Either outcome proves the attack was routed at the seat that was clicked;
+      // neither assumes the attacker itself survived the trade.
+      const blockerId = combat.blockerIds[0];
+      expect(blockerId, 'the combat should have had a declared blocker').toBeDefined();
+      const blocker = attackerView?.battlefield.find((permanent) => permanent.id === blockerId);
+      const defenderGraveyard =
+        attackerView?.graveyards.find((pile) => pile.player_id === combat.declared.defenderId)
+          ?.cards ?? [];
+      const blockerTookDamage = (blocker?.damage ?? 0) > 0;
+      const blockerDied =
+        blocker === undefined &&
+        defenderGraveyard.some((card) => card.name === combat.blockerNames[0]);
       expect(
-        regions.flatMap((region) => region?.renders ?? []).some(
-          (render) => render.memberIds.includes(still!.id) && render.attacking,
-        ),
-        'the scene should still stage the attacker with its combat treatment',
+        blockerTookDamage || blockerDied,
+        "the declared blocker should carry the attacker's combat damage, or have died to it",
       ).toBe(true);
-      expect(
-        regions.find((region) => region?.seat === combat.declared.defenderId)?.attacked,
-        'the defending seat should still wear the attacked marker',
-      ).toBe(true);
-      await expect(
-        combat.defender.getByTestId('topbar-attacked'),
-        "the defending seat's own screen should still say it is under attack",
-      ).toBeVisible();
 
       shots['combat-damage'] = await captureStable(
         combat.attacker,
@@ -600,8 +657,8 @@ async function playPod(
         confirmBlockedWithoutDefender: combat.declared.confirmBlockedWithoutDefender,
       },
       blockerNames: combat.blockerNames,
-      livesAfterCombat: finalViews.map((view) => view!.me.life),
-      graveyardsAfterCombat: finalViews.map(
+      livesAtEnd: finalViews.map((view) => view!.me.life),
+      graveyardsAtEnd: finalViews.map(
         (view) =>
           view!.graveyards.find((pile) => pile.player_id === view!.you)?.cards.map((c) => c.name) ??
           [],
@@ -615,43 +672,78 @@ async function playPod(
   }
 }
 
-test('four browsers play a four-player pod through the rendered table', async (
-  { browser, launchRuneServer },
-  info,
-) => {
-  // Two full passes of a four-context scenario; the canary's 2-minute budget is
-  // for one spec with two contexts.
-  test.setTimeout(45 * 60_000);
+/**
+ * One pass's budget.
+ *
+ * A four-context pod is bound by *software* rasterization, not by the game: the
+ * suite runs Chromium's SwiftShader backend (no GPU on a CI runner), the scene's
+ * ambient environment animates continuously under full motion
+ * (`live-plane.module.css#ambientDrift`), and compositing four 1280×900 frames at
+ * animation rate in software saturates every core a runner has. Measured on a
+ * 4-core box, the browser's GPU process alone accrues CPU time at ~3.6 cores for
+ * the whole pass. So the budget is generous by necessity, and per *pass* rather
+ * than for both: a shared budget cannot say which pass was slow, and a pass that
+ * overruns should fail as itself.
+ */
+const PASS_BUDGET_MS = 30 * 60_000;
 
-  const full = await playPod(browser, launchRuneServer, info, {
-    label: 'pass-1',
-    reducedMotion: 'no-preference',
-  });
-  const reduced = await playPod(browser, launchRuneServer, info, {
-    label: 'pass-2',
-    reducedMotion: 'reduce',
+/**
+ * The full-motion pass's outcome, handed to the reduced-motion pass.
+ *
+ * Module state shared between tests is normally a smell; `test.describe.serial`
+ * is the sanctioned mechanism for exactly this, and the alternative — one test
+ * containing both passes — is what this replaces. Serial also means a failed
+ * first pass *skips* the second instead of spending another half-hour proving
+ * the same thing twice.
+ */
+let fullMotion: PassOutcome | null = null;
+
+test.describe.serial('a four-player pod, played twice', () => {
+  test('four browsers play the pod through the rendered table', async (
+    { browser, launchRuneServer },
+    info,
+  ) => {
+    test.setTimeout(PASS_BUDGET_MS);
+    fullMotion = await playPod(browser, launchRuneServer, info, {
+      label: 'pass-1',
+      reducedMotion: 'no-preference',
+    });
   });
 
-  await test.step('the reduced-motion run reaches the same decisions', async () => {
-    // Nothing about what the pod decided may depend on animation: same seats,
-    // same land, same spell at the same target, same attacker at the same
-    // defender out of the same offered set, same blockers.
-    expect(reduced.seatOrder).toEqual(full.seatOrder);
-    expect(reduced.landName).toEqual(full.landName);
-    expect(reduced.cast).toEqual(full.cast);
-    expect(reduced.attack).toEqual(full.attack);
-    expect(reduced.blockerNames).toEqual(full.blockerNames);
-  });
+  test('the same pod under prefers-reduced-motion reaches the same place', async (
+    { browser, launchRuneServer },
+    info,
+  ) => {
+    test.setTimeout(PASS_BUDGET_MS);
+    const full = fullMotion;
+    expect(full, 'the full-motion pass should have produced an outcome').not.toBeNull();
 
-  await test.step('…and the same final states', async () => {
-    expect(reduced.livesAfterCombat).toEqual(full.livesAfterCombat);
-    expect(reduced.graveyardsAfterCombat).toEqual(full.graveyardsAfterCombat);
-    expect(reduced.turns).toEqual(full.turns);
-  });
+    const reduced = await playPod(browser, launchRuneServer, info, {
+      label: 'pass-2',
+      reducedMotion: 'reduce',
+    });
 
-  await test.step('the screenshot set is stable across the two runs', async () => {
-    for (const name of Object.keys(full.shots)) {
-      await expectSameComposition(name, full.shots[name]!, reduced.shots[name]!, info);
-    }
+    await test.step('the reduced-motion run reaches the same decisions', async () => {
+      // Nothing about what the pod decided may depend on animation: same seats,
+      // same land, same spell at the same target, same attacker at the same
+      // defender out of the same offered set, same blockers.
+      expect(reduced.seatOrder).toEqual(full!.seatOrder);
+      expect(reduced.landName).toEqual(full!.landName);
+      expect(reduced.cast).toEqual(full!.cast);
+      expect(reduced.attack).toEqual(full!.attack);
+      expect(reduced.blockerNames).toEqual(full!.blockerNames);
+    });
+
+    await test.step('…and the same final states', async () => {
+      expect(reduced.livesAtEnd).toEqual(full!.livesAtEnd);
+      expect(reduced.graveyardsAtEnd).toEqual(full!.graveyardsAtEnd);
+      expect(reduced.turns).toEqual(full!.turns);
+    });
+
+    await test.step('the screenshot set is stable across the two runs', async () => {
+      for (const name of Object.keys(full!.shots)) {
+        await expectSameComposition(name, full!.shots[name]!, reduced.shots[name]!, info);
+      }
+    });
   });
 });
