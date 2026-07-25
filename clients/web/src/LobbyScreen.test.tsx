@@ -272,10 +272,14 @@ describe('LobbyScreen (issue #114)', () => {
 
   it('renders RUNE identity procedurally and puts the directory first (#300)', () => {
     mountLobby(LOBBY_DIRECTORY_JSON);
-    // Procedural motif: an inline SVG mark and the wordmark, never an image asset.
+    // Procedural motif: an inline SVG mark and the wordmark, never an image
+    // asset. The rule binds RUNE's IDENTITY; the environment backdrop behind it
+    // does ship plates (ADR 0031, issue #555), so the check excludes it.
     expect(screen.getByRole('heading', { name: 'RUNE' })).toBeDefined();
     expect(document.querySelector('svg')).not.toBeNull();
-    expect(document.querySelector('img')).toBeNull();
+    for (const img of document.querySelectorAll('img')) {
+      expect(img.closest('[data-testid="scene-environment"]')).not.toBeNull();
+    }
 
     // The room directory (primary path) renders ahead of the create-room card in
     // document order.

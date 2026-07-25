@@ -6,11 +6,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   anchorCenter,
+  arcChords,
   arrowHead,
+  bracketArms,
   burstParticles,
+  clampToRect,
   dashSegments,
+  elbowPath,
+  endTangent,
+  flowSegments,
   pathCurve,
+  polylineLength,
   rectCenter,
+  rectEdgePoint,
+  trimEnd,
+  trimStart,
 } from './effects';
 
 describe('effect anchors', () => {
@@ -75,6 +85,108 @@ describe('dash-crawl segmentation', () => {
     }
     expect(covered).toBeGreaterThan(100 * (12 / 21) - 12);
     expect(covered).toBeLessThan(100 * (12 / 21) + 12);
+  });
+});
+
+describe('flow segments (the taper’s arc positions)', () => {
+  const line = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+  ];
+
+  it('reports each piece’s normalized position, source 0 → destination 1', () => {
+    const solid = flowSegments(
+      [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 100, y: 0 },
+      ],
+      0,
+      0,
+      0,
+    );
+    expect(solid.map((s) => s.t)).toEqual([0.25, 0.75]);
+    const dashed = flowSegments(line, 10, 10, 0);
+    // Monotonic and bounded — this is what makes a lone visible dash state the
+    // relationship's direction without either endpoint in view.
+    expect(dashed.every((s) => s.t >= 0 && s.t <= 1)).toBe(true);
+    for (let i = 1; i < dashed.length; i += 1) {
+      expect(dashed[i]!.t).toBeGreaterThan(dashed[i - 1]!.t);
+    }
+  });
+
+  it('is the same cut dashSegments makes', () => {
+    expect(flowSegments(line, 12, 9, 5).map((s) => [s.from, s.to])).toEqual(
+      dashSegments(line, 12, 9, 5),
+    );
+  });
+});
+
+describe('endpoint geometry', () => {
+  const rect = { x: 100, y: 100, w: 60, h: 100 };
+
+  it('puts a source cap on the rect edge toward the destination', () => {
+    expect(rectEdgePoint(rect, { x: 1000, y: 150 })).toEqual({ x: 160, y: 150 });
+    expect(rectEdgePoint(rect, { x: 130, y: -100 })).toEqual({ x: 130, y: 100 });
+    // Degenerate: a destination at the rect's own centre has no direction.
+    expect(rectEdgePoint(rect, { x: 130, y: 150 })).toEqual({ x: 130, y: 150 });
+  });
+
+  it('trims a path so it stops exactly at its destination cap', () => {
+    const points = pathCurve({ x: 0, y: 0 }, { x: 300, y: 0 });
+    const trimmed = trimEnd(points, 20);
+    const tip = trimmed[trimmed.length - 1]!;
+    // Sub-hundredth: the trim interpolates along the sampled chord, so it lands
+    // on the cap to well inside a pixel.
+    expect(Math.hypot(300 - tip.x, 0 - tip.y)).toBeCloseTo(20, 2);
+    // The trimmed end tangent is the cap's arrival tangent.
+    expect(endTangent(trimmed)).toBeCloseTo(endTangent(points), 1);
+  });
+
+  it('retracts a path from its source, keeping the destination end', () => {
+    const points = pathCurve({ x: 0, y: 0 }, { x: 300, y: 0 });
+    const retracted = trimStart(points, 0.5);
+    expect(retracted[retracted.length - 1]).toEqual(points[points.length - 1]);
+    expect(polylineLength(retracted)).toBeCloseTo(polylineLength(points) / 2, 4);
+  });
+
+  it('clamps an occluded endpoint onto its container’s boundary (§10.3)', () => {
+    const container = { x: 0, y: 0, w: 100, h: 100 };
+    expect(clampToRect(container, { x: 200, y: 50 })).toEqual({ x: 100, y: 50 });
+    expect(clampToRect(container, { x: -5, y: -5 })).toEqual({ x: 0, y: 0 });
+    // A point INSIDE still lands on an edge — never in the middle of the rail.
+    expect(clampToRect(container, { x: 90, y: 50 })).toEqual({ x: 100, y: 50 });
+  });
+
+  it('draws a 90° crest arc as chords on the crest’s own radius', () => {
+    const chords = arcChords({ x: 0, y: 0 }, 10, 0, Math.PI / 2, 5);
+    expect(chords).toHaveLength(5);
+    for (const [a, b] of chords) {
+      expect(Math.hypot(a.x, a.y)).toBeCloseTo(10, 6);
+      expect(Math.hypot(b.x, b.y)).toBeCloseTo(10, 6);
+    }
+    // The sweep is a quarter turn, centred on the arrival tangent.
+    const start = chords[0]![0];
+    const end = chords[4]![1];
+    const between = Math.abs(Math.atan2(end.y, end.x) - Math.atan2(start.y, start.x));
+    expect(between).toBeCloseTo(Math.PI / 2, 6);
+  });
+
+  it('opens a zone bracket toward the arriving path', () => {
+    const [spine, armA, armB] = bracketArms({ x: 0, y: 0 }, 0, 12, 28);
+    // The spine crosses the path; the arms run back along it.
+    expect(spine![0].x).toBeCloseTo(0, 6);
+    expect(Math.hypot(spine![1].x - spine![0].x, spine![1].y - spine![0].y)).toBeCloseTo(28, 6);
+    expect(armA![1].x).toBeCloseTo(-12, 6);
+    expect(armB![1].x).toBeCloseTo(-12, 6);
+  });
+
+  it('routes an elbow bracket through two axis-aligned corners', () => {
+    const strokes = elbowPath({ x: 0, y: 0 }, { x: 40, y: 30 });
+    expect(strokes).toHaveLength(4);
+    for (const [a, b] of strokes) {
+      expect(a.x === b.x || a.y === b.y).toBe(true);
+    }
   });
 });
 

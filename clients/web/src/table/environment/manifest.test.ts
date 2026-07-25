@@ -11,8 +11,16 @@
  * promise "no test change": flipping an entry's `source` to `'raster'` leaves
  * every assertion here true.
  */
+import { statSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import {
+  PRODUCTION_ENVIRONMENTS,
+  PRODUCTION_ENVIRONMENT_STUDIES,
+} from '../../assets/productionManifest';
 import { SCENE_THEMES, type SceneThemeName } from '../../sceneTokens';
+import { ENV_PROP_ANCHORS, propPlacementIsLegal } from './zones';
 import {
   ENV_AUTHORING_ASPECT,
   ENV_LAYERS,
@@ -22,6 +30,7 @@ import {
   ENV_THEME_BUDGET_BYTES,
   ENV_VARIANTS,
   ENV_VIEWBOX,
+  propFootprint,
   themeAssetBytes,
   themeBudgetedBytes,
   type EnvLayerId,
@@ -106,25 +115,103 @@ describe('environment manifest — §10.2 the slot identity the plate inherits',
     expect(ENV_AUTHORING_ASPECT).toBeCloseTo(2.333, 3);
   });
 
-  it('resolves every key to the procedural placeholder today (#548 has not landed)', () => {
-    // The state this issue ships in, asserted so the swap is visible in the diff
-    // when it happens rather than inferred.
-    for (const manifest of THEMES) {
-      for (const variant of ENV_VARIANTS) {
-        expect(manifest.assets[variant].source).toBe('procedural');
-      }
+  it('resolves Runic Vale’s five keys to the plates #555 shipped (§10.5 step 3)', () => {
+    // The swap itself. Every variant of the default theme now resolves to a
+    // content-hashed URL read from `public/assets/manifest.json`; the keys, the
+    // layer mapping, the load classes, and the geometry above are untouched,
+    // which is the whole claim §10.5 makes about the drop.
+    for (const variant of ENV_VARIANTS) {
+      const asset = ENV_MANIFESTS.runicVale.assets[variant];
+      expect(asset.source).toBe('raster');
+      expect(asset.src).toMatch(/^\/(?:assets|lazy)\/environments\/runic-vale\/.+\.webp$/);
+      expect(asset.pixels?.width).toBeGreaterThan(0);
     }
   });
 
-  it('records the path each plate will ship at, so the swap is a file drop', () => {
+  it('gives the three studies one composed plate and leaves the rest procedural', () => {
+    // A study is key art, not a layer set (#555 shipped one flattened image per
+    // theme). It fills the identity floor and nothing else, so L0, L2, L3, and
+    // the half-resolution Lite variant stay on the §10 placeholder.
+    for (const manifest of THEMES) {
+      if (manifest.theme === 'runicVale') continue;
+      expect(manifest.composition).toBe('composed');
+      expect(manifest.assets.l1.source).toBe('raster');
+      expect(manifest.assets.l1.src).toMatch(/^\/lazy\/environment-studies\/.+\.webp$/);
+      for (const variant of ['l0', 'l1-half', 'l2', 'l3'] as const) {
+        expect(manifest.assets[variant].source).toBe('procedural');
+        expect(manifest.assets[variant].src).toBeUndefined();
+      }
+      expect(manifest.atlas).toBeUndefined();
+    }
+    expect(ENV_MANIFESTS.runicVale.composition).toBe('layered');
+  });
+
+  it('never transcribes a content hash — every URL is read from the shipped manifest', () => {
+    // A hash written into TypeScript is a future breakage the type system
+    // cannot catch. Every `src` here must be the exact string the generator
+    // wrote, so a regeneration can never leave the client pointing at a file
+    // that no longer exists.
+    const shipped = new Set<string>();
+    for (const environment of Object.values(PRODUCTION_ENVIRONMENTS)) {
+      for (const layer of Object.values(environment.layers)) shipped.add(layer.src);
+    }
+    for (const study of Object.values(PRODUCTION_ENVIRONMENT_STUDIES)) shipped.add(study.src);
+    for (const manifest of THEMES) {
+      for (const variant of ENV_VARIANTS) {
+        const src = manifest.assets[variant].src;
+        if (src !== undefined) expect(shipped.has(src)).toBe(true);
+      }
+      if (manifest.atlas) expect(shipped.has(manifest.atlas.src)).toBe(true);
+    }
+  });
+
+  it('keeps the recorded §9.1 slot path, and never lets it disagree with the load class', () => {
     for (const manifest of THEMES) {
       for (const variant of ENV_VARIANTS) {
         const asset = manifest.assets[variant];
         expect(asset.path).toContain(`env/${manifest.theme}/${variant}`);
         // §9.4: the `lazy/` prefix IS the mechanism that keeps a variant out of
-        // the first-match set, so the class and the path may never disagree.
+        // the first-match set, so the class and the path may never disagree —
+        // and neither may the shipped URL, which carries the same prefix.
         expect(asset.path.startsWith('lazy/')).toBe(asset.loadClass === 'lazy');
+        if (asset.src !== undefined) {
+          expect(asset.src.startsWith('/lazy/')).toBe(asset.loadClass === 'lazy');
+        }
       }
+    }
+  });
+});
+
+describe('environment L3 — §4.4 the shipped sprite atlas', () => {
+  it('gives Runic Vale one atlas frame per §4.4 anchor, and no theme a seventh', () => {
+    const manifest = ENV_MANIFESTS.runicVale;
+    expect(manifest.atlas?.src).toBe(manifest.assets.l3.src);
+    const anchors = manifest.props.filter((p) => p.frame).map((p) => p.anchor);
+    expect([...anchors].sort()).toEqual([...ENV_PROP_ANCHORS].sort());
+    expect(new Set(manifest.props.map((p) => p.frame?.key)).size).toBe(manifest.props.length);
+  });
+
+  it('keeps the manifest’s own placement, not the atlas’s — §2.2 is binding', () => {
+    // The shipped frames record a `scale` of 0.17–0.24. At EVERY reading of that
+    // number — canvas width or canvas height — the drawn sprite is wider than
+    // the 10 % of canvas width Zone C allows, so honouring it would push L3 into
+    // the focal core. The atlas supplies pixels; the manifest supplies geometry.
+    const manifest = ENV_MANIFESTS.runicVale;
+    for (const prop of manifest.props) {
+      expect(propPlacementIsLegal(prop.anchor, propFootprint(prop), prop.mass)).toBe(true);
+      expect(Math.max(prop.size.w, prop.size.h)).toBeLessThan(0.17);
+    }
+  });
+
+  it('takes only rectangles from the atlas, and they all lie inside it', () => {
+    const manifest = ENV_MANIFESTS.runicVale;
+    const atlas = manifest.atlas!;
+    for (const prop of manifest.props) {
+      const frame = prop.frame!;
+      expect(frame.x).toBeGreaterThanOrEqual(0);
+      expect(frame.y).toBeGreaterThanOrEqual(0);
+      expect(frame.x + frame.w).toBeLessThanOrEqual(atlas.width);
+      expect(frame.y + frame.h).toBeLessThanOrEqual(atlas.height);
     }
   });
 });
@@ -139,13 +226,38 @@ describe('environment manifest — §9 the asset budget', () => {
     }
   });
 
-  it('reads 0 bytes committed today — the placeholder is code, not an asset', () => {
-    // §10.4: "the per-theme 1.5 MB line reads 0 KB used until the first plate
-    // lands", and §12 conflict 9: the ADR 0031 ledger gate is owed by #548's
-    // first delivery, not by this issue, because SVG-from-tokens is code.
+  it('claims the whole §9.1 allocation for Runic Vale and one slot for a study', () => {
+    // The allocation the filled slots claim — not a measurement. The real bytes
+    // are measured below, straight off disk.
+    expect(themeAssetBytes(ENV_MANIFESTS.runicVale)).toBe(1_420_000);
     for (const manifest of THEMES) {
-      expect(themeAssetBytes(manifest)).toBe(0);
+      if (manifest.theme === 'runicVale') continue;
+      expect(themeAssetBytes(manifest)).toBe(600_000);
     }
+  });
+
+  it('measures the shipped bytes against the ≤ 1.5 MB per-theme ceiling', () => {
+    // The binding ceiling of ADR 0031 / §9.1, measured rather than budgeted.
+    // `scripts/checkAssetLedger.js` gates the same number in CI; this asserts it
+    // against the manifest the client actually resolves, so a regeneration that
+    // grew a plate fails here as well as there.
+    const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public');
+    const bytesOf = (src: string): number => statSync(resolve(publicDir, src.slice(1))).size;
+    for (const manifest of THEMES) {
+      const bytes = ENV_VARIANTS.map((v) => manifest.assets[v].src)
+        .filter((src): src is string => src !== undefined)
+        .reduce((sum, src) => sum + bytesOf(src), 0);
+      expect(bytes).toBeLessThanOrEqual(ENV_THEME_BUDGET_BYTES);
+    }
+    // The default theme's first-match slice is what "lobby → match presentation
+    // ready ≤ 2 s" is measured against; it must stay a small fraction of the
+    // 4 MB first-match ceiling.
+    const firstMatch = ENV_VARIANTS.filter(
+      (v) => ENV_MANIFESTS.runicVale.assets[v].loadClass === 'first-match',
+    )
+      .map((v) => ENV_MANIFESTS.runicVale.assets[v].src!)
+      .reduce((sum, src) => sum + bytesOf(src), 0);
+    expect(firstMatch).toBeLessThan(500_000);
   });
 
   it('puts only the default theme’s L0 and half-res L1 in the first-match class', () => {

@@ -153,6 +153,91 @@ export const SCENE_SEAT_ACCENTS = [
   '#4E9A9B', // teal
 ] as const;
 
+// ── §4/§5 The directional relationship grammar ───────────────────────────────
+
+/**
+ * The geometry of the relationship grammar
+ * (`docs/design/stack-and-relationships.md` §4 and §5) as data.
+ *
+ * These are **shape-channel** numbers, not hues: every relationship kind is
+ * separated by geometry (§4.3, §9.4) and hue is only the fourth channel, so the
+ * values that make a relationship readable live here rather than inline in the
+ * effects layer. Hues stay in {@link SCENE_HUES}; durations stay in the motion
+ * classes and `EFFECT_TIMING`.
+ */
+export const SCENE_RELATIONSHIP = {
+  /**
+   * §4.2 device D2 — the **monotonic stroke taper**, the primary direction
+   * device: the stroke widens from `taperFrom` at the source to `taperTo` at the
+   * destination, linearly along the sampled polyline. It is the only device that
+   * is both static (survives reduced motion) and *locally* readable (survives
+   * occlusion and bundling), which is why it outranks the arrowhead and the
+   * dash-crawl.
+   */
+  taperFrom: 1.2,
+  /** §4.2 D2 — stroke width at the destination end. Must exceed `taperFrom`. */
+  taperTo: 3.4,
+  /** §5.1 — the filled source cap disc. */
+  sourceRadius: 5,
+  /** §5.2 — the open target reticle on a card destination. */
+  reticleRadius: 14,
+  /** §5.2 — the reticle's stroke. */
+  reticleWidth: 2,
+  /** §5.5 — the inset reticle drawn inside a stack slot's bounds. */
+  reticleInsetRadius: 10,
+  /** §5.2 — the inward chevron's arm length (the arrowhead inside the ring). */
+  chevron: 12,
+  /** §5.3 — the crest cap's 90° arc sweep, in radians. */
+  crestSweep: Math.PI / 2,
+  /** §5.3 — chord count the arc is drawn with (no arc primitive exists). */
+  crestChords: 5,
+  /** §5.3 — the crest arc's stroke. */
+  crestWidth: 3,
+  /** §5.4 — the zone bracket's two arms. */
+  bracketArm: 12,
+  /** §5.4 — the zone bracket's spine. */
+  bracketSpine: 28,
+  /** §4.3 R5 — the fan node sits this fraction along the trunk. */
+  fanAt: 0.4,
+  /** §4.3 R5 — the hollow fan node's radius. */
+  fanRadius: 6,
+  /**
+   * §4.5 — the ordering channel on the destination cap. The numeral is the
+   * destination's 1-based place in the **server's** target list, drawn as that
+   * many pips across the cap's arrival normal. Pips rather than the spec's
+   * ①②③ glyphs because the draw program is one pooled `Graphics` and one draw
+   * call (§8.1); the glyph form lives on the entry's summary chips and in the
+   * accessible name, which are DOM.
+   */
+  numeralPip: 2.5,
+  /** §4.5 — centre-to-centre pitch between numeral pips, logical px. */
+  numeralPitch: 7,
+  /** §4.3 R9 — the attachment/tether square terminal's side. */
+  terminal: 6,
+  /** §4.3 R9 — the elbow bracket's stroke. */
+  elbowWidth: 1.5,
+  /**
+   * §4.3 R9 — attachment brackets and source tethers are drawn in **line-work
+   * neutral** (`rgba(232, 230, 225, .14)`), never in a relationship hue: the
+   * hard separation (D6) from a target path. The color is
+   * {@link SCENE_NEUTRALS.text}; this is its alpha.
+   */
+  lineworkAlpha: 0.14,
+  /** §10.3 — the edge indicator chevron drawn for an occluded endpoint. */
+  edgeIndicator: 20,
+  /** §4.4 — the alpha each path state renders at. */
+  alpha: {
+    pending: 0.9,
+    provisional: 0.9,
+    confirmed: 0.9,
+    /** The crowded-board calm (mirrors the carried `COMBAT_LINK.crowdedAlpha`). */
+    calmed: 0.32,
+    /** The scalability floor: caps only, no stroke. */
+    endpointOnly: 0.6,
+    resolving: 0.9,
+  },
+} as const;
+
 // ── §3 Elevation ladder and focus dim ────────────────────────────────────────
 
 /** One elevation level: the lift toward the camera and the shadow it casts

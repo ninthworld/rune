@@ -106,9 +106,14 @@ describe('ConnectionScreen (front-door landing)', () => {
 
     // The wordmark carries the accessible product name…
     expect(screen.getByRole('heading', { name: 'RUNE' })).toBeDefined();
-    // …and the motif is procedural geometry (an inline SVG), never a bundled image.
+    // …and the motif is procedural geometry (an inline SVG), never a bundled
+    // image. The rule is about RUNE's IDENTITY: the environment backdrop behind
+    // it does ship plates (ADR 0031, issue #555), so the check is scoped to
+    // everything that is not the backdrop.
     expect(container.querySelector('svg')).not.toBeNull();
-    expect(container.querySelector('img')).toBeNull();
+    for (const img of container.querySelectorAll('img')) {
+      expect(img.closest('[data-testid="scene-environment"]')).not.toBeNull();
+    }
   });
 
   it('keeps the three connection states visually distinct (#300)', () => {

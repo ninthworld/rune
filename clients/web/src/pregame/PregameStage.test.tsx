@@ -94,9 +94,12 @@ describe('PregameStage — criterion 2: one stage, three places', () => {
     expect(environment.style.getPropertyValue('--env-plaza-core')).not.toBe('');
     expect(environment.style.getPropertyValue('--env-surround-base')).not.toBe('');
     expect(environment.dataset.theme).toBe('runicVale');
-    // Layered SVG built from tokens: zero asset bytes against the load budget.
-    expect(container.querySelector('img')).toBeNull();
-    expect(container.querySelectorAll('svg').length).toBeGreaterThan(0);
+    // Every image on the stage belongs to the backdrop — the pregame surfaces
+    // themselves stay procedural (#300), and the backdrop's own plates are the
+    // ADR 0031 set #555 shipped.
+    for (const img of container.querySelectorAll('img')) {
+      expect(img.closest('[data-testid="scene-environment"]')).not.toBeNull();
+    }
     expect(screen.getByTestId('pregame-environment').getAttribute('aria-hidden')).toBe('true');
     expect(environment.getAttribute('aria-hidden')).toBe('true');
   });

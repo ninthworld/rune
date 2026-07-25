@@ -11,6 +11,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProper
 import {
   SCENE_ELEVATION,
   SCENE_FOCUS_DIM,
+  SCENE_FRAME_ACCENTS,
   SCENE_HUES,
   SCENE_NEUTRALS,
   SCENE_SEAT_ACCENTS,
@@ -23,6 +24,7 @@ import {
   type PlaneStagingState,
   type StagedPlane,
 } from '../plane';
+import { noteCardBackFailed, useCardBack } from '../../card/back';
 import { cardFaceRenderer } from '../planeFaceRenderer';
 import { planeDisplayData } from '../planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../planeReconciler';
@@ -34,9 +36,11 @@ import { LivePlaneControls, type LivePlaneInteractionProps } from './LivePlaneCo
 import {
   deriveGameViewPresentation,
   freezeDepartedEffectAnchors,
+  freezeDepartedRelationshipAnchors,
   type GameViewPresentation,
   type TargetingPresentationPath,
 } from './gameViewPresentation';
+import { attachOccludedEndpoints } from './endpointOcclusion';
 import {
   determinePresentationMode,
   orientationCue,
@@ -46,6 +50,10 @@ import {
   type RebuildSample,
 } from './presentationMode';
 import styles from './live-plane.module.css';
+// The seat-identity cluster's rules, split out of `live-plane.module.css` at
+// the ~800-line ceiling. Both modules declare `.plane`; both class names go on
+// the one plane root, so the split changes no selector's scope.
+import clusterStyles from './live-plane-cluster.module.css';
 
 /** Monotonic clock for rebuild timing; degrades to 0 where unavailable. */
 function monotonicNow(): number {
@@ -80,6 +88,9 @@ const sceneStyle: SceneStyle = {
   // the card back's navy field, the graveyard's ash body, and the exile's
   // translucent cyan glass with its bright hairline (§3.3's `#7FB2E5` family is
   // the scene's blue hue, so the pane and the selection ring share one source).
+  // The library additionally layers the shipped card-back plate over this field
+  // through `--card-back-image`; the token treatment stays underneath, so a
+  // missing or failed plate is a colour difference and never a layout one.
   '--rack-back': SCENE_NEUTRALS.surfaceTop,
   '--rack-ash': SCENE_NEUTRALS.raised,
   '--rack-rule': SCENE_HUES.gold.value,
@@ -90,6 +101,27 @@ const sceneStyle: SceneStyle = {
   // The eliminated treatment, shared with the focus dim (visual-system §3).
   '--dim-brightness': SCENE_FOCUS_DIM.brightness,
   '--dim-saturate': SCENE_FOCUS_DIM.saturate,
+
+  // Seat-identity materials (issue #532, `seat-identity.md` §1.2, §5, §6). The
+  // per-seat values — the accent, the portrait plate's URL, and the rung's
+  // scale unit `D` — ride on each cluster element as custom properties written
+  // by the reconciler; what lives here is the palette every cluster shares.
+  //
+  // `--crest-stone` is the eliminated rim: the cluster's gold is *replaced*
+  // rather than tinted, so the seat reads as out of the game by material and
+  // not only by luminance. The frame accents are the identity gem's colour
+  // identity — a channel distinct from the seat accent worn by the rim and the
+  // turn pennant (§13 conflict 2 records that the two need one owner).
+  '--red': SCENE_HUES.red.value,
+  '--crest-stone': SCENE_FRAME_ACCENTS.C,
+  '--frame-w': SCENE_FRAME_ACCENTS.W,
+  '--frame-u': SCENE_FRAME_ACCENTS.U,
+  '--frame-b': SCENE_FRAME_ACCENTS.B,
+  '--frame-r': SCENE_FRAME_ACCENTS.R,
+  '--frame-g': SCENE_FRAME_ACCENTS.G,
+  '--frame-m': SCENE_FRAME_ACCENTS.M,
+  '--frame-c': SCENE_FRAME_ACCENTS.C,
+  '--frame-l': SCENE_FRAME_ACCENTS.L,
 };
 
 interface PlaneSize {
@@ -176,6 +208,19 @@ function refreshVisualAnchors(
       : region.piles;
     anchors.set(`zone:${region.seat}:rack`, rack);
     anchors.set(`pile:${region.seat}`, rack);
+    // `hand:<seat>` for an opponent resolves to their fan's landing slot since
+    // #533 (`zone-geography.md` §9: a draw terminates on a real fan slot, not
+    // on the crest fallback). The visual rect is preferred so a motion that
+    // starts mid-travel leaves from where the back actually is.
+    const fan = region.handFan;
+    if (fan) {
+      const drawn = fan.slots[fan.slots.length - 1];
+      anchors.set(
+        `hand:${region.seat}`,
+        (drawn && reconciler.chromeVisualFor(`handfan:${region.seat}:${drawn.index}`)) ??
+          fan.anchor,
+      );
+    }
   };
   for (const region of planeRegions(plane)) addRegion(region);
   for (const tile of plane.tiles) {
@@ -189,6 +234,9 @@ function refreshVisualAnchors(
     for (const zone of RACK_ZONES) anchors.set(`zone:${tile.seat}:${zone}`, rack);
     anchors.set(`zone:${tile.seat}:rack`, rack);
     anchors.set(`pile:${tile.seat}`, rack);
+    // Rung 5 draws no fan (the tile IS the minimal cluster rung), so the hand
+    // anchor terminates on the tile — still a real, drawn surface.
+    anchors.set(`hand:${tile.seat}`, rack);
   }
   // Off-focus combat staging (issue #501): a permanent the ladder did not draw
   // individually — a digest-rung wing's board, a compact seat behind its tile —
@@ -264,6 +312,11 @@ export function LivePlane({
   onRebuildRef.current = onRebuild;
 
   const plane = useMemo(() => stagePlane(view, size, staging), [size, staging, view]);
+  // The device's card back (`card-representation.md` §13). A presentation
+  // preference, never game state: it takes no card and no view, so it cannot
+  // leak what a hidden pile holds, and with nothing resolved every pile keeps
+  // its procedural back and the whole plane still rebuilds from this `GameView`.
+  const cardBack = useCardBack();
   const planeRef = useRef(plane);
   planeRef.current = plane;
 
@@ -342,12 +395,22 @@ export function LivePlane({
     // clear, and the initial mount carries no orientation cue (game start owns
     // its own treatment) — only persistent paths for a mid-game first frame.
     effectsLayer.setPersistent(
-      deriveGameViewPresentation(undefined, viewRef.current, {
-        focusSeat: planeRef.current.focusSeat,
-        targetingPaths: targetingPathsRef.current,
-        quality,
-        reducedMotion,
-      }).persistent,
+      attachOccludedEndpoints(
+        deriveGameViewPresentation(undefined, viewRef.current, {
+          focusSeat: planeRef.current.focusSeat,
+          ...(stagingRef.current?.selectedId === undefined
+            ? {}
+            : { isolatedId: stagingRef.current.selectedId }),
+          targetingPaths: targetingPathsRef.current,
+          quality,
+          reducedMotion,
+        }).persistent,
+        {
+          view: viewRef.current,
+          plane: planeRef.current,
+          rectFor: (ref) => anchorsRef.current.get(ref),
+        },
+      ),
     );
     presentedEpochRef.current = sessionEpochRef.current;
     emitRebuildSample('initial', start, planeRef.current.compact, root);
@@ -372,16 +435,33 @@ export function LivePlane({
       discontinuity: hasPreviousView && sessionEpochRef.current !== presentedEpochRef.current,
       presentationBusy: superseding && reconciler.hasPendingAnimations(),
     });
+    // The §10.3 staging adapter (`./endpointOcclusion`): the effects layer can
+    // see only whether a rect resolved, so the distinction between an endpoint
+    // that is merely undrawn and one that has left the game is made HERE, where
+    // both the authoritative view and the staged plane are in hand.
+    const staged = (effects: GameViewPresentation['persistent']) =>
+      attachOccludedEndpoints(effects, {
+        view,
+        plane,
+        rectFor: (ref) => anchorsRef.current.get(ref),
+      });
+
     // Persistent paths/links are a pure function of the current view — always
     // rebuilt from it alone so combat/targeting overlays are correct after any
-    // discontinuity, never carried across a rebuild.
+    // discontinuity, never carried across a rebuild. `previous === undefined`
+    // also means no §6.2 retraction survives a rebuild or a fast-forward: a
+    // reconnect renders the settled stage (§6.4), and a superseding view is the
+    // truth rather than something to animate up to.
     const currentPersistent = (): GameViewPresentation['persistent'] =>
-      deriveGameViewPresentation(undefined, view, {
-        focusSeat: plane.focusSeat,
-        targetingPaths,
-        quality,
-        reducedMotion,
-      }).persistent;
+      staged(
+        deriveGameViewPresentation(undefined, view, {
+          focusSeat: plane.focusSeat,
+          ...(staging?.selectedId === undefined ? {} : { isolatedId: staging.selectedId }),
+          targetingPaths,
+          quality,
+          reducedMotion,
+        }).persistent,
+      );
 
     if (mode === 'rebuild') {
       // Reconnect / resync: rebuild the latest complete view with motion
@@ -419,6 +499,9 @@ export function LivePlane({
         // The focus the plane RESOLVED (manual or default relevance), so the
         // staging cue and the off-focus channel agree with what is staged.
         focusSeat: plane.focusSeat,
+        // Focus isolates one object's relationships and calms the rest
+        // (§4.4/§9.3): the selection is the isolation the player expressed.
+        ...(staging?.selectedId === undefined ? {} : { isolatedId: staging.selectedId }),
         targetingPaths,
         quality,
         reducedMotion,
@@ -426,7 +509,19 @@ export function LivePlane({
       if (superseding) reconciler.discardMotionProxies();
       reconciler.reconcile(plane, presentation.motions);
       refreshVisualAnchors(anchorsRef.current, plane, reconciler, view);
-      effectsLayer.setPersistent(presentation.persistent);
+      // A §6.2 retraction's endpoints have just left the view, so they are
+      // frozen onto the rects they last occupied before the occlusion adapter
+      // runs — that is where the player was already looking, and it is what
+      // makes the retraction visible instead of instantly unresolvable.
+      effectsLayer.setPersistent(
+        staged(
+          freezeDepartedRelationshipAnchors(
+            presentation.persistent,
+            previousAnchors,
+            anchorsRef.current,
+          ),
+        ),
+      );
       if (superseding) {
         effectsLayer.replaceTransients(
           freezeDepartedEffectAnchors(presentation.transients, previousAnchors, anchorsRef.current),
@@ -452,6 +547,9 @@ export function LivePlane({
     onPlane,
     onPresentation,
     plane,
+    // The isolation the relationship emphasis reads (§4.4). It only ever
+    // changes together with `plane`, which is memoized on the same staging.
+    staging?.selectedId,
     quality,
     reducedMotion,
     startMotion,
@@ -489,9 +587,29 @@ export function LivePlane({
       className={styles.host}
       data-testid="live-2-5d-plane"
       data-compact={String(plane.compact)}
-      style={sceneStyle}
+      data-card-back={cardBack.skin?.id ?? 'procedural'}
+      style={{ ...sceneStyle, ...cardBack.vars }}
       aria-label="2.5D battlefield"
     >
+      {/* The card back (`card-representation.md` §13). One property for the
+          whole plane, so every hidden pile shows the same image and none can
+          vary with the card it hides. The probe exists because a CSS background
+          cannot report a failure: it loads the same URL the piles paint (one
+          request), and an error falls the device back to the default skin — or,
+          if that is what failed, to the procedural back — with no layout
+          change, because the pile's box never depended on the image. */}
+      {cardBack.skin && (
+        <img
+          className={styles.cardBackProbe}
+          src={cardBack.skin.src}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          data-testid="card-back-probe"
+          key={cardBack.skin.id}
+          onError={() => noteCardBackFailed(cardBack.skin!.id)}
+        />
+      )}
       {/* ADR 0030 layer 1 — the shared environment (issue #530). The same
           component the pregame stage mounts, so crossing into the match never
           changes the world. Noninteractive, strictly behind the plane, and a
@@ -505,7 +623,11 @@ export function LivePlane({
       />
       <div className={styles.camera}>
         <div className={styles.tiltedPlane}>
-          <div ref={planeRootRef} className={styles.plane} data-testid="live-plane-dom" />
+          <div
+            ref={planeRootRef}
+            className={`${styles.plane} ${clusterStyles.plane}`}
+            data-testid="live-plane-dom"
+          />
           {interaction && <LivePlaneControls view={view} plane={plane} interaction={interaction} />}
           <div className={styles.effects}>
             <EffectsSurface

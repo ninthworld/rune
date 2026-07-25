@@ -19,19 +19,47 @@ export {
   type TransientInvocation,
   type PersistentCategory,
   type PersistentEffect,
+  type RelationshipState,
+  type EndpointKind,
   type DrawOp,
+  type DrawPart,
 } from './types';
 
 export {
   rectCenter,
   anchorCenter,
+  anchorRect,
   pathCurve,
+  PATH_LIFT,
+  polylineLength,
   dashSegments,
+  flowSegments,
   arrowHead,
+  chevronWings,
+  arcChords,
+  bracketArms,
+  elbowPath,
+  rectEdgePoint,
+  clampToRect,
+  trimEnd,
+  trimStart,
+  endTangent,
   burstParticles,
   type Point,
+  type FlowSegment,
   type BurstParticle,
 } from './geometry';
+
+export {
+  RELATIONSHIP_DASH,
+  relationshipOps,
+  relationshipState,
+  relationshipAnimates,
+  edgeIndicatorOps,
+  fanGroups,
+  type RelationshipContext,
+  type ResolvedRelationship,
+} from './relationships';
 
 export {
   EffectsLayer,

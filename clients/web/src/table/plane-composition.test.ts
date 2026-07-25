@@ -42,6 +42,7 @@ import {
   allPlaneRects,
   basics,
   bears,
+  clusterRects,
   menagerie,
   regionsOf,
   seatTable,
@@ -65,6 +66,12 @@ function attachedRects(plane: StagedPlane): { label: string; rect: Rect }[] {
   for (const region of regionsOf(plane)) {
     rects.push({ label: `crest:${region.seat}`, rect: region.crest });
     rects.push({ label: `rack:${region.seat}`, rect: region.piles });
+    // The whole identity cluster, not just its medallion (issue #532): the
+    // nameplate runs outboard and the status rail arcs above the rim, so both
+    // can leave the envelope in ways the crest rect alone would never show.
+    for (const [i, rect] of clusterRects(region.cluster).entries()) {
+      rects.push({ label: `cluster:${region.seat}:${i}`, rect });
+    }
     for (const slot of region.rack.slots) {
       rects.push({ label: `zone:${region.seat}:${slot.zone}`, rect: slot.hitRect });
     }

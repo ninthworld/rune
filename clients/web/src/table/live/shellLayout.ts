@@ -37,10 +37,31 @@
  * pointer-transparent toast layer.
  *
  * Later work moves the regions around — #531 recomposes the battlefield, #533
- * rebuilds the hand, #534 removes the dashboard panels and relocates the action
+ * rebuilt the hand, #534 removes the dashboard panels and relocates the action
  * home. They should keep these three invariants and re-point at these constants;
  * the geometry is deliberately expressed as *named bands*, not as a fixed grid,
  * so a recomposition changes {@link shellBands} rather than scattering numbers.
+ *
+ * ## What #533 left for #534
+ *
+ * The hand rebuild consumes this module and publishes three things the
+ * contextual-controls work needs, all of them already exported:
+ *
+ * - **Band geometry.** `shellBands(viewport).hand` is the fan's span; the fan
+ *   itself is planned by `table/handFan.ts`'s {@link localFanPlan}, which is
+ *   pure and viewport-free. Moving the hand band is a change to
+ *   {@link shellBands} alone — the fan re-plans against whatever width it gets,
+ *   down to the 44 px floor, and pages below it.
+ * - **Lift extents.** {@link SHELL.handLift} / {@link SHELL.handLiftSelected} /
+ *   {@link SHELL.handLiftMax} bound every transform a hand card takes, and
+ *   {@link handBandHeight} is derived from the last of them. A lifted card can
+ *   never exceed `handLiftMax` above its rest position, so #534 can compute the
+ *   band the fan actually sweeps without measuring the DOM.
+ * - **The decision-clearance rule.** Invariant I3, unchanged: a pending decision
+ *   outranks every fixed region. The fan raises to {@link LAYER.shellRaised}
+ *   during a forced decision and never above it, so a contextual plaque on the
+ *   `decision` rung is always free to cover chrome and never the cards it is
+ *   asking about.
  */
 import type { CSSProperties } from 'react';
 import { TIER } from '../../tokens';
@@ -347,8 +368,14 @@ export function handBandWidthFor(count: number): number {
  *
  * The 44 px floor holds for an ordinary opening hand at every supported viewport.
  * It does **not** hold for the large hands the layout model routes to fan paging
- * (`docs/design/layout-model.md` §Stress dispositions) — paging belongs to the
- * hand rebuild (#533), and this function is what that work should gate on.
+ * (`docs/design/layout-model.md` §Stress dispositions).
+ *
+ * **Paging shipped in #533** and gates on exactly this arithmetic:
+ * `table/handFan.ts`'s `fanCapacity` is this function inverted, and the page
+ * size is derived from it, so `handFanSpacing(pageSize, bandWidth) ≥
+ * SHELL.minHit` holds for every page of every plan. This function stays as the
+ * band-sizing input (`fullBottomColumns` reads its inverse) and as the
+ * independent check `handFan.test.ts` agrees with at the paging boundary.
  */
 export function handFanSpacing(count: number, bandWidth: number): number {
   if (count <= 1) return SHELL.handCardW;
