@@ -113,6 +113,11 @@ Use Prettier for formatting; see [`docs/coding-standards.md`](../../docs/coding-
 - `npm audit --audit-level=high` fails on high or critical advisories.
 - Prefer a deterministic `package.json` override for an accepted transitive advisory and
   explain it in the PR. Do not raise the audit threshold to silence a finding.
+- Current overrides: `postcss`, and `minimatch` (to `^10`, which carries the patched
+  `brace-expansion`; eslint 9's own `minimatch@3` pins `brace-expansion@^1`, and no 1.x
+  release is patched for GHSA-mh99-v99m-4gvg). Override `minimatch`, not
+  `brace-expansion`: 5.x moved from a callable default export to a named `expand`, so
+  forcing it under `minimatch@3` breaks eslint with `TypeError: expand is not a function`.
 
 ## References
 
