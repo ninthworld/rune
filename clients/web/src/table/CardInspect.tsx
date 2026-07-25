@@ -23,7 +23,7 @@ import {
   getArtVersion,
   subscribeArt,
 } from '../card/art/artStore';
-import { cx } from '../chrome/cx';
+import { CardArtSlot } from '../card/dom';
 import s from './chrome.module.css';
 
 /** A named reference to another permanent, for the inspector's attachment lines. */
@@ -183,7 +183,7 @@ function CardBody({
   const attachmentList = attachments ?? [];
   // The card's illustration under the player's chosen art source (ADR 0024), if
   // one is loaded — resubscribed so a background download appearing mid-inspect
-  // shows up. Pure presentation cache; absent renders the text-only panel.
+  // shows up. Pure presentation cache; absent renders the monogram placeholder.
   useSyncExternalStore(subscribeArt, getArtVersion);
   const artUrl = artUrlFor(card.functional_id);
   // Under full-card mode the image IS a whole card: show it uncropped (contain)
@@ -191,16 +191,18 @@ function CardBody({
   const fullCard = getArtSource() === 'scryfall' && getArtStyle() === 'full';
   return (
     <>
-      {artUrl !== undefined && (
-        <img
-          className={cx(s.inspectArt, fullCard && s.inspectArtFull)}
-          data-testid="card-inspect-art"
-          data-full-card={fullCard || undefined}
-          src={artUrl}
-          alt=""
-          aria-hidden="true"
-        />
-      )}
+      {/* The reserved art slot (issue #527) is rendered unconditionally and at
+          ONE size for both art modes, so a background download landing
+          mid-inspect and a change of art style both paint into an existing
+          rectangle — the panel's height never moves under either. */}
+      <CardArtSlot
+        url={artUrl}
+        mode={fullCard ? 'panelFull' : 'panel'}
+        monogram={card.name.slice(0, 1)}
+        className={s.inspectArt}
+        testId="card-inspect-art-slot"
+        artTestId="card-inspect-art"
+      />
       {card.mana_cost !== undefined && (
         <div className={s.inspectCost} data-testid="card-inspect-cost">
           {card.mana_cost}

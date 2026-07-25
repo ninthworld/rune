@@ -1,7 +1,21 @@
 # ADR 0023: Fixed-shell anatomy with one action home
 
-- Status: accepted
+- Status: superseded by [ADR 0032](0032-contextual-shell-anatomy.md)
 - Date: 2026-07-18
+- Superseded: 2026-07-25
+
+> **Superseded by [ADR 0032](0032-contextual-shell-anatomy.md).** The approved
+> 2.5D baselines (issue #547) are battlefield-first with contextual chrome, and
+> none of them contains the permanent top bar, bottom dock, or right rail this
+> ADR requires. Separately, this ADR's claim that the overlap/clipping defect
+> class was "eliminated by construction" did not hold: issue #528 found a
+> mulligan soft-lock and a half-clipped hand *inside* the carved shell. What
+> retires that defect class is a tested layer and containment contract, not
+> permanent regions.
+>
+> Retained by ADR 0032: one action home (relocated to the lower-right cluster),
+> no per-card action popups, stable zone homes, the density ladder, and the hand
+> as a shell region rather than a scene-drawn object.
 
 ## Context
 

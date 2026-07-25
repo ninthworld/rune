@@ -123,6 +123,44 @@
   --rune-type-caption: 12px;
   --rune-type-micro: 11px;
 
+  /* ── Stacking ladder (issue #528) ──────────────────────────────────────────
+   * The ONE z-index scale for the match shell and everything layered over it.
+   * No stylesheet may use a bare `z-index` number; every rule reads a token
+   * here. `table/live/shellLayout.ts` mirrors these values as `LAYER`, and
+   * `shellLayout.test.ts` parses this block and fails if the two drift.
+   *
+   * The ordering rule: a layer may only be covered by a layer the player
+   * explicitly invoked and can dismiss WITHOUT answering it. That is why
+   * `--rune-z-decision` sits above `--rune-z-shell-top` — a forced mulligan
+   * prompt is what the server is waiting on, so permanent chrome yields to it.
+   * The shipped shell had the sheet at 14 and the top bar at 20, which painted
+   * the top bar over the mulligan prompt: a covered, unanswerable decision.
+   *
+   * A region carrying a z-index creates a stacking context (grid items do so
+   * even at `position: static`), so nothing rendered INSIDE `.top`, `.scene`,
+   * `.rail`, or `.bottom` can climb past that region's rung. Anything that must
+   * outrank a shell region has to be a sibling of the regions. The plane's own
+   * z-indices are scoped by `isolation: isolate` and are deliberately off this
+   * ladder — they order objects within the scene only. */
+  --rune-z-scene: 1;
+  --rune-z-shell: 10;
+  --rune-z-shell-raised: 12;
+  --rune-z-shell-top: 20;
+  --rune-z-decision: 30;
+  --rune-z-drag: 40;
+  --rune-z-popover: 50;
+  --rune-z-overlay: 60;
+  --rune-z-toast: 70;
+
+  /* ── Shell geometry fallbacks (issue #528) ─────────────────────────────────
+   * `table/live/shellLayout.ts` publishes the live values as `--shell-*` on the
+   * match shell root; these are the fallbacks for chrome rendered outside it
+   * (the spectator shell, isolated component tests). Keep them in step with
+   * `SHELL` — the same test asserts they agree. */
+  --shell-top-h: 56px;
+  --shell-hand-card-w: 104px;
+  --shell-hand-gutter: 4px;
+
   /* ── Interaction ───────────────────────────────────────────────────────────*/
   /* Minimum touch target per AGENTS.md (44px), applied to every affordance. */
   --rune-touch: 44px;

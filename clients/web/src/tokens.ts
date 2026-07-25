@@ -139,6 +139,11 @@ export const BADGE = {
  * larger tiers draw art — the dense tiers (chip/mini/support) keep their full
  * procedural information budget (ui-design-notes §Card render).
  */
+/** The declared ratio (w ÷ h) of a screen-space illustration window. */
+const ART_PANEL_ASPECT = 4 / 3;
+/** The declared ratio (w ÷ h) of a whole printed card (63 × 88 mm). */
+const ART_CARD_ASPECT = 63 / 88;
+
 export const ART = {
   /** Horizontal inset of the window from the card edge. */
   inset: 5,
@@ -152,6 +157,46 @@ export const ART = {
   scrimAlpha: 0.72,
   /** Tiers that render an illustration when one is available. */
   tiers: ['field', 'hand'],
+  /**
+   * The focal anchor of the window mask (issue #527), as fractions of the mask
+   * box, published as `object-position`. Illustrations are cover-fitted — the
+   * raster fills the mask and the excess is cropped, never letterboxed and
+   * never stretched — so the crop needs a declared anchor. It sits slightly
+   * **above** center because a card illustration's subject almost always does;
+   * an anchor is a design decision, not a per-image measurement, so the mask
+   * behaves identically for every intrinsic size and ratio.
+   */
+  focusX: 0.5,
+  focusY: 0.42,
+  /**
+   * The DECLARED aspect ratio (w ÷ h) of a screen-space art window — the
+   * inspect tier and the inspect panel, where the mask has no frame to derive a
+   * height from. It overrides the image's natural ratio, so the panel's box is
+   * the same before and after any image loads (issue #527).
+   */
+  panelAspect: ART_PANEL_ASPECT,
+  /**
+   * The DECLARED aspect ratio (w ÷ h) of a whole-card image in ADR 0024's
+   * full-card mode: the printed card proportion (63 × 88 mm). Same purpose as
+   * {@link ART.panelAspect} — the box never comes from the file.
+   */
+  cardAspect: ART_CARD_ASPECT,
+  /**
+   * The DECLARED aspect ratio (w ÷ h) of the **permanently reserved art slot**
+   * on the screen-space inspect surfaces (issue #527). One slot, one size, for
+   * every state: no art, art still downloading, art arrived, and *either* art
+   * mode. A per-mode reservation would fix the late-load shift but not the
+   * mode-switch shift, so the slot takes the **taller** of the two modes (the
+   * smaller w ÷ h) and the shorter one is centered inside it — the reserved
+   * rectangle then contains both modes at a given width and never changes.
+   */
+  slotAspect: Math.min(ART_PANEL_ASPECT, ART_CARD_ASPECT),
+  /**
+   * Font size (logical px) of the reserved slot's empty-state monogram — the
+   * same procedural placeholder mark the card frame draws in its art window, so
+   * a text-only card reads as a card with no illustration rather than a hole.
+   */
+  slotMonogram: 44,
 } as const;
 
 /** Vector frame geometry — the look of the card body with no images or WotC art. */

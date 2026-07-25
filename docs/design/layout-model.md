@@ -32,8 +32,11 @@ treatment, art, and finish come from the visual system and Phase 1.
 ## The plane and its fixed slots
 
 The battlefield plane carries three permanent slot groups; they never
-reorder, and no region ever renders on top of another (ADR 0023's
-by-construction rule, carried onto the plane):
+reorder, and no region ever renders on top of another
+([ADR 0032](../decisions/0032-contextual-shell-anatomy.md), carried onto the
+plane — the plane's slot stability is retained from ADR 0023, but non-overlap
+now rests on the tested layer and containment contract rather than on the
+"by construction" claim ADR 0023 made and #528 disproved):
 
 - **The receiver's band** — always the full-width bottom third (±), the
   largest card tiers, with the crest cluster at its outer edge and piles at

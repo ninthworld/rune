@@ -55,7 +55,12 @@ confirm-stepped concede, and the identity layer's accents, life crests, and tabl
 vignette. The design investigation that followed locked the client's target anatomy in
 [`design/ui-blueprint.md`](design/ui-blueprint.md) (ADR 0023): a fixed shell with one
 action home, proven by hostile-state mocks at laptop, tablet, and phone-portrait
-geometries. The blueprint's core anatomy is now implemented: the client shell is the
+geometries. *(ADR 0023 is now superseded by
+[ADR 0032](decisions/0032-contextual-shell-anatomy.md): the approved 2.5D baselines are
+battlefield-first with contextual chrome, so the permanent top bar, bottom dock, and
+right rail described below are removed under #534. The one action home survives and
+relocates. The paragraph that follows records what was built under ADR 0023 and remains
+accurate as history.)* The blueprint's core anatomy is now implemented: the client shell is the
 carved fixed layout (top bar, per-player panels, stack+activity rail, bottom shell
 owning identity, piles, hand, and the single action dock), per-card action popups are
 retired in favor of dock routing, tap is the uniform ~25° treatment at every tier,

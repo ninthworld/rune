@@ -67,6 +67,7 @@ import {
 import { LivePlane } from './LivePlane';
 import type { LivePlaneInteractionProps } from './LivePlaneControls';
 import type { TargetingPresentationPath } from './gameViewPresentation';
+import { handFanFraction, isCompactShell, shellStyleVars } from './shellLayout';
 import { useSessionMoments } from './useSessionMoments';
 import styles from './live-match.module.css';
 
@@ -281,7 +282,9 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     );
   }
 
-  const compact = viewport.width < 900;
+  // One composition switch, shared with the stylesheet's media query and the
+  // geometry mirror (`shellLayout.SHELL.compactBreakpoint`); all three move together.
+  const compact = isCompactShell(viewport);
   const prompt = selectPendingPrompt(view);
   const localId = view.you || undefined;
   const inspectId = inspectedId ?? peekId ?? selectedId;
@@ -580,6 +583,10 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
       data-moment={moment ?? undefined}
       data-orienting={moment === 'reconnect' || undefined}
       data-forced-decision={forced === null ? undefined : 'true'}
+      // The viewport/safe-area contract (issue #528): every shell track size and
+      // hand offset in `live-match.module.css` reads one of these properties, so
+      // the geometry the layout tests reason about is the geometry that ships.
+      style={shellStyleVars(viewport)}
       onFocusCapture={(event) => {
         focusedEntity.current =
           (event.target as HTMLElement).closest<HTMLElement>('[data-entity]')?.dataset.entity ??
@@ -706,10 +713,10 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
               }}
               style={
                 {
-                  '--hand-left':
-                    view.my_hand.length <= 1
-                      ? '50%'
-                      : `${10 + (80 * index) / (view.my_hand.length - 1)}%`,
+                  // Position along the fan as a 0…1 fraction of the band's usable
+                  // span; the stylesheet insets that span by half a card, so the
+                  // outermost cards can never be clipped (shellLayout invariant I2).
+                  '--hand-t': handFanFraction(index, view.my_hand.length),
                   '--hand-angle': `${Math.max(
                     -8,
                     Math.min(8, (index - (view.my_hand.length - 1) / 2) * 2),

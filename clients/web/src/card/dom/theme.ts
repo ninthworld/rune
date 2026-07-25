@@ -179,6 +179,49 @@ export function cardFaceVars(
 }
 
 /**
+ * The custom properties the {@link CardArt} primitive owns (issue #527),
+ * published on the image element itself so a card illustration is contained
+ * even on a surface that publishes no frame variables at all (the inspect
+ * panel). Frame-relative geometry — `--art-inset`, `--art-top-gap`,
+ * `--art-bottom-reserve`, `--art-radius`, `--face-header-h`, `--face-type-size`,
+ * `--face-radius` — still flows down from {@link cardFaceVars}; these are the
+ * values that belong to the art window itself: where a cover-fitted crop is
+ * anchored, the declared ratios the screen-space modes size by, and what an
+ * empty or failed image reads as. Every one comes from `src/tokens.ts`.
+ */
+export function cardArtVars(): CSSProperties {
+  return {
+    '--art-focus': `${ART.focusX * 100}% ${ART.focusY * 100}%`,
+    '--art-panel-aspect': `${ART.panelAspect}`,
+    '--art-card-aspect': `${ART.cardAspect}`,
+    '--art-empty': SURFACES.cardBody,
+  } as CSSProperties;
+}
+
+/**
+ * The custom properties the **reserved art slot** owns (issue #527) — the
+ * screen-space rectangle the inspect surfaces keep for an illustration whether
+ * or not one exists and whichever art mode is active. Published on the slot
+ * itself for the same reason {@link cardArtVars} is published on the image: the
+ * inspect popover is a chrome surface that emits no frame variables at all, so
+ * the slot must carry its own geometry rather than inherit it.
+ *
+ * `--art-mono-color` is only the *fallback* for the empty-state monogram: on a
+ * surface that does publish a frame (the inspect tier) the slot inherits
+ * `--face-accent` and the mark keeps the card's color identity.
+ */
+export function cardArtSlotVars(): CSSProperties {
+  return {
+    '--art-slot-aspect': `${ART.slotAspect}`,
+    '--art-radius': `${ART.radius}px`,
+    '--art-empty': SURFACES.cardBody,
+    '--art-mono-size': `${ART.slotMonogram}px`,
+    '--art-mono-alpha': `${FRAME.monogramAlpha}`,
+    '--art-mono-color': SURFACES.typeText,
+  } as CSSProperties;
+}
+
+/**
  * The face's resting opacity, carried from the factory: tap dims slightly —
  * except for a declared attacker, which keeps full presence while tapped (it is
  * in combat, not inert) — summoning sickness dims a touch, and an ineligible

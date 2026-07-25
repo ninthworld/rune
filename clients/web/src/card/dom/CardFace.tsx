@@ -21,6 +21,11 @@
  *   paths and a capped `+N`, the mana cost is one bounded pill, and every
  *   badge consolidates into one row (the colored per-symbol/per-badge
  *   rendering stays at the budget-exempt hand/inspect tiers).
+ * - **Art is contained by the frame, never the file** (issue #527): every
+ *   illustration goes through the one {@link CardArt} primitive, whose modes
+ *   fix the image box from this face's tier and frame geometry. A card's
+ *   footprint therefore depends only on its tier — no intrinsic image size,
+ *   load timing, or failure can move it.
  * - **Transform readiness** (ADR 0030): the face renders correctly flat (chrome
  *   surfaces) and on the perspective plane; all state transitions are
  *   transform/opacity-only and `prefers-reduced-motion` snaps them.
@@ -32,6 +37,7 @@ import type { CSSProperties } from 'react';
 import { parseManaCost, type CardDisplayData } from '../cardFactory';
 import { keywordGlyphName, type GlyphName } from '../../chrome/glyphs';
 import { cx } from '../../chrome/cx';
+import { CardArt, CardArtSlot } from './CardArt';
 import { glyphStripGeometry } from './glyphStrip';
 import { cardFaceVars, faceMetrics, splayLayers, type CardFaceTier } from './theme';
 import s from './card-face.module.css';
@@ -284,7 +290,7 @@ export function CardFace({
     return (
       <div {...rootProps}>
         <div className={s.inner} data-monogram="">
-          {art && <img className={s.artFull} src={art.url} alt="" />}
+          {art && <CardArt url={art.url} mode="full" />}
           {!art?.full &&
             (data.landGlyph ? (
               <ChipGlyph name={data.landGlyph} scrim={art !== undefined} />
@@ -300,14 +306,14 @@ export function CardFace({
   return (
     <div {...rootProps}>
       <div className={s.inner} data-monogram={full || windowArt ? '' : data.name.slice(0, 1)}>
-        {full && <img className={s.artFull} src={art!.url} alt="" />}
+        {full && <CardArt url={art!.url} mode="full" />}
         {/* The name and type nodes always exist (empty in full-card mode):
             their pseudo-elements carry the combat edge bars and the latent
             ability marker, and the art image stacks below every overlay — so
             each server-computed channel survives every face mode unchanged. */}
         <div className={s.name}>{full ? '' : data.name}</div>
         {!full && (tier === 'hand' ? <Pips data={data} /> : <CostPill data={data} />)}
-        {windowArt && <img className={s.artWindow} src={windowArt.url} alt="" />}
+        {windowArt && <CardArt url={windowArt.url} mode="window" />}
         <div className={cx(s.type, windowArt && s.overArt)}>{full ? '' : data.typeLine}</div>
         <KeywordStrip names={strip.names} overflow={strip.overflow} />
         {data.power !== undefined && data.toughness !== undefined && (
@@ -343,6 +349,14 @@ function ChipGlyph({ name, scrim }: { name: GlyphName; scrim: boolean }) {
  * space is exempt from the battlefield node budget. The production inspect
  * popover (`CardInspect`) remains the shipped surface until Phase 2 unifies it
  * onto this tier.
+ *
+ * Art here goes into a permanently reserved {@link CardArtSlot} (issue #527)
+ * rather than being mounted on arrival, and ADR 0024's full-card image is shown
+ * *inside* that slot (`panelFull`) instead of replacing the whole face the way
+ * it does on a battlefield frame. That is deliberate: this tier is a reading
+ * surface, so its text stays present in both art modes, and with the text and
+ * the slot both unconditional the panel's height is a function of the card's
+ * words alone — no download and no art-style flip can move it.
  */
 function InspectFace({
   data,
@@ -370,19 +384,24 @@ function InspectFace({
       aria-label={data.name}
       {...stateAttrs(data, 'inspect', elevation)}
     >
-      <div className={cx(s.inner, s.inspectInner)} data-monogram={art ? '' : data.name.slice(0, 1)}>
-        {full && <img className={s.artFull} src={art!.url} alt="" />}
-        <div className={s.name}>{full ? '' : data.name}</div>
-        {!full && (
-          <div className={s.inspectCost}>
-            <Pips data={data} flow />
-          </div>
-        )}
-        {art && !full && <img className={s.inspectArt} src={art.url} alt="" />}
-        {!full && <div className={cx(s.type, s.inspectType)}>{data.typeLine}</div>}
-        {!full && rulesText !== undefined && rulesText !== '' && (
-          <div className={s.rules}>{rulesText}</div>
-        )}
+      {/* The monogram moves into the reserved art slot at this tier — the frame's
+          centered placeholder would otherwise sit behind a column of text. */}
+      <div className={cx(s.inner, s.inspectInner)} data-monogram="">
+        <div className={s.name}>{data.name}</div>
+        <div className={s.inspectCost}>
+          <Pips data={data} flow />
+        </div>
+        {/* One reserved slot, always present, one size in both art modes
+            (issue #527): the illustration and the whole-card image are both
+            contained by it, so neither a late download nor an ADR 0024 art-style
+            flip can change this panel's height. */}
+        <CardArtSlot
+          url={art?.url}
+          mode={full ? 'panelFull' : 'panel'}
+          monogram={data.name.slice(0, 1)}
+        />
+        <div className={cx(s.type, s.inspectType)}>{data.typeLine}</div>
+        {rulesText !== undefined && rulesText !== '' && <div className={s.rules}>{rulesText}</div>}
         <div className={s.inspectFooter}>
           <KeywordStrip names={strip.names} overflow={strip.overflow} />
           {data.power !== undefined && data.toughness !== undefined && (
