@@ -315,70 +315,152 @@ export function sceneMotionMs(cls: SceneMotionClass, reducedMotion: boolean): nu
 
 // ── §4 Environment theme palette slots ───────────────────────────────────────
 
-/** The palette slots one environment theme fills (art itself is issue #471's;
- * these are the value slots the three parallax groups and the arena read). */
+/**
+ * The palette slots one environment theme fills
+ * (`docs/design/environment-system.md` §5.4). Thirteen slots, replacing the six
+ * sky/ground slots that predated the approved baselines: those could not express
+ * a **light plaza over a dark surround**, which is what the images actually show
+ * (§12 conflict 3). The art itself is issue #548's; these are the value slots the
+ * L0–L3 layer contract, the T0 token composition, and the Lite L0 gradient read.
+ *
+ * Slot → layer, so a reader can place every value:
+ *
+ * - `surroundTop` / `surroundBase` / `water` → **L0**, the far surround.
+ * - `plazaCore` / `plazaEdge` / `paving` / `medallion` → **L1**, the arena floor.
+ * - `rim` / `verge` → **L2**, the arena edge.
+ * - `propWarm` / `propCool` → **L3**, the corner-anchored props.
+ * - `glow` → the theme's ambient accent (environmental, never a state channel).
+ */
 export interface EnvironmentTheme {
   /** Display name. */
   label: string;
-  /** Sky gradient, zenith stop. */
-  skyTop: string;
-  /** Sky gradient, horizon stop. */
-  skyHorizon: string;
-  /** Sky gradient, base/vignette stop. */
-  skyBase: string;
-  /** Far ground — silhouetted landforms. */
-  ground: string;
-  /** Arena edge — the play surface's surround. */
-  arena: string;
+  /**
+   * L0's inner gradient stop — the plate-free horizon haze above the surround,
+   * and the Lite/T0 radial's centre stop. The one slot §5.3 does not sample (the
+   * images are silent above the plate); chosen one step light of
+   * {@link surroundBase} and held to the text floor by the contrast gate.
+   */
+  surroundTop: string;
+  /** L0's outer stop — distant foliage and the horizon vignette. */
+  surroundBase: string;
+  /** L0's water bodies (streams, canals, reflecting pools). */
+  water: string;
+  /** L1's plaza field at its centre — the bright surface cards sit on. */
+  plazaCore: string;
+  /** L1's plaza field at its outer edge. */
+  plazaEdge: string;
+  /** L1's radial paving rings and fan strokes. */
+  paving: string;
+  /** L1's central rune medallion at `(50 %, 40 %)`, `r = 5 % W`. */
+  medallion: string;
+  /** L2's stone rim and the two raised lips. */
+  rim: string;
+  /** L2's grass/ground verge outside the rim. */
+  verge: string;
+  /** L3's warm props — lanterns, brass, flowering shrubs. */
+  propWarm: string;
+  /** L3's cool props — crystal plinths, rune veins, glass. */
+  propCool: string;
   /** The theme's ambient glow accent (environmental, never a state channel). */
   glow: string;
 }
 
 /**
- * The three launch theme concepts (visual-system §4) as data — no theme art in
- * this layer. Every theme must pass the same check: text and accents hit their
- * contrast budgets against its slots with no per-theme retuning (enforced by
- * the unit test); the environment stays at least one contrast step below the
- * plane's content.
+ * The four theme family members of `environment-system.md` §5.3 as data — no
+ * theme art in this layer. Every value is **sampled from the approved images**
+ * (`docs/ui-concepts/rune-2.5d-interface-baseline.jpg` for Runic Vale, panels
+ * 6–8 of `rune-battlefield-environments.jpg` for the rest) and rounded; the
+ * images are the rank-1/2 binding sources, so these are transcriptions rather
+ * than choices.
+ *
+ * Every theme passes the same gates with no per-theme retuning (enforced by
+ * `sceneTokens.test.ts`): the card body stays separated from the plaza it sits
+ * on, primary text clears 4.5:1 on the two slots it can ever land on, and each
+ * layer's local contrast stays inside its §1 ceiling. The two sampled values
+ * that exceed a documented ceiling are recorded by that test rather than
+ * silently retuned — the images outrank a derived cap.
  */
 export const SCENE_THEMES = {
-  /** Runic Vale (default) — indigo sky, slate arena, cool teal glow. */
+  /** Runic Vale (canonical, default) — warm sand plaza, cool teal water, warm
+   * lantern gold. The baseline itself. */
   runicVale: {
     label: 'Runic Vale',
-    skyTop: '#2C3A55',
-    skyHorizon: '#1B2233',
-    skyBase: '#12141C',
-    ground: '#161C29',
-    arena: '#222B39',
+    surroundTop: '#5F6746',
+    surroundBase: '#565D3C',
+    water: '#5F7674',
+    plazaCore: '#B4A379',
+    plazaEdge: '#A89B72',
+    paving: '#B2AB7A',
+    medallion: '#9FA991',
+    rim: '#54534C',
+    verge: '#585C4B',
+    propWarm: '#9D7C58',
+    propCool: '#36ABBC',
     glow: '#4E9A9B',
   },
-  /** Ember Reach — deep umber sky, basalt arena, warm ember accents. */
-  emberReach: {
-    label: 'Ember Reach',
-    skyTop: '#4A3226',
-    skyHorizon: '#2E211A',
-    skyBase: '#1A1412',
-    ground: '#241A16',
-    arena: '#2B2622',
-    glow: '#C97B4A',
+  /** Verdant Canals — the same plaza, deeper foliage, bright cyan canals. */
+  verdantCanals: {
+    label: 'Verdant Canals',
+    surroundTop: '#414830',
+    surroundBase: '#323723',
+    water: '#414432',
+    plazaCore: '#8A7F66',
+    plazaEdge: '#A08A64',
+    paving: '#96895F',
+    medallion: '#8F9478',
+    rim: '#6F6858',
+    verge: '#535A49',
+    propWarm: '#837451',
+    propCool: '#3FC2E0',
+    glow: '#3FC2E0',
   },
-  /** Pale Court — blue-gray dawn, weathered marble arena, faint gilt. */
-  paleCourt: {
-    label: 'Pale Court',
-    skyTop: '#55606F',
-    skyHorizon: '#3A424E',
-    skyBase: '#232830',
-    ground: '#2E343D',
-    arena: '#4A4C50',
-    glow: '#C9B37E',
+  /** Sunlit Observatory — warm ochre and terracotta, pale gold light, brass. */
+  sunlitObservatory: {
+    label: 'Sunlit Observatory',
+    surroundTop: '#665849',
+    surroundBase: '#514638',
+    water: '#6F5A46',
+    plazaCore: '#907B5F',
+    plazaEdge: '#A68861',
+    paving: '#9B815F',
+    medallion: '#B18E54',
+    rim: '#836C57',
+    verge: '#8A7356',
+    propWarm: '#B18E54',
+    propCool: '#8FA6B0',
+    glow: '#C9A45E',
+  },
+  /** Moonlit Ruins — cool blue-violet night, grey slate, cyan rune glow. */
+  moonlitRuins: {
+    label: 'Moonlit Ruins',
+    surroundTop: '#3A404A',
+    surroundBase: '#2C3238',
+    water: '#243A59',
+    plazaCore: '#52575E',
+    plazaEdge: '#5B6069',
+    paving: '#61666E',
+    medallion: '#6E7B8C',
+    rim: '#384457',
+    verge: '#2F4251',
+    propWarm: '#7A6A4E',
+    propCool: '#3A6A9C',
+    glow: '#5379A8',
   },
 } as const satisfies Record<string, EnvironmentTheme>;
 
 /** A launch theme's key. */
 export type SceneThemeName = keyof typeof SCENE_THEMES;
 
-/** The default theme (visual-system §4). */
+/** Every theme key, in display order (the settings surface's option order). */
+export const SCENE_THEME_NAMES = Object.keys(SCENE_THEMES) as SceneThemeName[];
+
+/** The default theme (`environment-system.md` §5.3 — the canonical baseline). */
 export const DEFAULT_SCENE_THEME: SceneThemeName = 'runicVale';
+
+/** Whether a value names a shipped theme (guards a stale stored preference). */
+export function isSceneThemeName(value: unknown): value is SceneThemeName {
+  return typeof value === 'string' && value in SCENE_THEMES;
+}
 
 // ── Contrast helpers — the check every palette value passes ──────────────────
 

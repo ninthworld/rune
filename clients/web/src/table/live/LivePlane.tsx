@@ -8,20 +8,14 @@
  * stops as soon as the reconciler has no pending work.
  */
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import {
-  DEFAULT_SCENE_THEME,
-  SCENE_ELEVATION,
-  SCENE_HUES,
-  SCENE_NEUTRALS,
-  SCENE_SEAT_ACCENTS,
-  SCENE_THEMES,
-} from '../../sceneTokens';
+import { SCENE_ELEVATION, SCENE_HUES, SCENE_NEUTRALS, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
 import type { GameView, PlayerId } from '../../protocol';
 import { stagePlane, type PlaneRegion, type PlaneStagingState, type StagedPlane } from '../plane';
 import { cardFaceRenderer } from '../planeFaceRenderer';
 import { planeDisplayData } from '../planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../planeReconciler';
 import { EffectsLayer, type EffectDensity, type EffectQuality } from '../effects';
+import { SceneEnvironment, environmentBias } from '../environment';
 import { EffectsSurface } from '../EffectsSurface';
 import { presentAudio } from '../audio';
 import { LivePlaneControls, type LivePlaneInteractionProps } from './LivePlaneControls';
@@ -60,12 +54,6 @@ const sceneStyle: SceneStyle = {
   '--seat-amethyst': SCENE_SEAT_ACCENTS[3],
   '--seat-teal': SCENE_SEAT_ACCENTS[5],
   '--shadow-rest': SCENE_ELEVATION.rest.shadow,
-  '--sky-top': SCENE_THEMES[DEFAULT_SCENE_THEME].skyTop,
-  '--sky-horizon': SCENE_THEMES[DEFAULT_SCENE_THEME].skyHorizon,
-  '--sky-base': SCENE_THEMES[DEFAULT_SCENE_THEME].skyBase,
-  '--far-ground': SCENE_THEMES[DEFAULT_SCENE_THEME].ground,
-  '--arena': SCENE_THEMES[DEFAULT_SCENE_THEME].arena,
-  '--ambient-glow': SCENE_THEMES[DEFAULT_SCENE_THEME].glow,
 };
 
 interface PlaneSize {
@@ -223,12 +211,6 @@ export function LivePlane({
   const plane = useMemo(() => stagePlane(view, size, staging), [size, staging, view]);
   const planeRef = useRef(plane);
   planeRef.current = plane;
-
-  // Environmental animation steps on → reduced → off across quality levels
-  // (presentation-budgets §Quality levels); reduced motion turns it off at any
-  // level. Purely the ambient backdrop — the scene is never touched.
-  const environmentMotion =
-    reducedMotion || quality === 'lite' ? 'off' : quality === 'high' ? 'on' : 'reduced';
 
   const effectsLayer = useMemo(
     () =>
@@ -455,17 +437,17 @@ export function LivePlane({
       style={sceneStyle}
       aria-label="2.5D battlefield"
     >
-      <div
-        className={styles.environment}
-        data-environment={environmentMotion}
-        data-testid="live-environment"
-        aria-hidden="true"
-      >
-        <div className={styles.sky} />
-        <div className={styles.ground} />
-        <div className={styles.arenaEdge} />
-        <div className={styles.tableMark}>◇</div>
-      </div>
+      {/* ADR 0030 layer 1 — the shared environment (issue #530). The same
+          component the pregame stage mounts, so crossing into the match never
+          changes the world. Noninteractive, strictly behind the plane, and a
+          pure function of (theme, viewport, quality, reduced motion): it never
+          gates input and the match is fully interactive before it resolves. */}
+      <SceneEnvironment
+        quality={quality}
+        reducedMotion={reducedMotion}
+        viewport={{ width: plane.width, height: plane.height }}
+        bias={environmentBias(plane)}
+      />
       <div className={styles.camera}>
         <div className={styles.tiltedPlane}>
           <div ref={planeRootRef} className={styles.plane} data-testid="live-plane-dom" />

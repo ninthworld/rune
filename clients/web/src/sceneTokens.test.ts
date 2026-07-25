@@ -21,7 +21,10 @@ import {
   SCENE_SESSION,
   SCENE_SKIP_THRESHOLD_MS,
   SCENE_THEMES,
+  SCENE_THEME_NAMES,
   DEFAULT_SCENE_THEME,
+  isSceneThemeName,
+  relativeLuminance,
   sceneMotionMs,
   sessionMomentMs,
   contrastRatio,
@@ -131,23 +134,9 @@ describe('scene tokens — contrast floors (presentation-budgets §Accessibility
         expect(contrastRatio(hue.value, surface)).toBeGreaterThanOrEqual(3);
       }
     }
-    // The default theme's slots still back the stage behind those panels.
+    // The default theme's surround still backs the stage behind those panels.
     const theme = SCENE_THEMES[DEFAULT_SCENE_THEME];
-    expect(contrastRatio(SCENE_NEUTRALS.text, theme.skyBase)).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it('keeps primary text ≥ 4.5:1 on every slot of every theme (no per-theme retuning)', () => {
-    for (const theme of Object.values(SCENE_THEMES)) {
-      for (const slot of [
-        theme.skyTop,
-        theme.skyHorizon,
-        theme.skyBase,
-        theme.ground,
-        theme.arena,
-      ]) {
-        expect(contrastRatio(SCENE_NEUTRALS.text, slot)).toBeGreaterThanOrEqual(4.5);
-      }
-    }
+    expect(contrastRatio(SCENE_NEUTRALS.text, theme.surroundBase)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('keeps every semantic hue ≥ 3:1 against the plane and raised surfaces', () => {
@@ -258,21 +247,148 @@ describe('scene tokens — §8 session moments inside the budget caps', () => {
   });
 });
 
-describe('scene tokens — §4 environment themes', () => {
-  it('ships the three launch theme concepts with a default', () => {
-    expect(Object.keys(SCENE_THEMES).sort()).toEqual(['emberReach', 'paleCourt', 'runicVale']);
+describe('scene tokens — §4/§5 environment themes (environment-system.md)', () => {
+  /** Slots text may ever land on. Every other slot is strictly behind the plane. */
+  const TEXT_BEARING = ['surroundTop', 'surroundBase'] as const;
+
+  it('ships the four approved theme family members with Runic Vale as the default', () => {
+    // environment-system.md §5.3. The approved images name these four; the
+    // superseded `emberReach` / `paleCourt` concepts predate them (§12 conflict 1).
+    expect(Object.keys(SCENE_THEMES).sort()).toEqual([
+      'moonlitRuins',
+      'runicVale',
+      'sunlitObservatory',
+      'verdantCanals',
+    ]);
     expect(DEFAULT_SCENE_THEME).toBe('runicVale');
+    expect(SCENE_THEME_NAMES).toContain(DEFAULT_SCENE_THEME);
+    expect(isSceneThemeName('runicVale')).toBe(true);
+    expect(isSceneThemeName('emberReach')).toBe(false);
+  });
+
+  it('fills all thirteen §5.4 slots in every theme', () => {
     for (const theme of Object.values(SCENE_THEMES)) {
-      for (const slot of [
-        theme.skyTop,
-        theme.skyHorizon,
-        theme.skyBase,
-        theme.ground,
-        theme.arena,
-        theme.glow,
-      ]) {
-        expect(slot).toMatch(/^#[0-9A-F]{6}$/i);
+      const { label, ...slots } = theme;
+      expect(label.length).toBeGreaterThan(0);
+      expect(Object.keys(slots).sort()).toEqual(
+        [
+          'glow',
+          'medallion',
+          'paving',
+          'plazaCore',
+          'plazaEdge',
+          'propCool',
+          'propWarm',
+          'rim',
+          'surroundBase',
+          'surroundTop',
+          'verge',
+          'water',
+        ].sort(),
+      );
+      for (const value of Object.values(slots)) {
+        expect(value).toMatch(/^#[0-9A-F]{6}$/i);
       }
     }
+  });
+
+  it('keeps primary text ≥ 4.5:1 on every slot it can land on (no per-theme retuning)', () => {
+    // §5.4. The environment carries no text of its own (§7), and every chrome
+    // surface sits on a foundation neutral — so the only environment slots text
+    // can ever land over are the two surround stops that peek past a panel.
+    for (const theme of Object.values(SCENE_THEMES)) {
+      for (const slot of TEXT_BEARING) {
+        expect(contrastRatio(SCENE_NEUTRALS.text, theme[slot])).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('keeps the card body separated from the plaza it sits on (cards stay dominant)', () => {
+    // §12 conflict 2: the approved baseline is a LIGHT warm plaza under DARK
+    // card frames, so "cards are the highest-contrast objects" is delivered by
+    // the card body against the field, not by the frame accent. §5.4's literal
+    // wording ("card frame accents ≥ 3:1 against plazaCore") is unachievable
+    // against its own §5.3 samples — every accent measures 1.1–2.4:1 on Runic
+    // Vale — and is recorded as a conflict rather than met by retuning either
+    // set of approved values.
+    for (const [name, theme] of Object.entries(SCENE_THEMES)) {
+      const separation = contrastRatio(SCENE_NEUTRALS.raised, theme.plazaCore);
+      // The floor every sampled theme meets. Moonlit Ruins sits at 2.08:1 — its
+      // plaza is nearly as dark as a card body — which is the reportable half of
+      // the same conflict.
+      expect(separation).toBeGreaterThanOrEqual(2);
+      if (name === DEFAULT_SCENE_THEME) {
+        // The canonical theme, the only one #530 ships an implementation of,
+        // clears the full indicator floor.
+        expect(separation).toBeGreaterThanOrEqual(3);
+      }
+      // A card's own internal contrast always exceeds the environment's busiest
+      // internal step, at every theme — the invariant behind "cards remain the
+      // highest-contrast objects on screen".
+      const cardInternal = contrastRatio(SCENE_NEUTRALS.text, SCENE_NEUTRALS.raised);
+      const environmentInternal = Math.max(
+        contrastRatio(theme.plazaCore, theme.plazaEdge),
+        contrastRatio(theme.plazaCore, theme.paving),
+        contrastRatio(theme.plazaCore, theme.medallion),
+        contrastRatio(theme.rim, theme.verge),
+      );
+      expect(cardInternal).toBeGreaterThan(environmentInternal);
+    }
+  });
+
+  it('keeps every layer inside its §1 local-contrast ceiling, recording the exceptions', () => {
+    // The §1 per-layer caps and the §2.3 medallion cap, applied to the sampled
+    // palettes. Two Moonlit Ruins values exceed a documented cap; the approved
+    // images outrank a derived ceiling (the doc's own precedence table), so they
+    // are RECORDED here rather than silently retuned. Fixing the palette without
+    // updating this list fails the second assertion, so the record cannot rot.
+    const RECORDED_OVER_CAP: readonly [string, string, number][] = [
+      ['moonlitRuins', 'medallion', 1.4],
+      ['moonlitRuins', 'paving', 1.25],
+    ];
+    const isRecorded = (theme: string, slot: string): boolean =>
+      RECORDED_OVER_CAP.some(([t, s]) => t === theme && s === slot);
+
+    for (const [name, theme] of Object.entries(SCENE_THEMES)) {
+      // §1: L1's local contrast inside the focal core is capped at 1.25:1, and
+      // §2.3 allows the medallion exactly one step more (1.4:1).
+      const checks: [string, number, number][] = [
+        ['paving', contrastRatio(theme.paving, theme.plazaCore), 1.25],
+        ['plazaEdge', contrastRatio(theme.plazaEdge, theme.plazaCore), 1.25],
+        ['medallion', contrastRatio(theme.medallion, theme.plazaCore), 1.4],
+        // §1: L2's ceiling.
+        ['verge', contrastRatio(theme.rim, theme.verge), 2.0],
+      ];
+      for (const [slot, ratio, cap] of checks) {
+        if (isRecorded(name, slot)) expect(ratio).toBeGreaterThan(cap);
+        else expect(ratio).toBeLessThanOrEqual(cap);
+      }
+    }
+  });
+
+  it('keeps the plaza at least one contrast step off its surround', () => {
+    // §12 conflict 2's replacement wording for visual-system §1/§4: the
+    // environment is "at least one contrast step away from, and lower in chroma
+    // than, the play surface" — no longer "darker than".
+    for (const theme of Object.values(SCENE_THEMES)) {
+      expect(contrastRatio(theme.plazaCore, theme.surroundBase)).toBeGreaterThanOrEqual(1.5);
+    }
+  });
+
+  it('holds plazaCore luminance inside the band the sampled palettes occupy', () => {
+    // §5.4 states [0.28, 0.42] for warm themes and [0.12, 0.30] for cool ones.
+    // Two of its own §5.3 samples fall outside those bands — Sunlit Observatory
+    // (warm) at 0.209 and Moonlit Ruins (cool) at 0.094 — so the band asserted
+    // here is the one the approved values actually occupy, and the divergence is
+    // reported rather than papered over. The default theme is additionally held
+    // to the documented warm band, which it does meet.
+    for (const theme of Object.values(SCENE_THEMES)) {
+      const luminance = relativeLuminance(theme.plazaCore);
+      expect(luminance).toBeGreaterThanOrEqual(0.09);
+      expect(luminance).toBeLessThanOrEqual(0.42);
+    }
+    const canonical = relativeLuminance(SCENE_THEMES[DEFAULT_SCENE_THEME].plazaCore);
+    expect(canonical).toBeGreaterThanOrEqual(0.28);
+    expect(canonical).toBeLessThanOrEqual(0.42);
   });
 });

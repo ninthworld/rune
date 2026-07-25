@@ -19,6 +19,7 @@
  * `useSyncExternalStore` contract), and a setter both persists and republishes.
  */
 import type { EffectDensity, EffectQuality } from '../effects';
+import { DEFAULT_SCENE_THEME, isSceneThemeName, type SceneThemeName } from '../../sceneTokens';
 
 /**
  * The motion preference, composed with the OS `prefers-reduced-motion` query:
@@ -43,6 +44,15 @@ export interface PresentationSettings {
   /** Motion preference, composed with the OS reduced-motion query. */
   motion: MotionPreference;
   /**
+   * The battlefield environment theme (`docs/design/environment-system.md` §11).
+   * A **presentation** preference in exactly the idiom of the three above: per
+   * device, per client, never a `GameView` field, never a lobby field, never
+   * sent to the server. Two players in one match may see different themes and a
+   * spectator a third; the whole UI still rebuilds from one `GameView`, because
+   * the theme only selects a palette and a set of plates.
+   */
+  environmentTheme: SceneThemeName;
+  /**
    * Whether `quality` is still the auto-detected first-run default (no user
    * override yet). The settings surface shows the detected level rather than
    * applying it silently.
@@ -54,6 +64,7 @@ export interface PresentationSettings {
 const QUALITY_KEY = 'rune.presentation.quality';
 const DENSITY_KEY = 'rune.presentation.density';
 const MOTION_KEY = 'rune.presentation.motion';
+const ENVIRONMENT_THEME_KEY = 'rune.presentation.environmentTheme';
 
 function isQuality(value: string | null): value is EffectQuality {
   return value === 'high' || value === 'standard' || value === 'lite';
@@ -65,6 +76,15 @@ function isDensity(value: string | null): value is EffectDensity {
 
 function isMotion(value: string | null): value is MotionPreference {
   return value === 'system' || value === 'reduced' || value === 'full';
+}
+
+/** Remove one stored preference; a no-op where storage is unavailable. */
+function clearStored(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Storage unavailable — nothing was stored to begin with.
+  }
 }
 
 /** Read one stored preference, guarded; `null` when absent or unavailable. */
@@ -172,6 +192,25 @@ interface StoreState {
 
 let state: StoreState | null = null;
 
+/**
+ * Read the stored environment theme, applying the §8.3 stale-key rule: an
+ * unknown value (a theme renamed or removed since it was written) resolves to
+ * the default **and rewrites the stored key**, so the bad value is corrected on
+ * first read rather than re-resolved on every mount.
+ */
+function loadEnvironmentTheme(): SceneThemeName {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(ENVIRONMENT_THEME_KEY);
+  } catch {
+    return DEFAULT_SCENE_THEME;
+  }
+  if (raw === null) return DEFAULT_SCENE_THEME;
+  if (isSceneThemeName(raw)) return raw;
+  clearStored(ENVIRONMENT_THEME_KEY);
+  return DEFAULT_SCENE_THEME;
+}
+
 /** Build fresh state from storage, running first-run detection when unset. */
 function loadState(): StoreState {
   const density = readStored(DENSITY_KEY, isDensity) ?? 'reduced';
@@ -182,6 +221,7 @@ function loadState(): StoreState {
     quality: storedQuality ?? detection.quality,
     density,
     motion,
+    environmentTheme: loadEnvironmentTheme(),
     qualityAutoDetected: storedQuality === null,
   };
   return { settings, detection, listeners: new Set() };
@@ -253,4 +293,19 @@ export function setMotion(motion: MotionPreference): void {
   if (current.motion === motion) return;
   writeStored(MOTION_KEY, motion);
   commit({ ...current, motion });
+}
+
+/**
+ * Choose the battlefield environment theme; persists and republishes
+ * (`environment-system.md` §11). Permitted mid-match: the manifest re-resolves
+ * and the layers cross-fade on the `staging` class, with reduced motion snapping
+ * — the match is never interrupted and nothing is re-fetched before it is asked
+ * for. An unknown value is ignored rather than stored.
+ */
+export function setEnvironmentTheme(theme: SceneThemeName): void {
+  if (!isSceneThemeName(theme)) return;
+  const current = getPresentationSnapshot();
+  if (current.environmentTheme === theme) return;
+  writeStored(ENVIRONMENT_THEME_KEY, theme);
+  commit({ ...current, environmentTheme: theme });
 }

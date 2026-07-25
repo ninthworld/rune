@@ -1,0 +1,134 @@
+/*
+ * The battlefield environment (issue #530, `docs/design/environment-system.md`).
+ *
+ * ADR 0019 discipline, as `pregame.module.css` and the deck surfaces already
+ * follow it: **no literal hex and no literal duration live here.** Every colour
+ * is a `--env-*` property `environmentScene.ts` publishes from `SCENE_THEMES`,
+ * every duration derives from `--env-motion-staging`, which is
+ * `sceneMotionMs('staging', reducedMotion)` — so reduced motion is a token-level
+ * `0` rather than a media query that has to remember to fire.
+ *
+ * The environment is a NONINTERACTIVE backdrop (§7). `pointer-events: none` is
+ * set on the root and never overridden anywhere below; there is no hover rule,
+ * no focus rule, and no cursor in this file, by design.
+ */
+
+.environment {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  /* §7 rule 1 — never a hit target, a drop target, a focus stop, or a tab stop.
+     Inherited by every descendant; nothing below re-enables it. */
+  pointer-events: none;
+  background: var(--env-surround-base);
+  isolation: isolate;
+}
+
+/* One layer node per L0–L3, z-ordered by [data-layer]. The node exists whether
+   it draws SVG, a raster plate, or its T0 token form, so the §10.5 swap changes
+   what is inside a slot and never the slot itself. */
+.layer {
+  position: absolute;
+  inset: 0;
+  /* Parallax and cross-fade both ride the `staging` class (§1.1, §8.2). Under
+     reduced motion the duration is 0 and both snap. */
+  transition:
+    transform var(--env-motion-staging) var(--env-ease-staging),
+    opacity var(--env-motion-staging) var(--env-ease-staging);
+  will-change: transform;
+}
+
+.layer[data-layer='l0'] {
+  z-index: 0;
+}
+.layer[data-layer='l1'] {
+  z-index: 1;
+}
+.layer[data-layer='l2'] {
+  z-index: 2;
+}
+.layer[data-layer='l3'] {
+  z-index: 3;
+}
+
+.layer > svg,
+.plate {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.plate {
+  object-fit: cover;
+}
+
+/* The T0 surround: a radial `surroundTop → surroundBase`, zero bytes and no
+   fetch. This is Lite's L0 treatment, the portrait recomposition's L0, and the
+   §8.3 fallback when L0's plate fails — all the same composition. */
+.tokenSurround {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 78% 72% at 50% 42%,
+    var(--env-surround-top),
+    var(--env-surround-base)
+  );
+}
+
+/*
+ * §7.1 ambient motion. Caps: period ≥ 4 s, and amplitude ≤ 6 % opacity OR
+ * ≤ 2 logical px translation — never both, and never scale. L0 (water shimmer,
+ * glow breathe) and L3 (lantern flicker) are the only layers permitted to move.
+ *
+ * Periods are expressed as multiples of the `staging` class so no literal
+ * duration appears here: 400 ms × 30 = 12 s and × 60 = 24 s, both far above the
+ * 4 s floor. Under reduced motion `--env-motion-staging` is 0, which collapses
+ * every period to zero and stops the animation at any quality level — including
+ * High, exactly as the §7.1 table requires.
+ */
+@keyframes envBreathe {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.94;
+  }
+}
+
+@keyframes envBreatheHalf {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.97;
+  }
+}
+
+/* High: L0 breathes and L3 flickers, both at the full 6 % opacity amplitude. */
+.environment[data-ambient='l0+l3'] .layer[data-layer='l0'],
+.environment[data-ambient='l0+l3'] .layer[data-layer='l3'] {
+  animation: envBreathe calc(var(--env-motion-staging) * 30) ease-in-out infinite alternate;
+}
+
+/* Standard: L0 only, amplitude halved and the period doubled. */
+.environment[data-ambient='l0-half'] .layer[data-layer='l0'] {
+  animation: envBreatheHalf calc(var(--env-motion-staging) * 60) ease-in-out infinite alternate;
+}
+
+/* Lite, and every reduced-motion state: the backdrop is static. */
+.environment[data-ambient='off'] .layer {
+  animation: none;
+}
+
+/*
+ * The global reduced-motion neutraliser, belt-and-braces beside the token-level
+ * collapse above. An OS "reduce" is authoritative and must never depend on a
+ * preference having been read correctly.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .layer {
+    transition: none !important;
+    animation: none !important;
+  }
+}

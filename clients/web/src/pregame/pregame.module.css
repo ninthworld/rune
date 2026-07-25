@@ -33,118 +33,24 @@
   display: grid;
   grid-template-rows: 1fr;
   isolation: isolate;
-  background: var(--pregame-sky-base);
+  background: var(--pregame-ink);
   color: var(--pregame-text);
   font-family: var(--rune-font-body);
   box-sizing: border-box;
 }
 
-/* Layer 1 — the environment: the same recipe as the match's backdrop
- * (`table/live/live-plane.module.css` .environment/.sky/.ground/.arenaEdge),
- * fed by the default theme's slots. Pure CSS gradients: zero asset bytes, so
- * the ≤ 4 MB first-match download and ≤ 5 s cold start are unaffected. */
+/* Layer 1 — the environment. The composition itself is the shared
+ * `table/environment` stack (issue #530, `docs/design/environment-system.md`):
+ * the SAME component the match mounts, publishing its own `--env-*` properties
+ * from `sceneTokens.ts`. This rule only positions the container full-bleed and
+ * keeps it out of the hit path; there is no pregame-specific backdrop left to
+ * drift from the match's. */
 .environment {
   position: fixed;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
-  background: linear-gradient(
-    180deg,
-    var(--pregame-sky-top),
-    var(--pregame-sky-horizon) 52%,
-    var(--pregame-sky-base)
-  );
-}
-
-.sky {
-  position: absolute;
-  inset: 0;
-}
-
-.sky::before,
-.sky::after {
-  content: '';
-  position: absolute;
-  width: 44%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  filter: blur(45px);
-  opacity: 0.16;
-}
-
-.sky::before {
-  left: 5%;
-  top: -18%;
-  background: var(--pregame-glow);
-}
-
-.sky::after {
-  right: 5%;
-  top: -23%;
-  background: var(--pregame-seat-3);
-}
-
-/* Environmental animation is the only motion the quality level scales here — a
- * slow ambient drift of the sky glows, stepping on → reduced → off across the
- * levels (presentation-budgets §Quality levels) via [data-environment]. The
- * CONTENT layer is identical at all three. */
-@keyframes ambientDrift {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(2.5%, 1.5%, 0);
-  }
-}
-
-/* The drift periods are derived from the `staging` token (×30 = 12 s, ×60 =
- * 24 s — the same periods the match's environment uses) rather than written as
- * literals, so reduced motion collapses them to zero at the token level like
- * everything else in this file. */
-.environment[data-environment='on'] .sky::before,
-.environment[data-environment='on'] .sky::after {
-  animation: ambientDrift calc(var(--pregame-motion-staging) * 30) ease-in-out infinite alternate;
-}
-
-.environment[data-environment='reduced'] .sky::before,
-.environment[data-environment='reduced'] .sky::after {
-  animation: ambientDrift calc(var(--pregame-motion-staging) * 60) ease-in-out infinite alternate;
-}
-
-.environment[data-environment='on'] .sky::after,
-.environment[data-environment='reduced'] .sky::after {
-  animation-direction: alternate-reverse;
-}
-
-/* Off (Lite, or any reduced-motion state): the backdrop is static. */
-.environment[data-environment='off'] .sky::before,
-.environment[data-environment='off'] .sky::after {
-  animation: none;
-}
-
-.ground {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 18%;
-  height: 43%;
-  background:
-    radial-gradient(ellipse at 20% 100%, var(--pregame-far-ground) 0 35%, transparent 36%),
-    radial-gradient(ellipse at 75% 100%, var(--pregame-far-ground) 0 42%, transparent 43%);
-  opacity: 0.9;
-}
-
-.arenaEdge {
-  position: absolute;
-  top: 46%;
-  left: 3%;
-  right: 3%;
-  bottom: -6%;
-  border: 1px solid var(--pregame-line-strong);
-  border-radius: 48% 48% 7% 7% / 20% 20% 5% 5%;
-  background: linear-gradient(180deg, var(--pregame-arena), transparent 70%);
-  opacity: 0.75;
 }
 
 /* Layer 2 — content. The place's composition in screen space; the only layer a
