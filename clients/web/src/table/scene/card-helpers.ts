@@ -15,6 +15,7 @@ export function toDisplayData(
     selected: boolean;
     actionable: boolean;
     landGlyph?: GlyphName;
+    landTile?: boolean;
     attacking?: boolean;
     attackingPlayer?: string;
     blocking?: boolean;
@@ -39,6 +40,7 @@ export function toDisplayData(
     markedDamage: opts.markedDamage,
     actionable: opts.actionable,
     landGlyph: opts.landGlyph,
+    landTile: opts.landTile,
     keywords: card.keywords,
     hasActivatedAbility: hasActivatedAbilityText(card.rules_text),
     artKey: artKeyFor(card.functional_id),

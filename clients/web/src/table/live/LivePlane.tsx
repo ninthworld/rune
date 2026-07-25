@@ -8,9 +8,21 @@
  * stops as soon as the reconciler has no pending work.
  */
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { SCENE_ELEVATION, SCENE_HUES, SCENE_NEUTRALS, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
+import {
+  SCENE_ELEVATION,
+  SCENE_FOCUS_DIM,
+  SCENE_HUES,
+  SCENE_NEUTRALS,
+  SCENE_SEAT_ACCENTS,
+} from '../../sceneTokens';
 import type { GameView, PlayerId } from '../../protocol';
-import { stagePlane, type PlaneRegion, type PlaneStagingState, type StagedPlane } from '../plane';
+import {
+  RACK_ZONES,
+  stagePlane,
+  type PlaneRegion,
+  type PlaneStagingState,
+  type StagedPlane,
+} from '../plane';
 import { cardFaceRenderer } from '../planeFaceRenderer';
 import { planeDisplayData } from '../planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../planeReconciler';
@@ -54,6 +66,30 @@ const sceneStyle: SceneStyle = {
   '--seat-amethyst': SCENE_SEAT_ACCENTS[3],
   '--seat-teal': SCENE_SEAT_ACCENTS[5],
   '--shadow-rest': SCENE_ELEVATION.rest.shadow,
+  '--text-muted': SCENE_NEUTRALS.textMuted,
+
+  // Region grounding (issue #531): a seat's board is not a panel. What is left
+  // after the ADR 0032 bands come out is contact shading under the cards — one
+  // implied key light, no edge, nothing that reads as chrome.
+  '--ground-core': `color-mix(in srgb, ${SCENE_NEUTRALS.ink} 34%, transparent)`,
+  '--ground-focus': `color-mix(in srgb, ${SCENE_NEUTRALS.ink} 46%, transparent)`,
+  '--ground-edge': `color-mix(in srgb, ${SCENE_NEUTRALS.ink} 12%, transparent)`,
+
+  // Zone-rack materials (zone-geography §3). Each pile's material is derived
+  // from a scene token here rather than written as a literal in the stylesheet:
+  // the card back's navy field, the graveyard's ash body, and the exile's
+  // translucent cyan glass with its bright hairline (§3.3's `#7FB2E5` family is
+  // the scene's blue hue, so the pane and the selection ring share one source).
+  '--rack-back': SCENE_NEUTRALS.surfaceTop,
+  '--rack-ash': SCENE_NEUTRALS.raised,
+  '--rack-rule': SCENE_HUES.gold.value,
+  '--rack-rule-faint': SCENE_NEUTRALS.lineStrong,
+  '--rack-glass': `color-mix(in srgb, ${SCENE_HUES.blue.value} 16%, transparent)`,
+  '--rack-glass-edge': SCENE_HUES.blue.value,
+
+  // The eliminated treatment, shared with the focus dim (visual-system §3).
+  '--dim-brightness': SCENE_FOCUS_DIM.brightness,
+  '--dim-saturate': SCENE_FOCUS_DIM.saturate,
 };
 
 interface PlaneSize {
@@ -117,15 +153,29 @@ function refreshVisualAnchors(
       for (const memberId of render.memberIds) anchors.set(memberId, rect);
     }
   }
+  // The §7 anchor keys of `docs/design/zone-geography.md`: one `zone:<seat>:<z>`
+  // per drawn pile, their union as `zone:<seat>:rack`, and `pile:<seat>` retained
+  // as an alias of the union so every shipped motion reference keeps resolving.
+  // A digest rack draws one button, and every zone key resolves to it — which is
+  // what makes "a motion is retargeted, never retired" hold at every rung.
   const addRegion = (region: PlaneRegion): void => {
     anchors.set(
       `seat:${region.seat}`,
       reconciler.chromeVisualFor(`crest:${region.seat}`) ?? region.crest,
     );
-    anchors.set(
-      `pile:${region.seat}`,
-      reconciler.chromeVisualFor(`piles:${region.seat}`) ?? region.piles,
-    );
+    const digest = region.rack.variant === 'digest';
+    for (const slot of region.rack.slots) {
+      const key = digest ? `rack:${region.seat}` : `zone:${region.seat}:${slot.zone}`;
+      anchors.set(
+        `zone:${region.seat}:${slot.zone}`,
+        reconciler.chromeVisualFor(key) ?? slot.hitRect,
+      );
+    }
+    const rack = digest
+      ? (reconciler.chromeVisualFor(`rack:${region.seat}`) ?? region.piles)
+      : region.piles;
+    anchors.set(`zone:${region.seat}:rack`, rack);
+    anchors.set(`pile:${region.seat}`, rack);
   };
   for (const region of planeRegions(plane)) addRegion(region);
   for (const tile of plane.tiles) {
@@ -133,7 +183,12 @@ function refreshVisualAnchors(
     const dx = visual === undefined ? 0 : visual.x - tile.rect.x;
     const dy = visual === undefined ? 0 : visual.y - tile.rect.y;
     anchors.set(`seat:${tile.seat}`, { ...tile.crest, x: tile.crest.x + dx, y: tile.crest.y + dy });
-    anchors.set(`pile:${tile.seat}`, visual ?? tile.rect);
+    const rack = visual ?? tile.rect;
+    // A rung-5 summary tile *is* the digest rack (zone-geography §4.1), so every
+    // zone key on that seat terminates at the tile rather than nowhere.
+    for (const zone of RACK_ZONES) anchors.set(`zone:${tile.seat}:${zone}`, rack);
+    anchors.set(`zone:${tile.seat}:rack`, rack);
+    anchors.set(`pile:${tile.seat}`, rack);
   }
   // Off-focus combat staging (issue #501): a permanent the ladder did not draw
   // individually — a digest-rung wing's board, a compact seat behind its tile —

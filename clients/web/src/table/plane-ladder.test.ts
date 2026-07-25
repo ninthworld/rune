@@ -21,7 +21,11 @@ describe('stagePlane degradation ladder (issue #478, layout-model §Ladder)', ()
   });
 
   it('steps the tier down one rung when the full tier overflows (rung 1)', () => {
-    const plane = stage(fourSeat(menagerie('p2', 11)));
+    // Seven distinct creatures overflow the focused board at `support` and fit
+    // at `mini`. The count is smaller than it used to be because the far side
+    // now also hosts the seat's zone rack on its outer edge (issue #531) and the
+    // card boxes grew (#529): what is under test is the step-down, not capacity.
+    const plane = stage(fourSeat(menagerie('p2', 7)));
     expect(plane.farSide?.rung).toBe(1);
     // The step-down is a real tier change: mini, one rung under support.
     expect(plane.farSide?.surface).toBe('mini');

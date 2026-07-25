@@ -1,6 +1,7 @@
 import type { EntityId, PlayerId } from '../../protocol';
 import type { RenderTier } from '../../card/cardFactory';
 import type { Rect, SurfaceTier, BandRowKind, ZoneCounts } from '../scene/types';
+import type { SeatRack } from './rack';
 
 /**
  * The viewport geometry the plane is staged for. The plane's logical coordinate
@@ -131,8 +132,15 @@ export interface PlaneRegion {
   rect: Rect;
   /** The crest cluster's rect (≥ 44 px; always staged, every count and rung). */
   crest: Rect;
-  /** The zone-pile cluster's rect (inside the slot, at the inner corner). */
+  /**
+   * The zone rack's hit-rect union — the `pile:<seat>` / `zone:<seat>:rack`
+   * anchor (`zone-geography.md` §7). Retained under its shipped name so travel
+   * homes and the effect-anchor fallback keep resolving; the per-zone rects live
+   * on {@link rack}.
+   */
   piles: Rect;
+  /** The seat's four zone anchors on its outer flank (`zone-geography.md` §2). */
+  rack: SeatRack;
   /** The seat's pile counts, straight from the view. */
   zones: ZoneCounts;
   /** The surface tier the region resolved after the ladder. */

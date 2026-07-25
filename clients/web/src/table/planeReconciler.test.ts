@@ -11,7 +11,12 @@ import type { GameView } from '../protocol';
 import { toDisplayData } from './scene/card-helpers';
 import { stagePlane, type PlaneStagingState, type StagedPlane } from './plane';
 import { seatTable, bears, menagerie, DESKTOP } from './plane.fixture';
-import { PlaneReconciler, planeRenders, type PlaneFaceRenderer } from './planeReconciler';
+import {
+  PlaneReconciler,
+  planeRegions,
+  planeRenders,
+  type PlaneFaceRenderer,
+} from './planeReconciler';
 import { cardFaceRenderer } from './planeFaceRenderer';
 
 /** A cheap deterministic face renderer that counts its render calls. */
@@ -53,10 +58,18 @@ describe('PlaneReconciler add/update/move/remove (by entity id)', () => {
     r.reconcile(plane);
     const wrappers = r.root.querySelectorAll('[data-entity-id]');
     expect(wrappers).toHaveLength(planeRenders(plane).length);
-    // Slot chrome: one region + crest + piles per staged seat.
+    // Slot chrome: one region + crest per staged seat, plus that seat's zone
+    // rack — three drawn slots where the rack fits, one button where it digests
+    // (zone-geography §6; a non-Commander view has no command slot, §5).
     expect(r.root.querySelectorAll('[data-slot="region"]')).toHaveLength(4);
     expect(r.root.querySelectorAll('[data-slot="crest"]')).toHaveLength(4);
-    expect(r.root.querySelectorAll('[data-slot="piles"]')).toHaveLength(4);
+    const racks = planeRegions(plane).map((region) => region.rack);
+    expect(r.root.querySelectorAll('[data-slot="zone"]')).toHaveLength(
+      racks.filter((rack) => rack.variant !== 'digest').length * 3,
+    );
+    expect(r.root.querySelectorAll('[data-slot="rack"]')).toHaveLength(
+      racks.filter((rack) => rack.variant === 'digest').length,
+    );
     expect(
       r.root.querySelector('[data-slot="region"][data-seat="p2"]')?.getAttribute('data-life'),
     ).toBe('40');
@@ -278,14 +291,17 @@ describe('PlaneReconciler fresh-mount equivalence (the cache is never load-beari
     expect(incremental.root.innerHTML).toBe(freshMount(planeOf(moved), () => makeFace(moved)));
   });
 
-  it('reconciles zone-only updates into the pile and tile chrome (slots unmoved)', () => {
+  it('reconciles zone-only updates into the rack and tile chrome (slots unmoved)', () => {
     const r = make();
     const before = seatTable({ opponents: 1, perms: menagerie('p2', 2) });
     r.reconcile(planeOf(before));
-    const pile = r.root.querySelector<HTMLElement>('[data-key="piles:p2"]')!;
-    expect(pile.dataset.library).toBe('60');
-    expect(pile.dataset.graveyard).toBe('0');
-    expect(pile.dataset.top).toBeUndefined();
+    const library = r.root.querySelector<HTMLElement>('[data-key="zone:p2:library"]')!;
+    const graveyard = r.root.querySelector<HTMLElement>('[data-key="zone:p2:graveyard"]')!;
+    expect(library.dataset.count).toBe('60');
+    expect(graveyard.dataset.count).toBe('0');
+    expect(graveyard.dataset.top).toBeUndefined();
+    // Hidden stays hidden (§I2): the library slot never publishes a top card.
+    expect(library.dataset.top).toBeUndefined();
 
     // A draw and a death: library shrinks, the graveyard gains a top card —
     // no slot or render moves, but the pile data is authoritative and must
@@ -300,10 +316,10 @@ describe('PlaneReconciler fresh-mount equivalence (the cache is never load-beari
     ];
     r.reconcile(planeOf(after));
     expect(r.lastStats.chrome).toBeGreaterThan(0);
-    expect(pile.dataset.library).toBe('59');
-    expect(pile.dataset.graveyard).toBe('1');
-    expect(pile.dataset.top).toBe('Shock');
-    expect(pile.dataset.topColor).toBe('R');
+    expect(library.dataset.count).toBe('59');
+    expect(graveyard.dataset.count).toBe('1');
+    expect(graveyard.dataset.top).toBe('Shock');
+    expect(graveyard.dataset.topColor).toBe('R');
     expect(r.root.innerHTML).toBe(freshMount(planeOf(after)));
   });
 

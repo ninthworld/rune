@@ -29,7 +29,15 @@ export type {
   TableScene,
 } from './types';
 
-export { M, rectsOverlap, cellSize, tappedFootprint } from './geometry';
+export {
+  M,
+  rectsOverlap,
+  cellSize,
+  tappedFootprint,
+  surfaceKindForRow,
+  tabClearance,
+  splayClearance,
+} from './geometry';
 
 export { localPlayerIdOf, orderedOpponentIds, bandLabel, zoneCountsOf } from './band-helpers';
 

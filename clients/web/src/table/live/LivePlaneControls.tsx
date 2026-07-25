@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo } from 'react';
 import type { EntityId, GameView, PlayerId, ValidAction } from '../../protocol';
-import type { PlaneRegion, PlaneRender, StagedPlane, SummaryTileSlot } from '../plane';
+import type { PlaneRegion, PlaneRender, RackZone, StagedPlane, SummaryTileSlot } from '../plane';
 import { planeRegions } from '../planeReconciler';
 import { declarationFor } from '../scene/action-helpers';
 import type { Rect } from '../scene';
@@ -67,6 +67,25 @@ function interactionId(render: PlaneRender, candidates: Set<EntityId>): EntityId
   return render.memberIds.find((id) => candidates.has(id)) ?? render.entityId;
 }
 
+/**
+ * A zone's hotspot on the seat's rack. Every slot already carries a ≥ 44 px
+ * `hitRect` (zone-geography §2.3), and a digest rack resolves every zone to the
+ * one button, so this is a lookup — never a re-derivation of the geometry.
+ *
+ * At the digest rung the browsable zones therefore share one rect, exactly as
+ * §7 specifies. Both stay keyboard-reachable under their own accessible names;
+ * separating them for pointer input is the digest-expansion popover of §6.2,
+ * which belongs to #534.
+ */
+function zoneHit(region: PlaneRegion, zone: RackZone): Rect {
+  return region.rack.slots.find((slot) => slot.zone === zone)?.hitRect ?? region.piles;
+}
+
+/** A zone's count, for the accessible name (§8.1 — the count is on the pile). */
+function zoneCount(region: PlaneRegion, zone: RackZone): number {
+  return region.rack.slots.find((slot) => slot.zone === zone)?.count ?? 0;
+}
+
 function RegionControls({
   region,
   view,
@@ -114,34 +133,22 @@ function RegionControls({
           if (playerTarget) interaction.onPreviewTarget?.(null);
         }}
       />
-      <button
-        type="button"
-        className={styles.zoneControl}
-        style={box({
-          x: region.piles.x,
-          y: region.piles.y,
-          w: Math.max(44, region.piles.w),
-          h: 44,
-        })}
-        data-testid={`table-graveyard-${region.seat}`}
-        data-focus-key={`graveyard:${region.seat}`}
-        aria-label={`Browse ${region.label} graveyard`}
-        onClick={() => interaction.onOpenZone(region.seat, 'graveyard')}
-      />
-      <button
-        type="button"
-        className={styles.zoneControl}
-        style={box({
-          x: region.piles.x,
-          y: region.piles.y + Math.max(18, region.piles.h - 28),
-          w: Math.max(44, region.piles.w),
-          h: 44,
-        })}
-        data-testid={`table-exile-${region.seat}`}
-        data-focus-key={`exile:${region.seat}`}
-        aria-label={`Browse ${region.label} exile`}
-        onClick={() => interaction.onOpenZone(region.seat, 'exile')}
-      />
+      {/* The browsable public zones sit on their own rack slot's hit rect
+          (zone-geography §8.1). The library is deliberately absent: activating
+          it never browses (§I2), and no wire action names it, so offering one
+          would be a client-invented affordance. */}
+      {(['graveyard', 'exile'] as const).map((zone) => (
+        <button
+          key={zone}
+          type="button"
+          className={styles.zoneControl}
+          style={box(zoneHit(region, zone))}
+          data-testid={`table-${zone}-${region.seat}`}
+          data-focus-key={`${zone}:${region.seat}`}
+          aria-label={`Browse ${region.label} ${zone}, ${zoneCount(region, zone)} cards`}
+          onClick={() => interaction.onOpenZone(region.seat, zone)}
+        />
+      ))}
       {region.renders.map((render) => {
         const actions = actionsFor(render, view.valid_actions);
         const declaration = declarationForRender(render, view.valid_actions);
@@ -311,18 +318,8 @@ export function LivePlaneControls({ view, plane, interaction }: Props) {
     const geometry = new Map<string, Rect>();
     for (const region of planeRegions(plane)) {
       geometry.set(`crest:${region.seat}`, region.crest);
-      geometry.set(`graveyard:${region.seat}`, {
-        x: region.piles.x,
-        y: region.piles.y,
-        w: Math.max(44, region.piles.w),
-        h: 44,
-      });
-      geometry.set(`exile:${region.seat}`, {
-        x: region.piles.x,
-        y: region.piles.y + Math.max(18, region.piles.h - 28),
-        w: Math.max(44, region.piles.w),
-        h: 44,
-      });
+      geometry.set(`graveyard:${region.seat}`, zoneHit(region, 'graveyard'));
+      geometry.set(`exile:${region.seat}`, zoneHit(region, 'exile'));
       for (const render of region.renders) {
         for (const id of render.memberIds) geometry.set(`entity:${id}`, render.hitRect);
       }
