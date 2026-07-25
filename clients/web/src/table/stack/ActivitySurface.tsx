@@ -87,7 +87,7 @@ function renderSegments(
       <button
         key={i}
         type="button"
-        className={s.inspect}
+        className={s.ref}
         data-testid={`activity-ref-${segment.id}`}
         aria-label={`Highlight ${segment.name}`}
         onClick={() => onHighlight(segment.id)}

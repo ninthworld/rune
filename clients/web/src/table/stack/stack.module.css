@@ -424,6 +424,25 @@ button.body {
   border-left: var(--rune-space-1) solid var(--rune-accent-gold);
 }
 
+/* An inline entity/player reference inside a surfaced line: a real control, but
+   an inline one, so it takes the line's own metrics rather than the inspect
+   handle's column. It stays underlined, because a reference that reads as body
+   text is a reference nobody clicks. */
+.ref {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--rune-selection);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.ref:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+
 .srOnly {
   position: absolute;
   width: 1px;
