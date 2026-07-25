@@ -9,7 +9,9 @@
 export { CardFace } from './CardFace';
 export type { CardFaceProps, CardFaceArt, CardElevation } from './CardFace';
 export { CardArt, type CardArtMode, type CardArtProps } from './CardArt';
+export { CardArtSlot, type CardArtSlotMode, type CardArtSlotProps } from './CardArt';
 export {
+  cardArtSlotVars,
   cardArtVars,
   cardFaceVars,
   faceMetrics,

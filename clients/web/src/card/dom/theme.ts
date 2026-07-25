@@ -199,6 +199,29 @@ export function cardArtVars(): CSSProperties {
 }
 
 /**
+ * The custom properties the **reserved art slot** owns (issue #527) — the
+ * screen-space rectangle the inspect surfaces keep for an illustration whether
+ * or not one exists and whichever art mode is active. Published on the slot
+ * itself for the same reason {@link cardArtVars} is published on the image: the
+ * inspect popover is a chrome surface that emits no frame variables at all, so
+ * the slot must carry its own geometry rather than inherit it.
+ *
+ * `--art-mono-color` is only the *fallback* for the empty-state monogram: on a
+ * surface that does publish a frame (the inspect tier) the slot inherits
+ * `--face-accent` and the mark keeps the card's color identity.
+ */
+export function cardArtSlotVars(): CSSProperties {
+  return {
+    '--art-slot-aspect': `${ART.slotAspect}`,
+    '--art-radius': `${ART.radius}px`,
+    '--art-empty': SURFACES.cardBody,
+    '--art-mono-size': `${ART.slotMonogram}px`,
+    '--art-mono-alpha': `${FRAME.monogramAlpha}`,
+    '--art-mono-color': SURFACES.typeText,
+  } as CSSProperties;
+}
+
+/**
  * The face's resting opacity, carried from the factory: tap dims slightly —
  * except for a declared attacker, which keeps full presence while tapped (it is
  * in combat, not inert) — summoning sickness dims a touch, and an ineligible

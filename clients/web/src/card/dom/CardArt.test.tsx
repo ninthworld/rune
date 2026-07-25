@@ -28,11 +28,17 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ART, SURFACES } from '../../tokens';
+import { ART, FRAME, SURFACES } from '../../tokens';
 import type { CardDisplayData } from '../cardFactory';
-import { CardArt } from './CardArt';
+import { CardArt, CardArtSlot } from './CardArt';
 import { CardFace, type CardFaceProps } from './CardFace';
-import { BATTLEFIELD_TIERS, cardArtVars, faceFootprint, type CardFaceTier } from './theme';
+import {
+  BATTLEFIELD_TIERS,
+  cardArtSlotVars,
+  cardArtVars,
+  faceFootprint,
+  type CardFaceTier,
+} from './theme';
 
 afterEach(cleanup);
 
@@ -281,6 +287,170 @@ describe('CardArt containment contract (stylesheet source, #527)', () => {
   });
 });
 
+/**
+ * The second half of "no layout shift" (issue #527): a mode-fixed <img> only
+ * holds its rectangle once it is MOUNTED. A surface that mounts it when the
+ * download lands still grows by an art block, and one that swaps `panel` for
+ * the much taller `panelFull` still jumps. The screen-space surfaces therefore
+ * reserve the slot permanently, at one size for both modes.
+ *
+ * jsdom performs no layout, so nothing here claims to measure a rendered
+ * height. What IS asserted is the declared contract that decides it: the slot
+ * element exists in every state, it is byte-identical across late load and
+ * across an art-mode change, and the stylesheet sizes it from a single
+ * mode-independent rule whose ratio contains both modes.
+ */
+describe('the reserved art slot: presence and mode cannot shift a surface (#527)', () => {
+  /** Everything declared about the slot that could make it a different box. */
+  function slotOf(root: HTMLElement) {
+    const slot = root.querySelector<HTMLElement>('[data-art-slot]');
+    expect(slot).not.toBeNull();
+    return {
+      tag: slot!.tagName,
+      className: slot!.className,
+      style: slot!.getAttribute('style'),
+    };
+  }
+
+  it('reserves the slot at the inspect tier with no art at all', () => {
+    const root = renderFace('inspect');
+    const slot = root.querySelector<HTMLElement>('[data-art-slot]');
+    expect(slot).not.toBeNull();
+    expect(slot!.querySelector('img')).toBeNull();
+    // The empty region reads as a card with no illustration, not as a hole:
+    // the frame's own procedural monogram, on the token fill.
+    expect(slot!.getAttribute('data-art-mono')).toBe('R');
+  });
+
+  it('keeps the reserved slot identical when art arrives late', () => {
+    const { container, rerender } = render(<CardFace data={bear()} tier="inspect" />);
+    const root = () => container.firstElementChild as HTMLElement;
+    const before = slotOf(root());
+    expect(root().querySelector('img')).toBeNull();
+    rerender(<CardFace data={bear()} tier="inspect" art={{ url: 'blob:late' }} />);
+    // The image landed INSIDE the rectangle that was already there…
+    const img = root().querySelector('img')!;
+    expect(img.parentElement!.getAttribute('data-art-slot')).not.toBeNull();
+    expect(slotOf(root())).toEqual(before);
+    // Clearing the store under the card puts the monogram back, same slot.
+    rerender(<CardFace data={bear()} tier="inspect" />);
+    expect(slotOf(root())).toEqual(before);
+    expect(root().querySelector('img')).toBeNull();
+  });
+
+  it('keeps the reserved slot identical when the art mode changes', () => {
+    const { container, rerender } = render(
+      <CardFace data={bear()} tier="inspect" art={{ url: 'blob:a' }} />,
+    );
+    const root = () => container.firstElementChild as HTMLElement;
+    const windowed = slotOf(root());
+    expect(root().querySelector('img')!.getAttribute('data-art-mode')).toBe('panel');
+    rerender(<CardFace data={bear()} tier="inspect" art={{ url: 'blob:a', full: true }} />);
+    // Only the contained image changed mode; the reservation did not move.
+    expect(root().querySelector('img')!.getAttribute('data-art-mode')).toBe('panelFull');
+    expect(slotOf(root())).toEqual(windowed);
+    // The whole-card image is shown inside the slot, not in place of the face:
+    // the reading surface keeps its text under both art styles.
+    expect(root().textContent).toContain('Runeclaw Bear');
+    expect(root().textContent).toContain('Creature — Bear');
+  });
+
+  it('renders the same slot standalone, whatever the surface supplies', () => {
+    const empty = render(<CardArtSlot mode="panel" monogram="R" />);
+    const emptyShape = slotOf(empty.container);
+    cleanup();
+    const filled = render(<CardArtSlot mode="panelFull" url="blob:a" monogram="R" />);
+    expect(slotOf(filled.container)).toEqual(emptyShape);
+  });
+
+  it('adds no reserved slot — and no node — to any battlefield tier', () => {
+    for (const tier of BATTLEFIELD_TIERS) {
+      for (const { art } of ART_CASES) {
+        const root = renderFace(tier, { art });
+        expect(root.querySelector('[data-art-slot]'), tier).toBeNull();
+        expect(root.querySelectorAll('*').length + 1, tier).toBeLessThanOrEqual(12);
+        cleanup();
+      }
+    }
+  });
+
+  it('publishes the slot geometry from tokens, never inline', () => {
+    const vars = cardArtSlotVars() as Record<string, string>;
+    expect(vars['--art-slot-aspect']).toBe(`${ART.slotAspect}`);
+    expect(vars['--art-radius']).toBe(`${ART.radius}px`);
+    expect(vars['--art-empty']).toBe(SURFACES.cardBody);
+    expect(vars['--art-mono-size']).toBe(`${ART.slotMonogram}px`);
+    expect(vars['--art-mono-alpha']).toBe(`${FRAME.monogramAlpha}`);
+    expect(vars['--art-mono-color']).toBe(SURFACES.typeText);
+    const { container } = render(<CardArtSlot mode="panel" />);
+    const slot = container.firstElementChild as HTMLElement;
+    for (const key of Object.keys(vars)) expect(slot.style.getPropertyValue(key)).toBe(vars[key]);
+    // No literal dimension reaches the element: the vars above are all of it.
+    for (const property of ['width', 'height', 'aspect-ratio']) {
+      expect(slot.style.getPropertyValue(property)).toBe('');
+    }
+  });
+
+  it('reserves a box that contains BOTH screen-space modes at any width', () => {
+    // Height at width W is W / aspect, so the containing box is the SMALLER
+    // ratio. Reserving per-mode would fix the late load and leave the mode
+    // switch — which is why there is one slot ratio, not two.
+    expect(ART.slotAspect).toBeLessThanOrEqual(ART.panelAspect);
+    expect(ART.slotAspect).toBeLessThanOrEqual(ART.cardAspect);
+    expect(ART.slotAspect).toBe(Math.min(ART.panelAspect, ART.cardAspect));
+  });
+});
+
+describe('the reserved art slot, at the stylesheet source (#527)', () => {
+  const css = readFileSync(join(HERE, 'card-art.module.css'), 'utf8');
+  const rule = (selector: string): string =>
+    new RegExp(`\\.${selector}\\s*\\{[^}]*\\}`, 's').exec(css)?.[0] ?? '';
+
+  it('sizes the slot from one declared, mode-independent rule', () => {
+    const body = rule('slot');
+    expect(body).not.toBe('');
+    expect(body).toMatch(/(^|[;{]\s*)width:\s*100%/);
+    expect(body).toContain('aspect-ratio: var(--art-slot-aspect)');
+    expect(body).toContain('box-sizing: border-box');
+    // A consuming surface's border must ride inside the reserved rectangle.
+    expect(body).not.toMatch(/(^|[;{]\s*)(height|min-height|max-height|padding|margin):/);
+    // Nothing may stretch or compress it inside a flex column.
+    expect(body).toContain('flex: none');
+  });
+
+  it('has no per-mode variant of the slot anywhere in the sheet', () => {
+    // If a mode could select a different `.slot` rule, the mode could move the
+    // surface — the exact defect this slot exists to remove.
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const selectors = new Set(rules.match(/\.slot[^{,\s]*/g) ?? []);
+    expect(selectors).toEqual(new Set(['.slot', '.slot::after']));
+  });
+
+  it('centers the shorter mode and fills the leftover with the token matte', () => {
+    const body = rule('slot');
+    expect(body).toContain('align-items: center');
+    expect(body).toContain('justify-content: center');
+    expect(body).toContain('background: var(--art-empty)');
+    expect(body).toContain('overflow: hidden');
+  });
+
+  it('draws the empty state as the frame monogram, with zero extra nodes', () => {
+    const mark = rule('slot::after');
+    expect(mark).toContain('content: attr(data-art-mono)');
+    expect(mark).toContain('position: absolute');
+    // Accent where the surface publishes a frame, neutral token where it does not.
+    expect(mark).toContain('color: var(--face-accent, var(--art-mono-color))');
+    expect(mark).toContain('font-size: var(--art-mono-size)');
+  });
+
+  it('keeps both screen-space modes full-width so neither can exceed the slot', () => {
+    for (const mode of ['panel', 'panelFull']) {
+      expect(rule(mode), mode).toMatch(/(^|[;{]\s*)width:\s*100%/);
+      expect(rule(mode), mode).toContain('flex: none');
+    }
+  });
+});
+
 describe('no other stylesheet sizes a card image (#527)', () => {
   const read = (...parts: string[]): string =>
     readFileSync(resolve(HERE, '..', '..', ...parts), 'utf8');
@@ -296,12 +466,15 @@ describe('no other stylesheet sizes a card image (#527)', () => {
 
   it('leaves the inspect panel chrome with decoration only', () => {
     const css = read('table', 'chrome.module.css');
-    for (const selector of ['inspectArt', 'inspectArtFull']) {
-      const body = ruleOf(css, selector);
-      expect(body, selector).not.toBe('');
-      expect(body, selector).not.toMatch(/(^|[;{]\s*)(width|height|max-height|max-width):/);
-      expect(body, selector).not.toContain('object-fit');
-      expect(body, selector).not.toContain('aspect-ratio');
-    }
+    const body = ruleOf(css, 'inspectArt');
+    expect(body).not.toBe('');
+    expect(body).not.toMatch(/(^|[;{]\s*)(width|height|max-height|max-width):/);
+    expect(body).not.toContain('object-fit');
+    expect(body).not.toContain('aspect-ratio');
+    // And the chrome carries NO art-mode variant at all: the reserved slot is
+    // one identical element under both ADR 0024 art styles, so the panel's
+    // no-shift guarantee does not rest on which declarations are geometric.
+    expect(ruleOf(css, 'inspectArtFull')).toBe('');
+    expect(css).not.toContain('inspectArtFull');
   });
 });

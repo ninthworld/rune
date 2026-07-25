@@ -980,21 +980,21 @@
   font-weight: 700;
   color: var(--rune-text);
 }
-/* The inspected card's illustration (ADR 0024), shown only when the player's
- * chosen art source has one loaded; the text-only panel is the baseline. These
- * rules carry the panel's CHROME only — border and radius. The image's box and
- * fit belong to the one `CardArt` primitive (`card/dom/card-art.module.css`,
- * issue #527): a size declared out here is exactly how an image's intrinsic
- * dimensions used to leak back into a surface's layout. */
+/* The inspected card's art region (ADR 0024): the permanently reserved slot the
+ * primitive owns (`card/dom/card-art.module.css` `.slot`, issue #527), which is
+ * present whether or not the player's chosen art source has an image loaded.
+ * These rules carry the panel's CHROME only — the border. The reserved box, its
+ * radius, its fill, and the fit of whatever lands inside it all belong to the
+ * primitive: a size declared out here is exactly how an image's intrinsic
+ * dimensions used to leak back into a surface's layout. The border rides the
+ * slot's own `box-sizing: border-box`, so it cannot change the reserved
+ * rectangle — and it is deliberately NOT mode-dependent either: the slot is one
+ * identical element under both ADR 0024 art styles (the full-card image is shown
+ * whole *inside* the same matte), so "the art mode cannot shift this panel" is a
+ * property of the markup rather than an argument about which declarations happen
+ * to be geometric. */
 .inspectArt {
-  border-radius: var(--rune-radius-md);
   border: 1px solid var(--rune-border);
-}
-/* Full-card mode (ADR 0024): the image is an entire card, shown whole by the
- * primitive's `panelFull` mode — no frame chrome around it. */
-.inspectArtFull {
-  border: none;
-  background: transparent;
 }
 .inspectCost {
   font-size: var(--rune-type-body-lg);

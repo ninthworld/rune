@@ -23,6 +23,12 @@
  *     late arrival, and failed load all occupy the same rectangle, so nothing
  *     reflows and no card's footprint depends on what loaded into it. A failed
  *     or empty raster reads as the token fill behind it.
+ *  4. **The surface reserves the box even with no image.** A mode-fixed <img>
+ *     only holds its rectangle once it is mounted; a surface that mounts it on
+ *     arrival still grows when the download lands, and one that swaps modes
+ *     still jumps. The screen-space surfaces therefore render `.slot` —
+ *     unconditionally, at one size for both screen-space modes — and put the
+ *     image inside it. See the `.slot` block at the foot of this file.
  *
  * Colors and sizes arrive as custom properties (ADR 0019): the frame geometry
  * from `theme.ts`'s `cardFaceVars`, the primitive's own anchor/ratios/fill from
@@ -78,8 +84,10 @@
 
 /* Screen-space art window (inspect tier, inspect panel): no frame to derive a
  * height from, so the box takes the DECLARED ratio — the image's natural ratio
- * never participates. */
+ * never participates. `flex: none` because the box is the mode's: the enclosing
+ * slot may not grow or shrink it. */
 .panel {
+  flex: none;
   width: 100%;
   aspect-ratio: var(--art-panel-aspect);
   border-radius: var(--art-radius);
@@ -87,10 +95,65 @@
 
 /* Screen-space full-card mode: the image IS a whole card, so it is shown whole
  * (`contain`) inside a card-proportioned box rather than cropped. The box is
- * still declared, so the panel does not move when the image lands. */
+ * still declared, so the panel does not move when the image lands. The slot
+ * behind it supplies the token fill, so this box stays transparent — a letterbox
+ * from an off-ratio file reads as the reserved slot, not as a second frame. */
 .panelFull {
+  flex: none;
   width: 100%;
   aspect-ratio: var(--art-card-aspect);
   object-fit: contain;
   background: transparent;
+}
+
+/*
+ * The PERMANENTLY RESERVED art slot of the screen-space inspect surfaces
+ * (issue #527, the second half of "no layout shift"). The mode-fixed boxes above
+ * stop a *file* from sizing a surface; this stops the *presence* and the *choice*
+ * of an image from sizing one.
+ *
+ * The slot is rendered unconditionally — no art, art still downloading, art
+ * arrived late, art arrived from cache — and it is one size for both screen-space
+ * modes, because a per-mode reservation would still shift when the player flips
+ * the ADR 0024 art style. Its ratio is the taller of the two (`--art-slot-aspect`
+ * = the smaller w ÷ h), so at a given width `.panel` (4:3) and `.panelFull`
+ * (card) both fit inside it; the shorter one is CENTERED (`align-items`/
+ * `justify-content`), which splits the leftover band evenly above and below and
+ * reads as a matte rather than as a misaligned image.
+ *
+ * The leftover band is not inert: the slot carries the same `--art-empty` token
+ * fill the primitive uses for an empty or failed raster, and its `::after` draws
+ * the card frame's procedural monogram when there is no image at all — the
+ * empty state is a card with no illustration, not a hole. Zero extra nodes for
+ * the mark; the slot itself is the one node these surfaces gain.
+ */
+.slot {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: var(--art-slot-aspect);
+  overflow: hidden;
+  border-radius: var(--art-radius);
+  background: var(--art-empty);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The empty-state monogram: the card's initial, in the frame accent where the
+ * surface publishes one and the neutral fallback where it does not. Absolutely
+ * positioned so it never joins the flex line and cannot displace the image. */
+.slot::after {
+  content: attr(data-art-mono);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--art-mono-size);
+  font-weight: 700;
+  color: var(--face-accent, var(--art-mono-color));
+  opacity: var(--art-mono-alpha);
 }
