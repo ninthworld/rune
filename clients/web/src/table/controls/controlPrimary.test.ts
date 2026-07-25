@@ -146,14 +146,21 @@ describe('RESPOND and the form switch (§4.3, §4.4)', () => {
     expect(derived.respond).toBe(false);
   });
 
-  it('switches the primary to the compact form on the stack alone (D7)', () => {
+  it('takes the compact form exactly when the RESPOND pair renders (D7)', () => {
+    // A pass over an empty stack is the plain stadium primary.
     expect(derivePrimary({ validActions: [pass], stackDepth: 0 }).form).toBe('stadium');
+    // A pass over a non-empty stack is the RESOLVE/RESPOND pair, so both halves
+    // take the 118px compact plate and read against the stack stage above them.
     expect(derivePrimary({ validActions: [pass], stackDepth: 2 }).form).toBe('compact');
-    // Independent of which rule won: the pair must read against the rail
-    // whatever the primary says.
-    expect(derivePrimary({ validActions: [castBolt], selectedId: 'c1', stackDepth: 2 }).form).toBe(
-      'compact',
-    );
+
+    // The case the maintainer ruled on. Read literally, §4.4 gates the form on
+    // the stack alone while §4.3 gates RESPOND on the stack AND a pass primary,
+    // so a `CAST SPELL` primary over a non-empty stack drew a lone compact pill
+    // with nothing beside it — half of a pair the baselines only draw whole.
+    // The form now follows the pair: no RESPOND, no compact.
+    const casting = derivePrimary({ validActions: [castBolt], selectedId: 'c1', stackDepth: 2 });
+    expect(casting.respond).toBe(false);
+    expect(casting.form).toBe('stadium');
   });
 });
 

@@ -196,15 +196,24 @@ function matchRule(input: PrimaryInput): RuleMatch {
 export function derivePrimary(input: PrimaryInput): PrimaryDerivation {
   const match = matchRule(input);
   const stackDepth = input.stackDepth ?? 0;
+  // §4.3: RESPOND is gated on the primary being `pass_priority` AND the stack
+  // being non-empty. Both halves matter — beside a `CAST SPELL` primary there
+  // is nothing to respond instead of.
+  const respond = match.primary?.type === 'pass_priority' && stackDepth > 0;
   return {
     ...match,
-    // §4.3: RESPOND is gated on the primary being `pass_priority` AND the stack
-    // being non-empty. Both halves matter — beside a `CAST SPELL` primary there
-    // is nothing to respond instead of.
-    respond: match.primary?.type === 'pass_priority' && stackDepth > 0,
-    // §4.4/D7 switches the primary's FORM on the stack alone, independently of
-    // which rule won: the pair has to read against the rail whatever it says.
-    form: stackDepth > 0 ? 'compact' : 'stadium',
+    respond,
+    // §4.4/D7 switches the primary to its compact form so the RESOLVE/RESPOND
+    // pair reads against the stack stage above it. Read literally, §4.4 gates
+    // that switch on the stack alone while §4.3 gates RESPOND on the stack AND
+    // the primary being a pass — so a `CAST SPELL` primary over a non-empty
+    // stack drew a lone 118px pill with no partner beside it, which is half of
+    // a pair the baselines only ever draw whole.
+    //
+    // Maintainer ruling: the form follows the PAIR, not the stack. The compact
+    // form engages exactly when RESPOND renders; otherwise the primary keeps
+    // the full-width stadium. `control-language.md` §4.4 records this.
+    form: respond ? 'compact' : 'stadium',
     waiting: match.rule === 8,
   };
 }

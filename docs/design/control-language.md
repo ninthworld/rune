@@ -274,9 +274,17 @@ baseline draws the primary in the lower-right cluster. These are the same
 control (**D7**): the stack rail is the right-hand column and the control
 cluster sits at its foot ([`layout-model.md`](layout-model.md)), so a
 stack-adjacent pair *is* the cluster. The cluster does not move. What changes
-is the primary's **form**: while the stack is non-empty the cluster uses the
-compact primary + secondary pair (118 × 36 each) instead of the full-width
-stadium pill, so the pair reads against the rail above it.
+is the primary's **form**: whenever the RESOLVE/RESPOND **pair** renders, the
+cluster uses the compact primary + secondary pair (118 × 36 each) instead of
+the full-width stadium pill, so the pair reads against the rail above it.
+
+**The form follows the pair, not the stack** (maintainer ruling). An earlier
+wording gated the form switch on `view.stack.length > 0` alone, while §4.3
+gates RESPOND on a non-empty stack **and** a `pass_priority` primary. Those
+come apart: a `CAST SPELL` primary over a non-empty stack drew a lone 118 px
+pill with nothing beside it — half of a pair the baselines only ever draw
+whole. The compact form therefore engages exactly when RESPOND renders; in
+every other state the primary keeps the stadium.
 
 ---
 
@@ -614,6 +622,13 @@ for a given view + viewport (`ui-requirements.md` §Performance and determinism)
    center corridor.
 5. Always clamp to the viewport with a ≥ 16 px gutter. Elevation
    `--rune-elevation-2`.
+
+**There is no opposite-side retry, deliberately** (maintainer ruling). A
+plaque whose preferred side is blocked slides, and if sliding never clears it
+docks — it does not flip above/below first. The player then learns exactly two
+positions for a decision, its subject's preferred side and the cluster, rather
+than three. This costs proximity to the subject on a crowded board, which is
+the accepted trade.
 
 The prompt **strip** (the words: question, progress, count, deadline) keeps its
 shipped fixed home on the hand panel's top edge and never moves. The plaque

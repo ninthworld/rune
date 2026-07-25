@@ -84,7 +84,7 @@ separated by the shape channels of §7, never by hue alone:
 
 | Hue family | Value | States in the family | Shape channels (see §7) |
 | --- | --- | --- | --- |
-| Gold — "you can act" | `#F2C94C` | offered interactions; the priority holder | bottom edge bar (cards); crest glow (priority) |
+| Gold — "you can act" | `#F2C94C` | offered interactions | bottom edge bar (cards) |
 | Blue — "your attention" | `#7FB2E5` | selection | ring |
 | Orange — "threat / intent" | `#E0784A` | targeting; attack and block relationships | ring + drawn path; top/left edge bars |
 | Red — "loss moment" | `#D9574A` | damage, destruction | impact flash + badge |
@@ -93,8 +93,21 @@ separated by the shape channels of §7, never by hue alone:
 
 Gold stays disciplined: it marks **every currently offered interaction**
 (`valid_actions` may offer several at once — all of them carry the
-treatment) and the priority holder, and is never decorative. Selection keeps
-a hue family of its own because it co-occurs with targeting on screen.
+treatment) and is never decorative. Selection keeps a hue family of its own
+because it co-occurs with targeting on screen.
+
+**Priority is blue, not gold** (maintainer ruling, issue #534). This document
+assigned it to gold, but [`seat-identity.md`](seat-identity.md) §6.1
+transcribes approved baseline panel 2 as a blue-white double glow ring — a
+near-white `#DCEBFF` core over a `#7FB2E5` bloom — and that is what the
+shipped seat cluster has always drawn. Gold also already carries the
+decision-deadline arc, which rides directly *on top of* the priority band, so
+holding both there put two states in one hue in adjacent placements.
+
+Priority therefore joins the blue family and is separated from selection by
+**shape and placement, never by hue**: priority is a ring drawn concentric and
+*outside* a seat's portrait medallion, a placement no other state uses, while
+selection is a stroke on a card's own outline plus elevation.
 
 Gold is the **entity-level** affordance: it lives on the object itself. The
 **single cluster primary** — the one control that advances the current
@@ -200,8 +213,9 @@ count — library, graveyard, exile, command — lives on its own pile, and the
 commander badge and tax counter live on the command slot
 ([`zone-geography.md`](zone-geography.md) §4). States:
 
-- **Priority**: gold crest glow plus a slow breathing pulse (reduced motion:
-  static double gold ring). Position and the phase plaque corroborate.
+- **Priority**: a blue-white double glow ring, concentric and outside the
+  portrait medallion, with a slow breathing pulse (reduced motion: the static
+  double ring). Position and the phase plaque corroborate.
 - **Active turn**: a fixed turn marker on the crest cluster, distinct in
   shape from priority.
 - **Under attack**: targeting-orange ring + incoming paths terminate at the
@@ -222,7 +236,7 @@ The binding table (budgets: no state is color-only at any quality level):
 | Selection | blue | **ring** + elevation level 2 |
 | Target candidate | orange | **ring** + steady beacon pulse (RM: static ring) |
 | Chosen target | orange | ring + **drawn path** terminating on it |
-| Priority | gold | crest glow shape + phase plaque text |
+| Priority | blue-white | **concentric ring outside the medallion** + phase plaque text |
 | Tap | — | **rotation** + dim |
 | Attacking | orange spectrum | top edge bar + outgoing path + tilt toward defender |
 | Blocking | — | left edge bar + doubled-stroke link (carried shape) |
@@ -292,7 +306,7 @@ happened.
 
 | Motion | Choreography | Duration | RM form |
 | --- | --- | --- | --- |
-| Priority passes | gold glow crossfades between crests | 150–250 ms | marker moves |
+| Priority passes | the blue-white ring crossfades between crests | 150–250 ms | marker moves |
 | Phase / step change | the phase plaque advances with a short wipe; skipped phases compress into one wipe showing the path taken | ≤500 ms total | plaque updates |
 | Turn rotation | brief staging beat: table dims 10%, new active crest rises/flashes, turn marker travels | ≤500 ms | markers update |
 | Focus / camera change | regions re-stage with eased scene-geometry tween | 300–500 ms | new staging |

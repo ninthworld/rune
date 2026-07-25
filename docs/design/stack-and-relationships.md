@@ -119,13 +119,23 @@ action home (`layout-model.md`). The stage never renders a button.
 
 | Tier | When | Height | Contents |
 | --- | --- | --- | --- |
-| **Expanded** | the top entry at depth ≤ 5, or any focused entry | 168 px | full anatomy (§2.2) |
+| **Expanded** | the top entry at any depth, or any focused entry | 168 px | full anatomy (§2.2) |
 | **Mini** | non-top entries at depth ≤ 5 | 92 px | title bar, cost pip, cropped art band, controller ribbon, order index, target count chip |
-| **Row** | every entry at depth ≥ 6, and every entry on compact geometry | 48 px (≥ 44 px hit floor) | kind glyph tile, title, `kind · controller` subtitle, order index, controller stripe |
+| **Row** | every **non-top** entry at depth ≥ 6, and every entry on compact geometry | 48 px (≥ 44 px hit floor) | kind glyph tile, title, `kind · controller` subtitle, order index, controller stripe |
 
 The row tier is the `layout-stackweb` / `layout-phone` transcription. One
 entry is expanded at every tier — focus always promotes exactly one entry to
 Expanded, drawn over the rail (never reflowing it).
+
+**The top entry stays Expanded at every desktop depth** (maintainer ruling,
+issue #534). An earlier wording of this table sent *every* entry to Row at
+depth ≥ 6, which contradicted §3.1's own depth table and would have reduced
+the next object to resolve — the one thing a player must be able to read — to
+a 48 px row. The `layout-stackweb` mock does draw an all-rows rail with only
+a gold ring on its top entry, and that mock is layout evidence rather than a
+visual-quality target (`layout-model.md`); where the two disagree, §3.1
+governs. Compact geometry is unchanged: the bottom sheet is all rows, because
+there is no width for anything else.
 
 ### 2.2 Expanded anatomy (transcribed from card-states panel 9 + zones panel 9)
 
@@ -463,7 +473,7 @@ Every row is cross-checked against `presentation-budgets.md` §Animation and
 | F2 | **Pending path** | 0 | 150 ms draw-on, then loop | micro (150) + 900 ms dash loop | tapered dashed path draws source → destination; dashes crawl; reticle breathes | **full dashed tapered path rendered instantly at phase 0**, static reticle. D1 + D2 carry direction; D3 is dropped. |
 | F3 | **Confirm** | 0 | 120 ms | micro (150) | dashes fuse to solid, reticle snaps closed, numeral appears | solid tapered path + closed reticle + numeral, all at once |
 | F4 | **Stack placement** | 0 | 320 ms travel; 400 ms stage re-stage | zoneTravel (400), staging (500) | the card shrinks toward the stage; the stage grows/collapses a tier | entry present at its final rect on the first frame; stage at final geometry; **no travel ghost** |
-| F5 | **Priority held** | 0 | 2 s breathing loop | non-blocking cue (500 for the transition) | gold ring on the top entry breathes; phase pill updates | **static double gold ring** (the carried `visual-system.md` §6 form), phase pill text |
+| F5 | **Priority held** | 0 | 2 s breathing loop | non-blocking cue (500 for the transition) | gold ring on the top entry breathes; phase plaque updates | **static double ring** (the carried `visual-system.md` §6 form, blue-white since #534), phase plaque text |
 | F6 | **Resolve travel** | 0 | 300 ms | resolution (600) | path retracts source → destination, taper compressing | path removed in the same frame the state applies |
 | F7 | **Impact** | 120 | 450 ms | resolution (600) | reticle collapses; category transient bursts at each destination | one **static** ring held 200 ms (`EFFECT_TIMING.reducedHoldMs`), no particles |
 | F8 | **Retirement** | 300 | 270 ms | resolution (600) | entry crumples (scale + ~5° rotate) and falls out; remaining entries re-splay | entry absent on the next frame; remaining entries at their new rects |
