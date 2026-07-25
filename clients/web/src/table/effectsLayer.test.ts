@@ -335,7 +335,7 @@ describe('EffectsLayer zero idle cost with the relationship grammar (IN1)', () =
     }
   });
 
-  it('runs the resolving retraction on its own clock, then settles static', () => {
+  it('runs the resolving retraction on its own clock, then retires itself', () => {
     const { layer } = make();
     layer.setPersistent([persistent({ state: 'resolving' })]);
     layer.advance(1000);
@@ -344,12 +344,81 @@ describe('EffectsLayer zero idle cost with the relationship grammar (IN1)', () =
     expect(started).toBeGreaterThan(0);
     layer.advance(1000 + EFFECT_TIMING.resolveRetractMs / 2);
     expect(strokes()).toBeLessThan(started);
-    // At full retraction the stroke is gone and only the caps state the fact.
+    // §6.2 is a bounded moment, and the layer owns its whole lifetime: a
+    // departing relationship must not leave caps standing on the board once the
+    // retraction is over, and it must not keep the ticker alive either.
     layer.advance(1000 + EFFECT_TIMING.resolveRetractMs + 1);
-    expect(strokes()).toBe(0);
-    expect(layer.lastProgram.some((op) => op.part === 'source')).toBe(true);
+    expect(layer.lastProgram).toHaveLength(0);
+    expect(layer.hasLiveEffects()).toBe(false);
+    expect(layer.needsFrame()).toBe(false);
+    // §8.4 — and it stays at zero from there, with no further view.
+    expect(layer.advance(1000 + EFFECT_TIMING.resolveRetractMs + 200)).toBe(false);
     // §7.1 — the retraction is inside the ≤600 ms resolution cap.
     expect(EFFECT_TIMING.resolveRetractMs).toBeLessThanOrEqual(600);
+  });
+
+  it('drops a retraction the instant a newer view supersedes it (interruptible)', () => {
+    // The §7.1 note: the composed sequence is not individually skippable, but it
+    // "remains interruptible by a newer authoritative view". Retractions must
+    // never queue behind one another or hold the truth back.
+    const { layer } = make();
+    layer.setPersistent([persistent({ id: 'a', state: 'resolving' })]);
+    layer.advance(0);
+    expect(layer.lastProgram.length).toBeGreaterThan(0);
+    // A newer view mid-retraction: the whole persistent set is replaced, so the
+    // half-played retraction is simply gone rather than finishing first.
+    layer.setPersistent([persistent({ id: 'b', state: 'confirmed' })]);
+    layer.advance(EFFECT_TIMING.resolveRetractMs / 2);
+    expect(layer.lastProgram.every((op) => op.part !== undefined)).toBe(true);
+    expect(layer.needsFrame()).toBe(false);
+    // And the abandoned clock does not survive to shorten a later retraction of
+    // the same relationship (a recast, a copy).
+    layer.setPersistent([persistent({ id: 'a', state: 'resolving' })]);
+    const at = EFFECT_TIMING.resolveRetractMs;
+    layer.advance(at);
+    const full = layer.lastProgram.filter((op) => op.part === 'path').length;
+    layer.advance(at + EFFECT_TIMING.resolveRetractMs / 2);
+    expect(layer.lastProgram.filter((op) => op.part === 'path').length).toBeLessThan(full);
+    expect(full).toBeGreaterThan(0);
+  });
+
+  it('retires a retraction in the same frame under reduced motion (F6)', () => {
+    // §7.2's row: "Resolution happened" is carried by the applied state, the log
+    // entry, and the 200 ms static ring — never by a retraction nobody asked to
+    // watch. The path is absent in the same frame the state applies.
+    const { layer } = make({ reducedMotion: true });
+    layer.setPersistent([persistent({ state: 'resolving' })]);
+    layer.advance(0);
+    expect(layer.lastProgram).toHaveLength(0);
+    expect(layer.hasLiveEffects()).toBe(false);
+  });
+
+  it('retracts an elbow kind too — the tether of a resolving stack entry', () => {
+    // The commonest §6.2 case in a real match is an ability's source tether
+    // departing, and the elbow kinds are otherwise static by contract. A
+    // static-first animation test would leave that retraction with a clock
+    // nothing advanced, i.e. frozen at frame one.
+    const { layer } = make();
+    const tether = persistent({
+      id: 'tether:ability',
+      category: 'source-tether',
+      accent: SCENE_NEUTRALS.text,
+      state: 'resolving',
+    });
+    layer.setPersistent([tether]);
+    layer.advance(0);
+    const strokes = (): number => layer.lastProgram.filter((op) => op.part === 'path').length;
+    const started = strokes();
+    expect(started).toBeGreaterThan(0);
+    expect(layer.needsFrame()).toBe(true);
+    layer.advance(EFFECT_TIMING.resolveRetractMs / 2);
+    expect(strokes()).toBeLessThan(started);
+    // The destination terminal holds to the end — the retraction converges on
+    // the thing the tether pointed at (§6.2 step 1).
+    expect(layer.lastProgram.filter((op) => op.part === 'terminal')).toHaveLength(1);
+    layer.advance(EFFECT_TIMING.resolveRetractMs + 1);
+    expect(layer.lastProgram).toHaveLength(0);
+    expect(layer.needsFrame()).toBe(false);
   });
 });
 
@@ -378,6 +447,52 @@ describe('EffectsLayer occluded endpoints (§10.3, IN2)', () => {
     expect(layer.lastProgram.filter((op) => op.part === 'edge')).toHaveLength(2);
     expect(layer.lastProgram.some((op) => op.part === 'path')).toBe(true);
     expect(layer.hasLiveEffects()).toBe(true);
+  });
+
+  it('clamps a CLIPPED endpoint whose rect resolved outside its container', () => {
+    // The second §10.3 shape: the endpoint is drawn, but off the viewport (a
+    // deep stack marches its slots off the top). Both rects resolve, so the
+    // container is what says which end left the screen.
+    const rects = new Map<string, Rect>([
+      ['atk', { x: 100, y: 400, w: 66, h: 92 }],
+      ['far', { x: 300, y: -900, w: 48, h: 68 }],
+    ]);
+    const { layer } = make({ rects });
+    layer.setPersistent([
+      {
+        id: 'path:clipped',
+        category: 'targeting-path',
+        from: { ref: 'atk' },
+        to: { ref: 'far' },
+        accent: SURFACES.targeting,
+        state: 'confirmed',
+        edge: { x: 0, y: 0, w: 1280, h: 720 },
+      },
+    ]);
+    expect(layer.advance(0)).toBe(true);
+    expect(layer.lastProgram.filter((op) => op.part === 'edge')).toHaveLength(2);
+    // The path terminates on the viewport edge, not at the off-screen rect.
+    for (const op of layer.lastProgram) {
+      if (op.op === 'segment') expect(op.to.y).toBeGreaterThanOrEqual(-1);
+    }
+  });
+
+  it('leaves a relationship alone when both endpoints are inside the container', () => {
+    const { layer } = make();
+    layer.setPersistent([
+      {
+        id: 'path:onscreen',
+        category: 'targeting-path',
+        from: { ref: 'atk' },
+        to: { ref: 'blk' },
+        accent: SURFACES.targeting,
+        state: 'confirmed',
+        edge: { x: 0, y: 0, w: 1280, h: 720 },
+      },
+    ]);
+    layer.advance(0);
+    expect(layer.lastProgram.filter((op) => op.part === 'edge')).toHaveLength(0);
+    expect(layer.lastProgram.some((op) => op.part === 'cap')).toBe(true);
   });
 
   it('still RETIRES an endpoint that is simply gone (the carried behaviour)', () => {

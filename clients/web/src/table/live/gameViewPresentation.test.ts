@@ -12,6 +12,7 @@ import { TRANSIENT_CAP } from '../effects';
 import {
   deriveGameViewPresentation,
   freezeDepartedEffectAnchors,
+  freezeDepartedRelationshipAnchors,
   type GameViewPresentation,
 } from './gameViewPresentation';
 import { momentBudgetMs, momentCapMs } from './sessionMoments';
@@ -974,5 +975,144 @@ describe('deriveGameViewPresentation off-focus staging', () => {
         to: { ref: 'seat:p3' },
       }),
     );
+  });
+});
+
+/**
+ * §6.2 / storyboard F6 — the resolution sequence, reached the way a real match
+ * reaches it. Production relationship construction emits only `pending`,
+ * `provisional`, and `confirmed`; when a stack entry, an attacker, a blocker, or
+ * an aura leaves the next `GameView`, its relationship is simply *absent*. These
+ * are the gates that the departure is staged rather than dropped, and that the
+ * staging is ephemeral, interruptible presentation and nothing the view depends
+ * on.
+ */
+describe('deriveGameViewPresentation — §6.2 departing relationships resolve', () => {
+  /** A one-ability stack whose tether the next view will drop. */
+  function withAbility(): { previous: GameView; current: GameView } {
+    const previous = view();
+    previous.battlefield = [permanent('source', 'p1')];
+    previous.stack = [
+      { id: 'ability', controller: 'p1', description: 'An ability.', source: 'source' },
+    ];
+    const current = structuredClone(previous);
+    current.stack = [];
+    return { previous, current };
+  }
+
+  const resolving = (result: GameViewPresentation): GameViewPresentation['persistent'] =>
+    result.persistent.filter((effect) => effect.state === 'resolving');
+
+  it('re-declares a resolved stack entry’s tether as a resolving path', () => {
+    const { previous, current } = withAbility();
+    const departed = resolving(deriveGameViewPresentation(previous, current));
+    expect(departed).toHaveLength(1);
+    expect(departed[0]).toMatchObject({
+      id: 'tether:ability',
+      category: 'source-tether',
+      from: { ref: 'stack:ability' },
+      to: { ref: 'source' },
+      state: 'resolving',
+    });
+  });
+
+  it('retracts a departed attack path and blocker link too', () => {
+    const previous = view();
+    previous.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      { ...permanent('blocker', 'p2'), blocking: 'attacker' },
+    ];
+    const current = view();
+    current.battlefield = [permanent('attacker', 'p1'), permanent('blocker', 'p2')];
+    const ids = resolving(deriveGameViewPresentation(previous, current)).map((e) => e.id);
+    expect(ids.sort()).toEqual(['attack:attacker', 'block:blocker']);
+  });
+
+  it('declares nothing for a relationship the current view still states', () => {
+    const previous = view();
+    previous.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+    ];
+    const current = structuredClone(previous);
+    const result = deriveGameViewPresentation(previous, current);
+    expect(resolving(result)).toHaveLength(0);
+    expect(result.persistent.find((e) => e.id === 'attack:attacker')!.state).toBe('confirmed');
+  });
+
+  it('is not load-bearing: a rebuild from one view alone declares no retraction', () => {
+    // §6.4 — `GameView` carries no "currently resolving" flag and must not need
+    // one. Reconnect, first mount, rebuild, and fast-forward all pass
+    // `previous === undefined`, and the settled stage is the whole truth.
+    const { current } = withAbility();
+    expect(resolving(deriveGameViewPresentation(undefined, current))).toHaveLength(0);
+  });
+
+  it('does not queue: a departure is only ever the LAST view’s departure', () => {
+    // A fast sequence of views must not stack retractions. Because departures
+    // are diffed against the immediately preceding view, an intent from N→N+1
+    // cannot reappear in N+1→N+2 — the newest view always wins outright.
+    const { previous, current } = withAbility();
+    const later = structuredClone(current);
+    later.turn = current.turn + 1;
+    expect(resolving(deriveGameViewPresentation(previous, current))).toHaveLength(1);
+    expect(resolving(deriveGameViewPresentation(current, later))).toHaveLength(0);
+  });
+
+  it('takes the reduced-motion equivalent instead of a retraction (§7.2)', () => {
+    const { previous, current } = withAbility();
+    const result = deriveGameViewPresentation(previous, current, { reducedMotion: true });
+    expect(resolving(result)).toHaveLength(0);
+  });
+
+  it('never lets a retraction change how the standing board reads', () => {
+    // The departure rides after the emphasis pass: it is not calmed by an
+    // isolation and it does not count toward the crowded-board threshold.
+    const previous = view();
+    previous.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      { ...permanent('other', 'p1'), attacking: true, attacking_player: 'p2' },
+    ];
+    const current = view();
+    current.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      permanent('other', 'p1'),
+    ];
+    const result = deriveGameViewPresentation(previous, current, { isolatedId: 'attacker' });
+    expect(result.persistent.find((e) => e.id === 'attack:attacker')!.state).toBe('confirmed');
+    expect(result.persistent.find((e) => e.id === 'attack:other')!.state).toBe('resolving');
+  });
+});
+
+describe('freezeDepartedRelationshipAnchors — a retraction needs somewhere to retract from', () => {
+  const slot = { x: 10, y: 20, w: 48, h: 68 };
+  const tether = {
+    id: 'tether:ability',
+    category: 'source-tether' as const,
+    from: { ref: 'stack:ability' },
+    to: { ref: 'source' },
+    accent: SCENE_NEUTRALS.text,
+    state: 'resolving' as const,
+  };
+
+  it('freezes a departed endpoint onto the rect it last occupied', () => {
+    const [frozen] = freezeDepartedRelationshipAnchors(
+      [tether],
+      new Map([['stack:ability', slot]]),
+      new Map([['source', { x: 200, y: 300, w: 66, h: 92 }]]),
+    );
+    expect(frozen!.from).toEqual({ rect: slot });
+    // The endpoint that is still on the board stays LIVE, so the retraction
+    // tracks it while the reconciler is mid-motion.
+    expect(frozen!.to).toEqual({ ref: 'source' });
+  });
+
+  it('leaves a live relationship alone — a stale rect there would be a lie', () => {
+    const confirmed = { ...tether, state: 'confirmed' as const };
+    const [same] = freezeDepartedRelationshipAnchors(
+      [confirmed],
+      new Map([['stack:ability', slot]]),
+      new Map(),
+    );
+    expect(same).toEqual(confirmed);
   });
 });

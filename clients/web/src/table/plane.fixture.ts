@@ -50,6 +50,8 @@ export function seatTable(opts: {
   seatOrder?: string[];
   you?: string;
   validActions?: GameView['valid_actions'];
+  /** Every opponent's `hand_size` (issue #533's face-down fans). */
+  handSize?: number;
 }): GameView {
   const count = opts.opponents ?? 1;
   const ids = Array.from({ length: count }, (_, i) => `p${i + 2}`);
@@ -59,7 +61,7 @@ export function seatTable(opts: {
     my_hand: [],
     opponents: ids.map((id) => ({
       player_id: id,
-      hand_size: 3,
+      hand_size: opts.handSize ?? 3,
       life: 40,
       library_size: 60,
       ...(eliminated.has(id) ? { eliminated: true } : {}),

@@ -21,7 +21,14 @@
  *   count to the identity cluster. Nothing here may draw one twice.
  */
 import type { PlayerId } from '../protocol';
-import type { ClusterChip, PlaneRegion, RackSlot, SeatCluster, SummaryTileSlot } from './plane';
+import type {
+  ClusterChip,
+  HandFanSlot,
+  PlaneRegion,
+  RackSlot,
+  SeatCluster,
+  SummaryTileSlot,
+} from './plane';
 
 /** A region's non-geometry inputs as data attributes. */
 export function regionMeta(region: PlaneRegion): Record<string, string> {
@@ -96,6 +103,21 @@ export function crestMeta(region: PlaneRegion): Record<string, string> {
     portrait: String(cluster.portraitSrc !== undefined),
     monogram: cluster.monogram,
   };
+}
+
+/**
+ * One back in an opponent's face-down hand fan (issue #533).
+ *
+ * **This is the whole published surface of a hidden card, and it is two
+ * values.** The seat (which fan it belongs to) and the slot's own index. No
+ * card, no id, no name, no colour, no zone — and, deliberately, **no count**:
+ * the hand count has exactly one home, the identity cluster's pip
+ * (`zone-geography.md` §4/I5), so the fan may not draw it either. The slot's
+ * rotation rides as `--fan-angle` because a degree value is not an enum, and it
+ * is a function of `(index, count)` alone (`table/handFan.ts`).
+ */
+export function handFanSlotMeta(seat: PlayerId, slot: HandFanSlot): Record<string, string> {
+  return { seat, index: String(slot.index) };
 }
 
 /** The nameplate's inputs: the fitted text and which way the plate runs (§7/§8). */

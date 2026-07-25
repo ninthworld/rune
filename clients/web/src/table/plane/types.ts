@@ -3,6 +3,7 @@ import type { RenderTier } from '../../card/cardFactory';
 import type { Rect, SurfaceTier, BandRowKind, ZoneCounts } from '../scene/types';
 import type { SeatRack } from './rack';
 import type { SeatCluster } from './cluster';
+import type { SeatHandFan } from './seatHandFan';
 
 /**
  * The viewport geometry the plane is staged for. The plane's logical coordinate
@@ -139,6 +140,16 @@ export interface PlaneRegion {
   crest: Rect;
   /** The seat's staged identity cluster (`docs/design/seat-identity.md` §1). */
   cluster: SeatCluster;
+  /**
+   * An opponent's face-down hand fan (issue #533, `card-representation.md` §13,
+   * `zone-geography.md` §4.1) — a seat fixture staged at every rung the seat's
+   * region is drawn at, and the `hand:<seat>` travel anchor's home.
+   *
+   * **Absent on the receiver's own region.** ADR 0032 §7 keeps the receiver's
+   * hand a screen-space shell region, not a scene-drawn object; the two fans
+   * share `table/handFan.ts`'s curve, not a surface.
+   */
+  handFan?: SeatHandFan;
   /**
    * The zone rack's hit-rect union — the `pile:<seat>` / `zone:<seat>:rack`
    * anchor (`zone-geography.md` §7). Retained under its shipped name so travel

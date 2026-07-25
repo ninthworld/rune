@@ -29,12 +29,25 @@
  * the placeholder. The match is interactive at T0 either way, and a plate that
  * never arrives changes nothing but the pixels.
  *
+ * **The plate never replaces the composition, it covers it.** A raster slot
+ * renders its T0 form *and* the plate, the plate layered over it and revealed
+ * only once the decode reports back ({@link RasterImage}). That is what makes
+ * §8.2's "T0 is always the first frame" and §8.3's "no state in which the
+ * environment is a hole" hold literally rather than eventually: on the first
+ * frame, throughout a slow or lazily-scheduled T2 request, across a theme
+ * change (the plate is keyed by its URL, so a new source re-enters unrevealed),
+ * and after an `onError` — in every one of those states the arena floor and its
+ * medallion are already on screen, because they were never taken away. The
+ * reveal is the §8.2 cross-fade: an opacity transition on the `staging` class,
+ * which `environmentScene.ts` collapses to `0ms` under reduced motion, so the
+ * reduced-motion form is a snap and needs no media query to remember it.
+ *
  * **Not implemented here:** the five passive reaction hooks of §7.2. The tier
  * gate that decides which are permitted is resolved (`plan.hooks`) and tested,
  * but nothing subscribes them to the presentation intent stream yet — that
  * touches `live/gameViewPresentation.ts`, which is outside this issue's layer.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { EffectQuality } from '../effects';
 import { usePresentationSettings } from '../settings/usePresentationSettings';
 import { EnvLayerL0, EnvLayerL1, EnvLayerL2, EnvLayerL3 } from './EnvironmentLayers';
@@ -217,6 +230,23 @@ function EnvLayer({
   );
 }
 
+/**
+ * A layer's **T0** composition (§8.2), or `null` for a layer that has none.
+ *
+ * L0's is the surround gradient and L1's is the plaza ellipse with its
+ * medallion; L2 and L3 have no token form, which is exactly what `t0Treatment`
+ * in `quality.ts` already states and why a failed L2/L3 simply goes off. One
+ * function serves three callers — the planned `token-gradient` treatment, the
+ * §8.3 per-layer fallback, and the underlay beneath an unrevealed plate — so
+ * "the arena while it loads" and "the arena when the plate failed" are provably
+ * the same composition and not two that can drift.
+ */
+function t0Composition(layer: EnvLayerPlan['layer'], crop: string, idPrefix: string) {
+  if (layer === 'l0') return <div className={s.tokenSurround} />;
+  if (layer === 'l1') return <EnvLayerL1 viewBox={crop} idPrefix={idPrefix} />;
+  return null;
+}
+
 /** The art inside one layer node — a shipped plate, or the procedural placeholder. */
 function LayerArt({
   plan,
@@ -233,16 +263,11 @@ function LayerArt({
   viewport: EnvViewport;
   onFailed: (key: EnvManifestKey) => void;
 }) {
-  // T0 / per-layer failure / Lite L0: the token composition. L0's is the surround
-  // gradient and L1's is the plaza ellipse with its medallion — both rendered by
-  // the same components, which is why the placeholder is permanent rather than a
-  // stopgap (§10.5, last paragraph).
+  // T0 / per-layer failure / Lite L0: the token composition — the same
+  // components the underlay below uses, which is why the placeholder is
+  // permanent rather than a stopgap (§10.5, last paragraph).
   if (plan.treatment === 'token-gradient') {
-    return plan.layer === 'l0' ? (
-      <div className={s.tokenSurround} />
-    ) : (
-      <EnvLayerL1 viewBox={crop} idPrefix={idPrefix} />
-    );
+    return t0Composition(plan.layer, crop, idPrefix);
   }
 
   // The raster branch (§10.5 step 3). A plate that fails to load falls this
@@ -270,15 +295,24 @@ function LayerArt({
     // lands at (50 %, 40 %) of the viewport at every aspect — including the §4.5
     // portrait recomposition, which needs no separate anchor for the same
     // reason. Ultrawide reveals rather than stretches.
+    //
+    // The T0 composition stays mounted *underneath* for the life of the slot
+    // (§8.2, §8.3): the plate is opaque and `cover`-fitted, so it costs nothing
+    // visible once revealed, and it means there is no instant — first frame,
+    // slow request, theme change, or decode failure — in which this slot is a
+    // hole. `key={plan.rasterPath}` re-enters the plate unrevealed whenever the
+    // source changes, so a theme switch cross-fades from the T0 composition
+    // rather than flashing.
     return (
-      <img
-        className={s.plate}
-        src={plan.rasterPath}
-        alt=""
-        aria-hidden="true"
-        decoding="async"
-        onError={() => onFailed(key)}
-      />
+      <>
+        {t0Composition(plan.layer, crop, idPrefix)}
+        <RasterImage
+          key={plan.rasterPath}
+          className={s.plate}
+          src={plan.rasterPath}
+          onError={() => onFailed(key)}
+        />
+      </>
     );
   }
 
@@ -294,6 +328,52 @@ function LayerArt({
     case 'l3':
       return <EnvLayerL3 props={props} />;
   }
+}
+
+/**
+ * One raster node that **reveals itself only once it has pixels** — the §8.2
+ * staging cross-fade, and the reason a loading layer is never a hole.
+ *
+ * `data-loaded` is the whole mechanism: the stylesheet holds the node at zero
+ * opacity until it flips, then transitions on `--env-motion-staging`, which
+ * `environmentScene.ts` publishes as `sceneMotionMs('staging', reducedMotion)`
+ * — 400 ms normally, `0ms` (a snap) under reduced motion. No JS timer, no
+ * animation frame, nothing to interrupt, and nothing that can gate input.
+ *
+ * The ref callback is not belt-and-braces: a plate already in the HTTP cache can
+ * complete its load before React ever attaches `onLoad`, and a node stuck at
+ * opacity 0 behind that race would be a silent regression on exactly the fast
+ * path. `complete && naturalWidth > 0` is the only reliable read of "this
+ * element already has pixels", so it is checked on every attach.
+ */
+function RasterImage({
+  className,
+  src,
+  style,
+  onError,
+}: {
+  className: string;
+  src: string;
+  style?: CSSProperties;
+  onError: () => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <img
+      ref={(node) => {
+        if (node !== null && node.complete && node.naturalWidth > 0) setLoaded(true);
+      }}
+      className={className}
+      src={src}
+      alt=""
+      aria-hidden="true"
+      decoding="async"
+      data-loaded={String(loaded)}
+      onLoad={() => setLoaded(true)}
+      onError={onError}
+      {...(style === undefined ? {} : { style })}
+    />
+  );
 }
 
 /**
@@ -353,12 +433,9 @@ function EnvPropSprites({
               height: `${drawnHeight}px`,
             }}
           >
-            <img
+            <RasterImage
               className={s.spriteFrame}
               src={atlas.src}
-              alt=""
-              aria-hidden="true"
-              decoding="async"
               onError={onError}
               style={{
                 left: `${-frame.x * scale}px`,

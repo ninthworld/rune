@@ -36,9 +36,11 @@ import { LivePlaneControls, type LivePlaneInteractionProps } from './LivePlaneCo
 import {
   deriveGameViewPresentation,
   freezeDepartedEffectAnchors,
+  freezeDepartedRelationshipAnchors,
   type GameViewPresentation,
   type TargetingPresentationPath,
 } from './gameViewPresentation';
+import { attachOccludedEndpoints } from './endpointOcclusion';
 import {
   determinePresentationMode,
   orientationCue,
@@ -48,6 +50,10 @@ import {
   type RebuildSample,
 } from './presentationMode';
 import styles from './live-plane.module.css';
+// The seat-identity cluster's rules, split out of `live-plane.module.css` at
+// the ~800-line ceiling. Both modules declare `.plane`; both class names go on
+// the one plane root, so the split changes no selector's scope.
+import clusterStyles from './live-plane-cluster.module.css';
 
 /** Monotonic clock for rebuild timing; degrades to 0 where unavailable. */
 function monotonicNow(): number {
@@ -202,6 +208,19 @@ function refreshVisualAnchors(
       : region.piles;
     anchors.set(`zone:${region.seat}:rack`, rack);
     anchors.set(`pile:${region.seat}`, rack);
+    // `hand:<seat>` for an opponent resolves to their fan's landing slot since
+    // #533 (`zone-geography.md` §9: a draw terminates on a real fan slot, not
+    // on the crest fallback). The visual rect is preferred so a motion that
+    // starts mid-travel leaves from where the back actually is.
+    const fan = region.handFan;
+    if (fan) {
+      const drawn = fan.slots[fan.slots.length - 1];
+      anchors.set(
+        `hand:${region.seat}`,
+        (drawn && reconciler.chromeVisualFor(`handfan:${region.seat}:${drawn.index}`)) ??
+          fan.anchor,
+      );
+    }
   };
   for (const region of planeRegions(plane)) addRegion(region);
   for (const tile of plane.tiles) {
@@ -215,6 +234,9 @@ function refreshVisualAnchors(
     for (const zone of RACK_ZONES) anchors.set(`zone:${tile.seat}:${zone}`, rack);
     anchors.set(`zone:${tile.seat}:rack`, rack);
     anchors.set(`pile:${tile.seat}`, rack);
+    // Rung 5 draws no fan (the tile IS the minimal cluster rung), so the hand
+    // anchor terminates on the tile — still a real, drawn surface.
+    anchors.set(`hand:${tile.seat}`, rack);
   }
   // Off-focus combat staging (issue #501): a permanent the ladder did not draw
   // individually — a digest-rung wing's board, a compact seat behind its tile —
@@ -373,15 +395,22 @@ export function LivePlane({
     // clear, and the initial mount carries no orientation cue (game start owns
     // its own treatment) — only persistent paths for a mid-game first frame.
     effectsLayer.setPersistent(
-      deriveGameViewPresentation(undefined, viewRef.current, {
-        focusSeat: planeRef.current.focusSeat,
-        ...(stagingRef.current?.selectedId === undefined
-          ? {}
-          : { isolatedId: stagingRef.current.selectedId }),
-        targetingPaths: targetingPathsRef.current,
-        quality,
-        reducedMotion,
-      }).persistent,
+      attachOccludedEndpoints(
+        deriveGameViewPresentation(undefined, viewRef.current, {
+          focusSeat: planeRef.current.focusSeat,
+          ...(stagingRef.current?.selectedId === undefined
+            ? {}
+            : { isolatedId: stagingRef.current.selectedId }),
+          targetingPaths: targetingPathsRef.current,
+          quality,
+          reducedMotion,
+        }).persistent,
+        {
+          view: viewRef.current,
+          plane: planeRef.current,
+          rectFor: (ref) => anchorsRef.current.get(ref),
+        },
+      ),
     );
     presentedEpochRef.current = sessionEpochRef.current;
     emitRebuildSample('initial', start, planeRef.current.compact, root);
@@ -406,17 +435,33 @@ export function LivePlane({
       discontinuity: hasPreviousView && sessionEpochRef.current !== presentedEpochRef.current,
       presentationBusy: superseding && reconciler.hasPendingAnimations(),
     });
+    // The §10.3 staging adapter (`./endpointOcclusion`): the effects layer can
+    // see only whether a rect resolved, so the distinction between an endpoint
+    // that is merely undrawn and one that has left the game is made HERE, where
+    // both the authoritative view and the staged plane are in hand.
+    const staged = (effects: GameViewPresentation['persistent']) =>
+      attachOccludedEndpoints(effects, {
+        view,
+        plane,
+        rectFor: (ref) => anchorsRef.current.get(ref),
+      });
+
     // Persistent paths/links are a pure function of the current view — always
     // rebuilt from it alone so combat/targeting overlays are correct after any
-    // discontinuity, never carried across a rebuild.
+    // discontinuity, never carried across a rebuild. `previous === undefined`
+    // also means no §6.2 retraction survives a rebuild or a fast-forward: a
+    // reconnect renders the settled stage (§6.4), and a superseding view is the
+    // truth rather than something to animate up to.
     const currentPersistent = (): GameViewPresentation['persistent'] =>
-      deriveGameViewPresentation(undefined, view, {
-        focusSeat: plane.focusSeat,
-        ...(staging?.selectedId === undefined ? {} : { isolatedId: staging.selectedId }),
-        targetingPaths,
-        quality,
-        reducedMotion,
-      }).persistent;
+      staged(
+        deriveGameViewPresentation(undefined, view, {
+          focusSeat: plane.focusSeat,
+          ...(staging?.selectedId === undefined ? {} : { isolatedId: staging.selectedId }),
+          targetingPaths,
+          quality,
+          reducedMotion,
+        }).persistent,
+      );
 
     if (mode === 'rebuild') {
       // Reconnect / resync: rebuild the latest complete view with motion
@@ -464,7 +509,19 @@ export function LivePlane({
       if (superseding) reconciler.discardMotionProxies();
       reconciler.reconcile(plane, presentation.motions);
       refreshVisualAnchors(anchorsRef.current, plane, reconciler, view);
-      effectsLayer.setPersistent(presentation.persistent);
+      // A §6.2 retraction's endpoints have just left the view, so they are
+      // frozen onto the rects they last occupied before the occlusion adapter
+      // runs — that is where the player was already looking, and it is what
+      // makes the retraction visible instead of instantly unresolvable.
+      effectsLayer.setPersistent(
+        staged(
+          freezeDepartedRelationshipAnchors(
+            presentation.persistent,
+            previousAnchors,
+            anchorsRef.current,
+          ),
+        ),
+      );
       if (superseding) {
         effectsLayer.replaceTransients(
           freezeDepartedEffectAnchors(presentation.transients, previousAnchors, anchorsRef.current),
@@ -566,7 +623,11 @@ export function LivePlane({
       />
       <div className={styles.camera}>
         <div className={styles.tiltedPlane}>
-          <div ref={planeRootRef} className={styles.plane} data-testid="live-plane-dom" />
+          <div
+            ref={planeRootRef}
+            className={`${styles.plane} ${clusterStyles.plane}`}
+            data-testid="live-plane-dom"
+          />
           {interaction && <LivePlaneControls view={view} plane={plane} interaction={interaction} />}
           <div className={styles.effects}>
             <EffectsSurface

@@ -56,6 +56,7 @@ import {
   chipMeta,
   clusterVars,
   crestMeta,
+  handFanSlotMeta,
   lifeMeta,
   plateMeta,
   rackMeta,
@@ -685,6 +686,19 @@ export class PlaneReconciler {
 
     for (const region of planeRegions(plane)) {
       upsert(`region:${region.seat}`, 'region', region.rect, regionMeta(region));
+      // An opponent's face-down hand fan (issue #533), mounted BEFORE the
+      // cluster so the medallion overlaps its near edge, exactly as the
+      // baseline draws it. One element per drawn back, carrying nothing but
+      // its slot index and its rotation.
+      for (const slot of region.handFan?.slots ?? []) {
+        upsert(
+          `handfan:${region.seat}:${slot.index}`,
+          'handfan',
+          slot.rect,
+          handFanSlotMeta(region.seat, slot),
+          { '--fan-angle': `${slot.angleDeg}deg` },
+        );
+      }
       // The identity cluster, in the §1.2 back-to-front order: nameplate, then
       // the portrait medallion (which carries every state ring), then the gem,
       // the life medallion, the hand pip, and the status rail on top.
@@ -839,6 +853,11 @@ export class PlaneReconciler {
       return slot?.hitRect ?? region?.piles ?? tile?.rect ?? region?.crest ?? tile?.crest;
     }
     if (kind === 'hand') {
+      // An opponent's hand is a real fan since #533, so a draw terminates on
+      // the slot the card lands in rather than on the region's crest fallback
+      // (`zone-geography.md` §9). The receiver's own hand is a screen-space
+      // shell region with no plane home, so it keeps the approximation below.
+      if (region?.handFan) return region.handFan.anchor;
       const home = region?.rect ?? tile?.rect;
       if (!home) return undefined;
       return {

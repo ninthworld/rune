@@ -223,3 +223,92 @@ describe('LivePlane presentation modes', () => {
     expect(onRebuild).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The production wiring of §6.2 and §10.3 — the two contracts a pure adapter
+ * test cannot show, because both are about what actually reaches
+ * `EffectsLayer.setPersistent` on the live path.
+ */
+describe('LivePlane relationship staging (§6.2, §10.3)', () => {
+  beforeEach(() => {
+    vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(1);
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    effects.transients = [];
+    effects.persistent = [];
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    effects.rects = undefined;
+  });
+
+  /** SAMPLE with one ability on the stack, tethered to a permanent on board. */
+  const withAbility = (): GameView => ({
+    ...SAMPLE_GAME_VIEW,
+    stack: [
+      {
+        id: 'ability_1',
+        controller: SAMPLE_GAME_VIEW.you,
+        description: 'An activated ability.',
+        source: SAMPLE_GAME_VIEW.battlefield[0]!.id,
+      },
+    ],
+  });
+
+  const latest = (): Array<Record<string, unknown>> =>
+    (effects.persistent.at(-1) ?? []) as Array<Record<string, unknown>>;
+
+  it('hands the layer a resolving relationship when the entry leaves the stack', () => {
+    const props = {
+      quality: 'standard' as const,
+      density: 'reduced' as const,
+      reducedMotion: false,
+      sessionEpoch: 1,
+    };
+    const { rerender } = render(<LivePlane view={withAbility()} {...props} />);
+    expect(latest().some((effect) => effect.id === 'tether:ability_1')).toBe(true);
+
+    rerender(<LivePlane view={clone(SAMPLE_GAME_VIEW)} {...props} />);
+
+    // §6.2 reached from a real view transition: the tether is not simply
+    // absent, it retracts — and its departed stack anchor is frozen onto the
+    // slot rect it occupied, so the retraction has somewhere to play.
+    const departing = latest().find((effect) => effect.id === 'tether:ability_1');
+    expect(departing).toBeDefined();
+    expect(departing!.state).toBe('resolving');
+    expect(departing!.from).toHaveProperty('rect');
+  });
+
+  it('carries no retraction across a reconnect rebuild (§6.4)', () => {
+    const props = {
+      quality: 'standard' as const,
+      density: 'reduced' as const,
+      reducedMotion: false,
+    };
+    const { rerender } = render(<LivePlane view={withAbility()} sessionEpoch={1} {...props} />);
+    rerender(<LivePlane view={clone(SAMPLE_GAME_VIEW)} sessionEpoch={2} {...props} />);
+    expect(latest().some((effect) => effect.state === 'resolving')).toBe(false);
+  });
+
+  it('never declares a §10.3 container for an endpoint that left the view', () => {
+    // The dangerous direction, on the production path: an endpoint the server
+    // no longer lists must keep retiring, or the board grows paths pointing at
+    // nothing that no later view can clear. (The occluded direction is unit-
+    // tested against the adapter in `endpointOcclusion.test.ts`, where an
+    // undrawn-but-listed endpoint can be staged deterministically.)
+    const undrawn: GameView = {
+      ...SAMPLE_GAME_VIEW,
+      battlefield: SAMPLE_GAME_VIEW.battlefield.map((permanent, index) =>
+        index === 0
+          ? { ...permanent, attacking: true, attached_to: 'phantom_permanent' }
+          : permanent,
+      ),
+    };
+    render(<LivePlane view={undrawn} quality="standard" density="reduced" reducedMotion={false} />);
+    const attachment = latest().find((effect) => String(effect.id).startsWith('attach:'));
+    expect(attachment).toBeDefined();
+    // `phantom_permanent` is on no list in this view — vanished, not occluded.
+    expect(attachment!.edge).toBeUndefined();
+  });
+});

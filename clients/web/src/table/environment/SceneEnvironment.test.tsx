@@ -286,6 +286,127 @@ describe('SceneEnvironment — §8.3 a plate that fails at runtime', () => {
   });
 });
 
+describe('SceneEnvironment — §8.2 the arena is never absent while a plate loads', () => {
+  /** The §8.2 plate reveal gate: `false` until the decode reported back. */
+  const revealed = (node: HTMLElement): string | undefined =>
+    node.querySelector<HTMLImageElement>('img')?.dataset.loaded;
+
+  it('keeps the T0 plaza and medallion under an unrevealed L1 plate', () => {
+    // jsdom never decodes, so this IS the "slow request / lazily-scheduled L1"
+    // state, held indefinitely — precisely the frame the arena must not be a
+    // hole in. The plate is present but unrevealed; the plaza composition and
+    // the medallion mark are already drawn beneath it.
+    const { root } = mount();
+    const l1 = layerNodes(root).get('l1')!;
+    expect(l1.dataset.source).toBe('raster');
+    expect(revealed(l1)).toBe('false');
+    const under = l1.querySelector('svg')!;
+    expect(under).not.toBeNull();
+    // §8.3's "L1 fails ⇒ T0 plaza composition" and §8.2's "T0 throughout
+    // loading" are the same composition, so the medallion is in both.
+    expect(under.querySelector('[data-medallion]')).not.toBeNull();
+    // L0 keeps its token surround underneath for the same reason: two children
+    // in the slot — the composition, and the plate stacked over it.
+    const l0 = layerNodes(root).get('l0')!;
+    expect(l0.children).toHaveLength(2);
+    expect(l0.firstElementChild!.tagName).toBe('DIV');
+    expect(revealed(l0)).toBe('false');
+  });
+
+  it('reveals the plate only on load, and cross-fades rather than swapping', () => {
+    const { root } = mount();
+    const l1 = layerNodes(root).get('l1')!;
+    act(() => {
+      fireEvent.load(l1.querySelector('img')!);
+    });
+    expect(revealed(l1)).toBe('true');
+    // The composition underneath is NOT torn down by the reveal: the plate is
+    // opaque and covers it, so there is no frame between the two.
+    expect(l1.querySelector('svg')).not.toBeNull();
+    // The reveal is an opacity transition on the `staging` class, collapsed to
+    // 0ms under reduced motion — not a display swap, and not a JS timer.
+    const css = readFileSync(
+      resolve(process.cwd(), 'src/table/environment/environment.module.css'),
+      'utf8',
+    );
+    expect(css).toContain("[data-loaded='true']");
+    expect(css).toContain('transition: opacity var(--env-motion-staging)');
+  });
+
+  it('re-enters a new theme’s plate unrevealed, so a theme change never flashes', () => {
+    const { root } = mount();
+    const l1 = () => layerNodes(root).get('l1')!;
+    act(() => {
+      fireEvent.load(l1().querySelector('img')!);
+    });
+    expect(revealed(l1())).toBe('true');
+    act(() => setEnvironmentTheme('sunlitObservatory'));
+    // A different source is a different plate: it starts hidden and the T0
+    // composition is what carries the frame until it decodes.
+    expect(l1().querySelector('img')!.getAttribute('src')).toBe(
+      ENV_MANIFESTS.sunlitObservatory.assets.l1.src,
+    );
+    expect(revealed(l1())).toBe('false');
+    expect(l1().querySelector('svg')).not.toBeNull();
+  });
+
+  it('reveals a plate that was already decoded before React attached onLoad', () => {
+    // The HTTP-cache race: a cached plate can complete before `onLoad` is
+    // bound. A node stranded at opacity 0 there would be a hole on the FAST
+    // path, so the attach itself reads `complete`.
+    const proto = window.HTMLImageElement.prototype;
+    const complete = Object.getOwnPropertyDescriptor(proto, 'complete');
+    const natural = Object.getOwnPropertyDescriptor(proto, 'naturalWidth');
+    Object.defineProperty(proto, 'complete', { configurable: true, get: () => true });
+    Object.defineProperty(proto, 'naturalWidth', { configurable: true, get: () => 3360 });
+    try {
+      const { root } = mount();
+      expect(revealed(layerNodes(root).get('l1')!)).toBe('true');
+    } finally {
+      if (complete) Object.defineProperty(proto, 'complete', complete);
+      else delete (proto as unknown as Record<string, unknown>).complete;
+      if (natural) Object.defineProperty(proto, 'naturalWidth', natural);
+      else delete (proto as unknown as Record<string, unknown>).naturalWidth;
+    }
+  });
+
+  it('still falls a failed plate back to its T0 form, with the arena unbroken', () => {
+    // The carried §8.3 path, re-asserted against the underlay: the plate node
+    // goes away and the composition that was already beneath it stays put, so
+    // the failure changes no rect and produces no empty frame.
+    const { root } = mount();
+    const before = layerNodes(root).get('l1')!.querySelectorAll('svg').length;
+    act(() => {
+      fireEvent.error(layerNodes(root).get('l1')!.querySelector('img')!);
+    });
+    const after = layerNodes(root).get('l1')!;
+    expect(after.dataset.treatment).toBe('token-gradient');
+    expect(after.querySelector('img')).toBeNull();
+    expect(after.querySelectorAll('svg')).toHaveLength(before);
+  });
+
+  it('never leaves L1 without a composition, at any tier or aspect', () => {
+    // The §8.2/§8.3 invariant stated directly: whatever the plan resolves to,
+    // the L1 slot always has drawn art on the very first frame — no decode, no
+    // network, no timer involved.
+    const cases: Parameters<typeof mount>[0][] = [
+      {},
+      { quality: 'standard' },
+      { quality: 'lite' },
+      { reducedMotion: true },
+      { viewport: { width: 390, height: 844 } },
+      { viewport: { width: 2560, height: 1080 } },
+      { failedKeys: [`env/${DEFAULT_SCENE_THEME}/l1`] },
+    ];
+    for (const props of cases) {
+      const { view, root } = mount(props);
+      const l1 = layerNodes(root).get('l1')!;
+      expect(l1.querySelector('svg'), JSON.stringify(props)).not.toBeNull();
+      view.unmount();
+    }
+  });
+});
+
 describe('SceneEnvironment — §4 the crop path is one path for both forms', () => {
   it('declares `cover` for every plate — the §4.2 centred crop, not a stretch', () => {
     // jsdom applies no CSS-module stylesheet and performs no layout, so the

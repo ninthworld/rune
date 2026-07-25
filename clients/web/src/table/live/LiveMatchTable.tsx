@@ -11,11 +11,9 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { collectArtCards, getArtVersion, noteCards, subscribeArt } from '../../card/art/artStore';
-import { CardFace } from '../../card/dom';
 import type { EntityId, PlayerId, ValidAction } from '../../protocol';
 import { playerName } from '../../playerNames';
 import { selectPendingPrompt, useGameStore } from '../../store';
@@ -52,7 +50,6 @@ import {
   isLastSlot,
   toggle as msToggle,
 } from '../multiSelect';
-import { domCardArt, handDisplayData } from '../planeDisplayData';
 import { declarationFor } from '../scene/action-helpers';
 import type { Rect } from '../scene';
 import { activeCandidates, activeRequirement } from '../targeting';
@@ -64,10 +61,11 @@ import {
   isOnCanvas,
   resolveInspect,
 } from '../tableView';
+import { HandFan } from './HandFan';
 import { LivePlane } from './LivePlane';
 import type { LivePlaneInteractionProps } from './LivePlaneControls';
 import type { TargetingPresentationPath } from './gameViewPresentation';
-import { handFanFraction, isCompactShell, shellStyleVars } from './shellLayout';
+import { isCompactShell, shellBands, shellStyleVars } from './shellLayout';
 import { useSessionMoments } from './useSessionMoments';
 import styles from './live-match.module.css';
 
@@ -657,94 +655,32 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
             }
           />
         </div>
-        <div className={styles.hand} data-testid="live-hand" data-focus-region="hand">
-          {view.my_hand.map((card, index) => (
-            <button
-              key={card.id}
-              type="button"
-              className={styles.handCard}
-              data-testid={`live-hand-card-${card.id}`}
-              data-entity={card.id}
-              data-actionable={
-                (!selecting &&
-                  view.valid_actions.some((action) => action.subject?.includes(card.id))) ||
-                undefined
-              }
-              aria-label={
-                pickingCandidates.includes(card.id)
-                  ? `${multiSelect ? 'Toggle' : 'Target'} ${card.name}`
-                  : view.valid_actions.some((action) => action.subject?.includes(card.id))
-                    ? `${card.name} — playable`
-                    : `Inspect ${card.name}`
-              }
-              aria-pressed={
-                pickingCandidates.includes(card.id) && multiSelect
-                  ? chosen.includes(card.id)
-                  : selectedId === card.id
-              }
-              onClick={() => {
-                if (swallowClick.current) {
-                  swallowClick.current = false;
-                  return;
-                }
-                if (pickingCandidates.includes(card.id)) {
-                  (multiSelect ? toggleCandidate : pickTarget)(card.id);
-                } else if (
-                  !selecting &&
-                  view.valid_actions.some((action) => action.subject?.includes(card.id))
-                ) {
-                  activateEntity(card.id);
-                } else {
-                  setInspectedId(card.id);
-                }
-              }}
-              onPointerEnter={() => {
-                if (pickingCandidates.includes(card.id)) setPreviewTargetId(card.id);
-              }}
-              onPointerLeave={() => {
-                if (previewTargetId === card.id) setPreviewTargetId(null);
-              }}
-              onFocus={() => {
-                if (pickingCandidates.includes(card.id)) setPreviewTargetId(card.id);
-              }}
-              onBlur={() => {
-                if (previewTargetId === card.id) setPreviewTargetId(null);
-              }}
-              onPointerDown={(event) => {
-                if (selecting) return;
-                const play = playActionFor(card.id);
-                if (play) armHandDrag(card.id, card.name, play, event);
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                setInspectedId(card.id);
-              }}
-              style={
-                {
-                  // Position along the fan as a 0…1 fraction of the band's usable
-                  // span; the stylesheet insets that span by half a card, so the
-                  // outermost cards can never be clipped (shellLayout invariant I2).
-                  '--hand-t': handFanFraction(index, view.my_hand.length),
-                  '--hand-angle': `${Math.max(
-                    -8,
-                    Math.min(8, (index - (view.my_hand.length - 1) / 2) * 2),
-                  )}deg`,
-                } as CSSProperties
-              }
-            >
-              {/* `hand` is a full-card tier, so its face has a rules area
-                  (card-representation §3.2). The server's `rules_text` is the
-                  only thing that may fill it — omitting the prop blanks the
-                  rules on every card in hand. */}
-              <CardFace
-                data={handDisplayData(view, card)}
-                tier="hand"
-                art={domCardArt(card)}
-                rulesText={card.rules_text}
-              />
-            </button>
-          ))}
-        </div>
+        {/* The receiver's curved fan (issue #533). Its geometry, its overlap
+            rule, and its paging live in `table/handFan.ts`, which every
+            opponent's face-down fan reads too — one curve family, two tiers. */}
+        <HandFan
+          view={view}
+          bandWidth={shellBands(viewport).hand.w}
+          selecting={selecting}
+          multiSelect={multiSelect !== null}
+          candidates={pickingCandidates}
+          chosen={chosen}
+          selectedId={selectedId}
+          previewTargetId={previewTargetId}
+          shouldSwallowClick={() => {
+            if (!swallowClick.current) return false;
+            swallowClick.current = false;
+            return true;
+          }}
+          onPick={multiSelect ? toggleCandidate : pickTarget}
+          onActivate={activateEntity}
+          onInspect={setInspectedId}
+          onPreviewTarget={setPreviewTargetId}
+          onCardPointerDown={(card, event) => {
+            const play = playActionFor(card.id);
+            if (play) armHandDrag(card.id, card.name, play, event);
+          }}
+        />
         <div className={styles.decisions} data-focus-region="actions">
           <PromptStrip
             view={view}

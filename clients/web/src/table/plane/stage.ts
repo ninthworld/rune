@@ -15,6 +15,7 @@ import { resolveFocusSeat } from './focus';
 import { buildStageItems, stageRegionContent, type StageItem } from './regions';
 import { stageRack, type SeatRack } from './rack';
 import { clusterD, stageSeatCluster, type ClusterVariant } from './cluster';
+import { stageSeatHandFan } from './seatHandFan';
 import type {
   PlaneViewport,
   PlaneStagingState,
@@ -174,6 +175,20 @@ export function stagePlane(
           rack.variant === 'digest' || !rack.slots.some((slot) => slot.zone === 'command'),
       }),
     });
+    // An opponent's hand is a face-down fan beside their cluster — a seat
+    // fixture at every rung (issue #533). The receiver's own hand stays a
+    // screen-space shell region (ADR 0032 §7), so it stages no plane fan; the
+    // two share the curve in `table/handFan.ts`, not a surface.
+    const handFan = isReceiver
+      ? undefined
+      : stageSeatHandFan({
+          seat,
+          count: handCount,
+          d: cluster.d,
+          portrait: cluster.portrait,
+          keepOut: rack.bounds,
+          viewport,
+        });
     return {
       seat,
       kind,
@@ -182,6 +197,7 @@ export function stagePlane(
       rect,
       crest: cluster.hit,
       cluster,
+      handFan,
       piles: rack.bounds,
       rack,
       zones,

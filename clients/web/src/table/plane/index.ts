@@ -65,6 +65,9 @@ export type {
   SeatCluster,
 } from './cluster';
 
+export { stageSeatHandFan, HAND_FAN } from './seatHandFan';
+export type { HandFanSlot, SeatHandFan, SeatHandFanRequest } from './seatHandFan';
+
 export { stageRack, digestExpansionRects, RACK_ZONES } from './rack';
 export type { RackZone, RackVariant, RackSlot, SeatRack, RackRequest } from './rack';
 

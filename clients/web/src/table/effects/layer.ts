@@ -236,8 +236,17 @@ export class EffectsLayer {
     this.wake?.();
   }
 
-  /** The §6.2 retraction's progress, stamped on the frame the path first drew. */
+  /**
+   * The §6.2 retraction's progress, stamped on the frame the path first drew.
+   *
+   * Under reduced motion it is complete on sight: F6's reduced form is "path
+   * removed in the same frame the state applies", and the fact is carried by
+   * the applied state, the log entry, and the ≤200 ms static impact ring
+   * instead (§7.2). That makes the retraction a *presentation* clock only —
+   * nothing waits on it, and skipping it costs no information.
+   */
   private resolveProgress(id: string, now: number): number {
+    if (this.options.reducedMotion) return 1;
     const start = this.resolveStarts.get(id);
     if (start === undefined) {
       this.resolveStarts.set(id, now);
@@ -340,6 +349,32 @@ export class EffectsLayer {
     return this.persistent.some((effect) => relationshipAnimates(effect));
   }
 
+  /**
+   * Which endpoint of a relationship is **clipped** out of its declared §10.3
+   * container, if either — the second shape of an undrawable endpoint, and the
+   * one where both rects still resolve.
+   *
+   * The container the caller declares in `edge` is, by contract, one that holds
+   * the endpoint that is still visible (the staging adapter uses the viewport
+   * or the rail for exactly that reason), so "does not intersect `edge`" picks
+   * out the clipped end unambiguously. With both ends outside there is no
+   * on-screen anchor to point the indicator away from, so neither is reported
+   * and the relationship retires as before.
+   */
+  private offContainer(effect: PersistentEffect, from: Rect, to: Rect): 'from' | 'to' | undefined {
+    const edge = effect.edge;
+    if (edge === undefined) return undefined;
+    const inside = (rect: Rect): boolean =>
+      rect.x <= edge.x + edge.w &&
+      rect.x + rect.w >= edge.x &&
+      rect.y <= edge.y + edge.h &&
+      rect.y + rect.h >= edge.y;
+    const fromInside = inside(from);
+    const toInside = inside(to);
+    if (fromInside === toInside) return undefined;
+    return fromInside ? 'to' : 'from';
+  }
+
   /** Build the draw program for time `now` — pure data, snapshot-testable. */
   private buildProgram(now: number): DrawOp[] {
     const { rects, reducedMotion } = this.options;
@@ -351,17 +386,25 @@ export class EffectsLayer {
       : ((now % EFFECT_TIMING.dashPeriodMs) / EFFECT_TIMING.dashPeriodMs) *
         (EFFECT_TIMING.dashLen + EFFECT_TIMING.dashGap);
 
-    // Pass 1 — resolve both endpoints of every relationship. An endpoint that
-    // cannot be resolved has THREE outcomes (implementation note IN2), not two:
-    // clamped to its declared container edge when the caller stated the endpoint
-    // exists but is occluded (§10.3), and otherwise RETIRED — never a stale
-    // line, and never an idle leak, since a dropped-but-live path would keep
-    // "animating" an empty program forever. A retired effect returns only
+    // Pass 1 — resolve both endpoints of every relationship. An endpoint the
+    // layer cannot draw at has THREE outcomes (implementation note IN2), not
+    // two: clamped to its declared container edge when the caller stated the
+    // endpoint exists but is occluded (§10.3), and otherwise RETIRED — never a
+    // stale line, and never an idle leak, since a dropped-but-live path would
+    // keep "animating" an empty program forever. A retired effect returns only
     // through a new authoritative setPersistent.
+    //
+    // "Cannot draw at" covers both §10.3 shapes: an endpoint with no rect at
+    // all (undrawn — scrolled out of the stack rail, behind the compact sheet)
+    // and an endpoint whose rect lies wholly outside the declared container
+    // (clipped — off the viewport). The second is why `edge` is read even when
+    // both rects resolve.
     interface Live {
       effect: PersistentEffect;
       from: Rect;
       to: Rect;
+      /** The §6.2 retraction's progress, when this relationship is resolving. */
+      progress?: number;
       /** The clamp point of an occluded endpoint, when §10.3 applied. */
       indicator?: Point;
       /** The resolvable endpoint's center — the indicator's tangent origin. */
@@ -369,22 +412,44 @@ export class EffectsLayer {
     }
     const live: Live[] = [];
     for (const effect of this.persistent) {
+      // A `resolving` relationship is a **self-retiring presentation intent**
+      // (§6.2): it decorates a state change the authoritative view has already
+      // applied (I6), so the layer — not the caller and not any client state —
+      // owns its bounded lifetime. Once the retraction completes it is dropped
+      // in this very frame, which is what keeps §8.4's zero-idle contract true
+      // (nothing is left marking the layer as animating) and what stops a
+      // departed relationship from leaving caps behind forever.
+      let progress: number | undefined;
+      if (relationshipState(effect) === 'resolving') {
+        progress = this.resolveProgress(effect.id, now);
+        if (progress >= 1) {
+          this.resolveStarts.delete(effect.id);
+          continue;
+        }
+      }
       const fromRect = anchorRect(effect.from, rects);
       const toRect = anchorRect(effect.to, rects);
-      if (fromRect && toRect) {
-        live.push({ effect, from: fromRect, to: toRect });
+      const withProgress = progress === undefined ? {} : { progress };
+      if (fromRect && toRect && !this.offContainer(effect, fromRect, toRect)) {
+        live.push({ effect, from: fromRect, to: toRect, ...withProgress });
         retained.push(effect);
         continue;
       }
-      const known = fromRect ?? toRect;
+      // §10.3 — the third outcome. `edge` is the container the CALLER declared
+      // this endpoint still lives in; without one there is nothing to clamp to
+      // and the relationship retires, which is the carried behaviour.
+      const outside = fromRect && toRect ? this.offContainer(effect, fromRect, toRect) : undefined;
+      const known =
+        outside === 'from' ? toRect : outside === 'to' ? fromRect : (fromRect ?? toRect);
       if (effect.edge === undefined || known === undefined) continue;
       const anchor = rectCenter(known);
       const clamp = clampToRect(effect.edge, anchor);
       const stub: Rect = { x: clamp.x - 1, y: clamp.y - 1, w: 2, h: 2 };
       live.push({
         effect,
-        from: fromRect ?? stub,
-        to: toRect ?? stub,
+        from: outside === 'from' ? stub : (fromRect ?? stub),
+        to: outside === 'to' ? stub : (toRect ?? stub),
+        ...withProgress,
         indicator: clamp,
         indicatorFrom: anchor,
       });
@@ -412,9 +477,7 @@ export class EffectsLayer {
         phase,
         reducedMotion,
         ...(fan === undefined ? {} : { fan }),
-        ...(relationshipState(effect) === 'resolving'
-          ? { progress: this.resolveProgress(effect.id, now) }
-          : {}),
+        ...(entry.progress === undefined ? {} : { progress: entry.progress }),
       };
       ops.push(...relationshipOps(effect, entry.from, entry.to, ctx));
       if (entry.indicator !== undefined && entry.indicatorFrom !== undefined) {

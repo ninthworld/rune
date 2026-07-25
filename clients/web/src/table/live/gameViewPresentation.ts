@@ -640,6 +640,17 @@ function endpointKindOf(view: GameView, id: EntityId | PlayerId, seats: PlayerId
   return 'card';
 }
 
+/** The live anchor a relationship endpoint of this kind resolves through. */
+function endpointRef(kind: EndpointKind, id: EntityId | PlayerId): string {
+  if (kind === 'player') return seatRef(id as PlayerId);
+  // §5.5 — a stack destination's rect is published under `stack:<id>`, not
+  // under the bare entity id (the plane stages stack slots separately from
+  // battlefield objects). Naming the bare id here silently retired every
+  // stack → stack path for an unresolvable endpoint.
+  if (kind === 'stack') return stackRef(id as EntityId);
+  return entityRef(id as EntityId);
+}
+
 function persistentEffects(
   view: GameView,
   targetingPaths: readonly TargetingPresentationPath[],
@@ -713,7 +724,7 @@ function persistentEffects(
       id: `target:${path.id}`,
       category: 'targeting-path',
       from: { ref: entityRef(path.from) },
-      to: { ref: kind === 'player' ? seatRef(path.to as PlayerId) : entityRef(path.to) },
+      to: { ref: endpointRef(kind, path.to) },
       accent: SCENE_HUES.orange.value,
       // §4.4 — the slot being answered crawls; an already-answered slot holds
       // its dashes still. Both stay dashed: dashed vs solid is what separates
@@ -724,6 +735,82 @@ function persistentEffects(
     });
   }
   return effects;
+}
+
+/**
+ * The relationships the previous view stated and this one no longer does,
+ * re-declared as the §6.2 **resolving** presentation intent (storyboard F6).
+ *
+ * Without this the whole resolution sequence is unreachable in a real match: a
+ * stack entry's source tether, an attack path, a blocker link, and an
+ * attachment bracket are each simply *absent* from the next `GameView`, so the
+ * relationship blinks out and the retraction only ever ran in tests.
+ *
+ * Three properties make this presentation rather than state:
+ *
+ * - **It is derived, never remembered.** It is a pure function of the two views
+ *   the caller already holds. `previous === undefined` — first mount, reconnect,
+ *   rebuild, fast-forward — yields none at all, which is §6.4 exactly: the
+ *   client renders whatever the stack is *now*, settled, with no transients.
+ *   Nothing in the view depends on a retraction having played.
+ * - **It is interruptible, and the newest view always wins.** Departures are
+ *   computed only against the immediately preceding view, and the layer
+ *   replaces its whole persistent set on every `setPersistent`. A burst of
+ *   views therefore cannot queue retractions or hold one open: an intent from
+ *   view N→N+1 is gone the instant N+2 lands, because it is not a departure of
+ *   N+1→N+2. Nothing is buffered and no truth waits on an animation.
+ * - **Its lifetime belongs to the effects layer.** The retraction is bounded by
+ *   `EFFECT_TIMING.resolveRetractMs` and the layer retires the relationship the
+ *   frame it completes, so a view that never arrives leaves nothing behind and
+ *   the §8.4 zero-idle contract holds.
+ *
+ * Targeting paths are deliberately excluded: they come from the live
+ * interaction session, not from the view, and a session ending is a player
+ * cancelling a question — not a resolution.
+ */
+function departingRelationships(
+  previous: GameView,
+  held: readonly PersistentEffect[],
+): PersistentEffect[] {
+  const ids = new Set(held.map((effect) => effect.id));
+  return persistentEffects(previous, [])
+    .filter((effect) => !ids.has(effect.id))
+    .map((effect) => ({ ...effect, state: 'resolving' as const }));
+}
+
+/**
+ * Freeze a **resolving** relationship's departed endpoints onto the rects they
+ * last occupied — the persistent-effect sibling of
+ * {@link freezeDepartedEffectAnchors}, and the reason a retraction is visible
+ * at all.
+ *
+ * The endpoints of a departure have by definition just left the view: a
+ * resolved ability's `stack:<id>` slot is gone from the next frame's anchors,
+ * so a live ref would resolve to nothing and the layer would retire the
+ * relationship before its first frame. The previous rect is where the player
+ * was already looking, which is exactly the argument the fizzle terminal makes
+ * in §6.3.
+ *
+ * Only `resolving` effects are frozen. A live relationship with a missing
+ * endpoint must keep its carried behaviour — an edge indicator if the caller
+ * declared a container, retirement otherwise — because a stale frozen rect
+ * there would be a lie about the board.
+ */
+export function freezeDepartedRelationshipAnchors(
+  effects: readonly PersistentEffect[],
+  previous: ReadonlyMap<string, Rect>,
+  current: ReadonlyMap<string, Rect>,
+): PersistentEffect[] {
+  const freeze = (anchor: PersistentEffect['from']): PersistentEffect['from'] => {
+    if ('rect' in anchor || current.has(anchor.ref)) return anchor;
+    const rect = previous.get(anchor.ref);
+    return rect === undefined ? anchor : { rect };
+  };
+  return effects.map((effect) =>
+    effect.state !== 'resolving'
+      ? effect
+      : { ...effect, from: freeze(effect.from), to: freeze(effect.to) },
+  );
 }
 
 /**
@@ -754,13 +841,22 @@ export function deriveGameViewPresentation(
     );
     applyBatchDelays(motions, staging);
   }
+  const held = persistentEffects(current, staging.targetingPaths ?? []);
+  // §6.2 — the departures ride *after* the emphasis pass and are not part of
+  // it. A retraction is the moment itself: it is never calmed by an isolation
+  // and never counts toward the crowded-board threshold that drops the standing
+  // set to `endpoint-only`, so declaring one cannot change how anything else on
+  // the board reads. Reduced motion takes F6's equivalent instead — the path is
+  // absent in the same frame the state applies, and the applied state, the log
+  // entry, and the ≤200 ms static impact ring carry the fact (§7.2).
+  const departing =
+    previous === undefined || staging.reducedMotion === true
+      ? []
+      : departingRelationships(previous, held);
   return {
     motions,
     transients,
-    persistent: applyRelationshipEmphasis(
-      persistentEffects(current, staging.targetingPaths ?? []),
-      staging.isolatedId ?? null,
-    ),
+    persistent: [...applyRelationshipEmphasis(held, staging.isolatedId ?? null), ...departing],
     events,
   };
 }

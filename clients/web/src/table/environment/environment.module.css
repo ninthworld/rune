@@ -61,9 +61,34 @@
 
 /* L0–L2: one continuous 21:9 plate. `cover` IS the §4.2 crop — every landscape
    aspect below the authoring aspect matches the plate's height and takes a
-   centred horizontal slice, and ultrawide reveals rather than stretches. */
+   centred horizontal slice, and ultrawide reveals rather than stretches.
+
+   The plate is *stacked over* its slot's T0 composition rather than replacing
+   it (§8.2, §8.3): `position: absolute` takes it out of flow so the token
+   surround / plaza SVG underneath keeps the whole slot, and the plate covers
+   that composition only once it actually has pixels. There is therefore no
+   frame — first paint, slow request, theme change, decode failure — in which
+   the arena floor and its medallion are absent. */
 .plate {
+  position: absolute;
+  inset: 0;
   object-fit: cover;
+}
+
+/* The §8.2 staging cross-fade, for every raster node (plates and L3 sprite
+   frames alike): held out until the decode reports back, then faded in on the
+   `staging` class. `--env-motion-staging` is 0 under reduced motion, so that
+   form is a snap — the information (the illustrated arena) is identical, only
+   the transition is dropped, and no media query has to remember it. */
+.plate,
+.spriteFrame {
+  opacity: 0;
+  transition: opacity var(--env-motion-staging) var(--env-ease-staging);
+}
+
+.plate[data-loaded='true'],
+.spriteFrame[data-loaded='true'] {
+  opacity: 1;
 }
 
 /* L3 is not a plate (§4.4). One sprite = one atlas frame, cropped by a window
@@ -144,7 +169,9 @@
  * preference having been read correctly.
  */
 @media (prefers-reduced-motion: reduce) {
-  .layer {
+  .layer,
+  .plate,
+  .spriteFrame {
     transition: none !important;
     animation: none !important;
   }

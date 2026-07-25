@@ -76,11 +76,20 @@ export function relationshipState(effect: PersistentEffect): RelationshipState {
  * dash-crawls) and a **resolving** path (which retracts) do; confirmed and
  * calmed solid paths, endpoint-only caps, blocker links, and attachment
  * brackets are static geometry and must never mark the layer as animating.
+ *
+ * `resolving` is checked **before** the static kinds, and that order is
+ * load-bearing: the §6.2 retraction is the one moment an elbow kind moves. An
+ * ability's source tether is exactly the relationship that departs when its
+ * stack entry resolves, so a static-first test would leave the commonest
+ * resolution in the grammar with a clock nothing ever advanced. The retraction
+ * is bounded (`EFFECT_TIMING.resolveRetractMs`) and the layer retires the
+ * relationship the moment it completes, so this never becomes a standing cost.
  */
 export function relationshipAnimates(effect: PersistentEffect): boolean {
-  if (isStaticKind(effect.category)) return false;
   const state = relationshipState(effect);
-  return state === 'pending' || state === 'resolving';
+  if (state === 'resolving') return true;
+  if (isStaticKind(effect.category)) return false;
+  return state === 'pending';
 }
 
 /** Per-frame inputs the grammar needs but does not own. */
@@ -269,15 +278,70 @@ function destinationOps(
  * in line-work neutral. Symmetric caps and rectilinear geometry are the whole
  * point — this shape must never be mistaken for a directed target path (D6).
  */
-function elbowOps(effect: PersistentEffect, from: Rect, to: Rect): DrawOp[] {
+function elbowOps(
+  effect: PersistentEffect,
+  from: Rect,
+  to: Rect,
+  ctx: RelationshipContext,
+): DrawOp[] {
   const a = rectEdgePoint(from, rectCenter(to));
   const b = rectEdgePoint(to, rectCenter(from));
-  const alpha = SCENE_RELATIONSHIP.lineworkAlpha;
+  const resolving = relationshipState(effect) === 'resolving';
+  // §6.2 / F6 under reduced motion: the path is simply gone in the same frame
+  // the state applies. Nothing is lost — the applied state and the log entry
+  // carry the fact (§7.2).
+  if (resolving && ctx.reducedMotion) return [];
+  const progress = resolving ? Math.min(1, Math.max(0, ctx.progress ?? 0)) : 0;
+  const alpha = SCENE_RELATIONSHIP.lineworkAlpha * (1 - progress);
   const side = SCENE_RELATIONSHIP.terminal;
-  const ops: DrawOp[] = elbowPath(a, b).map(([p, q]) =>
-    segment(effect.category, 'path', p, q, effect.accent, SCENE_RELATIONSHIP.elbowWidth, alpha),
-  );
-  for (const at of [a, b]) {
+  const arms = elbowPath(a, b);
+  // Not resolving: the four connectors verbatim, the carried static shape.
+  const ops: DrawOp[] =
+    progress === 0
+      ? arms.map(([p, q]) =>
+          segment(
+            effect.category,
+            'path',
+            p,
+            q,
+            effect.accent,
+            SCENE_RELATIONSHIP.elbowWidth,
+            alpha,
+          ),
+        )
+      : // Resolving: the same two right-angle runs, each pulled off `a` and
+        // toward `b`. `elbowPath` emits them as [a→corner, corner→b] and
+        // [a→mirror, mirror→b], so re-joining each pair gives the polyline the
+        // §6.2 retraction trims — the bracket withdraws onto the thing it was
+        // attached to instead of blinking out.
+        [
+          [arms[0]![0], arms[0]![1], arms[1]![1]],
+          [arms[2]![0], arms[2]![1], arms[3]![1]],
+        ].flatMap((arm) => {
+          const drawn = trimStart(arm, progress);
+          const pieces: DrawOp[] = [];
+          for (let i = 1; i < drawn.length; i += 1) {
+            const p = drawn[i - 1]!;
+            const q = drawn[i]!;
+            if (p.x === q.x && p.y === q.y) continue;
+            pieces.push(
+              segment(
+                effect.category,
+                'path',
+                p,
+                q,
+                effect.accent,
+                SCENE_RELATIONSHIP.elbowWidth,
+                alpha,
+              ),
+            );
+          }
+          return pieces;
+        });
+  // The square terminals are what say "attached" (D6). The source-side one is
+  // pulled off with the stroke; the destination's holds until the last frame,
+  // so the retraction still converges on the destination as §6.2 requires.
+  for (const at of progress > 0 ? [b] : [a, b]) {
     ops.push({
       op: 'rect',
       category: effect.category,
@@ -318,7 +382,7 @@ export function relationshipOps(
   ctx: RelationshipContext,
 ): DrawOp[] {
   if (effect.category === 'attachment-bracket' || effect.category === 'source-tether') {
-    return elbowOps(effect, from, to);
+    return elbowOps(effect, from, to, ctx);
   }
 
   const state = relationshipState(effect);

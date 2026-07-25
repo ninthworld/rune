@@ -117,6 +117,14 @@
  */
 .hand {
   --hand-inset: calc(var(--shell-hand-card-w) / 2 + var(--shell-hand-gutter));
+  /* How far a card's neighbours step aside while it is hovered or focused.
+     `HandFan.tsx` overrides `--hand-inset` inline with the fan's own centring
+     slack; the declaration above stays as the documented default. */
+  --hand-spread: 7px;
+  --hand-dip: 0px;
+  /* The gutter a paged fan reserves on each side for its page control; `HandFan`
+     publishes the real value and adds exactly this much to `--hand-inset`. */
+  --hand-pager-w: var(--rune-touch);
 
   position: relative;
   overflow: hidden;
@@ -135,6 +143,26 @@
   letter-spacing: 0.12em;
 }
 
+/*
+ * One card of the fan (issue #533). Three custom properties carry its place on
+ * the curve, all published by `HandFan.tsx` from `table/handFan.ts` — the same
+ * curve every opponent's face-down fan is laid out on:
+ *
+ * - `--hand-t`   0…1 along the fan's own span (#528's endpoint rule, unchanged)
+ * - `--hand-angle` the slot's rotation: 0 at the centre, the cap at each end
+ * - `--hand-dip` how far below the centre line the slot sits — the arc
+ *
+ * `transform-origin` sits BELOW the card, so rotation spreads the cards' top
+ * edges further apart than their origins. That is what keeps the title bar and
+ * the mana cost of every card readable at an overlap the bottom edges could
+ * not survive, and it is what the baseline's fan is doing.
+ *
+ * Neighbour spread rides the independent `translate` property (not `transform`,
+ * which the lift and the rotation already own): the cards after the hovered or
+ * focused one step outward, the ones before it step inward. Pointer and
+ * keyboard get the identical treatment — `:focus-visible` is listed beside
+ * `:hover` in every rule, so the spread is never hover-only.
+ */
 .handCard {
   position: absolute;
   left: calc(var(--hand-inset) + (100% - 2 * var(--hand-inset)) * var(--hand-t));
@@ -147,24 +175,94 @@
   width: var(--shell-hand-card-w);
   color: inherit;
   background: transparent;
-  transform: translateX(-50%) rotate(var(--hand-angle));
-  transform-origin: 50% 110%;
+  transform: translateX(-50%) translateY(var(--hand-dip, 0px)) rotate(var(--hand-angle));
+  transform-origin: 50% 140%;
   filter: drop-shadow(0 8px 12px rgb(0 0 0 / 44%));
+  transition:
+    transform 120ms ease-out,
+    translate 120ms ease-out;
   cursor: pointer;
 }
 
+/* Hover / focus lifts the subject clear of its neighbours at full tier. */
+.handCard:hover,
+.handCard:focus-visible {
+  z-index: 6;
+  transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift)))
+    rotate(var(--hand-angle));
+}
+
+.handCard:hover ~ .handCard,
+.handCard:focus-visible ~ .handCard {
+  translate: var(--hand-spread) 0;
+}
+
+.handCard:has(~ .handCard:hover),
+.handCard:has(~ .handCard:focus-visible) {
+  translate: calc(-1 * var(--hand-spread)) 0;
+}
+
+/*
+ * The selected card is the subject: it lifts higher and STRAIGHTENS — rotation
+ * and arc dip both drop to zero — so the card being acted on reads flat and
+ * upright, as the baseline draws the held card.
+ */
 .handCard[aria-pressed='true'] {
   z-index: 4;
   outline: 3px solid var(--rune-selection);
   outline-offset: 2px;
-  transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift-selected)))
-    rotate(var(--hand-angle));
+  transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift-selected))) rotate(0deg);
 }
 
 .handCard:focus-visible {
-  z-index: 5;
   outline: 3px solid var(--rune-accent-gold);
   outline-offset: 3px;
+}
+
+/*
+ * Page controls (`layout-model.md` §Stress dispositions: "page size derived
+ * from the floor, ≥ 44 px page controls, board stays visible"). They live in
+ * the gutters the fan gives back when it pages — `HandFan.tsx` widens
+ * `--hand-inset` by exactly `--hand-pager-w` — so a control can never sit over
+ * a card, and the board above the band is untouched.
+ */
+.handPage {
+  position: absolute;
+  z-index: 7;
+  bottom: var(--shell-hand-floor);
+  width: var(--rune-touch);
+  height: var(--rune-touch);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: 8px;
+  color: var(--rune-text);
+  background: var(--rune-raised-bg);
+  font: 700 18px/1 var(--rune-font-display);
+  cursor: pointer;
+}
+
+.handPage:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Centred in the gutter the fan gave back, so the control's box lies entirely
+   inside the reservation and can never reach a card's strip. */
+.handPagePrev {
+  left: calc((var(--hand-pager-w) - var(--rune-touch)) / 2);
+}
+
+.handPageNext {
+  right: calc((var(--hand-pager-w) - var(--rune-touch)) / 2);
+}
+
+.handPageLabel {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  margin: 0;
+  color: var(--rune-text-muted);
+  font: 700 10px/1 var(--rune-font-display);
+  letter-spacing: 0.08em;
 }
 
 .decisions {
@@ -309,9 +407,16 @@
   }
 }
 
+/*
+ * Reduced motion keeps every STATE and drops only the tweening: the fan is
+ * still a fan (rotation and arc are layout, not animation), the lift and the
+ * neighbour spread still happen, and nothing transitions into them.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .handCard {
-    transform: translateX(-50%);
+  .handCard,
+  .handCard:hover,
+  .handCard:focus-visible {
+    transition: none;
   }
 }
 
@@ -427,14 +532,15 @@
 }
 
 .shell[data-forced-decision='true'] .handCard {
-  transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift)))
+  transform: translateX(-50%) translateY(calc(var(--hand-dip, 0px) - var(--shell-hand-lift)))
     rotate(var(--hand-angle));
   transition: transform 400ms cubic-bezier(0.05, 0.7, 0.1, 1);
 }
 
+/* A bottomed card straightens with the rest of the selection treatment, so the
+   card the mulligan is about reads flat and upright while it is being chosen. */
 .shell[data-forced-decision='true'] .handCard[aria-pressed='true'] {
-  transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift-max)))
-    rotate(var(--hand-angle));
+  transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift-max))) rotate(0deg);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -448,13 +554,5 @@
   .shell[data-forced-decision='true'] .hand,
   .shell[data-forced-decision='true'] .handCard {
     transition: none;
-  }
-
-  .shell[data-forced-decision='true'] .handCard {
-    transform: translateX(-50%);
-  }
-
-  .shell[data-forced-decision='true'] .handCard[aria-pressed='true'] {
-    transform: translateX(-50%);
   }
 }
