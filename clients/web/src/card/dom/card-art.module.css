@@ -52,20 +52,26 @@
   user-select: none;
 }
 
-/* The frame's art window: the mask between the header band and the type row.
- * Both dimensions are derived from the frame box, so the tier — never the
- * file — decides how much room the illustration gets. */
+/* The frame's art window: the band the frame resolved for it
+ * (`docs/design/card-representation.md` §3.6). Both dimensions come from the
+ * `--band-art-*` pair `theme.ts` published after the §8.4 floor rule — the same
+ * pair the procedural field uses — so the tier, never the file, decides how
+ * much room the illustration gets, and the window is byte-identical whether it
+ * holds an image or the procedural color-identity field.
+ *
+ * The color-identity inner rule is an `outline` rather than a border or an
+ * inset shadow: a replaced element paints its content over both of those, and
+ * §3.4 requires the accent rule to stay visible on top of the crop. */
 .window {
   position: absolute;
-  left: var(--art-inset, 0px);
-  top: calc(var(--face-header-h, 0px) + var(--art-top-gap, 0px));
-  width: calc(100% - var(--art-inset, 0px) * 2);
-  height: calc(
-    100% - var(--face-header-h, 0px) - var(--art-top-gap, 0px) - var(--face-type-size, 0px) -
-      var(--art-bottom-reserve, 0px)
-  );
-  max-width: calc(100% - var(--art-inset, 0px) * 2);
-  border-radius: var(--art-radius);
+  left: var(--rule-inset, 0px);
+  top: var(--band-art-top, 0px);
+  width: calc(100% - var(--rule-inset, 0px) * 2);
+  height: var(--band-art-h, 0px);
+  max-width: calc(100% - var(--rule-inset, 0px) * 2);
+  border-radius: var(--plate-radius, 0px);
+  outline: var(--rule-w, 0px) solid var(--face-accent, transparent);
+  outline-offset: calc(-1 * var(--rule-w, 0px));
   z-index: 0;
 }
 

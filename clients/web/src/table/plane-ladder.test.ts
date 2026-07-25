@@ -44,7 +44,11 @@ describe('stagePlane degradation ladder (issue #478, layout-model §Ladder)', ()
     // Also crowd the slot so the ladder actually reaches the folding rung.
     perms.push(...menagerie('p2', 10));
     const plane = stage(fourSeat(perms));
-    expect(plane.farSide?.rung).toBe(2);
+    // At or past the folding rung — the larger card boxes of
+    // card-representation §8.1 (issue #529) push this fixture one rung further
+    // than the shipped 84 × 118 field card did. What is under test is the fold
+    // KEY, which holds at every rung from 2 up.
+    expect(plane.farSide!.rung).toBeGreaterThanOrEqual(2);
     const piles = plane.farSide!.renders.filter((r) => r.stackCount > 1);
     expect(piles.map((p) => p.stackCount).sort((a, b) => a - b)).toEqual([3, 10]);
     expect(piles.find((p) => p.stackCount === 3)?.tapped).toBe(true);

@@ -1,26 +1,42 @@
 /*
- * The DOM card face (issue #479). Structure only — every color and size flows
- * in as a CSS custom property from `theme.ts` (which reads `src/tokens.ts`);
- * no color literal lives here (ADR 0019 discipline, #480 swap point).
+ * The Rune card frame (issue #529, transcribing `docs/design/card-representation.md`
+ * §3 off the approved baselines in `docs/ui-concepts/`). Structure only — every
+ * color and length flows in as a CSS custom property from `theme.ts` (which
+ * reads `src/tokens.ts`); no literal color and no authored dimension lives here
+ * (ADR 0019 discipline).
+ *
+ * Material (§2, §3.11): a dark **slate slab** with visible paper thickness on
+ * its bottom edge, a single warm-gold hairline inset ~6% of W, and discrete
+ * **parchment plates** — title, type, rules, glyph strip, P/T — floating on it
+ * under one implied key light (lit top/left rims, shaded bottom/right). Color
+ * identity is an edge accent only: it tints the art window's inner rule and the
+ * procedural field, never the body.
+ *
+ * Band stack (§3.2/§3.3): every band is absolutely positioned from the
+ * `--band-*-top` / `--band-*-h` pair `theme.ts` resolved through the §8.4 floor
+ * rule, so the art window is the band that absorbs every type clamp. A band
+ * whose height resolves to 0 is simply not rendered by the component.
  *
  * Budget shape (presentation-budgets §Performance, ≤ 12 nodes per
- * battlefield-tier face — a hard, input-independent ceiling): all state
- * channels are zero-node —
- *   rings              → box-shadow on .inner
- *   ×N splayed pile    → layered box-shadow on .inner (one edge per hidden
- *                        member, capped — never an extra card subtree)
- *   elevation shadow   → box-shadow on .inner (snaps; only transform/opacity animate)
- *   actionable bar     → .inner::before        monogram → .inner::after
- *   attacking bar      → .name::before         blocking bar → .name::after
- *   ability marker dot → .type::before
- *   tap / dim / lift   → transform + opacity on .inner
- * — and no battlefield element scales with its input: the mana cost is ONE
- * pill (.cost), all badges consolidate into ONE row (.badgeRow), and the
- * keyword strip is one svg with combined paths plus a capped +N.
+ * battlefield-tier face — a hard, input-independent ceiling): every state
+ * channel is zero-node —
+ *   gold hairline        → .inner::before
+ *   actionable edge bar  → .inner::after
+ *   attacking top bar    → .title::before     ability marker → .title::after
+ *   blocking left bar    → .status::before
+ *   sick / +N plate      → .status::after (and .rules::after on a full card)
+ *   selection ring+bloom → box-shadow on .inner
+ *   ×N splayed pile      → layered box-shadow on .inner (down-and-left, capped)
+ *   elevation shadow     → box-shadow on .inner
+ *   procedural monogram  → .artField::after
+ *   tap / dim / lift     → transform + opacity on .inner
+ * — and no element scales with its input: the glyph strip is one <svg> with
+ * combined paths, all battlefield badges consolidate into ONE row, and the art
+ * window is one node whether it holds an illustration or the procedural field.
  *
- * Stacking: full-card art paints at z-index 0 and every overlay element (and
- * the gold bar pseudo) at z-index 1, so no server-computed channel is ever
- * covered by an illustration (ADR 0024: overlays stay authoritative).
+ * Stacking (ADR 0024 §12): full-card art paints at z-index 0 and every
+ * authoritative overlay at z-index 1+, so no server-computed channel is ever
+ * covered by an illustration.
  *
  * Transform readiness (ADR 0030): transitions are transform/opacity-only and
  * reduced motion snaps them; the face renders identically flat and on the
@@ -35,6 +51,7 @@
   font-family: system-ui, sans-serif;
 }
 
+/* The slate slab: body, darker bottom paper edge, outer radius. */
 .inner {
   position: absolute;
   left: 50%;
@@ -43,27 +60,16 @@
   height: var(--face-h);
   transform: translate(-50%, -50%) rotate(var(--tap-rot)) translateZ(var(--lift));
   opacity: var(--face-alpha);
-  border: var(--face-border-w) solid var(--face-accent);
   border-radius: var(--face-radius);
   background:
-    linear-gradient(
-        color-mix(in srgb, var(--face-accent) var(--face-header-alpha), transparent),
-        color-mix(in srgb, var(--face-accent) var(--face-header-alpha), transparent)
-      )
-      top / 100% var(--face-header-h) no-repeat,
+    linear-gradient(var(--face-edge-shade), var(--face-edge-shade)) bottom / 100%
+      var(--frame-edge-bottom) no-repeat,
     var(--face-body);
   --ring-shadow: 0 0 0 0 transparent;
   --splay-shadow: 0 0 0 0 transparent;
   --motion-card: var(--motion-micro);
   --motion-card-delay: 0ms;
   box-shadow: var(--ring-shadow), var(--splay-shadow), var(--elev-shadow);
-  /* Badges are the only in-flow children (everything else is absolute), so the
-   * flex row lays the corner badges right-to-left with zero wrapper nodes. */
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: flex-start;
-  align-items: flex-start;
-  gap: 4px;
   transition:
     transform var(--motion-card) ease var(--motion-card-delay),
     opacity var(--motion-card) ease var(--motion-card-delay);
@@ -75,32 +81,51 @@
   }
 }
 
+/* The single warm-gold hairline, inset and following the outer radius. Lit on
+ * the top/left run, shaded on the bottom/right — the one key light (§3.11). */
+.inner::before {
+  content: '';
+  position: absolute;
+  inset: var(--rule-inset);
+  border: var(--rule-w) solid var(--rune-gold);
+  border-right-color: var(--rune-gold-shade);
+  border-bottom-color: var(--rune-gold-shade);
+  border-radius: calc(var(--face-radius) - var(--rule-inset));
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* ── Zero-node state channels ─────────────────────────────────────────────── */
 
+/* Selection: a blue ring plus a soft outer bloom of the same hue — spread, not
+ * hue, separates the two (§6.1 panel 3, under the §15.1 maintainer ruling). */
 .selected .inner {
-  --ring-shadow: 0 0 0 var(--ring-w) var(--selection);
+  --ring-shadow:
+    0 0 0 var(--ring-w) var(--selection),
+    0 0 var(--ring-glow-w) var(--ring-glow-w) var(--selection-glow);
 }
 
-/* Targeting wins over selection when both apply (carried precedence). */
+/* Target candidate: an orange ring, thinner than the selection ring, so the two
+ * are separated by weight as well as by hue. Targeting wins when both apply. */
 .targeting .inner {
-  --ring-shadow: 0 0 0 var(--ring-w) var(--targeting);
+  --ring-shadow: 0 0 0 var(--target-ring-w) var(--targeting);
 }
 
-/* ×N stacks read as a slightly splayed physical pile (visual-system §5): one
- * offset card edge per hidden member (deepening with the fold, capped by
- * SPLAY.maxLayers), composed in `theme.ts` and published as --splay-layers.
- * Layered box-shadows, so the pile adds no element at any count. */
+/* ×N stacks read as a splayed physical pile (§6.1 panel 7): one offset card
+ * edge per hidden member, down-and-left so the P/T channel on the right stays
+ * clear, capped by SPLAY.maxLayers and composed in `theme.ts`. Layered
+ * box-shadows, so the pile adds no element at any count. */
 .stacked .inner {
   --splay-shadow: var(--splay-layers, 0 0 0 0 transparent);
 }
 
-/* Gold "you can act" edge bar — the unique bottom-edge shape. Stacks above
- * full-card art (z-index 1 vs the image's 0). */
-.inner::before {
+/* Gold "you can act" edge bar — the unique bottom-edge shape (§6.2). Rides the
+ * status band's lower rule and stacks above full-card art. */
+.inner::after {
   content: none;
   position: absolute;
-  left: 2px;
-  right: 2px;
+  left: var(--frame-edge-w);
+  right: var(--frame-edge-w);
   bottom: 0;
   height: var(--edge-h);
   border-radius: calc(var(--edge-h) / 2);
@@ -108,16 +133,98 @@
   z-index: 1;
 }
 
-.actionable .inner::before {
+.actionable .inner::after {
   content: '';
 }
 
-/* Procedural monogram — the art-window placeholder, never the identity. */
-.inner::after {
+/* Attacker: top edge bar. A different edge from the gold bar, so the channel is
+ * shape, not hue. Anchored on the title plate and offset back to the card's top
+ * line, which keeps it present in every art mode. */
+.title::before,
+.title::after {
+  content: none;
+  position: absolute;
+}
+
+.attacking .title::before {
+  content: '';
+  left: calc(-1 * var(--rule-inset) + var(--frame-edge-w));
+  right: calc(-1 * var(--rule-inset) + var(--frame-edge-w));
+  top: calc(-1 * var(--band-title-top));
+  height: var(--edge-h);
+  border-radius: calc(var(--edge-h) / 2);
+  background: var(--attacking);
+  z-index: 1;
+}
+
+/* Latent activated-ability marker: the quiet dot on the title bar's right end
+ * (§6.2) — distinct from the live gold bar. */
+.hasAbility .title::after {
+  content: '';
+  right: calc(var(--rule-w) * 2);
+  top: 50%;
+  width: calc(var(--face-name-size) / 2);
+  height: calc(var(--face-name-size) / 2);
+  margin-top: calc(var(--face-name-size) / -4);
+  border-radius: 50%;
+  background: var(--ability-marker);
+  z-index: 1;
+}
+
+/* Blocker: left edge bar, anchored on the status band and offset back to the
+ * card's left edge. */
+.status::before {
+  content: none;
+  position: absolute;
+}
+
+.blocking .status::before {
+  content: '';
+  left: calc(-1 * var(--rule-inset) + var(--frame-edge-w));
+  top: calc(-1 * var(--band-status-top) + var(--frame-edge-w));
+  width: var(--edge-h);
+  height: var(--face-h);
+  border-radius: calc(var(--edge-h) / 2);
+  background: var(--blocking);
+  z-index: 1;
+}
+
+/* ── The art window (§3.6) — ONE node in every state ──────────────────────── */
+
+/*
+ * The procedural color-identity field: the ADR 0024 default and the only art
+ * this project ever ships. It is a tint of the card's identity accent over the
+ * slab, carrying the accent monogram. When the player's own art store has an
+ * illustration for this card the `CardArt` primitive replaces this element
+ * (never wraps it), sized from the SAME band variables in
+ * `card-art.module.css`, so the window is identical either way.
+ */
+.artField {
+  position: absolute;
+  left: var(--rule-inset);
+  top: var(--band-art-top);
+  width: calc(100% - var(--rule-inset) * 2);
+  height: var(--band-art-h);
+  border-radius: var(--plate-radius);
+  background: color-mix(
+    in srgb,
+    var(--face-accent) calc(var(--face-mono-alpha) * 100%),
+    var(--face-body)
+  );
+  /* Color identity as an edge accent, never a body fill (§3.4), plus the inner
+   * bevel from the single key light (§3.6). */
+  outline: var(--rule-w) solid var(--face-accent);
+  outline-offset: calc(-1 * var(--rule-w));
+  box-shadow: inset var(--rule-w) var(--rule-w) calc(var(--rule-w) * 3) var(--face-edge-shade);
+  overflow: hidden;
+  z-index: 0;
+}
+
+.artField::after {
   content: attr(data-monogram);
   position: absolute;
   left: 50%;
-  top: calc(50% + var(--face-header-h) / 2);
+  top: 50%;
   transform: translate(-50%, -50%);
   font-size: var(--face-mono-size);
   font-weight: 700;
@@ -126,170 +233,273 @@
   pointer-events: none;
 }
 
-/* Attacker: top edge bar (a different edge from the gold bar, shape channel). */
-.name::before,
-.name::after {
-  content: none;
+/* Card-body scrim so identity text/glyphs stay legible over any art. */
+.overArt {
+  background: color-mix(in srgb, var(--face-body) var(--art-scrim), transparent);
+}
+
+/* ── Parchment plates ─────────────────────────────────────────────────────── */
+
+/* The title plate: name left, ellipsised at the cost disc's edge, never wrapped
+ * and never shrunk below the floor (§3.5). */
+.title {
   position: absolute;
-}
-
-.attacking .name::before {
-  content: '';
-  left: -5px;
-  right: -5px;
-  top: -5px;
-  height: var(--edge-h);
-  border-radius: calc(var(--edge-h) / 2);
-  background: var(--attacking);
-}
-
-/* Blocker: left edge bar. */
-.blocking .name::after {
-  content: '';
-  left: -7px;
-  top: -3px;
-  width: var(--edge-h);
-  height: calc(var(--face-h) - 4px);
-  border-radius: calc(var(--edge-h) / 2);
-  background: var(--blocking);
-}
-
-/* Latent activated-ability marker: the quiet dot, distinct from the gold bar. */
-.type::before {
-  content: none;
-  position: absolute;
-}
-
-.hasAbility .type::before {
-  content: '';
-  left: 0;
-  bottom: -9px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ability-marker);
-}
-
-/* ── Face content (absolute within .inner) ────────────────────────────────── */
-
-/* Every content element rides above art (full-card images sit at z-index 0),
- * so the authoritative overlays are never covered by an illustration. */
-.name,
-.cost,
-.pip,
-.type,
-.keywords,
-.pt,
-.badge,
-.chipName,
-.chipGlyph {
+  left: var(--rule-inset);
+  right: var(--rule-inset);
+  top: var(--band-title-top);
+  height: var(--band-title-h);
+  padding: 0 calc(var(--rule-inset) / 2);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
+  box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  color: var(--plate-ink);
+  font-size: var(--face-name-size);
+  font-weight: 600;
+  line-height: var(--band-title-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   z-index: 1;
 }
 
-.name {
+/* The type bar: full card only (§3.7) — a battlefield permanent has none. */
+.type {
   position: absolute;
-  left: 7px;
-  right: 7px;
-  top: 5px;
-  font-size: var(--face-name-size);
-  font-weight: 600;
-  color: var(--face-name-text);
+  left: var(--rule-inset);
+  right: var(--rule-inset);
+  top: var(--band-type-top);
+  height: var(--band-type-h);
+  padding: 0 calc(var(--rule-inset) / 2);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
+  box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  color: var(--plate-ink);
+  font-size: var(--face-type-size);
+  line-height: var(--band-type-h);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 1;
 }
 
-/* The battlefield-tier mana cost: one bounded pill for any number of symbols
- * (the node budget never scales with input); symbols are the channel. */
-.cost {
+/* The rules area: full card only, rendering `rules_text` VERBATIM (§3.8). */
+.rules {
   position: absolute;
-  left: 7px;
-  top: calc(9px + var(--face-name-size));
-  padding: 0 5px;
-  border-radius: calc(var(--face-pip-size) / 2 + 2px);
-  background: var(--badge-bg);
-  color: var(--badge-text);
-  font-size: 10px;
+  left: var(--rule-inset);
+  right: var(--rule-inset);
+  top: var(--band-rules-top);
+  height: var(--band-rules-h);
+  padding: calc(var(--rule-w) * 2) calc(var(--rule-inset) / 2);
+  border-radius: var(--plate-radius);
+  background: var(--plate);
+  box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  color: var(--plate-ink);
+  font-size: var(--face-rules-size);
+  line-height: var(--face-line);
+  white-space: pre-wrap;
+  overflow: hidden;
+  z-index: 1;
+}
+
+/* The status band: slate, full inner width, glyph plates left and the P/T plate
+ * right (§3.9). It is ONE node that contains both — never a wrapper per plate. */
+.status {
+  position: absolute;
+  left: var(--rule-inset);
+  right: var(--rule-inset);
+  top: var(--band-status-top);
+  height: var(--band-status-h);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--rule-w) * 2);
+  padding: 0 calc(var(--rule-w) * 2);
+  border-radius: var(--plate-radius);
+  background: var(--status-band);
+  z-index: 1;
+}
+
+/*
+ * The status band's EXTRA plate (zero nodes): the glyph overflow `+N` (§3.9) or
+ * the summoning-sickness marker (§6.2 — a plate, so the state survives at every
+ * tier and never competes with tap for the alpha channel). Rendered only when
+ * the component publishes the attribute, so an absent plate is an absent box.
+ */
+.status[data-plate-extra]::after,
+.rules[data-plate-extra]::after,
+.inspectFooter[data-plate-extra]::after {
+  content: attr(data-plate-extra);
+  order: -1;
+  padding: 0 calc(var(--rule-w) * 2);
+  border-radius: calc(var(--plate-radius) / 1.5);
+  background: var(--plate);
+  box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  color: var(--plate-ink);
+  font-size: var(--face-badge-size);
   font-weight: 700;
-  line-height: calc(var(--face-pip-size) + 2px);
+  line-height: calc(var(--face-badge-size) * var(--face-line));
+  z-index: 1;
+}
+
+.rules[data-plate-extra]::after {
+  position: absolute;
+  right: calc(var(--rule-inset) / 2);
+  bottom: calc(var(--rule-w) * 2);
+}
+
+/* The keyword glyph plate: one <svg> with combined paths, black strokes on
+ * parchment (§7.5). The plates are drawn as one continuous plate rather than
+ * three — three separate plates would be three nodes, and the ≤ 12-node ceiling
+ * is binding. */
+.keywords {
+  height: calc(var(--band-status-h) - var(--rule-w) * 4);
+  width: auto;
+  padding: 0 var(--rule-w);
+  border-radius: calc(var(--plate-radius) / 1.5);
+  background: var(--plate);
+  box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  color: var(--keyword-color);
+  z-index: 1;
+}
+
+/* On a full card the glyph plates ride the rules area's bottom-left: the
+ * portrait silhouette has no status band to hold them (§3.2). */
+.rulesGlyphs {
+  position: absolute;
+  left: calc(var(--rule-inset) / 2);
+  bottom: calc(var(--rule-w) * 2);
+  height: calc(var(--face-rules-size) * var(--face-line));
+}
+
+/* The land tile's mana / basic-land glyph plate, bottom-left of the tile (§4). */
+.landGlyph {
+  position: absolute;
+  left: var(--rule-inset);
+  top: calc(
+    var(--band-art-top) + var(--band-art-h) - var(--face-pt-size) * var(--face-line) -
+      var(--rule-w) * 2
+  );
+  width: calc(var(--face-pt-size) * var(--face-line));
+  height: calc(var(--face-pt-size) * var(--face-line));
+  padding: var(--rule-w);
+  border-radius: calc(var(--plate-radius) / 1.5);
+  background: var(--plate);
+  box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  color: var(--keyword-color);
+  z-index: 1;
+}
+
+/* A nonbasic or actionable land's name strip across the tile's bottom (§15.9) —
+ * such a tile never collapses to an anonymous glyph chip. */
+.nameStrip {
+  position: absolute;
+  left: var(--rule-inset);
+  right: var(--rule-inset);
+  top: var(--band-title-top);
+  height: var(--band-title-h);
+  padding: 0 calc(var(--rule-inset) / 2);
+  border-radius: calc(var(--plate-radius) / 1.5);
+  color: var(--face-name-text);
+  font-size: var(--face-name-size);
+  line-height: var(--band-title-h);
   white-space: nowrap;
-  max-width: calc(100% - 14px);
   overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 1;
+}
+
+/*
+ * The P/T plate — the single authoritative characteristic surface (§3.9): the
+ * server-computed CURRENT value, right-aligned, and visible in every state and
+ * every art mode. On a permanent it is the status band's right-hand item; on a
+ * full card it hangs at the rules area's bottom-right, overhanging the frame.
+ */
+.pt {
+  margin-left: auto;
+  padding: 0 calc(var(--face-pt-size) * 0.3);
+  border-radius: calc(var(--plate-radius) / 1.5);
+  background: var(--plate);
+  box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  color: var(--plate-ink);
+  font-size: var(--face-pt-size);
+  font-weight: 700;
+  line-height: calc(var(--face-pt-size) * var(--face-line));
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.face[data-kind='card'] .pt {
+  position: absolute;
+  right: var(--rule-inset);
+  top: calc(
+    var(--band-rules-top) + var(--band-rules-h) - var(--face-pt-size) * var(--face-line) * 0.75
+  );
+  margin-left: 0;
+}
+
+/* The `×N` top-edge tab (§7.4): the top edge is the tab channel, centred and
+ * overhanging, carrying the exact count at any N while the pile stays capped. */
+.tab {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -50%);
+  padding: 0 calc(var(--face-tab-size) * 0.45);
+  border-radius: calc(var(--face-tab-size) * 0.45);
+  background: var(--tab-fill);
+  box-shadow: 0 0 0 var(--rule-w) var(--rune-gold-shade);
+  color: var(--face-name-text);
+  font-size: var(--face-tab-size);
+  font-weight: 700;
+  line-height: calc(var(--face-tab-size) * var(--face-line));
+  white-space: nowrap;
+  z-index: 2;
+}
+
+/* ── Cost disc (full card only — a permanent carries no cost, §3.3) ───────── */
+
+.cost {
+  position: absolute;
+  right: calc(var(--rule-inset) / 2);
+  top: var(--band-title-top);
+  height: var(--band-title-h);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--rule-w));
+  z-index: 2;
 }
 
 .pip {
-  position: absolute;
-  top: calc(9px + var(--face-name-size));
-  left: calc(7px + var(--pip-i) * (var(--face-pip-size) + 4px));
-  width: calc(var(--face-pip-size) + 2px);
-  height: calc(var(--face-pip-size) + 2px);
-  border-radius: 50%;
   display: grid;
   place-items: center;
+  width: calc(var(--face-cost-size) * 1.5);
+  height: calc(var(--face-cost-size) * 1.5);
+  border-radius: 50%;
+  box-shadow: 0 0 0 var(--rule-w) var(--cost-disc);
   background: var(--pip-bg);
   color: var(--pip-fg);
-  font-size: 10px;
+  font-size: var(--face-cost-size);
   font-weight: 700;
 }
 
-.type {
+/* ── Badges (§7.2/§7.3): the art window's lower-left channel ──────────────── */
+
+.badge {
   position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 18px;
-  font-size: var(--face-type-size);
-  color: var(--face-type-text);
+  left: var(--rule-inset);
+  top: calc(
+    var(--band-art-top) + var(--band-art-h) - (var(--badge-i) + 1) * var(--face-badge-size) *
+      var(--face-line) - var(--rule-w) * 2
+  );
+  max-width: calc(100% - var(--rule-inset) * 2);
+  padding: 0 calc(var(--face-badge-size) * 0.35);
+  border-radius: calc(var(--face-badge-size) * 0.4);
+  font-size: var(--face-badge-size);
+  font-weight: 700;
+  line-height: calc(var(--face-badge-size) * var(--face-line));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.keywords {
-  position: absolute;
-  left: 7px;
-  bottom: calc(22px + var(--face-type-size));
-  height: var(--face-pip-size);
-  width: auto;
-  color: var(--keyword-color);
-}
-
-.keywordOverflow {
-  fill: currentColor;
-  stroke: none;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.pt {
-  position: absolute;
-  right: 5px;
-  bottom: 5px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: var(--face-accent);
-  color: var(--face-pt-text);
-  font-size: var(--face-name-size);
-  font-weight: 700;
-}
-
-.badge {
-  margin-top: -8px;
-  padding: 0 6px;
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.badge:first-child {
-  margin-right: 6px;
-}
-
-.badgePlain {
-  background: var(--badge-bg);
-  color: var(--badge-text);
-  box-shadow: 0 0 0 1px var(--badge-stroke);
+  z-index: 1;
 }
 
 .badgeCounter {
@@ -297,9 +507,16 @@
   color: var(--counter-text);
 }
 
+/* The damage badge takes the art window's lower-RIGHT channel and a torn,
+ * deliberately non-rectangular silhouette (§7.3) — it is never merged into the
+ * P/T plate, which carries the server's current toughness. */
 .badgeDamage {
+  left: auto;
+  right: var(--rule-inset);
   background: var(--damage-bg);
   color: var(--damage-text);
+  clip-path: polygon(8% 0, 100% 6%, 92% 100%, 0 92%);
+  padding: 0 calc(var(--face-badge-size) * 0.5);
 }
 
 .badgeBlocked {
@@ -313,52 +530,7 @@
 .badgeRow {
   background: var(--badge-bg);
   color: var(--badge-text);
-  box-shadow: 0 0 0 1px var(--badge-stroke);
-  max-width: calc(100% + 12px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ── Art (ADR 0024 — modes unchanged; the face only shows what is loaded) ──
- *
- * The images themselves are NOT styled here: every card illustration is the one
- * `CardArt` primitive, whose `card-art.module.css` owns the containment
- * contract for all four modes (issue #527). The face's job is only to publish
- * the frame geometry those modes derive their box from (`--art-inset`,
- * `--art-top-gap`, `--art-bottom-reserve`, `--art-radius`, `--face-header-h`,
- * `--face-type-size`, `--face-radius`; see `theme.ts`) and to keep every
- * server-computed overlay above the image (z-index 1 vs the image's 0). */
-
-/* Card-body scrim so identity text/glyphs stay legible over any art. */
-.overArt {
-  background: color-mix(in srgb, var(--face-body) var(--art-scrim), transparent);
-  border-radius: var(--art-radius);
-}
-
-/* ── Chip tier (digest budget: frame color, name/glyph, tap) ─────────────── */
-
-.chipName {
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  text-align: center;
-  font-size: var(--face-name-size);
-  color: var(--face-name-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chipGlyph {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 26px;
-  height: 26px;
-  color: var(--face-accent);
+  box-shadow: 0 0 0 var(--rule-w) var(--badge-stroke);
 }
 
 /* ── Inspect tier (fixed screen-space reading panel; budget-exempt) ──────── */
@@ -374,59 +546,71 @@
   top: auto;
   width: 100%;
   height: auto;
-  min-height: calc(var(--face-w) * 1.4);
+  min-height: var(--face-h);
   transform: none;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  padding: 10px;
+  gap: calc(var(--rule-w) * 4);
+  padding: var(--rule-inset);
 }
 
-.inspectInner .name,
-.inspectInner .type {
+.inspectInner .title,
+.inspectInner .type,
+.inspectInner .rules {
   position: static;
+  left: auto;
+  right: auto;
+  top: auto;
+  height: auto;
+  line-height: var(--face-line);
   white-space: normal;
-}
-
-.inspectInner .name {
-  font-size: var(--face-name-size);
-  padding-right: 0;
+  padding: calc(var(--rule-w) * 2) calc(var(--rule-w) * 3);
 }
 
 .inspectCost {
-  display: flex;
-  gap: 4px;
+  position: static;
+  height: auto;
+  flex-wrap: wrap;
+  gap: calc(var(--rule-w) * 2);
 }
 
 .pipFlow {
   position: static;
 }
 
-.rules {
-  font-size: var(--face-rules-size);
-  line-height: 1.5;
-  color: var(--face-name-text);
+.inspectRules {
   white-space: pre-wrap;
 }
 
 .inspectFooter {
+  position: relative;
   margin-top: auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: var(--face-pip-size);
+  gap: calc(var(--rule-w) * 3);
+  min-height: calc(var(--face-pt-size) * var(--face-line));
 }
 
 .inspectFooter .keywords {
-  position: static;
+  height: calc(var(--face-pt-size) * var(--face-line));
 }
 
 .ptFlow {
   position: static;
 }
 
+/* The reading panel flows; nothing in it is band-anchored (its bands are the
+ * flex column itself), so the full-card P/T anchoring is undone here. */
+.face.inspect .pt {
+  position: static;
+  top: auto;
+  right: auto;
+  margin-left: auto;
+}
+
 .inspectInner .badge {
-  margin: 0;
+  position: static;
   align-self: flex-end;
+  max-width: 100%;
 }

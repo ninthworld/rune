@@ -98,6 +98,19 @@ export interface CardDisplayData {
    */
   landGlyph?: GlyphName;
   /**
+   * Whether this permanent renders as the battlefield **land resource tile** —
+   * the 1.45-aspect member of the frame family (card-representation §3.1, §4):
+   * art only, no title bar, no cost, no type bar, with the mana glyph plate and
+   * a name strip for a nonbasic or actionable land (§15.9).
+   *
+   * Supplied by the staging layer from the row it already sorted the permanent
+   * into (`rowKindForType`), exactly like {@link landGlyph} — display glue over
+   * the server's type line, never a rules computation, and never inferred by
+   * the face itself. Absent everywhere but the battlefield: in hand, on the
+   * stack, and in inspect a land is an ordinary portrait card.
+   */
+  landTile?: boolean;
+  /**
    * The card's server-supplied keyword abilities as lowercase wire names (issue
    * #320) — e.g. `['flying', 'deathtouch']`. Rendered as a capped glyph strip at
    * support/field/hand tiers; a keyword with no glyph is dropped. Never derived here.
@@ -182,6 +195,7 @@ export function cardVisualSignature(data: CardDisplayData, tier: RenderTier = 'f
     actionable: data.actionable ?? false,
     stackCount: data.stackCount ?? 1,
     landGlyph: data.landGlyph ?? null,
+    landTile: data.landTile ?? false,
     keywords: data.keywords ?? [],
     hasActivatedAbility: data.hasActivatedAbility ?? false,
     markedDamage: data.markedDamage ?? 0,

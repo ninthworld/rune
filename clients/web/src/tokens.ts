@@ -31,6 +31,159 @@ export const SURFACES = {
   typeText: '#9BA0A8',
   selection: '#7FB2E5',
   targeting: '#E0784A',
+  /** Slate edge of the Rune frame (card-representation §3.1). */
+  frameEdge: '#2E343A',
+  /** The bottom paper-thickness edge and every shadow-side rim (§3.1, §3.11). */
+  frameEdgeShade: '#1B2024',
+  /** Parchment of the discrete plates — title, type, rules, P/T, glyphs (§3.1). */
+  plate: '#DED8CB',
+  /** Ink on a parchment plate (§3.5). */
+  plateInk: '#191C20',
+  /** The battlefield permanent's status band slate (§3.9). */
+  statusBand: '#2F3438',
+  /** The full card's mana cost disc (§3.5). */
+  costDisc: '#20262B',
+  /** The top-edge tab plate: `TOKEN`, `×N`, `TOKEN ×N` (§7.4). */
+  tokenTab: '#20262B',
+} as const;
+
+/**
+ * The frame's warm-gold hairline family (`docs/design/card-representation.md`
+ * §3.1/§3.11). One implied key light: the rule is lit on its top/left run and
+ * `ruleShade` on the bottom/right run, and every parchment plate carries a
+ * `plateRim` hairline. Gold is structural, never a color-identity channel —
+ * identity only *tints* the rule (§3.4).
+ */
+export const RUNE_GOLD = {
+  /** Lit gold hairline. */
+  rule: '#C7A46A',
+  /** The rule's shadow-side run. */
+  ruleShade: '#8A7042',
+  /** Hairline rim around a parchment plate. */
+  plateRim: '#B9955E',
+} as const;
+
+/**
+ * The card **back** field (card-representation §13). Hidden-information safety
+ * is the hard requirement: one back for every hidden card on the device, with
+ * nothing about it varying with the card it hides. The back's own composition
+ * (emblem, rivets, skin manifest) is issue #548's; these are the colors it
+ * paints with.
+ */
+export const CARD_BACK = {
+  /** Navy-slate field. */
+  field: '#2B3340',
+  /** Centred rune-spiral emblem. */
+  emblem: '#C7A46A',
+  /** The four corner rivet dots on the inset rule. */
+  rivet: '#C7A46A',
+} as const;
+
+/**
+ * Rune frame geometry (card-representation §3.1, §5), as unitless fractions of
+ * the card **width `W`** — one number serves every tier, and the face resolves
+ * them to px. Measured off the approved `rune-card-states.jpg` baseline at the
+ * `Wref = 190 px` authoring width.
+ *
+ * The frame is deliberately two silhouettes of ONE family (§2): a battlefield
+ * permanent is a **square plaque** (`aspectPermanent`), a card in hand or on the
+ * stack is a portrait card (`aspectFull`), and a land is a wide **resource
+ * tile** (`aspectLandTile`). The square is the portrait frame with its rules
+ * area structurally removed.
+ */
+export const RUNE_FRAME = {
+  /** Full-card w ÷ h — hand, stack, inspect. */
+  aspectFull: 0.715,
+  /** Battlefield permanent w ÷ h — the square plaque. */
+  aspectPermanent: 1.0,
+  /** Land resource tile w ÷ h. */
+  aspectLandTile: 1.45,
+  /** Outer corner radius ÷ W. */
+  radius: 0.07,
+  /** Plate / art-window corner radius ÷ W. */
+  plateRadius: 0.035,
+  /** Slate edge on left/right/top ÷ W. */
+  edge: 0.037,
+  /** The bottom paper-thickness edge ÷ W — thicker and one shade darker. */
+  edgeBottom: 0.057,
+  /** Gold hairline weight ÷ W. */
+  rule: 0.01,
+  /** Gold hairline inset from the card edge ÷ W. */
+  ruleInset: 0.063,
+  /** The token silhouette's arch rise above the card's top line ÷ H. */
+  archRise: 0.09,
+  /** Procedural art-window monogram size ÷ W (the ADR 0024 empty state). */
+  monogram: 0.42,
+  /** Selection ring weight ÷ W (card-representation §6.1 panel 3). */
+  selectRing: 0.021,
+  /** Selection outer bloom spread ÷ W — the bloom reads by spread, not hue. */
+  selectGlow: 0.05,
+  /** Target-candidate ring weight ÷ W (§6.2) — thinner than selection, so the
+   * two are separated by weight as well as hue. */
+  targetRing: 0.016,
+  /** Attachment cluster scale relative to its host (§6.1 panel 6). */
+  attachScale: 0.7,
+} as const;
+
+/**
+ * Band stack of the **full card** (hand, stack, inspect) as fractions of card
+ * height `H`, top to bottom (card-representation §3.2, measured on states panel
+ * 9). The remainder — outer edges and the four gold rules — is `RUNE_FRAME`.
+ */
+export const RUNE_BANDS_FULL = {
+  /** Title bar: name left, cost disc right. */
+  title: 0.077,
+  /** Art window — the dominant band. */
+  art: 0.482,
+  /** Type bar. */
+  type: 0.077,
+  /** Rules area, carrying the server `rules_text` verbatim. */
+  rules: 0.27,
+} as const;
+
+/**
+ * Band stack of the **battlefield permanent** as fractions of `H` (= `W`)
+ * (card-representation §3.3, measured on states panel 1). The permanent face
+ * carries **no mana cost and no type bar** — both are absent in every permanent
+ * across all three approved baselines, and type identity is carried by the
+ * status band's glyph plates and by inspect.
+ */
+export const RUNE_BANDS_PERM = {
+  /** Title bar: name only. */
+  title: 0.1,
+  /** Art window — the dominant band. */
+  art: 0.647,
+  /** Status band: glyph plates left, P/T plate right. */
+  status: 0.137,
+} as const;
+
+/**
+ * Card type scale (card-representation §5, §8.4) as fractions of `W`, plus the
+ * two hard px floors from `presentation-budgets.md` §Accessibility. Ratios are
+ * authored at `Wref = 190`; below that, type **clamps to the floor and the band
+ * that holds it grows**, with the art window absorbing the difference — the
+ * floor rule, implemented once in `card/dom/theme.ts` so no surface re-derives
+ * it.
+ */
+export const RUNE_TYPE = {
+  /** Card name ÷ W. */
+  name: 0.074,
+  /** Type line ÷ W. */
+  typeLine: 0.056,
+  /** Rules text ÷ W. */
+  rules: 0.056,
+  /** P/T numerals ÷ W. */
+  pt: 0.115,
+  /** Cost-disc numeral ÷ W. */
+  cost: 0.085,
+  /** Top-edge tab text (`TOKEN`, `×N`) ÷ W. */
+  tab: 0.075,
+  /** Badge text ÷ W. */
+  badge: 0.07,
+  /** Card names never render below this (px). */
+  floorName: 11,
+  /** Critical values — P/T, counts — never render below this (px). */
+  floorValue: 12,
 } as const;
 
 /**
@@ -79,10 +232,29 @@ export const INDICATORS = {
   keyword: '#C6CBD2',
   /** The latent activated-ability marker dot (muted violet — not the gold bar). */
   abilityMarker: '#A99BC4',
-  /** Marked combat damage badge fill. */
-  damageBg: '#B0413A',
+  /** Marked combat damage badge fill (card-representation §5, measured red). */
+  damageBg: '#8E3A2A',
   /** Marked combat damage badge text. */
   damageText: '#F6E7E4',
+  /** Counter badge fill (card-representation §5, measured green). */
+  counterBg: '#2A5436',
+  /** Counter badge text. */
+  counterText: '#EAF3E9',
+  /**
+   * Selection ring core. Canonical `SURFACES.selection` — the maintainer ruling
+   * recorded in card-representation §15.1 assigns **blue** to selection and
+   * **orange** to targeting, superseding the approved sheets' violet ring; only
+   * the hue moved, the transcribed geometry is unchanged.
+   */
+  selectRing: '#7FB2E5',
+  /** Selection outer bloom — the same hue at bloom alpha; **spread**, not hue,
+   * separates the bloom from the ring. */
+  selectGlow: '#7FB2E5',
+  /** The drawn targeting path — canonical `SURFACES.targeting`. */
+  targetPath: '#E0784A',
+  /** The reticle on a chosen target — the same hue as the path; **geometry**
+   * separates chosen (ring + path + reticle) from candidate (ring + pulse). */
+  targetReticle: '#E0784A',
   /**
    * Combat-declaration indicators (issue #332). Like the other card-face accents
    * these stay distinct from selection (ring), targeting (ring), and playable (bottom
@@ -145,18 +317,23 @@ const ART_PANEL_ASPECT = 4 / 3;
 const ART_CARD_ASPECT = 63 / 88;
 
 export const ART = {
-  /** Horizontal inset of the window from the card edge. */
-  inset: 5,
-  /** Gap between the header band's bottom and the window top. */
-  topGap: 6,
-  /** Space reserved below the window for the type line row. */
-  bottomReserve: 24,
-  /** Corner radius of the window mask. */
+  /**
+   * Corner radius of the **screen-space** art slot's mask. The card frame's own
+   * art window takes `RUNE_FRAME.plateRadius · W` instead, so it scales with the
+   * tier; this is the fixed radius of the inspect surfaces' reserved slot.
+   */
   radius: 4,
   /** Alpha of the card-body scrim drawn behind the keyword strip over art. */
   scrimAlpha: 0.72,
-  /** Tiers that render an illustration when one is available. */
-  tiers: ['field', 'hand'],
+  /**
+   * Tiers whose frame draws an illustration in its art window when one is
+   * available (card-representation §12: the art window is the frame's dominant
+   * band at every framed tier). The window is ONE node whether it holds an
+   * illustration or the procedural color-identity field, so widening this list
+   * costs no DOM budget. `chip` is deliberately absent — a digest chip stays
+   * procedural in every art mode (§12).
+   */
+  tiers: ['mini', 'support', 'field', 'hand', 'stack', 'inspect'],
   /**
    * The focal anchor of the window mask (issue #527), as fractions of the mask
    * box, published as `object-position`. Illustrations are cover-fitted — the
@@ -199,19 +376,21 @@ export const ART = {
   slotMonogram: 44,
 } as const;
 
-/** Vector frame geometry — the look of the card body with no images or WotC art. */
+/**
+ * Frame alphas — the state channels that ride opacity rather than geometry.
+ * The frame's *sizes* all moved to {@link RUNE_FRAME} as fractions of `W`
+ * (card-representation §3.1/§5), so one authored ratio serves every tier.
+ *
+ * `sickAlpha` is gone on purpose: card-representation §6.2 replaces the
+ * summoning-sickness dim with a dedicated glyph plate in the status band, so
+ * the state survives at every tier and never competes with tap.
+ */
 export const FRAME = {
-  borderWidth: 1.5,
-  radius: 8,
-  chipRadius: 6,
-  headerRadius: 5,
-  headerTintAlpha: 0.16,
+  /** Alpha of the procedural art-window monogram (ADR 0024 empty state). */
   monogramAlpha: 0.22,
-  selectionWidth: 2,
   /** Tap is a *slight* dim riding the partial rotation (blueprint: one tap
    * treatment everywhere) — legibility of a tapped board state stays high. */
   tappedAlpha: 0.8,
-  sickAlpha: 0.85,
   /** Alpha for a card dimmed as an ineligible target during targeting mode. */
   dimmedAlpha: 0.32,
 } as const;
@@ -221,15 +400,23 @@ export const FRAME = {
  * slightly splayed physical pile (2–3 px offsets) with the count badge" —
  * four Plains look like a stack of Plains, not a card wearing arithmetic).
  *
- * One card edge is drawn per hidden member, offset up-and-right by `stepPx`
- * with its accent edge `edgePx` further out, so the pile deepens with the fold
- * up to `maxLayers`; the count badge carries the exact N beyond that. The
- * edges are box-shadow layers, so a pile costs ZERO extra DOM nodes at any
- * count (presentation-budgets §Performance: ≤ 12 nodes per card face).
+ * One card edge is drawn per hidden member, offset **down-and-left** by
+ * (`stepX` · W, `stepY` · H) with its accent edge `edgePx` further out, so the
+ * pile deepens with the fold up to `maxLayers`; the `×N` top tab carries the
+ * exact N beyond that. The edges are box-shadow layers, so a pile costs ZERO
+ * extra DOM nodes at any count (presentation-budgets §Performance: ≤ 12 nodes
+ * per card face).
+ *
+ * Direction and step are card-representation §5/§15.3: the approved sheets
+ * splay two of three depictions down-and-left, and down-and-left keeps the
+ * card's right edge clear for the P/T plate and the badge channel. This
+ * replaces the shipped 2 px up-and-right offset.
  */
 export const SPLAY = {
-  /** Offset between successive cards in the pile, px (spec: 2–3 px). */
-  stepPx: 2,
+  /** Horizontal step between successive cards in the pile ÷ W (leftward). */
+  stepX: 0.055,
+  /** Vertical step between successive cards in the pile ÷ H (downward). */
+  stepY: 0.03,
   /** How much further out each card's accent edge sits, px. */
   edgePx: 1,
   /** Card edges drawn behind the top card, capping the pile's silhouette. */
@@ -256,17 +443,32 @@ export const FONT = {
 } as const;
 
 /**
- * Card size tiers (blueprint §Card vocabulary): hand (largest) → field (your
- * battlefield at a duel) → support → mini (the stepped-down dense tier the
- * density ladder engages) → chip (land digests). The *set of faces* never
- * changes; which tier a surface uses is the shell layout's call.
+ * Card size tiers — the canonical 4-player, 1280 × 720 table of
+ * `docs/design/card-representation.md` §8.1, replacing the inherited
+ * 84 × 118 field / 104 × 146 hand assumptions (issue #529).
+ *
+ * Two silhouettes, one family (§2): the battlefield tiers (`chip`, `mini`,
+ * `support`, `field`) are **square plaques** (`w === h`, `RUNE_FRAME`
+ * `aspectPermanent`) and carry a `landH` — the height of the same tier's
+ * **land resource tile** at `aspectLandTile`. The screen-space tiers (`hand`,
+ * `stack`, `inspect`) are portrait cards at `aspectFull`.
+ *
+ * `name` / `type` / `rules` / `pt` are the authored font sizes in logical px at
+ * this viewport; `card/dom/theme.ts` clamps each to the `RUNE_TYPE` floor and
+ * grows the holding band around it (§8.4). A `0` means the tier does not draw
+ * that field at all — a battlefield permanent has no type bar and no rules
+ * area, which is a normative rule of the frame family, not a truncation.
+ *
+ * Which tier a surface uses is the shell/plane layout's call, never the face's.
  */
 export const TIER = {
-  chip: { w: 44, h: 60 },
-  mini: { w: 54, h: 76, name: 9, mono: 16, pip: 10, header: 24, type: 8 },
-  support: { w: 66, h: 92, name: 11, mono: 22, pip: 12, header: 30, type: 9 },
-  field: { w: 84, h: 118, name: 11, mono: 30, pip: 13, header: 34, type: 10 },
-  hand: { w: 104, h: 146, name: 12, mono: 38, pip: 15, header: 40, type: 11 },
+  chip: { w: 48, h: 48, landH: 48, name: 0, type: 0, rules: 0, pt: 12 },
+  mini: { w: 62, h: 62, landH: 43, name: 11, type: 0, rules: 0, pt: 12 },
+  support: { w: 78, h: 78, landH: 54, name: 11, type: 0, rules: 0, pt: 12 },
+  field: { w: 96, h: 96, landH: 66, name: 11, type: 0, rules: 0, pt: 13 },
+  hand: { w: 116, h: 162, landH: 162, name: 13, type: 11, rules: 11, pt: 14 },
+  stack: { w: 104, h: 145, landH: 145, name: 12, type: 11, rules: 11, pt: 13 },
+  inspect: { w: 260, h: 364, landH: 364, name: 18, type: 13, rules: 13, pt: 20 },
 } as const;
 
 /**

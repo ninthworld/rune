@@ -131,6 +131,9 @@ export const SHELL = {
   decisionsMaxW: 330,
   /** The hand band's own minimum width inside the full composition. */
   handMinW: 220,
+  /** The hand size the band is sized to keep at the 44 px floor — an opening
+   * hand. Larger hands are the layout model's fan-paging case (#533). */
+  openingHand: 7,
   /** The compact composition's controls row (identity + decisions, side by side). */
   controlsHCompact: 112,
   /** A `hand`-tier card's footprint — the same token the DOM card renderer uses. */
@@ -209,9 +212,14 @@ export function bottomShellHeight(compact: boolean): number {
  */
 function fullBottomColumns(width: number): { identity: number; hand: number; decisions: number } {
   const free = Math.max(0, width - SHELL.identityW);
+  // The decisions column yields to the hand's accessibility floor before it
+  // takes its maximum width: an opening hand must keep 44 px of every card
+  // exposed (presentation-budgets §Accessibility), and the `hand`-tier card is
+  // now the 116 px portrait of card-representation §8.1. Above ~1280 the
+  // subtraction is slack and the column still reaches `decisionsMaxW`.
   const decisions = Math.min(
     SHELL.decisionsMaxW,
-    Math.max(SHELL.decisionsMinW, free - SHELL.handMinW),
+    Math.max(SHELL.decisionsMinW, free - handBandWidthFor(SHELL.openingHand)),
   );
   return {
     identity: SHELL.identityW,
@@ -321,6 +329,16 @@ export function handFanFraction(index: number, count: number): number {
 /** The usable fan span for a band: the width minus one card and both gutters. */
 export function handFanSpan(bandWidth: number): number {
   return Math.max(0, bandWidth - SHELL.handCardW - 2 * SHELL.handGutter);
+}
+
+/**
+ * The band width a `count`-card fan needs to keep {@link SHELL.minHit} of every
+ * card exposed — the inverse of {@link handFanSpacing}. The bottom row's column
+ * split reads this so a wider `hand`-tier card widens the band it is fanned in,
+ * rather than silently eating into each card's exposed sliver.
+ */
+export function handBandWidthFor(count: number): number {
+  return SHELL.handCardW + 2 * SHELL.handGutter + Math.max(0, count - 1) * SHELL.minHit;
 }
 
 /**

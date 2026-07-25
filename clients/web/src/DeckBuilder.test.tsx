@@ -60,17 +60,19 @@ describe('DeckBuilder (issue #368)', () => {
   it('shows each card’s cost and type line for browsing', () => {
     renderBuilder();
     const angel = screen.getByTestId('deck-builder-card-serra_angel');
-    // The cost renders through the shared CardFace cost pill (symbols joined by ·)
-    // rather than the raw brace string; the type line renders verbatim.
-    expect(angel.textContent).toContain('3·W·W');
+    // The cost renders through the shared CardFace cost disc — one swatched pip
+    // per symbol at the screen-space tiers (card-representation §3.5) — rather
+    // than the raw brace string; the type line renders verbatim.
+    expect(angel.textContent).toContain('3WW');
     expect(angel.textContent).toContain('Creature — Angel');
   });
 
   it('renders every card surface through the shared DOM card component (#508)', () => {
     renderBuilder({ initialCounts: { serra_angel: 1 } });
-    // Pool entries render a field-tier CardFace (role=img labelled by the card).
+    // Pool entries render a hand-tier CardFace — the 0.715 portrait card, the
+    // only silhouette that carries a cost disc and a type bar (§3.3).
     const pool = screen.getByTestId('deck-builder-card-serra_angel');
-    const poolFace = pool.querySelector('[data-tier="field"]');
+    const poolFace = pool.querySelector('[data-tier="hand"]');
     expect(poolFace).not.toBeNull();
     expect(poolFace?.getAttribute('role')).toBe('img');
     expect(poolFace?.getAttribute('aria-label')).toBe('Serra Angel');
