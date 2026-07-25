@@ -12,8 +12,20 @@
  * a wing or tile seat is never silent.
  */
 import type { EntityId, GameLogEntry, GameView, Permanent, PlayerId } from '../../protocol';
-import { SCENE_BATCH, SCENE_HUES, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
-import type { EffectQuality, PersistentEffect, TransientInvocation } from '../effects';
+import {
+  SCENE_BATCH,
+  SCENE_HUES,
+  SCENE_MOTION,
+  SCENE_NEUTRALS,
+  SCENE_SEAT_ACCENTS,
+} from '../../sceneTokens';
+import type {
+  EffectQuality,
+  EndpointKind,
+  PersistentEffect,
+  TransientInvocation,
+} from '../effects';
+import { applyRelationshipEmphasis } from '../relationshipEmphasis';
 import type { Rect } from '../scene';
 import { offFocusPings, type SeatActivity } from './offFocusActivity';
 import { momentAccent, momentBudgetMs, verdictMoment } from './sessionMoments';
@@ -72,6 +84,20 @@ export interface TargetingPresentationPath {
   id: string;
   from: EntityId;
   to: EntityId | PlayerId;
+  /**
+   * Whether this path is the slot the player is answering **right now**
+   * (`stack-and-relationships.md` §4.4 `pending`, which dash-crawls) rather than
+   * a slot already answered but not yet submitted (`provisional`, whose dashes
+   * stand still). Both are dashed; only the crawl separates them, and only the
+   * crawl is what reduced motion drops.
+   */
+  pending?: boolean;
+  /**
+   * The destination's 1-based place in the action's own requirement order — the
+   * §4.5 ordering channel, shared with the prompt's slot progress. Never derived
+   * from screen position.
+   */
+  numeral?: number;
 }
 
 /** Ephemeral staging inputs; none are authoritative gameplay state. */
@@ -85,6 +111,13 @@ export interface PresentationStaging {
    */
   focusSeat?: PlayerId;
   targetingPaths?: readonly TargetingPresentationPath[];
+  /**
+   * The object the player has isolated (selected / focused). Focus isolates one
+   * object's relationships and calms the rest (§4.4, §9.3) — the generalisation
+   * of the shipped combat-link isolation to every relationship kind. Ephemeral
+   * staging, never authoritative.
+   */
+  isolatedId?: EntityId;
   /** Quality controls batch density, never scene/state fidelity. */
   quality?: EffectQuality;
   /** Reduced motion snaps every batch with no stagger. */
@@ -282,7 +315,12 @@ function addLogIntents(
         const category = event.type === 'spell_countered' ? 'counter' : 'fizzle';
         activity.add(event.player);
         pushMotion(motions, category, key, { entityId: event.card.id });
-        transient(transients, 'counter', seatRef(event.player), SCENE_HUES.orange.value);
+        // The §6.3 fizzle rule, and it is normative: a countered or fizzled
+        // spell's terminal lands on the **stack object**, never on its target.
+        // The object has already left the stack in this view, so the anchor
+        // resolves through `freezeDepartedEffectAnchors` onto the rect it
+        // occupied — which is exactly where the player was looking.
+        transient(transients, 'counter', stackRef(event.card.id), SCENE_HUES.red.value);
         break;
       }
       case 'attackers_declared':
@@ -585,6 +623,23 @@ function applyBatchDelays(motions: GameViewMotionIntent[], staging: Presentation
   }
 }
 
+/**
+ * Classify a relationship's destination so the right §5 endpoint treatment is
+ * chosen — a 90° crest arc for a player (D8), an inset reticle for a stack
+ * object (§5.5), an open reticle for a permanent (§5.2).
+ *
+ * The protocol does not type target references (gap **G6**), so this is a
+ * **membership test over the view's own server-supplied lists** and nothing
+ * more: it never parses text and never infers a kind from a name. Zone
+ * destinations (§5.4 / R3) have no protocol representation at all (gap G7) and
+ * are therefore specified but dormant — no client-side zone inference exists.
+ */
+function endpointKindOf(view: GameView, id: EntityId | PlayerId, seats: PlayerId[]): EndpointKind {
+  if (seats.includes(id as PlayerId)) return 'player';
+  if (view.stack.some((item) => item.id === id)) return 'stack';
+  return 'card';
+}
+
 function persistentEffects(
   view: GameView,
   targetingPaths: readonly TargetingPresentationPath[],
@@ -601,39 +656,71 @@ function persistentEffects(
         : undefined;
     const defender = permanent.attacking_player ?? duelDefender;
     if (permanent.attacking && defender !== undefined) {
+      // R7 — an attack is a server-stated fact, so the path is CONFIRMED:
+      // solid, static, and therefore free of per-frame cost (§8.4 / IN1).
       effects.push({
         id: `attack:${permanent.id}`,
         category: 'attack-path',
         from: { ref: entityRef(permanent.id) },
         to: { ref: seatRef(defender) },
         accent: SCENE_HUES.orange.value,
+        state: 'confirmed',
+        endpoint: 'player',
       });
     }
     if (permanent.blocking !== undefined) {
+      // R8 — a block is a BIND, not a directed effect: doubled parallel stroke,
+      // no lift, and deliberately no arrowhead (decision D7).
       effects.push({
         id: `block:${permanent.id}`,
         category: 'blocker-link',
         from: { ref: entityRef(permanent.id) },
         to: { ref: entityRef(permanent.blocking) },
         accent: SCENE_HUES.orange.value,
+        state: 'confirmed',
+      });
+    }
+    if (permanent.attached_to !== undefined) {
+      // R9 — attachment is an elbow bracket with symmetric square terminals in
+      // neutral line work, never an arc and never a relationship hue (D6). It
+      // says "belongs to"; a target path says "acts on".
+      effects.push({
+        id: `attach:${permanent.id}`,
+        category: 'attachment-bracket',
+        from: { ref: entityRef(permanent.id) },
+        to: { ref: entityRef(permanent.attached_to) },
+        accent: SCENE_NEUTRALS.text,
+        state: 'confirmed',
       });
     }
   }
+  for (const item of view.stack) {
+    // R9 — an ability plate's tether back to its source permanent. `source` is
+    // the only spell/ability discriminator the wire carries today.
+    if (item.source === undefined) continue;
+    effects.push({
+      id: `tether:${item.id}`,
+      category: 'source-tether',
+      from: { ref: stackRef(item.id) },
+      to: { ref: entityRef(item.source) },
+      accent: SCENE_NEUTRALS.text,
+      state: 'confirmed',
+    });
+  }
   for (const path of targetingPaths) {
-    const players =
-      view.seat_order.length > 0
-        ? view.seat_order
-        : [view.you, ...view.opponents.map((opponent) => opponent.player_id)];
+    const kind = endpointKindOf(view, path.to, seats);
     effects.push({
       id: `target:${path.id}`,
       category: 'targeting-path',
       from: { ref: entityRef(path.from) },
-      to: {
-        ref: players.includes(path.to as PlayerId)
-          ? seatRef(path.to as PlayerId)
-          : entityRef(path.to),
-      },
+      to: { ref: kind === 'player' ? seatRef(path.to as PlayerId) : entityRef(path.to) },
       accent: SCENE_HUES.orange.value,
+      // §4.4 — the slot being answered crawls; an already-answered slot holds
+      // its dashes still. Both stay dashed: dashed vs solid is what separates
+      // "intended" from "stated", and it survives reduced motion (§7.2).
+      state: path.pending === true ? 'pending' : 'provisional',
+      endpoint: kind,
+      ...(path.numeral === undefined ? {} : { numeral: path.numeral }),
     });
   }
   return effects;
@@ -670,7 +757,10 @@ export function deriveGameViewPresentation(
   return {
     motions,
     transients,
-    persistent: persistentEffects(current, staging.targetingPaths ?? []),
+    persistent: applyRelationshipEmphasis(
+      persistentEffects(current, staging.targetingPaths ?? []),
+      staging.isolatedId ?? null,
+    ),
     events,
   };
 }

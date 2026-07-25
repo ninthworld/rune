@@ -2,6 +2,7 @@ import type { EntityId, PlayerId } from '../../protocol';
 import type { RenderTier } from '../../card/cardFactory';
 import type { Rect, SurfaceTier, BandRowKind, ZoneCounts } from '../scene/types';
 import type { SeatRack } from './rack';
+import type { SeatCluster } from './cluster';
 
 /**
  * The viewport geometry the plane is staged for. The plane's logical coordinate
@@ -130,8 +131,14 @@ export interface PlaneRegion {
   rank?: number;
   /** The region's slot rect — fixed by the stage; the ladder works inside it. */
   rect: Rect;
-  /** The crest cluster's rect (≥ 44 px; always staged, every count and rung). */
+  /**
+   * The crest cluster's activation rect (≥ 44 px; always staged, every count and
+   * rung) — the portrait medallion of {@link cluster}, which is what a player
+   * points at to target, focus, or inspect the seat.
+   */
   crest: Rect;
+  /** The seat's staged identity cluster (`docs/design/seat-identity.md` §1). */
+  cluster: SeatCluster;
   /**
    * The zone rack's hit-rect union — the `pile:<seat>` / `zone:<seat>:rack`
    * anchor (`zone-geography.md` §7). Retained under its shipped name so travel
@@ -184,8 +191,17 @@ export interface SummaryTileSlot {
   seat: PlayerId;
   /** The tile's rect (≥ 44 px tall — the activation target). */
   rect: Rect;
-  /** The mini-crest rect inside the tile. */
+  /**
+   * The mini-crest rect inside the tile — the §2 **minimal** cluster rung. The
+   * tile *is* that rung (`zone-geography.md` §4.1): its own row already carries
+   * the name, life, and counts, so the crest adds the portrait and nothing else,
+   * at zero extra scene nodes.
+   */
   crest: Rect;
+  /** The seat's portrait plate URL, when one resolved (§1.3). */
+  portraitSrc?: string;
+  /** The seat's accent, from `sceneTokens`. */
+  accent: string;
   /** The seat's display label. */
   label: string;
   /** Life total, straight from the view. */

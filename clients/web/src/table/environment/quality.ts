@@ -22,8 +22,10 @@ import { DEFAULT_SCENE_THEME, type SceneThemeName } from '../../sceneTokens';
 import {
   ENV_LAYERS,
   ENV_MANIFESTS,
+  type EnvComposition,
   type EnvLayerId,
   type EnvManifestKey,
+  type EnvPropAtlas,
   type EnvThemeManifest,
   type EnvVariant,
 } from './manifest';
@@ -60,12 +62,26 @@ export interface EnvLayerPlan {
   /** The manifest key the variant resolves through — stable across the swap. */
   key?: EnvManifestKey;
   /**
-   * The plate URL, present only once the manifest entry has been flipped to
-   * `source: 'raster'` (§10.5 step 3). Absent means the slot renders the
-   * procedural placeholder — which is the state of every key today, since no
-   * production plate exists.
+   * The plate URL, present only when the manifest entry resolved to
+   * `source: 'raster'` (§10.5 step 3) **and** the layer is drawing a full plate.
+   * Absent means the slot renders the procedural placeholder: no plate shipped
+   * for it, the plate failed, or the treatment is one the plate cannot serve —
+   * `lips-only`, where §4.5 re-anchors two bands the composed plate has baked in
+   * at source coordinates.
    */
   rasterPath?: string;
+  /**
+   * The L3 sprite atlas, present only when this layer draws raster props. L3 is
+   * not a plate (§4.4): the atlas is cropped per prop at the manifest's own
+   * anchors, so 16:9 and 21:9 place a prop identically.
+   */
+  atlas?: EnvPropAtlas;
+  /**
+   * Whether this layer is drawing a **composed** study rather than its own
+   * layer (see {@link EnvComposition}). Purely descriptive; the mount uses it
+   * for provenance in the DOM.
+   */
+  composed?: boolean;
   /** The parallax offset in logical px at full excursion (§1.1). */
   parallaxPx: number;
   /** Whether this layer fell back because its key failed to resolve (§8.3). */
@@ -93,6 +109,15 @@ export interface EnvironmentPlan {
   portrait: boolean;
   /** The passive reaction hooks permitted at this tier (§7.2). */
   hooks: readonly EnvHook[];
+  /** How the resolved theme's pixels shipped. */
+  composition: EnvComposition;
+  /**
+   * Whether the frame is actually drawing a flattened study: a `composed` theme
+   * whose single plate resolved. When it is, L2 and L3 stand down — the study
+   * already carries its own edge and props, and drawing the procedural rim and
+   * silhouettes over it would double them.
+   */
+  composedActive: boolean;
 }
 
 // ── §7.2 Passive reaction hooks ──────────────────────────────────────────────
@@ -261,10 +286,27 @@ export function planEnvironment(input: EnvironmentPlanInput): EnvironmentPlan {
         ? excursionBase / 2
         : excursionBase;
 
+  // A `composed` study is one flattened plate in the L1 slot. It only *engages*
+  // when that plate is the thing L1 is about to draw: at Lite the tier asks for
+  // the half-resolution variant, which no study ships, and a failed plate has
+  // to leave the full procedural composition standing (§8.3 — "the theme still
+  // reads"), so both cases fall through to the layered placeholder untouched.
+  const composedPlate = manifest.assets.l1;
+  const composedActive =
+    manifest.composition === 'composed' &&
+    composedPlate.source === 'raster' &&
+    !failed.has(composedPlate.key) &&
+    !themeFellBack &&
+    variantFor('l1', quality) === 'l1';
+
   const layers = (Object.keys(ENV_LAYERS) as EnvLayerId[]).map((layer): EnvLayerPlan => {
     const variant = variantFor(layer, quality);
     let treatment = baseTreatment(layer, quality);
     if (portrait) treatment = portraitTreatment(layer, treatment);
+    // The study carries surround, edge, and props in one image: L0 drops to its
+    // zero-byte token form behind the opaque plate, and L2/L3 stand down rather
+    // than drawing a second rim and a second set of props over the first.
+    if (composedActive && layer !== 'l1') treatment = layer === 'l0' ? 'token-gradient' : 'off';
     const asset = variant ? manifest.assets[variant] : undefined;
     // A failed key falls back to its T0 token treatment; its siblings are
     // untouched, so one missing plate never cascades.
@@ -273,12 +315,20 @@ export function planEnvironment(input: EnvironmentPlanInput): EnvironmentPlan {
     const degraded = failedHere || themeFellBack;
     if (degraded) treatment = t0Treatment(layer);
     const draws = treatment === 'plate' || treatment === 'lips-only';
+    // Only a full `plate` can be a raster: `lips-only` re-anchors two bands to
+    // the canvas (§4.5), which a plate with its lips baked in cannot express, so
+    // portrait L2 always takes the procedural form.
+    const raster = treatment === 'plate' && asset?.source === 'raster' ? asset.src : undefined;
     return {
       layer,
       treatment,
       variant: draws ? variant : undefined,
       key: draws && asset !== undefined ? asset.key : undefined,
-      rasterPath: draws && asset?.source === 'raster' ? asset.path : undefined,
+      ...(raster === undefined ? undefined : { rasterPath: raster }),
+      ...(raster !== undefined && layer === 'l3' && manifest.atlas
+        ? { atlas: manifest.atlas }
+        : undefined),
+      ...(composedActive && layer === 'l1' ? { composed: true } : undefined),
       parallaxPx: Math.round(ENV_LAYERS[layer].parallax * excursionPx * 100) / 100,
       degraded,
     };
@@ -293,5 +343,7 @@ export function planEnvironment(input: EnvironmentPlanInput): EnvironmentPlan {
     ambient: ambientLevel(quality, reducedMotion),
     portrait,
     hooks: hooksFor(quality, reducedMotion),
+    composition: manifest.composition,
+    composedActive,
   };
 }

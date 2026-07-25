@@ -51,7 +51,18 @@
  */
 import type { EntityId, PlayerId } from '../protocol';
 import type { Rect } from './scene';
-import type { PlaneRegion, PlaneRender, RackSlot, StagedPlane, SummaryTileSlot } from './plane';
+import type { PlaneRegion, PlaneRender, StagedPlane } from './plane';
+import {
+  chipMeta,
+  clusterVars,
+  crestMeta,
+  lifeMeta,
+  plateMeta,
+  rackMeta,
+  regionMeta,
+  tileMeta,
+  zoneSlotMeta,
+} from './planeChromeMeta';
 import {
   applyMotionHint,
   applyRect,
@@ -138,7 +149,17 @@ interface CachedChrome {
   rect: Rect;
   /** Serialized non-geometry inputs, to skip attribute writes when unchanged. */
   meta: string;
+  /** Serialized custom properties, same purpose (portrait URL, seat accent). */
+  vars: string;
 }
+
+/**
+ * CSS custom properties a chrome element carries. Two cluster inputs cannot be
+ * data attributes: `attr()` may not produce a `url()`, and the seat accent is a
+ * token value rather than an enum. They ride here so the stylesheet stays free
+ * of literals and the reconciler stays free of paint decisions.
+ */
+type ChromeVars = Record<string, string>;
 
 /** One cached entity wrapper. */
 interface CachedCard {
@@ -594,12 +615,29 @@ export class PlaneReconciler {
   ): void {
     const present = new Set<string>();
     const orderedKeys: string[] = [];
-    const upsert = (key: string, kind: string, rect: Rect, meta: Record<string, string>): void => {
+    const upsert = (
+      key: string,
+      kind: string,
+      rect: Rect,
+      meta: Record<string, string>,
+      vars: ChromeVars = {},
+    ): void => {
       present.add(key);
       orderedKeys.push(key);
       const metaKey = JSON.stringify(meta);
+      const varsKey = JSON.stringify(vars);
       const cached = this.chrome.get(key);
       if (cached) {
+        if (cached.vars !== varsKey) {
+          const old = JSON.parse(cached.vars) as ChromeVars;
+          for (const name of Object.keys(old)) {
+            if (!(name in vars)) cached.el.style.removeProperty(name);
+          }
+          for (const [name, value] of Object.entries(vars))
+            cached.el.style.setProperty(name, value);
+          cached.vars = varsKey;
+          stats.chrome += 1;
+        }
         if (cached.meta !== metaKey) {
           // Drop keys the new meta no longer carries (a wing that became the
           // far side sheds side/rank), then write the rest — conditional keys
@@ -638,15 +676,52 @@ export class PlaneReconciler {
       el.dataset.slot = kind;
       el.dataset.key = key;
       for (const [name, value] of Object.entries(meta)) el.dataset[name] = value;
+      for (const [name, value] of Object.entries(vars)) el.style.setProperty(name, value);
       applyRect(el, rect);
       this.regionLayer.appendChild(el);
-      this.chrome.set(key, { el, rect, meta: metaKey });
+      this.chrome.set(key, { el, rect, meta: metaKey, vars: varsKey });
       stats.chrome += 1;
     };
 
     for (const region of planeRegions(plane)) {
       upsert(`region:${region.seat}`, 'region', region.rect, regionMeta(region));
-      upsert(`crest:${region.seat}`, 'crest', region.crest, crestMeta(region));
+      // The identity cluster, in the §1.2 back-to-front order: nameplate, then
+      // the portrait medallion (which carries every state ring), then the gem,
+      // the life medallion, the hand pip, and the status rail on top.
+      const cluster = region.cluster;
+      if (cluster.plate) {
+        upsert(
+          `plate:${region.seat}`,
+          'plate',
+          cluster.plate.rect,
+          plateMeta(region),
+          clusterVars(cluster),
+        );
+      }
+      upsert(
+        `crest:${region.seat}`,
+        'crest',
+        region.crest,
+        crestMeta(region),
+        clusterVars(cluster),
+      );
+      if (cluster.gem) {
+        upsert(`gem:${region.seat}`, 'gem', cluster.gem.rect, {
+          seat: region.seat,
+          identity: cluster.gem.identity,
+        });
+      }
+      upsert(`life:${region.seat}`, 'life', cluster.life, lifeMeta(region), clusterVars(cluster));
+      if (cluster.pip) {
+        upsert(`pip:${region.seat}`, 'pip', cluster.pip.rect, {
+          seat: region.seat,
+          shape: cluster.pip.shape,
+          count: String(cluster.pip.count),
+        });
+      }
+      cluster.chips.forEach((chip, index) => {
+        upsert(`chip:${region.seat}:${index}`, 'chip', chip.rect, chipMeta(region.seat, chip));
+      });
       // The zone rack: one element per zone anchor, in the fixed §1 order, each
       // at the rect the `zone:<seat>:<zone>` anchor resolves to. A digest rack
       // stages a single button, so it upserts one key and every zone key
@@ -665,7 +740,9 @@ export class PlaneReconciler {
       }
     }
     for (const tile of plane.tiles) {
-      upsert(`tile:${tile.seat}`, 'tile', tile.rect, tileMeta(tile));
+      const vars: ChromeVars = { '--seat-accent': tile.accent };
+      if (tile.portraitSrc !== undefined) vars['--portrait-src'] = `url("${tile.portraitSrc}")`;
+      upsert(`tile:${tile.seat}`, 'tile', tile.rect, tileMeta(tile), vars);
     }
 
     for (const [key, cached] of this.chrome) {
@@ -840,116 +917,4 @@ export class PlaneReconciler {
     }
     return true;
   }
-}
-
-/** A region's non-geometry inputs as data attributes. */
-function regionMeta(region: PlaneRegion): Record<string, string> {
-  const meta: Record<string, string> = {
-    seat: region.seat,
-    kind: region.kind,
-    rung: String(region.rung),
-    surface: region.surface,
-    label: region.label,
-    life: String(region.life),
-    hand: String(region.handCount),
-    focused: String(region.focused),
-    eliminated: String(region.eliminated),
-    attacked: String(region.attacked),
-    active: String(region.active),
-    priority: String(region.priority),
-  };
-  if (region.side !== undefined) meta.side = region.side;
-  if (region.rank !== undefined) meta.rank = String(region.rank);
-  if (region.digest) {
-    meta.digestCreatures = String(region.digest.creatures);
-    meta.digestOthers = String(region.digest.others);
-    meta.digestLands = String(region.digest.lands);
-  }
-  return meta;
-}
-
-/**
- * A crest cluster's non-geometry inputs. The crest is staged at every count and
- * every rung, so the markers that must never degrade away ride it: the seat's
- * life/hand readout, the priority glow, and the **attacked ring** — combat
- * against any seat is drawn regardless of which board holds focus
- * (layout-model §Focus model, "off-focus activity is never silent").
- */
-function crestMeta(region: PlaneRegion): Record<string, string> {
-  return {
-    seat: region.seat,
-    life: String(region.life),
-    hand: String(region.handCount),
-    attacked: String(region.attacked),
-    priority: String(region.priority),
-  };
-}
-
-/** A seat's zone-pile counts as data attributes (the authoritative pile data a
- * draw or a battlefield→graveyard move must reconcile, slots unmoved). */
-function zonesMeta(zones: PlaneRegion['zones']): Record<string, string> {
-  const meta: Record<string, string> = {
-    library: String(zones.library),
-    graveyard: String(zones.graveyard),
-    exile: String(zones.exile),
-    command: String(zones.command ?? 0),
-  };
-  if (zones.graveyardTop) {
-    meta.top = zones.graveyardTop.name;
-    meta.topColor = zones.graveyardTop.colorIdentity;
-  }
-  return meta;
-}
-
-/**
- * One drawn zone slot's non-geometry inputs (`zone-geography.md` §3): which zone
- * it is — the channel the pile's silhouette and material read from, so no two
- * piles look like the same object — its own count, and the seat's eliminated
- * treatment. The count is the pile's **only** home (§4/I5); nothing else in the
- * scene may draw it.
- */
-function zoneSlotMeta(region: PlaneRegion, slot: RackSlot): Record<string, string> {
-  const meta: Record<string, string> = {
-    seat: region.seat,
-    zone: slot.zone,
-    count: String(slot.count),
-    variant: region.rack.variant,
-    eliminated: String(region.eliminated),
-  };
-  // Hidden stays hidden (§I2): the library never publishes a top card. Only the
-  // graveyard's is public in the view, and only there does one reach the DOM.
-  if (slot.zone === 'graveyard' && region.zones.graveyardTop) {
-    meta.top = region.zones.graveyardTop.name;
-    meta.topColor = region.zones.graveyardTop.colorIdentity;
-  }
-  return meta;
-}
-
-/** The digest rack button's inputs: every zone's count on one ≥ 44 px target. */
-function rackMeta(region: PlaneRegion, slots: readonly RackSlot[]): Record<string, string> {
-  const meta: Record<string, string> = {
-    seat: region.seat,
-    variant: 'digest',
-    eliminated: String(region.eliminated),
-    zones: slots.map((slot) => slot.zone).join(' '),
-  };
-  for (const slot of slots) meta[slot.zone] = String(slot.count);
-  return meta;
-}
-
-/** A compact tile's non-geometry inputs as data attributes (a tile owes the
- * seat's zone counts too — they are its whole summary). */
-function tileMeta(tile: SummaryTileSlot): Record<string, string> {
-  return {
-    seat: tile.seat,
-    label: tile.label,
-    life: String(tile.life),
-    hand: String(tile.handCount),
-    overflow: String(tile.candidateOverflow),
-    eliminated: String(tile.eliminated),
-    attacked: String(tile.attacked),
-    active: String(tile.active),
-    priority: String(tile.priority),
-    ...zonesMeta(tile.zones),
-  };
 }

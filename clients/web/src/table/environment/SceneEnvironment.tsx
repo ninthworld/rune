@@ -24,9 +24,10 @@
  * **Loading (§8.2).** T0 is the token composition and is always the first frame,
  * at zero bytes. T1 is the layered SVG placeholder of §10 — also zero bytes and
  * zero requests, because the placeholder is code. T2 is the raster plates of
- * issue #548, which do not exist yet; when they land, flipping a manifest
- * entry's `source` to `'raster'` routes the same slot through the `<img>` branch
- * below with no other change (§10.5).
+ * issue #548, which landed in #555: a slot whose manifest entry resolved to
+ * `source: 'raster'` takes the `<img>` branch below, and every other slot keeps
+ * the placeholder. The match is interactive at T0 either way, and a plate that
+ * never arrives changes nothing but the pixels.
  *
  * **Not implemented here:** the five passive reaction hooks of §7.2. The tier
  * gate that decides which are permitted is resolved (`plan.hooks`) and tested,
@@ -40,7 +41,12 @@ import { EnvLayerL0, EnvLayerL1, EnvLayerL2, EnvLayerL3 } from './EnvironmentLay
 import { environmentSceneVars } from './environmentScene';
 import { cropForViewport } from './crop';
 import { planEnvironment, type EnvBias, type EnvLayerPlan, type EnvViewport } from './quality';
-import type { EnvManifestKey, EnvPropEntry } from './manifest';
+import {
+  propFootprint,
+  type EnvManifestKey,
+  type EnvPropAtlas,
+  type EnvPropEntry,
+} from './manifest';
 import s from './environment.module.css';
 
 /** Inputs for the shared environment mount. */
@@ -62,8 +68,8 @@ export interface SceneEnvironmentProps {
   viewport?: EnvViewport;
   /**
    * Manifest keys treated as failed, for the §8.3 fallback. Production supplies
-   * these from the raster branch's `onError`; tests supply them directly, since
-   * no raster plate exists to fail yet.
+   * these from the raster branch's `onError`; tests may also supply them
+   * directly, to reach a fallback without waiting on a decode jsdom never does.
    */
   failedKeys?: readonly EnvManifestKey[];
 }
@@ -107,8 +113,8 @@ export function SceneEnvironment({
   const idPrefix = useRef<string>();
   idPrefix.current ??= `env${(mountCounter += 1)}`;
 
-  // Failures observed by the raster branch. Empty today: every manifest key is
-  // `source: 'procedural'`, so no request is ever issued and nothing can fail.
+  // Failures observed by the raster branch (§8.3). A key that lands here falls
+  // its own layer back to the T0 token treatment and touches no sibling.
   const [runtimeFailed, setRuntimeFailed] = useState<readonly EnvManifestKey[]>([]);
   const failed = useMemo(
     () => [...(failedKeys ?? []), ...runtimeFailed],
@@ -141,6 +147,8 @@ export function SceneEnvironment({
       data-ambient={plan.ambient}
       data-portrait={String(plan.portrait)}
       data-theme-fallback={String(plan.themeFellBack)}
+      data-composition={plan.composition}
+      data-composed={String(plan.composedActive)}
       aria-hidden="true"
     >
       {plan.layers.map((layer) => (
@@ -150,6 +158,7 @@ export function SceneEnvironment({
           crop={crop.viewBox}
           idPrefix={idPrefix.current!}
           props={plan.manifest.props}
+          viewport={size}
           bias={{ x: bx, y: by }}
           onFailed={(key) =>
             setRuntimeFailed((current) => (current.includes(key) ? current : [...current, key]))
@@ -166,6 +175,7 @@ function EnvLayer({
   crop,
   idPrefix,
   props,
+  viewport,
   bias,
   onFailed,
 }: {
@@ -173,6 +183,7 @@ function EnvLayer({
   crop: string;
   idPrefix: string;
   props: readonly EnvPropEntry[];
+  viewport: EnvViewport;
   bias: EnvBias;
   onFailed: (key: EnvManifestKey) => void;
 }) {
@@ -191,25 +202,35 @@ function EnvLayer({
       data-treatment={plan.treatment}
       data-degraded={String(plan.degraded)}
       data-key={plan.key}
+      data-source={plan.rasterPath === undefined ? 'procedural' : 'raster'}
       aria-hidden="true"
     >
-      <LayerArt plan={plan} crop={crop} idPrefix={idPrefix} props={props} onFailed={onFailed} />
+      <LayerArt
+        plan={plan}
+        crop={crop}
+        idPrefix={idPrefix}
+        props={props}
+        viewport={viewport}
+        onFailed={onFailed}
+      />
     </div>
   );
 }
 
-/** The art inside one layer node — procedural SVG today, a plate after the swap. */
+/** The art inside one layer node — a shipped plate, or the procedural placeholder. */
 function LayerArt({
   plan,
   crop,
   idPrefix,
   props,
+  viewport,
   onFailed,
 }: {
   plan: EnvLayerPlan;
   crop: string;
   idPrefix: string;
   props: readonly EnvPropEntry[];
+  viewport: EnvViewport;
   onFailed: (key: EnvManifestKey) => void;
 }) {
   // T0 / per-layer failure / Lite L0: the token composition. L0's is the surround
@@ -224,12 +245,31 @@ function LayerArt({
     );
   }
 
-  // The raster branch (§10.5 step 3). Unreachable today — no manifest entry is
-  // `source: 'raster'` — and deliberately present so the swap needs no component
-  // change. A plate that fails to load falls this layer back to its T0 form
-  // without touching any sibling (§8.3).
+  // The raster branch (§10.5 step 3). A plate that fails to load falls this
+  // layer back to its T0 form without touching any sibling (§8.3), which is why
+  // `onError` reports the key rather than swapping a src.
   if (plan.rasterPath !== undefined && plan.key !== undefined) {
     const key = plan.key;
+    // L3 is not a plate (§4.4): the shipped L3 is a sprite atlas, cropped per
+    // prop at the anchors the manifest validated against Zone C. Stretching it
+    // across the canvas like L0–L2 would both distort it and put props in the
+    // focal core.
+    if (plan.layer === 'l3' && plan.atlas !== undefined) {
+      return (
+        <EnvPropSprites
+          atlas={plan.atlas}
+          props={props}
+          viewport={viewport}
+          onError={() => onFailed(key)}
+        />
+      );
+    }
+    // L0–L2 are one continuous 21:9 plate. `cover` **is** the §4.2 crop: every
+    // landscape aspect below 21:9 matches the plate's height and takes a centred
+    // horizontal slice, so the medallion authored at (50 %, 40 %) of the source
+    // lands at (50 %, 40 %) of the viewport at every aspect — including the §4.5
+    // portrait recomposition, which needs no separate anchor for the same
+    // reason. Ultrawide reveals rather than stretches.
     return (
       <img
         className={s.plate}
@@ -254,4 +294,82 @@ function LayerArt({
     case 'l3':
       return <EnvLayerL3 props={props} />;
   }
+}
+
+/**
+ * **L3 as raster sprites (§4.4).** Each prop is one atlas frame cropped by an
+ * `overflow: hidden` window sitting exactly on the prop's manifest rect.
+ *
+ * Three properties this preserves, all of them load-bearing:
+ *
+ * - **Placement is the manifest's, not the atlas's.** The rect comes from
+ *   `propRect(anchor, offset, size)` — the same call the procedural silhouettes
+ *   use and the one `zones.test.ts` validates against Zone B/C — so the swap
+ *   moved pixels and not geometry, and no prop can drift into the focal core.
+ * - **Aspect is preserved, and the prop stands on the ground.** The frame is
+ *   fitted *inside* the rect (`contain`) and anchored to its bottom centre, so
+ *   the drawn sprite is always a subset of the validated footprint.
+ * - **Failure is observable.** Each sprite is a real `<img>`, so a missing atlas
+ *   reports through `onError` and L3 falls back exactly as §8.3 says. A CSS
+ *   `background-image` could not, which is why this is not one.
+ *
+ * The six sprites share one `src`, so the browser issues one request.
+ */
+function EnvPropSprites({
+  atlas,
+  props,
+  viewport,
+  onError,
+}: {
+  atlas: EnvPropAtlas;
+  props: readonly EnvPropEntry[];
+  viewport: EnvViewport;
+  onError: () => void;
+}) {
+  return (
+    <>
+      {props.map((entry) => {
+        const frame = entry.frame;
+        if (frame === undefined) return null;
+        const rect = propFootprint(entry);
+        const boxWidth = rect.w * viewport.width;
+        const boxHeight = rect.h * viewport.height;
+        // `contain`: the largest scale at which the frame fits the footprint.
+        const scale = Math.min(boxWidth / frame.w, boxHeight / frame.h);
+        const drawnWidth = frame.w * scale;
+        const drawnHeight = frame.h * scale;
+        return (
+          <div
+            key={entry.key}
+            className={s.sprite}
+            data-prop={entry.key}
+            data-anchor={entry.anchor}
+            data-mass={entry.mass}
+            data-frame={frame.key}
+            style={{
+              left: `${rect.x * viewport.width + (boxWidth - drawnWidth) / 2}px`,
+              top: `${rect.y * viewport.height + (boxHeight - drawnHeight)}px`,
+              width: `${drawnWidth}px`,
+              height: `${drawnHeight}px`,
+            }}
+          >
+            <img
+              className={s.spriteFrame}
+              src={atlas.src}
+              alt=""
+              aria-hidden="true"
+              decoding="async"
+              onError={onError}
+              style={{
+                left: `${-frame.x * scale}px`,
+                top: `${-frame.y * scale}px`,
+                width: `${atlas.width * scale}px`,
+                height: `${atlas.height * scale}px`,
+              }}
+            />
+          </div>
+        );
+      })}
+    </>
+  );
 }

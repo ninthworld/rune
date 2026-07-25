@@ -226,8 +226,16 @@ function RegionControls({
         style={box(region.crest)}
         data-testid={playerTarget ? `target-player-${region.seat}` : `focus-seat-${region.seat}`}
         data-focus-key={`crest:${region.seat}`}
+        // `seat-identity.md` §9: the cluster exposes ONE accessible name that
+        // reads the whole seat — name, life, hand, library, and every state it
+        // is wearing — so a screen-reader user never has to open anything to
+        // know where a seat stands. The verb stays first, because that is what
+        // activating the control does, and the targeting phrasing §9 fixes
+        // (`Target player {name}`) is preserved verbatim ahead of it.
         aria-label={
-          playerTarget ? `Target player ${region.label}` : `Focus ${region.label} battlefield`
+          playerTarget
+            ? `Target player ${region.cluster.name}. ${region.cluster.ariaLabel}`
+            : `Focus ${region.cluster.name} battlefield. ${region.cluster.ariaLabel}`
         }
         onClick={() =>
           playerTarget

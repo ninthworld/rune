@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Rect } from './scene';
 import { COMBAT_LINK, SURFACES } from '../tokens';
-import { SCENE_HUES, SCENE_SEAT_ACCENTS } from '../sceneTokens';
+import { SCENE_HUES, SCENE_NEUTRALS, SCENE_RELATIONSHIP, SCENE_SEAT_ACCENTS } from '../sceneTokens';
 import {
   EFFECT_TIMING,
   EffectsLayer,
@@ -275,6 +275,176 @@ describe('EffectsLayer off-focus crest ping (issue #501)', () => {
       expect(layer.stats.liveParticles).toBe(0);
       expect(layer.lastProgram.filter((op) => op.op === 'circle' && op.fill)).toHaveLength(0);
     }
+  });
+});
+
+/**
+ * The zero-idle contract at the layer level, restated for the relationship
+ * grammar (`stack-and-relationships.md` §8.4, implementation note IN1). Before
+ * this, every non-`blocker-link` persistent effect was treated as animating, so
+ * a declared attacker or anything sitting on the stack would have spun the
+ * ticker forever. Only the two genuinely moving states may do that.
+ */
+describe('EffectsLayer zero idle cost with the relationship grammar (IN1)', () => {
+  const persistent = (over: Partial<import('./effects').PersistentEffect>) => ({
+    id: 'r',
+    category: 'targeting-path' as const,
+    from: { ref: 'atk' },
+    to: { ref: 'blk' },
+    accent: SURFACES.targeting,
+    ...over,
+  });
+
+  it('costs nothing per frame once a CONFIRMED attack path has drawn', () => {
+    const { layer } = make();
+    layer.setPersistent([
+      persistent({ category: 'attack-path', state: 'confirmed', endpoint: 'player' }),
+    ]);
+    expect(layer.advance(0)).toBe(true);
+    expect(layer.lastProgram.length).toBeGreaterThan(3);
+    expect(layer.hasLiveEffects()).toBe(true);
+    // Live but static: the mount's ticker may stop immediately.
+    expect(layer.needsFrame()).toBe(false);
+    expect(layer.advance(16)).toBe(false);
+    expect(layer.advance(900)).toBe(false);
+  });
+
+  it('costs nothing per frame for calmed, endpoint-only, or attachment relationships', () => {
+    for (const effect of [
+      persistent({ state: 'calmed' }),
+      persistent({ state: 'endpoint-only' }),
+      persistent({ category: 'attachment-bracket', accent: SCENE_NEUTRALS.text }),
+      persistent({ category: 'source-tether', accent: SCENE_NEUTRALS.text }),
+      persistent({ state: 'provisional' }),
+    ]) {
+      const { layer } = make();
+      layer.setPersistent([effect]);
+      expect(layer.advance(0)).toBe(true);
+      expect(layer.needsFrame()).toBe(false);
+      expect(layer.advance(16)).toBe(false);
+    }
+  });
+
+  it('still runs a frame for the two states that genuinely move', () => {
+    for (const state of ['pending', 'resolving'] as const) {
+      const { layer } = make();
+      layer.setPersistent([persistent({ state })]);
+      expect(layer.advance(0)).toBe(true);
+      expect(layer.needsFrame()).toBe(true);
+      expect(layer.advance(16)).toBe(true);
+    }
+  });
+
+  it('runs the resolving retraction on its own clock, then settles static', () => {
+    const { layer } = make();
+    layer.setPersistent([persistent({ state: 'resolving' })]);
+    layer.advance(1000);
+    const strokes = (): number => layer.lastProgram.filter((op) => op.part === 'path').length;
+    const started = strokes();
+    expect(started).toBeGreaterThan(0);
+    layer.advance(1000 + EFFECT_TIMING.resolveRetractMs / 2);
+    expect(strokes()).toBeLessThan(started);
+    // At full retraction the stroke is gone and only the caps state the fact.
+    layer.advance(1000 + EFFECT_TIMING.resolveRetractMs + 1);
+    expect(strokes()).toBe(0);
+    expect(layer.lastProgram.some((op) => op.part === 'source')).toBe(true);
+    // §7.1 — the retraction is inside the ≤600 ms resolution cap.
+    expect(EFFECT_TIMING.resolveRetractMs).toBeLessThanOrEqual(600);
+  });
+});
+
+/**
+ * §10.3 / implementation note IN2 — an unresolvable endpoint has THREE outcomes,
+ * not two. The distinction comes from the caller: an endpoint that is gone
+ * retires, and an endpoint the caller says is merely occluded clamps to its
+ * container edge and grows an indicator.
+ */
+describe('EffectsLayer occluded endpoints (§10.3, IN2)', () => {
+  it('clamps an occluded endpoint to its container edge and draws an indicator', () => {
+    const { layer } = make();
+    layer.setPersistent([
+      {
+        id: 'path:occluded',
+        category: 'targeting-path',
+        from: { ref: 'atk' },
+        to: { ref: 'behind-the-sheet' },
+        accent: SURFACES.targeting,
+        state: 'confirmed',
+        edge: { x: 600, y: 0, w: 200, h: 400 },
+      },
+    ]);
+    expect(layer.advance(0)).toBe(true);
+    // The relationship is NOT lost: it terminates visibly at the rail's edge.
+    expect(layer.lastProgram.filter((op) => op.part === 'edge')).toHaveLength(2);
+    expect(layer.lastProgram.some((op) => op.part === 'path')).toBe(true);
+    expect(layer.hasLiveEffects()).toBe(true);
+  });
+
+  it('still RETIRES an endpoint that is simply gone (the carried behaviour)', () => {
+    const { layer } = make();
+    layer.setPersistent([
+      {
+        id: 'path:gone',
+        category: 'targeting-path',
+        from: { ref: 'atk' },
+        to: { ref: 'gone' },
+        accent: SURFACES.targeting,
+        state: 'confirmed',
+      },
+    ]);
+    layer.advance(0);
+    expect(layer.lastProgram).toHaveLength(0);
+    expect(layer.hasLiveEffects()).toBe(false);
+  });
+});
+
+/**
+ * The §6.3 terminal forms. The fizzle rule is normative and load-bearing: a
+ * countered spell's terminal lands on the stack object, and the released target
+ * gets an **opening** ring with no burst — "nothing happened to me" has to be a
+ * visible event rather than the absence of one (decision D14).
+ */
+describe('EffectsLayer terminal forms (§6.3)', () => {
+  it('gives the counter/fizzle release an opening ring and NO burst', () => {
+    const { layer } = make({ quality: 'high', density: 'full' });
+    layer.spawn({ category: 'counter', target: { ref: 'atk' }, accent: SCENE_HUES.red.value });
+    layer.advance(0);
+    const early = layer.lastProgram[0]!;
+    expect(layer.lastProgram).toHaveLength(1);
+    expect(early.op === 'circle' && early.fill).toBe(false);
+    expect(layer.stats.liveParticles).toBe(0);
+    // It starts AT the reticle it is releasing — this is the target's own ring
+    // opening, not a new ring blooming from nothing.
+    expect(early.op === 'circle' && early.r).toBe(SCENE_RELATIONSHIP.reticleRadius);
+
+    layer.advance(EFFECT_TIMING.resolutionMs * 0.8);
+    const late = layer.lastProgram[0]!;
+    expect(late.op === 'circle' && early.op === 'circle' && late.r > early.r).toBe(true);
+    expect(late.alpha).toBeLessThan(early.alpha);
+    // And it *opens* — a few px — rather than bursting outward the way an
+    // impact ring does. "Nothing happened to me" is a quiet, distinct event.
+    layer.advance(EFFECT_TIMING.resolutionMs - 1);
+    const end = layer.lastProgram[0]!;
+    expect(end.op === 'circle' && early.op === 'circle' && end.r - early.r).toBeLessThan(10);
+
+    const impact = make({ quality: 'lite' }).layer;
+    impact.spawn({ category: 'impact', target: { ref: 'atk' }, accent: SCENE_HUES.red.value });
+    impact.advance(0);
+    impact.advance(EFFECT_TIMING.impactMs - 1);
+    const burst = impact.lastProgram[0]!;
+    expect(burst.op === 'circle' && end.op === 'circle' && burst.r).toBeGreaterThan(
+      end.op === 'circle' ? end.r : 0,
+    );
+  });
+
+  it('keeps the impact burst distinct: many filled particles, growing ring', () => {
+    const { layer } = make({ quality: 'high', density: 'full' });
+    layer.spawn({ category: 'damage', target: { ref: 'atk' }, accent: SCENE_HUES.red.value });
+    layer.advance(0);
+    expect(layer.stats.liveParticles).toBeGreaterThan(0);
+    expect(layer.lastProgram.filter((op) => op.op === 'circle' && op.fill).length).toBeGreaterThan(
+      1,
+    );
   });
 });
 

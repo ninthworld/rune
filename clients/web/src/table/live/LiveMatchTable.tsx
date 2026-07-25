@@ -379,11 +379,17 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     targeting === null || targetingSource === null
       ? []
       : [
+          // Slots already answered are PROVISIONAL (dashed, crawl stopped); the
+          // slot under the cursor is PENDING (dashed, crawling). The numeral is
+          // the slot's own 1-based place in the action's requirement order —
+          // the §4.5 ordering channel, never screen order.
           ...targeting.picks.flatMap((chosenIds, slotIndex) =>
             chosenIds.map((to, choiceIndex) => ({
               id: `${targeting.action.id}:${slotIndex}:${choiceIndex}`,
               from: targetingSource,
               to,
+              pending: false,
+              numeral: slotIndex + 1,
             })),
           ),
           ...(previewTarget === null
@@ -393,6 +399,8 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
                   id: `${targeting.action.id}:preview`,
                   from: targetingSource,
                   to: previewTarget,
+                  pending: true,
+                  numeral: targeting.picks.length + 1,
                 },
               ]),
         ];

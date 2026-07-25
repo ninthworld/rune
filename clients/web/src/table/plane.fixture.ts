@@ -4,6 +4,7 @@ import type { Rect } from './scene';
 import {
   stagePlane,
   type PlaneRegion,
+  type SeatCluster,
   type PlaneStagingState,
   type PlaneViewport,
   type StagedPlane,
@@ -152,8 +153,20 @@ export function regionsOf(plane: StagedPlane): PlaneRegion[] {
   );
 }
 
+/** Every rect one seat's identity cluster draws (issue #532). */
+export function clusterRects(cluster: SeatCluster): Rect[] {
+  return [
+    cluster.portrait,
+    cluster.life,
+    ...(cluster.plate ? [cluster.plate.rect] : []),
+    ...(cluster.gem ? [cluster.gem.rect] : []),
+    ...(cluster.pip ? [cluster.pip.rect] : []),
+    ...cluster.chips.map((chip) => chip.rect),
+  ];
+}
+
 /**
- * Every rect the plane stages — region slots, crest clusters, pile clusters,
+ * Every rect the plane stages — region slots, identity clusters, pile clusters,
  * render hotspots, tiles, and tile candidate hotspots — for the corridor
  * emptiness checks.
  */
@@ -161,6 +174,10 @@ export function allPlaneRects(plane: StagedPlane): Rect[] {
   const rects: Rect[] = [];
   for (const region of regionsOf(plane)) {
     rects.push(region.rect, region.crest, region.piles);
+    // Every element of the seat's identity cluster (issue #532) is drawn layout
+    // content and is held to the same envelope as its crest, so the nameplate
+    // and the status rail are checked here rather than only the medallion.
+    rects.push(...clusterRects(region.cluster));
     for (const slot of region.rack.slots) rects.push(slot.hitRect);
     for (const render of region.renders) rects.push(render.hitRect);
   }

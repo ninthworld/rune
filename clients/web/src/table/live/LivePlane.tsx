@@ -11,6 +11,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProper
 import {
   SCENE_ELEVATION,
   SCENE_FOCUS_DIM,
+  SCENE_FRAME_ACCENTS,
   SCENE_HUES,
   SCENE_NEUTRALS,
   SCENE_SEAT_ACCENTS,
@@ -23,6 +24,7 @@ import {
   type PlaneStagingState,
   type StagedPlane,
 } from '../plane';
+import { noteCardBackFailed, useCardBack } from '../../card/back';
 import { cardFaceRenderer } from '../planeFaceRenderer';
 import { planeDisplayData } from '../planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../planeReconciler';
@@ -80,6 +82,9 @@ const sceneStyle: SceneStyle = {
   // the card back's navy field, the graveyard's ash body, and the exile's
   // translucent cyan glass with its bright hairline (§3.3's `#7FB2E5` family is
   // the scene's blue hue, so the pane and the selection ring share one source).
+  // The library additionally layers the shipped card-back plate over this field
+  // through `--card-back-image`; the token treatment stays underneath, so a
+  // missing or failed plate is a colour difference and never a layout one.
   '--rack-back': SCENE_NEUTRALS.surfaceTop,
   '--rack-ash': SCENE_NEUTRALS.raised,
   '--rack-rule': SCENE_HUES.gold.value,
@@ -90,6 +95,27 @@ const sceneStyle: SceneStyle = {
   // The eliminated treatment, shared with the focus dim (visual-system §3).
   '--dim-brightness': SCENE_FOCUS_DIM.brightness,
   '--dim-saturate': SCENE_FOCUS_DIM.saturate,
+
+  // Seat-identity materials (issue #532, `seat-identity.md` §1.2, §5, §6). The
+  // per-seat values — the accent, the portrait plate's URL, and the rung's
+  // scale unit `D` — ride on each cluster element as custom properties written
+  // by the reconciler; what lives here is the palette every cluster shares.
+  //
+  // `--crest-stone` is the eliminated rim: the cluster's gold is *replaced*
+  // rather than tinted, so the seat reads as out of the game by material and
+  // not only by luminance. The frame accents are the identity gem's colour
+  // identity — a channel distinct from the seat accent worn by the rim and the
+  // turn pennant (§13 conflict 2 records that the two need one owner).
+  '--red': SCENE_HUES.red.value,
+  '--crest-stone': SCENE_FRAME_ACCENTS.C,
+  '--frame-w': SCENE_FRAME_ACCENTS.W,
+  '--frame-u': SCENE_FRAME_ACCENTS.U,
+  '--frame-b': SCENE_FRAME_ACCENTS.B,
+  '--frame-r': SCENE_FRAME_ACCENTS.R,
+  '--frame-g': SCENE_FRAME_ACCENTS.G,
+  '--frame-m': SCENE_FRAME_ACCENTS.M,
+  '--frame-c': SCENE_FRAME_ACCENTS.C,
+  '--frame-l': SCENE_FRAME_ACCENTS.L,
 };
 
 interface PlaneSize {
@@ -264,6 +290,11 @@ export function LivePlane({
   onRebuildRef.current = onRebuild;
 
   const plane = useMemo(() => stagePlane(view, size, staging), [size, staging, view]);
+  // The device's card back (`card-representation.md` §13). A presentation
+  // preference, never game state: it takes no card and no view, so it cannot
+  // leak what a hidden pile holds, and with nothing resolved every pile keeps
+  // its procedural back and the whole plane still rebuilds from this `GameView`.
+  const cardBack = useCardBack();
   const planeRef = useRef(plane);
   planeRef.current = plane;
 
@@ -344,6 +375,9 @@ export function LivePlane({
     effectsLayer.setPersistent(
       deriveGameViewPresentation(undefined, viewRef.current, {
         focusSeat: planeRef.current.focusSeat,
+        ...(stagingRef.current?.selectedId === undefined
+          ? {}
+          : { isolatedId: stagingRef.current.selectedId }),
         targetingPaths: targetingPathsRef.current,
         quality,
         reducedMotion,
@@ -378,6 +412,7 @@ export function LivePlane({
     const currentPersistent = (): GameViewPresentation['persistent'] =>
       deriveGameViewPresentation(undefined, view, {
         focusSeat: plane.focusSeat,
+        ...(staging?.selectedId === undefined ? {} : { isolatedId: staging.selectedId }),
         targetingPaths,
         quality,
         reducedMotion,
@@ -419,6 +454,9 @@ export function LivePlane({
         // The focus the plane RESOLVED (manual or default relevance), so the
         // staging cue and the off-focus channel agree with what is staged.
         focusSeat: plane.focusSeat,
+        // Focus isolates one object's relationships and calms the rest
+        // (§4.4/§9.3): the selection is the isolation the player expressed.
+        ...(staging?.selectedId === undefined ? {} : { isolatedId: staging.selectedId }),
         targetingPaths,
         quality,
         reducedMotion,
@@ -452,6 +490,9 @@ export function LivePlane({
     onPlane,
     onPresentation,
     plane,
+    // The isolation the relationship emphasis reads (§4.4). It only ever
+    // changes together with `plane`, which is memoized on the same staging.
+    staging?.selectedId,
     quality,
     reducedMotion,
     startMotion,
@@ -489,9 +530,29 @@ export function LivePlane({
       className={styles.host}
       data-testid="live-2-5d-plane"
       data-compact={String(plane.compact)}
-      style={sceneStyle}
+      data-card-back={cardBack.skin?.id ?? 'procedural'}
+      style={{ ...sceneStyle, ...cardBack.vars }}
       aria-label="2.5D battlefield"
     >
+      {/* The card back (`card-representation.md` §13). One property for the
+          whole plane, so every hidden pile shows the same image and none can
+          vary with the card it hides. The probe exists because a CSS background
+          cannot report a failure: it loads the same URL the piles paint (one
+          request), and an error falls the device back to the default skin — or,
+          if that is what failed, to the procedural back — with no layout
+          change, because the pile's box never depended on the image. */}
+      {cardBack.skin && (
+        <img
+          className={styles.cardBackProbe}
+          src={cardBack.skin.src}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          data-testid="card-back-probe"
+          key={cardBack.skin.id}
+          onError={() => noteCardBackFailed(cardBack.skin!.id)}
+        />
+      )}
       {/* ADR 0030 layer 1 — the shared environment (issue #530). The same
           component the pregame stage mounts, so crossing into the match never
           changes the world. Noninteractive, strictly behind the plane, and a

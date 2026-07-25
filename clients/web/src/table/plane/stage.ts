@@ -7,11 +7,14 @@ import {
   bandLabel,
   zoneCountsOf,
 } from '../scene/band-helpers';
+import { seatIdentityFacts, attackerCountOn, seatAccent, seatOrderOf } from '../seatIdentity';
+import { portraitFor } from '../seatPortraits';
 import { PLANE, isCompactGeometry, hitRectFor, clampToEnvelope } from './metrics';
 import { carveSlots, carveCompactSlots, type WingSlotFrame } from './slots';
 import { resolveFocusSeat } from './focus';
 import { buildStageItems, stageRegionContent, type StageItem } from './regions';
 import { stageRack, type SeatRack } from './rack';
+import { clusterD, stageSeatCluster, type ClusterVariant } from './cluster';
 import type {
   PlaneViewport,
   PlaneStagingState,
@@ -97,6 +100,9 @@ export function stagePlane(
       : carveSlots(viewport, receiverSeat !== undefined, farSeat, peripherals);
 
   const commander = hasCommandZone(view);
+  // The stable seat list portraits and accents index into: server-authoritative,
+  // never reordered, so a seat's face and colour hold for the whole game (§1.3).
+  const seatOrder = seatOrderOf(view);
 
   const makeRegion = (
     seat: PlayerId,
@@ -130,13 +136,52 @@ export function stagePlane(
       wing?.digestBaseline ?? false,
       rack.inset,
     );
+    const flags = flagsOf(seat);
+    const focused = !duel && kind === 'far';
+    const label = bandLabel(view, seat, seat === receiverSeat);
+    const life = isReceiver ? view.me.life : (opponent?.life ?? 0);
+    const handCount = isReceiver ? view.my_hand.length : (opponent?.hand_size ?? 0);
+    const variant: ClusterVariant =
+      kind === 'receiver'
+        ? 'local'
+        : kind === 'far'
+          ? 'focused'
+          : rack.variant === 'digest'
+            ? 'compact'
+            : 'wing';
+    const cluster = stageSeatCluster({
+      seat,
+      variant,
+      anchor: clusterAnchor(variant, rect, rack, viewport),
+      viewport,
+      outboard: wing?.side ?? 'left',
+      // The seat's own zone rack is a physical object at a fixed place; the
+      // nameplate steps around it rather than through it (`cluster.ts`).
+      keepOut: rack.bounds,
+      facts: seatIdentityFacts(view, {
+        seat,
+        life,
+        handCount,
+        libraryCount: zones.library,
+        local: isReceiver,
+        eliminated: flags.eliminated,
+        priority: flags.priority,
+        active: flags.active,
+        focused,
+        attacked: flags.attacked,
+        attackedCount: attackerCountOn(view, seat, receiverSeat, duel),
+        commandPileHidden:
+          rack.variant === 'digest' || !rack.slots.some((slot) => slot.zone === 'command'),
+      }),
+    });
     return {
       seat,
       kind,
       side: wing?.side,
       rank: wing?.rank,
       rect,
-      crest: crestFor(rack, viewport),
+      crest: cluster.hit,
+      cluster,
       piles: rack.bounds,
       rack,
       zones,
@@ -144,11 +189,11 @@ export function stagePlane(
       rung: content.rung,
       renders: content.renders,
       digest: content.digest,
-      label: bandLabel(view, seat, seat === receiverSeat),
-      life: isReceiver ? view.me.life : (opponent?.life ?? 0),
-      handCount: isReceiver ? view.my_hand.length : (opponent?.hand_size ?? 0),
-      focused: !duel && kind === 'far',
-      ...flagsOf(seat),
+      label,
+      life,
+      handCount,
+      focused,
+      ...flags,
     };
   };
 
@@ -180,6 +225,8 @@ export function stagePlane(
       seat,
       rect: strip.rect,
       crest: { x: rect.x + 8, y: rect.y + (PLANE.compact.tile.h - 32) / 2, w: 32, h: 32 },
+      portraitSrc: portraitFor(seat, seatOrder, false)?.src,
+      accent: seatAccent(seatOrder, seat),
       label: bandLabel(view, seat, false),
       life: opponent?.life ?? 0,
       handCount: opponent?.hand_size ?? 0,
@@ -238,27 +285,58 @@ function hasCommandZone(view: GameView): boolean {
 }
 
 /**
- * The seat's identity crest. `zone-geography.md` §2.2 measures every rack offset
- * from the identity medallion's centre, so the crest and the rack share one
- * anchor and the cluster reads as a single object at every seat — which is what
- * both approved baselines draw.
+ * Where a seat's portrait medallion centres — the anchor every offset in
+ * `cluster.ts` is measured from.
  *
- * Two guarantees ride on the clamp. The crest is the player-targeting surface
+ * `seat-identity.md` §8 fixes the anchors from the environment sheet: **the
+ * local cluster is always bottom centre**, straddling the receiver band's outer
+ * edge; **the focused cluster is always top centre**, on its board's own top
+ * edge; wings step down the ellipse, outboard of their board strip. The first
+ * two are a deliberate move away from issue #531's shared rack origin, which the
+ * baselines contradict — the receiver's medallion belongs above the hand, not in
+ * the corner of its own board. `zone-geography.md` §2.2 still measures the rack
+ * from "the identity medallion's centre", so for the receiver and the focused
+ * seat the two anchors have separated; that conflict is reported, not edited.
+ * Wing clusters keep the rack origin, where §8 and §2.2 already agree.
+ *
+ * Two guarantees ride on the clamp. The cluster is the player-targeting surface
  * and can never degrade away (layout-model §Staging), so it must be **on the
  * plane**; and it is drawn layout content, so it must stay inside the seat
  * envelope (`environment-system.md` §2.2/§3.3) — outside the focal core that
  * means inside the flank band, because everything else out there is Zone C: the
  * theme's prop pockets, the `AMBIENT SPACE` reservation, and the wordmark.
  */
-function crestFor(rack: SeatRack, viewport: PlaneViewport): Rect {
-  const { w, h } = PLANE.crest;
-  // A digest rack is one button on the outer edge; the crest sits along the
-  // reading axis just past it rather than on top of it.
-  const raw: Rect =
-    rack.variant === 'digest'
-      ? { x: rack.bounds.x, y: rack.bounds.y + rack.bounds.h + 6, w, h }
-      : { x: rack.origin.x - w / 2, y: rack.origin.y - h / 2, w, h };
-  return clampToEnvelope(hitRectFor(raw), viewport);
+function clusterAnchor(
+  variant: ClusterVariant,
+  slot: Rect,
+  rack: SeatRack,
+  viewport: PlaneViewport,
+): { x: number; y: number } {
+  const d = clusterD(variant, viewport);
+  let cx: number;
+  let cy: number;
+  if (variant === 'local') {
+    cx = slot.x + slot.w / 2;
+    // Low enough to read as the receiver's own piece above the hand, high
+    // enough that the life medallion and hand pip stay on the plane.
+    cy = Math.min(slot.y + slot.h - 0.62 * d, viewport.height - 1.05 * d - 4);
+  } else if (variant === 'focused') {
+    cx = slot.x + slot.w / 2;
+    cy = slot.y;
+  } else if (rack.variant === 'digest') {
+    // A digest rack is one button on the outer edge; the cluster sits along the
+    // reading axis just past it rather than on top of it.
+    cx = rack.bounds.x + d / 2;
+    cy = rack.bounds.y + rack.bounds.h + 6 + d / 2;
+  } else {
+    cx = rack.origin.x;
+    cy = rack.origin.y;
+  }
+  const clamped = clampToEnvelope(
+    hitRectFor({ x: cx - d / 2, y: cy - d / 2, w: d, h: d }),
+    viewport,
+  );
+  return { x: clamped.x + clamped.w / 2, y: clamped.y + clamped.h / 2 };
 }
 
 /** The strip's own height for `rows` candidate rows (0 when no rows fit). */

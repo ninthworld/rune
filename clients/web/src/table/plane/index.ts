@@ -49,6 +49,22 @@ export {
   clampToEnvelope,
 } from './metrics';
 
+export { stageSeatCluster, clusterD, fitName, damageEscalation } from './cluster';
+export type {
+  ClusterVariant,
+  PlateDirection,
+  LifeUrgency,
+  DamageEscalation,
+  ClusterChipKind,
+  ClusterChip,
+  ClusterPlate,
+  ClusterPip,
+  ClusterChannels,
+  SeatClusterFacts,
+  SeatClusterRequest,
+  SeatCluster,
+} from './cluster';
+
 export { stageRack, digestExpansionRects, RACK_ZONES } from './rack';
 export type { RackZone, RackVariant, RackSlot, SeatRack, RackRequest } from './rack';
 

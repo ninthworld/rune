@@ -59,8 +59,25 @@
   height: 100%;
 }
 
+/* L0–L2: one continuous 21:9 plate. `cover` IS the §4.2 crop — every landscape
+   aspect below the authoring aspect matches the plate's height and takes a
+   centred horizontal slice, and ultrawide reveals rather than stretches. */
 .plate {
   object-fit: cover;
+}
+
+/* L3 is not a plate (§4.4). One sprite = one atlas frame, cropped by a window
+   sitting exactly on the prop's manifest rect, positioned in composed-canvas
+   fractions so 16:9 and 21:9 place it identically. Noninteractive like every
+   other node: `pointer-events` is never re-enabled below the root. */
+.sprite {
+  position: absolute;
+  overflow: hidden;
+}
+
+.spriteFrame {
+  position: absolute;
+  max-width: none;
 }
 
 /* The T0 surround: a radial `surroundTop → surroundBase`, zero bytes and no

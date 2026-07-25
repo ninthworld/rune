@@ -16,6 +16,21 @@
   inset: 0;
 }
 
+/* The card-back load probe (`card-representation.md` §13.2). A CSS background
+   cannot report a failure, so the same URL the library pile paints is loaded
+   once through a real element whose `onError` drives the fallback to the
+   default skin. It occupies no layout, is never a hit target, and is not
+   announced — the pile's box is identical with or without it. */
+.cardBackProbe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .camera {
   perspective: 1500px;
   perspective-origin: 50% 45%;
@@ -205,48 +220,388 @@
   letter-spacing: 0.06em;
 }
 
+/* ── The seat identity cluster (seat-identity.md §1, §2, §6) ──────────────────
+   Portrait medallion, nameplate, life medallion, hand pip, identity gem, and
+   the status rail — one game piece per seat, not a status widget in a corner.
+   Every painted proportion below is a fraction of `--cluster-d`, the rung's
+   scale unit (§1.1): one D per cluster, nothing inside it scaling on its own.
+
+   Each state owns a distinct SHAPE or PLACEMENT and never colour alone (§6.8):
+   priority is a concentric ring outside the rim, the active turn a 12-o'clock
+   pennant, the attack an INSET dashed ring, a commander a 5-o'clock crown mark,
+   and elimination replaces the life numeral with a struck rune. Five disjoint
+   placements, so "every state at once" (§7) needs no arbitration. */
+
 .plane [data-slot='crest'] {
+  --rim: calc(var(--cluster-d) * 0.065);
   z-index: 5;
+  overflow: visible;
   display: grid;
   align-content: center;
   justify-items: center;
-  border: 2px solid var(--seat-azure);
-  border-radius: 18px 18px 50% 50%;
-  background: radial-gradient(circle, rgb(127 178 229 / 24%), transparent 65%), var(--surface-base);
-  box-shadow: 0 7px 16px rgb(0 0 0 / 45%);
+  border-radius: 50%;
+  /* The layered rim of §1.2 el. 1: gold hairline, brushed band, inner hairline —
+     three stops of one gradient rather than three nested boxes, so the medallion
+     costs the scene ONE node. The portrait plate is clipped to the aperture and
+     never to the rim, which is why the art is an inner background layer. */
+  background:
+    radial-gradient(
+        circle at 50% 34%,
+        transparent 0 calc(50% - var(--rim)),
+        var(--gold) calc(50% - var(--rim)) calc(50% - var(--rim) * 0.82),
+        color-mix(in srgb, var(--gold) 62%, var(--ink)) calc(50% - var(--rim) * 0.82)
+          calc(50% - var(--rim) * 0.18),
+        var(--gold) calc(50% - var(--rim) * 0.18) 50%,
+        transparent 50%
+      )
+      border-box,
+    var(--portrait-src, none) center / cover no-repeat content-box,
+    radial-gradient(circle at 50% 30%, var(--raised), var(--surface-base)) content-box;
+  padding: var(--rim);
+  box-shadow: var(--shadow-rest);
 }
 
+/* The procedural rune monogram — the permanent fallback for a seat with no
+   plate (§1.3 / §12.26). It is a mark, not a letter, so it never reads as a
+   truncated name, and it is derived from the player id alone, so it is exactly
+   as stable as a plate. A seat WITH a plate hides it rather than dropping the
+   rule, so the two paths share one box. */
 .plane [data-slot='crest']::before {
-  content: attr(data-life);
-  color: var(--text);
-  font: 700 20px/1 var(--rune-font-display);
+  content: attr(data-monogram);
+  color: color-mix(in srgb, var(--gold) 54%, var(--text));
+  font: 400 calc(var(--cluster-d) * 0.44) / 1 var(--rune-font-display);
+  opacity: 0.72;
 }
 
+.plane [data-slot='crest'][data-portrait='true']::before {
+  content: '';
+}
+
+/* Active turn — the swallow-tail pennant at 12 o'clock, half overlapping the
+   rim (§6.2). Tab vs ring and top vs perimeter, so a seat that is active AND
+   holds priority reads as both at once — the common case. */
 .plane [data-slot='crest']::after {
-  content: attr(data-hand) ' cards';
-  color: var(--text-muted);
-  font: 700 7px/1 var(--rune-font-display);
-  text-transform: uppercase;
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(var(--cluster-d) * -0.11);
+  width: calc(var(--cluster-d) * 0.3);
+  height: calc(var(--cluster-d) * 0.22);
+  translate: -50% 0;
+  border: 1px solid var(--gold);
+  background: var(--seat-accent);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 66%, 0 100%);
+  opacity: 0;
 }
 
+.plane [data-slot='crest'][data-active='true']::after {
+  opacity: 1;
+}
+
+/* Priority — the glowing double ring of §6.1: a gap of untouched background
+   outside the gold rim, then a near-white core, then an additive bloom. It is
+   the only state drawn CONCENTRIC AND OUTSIDE the medallion. */
 .plane [data-slot='crest'][data-priority='true'] {
-  border-color: var(--gold);
   box-shadow:
-    0 0 0 3px rgb(242 201 76 / 18%),
-    0 7px 16px rgb(0 0 0 / 45%);
+    0 0 0 calc(var(--cluster-d) * 0.03) transparent,
+    0 0 0 calc(var(--cluster-d) * 0.075) color-mix(in srgb, var(--blue) 45%, white),
+    0 0 calc(var(--cluster-d) * 0.16) calc(var(--cluster-d) * 0.075) var(--blue),
+    var(--shadow-rest);
+  animation: crest-breathe 1400ms ease-in-out infinite;
 }
 
-/* The attacked ring (layout-model §Focus model): combat against ANY seat draws
-   its ring, at every count and every rung, whichever board holds focus. The
-   ring is a shape channel — the threat accent only colors it (visual-system
-   §7, no state is color-only). It follows the priority rule so a seat that is
-   both under attack and holding priority reads as attacked. */
+@keyframes crest-breathe {
+  50% {
+    box-shadow:
+      0 0 0 calc(var(--cluster-d) * 0.03) transparent,
+      0 0 0 calc(var(--cluster-d) * 0.075) color-mix(in srgb, var(--blue) 45%, white),
+      0 0 calc(var(--cluster-d) * 0.22) calc(var(--cluster-d) * 0.085) var(--blue),
+      var(--shadow-rest);
+  }
+}
+
+/* The decision deadline (§6.6) rides ON TOP of the priority band as a gold
+   depleting arc; it never replaces the ring. The client displays the countdown
+   and never enforces it — the server owns the deadline. */
+.plane [data-slot='crest'][data-deadline='true'] {
+  outline: calc(var(--cluster-d) * 0.045) solid var(--gold);
+  outline-offset: calc(var(--cluster-d) * 0.03);
+}
+
+/* Attacked (§6.3) — a DASHED ring drawn INSIDE the rim, so it can never collide
+   with the priority band outside it. Shape carries the state; the threat accent
+   only colours it (visual-system §7, no state is colour-only). */
 .plane [data-slot='crest'][data-attacked='true'] {
+  border: calc(var(--cluster-d) * 0.03) dashed var(--orange);
+}
+
+/* Commander presence — the crown mark at 5 o'clock on the rim (§4). */
+.plane [data-slot='crest'][data-commander='true'] {
+  background-image:
+    radial-gradient(
+      circle at 78% 78%,
+      var(--gold) 0 calc(var(--cluster-d) * 0.055),
+      transparent calc(var(--cluster-d) * 0.062)
+    ),
+    var(--portrait-src, none),
+    radial-gradient(circle at 50% 30%, var(--raised), var(--surface-base));
+}
+
+/* Eliminated (§6.5) — the aperture desaturates and drops to 45 % luminance and
+   the rim turns from gold to stone. Shape (stone rim + the struck rune in the
+   life medallion) carries the state; colour never alone. The seat keeps its
+   slot and stays keyboard reachable — its public piles are still browsable. */
+.plane [data-slot='crest'][data-eliminated='true'],
+.plane [data-slot='plate'][data-eliminated='true'],
+.plane [data-slot='life'][data-eliminated='true'] {
+  --gold: var(--crest-stone);
+  filter: saturate(0) brightness(0.45);
+}
+
+/* ── Nameplate (§1.2 el. 4/5) ─────────────────────────────────────────────── */
+
+.plane [data-slot='plate'] {
+  z-index: 4;
+  overflow: visible;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid var(--gold);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+}
+
+/* The plate's outboard end terminates in a pointed chevron, and the chevron
+   follows the plate's direction so the cluster reads the same way at every
+   seat. Clusters never rotate: the text stays horizontal at every count. */
+.plane [data-slot='plate'][data-direction='left'] {
+  clip-path: polygon(0 50%, 7% 0, 100% 0, 100% 100%, 7% 100%);
+}
+
+.plane [data-slot='plate'][data-direction='right'] {
+  clip-path: polygon(0 0, 93% 0, 100% 50%, 93% 100%, 0 100%);
+}
+
+.plane [data-slot='plate'][data-direction='below'] {
+  clip-path: polygon(0 50%, 7% 0, 93% 0, 100% 50%, 93% 100%, 7% 100%);
+}
+
+.plane [data-slot='plate']::before {
+  content: attr(data-name);
+  color: var(--text);
+  font: 600 calc(var(--cluster-d) * 0.155) / 1 var(--rune-font-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Identity gem (§1.2 el. 6) ────────────────────────────────────────────────
+   A rotated square at the plate's inboard end, faceted, in the seat's COLOUR
+   IDENTITY — a different channel from the seat accent the rim and pennant wear
+   (§13 conflict 2). It is drawn only while the commander is in the command
+   zone; there is no per-player colour-identity field yet (§11, issue #553), and
+   a dormant slot renders nothing rather than a guess. */
+
+.plane [data-slot='gem'] {
+  z-index: 6;
+  border: 1px solid var(--gold);
+  rotate: 45deg;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--gem-color) 70%, white),
+    var(--gem-color)
+  );
+}
+
+.plane [data-slot='gem'][data-identity='W'] {
+  --gem-color: var(--frame-w);
+}
+
+.plane [data-slot='gem'][data-identity='U'] {
+  --gem-color: var(--frame-u);
+}
+
+.plane [data-slot='gem'][data-identity='B'] {
+  --gem-color: var(--frame-b);
+}
+
+.plane [data-slot='gem'][data-identity='R'] {
+  --gem-color: var(--frame-r);
+}
+
+.plane [data-slot='gem'][data-identity='G'] {
+  --gem-color: var(--frame-g);
+}
+
+.plane [data-slot='gem'][data-identity='M'] {
+  --gem-color: var(--frame-m);
+}
+
+.plane [data-slot='gem'][data-identity='C'] {
+  --gem-color: var(--frame-c);
+}
+
+.plane [data-slot='gem'][data-identity='L'] {
+  --gem-color: var(--frame-l);
+}
+
+/* ── Life medallion (§1.2 el. 2, §5.1) ────────────────────────────────────────
+   Circular, ringed in gold, sitting on the portrait's bottom rim with about
+   half its height overlapping. The numeral is the server's number VERBATIM —
+   the client never adds, subtracts, or clamps it — and only its size steps as
+   the value grows. */
+
+.plane [data-slot='life'] {
+  z-index: 7;
+  overflow: visible;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border: calc(var(--cluster-d) * 0.03) solid var(--gold);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--shadow-rest);
+}
+
+.plane [data-slot='life']::before {
+  content: attr(data-glyph);
+  color: var(--text);
+  font: 700 calc(var(--cluster-d) * 0.34) / 1 var(--rune-font-display);
+}
+
+.plane [data-slot='life'][data-glyphs='3']::before {
+  font-size: calc(var(--cluster-d) * 0.28);
+}
+
+.plane [data-slot='life']:is([data-glyphs='4'], [data-glyphs='5'])::before {
+  font-size: calc(var(--cluster-d) * 0.24);
+}
+
+/* The keystone rivet at 12 o'clock of the life ring — the join mark of §1.2
+   el. 3, purely decorative and transcribed from the baseline's panels 1/2/4. */
+.plane [data-slot='life']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(var(--cluster-d) * -0.025);
+  width: calc(var(--cluster-d) * 0.06);
+  height: calc(var(--cluster-d) * 0.025);
+  translate: -50% 0;
+  background: var(--gold);
+  clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%);
+}
+
+/* §5.1 urgency is a SHAPE, never a colour alone: a notched outer collar at
+   `life <= 5`, closing into a solid double ring at `life <= 0`. Both are
+   thresholds on a displayed number — the client never declares a loss;
+   terminality comes from `result` alone. */
+.plane [data-slot='life'][data-urgency='low'] {
+  outline: calc(var(--cluster-d) * 0.02) dashed var(--gold);
+  outline-offset: calc(var(--cluster-d) * 0.02);
+}
+
+.plane [data-slot='life'][data-urgency='zero'] {
+  outline: calc(var(--cluster-d) * 0.02) solid var(--red);
+  outline-offset: calc(var(--cluster-d) * 0.02);
+}
+
+.plane [data-slot='life'][data-urgency='zero']::before {
+  color: var(--red);
+}
+
+/* ── Hand pip (§1.2 el. 7/9) ──────────────────────────────────────────────────
+   The crest carries the hand count and ONLY the hand count: the library count
+   lives on the library pile (`zone-geography.md` §4.1, resolved against
+   seat-identity §1.2 el. 8). There is no library pip, at any rung. */
+
+.plane [data-slot='pip'] {
+  z-index: 7;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid var(--gold);
+  background: var(--ink);
+}
+
+.plane [data-slot='pip'][data-shape='hex'] {
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+/* The under-slung shield tab: the compact rung's attachment mode for the SAME
+   pip, flat top and point down, about half occluded by the life medallion. */
+.plane [data-slot='pip'][data-shape='tab'] {
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+}
+
+.plane [data-slot='pip']::before {
+  content: attr(data-count);
+  color: var(--text);
+  font: 700 calc(var(--cluster-d) * 0.2) / 1 var(--rune-font-display);
+}
+
+.plane [data-slot='pip'][data-shape='tab']::before {
+  translate: 0 -18%;
+}
+
+/* ── Status rail (§1.2 el. 10, §5.6) ──────────────────────────────────────────
+   Round medallions on an arc growing from the inboard shoulder, at most two per
+   rung plus a `+N` overflow. Ordering inside the rail is the server's array
+   order — the client never ranks, prioritises, or interprets a status. A status
+   string is free-form display text: no number is parsed out of it and no
+   threshold is inferred from it (§11's standing prohibition). */
+
+.plane [data-slot='chip'] {
+  z-index: 8;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--ink);
+  box-shadow: var(--shadow-rest);
+}
+
+.plane [data-slot='chip']::before {
+  content: attr(data-glyph);
+  font: 400 calc(var(--cluster-d) * 0.12) / 1 var(--rune-font-display);
+}
+
+.plane [data-slot='chip']::after {
+  content: attr(data-value);
+  color: var(--text);
+  font: 700 calc(var(--cluster-d) * 0.1) / 1 var(--rune-font-display);
+}
+
+.plane [data-slot='chip'][data-kind='attacked'] {
   border-color: var(--orange);
-  box-shadow:
-    0 0 0 3px var(--surface-base),
-    0 0 0 6px rgb(224 120 74 / 72%),
-    0 7px 16px rgb(0 0 0 / 45%);
+}
+
+/* §5.4 escalation is SHAPE first, with thresholds from CR 903.10a: a doubled
+   outline at 15+, a near-lethal notch ring at 18–20, the terminal treatment at
+   21+. The client never eliminates the seat itself — that stays the server's
+   call through `eliminated` / `result`. */
+.plane [data-slot='chip'][data-escalation='doubled'] {
+  outline: 1px solid var(--orange);
+  outline-offset: 2px;
+}
+
+.plane [data-slot='chip'][data-escalation='notched'] {
+  outline: 2px dashed var(--orange);
+  outline-offset: 2px;
+}
+
+.plane [data-slot='chip'][data-escalation='terminal'] {
+  outline: 3px double var(--red);
+  outline-offset: 2px;
+}
+
+/* Reduced motion holds the static double ring (§6.1) — the state is complete
+   without the breathe, because the ring itself is the channel. */
+@media (prefers-reduced-motion: reduce) {
+  .plane [data-slot='crest'][data-priority='true'] {
+    animation: none;
+  }
 }
 
 /* ── The zone rack (zone-geography §3) ────────────────────────────────────────
@@ -280,12 +635,19 @@
   background: var(--ink);
 }
 
-/* Library — the Rune card back: dark navy field, gold inner rule, centred
-   diamond. Symmetric and non-orienting, and it never shows a top card: hidden
-   stays hidden (§I2). */
+/* Library — the Rune card back (`card-representation.md` §13). The shipped
+   plate paints over the token treatment, which stays underneath: a skin that is
+   missing or fails to load resolves `--card-back-image` to `none` and the pile
+   falls back to the procedural back with an identical box — a colour
+   difference, never a layout one.
+
+   The back is the same image for every hidden pile on the device and carries no
+   transform, so nothing about it varies with the card it hides or with any
+   rotation (§13.1). It never shows a top card: hidden stays hidden (§I2). */
 .plane [data-slot='zone'][data-zone='library'] {
   border: 1px solid var(--rack-rule);
   background:
+    var(--card-back-image, none) center / cover no-repeat,
     radial-gradient(circle at 50% 50%, var(--rack-rule-faint) 0 22%, transparent 24%),
     var(--rack-back);
 }
@@ -347,19 +709,49 @@
   text-align: center;
 }
 
+/* The compact rung's summary tile IS the §2 **minimal** cluster variant: no
+   nameplate, no free-standing pip, and the seat's portrait as a small medallion
+   at the tile's leading edge. The tile's own row already carries the name, the
+   life, and the counts, so the medallion adds identity at zero extra nodes —
+   and with no plate it falls back to a disc in the seat's accent rather than to
+   a bare counter. */
 .plane [data-slot='tile'] {
   z-index: 5;
   border: 1px solid rgb(232 230 225 / 17%);
-  border-left: 4px solid var(--seat-teal);
+  border-left: 4px solid var(--seat-accent, var(--seat-teal));
   border-radius: 9px;
-  background: rgb(21 26 36 / 88%);
+  background:
+    var(--portrait-src, none) 8px center / 32px 32px no-repeat,
+    radial-gradient(
+      circle 16px at 24px 50%,
+      var(--seat-accent, var(--seat-teal)) 0 100%,
+      transparent 100%
+    ),
+    rgb(21 26 36 / 88%);
   box-shadow: var(--shadow-rest);
+}
+
+/* Active turn and priority at the minimal rung keep their own channels: the
+   pennant has no room, so the turn reads as a gold leading edge and priority as
+   the same concentric ring the expanded rungs draw (§6.1/§6.2). */
+.plane [data-slot='tile'][data-active='true'] {
+  border-left-color: var(--gold);
+}
+
+.plane [data-slot='tile'][data-priority='true'] {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--blue) 45%, white),
+    var(--shadow-rest);
+}
+
+.plane [data-slot='tile'][data-eliminated='true'] {
+  filter: saturate(0) brightness(0.45);
 }
 
 .plane [data-slot='tile']::before {
   content: attr(data-label) '  ·  ' attr(data-life) ' LIFE';
   position: absolute;
-  inset: 50% auto auto 13px;
+  inset: 50% auto auto 48px;
   translate: 0 -50%;
   color: var(--text);
   font: 700 11px/1 var(--rune-font-display);
