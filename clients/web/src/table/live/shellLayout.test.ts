@@ -388,6 +388,37 @@ describe('stylesheet contract', () => {
     expect(shell).not.toContain('grid-template-rows');
   });
 
+  /**
+   * The scene's own box, which #534 dropped when it replaced the grid shell.
+   * `.scene` survived only inside two `[data-moment]` descendant selectors, so
+   * the class still resolved and the section still mounted — as a static block
+   * with no layout. Its sole child is `LivePlane`'s host, which states no height
+   * and clips to `overflow: hidden`, so the whole battlefield collapsed to zero
+   * height: no environment, no seats, no cards, no controls, no effects, with a
+   * live hand and a live cluster still floating over the black.
+   *
+   * jsdom computes no layout, so nothing that renders the tree can catch this.
+   * The stylesheet is where it is provable, which is why it is asserted here.
+   */
+  it('gives the scene a box that spans the safe viewport', () => {
+    const rule = (selector: string): string =>
+      /\{([^}]*)\}/.exec(shell.slice(shell.indexOf(`${selector} {`)))?.[1] ?? '';
+    const scene = rule('.scene');
+    expect(scene, '.scene has no base rule — the battlefield has no box').toContain(
+      'position: absolute;',
+    );
+    // An absolute child is laid out against the padding box, which INCLUDES
+    // `.shell`'s safe-area padding, so the insets have to be repeated here.
+    expect(scene).toContain('env(safe-area-inset-top, 0px)');
+    expect(scene).toContain('env(safe-area-inset-bottom, 0px)');
+    // The bottom rung: the arena paints under both floating chrome regions.
+    expect(scene).toContain('z-index: var(--rune-z-scene);');
+    // …and the host inside it is sized by the section rather than by itself.
+    const child = rule('.scene > *');
+    expect(child, '.scene > * is gone — LivePlane’s host has no height').toContain('height: 100%;');
+    expect(child).toContain('width: 100%;');
+  });
+
   it('sizes the two chrome regions from the published rects', () => {
     const rule = (selector: string): string =>
       /\{([^}]*)\}/.exec(shell.slice(shell.indexOf(`${selector} {`)))?.[1] ?? '';
