@@ -15,6 +15,8 @@ test-results/
 !.env.example
 # Private keys — never let a stray copy in the worktree become a commit.
 *.pem
+# Agent scratch — Claude Code creates isolated git worktrees here; never commit them.
+.claude/worktrees/
 # Editors / OS
 .DS_Store
 .idea/

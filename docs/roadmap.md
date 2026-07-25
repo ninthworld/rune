@@ -167,21 +167,11 @@ deferred. Ordered by dependency and product impact:
    ([#400](https://github.com/ninthworld/rune/issues/400)) — independent; the
    blueprint's remaining compact-layout item, and the home for commander chrome on
    phones.
-9. The real-browser smoke path ([#279](https://github.com/ninthworld/rune/issues/279)) —
-   **shipped**; one canary spec, with the full E2E suite beyond it deferred (ADR 0011).
-
-> **The browser suite is back — as one canary, not a matrix.** #279 restored the harness
-> the earlier removal took out: `clients/web/e2e/` (Playwright + pinned Chromium), a
-> launcher for a real seeded `rune-server` on an OS-assigned port, `make e2e`, and the
-> `E2E` CI job that runs on every PR. It is *one* spec: two browser contexts walk the
-> shipped path into a match, assert the table actually renders (a live, attached WebGL
-> canvas and a populated scene plane — the guard the invisible-table bug slipped past),
-> play a land through the rendered hand card and dock chip, and carry the game across a
-> turn boundary through rendered controls. `make check` stays browser-free and as fast as
-> before; `make verify` composes the canary. The wider ADR 0011 matrix — mock-WS fixture
-> tier, screenshot baselines, full-game runs — is still deferred until the in-game UI
-> settles. The four-player Commander vertical slice
-> ([#499](https://github.com/ninthworld/rune/issues/499)) builds on this harness.
+9. ~~The real-browser smoke path~~ — **not queued, and not to be picked up.** The browser
+   suite is out by standing maintainer decision (removed in #251, reinstatement reverted in
+   #292 and #538); browser verification is the maintainer's own, and automated coverage
+   stops at jsdom/Vitest. ADR 0011 remains on file as a blueprint only. See the root
+   `AGENTS.md` hard rules.
 
 ## Milestones
 
@@ -200,9 +190,8 @@ enter an id directly.
 
 The engine, protocol, and UI flows are implemented and covered by unit and integration tests.
 Reliable canvas rendering and a visible failure state are shipped, as are action
-discoverability and table geography (#277, #278). The real-browser smoke path (#279) has
-landed: a Playwright canary drives real Chromium through the shipped path into a match on
-every PR (see Immediate priorities).
+discoverability and table geography (#277, #278). The real-browser smoke path (#279) is the
+one open item; it is now unblocked (see Immediate priorities).
 
 ### M3 — A real card pool
 
@@ -352,8 +341,9 @@ Delivery is phased (see #464 for the full phase plan):
   one complete action loop, with reconnect fast-forward verified. At the Phase 2
   exit ([#494](https://github.com/ninthworld/rune/issues/494)) the 2.5D table
   becomes the default match presentation and the legacy Pixi match table is
-  retired; the browser-e2e slice, real-hardware budget re-validation, and the
-  spectator's own migration off Pixi carry forward as follow-ups.
+  retired; real-hardware budget re-validation and the spectator's own migration off
+  Pixi carry forward as follow-ups. (The browser-e2e slice once listed here is
+  withdrawn — see item 9 above.)
 - **Phase 3 — multiplayer and stress cases:** four-player Commander as the primary
   experience; two- through six-player layouts and large boards validated.
 - **Phase 4 — full-client migration and polish:** lobby, deckbuilding, settings, and

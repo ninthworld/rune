@@ -74,6 +74,10 @@ the table UI.
   ADR 0031, and put the first one under the `lazy/` prefix so `npm run budget`
   keeps passing.
 - Touch first: 44px minimum targets; no action reachable only by drag or hover.
+- **Automated tests stop at jsdom.** Co-located Vitest specs (`src/**/*.test.ts{,x}`) cover
+  stores, wire shapes, pure scene/plane derivation, and DOM components. There is no browser
+  suite and none may be added (see the root `AGENTS.md`); anything that can only be shown in
+  a real browser is reported as unverified and left to the maintainer.
 
 ## Commands
 
@@ -89,30 +93,17 @@ the table UI.
 
 Use Prettier for formatting; see [`docs/coding-standards.md`](../../docs/coding-standards.md).
 
-## Testing
-
-- Co-located Vitest specs (`src/**/*.test.ts{,x}`) run in jsdom and cover everything
-  headless: stores, wire shapes, pure scene/plane derivation, and DOM components.
-- **`e2e/` is the browser smoke canary** (ADR 0011, issue #279) — its own npm package so
-  the Playwright toolchain never enters the fast gate's install. One spec drives real
-  Chromium and a real seeded `rune-server` through front door → lobby → match, and asserts
-  what jsdom structurally cannot: that the effects surface holds a live, attached WebGL
-  canvas and that the scene plane is populated. Run it with `make e2e` (from the repository
-  root); it is **not** part of `make check`, and rides `make verify` plus the `E2E` CI job.
-- Two rules bind the e2e suite as hard as the client itself: **no test-only production
-  control path** (every move is a click on a rendered control — `window.__RUNE_TEST__` is
-  read-only and is used only to decide *which* control to click), and **no client-side
-  legality** (what is offered comes from the server's `valid_actions`). No sleeps: every
-  wait is a wait on a condition.
-- The canary runs against the **dev server**, not `vite preview`: the regression it guards
-  is React StrictMode's development-only effect double-invoke.
-
 ## Dependencies
 
 - Commit `package-lock.json`; CI installs with `npm ci`.
 - `npm audit --audit-level=high` fails on high or critical advisories.
 - Prefer a deterministic `package.json` override for an accepted transitive advisory and
   explain it in the PR. Do not raise the audit threshold to silence a finding.
+- Current overrides: `postcss`, and `minimatch` (to `^10`, which carries the patched
+  `brace-expansion`; eslint 9's own `minimatch@3` pins `brace-expansion@^1`, and no 1.x
+  release is patched for GHSA-mh99-v99m-4gvg). Override `minimatch`, not
+  `brace-expansion`: 5.x moved from a callable default export to a named `expand`, so
+  forcing it under `minimatch@3` breaks eslint with `TypeError: expand is not a function`.
 
 ## References
 

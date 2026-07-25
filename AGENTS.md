@@ -22,6 +22,17 @@ before changing code; [`docs/brief.md`](docs/brief.md) defines the product and a
 - **Don't let a file grow past ~800–1000 lines.** Split along cohesive seams into
   submodules with root re-exports (see `docs/coding-standards.md`, File size).
 - Never commit secrets, `.env` files, `node_modules/`, or `target/`.
+- **No browser end-to-end suite.** There is no Playwright, no `clients/web/e2e/`, no
+  `make e2e`, and no E2E CI job, and none may be added. This is a standing maintainer
+  decision, not an oversight: the suite was removed in #251 and the attempt to reinstate
+  it was reverted in #292 and again in #538 while the in-game UI is in flux. ADR 0011 stays
+  on file as the blueprint for whenever the maintainer chooses to revisit it — an open
+  issue referencing it is not authorization.
+- **Browser verification belongs to the maintainer.** When a change can only be proven in
+  a real browser (canvas/WebGL liveness, real layout, actual pixels, true multi-seat
+  timing), say plainly what you could not verify and leave it to them. Do not build a
+  harness, do not add a browser-level acceptance criterion to an issue, and do not file an
+  issue for the gap. Automated coverage stops at jsdom/Vitest and Rust tests.
 - Only force-push a branch you exclusively own, using `--force-with-lease`. Never
   rewrite `main` or a shared branch.
 
@@ -38,19 +49,12 @@ before changing code; [`docs/brief.md`](docs/brief.md) defines the product and a
 ## Commands
 
 - `make check` — fast Engine and Client gate.
-- `make verify` — complete pre-merge gate: `make check` plus `cargo-deny` and `make e2e`.
+- `make verify` — complete pre-merge gate: `make check` plus `cargo-deny`.
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make client-check` — lint + typecheck + test + build in `clients/web`
 - `make deny` — dependency policy and advisory checks.
-- `make e2e` — the browser smoke canary (real Chromium + real `rune-server`).
 - `scripts/bootstrap.sh` — verify local prerequisites.
-
-**CI surface.** `make check` is the fast gate, not the whole of CI: since #279 the
-required checks are `Engine` + `Client` (`make check`), `cargo-deny` (`make deny`), and
-`E2E` (`make e2e`, the browser canary of ADR 0011). `make check` stays browser-free and
-as fast as it was; `make verify` composes all of them, so one local command still matches
-what must pass. A green `make check` alone does not mean "done".
 
 ## Workflow
 

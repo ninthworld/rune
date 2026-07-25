@@ -3,7 +3,7 @@
 #
 # Covers both local gates:
 #   - `make check`  (fast inner loop): Rust toolchain + Node 20+
-#   - `make verify` (full pre-merge):  the above + cargo-deny + a Playwright Chromium
+#   - `make verify` (full pre-merge):  the above + cargo-deny
 # Each missing prerequisite prints an actionable install command; the script exits
 # non-zero if anything is absent.
 set -e
@@ -37,19 +37,9 @@ else
   fail=1
 fi
 
-# The browser smoke canary (ADR 0011 / issue #279) needs a Playwright Chromium.
-# `make e2e` never downloads one; this only reports whether an install exists.
-browsers="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
-if [ -d "$browsers" ] && [ -n "$(ls -d "$browsers"/chromium* 2> /dev/null)" ]; then
-  echo "ok: Playwright Chromium in $browsers"
-else
-  echo "missing: Playwright Chromium — install once with 'cd clients/web/e2e && npm ci && npx playwright install --with-deps chromium' (needed by 'make e2e'/'make verify' and the E2E CI job)"
-  fail=1
-fi
-
 if [ "$fail" -eq 0 ]; then
   echo "prerequisites ready — 'make check' is the fast gate; run 'make verify' before opening a PR"
 else
-  echo "one or more prerequisites are missing (see above): 'make check' needs cargo + node; 'make verify' also needs cargo-deny and a Playwright Chromium"
+  echo "one or more prerequisites are missing (see above): 'make check' needs cargo + node; 'make verify' also needs cargo-deny"
   exit 1
 fi
