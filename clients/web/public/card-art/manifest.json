@@ -1,1 +1,13 @@
-[]
+{
+  "version": 1,
+  "cards": {
+    "electrify": "electrify.c3141620.webp",
+    "fire_elemental": "fire_elemental.0e6163cd.webp",
+    "lightning_strike": "lightning_strike.1c12f0f8.webp",
+    "mountain": "mountain.eb632e6f.webp",
+    "onakke_ogre": "onakke_ogre.9a4bdbca.webp",
+    "shock": "shock.ff030209.webp",
+    "viashino_pyromancer": "viashino_pyromancer.c280c047.webp",
+    "volcanic_dragon": "volcanic_dragon.e43e6f68.webp"
+  }
+}

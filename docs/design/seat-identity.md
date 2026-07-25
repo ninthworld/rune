@@ -82,22 +82,19 @@ them; these values place every rung above the 44 px floor of
 expanded tray (§3) → nameplate → portrait medallion → identity gems → life
 medallion → count pips → status rail → disclosure chevron.
 
-### 1.3 Portrait art and its fallback
+### 1.3 Portrait art
 
-The portrait medallion carries either a raster plate or a procedural fallback,
-in the **same aperture mask** and with the same rim. Both MUST be
-indistinguishable in silhouette at 48 px.
+The portrait medallion carries one of the bundled raster plates in the
+**same aperture mask** and with the same rim at every rung.
 
-- **Raster plate** — the portrait set requested in issue #548 §Request 2:
+- **Raster plate** — the portrait set delivered by issue #548 §Request 2:
   square source art, head-and-shoulders, no rim, no ring, no numbers. The
   client applies mask, rim, and every state ring. The local player's plate is
   the deliberately faceless hooded figure of panels 3–4.
-- **Procedural rune monogram** (ships now; the placeholder of #548) — a
-  radial rune field in the seat's accent (`identityAccents.ts`), with the
-  player's first grapheme (or the seat index when no name exists) set in the
-  display face at `0.42 D` cap height, centred in the aperture. It is
-  deterministic from `(seat index, player name)` so every client draws the same
-  monogram for the same seat, with no client state.
+
+The former procedural rune/monogram placeholder is removed when the portrait
+consumer lands. While a plate is loading or if it fails, the aperture keeps its
+token background and accessible player name but draws no substitute glyph.
 
 There is **no protocol field selecting a portrait**. Plate assignment is
 presentation, keyed by the seat's index in `seat_order` (§10).
@@ -694,8 +691,8 @@ Every **[D]** in this document, collected:
 24. **Keyboard and touch model** — one tab stop per cluster with a roving group
     inside; the "no 44 px rect, no sub-element" rule.
 25. **The accessible-name sentence** for the whole cluster.
-26. **Portrait fallback specification** — deterministic rune monogram from
-    `(seat index, name)` in the same aperture mask.
+26. **Portrait load-failure specification** — token aperture with no substitute
+    glyph; the accessible player name and every non-art identity channel remain.
 
 ---
 
