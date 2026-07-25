@@ -49,7 +49,7 @@ describe('ControlButton', () => {
         disabledReason="needs: choose a land"
       />,
     );
-    const button = screen.getByRole('button', { name: /KEEP/ });
+    const button = screen.getByRole('button', { name: /KEEP/ }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.textContent).toContain('needs: choose a land');
   });

@@ -9,3 +9,17 @@
 export { ControlButton, IconButton } from './ControlButton';
 export type { ControlVariant, ControlButtonProps, IconButtonProps } from './ControlButton';
 export { CONTROL, CONTROL_TOKEN_NAMES, PIP_COUNT, pipRowWidth } from './controlTokens';
+export { derivePrimary, RESPOND_LABEL, RESPOND_ACCESSIBLE_NAME } from './controlPrimary';
+export type {
+  ControlSession,
+  PrimaryRule,
+  PrimaryForm,
+  PrimaryInput,
+  PrimaryDerivation,
+} from './controlPrimary';
+export { PhasePlaque } from './PhasePlaque';
+export type { PhasePlaqueProps } from './PhasePlaque';
+export { PHASE_GROUPS, STEP_NAME, pipStates } from './phaseSteps';
+export type { PhaseGroup, PipState } from './phaseSteps';
+export { ControlCluster } from './ControlCluster';
+export type { ControlClusterProps } from './ControlCluster';
