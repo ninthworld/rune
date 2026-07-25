@@ -749,17 +749,18 @@ and the element cannot be rendered correctly without it.
 ### 11.3 The gaps, stated as contract changes
 
 Each is a protocol change and therefore must land in `rune-protocol`,
-`docs/protocol.md`, and the TypeScript mirror in one PR.
+`docs/protocol.md`, and the TypeScript mirror in one PR. All seven are the
+`StackItem` contract gaps filed as **#550**.
 
-| # | Gap | Minimal shape | Consequence if not closed |
-| --- | --- | --- | --- |
-| **G1** | `StackItem` carries no targets — targets exist only as prose baked into `description` | `targets?: EntityId[]` on `StackItem`, **ordered**, matching the order the description names them | **Blocking.** No confirmed relationship can be drawn for anything already on the stack. Panel 8 of the zones baseline — an arc from a stack entry to a permanent — is unimplementable. The client must not parse `description` to recover them (I1). |
-| **G2** | No kind discriminator | `kind?: "spell" \| "activated" \| "triggered" \| "copy"` | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. |
-| **G3** | No copy relation | `copy_of?: EntityId` | The `Copy` chip and the doubled outline cannot be driven; copy folding cannot be validated. |
-| **G4** | No card face on a stack object | `card?: CardView` on `StackItem` | The Expanded entry cannot show name, cost pip, type strip, frame accent, or an art window — the baseline's stack card anatomy degrades to a single text line. |
-| **G5** | No mode / X / additional-cost summary | free-form `choices?: string[]` | The issue's "mode/X/additional-cost summary where data exists" cannot be met; the row is simply omitted until it exists. |
-| **G6** | Player vs permanent vs stack-object destinations are not typed | either a `kind` on the target reference, or a documented guarantee that a client may classify by membership in `battlefield` / `seat_order` / `stack` | Endpoint treatment (§5.3 vs §5.2 vs §5.5) is chosen by client-side classification, which is fragile and brushes against I1. |
-| **G7** | Zones are not targetable references | a zone reference form (`{player, zone}`) | R3 (card → zone target) has no data source and is specified but dormant. |
+| # | Gap | Minimal shape | Consequence if not closed | Tracked by |
+| --- | --- | --- | --- | --- |
+| **G1** | `StackItem` carries no targets — targets exist only as prose baked into `description` | `targets?: EntityId[]` on `StackItem`, **ordered**, matching the order the description names them | **Blocking.** No confirmed relationship can be drawn for anything already on the stack. Panel 8 of the zones baseline — an arc from a stack entry to a permanent — is unimplementable. The client must not parse `description` to recover them (I1). | #550 |
+| **G2** | No kind discriminator | `kind?: "spell" \| "activated" \| "triggered" \| "copy"` | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. | #550 |
+| **G3** | No copy relation | `copy_of?: EntityId` | The `Copy` chip and the doubled outline cannot be driven; copy folding cannot be validated. | #550 |
+| **G4** | No card face on a stack object | `card?: CardView` on `StackItem` | The Expanded entry cannot show name, cost pip, type strip, frame accent, or an art window — the baseline's stack card anatomy degrades to a single text line. | #550 |
+| **G5** | No mode / X / additional-cost summary | free-form `choices?: string[]` | The issue's "mode/X/additional-cost summary where data exists" cannot be met; the row is simply omitted until it exists. | #550 |
+| **G6** | Player vs permanent vs stack-object destinations are not typed | either a `kind` on the target reference, or a documented guarantee that a client may classify by membership in `battlefield` / `seat_order` / `stack` | Endpoint treatment (§5.3 vs §5.2 vs §5.5) is chosen by client-side classification, which is fragile and brushes against I1. | #550 |
+| **G7** | Zones are not targetable references | a zone reference form (`{player, zone}`) | R3 (card → zone target) has no data source and is specified but dormant. | #550 |
 
 Until G1 lands, §4's confirmed states are implementable **only** for combat
 (R6–R8) and attachment (R9), which have their own fields. This document

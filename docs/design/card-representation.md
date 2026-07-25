@@ -666,18 +666,18 @@ The client renders these verbatim; it derives no characteristic.
 
 ### 14.1 Gaps — visual elements with **no data source**
 
-| # | Element | Missing | Impact | Disposition |
-| --- | --- | --- | --- | --- |
-| G1 | Token identity (`TOKEN` tab, arch silhouette) | no `is_token` on `Permanent` / `CardView` | the token surface in §4 cannot be rendered correctly; type-line guessing would be client game logic | **blocking for the token surface** — needs a protocol field |
-| G2 | Loyalty plate | no `loyalty` field | works via the `loyalty` counter, but "current loyalty" is a characteristic, not a counter | acceptable v1; flag for protocol review |
-| G3 | Summoning sickness | no wire field; `CardDisplayData.summoningSick` has no supplier | the §6.2 sick glyph plate cannot be driven | needs a protocol field |
-| G4 | Latent activated ability | no `has_activated_ability` field; today a rules-text heuristic (`ui-design-notes.md`) | the marker dot rides a heuristic | known swap point; unchanged |
-| G5 | Current vs printed values in inspect | wire sends current only | inspect cannot show "4/4 (printed 2/2)" | out of scope for v1; record on inspect |
-| G6 | Stack entry targets | `StackItem` has no `targets` | §4's "spell on stack … and targets" is unimplementable | needs a protocol field |
-| G7 | Commander marker | `commander_damage` / `commander_tax` exist but no per-permanent commander flag | the §6.2 crown plate cannot be driven | needs a protocol field |
-| G8 | Face-down permanent | no face-down flag on `Permanent` | a card back can never render on the battlefield | needs a protocol field |
-| G9 | Attachment kind (aura vs equipment) | `attached_to` has no kind | the cluster connector cannot differentiate | cosmetic; acceptable v1 |
-| G10 | Basic-land glyph | derived by the client from `type_line` | already shipped as display glue | acceptable |
+| # | Element | Missing | Impact | Disposition | Tracked by |
+| --- | --- | --- | --- | --- | --- |
+| G1 | Token identity (`TOKEN` tab, arch silhouette) | no `is_token` on `Permanent` / `CardView` | the token surface in §4 cannot be rendered correctly; type-line guessing would be client game logic | **blocking for the token surface** — needs a protocol field | #551 |
+| G2 | Loyalty plate | no `loyalty` field | works via the `loyalty` counter, but "current loyalty" is a characteristic, not a counter | acceptable v1; flag for protocol review | not filed |
+| G3 | Summoning sickness | no wire field; `CardDisplayData.summoningSick` has no supplier | the §6.2 sick glyph plate cannot be driven | needs a protocol field | #551 |
+| G4 | Latent activated ability | no `has_activated_ability` field; today a rules-text heuristic (`ui-design-notes.md`) | the marker dot rides a heuristic | known swap point; unchanged | #551 |
+| G5 | Current vs printed values in inspect | wire sends current only | inspect cannot show "4/4 (printed 2/2)" | out of scope for v1; record on inspect | not filed |
+| G6 | Stack entry targets | `StackItem` has no `targets` | §4's "spell on stack … and targets" is unimplementable | needs a protocol field | #550 |
+| G7 | Commander marker | `commander_damage` / `commander_tax` exist but no per-permanent commander flag | the §6.2 crown plate cannot be driven | needs a protocol field | #551 |
+| G8 | Face-down permanent | no face-down flag on `Permanent` | a card back can never render on the battlefield | needs a protocol field | #551 |
+| G9 | Attachment kind (aura vs equipment) | `attached_to` has no kind | the cluster connector cannot differentiate | cosmetic; acceptable v1 | #551 |
+| G10 | Basic-land glyph | derived by the client from `type_line` | already shipped as display glue | acceptable | n/a — no gap |
 
 Every "needs a protocol field" row is a contract change:
 `docs/protocol.md`, `rune-protocol`, and the TypeScript mirror in the same PR
@@ -823,4 +823,4 @@ or inconsistent. This is the maintainer's review list.
 | **#531 / #534** (card portions) | stack and inspect surfaces (§4), badge channels (§7) |
 | **#548** | §13.3 — the card-back placeholder key and swap contract |
 | **#536** (convergence gate) | §15's open questions must be answered and §16 approved before convergence is declared |
-| **Protocol work** | §14.1 G1, G3, G6, G7, G8 are contract changes, each needing `docs/protocol.md` + `rune-protocol` + the TS mirror in one PR |
+| **Protocol work** | §14.1 G1, G3, G6, G7, G8 are contract changes, each needing `docs/protocol.md` + `rune-protocol` + the TS mirror in one PR. Filed as **#551** (card state flags: G1, G3, G4, G7, G8, G9) and **#550** (`StackItem` contract: G6). G2 and G5 are not filed. |

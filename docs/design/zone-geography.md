@@ -260,10 +260,14 @@ card, the graveyard's is not.
     suppressed at `tax == 0`. `tax` is what changes the next cast's cost, so it is the
     decision-relevant number.
   - The accessible name carries both: `"… commander, cast 2 times, tax +4"`.
+  - The client **never derives** this value. It renders `commander_tax[].tax` as sent
+    and animates from the previous server value to the new one; it does not compute a
+    tax from `casts`, from a cast count it observed, or from any rules increment.
   - *Baseline note:* the sheet draws bare `3`, `4`, `2`, `1`. Values 3 and 1 are
     impossible for `tax` under CR 903.8 (`tax = 2 × casts`), so the drawn numeral is
-    either `casts` or arbitrary art. The badge's **form** is transcribed; its **semantics**
-    are decided here.
+    either `casts` or arbitrary art. This reasoning identifies which field the baseline
+    drew; it is not a formula the client may evaluate. The badge's **form** is
+    transcribed; its **semantics** are decided here.
 - Absent entirely in non-Commander formats (§5), never an empty unexplained box.
 - Commander actions originate from this slot: it is the source anchor for a commander
   cast and the destination anchor for a commander return.
@@ -500,7 +504,7 @@ stated. Reduced motion snaps every row to its end state with zero layout differe
 | **Return** (gy/exile → hand, battlefield, library) | `zone:s:graveyard` / `zone:s:exile` | destination | the top card lifts clear of the pile, the pile below re-settles to its new top, then the normal travel for the destination | new top appears, counts tick |
 | **Shuffle** | `zone:s:library` | itself | in-place riffle: slivers fan ≤ `0.15u` and re-square, ≤ 300 ms; no card leaves the pile | one settle frame |
 | **Commander return** | battlefield / graveyard / exile | `zone:s:command` | card travels to the command slot; the crown marker strikes once as it lands | commander face appears in slot |
-| **Commander cast** | `zone:s:command` | stack rail slot | the standard cast motion originating **at the command slot**; the tax badge ticks `+N → +N+2` after the card leaves | entry appears, tax badge updates |
+| **Commander cast** | `zone:s:command` | stack rail slot | the standard cast motion originating **at the command slot**; the tax badge ticks from its previous value to the new authoritative `commander_tax` after the card leaves | entry appears, tax badge updates |
 | **Reveal / search staging** | `zone:s:library` | reveal shelf (§10) | cards rise from the library and stage above it before entering the browser or prompt | cards appear on the shelf |
 
 Two corrections to `visual-system.md` §8, recorded in §Conflicts:
@@ -558,16 +562,18 @@ Everything the rack draws today comes from `GameView`:
 
 Gaps, each blocking a specific section above:
 
-| # | Gap | Blocks | Notes |
-| --- | --- | --- | --- |
-| **G1** | `select_from_zone` is only ever emitted with `zone: "hand"` (`view/actions.rs`, `view/requirements.rs`). No prompt names library, graveyard, exile, or command. | §8.2 selection mode for public zones | The client-side contract is zone-agnostic already; the server never exercises it. |
-| **G2** | No library reveal channel. `GameView` carries no `revealed` field and no library card list, so a candidate id from a library prompt resolves to **no `CardView`** — the client cannot render it. | §3.1 revealed top, §10 reveal shelf | Needs a protocol addition (`revealed: ZonePile[]`, or candidate `CardView`s carried on the prompt). Contract change: Rust + TS mirror + `protocol.md`. |
-| **G3** | No format signal in `GameView`. `command`, `commander_tax`, and `commander_damage` are all "omitted when empty", so a Commander game in which every commander is on the battlefield and no tax or damage exists is indistinguishable from a non-Commander game. `CatalogFormat.commander` exists only in the **lobby** catalog. | §5 command-slot presence | The rack must choose between "absent" and "etched crown" with no authoritative answer. Ships as "absent". |
-| **G4** | No action names a destination zone. `ValidAction` carries `subject` (entities) and no zone field. | §8.3 drag/drop onto a pile | Until closed, no pile is a drop target — which is the correct fail-closed behaviour, not a stub. |
-| **G5** | `OpponentView` has `graveyard_size` but no `exile_size`. | nothing — exile contents are public and complete, so the count is `cards.length` | Recorded for completeness; redundant field, not a gap to close. |
+| # | Gap | Blocks | Notes | Tracked by |
+| --- | --- | --- | --- | --- |
+| **G1** | `select_from_zone` is only ever emitted with `zone: "hand"` (`view/actions.rs`, `view/requirements.rs`). No prompt names library, graveyard, exile, or command. | §8.2 selection mode for public zones | The client-side contract is zone-agnostic already; the server never exercises it. | #552 |
+| **G2** | No library reveal channel. `GameView` carries no `revealed` field and no library card list, so a candidate id from a library prompt resolves to **no `CardView`** — the client cannot render it. | §3.1 revealed top, §10 reveal shelf | Needs a protocol addition (`revealed: ZonePile[]`, or candidate `CardView`s carried on the prompt). Contract change: Rust + TS mirror + `protocol.md`. | #552 |
+| **G3** | No format signal in `GameView`. `command`, `commander_tax`, and `commander_damage` are all "omitted when empty", so a Commander game in which every commander is on the battlefield and no tax or damage exists is indistinguishable from a non-Commander game. `CatalogFormat.commander` exists only in the **lobby** catalog. | §5 command-slot presence | The rack must choose between "absent" and "etched crown" with no authoritative answer. Ships as "absent". | #553 |
+| **G4** | No action names a destination zone. `ValidAction` carries `subject` (entities) and no zone field. | §8.3 drag/drop onto a pile | Until closed, no pile is a drop target — which is the correct fail-closed behaviour, not a stub. | #552 |
+| **G5** | `OpponentView` has `graveyard_size` but no `exile_size`. | nothing — exile contents are public and complete, so the count is `cards.length` | Recorded for completeness; redundant field, not a gap to close. | n/a — nothing to close |
 
-None of these are this document's to fix. Each needs its own issue and a protocol PR that
-updates `rune-protocol`, the TypeScript mirror, and `docs/protocol.md` together.
+None of these are this document's to fix. G1, G2, and G4 are tracked by **#552**
+(action destinations and zone prompts); G3 by **#553** (game and seat state).
+Each closes through a protocol PR that updates `rune-protocol`, the TypeScript
+mirror, and `docs/protocol.md` together.
 
 ## 13. Stress proof — DOM node budget
 

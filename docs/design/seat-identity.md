@@ -528,8 +528,8 @@ and their TypeScript mirrors in `clients/web/src/protocol/`.
 | Player name | `GameView.player_names[id]` | `SpectatorView.player_names[id]` | exists; absent key → `Seat N` |
 | Seat accent colour | derived from the index in `seat_order` (`identityAccents.ts`) | same | derived, deterministic |
 | Portrait plate | — | — | **GAP (asset, not protocol)**: assignment is by seat index; production plates are #548 §2b |
-| Identity gems (colours) | `deriveColorIdentity()` over `GameView.command[].cards[].mana_cost` for `player_id == id` | `SpectatorView.command[]` | **GAP**: only while the commander is in the command zone; no per-player colour-identity field |
-| Commander name | `GameView.command[].cards[].name` | `SpectatorView.command[]` | **GAP**: disappears when the commander is on the battlefield or in a graveyard |
+| Identity gems (colours) | `deriveColorIdentity()` over `GameView.command[].cards[].mana_cost` for `player_id == id` | `SpectatorView.command[]` | **GAP**: #553 — only while the commander is in the command zone; no per-player colour-identity field |
+| Commander name | `GameView.command[].cards[].name` | `SpectatorView.command[]` | **GAP**: #553 — disappears when the commander is on the battlefield or in a graveyard |
 
 ### 10.2 Counts and life
 
@@ -584,17 +584,17 @@ and their TypeScript mirrors in `clients/web/src/protocol/`.
 | --- | --- | --- |
 | Named statuses — opponent | `opponents[].statuses: string[]` | exists; **free-form display text only** |
 | Named statuses — spectator | `players[].statuses` | exists |
-| Named statuses — local | — | **GAP**: `SelfView` has only `life` and `library_size` |
+| Named statuses — local | — | **GAP**: #544 — `SelfView` has only `life` and `library_size` |
 | Status rules text / label | — | **GAP**: #544 `PlayerStatus.label` |
 | Poison count | — | **GAP**: #544 `PlayerCounter { kind: "poison" }` |
 | Poison lethal threshold | — | **GAP**: #544 `PlayerCounter.lethal_at` |
 | Other player counters | — | **GAP**: #544 `PlayerCounter[]` |
 | Eliminated — opponent | `opponents[].eliminated` | exists |
 | Eliminated — spectator | `players[].eliminated` | exists |
-| Eliminated — local | — | **GAP**: no `SelfView.eliminated`. `result.losers` only arrives at game over; a `log[]` `player_eliminated` entry is a bounded window and is not reconstructable, so it MUST NOT be the state source |
-| Disconnected — any seat | — | **GAP**: the server holds a seat open across a disconnect (`room/broadcast.rs`) but publishes no per-seat connection field |
-| AI-controlled seat marker | — | **GAP**: `SeatView.ai` exists in the **lobby** only and is not carried into `GameView` |
-| Teams / format designations | — | **GAP**: not modelled; `ui-requirements.md` lists them as "when supported" |
+| Eliminated — local | — | **GAP**: #553 — no `SelfView.eliminated`. `result.losers` only arrives at game over; a `log[]` `player_eliminated` entry is a bounded window and is not reconstructable, so it MUST NOT be the state source |
+| Disconnected — any seat | — | **GAP**: #553 — the server holds a seat open across a disconnect (`room/broadcast.rs`) but publishes no per-seat connection field |
+| AI-controlled seat marker | — | **GAP**: #553 — `SeatView.ai` exists in the **lobby** only and is not carried into `GameView` |
+| Teams / format designations | — | **GAP**: #553 — not modelled; `ui-requirements.md` lists them as "when supported" |
 
 ### 10.7 Presentation-only inputs (never the displayed value)
 
@@ -620,11 +620,11 @@ slot — no placeholder, no zero, no "unknown".
 | Poison near-lethal warning shape | §5.1-style shape escalation | `PlayerCounter.lethal_at` — a **server-owned** threshold. The client MUST NOT hard-code 10 | #544 |
 | Local player's named statuses | §5.6 | `statuses` (or #544's `PlayerStatus[]`) on `SelfView` | #544 |
 | Status labels and descriptions in the popover | §5.6, §9 | `PlayerStatus.label` — today `statuses` is a bare string with no authored label | #544 |
-| Disconnected link glyph | §2, §6.4 | a per-seat connection flag on `OpponentView`/`SelfView`/`SpectatorView.players` | none filed |
-| Eliminated treatment on the **local** cluster | §2, §6.5 | `eliminated` on `SelfView` | none filed |
-| Stable identity gems | §1.2 el. 6, §10.1 | a per-player colour identity (or commander identity) that survives the commander leaving the command zone | none filed |
-| Commander name on the nameplate | §5.5 | as above | none filed |
-| AI-seat marker | §10.6 | `ai` carried from `SeatView` into the in-game views | none filed |
+| Disconnected link glyph | §2, §6.4 | a per-seat connection flag on `OpponentView`/`SelfView`/`SpectatorView.players` | #553 |
+| Eliminated treatment on the **local** cluster | §2, §6.5 | `eliminated` on `SelfView` | #553 |
+| Stable identity gems | §1.2 el. 6, §10.1 | a per-player colour identity (or commander identity) that survives the commander leaving the command zone | #553 |
+| Commander name on the nameplate | §5.5 | as above | #553 |
+| AI-seat marker | §10.6 | `ai` carried from `SeatView` into the in-game views | #553 |
 
 **Standing prohibition.** Until a structured field exists, the client MUST NOT:
 
@@ -634,8 +634,9 @@ slot — no placeholder, no zero, no "unknown".
 3. infer a threshold, a lethality, or an elimination from any of the above;
 4. show a zero or an "unknown" chip in a dormant slot.
 
-The design is reserved so that landing #544 is a data wire-up, not a redesign:
-the geometry, placement, hit targets, and escalation shapes above do not change.
+The design is reserved so that landing #544 (structured player counters and
+statuses) and #553 (game and seat state) is a data wire-up, not a redesign: the
+geometry, placement, hit targets, and escalation shapes above do not change.
 
 ---
 
@@ -742,13 +743,12 @@ Recorded here rather than edited into the other documents.
 7. **Commander identity is only knowable while the commander is in the command
    zone.** Both the identity gems and the nameplate's commander line flicker
    when the commander is cast. A per-player commander/colour-identity field
-   would fix both; no issue is filed.
+   would fix both; tracked by #553.
 
 8. **Local player state is systematically thinner than opponent state.**
    `SelfView` carries `life` and `library_size` only, while `OpponentView`
    carries `hand_size`, `graveyard_size`, `statuses`, and `eliminated`. #544
-   covers statuses/counters; `eliminated` on `SelfView` is not covered by any
-   open issue.
+   covers statuses/counters; `eliminated` on `SelfView` is covered by #553.
 
 9. **Browser verification.** Nothing in this document has been validated in a
    real browser. Ring bloom against the environment plates, the 44 px rects at

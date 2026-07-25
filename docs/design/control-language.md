@@ -720,17 +720,17 @@ The normative mapping. Every interactive state must appear here with a concrete
 These are **protocol issues**. No client-side logic may paper over any of them;
 until each has a server shape, the affordance does not render.
 
-| Gap | Interaction the baselines or the issue imply | Why it has no representation | Disposition |
-| --- | --- | --- | --- |
-| **GAP-1** | **UNDO in the neutral state** (control-ui panel 6 draws the pill with nothing selected) | No `undo`/takeback exists in `valid_actions`, and there is no client→server message for one. `ChooseAction` is final. | The pill renders **only** as the local retract-one-step control (§8). A real takeback needs an engine + protocol decision. |
-| **GAP-2** | **Contextual primary label "RESOLVE"** (zones panel 10) | `ValidAction.label` for `pass_priority` is fixed server-side; deciding that a pass resolves the stack top is a rules judgment the client may not make. | File a protocol/server issue: label `pass_priority` contextually. Client renders `label` verbatim meanwhile. |
-| **GAP-3** | **"Advance / skip to my next stop"** (a forward chevron reads as an advance) | No `pass_until`, `advance_phase`, or hold-priority action exists; ADR 0020 defers auto-yield/hold to M6. | Chevron is a disclosure only (D4). Do not wire it to a game action. |
-| **GAP-4** | **"Disabled controls explain why"** (issue #543) | Only `PromptOption.requires` carries a server-stated reason. There is no general `ValidAction` unavailability reason, because unavailable actions are simply absent. | Only the `requires` case renders disabled. Everything else does not render. |
-| **GAP-5** | **Pending-server / in-flight acknowledgement** | `ChooseAction` has no correlation id and the server sends no ack — only the next full view. A client cannot tell "my action landed" from "someone else's broadcast". | The pending lock is local, ≤ 5 s, non-load-bearing (D13). A real in-flight state needs a protocol ack. |
-| **GAP-6** | **Numeric value prompts (X, divided damage, pile splits)** | The prompt kinds are `option`, `select_from_zone`, `order` only. | No control is designed. Adding one is a protocol change (`ui-requirements.md` §Prompt system). |
-| **GAP-7** | **Alternative cost / mana payment choice** | No prompt kind carries a cost choice; ADR 0025 leaves server-computed payment plans open on the roadmap. | Mana stays the deliberate select-then-activate path per land. |
-| **GAP-8** | **Hold priority / full control / auto-yield toggles** | ADR 0020 defers these to M6; only `set_stops` exists. | Only per-step stops render. |
-| **GAP-9** | **Takeback, draw offer, simultaneous multiplayer decisions** | No server or protocol support (`ui-requirements.md` §Session and game lifecycle). | Out of scope; no control. |
+| Gap | Interaction the baselines or the issue imply | Why it has no representation | Disposition | Tracked by |
+| --- | --- | --- | --- | --- |
+| **GAP-1** | **UNDO in the neutral state** (control-ui panel 6 draws the pill with nothing selected) | No `undo`/takeback exists in `valid_actions`, and there is no client→server message for one. `ChooseAction` is final. | The pill renders **only** as the local retract-one-step control (§8). A real takeback needs an engine + protocol decision. | #554 (recorded there as noted, not proposed) |
+| **GAP-2** | **Contextual primary label "RESOLVE"** (zones panel 10) | `ValidAction.label` for `pass_priority` is fixed server-side; deciding that a pass resolves the stack top is a rules judgment the client may not make. | Filed as a protocol/server issue: label `pass_priority` contextually. Client renders `label` verbatim meanwhile. | #554 |
+| **GAP-3** | **"Advance / skip to my next stop"** (a forward chevron reads as an advance) | No `pass_until`, `advance_phase`, or hold-priority action exists; ADR 0020 defers auto-yield/hold to M6. | Chevron is a disclosure only (D4). Do not wire it to a game action. | #554 |
+| **GAP-4** | **"Disabled controls explain why"** (issue #543) | Only `PromptOption.requires` carries a server-stated reason. There is no general `ValidAction` unavailability reason, because unavailable actions are simply absent. | Only the `requires` case renders disabled. Everything else does not render. | #554 (recorded there as noted, not proposed) |
+| **GAP-5** | **Pending-server / in-flight acknowledgement** | `ChooseAction` has no correlation id and the server sends no ack — only the next full view. A client cannot tell "my action landed" from "someone else's broadcast". | The pending lock is local, ≤ 5 s, non-load-bearing (D13). A real in-flight state needs a protocol ack. | #554 |
+| **GAP-6** | **Numeric value prompts (X, divided damage, pile splits)** | The prompt kinds are `option`, `select_from_zone`, `order` only. | No control is designed. Adding one is a protocol change (`ui-requirements.md` §Prompt system). | #554 |
+| **GAP-7** | **Alternative cost / mana payment choice** | No prompt kind carries a cost choice; ADR 0025 leaves server-computed payment plans open on the roadmap. | Mana stays the deliberate select-then-activate path per land. | #554 |
+| **GAP-8** | **Hold priority / full control / auto-yield toggles** | ADR 0020 defers these to M6; only `set_stops` exists. | Only per-step stops render. | not filed — ADR 0020 owns the deferral |
+| **GAP-9** | **Takeback, draw offer, simultaneous multiplayer decisions** | No server or protocol support (`ui-requirements.md` §Session and game lifecycle). | Out of scope; no control. | #554 for takeback and draw offer (noted, not proposed); simultaneous decisions not filed |
 
 ---
 
@@ -834,9 +834,12 @@ former would be a new derived value the client may not compute.
 - **#533 / #534 / #535 / #499** implement against this document. Implementation
   must not invent direct-manipulation behaviour per component (issue #543's
   closure gate).
-- **Protocol issues** to file from §13.1: GAP-1 (takeback), GAP-2 (contextual
-  `pass_priority` label), GAP-3 (advance/skip), GAP-5 (submission ack), GAP-6
-  (numeric prompts), GAP-7 (cost choice).
+- **Protocol issue** filed from §13.1: **#554** (action and prompt contract),
+  covering GAP-2 (contextual `pass_priority` label), GAP-3 (advance/skip),
+  GAP-5 (submission ack), GAP-6 (numeric prompts), and GAP-7 (cost choice) as
+  proposals, and recording GAP-1/GAP-9 (takeback, draw offer) and GAP-4
+  (general unavailability reason) as noted-not-proposed. GAP-8 stays with
+  ADR 0020's M6 deferral.
 - **ADR amendment** for C5 (the action home's location) before the dock moves.
 - **Browser verification** of real pointer/touch thresholds, hit-box overlap at
   the tablet floor, and the drag snap-back arc belongs to the maintainer;
