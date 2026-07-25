@@ -19,10 +19,17 @@
  *
  * ## The three invariants
  *
- * **I1 — containment.** Every shell region is inside the safe viewport, and no
- * two regions overlap. {@link shellBands} reports them as rects so this is
- * provable rather than asserted by eye. A card, an identity crest, an action, or
- * the battlefield may never be covered by a fixed region.
+ * **I1 — containment.** Every chrome region is inside the safe viewport, no two
+ * chrome regions overlap each other, and none of them overlaps the **staging
+ * box** the plane carves its slots inside. {@link shellBands} reports them all
+ * as rects so this is provable rather than asserted by eye.
+ *
+ * Under ADR 0032 the scene spans the whole viewport and chrome floats over it,
+ * so "no region overlaps another" can no longer mean "no rects intersect" — the
+ * hand and the cluster necessarily sit over the scene. What it means now is
+ * that no chrome region may cover a *staged object*: a card, a crest, an
+ * action, or a path endpoint. That is exactly what the staging box enforces,
+ * which is why it is a band here and an input to `stagePlane` there.
  *
  * **I2 — the hand fits its band.** The hand band is tall enough for a full
  * `hand`-tier card *plus its largest lift* ({@link SHELL.handLiftMax}, the
@@ -31,16 +38,17 @@
  * that clips it. See {@link handFanFraction} / {@link handFanSpacing}.
  *
  * **I3 — the ladder yields to decisions.** A pending server decision outranks
- * *every* fixed shell region, including the top bar. Only layers the player
+ * *every* chrome region. Only layers the player
  * explicitly invoked and can dismiss without answering (menus, inspect, zone
  * browser, settings) may sit above it, plus the terminal game-over panel and the
  * pointer-transparent toast layer.
  *
- * Later work moves the regions around — #531 recomposes the battlefield, #533
- * rebuilt the hand, #534 removes the dashboard panels and relocates the action
- * home. They should keep these three invariants and re-point at these constants;
- * the geometry is deliberately expressed as *named bands*, not as a fixed grid,
- * so a recomposition changes {@link shellBands} rather than scattering numbers.
+ * The geometry is deliberately expressed as *named bands* rather than a fixed
+ * grid, which is what let #531, #533, and #534 recompose the shell by changing
+ * {@link shellBands} instead of scattering numbers. #534 was the largest of
+ * those: it deleted the permanent `top`, `rail`, `identity`, and `decisions`
+ * bands outright (ADR 0032) and replaced them with the scene, two floating
+ * chrome regions, and the staging box that keeps them off the board.
  *
  * ## What #533 left for #534
  *
@@ -65,6 +73,7 @@
  */
 import type { CSSProperties } from 'react';
 import { TIER } from '../../tokens';
+import { CONTROL } from '../controls/controlTokens';
 import type { Viewport } from '../hooks/useViewport';
 
 /**
@@ -81,20 +90,12 @@ import type { Viewport } from '../hooks/useViewport';
  * Two caveats that matter when adding a layer:
  *
  * - A region that carries a `z-index` **creates a stacking context** (grid items
- *   do so even at `position: static`). Everything inside `.top`, `.scene`,
- *   `.rail`, and `.bottom` is therefore trapped at that region's rung — a
- *   `position: fixed` popover rendered inside the top bar cannot climb above
- *   `shellTop`. Anything that must outrank a shell region has to be a sibling of
- *   those regions, as the decision sheet and the overlays are.
- *
- *   Known consequence, accepted here: the game-menu drawer and the phase-strip
- *   expansion are rendered *inside* the top bar, so they are pinned at
- *   `shellTop` and a decision sheet opened at the same time sits above them.
- *   That is the right trade while chrome is where ADR 0023 put it — a decision
- *   the server is waiting on must never be covered, and the menu is not a
- *   required choice. When #534 relocates the chrome, lift those two popovers to
- *   siblings of the regions and give them the `popover` rung they already ask
- *   for, and the collision disappears.
+ *   do so even at `position: static`). Everything inside `.scene`, `.hand`, and
+ *   `.cluster` is therefore trapped at that region's rung. Anything that must
+ *   outrank a chrome region has to be a **sibling** of those regions, as the
+ *   decision sheet, the decision plaque, the stack stage, and the overlays all
+ *   are — `LiveMatchTable` mounts them at the shell root for exactly this
+ *   reason, and `LiveMatchTable.occlusion.test.tsx` asserts it.
  * - The plane's own layers (`live-plane.module.css`) are scoped by
  *   `isolation: isolate` on the plane host and are intentionally *not* on this
  *   ladder: they order objects within the scene only.
@@ -102,11 +103,16 @@ import type { Viewport } from '../hooks/useViewport';
 export const LAYER = {
   /** The battlefield plane and everything staged on it. */
   scene: 1,
-  /** Fixed shell regions: the rail and the bottom shell. */
+  /** Contextual chrome that floats over the scene: the hand and the cluster. */
   shell: 10,
   /** The presented hand during a forced decision — raised within its own band. */
   shellRaised: 12,
-  /** The top status bar: the highest *permanent* region. */
+  /**
+   * The highest chrome rung. ADR 0023's permanent top bar is gone (#534); what
+   * sits here now is chrome that must outrank the hand and the cluster — the
+   * stack stage's history surface handle and the transient activity ticker —
+   * while still yielding to a decision.
+   */
   shellTop: 20,
   /**
    * A pending decision (the decision sheet). Above every fixed region — a
@@ -139,24 +145,9 @@ export const SHELL = {
   compactBreakpoint: 900,
   /** The interactive-target floor (presentation-budgets §Accessibility). */
   minHit: 44,
-  /** Top status-bar height, per composition. */
-  topH: 56,
-  topHCompact: 54,
-  /** The right rail's width (full composition only; compact collapses it). */
-  railW: 248,
-  /** The receiver identity column's width, per composition. */
-  identityW: 220,
-  identityWCompact: 136,
-  /** The decisions column: prompt strip + action dock (full composition). */
-  decisionsMinW: 252,
-  decisionsMaxW: 330,
-  /** The hand band's own minimum width inside the full composition. */
-  handMinW: 220,
   /** The hand size the band is sized to keep at the 44 px floor — an opening
    * hand. Larger hands are the layout model's fan-paging case (#533). */
   openingHand: 7,
-  /** The compact composition's controls row (identity + decisions, side by side). */
-  controlsHCompact: 112,
   /** A `hand`-tier card's footprint — the same token the DOM card renderer uses. */
   handCardW: TIER.hand.w,
   handCardH: TIER.hand.h,
@@ -192,19 +183,53 @@ export interface ShellRect {
   h: number;
 }
 
-/** The named, non-overlapping regions of the fixed shell. */
+/**
+ * The shell's regions under [ADR 0032](../../../../docs/decisions/0032-contextual-shell-anatomy.md).
+ *
+ * The permanent `top`, `rail`, `identity`, and `decisions` reservations are
+ * gone: the top status bar, the right stack/activity rail, the receiver's
+ * identity column, and the bottom decision dock were carved tracks that
+ * existed whether or not they had anything to say. What remains is the scene,
+ * two chrome regions that overlay it, and the box the scene may actually stage
+ * objects in.
+ */
 export interface ShellBands {
   compact: boolean;
   /** The safe viewport the shell lays out inside (browser insets removed). */
   viewport: ShellRect;
-  top: ShellRect;
+  /**
+   * The battlefield. It **is** the viewport now — the arena is visible behind
+   * the controls rather than ending where they begin.
+   */
   scene: ShellRect;
-  /** Absent on the compact composition, where the rail collapses to sheets. */
-  rail?: ShellRect;
-  bottom: ShellRect;
-  identity: ShellRect;
+  /** The receiver's hand fan: a bottom band, left of the control column. */
   hand: ShellRect;
-  decisions: ShellRect;
+  /** The lower-right control cluster: primary, utilities, phase plaque. */
+  cluster: ShellRect;
+  /**
+   * The chrome-free rect the plane carves its slots inside
+   * (`plane/types.ts`'s `PlaneViewport.safe`). The scene spans the whole
+   * viewport; only *staging* is inset, so no seat, card, crest, or path
+   * endpoint is ever laid under a control.
+   */
+  staging: ShellRect;
+}
+
+/** What contextual chrome is currently standing on the scene. */
+export interface ShellOccupancy {
+  /**
+   * Whether the stack stage is drawn — i.e. the stack is non-empty. It claims
+   * the right-hand column above the cluster (`control-language.md` §4.4/D7:
+   * the stack rail is that column and the cluster sits at its foot).
+   *
+   * This is an *input to the geometry* rather than a constant, because #534
+   * requires that an "empty stack/log consumes no permanent battlefield
+   * width". Reserving the column unconditionally would be simpler and would
+   * fail that criterion; the cost is that the plane re-stages when the first
+   * object hits the stack, which the layout model already treats as ordinary
+   * re-staging.
+   */
+  stackPresent?: boolean;
 }
 
 /** Whether a viewport takes the compact composition. */
@@ -221,32 +246,24 @@ export function handBandHeight(): number {
   return SHELL.handFloor + SHELL.handLiftMax + SHELL.handCardH + SHELL.handHeadroom;
 }
 
-/** The bottom shell's height for a composition. */
-export function bottomShellHeight(compact: boolean): number {
-  return compact ? SHELL.controlsHCompact + handBandHeight() : handBandHeight();
+/**
+ * The control cluster's height: the stacked primary, the icon/utility row, and
+ * the phase plaque, with a gap between each (`control-language.md` §3.3).
+ *
+ * Derived rather than written down, so growing the plaque or the primary moves
+ * the staging box that clears it instead of quietly overlapping the board.
+ */
+export function clusterHeight(): number {
+  return CONTROL.hPrimary + CONTROL.clusterGap + CONTROL.hit + CONTROL.clusterGap + CONTROL.plaqueH;
 }
 
 /**
- * Resolve the full composition's bottom-shell columns exactly as CSS grid does
- * for `identityW / minmax(handMinW, 1fr) / minmax(decisionsMinW, decisionsMaxW)`:
- * the decisions track grows to its limit only with width the hand does not need.
+ * How much of the viewport's bottom edge chrome stands on: whichever of the
+ * hand fan and the inset control cluster reaches higher. The staging box stops
+ * here, so the receiver's band is never laid under either.
  */
-function fullBottomColumns(width: number): { identity: number; hand: number; decisions: number } {
-  const free = Math.max(0, width - SHELL.identityW);
-  // The decisions column yields to the hand's accessibility floor before it
-  // takes its maximum width: an opening hand must keep 44 px of every card
-  // exposed (presentation-budgets §Accessibility), and the `hand`-tier card is
-  // now the 116 px portrait of card-representation §8.1. Above ~1280 the
-  // subtraction is slack and the column still reaches `decisionsMaxW`.
-  const decisions = Math.min(
-    SHELL.decisionsMaxW,
-    Math.max(SHELL.decisionsMinW, free - handBandWidthFor(SHELL.openingHand)),
-  );
-  return {
-    identity: SHELL.identityW,
-    hand: Math.max(SHELL.handMinW, free - decisions),
-    decisions,
-  };
+export function bottomChromeHeight(): number {
+  return Math.max(handBandHeight(), clusterHeight() + 2 * CONTROL.clusterMargin);
 }
 
 /**
@@ -259,61 +276,61 @@ function fullBottomColumns(width: number): { identity: number; hand: number; dec
 export function shellBands(
   viewport: Pick<Viewport, 'width' | 'height'>,
   inset: { top?: number; right?: number; bottom?: number; left?: number } = {},
+  occupancy: ShellOccupancy = {},
 ): ShellBands {
   const left = inset.left ?? 0;
   const top = inset.top ?? 0;
   const w = Math.max(0, viewport.width - left - (inset.right ?? 0));
   const h = Math.max(0, viewport.height - top - (inset.bottom ?? 0));
   const compact = isCompactShell(viewport);
-  const topH = compact ? SHELL.topHCompact : SHELL.topH;
-  const bottomH = bottomShellHeight(compact);
-  const railW = compact ? 0 : SHELL.railW;
-  const sceneW = w - railW;
-  const sceneH = Math.max(0, h - topH - bottomH);
-  const bottomY = top + topH + sceneH;
+  const margin = CONTROL.clusterMargin;
+
+  // The scene is the whole safe viewport: ADR 0032's first consequence is that
+  // cards get the viewport back, and #534 asks for the arena to remain visible
+  // *behind* the controls rather than stopping where they start.
+  const scene: ShellRect = { x: left, y: top, w, h };
+
+  // The control cluster: a fixed-size column inset from the bottom-right
+  // corner. §3.3 pins it in CSS px (D1's scale anchor), never as a fraction, so
+  // it is the same physical size on every viewport.
+  const clusterW = Math.min(CONTROL.wCluster, Math.max(0, w - 2 * margin));
+  const clusterH = clusterHeight();
+  const cluster: ShellRect = {
+    x: left + w - margin - clusterW,
+    y: top + h - margin - clusterH,
+    w: clusterW,
+    h: clusterH,
+  };
+
+  // The hand fan keeps the bottom edge but yields the cluster's column, so the
+  // two never overlap — on the compact composition it yields the whole width
+  // and sits above the cluster instead, because a phone has no room for both
+  // side by side.
   const handH = handBandHeight();
+  const hand: ShellRect = compact
+    ? { x: left, y: cluster.y - margin - handH, w, h: handH }
+    : {
+        x: left,
+        y: top + h - handH,
+        w: Math.max(0, w - clusterW - 2 * margin),
+        h: handH,
+      };
 
-  const bands: ShellBands = {
-    compact,
-    viewport: { x: left, y: top, w, h },
-    top: { x: left, y: top, w, h: topH },
-    scene: { x: left, y: top + topH, w: sceneW, h: sceneH },
-    bottom: { x: left, y: bottomY, w: sceneW, h: bottomH },
-    // Filled in per composition below.
-    identity: { x: left, y: bottomY, w: 0, h: 0 },
-    hand: { x: left, y: bottomY, w: 0, h: 0 },
-    decisions: { x: left, y: bottomY, w: 0, h: 0 },
+  // The staging box. Its bottom clears whichever chrome reaches higher; its
+  // right edge yields the stack stage's column ONLY while the stack is drawn,
+  // so an empty stack costs the battlefield nothing (#534's own criterion).
+  const bottomInset = compact
+    ? Math.max(top + h - hand.y, handH)
+    : Math.max(bottomChromeHeight(), handH);
+  const rightInset = occupancy.stackPresent ? clusterW + 2 * margin : 0;
+  const staging: ShellRect = {
+    x: left,
+    y: top,
+    w: Math.max(0, w - rightInset),
+    h: Math.max(0, h - bottomInset),
   };
 
-  if (compact) {
-    // Two rows: a controls row (identity beside the decisions), then the hand
-    // band across the full width. The hand never shares a cell with the
-    // decisions column — the shipped composition overlapped them, and the
-    // opaque decisions panel covered most of the fan on phone portrait.
-    const controlsH = SHELL.controlsHCompact;
-    const identityW = Math.min(SHELL.identityWCompact, sceneW);
-    bands.identity = { x: left, y: bottomY, w: identityW, h: controlsH };
-    bands.decisions = {
-      x: left + identityW,
-      y: bottomY,
-      w: Math.max(0, sceneW - identityW),
-      h: controlsH,
-    };
-    bands.hand = { x: left, y: bottomY + controlsH, w: sceneW, h: handH };
-    return bands;
-  }
-
-  const cols = fullBottomColumns(sceneW);
-  bands.rail = { x: left + sceneW, y: top + topH, w: railW, h: h - topH };
-  bands.identity = { x: left, y: bottomY, w: cols.identity, h: bottomH };
-  bands.hand = { x: left + cols.identity, y: bottomY, w: cols.hand, h: handH };
-  bands.decisions = {
-    x: left + cols.identity + cols.hand,
-    y: bottomY,
-    w: cols.decisions,
-    h: bottomH,
-  };
-  return bands;
+  return { compact, viewport: { x: left, y: top, w, h }, scene, hand, cluster, staging };
 }
 
 /** Whether two rects share any area (touching edges do not count). */
@@ -398,17 +415,16 @@ export function handCardBounds(t: number, bandWidth: number): { left: number; ri
  * fallback: the shell is inset by them, so no region can ever be hidden under a
  * notch, a home indicator, or a collapsing mobile URL bar.
  */
-export function shellStyleVars(viewport: Pick<Viewport, 'width'>): CSSProperties {
-  const compact = isCompactShell(viewport);
+export function shellStyleVars(viewport: Pick<Viewport, 'width' | 'height'>): CSSProperties {
+  const bands = shellBands(viewport);
   return {
-    '--shell-top-h': `${compact ? SHELL.topHCompact : SHELL.topH}px`,
-    '--shell-rail-w': `${SHELL.railW}px`,
-    '--shell-bottom-h': `${bottomShellHeight(compact)}px`,
-    '--shell-controls-h': `${SHELL.controlsHCompact}px`,
-    '--shell-identity-w': `${compact ? SHELL.identityWCompact : SHELL.identityW}px`,
-    '--shell-decisions-min-w': `${SHELL.decisionsMinW}px`,
-    '--shell-decisions-max-w': `${SHELL.decisionsMaxW}px`,
-    '--shell-hand-min-w': `${SHELL.handMinW}px`,
+    // The two chrome regions, published as rects rather than as grid tracks:
+    // under ADR 0032 they overlay the scene instead of carving it, so the
+    // stylesheet positions them absolutely from these.
+    '--shell-hand-w': `${bands.hand.w}px`,
+    '--shell-cluster-w': `${bands.cluster.w}px`,
+    '--shell-cluster-h': `${bands.cluster.h}px`,
+    '--shell-bottom-chrome-h': `${bottomChromeHeight()}px`,
     '--shell-hand-h': `${handBandHeight()}px`,
     '--shell-hand-card-w': `${SHELL.handCardW}px`,
     '--shell-hand-card-h': `${SHELL.handCardH}px`,

@@ -27,6 +27,13 @@ interface Props {
   onShowSettings?: () => void;
   /** Open the card-art settings overlay (ADR 0024); absent hides the item. */
   onShowArtSettings?: () => void;
+  /**
+   * Controlled open state. Supplied, this component renders the drawer only and
+   * the caller owns the handle — see the note in the body.
+   */
+  open?: boolean;
+  /** Report a requested open/close while controlled. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function GameMenu({
@@ -35,8 +42,22 @@ export function GameMenu({
   onShowShortcuts,
   onShowSettings,
   onShowArtSettings,
+  open: controlledOpen,
+  onOpenChange,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  // Controlled when the caller owns the handle. Under ADR 0032 the control
+  // cluster's circular icon IS the menu handle (control-language D5), so the
+  // drawer's trigger lives there and this component renders the drawer only —
+  // which is also how §15's C7 duplication ("one of them should go") is
+  // resolved: the cluster's icon stays, this component's own button does not
+  // render beside it.
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const controlled = controlledOpen !== undefined;
+  const open = controlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = (next: boolean): void => {
+    if (controlled) onOpenChange?.(next);
+    else setUncontrolledOpen(next);
+  };
   // Concede arms a confirm step; it disarms whenever the drawer closes.
   const [confirming, setConfirming] = useState(false);
 
@@ -49,24 +70,32 @@ export function GameMenu({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') close();
+      // Not `close()`: it closes over `setOpen`, which is rebuilt every render
+      // now that the drawer can be controlled, and depending on it would
+      // re-bind this listener on every render for no behavioural gain.
+      if (event.key !== 'Escape') return;
+      if (controlled) onOpenChange?.(false);
+      else setUncontrolledOpen(false);
+      setConfirming(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open]);
+  }, [open, controlled, onOpenChange]);
 
   return (
     <div className={s.gameMenu}>
-      <button
-        type="button"
-        className={s.menuButton}
-        aria-label="Game menu"
-        aria-expanded={open}
-        data-testid="game-menu-button"
-        onClick={() => (open ? close() : setOpen(true))}
-      >
-        ☰
-      </button>
+      {!controlled && (
+        <button
+          type="button"
+          className={s.menuButton}
+          aria-label="Game menu"
+          aria-expanded={open}
+          data-testid="game-menu-button"
+          onClick={() => (open ? close() : setOpen(true))}
+        >
+          ☰
+        </button>
+      )}
       {open && (
         <>
           {/* Click-away scrim: closes without acting. Sits under the drawer. */}

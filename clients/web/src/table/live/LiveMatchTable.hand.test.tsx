@@ -335,16 +335,22 @@ describe('first, middle, and last are selectable at 7, 12, and 20 cards', () => 
     seed(handOf(20));
     render(<LiveMatchTable />);
 
-    // Page 1, where both controls are live: a disabled control is correctly
-    // outside the focus order, so the middle page is where the full walk is.
+    // Step off page 1 so the prev control is live. How many pages a hand takes
+    // depends on the band's width, and #534 widened that band — the hand now
+    // yields only the cluster's column instead of the old identity and decision
+    // columns — so the page count is derived here rather than assumed. A
+    // DISABLED control is correctly outside the focus order, which is the
+    // property this walk actually depends on.
     fireEvent.click(screen.getByTestId('hand-page-next'));
     const bandRect = shellBands({ width: 1280, height: 720 }).hand;
     const regions = collectFocusRegions(document, new Map([['hand', bandRect]]));
     const hand = regions.find((region) => region.id === 'hand')!;
-    // prev control, then every drawn card, then next control — in that order.
-    expect(hand.items[0]).toBe(screen.getByTestId('hand-page-prev'));
-    expect(hand.items[hand.items.length - 1]).toBe(screen.getByTestId('hand-page-next'));
-    expect(hand.items).toHaveLength(drawnCards().length + 2);
+    const prev = screen.getByTestId<HTMLButtonElement>('hand-page-prev');
+    const next = screen.getByTestId<HTMLButtonElement>('hand-page-next');
+    expect(prev.disabled, 'stepped off the first page').toBe(false);
+    // Live prev control, then every drawn card, then the next control if live.
+    const expected = [prev, ...drawnCards(), ...(next.disabled ? [] : [next])];
+    expect(hand.items).toEqual(expected);
 
     let active: Element | null = hand.items[0]!;
     const walked: (Element | null)[] = [active];
@@ -377,9 +383,13 @@ describe('selection lifts and straightens the subject', () => {
     const card = screen.getByTestId('live-hand-card-h3');
     fireEvent.click(card);
     expect(screen.getByTestId('live-hand-card-h3').getAttribute('aria-pressed')).toBe('true');
-    // The action renders on the entity's echo in the one action home, never as
-    // a per-card popup (ADR 0004); the whole fan stays mounted underneath.
-    expect(screen.getByTestId('action-bar')).toBeTruthy();
+    // The action renders in the one action home — now the lower-right control
+    // cluster (ADR 0032) — never as a per-card popup (ADR 0004). One selected
+    // card with exactly one offered action is §4.2 rule 3, so it fills the
+    // PRIMARY slot rather than the equal-weight echo, and its label is the
+    // server's own. The whole fan stays mounted underneath.
+    expect(screen.getByTestId('control-primary').textContent).toContain('Cast');
+    expect(screen.queryByTestId('control-echo')).toBeNull();
     expect(drawnCards()).toHaveLength(7);
     fireEvent.click(screen.getByTestId('live-hand-card-h3'));
     expect(choose).toHaveBeenCalledWith(expect.objectContaining({ id: 'cast_h3' }));

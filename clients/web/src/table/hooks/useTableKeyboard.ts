@@ -12,7 +12,6 @@
 import { useEffect } from 'react';
 import type { EntityId, GameView, PlayerId, TargetChoice, ValidAction } from '../../protocol';
 import type { BrowsableZone } from '../PanelChrome';
-import type { RailSheet } from '../TopBar';
 import type { Rect } from '../scene';
 import type { TargetingSession } from '../targeting';
 import type { MultiSelectSession } from '../multiSelect';
@@ -29,7 +28,6 @@ export interface TableKeyboardParams {
   inspectedId: EntityId | null;
   peekId: EntityId | null;
   browsing: { playerId: PlayerId; zone: BrowsableZone } | null;
-  railSheet: RailSheet | null;
   focusedTileId: PlayerId | null;
   mainRef: React.RefObject<HTMLElement>;
   focusGeometryRef: React.MutableRefObject<Map<string, Rect>>;
@@ -41,7 +39,6 @@ export interface TableKeyboardParams {
   setBrowsing: React.Dispatch<
     React.SetStateAction<{ playerId: PlayerId; zone: BrowsableZone } | null>
   >;
-  setRailSheet: React.Dispatch<React.SetStateAction<RailSheet | null>>;
   setFocusedTileId: React.Dispatch<React.SetStateAction<PlayerId | null>>;
   setShowHelp: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSettings: React.Dispatch<React.SetStateAction<boolean>>;
@@ -60,7 +57,6 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
     inspectedId,
     peekId,
     browsing,
-    railSheet,
     focusedTileId,
     mainRef,
     focusGeometryRef,
@@ -70,7 +66,6 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
     setInspectedId,
     setPeekId,
     setBrowsing,
-    setRailSheet,
     setFocusedTileId,
     setShowHelp,
     setShowSettings,
@@ -91,7 +86,6 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
       else if (inspectedId !== null) setInspectedId(null);
       else if (peekId !== null) setPeekId(null);
       else if (browsing) setBrowsing(null);
-      else if (railSheet) setRailSheet(null);
       else if (multiSelect) setMultiSelect(null);
       else if (targeting) setTargeting(null);
       else if (focusedTileId !== null) setFocusedTileId(null);
@@ -108,7 +102,6 @@ export function useTableKeyboard(params: TableKeyboardParams): void {
     inspectedId,
     peekId,
     browsing,
-    railSheet,
     multiSelect,
     targeting,
     focusedTileId,

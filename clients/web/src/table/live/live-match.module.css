@@ -1,5 +1,13 @@
 /*
- * The fixed shell's geometry (ADR 0023 anatomy; issue #528 viewport contract).
+ * The contextual shell's geometry (ADR 0032 anatomy; issue #528 viewport
+ * contract; issue #534 removed the carved regions).
+ *
+ * The shell is no longer a grid of permanent tracks. The scene fills the safe
+ * viewport and the two chrome regions — the hand fan and the lower-right
+ * control cluster — are positioned over it from the rects `shellLayout.ts`
+ * publishes. The permanent top bar, right rail, identity column, and decision
+ * dock are gone: each existed whether or not it had anything to say, and every
+ * approved baseline draws an open arena with small edge-anchored controls.
  *
  * Every track size, offset, and z-index below is a custom property — the
  * dimensional ones published by `shellLayout.ts` (`shellStyleVars`) onto this
@@ -16,10 +24,7 @@
  */
 .shell {
   position: relative;
-  display: grid;
   box-sizing: border-box;
-  grid-template-rows: var(--shell-top-h) minmax(0, 1fr) var(--shell-bottom-h);
-  grid-template-columns: minmax(0, 1fr) var(--shell-rail-w);
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -32,72 +37,17 @@
   background: var(--rune-table);
 }
 
-.top {
-  z-index: var(--rune-z-shell-top);
-  grid-row: 1;
-  grid-column: 1 / -1;
-  min-width: 0;
-  min-height: 0;
-}
-
-.scene {
-  z-index: var(--rune-z-scene);
-  grid-row: 2;
-  grid-column: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
-.scene > * {
-  width: 100%;
-  height: 100%;
-}
-
-.rail {
+/* The hand band and the control cluster: the only two chrome regions left, both
+   floated over the scene from the rects `shellLayout.shellBands` reports. Their
+   non-overlap with each other and with the plane's staging box is asserted in
+   `shellLayout.test.ts`, not left to these rules. */
+.cluster {
+  position: absolute;
   z-index: var(--rune-z-shell);
-  grid-row: 2 / 4;
-  grid-column: 2;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border-left: 1px solid var(--rune-border);
-  background: var(--rune-chrome-bg);
-}
-
-.rail > * {
-  height: 100%;
-}
-
-.bottom {
-  z-index: var(--rune-z-shell);
-  display: grid;
-  grid-row: 3;
-  grid-column: 1;
-  grid-template-columns:
-    var(--shell-identity-w) minmax(var(--shell-hand-min-w), 1fr)
-    minmax(var(--shell-decisions-min-w), var(--shell-decisions-max-w));
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border-top: 1px solid var(--rune-border);
-  background: color-mix(in srgb, var(--rune-chrome-bg) 94%, transparent);
-  box-shadow: 0 -12px 30px rgb(0 0 0 / 24%);
-}
-
-.identity,
-.hand,
-.decisions {
-  min-width: 0;
-  min-height: 0;
-}
-
-.identity {
-  overflow: hidden;
-  border-right: 1px solid var(--rune-border);
-}
-
-.identity > * {
-  height: 100%;
+  right: calc(var(--rune-cluster-margin) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--rune-cluster-margin) + env(safe-area-inset-bottom, 0px));
+  width: var(--shell-cluster-w);
+  min-height: var(--shell-cluster-h);
 }
 
 /*
@@ -126,11 +76,17 @@
      publishes the real value and adds exactly this much to `--hand-inset`. */
   --hand-pager-w: var(--rune-touch);
 
-  position: relative;
+  position: absolute;
+  z-index: var(--rune-z-shell);
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: env(safe-area-inset-left, 0px);
+  width: var(--shell-hand-w);
+  height: var(--shell-hand-h);
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at 50% 100%, rgb(78 154 155 / 12%), transparent 65%),
-    var(--rune-sunken-bg);
+  /* No plate and no border: the fan floats over the arena now rather than
+     sitting in a carved track, so only the faintest lift under the cards
+     survives from the bottom shell's surface. */
+  background: radial-gradient(ellipse at 50% 100%, rgb(78 154 155 / 12%), transparent 65%);
 }
 
 .hand::before {
@@ -265,28 +221,16 @@
   letter-spacing: 0.08em;
 }
 
-.decisions {
-  display: grid;
-  grid-template-rows: minmax(48px, auto) minmax(0, 1fr);
-  overflow: hidden;
-  border-left: 1px solid var(--rune-border);
-}
-
-.decisions > * {
-  min-width: 0;
-  min-height: 0;
-}
-
 /*
- * The compact rail sheet (stack / log). A player-invoked, dismissible overlay,
- * so it sits on the `overlay` rung and starts below the top bar rather than
- * covering it — the bar keeps the turn/phase status readable while the sheet is
- * open, and the sheet is never covered by it.
+ * The compact sheet. A player-invoked, dismissible overlay, so it sits on the
+ * `overlay` rung. It used to start below the permanent top bar so that bar kept
+ * the turn/phase status readable; with the bar retired (#534) the sheet spans
+ * the safe viewport, and the phase plaque in the cluster carries that status.
  */
 .sheetBackdrop {
   position: fixed;
   z-index: var(--rune-z-overlay);
-  inset: calc(var(--shell-top-h) + env(safe-area-inset-top, 0px)) env(safe-area-inset-right, 0px)
+  inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   display: grid;
   place-items: stretch end;
@@ -356,54 +300,22 @@
 }
 
 /*
- * The compact composition (phone portrait, narrow tablet). The rail collapses to
- * top-bar chips and sheets; the bottom shell becomes two rows.
+ * The compact composition (phone portrait / narrow tablet).
  *
- * The hand owns the SECOND row outright. The shipped compact grid put the hand
- * at `grid-column: 1 / -1` underneath a `.decisions` panel that spanned both
- * rows of column 2 with an opaque background and a higher z-index, so at
- * 390×844 the panel covered most of a seven-card fan — the cards the mulligan
- * was asking about were painted over by the prompt asking about them. Rows
- * cannot overlap, so the failure is now structurally impossible rather than
- * arbitrated by z-index.
+ * There is no room for a 268 px control column beside a seven-card fan, so the
+ * hand takes the full width and sits ABOVE the cluster rather than beside it.
+ * `shellLayout.shellBands` computes both rects, and its tests assert they do
+ * not overlap each other or the plane's staging box — the shipped compact grid
+ * once painted an opaque decisions panel over most of the fan at 390×844, so
+ * the cards a mulligan was asking about were covered by the prompt asking
+ * about them.
  */
 @media (max-width: 899px) {
-  .shell {
-    grid-template-rows: var(--shell-top-h) minmax(0, 1fr) var(--shell-bottom-h);
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .top,
-  .scene,
-  .bottom {
-    grid-column: 1;
-  }
-
-  .scene {
-    grid-row: 2;
-  }
-
-  .bottom {
-    grid-row: 3;
-    grid-template-columns: var(--shell-identity-w) minmax(0, 1fr);
-    grid-template-rows: var(--shell-controls-h) var(--shell-hand-h);
-  }
-
-  .identity {
-    grid-row: 1;
-    grid-column: 1;
-  }
-
-  .decisions {
-    grid-row: 1;
-    grid-column: 2;
-    background: var(--rune-chrome-bg);
-  }
-
   .hand {
-    grid-row: 2;
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--rune-border);
+    /* Lifted clear of the cluster; `--shell-hand-w` is the full width here. */
+    bottom: calc(
+      var(--shell-cluster-h) + 2 * var(--rune-cluster-margin) + env(safe-area-inset-bottom, 0px)
+    );
   }
 }
 

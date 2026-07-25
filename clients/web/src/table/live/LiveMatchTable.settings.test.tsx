@@ -64,7 +64,8 @@ describe('LiveMatchTable presentation wiring (issue #505)', () => {
   it('opens the display settings surface from the in-match game menu', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<LiveMatchTable />);
-    fireEvent.click(screen.getByTestId('game-menu-button'));
+    // The cluster's circular icon is the menu handle (control-language D5).
+    fireEvent.click(screen.getByRole('button', { name: 'Game menu' }));
     fireEvent.click(screen.getByTestId('menu-settings'));
     expect(screen.getByTestId('presentation-settings')).toBeTruthy();
   });

@@ -135,6 +135,17 @@ export interface LivePlaneProps {
   view: GameView;
   /** Ephemeral focus/selection/candidate staging; never authoritative. */
   staging?: PlaneStagingState;
+  /**
+   * The chrome-free rect the plane may carve slots inside, in shell
+   * coordinates — `shellBands(viewport).staging` (issue #534).
+   *
+   * The plane still spans the whole viewport: the environment fills it and
+   * every effect anchor and relationship endpoint is measured in it. Only
+   * *staging* is inset, so no seat, card, crest, or path endpoint is ever laid
+   * under a control. Omitted, the whole plane is available, which is the
+   * pre-#534 behaviour and what the fixture routes still use.
+   */
+  safeArea?: { x: number; y: number; w: number; h: number };
   /** Effect quality budget. */
   quality: EffectQuality;
   /** Effect-density preference, independent of quality. */
@@ -272,6 +283,7 @@ function refreshVisualAnchors(
 export function LivePlane({
   view,
   staging,
+  safeArea,
   quality,
   density,
   reducedMotion,
@@ -311,7 +323,10 @@ export function LivePlane({
   onModeRef.current = onMode;
   onRebuildRef.current = onRebuild;
 
-  const plane = useMemo(() => stagePlane(view, size, staging), [size, staging, view]);
+  // The staging box travels with the size, so a viewport change and a chrome
+  // change both re-stage through the same memo.
+  const staged = useMemo(() => (safeArea ? { ...size, safe: safeArea } : size), [safeArea, size]);
+  const plane = useMemo(() => stagePlane(view, staged, staging), [staged, staging, view]);
   // The device's card back (`card-representation.md` §13). A presentation
   // preference, never game state: it takes no card and no view, so it cannot
   // leak what a hidden pile holds, and with nothing resolved every pile keeps
