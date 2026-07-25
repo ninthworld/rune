@@ -181,3 +181,57 @@ describe('pregame CSS — criterion 3: no literal hex or duration', () => {
     expect(css).not.toContain('border-bottom-right-radius');
   });
 });
+
+describe('ready room CSS — the seating ring cannot collide with itself', () => {
+  const css = readFileSync(resolve(process.cwd(), 'src/pregame/pregamePlaces.module.css'), 'utf8');
+
+  /** The declaration block of one selector, comments stripped. */
+  function rule(selector: string): string {
+    const at = css.indexOf(`${selector} {`);
+    expect(at, `${selector} has no rule`).toBeGreaterThanOrEqual(0);
+    return (/\{([^}]*)\}/.exec(css.slice(at))?.[1] ?? '').replace(/\/\*[\s\S]*?\*\//g, '');
+  }
+
+  /**
+   * The seat's `transform` (its centring on the ring point) makes it a stacking
+   * context, so the popover's `--rune-z-popover` is scoped inside the seat that
+   * opened it. Sibling seats and the centre plaque, both untouched, then paint
+   * over the popover by document order alone — the shipped bug was an invite
+   * panel opening underneath the host's own seat. The rung has to be worn by
+   * the seat, which is the element competing with them.
+   */
+  it('lifts the whole seat when its options are open, not just the panel', () => {
+    expect(rule('.ringSeat')).toContain('transform: translate(-50%, -50%);');
+    expect(rule('.ringSeat:has(.seatOptions)')).toContain('z-index: var(--rune-z-popover);');
+  });
+
+  it('ranks every seat above the room’s own status plaque', () => {
+    // The centre is drawn last, so without an explicit rung it wins on document
+    // order and paints "everyone's here" across a seat.
+    const ladder = readFileSync(resolve(process.cwd(), 'src/chrome/tokens.css'), 'utf8');
+    const rung = (name: string): number => {
+      const found = new RegExp(`--rune-z-${name}:\\s*(-?\\d+);`).exec(ladder)?.[1];
+      expect(found, `--rune-z-${name} is not declared`).toBeDefined();
+      return Number(found);
+    };
+    const seat = /z-index: var\(--rune-z-([a-z-]+)\);/.exec(rule('.ringSeat'))?.[1] ?? '';
+    const centre = /z-index: var\(--rune-z-([a-z-]+)\);/.exec(rule('.ringCentre'))?.[1] ?? '';
+    expect(rung(seat)).toBeGreaterThan(rung(centre));
+  });
+
+  /**
+   * Both a seat and the centre claim half their height either side of their
+   * point, and `seatRing.RING_RY` sets the distance between those points. The
+   * ring's floor is what keeps the two bands apart; at the shipped `* 1.5` they
+   * intersected. Whether the drawn spacing is right at 2–8 seats is a browser
+   * check — this only holds the floor that makes it possible.
+   */
+  it('floors the ring high enough for a seat and the centre to clear', () => {
+    const ring = rule('.ring');
+    const floor = /min-height: calc\(var\(--rune-control-w-cluster\) \* ([\d.]+)\)/.exec(ring)?.[1];
+    expect(floor, '.ring states no min-height in cluster units').toBeDefined();
+    expect(Number(floor)).toBeGreaterThanOrEqual(2.4);
+    // …and the arena's column may not compress it back under that floor.
+    expect(ring).toContain('flex: none;');
+  });
+});

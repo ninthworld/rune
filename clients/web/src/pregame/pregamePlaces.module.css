@@ -239,12 +239,30 @@
  * The arena IS the seating diagram: seats sit around the ring, the local seat at
  * the bottom where the player's own hand will be, and the room's state reads
  * from the middle. No roster table, no dashboard. */
+/*
+ * The ring's own box, which decides whether anything in the room collides.
+ *
+ * Both a seat and the centre plaque are centred on their point, so each claims
+ * half its height either side of it. `seatRing.RING_RY` puts the nearest seat
+ * `RING_RY%` of the ring's height from the centre, and the room only reads
+ * correctly while that distance clears half a seat plus half the centre:
+ *
+ *     0.34 · H  >  seatHeight / 2 + centreHeight / 2
+ *
+ * The local seat is the tall one — plaque, deck row, primary, and a resubmit —
+ * at roughly `--rune-control-w-cluster` of height, and the centre plaque runs
+ * about a third of that. The floor below is what satisfies the inequality with
+ * margin; at the shipped `* 1.5` the two bands intersected and the room drew
+ * "everyone's here" across the host's own seat. `flex: none` keeps the arena's
+ * column from compressing the box back under that floor.
+ */
 .ring {
   position: relative;
+  flex: none;
   width: 100%;
   max-width: calc(var(--rune-control-w-cluster) * 4);
   aspect-ratio: 16 / 9;
-  min-height: calc(var(--rune-control-w-cluster) * 1.5);
+  min-height: calc(var(--rune-control-w-cluster) * 2.4);
   margin: 0 auto;
 }
 
@@ -252,6 +270,7 @@
  * derives; the element is centred on it. */
 .ringSeat {
   position: absolute;
+  z-index: var(--rune-z-shell);
   left: var(--seat-x);
   top: var(--seat-y);
   display: flex;
@@ -262,9 +281,27 @@
   transform: translate(-50%, -50%);
 }
 
-/* The room's own state, in the middle of the ring where the table would be. */
+/*
+ * A seat with its options open outranks every other seat.
+ *
+ * `transform` above makes each seat its own stacking context, so the popover's
+ * own `--rune-z-popover` is scoped INSIDE the seat that opened it and cannot
+ * lift it past anything outside. Sibling seats and the centre plaque then paint
+ * over the popover purely by document order — which is why the invite panel
+ * opened *underneath* the host's seat. The rung has to be worn by the element
+ * that actually competes with them, which is the seat.
+ */
+.ringSeat:has(.seatOptions) {
+  z-index: var(--rune-z-popover);
+}
+
+/* The room's own state, in the middle of the ring where the table would be.
+ * It is the room reporting on itself, so it yields to every seat: it is drawn
+ * last and would otherwise paint over one on any viewport where the two bands
+ * come close. */
 .ringCentre {
   position: absolute;
+  z-index: var(--rune-z-scene);
   left: 50%;
   top: 50%;
   width: max-content;
