@@ -246,8 +246,7 @@ async function playPod(
       );
       await expect(actor.getByTestId('hud-mana'), 'the pool should be on screen').toBeVisible();
       const tapped = await actor.evaluate(
-        (id) =>
-          window.__RUNE_TEST__?.view?.battlefield.find((p) => p.id === id)?.tapped === true,
+        (id) => window.__RUNE_TEST__?.view?.battlefield.find((p) => p.id === id)?.tapped === true,
         mana.permanentId,
       );
       expect(tapped, 'the tapped land should read as tapped in the authoritative view').toBe(true);
@@ -255,179 +254,183 @@ async function playPod(
     });
 
     // ------------------------------------- a targeted spell, seen and resolved --
-    const cast = await test.step(`${pass.label}: cast a targeted spell and resolve it`, async () => {
-      const found = await driveUntil(
-        seats,
-        (views) => {
-          for (const [index, view] of views.entries()) {
-            if (view === null) continue;
-            const action = view.valid_actions.find(
-              (candidate) =>
-                candidate.type === 'cast_spell' &&
-                (candidate.requirements?.[0]?.candidates?.length ?? 0) > 0,
-            );
-            if (action === undefined) continue;
-            // Aim at a creature someone else controls: the resolution is then
-            // visible as damage on a specific object rather than a life total.
-            const target = (action.requirements![0]!.candidates ?? []).find((id) =>
-              view.battlefield.some(
-                (permanent) =>
-                  permanent.id === id &&
-                  permanent.card.power !== undefined &&
-                  permanent.controller !== view.you,
-              ),
-            );
-            if (target !== undefined) return { index, target };
-          }
-          return null;
-        },
-        { what: 'a targeted spell aimed at an opposing creature' },
-      );
-      const actor = seats[found.found.index]!;
-      const before = await readView(actor);
-      const targetName = nameOf(before!, found.found.target);
-      const spell = await castSpellThroughUi(actor, {
-        pickTarget: () => found.found.target,
-      });
-
-      // Stack placement, in the rendered chrome: the entry exists, it is the one
-      // that resolves next, and the server's own description names the target —
-      // the target path in the channel that survives reduced motion.
-      const stacked = await actor.evaluate(() => window.__RUNE_TEST__?.view?.stack ?? []);
-      expect(stacked.length, 'the cast spell should be on the stack').toBeGreaterThan(0);
-      const top = stacked[stacked.length - 1]!;
-      await expect(actor.getByTestId('stack-panel')).toBeVisible();
-      await expect(actor.getByTestId(`stack-top-${top.id}`)).toBeVisible();
-      expect(top.description, 'the stack entry should name the chosen target').toContain(targetName);
-
-      // Pass and resolve: the object leaves the stack and the thing it was
-      // pointed at is measurably worse off (marked damage, or dead).
-      await driveUntil(
-        seats,
-        (views) => {
-          const view = views[found.found.index];
-          if (view === null || view === undefined) return null;
-          if (view.stack.length > 0) return null;
-          const still = view.battlefield.find((permanent) => permanent.id === found.found.target);
-          const dead = still === undefined;
-          const hurt = (still?.damage ?? 0) > 0;
-          return dead || hurt ? { dead, damage: still?.damage ?? 0 } : null;
-        },
-        { what: 'the targeted spell resolving onto its target' },
-      );
-      return { name: spell.name, targetName, stackDescription: top.description };
-    });
-
-    // --------------------------------------------- combat: attack, block, damage --
-    const combat = await test.step(`${pass.label}: attack a chosen defender, and be blocked`, async () => {
-      const found = await driveUntil(
-        seats,
-        (views) => {
-          for (const [index, view] of views.entries()) {
-            if (view === null) continue;
-            const action = view.valid_actions.find((a) => a.type === 'declare_attackers');
-            if (action === undefined) continue;
-            const requirements = action.requirements ?? [];
-            const attackers = requirements.find((slot) => slot.slot === 'attackers');
-            if ((attackers?.candidates?.length ?? 0) === 0) continue;
-            const defenders = requirements.find((slot) => slot.slot.startsWith('defend_'));
-            const offered = defenders?.candidates ?? [];
-            if (offered.length < 2) continue;
-            // Only stop where a block is actually possible, so the blockers leg
-            // can never quietly become a no-op.
-            const blockable = offered.some((seat) =>
-              view.battlefield.some(
-                (permanent) =>
-                  permanent.controller === seat &&
-                  permanent.card.power !== undefined &&
-                  permanent.tapped !== true,
-              ),
-            );
-            if (blockable) return index;
-          }
-          return null;
-        },
-        { what: 'an attack with several legal defenders, one of them able to block' },
-      );
-      const attacker = seats[found.found]!;
-      const beforeAttack = await readView(attacker);
-      const attackTurn = beforeAttack!.turn;
-
-      const declared = await declareAttackThroughUi(attacker, {
-        onDefenderChosen: async () => {
-          shots['attack-assignment'] = await captureStable(
-            attacker,
-            `${pass.label}-attack-assignment`,
-            info,
-          );
-        },
-      });
-
-      // The multiplayer property a duel cannot have: several legal defenders, a
-      // Confirm that stayed shut until one was named, and a recorded assignment
-      // that is the seat actually clicked last.
-      expect(
-        declared.offeredDefenders.length,
-        'a four-player pod offers several legal defending players',
-      ).toBeGreaterThanOrEqual(2);
-      expect(
-        declared.confirmBlockedWithoutDefender,
-        'a declared attacker with no defending player must not be confirmable',
-      ).toBe(true);
-      expect(
-        declared.offeredDefenders.slice(0, 1),
-        'the recorded defender should not be the first one clicked',
-      ).not.toContain(declared.defenderId);
-
-      const defender = await (async () => {
-        for (const page of seats) {
-          if ((await readView(page))?.you === declared.defenderId) return page;
-        }
-        throw new Error(`no browser context is seated at ${declared.defenderId}`);
-      })();
-
-      // The defending seat is told, in words, on its own screen.
-      await expect(
-        defender.getByTestId('topbar-attacked'),
-        'the attacked seat should read that it is under attack',
-      ).toBeVisible();
-
-      // Blockers, declared through the rendered controls by the seat that was
-      // actually attacked.
-      await expect
-        .poll(async () => (await offeredAction(defender, 'declare_blockers')) !== null, {
-          message: 'the attacked seat should be asked to declare blockers',
-        })
-        .toBe(true);
-      const blocks = await declareBlockersThroughUi(defender);
-      expect(blocks.length, 'the attacked seat should have blocked').toBeGreaterThan(0);
-      await defender
-        .waitForFunction(
-          (blockerId) =>
-            window.__RUNE_TEST__?.view?.battlefield.some(
-              (permanent) => permanent.id === blockerId && permanent.blocking !== undefined,
-            ) === true,
-          blocks[0]!.blockerId,
-          { timeout: 20_000 },
-        )
-        .catch(() => {
-          throw new Error('the declared blocker was never recorded as blocking');
+    const cast =
+      await test.step(`${pass.label}: cast a targeted spell and resolve it`, async () => {
+        const found = await driveUntil(
+          seats,
+          (views) => {
+            for (const [index, view] of views.entries()) {
+              if (view === null) continue;
+              const action = view.valid_actions.find(
+                (candidate) =>
+                  candidate.type === 'cast_spell' &&
+                  (candidate.requirements?.[0]?.candidates?.length ?? 0) > 0,
+              );
+              if (action === undefined) continue;
+              // Aim at a creature someone else controls: the resolution is then
+              // visible as damage on a specific object rather than a life total.
+              const target = (action.requirements![0]!.candidates ?? []).find((id) =>
+                view.battlefield.some(
+                  (permanent) =>
+                    permanent.id === id &&
+                    permanent.card.power !== undefined &&
+                    permanent.controller !== view.you,
+                ),
+              );
+              if (target !== undefined) return { index, target };
+            }
+            return null;
+          },
+          { what: 'a targeted spell aimed at an opposing creature' },
+        );
+        const actor = seats[found.found.index]!;
+        const before = await readView(actor);
+        const targetName = nameOf(before!, found.found.target);
+        const spell = await castSpellThroughUi(actor, {
+          pickTarget: () => found.found.target,
         });
 
-      const beforeDamage = await readView(defender);
-      const blockerIds = blocks.map((block) => block.blockerId);
-      const blockerNames = blocks.map((block) => nameOf(beforeDamage!, block.blockerId));
-      const attackerName = nameOf(beforeAttack!, declared.attackerId);
-      return {
-        declared,
-        attacker,
-        defender,
-        attackTurn,
-        attackerName,
-        blockerIds,
-        blockerNames,
-      };
-    });
+        // Stack placement, in the rendered chrome: the entry exists, it is the one
+        // that resolves next, and the server's own description names the target —
+        // the target path in the channel that survives reduced motion.
+        const stacked = await actor.evaluate(() => window.__RUNE_TEST__?.view?.stack ?? []);
+        expect(stacked.length, 'the cast spell should be on the stack').toBeGreaterThan(0);
+        const top = stacked[stacked.length - 1]!;
+        await expect(actor.getByTestId('stack-panel')).toBeVisible();
+        await expect(actor.getByTestId(`stack-top-${top.id}`)).toBeVisible();
+        expect(top.description, 'the stack entry should name the chosen target').toContain(
+          targetName,
+        );
+
+        // Pass and resolve: the object leaves the stack and the thing it was
+        // pointed at is measurably worse off (marked damage, or dead).
+        await driveUntil(
+          seats,
+          (views) => {
+            const view = views[found.found.index];
+            if (view === null || view === undefined) return null;
+            if (view.stack.length > 0) return null;
+            const still = view.battlefield.find((permanent) => permanent.id === found.found.target);
+            const dead = still === undefined;
+            const hurt = (still?.damage ?? 0) > 0;
+            return dead || hurt ? { dead, damage: still?.damage ?? 0 } : null;
+          },
+          { what: 'the targeted spell resolving onto its target' },
+        );
+        return { name: spell.name, targetName, stackDescription: top.description };
+      });
+
+    // --------------------------------------------- combat: attack, block, damage --
+    const combat =
+      await test.step(`${pass.label}: attack a chosen defender, and be blocked`, async () => {
+        const found = await driveUntil(
+          seats,
+          (views) => {
+            for (const [index, view] of views.entries()) {
+              if (view === null) continue;
+              const action = view.valid_actions.find((a) => a.type === 'declare_attackers');
+              if (action === undefined) continue;
+              const requirements = action.requirements ?? [];
+              const attackers = requirements.find((slot) => slot.slot === 'attackers');
+              if ((attackers?.candidates?.length ?? 0) === 0) continue;
+              const defenders = requirements.find((slot) => slot.slot.startsWith('defend_'));
+              const offered = defenders?.candidates ?? [];
+              if (offered.length < 2) continue;
+              // Only stop where a block is actually possible, so the blockers leg
+              // can never quietly become a no-op.
+              const blockable = offered.some((seat) =>
+                view.battlefield.some(
+                  (permanent) =>
+                    permanent.controller === seat &&
+                    permanent.card.power !== undefined &&
+                    permanent.tapped !== true,
+                ),
+              );
+              if (blockable) return index;
+            }
+            return null;
+          },
+          { what: 'an attack with several legal defenders, one of them able to block' },
+        );
+        const attacker = seats[found.found]!;
+        const beforeAttack = await readView(attacker);
+        const attackTurn = beforeAttack!.turn;
+
+        const declared = await declareAttackThroughUi(attacker, {
+          onDefenderChosen: async () => {
+            shots['attack-assignment'] = await captureStable(
+              attacker,
+              `${pass.label}-attack-assignment`,
+              info,
+            );
+          },
+        });
+
+        // The multiplayer property a duel cannot have: several legal defenders, a
+        // Confirm that stayed shut until one was named, and a recorded assignment
+        // that is the seat actually clicked last.
+        expect(
+          declared.offeredDefenders.length,
+          'a four-player pod offers several legal defending players',
+        ).toBeGreaterThanOrEqual(2);
+        expect(
+          declared.confirmBlockedWithoutDefender,
+          'a declared attacker with no defending player must not be confirmable',
+        ).toBe(true);
+        expect(
+          declared.offeredDefenders.slice(0, 1),
+          'the recorded defender should not be the first one clicked',
+        ).not.toContain(declared.defenderId);
+
+        const defender = await (async () => {
+          for (const page of seats) {
+            if ((await readView(page))?.you === declared.defenderId) return page;
+          }
+          throw new Error(`no browser context is seated at ${declared.defenderId}`);
+        })();
+
+        // The defending seat is told, in words, on its own screen.
+        await expect(
+          defender.getByTestId('topbar-attacked'),
+          'the attacked seat should read that it is under attack',
+        ).toBeVisible();
+
+        // Blockers, declared through the rendered controls by the seat that was
+        // actually attacked.
+        await expect
+          .poll(async () => (await offeredAction(defender, 'declare_blockers')) !== null, {
+            message: 'the attacked seat should be asked to declare blockers',
+          })
+          .toBe(true);
+        const blocks = await declareBlockersThroughUi(defender);
+        expect(blocks.length, 'the attacked seat should have blocked').toBeGreaterThan(0);
+        await defender
+          .waitForFunction(
+            (blockerId) =>
+              window.__RUNE_TEST__?.view?.battlefield.some(
+                (permanent) => permanent.id === blockerId && permanent.blocking !== undefined,
+              ) === true,
+            blocks[0]!.blockerId,
+            { timeout: 20_000 },
+          )
+          .catch(() => {
+            throw new Error('the declared blocker was never recorded as blocking');
+          });
+
+        const beforeDamage = await readView(defender);
+        const blockerIds = blocks.map((block) => block.blockerId);
+        const blockerNames = blocks.map((block) => nameOf(beforeDamage!, block.blockerId));
+        const attackerName = nameOf(beforeAttack!, declared.attackerId);
+        return {
+          declared,
+          attacker,
+          defender,
+          attackTurn,
+          attackerName,
+          blockerIds,
+          blockerNames,
+        };
+      });
 
     await test.step(`${pass.label}: the assignment is legible while combat is live`, async () => {
       // #457's browser criterion, half one: with blockers declared and damage not
@@ -449,7 +452,10 @@ async function playPod(
       const attacking = view?.battlefield.find(
         (permanent) => permanent.id === combat.declared.attackerId,
       );
-      expect(attacking, 'the declared attacker is on the board with blockers declared').toBeDefined();
+      expect(
+        attacking,
+        'the declared attacker is on the board with blockers declared',
+      ).toBeDefined();
       expect(attacking!.attacking, 'and reads as attacking').toBe(true);
       expect(attacking!.attacking_player, 'against the defending seat that was clicked').toBe(
         combat.declared.defenderId,
@@ -699,10 +705,10 @@ const PASS_BUDGET_MS = 30 * 60_000;
 let fullMotion: PassOutcome | null = null;
 
 test.describe.serial('a four-player pod, played twice', () => {
-  test('four browsers play the pod through the rendered table', async (
-    { browser, launchRuneServer },
-    info,
-  ) => {
+  test('four browsers play the pod through the rendered table', async ({
+    browser,
+    launchRuneServer,
+  }, info) => {
     test.setTimeout(PASS_BUDGET_MS);
     fullMotion = await playPod(browser, launchRuneServer, info, {
       label: 'pass-1',
@@ -710,10 +716,10 @@ test.describe.serial('a four-player pod, played twice', () => {
     });
   });
 
-  test('the same pod under prefers-reduced-motion reaches the same place', async (
-    { browser, launchRuneServer },
-    info,
-  ) => {
+  test('the same pod under prefers-reduced-motion reaches the same place', async ({
+    browser,
+    launchRuneServer,
+  }, info) => {
     test.setTimeout(PASS_BUDGET_MS);
     const full = fullMotion;
     expect(full, 'the full-motion pass should have produced an outcome').not.toBeNull();

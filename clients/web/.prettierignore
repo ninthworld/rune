@@ -1,4 +1,9 @@
 dist
+# The hooks-enabled preview build the browser suite serves (ADR 0011). Emitted
+# beside `dist` so `npm run budget` keeps measuring the shipped artifact; ignored
+# here for the same reason `dist` is, so a developer who has run `make e2e` does
+# not get a minified bundle reported as a formatting failure.
+dist-e2e
 node_modules
 
 # Playwright run artifacts (ADR 0011 / issue #279); gitignored at the repository

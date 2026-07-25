@@ -9,7 +9,13 @@ import prettier from 'eslint-config-prettier';
 // recommended type/JS rules + React hooks correctness, with Prettier owning
 // formatting (eslint-config-prettier is last so it disables conflicting rules).
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules'] },
+  // Build output and installed packages are never linted. `dist-e2e` is the
+  // hooks-enabled preview build the browser suite serves (ADR 0011); it lands
+  // beside `dist` so `npm run budget` keeps measuring the shipped artifact, and
+  // it has to be ignored here for the same reason `dist` is — otherwise a
+  // developer who has run `make e2e` finds `npm run lint` reporting thousands of
+  // errors in a minified bundle.
+  { ignores: ['dist', 'dist-e2e', 'node_modules'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

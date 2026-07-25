@@ -68,9 +68,7 @@ const ANSI = /\[[0-9;]*m/g;
  *
  * Set `RUNE_SERVER_BIN` to point at a different build (e.g. a release binary).
  */
-export async function startRuneServer(
-  options: RuneServerOptions = {},
-): Promise<RuneServerProcess> {
+export async function startRuneServer(options: RuneServerOptions = {}): Promise<RuneServerProcess> {
   const rngSeed = options.rngSeed ?? RNG_SEED;
   const startingLife = options.startingLife ?? STARTING_LIFE;
   const binary = process.env.RUNE_SERVER_BIN ?? DEFAULT_BINARY;

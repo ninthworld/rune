@@ -23,13 +23,7 @@
  */
 import { defineConfig, devices } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
-import {
-  DEV_PORT,
-  DEV_URL,
-  PREVIEW_OUT_DIR,
-  PREVIEW_PORT,
-  PREVIEW_URL,
-} from './support/targets';
+import { DEV_PORT, DEV_URL, PREVIEW_OUT_DIR, PREVIEW_PORT, PREVIEW_URL } from './support/targets';
 
 /** `clients/web` — where both Vite servers run from. */
 const CLIENT_DIR = fileURLToPath(new URL('..', import.meta.url));

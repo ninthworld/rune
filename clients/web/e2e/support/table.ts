@@ -163,7 +163,8 @@ export async function castSpellThroughUi(
   const slot = slots[0];
   if (slot !== undefined) {
     const candidates = slot.candidates ?? [];
-    if (candidates.length === 0) throw new Error(`${action.label} offered a slot with no candidate`);
+    if (candidates.length === 0)
+      throw new Error(`${action.label} offered a slot with no candidate`);
     // The targeting strip must say, in words, what is being chosen — the
     // "target path visible" half of the loop, in the channel that survives
     // reduced motion.
@@ -317,7 +318,10 @@ export async function declareBlockersThroughUi(
   const slots = action.requirements ?? [];
   for (const [index, slot] of slots.entries()) {
     if (index > 0) {
-      await page.getByTestId('action-bar').getByRole('button', { name: 'Next', exact: true }).click();
+      await page
+        .getByTestId('action-bar')
+        .getByRole('button', { name: 'Next', exact: true })
+        .click();
     }
     const blockerId = (slot.candidates ?? []).find((id) => !used.has(id));
     if (blockerId === undefined) continue;

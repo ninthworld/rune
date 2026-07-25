@@ -121,7 +121,10 @@ async function confirmEmptyDeclaration(
   const before = stampOf(view);
   await page.getByTestId('action-bar').getByRole('button', { name: action.label }).click();
   const confirm = page.getByTestId('multiselect-confirm');
-  await expect(confirm, `${action.label} should be confirmable with nothing declared`).toBeEnabled();
+  await expect(
+    confirm,
+    `${action.label} should be confirmable with nothing declared`,
+  ).toBeEnabled();
   await confirm.click();
   await waitForStampChange(page, before);
 }
