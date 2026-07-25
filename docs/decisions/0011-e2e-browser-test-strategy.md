@@ -1,26 +1,12 @@
 # ADR 0011: End-to-end browser test strategy for the web client
 
-- Status: accepted (partially reinstated — see note)
+- Status: accepted (suite paused — see note)
 - Date: 2026-07-11
 - Issue: #102
 
-> **Note (reinstated as a canary, issue #279):** the browser E2E suite was removed to keep
-> the inner loop fast while the in-game UI was in flux, and CI stayed green through a bug
-> that made the table invisible. A **minimal** version is back: one smoke spec
-> (`clients/web/e2e/smoke.spec.ts`), the `make e2e` / `make e2e-install` targets, and the
-> `E2E` CI job. Live today: Playwright + pinned Chromium, the real-`rune-server` smoke tier
-> on an OS-assigned port with a pinned `--rng-seed`, the `clients/web/e2e/` layout, the
-> read-only `window.__RUNE_TEST__` hook as the canvas/scene assertion surface, and the
-> separate-job CI placement (with `make verify` composing it). Still deferred: the mock-WS
-> fixture tier, screenshot baselines, and any suite beyond the one canary — the wider matrix
-> waits until the in-game UI settles. The strategy below is unchanged and remains the
-> blueprint.
->
-> One deviation the canary makes deliberately: it runs against the **Vite dev server**, not
-> `vite preview`. The regression it guards is React StrictMode's development-only
-> double-invoke of effects, which a production bundle never performs — a preview-only canary
-> would be structurally unable to see its own bug. The preview target stands for the wider
-> suite when that lands.
+> **Note (paused):** the browser E2E suite, its `E2E` CI job, and the `make e2e` targets
+> were removed to keep the inner loop fast while the in-game UI is still in flux. This ADR
+> is retained as the blueprint for reinstating them later; the strategy below is unchanged.
 
 ## Context
 
@@ -205,10 +191,7 @@ different trigger cadence if flake or runtime warrants, without weakening
   sign-off** as part of accepting this ADR, and the wording in
   `docs/coding-standards.md` / `AGENTS.md` describing `make check` as the complete CI
   surface should be reconciled when the `E2E` job and `make e2e` target actually land
-  (#104), not in this docs-only change. **Reconciled in #279:** the `E2E` job and
-  `make e2e` now exist, `AGENTS.md` and `docs/coding-standards.md` describe the CI
-  surface as `make check` **plus** `E2E`, and `make verify` composes both so one local
-  command still matches the required checks.
+  (#104), not in this docs-only change.
 - **Deferred.** The Playwright harness, config, mock WS server implementation, the
   `make e2e` target, the `E2E` CI job, and the connection-screen wiring that lets a
   browser reach a first `GameView` are all follow-up work (#103, #104 and later M1
