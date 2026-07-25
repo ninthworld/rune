@@ -54,6 +54,8 @@
 import type { CSSProperties } from 'react';
 import type { EntityId, GameView, PlayerId, StackItem } from '../../protocol';
 import { playerName } from '../../playerNames';
+// The pure tokenizer directly: this derivation module stays free of React.
+import { symbolNotationText } from '../../chrome/symbols/notation';
 import { identityAccent } from '../identityAccents';
 import { CONTROL } from '../controls';
 
@@ -329,6 +331,16 @@ function tierFor(args: {
   return 'mini';
 }
 
+/**
+ * The letter tile for a spell: the description's first letter or digit. Symbol
+ * notation is spoken first (issue #462), so a description that opens with a
+ * `{…}` run yields a letter rather than a brace on the tile.
+ */
+function spellGlyph(description: string): string {
+  const spoken = symbolNotationText(description).trim();
+  return (/[\p{L}\p{N}]/u.exec(spoken)?.[0] ?? '?').toUpperCase();
+}
+
 /** The `n of N. …` accessible name of §9.2, assembled in its fixed order. */
 function accessibleName(entry: Omit<StackStageEntry, 'label'>): string {
   const parts = [`${entry.index} of ${entry.total}.`];
@@ -341,7 +353,8 @@ function accessibleName(entry: Omit<StackStageEntry, 'label'>): string {
         : ', source no longer on the battlefield'
       : '';
   parts.push(`${kindWord}${source}, controlled by ${entry.isMine ? 'you' : entry.controllerName}.`);
-  parts.push(entry.description);
+  // Pure text: the description's symbol notation is spoken, not braced (#462).
+  parts.push(symbolNotationText(entry.description));
   return parts.join(' ');
 }
 
@@ -430,7 +443,7 @@ export function deriveStackStage(
       // A letter tile for a spell (the deep-rail mock's `C`, `S`, `G`), an open
       // diamond for an ability. Shape, not hue: an ability's tile is also square
       // -cornered, so it can never be read as a card (§2.3).
-      glyph: kind === 'ability' ? '◇' : (item.description.trim()[0] ?? '?').toUpperCase(),
+      glyph: kind === 'ability' ? '◇' : spellGlyph(item.description),
       subtitle:
         kind === 'ability'
           ? `ability — ${source?.resolved ? source.name : 'source left play'} · ${controllerName}`

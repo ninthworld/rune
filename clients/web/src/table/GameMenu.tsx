@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import type { ValidAction } from '../protocol';
 import { cx } from '../chrome/cx';
+import { SymbolText } from '../chrome/symbols';
 import s from './chrome.module.css';
 
 interface Props {
@@ -179,7 +180,9 @@ export function GameMenu({
                   data-testid="menu-concede"
                   onClick={() => setConfirming(true)}
                 >
-                  {concede.label}
+                  {/* A server action label, so it goes through the one symbol
+                      vocabulary like every other (issue #462). */}
+                  <SymbolText text={concede.label} />
                 </button>
               ))}
           </div>

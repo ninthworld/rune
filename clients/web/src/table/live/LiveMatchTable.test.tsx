@@ -96,7 +96,13 @@ describe('LiveMatchTable', () => {
     render(<LiveMatchTable />);
 
     const card = screen.getByTestId('live-hand-card-c1');
-    expect(card.textContent).toContain('{T}: Add {G}.');
+    // The words are the server's; the `{…}` notation is drawn as symbols rather
+    // than printed as braces (issue #462), each announcing its own name.
+    expect(card.textContent).not.toContain('{');
+    expect(card.textContent).toContain(': Add ');
+    expect(
+      Array.from(card.querySelectorAll('[data-symbol]')).map((el) => el.getAttribute('aria-label')),
+    ).toEqual(['tap', 'green mana']);
   });
 
   it('echoes only an offered global action through the existing dock', () => {
@@ -149,10 +155,17 @@ describe('LiveMatchTable', () => {
     render(<LiveMatchTable />);
     const land = screen.getByTestId('entity-perm_f');
 
+    // The hotspot's own accessible name is a pure-text context, so the offered
+    // label is spoken rather than braced (issue #462, leak site 5).
+    expect(land.getAttribute('aria-label')).toBe('Forest — playable: tap: Add green mana.');
+
     fireEvent.click(land);
     expect(choose).not.toHaveBeenCalled();
     expect(land.getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: '{T}: Add {G}.' })).toBeTruthy();
+    // The echoed control wears the server label with its notation drawn as
+    // symbols, so its accessible name is the spoken form (issue #462).
+    const echo = screen.getByRole('button', { name: 'tap: Add green mana.' });
+    expect(echo.textContent).not.toContain('{');
 
     fireEvent.click(land);
     expect(choose).toHaveBeenCalledTimes(1);
@@ -167,7 +180,7 @@ describe('LiveMatchTable', () => {
     fireEvent.pointerDown(land, { pointerType: 'touch', button: 0 });
     fireEvent.click(land);
     expect(choose).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '{T}: Add {G}.' }));
+    fireEvent.click(screen.getByRole('button', { name: 'tap: Add green mana.' }));
     expect(choose.mock.calls[0]![0]).toEqual(expect.objectContaining({ id: 'a2' }));
   });
 

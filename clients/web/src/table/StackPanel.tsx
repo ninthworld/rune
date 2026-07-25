@@ -24,6 +24,7 @@
  */
 import type { EntityId, GameView, StackItem } from '../protocol';
 import { cx } from '../chrome/cx';
+import { SymbolText, symbolNotationText } from '../chrome/symbols';
 import s from './chrome.module.css';
 
 /** The active target slot's stack-object candidates plus the pick handler. */
@@ -77,7 +78,11 @@ export function StackPanel({ view, targeting, onInspect }: Props) {
             </span>
           )}
         </div>
-        <div className={s.stackItemName}>{item.description}</div>
+        {/* The server's composed description; its `{…}` runs draw as symbols
+            rather than printed braces (issue #462). */}
+        <div className={s.stackItemName}>
+          <SymbolText text={item.description} />
+        </div>
         <div className={s.stackItemMeta}>Controller {item.controller}</div>
         {isAbility && item.source !== undefined && (
           <div className={s.stackItemMeta} data-testid={`stack-source-${item.id}`}>
@@ -96,7 +101,7 @@ export function StackPanel({ view, targeting, onInspect }: Props) {
       <button
         type="button"
         data-testid={`inspect-${item.id}`}
-        aria-label={`Inspect ${item.description}`}
+        aria-label={`Inspect ${symbolNotationText(item.description)}`}
         onClick={() => onInspect(item.id)}
         className={s.inspectRowHandle}
       >
@@ -117,7 +122,7 @@ export function StackPanel({ view, targeting, onInspect }: Props) {
                 <button
                   type="button"
                   data-testid={`target-${item.id}`}
-                  aria-label={`Target ${item.description}`}
+                  aria-label={`Target ${symbolNotationText(item.description)}`}
                   onClick={() => targeting.onPick(item.id)}
                   className={cx(s.stackItemButtonReset, itemClass, s.stackTargetItem)}
                 >

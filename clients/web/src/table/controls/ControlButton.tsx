@@ -31,6 +31,7 @@
  */
 import type { ReactNode } from 'react';
 import { cx } from '../../chrome/cx';
+import { SymbolText, hasSymbolNotation, symbolNotationText } from '../../chrome/symbols';
 import s from './controls.module.css';
 
 /**
@@ -120,6 +121,14 @@ export function ControlButton({
   // the gradient frame together (see the stylesheet's note).
   const chamfered = variant !== 'primary';
   const disabled = disabledReason !== undefined;
+  // An ability's server label carries symbol notation (`{T}: Add {G}.`). The
+  // face draws it as symbols (issue #462); the accessible name then has to be
+  // the spoken substitution, because the drawn letters are `role="img"` and a
+  // reader would otherwise hear a label with holes in it. An explicit
+  // `accessibleName` still wins — it is the caller saying the drawn words are
+  // not a sentence.
+  const spokenLabel =
+    accessibleName ?? (hasSymbolNotation(label) ? symbolNotationText(label) : undefined);
 
   return (
     <button
@@ -127,7 +136,7 @@ export function ControlButton({
       className={cx(s.button, s[variant], chamfered && s.chamfered)}
       onClick={onPress}
       disabled={disabled}
-      aria-label={accessibleName}
+      aria-label={spokenLabel}
       aria-pressed={pressed}
       aria-busy={pending || undefined}
       data-variant={variant}
@@ -141,7 +150,9 @@ export function ControlButton({
       <span className={cx(s.frame, chamfered && s.chamfered)}>
         <span className={cx(s.face, chamfered && s.chamfered)}>
           {leading}
-          <span>{label}</span>
+          <span>
+            <SymbolText text={label} />
+          </span>
           {disabledReason !== undefined && <span className={s.reason}>{disabledReason}</span>}
           {hint !== undefined && (
             <kbd className={s.hint} aria-hidden="true">

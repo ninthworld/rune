@@ -11,6 +11,7 @@ import type { EntityId, GameView, PlayerId, ValidAction } from '../../protocol';
 import type { PlaneRegion, PlaneRender, RackZone, StagedPlane, SummaryTileSlot } from '../plane';
 import { digestExpansionRects } from '../plane';
 import { planeRegions } from '../planeReconciler';
+import { symbolNotationText } from '../../chrome/symbols';
 import { declarationFor } from '../scene/action-helpers';
 import type { Rect } from '../scene';
 import styles from './live-plane.module.css';
@@ -22,6 +23,26 @@ export interface LivePlaneInteractionProps {
   candidates: EntityId[];
   chosen: EntityId[];
   playerCandidates: PlayerId[];
+  /**
+   * Whether the active multi-select slot is a per-attacker **defender** pick
+   * (`defend_<id>`, issue #341/#347) — the multiplayer "whom does this creature
+   * attack" question (issue #457).
+   *
+   * It changes nothing about *which* seats are pickable: `playerCandidates`
+   * still comes verbatim from the slot's server-listed candidates, and no
+   * blocking or attack legality is derived here. It only tells the control layer
+   * that the seats it is offering are being offered as **attack destinations**,
+   * so the crest can wear the unmistakable candidate treatment #457 asks for
+   * instead of the same quiet dashed ring an ordinary spell target gets.
+   */
+  assigningDefender?: boolean;
+  /**
+   * The attacker whose defender is being chosen right now, so its control is
+   * flagged as the subject of the question. Straight from
+   * `multiSelect.activeAttacker` — the slot's own `defend_<id>` key, never a
+   * client guess about what may attack.
+   */
+  routedAttacker?: EntityId | null;
   dropBoard?: boolean;
   dropCandidates?: EntityId[];
   onActivateEntity: (id: EntityId) => void;
@@ -214,6 +235,11 @@ function RegionControls({
   onToggleExpand: (seat: PlayerId | null) => void;
 }) {
   const playerTarget = playerCandidateSet.has(region.seat);
+  // Issue #457: the seats a `defend_` slot is offering. The flag is what makes
+  // the whole seat cluster read as a destination for the attack being routed —
+  // the pick surface is the player panels, which is exactly what a player
+  // hunting the board for a question was missing.
+  const defenderTarget = playerTarget && interaction.assigningDefender === true;
   return (
     <div
       className={styles.controlRegion}
@@ -226,6 +252,8 @@ function RegionControls({
         style={box(region.crest)}
         data-testid={playerTarget ? `target-player-${region.seat}` : `focus-seat-${region.seat}`}
         data-focus-key={`crest:${region.seat}`}
+        data-defender-candidate={defenderTarget || undefined}
+        aria-pressed={defenderTarget ? interaction.chosen.includes(region.seat) : undefined}
         // `seat-identity.md` §9: the cluster exposes ONE accessible name that
         // reads the whole seat — name, life, hand, library, and every state it
         // is wearing — so a screen-reader user never has to open anything to
@@ -274,6 +302,14 @@ function RegionControls({
           actionMember ??
           declaration?.id ??
           render.entityId;
+        // Issue #457: the attacker this `defend_` slot is routing. It is the
+        // subject of the question the panels are answering, so it carries its
+        // own ring in the combat hue rather than borrowing the blue selection
+        // one — "which creature am I assigning" and "what did I select" are
+        // different facts and must not share a channel.
+        const routing =
+          interaction.routedAttacker != null &&
+          render.memberIds.includes(interaction.routedAttacker);
         const targetable = interaction.picking && candidateSet.has(id);
         if (targetable) {
           return (
@@ -282,6 +318,7 @@ function RegionControls({
               type="button"
               className={styles.targetControl}
               style={box(render.hitRect)}
+              data-routing={routing || undefined}
               data-testid={`target-${id}`}
               data-focus-key={`entity:${id}`}
               data-entity={id}
@@ -300,16 +337,21 @@ function RegionControls({
           );
         }
         if (!interaction.picking && actionable) {
-          const hint =
+          // A hotspot's accessible name is pure text, so the offered labels take
+          // the symbol vocabulary's spoken substitution rather than markup
+          // (issue #462): "playable: tap: Add green mana.", never "{T}: Add {G}.".
+          const hint = symbolNotationText(
             actions.length > 0
               ? actions.map((action) => action.label).join(', ')
-              : (declaration?.action.label ?? '');
+              : (declaration?.action.label ?? ''),
+          );
           return (
             <button
               key={render.entityId}
               type="button"
               className={styles.entityControl}
               style={box(render.hitRect)}
+              data-routing={routing || undefined}
               data-testid={`entity-${id}`}
               data-focus-key={`entity:${id}`}
               data-entity={id}
@@ -330,10 +372,16 @@ function RegionControls({
             type="button"
             className={styles.inspectControl}
             style={box(render.hitRect)}
+            data-routing={routing || undefined}
             data-testid={`inspect-surface-${id}`}
             data-focus-key={`entity:${id}`}
             data-entity={id}
-            aria-label={`Inspect ${render.name}`}
+            // While its defender is being chosen the creature is not an inspect
+            // surface first — it is the subject of the open question, and the
+            // accessible name says so before it offers the inspect verb.
+            aria-label={
+              routing ? `${render.name} — choosing whom it attacks` : `Inspect ${render.name}`
+            }
             onClick={() => interaction.onInspect(id)}
           />
         );
@@ -354,6 +402,10 @@ function TileControls({
   playerCandidateSet: Set<PlayerId>;
 }) {
   const playerTarget = playerCandidateSet.has(tile.seat);
+  // The compact geometry's half of the #457 affordance: a seat that has degraded
+  // to a summary tile is still where the defender question is answered, so the
+  // tile wears the same flag (and the same treatment) the wing crest does.
+  const defenderTarget = playerTarget && interaction.assigningDefender === true;
   return (
     <div className={styles.controlRegion} data-focus-region={`plane-tile-${tile.seat}`}>
       <button
@@ -362,6 +414,8 @@ function TileControls({
         style={box(tile.rect)}
         data-testid={playerTarget ? `target-player-${tile.seat}` : `focus-seat-${tile.seat}`}
         data-focus-key={`tile:${tile.seat}`}
+        data-defender-candidate={defenderTarget || undefined}
+        aria-pressed={defenderTarget ? interaction.chosen.includes(tile.seat) : undefined}
         data-candidate-overflow={tile.candidateOverflow || undefined}
         aria-label={
           playerTarget

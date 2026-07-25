@@ -7,6 +7,7 @@ import {
   actionFingerprint,
   toDisplayData,
   basicLandGlyph,
+  landRenderTier,
 } from '../scene/card-helpers';
 import { cellSize, splayClearance, surfaceKindForRow, tabClearance } from '../scene/geometry';
 import { PLANE, insetRect, hitRectFor } from './metrics';
@@ -172,11 +173,23 @@ function toRender(group: StageGroup, seat: PlayerId, tier: RenderTier, rect: Rec
  * that box's decorations sweep outside it (issue #529). */
 interface Cell {
   g: StageGroup;
+  /** The tier this cell draws at — its row's rung, or the land promotion. */
+  tier: RenderTier;
   size: { w: number; h: number };
   /** Clearance the `×N` top-edge tab needs above the box (0 when unfolded). */
   tab: number;
   /** Clearance the down-and-left splay sweeps (0 when unfolded). */
   splay: { left: number; down: number };
+}
+
+/**
+ * The tier one staged permanent draws at: its row's rung, except that a land
+ * takes {@link landRenderTier}'s promotion off the chip rung when it carries no
+ * basic emblem (issue #463 — a nonbasic land is never an anonymous chip).
+ */
+function tierForItem(item: StageItem, tiers: Record<BandRowKind, RenderTier>): RenderTier {
+  const rowTier = tiers[item.row];
+  return item.row === 'lands' ? landRenderTier(item.perm.card.type_line, rowTier) : rowTier;
 }
 
 /** Reserve one group's cell, including whatever its fold decorations overhang. */
@@ -186,6 +199,7 @@ function toCell(group: StageGroup, tier: RenderTier): Cell {
   const folded = group.memberIds.length > 1;
   return {
     g: group,
+    tier,
     size: cellSize(tier, item.perm.tapped ?? false, kind),
     // The count tab and the splay are drawn by a fold and by nothing else, so an
     // unfolded card reserves exactly its own box — the ladder is not paying for
@@ -225,8 +239,7 @@ function layGroups(
     const rowGroups = groups.filter((g) => g.item.row === row);
     if (rowGroups.length === 0) continue;
     any = true;
-    const tier = tiers[row];
-    const cells = rowGroups.map((g) => toCell(g, tier));
+    const cells = rowGroups.map((g) => toCell(g, tierForItem(g.item, tiers)));
     // Break into lines: one line unless wrapping past the content width. A
     // folded cell's leftward splay is charged to the gap ahead of it.
     const lines: Cell[][] = [];
@@ -255,7 +268,7 @@ function layGroups(
       for (const cell of lineCells) {
         x += cell.splay.left;
         const rect: Rect = { x, y: y + tab + lineH - cell.size.h, w: cell.size.w, h: cell.size.h };
-        renders.push(toRender(cell.g, seat, tiers[cell.g.item.row], rect));
+        renders.push(toRender(cell.g, seat, cell.tier, rect));
         x += cell.size.w + PLANE.cardGap;
       }
       y += tab + lineH + splayDown + PLANE.rowGap;

@@ -1,0 +1,45 @@
+/*
+ * Inline symbol notation (issue #462).
+ *
+ * A drawn symbol is a swatched plate carrying its own code — the card face's
+ * cost-pip treatment, scaled to the text it sits in rather than to a card tier,
+ * so the two size contexts read as one vocabulary. Every color arrives as a
+ * custom property from the shipped `PIP` card tokens (ADR 0019): there is no
+ * literal color and no literal duration in this file.
+ */
+
+.symbol {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 1.25em;
+  height: 1.25em;
+  margin: 0 0.08em;
+  border-radius: 50%;
+  background: var(--symbol-bg);
+  color: var(--symbol-fg);
+  /* Sized off the surrounding text so an inline symbol matches its sentence at
+     every tier — inspector body, control label, or card rules area. */
+  font-size: 0.86em;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: none;
+  vertical-align: -0.18em;
+}
+
+/* A hybrid/phyrexian code needs room for both halves: the plate widens into a
+   stadium, which doubles as the non-color channel separating it from a pip. */
+.symbol[data-wide='true'] {
+  width: auto;
+  min-width: 1.25em;
+  padding: 0 0.28em;
+  border-radius: 0.7em;
+  font-size: 0.72em;
+}
+
+/* The `{T}` plate carries the procedural tap glyph, drawn at the plate's scale
+   through `currentColor` — no raster asset, no official symbol. */
+.symbol > svg {
+  width: 0.92em;
+  height: 0.92em;
+}

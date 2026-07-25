@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GameLogEntry, GameView } from '../../protocol';
-import { ACTIVITY, deriveActivity, isMeaningful, newestSequence } from './activityFeed';
+import {
+  ACTIVITY,
+  deriveActivity,
+  isMeaningful,
+  newestSequence,
+  turnChangeSequences,
+} from './activityFeed';
 
 /** A view carrying only what the activity surface reads. */
 function viewWith(log: GameLogEntry[]): Pick<GameView, 'log' | 'player_names'> {
@@ -31,6 +37,36 @@ describe('isMeaningful', () => {
     expect(isMeaningful({ type: 'permanent_died', permanent: { id: 'p', name: 'Bear' } })).toBe(
       true,
     );
+  });
+});
+
+/**
+ * Turn boundaries (issue #455). ADR 0020's settle loop can run a whole opponent
+ * turn between two broadcasts; #455 records the consequence verbatim ("the
+ * player believes they're still in turn 1; the game is at turn 2"). The eleven
+ * intra-turn advances stay folded — the boundary between two turns does not.
+ */
+describe('turnChangeSequences (issue #455)', () => {
+  function stepAt(sequence: number, turn: number): GameLogEntry {
+    return {
+      sequence,
+      event: { type: 'step_changed', turn, phase: 'untap', active_player: 'p1' },
+    };
+  }
+
+  it('names the step entry whose turn differs from the one before it', () => {
+    const entries = [stepAt(1, 1), stepAt(2, 1), stepAt(3, 2), stepAt(4, 2), stepAt(5, 3)];
+    expect([...turnChangeSequences(entries)]).toEqual([3, 5]);
+  });
+
+  it('never names the window’s first step entry', () => {
+    // After a reconnect the window opens mid-turn; calling that a turn change
+    // would announce a boundary that never happened.
+    expect([...turnChangeSequences([stepAt(9, 4), stepAt(10, 4)])]).toEqual([]);
+  });
+
+  it('ignores every other event type', () => {
+    expect([...turnChangeSequences([cast(1, 'Shock'), cast(2, 'Bolt')])]).toEqual([]);
   });
 });
 
@@ -95,6 +131,30 @@ describe('deriveActivity — the auto-surfaced ticker', () => {
     expect(deriveActivity(viewWith([unknown])).surfaced).toHaveLength(0);
     // …but the surface is still present, so the history door stays available.
     expect(deriveActivity(viewWith([unknown])).present).toBe(true);
+  });
+
+  it('surfaces a turn change while keeping the intra-turn advances folded', () => {
+    // The whole shape #455 reports: an opponent's turn resolving in one
+    // broadcast. The boundary line is the one the player must not miss.
+    const entries: GameLogEntry[] = [
+      { sequence: 1, event: { type: 'step_changed', turn: 1, phase: 'end', active_player: 'p1' } },
+      {
+        sequence: 2,
+        event: { type: 'step_changed', turn: 2, phase: 'untap', active_player: 'p2' },
+      },
+      {
+        sequence: 3,
+        event: { type: 'step_changed', turn: 2, phase: 'upkeep', active_player: 'p2' },
+      },
+    ];
+    const model = deriveActivity(viewWith(entries));
+    expect(model.surfaced.map((line) => line.sequence)).toEqual([2]);
+    const text = model.surfaced[0].segments
+      .map((segment) => (typeof segment === 'string' ? segment : segment.name))
+      .join('');
+    // The words are still logComposition's — this module decides which entries
+    // surface, never what they say.
+    expect(text).toBe('Turn 2, Untap — Sorel');
   });
 
   it('marks unseen lines from the shipped unread marker', () => {

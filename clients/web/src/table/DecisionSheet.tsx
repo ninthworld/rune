@@ -21,6 +21,7 @@
  */
 import type { GameView } from '../protocol';
 import { PromptSurface } from './PromptSurface';
+import { SymbolText, hasSymbolNotation, symbolNotationText } from '../chrome/symbols';
 import { activeChosen as msActiveChosen, hasOptions, optionSubmittable } from './multiSelect';
 import type { MultiSelectSession, MultiSelectSlot } from './multiSelect';
 import { cardNameOf } from './tableView';
@@ -87,7 +88,11 @@ export function DecisionSheet({
         )}
         {multiSelect && optionControls && (
           <div className={s.sheetOptions} data-testid="multiselect-options">
-            {optionControls.prompt !== undefined && <span>{optionControls.prompt}</span>}
+            {optionControls.prompt !== undefined && (
+              <span>
+                <SymbolText text={optionControls.prompt} />
+              </span>
+            )}
             {(optionControls.options ?? []).map((option) => (
               <button
                 key={option.id}
@@ -96,8 +101,13 @@ export function DecisionSheet({
                 disabled={!optionSubmittable(multiSelect, option)}
                 data-testid={`multiselect-option-${option.id}`}
                 className={s.optionButton}
+                // The drawn label's symbols are `role="img"`, so a label that
+                // carries notation speaks its substitution instead (#462).
+                aria-label={
+                  hasSymbolNotation(option.label) ? symbolNotationText(option.label) : undefined
+                }
               >
-                {option.label}
+                <SymbolText text={option.label} />
               </button>
             ))}
           </div>

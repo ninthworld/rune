@@ -17,6 +17,7 @@
  */
 import type { EntityId } from '../protocol';
 import { cx } from '../chrome/cx';
+import { SymbolText, symbolNotationText } from '../chrome/symbols';
 import s from './chrome.module.css';
 
 /** One row the surface renders: an entity id with its display label. */
@@ -49,8 +50,15 @@ interface Props {
 
 export function PromptSurface({ mode, prompt, zone, items, onToggle, onMove }: Props) {
   return (
-    <section data-testid="prompt-surface" className={s.promptSurface} aria-label={prompt}>
-      <h2 className={s.promptSurfaceTitle}>{prompt}</h2>
+    <section
+      data-testid="prompt-surface"
+      className={s.promptSurface}
+      aria-label={symbolNotationText(prompt)}
+    >
+      {/* The server's prompt, its `{…}` runs drawn as symbols (issue #462). */}
+      <h2 className={s.promptSurfaceTitle}>
+        <SymbolText text={prompt} />
+      </h2>
       {mode === 'select' && zone !== undefined && (
         <span className={s.promptSurfaceZone}>{zone}</span>
       )}

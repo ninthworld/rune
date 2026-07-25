@@ -24,6 +24,7 @@ import {
   subscribeArt,
 } from '../card/art/artStore';
 import { CardArtSlot } from '../card/dom';
+import { SymbolText, symbolNotationText } from '../chrome/symbols';
 import s from './chrome.module.css';
 
 /** A named reference to another permanent, for the inspector's attachment lines. */
@@ -95,6 +96,10 @@ function targetName(target: InspectTarget): string {
 
 export function CardInspect({ target, onClose, transient = false }: Props) {
   const name = targetName(target);
+  // A stack target's "name" is the server's composed description, which can
+  // carry symbol notation. The heading draws it; the accessible names — pure
+  // text contexts — take the spoken substitution instead (issue #462).
+  const spoken = symbolNotationText(name);
   const body =
     target.kind === 'card' ? (
       <CardBody
@@ -119,10 +124,10 @@ export function CardInspect({ target, onClose, transient = false }: Props) {
         data-transient="true"
         className={s.inspectPreview}
         role="img"
-        aria-label={`Preview ${name}`}
+        aria-label={`Preview ${spoken}`}
       >
         <h2 className={s.inspectName} data-testid="card-inspect-name">
-          {name}
+          <SymbolText text={name} />
         </h2>
         {body}
       </div>
@@ -142,7 +147,7 @@ export function CardInspect({ target, onClose, transient = false }: Props) {
         className={s.inspectPanel}
         role="dialog"
         aria-modal="true"
-        aria-label={`Inspect ${name}`}
+        aria-label={`Inspect ${spoken}`}
         onClick={(event) => event.stopPropagation()}
       >
         <button
@@ -155,7 +160,7 @@ export function CardInspect({ target, onClose, transient = false }: Props) {
           ×
         </button>
         <h2 className={s.inspectName} data-testid="card-inspect-name">
-          {name}
+          <SymbolText text={name} />
         </h2>
         {body}
       </div>
@@ -203,9 +208,11 @@ function CardBody({
         testId="card-inspect-art-slot"
         artTestId="card-inspect-art"
       />
+      {/* Cost and rules are the server's strings verbatim; their `{…}` runs are
+          drawn as symbols rather than printed as braces (issue #462). */}
       {card.mana_cost !== undefined && (
         <div className={s.inspectCost} data-testid="card-inspect-cost">
-          {card.mana_cost}
+          <SymbolText text={card.mana_cost} />
         </div>
       )}
       <div className={s.inspectTypeLine} data-testid="card-inspect-type">
@@ -227,7 +234,7 @@ function CardBody({
       )}
       {rules ? (
         <p className={s.inspectRules} data-testid="card-inspect-rules">
-          {rules}
+          <SymbolText text={rules} />
         </p>
       ) : (
         <p className={s.inspectNoText} data-testid="card-inspect-rules">
@@ -269,7 +276,7 @@ function StackBody({ item }: { item: StackItem }) {
         {item.source !== undefined ? 'Ability on the stack' : 'Spell on the stack'}
       </div>
       <p className={s.inspectRules} data-testid="card-inspect-rules">
-        {item.description}
+        <SymbolText text={item.description} />
       </p>
       <div className={s.inspectStateRow} data-testid="card-inspect-state">
         <span className={s.inspectState}>Controller {item.controller}</span>

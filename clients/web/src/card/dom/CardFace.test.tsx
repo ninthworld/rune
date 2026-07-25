@@ -156,6 +156,25 @@ describe('the surface contract (card-representation §4)', () => {
     expect(actionable.textContent).toContain('Forest');
   });
 
+  it('draws the nonbasic land’s name at the tier staging promotes it to (#463)', () => {
+    // The staging layer lifts a nonbasic land off the chip rung
+    // (`landRenderTier`); this is the other half of that contract — the tier it
+    // is lifted to can actually carry the §15.9 name strip, and the rung it was
+    // lifted off cannot draw a name at all (§8.4: `TIER.chip.name === 0`).
+    const promoted = renderFace(
+      bear({ name: 'Moonlit Causeway', typeLine: 'Land', landTile: true }),
+      'mini',
+    );
+    expect(promoted.textContent).toContain('Moonlit Causeway');
+    expect(promoted.style.getPropertyValue('--face-name-size')).toBe('11px');
+    cleanup();
+    const chip = renderFace(
+      bear({ name: 'Moonlit Causeway', typeLine: 'Land', landTile: true }),
+      'chip',
+    );
+    expect(chip.style.getPropertyValue('--face-name-size')).toBe('0px');
+  });
+
   it('turns a land back into an ordinary portrait card off the battlefield', () => {
     for (const tier of ['hand', 'stack', 'inspect'] as const) {
       const root = renderFace(bear({ typeLine: 'Land', landTile: true }), tier);
@@ -255,7 +274,13 @@ describe('the information budget per tier (card-representation §8)', () => {
       'inspect',
       { rulesText: '{T}: Add {G}.\nFlying' },
     );
-    expect(root.textContent).toContain('{T}: Add {G}.');
+    // The rules string is the server's, verbatim apart from its symbol
+    // notation, which draws as symbols rather than braces (issue #462).
+    expect(root.textContent).not.toContain('{');
+    expect(root.textContent).toContain(': Add ');
+    expect(
+      Array.from(root.querySelectorAll('[data-symbol]')).map((el) => el.getAttribute('aria-label')),
+    ).toEqual(['tap', 'green mana']);
     expect(root.textContent).toContain('charge ×3');
     expect(root.textContent).toContain('2/2');
     expect(root.textContent).toContain('Creature — Bear');

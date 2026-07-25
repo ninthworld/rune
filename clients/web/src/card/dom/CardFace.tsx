@@ -44,6 +44,7 @@
 import type { CSSProperties } from 'react';
 import { parseManaCost, type CardDisplayData } from '../cardFactory';
 import { keywordGlyphName, type GlyphName } from '../../chrome/glyphs';
+import { SymbolText } from '../../chrome/symbols';
 import { cx } from '../../chrome/cx';
 import { ART } from '../../tokens';
 import { CardArt, CardArtSlot } from './CardArt';
@@ -477,7 +478,10 @@ function FullCardFace({
       )}
       <div className={s.type}>{full !== undefined ? '' : data.typeLine}</div>
       <div className={s.rules} data-plate-extra={extraPlate(data, strip.overflow)}>
-        {full !== undefined ? '' : (rulesText ?? '')}
+        {/* §3.8 renders the server's rules string verbatim — its `{…}` runs are
+            drawn as symbols rather than printed as braces (issue #462). The
+            words are untouched; only the notation becomes an icon. */}
+        {full !== undefined ? '' : <SymbolText text={rulesText ?? ''} />}
         <KeywordStrip names={full !== undefined ? [] : strip.names} className={s.rulesGlyphs} />
       </div>
       <PtPlate data={data} />
@@ -530,7 +534,9 @@ function InspectFace({
       />
       <div className={s.type}>{data.typeLine}</div>
       {rulesText !== undefined && rulesText !== '' && (
-        <div className={cx(s.rules, s.inspectRules)}>{rulesText}</div>
+        <div className={cx(s.rules, s.inspectRules)}>
+          <SymbolText text={rulesText} />
+        </div>
       )}
       <div className={s.inspectFooter} data-plate-extra={extraPlate(data, strip.overflow)}>
         <KeywordStrip names={strip.names} />

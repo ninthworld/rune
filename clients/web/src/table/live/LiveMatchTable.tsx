@@ -545,6 +545,12 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     candidates: pickingCandidates,
     chosen,
     playerCandidates,
+    // Issue #457: the multiplayer "whom does this creature attack" question. Both
+    // values come straight off the active `defend_` slot — the seats the server
+    // listed and the attacker the slot is keyed by — so the control layer can make
+    // the panels unmistakable without deriving anything about combat.
+    assigningDefender: defenderSlot,
+    routedAttacker: routingAttacker,
     dropBoard: handDrag !== null && (handDrag.action.requirements?.length ?? 0) === 0,
     dropCandidates: handDrag?.action.requirements?.[0]?.candidates,
     onActivateEntity: activateEntity,

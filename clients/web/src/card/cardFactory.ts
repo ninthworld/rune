@@ -18,6 +18,9 @@
  */
 import { PIP, type ColorIdentity } from '../tokens';
 import type { GlyphName } from '../chrome/glyphs';
+// The pure tokenizer directly, not the package root: this module is data-only
+// and must not pull the React symbol component (or its stylesheet) in with it.
+import { tokenizeNotation } from '../chrome/symbols/notation';
 
 /** Tiers that render a full card face (chips are a separate digest representation).
  * `mini` is the stepped-down dense tier the density ladder engages (blueprint). */
@@ -220,12 +223,19 @@ export interface ManaPip {
 /**
  * Parse a displayed mana cost such as `"{1}{G}{G}"` into pips. This is pure
  * display formatting of the server-provided string — not a mana computation.
+ *
+ * The split and the swatch choice come from the shared symbol vocabulary
+ * (issue #462, `chrome/symbols`), which is what keeps the cost row and the
+ * inline symbols every DOM text surface draws from drifting apart. A code the
+ * vocabulary does not know still gets a pip — on the neutral swatch, showing
+ * the code verbatim — so nothing a server sends can vanish from a cost.
  */
 export function parseManaCost(manaCost: string): ManaPip[] {
-  const symbols = manaCost.match(/\{([^}]+)\}/g) ?? [];
-  return symbols.map((raw) => {
-    const symbol = raw.slice(1, -1);
-    const swatch = symbol in PIP ? PIP[symbol as keyof typeof PIP] : PIP.N;
-    return { symbol, bg: swatch.bg, fg: swatch.fg };
+  return tokenizeNotation(manaCost).flatMap((token) => {
+    if (token.kind === 'text') return [];
+    if (token.kind === 'unknown') {
+      return [{ symbol: token.code, bg: PIP.N.bg, fg: PIP.N.fg }];
+    }
+    return [{ symbol: token.caption, bg: token.swatch.bg, fg: token.swatch.fg }];
   });
 }
