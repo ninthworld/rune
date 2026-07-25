@@ -338,60 +338,45 @@ describe('environment quality — §8.2 T0 / T1 / T2 and the raster swap', () =>
   });
 });
 
-describe('environment quality — the composed theme studies (#555)', () => {
-  const STUDIES: SceneThemeName[] = ['verdantCanals', 'sunlitObservatory', 'moonlitRuins'];
+describe('environment quality — the completed theme family (#559)', () => {
+  const THEMES: SceneThemeName[] = [
+    'runicVale',
+    'verdantCanals',
+    'sunlitObservatory',
+    'moonlitRuins',
+  ];
 
-  it('draws a study as one flattened plate and stands the other layers down', () => {
-    // A study bakes surround, edge, and props into one image. Drawing the
-    // procedural rim and silhouettes over it would double them, so L2 and L3
-    // stand down and L0 drops to its zero-byte token form behind the plate.
-    for (const theme of STUDIES) {
+  it('draws every theme as the complete layered contract', () => {
+    for (const theme of THEMES) {
       const p = plan({ theme, quality: 'high' });
-      expect(p.composition).toBe('composed');
-      expect(p.composedActive).toBe(true);
-      expect(layer(p, 'l1').rasterPath).toBe(ENV_MANIFESTS[theme].assets.l1.src);
-      expect(layer(p, 'l1').composed).toBe(true);
-      expect(layer(p, 'l0').treatment).toBe('token-gradient');
-      expect(layer(p, 'l2').treatment).toBe('off');
-      expect(layer(p, 'l3').treatment).toBe('off');
+      expect(p.composition).toBe('layered');
+      expect(p.composedActive).toBe(false);
+      for (const id of ['l0', 'l1', 'l2', 'l3'] as const) {
+        expect(layer(p, id).treatment).toBe('plate');
+        expect(layer(p, id).rasterPath).toBeDefined();
+      }
     }
   });
 
-  it('keeps the layered composition for the one theme that shipped layers', () => {
-    const p = plan({ theme: 'runicVale', quality: 'high' });
-    expect(p.composition).toBe('layered');
-    expect(p.composedActive).toBe(false);
-    for (const id of ['l0', 'l1', 'l2', 'l3'] as const) {
-      expect(layer(p, id).treatment).toBe('plate');
-    }
-  });
-
-  it('gives a study no Lite variant, so Lite keeps the zero-byte identity floor', () => {
-    // §8.1 wants the theme's identity at half the bytes; no study shipped a
-    // half-resolution plate, and downloading the full one at Lite would defeat
-    // the tier. Lite therefore renders the token plaza — still the theme, still
-    // illustrated, still never dropped.
-    for (const theme of STUDIES) {
+  it('gives every alternate a true raster Lite identity floor', () => {
+    for (const theme of THEMES) {
       const p = plan({ theme, quality: 'lite' });
       expect(p.composedActive).toBe(false);
       expect(layer(p, 'l1').treatment).toBe('plate');
-      expect(layer(p, 'l1').rasterPath).toBeUndefined();
+      expect(layer(p, 'l1').rasterPath).toBe(ENV_MANIFESTS[theme].assets['l1-half'].src);
       expect(layer(p, 'l1').variant).toBe('l1-half');
     }
   });
 
-  it('restores the full procedural composition when a study plate fails', () => {
-    // §8.3: "the theme still reads". With the one plate gone there is nothing
-    // left to double, so the rim and the props come back rather than the theme
-    // collapsing to a bare gradient.
-    for (const theme of STUDIES) {
+  it('falls back one failed layer without touching its three siblings', () => {
+    for (const theme of THEMES) {
       const p = plan({ theme, quality: 'high', failedKeys: [`env/${theme}/l1`] });
       expect(p.composedActive).toBe(false);
       expect(layer(p, 'l1').treatment).toBe('token-gradient');
       expect(layer(p, 'l0').treatment).toBe('plate');
       expect(layer(p, 'l2').treatment).toBe('plate');
       expect(layer(p, 'l3').treatment).toBe('plate');
-      expect(layer(p, 'l2').rasterPath).toBeUndefined();
+      expect(layer(p, 'l2').rasterPath).toBeDefined();
     }
   });
 
@@ -399,7 +384,7 @@ describe('environment quality — the composed theme studies (#555)', () => {
     // §11's mid-match change: the manifest re-resolves and the layers cross-fade.
     // Nothing about the slot identity may move, or the cross-fade would be a
     // re-mount.
-    for (const theme of [...STUDIES, 'runicVale' as SceneThemeName]) {
+    for (const theme of THEMES) {
       const p = plan({ theme, quality: 'high' });
       expect(p.layers.map((l) => l.layer)).toEqual(['l0', 'l1', 'l2', 'l3']);
       expect(layer(p, 'l1').key).toBe(`env/${theme}/l1`);

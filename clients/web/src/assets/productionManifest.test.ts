@@ -36,13 +36,12 @@ describe('the production manifest reader', () => {
     expect(PRODUCTION_CARD_BACK_DEFAULT).toBe(onDisk.cardBacks.default);
   });
 
-  it('separates a production layer set from a study, and never confuses the two', () => {
-    expect(productionEnvironment('runicVale')?.production).toBe(true);
-    expect(productionStudy('runicVale')).toBeUndefined();
-    for (const theme of ['verdantCanals', 'sunlitObservatory', 'moonlitRuins']) {
-      expect(productionEnvironment(theme)).toBeUndefined();
-      expect(productionStudy(theme)?.src).toMatch(/^\/lazy\//);
+  it('resolves all four production layer sets while retaining the approved studies', () => {
+    for (const theme of ['runicVale', 'verdantCanals', 'sunlitObservatory', 'moonlitRuins']) {
+      expect(productionEnvironment(theme)?.production).toBe(true);
     }
+    expect(productionStudy('runicVale')).toBeUndefined();
+    expect(productionStudy('verdantCanals')?.src).toMatch(/^\/lazy\//);
   });
 
   it('answers `undefined` for a theme or skin that did not ship', () => {
