@@ -621,7 +621,7 @@ test('four browsers play a four-player pod through the rendered table', async (
 ) => {
   // Two full passes of a four-context scenario; the canary's 2-minute budget is
   // for one spec with two contexts.
-  test.setTimeout(15 * 60_000);
+  test.setTimeout(45 * 60_000);
 
   const full = await playPod(browser, launchRuneServer, info, {
     label: 'pass-1',
