@@ -55,9 +55,7 @@
 }
 
 /* ── The button ──────────────────────────────────────────────────────────────
-   The hit box and the frame. Its own background IS the frame gradient; the face
-   inside it is inset by the frame width. */
-/* The button is the HIT BOX and paints nothing. Its transparent inset padding is
+   The button is the HIT BOX and paints nothing. Its transparent inset padding is
    what pads a 36 px plate out to the 44 px floor (D2); if the button painted the
    frame gradient, that correction would fill with gold and the plate would read
    as 44 px tall — the drawn proportion the baselines set would be lost. */
@@ -104,7 +102,7 @@
   padding: 0 var(--rune-space-6);
   /* The 1 px inner line of §3.1's frame construction, drawn INSIDE the face so
      it follows the chamfer with the rest of the box. */
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px var(--rune-control-inner-line);
   font-size: var(--rune-type-body-lg);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -126,7 +124,7 @@
   padding: var(--rune-primary-frame-w);
   border-radius: var(--rune-radius-pill);
   background: var(--rune-primary-frame);
-  box-shadow: 0 0 12px var(--rune-primary-glow);
+  box-shadow: 0 0 var(--rune-space-6) var(--rune-primary-glow);
 }
 
 .primary .face {
@@ -141,8 +139,8 @@
   );
   box-shadow:
     inset 0 1px 0 var(--rune-primary-rim),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
-  color: #f4f7ff;
+    inset 0 0 0 1px var(--rune-control-inner-line);
+  color: var(--rune-primary-label);
   font-size: var(--rune-type-action);
 }
 
@@ -159,7 +157,7 @@
     var(--rune-primary-face-top),
     var(--rune-primary-face-bottom)
   );
-  color: #f4f7ff;
+  color: var(--rune-primary-label);
   font-size: var(--rune-type-heading);
 }
 
@@ -228,7 +226,7 @@
 .button:active:not(:disabled) .face {
   box-shadow:
     inset 0 2px 4px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+    inset 0 0 0 1px var(--rune-control-inner-line);
 }
 
 /* The focus ring is drawn OUTSIDE the frame and is never suppressed (D15). The
@@ -246,7 +244,7 @@
   background-image: linear-gradient(var(--rune-gold-fill), var(--rune-gold-fill));
   box-shadow:
     inset 0 -3px 0 var(--rune-accent-gold),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+    inset 0 0 0 1px var(--rune-control-inner-line);
 }
 
 /* Disabled is RARE BY CONSTRUCTION (§3.2, D14): an action the server has not
@@ -277,7 +275,7 @@
   width: 40%;
   height: 2px;
   background: var(--rune-primary-rim);
-  animation: sweep 600ms linear infinite;
+  animation: sweep var(--rune-control-sweep) linear infinite;
 }
 
 @keyframes sweep {
@@ -308,7 +306,7 @@
    already owns. A `valid_actions`-driven client can only be rejected by a
    stale-view race, never by user error, so the tone stays informational. */
 .button[data-shake='true'] {
-  animation: shake 200ms ease-in-out;
+  animation: shake var(--rune-control-shake) ease-in-out;
 }
 
 @keyframes shake {

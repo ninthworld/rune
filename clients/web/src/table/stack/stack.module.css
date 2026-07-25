@@ -1,0 +1,479 @@
+/*
+ * The contextual **stack stage** and **activity surface**
+ * (`docs/design/stack-and-relationships.md` §1–§3 and §10.4, issue #534, under
+ * ADR 0032).
+ *
+ * Two surfaces that are absent by default and appear where and when they are
+ * relevant: the stage exists only while `GameView.stack` is non-empty, and the
+ * activity badge only while the log window carries something. Neither reserves a
+ * track, a column, or a placeholder — that is the whole point of retiring the
+ * permanent rail, and it is why every rule below positions rather than flows.
+ *
+ * ## Token discipline (ADR 0019)
+ *
+ * This file declares no colour and no duration of its own. Every dimension is a
+ * `--stack-*` custom property published by `StackStage.tsx` from
+ * `stackStage.ts`'s `STACK_STAGE`, or a `--rune-*` token from
+ * `chrome/tokens.css`; every hue is a `--rune-*` token, except the per-slot seat
+ * accent, which arrives as `--slot-accent` from `identityAccents.ts` (the TS
+ * token source the whole table shares).
+ *
+ * ## Layers
+ *
+ * The stage sits at `--rune-z-shell`, deliberately BELOW `--rune-z-decision`.
+ * ADR 0032's binding rule is that a layer may only be covered by a layer the
+ * player explicitly invoked and can dismiss without answering it — and a stack
+ * stage is not a decision, so it must never be in a position to cover one. The
+ * full history is the opposite case: the player asked for it and one Escape
+ * closes it, so it takes `--rune-z-overlay` alongside the zone browser.
+ */
+
+/* ── The stage ─────────────────────────────────────────────────────────────
+   Anchored to the right flank, growing UPWARD from a bottom-right origin so
+   depth never pushes into the receiver's band (§1.2). `bottom` clears the
+   control cluster, whose foot the stage sits on (control-language §4.4/D7).
+   Mount it as a direct child of the shell root — a sibling of the shell
+   regions, never inside one: a region carrying a z-index creates a stacking
+   context its children cannot climb out of. */
+.stage {
+  position: absolute;
+  z-index: var(--rune-z-shell);
+  right: var(--stack-margin);
+  bottom: var(--stack-clearance);
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  box-sizing: border-box;
+  width: var(--stack-width);
+  /* Never taller than the flank it grows up: the shell root is the containing
+     block, so this is the viewport minus the cluster below and a margin above. */
+  max-height: calc(100% - var(--stack-clearance) - var(--stack-margin));
+  color: var(--rune-text);
+}
+
+/* The header the deep-rail and phone mocks draw verbatim. It supplies the `N`
+   for the tiers that show only `n` (§3.3), so it is never decorative. */
+.header {
+  margin: 0;
+  color: var(--rune-text-muted);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-row-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The pile (§3.1, depth 1–5): the top entry sits at the front and older entries
+   recede up-and-back. `column-reverse` draws the DOM's first entry — the top of
+   the stack — at the bottom front while keeping the list top-first for a screen
+   reader and for the roving focus, which §9.2 requires.
+ *
+ * Paint order cannot come from DOM order here (the older entries come later and
+ * would paint over the newer front one), so the list ISOLATES its own stacking
+ * context and each slot reads a `--slot-z` published by the model. That is the
+ * same carve-out `live-plane.module.css` takes: an `isolation: isolate` host
+ * ordering objects *within itself* is not on the `--rune-z-*` ladder, which
+ * orders surfaces against each other. No bare z-index is declared here. */
+.list[data-layout='pile'] {
+  flex-direction: column-reverse;
+  gap: 0;
+  isolation: isolate;
+}
+
+.list[data-layout='pile'] .slot {
+  z-index: var(--slot-z);
+}
+
+/* The vertical component of §3.1's `(-10px, -14px)` per-entry offset is a
+   physical overlap, not a transform: a transform does not affect layout, so
+   transformed slots would not overlap and the pile would grow without bound.
+   Each receding slot is pulled down over its neighbour until exactly the peek
+   is exposed, which is what keeps depth 5 inside the ≤ 320 px stage height. */
+.list[data-layout='pile'] .slot[data-tier='mini'] {
+  margin-bottom: calc(var(--stack-peek) - var(--stack-mini-h));
+}
+
+/* The condensed rail beyond depth 8 scrolls, at a fixed height, with the top
+   three entries pinned so "what resolves next" never requires scrolling (D5). */
+.list[data-scrolls='true'] {
+  max-height: var(--stack-rail-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ── A slot ────────────────────────────────────────────────────────────────
+   The SLOT wears the controller's seat accent, never the card face
+   (visual-system §5): the 4 px left stripe is the accent's only home here. */
+.slot {
+  position: relative;
+  display: flex;
+  gap: var(--rune-space-4);
+  align-items: stretch;
+  box-sizing: border-box;
+  border: 1px solid var(--rune-border);
+  border-left: var(--rune-space-2) solid var(--slot-accent, var(--rune-border-strong));
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-chrome-bg);
+  box-shadow: var(--rune-elevation-1);
+  transform: translateX(var(--slot-dx, 0)) scale(var(--slot-scale, 1));
+  transform-origin: bottom right;
+}
+
+.slot[data-tier='expanded'] {
+  min-height: var(--stack-expanded-h);
+}
+
+.slot[data-tier='mini'] {
+  min-height: var(--stack-mini-h);
+}
+
+/* Every row is above the 44 px interactive floor by construction (§10.4). */
+.slot[data-tier='row'] {
+  min-height: var(--stack-row-h);
+}
+
+/* "Resolves next": a gold RING plus the carried text badge. Gold and a shape,
+   never gold alone (§2.2). */
+.slot[data-top='true'] {
+  border-color: var(--rune-gold-border);
+  box-shadow:
+    var(--rune-elevation-1),
+    inset 0 0 0 1px var(--rune-accent-gold);
+}
+
+/* A slot the server named as a candidate for the active target slot. The
+   targeting accent plus a dashed edge — the shape channel — so candidacy never
+   reads as hue alone. */
+.slot[data-candidate='true'] {
+  border-color: var(--rune-targeting);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--rune-targeting-fill), var(--rune-chrome-bg));
+}
+
+.sticky {
+  position: sticky;
+  top: 0;
+  z-index: var(--rune-z-scene);
+}
+
+.stickyFoot {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--rune-z-scene);
+}
+
+/* ── The entry body ────────────────────────────────────────────────────────
+   One focusable element per entry (roving tabindex, §9.3). It is a <button>
+   when the server listed the entry as a candidate and a plain focusable box
+   otherwise, but both look and measure the same. */
+.body {
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--rune-space-4);
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--rune-touch);
+  padding: var(--rune-space-3) var(--rune-space-4);
+  border: 0;
+  border-radius: var(--rune-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.body {
+  cursor: pointer;
+}
+
+.body:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+
+/* The kind tile. A spell gets a ROUNDED tile with its initial; an ability gets a
+   SQUARE-cornered tile with an open diamond and no frame accent, so an ability
+   plate can never be mistaken for a card (§2.3, §2.4 rule 1). */
+.tile {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--rune-space-10);
+  height: var(--rune-space-10);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-sm);
+  background: var(--rune-sunken-bg);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+}
+
+.tile[data-kind='ability'] {
+  border-radius: 0;
+  color: var(--rune-text-muted);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+  min-width: 0;
+}
+
+.title {
+  overflow: hidden;
+  font-size: var(--rune-type-body);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The Expanded entry is the one place the server's whole description is drawn:
+   up to three lines, then inspect carries the rest (§2.2). */
+.slot[data-tier='expanded'] .title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  white-space: normal;
+}
+
+.subtitle {
+  overflow: hidden;
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The order index: a first-class element, not a decoration (§3.3). */
+.index {
+  padding: 0 var(--rune-space-2);
+  border-radius: var(--rune-radius-xs);
+  background: var(--rune-sunken-bg-deep);
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-micro);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.badges {
+  display: flex;
+  gap: var(--rune-space-2);
+  align-items: center;
+}
+
+.topBadge {
+  padding: 0 var(--rune-space-2);
+  border: 1px solid var(--rune-gold-border);
+  border-radius: var(--rune-radius-xs);
+  color: var(--rune-accent-gold);
+  font-size: var(--rune-type-micro);
+  font-weight: 600;
+}
+
+/* The per-entry inspect handle — a sibling of the body, never nested inside a
+   candidate's <button>, so a stack object is inspectable whether or not it is a
+   legal target. Carried verbatim from the shipped StackPanel. */
+.inspect {
+  flex: none;
+  width: var(--rune-touch);
+  border: 0;
+  border-left: 1px solid var(--rune-border);
+  background: none;
+  color: var(--rune-text-muted);
+  cursor: pointer;
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+}
+
+.inspect:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: -2px;
+}
+
+/* The `+K more` divider: states the hidden count rather than letting the scroll
+   swallow it silently (§3.2). */
+.more {
+  margin: 0;
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-micro);
+  text-align: center;
+}
+
+/* ── The compact sheet (§10.4) ─────────────────────────────────────────────
+   On phone geometry the stage changes kind: a bottom sheet of Row entries,
+   capped so the focused board and the receiver's dock stay visible. */
+.sheet {
+  position: absolute;
+  z-index: var(--rune-z-shell);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  max-height: var(--stack-sheet-max-h);
+  padding: var(--rune-space-4);
+  border-top: 1px solid var(--rune-border);
+  border-radius: var(--rune-radius-lg) var(--rune-radius-lg) 0 0;
+  background: var(--rune-chrome-bg);
+  box-shadow: var(--rune-elevation-2);
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+
+.sheetBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The collapsed handle. The drawn plate keeps the mock's 32 px height and the
+   transparent padding carries the hit box out to the 44 px floor — the same
+   plate-versus-hit-box correction control-language D2 applies to the four
+   sub-floor controls the baselines draw. */
+.handle {
+  display: flex;
+  gap: var(--rune-space-4);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--rune-touch);
+  padding: 0 var(--rune-space-6);
+  border: 1px solid var(--rune-border);
+  border-radius: var(--rune-radius-lg) var(--rune-radius-lg) 0 0;
+  background: var(--rune-chrome-bg);
+  color: var(--rune-text);
+  cursor: pointer;
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-caption);
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: -2px;
+}
+
+.handleTitle {
+  overflow: hidden;
+  color: var(--rune-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── The activity surface ──────────────────────────────────────────────────
+   A badge, an auto-surfaced ticker beside it, and the full history behind it.
+   The column is anchored to the flank's head so the stage below it can grow
+   upward without ever displacing the badge. */
+.activity {
+  position: absolute;
+  z-index: var(--rune-z-shell);
+  top: var(--stack-margin);
+  right: var(--stack-margin);
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+  align-items: flex-end;
+  width: var(--stack-width);
+}
+
+.ticker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: var(--rune-space-4);
+  border: 1px solid var(--rune-border);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-table-strong);
+  box-shadow: var(--rune-elevation-1);
+  list-style: none;
+  /* A dwell, not an animation: the ticker appears at full opacity and is
+     removed when its watermark advances. There is nothing here for
+     `prefers-reduced-motion` to neutralize, which is the point — the
+     information never depends on motion. */
+}
+
+.tickerLine {
+  color: var(--rune-text);
+  font-size: var(--rune-type-caption);
+  line-height: 1.35;
+}
+
+/* Unseen is marked by a leading bar AND a visually-hidden "New:" prefix, so the
+   distinction is neither hue-only nor sight-only (issue #340's rule, carried). */
+.tickerLineUnseen {
+  padding-left: var(--rune-space-4);
+  border-left: var(--rune-space-1) solid var(--rune-accent-gold);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── The full history ──────────────────────────────────────────────────────
+   Player-invoked and dismissible without answering anything, so it may sit at
+   `--rune-z-overlay` — the one surface in this file allowed above a decision. */
+.history {
+  position: fixed;
+  z-index: var(--rune-z-overlay);
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--rune-space-7);
+  background: var(--rune-scrim);
+}
+
+.historyPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+  box-sizing: border-box;
+  width: min(100%, var(--stack-history-w));
+  max-height: 100%;
+  padding: var(--rune-space-7);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-overlay-bg);
+  box-shadow: var(--rune-elevation-2);
+}
+
+.historyHead {
+  display: flex;
+  gap: var(--rune-space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.historyTitle {
+  margin: 0;
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-heading);
+}
+
+.historyBody {
+  min-height: 0;
+  overflow: hidden;
+}

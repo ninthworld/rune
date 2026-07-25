@@ -31,7 +31,13 @@ describe('ControlButton', () => {
     );
     expect(container.querySelector('button')?.className).not.toMatch(/chamfered/);
 
-    for (const variant of ['primaryCompact', 'confirm', 'cancel', 'secondary', 'utility'] as const) {
+    for (const variant of [
+      'primaryCompact',
+      'confirm',
+      'cancel',
+      'secondary',
+      'utility',
+    ] as const) {
       rerender(<ControlButton variant={variant} label="X" onPress={() => {}} />);
       expect(container.querySelector('button')?.className).toMatch(/chamfered/);
     }
@@ -56,7 +62,9 @@ describe('ControlButton', () => {
 
   it('is enabled whenever no reason is supplied', () => {
     render(<ControlButton variant="confirm" label="KEEP" onPress={() => {}} />);
-    expect((screen.getByRole('button', { name: 'KEEP' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'KEEP' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 
   it('carries a non-colour channel for every state in the §3.2 matrix', () => {
@@ -121,13 +129,7 @@ describe('IconButton', () => {
 
   it('reports disclosure state when it controls a surface', () => {
     render(
-      <IconButton
-        glyph="›"
-        label="Step list"
-        controls="step-list"
-        expanded
-        onPress={() => {}}
-      />,
+      <IconButton glyph="›" label="Step list" controls="step-list" expanded onPress={() => {}} />,
     );
     const button = screen.getByRole('button', { name: 'Step list' });
     expect(button.getAttribute('aria-expanded')).toBe('true');
