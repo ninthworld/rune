@@ -157,24 +157,28 @@ environment themes and audio, which must never block a playable match. The gate
 also refuses to run against a build made with `VITE_RUNE_FIXTURE_HARNESS=true`,
 since that bundle carries the fixture route and is not what ships.
 
-Measured at commit `e0598dc` (the Phase 3 client, `npm run build`):
+Measured with the issue #548 production-asset drop (`npm run build &&
+npm run budget`):
 
 | Budget | Ceiling | Measured | Used | Headroom |
 | --- | --- | --- | --- | --- |
-| Interactive code bundle (gzipped, excl. art/audio) | ≤ 1.0 MB | 298.75 kB | 29.9 % | 701.25 kB |
+| Interactive code bundle (gzipped, excl. art/audio) | ≤ 1.0 MB | 311.64 kB | 31.2 % | 688.36 kB |
 | Bundled fonts | ≤ 60 KB | 14.52 kB | 24.2 % | 45.48 kB |
-| First-match download at default quality | ≤ 4 MB | 313.27 kB | 7.8 % | 3.69 MB |
+| First-match download at default quality | ≤ 4 MB | 714.11 kB | 17.9 % | 3.29 MB |
 
-Composition: `index.js` 282.27 kB gzipped (913.13 kB raw), `index.css`
-16.22 kB gzipped (96.86 kB raw), `index.html` 0.26 kB gzipped, `rune-display`
-woff2 14.52 kB. No tuning was needed to land inside the ceilings.
+Composition: code 311.64 kB gzipped, `rune-display` WOFF2 14.52 kB, and
+first-match presentation assets 387.95 kB. Deferred Runic Vale upgrades,
+alternate studies, and card art are listed by the gate but excluded from the
+first-match sum.
 
-Two load budgets are **not** covered by this gate and stay owed to the
-real-hardware runs below, because neither is a property of a build artifact:
+The environment and repository-weight ceilings are enforced separately by
+`npm run assets`, which checks the ADR 0031 ledger, hashes, and shipping trees.
+Runic Vale is **475.36 kB** across every quality layer (31.7 % of 1.5 MB);
+all 27 presentation assets total **1.58 MB** (13.2 % of 12 MB).
 
-- One environment theme ≤ 1.5 MB — no theme asset ships yet; the scene is
-  generated from CSS and tokens. The gate will count a theme file the moment
-  one exists (as `asset`, or `deferred` if it is placed under `lazy/`).
+The two wall-clock budgets stay owed to the real-hardware runs because neither
+is a property of a build artifact:
+
 - Cold start → interactive lobby ≤ 5 s and lobby → match presentation ready
   ≤ 2 s — device-and-network timings, measured per
   [§Real-hardware validation](#real-hardware-validation--outstanding).
@@ -369,7 +373,7 @@ this class; record heap from the Web Inspector's Timelines instead.
 | --- | --- | --- | --- | --- | --- |
 | Cold start → interactive lobby | ≤ 5 s | — | — | — | outstanding |
 | Lobby → match presentation ready (theme cached) | ≤ 2 s | — | — | — | outstanding |
-| One environment theme (compressed) | ≤ 1.5 MB | n/a — no theme asset ships yet | n/a | n/a | n/a |
+| One environment theme (compressed) | ≤ 1.5 MB | 475.36 kB (artifact gate) | same artifact | same artifact | pass |
 
 The three size budgets in the same table are covered by CI and need no device
 run; see [§Enforcement](#enforcement-ci-load-budget-gate-issue-510).

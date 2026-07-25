@@ -33,7 +33,7 @@ client-lint: client-install
 # just produced — never dev-server output — against the load ceilings in
 # docs/design/presentation-budgets.md, and fails the gate on a regression (#510).
 client-check: client-install
-	cd clients/web && npm run lint && npm run typecheck && npm run test && npm run build && npm run budget
+	cd clients/web && npm run lint && npm run typecheck && npm run test && npm run assets && npm run build && npm run budget
 
 # Fail the build on new high+ (high/critical) npm advisories in the client tree.
 # Threshold and escape hatch (package.json "overrides") documented in clients/web/AGENTS.md.

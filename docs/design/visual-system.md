@@ -118,11 +118,12 @@ slow and small, per quality level (Standard reduced, Lite static). The
 environment never overlaps a game object and stays at least one contrast
 step below the plane.
 
-Launch theme concepts (concept level here; production specs are #471's):
+Launch theme family (production specs are in `environment-system.md`):
 
-- **Runic Vale** (default) — indigo sky, slate arena, cool teal glow.
-- **Ember Reach** — deep umber sky, basalt arena, warm ember accents.
-- **Pale Court** — blue-gray dawn, weathered marble arena, faint gilt.
+- **Runic Vale** (default) — warm sand plaza, cool teal water, lantern gold.
+- **Verdant Canals** — cooler canals, dense foliage, cyan accents.
+- **Sunlit Observatory** — warm ochre and brass under pale gold light.
+- **Moonlit Ruins** — cool blue-violet slate, broken architecture, cyan glow.
 
 Every theme must pass the same check: cards, accents, and text hit their
 contrast budgets against it with no per-theme retuning.

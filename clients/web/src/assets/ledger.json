@@ -1,0 +1,275 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "path": "clients/web/public/assets/environments/runic-vale/l0.784d9883.webp",
+      "title": "Runic Vale — Far Surround",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Authored-soft teal water, distant foliage, rock banks, and upper-left sky glow for the registered 21:9 Runic Vale surround."
+    },
+    {
+      "path": "clients/web/public/assets/environments/runic-vale/l1-half.59724a27.webp",
+      "title": "Runic Vale — Arena Floor (Half)",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Half-resolution derivative of the isolated pale sand-and-sage plaza, concentric paving, and centered abstract medallion."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/runic-vale/l1.5a164e54.webp",
+      "title": "Runic Vale — Arena Floor",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated low-contrast pale sand-and-sage plaza with broad radial paving rings and a small abstract medallion at the registered 21:9 camera."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/runic-vale/l2.6ddc4de0.webp",
+      "title": "Runic Vale — Arena Edge",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated mossy stone perimeter and narrow top/bottom lips registered to the Runic Vale plaza, with the playing core left empty."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/runic-vale/l3.c6ed7203.webp",
+      "title": "Runic Vale — Prop Atlas",
+      "category": "environment-props",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Six isolated low-mass scenery clusters: mossy rock, stone lantern and flowers, teal plinth, shrub, stone fragment, and dark crystals."
+    },
+    {
+      "path": "clients/web/public/lazy/environment-studies/verdant-canals.e8205cce.webp",
+      "title": "Verdant Canals — Key-Art Study",
+      "category": "environment-study",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Quiet sand plaza surrounded by broad cyan canals, reeds, mossy canal stonework, deep foliage, and restrained brass and teal accents."
+    },
+    {
+      "path": "clients/web/public/lazy/environment-studies/sunlit-observatory.fe78afcb.webp",
+      "title": "Sunlit Observatory — Key-Art Study",
+      "category": "environment-study",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Warm ochre observatory plaza with pale gold light, reflecting pools, and small brass astronomical instruments confined to outer edges."
+    },
+    {
+      "path": "clients/web/public/lazy/environment-studies/moonlit-ruins.e4eeb151.webp",
+      "title": "Moonlit Ruins — Key-Art Study",
+      "category": "environment-study",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Cool slate plaza amid ruined arcades, broken columns, moonlight, and cyan streams, with the central play field calm and open."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/local-hood.f7e8da72.webp",
+      "title": "Local Hood",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Faceless forward-facing local avatar in a deep blue hood, broad readable silhouette, even light, and a quiet navy background."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/silver-scholar.99221f5e.webp",
+      "title": "Silver Scholar",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Older dark-skinned woman scholar with close silver hair and a bold teal scarf, centered and legible at medallion scale."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/ember-topknot.44cc6dba.webp",
+      "title": "Ember Topknot",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Young brown-skinned man with a high black topknot, shaved sides, and ochre collar, centered against a quiet navy background."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/frost-braid.ebf705d5.webp",
+      "title": "Frost Braid",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Pale freckled woman with a blunt white bob, one long side braid, and cobalt collar, designed for a clear 72-pixel silhouette."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/stone-moustache.cac3ecc4.webp",
+      "title": "Stone Moustache",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Broad-shouldered middle-aged East Asian man with a shaved head, long gray moustache, and rust mantle."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/forked-beard.1d952858.webp",
+      "title": "Forked Beard",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Elderly olive-skinned man with a bald crown, long forked white beard, and forest-green robe."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/twin-braids.fb9ad56c.webp",
+      "title": "Twin Braids",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Dark-skinned young woman with large symmetric braided side buns, copper headband, and plum mantle."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/copper-curls.d2d4a918.webp",
+      "title": "Copper Curls",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Weathered tan-skinned nonbinary adult with compact copper curls and a broad asymmetric teal shoulder cape."
+    },
+    {
+      "path": "clients/web/public/assets/portraits/indigo-wrap.015d2941.webp",
+      "title": "Indigo Wrap",
+      "category": "portrait",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Older Southeast Asian woman with a tall gold-and-indigo wrapped headdress and a single silver temple curl."
+    },
+    {
+      "path": "clients/web/public/assets/card-backs/rune-spiral.3cece148.webp",
+      "title": "Rune Spiral Card Back",
+      "category": "card-back",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Non-orienting navy and slate card back with a centered four-arm gold spiral, mirrored inner edge rule, and restrained teal glints."
+    },
+    {
+      "path": "clients/web/public/assets/card-backs/verdant-knot.1f5905e0.webp",
+      "title": "Verdant Knot Card Back",
+      "category": "card-back",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Non-orienting forest-teal card back with a centered six-petal pale-brass knot and symmetric edge rule."
+    },
+    {
+      "path": "clients/web/public/card-art/onakke_ogre.9a4bdbca.webp",
+      "title": "Ember Onslaught — Onakke Ogre",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original horned stone-skinned ogre charging through a volcanic ravine with basalt armor and ember dust."
+    },
+    {
+      "path": "clients/web/public/card-art/viashino_pyromancer.c280c047.webp",
+      "title": "Ember Onslaught — Viashino Pyromancer",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original crimson-scaled reptilian pyromancer conjuring a compact orange flame on a black-rock ledge."
+    },
+    {
+      "path": "clients/web/public/card-art/fire_elemental.0e6163cd.webp",
+      "title": "Ember Onslaught — Fire Elemental",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original towering humanoid elemental made of layered flame and glowing coals rising from a cracked caldera."
+    },
+    {
+      "path": "clients/web/public/card-art/volcanic_dragon.e43e6f68.webp",
+      "title": "Ember Onslaught — Volcanic Dragon",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original obsidian-scaled dragon with ember-red wings climbing above a volcanic crater at dusk."
+    },
+    {
+      "path": "clients/web/public/card-art/shock.ff030209.webp",
+      "title": "Ember Onslaught — Shock",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original compact burst of red-orange electrical fire jumping from a cracked copper focus stone into basalt."
+    },
+    {
+      "path": "clients/web/public/card-art/lightning_strike.1c12f0f8.webp",
+      "title": "Ember Onslaught — Lightning Strike",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original forked incandescent orange lightning tearing across a storm-dark sky and splitting a jagged spire."
+    },
+    {
+      "path": "clients/web/public/card-art/electrify.c3141620.webp",
+      "title": "Ember Onslaught — Electrify",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original dense cage of red-gold lightning coiling around a massive standing stone under black rain."
+    },
+    {
+      "path": "clients/web/public/card-art/mountain.eb632e6f.webp",
+      "title": "Ember Onslaught — Mountain",
+      "category": "card-art",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Original solitary volcanic mountain at sunset with a glowing crater and thin lava rivers."
+    }
+  ]
+}

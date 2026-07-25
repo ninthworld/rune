@@ -14,7 +14,7 @@ what falls back when data is missing. Style authority is
 | Category | Consumer | Form | Budget/notes |
 | --- | --- | --- | --- |
 | Battlefield environments | environment layer (ADR 0030 L1) | 2–4 layered rasters per theme (sky, far ground, arena edge) | ≤ 1.5 MB/theme; three launch theme concepts in visual-system §4 |
-| Player/commander portrait treatment | crest clusters | raster portraits in the crest mask, procedural monogram fallback | player-selected art stays device-local per ADR 0024; bundled portraits are class-1/2 originals |
+| Player/commander portrait treatment | crest clusters | nine bundled raster portraits in the crest mask; token aperture on load failure | no procedural monogram after #548; bundled portraits are class-2 originals |
 | Card backs | piles, hidden cards, travel ghosts | one raster + procedural fallback | shared across themes |
 | Badges, icons, cursors, selection treatments | scene + chrome | SVG / the existing glyph language, extended | glyphs stay single-source (`chrome/glyphs/geometry.ts` model) |
 | Effect sprites/sheets | effects layer (WebGL) | packed atlases | pooled; caps per quality level (High ≤ 400 live particles, Standard ≤ 150, Lite ≤ 40) |
@@ -22,9 +22,8 @@ what falls back when data is missing. Style authority is
 | Fonts | identity moments | WOFF2 | ≤ 60 KB total (today ~14 KB) |
 
 Everything above ships with the client bundle, content-hashed and cached
-forever; a match is fully playable before any optional asset arrives, and
-every category has a procedural fallback so a missing asset degrades to
-the shipped client's procedural language, never to a hole.
+forever; a match is fully playable before any optional asset arrives. Missing
+art degrades to each consumer's specified token treatment, never to a hole.
 
 ## Provenance, licensing, attribution
 
@@ -140,13 +139,10 @@ the procedural floor needs no assets at all.
 
 ## Out of scope / open items
 
-- Production sourcing (who creates the launch themes and portraits) and
-  the credits surface — owed when the first assets land, tracked in
-  Phase 1+ issues.
-- The bundled RUNE card-art set (original illustrations filling the
-  bundled source's manifest) remains the existing roadmap follow-up under
-  ADR 0024's framework, unchanged by this pipeline.
+- Additional production themes beyond Runic Vale and a credits surface for any
+  future class-3 assets.
+- Bundled card art beyond the eight-card Ember Onslaught subset delivered by
+  #548 remains a roadmap follow-up under ADR 0024.
 - Channel-B protocol enrichment (zone-change reasons) — a possible Phase 2+
   contract change, listed above, not decided.
-- The ledger CI gate lands with the first real asset (a gate with nothing
-  to check would be dead weight today).
+- The ledger CI gate now ships with the first real asset set.

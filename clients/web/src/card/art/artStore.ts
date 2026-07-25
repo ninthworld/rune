@@ -7,7 +7,7 @@
  * Pipelines (selected by the player, `artSettings.ts`):
  * - `procedural` — nothing loads; every card keeps the vector frame. Default.
  * - `bundled`    — project-owned illustrations shipped with the client under
- *                  `/card-art/<functional_id>.jpg`, listed by `/card-art/manifest.json`,
+ *                  content-hashed paths listed by `/card-art/manifest.json`,
  *                  always rendered inside RUNE's frame.
  * - `scryfall`   — real card images the player opted into, fetched by their
  *                  browser from Scryfall (rate-limited), cached in IndexedDB on
@@ -142,8 +142,8 @@ interface StoreState {
   listeners: Set<() => void>;
   /** Tail of the Scryfall request chain (spacing per API guidelines). */
   scryfallQueue: Promise<void>;
-  /** Bundled manifest ids once fetched; `null` before/without one. */
-  bundledManifest: Set<string> | null;
+  /** Bundled manifest paths by functional id; `null` before/without one. */
+  bundledManifest: Map<string, string> | null;
   bundledManifestRequested: boolean;
 }
 
@@ -393,19 +393,20 @@ function ensureLoading(s: StoreState, functionalId: string, name: string): void 
   void job.catch(() => publish(s, pipeline, functionalId, null));
 }
 
-/** Load one bundled illustration (`/card-art/<id>.jpg`, gated by the manifest). */
+/** Load one bundled illustration at the content-hashed path named by the manifest. */
 async function loadBundled(s: StoreState, functionalId: string): Promise<void> {
   const manifest = await bundledManifest(s);
-  if (!manifest.has(functionalId)) {
+  const filename = manifest.get(functionalId);
+  if (!filename) {
     publish(s, 'bundled', functionalId, null);
     return;
   }
-  const blob = await fetchImageBlob(s.deps.fetchLike, `/card-art/${functionalId}.jpg`);
+  const blob = await fetchImageBlob(s.deps.fetchLike, `/card-art/${filename}`);
   publish(s, 'bundled', functionalId, blob ? await s.deps.loadArt(blob) : null);
 }
 
 /** Fetch (once) the bundled-art manifest; an unreachable manifest means "none". */
-async function bundledManifest(s: StoreState): Promise<Set<string>> {
+async function bundledManifest(s: StoreState): Promise<Map<string, string>> {
   if (s.bundledManifest) return s.bundledManifest;
   if (!s.bundledManifestRequested) {
     s.bundledManifestRequested = true;
@@ -413,13 +414,30 @@ async function bundledManifest(s: StoreState): Promise<Set<string>> {
       const response = await s.deps.fetchLike('/card-art/manifest.json', {
         headers: { Accept: 'application/json' },
       });
-      const ids = response.ok ? await response.json() : [];
-      s.bundledManifest = new Set(Array.isArray(ids) ? ids.map(String) : []);
+      const manifest: unknown = response.ok ? await response.json() : null;
+      const cards =
+        manifest !== null &&
+        typeof manifest === 'object' &&
+        'cards' in manifest &&
+        manifest.cards !== null &&
+        typeof manifest.cards === 'object'
+          ? manifest.cards
+          : null;
+      s.bundledManifest = new Map(
+        cards
+          ? Object.entries(cards)
+              .filter(
+                (entry): entry is [string, string] =>
+                  typeof entry[1] === 'string' && /^[a-z0-9_]+\.[a-f0-9]{8}\.webp$/.test(entry[1]),
+              )
+              .map(([functionalId, filename]) => [functionalId, filename])
+          : [],
+      );
     } catch {
-      s.bundledManifest = new Set();
+      s.bundledManifest = new Map();
     }
   }
-  return s.bundledManifest ?? new Set();
+  return s.bundledManifest ?? new Map();
 }
 
 /**

@@ -212,7 +212,11 @@ describe('artStore (ADR 0024)', () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve(['onakke_ogre']),
+          json: () =>
+            Promise.resolve({
+              version: 1,
+              cards: { onakke_ogre: 'onakke_ogre.9a4bdbca.webp' },
+            }),
           blob: () => Promise.resolve(new Blob(['img'])),
         });
       },
@@ -226,8 +230,8 @@ describe('artStore (ADR 0024)', () => {
     expect(artKeyFor('onakke_ogre')).toBeDefined();
     expect(artKeyFor('shock')).toBeUndefined();
     expect(urls).toContain('/card-art/manifest.json');
-    expect(urls).toContain('/card-art/onakke_ogre.jpg');
-    expect(urls).not.toContain('/card-art/shock.jpg');
+    expect(urls).toContain('/card-art/onakke_ogre.9a4bdbca.webp');
+    expect(urls.some((url) => url.includes('/card-art/shock.'))).toBe(false);
   });
 
   it('downloads the entire card image under full-card mode (ADR 0024)', async () => {
