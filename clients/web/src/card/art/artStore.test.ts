@@ -234,6 +234,31 @@ describe('artStore (ADR 0024)', () => {
     expect(urls.some((url) => url.includes('/card-art/shock.'))).toBe(false);
   });
 
+  // A manifest entry is a promise the file is there; the shipping default has to
+  // survive that promise being broken (a bad deploy, a pruned cache) without the
+  // card losing its face.
+  it('keeps a manifest-listed card procedural when its bundled file fails to load', async () => {
+    configureArtStore({
+      ...testDeps(),
+      fetchLike: (url) =>
+        Promise.resolve({
+          ok: !url.includes('.webp'),
+          status: url.includes('.webp') ? 404 : 200,
+          json: () =>
+            Promise.resolve({
+              version: 1,
+              cards: { onakke_ogre: 'onakke_ogre.9a4bdbca.webp' },
+            }),
+          blob: () => Promise.resolve(new Blob(['img'])),
+        }),
+    });
+    setArtSource('bundled');
+    noteCards([{ functionalId: 'onakke_ogre', name: 'Onakke Ogre' }]);
+    await settle();
+    expect(artKeyFor('onakke_ogre')).toBeUndefined();
+    expect(artStatus()).toMatchObject({ total: 1, loaded: 0, failed: 1 });
+  });
+
   it('downloads the entire card image under full-card mode (ADR 0024)', async () => {
     const seen: string[] = [];
     const cache = new MemoryArtCache();

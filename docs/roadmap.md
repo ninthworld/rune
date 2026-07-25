@@ -309,7 +309,9 @@ work:
   name and the client-side art mapping (`artMap.json`) is empty by default. The catalog is
   delivered over the wire (#367); growing the pool is owned by #401.
 - **The bundled RUNE art set** — original, project-owned illustrations under
-  `clients/web/public/card-art/` filling the bundled source's manifest.
+  `clients/web/public/card-art/` filling the bundled source's manifest. The
+  starter-deck pool is complete (#555, #556); the rest of the catalog follows
+  as the pool grows.
 - **Server-computed cost payment (auto-tap)** — the engine proposing a payment
   plan so casting taps the lands in one action. ADR 0025's direct activation
   (one-click tap-for-mana, entity-entry combat declarations) removes most of the
