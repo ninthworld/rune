@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "environments": {
+    "runicVale": {
+      "label": "Runic Vale",
+      "production": true,
+      "authoringAspect": "21:9",
+      "focalSafe": { "x": 0.1, "y": 0, "width": 0.8, "height": 1 },
+      "cropGuides": {
+        "ultrawide": { "aspect": "21:9", "sourceX": [0, 1] },
+        "desktop": { "aspect": "16:9", "sourceX": [0.119, 0.881] },
+        "tablet": { "aspect": "4:3", "sourceX": [0.214, 0.786] },
+        "phone": { "aspect": "390:844", "mode": "recompose", "medallion": [0.5, 0.4] }
+      },
+      "layers": {
+        "l0": {
+          "src": "/assets/environments/runic-vale/l0.784d9883.webp",
+          "width": 2100,
+          "height": 900,
+          "parallax": 0.15,
+          "load": "first-match"
+        },
+        "l1Half": {
+          "src": "/assets/environments/runic-vale/l1-half.59724a27.webp",
+          "width": 1050,
+          "height": 450,
+          "parallax": 0.35,
+          "load": "first-match"
+        },
+        "l1": {
+          "src": "/lazy/environments/runic-vale/l1.5a164e54.webp",
+          "width": 2100,
+          "height": 900,
+          "parallax": 0.35,
+          "load": "lazy"
+        },
+        "l2": {
+          "src": "/lazy/environments/runic-vale/l2.6ddc4de0.webp",
+          "width": 2100,
+          "height": 900,
+          "parallax": 0.6,
+          "load": "lazy"
+        },
+        "l3": {
+          "src": "/lazy/environments/runic-vale/l3.c6ed7203.webp",
+          "width": 1536,
+          "height": 1024,
+          "parallax": 1,
+          "load": "lazy",
+          "frames": {
+            "mossyRock": {
+              "rect": [0, 0, 512, 512],
+              "anchor": "top-left",
+              "offset": [0.01, 0.01],
+              "scale": 0.24,
+              "mass": "low",
+              "region": "C"
+            },
+            "lanternFlowers": {
+              "rect": [512, 0, 512, 512],
+              "anchor": "bottom-left",
+              "offset": [0.01, 0.02],
+              "scale": 0.18,
+              "mass": "low",
+              "region": "C"
+            },
+            "tealPlinth": {
+              "rect": [1024, 0, 512, 512],
+              "anchor": "right-mid",
+              "offset": [0.01, 0],
+              "scale": 0.17,
+              "mass": "low",
+              "region": "B"
+            },
+            "floweringShrub": {
+              "rect": [0, 512, 512, 512],
+              "anchor": "bottom-right",
+              "offset": [0.01, 0.02],
+              "scale": 0.2,
+              "mass": "low",
+              "region": "C"
+            },
+            "mossyStone": {
+              "rect": [512, 512, 512, 512],
+              "anchor": "top-right",
+              "offset": [0.01, 0.01],
+              "scale": 0.18,
+              "mass": "low",
+              "region": "C"
+            },
+            "obsidianCluster": {
+              "rect": [1024, 512, 512, 512],
+              "anchor": "left-mid",
+              "offset": [0.01, 0],
+              "scale": 0.17,
+              "mass": "low",
+              "region": "B"
+            }
+          }
+        }
+      }
+    }
+  },
+  "environmentStudies": {
+    "verdantCanals": {
+      "label": "Verdant Canals",
+      "src": "/lazy/environment-studies/verdant-canals.e8205cce.webp",
+      "width": 2100,
+      "height": 900
+    },
+    "sunlitObservatory": {
+      "label": "Sunlit Observatory",
+      "src": "/lazy/environment-studies/sunlit-observatory.fe78afcb.webp",
+      "width": 2100,
+      "height": 900
+    },
+    "moonlitRuins": {
+      "label": "Moonlit Ruins",
+      "src": "/lazy/environment-studies/moonlit-ruins.e4eeb151.webp",
+      "width": 2100,
+      "height": 900
+    }
+  },
+  "portraits": {
+    "fallback": null,
+    "local": {
+      "key": "localHood",
+      "src": "/assets/portraits/local-hood.f7e8da72.webp"
+    },
+    "opponents": [
+      {
+        "key": "silverScholar",
+        "src": "/assets/portraits/silver-scholar.99221f5e.webp"
+      },
+      {
+        "key": "emberTopknot",
+        "src": "/assets/portraits/ember-topknot.44cc6dba.webp"
+      },
+      {
+        "key": "frostBraid",
+        "src": "/assets/portraits/frost-braid.ebf705d5.webp"
+      },
+      {
+        "key": "stoneMoustache",
+        "src": "/assets/portraits/stone-moustache.cac3ecc4.webp"
+      },
+      {
+        "key": "forkedBeard",
+        "src": "/assets/portraits/forked-beard.1d952858.webp"
+      },
+      {
+        "key": "twinBraids",
+        "src": "/assets/portraits/twin-braids.fb9ad56c.webp"
+      },
+      {
+        "key": "copperCurls",
+        "src": "/assets/portraits/copper-curls.d2d4a918.webp"
+      },
+      {
+        "key": "indigoWrap",
+        "src": "/assets/portraits/indigo-wrap.015d2941.webp"
+      }
+    ]
+  },
+  "cardBacks": {
+    "default": "runeSpiral",
+    "skins": {
+      "runeSpiral": {
+        "label": "Rune Spiral",
+        "src": "/assets/card-backs/rune-spiral.3cece148.webp",
+        "width": 700,
+        "height": 1000
+      },
+      "verdantKnot": {
+        "label": "Verdant Knot",
+        "src": "/assets/card-backs/verdant-knot.1f5905e0.webp",
+        "width": 700,
+        "height": 1000
+      }
+    }
+  }
+}

@@ -1,9 +1,9 @@
 # Bundled card art
 
 Project-owned card illustrations for the **bundled** art source (ADR 0024). Each
-file is named `<functional_id>.jpg` after its catalog card
-(`crates/rune-engine/data/catalog/`), and `manifest.json` lists the functional
-ids that have art — the client only requests files the manifest names.
+WebP file has a content-hashed name, and `manifest.json` maps a catalog card's
+stable `functional_id` to that filename. The client only requests paths the
+manifest names.
 
 Rules for anything added here:
 
@@ -13,8 +13,9 @@ Rules for anything added here:
   constraints).
 - Landscape crops around 626×457 or larger render best in the card frame's art
   window; the renderer cover-crops to fit.
-- Add the functional id to `manifest.json` in the same change that adds the
-  image.
+- Add the functional id and content-hashed filename to `manifest.json` in the
+  same change that adds the image.
+- Record every image in `src/assets/ledger.json` and its human-readable mirror.
 
-The directory currently ships empty: the manifest is `[]` and every card renders
-its procedural face until the RUNE-generated set lands.
+The first bundled set is Ember Onslaught's eight unique cards. Cards outside
+that set continue to use the procedural art-window treatment.

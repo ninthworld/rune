@@ -11,8 +11,8 @@
  * The three art pipelines (ADR 0024):
  * - `procedural` — the default vector frame with the monogram art-box placeholder;
  *   no images, works offline, identical to the pre-art client.
- * - `bundled` — project-owned art shipped with the client under
- *   `/card-art/<functional_id>.jpg` (the RUNE-generated set, when present).
+ * - `bundled` — project-owned art shipped at the content-hashed paths in
+ *   `/card-art/manifest.json`.
  * - `scryfall` — real card images the PLAYER opts into: fetched by their browser
  *   directly from Scryfall, cached only on their device, never shipped or
  *   redistributed by the project.
