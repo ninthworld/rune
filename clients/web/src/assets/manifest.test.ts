@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import starterDecks from '../starter-decks.json';
 
 const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public');
 const manifest = JSON.parse(readFileSync(resolve(publicDir, 'assets/manifest.json'), 'utf8'));
@@ -63,14 +64,35 @@ describe('production asset manifests (#548)', () => {
     }
   });
 
-  it('maps exactly the eight Ember Onslaught functional ids to hashed WebP files', () => {
+  it('maps exactly the starter-deck functional ids to hashed WebP files', () => {
     expect(Object.keys(cardArtManifest.cards).sort()).toEqual([
+      'air_elemental',
+      'cancel',
+      'colossal_dreadmaw',
+      'divination',
+      'druid_of_the_cowl',
       'electrify',
       'fire_elemental',
+      'forest',
+      'giant_spider',
+      'gigantosaurus',
+      'island',
+      'jedit_ojanen',
       'lightning_strike',
+      'llanowar_elves',
       'mountain',
       'onakke_ogre',
+      'plains',
+      'revitalize',
+      'rustwing_falcon',
+      'serra_angel',
       'shock',
+      'skyscanner',
+      'snapping_drake',
+      'titanic_growth',
+      'tolarian_scholar',
+      'tranquil_expanse',
+      'trusty_packbeast',
       'viashino_pyromancer',
       'volcanic_dragon',
     ]);
@@ -78,5 +100,15 @@ describe('production asset manifests (#548)', () => {
       expect(filename).toMatch(/^[a-z0-9_]+\.[a-f0-9]{8}\.webp$/);
       expect(existsSync(resolve(publicDir, 'card-art', String(filename)))).toBe(true);
     }
+  });
+
+  // The bundled source is only whole if it covers the decks a new player is
+  // actually handed; a gap here silently drops one card back to procedural.
+  it('covers every card in the starter-deck pool (#556)', () => {
+    const pool = new Set(
+      starterDecks.decks.flatMap((deck) => deck.entries.map((entry) => entry.identity)),
+    );
+    const bundled = new Set(Object.keys(cardArtManifest.cards));
+    expect([...pool].filter((identity) => !bundled.has(identity))).toEqual([]);
   });
 });

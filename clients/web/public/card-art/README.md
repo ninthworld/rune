@@ -17,5 +17,8 @@ Rules for anything added here:
   same change that adds the image.
 - Record every image in `src/assets/ledger.json` and its human-readable mirror.
 
-The first bundled set is Ember Onslaught's eight unique cards. Cards outside
-that set continue to use the procedural art-window treatment.
+The bundled set covers the full starter-deck pool — the 29 unique cards across
+Ember Onslaught, Verdant Coalition, Skyborne Adepts, and Verdant Sovereign.
+Cards outside that pool continue to use the procedural art-window treatment,
+which stays the shipping default and the fallback whenever an asset is absent
+or fails to load.

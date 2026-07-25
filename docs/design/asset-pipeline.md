@@ -141,8 +141,9 @@ the procedural floor needs no assets at all.
 
 - Additional production themes beyond Runic Vale and a credits surface for any
   future class-3 assets.
-- Bundled card art beyond the eight-card Ember Onslaught subset delivered by
-  #548 remains a roadmap follow-up under ADR 0024.
+- Bundled card art now covers the whole starter-deck pool (#555 delivered the
+  eight-card Ember Onslaught subset, #556 the remaining 21). Art for catalog
+  cards outside that pool remains a roadmap follow-up under ADR 0024.
 - Channel-B protocol enrichment (zone-change reasons) — a possible Phase 2+
   contract change, listed above, not decided.
 - The ledger CI gate now ships with the first real asset set.

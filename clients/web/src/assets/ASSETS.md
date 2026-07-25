@@ -1,12 +1,21 @@
 # Bundled presentation assets
 
 All assets below are original AI-generated work under ADR 0031 provenance
-class 2. They were created with OpenAI's built-in image generation tool,
-compressed to shipping WebP files, and are distributed under the repository's
-MIT license. The machine-readable authority is `ledger.json`.
+class 2, compressed to shipping WebP files and distributed under the
+repository's MIT license. The machine-readable authority is `ledger.json`,
+which records the generating tool per asset.
+
+Two tools produced this set. Environment, portrait, and card-back art was
+created with OpenAI's built-in image generation. Card art was created locally
+with Chroma1-HD via ComfyUI — an Apache-2.0 base model, chosen because its
+output carries no downstream licence restriction that would conflict with
+redistributing these files under this repository's MIT terms.
 
 No prompt referenced an existing game, publisher, protected property, or named
-artist as a style target.
+artist as a style target. Card art is composed from RUNE's own functional card
+data — type, subtype, colour, and keywords — rendered in one house style
+(painterly digital illustration, cinematic light, landscape composition) so the
+set reads as a single commission.
 
 | Asset | Category | Prompt essence |
 | --- | --- | --- |
@@ -29,11 +38,32 @@ artist as a style target.
 | Indigo Wrap | portrait | Older woman with tall gold-and-indigo wrapped headdress |
 | Rune Spiral | card back | Navy/slate, centered four-arm gold spiral, mirrored edge rule |
 | Verdant Knot | card back | Forest teal, centered six-petal brass knot, symmetric edge rule |
-| Onakke Ogre | card art | Horned stone-skinned ogre in a volcanic ravine |
-| Viashino Pyromancer | card art | Crimson-scaled reptilian fire mage on a black-rock ledge |
-| Fire Elemental | card art | Towering humanoid flame rising from a caldera |
-| Volcanic Dragon | card art | Obsidian dragon above a volcanic crater |
-| Shock | card art | Compact electrical-fire burst striking basalt |
-| Lightning Strike | card art | Forked orange lightning splitting a stone spire |
-| Electrify | card art | Red-gold lightning cage around a standing stone |
-| Mountain | card art | Solitary volcanic mountain at sunset |
+| Onakke Ogre | card art | Hulking ogre with a crude weapon on a lava-seamed ridge |
+| Viashino Pyromancer | card art | Lizard-folk mage channelling arcane fire on volcanic rock |
+| Fire Elemental | card art | Towering elemental of living flame above a caldera |
+| Volcanic Dragon | card art | Immense winged dragon aloft over a glowing ridge |
+| Shock | card art | Forking bolt bursting against shattering rock at night |
+| Lightning Strike | card art | Lance of white-hot lightning splitting stone in darkness |
+| Electrify | card art | Crimson energy bolt shattering rock in a spray of sparks |
+| Mountain | card art | Jagged volcanic peak with glowing lava seams |
+| Llanowar Elves | card art | Slender pointed-eared elf in dense old forest |
+| Druid of the Cowl | card art | Vine-entwined elven druid among ferns |
+| Giant Spider | card art | Enormous long-limbed spider in green undergrowth |
+| Rustwing Falcon | card art | Bird of prey banking over sunlit highland plains |
+| Serra Angel | card art | Winged armoured celestial warrior above open plains |
+| Colossal Dreadmaw | card art | Armoured reptilian giant crushing forest floor |
+| Gigantosaurus | card art | Colossal dinosaur dwarfing the canopy around it |
+| Trusty Packbeast | card art | Heavy horned draft ox on golden highland grass |
+| Titanic Growth | card art | Green empowering aura spiralling around a lone figure |
+| Revitalize | card art | Column of restorative gold-white light with drifting motes |
+| Forest | card art | Old-growth forest, mossy trunks, light through canopy |
+| Plains | card art | Sunlit grassland rolling toward distant hills |
+| Tranquil Expanse | card art | Untouched wilderness under a wide dramatic sky |
+| Snapping Drake | card art | Lean winged drake over mist-wreathed coastal cliffs |
+| Air Elemental | card art | Towering elemental of wind and cloud above deep water |
+| Skyscanner | card art | Small clockwork flier of brass and canvas over bare rock |
+| Tolarian Scholar | card art | Robed wizard channelling arcane light by the sea |
+| Divination | card art | Spiral of glowing sigils and parchment above an open book |
+| Cancel | card art | Hexagonal barrier of force flaring as a spell shatters |
+| Island | card art | Lone rocky island ringed by calm reflective sea |
+| Jedit Ojanen | card art | Powerful great-cat warrior in deep green forest |
