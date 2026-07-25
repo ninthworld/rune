@@ -1,0 +1,96 @@
+/*
+ * The ONE card-art surface (issue #527). Every illustration this client paints —
+ * the card frame's art window, an ADR 0024 full-card image, the screen-space
+ * inspect panel — is a `CardArt` <img> in one of the four modes below, and no
+ * other stylesheet sizes a card image.
+ *
+ * The containment contract, held by every mode:
+ *
+ *  1. **The box is never the image's.** Each mode declares an explicit used
+ *     width and an explicit used height (or a width plus a declared
+ *     `aspect-ratio`, which overrides a replaced element's natural ratio). This
+ *     is the whole bug: an absolutely positioned replaced element whose
+ *     width/height stay `auto` takes its INTRINSIC size (CSS 2.1 §10.3.8 /
+ *     §10.6.5) and the over-constrained inset offsets are then ignored — which
+ *     is how a 4096 px illustration escaped an 84 px card frame and painted
+ *     over the battlefield. Neither dimension may be left to the file.
+ *  2. **The raster is fitted into that box, not the reverse.** `object-fit:
+ *     cover` plus the declared `object-position` focal anchor fills the mask
+ *     from any intrinsic size or ratio — never letterboxed, never stretched —
+ *     and the overflow is clipped to the content box (full-card mode is the one
+ *     documented exception: a whole printed card is shown whole).
+ *  3. **The box is load-state invariant.** No image, still loading, cache-hit,
+ *     late arrival, and failed load all occupy the same rectangle, so nothing
+ *     reflows and no card's footprint depends on what loaded into it. A failed
+ *     or empty raster reads as the token fill behind it.
+ *
+ * Colors and sizes arrive as custom properties (ADR 0019): the frame geometry
+ * from `theme.ts`'s `cardFaceVars`, the primitive's own anchor/ratios/fill from
+ * `CardArt`'s `cardArtVars`. No literal belongs here.
+ */
+
+.art {
+  display: block;
+  /* The declared box is the BORDER box, so a consuming surface's decorative
+   * border (the inspect panel's) cannot widen the rectangle the mode fixed. */
+  box-sizing: border-box;
+  /* Fit the raster INTO the box the mode fixes below (contract 2). */
+  object-fit: cover;
+  object-position: var(--art-focus);
+  /* Belt-and-braces clip of replaced content to the content box (contract 2). */
+  overflow: hidden;
+  /* What an empty or failed load reads as — same box, no reflow (contract 3). */
+  background: var(--art-empty);
+  /* The art is decoration; the frame's own overlays carry every fact. */
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The frame's art window: the mask between the header band and the type row.
+ * Both dimensions are derived from the frame box, so the tier — never the
+ * file — decides how much room the illustration gets. */
+.window {
+  position: absolute;
+  left: var(--art-inset, 0px);
+  top: calc(var(--face-header-h, 0px) + var(--art-top-gap, 0px));
+  width: calc(100% - var(--art-inset, 0px) * 2);
+  height: calc(
+    100% - var(--face-header-h, 0px) - var(--art-top-gap, 0px) - var(--face-type-size, 0px) -
+      var(--art-bottom-reserve, 0px)
+  );
+  max-width: calc(100% - var(--art-inset, 0px) * 2);
+  border-radius: var(--art-radius);
+  z-index: 0;
+}
+
+/* ADR 0024 full-card mode on a frame: the image fills the frame's padding box
+ * exactly and stays below every authoritative overlay (z-index 0 vs 1). */
+.full {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: calc(var(--face-radius) - 1px);
+  z-index: 0;
+}
+
+/* Screen-space art window (inspect tier, inspect panel): no frame to derive a
+ * height from, so the box takes the DECLARED ratio — the image's natural ratio
+ * never participates. */
+.panel {
+  width: 100%;
+  aspect-ratio: var(--art-panel-aspect);
+  border-radius: var(--art-radius);
+}
+
+/* Screen-space full-card mode: the image IS a whole card, so it is shown whole
+ * (`contain`) inside a card-proportioned box rather than cropped. The box is
+ * still declared, so the panel does not move when the image lands. */
+.panelFull {
+  width: 100%;
+  aspect-ratio: var(--art-card-aspect);
+  object-fit: contain;
+  background: transparent;
+}

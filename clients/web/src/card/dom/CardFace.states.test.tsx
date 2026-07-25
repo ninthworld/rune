@@ -165,8 +165,9 @@ describe('CardFace art modes (ADR 0024, unchanged)', () => {
     expect(inner1.getElementsByClassName(s.name)).toHaveLength(1);
     expect(inner1.getElementsByClassName(s.type)).toHaveLength(1);
     // The image stacks below every overlay (z-index 0 vs 1) — asserted at the
-    // stylesheet level below, since jsdom does not compute stacking.
-    expect(root.querySelector('img')?.className).toContain(s.artFull);
+    // stylesheet level (in `CardArt.test.tsx`), since jsdom computes no
+    // stacking; here, that the face asked for the full-card containment mode.
+    expect(root.querySelector('img')?.getAttribute('data-art-mode')).toBe('full');
   });
 });
 
@@ -221,10 +222,14 @@ describe('CardFace motion contract (ADR 0030: transform/opacity only)', () => {
 
   it('stacks full-card art below every overlay (image 0, overlays 1)', () => {
     // jsdom computes no stacking, so the contract is pinned at the source: the
-    // full-art image sits at z-index 0 and the content/overlay layer (name,
-    // type, cost, P/T, badges, the gold-bar pseudo) at z-index 1.
-    const artRule = css.match(/\.artFull\s*\{[^}]*\}/s)?.[0] ?? '';
-    expect(artRule).toContain('z-index: 0');
+    // art image sits at z-index 0 (in the `CardArt` primitive's stylesheet,
+    // which owns every image) and the content/overlay layer (name, type, cost,
+    // P/T, badges, the gold-bar pseudo) at z-index 1 here.
+    const artCss = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'card-art.module.css'),
+      'utf8',
+    );
+    expect(artCss.match(/\.full\s*\{[^}]*\}/s)?.[0] ?? '').toContain('z-index: 0');
     const overlayRule = css.match(/\.name,[\s\S]*?\{[^}]*\}/)?.[0] ?? '';
     expect(overlayRule).toContain('z-index: 1');
     const goldBarRule = css.match(/\.inner::before\s*\{[^}]*\}/s)?.[0] ?? '';

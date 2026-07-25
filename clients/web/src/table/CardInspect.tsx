@@ -23,6 +23,7 @@ import {
   getArtVersion,
   subscribeArt,
 } from '../card/art/artStore';
+import { CardArt } from '../card/dom';
 import { cx } from '../chrome/cx';
 import s from './chrome.module.css';
 
@@ -187,18 +188,18 @@ function CardBody({
   useSyncExternalStore(subscribeArt, getArtVersion);
   const artUrl = artUrlFor(card.functional_id);
   // Under full-card mode the image IS a whole card: show it uncropped (contain)
-  // at card aspect rather than as a letterboxed illustration strip.
+  // at card aspect rather than as a letterboxed illustration strip. Either way
+  // the box is the primitive's declared one, so the panel never reflows around
+  // whatever the file's intrinsic size happens to be (issue #527).
   const fullCard = getArtSource() === 'scryfall' && getArtStyle() === 'full';
   return (
     <>
       {artUrl !== undefined && (
-        <img
+        <CardArt
+          url={artUrl}
+          mode={fullCard ? 'panelFull' : 'panel'}
           className={cx(s.inspectArt, fullCard && s.inspectArtFull)}
-          data-testid="card-inspect-art"
-          data-full-card={fullCard || undefined}
-          src={artUrl}
-          alt=""
-          aria-hidden="true"
+          testId="card-inspect-art"
         />
       )}
       {card.mana_cost !== undefined && (

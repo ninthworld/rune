@@ -8,7 +8,9 @@
  */
 export { CardFace } from './CardFace';
 export type { CardFaceProps, CardFaceArt, CardElevation } from './CardFace';
+export { CardArt, type CardArtMode, type CardArtProps } from './CardArt';
 export {
+  cardArtVars,
   cardFaceVars,
   faceMetrics,
   faceFootprint,

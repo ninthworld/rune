@@ -152,6 +152,30 @@ export const ART = {
   scrimAlpha: 0.72,
   /** Tiers that render an illustration when one is available. */
   tiers: ['field', 'hand'],
+  /**
+   * The focal anchor of the window mask (issue #527), as fractions of the mask
+   * box, published as `object-position`. Illustrations are cover-fitted — the
+   * raster fills the mask and the excess is cropped, never letterboxed and
+   * never stretched — so the crop needs a declared anchor. It sits slightly
+   * **above** center because a card illustration's subject almost always does;
+   * an anchor is a design decision, not a per-image measurement, so the mask
+   * behaves identically for every intrinsic size and ratio.
+   */
+  focusX: 0.5,
+  focusY: 0.42,
+  /**
+   * The DECLARED aspect ratio (w ÷ h) of a screen-space art window — the
+   * inspect tier and the inspect panel, where the mask has no frame to derive a
+   * height from. It overrides the image's natural ratio, so the panel's box is
+   * the same before and after any image loads (issue #527).
+   */
+  panelAspect: 4 / 3,
+  /**
+   * The DECLARED aspect ratio (w ÷ h) of a whole-card image in ADR 0024's
+   * full-card mode: the printed card proportion (63 × 88 mm). Same purpose as
+   * {@link ART.panelAspect} — the box never comes from the file.
+   */
+  cardAspect: 63 / 88,
 } as const;
 
 /** Vector frame geometry — the look of the card body with no images or WotC art. */

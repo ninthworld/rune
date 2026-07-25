@@ -319,29 +319,15 @@
   text-overflow: ellipsis;
 }
 
-/* ── Art (ADR 0024 — modes unchanged; the face only shows what is loaded) ── */
-
-.artFull {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: calc(var(--face-radius) - 1px);
-  z-index: 0;
-}
-
-.artWindow {
-  position: absolute;
-  left: var(--art-inset);
-  right: var(--art-inset);
-  top: calc(var(--face-header-h) + var(--art-top-gap));
-  bottom: calc(var(--face-type-size) + var(--art-bottom-reserve));
-  width: auto;
-  height: auto;
-  object-fit: cover;
-  border-radius: var(--art-radius);
-}
+/* ── Art (ADR 0024 — modes unchanged; the face only shows what is loaded) ──
+ *
+ * The images themselves are NOT styled here: every card illustration is the one
+ * `CardArt` primitive, whose `card-art.module.css` owns the containment
+ * contract for all four modes (issue #527). The face's job is only to publish
+ * the frame geometry those modes derive their box from (`--art-inset`,
+ * `--art-top-gap`, `--art-bottom-reserve`, `--art-radius`, `--face-header-h`,
+ * `--face-type-size`, `--face-radius`; see `theme.ts`) and to keep every
+ * server-computed overlay above the image (z-index 1 vs the image's 0). */
 
 /* Card-body scrim so identity text/glyphs stay legible over any art. */
 .overArt {
@@ -415,13 +401,6 @@
 
 .pipFlow {
   position: static;
-}
-
-.inspectArt {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
-  border-radius: var(--art-radius);
 }
 
 .rules {

@@ -179,6 +179,26 @@ export function cardFaceVars(
 }
 
 /**
+ * The custom properties the {@link CardArt} primitive owns (issue #527),
+ * published on the image element itself so a card illustration is contained
+ * even on a surface that publishes no frame variables at all (the inspect
+ * panel). Frame-relative geometry — `--art-inset`, `--art-top-gap`,
+ * `--art-bottom-reserve`, `--art-radius`, `--face-header-h`, `--face-type-size`,
+ * `--face-radius` — still flows down from {@link cardFaceVars}; these are the
+ * values that belong to the art window itself: where a cover-fitted crop is
+ * anchored, the declared ratios the screen-space modes size by, and what an
+ * empty or failed image reads as. Every one comes from `src/tokens.ts`.
+ */
+export function cardArtVars(): CSSProperties {
+  return {
+    '--art-focus': `${ART.focusX * 100}% ${ART.focusY * 100}%`,
+    '--art-panel-aspect': `${ART.panelAspect}`,
+    '--art-card-aspect': `${ART.cardAspect}`,
+    '--art-empty': SURFACES.cardBody,
+  } as CSSProperties;
+}
+
+/**
  * The face's resting opacity, carried from the factory: tap dims slightly —
  * except for a declared attacker, which keeps full presence while tapped (it is
  * in combat, not inert) — summoning sickness dims a touch, and an ineligible
