@@ -522,13 +522,16 @@ export function cardFaceVars(
  * panel). Frame-relative geometry — `--rule-inset`, `--band-art-top`,
  * `--band-art-h`, `--plate-radius`, `--face-radius` — still flows down from
  * {@link cardFaceVars}; these are the values that belong to the art window
- * itself: where a cover-fitted crop is anchored, the declared ratios the
- * screen-space modes size by, and what an empty or failed image reads as.
+ * itself: where a cover-fitted crop is anchored (an illustration on its focal
+ * anchor, a whole printed card on the top-aligned §12 anchor), the declared
+ * ratios the screen-space modes size by, and what an empty or failed image
+ * reads as.
  * Every one comes from `src/tokens.ts`.
  */
 export function cardArtVars(): CSSProperties {
   return {
     '--art-focus': `${ART.focusX * 100}% ${ART.focusY * 100}%`,
+    '--art-full-focus': `${ART.fullFocusX * 100}% ${ART.fullFocusY * 100}%`,
     '--art-panel-aspect': `${ART.panelAspect}`,
     '--art-card-aspect': `${ART.cardAspect}`,
     '--art-empty': SURFACES.cardBody,

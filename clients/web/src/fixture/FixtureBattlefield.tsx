@@ -438,6 +438,7 @@ export function FixtureBattlefield() {
                     data={handDisplayData(frame.view, entry)}
                     tier="hand"
                     art={domCardArt(entry)}
+                    rulesText={entry.rules_text}
                   />
                 </div>
               );

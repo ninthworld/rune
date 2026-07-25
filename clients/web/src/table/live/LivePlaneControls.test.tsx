@@ -104,6 +104,55 @@ const view = {
   ],
 } as unknown as GameView;
 
+/**
+ * The same seat with its rack digested (zone-geography §6): one button, and
+ * every zone key resolving to that one rect — which is exactly the staging that
+ * made two absolutely-positioned zone controls coincide.
+ */
+const digestBounds = { x: 540, y: 20, w: 44, h: 62 };
+const digestPlane: StagedPlane = {
+  ...plane,
+  receiver: {
+    ...region,
+    piles: digestBounds,
+    zones: { library: 40, graveyard: 2, exile: 1 },
+    rack: {
+      ...region.rack,
+      variant: 'digest',
+      u: 0,
+      slots: [
+        { zone: 'library', count: 40 },
+        { zone: 'graveyard', count: 2 },
+        { zone: 'exile', count: 1 },
+      ].map(({ zone, count }) => ({
+        zone: zone as 'library' | 'graveyard' | 'exile',
+        rect: digestBounds,
+        hitRect: digestBounds,
+        count,
+      })),
+      bounds: digestBounds,
+    },
+  },
+};
+
+/** A control's staged rect, read back off the inline box the layer positions with. */
+function boxOf(el: HTMLElement): { x: number; y: number; w: number; h: number } {
+  return {
+    x: Number.parseFloat(el.style.left),
+    y: Number.parseFloat(el.style.top),
+    w: Number.parseFloat(el.style.width),
+    h: Number.parseFloat(el.style.height),
+  };
+}
+
+/** Whether two staged rects share positive area. */
+function overlaps(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
 afterEach(() => document.body.replaceChildren());
 
 function interaction(
@@ -188,6 +237,116 @@ describe('LivePlaneControls', () => {
 
     fireEvent.click(screen.getByTestId('entity-land_b'));
     expect(onActivateEntity).toHaveBeenCalledWith('land_b');
+  });
+
+  it('gives a drawn rack one control per public zone, on its own slot rect', () => {
+    render(<LivePlaneControls view={view} plane={plane} interaction={interaction()} />);
+
+    expect(screen.queryByTestId('rack-digest-p1')).toBeNull();
+    const rects = ['graveyard', 'exile'].map((zone) =>
+      boxOf(screen.getByTestId(`table-${zone}-p1`)),
+    );
+    expect(rects[0]).not.toEqual(rects[1]);
+  });
+
+  /**
+   * The digest rack (zone-geography §6/§7) resolves every zone key to ONE button
+   * rect. Two controls positioned from it therefore overlap exactly, and the
+   * later one wins pointer and touch hit-testing — which left the graveyard
+   * keyboard-only at the normal 5–6-seat wing treatment and at narrow viewports.
+   * §6.2's expansion is the fix: one ≥ 44 px button that opens the seat's zones
+   * as separate targets.
+   */
+  describe('a digest rack expands rather than stacking its zone controls', () => {
+    it('offers one ≥ 44 px rack control naming the seat and its counts', () => {
+      render(<LivePlaneControls view={view} plane={digestPlane} interaction={interaction()} />);
+
+      const rack = screen.getByTestId('rack-digest-p1');
+      expect(rack.getAttribute('aria-label')).toBe(
+        'Open You zones: library 40, graveyard 2, exile 1',
+      );
+      expect(rack.getAttribute('aria-expanded')).toBe('false');
+      const box = boxOf(rack);
+      expect(box.w).toBeGreaterThanOrEqual(44);
+      expect(box.h).toBeGreaterThanOrEqual(44);
+      // Collapsed, the seat has no per-zone controls to overlap at all.
+      expect(screen.queryByTestId('table-graveyard-p1')).toBeNull();
+      expect(screen.queryByTestId('table-exile-p1')).toBeNull();
+    });
+
+    it('opens both public zones as separate, non-overlapping ≥ 44 px targets', () => {
+      render(<LivePlaneControls view={view} plane={digestPlane} interaction={interaction()} />);
+
+      fireEvent.click(screen.getByTestId('rack-digest-p1'));
+      expect(screen.getByTestId('rack-digest-p1').getAttribute('aria-expanded')).toBe('true');
+
+      const boxes = ['rack-digest-p1', 'table-graveyard-p1', 'table-exile-p1'].map((id) =>
+        boxOf(screen.getByTestId(id)),
+      );
+      for (const box of boxes) {
+        expect(box.w).toBeGreaterThanOrEqual(44);
+        expect(box.h).toBeGreaterThanOrEqual(44);
+      }
+      // No two controls share a rect, and none of them overlap: the whole point.
+      for (let i = 0; i < boxes.length; i += 1) {
+        for (let j = i + 1; j < boxes.length; j += 1) {
+          expect(boxes[i]).not.toEqual(boxes[j]);
+          expect(overlaps(boxes[i], boxes[j])).toBe(false);
+        }
+      }
+    });
+
+    it('routes each opened zone to the existing onOpenZone, by pointer', () => {
+      const onOpenZone = vi.fn();
+      render(
+        <LivePlaneControls
+          view={view}
+          plane={digestPlane}
+          interaction={interaction({ onOpenZone })}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('rack-digest-p1'));
+      fireEvent.click(screen.getByTestId('table-graveyard-p1'));
+      expect(onOpenZone).toHaveBeenCalledWith('p1', 'graveyard');
+
+      fireEvent.click(screen.getByTestId('rack-digest-p1'));
+      fireEvent.click(screen.getByTestId('table-exile-p1'));
+      expect(onOpenZone).toHaveBeenCalledWith('p1', 'exile');
+    });
+
+    /**
+     * Activating a library never browses (§I2) and no wire action names it, so a
+     * browse affordance for it would be client-invented. Same for the command
+     * slot, whose popover needs commander data the view does not carry.
+     */
+    it('never offers the library or the command slot as a browse target', () => {
+      render(<LivePlaneControls view={view} plane={digestPlane} interaction={interaction()} />);
+      fireEvent.click(screen.getByTestId('rack-digest-p1'));
+
+      expect(screen.queryByTestId('table-library-p1')).toBeNull();
+      expect(screen.queryByTestId('table-command-p1')).toBeNull();
+      for (const button of screen.getAllByRole('button')) {
+        expect(button.getAttribute('aria-label')).not.toMatch(/browse .*(library|command)/i);
+      }
+    });
+
+    it('drops the expansion when a fresh view arrives (presentation state only)', () => {
+      const { rerender } = render(
+        <LivePlaneControls view={view} plane={digestPlane} interaction={interaction()} />,
+      );
+      fireEvent.click(screen.getByTestId('rack-digest-p1'));
+      expect(screen.queryByTestId('table-graveyard-p1')).not.toBeNull();
+
+      rerender(
+        <LivePlaneControls
+          view={{ ...view } as GameView}
+          plane={digestPlane}
+          interaction={interaction()}
+        />,
+      );
+      expect(screen.queryByTestId('table-graveyard-p1')).toBeNull();
+    });
   });
 
   it('turns compact candidate overflow into a focus-and-restage fallback', () => {

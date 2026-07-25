@@ -77,6 +77,22 @@ describe('LiveMatchTable', () => {
     expect(document.querySelector('canvas')).toBeNull();
   });
 
+  /**
+   * `hand` is a full-card tier, so its face carries a rules area
+   * (`docs/design/card-representation.md` §3.2) and the server's `rules_text` is
+   * the only thing allowed to fill it. The face blanks that area when the prop
+   * is omitted, which is silent: the card still renders, just with no rules on
+   * any card in hand. Asserted on the shipped table, not on `CardFace`, because
+   * the defect was the call site.
+   */
+  it('renders the server rules text on every card in hand', () => {
+    seed(SAMPLE_GAME_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    const card = screen.getByTestId('live-hand-card-c1');
+    expect(card.textContent).toContain('{T}: Add {G}.');
+  });
+
   it('echoes only an offered global action through the existing dock', () => {
     const choose = seed(SAMPLE_GAME_VIEW_JSON);
     render(<LiveMatchTable />);

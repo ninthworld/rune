@@ -346,6 +346,26 @@ export const ART = {
   focusX: 0.5,
   focusY: 0.42,
   /**
+   * The crop anchor of ADR 0024 **full-card** mode, as fractions of the frame
+   * box, published as a separate `object-position`. A whole printed card is not
+   * an illustration, so it must not take {@link ART.focusY}'s focal anchor:
+   * card-representation §12 / §16 (decision 16) require the **top 72%** of the
+   * printed card — its name band plus its art — to survive the crop into the
+   * battlefield's square footprint, and Rune's status band draws over what is
+   * lost at the bottom.
+   *
+   * The value is derived, not chosen. The printed card is `RUNE_FRAME.aspectFull`
+   * (0.715) and the battlefield silhouette is square, so a cover fit at the
+   * frame's width shows exactly `0.715 / 1.00` = 71.5% ≈ 72% of the printed
+   * height. Anchoring that band at the **top** (`y = 0`) is therefore the one
+   * position that yields §12's stated crop; the shipped focal anchor (42%) slid
+   * the window down to roughly source `y = 6%–78%` and cut away most of the
+   * title band. Horizontally the printed card fills the box exactly, so `x`
+   * stays centered and is inert.
+   */
+  fullFocusX: 0.5,
+  fullFocusY: 0,
+  /**
    * The DECLARED aspect ratio (w ÷ h) of a screen-space art window — the
    * inspect tier and the inspect panel, where the mask has no frame to derive a
    * height from. It overrides the image's natural ratio, so the panel's box is

@@ -49,7 +49,7 @@ export {
   clampToEnvelope,
 } from './metrics';
 
-export { stageRack, RACK_ZONES } from './rack';
+export { stageRack, digestExpansionRects, RACK_ZONES } from './rack';
 export type { RackZone, RackVariant, RackSlot, SeatRack, RackRequest } from './rack';
 
 export { carveSlots, carveCompactSlots } from './slots';

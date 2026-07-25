@@ -347,6 +347,42 @@ function digestRack(
 }
 
 /**
+ * Where a **digest** rack's expansion stages its slots (§6.2: "expands to the
+ * wing variant in place, as a popover anchored to the button").
+ *
+ * A digest rack resolves every zone key to one button rect (§7), which is
+ * correct for *anchors* — a motion must still terminate somewhere — but cannot
+ * carry *targets*: two controls on one rect overlap exactly, and only the last
+ * one painted is reachable by pointer or touch. The expansion is what separates
+ * them, so the rects it hands out are the ones the interaction layer positions
+ * its chooser on.
+ *
+ * The slots march along the rack's own reading axis, one button-extent plus a
+ * gap apart, so they read as the wing rack the digest stands in for and can
+ * never overlap each other or the button. The run reverses when it would leave
+ * the plane, so a rack digested at the bottom of a wing expands upward instead
+ * of off-canvas. Each rect is a copy of the button's ≥ 44 px hit rect, so the
+ * 44 px floor is inherited rather than re-derived.
+ */
+export function digestExpansionRects(
+  rack: SeatRack,
+  count: number,
+  viewport: PlaneViewport,
+): Rect[] {
+  const anchor = rack.bounds;
+  const vertical = rack.axis === 'vertical';
+  const extent = vertical ? anchor.h : anchor.w;
+  const step = extent + PLANE.rack.gap;
+  const start = vertical ? anchor.y : anchor.x;
+  const limit = vertical ? viewport.height : viewport.width;
+  const forward = start + extent + count * step <= limit;
+  return Array.from({ length: count }, (_, i) => {
+    const offset = (i + 1) * step * (forward ? 1 : -1);
+    return vertical ? { ...anchor, y: anchor.y + offset } : { ...anchor, x: anchor.x + offset };
+  });
+}
+
+/**
  * How far the region's content must step aside for the rack. The board never
  * loses height to a rack — a horizontal rack runs *along* the region's outer
  * edge from its leading end, so both orientations cost the same axis.

@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GameView } from '../protocol';
 import { rectsOverlap, type Rect } from './scene';
-import { PLANE, RACK_ZONES, type SeatRack } from './plane';
+import { PLANE, RACK_ZONES, digestExpansionRects, type SeatRack } from './plane';
 import { DESKTOP, TABLET, ULTRAWIDE, regionsOf, seatTable, stage } from './plane.fixture';
 
 const BASELINE = { width: 1680, height: 945 };
@@ -274,6 +274,57 @@ describe('zone rack — the four variants (§6)', () => {
       expect(wing.rack.bounds.w).toBeGreaterThanOrEqual(PLANE.minHit);
       expect(wing.rack.bounds.h).toBeGreaterThanOrEqual(PLANE.minHit);
     }
+  });
+
+  /**
+   * §6.2's expansion, as geometry. A digest rack resolving every zone key to one
+   * rect is right for *anchors* (§7) and unusable for *targets*: controls
+   * positioned from it coincide, so only the last one painted can be reached by
+   * pointer or touch. `digestExpansionRects` is what the interaction layer opens
+   * the seat's zones onto, so it owes separable, on-plane, ≥ 44 px rects.
+   */
+  it('expands a digest rack onto separable, on-plane ≥ 44 px rects (§6.2)', () => {
+    const plane = stage(seatTable({ opponents: 5, active: 'p2' }), BASELINE);
+    for (const wing of plane.wings) {
+      const rects = digestExpansionRects(wing.rack, 2, plane);
+      expect(rects).toHaveLength(2);
+      for (const rect of [wing.rack.bounds, ...rects]) {
+        expect(rect.w).toBeGreaterThanOrEqual(PLANE.minHit);
+        expect(rect.h).toBeGreaterThanOrEqual(PLANE.minHit);
+        // Never staged off-canvas, whichever end of its flank the rack sits at.
+        expect(rect.x).toBeGreaterThanOrEqual(0);
+        expect(rect.y).toBeGreaterThanOrEqual(0);
+        expect(rect.x + rect.w).toBeLessThanOrEqual(plane.width);
+        expect(rect.y + rect.h).toBeLessThanOrEqual(plane.height);
+      }
+      // The whole point: no two of the three controls share any area.
+      const all = [wing.rack.bounds, ...rects];
+      for (let i = 0; i < all.length; i += 1) {
+        for (let j = i + 1; j < all.length; j += 1) {
+          expect(rectsOverlap(all[i]!, all[j]!)).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('reverses the expansion rather than running it off the plane', () => {
+    const rack: SeatRack = {
+      seat: 'p1',
+      variant: 'digest',
+      axis: 'vertical',
+      u: 0,
+      origin: { x: 100, y: 400 },
+      slots: [],
+      // Pinned to the plane's bottom edge: expanding downward would leave it.
+      bounds: { x: 80, y: 418, w: 44, h: 62 },
+      inset: { left: 0, right: 0 },
+    };
+    const rects = digestExpansionRects(rack, 2, { width: 640, height: 480 });
+    for (const rect of rects) {
+      expect(rect.y).toBeLessThan(rack.bounds.y);
+      expect(rect.y).toBeGreaterThanOrEqual(0);
+    }
+    expect(rectsOverlap(rects[0]!, rects[1]!)).toBe(false);
   });
 
   it('draws a real wing rack where the flank has room, and digests where it does not', () => {

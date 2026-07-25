@@ -74,7 +74,9 @@
 .inspectControl,
 .crestControl,
 .tileControl,
-.zoneControl {
+.zoneControl,
+.rackControl,
+.zoneChoice {
   position: absolute;
   box-sizing: border-box;
   /* The plane is scaled to .985 and tilted 4deg. 45 logical px projects to
@@ -110,9 +112,45 @@
 .inspectControl:focus-visible,
 .crestControl:focus-visible,
 .tileControl:focus-visible,
-.zoneControl:focus-visible {
+.zoneControl:focus-visible,
+.rackControl:focus-visible,
+.zoneChoice:focus-visible {
   outline: 3px solid var(--gold);
   outline-offset: 3px;
+}
+
+/* The digest rack's expansion (zone-geography §6.2). Where the rack collapses to
+   one button, the browsable zones are not two hotspots stacked on one rect —
+   which would hand pointer and touch to whichever painted last — but a chooser
+   the button opens. The button itself stays a transparent hotspot over the
+   painted digest rack; the choices it opens have nothing painted underneath, so
+   they carry their own material, drawn from the same rack tokens the piles use. */
+.rackControl[aria-expanded='true'] {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.zoneChoice {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  border: 1px solid var(--rack-rule-faint);
+  border-radius: 7px;
+  color: var(--text);
+  font: 700 8px/1.2 var(--rune-font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--rack-back);
+  box-shadow: var(--shadow-rest);
+}
+
+/* The count rides as a pseudo-element: the chooser must not cost the scene a
+   node per zone (presentation-budgets §Performance). */
+.zoneChoice::after {
+  content: attr(data-count);
+  color: var(--text-muted);
+  font: 700 10px/1 var(--rune-font-display);
 }
 
 .plane > [data-layer] {
