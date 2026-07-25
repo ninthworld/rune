@@ -47,6 +47,10 @@ export function planeDisplayData(
       action.subject?.some((id) => render.memberIds.includes(id)),
     ),
     landGlyph: row === 'lands' ? basicLandGlyph(permanent.card.type_line) : undefined,
+    // The land **resource tile** silhouette (card-representation §3.1/§4): the
+    // same server-type-line display glue that picks `landGlyph`, so the plane's
+    // reserved cell and the drawn face can never disagree about the box.
+    landTile: row === 'lands',
     attacking: permanent.attacking,
     attackingPlayer: permanent.attacking_player,
     blocking: permanent.blocking !== undefined,

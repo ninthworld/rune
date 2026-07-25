@@ -724,7 +724,16 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
                 } as CSSProperties
               }
             >
-              <CardFace data={handDisplayData(view, card)} tier="hand" art={domCardArt(card)} />
+              {/* `hand` is a full-card tier, so its face has a rules area
+                  (card-representation §3.2). The server's `rules_text` is the
+                  only thing that may fill it — omitting the prop blanks the
+                  rules on every card in hand. */}
+              <CardFace
+                data={handDisplayData(view, card)}
+                tier="hand"
+                art={domCardArt(card)}
+                rulesText={card.rules_text}
+              />
             </button>
           ))}
         </div>

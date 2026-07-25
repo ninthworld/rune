@@ -1,5 +1,5 @@
 import type { GameView, Permanent, PlayerId } from '../../protocol';
-import { TIER } from '../../tokens';
+import { CARD_BOX } from '../../card/dom';
 import type { Rect, SurfaceTier } from '../scene/types';
 import {
   localPlayerIdOf,
@@ -7,10 +7,11 @@ import {
   bandLabel,
   zoneCountsOf,
 } from '../scene/band-helpers';
-import { PLANE, isCompactGeometry, hitRectFor } from './metrics';
+import { PLANE, isCompactGeometry, hitRectFor, clampToEnvelope } from './metrics';
 import { carveSlots, carveCompactSlots, type WingSlotFrame } from './slots';
 import { resolveFocusSeat } from './focus';
 import { buildStageItems, stageRegionContent, type StageItem } from './regions';
+import { stageRack, type SeatRack } from './rack';
 import type {
   PlaneViewport,
   PlaneStagingState,
@@ -95,6 +96,8 @@ export function stagePlane(
       ? carveCompactSlots(viewport, peripherals)
       : carveSlots(viewport, receiverSeat !== undefined, farSeat, peripherals);
 
+  const commander = hasCommandZone(view);
+
   const makeRegion = (
     seat: PlayerId,
     kind: PlaneRegionKind,
@@ -104,43 +107,39 @@ export function stagePlane(
   ): PlaneRegion => {
     const isReceiver = kind === 'receiver';
     const opponent = view.opponents.find((entry) => entry.player_id === seat);
+    const zones = zoneCountsOf(view, seat, seat === receiverSeat);
+    // The seat's zone rack claims its region's outer flank first; the board then
+    // stages inboard of it, so cards and zones never contend for one rect.
+    const rack = stageRack({
+      seat,
+      kind,
+      side: wing?.side,
+      rect,
+      viewport,
+      zones,
+      commander,
+      digestBaseline: wing?.digestBaseline ?? false,
+      corridor: slots.corridor,
+    });
     const content = stageRegionContent(
       seat,
       itemsOf(seat),
       rect,
       surface,
-      kind === 'wing',
+      kind,
       wing?.digestBaseline ?? false,
+      rack.inset,
     );
-    // The crest cluster: beside the receiver's band, centered above any
-    // opponent region — always present, at every count and every rung.
-    const crest: Rect = isReceiver
-      ? {
-          x: Math.max(4, rect.x - PLANE.crest.w - 64),
-          y: rect.y + 30,
-          w: PLANE.crest.w,
-          h: PLANE.crest.h,
-        }
-      : {
-          x: rect.x + rect.w / 2 - PLANE.crest.w / 2,
-          y: rect.y - PLANE.crest.h - 6,
-          w: PLANE.crest.w,
-          h: PLANE.crest.h,
-        };
     return {
       seat,
       kind,
       side: wing?.side,
       rank: wing?.rank,
       rect,
-      crest: hitRectFor(crest),
-      piles: {
-        x: rect.x + rect.w - PLANE.pile.w - 4,
-        y: rect.y + rect.h - PLANE.pile.h - 4,
-        w: PLANE.pile.w,
-        h: PLANE.pile.h,
-      },
-      zones: zoneCountsOf(view, seat, seat === receiverSeat),
+      crest: crestFor(rack, viewport),
+      piles: rack.bounds,
+      rack,
+      zones,
       surface: content.surface,
       rung: content.rung,
       renders: content.renders,
@@ -220,10 +219,54 @@ export function stagePlane(
   };
 }
 
+/**
+ * Whether this game has a command zone at all (`zone-geography.md` §5, §12 gap
+ * G3). `GameView` carries no format signal — `command`, `commander_tax`, and
+ * `commander_damage` are each "omitted when empty" — so the client's only honest
+ * test is whether any of them names anyone. The documented consequence is that a
+ * Commander game whose commanders are all on the battlefield with no tax and no
+ * damage yet reads as a non-Commander game and ships the slot **absent**, which
+ * §5 prescribes over an unexplained empty box. Closing G3 (#553) is the fix; the
+ * client never infers a format from anything else.
+ */
+function hasCommandZone(view: GameView): boolean {
+  return (
+    (view.command ?? []).length > 0 ||
+    (view.commander_tax ?? []).length > 0 ||
+    view.commander_damage.length > 0
+  );
+}
+
+/**
+ * The seat's identity crest. `zone-geography.md` §2.2 measures every rack offset
+ * from the identity medallion's centre, so the crest and the rack share one
+ * anchor and the cluster reads as a single object at every seat — which is what
+ * both approved baselines draw.
+ *
+ * Two guarantees ride on the clamp. The crest is the player-targeting surface
+ * and can never degrade away (layout-model §Staging), so it must be **on the
+ * plane**; and it is drawn layout content, so it must stay inside the seat
+ * envelope (`environment-system.md` §2.2/§3.3) — outside the focal core that
+ * means inside the flank band, because everything else out there is Zone C: the
+ * theme's prop pockets, the `AMBIENT SPACE` reservation, and the wordmark.
+ */
+function crestFor(rack: SeatRack, viewport: PlaneViewport): Rect {
+  const { w, h } = PLANE.crest;
+  // A digest rack is one button on the outer edge; the crest sits along the
+  // reading axis just past it rather than on top of it.
+  const raw: Rect =
+    rack.variant === 'digest'
+      ? { x: rack.bounds.x, y: rack.bounds.y + rack.bounds.h + 6, w, h }
+      : { x: rack.origin.x - w / 2, y: rack.origin.y - h / 2, w, h };
+  return clampToEnvelope(hitRectFor(raw), viewport);
+}
+
 /** The strip's own height for `rows` candidate rows (0 when no rows fit). */
 function stripHeight(rows: number): number {
   if (rows === 0) return 0;
-  return PLANE.compact.tile.stripGap + rows * TIER.mini.h + (rows - 1) * PLANE.rowGap + 8;
+  return (
+    PLANE.compact.tile.stripGap + rows * CARD_BOX.mini.permanent.h + (rows - 1) * PLANE.rowGap + 8
+  );
 }
 
 /**
@@ -246,7 +289,10 @@ function tileCandidates(
   const picks = items.filter((item) => item.candidate);
   if (picks.length === 0) return { rect, candidates: [], overflow: 0 };
   const innerW = rect.w - 16;
-  const perRow = Math.max(1, Math.floor((innerW + PLANE.cardGap) / (TIER.mini.w + PLANE.cardGap)));
+  const perRow = Math.max(
+    1,
+    Math.floor((innerW + PLANE.cardGap) / (CARD_BOX.mini.permanent.w + PLANE.cardGap)),
+  );
   const rowsNeeded = Math.ceil(picks.length / perRow);
   let rows = 0;
   while (rows < rowsNeeded && stripHeight(rows + 1) <= slack) rows += 1;
@@ -255,14 +301,14 @@ function tileCandidates(
     const row = Math.floor(i / perRow);
     const col = i % perRow;
     const r: Rect = {
-      x: rect.x + 8 + col * (TIER.mini.w + PLANE.cardGap),
+      x: rect.x + 8 + col * (CARD_BOX.mini.permanent.w + PLANE.cardGap),
       y:
         rect.y +
         PLANE.compact.tile.h +
         PLANE.compact.tile.stripGap +
-        row * (TIER.mini.h + PLANE.rowGap),
-      w: TIER.mini.w,
-      h: TIER.mini.h,
+        row * (CARD_BOX.mini.permanent.h + PLANE.rowGap),
+      w: CARD_BOX.mini.permanent.w,
+      h: CARD_BOX.mini.permanent.h,
     };
     return {
       entityId: item.perm.id,

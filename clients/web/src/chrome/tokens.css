@@ -158,7 +158,7 @@
    * (the spectator shell, isolated component tests). Keep them in step with
    * `SHELL` — the same test asserts they agree. */
   --shell-top-h: 56px;
-  --shell-hand-card-w: 104px;
+  --shell-hand-card-w: 116px;
   --shell-hand-gutter: 4px;
 
   /* ── Interaction ───────────────────────────────────────────────────────────*/

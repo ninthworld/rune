@@ -8,20 +8,14 @@ import {
   type CSSProperties,
 } from 'react';
 import { CardFace } from '../card/dom';
-import {
-  DEFAULT_SCENE_THEME,
-  SCENE_ELEVATION,
-  SCENE_HUES,
-  SCENE_NEUTRALS,
-  SCENE_SEAT_ACCENTS,
-  SCENE_THEMES,
-} from '../sceneTokens';
+import { SCENE_ELEVATION, SCENE_HUES, SCENE_NEUTRALS, SCENE_SEAT_ACCENTS } from '../sceneTokens';
 import { stagePlane, type PlaneRegion, type StagedPlane } from '../table/plane';
 import { cardFaceRenderer } from '../table/planeFaceRenderer';
 import { domCardArt, handDisplayData, planeDisplayData } from '../table/planeDisplayData';
 import { PlaneReconciler, planeRegions, planeRenders } from '../table/planeReconciler';
 import { EffectsLayer, type EffectDensity, type EffectQuality } from '../table/effects';
 import { EffectsSurface } from '../table/EffectsSurface';
+import { SceneEnvironment } from '../table/environment';
 import { FIXTURE_SCENARIOS, fixtureScenario, type FixtureScenario } from './scenarios';
 import {
   FrameBudgetSampler,
@@ -302,12 +296,6 @@ export function FixtureBattlefield() {
     transform: `translate(-50%, -50%) scale(${scale})`,
     '--scene-width': `${scenario.viewport.width}px`,
     '--scene-height': `${scenario.viewport.height}px`,
-    '--sky-top': SCENE_THEMES[DEFAULT_SCENE_THEME].skyTop,
-    '--sky-horizon': SCENE_THEMES[DEFAULT_SCENE_THEME].skyHorizon,
-    '--sky-base': SCENE_THEMES[DEFAULT_SCENE_THEME].skyBase,
-    '--far-ground': SCENE_THEMES[DEFAULT_SCENE_THEME].ground,
-    '--arena': SCENE_THEMES[DEFAULT_SCENE_THEME].arena,
-    '--ambient-glow': SCENE_THEMES[DEFAULT_SCENE_THEME].glow,
   };
 
   return (
@@ -384,15 +372,15 @@ export function FixtureBattlefield() {
           style={logicalStyle}
           data-reduced-motion={String(reducedMotion)}
         >
-          <div className={styles.environment} aria-hidden="true">
-            <div className={styles.sky} />
-            <div className={styles.ground} />
-            <div className={styles.arenaEdge} />
-          </div>
-
-          <div className={styles.tableMark} aria-hidden="true">
-            ◇
-          </div>
+          {/* The shared ADR 0030 layer-1 environment (issue #530) — the same
+              component the match and the pregame stage mount, measured against
+              the scenario's logical viewport so the harness reproduces the crop
+              and excursion the real client would pick at that geometry. */}
+          <SceneEnvironment
+            quality={quality}
+            reducedMotion={reducedMotion}
+            viewport={scenario.viewport}
+          />
           <div className={styles.camera}>
             <div className={styles.tiltedPlane}>
               <div ref={planeRootRef} className={styles.plane} data-testid="fixture-plane" />
@@ -450,6 +438,7 @@ export function FixtureBattlefield() {
                     data={handDisplayData(frame.view, entry)}
                     tier="hand"
                     art={domCardArt(entry)}
+                    rulesText={entry.rules_text}
                   />
                 </div>
               );

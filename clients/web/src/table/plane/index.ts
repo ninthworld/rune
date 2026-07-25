@@ -40,7 +40,17 @@ export type {
   StagedPlane,
 } from './types';
 
-export { PLANE, isCompactGeometry, insetRect, hitRectFor } from './metrics';
+export {
+  PLANE,
+  isCompactGeometry,
+  insetRect,
+  hitRectFor,
+  withinEnvelope,
+  clampToEnvelope,
+} from './metrics';
+
+export { stageRack, digestExpansionRects, RACK_ZONES } from './rack';
+export type { RackZone, RackVariant, RackSlot, SeatRack, RackRequest } from './rack';
 
 export { carveSlots, carveCompactSlots } from './slots';
 export type { WingSlotFrame, PlaneSlotFrames } from './slots';

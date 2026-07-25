@@ -161,6 +161,7 @@ export function allPlaneRects(plane: StagedPlane): Rect[] {
   const rects: Rect[] = [];
   for (const region of regionsOf(plane)) {
     rects.push(region.rect, region.crest, region.piles);
+    for (const slot of region.rack.slots) rects.push(slot.hitRect);
     for (const render of region.renders) rects.push(render.hitRect);
   }
   for (const tile of plane.tiles) {

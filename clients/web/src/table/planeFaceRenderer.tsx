@@ -39,6 +39,11 @@ export function cardFaceRenderer(
       ...data,
       stackCount: render.stackCount,
       targeting: data.targeting === true || render.candidate ? true : data.targeting,
+      // The land **resource tile** silhouette (card-representation §3.1/§4) is
+      // chosen from the row the staging layer already sorted this permanent
+      // into — the same server-type-line display glue that picks `landGlyph`,
+      // never an inference by the face.
+      landTile: render.row === 'lands',
     };
   };
   return {

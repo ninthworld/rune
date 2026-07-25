@@ -31,7 +31,6 @@ import {
   SCENE_THEMES,
   sceneMotionMs,
 } from '../sceneTokens';
-import type { EffectQuality } from '../table/effects';
 
 /** Custom-property style object usable as an inline `style`. */
 export type SceneVars = CSSProperties & Record<`--${string}`, string | number>;
@@ -49,21 +48,6 @@ export type PregamePlace = 'front-door' | 'lobby' | 'room';
 export function pregamePlace(status: string, hasRoom: boolean, hasLobby: boolean): PregamePlace {
   if (status !== 'open' && !hasLobby) return 'front-door';
   return hasRoom ? 'room' : 'lobby';
-}
-
-/**
- * The ambient-drift level for the shared stage, stepping `on → reduced → off`
- * across quality levels (`presentation-budgets.md` §Quality levels) with
- * reduced motion turning it off at any level. Identical to the rule the match's
- * environment uses (`table/live/LivePlane.tsx`), because it is the same
- * backdrop: only the ambient animation scales, never the content layer.
- */
-export function pregameEnvironmentMotion(
-  quality: EffectQuality,
-  reducedMotion: boolean,
-): 'on' | 'reduced' | 'off' {
-  if (reducedMotion || quality === 'lite') return 'off';
-  return quality === 'high' ? 'on' : 'reduced';
 }
 
 /**
@@ -113,13 +97,11 @@ export function pregameSceneVars(reducedMotion: boolean): SceneVars {
     '--pregame-elev-held': SCENE_ELEVATION.held.shadow,
     '--pregame-elev-screen': SCENE_ELEVATION.screen.shadow,
 
-    // §4 the default environment theme's slots — the same recipe the match's
-    // backdrop is built from, so the crossing into the game has no boundary.
-    '--pregame-sky-top': theme.skyTop,
-    '--pregame-sky-horizon': theme.skyHorizon,
-    '--pregame-sky-base': theme.skyBase,
-    '--pregame-far-ground': theme.ground,
-    '--pregame-arena': theme.arena,
+    // §4 the default environment theme's ambient accent. The BACKDROP itself is
+    // no longer assembled here: the shared `table/environment` stack (issue
+    // #530) mounts the ADR 0030 layer-1 L0–L3 composition and publishes its own
+    // `--env-*` properties, so the pregame and the match cannot drift. This one
+    // slot stays because the places' own accents read it.
     '--pregame-glow': theme.glow,
 
     // §8 motion grammar. `staging` runs the place changes; `micro` runs every

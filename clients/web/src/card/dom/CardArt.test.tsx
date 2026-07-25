@@ -28,7 +28,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ART, FRAME, SURFACES } from '../../tokens';
+import { ART, FRAME, RUNE_FRAME, SURFACES } from '../../tokens';
 import type { CardDisplayData } from '../cardFactory';
 import { CardArt, CardArtSlot } from './CardArt';
 import { CardFace, type CardFaceProps } from './CardFace';
@@ -219,6 +219,16 @@ describe('CardArt: the tier fixes the footprint, the image never does (#527)', (
     }
   });
 
+  it('publishes both crop anchors on every image, whatever mode it draws in', () => {
+    for (const mode of ['window', 'full'] as const) {
+      const { container } = render(<CardArt url="blob:a" mode={mode} />);
+      const img = container.firstElementChild as HTMLElement;
+      expect(img.style.getPropertyValue('--art-focus')).toBe('50% 42%');
+      expect(img.style.getPropertyValue('--art-full-focus')).toBe('50% 0%');
+      cleanup();
+    }
+  });
+
   it('is decoration only: hidden from assistive tech, never a drag source', () => {
     const { container } = render(<CardArt url="blob:a" mode="window" />);
     const img = container.firstElementChild as HTMLImageElement;
@@ -252,6 +262,38 @@ describe('CardArt containment contract (stylesheet source, #527)', () => {
       expect(rule(mode), mode).not.toMatch(/(width|height):\s*auto/);
     }
     expect(css).not.toMatch(/(width|height):\s*auto/);
+  });
+
+  /**
+   * ADR 0024 full-card mode on the **battlefield** (card-representation §12,
+   * decision §16.16): the printed card is cover-fitted into Rune's SQUARE
+   * silhouette, and the top 72% — the printed name band plus its art — must
+   * survive the crop, with Rune's status band drawing over what is lost below.
+   *
+   * A square box cover-fitting an `aspectFull` (0.715) card shows exactly 71.5%
+   * of the printed height, which rounds to the specification's 72%. WHICH 71.5%
+   * is entirely the crop anchor's doing: only `y = 0` puts that band at the top
+   * of the printed card. The shipped focal anchor (42%, right for an
+   * illustration) slid the window down and cut most of the title band away.
+   */
+  it('anchors a whole printed card at the top so the title band survives (§12/§16)', () => {
+    // The visible band, as a fraction of the printed card's height.
+    const visible = RUNE_FRAME.aspectFull / RUNE_FRAME.aspectPermanent;
+    expect(Math.round(visible * 100)).toBe(72);
+    // Cover positioning: the visible band starts at `p · (1 − visible)`.
+    expect(ART.fullFocusY * (1 - visible)).toBe(0);
+    expect(ART.fullFocusX).toBe(0.5);
+    expect((cardArtVars() as Record<string, string>)['--art-full-focus']).toBe('50% 0%');
+    expect(rule('full')).toContain('object-position: var(--art-full-focus)');
+  });
+
+  it('leaves window art on its focal anchor, not the full-card one', () => {
+    // The focal anchor stays the primitive's default and the art window never
+    // overrides it — whole-card mode is the only surface with its own anchor.
+    expect(rule('art')).toContain('object-position: var(--art-focus)');
+    expect(rule('window')).not.toContain('object-position');
+    expect((cardArtVars() as Record<string, string>)['--art-focus']).toBe('50% 42%');
+    expect(ART.fullFocusY).not.toBe(ART.focusY);
   });
 
   it('fits the raster into the box with a declared focal anchor', () => {

@@ -14,15 +14,18 @@
 import { useEffect } from 'react';
 import { cx } from '../chrome/cx';
 import type { EffectDensity, EffectQuality } from './effects';
+import { environmentThemeOptions } from './environment';
 import { AudioSettingsPanel } from './settings/AudioSettingsPanel';
 import { usePresentationSettings } from './settings/usePresentationSettings';
 import {
   getQualityDetection,
   setDensity,
+  setEnvironmentTheme,
   setMotion,
   setQuality,
   type MotionPreference,
 } from './settings/presentationSettings';
+import type { SceneThemeName } from '../sceneTokens';
 import s from './chrome.module.css';
 
 interface Props {
@@ -55,6 +58,26 @@ const DENSITY_OPTIONS: { value: EffectDensity; label: string; description: strin
   { value: 'reduced', label: 'Reduced', description: 'About 40% of the particles.' },
   { value: 'minimal', label: 'Minimal', description: 'Pulses and paths only, no particles.' },
 ];
+
+/**
+ * The battlefield environment themes (`environment-system.md` §5.3, §11). A
+ * device-local presentation preference in the same idiom as the three above:
+ * never a protocol field, never load-bearing for a view, and free to differ
+ * between the two players in one match. Non-default themes are entirely `lazy/`,
+ * so choosing one never delays a match.
+ */
+const THEME_DESCRIPTIONS: Record<SceneThemeName, string> = {
+  runicVale: 'Warm sand plaza, cool teal streams, lantern gold.',
+  verdantCanals: 'Deeper foliage and bright cyan canals.',
+  sunlitObservatory: 'Warm ochre terraces, pale gold light, brass instruments.',
+  moonlitRuins: 'Cool blue-violet night, broken arches, cyan rune glow.',
+};
+
+const THEME_OPTIONS: { value: SceneThemeName; label: string; description: string }[] =
+  environmentThemeOptions().map((option) => ({
+    ...option,
+    description: THEME_DESCRIPTIONS[option.value],
+  }));
 
 /** Motion preference, composed with the OS reduced-motion query. */
 const MOTION_OPTIONS: { value: MotionPreference; label: string; description: string }[] = [
@@ -155,6 +178,14 @@ export function PresentationSettings({ onClose }: Props) {
           options={DENSITY_OPTIONS}
           active={settings.density}
           onPick={setDensity}
+        />
+
+        <OptionGroup
+          label="Environment"
+          name="environment-theme"
+          options={THEME_OPTIONS}
+          active={settings.environmentTheme}
+          onPick={setEnvironmentTheme}
         />
 
         <OptionGroup

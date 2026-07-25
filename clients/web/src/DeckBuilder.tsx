@@ -124,7 +124,7 @@ function totalCount(counts: Record<CardIdentity, number>): number {
 }
 
 /**
- * One browsable pool entry: the card rendered through {@link CardFace} at the field
+ * One browsable pool entry: the card rendered through {@link CardFace} at the `hand`
  * tier (its whole face is the inspect affordance, so the card reads as a card), plus
  * the add/remove copy controls and the running per-card count. A card already in the
  * deck lifts to the held elevation so "in your deck" reads at a glance.
@@ -153,7 +153,18 @@ function PoolCard({
         data-testid={`deck-builder-inspect-${card.functional_id}`}
         aria-label={`Inspect ${card.name}`}
       >
-        <CardFace data={data} tier="field" elevation={count > 0 ? 'lifted' : 'rest'} art={art} />
+        {/* The builder browses cards, so it needs the 0.715 portrait card with
+            its cost disc and type bar. The battlefield tiers draw neither — a
+            square permanent has no mana cost and no type bar by rule
+            (`docs/design/card-representation.md` §3.3) — so the pool entry uses
+            the screen-space `hand` tier, not `field`. */}
+        <CardFace
+          data={data}
+          tier="hand"
+          elevation={count > 0 ? 'lifted' : 'rest'}
+          art={art}
+          rulesText={card.rules_text}
+        />
       </button>
       <span className={l.builderCardControls}>
         <button

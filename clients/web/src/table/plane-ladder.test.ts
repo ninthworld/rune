@@ -21,7 +21,11 @@ describe('stagePlane degradation ladder (issue #478, layout-model §Ladder)', ()
   });
 
   it('steps the tier down one rung when the full tier overflows (rung 1)', () => {
-    const plane = stage(fourSeat(menagerie('p2', 11)));
+    // Seven distinct creatures overflow the focused board at `support` and fit
+    // at `mini`. The count is smaller than it used to be because the far side
+    // now also hosts the seat's zone rack on its outer edge (issue #531) and the
+    // card boxes grew (#529): what is under test is the step-down, not capacity.
+    const plane = stage(fourSeat(menagerie('p2', 7)));
     expect(plane.farSide?.rung).toBe(1);
     // The step-down is a real tier change: mini, one rung under support.
     expect(plane.farSide?.surface).toBe('mini');
@@ -44,7 +48,11 @@ describe('stagePlane degradation ladder (issue #478, layout-model §Ladder)', ()
     // Also crowd the slot so the ladder actually reaches the folding rung.
     perms.push(...menagerie('p2', 10));
     const plane = stage(fourSeat(perms));
-    expect(plane.farSide?.rung).toBe(2);
+    // At or past the folding rung — the larger card boxes of
+    // card-representation §8.1 (issue #529) push this fixture one rung further
+    // than the shipped 84 × 118 field card did. What is under test is the fold
+    // KEY, which holds at every rung from 2 up.
+    expect(plane.farSide!.rung).toBeGreaterThanOrEqual(2);
     const piles = plane.farSide!.renders.filter((r) => r.stackCount > 1);
     expect(piles.map((p) => p.stackCount).sort((a, b) => a - b)).toEqual([3, 10]);
     expect(piles.find((p) => p.stackCount === 3)?.tapped).toBe(true);

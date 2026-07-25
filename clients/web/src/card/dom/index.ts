@@ -17,9 +17,18 @@ export {
   faceMetrics,
   faceFootprint,
   faceAlpha,
+  splayLayers,
+  splayShadow,
+  surfaceKindFor,
+  isBattlefieldTier,
+  authoredTypeSize,
   BATTLEFIELD_TIERS,
+  SCREEN_TIERS,
+  CARD_BOX,
   PROVISIONAL,
   type CardFaceTier,
+  type CardSurfaceKind,
   type FaceMetrics,
+  type FaceBand,
 } from './theme';
 export { glyphStripGeometry, type GlyphStripGeometry } from './glyphStrip';

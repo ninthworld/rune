@@ -78,20 +78,27 @@ describe('PregameStage — criterion 2: one stage, three places', () => {
     expect(screen.getByTestId('pregame-environment')).toBe(environment);
   });
 
-  it('builds the backdrop from the default theme’s slots, with no image asset', () => {
+  it('mounts the SHARED environment system, with no image asset', () => {
     const { container } = render(
       <PregameStage place="front-door">
         <div />
       </PregameStage>,
     );
     const stage = screen.getByTestId('pregame-stage');
-    // The theme slots reach the CSS as the pregame custom properties…
-    expect(stage.style.getPropertyValue('--pregame-sky-top')).not.toBe('');
-    expect(stage.style.getPropertyValue('--pregame-arena')).not.toBe('');
+    // The place accents still reach the CSS as pregame custom properties…
     expect(stage.style.getPropertyValue('--pregame-glow')).not.toBe('');
-    // …and the environment is pure CSS: no bytes are added to the load budget.
+    // …and the backdrop itself is now the one `table/environment` stack the
+    // match mounts (issue #530), publishing the §5.4 palette slots as `--env-*`
+    // from the same token set — so the pregame cannot drift from the match.
+    const environment = screen.getByTestId('scene-environment');
+    expect(environment.style.getPropertyValue('--env-plaza-core')).not.toBe('');
+    expect(environment.style.getPropertyValue('--env-surround-base')).not.toBe('');
+    expect(environment.dataset.theme).toBe('runicVale');
+    // Layered SVG built from tokens: zero asset bytes against the load budget.
     expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelectorAll('svg').length).toBeGreaterThan(0);
     expect(screen.getByTestId('pregame-environment').getAttribute('aria-hidden')).toBe('true');
+    expect(environment.getAttribute('aria-hidden')).toBe('true');
   });
 });
 
@@ -104,15 +111,18 @@ describe('PregameStage — criterion 4: the quality tier scales ambient only', (
           <p>content layer</p>
         </PregameStage>,
       );
-      const level = screen.getByTestId('pregame-environment').getAttribute('data-environment');
+      // The ambient level is now resolved by the ONE environment system
+      // (`table/environment` `ambientLevel`), which is what makes the pregame
+      // and the match provably identical here rather than merely similar.
+      const level = screen.getByTestId('scene-environment').getAttribute('data-ambient');
       const content = screen.getByText('content layer').outerHTML;
       view.unmount();
       return `${level}|${content}`;
     };
 
     const [high, standard, lite] = [contentAt('high'), contentAt('standard'), contentAt('lite')];
-    expect(high.split('|')[0]).toBe('on');
-    expect(standard.split('|')[0]).toBe('reduced');
+    expect(high.split('|')[0]).toBe('l0+l3');
+    expect(standard.split('|')[0]).toBe('l0-half');
     expect(lite.split('|')[0]).toBe('off');
     // The content layer is byte-identical at all three levels — the quality
     // tier only ever scales the ambient backdrop.

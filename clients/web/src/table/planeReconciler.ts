@@ -51,7 +51,7 @@
  */
 import type { EntityId, PlayerId } from '../protocol';
 import type { Rect } from './scene';
-import type { PlaneRegion, PlaneRender, StagedPlane, SummaryTileSlot } from './plane';
+import type { PlaneRegion, PlaneRender, RackSlot, StagedPlane, SummaryTileSlot } from './plane';
 import {
   applyMotionHint,
   applyRect,
@@ -132,7 +132,7 @@ export function planeRenders(plane: StagedPlane): PlaneRender[] {
   ];
 }
 
-/** One cached chrome element (region, crest, piles, tile) and its inputs. */
+/** One cached chrome element (region, crest, zone slot, tile) and its inputs. */
 interface CachedChrome {
   el: HTMLElement;
   rect: Rect;
@@ -557,7 +557,7 @@ export class PlaneReconciler {
     return cached ? visualRect(cached.rect, cached.el) : undefined;
   }
 
-  /** Current visual rect of reconciled chrome (`crest:<seat>`, `piles:<seat>`). */
+  /** Current visual rect of reconciled chrome (`crest:<seat>`, `zone:<seat>:<zone>`). */
   chromeVisualFor(key: string): Rect | undefined {
     const cached = this.chrome.get(key);
     return cached ? visualRect(cached.rect, cached.el) : undefined;
@@ -586,7 +586,7 @@ export class PlaneReconciler {
 
   // ── internals ─────────────────────────────────────────────────────────────
 
-  /** Reconcile the region slots and chrome anchors (crest, piles, tiles). */
+  /** Reconcile the region slots and chrome anchors (crest, zone rack, tiles). */
   private reconcileChrome(
     plane: StagedPlane,
     stats: ReconcileStats,
@@ -647,7 +647,22 @@ export class PlaneReconciler {
     for (const region of planeRegions(plane)) {
       upsert(`region:${region.seat}`, 'region', region.rect, regionMeta(region));
       upsert(`crest:${region.seat}`, 'crest', region.crest, crestMeta(region));
-      upsert(`piles:${region.seat}`, 'piles', region.piles, pilesMeta(region));
+      // The zone rack: one element per zone anchor, in the fixed §1 order, each
+      // at the rect the `zone:<seat>:<zone>` anchor resolves to. A digest rack
+      // stages a single button, so it upserts one key and every zone key
+      // resolves to it (zone-geography §6.1, §7).
+      if (region.rack.variant === 'digest') {
+        upsert(
+          `rack:${region.seat}`,
+          'rack',
+          region.rack.bounds,
+          rackMeta(region, region.rack.slots),
+        );
+      } else {
+        for (const slot of region.rack.slots) {
+          upsert(`zone:${region.seat}:${slot.zone}`, 'zone', slot.rect, zoneSlotMeta(region, slot));
+        }
+      }
     }
     for (const tile of plane.tiles) {
       upsert(`tile:${tile.seat}`, 'tile', tile.rect, tileMeta(tile));
@@ -733,12 +748,19 @@ export class PlaneReconciler {
     const card = this.cards.get(ref);
     if (card) return visualRect(card.rect, card.el);
 
-    const [kind, id] = ref.split(':', 2);
+    const [kind, id, zone] = ref.split(':', 3);
     if (!id) return undefined;
     const region = planeRegions(plane).find((candidate) => candidate.seat === id);
     const tile = plane.tiles.find((candidate) => candidate.seat === id);
     if (kind === 'seat') return region?.crest ?? tile?.crest;
     if (kind === 'pile') return region?.piles ?? tile?.rect;
+    // `zone:<seat>:<zone>` — the §7 resolution order of `zone-geography.md`:
+    // exact zone key → the rack union → the seat crest, which is staged at every
+    // rung and can never degrade away. A motion is retargeted, never retired.
+    if (kind === 'zone') {
+      const slot = region?.rack.slots.find((entry) => entry.zone === zone);
+      return slot?.hitRect ?? region?.piles ?? tile?.rect ?? region?.crest ?? tile?.crest;
+    }
     if (kind === 'hand') {
       const home = region?.rect ?? tile?.rect;
       if (!home) return undefined;
@@ -879,9 +901,40 @@ function zonesMeta(zones: PlaneRegion['zones']): Record<string, string> {
   return meta;
 }
 
-/** A pile cluster's non-geometry inputs as data attributes. */
-function pilesMeta(region: PlaneRegion): Record<string, string> {
-  return { seat: region.seat, ...zonesMeta(region.zones) };
+/**
+ * One drawn zone slot's non-geometry inputs (`zone-geography.md` §3): which zone
+ * it is — the channel the pile's silhouette and material read from, so no two
+ * piles look like the same object — its own count, and the seat's eliminated
+ * treatment. The count is the pile's **only** home (§4/I5); nothing else in the
+ * scene may draw it.
+ */
+function zoneSlotMeta(region: PlaneRegion, slot: RackSlot): Record<string, string> {
+  const meta: Record<string, string> = {
+    seat: region.seat,
+    zone: slot.zone,
+    count: String(slot.count),
+    variant: region.rack.variant,
+    eliminated: String(region.eliminated),
+  };
+  // Hidden stays hidden (§I2): the library never publishes a top card. Only the
+  // graveyard's is public in the view, and only there does one reach the DOM.
+  if (slot.zone === 'graveyard' && region.zones.graveyardTop) {
+    meta.top = region.zones.graveyardTop.name;
+    meta.topColor = region.zones.graveyardTop.colorIdentity;
+  }
+  return meta;
+}
+
+/** The digest rack button's inputs: every zone's count on one ≥ 44 px target. */
+function rackMeta(region: PlaneRegion, slots: readonly RackSlot[]): Record<string, string> {
+  const meta: Record<string, string> = {
+    seat: region.seat,
+    variant: 'digest',
+    eliminated: String(region.eliminated),
+    zones: slots.map((slot) => slot.zone).join(' '),
+  };
+  for (const slot of slots) meta[slot.zone] = String(slot.count);
+  return meta;
 }
 
 /** A compact tile's non-geometry inputs as data attributes (a tile owes the

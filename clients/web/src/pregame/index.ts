@@ -27,7 +27,6 @@ export { seatFilled, seatMonogram } from './seatIdentity';
 export { GAME_SETUPS, SEAT_COUNTS, setupLabel, type GameSetupOption } from './gameSetups';
 export {
   pregameSceneVars,
-  pregameEnvironmentMotion,
   pregamePlace,
   seatAccent,
   seatAccentVars,

@@ -6,9 +6,10 @@
  * focusable and hit-testable as soon as a view arrives, even while the painted
  * card is still travelling toward it.
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { EntityId, GameView, PlayerId, ValidAction } from '../../protocol';
-import type { PlaneRegion, PlaneRender, StagedPlane, SummaryTileSlot } from '../plane';
+import type { PlaneRegion, PlaneRender, RackZone, StagedPlane, SummaryTileSlot } from '../plane';
+import { digestExpansionRects } from '../plane';
 import { planeRegions } from '../planeReconciler';
 import { declarationFor } from '../scene/action-helpers';
 import type { Rect } from '../scene';
@@ -67,18 +68,150 @@ function interactionId(render: PlaneRender, candidates: Set<EntityId>): EntityId
   return render.memberIds.find((id) => candidates.has(id)) ?? render.entityId;
 }
 
+/**
+ * The public zones a rack offers as browse targets, in rack order.
+ *
+ * The library is deliberately absent: activating it never browses
+ * (zone-geography §I2 / §6.2) and no wire action names it, so offering one would
+ * be a client-invented affordance. The command slot is likewise absent — its
+ * popover needs commander data this view does not carry (§12 gap G3).
+ */
+const BROWSABLE = ['graveyard', 'exile'] as const;
+
+/**
+ * A zone's hotspot on the seat's rack. Every slot already carries a ≥ 44 px
+ * `hitRect` (zone-geography §2.3), so this is a lookup — never a re-derivation
+ * of the geometry.
+ *
+ * A **digest** rack resolves every zone key to the one button (§7), which is
+ * right for anchors and wrong for targets: two controls sharing one rect overlap
+ * exactly, and only the later one is reachable by pointer or touch. Digest racks
+ * therefore never come through here — see {@link browsableRects}.
+ */
+function zoneHit(region: PlaneRegion, zone: RackZone): Rect {
+  return region.rack.slots.find((slot) => slot.zone === zone)?.hitRect ?? region.piles;
+}
+
+/** A zone's count, for the accessible name (§8.1 — the count is on the pile). */
+function zoneCount(region: PlaneRegion, zone: RackZone): number {
+  return region.rack.slots.find((slot) => slot.zone === zone)?.count ?? 0;
+}
+
+/**
+ * Where each browsable zone's control sits. A drawn rack puts them on their own
+ * slots' hit rects (§8.1); a digest rack has no separable slots, so its controls
+ * live on the §6.2 expansion rects the button opens — which is what keeps the
+ * graveyard reachable by pointer and touch rather than keyboard-only.
+ */
+function browsableRects(region: PlaneRegion, plane: PlaneSize): Rect[] {
+  if (region.rack.variant !== 'digest') return BROWSABLE.map((zone) => zoneHit(region, zone));
+  return digestExpansionRects(region.rack, BROWSABLE.length, plane);
+}
+
+/** The plane's logical size — all the expansion geometry needs. */
+interface PlaneSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * The digest rack button's accessible name (§8.1): the seat, what activating it
+ * does, and every count, so the rack still announces the state it collapsed.
+ */
+function digestLabel(region: PlaneRegion): string {
+  const parts = region.rack.slots.map((slot) => `${slot.zone} ${slot.count}`);
+  return `Open ${region.label} zones: ${parts.join(', ')}`;
+}
+
+/**
+ * The seat's browse controls.
+ *
+ * A drawn rack gives each public zone its own hotspot, exactly as §8.1 says. A
+ * **digest** rack cannot: all four zone keys resolve to the one button, so a
+ * per-zone control per zone would stack two identical rects and hand pointer and
+ * touch to whichever painted last — leaving the graveyard keyboard-only, which
+ * fails the universal-path contract. §6.2 answers that with the expansion: one
+ * ≥ 44 px button that opens the seat's zones as separate, non-overlapping
+ * targets on the §6.2 expansion rects. Both forms route to the same
+ * `onOpenZone`; no new action, no new wire message.
+ */
+function ZoneControls({
+  region,
+  plane,
+  interaction,
+  expanded,
+  onToggleExpand,
+}: {
+  region: PlaneRegion;
+  plane: PlaneSize;
+  interaction: LivePlaneInteractionProps;
+  expanded: boolean;
+  onToggleExpand: (seat: PlayerId | null) => void;
+}) {
+  const digest = region.rack.variant === 'digest';
+  const rects = browsableRects(region, plane);
+  const choices = BROWSABLE.map((zone, index) => (
+    <button
+      key={zone}
+      type="button"
+      className={digest ? styles.zoneChoice : styles.zoneControl}
+      style={box(rects[index])}
+      data-testid={`table-${zone}-${region.seat}`}
+      data-focus-key={`${zone}:${region.seat}`}
+      data-count={zoneCount(region, zone)}
+      aria-label={`Browse ${region.label} ${zone}, ${zoneCount(region, zone)} cards`}
+      onClick={() => {
+        onToggleExpand(null);
+        interaction.onOpenZone(region.seat, zone);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onToggleExpand(null);
+      }}
+    >
+      {digest ? zone : null}
+    </button>
+  ));
+  if (!digest) return <>{choices}</>;
+  return (
+    <>
+      <button
+        type="button"
+        className={styles.rackControl}
+        style={box(region.rack.bounds)}
+        data-testid={`rack-digest-${region.seat}`}
+        data-focus-key={`rack:${region.seat}`}
+        aria-haspopup="true"
+        aria-expanded={expanded}
+        aria-label={digestLabel(region)}
+        onClick={() => onToggleExpand(expanded ? null : region.seat)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onToggleExpand(null);
+        }}
+      />
+      {/* Expansion is presentation state, dropped on the next view (§6.2 / I4). */}
+      {expanded && choices}
+    </>
+  );
+}
+
 function RegionControls({
   region,
+  plane,
   view,
   interaction,
   candidateSet,
   playerCandidateSet,
+  expanded,
+  onToggleExpand,
 }: {
   region: PlaneRegion;
+  plane: PlaneSize;
   view: GameView;
   interaction: LivePlaneInteractionProps;
   candidateSet: Set<EntityId>;
   playerCandidateSet: Set<PlayerId>;
+  expanded: boolean;
+  onToggleExpand: (seat: PlayerId | null) => void;
 }) {
   const playerTarget = playerCandidateSet.has(region.seat);
   return (
@@ -114,33 +247,12 @@ function RegionControls({
           if (playerTarget) interaction.onPreviewTarget?.(null);
         }}
       />
-      <button
-        type="button"
-        className={styles.zoneControl}
-        style={box({
-          x: region.piles.x,
-          y: region.piles.y,
-          w: Math.max(44, region.piles.w),
-          h: 44,
-        })}
-        data-testid={`table-graveyard-${region.seat}`}
-        data-focus-key={`graveyard:${region.seat}`}
-        aria-label={`Browse ${region.label} graveyard`}
-        onClick={() => interaction.onOpenZone(region.seat, 'graveyard')}
-      />
-      <button
-        type="button"
-        className={styles.zoneControl}
-        style={box({
-          x: region.piles.x,
-          y: region.piles.y + Math.max(18, region.piles.h - 28),
-          w: Math.max(44, region.piles.w),
-          h: 44,
-        })}
-        data-testid={`table-exile-${region.seat}`}
-        data-focus-key={`exile:${region.seat}`}
-        aria-label={`Browse ${region.label} exile`}
-        onClick={() => interaction.onOpenZone(region.seat, 'exile')}
+      <ZoneControls
+        region={region}
+        plane={plane}
+        interaction={interaction}
+        expanded={expanded}
+        onToggleExpand={onToggleExpand}
       />
       {region.renders.map((render) => {
         const actions = actionsFor(render, view.valid_actions);
@@ -306,23 +418,21 @@ export function LivePlaneControls({ view, plane, interaction }: Props) {
     () => new Set(interaction.dropCandidates ?? []),
     [interaction.dropCandidates],
   );
+  // Which seat's digest rack is expanded (§6.2). At most one, and a fresh
+  // GameView drops it — expansion is presentation state, never load-bearing.
+  const [expandedRack, setExpandedRack] = useState<PlayerId | null>(null);
+  useEffect(() => setExpandedRack(null), [view]);
 
   useEffect(() => {
     const geometry = new Map<string, Rect>();
     for (const region of planeRegions(plane)) {
       geometry.set(`crest:${region.seat}`, region.crest);
-      geometry.set(`graveyard:${region.seat}`, {
-        x: region.piles.x,
-        y: region.piles.y,
-        w: Math.max(44, region.piles.w),
-        h: 44,
-      });
-      geometry.set(`exile:${region.seat}`, {
-        x: region.piles.x,
-        y: region.piles.y + Math.max(18, region.piles.h - 28),
-        w: Math.max(44, region.piles.w),
-        h: 44,
-      });
+      // Spatial focus navigation reads the rect a control actually occupies, so
+      // a digest seat publishes its button plus the expansion rects its zone
+      // controls open onto — not one rect wearing three keys.
+      const rects = browsableRects(region, plane);
+      BROWSABLE.forEach((zone, index) => geometry.set(`${zone}:${region.seat}`, rects[index]));
+      if (region.rack.variant === 'digest') geometry.set(`rack:${region.seat}`, region.rack.bounds);
       for (const render of region.renders) {
         for (const id of render.memberIds) geometry.set(`entity:${id}`, render.hitRect);
       }
@@ -364,10 +474,13 @@ export function LivePlaneControls({ view, plane, interaction }: Props) {
         <RegionControls
           key={region.seat}
           region={region}
+          plane={plane}
           view={view}
           interaction={interaction}
           candidateSet={candidateSet}
           playerCandidateSet={playerCandidateSet}
+          expanded={expandedRack === region.seat}
+          onToggleExpand={setExpandedRack}
         />
       ))}
       {plane.tiles.map((tile) => (

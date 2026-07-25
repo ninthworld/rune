@@ -21,13 +21,7 @@ import {
   SCENE_SEAT_ACCENTS,
   SCENE_THEMES,
 } from '../sceneTokens';
-import {
-  pregameEnvironmentMotion,
-  pregamePlace,
-  pregameSceneVars,
-  seatAccent,
-  seatAccentVars,
-} from './pregameScene';
+import { pregamePlace, pregameSceneVars, seatAccent, seatAccentVars } from './pregameScene';
 
 /** The match's own seat-accent derivation (`table/live/gameViewPresentation.ts`). */
 function matchSeatAccent(seatOrder: readonly string[], player: string): string {
@@ -59,14 +53,22 @@ describe('pregameSceneVars — criterion 3: every value comes from sceneTokens',
     expect(vars['--pregame-elev-screen']).toBe(SCENE_ELEVATION.screen.shadow);
   });
 
-  it('publishes the default theme’s six environment slots (criterion 2)', () => {
+  it('publishes the default theme’s ambient accent, and no backdrop slots (criterion 2)', () => {
+    // The backdrop composition moved to the shared `table/environment` stack
+    // (issue #530), which publishes its own `--env-*` properties from the same
+    // token set. The pregame keeps only the accent its places read, so the two
+    // surfaces cannot drift — there is one environment, not a copy of one.
     const theme = SCENE_THEMES[DEFAULT_SCENE_THEME];
-    expect(vars['--pregame-sky-top']).toBe(theme.skyTop);
-    expect(vars['--pregame-sky-horizon']).toBe(theme.skyHorizon);
-    expect(vars['--pregame-sky-base']).toBe(theme.skyBase);
-    expect(vars['--pregame-far-ground']).toBe(theme.ground);
-    expect(vars['--pregame-arena']).toBe(theme.arena);
     expect(vars['--pregame-glow']).toBe(theme.glow);
+    for (const retired of [
+      '--pregame-sky-top',
+      '--pregame-sky-horizon',
+      '--pregame-sky-base',
+      '--pregame-far-ground',
+      '--pregame-arena',
+    ] as const) {
+      expect(vars[retired]).toBeUndefined();
+    }
   });
 
   it('publishes all six seat accents', () => {
@@ -113,19 +115,10 @@ describe('pregame motion — criteria 15 and 16', () => {
   });
 });
 
-describe('pregame environment tier — criterion 4', () => {
-  it('steps on → reduced → off across quality levels, exactly like the match', () => {
-    expect(pregameEnvironmentMotion('high', false)).toBe('on');
-    expect(pregameEnvironmentMotion('standard', false)).toBe('reduced');
-    expect(pregameEnvironmentMotion('lite', false)).toBe('off');
-  });
-
-  it('turns ambient drift off at any level under reduced motion', () => {
-    for (const quality of ['high', 'standard', 'lite'] as const) {
-      expect(pregameEnvironmentMotion(quality, true)).toBe('off');
-    }
-  });
-});
+// The environment tier that criterion 4 pins is now owned by the ONE shared
+// environment system (`table/environment/quality.ts` `ambientLevel`) and gated
+// by `environment.test.ts`. There is deliberately no pregame-local copy of that
+// rule left to drift from the match's.
 
 describe('seat identity — criterion 6: one accent, taught once', () => {
   it('gives a room seat the accent that seat wears in the match', () => {

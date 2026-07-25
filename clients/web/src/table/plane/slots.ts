@@ -85,11 +85,14 @@ export function carveSlots(
   const digestBaseline = spec.w < PLANE.wing.digestBelowWidthFrac;
   const w = W * spec.w;
   const h = H * spec.h;
+  // One-per-side staging hangs its lone rank at mid height, the way the baseline
+  // arena does; two-per-side keeps the top anchor so the pair spans the flank.
+  const top = perSide > 1 ? PLANE.wing.top : PLANE.wing.singleTop;
   const wings: WingSlotFrame[] = peripherals.map((seat, i) => {
     const side: WingSide = i % 2 === 0 ? 'left' : 'right';
     const rank = Math.floor(i / 2);
     const x = side === 'left' ? -w * PLANE.wing.bleed : W - w * (1 - PLANE.wing.bleed);
-    const y = H * PLANE.wing.top + rank * (h + H * PLANE.wing.rankGap);
+    const y = H * top + rank * (h + H * PLANE.wing.rankGap);
     return {
       seat,
       rect: { x, y, w, h },

@@ -8,9 +8,9 @@ import {
   toDisplayData,
   basicLandGlyph,
 } from '../scene/card-helpers';
-import { cellSize } from '../scene/geometry';
+import { cellSize, splayClearance, surfaceKindForRow, tabClearance } from '../scene/geometry';
 import { PLANE, insetRect, hitRectFor } from './metrics';
-import type { LadderRung, PlaneRender, WingDigest } from './types';
+import type { LadderRung, PlaneRegionKind, PlaneRender, WingDigest } from './types';
 
 /** One permanent prepared for staging: its row, fold key parts, and pick flags. */
 export interface StageItem {
@@ -82,6 +82,11 @@ function foldKey(item: StageItem): string {
     selected: false,
     actionable: item.fingerprint !== '',
     landGlyph: item.row === 'lands' ? basicLandGlyph(perm.card.type_line) : undefined,
+    // The land **resource tile** silhouette is part of what a player sees, so it
+    // is part of the fold key: a 1.45 tile and a 1.00 square plaque at the same
+    // tier are different objects and must never fold into one ×N pile (issue
+    // #529, card-representation §3.1/§4).
+    landTile: item.row === 'lands',
     attacking: perm.attacking,
     attackingPlayer: perm.attacking_player,
     blocking: perm.blocking !== undefined,
@@ -117,8 +122,24 @@ function groupItems(items: StageItem[], fold: boolean): StageGroup[] {
   return groups;
 }
 
-/** The order the type-grouped rows stack, top to bottom (carried convention). */
+/**
+ * The order the type-grouped rows stack, top to bottom.
+ *
+ * The baseline arena reads rows **outward from their owner** (issue #531,
+ * `rune-2.5d-interface-baseline.jpg`): the row nearest the seat's own edge of
+ * the plane is its lands/resources, and the row nearest the open centre is its
+ * creatures, so every seat's board faces the arena the same way and ownership
+ * comes from orientation rather than from a labelled panel. For the receiver at
+ * the bottom and for a flank wing that is the carried top-to-bottom order; for
+ * the focused opponent across the top it is the reverse, because that seat's own
+ * edge is the top of the plane.
+ */
 const ROW_ORDER: BandRowKind[] = ['creatures', 'support', 'lands'];
+
+/** The row order for one region kind — reversed only for the far side. */
+function rowOrderFor(kind: PlaneRegionKind): BandRowKind[] {
+  return kind === 'far' ? [...ROW_ORDER].reverse() : ROW_ORDER;
+}
 
 interface LayResult {
   renders: PlaneRender[];
@@ -147,12 +168,46 @@ function toRender(group: StageGroup, seat: PlayerId, tier: RenderTier, rect: Rec
   };
 }
 
+/** One cell about to be laid: its group, its reserved box, and the clearances
+ * that box's decorations sweep outside it (issue #529). */
+interface Cell {
+  g: StageGroup;
+  size: { w: number; h: number };
+  /** Clearance the `×N` top-edge tab needs above the box (0 when unfolded). */
+  tab: number;
+  /** Clearance the down-and-left splay sweeps (0 when unfolded). */
+  splay: { left: number; down: number };
+}
+
+/** Reserve one group's cell, including whatever its fold decorations overhang. */
+function toCell(group: StageGroup, tier: RenderTier): Cell {
+  const { item } = group;
+  const kind = surfaceKindForRow(tier, item.row === 'lands');
+  const folded = group.memberIds.length > 1;
+  return {
+    g: group,
+    size: cellSize(tier, item.perm.tapped ?? false, kind),
+    // The count tab and the splay are drawn by a fold and by nothing else, so an
+    // unfolded card reserves exactly its own box — the ladder is not paying for
+    // decorations that are not there.
+    tab: folded ? tabClearance(tier, kind) : 0,
+    splay: folded ? splayClearance(tier, kind) : { left: 0, down: 0 },
+  };
+}
+
 /**
- * Lay groups into the content area: type-grouped rows top-to-bottom, each row's
- * cards on centered lines (bottom-aligned within a line). Without `wrap` every
- * row is a single line and overflow is reported via `maxLineWidth`; with `wrap`
- * (ladder rung 3) lines break inside the slot's width — the slot's height stays
- * fixed by the stage, so wrapping trades row height, never neighbor space.
+ * Lay groups into the content area: type-grouped rows in {@link rowOrderFor}'s
+ * order, each row's cards on centered lines (bottom-aligned within a line).
+ * Without `wrap` every row is a single line and overflow is reported via
+ * `maxLineWidth`; with `wrap` (ladder rung 3) lines break inside the slot's
+ * width — the slot's height stays fixed by the stage, so wrapping trades row
+ * height, never neighbor space.
+ *
+ * Every line reserves the clearances a **folded** pile sweeps outside its own
+ * box (issue #529): the `×N` count is a top-edge tab overhanging the card by
+ * half its own height, and the pile splays **down-and-left**. Without the
+ * reservation a fold's count would collide with the row above it and its depth
+ * would underlap the neighbour to its left.
  */
 function layGroups(
   groups: StageGroup[],
@@ -160,51 +215,61 @@ function layGroups(
   tiers: Record<BandRowKind, RenderTier>,
   content: Rect,
   wrap: boolean,
+  order: BandRowKind[],
 ): LayResult {
   const renders: PlaneRender[] = [];
   let y = content.y;
   let maxLineWidth = 0;
   let any = false;
-  for (const row of ROW_ORDER) {
+  for (const row of order) {
     const rowGroups = groups.filter((g) => g.item.row === row);
     if (rowGroups.length === 0) continue;
     any = true;
     const tier = tiers[row];
-    const cells = rowGroups.map((g) => ({
-      g,
-      size: cellSize(tier, g.item.perm.tapped ?? false),
-    }));
-    // Break into lines: one line unless wrapping past the content width.
-    const lines: (typeof cells)[] = [];
-    let line: typeof cells = [];
+    const cells = rowGroups.map((g) => toCell(g, tier));
+    // Break into lines: one line unless wrapping past the content width. A
+    // folded cell's leftward splay is charged to the gap ahead of it.
+    const lines: Cell[][] = [];
+    let line: Cell[] = [];
     let lineW = 0;
     for (const cell of cells) {
-      const next = lineW === 0 ? cell.size.w : lineW + PLANE.cardGap + cell.size.w;
+      const lead = lineW === 0 ? cell.splay.left : PLANE.cardGap + cell.splay.left;
+      const next = lineW + lead + cell.size.w;
       if (wrap && line.length > 0 && next > content.w) {
         lines.push(line);
         line = [cell];
-        lineW = cell.size.w;
+        lineW = cell.splay.left + cell.size.w;
       } else {
         line.push(cell);
         lineW = next;
       }
     }
     if (line.length > 0) lines.push(line);
-    for (const cells2 of lines) {
-      const width =
-        cells2.reduce((sum, c) => sum + c.size.w, 0) + (cells2.length - 1) * PLANE.cardGap;
-      const lineH = Math.max(...cells2.map((c) => c.size.h));
+    for (const lineCells of lines) {
+      const width = lineWidth(lineCells);
+      const lineH = Math.max(...lineCells.map((c) => c.size.h));
+      const tab = Math.max(...lineCells.map((c) => c.tab));
+      const splayDown = Math.max(...lineCells.map((c) => c.splay.down));
       maxLineWidth = Math.max(maxLineWidth, width);
       let x = content.x + Math.max(0, Math.floor((content.w - width) / 2));
-      for (const cell of cells2) {
-        const rect: Rect = { x, y: y + lineH - cell.size.h, w: cell.size.w, h: cell.size.h };
+      for (const cell of lineCells) {
+        x += cell.splay.left;
+        const rect: Rect = { x, y: y + tab + lineH - cell.size.h, w: cell.size.w, h: cell.size.h };
         renders.push(toRender(cell.g, seat, tiers[cell.g.item.row], rect));
         x += cell.size.w + PLANE.cardGap;
       }
-      y += lineH + PLANE.rowGap;
+      y += tab + lineH + splayDown + PLANE.rowGap;
     }
   }
   return { renders, height: any ? y - PLANE.rowGap - content.y : 0, maxLineWidth };
+}
+
+/** The horizontal extent one laid line occupies, splay overhang included. */
+function lineWidth(cells: Cell[]): number {
+  return cells.reduce(
+    (sum, cell, i) => sum + cell.splay.left + cell.size.w + (i > 0 ? PLANE.cardGap : 0),
+    0,
+  );
 }
 
 /** Shift every render down by `dy` (vertical centering inside the fixed slot). */
@@ -237,6 +302,7 @@ function digestStage(
   items: StageItem[],
   content: Rect,
   surface: SurfaceTier,
+  order: BandRowKind[],
 ): RegionContent {
   const digest: WingDigest = { creatures: 0, others: 0, lands: 0 };
   for (const item of items) digest[digestCategory(item.perm.card.type_line)] += 1;
@@ -250,7 +316,7 @@ function digestStage(
     support: 'mini',
     lands: 'mini',
   };
-  const laid = layGroups(candidates, seat, tiers, content, true);
+  const laid = layGroups(candidates, seat, tiers, content, true, order);
   shiftRenders(laid.renders, Math.max(0, Math.floor((content.h - laid.height) / 2)));
   return { renders: laid.renders, rung: 4, surface, digest };
 }
@@ -267,11 +333,23 @@ export function stageRegionContent(
   items: StageItem[],
   slot: Rect,
   baseSurface: SurfaceTier,
-  wing: boolean,
+  kind: PlaneRegionKind,
   digestBaseline: boolean,
+  rackInset: { left: number; right: number } = { left: 0, right: 0 },
 ): RegionContent {
-  const content = insetRect(slot, PLANE.pad);
-  if (wing && digestBaseline) return digestStage(seat, items, content, baseSurface);
+  const wing = kind === 'wing';
+  const order = rowOrderFor(kind);
+  const padded = insetRect(slot, PLANE.pad);
+  // The seat's zone rack owns its region's outer flank (zone-geography §2.4), so
+  // the board's content area starts inboard of it: the rack and the cards never
+  // contend for the same pixels, at any rung.
+  const content: Rect = {
+    x: padded.x + rackInset.left,
+    y: padded.y,
+    w: Math.max(0, padded.w - rackInset.left - rackInset.right),
+    h: padded.h,
+  };
+  if (wing && digestBaseline) return digestStage(seat, items, content, baseSurface, order);
 
   const stepped = stepDown(baseSurface);
   const attempts: { rung: LadderRung; surface: SurfaceTier; fold: boolean; wrap: boolean }[] = [
@@ -286,7 +364,14 @@ export function stageRegionContent(
   let last: { laid: LayResult; surface: SurfaceTier } | undefined;
   for (const attempt of attempts) {
     const groups = groupItems(items, attempt.fold);
-    const laid = layGroups(groups, seat, tiersForSurface(attempt.surface), content, attempt.wrap);
+    const laid = layGroups(
+      groups,
+      seat,
+      tiersForSurface(attempt.surface),
+      content,
+      attempt.wrap,
+      order,
+    );
     last = { laid, surface: attempt.surface };
     const fits = laid.height <= content.h && (attempt.wrap || laid.maxLineWidth <= content.w);
     if (fits) {
@@ -297,7 +382,7 @@ export function stageRegionContent(
 
   // Nothing fit at rung 3. A wing steps to its digest; the receiver and the far
   // side never digest — they compress vertically inside the fixed slot.
-  if (wing) return digestStage(seat, items, content, last?.surface ?? stepped);
+  if (wing) return digestStage(seat, items, content, last?.surface ?? stepped, order);
   const laid = last?.laid ?? { renders: [], height: 0, maxLineWidth: 0 };
   if (laid.height > content.h && laid.renders.length > 0) {
     // Compress line starts so the block's travel fits above the tallest card's

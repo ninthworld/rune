@@ -52,25 +52,42 @@
   user-select: none;
 }
 
-/* The frame's art window: the mask between the header band and the type row.
- * Both dimensions are derived from the frame box, so the tier — never the
- * file — decides how much room the illustration gets. */
+/* The frame's art window: the band the frame resolved for it
+ * (`docs/design/card-representation.md` §3.6). Both dimensions come from the
+ * `--band-art-*` pair `theme.ts` published after the §8.4 floor rule — the same
+ * pair the procedural field uses — so the tier, never the file, decides how
+ * much room the illustration gets, and the window is byte-identical whether it
+ * holds an image or the procedural color-identity field.
+ *
+ * The color-identity inner rule is an `outline` rather than a border or an
+ * inset shadow: a replaced element paints its content over both of those, and
+ * §3.4 requires the accent rule to stay visible on top of the crop. */
 .window {
   position: absolute;
-  left: var(--art-inset, 0px);
-  top: calc(var(--face-header-h, 0px) + var(--art-top-gap, 0px));
-  width: calc(100% - var(--art-inset, 0px) * 2);
-  height: calc(
-    100% - var(--face-header-h, 0px) - var(--art-top-gap, 0px) - var(--face-type-size, 0px) -
-      var(--art-bottom-reserve, 0px)
-  );
-  max-width: calc(100% - var(--art-inset, 0px) * 2);
-  border-radius: var(--art-radius);
+  left: var(--rule-inset, 0px);
+  top: var(--band-art-top, 0px);
+  width: calc(100% - var(--rule-inset, 0px) * 2);
+  height: var(--band-art-h, 0px);
+  max-width: calc(100% - var(--rule-inset, 0px) * 2);
+  border-radius: var(--plate-radius, 0px);
+  outline: var(--rule-w, 0px) solid var(--face-accent, transparent);
+  outline-offset: calc(-1 * var(--rule-w, 0px));
   z-index: 0;
 }
 
 /* ADR 0024 full-card mode on a frame: the image fills the frame's padding box
- * exactly and stays below every authoritative overlay (z-index 0 vs 1). */
+ * exactly and stays below every authoritative overlay (z-index 0 vs 1).
+ *
+ * The crop anchor is the mode's own, NOT the art window's focal one. A whole
+ * printed card is not an illustration: card-representation §12 / §16 (decision
+ * 16) require the **top 72%** — name band plus art — to survive the crop into
+ * the battlefield's square footprint, with Rune's status band drawing over the
+ * bottom. A square box cover-fitting a 0.715 card shows exactly 71.5% of its
+ * height, so top alignment (`--art-full-focus`) is what produces that band; the
+ * inherited 42% focal anchor slid the window down and cut the title away. At
+ * the screen-space full-card tiers (`hand`, `stack`) the box IS the 0.715 card
+ * proportion, so the crop is under 1% and the anchor is moot there — one rule
+ * covers both because it can only matter where the aspects differ. */
 .full {
   position: absolute;
   inset: 0;
@@ -79,6 +96,7 @@
   max-width: 100%;
   max-height: 100%;
   border-radius: calc(var(--face-radius) - 1px);
+  object-position: var(--art-full-focus);
   z-index: 0;
 }
 
