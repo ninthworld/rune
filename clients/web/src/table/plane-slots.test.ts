@@ -336,3 +336,97 @@ describe('stagePlane standing invariants at every count and geometry (issue #500
     }
   }
 });
+
+/*
+ * The staging box (issue #534, ADR 0032).
+ *
+ * Under the contextual shell the plane spans the whole viewport — the arena has
+ * to remain visible behind the controls — but its SLOTS may not be carved under
+ * the hand fan or the lower-right control cluster. `PlaneViewport.safe` is that
+ * separation: coordinate space stays the viewport, staging happens inside the
+ * box. These tests pin the property that makes it safe to rely on.
+ */
+describe('staging box — slots are carved inside the chrome-free rect', () => {
+  /** A 1280×800 desktop with the #534 chrome standing on it. */
+  const SAFE = { x: 0, y: 0, w: DESKTOP.width - 324, h: DESKTOP.height - 210 };
+  const inset = { ...DESKTOP, safe: SAFE };
+
+  /** Whether `inner` lies entirely inside `outer` (a 0.5px tolerance for rounding). */
+  const within = (outer: typeof SAFE, inner: { x: number; y: number; w: number; h: number }) =>
+    inner.x >= outer.x - 0.5 &&
+    inner.y >= outer.y - 0.5 &&
+    inner.x + inner.w <= outer.x + outer.w + 0.5 &&
+    inner.y + inner.h <= outer.y + outer.h + 0.5;
+
+  it('omitting the box stages exactly as it did before #534', () => {
+    // The compatibility guarantee every existing caller and fixture rides on.
+    const before = stage(seatTable({ opponents: 3, perms: menagerie('p2') }));
+    const explicit = stage(seatTable({ opponents: 3, perms: menagerie('p2') }), {
+      ...DESKTOP,
+      safe: { x: 0, y: 0, w: DESKTOP.width, h: DESKTOP.height },
+    });
+    expect(explicit.receiver!.rect).toEqual(before.receiver!.rect);
+    expect(explicit.farSide!.rect).toEqual(before.farSide!.rect);
+    expect(explicit.corridor).toEqual(before.corridor);
+  });
+
+  it('keeps the receiver band and the far side clear of the chrome', () => {
+    // The failure this prevents: the receiver's band resolving against the raw
+    // viewport and landing underneath the hand fan, so the player's own board is
+    // behind their own cards.
+    const plane = stage(seatTable({ opponents: 3, perms: menagerie('p2') }), inset);
+    expect(within(SAFE, plane.receiver!.rect)).toBe(true);
+    expect(within(SAFE, plane.farSide!.rect)).toBe(true);
+    expect(plane.receiver!.rect.y + plane.receiver!.rect.h).toBeCloseTo(SAFE.h);
+  });
+
+  it('measures the wing bleed from the box edge, not the plane edge', () => {
+    // A wing tucks a constant FRACTION OF ITSELF offstage. Measured from the
+    // plane edge instead, the right-hand wing would sit under the cluster and
+    // the bleed would grow as chrome takes more width.
+    const plane = stage(seatTable({ opponents: 4 }), inset);
+    const right = plane.wings.filter((wing) => wing.side === 'right');
+    expect(right.length).toBeGreaterThan(0);
+    for (const wing of right) {
+      const overhang = wing.rect.x + wing.rect.w - SAFE.w;
+      expect(overhang).toBeCloseTo(wing.rect.w * PLANE.wing.bleed);
+    }
+    for (const wing of plane.wings.filter((w) => w.side === 'left')) {
+      expect(wing.rect.x).toBeCloseTo(-wing.rect.w * PLANE.wing.bleed);
+    }
+  });
+
+  it('keeps every wing crest inside the box, at every populated count', () => {
+    // Crests are the selection surface for player-targeting and attack
+    // declaration (`layout-model.md`), so a crest under the control cluster is
+    // an unpickable target, not a cosmetic problem. The boards bleed; the crests
+    // may not.
+    for (const opponents of [2, 3, 4, 5]) {
+      const plane = stage(seatTable({ opponents }), inset);
+      for (const region of regionsOf(plane)) {
+        expect(within(SAFE, region.crest), `${opponents} opponents`).toBe(true);
+      }
+    }
+  });
+
+  it('insets the compact branch tiles and receiver too', () => {
+    const phoneSafe = { x: 0, y: 0, w: PHONE.width, h: PHONE.height - 180 };
+    const plane = stage(seatTable({ opponents: 3 }), { ...PHONE, safe: phoneSafe });
+    expect(within(phoneSafe, plane.receiver!.rect)).toBe(true);
+    expect(plane.tiles.length).toBeGreaterThan(0);
+    for (const tile of plane.tiles) {
+      expect(within(phoneSafe, tile.rect)).toBe(true);
+    }
+  });
+
+  it('honours a box that is offset, not just smaller', () => {
+    // Nothing in #534 needs a left/top offset today, but a fraction resolved
+    // against the box's size and then positioned from the PLANE's origin is a
+    // bug that only appears once one is used. Pin it now.
+    const offset = { x: 40, y: 24, w: DESKTOP.width - 364, h: DESKTOP.height - 234 };
+    const plane = stage(seatTable({ opponents: 3 }), { ...DESKTOP, safe: offset });
+    expect(within(offset, plane.receiver!.rect)).toBe(true);
+    expect(within(offset, plane.farSide!.rect)).toBe(true);
+    expect(plane.receiver!.rect.y + plane.receiver!.rect.h).toBeCloseTo(offset.y + offset.h);
+  });
+});

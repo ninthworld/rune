@@ -510,12 +510,21 @@ function placeChips(request: SeatClusterRequest, d: number, specs: ChipSpec[]): 
   });
 }
 
-/** Push a rect fully onto the plane without resizing it. */
+/** Push a rect fully into the staging box without resizing it. */
 function onPlane(rect: Rect, viewport: PlaneViewport): Rect {
+  // Clamped to the **staging box**, not to the plane (issue #534). A wing board
+  // deliberately tucks partway offstage, but its crest may not follow it there:
+  // the crest is the selection surface for player-targeting and attack
+  // declaration and can never degrade away (`layout-model.md` §Staging). Under
+  // the contextual shell the plane spans the whole viewport, so clamping to the
+  // plane leaves a right-hand wing's crest sitting *under the control cluster* —
+  // on canvas, and unpickable. Absent a box this is the plane, which is the
+  // pre-#534 behaviour exactly.
+  const box = viewport.safe ?? { x: 0, y: 0, w: viewport.width, h: viewport.height };
   return {
     ...rect,
-    x: Math.max(0, Math.min(rect.x, viewport.width - rect.w)),
-    y: Math.max(0, Math.min(rect.y, viewport.height - rect.h)),
+    x: Math.max(box.x, Math.min(rect.x, box.x + box.w - rect.w)),
+    y: Math.max(box.y, Math.min(rect.y, box.y + box.h - rect.h)),
   };
 }
 

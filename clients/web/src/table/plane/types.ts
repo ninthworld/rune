@@ -16,6 +16,25 @@ export interface PlaneViewport {
   width: number;
   /** Logical plane height. */
   height: number;
+  /**
+   * The **staging box**: the part of the plane that contextual chrome is not
+   * standing on. Slots are carved inside it; everything else about the plane —
+   * its coordinate space, the environment that fills it, every effect anchor and
+   * relationship endpoint — still spans the full `width × height`.
+   *
+   * This separation is what makes [ADR 0032](../../../../docs/decisions/0032-contextual-shell-anatomy.md)
+   * implementable. #534's requirement is two things at once: *"the arena remains
+   * visible behind compact controls across the viewport"* **and** *"never cover a
+   * candidate, selected card, player cluster, or required path endpoint"*. The
+   * first is about the **environment**, which keeps the whole viewport; the
+   * second is about **staged objects**, which must not be laid under a control.
+   * Insetting the whole plane would satisfy the second by sacrificing the first —
+   * the arena would end in a visible seam where the chrome starts.
+   *
+   * Omitted, the staging box is the whole plane, which is exactly the pre-#534
+   * behaviour: every existing caller and fixture stages unchanged.
+   */
+  safe?: Rect;
 }
 
 /**

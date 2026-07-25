@@ -38,10 +38,29 @@ export interface PlaneSlotFrames {
 }
 
 /**
+ * The rect slots are carved inside — the viewport's {@link PlaneViewport.safe}
+ * staging box, or the whole plane when no chrome is standing on it.
+ *
+ * Every fraction below is a fraction of the *staging box*, not of the plane. A
+ * slot fraction that resolved against the raw viewport would stage the
+ * receiver's band underneath the hand fan and the wings behind the control
+ * cluster, which is the exact failure #534 forbids ("never cover a candidate,
+ * selected card, player cluster, or required path endpoint").
+ */
+function stagingBox(viewport: PlaneViewport): Rect {
+  return viewport.safe ?? { x: 0, y: 0, w: viewport.width, h: viewport.height };
+}
+
+/**
  * Carve the plane's fixed slots (layout-model §The plane and its fixed slots):
  * the receiver's full-width bottom band, the far side, the wings staged outward
  * from the top (alternating left/right in the given stable seat order), and the
  * clear center corridor between the far side and the receiver's band.
+ *
+ * All of it happens inside the viewport's staging box (see {@link stagingBox}).
+ * The wing bleed and the crest overhang measure from the **box's** edges, not
+ * the plane's, so "tucked partway offstage" stays a constant fraction of the
+ * wing rather than growing as chrome takes more of the viewport.
  */
 export function carveSlots(
   viewport: PlaneViewport,
@@ -49,10 +68,16 @@ export function carveSlots(
   farSeat: PlayerId | undefined,
   peripherals: PlayerId[],
 ): PlaneSlotFrames {
-  const { width: W, height: H } = viewport;
+  const box = stagingBox(viewport);
+  const { w: W, h: H } = box;
   const receiverH = H * PLANE.receiver.h;
   const receiver: Rect | undefined = hasReceiver
-    ? { x: W * PLANE.receiver.x, y: H - receiverH, w: W * PLANE.receiver.w, h: receiverH }
+    ? {
+        x: box.x + W * PLANE.receiver.x,
+        y: box.y + H - receiverH,
+        w: W * PLANE.receiver.w,
+        h: receiverH,
+      }
     : undefined;
 
   const duel = peripherals.length === 0;
@@ -66,14 +91,14 @@ export function carveSlots(
   // the wings before the corridor. A duel keeps its full-width far side (no
   // wings to spend surplus on).
   const centralW = !duel && W > H * PLANE.corridorMaxAspect ? H * PLANE.corridorMaxAspect : W;
-  const centralX = (W - centralW) / 2;
+  const centralX = box.x + (W - centralW) / 2;
   const farX = centralX + centralW * farSpec.x;
   const farW = centralW * farSpec.w;
   const far =
     farSeat === undefined
       ? undefined
       : {
-          rect: { x: farX, y: H * farSpec.y, w: farW, h: H * farSpec.h },
+          rect: { x: farX, y: box.y + H * farSpec.y, w: farW, h: H * farSpec.h },
           surface: (duel ? 'field' : 'support') as SurfaceTier,
         };
 
@@ -91,8 +116,9 @@ export function carveSlots(
   const wings: WingSlotFrame[] = peripherals.map((seat, i) => {
     const side: WingSide = i % 2 === 0 ? 'left' : 'right';
     const rank = Math.floor(i / 2);
-    const x = side === 'left' ? -w * PLANE.wing.bleed : W - w * (1 - PLANE.wing.bleed);
-    const y = H * top + rank * (h + H * PLANE.wing.rankGap);
+    const x =
+      side === 'left' ? box.x - w * PLANE.wing.bleed : box.x + W - w * (1 - PLANE.wing.bleed);
+    const y = box.y + H * top + rank * (h + H * PLANE.wing.rankGap);
     return {
       seat,
       rect: { x, y, w, h },
@@ -106,12 +132,12 @@ export function carveSlots(
   // The corridor spans the (capped) far side's width, from its bottom edge down
   // to the receiver's band. Wing inner edges stay outside it via the plane-edge
   // bleed, and the ultrawide surplus widens the gutter between them.
-  const farBottom = far ? far.rect.y + far.rect.h : 0;
+  const farBottom = far ? far.rect.y + far.rect.h : box.y;
   const corridor: Rect = {
     x: farX,
     y: farBottom,
     w: farW,
-    h: Math.max(0, (receiver ? receiver.y : H) - farBottom),
+    h: Math.max(0, (receiver ? receiver.y : box.y + H) - farBottom),
   };
 
   return { receiver, far, wings, tiles: [], corridor };
@@ -127,27 +153,35 @@ export function carveCompactSlots(
   viewport: PlaneViewport,
   peripherals: PlayerId[],
 ): PlaneSlotFrames {
-  const { width: W, height: H } = viewport;
+  const box = stagingBox(viewport);
+  const { w: W, h: H } = box;
   const receiverH = H * PLANE.compact.receiverH;
-  const receiver: Rect = { x: W * 0.06, y: H - receiverH, w: W * 0.88, h: receiverH };
+  const receiver: Rect = {
+    x: box.x + W * 0.06,
+    y: box.y + H - receiverH,
+    w: W * 0.88,
+    h: receiverH,
+  };
   const spec = PLANE.compact.far;
   const far = {
-    rect: { x: W * spec.x, y: spec.y, w: W * spec.w, h: H * spec.h },
+    // `spec.y` is a flat px drop, not a fraction — the compact far side hangs a
+    // fixed distance below the box's top edge rather than a share of its height.
+    rect: { x: box.x + W * spec.x, y: box.y + spec.y, w: W * spec.w, h: H * spec.h },
     surface: 'mini' as SurfaceTier,
   };
   const t = PLANE.compact.tile;
   const farBottom = far.rect.y + far.rect.h;
   let y = farBottom + t.topGap;
   const tiles = peripherals.map((seat) => {
-    const rect: Rect = { x: W * t.x, y, w: W * t.w, h: t.h };
+    const rect: Rect = { x: box.x + W * t.x, y, w: W * t.w, h: t.h };
     y += t.h + t.gap;
     return { seat, rect };
   });
-  const corridorX = W * t.x + W * t.w + t.stripGap;
+  const corridorX = box.x + W * t.x + W * t.w + t.stripGap;
   const corridor: Rect = {
     x: corridorX,
     y: farBottom,
-    w: Math.max(0, W * 0.98 - corridorX),
+    w: Math.max(0, box.x + W * 0.98 - corridorX),
     h: Math.max(0, receiver.y - farBottom),
   };
   return { receiver, far, wings: [], tiles, corridor };
