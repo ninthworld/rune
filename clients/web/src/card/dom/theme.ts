@@ -16,7 +16,10 @@
  * - **The floor rule** (§8.4). Ratios are authored at `Wref = 190`; below that,
  *   type clamps to the `RUNE_TYPE` px floors, the band that holds it **grows**,
  *   and the art window absorbs the difference. Implemented here exactly once so
- *   no surface re-derives it.
+ *   no surface re-derives it. Where a floored name would claim the art window
+ *   rather than absorb from it, the title bar gives way to the
+ *   **colour-identity strip** ({@link drawsIdentityStrip}) — `mini` — and then
+ *   to nothing at all — `chip`.
  * - **No literal.** Every color and length below comes from a token, and
  *   reaches the stylesheet as a CSS custom property (ADR 0019).
  *
@@ -78,6 +81,28 @@ export function isBattlefieldTier(tier: CardFaceTier): boolean {
 export function surfaceKindFor(tier: CardFaceTier, landTile = false): CardSurfaceKind {
   if (!isBattlefieldTier(tier)) return 'card';
   return landTile ? 'land' : 'permanent';
+}
+
+/**
+ * Whether a battlefield permanent draws the **colour-identity strip** in place
+ * of the parchment title plate (card-representation §8.4).
+ *
+ * `mini` does. At W = 62 the 11 px name floor grows the title bar to 14.9 px
+ * and the 12 px P/T floor grows the status band to 16.2 px — together about
+ * **half** the card's height, against an authored art ratio of 0.647. The tier
+ * would be mostly type, which is the opposite of what it is for, so the `chip`
+ * treatment applies one rung earlier: the band survives as a strip of the
+ * card's identity accent at its **authored** height, carrying no text and
+ * therefore taking no floor, and the art window keeps the difference. Identity
+ * moves to the accent + glyph + inspect path, exactly as at `chip`.
+ *
+ * `chip` is the next rung down the same ladder: at W = 48 the band is dropped
+ * altogether (its name resolves to `0`), and the art window's own 100% identity
+ * rule (§3.4) plus the type/land glyph carry the accent. Every tier above
+ * `mini` keeps the parchment name plate.
+ */
+export function drawsIdentityStrip(tier: CardFaceTier, kind: CardSurfaceKind): boolean {
+  return kind === 'permanent' && tier === 'mini';
 }
 
 /**
@@ -260,16 +285,27 @@ export function faceMetrics(tier: CardFaceTier, kind?: CardSurfaceKind): FaceMet
     };
   }
 
-  // Battlefield permanent: title, art, status. `chip` drops the title bar
-  // entirely — at W = 48 the name cannot reach the 11 px floor inside the band,
-  // so identity moves to the glyph + inspect path (§8.4).
-  const titleH = name === 0 ? 0 : Math.max(RUNE_BANDS_PERM.title * h, name * LINE);
+  // Battlefield permanent: title, art, status.
+  //
+  // The title band holds the parchment name plate only where the name clears
+  // its px floor without eating the art window (§8.4). At `mini` it is the
+  // **colour-identity strip** instead — the same band box at its authored
+  // height, with no text and so no floor to grow it — and at `chip` the band is
+  // dropped entirely, the name having resolved to `0`. On both rungs the face
+  // draws no name at all, so the clamped size is published as `0`.
+  const strip = drawsIdentityStrip(tier, resolved);
+  const titleH = strip
+    ? RUNE_BANDS_PERM.title * h
+    : name === 0
+      ? 0
+      : Math.max(RUNE_BANDS_PERM.title * h, name * LINE);
   const statusH = Math.max(RUNE_BANDS_PERM.status * h, pt * LINE);
   const titleTop = edge + rule;
   const artTop = titleH === 0 ? titleTop : titleTop + titleH + rule;
   const statusTop = h - edgeBottom - statusH;
   return {
     ...base,
+    name: strip ? 0 : name,
     bands: {
       title: { top: titleTop, h: titleH },
       art: { top: artTop, h: Math.max(0, statusTop - rule - artTop) },

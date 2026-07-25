@@ -30,6 +30,7 @@ import {
   CARD_BOX,
   SCREEN_TIERS,
   authoredTypeSize,
+  drawsIdentityStrip,
   faceFootprint,
   faceMetrics,
   splayLayers,
@@ -210,11 +211,14 @@ describe('the band stack (card-representation §3.2, §3.3)', () => {
   it('makes art DOMINANT at the baseline tier, where the issue requires it', () => {
     // Issue #529: "artwork is the dominant content at battlefield and hand
     // sizes". At `field` and on the full card the art window outweighs every
-    // other band put together. It cannot at `mini` (62 px): an 11 px name plus
-    // a 12 px P/T with the §8.4 line boxes already consume 31 px of 62, which
-    // is the floor rule's stated consequence — the plates never shrink.
+    // other band put together — and at `mini` too, now that the title bar is
+    // the colour-identity strip (§8.4): an 11 px name plus a 12 px P/T with the
+    // line boxes were consuming 31 px of 62, and the strip gives the window
+    // back everything the name was taking.
     const field = faceMetrics('field', 'permanent');
     expect(field.bands.art.h).toBeGreaterThan(field.bands.title.h + field.bands.status.h);
+    const mini = faceMetrics('mini', 'permanent');
+    expect(mini.bands.art.h).toBeGreaterThan(mini.bands.title.h + mini.bands.status.h);
     const hand = faceMetrics('hand', 'card');
     expect(hand.bands.art.h).toBeGreaterThan(hand.bands.title.h + hand.bands.type.h);
   });
@@ -262,6 +266,43 @@ describe('the floor rule (card-representation §8.4)', () => {
     expect(m.bands.art.h).toBeLessThan(authoredArt);
     // …and the P/T plate keeps its full clamped size regardless.
     expect(m.pt).toBeGreaterThanOrEqual(RUNE_TYPE.floorValue);
+  });
+
+  it('replaces the mini title bar with the UNFLOORED colour-identity strip', () => {
+    // At W = 62 the 11 px name floor grew the title bar to 14.9 px while the
+    // 12 px P/T floor grows the status band to 16.2 px — together ~50% of the
+    // card's height, against an authored art ratio of 0.647. The strip carries
+    // no text, so no floor grows it: the band keeps its AUTHORED height and the
+    // art window takes the difference back (§8.4).
+    expect(drawsIdentityStrip('mini', 'permanent')).toBe(true);
+    const m = faceMetrics('mini', 'permanent');
+    expect(m.name).toBe(0);
+    expect(m.bands.title.h).toBeCloseTo(RUNE_BANDS_PERM.title * m.h, 6);
+    // Strictly shorter than the line box a floored name would have demanded.
+    expect(m.bands.title.h).toBeLessThan(RUNE_TYPE.floorName * 1.35);
+    // The measured consequence: the art window goes from 0.357 · H to 0.496 · H
+    // (authored 0.647). The residual gap is the status band's own 12 px floor,
+    // which is a critical value and never shrinks.
+    expect(m.bands.art.h / m.h).toBeGreaterThan(0.45);
+    // The P/T plate is untouched by any of it.
+    expect(m.pt).toBeGreaterThanOrEqual(RUNE_TYPE.floorValue);
+  });
+
+  it('leaves the rungs on either side of `mini` exactly as they were', () => {
+    // `support` keeps the parchment name plate at the 11 px floor…
+    expect(drawsIdentityStrip('support', 'permanent')).toBe(false);
+    expect(faceMetrics('support', 'permanent').name).toBe(RUNE_TYPE.floorName);
+    expect(faceMetrics('support', 'permanent').bands.title.h).toBeCloseTo(
+      RUNE_TYPE.floorName * 1.35,
+      6,
+    );
+    // …and `chip` keeps no title band at all: the strip is a rung, not a floor.
+    expect(drawsIdentityStrip('chip', 'permanent')).toBe(false);
+    expect(faceMetrics('chip', 'permanent').bands.title.h).toBe(0);
+    // A `mini` LAND is a resource tile, not a plaque (§4): its §15.9 name strip
+    // reuses the title band and is untouched by the permanent's treatment.
+    expect(drawsIdentityStrip('mini', 'land')).toBe(false);
+    expect(faceMetrics('mini', 'land').name).toBe(RUNE_TYPE.floorName);
   });
 
   it('drops the chip title bar entirely rather than draw an illegible name', () => {

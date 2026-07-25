@@ -214,6 +214,24 @@ describe('states the baselines do not show (card-representation §6.2)', () => {
     expect(rule('\\.hasAbility \\.title::after')).toContain('border-radius: 50%');
   });
 
+  it('carries the title band’s channels onto the colour-identity strip (§8.4)', () => {
+    // At `mini` the title band IS the strip, so the attacking top bar and the
+    // latent-ability dot are its pseudo-elements too — neither server-computed
+    // channel is lost along with the name.
+    expect(css).toContain('.attacking .identityStrip::before');
+    expect(rule('\\.hasAbility \\.identityStrip::after')).toContain('border-radius: 50%');
+    const strip = rule('\\.identityStrip');
+    // It reserves the title band's box and paints the identity accent — an edge
+    // band on the slate, never a parchment plate and never a body fill (§3.4).
+    expect(strip).toContain('top: var(--band-title-top)');
+    expect(strip).toContain('height: var(--band-title-h)');
+    expect(strip).toContain('background: var(--face-accent)');
+    expect(strip).not.toContain('var(--plate)');
+    const root = renderFace(bear({ attacking: true, hasActivatedAbility: true }), { tier: 'mini' });
+    expect(root.dataset.attacking).toBe('true');
+    expect(root.dataset.ability).toBe('true');
+  });
+
   it('gives every state a non-color channel (budgets §Accessibility)', () => {
     // Each channel names a distinct shape/position/transform, so a player who
     // cannot separate the hues still separates the states.
@@ -251,8 +269,10 @@ describe('art modes (ADR 0024 / card-representation §12)', () => {
       // The illustration REPLACES the procedural field rather than nesting in
       // it, so the window is one node either way.
       expect(root.querySelector('[data-monogram]'), tier).toBeNull();
-      // The information budget is unchanged.
-      expect(root.textContent, tier).toContain('Runeclaw Bear');
+      // The information budget is unchanged — the tier's own, which at `mini`
+      // is the colour-identity strip rather than a drawn name (§8.4).
+      expect(root.getAttribute('aria-label'), tier).toBe('Runeclaw Bear');
+      if (tier !== 'mini') expect(root.textContent, tier).toContain('Runeclaw Bear');
       expect(root.textContent, tier).toContain('2/2');
       cleanup();
     }
@@ -386,7 +406,7 @@ describe('the frame material and light model (card-representation §3.1, §3.11)
   });
 
   it('resolves every band from the metrics, never from a literal', () => {
-    for (const band of ['\\.title', '\\.type', '\\.rules', '\\.status']) {
+    for (const band of ['\\.title', '\\.identityStrip', '\\.type', '\\.rules', '\\.status']) {
       expect(rule(band), band).toMatch(/top: var\(--band-\w+-top\)/);
       expect(rule(band), band).toMatch(/height: var\(--band-\w+-h\)/);
     }
@@ -443,7 +463,15 @@ describe('motion contract (ADR 0030: transform/opacity only)', () => {
     const artCss = readFileSync(join(HERE, 'card-art.module.css'), 'utf8');
     expect(artCss.match(/\.full\s*\{[^}]*\}/s)?.[0] ?? '').toContain('z-index: 0');
     expect(artCss.match(/\.window\s*\{[^}]*\}/s)?.[0] ?? '').toContain('z-index: 0');
-    for (const overlay of ['\\.title', '\\.status', '\\.pt', '\\.badge', '\\.tab', '\\.cost']) {
+    for (const overlay of [
+      '\\.title',
+      '\\.identityStrip',
+      '\\.status',
+      '\\.pt',
+      '\\.badge',
+      '\\.tab',
+      '\\.cost',
+    ]) {
       expect(rule(overlay), overlay).toMatch(/z-index: [1-9]/);
     }
     expect(rule('\\.inner::after')).toContain('z-index: 1');

@@ -360,8 +360,8 @@ describe('staging box — slots are carved inside the chrome-free rect', () => {
 
   it('omitting the box stages exactly as it did before #534', () => {
     // The compatibility guarantee every existing caller and fixture rides on.
-    const before = stage(seatTable({ opponents: 3, perms: menagerie('p2') }));
-    const explicit = stage(seatTable({ opponents: 3, perms: menagerie('p2') }), {
+    const before = stage(seatTable({ opponents: 3, perms: menagerie('p2', 6) }));
+    const explicit = stage(seatTable({ opponents: 3, perms: menagerie('p2', 6) }), {
       ...DESKTOP,
       safe: { x: 0, y: 0, w: DESKTOP.width, h: DESKTOP.height },
     });
@@ -374,7 +374,7 @@ describe('staging box — slots are carved inside the chrome-free rect', () => {
     // The failure this prevents: the receiver's band resolving against the raw
     // viewport and landing underneath the hand fan, so the player's own board is
     // behind their own cards.
-    const plane = stage(seatTable({ opponents: 3, perms: menagerie('p2') }), inset);
+    const plane = stage(seatTable({ opponents: 3, perms: menagerie('p2', 6) }), inset);
     expect(within(SAFE, plane.receiver!.rect)).toBe(true);
     expect(within(SAFE, plane.farSide!.rect)).toBe(true);
     expect(plane.receiver!.rect.y + plane.receiver!.rect.h).toBeCloseTo(SAFE.h);
