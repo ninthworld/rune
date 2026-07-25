@@ -115,35 +115,21 @@ describe('environment manifest — §10.2 the slot identity the plate inherits',
     expect(ENV_AUTHORING_ASPECT).toBeCloseTo(2.333, 3);
   });
 
-  it('resolves Runic Vale’s five keys to the plates #555 shipped (§10.5 step 3)', () => {
-    // The swap itself. Every variant of the default theme now resolves to a
+  it('resolves every theme’s five keys to production plates (§10.5 step 3)', () => {
+    // The swap itself. Every variant of every theme resolves to a
     // content-hashed URL read from `public/assets/manifest.json`; the keys, the
     // layer mapping, the load classes, and the geometry above are untouched,
     // which is the whole claim §10.5 makes about the drop.
-    for (const variant of ENV_VARIANTS) {
-      const asset = ENV_MANIFESTS.runicVale.assets[variant];
-      expect(asset.source).toBe('raster');
-      expect(asset.src).toMatch(/^\/(?:assets|lazy)\/environments\/runic-vale\/.+\.webp$/);
-      expect(asset.pixels?.width).toBeGreaterThan(0);
-    }
-  });
-
-  it('gives the three studies one composed plate and leaves the rest procedural', () => {
-    // A study is key art, not a layer set (#555 shipped one flattened image per
-    // theme). It fills the identity floor and nothing else, so L0, L2, L3, and
-    // the half-resolution Lite variant stay on the §10 placeholder.
     for (const manifest of THEMES) {
-      if (manifest.theme === 'runicVale') continue;
-      expect(manifest.composition).toBe('composed');
-      expect(manifest.assets.l1.source).toBe('raster');
-      expect(manifest.assets.l1.src).toMatch(/^\/lazy\/environment-studies\/.+\.webp$/);
-      for (const variant of ['l0', 'l1-half', 'l2', 'l3'] as const) {
-        expect(manifest.assets[variant].source).toBe('procedural');
-        expect(manifest.assets[variant].src).toBeUndefined();
+      expect(manifest.composition).toBe('layered');
+      expect(manifest.atlas).toBeDefined();
+      for (const variant of ENV_VARIANTS) {
+        const asset = manifest.assets[variant];
+        expect(asset.source).toBe('raster');
+        expect(asset.src).toMatch(/^\/(?:assets|lazy)\/environments\/.+\.webp$/);
+        expect(asset.pixels?.width).toBeGreaterThan(0);
       }
-      expect(manifest.atlas).toBeUndefined();
     }
-    expect(ENV_MANIFESTS.runicVale.composition).toBe('layered');
   });
 
   it('never transcribes a content hash — every URL is read from the shipped manifest', () => {
@@ -182,36 +168,37 @@ describe('environment manifest — §10.2 the slot identity the plate inherits',
   });
 });
 
-describe('environment L3 — §4.4 the shipped sprite atlas', () => {
-  it('gives Runic Vale one atlas frame per §4.4 anchor, and no theme a seventh', () => {
-    const manifest = ENV_MANIFESTS.runicVale;
-    expect(manifest.atlas?.src).toBe(manifest.assets.l3.src);
-    const anchors = manifest.props.filter((p) => p.frame).map((p) => p.anchor);
-    expect([...anchors].sort()).toEqual([...ENV_PROP_ANCHORS].sort());
-    expect(new Set(manifest.props.map((p) => p.frame?.key)).size).toBe(manifest.props.length);
+describe('environment L3 — §4.4 the shipped sprite atlases', () => {
+  it('gives every theme one atlas frame per §4.4 anchor, and no seventh', () => {
+    for (const manifest of THEMES) {
+      expect(manifest.atlas?.src).toBe(manifest.assets.l3.src);
+      const anchors = manifest.props.filter((p) => p.frame).map((p) => p.anchor);
+      expect([...anchors].sort()).toEqual([...ENV_PROP_ANCHORS].sort());
+      expect(new Set(manifest.props.map((p) => p.frame?.key)).size).toBe(manifest.props.length);
+    }
   });
 
   it('keeps the manifest’s own placement, not the atlas’s — §2.2 is binding', () => {
-    // The shipped frames record a `scale` of 0.17–0.24. At EVERY reading of that
-    // number — canvas width or canvas height — the drawn sprite is wider than
-    // the 10 % of canvas width Zone C allows, so honouring it would push L3 into
-    // the focal core. The atlas supplies pixels; the manifest supplies geometry.
-    const manifest = ENV_MANIFESTS.runicVale;
-    for (const prop of manifest.props) {
-      expect(propPlacementIsLegal(prop.anchor, propFootprint(prop), prop.mass)).toBe(true);
-      expect(Math.max(prop.size.w, prop.size.h)).toBeLessThan(0.17);
+    // The atlas supplies pixels and rects only. The environment manifest is the
+    // sole placement source, and every one of its footprints stays legal.
+    for (const manifest of THEMES) {
+      for (const prop of manifest.props) {
+        expect(propPlacementIsLegal(prop.anchor, propFootprint(prop), prop.mass)).toBe(true);
+        expect(Math.max(prop.size.w, prop.size.h)).toBeLessThan(0.17);
+      }
     }
   });
 
   it('takes only rectangles from the atlas, and they all lie inside it', () => {
-    const manifest = ENV_MANIFESTS.runicVale;
-    const atlas = manifest.atlas!;
-    for (const prop of manifest.props) {
-      const frame = prop.frame!;
-      expect(frame.x).toBeGreaterThanOrEqual(0);
-      expect(frame.y).toBeGreaterThanOrEqual(0);
-      expect(frame.x + frame.w).toBeLessThanOrEqual(atlas.width);
-      expect(frame.y + frame.h).toBeLessThanOrEqual(atlas.height);
+    for (const manifest of THEMES) {
+      const atlas = manifest.atlas!;
+      for (const prop of manifest.props) {
+        const frame = prop.frame!;
+        expect(frame.x).toBeGreaterThanOrEqual(0);
+        expect(frame.y).toBeGreaterThanOrEqual(0);
+        expect(frame.x + frame.w).toBeLessThanOrEqual(atlas.width);
+        expect(frame.y + frame.h).toBeLessThanOrEqual(atlas.height);
+      }
     }
   });
 });
@@ -226,13 +213,11 @@ describe('environment manifest — §9 the asset budget', () => {
     }
   });
 
-  it('claims the whole §9.1 allocation for Runic Vale and one slot for a study', () => {
+  it('claims the whole §9.1 allocation for every layered theme', () => {
     // The allocation the filled slots claim — not a measurement. The real bytes
     // are measured below, straight off disk.
-    expect(themeAssetBytes(ENV_MANIFESTS.runicVale)).toBe(1_420_000);
     for (const manifest of THEMES) {
-      if (manifest.theme === 'runicVale') continue;
-      expect(themeAssetBytes(manifest)).toBe(600_000);
+      expect(themeAssetBytes(manifest)).toBe(1_420_000);
     }
   });
 

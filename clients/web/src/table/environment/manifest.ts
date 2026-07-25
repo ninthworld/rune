@@ -24,9 +24,9 @@
  *   manifest rather than transcribed, so a regeneration cannot leave a dead
  *   hash behind. See `src/assets/productionManifest.ts` for why that read
  *   happens at build time.
- * - Only **Runic Vale** shipped as a separable layer set. The other three themes
- *   shipped as single flattened key-art **studies**, which is a different
- *   composition class — see {@link EnvComposition}.
+ * - #559 completed the separable layer contract for all four themes. The
+ *   original flattened studies remain in the provenance manifest as approved
+ *   appearance references, but production environments always win resolution.
  *
  * The placeholder renderer stays in the tree after the swap: it is the T0 and
  * per-layer failure fallback of §8.3 and the Lite L0 treatment, both permanent.
@@ -118,7 +118,7 @@ export type EnvAssetSource = 'procedural' | 'raster';
  *
  * - `layered` — the §1 contract in full: five separable plates, four layers,
  *   per-layer parallax, a half-resolution L1 for Lite, and a per-layer failure
- *   fallback. Only **Runic Vale** shipped this way (#555).
+ *   fallback. All four themes ship this way after #559.
  * - `composed` — a single flattened key-art **study**: one 21:9 plate carrying
  *   surround, floor, edge, and props already baked together. It reads as the
  *   theme, and that is the whole of what it can do. It cannot parallax per
@@ -205,7 +205,7 @@ export interface EnvPropEntry {
    * The shipped sprite frame this prop draws, when the theme ships an atlas.
    * The **placement** stays the manifest's own (`anchor`, `offset`, `size`) —
    * those are the numbers `zones.test.ts` validates against §2.2 — and only the
-   * pixels come from the atlas. See {@link SHIPPED_FRAME_BY_ANCHOR}.
+   * pixels come from the atlas. The frame is paired by this stable prop key.
    */
   frame?: EnvAtlasFrame;
 }
@@ -331,27 +331,20 @@ function assetsFor(theme: SceneThemeName, isDefault: boolean): Record<EnvVariant
 }
 
 /**
- * The shipped L3 atlas frames, indexed by the §4.4 anchor they hang from. The
- * shipped set is exactly six frames on exactly the six anchors, one each, which
- * is what makes an anchor a total mapping key.
+ * The shipped L3 atlas frames, indexed by the stable prop key they draw.
  *
- * **The atlas's own placement metadata is deliberately not used.** Each frame
- * records an `offset` and a `scale` (0.17–0.24); at every reading of that scale
- * — canvas width or canvas height — the drawn sprite is wider than the 10 % of
- * canvas width Zone C allows, so honouring it would push L3 into the focal core
- * and fail `zones.test.ts`. §2.2's geometry is binding and the tests guarding it
- * may not be weakened, so the manifest's validated `offset`/`size` place the
- * prop and the atlas supplies only its pixels, fitted inside that rect.
+ * #559 deliberately removed every placement field from the atlas metadata.
+ * The atlas supplies only pixels and frame rects; §2.2's validated environment
+ * manifest remains the single source of anchor, offset, size, mass, and region.
  */
-function shippedFramesByAnchor(theme: SceneThemeName): Map<EnvPropAnchor, EnvAtlasFrame> {
+function shippedFramesByProp(theme: SceneThemeName): Map<string, EnvAtlasFrame> {
   const atlasLayer = productionEnvironment(theme)?.layers[SHIPPED_LAYER_KEY.l3];
-  const byAnchor = new Map<EnvPropAnchor, EnvAtlasFrame>();
+  const byProp = new Map<string, EnvAtlasFrame>();
   for (const [key, frame] of Object.entries(atlasLayer?.frames ?? {})) {
-    const anchor = (frame as ProductionAtlasFrame).anchor as EnvPropAnchor;
     const [x, y, w, h] = (frame as ProductionAtlasFrame).rect;
-    byAnchor.set(anchor, { key, x, y, w, h });
+    byProp.set(key, { key, x, y, w, h });
   }
-  return byAnchor;
+  return byProp;
 }
 
 /**
@@ -428,10 +421,10 @@ function compositionOf(theme: SceneThemeName): EnvComposition {
 
 /** The theme's props, each carrying its shipped sprite frame where one exists. */
 function propsFor(theme: SceneThemeName): readonly EnvPropEntry[] {
-  const frames = shippedFramesByAnchor(theme);
+  const frames = shippedFramesByProp(theme);
   if (frames.size === 0) return SHARED_PROPS;
   return SHARED_PROPS.map((prop) => {
-    const frame = frames.get(prop.anchor);
+    const frame = frames.get(prop.key);
     return frame ? { ...prop, frame } : prop;
   });
 }

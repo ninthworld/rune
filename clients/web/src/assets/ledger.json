@@ -442,6 +442,156 @@
       "promptEssence": "Older Southeast Asian woman with a tall gold-and-indigo wrapped headdress and a single silver temple curl."
     },
     {
+      "path": "clients/web/public/lazy/environments/verdant-canals/l0.3e311280.webp",
+      "title": "Verdant Canals — Far Surround",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Decomposed cool cyan canal water, distant wet stone, deep foliage, reeds, and soft upper-left glow from the approved Verdant Canals study."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/verdant-canals/l1-half.c6b959f9.webp",
+      "title": "Verdant Canals — Arena Floor (Half)",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation with Pillow derivative",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "True half-resolution derivative of the isolated pale canal plaza, concentric paving, and abstract medallion."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/verdant-canals/l1.159db79a.webp",
+      "title": "Verdant Canals — Arena Floor",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated pale sand-and-sage canal plaza with calm concentric paving and an abstract medallion registered at the shared 21:9 camera."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/verdant-canals/l2.98a77d89.webp",
+      "title": "Verdant Canals — Arena Edge",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated mossy canal-stone rim and verge, masked to the shared side pockets and top and bottom lip bands."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/verdant-canals/l3.2d56c641.webp",
+      "title": "Verdant Canals — Prop Atlas",
+      "category": "environment-props",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Six isolated canal props: mossy marker, teal water plinth, reed lantern, wetland shrub, lily pads, and a cyan-inset stone fragment."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/sunlit-observatory/l0.35cc1fca.webp",
+      "title": "Sunlit Observatory — Far Surround",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Decomposed warm observatory terraces, reflecting pools, hazy architecture, gardens, and pale upper-left sunlight from the approved study."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/sunlit-observatory/l1-half.2bf660c5.webp",
+      "title": "Sunlit Observatory — Arena Floor (Half)",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation with Pillow derivative",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "True half-resolution derivative of the isolated pale ochre plaza, concentric paving, and astronomical medallion."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/sunlit-observatory/l1.e6120645.webp",
+      "title": "Sunlit Observatory — Arena Floor",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated warm pale-ochre observatory plaza with calm concentric paving and an astronomical medallion registered at the shared 21:9 camera."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/sunlit-observatory/l2.53b032a6.webp",
+      "title": "Sunlit Observatory — Arena Edge",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated warm carved-stone rim and verge, masked to the shared side pockets and top and bottom lip bands."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/sunlit-observatory/l3.0f8ebb99.webp",
+      "title": "Sunlit Observatory — Prop Atlas",
+      "category": "environment-props",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Six isolated brass-and-ochre instruments: armillary, telescope, lantern, sundial, celestial dial, and star-chart marker."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/moonlit-ruins/l0.249c93c3.webp",
+      "title": "Moonlit Ruins — Far Surround",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Decomposed blue-violet valley, luminous cyan streams, distant broken architecture, and clouded upper-left moonlight from the approved study."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/moonlit-ruins/l1-half.6251a566.webp",
+      "title": "Moonlit Ruins — Arena Floor (Half)",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation with Pillow derivative",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "True half-resolution derivative of the lifted-value blue-violet plaza, concentric paving, and abstract medallion."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/moonlit-ruins/l1.a8658ca3.webp",
+      "title": "Moonlit Ruins — Arena Floor",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated lifted-value blue-violet ruin plaza with calm concentric paving and an abstract medallion registered at the shared 21:9 camera."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/moonlit-ruins/l2.a8f99b00.webp",
+      "title": "Moonlit Ruins — Arena Edge",
+      "category": "environment",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Isolated broken blue-violet stone rim with cyan accents, masked to the shared side pockets and top and bottom lip bands."
+    },
+    {
+      "path": "clients/web/public/lazy/environments/moonlit-ruins/l3.b8c9e673.webp",
+      "title": "Moonlit Ruins — Prop Atlas",
+      "category": "environment-props",
+      "provenanceClass": 2,
+      "authorTool": "OpenAI built-in image generation",
+      "license": "MIT",
+      "sourceUrl": null,
+      "promptEssence": "Six isolated ruin props: broken arch, cyan obelisk, warm lantern, column base, crystal rubble, and cracked rune stone."
+    },
+    {
       "path": "clients/web/public/assets/portraits/local-hood.f7e8da72.webp",
       "title": "Local Hood",
       "category": "portrait",

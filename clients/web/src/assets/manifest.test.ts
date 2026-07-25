@@ -19,21 +19,41 @@ function assetSources(value: unknown): string[] {
 }
 
 describe('production asset manifests (#548)', () => {
-  it('names the approved environment family and the complete Runic Vale layer contract', () => {
+  it('names the approved environment family and gives every theme the full layer contract', () => {
     expect(manifest.version).toBe(1);
-    expect(manifest.environments.runicVale).toMatchObject({
-      label: 'Runic Vale',
-      production: true,
-      authoringAspect: '21:9',
-      focalSafe: { x: 0.1, y: 0, width: 0.8, height: 1 },
-    });
-    expect(Object.keys(manifest.environments.runicVale.layers).sort()).toEqual([
-      'l0',
-      'l1',
-      'l1Half',
-      'l2',
-      'l3',
+    expect(Object.keys(manifest.environments).sort()).toEqual([
+      'moonlitRuins',
+      'runicVale',
+      'sunlitObservatory',
+      'verdantCanals',
     ]);
+    for (const environment of Object.values(
+      manifest.environments as Record<string, Record<string, unknown>>,
+    )) {
+      expect(environment).toMatchObject({
+        production: true,
+        authoringAspect: '21:9',
+        focalSafe: { x: 0.1, y: 0, width: 0.8, height: 1 },
+      });
+      expect(Object.keys(environment.layers as object).sort()).toEqual([
+        'l0',
+        'l1',
+        'l1Half',
+        'l2',
+        'l3',
+      ]);
+      const layers = environment.layers as Record<
+        string,
+        { width: number; height: number; frames?: object }
+      >;
+      expect(layers.l1Half.width * 2).toBe(layers.l1.width);
+      expect(layers.l1Half.height * 2).toBe(layers.l1.height);
+      const frames = layers.l3.frames!;
+      expect(Object.keys(frames)).toHaveLength(6);
+      for (const frame of Object.values(frames as Record<string, object>)) {
+        expect(Object.keys(frame)).toEqual(['rect']);
+      }
+    }
     expect(
       Object.values(manifest.environmentStudies as Record<string, { label: string }>).map(
         (study) => study.label,

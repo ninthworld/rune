@@ -445,50 +445,52 @@ describe('SceneEnvironment — §4 the crop path is one path for both forms', ()
   });
 });
 
-describe('SceneEnvironment — the composed theme studies (#555)', () => {
-  it('draws a study as one plate, with no second rim and no second prop set', () => {
+describe('SceneEnvironment — the completed theme family (#559)', () => {
+  it('draws every alternate as four separate layers with six addressable props', () => {
     setEnvironmentTheme('moonlitRuins');
     const { root } = mount();
-    expect(root.dataset.composition).toBe('composed');
-    expect(root.dataset.composed).toBe('true');
+    expect(root.dataset.composition).toBe('layered');
+    expect(root.dataset.composed).toBe('false');
     const nodes = layerNodes(root);
     expect(nodes.get('l1')!.querySelector('img')!.getAttribute('src')).toBe(
       ENV_MANIFESTS.moonlitRuins.assets.l1.src,
     );
-    // The study bakes its own edge and props in; drawing the placeholder's
-    // versions over them would double both.
-    expect(nodes.has('l2')).toBe(false);
-    expect(nodes.has('l3')).toBe(false);
-    expect(root.querySelectorAll('[data-prop]')).toHaveLength(0);
-    // Exactly one request for the whole theme.
-    expect(root.querySelectorAll('img')).toHaveLength(1);
+    expect(nodes.get('l0')!.dataset.source).toBe('raster');
+    expect(nodes.get('l2')!.dataset.source).toBe('raster');
+    expect(nodes.get('l3')!.dataset.source).toBe('raster');
+    expect(root.querySelectorAll('[data-prop]')).toHaveLength(6);
+    // Three plates plus six frames sharing one atlas URL.
+    expect(root.querySelectorAll('img')).toHaveLength(9);
   });
 
-  it('switches between a study and the layered default without re-mounting', () => {
+  it('switches between layered themes without re-mounting', () => {
     const { root } = mount();
     expect(root.dataset.composition).toBe('layered');
     expect(layerNodes(root).has('l3')).toBe(true);
     act(() => setEnvironmentTheme('verdantCanals'));
     // The SAME root node re-renders: the backdrop is never re-mounted, so
     // nothing behind it flashes and the match is not interrupted (§11).
-    expect(root.dataset.composition).toBe('composed');
+    expect(root.dataset.composition).toBe('layered');
     expect(layerNodes(root).get('l1')!.dataset.key).toBe('env/verdantCanals/l1');
     act(() => setEnvironmentTheme('runicVale'));
     expect(root.dataset.composition).toBe('layered');
     expect(layerNodes(root).get('l1')!.dataset.key).toBe('env/runicVale/l1');
   });
 
-  it('restores the full placeholder composition when a study plate fails', () => {
+  it('falls back only the failed alternate-theme layer', () => {
     setEnvironmentTheme('sunlitObservatory');
     const { root } = mount();
     act(() => {
       fireEvent.error(layerNodes(root).get('l1')!.querySelector('img')!);
     });
-    // §8.3 — "the theme still reads". With the one plate gone there is nothing
-    // left to double, so the rim and the props come back.
+    // §8.3 — the L1 plaza falls back without disturbing the alternate theme's
+    // surround, edge, or six independently addressable props.
     expect(root.dataset.composed).toBe('false');
     expect(root.dataset.theme).toBe('sunlitObservatory');
-    expect(root.querySelectorAll('[data-lip]')).toHaveLength(2);
+    expect(layerNodes(root).get('l1')!.dataset.source).toBe('procedural');
+    expect(layerNodes(root).get('l0')!.dataset.source).toBe('raster');
+    expect(layerNodes(root).get('l2')!.dataset.source).toBe('raster');
+    expect(layerNodes(root).get('l3')!.dataset.source).toBe('raster');
     expect(root.querySelectorAll('[data-prop]')).toHaveLength(6);
   });
 });

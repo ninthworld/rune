@@ -36,16 +36,6 @@ export type AtlasRect = readonly [number, number, number, number];
 export interface ProductionAtlasFrame {
   /** The frame's rect inside the atlas image. */
   rect: AtlasRect;
-  /** Which of the six `environment-system.md` §4.4 anchors it hangs from. */
-  anchor: string;
-  /** The generator's recorded inboard offset, in canvas fractions. */
-  offset: readonly [number, number];
-  /** The generator's recorded draw scale. */
-  scale: number;
-  /** Mass class (§4.4). */
-  mass: string;
-  /** The focal-safe zone the generator placed it in (§2.2). */
-  region: string;
 }
 
 /** One shipped environment layer plate. */

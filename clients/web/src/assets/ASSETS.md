@@ -27,6 +27,21 @@ set reads as a single commission.
 | Verdant Canals — Key-Art Study | environment study | Sand plaza, cyan canals, reeds, foliage, restrained brass |
 | Sunlit Observatory — Key-Art Study | environment study | Ochre plaza, pale gold light, pools, astronomical instruments |
 | Moonlit Ruins — Key-Art Study | environment study | Slate plaza, ruined arcades, moonlight, cyan streams |
+| Verdant Canals — Far Surround | environment | Cyan canals, wet stone, distant foliage and reeds |
+| Verdant Canals — Arena Floor (Half) | environment | Half-resolution derivative of the pale canal plaza |
+| Verdant Canals — Arena Floor | environment | Isolated pale canal plaza, concentric paving, medallion |
+| Verdant Canals — Arena Edge | environment | Mossy canal rim and the shared lip bands |
+| Verdant Canals — Prop Atlas | environment props | Six canal-stone, water, reed, lantern, shrub, and lily props |
+| Sunlit Observatory — Far Surround | environment | Warm terraces, pools, gardens, and golden haze |
+| Sunlit Observatory — Arena Floor (Half) | environment | Half-resolution derivative of the ochre plaza |
+| Sunlit Observatory — Arena Floor | environment | Isolated ochre plaza, concentric paving, astronomical medallion |
+| Sunlit Observatory — Arena Edge | environment | Warm carved-stone rim and the shared lip bands |
+| Sunlit Observatory — Prop Atlas | environment props | Six brass armillary, telescope, lantern, dial, and sundial props |
+| Moonlit Ruins — Far Surround | environment | Blue-violet valley, cyan streams, distant ruins, moonlight |
+| Moonlit Ruins — Arena Floor (Half) | environment | Half-resolution derivative of the lifted-value ruin plaza |
+| Moonlit Ruins — Arena Floor | environment | Isolated lifted-value plaza, paving rings, medallion |
+| Moonlit Ruins — Arena Edge | environment | Broken luminous ruin rim and the shared lip bands |
+| Moonlit Ruins — Prop Atlas | environment props | Six arch, obelisk, lantern, column, crystal, and rune-stone props |
 | Local Hood | portrait | Faceless forward-facing avatar in a deep blue hood |
 | Silver Scholar | portrait | Older scholar with close silver hair and teal scarf |
 | Ember Topknot | portrait | Young man with high topknot and ochre collar |
