@@ -261,20 +261,66 @@ describe('environment quality — §8.2 T0 / T1 / T2 and the raster swap', () =>
     expect(layer(plan({ quality: 'lite' }), 'l1').key).toBe('env/runicVale/l1-half');
   });
 
-  it('exposes no raster path while every manifest entry is procedural (T1)', () => {
-    // T2 begins the moment #548's plates land and a `source` flips; until then
-    // there is nothing to fetch, which is why T1 costs zero bytes and zero
-    // requests and the match can never wait on the environment.
-    for (const quality of QUALITIES) {
-      for (const entry of plan({ quality }).layers) {
-        expect(entry.rasterPath).toBeUndefined();
-      }
+  it('resolves the default theme to plates at T2, one per drawing layer', () => {
+    // T2: #548's plates landed in #555, so every drawing layer of the default
+    // theme now carries a URL. The keys above are unchanged, which is the claim
+    // §10.5 makes — the swap moved pixels, not slots.
+    for (const id of ['l0', 'l1', 'l2', 'l3'] as const) {
+      const entry = layer(plan({ quality: 'high' }), id);
+      expect(entry.rasterPath).toBe(ENV_MANIFESTS.runicVale.assets[entry.variant!].src);
     }
-    for (const manifest of Object.values(ENV_MANIFESTS)) {
-      for (const variant of ENV_VARIANTS) {
-        expect(manifest.assets[variant].source).toBe('procedural');
-      }
+  });
+
+  it('selects the tier’s variant, so Lite fetches the half-resolution L1', () => {
+    // §8.1's quality matrix, now that the variants resolve to different files:
+    // High and Standard draw the 1× plate, Lite the 0.5× one, and Lite's L0/L2/
+    // L3 fetch nothing at all.
+    const high = layer(plan({ quality: 'high' }), 'l1');
+    const lite = layer(plan({ quality: 'lite' }), 'l1');
+    expect(high.rasterPath).toBe(ENV_MANIFESTS.runicVale.assets.l1.src);
+    expect(lite.rasterPath).toBe(ENV_MANIFESTS.runicVale.assets['l1-half'].src);
+    expect(high.rasterPath).not.toBe(lite.rasterPath);
+    for (const id of ['l0', 'l2', 'l3'] as const) {
+      expect(layer(plan({ quality: 'lite' }), id).rasterPath).toBeUndefined();
     }
+  });
+
+  it('falls a failed plate back to its procedural form and fetches nothing more', () => {
+    // §8.3, now reachable: a plate that 404s or fails to decode drops its own
+    // layer to the T0 token treatment, keeps every sibling's plate, and never
+    // retries — the URL is simply gone from the plan.
+    const failed: EnvManifestKey[] = ['env/runicVale/l1'];
+    const p = plan({ quality: 'high', failedKeys: failed });
+    expect(layer(p, 'l1').rasterPath).toBeUndefined();
+    expect(layer(p, 'l1').treatment).toBe('token-gradient');
+    expect(layer(p, 'l1').degraded).toBe(true);
+    expect(layer(p, 'l0').rasterPath).toBe(ENV_MANIFESTS.runicVale.assets.l0.src);
+    expect(layer(p, 'l0').degraded).toBe(false);
+    expect(layer(p, 'l2').rasterPath).toBe(ENV_MANIFESTS.runicVale.assets.l2.src);
+  });
+
+  it('never hands a plate to the portrait lip recomposition (§4.5)', () => {
+    // The lips are re-anchored to canvas top and bottom rather than to source
+    // coordinates, which a plate with its lips baked in at 21:9 cannot express.
+    // Portrait L2 therefore always takes the procedural form.
+    const p = plan({ quality: 'high', viewport: PHONE });
+    expect(layer(p, 'l2').treatment).toBe('lips-only');
+    expect(layer(p, 'l2').rasterPath).toBeUndefined();
+    // L1 still takes its plate: `cover` fits it to the canvas width at scale ≥ 1
+    // with the medallion pinned, which is exactly what §4.5 asks of L1.
+    expect(layer(p, 'l1').rasterPath).toBe(ENV_MANIFESTS.runicVale.assets.l1.src);
+  });
+
+  it('attaches the sprite atlas to L3 only, and only when L3 draws raster', () => {
+    expect(layer(plan({ quality: 'high' }), 'l3').atlas?.src).toBe(
+      ENV_MANIFESTS.runicVale.assets.l3.src,
+    );
+    for (const id of ['l0', 'l1', 'l2'] as const) {
+      expect(layer(plan({ quality: 'high' }), id).atlas).toBeUndefined();
+    }
+    expect(
+      layer(plan({ quality: 'high', failedKeys: ['env/runicVale/l3'] }), 'l3').atlas,
+    ).toBeUndefined();
   });
 
   it('is a pure function of its inputs — the same inputs always plan the same frame', () => {
@@ -289,5 +335,76 @@ describe('environment quality — §8.2 T0 / T1 / T2 and the raster swap', () =>
     const reconnect = plan({ quality: 'high', viewport: DESKTOP, reducedMotion: true });
     expect(reconnect.layers.map((l) => l.treatment)).toEqual(a.layers.map((l) => l.treatment));
     expect(reconnect.ambient).toBe('off');
+  });
+});
+
+describe('environment quality — the composed theme studies (#555)', () => {
+  const STUDIES: SceneThemeName[] = ['verdantCanals', 'sunlitObservatory', 'moonlitRuins'];
+
+  it('draws a study as one flattened plate and stands the other layers down', () => {
+    // A study bakes surround, edge, and props into one image. Drawing the
+    // procedural rim and silhouettes over it would double them, so L2 and L3
+    // stand down and L0 drops to its zero-byte token form behind the plate.
+    for (const theme of STUDIES) {
+      const p = plan({ theme, quality: 'high' });
+      expect(p.composition).toBe('composed');
+      expect(p.composedActive).toBe(true);
+      expect(layer(p, 'l1').rasterPath).toBe(ENV_MANIFESTS[theme].assets.l1.src);
+      expect(layer(p, 'l1').composed).toBe(true);
+      expect(layer(p, 'l0').treatment).toBe('token-gradient');
+      expect(layer(p, 'l2').treatment).toBe('off');
+      expect(layer(p, 'l3').treatment).toBe('off');
+    }
+  });
+
+  it('keeps the layered composition for the one theme that shipped layers', () => {
+    const p = plan({ theme: 'runicVale', quality: 'high' });
+    expect(p.composition).toBe('layered');
+    expect(p.composedActive).toBe(false);
+    for (const id of ['l0', 'l1', 'l2', 'l3'] as const) {
+      expect(layer(p, id).treatment).toBe('plate');
+    }
+  });
+
+  it('gives a study no Lite variant, so Lite keeps the zero-byte identity floor', () => {
+    // §8.1 wants the theme's identity at half the bytes; no study shipped a
+    // half-resolution plate, and downloading the full one at Lite would defeat
+    // the tier. Lite therefore renders the token plaza — still the theme, still
+    // illustrated, still never dropped.
+    for (const theme of STUDIES) {
+      const p = plan({ theme, quality: 'lite' });
+      expect(p.composedActive).toBe(false);
+      expect(layer(p, 'l1').treatment).toBe('plate');
+      expect(layer(p, 'l1').rasterPath).toBeUndefined();
+      expect(layer(p, 'l1').variant).toBe('l1-half');
+    }
+  });
+
+  it('restores the full procedural composition when a study plate fails', () => {
+    // §8.3: "the theme still reads". With the one plate gone there is nothing
+    // left to double, so the rim and the props come back rather than the theme
+    // collapsing to a bare gradient.
+    for (const theme of STUDIES) {
+      const p = plan({ theme, quality: 'high', failedKeys: [`env/${theme}/l1`] });
+      expect(p.composedActive).toBe(false);
+      expect(layer(p, 'l1').treatment).toBe('token-gradient');
+      expect(layer(p, 'l0').treatment).toBe('plate');
+      expect(layer(p, 'l2').treatment).toBe('plate');
+      expect(layer(p, 'l3').treatment).toBe('plate');
+      expect(layer(p, 'l2').rasterPath).toBeUndefined();
+    }
+  });
+
+  it('switches themes without re-keying a slot or changing the layer count', () => {
+    // §11's mid-match change: the manifest re-resolves and the layers cross-fade.
+    // Nothing about the slot identity may move, or the cross-fade would be a
+    // re-mount.
+    for (const theme of [...STUDIES, 'runicVale' as SceneThemeName]) {
+      const p = plan({ theme, quality: 'high' });
+      expect(p.layers.map((l) => l.layer)).toEqual(['l0', 'l1', 'l2', 'l3']);
+      expect(layer(p, 'l1').key).toBe(`env/${theme}/l1`);
+      expect(p.theme).toBe(theme);
+      expect(p.themeFellBack).toBe(false);
+    }
   });
 });

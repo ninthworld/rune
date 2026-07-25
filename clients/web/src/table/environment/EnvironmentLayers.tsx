@@ -178,6 +178,7 @@ export function EnvLayerL1({ viewBox, idPrefix }: EnvLayerArtProps) {
           one contrast step above the plaza's own amplitude. It sits in the
           centre corridor, which by construction holds no card. */}
       <g
+        data-medallion="true"
         transform={`translate(${cx - vx(ENV_MEDALLION.r)} ${cy - vx(ENV_MEDALLION.r)}) scale(${
           (vx(ENV_MEDALLION.r) * 2) / 24
         })`}

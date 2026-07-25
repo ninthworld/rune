@@ -17,7 +17,12 @@ export const PLANE = {
   cardGap: 6,
   /** The interactive-target floor: every hotspot is at least this square. */
   minHit: 44,
-  /** Crest cluster footprint (≥ minHit — the player-targeting surface). */
+  /**
+   * The crest cluster's **minimum** footprint (≥ minHit). Since issue #532 the
+   * drawn medallion is `D` from {@link cluster}'s rung ladder, which is always
+   * larger; this stays as the headroom constant a slot must clear above its
+   * board for the seat's identity to stage on-plane.
+   */
   crest: { w: 52, h: 52 },
   /** Zone-pile cluster footprint (the digest rack button's floor). */
   pile: { w: 44, h: 62 },
@@ -156,6 +161,66 @@ export const PLANE = {
     },
     /** The pile-card width each rack variant asks for before fitting (§6). */
     nominal: { receiver: 96, far: 78, wing: 62 },
+  },
+  /**
+   * The seat **identity cluster** (`docs/design/seat-identity.md` §1, §2, §6).
+   * Every offset is expressed in `D` — the portrait medallion's outer rim
+   * diameter — because §1.1 fixes one scale unit per cluster and nothing inside
+   * it scales independently. The origin of every offset is the portrait centre.
+   */
+  cluster: {
+    /** The §1.1 rung ladder: `D` in px per variant. Every value clears 44 px. */
+    d: { local: 112, focused: 96, wing: 76, compact: 60, minimal: 48 },
+    /** `D` may never exceed this fraction of the plane's width… */
+    maxWidthFrac: 0.14,
+    /** …nor of its height, so a phone never stages a cluster it cannot hold. */
+    maxHeightFrac: 0.2,
+    /** Total rim band, in `D` (§1.2 el. 1: hairline + brushed band + hairline). */
+    rim: 0.065,
+    /** Outer radius of the priority double ring, in `D` (§6.1). */
+    priorityOuter: 0.625,
+    /** Life medallion: diameter and centre offset, in `D` (§1.2 el. 2). */
+    life: { d: 0.55, cy: 0.5 },
+    /** The minimal rung's life medallion, slung at 7–8 o'clock (§2). */
+    minimalLife: { d: 0.42, cx: -0.38, cy: 0.38 },
+    /** Nameplate geometry and its text fitting (§1.2 el. 4/5, §7 long name). */
+    plate: {
+      /** Plate height, in `D`. */
+      h: 0.35,
+      /** Shortest plate the variant table still draws, in `D`. */
+      minLen: 1.05,
+      /** Longest plate before the name truncates, in `D` (§7). */
+      maxLen: 2.4,
+      /** Text inset from the chevron tip, in `D` (§1.2 el. 5). */
+      inset: 0.19,
+      /**
+       * Nominal advance of one letterspaced small-caps grapheme, in `D`. jsdom
+       * measures no text, and the reconciler is pure, so the plate's length is
+       * a deterministic function of the grapheme count rather than of a layout
+       * pass. Chosen so {@link maxGraphemes} exactly fills {@link maxLen}.
+       */
+      advance: 0.155,
+      /** Clear gap between the portrait rim and the plate's inboard end, in `D`. */
+      gap: 0.72,
+      /** Centre offset of a **below**-mode plate, in `D` (see `cluster.ts`). */
+      belowCy: 1.05,
+      /** Graphemes a full-length plate holds — §7's 8 + ellipsis + 4. */
+      maxGraphemes: 13,
+      /** Graphemes kept before the middle ellipsis (§7). */
+      headGraphemes: 8,
+      /** Graphemes kept after the middle ellipsis (§7). */
+      tailGraphemes: 4,
+    },
+    /** Identity gem: diagonal and centre offset, in `D` (§1.2 el. 6). */
+    gem: { s: 0.19, cx: 0.62 },
+    /** Hand pip hexagon, in `D` (§1.2 el. 7). */
+    pip: { w: 0.38, h: 0.42, cx: 0.65 },
+    /** The compact rung's under-slung shield tab, in `D` (§1.2 el. 9). */
+    tab: { w: 0.48, h: 0.52, cy: 0.75 },
+    /** The status rail arc: medallion diameter, radius, and step (§1.2 el. 10). */
+    rail: { d: 0.28, radius: 1.15, stepDeg: 26, startDeg: 60 },
+    /** How many rail medallions a rung draws before the `+N` overflow (§7). */
+    railCap: { local: 2, focused: 2, wing: 1, compact: 1, minimal: 0 },
   },
   /** Compact change-of-kind staging (rung 5, phone portrait, 3+ players). */
   compact: {

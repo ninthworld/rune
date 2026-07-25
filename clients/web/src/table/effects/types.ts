@@ -84,13 +84,64 @@ export interface TransientInvocation {
   magnitude?: number;
 }
 
-/** The persistent v1 categories: live while the interaction is pending. */
-export type PersistentCategory = 'targeting-path' | 'attack-path' | 'blocker-link';
+/**
+ * The persistent categories of the relationship grammar
+ * (`stack-and-relationships.md` §4.3, implementation note IN3).
+ *
+ * Each is separated from the others by **geometry**, never by hue alone (I5):
+ * paths arc and taper, blocker links are a straight doubled stroke with no
+ * arrowhead (R8 / D7), and attachments are an elbow bracket with symmetric
+ * square terminals that is never an arc (R9 / D6).
+ */
+export type PersistentCategory =
+  | 'targeting-path'
+  | 'attack-path'
+  | 'blocker-link'
+  /** R9 — aura/equipment attachment: `Permanent.attached_to`. */
+  | 'attachment-bracket'
+  /** R9 — an ability plate's tether back to its source: `StackItem.source`. */
+  | 'source-tether';
 
 /**
- * One persistent effect — declaratively reconciled by `id`: targeting/attack
- * paths (dash-crawl bezier terminating at a crest or object) and the carried
- * doubled-stroke blocker link.
+ * The state a relationship path is in (`stack-and-relationships.md` §4.4,
+ * implementation note IN3). Every state is legible **without motion**: the
+ * dash pattern, the alpha, and the presence of a stroke carry it, so the draw
+ * program stays a pure function of declared state.
+ */
+export type RelationshipState =
+  /** An active targeting slot's live candidate: dashed, crawling. */
+  | 'pending'
+  /** A slot the player already answered, session not yet submitted: dashed, still. */
+  | 'provisional'
+  /** Server-stated: solid. */
+  | 'confirmed'
+  /** Confirmed but another object is focused, or the board is crowded. */
+  | 'calmed'
+  /** The scalability floor: caps only, no stroke (§4.4, D11). */
+  | 'endpoint-only'
+  /** The entry is resolving: the stroke retracts source → destination (§6.2). */
+  | 'resolving';
+
+/**
+ * What kind of thing a relationship's destination is, which selects its
+ * endpoint treatment (`stack-and-relationships.md` §5). The **server** decides
+ * this — the client classifies a destination only by membership in the view's
+ * own lists, never by interpreting text (I1, and gap G6).
+ */
+export type EndpointKind =
+  /** §5.2 — an object on the battlefield: open reticle + inward chevron. */
+  | 'card'
+  /** §5.3 — a player: a 90° arc on the crest ring (D8). */
+  | 'player'
+  /** §5.4 — a zone/pile: a square bracket (D9). Dormant until gap G7 lands. */
+  | 'zone'
+  /** §5.5 — another stack object: an inset reticle inside the slot. */
+  | 'stack';
+
+/**
+ * One persistent effect — declaratively reconciled by `id`. The four
+ * constituents of §4.1 (source cap, path, direction device, destination cap)
+ * are derived from these fields alone; a relationship missing one is a bug.
  */
 export interface PersistentEffect {
   /** Stable identity across frames (e.g. `path:<actionId>`, `link:<blocker>`). */
@@ -100,7 +151,58 @@ export interface PersistentEffect {
   to: EffectAnchor;
   /** Accent token for the stroke. */
   accent: string;
+  /**
+   * The §4.4 path state. Omitted ⇒ the category's default: `pending` for a
+   * targeting path (the live-session shape), `confirmed` for everything else
+   * (combat and attachment are server-stated facts, and are therefore static —
+   * which is what keeps the zero-idle contract of §8.4 / IN1).
+   */
+  state?: RelationshipState;
+  /** The §5 destination treatment. Omitted ⇒ `card`. */
+  endpoint?: EndpointKind;
+  /**
+   * The destination's 1-based position in the server's target list (§4.5). It
+   * is the ordering channel shared with the entry's summary chips and the
+   * accessible name, and it is never derived from screen geometry.
+   */
+  numeral?: number;
+  /**
+   * §10.3 — the container an **occluded** endpoint clamps to. The caller sets
+   * this when the endpoint exists in the view but has no rect (scrolled out of
+   * a rail, behind the compact sheet, outside the viewport); the layer then
+   * terminates the path at that container's edge and emits an edge indicator
+   * instead of retiring the relationship (implementation note IN2). Absent ⇒
+   * an unresolvable endpoint retires, the carried behaviour.
+   */
+  edge?: Rect;
 }
+
+/**
+ * Which constituent of the relationship grammar an op belongs to
+ * (`stack-and-relationships.md` §4.1: source cap, path, direction device,
+ * destination cap). It carries no rendering meaning — it is what makes the
+ * structural snapshot (ADR 0011) able to assert *the grammar* rather than a
+ * bag of lines: "this path tapers source → destination", "this destination wears
+ * a bracket and not a reticle", "an endpoint-only relationship is exactly two
+ * caps and no stroke".
+ */
+export type DrawPart =
+  /** §5.1 the filled source disc. */
+  | 'source'
+  /** The relationship's stroke (dashed, solid, or retracting). */
+  | 'path'
+  /** §4.3 R5 the shared trunk before the fan node. */
+  | 'trunk'
+  /** §4.3 R5 the hollow fan node at the split. */
+  | 'fan'
+  /** §5.2–§5.5 the destination cap (reticle, crest arc, zone bracket). */
+  | 'cap'
+  /** §4.5 the numeral pips carrying target order. */
+  | 'numeral'
+  /** §4.3 R9 an elbow bracket's square terminal. */
+  | 'terminal'
+  /** §10.3 the edge indicator of an occluded endpoint. */
+  | 'edge';
 
 /**
  * One primitive of a built draw program — the structural-snapshot unit
@@ -111,6 +213,8 @@ export type DrawOp =
   | {
       op: 'segment';
       category: string;
+      /** The grammatical constituent this op belongs to; omitted for transients. */
+      part?: DrawPart;
       from: { x: number; y: number };
       to: { x: number; y: number };
       color: string;
@@ -120,9 +224,32 @@ export type DrawOp =
   | {
       op: 'circle';
       category: string;
+      /** The grammatical constituent this op belongs to; omitted for transients. */
+      part?: DrawPart;
       x: number;
       y: number;
       r: number;
+      color: string;
+      alpha: number;
+      fill: boolean;
+    }
+  | {
+      /**
+       * An axis-aligned rectangle — the **square terminal** of the attachment
+       * bracket and source tether (§4.3 R9, §5). It exists because "square" is
+       * the load-bearing semantic there: a symmetric square terminal is what
+       * separates "attached / belongs to" from every circular target cap, and
+       * approximating it with four segments would double that kind's op cost
+       * against the §8.1 accounting.
+       */
+      op: 'rect';
+      category: string;
+      /** The grammatical constituent this op belongs to. */
+      part?: DrawPart;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
       color: string;
       alpha: number;
       fill: boolean;

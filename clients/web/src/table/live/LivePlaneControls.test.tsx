@@ -2,14 +2,46 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameView } from '../../protocol';
 import type { PlaneRegion, StagedPlane } from '../plane';
+import { stageSeatCluster } from '../plane';
 import { LivePlaneControls, type LivePlaneInteractionProps } from './LivePlaneControls';
 
 const rect = { x: 20, y: 30, w: 72, h: 100 };
+
+/** A staged cluster for a fixture seat — the controls read its label and hit rect. */
+function fixtureCluster(seat: string, label: string) {
+  return stageSeatCluster({
+    seat,
+    variant: 'local',
+    anchor: { x: 60, y: 60 },
+    viewport: { width: 600, height: 400 },
+    outboard: 'left',
+    facts: {
+      label,
+      local: true,
+      life: 20,
+      handCount: 7,
+      libraryCount: 40,
+      commanderPresent: false,
+      statuses: [],
+      attackedCount: 0,
+      autoPassed: false,
+      deadline: false,
+      accent: '#4D7EC9',
+      eliminated: false,
+      priority: false,
+      active: false,
+      focused: false,
+      attacked: false,
+    },
+  });
+}
+
 const region: PlaneRegion = {
   seat: 'p1',
   kind: 'receiver',
   rect: { x: 0, y: 0, w: 600, h: 300 },
   crest: { x: 0, y: 0, w: 52, h: 52 },
+  cluster: fixtureCluster('p1', 'You'),
   piles: { x: 540, y: 220, w: 44, h: 62 },
   rack: {
     seat: 'p1',
@@ -176,6 +208,29 @@ function interaction(
 }
 
 describe('LivePlaneControls', () => {
+  it('names the seat control with the whole cluster sentence (seat-identity §9)', () => {
+    // The cluster exposes ONE accessible name that reads the seat entire — name,
+    // life, hand, library, and every state — so a screen-reader user never has
+    // to open anything to know where a seat stands. The verb stays first.
+    render(<LivePlaneControls view={view} plane={plane} interaction={interaction()} />);
+    const label = screen.getByTestId('focus-seat-p1').getAttribute('aria-label');
+    expect(label).toContain('Focus You (you) battlefield');
+    expect(label).toContain('You (you), 20 life, 7 in hand, 40 in library');
+  });
+
+  it('keeps the §9 targeting phrasing when the seat is a prompt candidate', () => {
+    render(
+      <LivePlaneControls
+        view={view}
+        plane={plane}
+        interaction={interaction({ picking: true, playerCandidates: ['p1'] })}
+      />,
+    );
+    expect(screen.getByTestId('target-player-p1').getAttribute('aria-label')).toMatch(
+      /^Target player You \(you\)\./,
+    );
+  });
+
   it('anchors a folded stack to its representative member action', () => {
     const onActivateEntity = vi.fn();
     render(
@@ -360,6 +415,7 @@ describe('LivePlaneControls', () => {
           seat: 'p2',
           rect: { x: 10, y: 10, w: 220, h: 48 },
           crest: { x: 18, y: 18, w: 32, h: 32 },
+          accent: '#B0563F',
           label: 'Opponent',
           life: 20,
           handCount: 4,

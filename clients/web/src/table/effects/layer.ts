@@ -1,17 +1,23 @@
 import { Container, Graphics } from 'pixi.js';
-import { COMBAT_LINK } from '../../tokens';
-import { SCENE_BATCH } from '../../sceneTokens';
+import { SCENE_BATCH, SCENE_RELATIONSHIP } from '../../sceneTokens';
 import type { Rect } from '../scene';
-import { doubledStroke } from '../combatLinks';
 import {
   anchorCenter,
-  arrowHead,
+  anchorRect,
   burstParticles,
-  dashSegments,
-  pathCurve,
+  clampToRect,
   rectCenter,
   type Point,
 } from './geometry';
+import {
+  RELATIONSHIP_DASH,
+  edgeIndicatorOps,
+  fanGroups,
+  relationshipAnimates,
+  relationshipOps,
+  relationshipState,
+  type ResolvedRelationship,
+} from './relationships';
 import {
   DENSITY_SCALE,
   PARTICLE_CAP,
@@ -38,8 +44,14 @@ export const EFFECT_TIMING = {
   offFocusHoldMs: 1000,
   /** Dash-crawl period of a pending path (full dash+gap cycle). */
   dashPeriodMs: 900,
-  dashLen: 12,
-  dashGap: 9,
+  dashLen: RELATIONSHIP_DASH.len,
+  dashGap: RELATIONSHIP_DASH.gap,
+  /**
+   * The §6.2 resolution retraction (storyboard F6): the path retracts from the
+   * source toward the destination over 300 ms, inside the ≤ 600 ms resolution
+   * cap. Under reduced motion the path is simply absent instead.
+   */
+  resolveRetractMs: 300,
 } as const;
 
 /** Base particle count of a magnitude-1 impact burst at full density. */
@@ -114,6 +126,13 @@ export class EffectsLayer {
   private persistent: PersistentEffect[] = [];
   private persistentKey = '[]';
   private transients: LiveTransient[] = [];
+  /**
+   * When each `resolving` path first drew — the only clock a persistent effect
+   * owns. The retraction of §6.2 decorates a state change the authoritative view
+   * has *already* applied (I6), so it is stamped on first sight rather than
+   * scheduled, and it never gates input.
+   */
+  private resolveStarts = new Map<string, number>();
   private tracking = false;
   private dirty = false;
   /** The last built draw program — the structural snapshot tests assert. */
@@ -207,8 +226,33 @@ export class EffectsLayer {
     if (key === this.persistentKey) return;
     this.persistent = effects;
     this.persistentKey = key;
+    // Drop retraction clocks whose effect is gone, so a relationship that
+    // resolves twice (a copy, a recast) restarts rather than resuming.
+    const ids = new Set(effects.map((effect) => effect.id));
+    for (const id of [...this.resolveStarts.keys()]) {
+      if (!ids.has(id)) this.resolveStarts.delete(id);
+    }
     this.dirty = true;
     this.wake?.();
+  }
+
+  /**
+   * The §6.2 retraction's progress, stamped on the frame the path first drew.
+   *
+   * Under reduced motion it is complete on sight: F6's reduced form is "path
+   * removed in the same frame the state applies", and the fact is carried by
+   * the applied state, the log entry, and the ≤200 ms static impact ring
+   * instead (§7.2). That makes the retraction a *presentation* clock only —
+   * nothing waits on it, and skipping it costs no information.
+   */
+  private resolveProgress(id: string, now: number): number {
+    if (this.options.reducedMotion) return 1;
+    const start = this.resolveStarts.get(id);
+    if (start === undefined) {
+      this.resolveStarts.set(id, now);
+      return 0;
+    }
+    return Math.min(1, (now - start) / EFFECT_TIMING.resolveRetractMs);
   }
 
   /**
@@ -288,13 +332,47 @@ export class EffectsLayer {
     return true;
   }
 
-  /** Whether a per-frame animation is live (never under reduced motion). */
+  /**
+   * Whether a per-frame animation is live (never under reduced motion).
+   *
+   * The zero-idle contract (`stack-and-relationships.md` §8.4, implementation
+   * note IN1) turns on this predicate: only a **pending** path (which
+   * dash-crawls) and a **resolving** path (which retracts) need another frame.
+   * Confirmed and calmed solid paths, endpoint-only caps, blocker links, and
+   * attachment brackets are static geometry — treating them as animating would
+   * spin the ticker forever whenever anything sat on the stack or in combat.
+   */
   private isAnimating(): boolean {
     if (this.tracking) return true;
     if (this.options.reducedMotion) return false;
     if (this.transients.length > 0) return true;
-    // A pending path dash-crawls; a blocker link alone is static.
-    return this.persistent.some((e) => e.category !== 'blocker-link');
+    return this.persistent.some((effect) => relationshipAnimates(effect));
+  }
+
+  /**
+   * Which endpoint of a relationship is **clipped** out of its declared §10.3
+   * container, if either — the second shape of an undrawable endpoint, and the
+   * one where both rects still resolve.
+   *
+   * The container the caller declares in `edge` is, by contract, one that holds
+   * the endpoint that is still visible (the staging adapter uses the viewport
+   * or the rail for exactly that reason), so "does not intersect `edge`" picks
+   * out the clipped end unambiguously. With both ends outside there is no
+   * on-screen anchor to point the indicator away from, so neither is reported
+   * and the relationship retires as before.
+   */
+  private offContainer(effect: PersistentEffect, from: Rect, to: Rect): 'from' | 'to' | undefined {
+    const edge = effect.edge;
+    if (edge === undefined) return undefined;
+    const inside = (rect: Rect): boolean =>
+      rect.x <= edge.x + edge.w &&
+      rect.x + rect.w >= edge.x &&
+      rect.y <= edge.y + edge.h &&
+      rect.y + rect.h >= edge.y;
+    const fromInside = inside(from);
+    const toInside = inside(to);
+    if (fromInside === toInside) return undefined;
+    return fromInside ? 'to' : 'from';
   }
 
   /** Build the draw program for time `now` — pure data, snapshot-testable. */
@@ -303,53 +381,118 @@ export class EffectsLayer {
     const ops: DrawOp[] = [];
     const retained: PersistentEffect[] = [];
 
+    const phase = reducedMotion
+      ? 0
+      : ((now % EFFECT_TIMING.dashPeriodMs) / EFFECT_TIMING.dashPeriodMs) *
+        (EFFECT_TIMING.dashLen + EFFECT_TIMING.dashGap);
+
+    // Pass 1 — resolve both endpoints of every relationship. An endpoint the
+    // layer cannot draw at has THREE outcomes (implementation note IN2), not
+    // two: clamped to its declared container edge when the caller stated the
+    // endpoint exists but is occluded (§10.3), and otherwise RETIRED — never a
+    // stale line, and never an idle leak, since a dropped-but-live path would
+    // keep "animating" an empty program forever. A retired effect returns only
+    // through a new authoritative setPersistent.
+    //
+    // "Cannot draw at" covers both §10.3 shapes: an endpoint with no rect at
+    // all (undrawn — scrolled out of the stack rail, behind the compact sheet)
+    // and an endpoint whose rect lies wholly outside the declared container
+    // (clipped — off the viewport). The second is why `edge` is read even when
+    // both rects resolve.
+    interface Live {
+      effect: PersistentEffect;
+      from: Rect;
+      to: Rect;
+      /** The §6.2 retraction's progress, when this relationship is resolving. */
+      progress?: number;
+      /** The clamp point of an occluded endpoint, when §10.3 applied. */
+      indicator?: Point;
+      /** The resolvable endpoint's center — the indicator's tangent origin. */
+      indicatorFrom?: Point;
+    }
+    const live: Live[] = [];
     for (const effect of this.persistent) {
-      const from = anchorCenter(effect.from, rects);
-      const to = anchorCenter(effect.to, rects);
-      // An unresolvable endpoint RETIRES the effect — never a stale line, and
-      // never an idle leak (a dropped-but-live path would otherwise keep
-      // "animating" an empty program forever). It comes back only through a
-      // new authoritative setPersistent.
-      if (!from || !to) continue;
-      retained.push(effect);
-      if (effect.category === 'blocker-link') {
-        for (const [a, b] of doubledStroke(from, to)) {
-          ops.push(segment(effect.category, a, b, effect.accent, COMBAT_LINK.strokeWidth));
+      // A `resolving` relationship is a **self-retiring presentation intent**
+      // (§6.2): it decorates a state change the authoritative view has already
+      // applied (I6), so the layer — not the caller and not any client state —
+      // owns its bounded lifetime. Once the retraction completes it is dropped
+      // in this very frame, which is what keeps §8.4's zero-idle contract true
+      // (nothing is left marking the layer as animating) and what stops a
+      // departed relationship from leaving caps behind forever.
+      let progress: number | undefined;
+      if (relationshipState(effect) === 'resolving') {
+        progress = this.resolveProgress(effect.id, now);
+        if (progress >= 1) {
+          this.resolveStarts.delete(effect.id);
+          continue;
         }
-        ops.push({
-          op: 'circle',
-          category: effect.category,
-          x: from.x,
-          y: from.y,
-          r: COMBAT_LINK.nodeRadius,
-          color: effect.accent,
-          alpha: COMBAT_LINK.alpha,
-          fill: true,
-        });
+      }
+      const fromRect = anchorRect(effect.from, rects);
+      const toRect = anchorRect(effect.to, rects);
+      const withProgress = progress === undefined ? {} : { progress };
+      if (fromRect && toRect && !this.offContainer(effect, fromRect, toRect)) {
+        live.push({ effect, from: fromRect, to: toRect, ...withProgress });
+        retained.push(effect);
         continue;
       }
-      // Targeting / attack path: lifted bezier, dash-crawling while pending
-      // (static dashes under reduced motion), arrowhead at the terminus.
-      const curve = pathCurve(from, to);
-      const phase = reducedMotion
-        ? 0
-        : ((now % EFFECT_TIMING.dashPeriodMs) / EFFECT_TIMING.dashPeriodMs) *
-          (EFFECT_TIMING.dashLen + EFFECT_TIMING.dashGap);
-      for (const [a, b] of dashSegments(
-        curve,
-        EFFECT_TIMING.dashLen,
-        EFFECT_TIMING.dashGap,
-        phase,
-      )) {
-        ops.push(segment(effect.category, a, b, effect.accent, 3));
-      }
-      for (const [a, b] of arrowHead(curve)) {
-        ops.push(segment(effect.category, a, b, effect.accent, 3));
-      }
+      // §10.3 — the third outcome. `edge` is the container the CALLER declared
+      // this endpoint still lives in; without one there is nothing to clamp to
+      // and the relationship retires, which is the carried behaviour.
+      const outside = fromRect && toRect ? this.offContainer(effect, fromRect, toRect) : undefined;
+      const known =
+        outside === 'from' ? toRect : outside === 'to' ? fromRect : (fromRect ?? toRect);
+      if (effect.edge === undefined || known === undefined) continue;
+      const anchor = rectCenter(known);
+      const clamp = clampToRect(effect.edge, anchor);
+      const stub: Rect = { x: clamp.x - 1, y: clamp.y - 1, w: 2, h: 2 };
+      live.push({
+        effect,
+        from: outside === 'from' ? stub : (fromRect ?? stub),
+        to: outside === 'to' ? stub : (toRect ?? stub),
+        ...withProgress,
+        indicator: clamp,
+        indicatorFrom: anchor,
+      });
+      retained.push(effect);
     }
     if (retained.length !== this.persistent.length) {
       this.persistent = retained;
       this.persistentKey = JSON.stringify(retained);
+    }
+
+    // Pass 2 — the §4.3 R5 fan: several destinations from one source leave as
+    // one trunk and split at a shared node, rather than as a starburst.
+    const resolved: ResolvedRelationship[] = live.map((entry) => ({
+      effect: entry.effect,
+      source: rectCenter(entry.from),
+      destination: rectCenter(entry.to),
+    }));
+    const fans = fanGroups(resolved);
+
+    // Pass 3 — the draw program itself.
+    for (const entry of live) {
+      const { effect } = entry;
+      const fan = fans.get(effect.id);
+      const ctx = {
+        phase,
+        reducedMotion,
+        ...(fan === undefined ? {} : { fan }),
+        ...(entry.progress === undefined ? {} : { progress: entry.progress }),
+      };
+      ops.push(...relationshipOps(effect, entry.from, entry.to, ctx));
+      if (entry.indicator !== undefined && entry.indicatorFrom !== undefined) {
+        const other = entry.indicatorFrom;
+        const angle = Math.atan2(entry.indicator.y - other.y, entry.indicator.x - other.x);
+        ops.push(
+          ...edgeIndicatorOps(
+            effect.category,
+            entry.indicator,
+            angle,
+            effect.accent,
+            SCENE_RELATIONSHIP.alpha.confirmed,
+          ),
+        );
+      }
     }
 
     for (const transient of this.transients) {
@@ -385,6 +528,25 @@ export class EffectsLayer {
     const magnitude = invocation.magnitude ?? 1;
     const ease = 1 - (1 - t) * (1 - t);
     const alpha = Math.max(0.05, 1 - t);
+    if (invocation.category === 'counter') {
+      // The §6.3 fizzle rule, decision D14 — the **release** form. A countered
+      // or fizzled spell's terminal lands on the STACK OBJECT, never on its
+      // target, and the released target's reticle *opens* (14 → 20) and fades
+      // with no burst at all. "Nothing happened to me" must be a visible event
+      // rather than merely the absence of one, so this is deliberately a
+      // different shape from every impact ring — small, opening, particle-free.
+      ops.push({
+        op: 'circle',
+        category: invocation.category,
+        x: center.x,
+        y: center.y,
+        r: SCENE_RELATIONSHIP.reticleRadius + ease * 6,
+        color: invocation.accent,
+        alpha,
+        fill: false,
+      });
+      return;
+    }
     // The category's default pulse ring — also the whole Lite/reduced-motion form.
     ops.push({
       op: 'circle',
@@ -416,6 +578,7 @@ export class EffectsLayer {
     this.transients = [];
     this.persistent = [];
     this.persistentKey = '[]';
+    this.resolveStarts.clear();
     this.tracking = false;
     this.stats.liveParticles = 0;
     this.stats.liveTransients = 0;
@@ -531,6 +694,18 @@ export function drawProgram(graphics: Graphics, program: DrawOp[]): void {
       graphics.lineStyle({ width: op.width, color: hexColor(op.color), alpha: op.alpha });
       graphics.moveTo(op.from.x, op.from.y);
       graphics.lineTo(op.to.x, op.to.y);
+    } else if (op.op === 'rect') {
+      // The R9 square terminal — the shape that separates "attached" from every
+      // circular target cap.
+      if (op.fill) {
+        graphics.lineStyle(0);
+        graphics.beginFill(hexColor(op.color), op.alpha);
+        graphics.drawRect(op.x, op.y, op.w, op.h);
+        graphics.endFill();
+      } else {
+        graphics.lineStyle({ width: 1, color: hexColor(op.color), alpha: op.alpha });
+        graphics.drawRect(op.x, op.y, op.w, op.h);
+      }
     } else if (op.fill) {
       graphics.lineStyle(0);
       graphics.beginFill(hexColor(op.color), op.alpha);

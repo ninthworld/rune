@@ -16,6 +16,21 @@
   inset: 0;
 }
 
+/* The card-back load probe (`card-representation.md` §13.2). A CSS background
+   cannot report a failure, so the same URL the library pile paints is loaded
+   once through a real element whose `onError` drives the fallback to the
+   default skin. It occupies no layout, is never a hit target, and is not
+   announced — the pile's box is identical with or without it. */
+.cardBackProbe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .camera {
   perspective: 1500px;
   perspective-origin: 50% 45%;
@@ -205,50 +220,6 @@
   letter-spacing: 0.06em;
 }
 
-.plane [data-slot='crest'] {
-  z-index: 5;
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  border: 2px solid var(--seat-azure);
-  border-radius: 18px 18px 50% 50%;
-  background: radial-gradient(circle, rgb(127 178 229 / 24%), transparent 65%), var(--surface-base);
-  box-shadow: 0 7px 16px rgb(0 0 0 / 45%);
-}
-
-.plane [data-slot='crest']::before {
-  content: attr(data-life);
-  color: var(--text);
-  font: 700 20px/1 var(--rune-font-display);
-}
-
-.plane [data-slot='crest']::after {
-  content: attr(data-hand) ' cards';
-  color: var(--text-muted);
-  font: 700 7px/1 var(--rune-font-display);
-  text-transform: uppercase;
-}
-
-.plane [data-slot='crest'][data-priority='true'] {
-  border-color: var(--gold);
-  box-shadow:
-    0 0 0 3px rgb(242 201 76 / 18%),
-    0 7px 16px rgb(0 0 0 / 45%);
-}
-
-/* The attacked ring (layout-model §Focus model): combat against ANY seat draws
-   its ring, at every count and every rung, whichever board holds focus. The
-   ring is a shape channel — the threat accent only colors it (visual-system
-   §7, no state is color-only). It follows the priority rule so a seat that is
-   both under attack and holding priority reads as attacked. */
-.plane [data-slot='crest'][data-attacked='true'] {
-  border-color: var(--orange);
-  box-shadow:
-    0 0 0 3px var(--surface-base),
-    0 0 0 6px rgb(224 120 74 / 72%),
-    0 7px 16px rgb(0 0 0 / 45%);
-}
-
 /* ── The zone rack (zone-geography §3) ────────────────────────────────────────
    Four physical objects on the seat's outer flank, each mechanically distinct at
    a glance. The non-colour channel is silhouette and material, so the three
@@ -280,12 +251,19 @@
   background: var(--ink);
 }
 
-/* Library — the Rune card back: dark navy field, gold inner rule, centred
-   diamond. Symmetric and non-orienting, and it never shows a top card: hidden
-   stays hidden (§I2). */
+/* Library — the Rune card back (`card-representation.md` §13). The shipped
+   plate paints over the token treatment, which stays underneath: a skin that is
+   missing or fails to load resolves `--card-back-image` to `none` and the pile
+   falls back to the procedural back with an identical box — a colour
+   difference, never a layout one.
+
+   The back is the same image for every hidden pile on the device and carries no
+   transform, so nothing about it varies with the card it hides or with any
+   rotation (§13.1). It never shows a top card: hidden stays hidden (§I2). */
 .plane [data-slot='zone'][data-zone='library'] {
   border: 1px solid var(--rack-rule);
   background:
+    var(--card-back-image, none) center / cover no-repeat,
     radial-gradient(circle at 50% 50%, var(--rack-rule-faint) 0 22%, transparent 24%),
     var(--rack-back);
 }
@@ -347,19 +325,49 @@
   text-align: center;
 }
 
+/* The compact rung's summary tile IS the §2 **minimal** cluster variant: no
+   nameplate, no free-standing pip, and the seat's portrait as a small medallion
+   at the tile's leading edge. The tile's own row already carries the name, the
+   life, and the counts, so the medallion adds identity at zero extra nodes —
+   and with no plate it falls back to a disc in the seat's accent rather than to
+   a bare counter. */
 .plane [data-slot='tile'] {
   z-index: 5;
   border: 1px solid rgb(232 230 225 / 17%);
-  border-left: 4px solid var(--seat-teal);
+  border-left: 4px solid var(--seat-accent, var(--seat-teal));
   border-radius: 9px;
-  background: rgb(21 26 36 / 88%);
+  background:
+    var(--portrait-src, none) 8px center / 32px 32px no-repeat,
+    radial-gradient(
+      circle 16px at 24px 50%,
+      var(--seat-accent, var(--seat-teal)) 0 100%,
+      transparent 100%
+    ),
+    rgb(21 26 36 / 88%);
   box-shadow: var(--shadow-rest);
+}
+
+/* Active turn and priority at the minimal rung keep their own channels: the
+   pennant has no room, so the turn reads as a gold leading edge and priority as
+   the same concentric ring the expanded rungs draw (§6.1/§6.2). */
+.plane [data-slot='tile'][data-active='true'] {
+  border-left-color: var(--gold);
+}
+
+.plane [data-slot='tile'][data-priority='true'] {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--blue) 45%, white),
+    var(--shadow-rest);
+}
+
+.plane [data-slot='tile'][data-eliminated='true'] {
+  filter: saturate(0) brightness(0.45);
 }
 
 .plane [data-slot='tile']::before {
   content: attr(data-label) '  ·  ' attr(data-life) ' LIFE';
   position: absolute;
-  inset: 50% auto auto 13px;
+  inset: 50% auto auto 48px;
   translate: 0 -50%;
   color: var(--text);
   font: 700 11px/1 var(--rune-font-display);
@@ -408,4 +416,37 @@
   .tiltedPlane {
     transition: none !important;
   }
+}
+
+/* ── An opponent's face-down hand fan (issue #533) ─────────────────────────────
+   `zone-geography.md` §4.1 rests the whole count-ownership ruling on this
+   surface — "an opponent's hand renders as a face-down fan with no
+   count-bearing surface" — and the baseline draws it: a fan of backs above each
+   opponent's portrait, which their medallion overlaps.
+
+   It paints `--card-back-image`, the SAME property the library pile paints,
+   published once for the whole plane by `LivePlane` (`card-representation.md`
+   §13: one silhouette across hand, library, travel, and piles). There is no
+   second card-back path, so there is no way for a back here to differ from a
+   back anywhere else — and none of these rules keys on anything but the slot's
+   own index, which the reconciler derives from the seat's hand size alone.
+
+   Rotation rides the independent `rotate` property, not `transform`: the
+   reconciler owns `transform` for its FLIP offsets, and the two must compose
+   rather than overwrite each other. The origin sits below the card so the
+   backs' TOP edges spread further apart than their origins do — the same
+   mechanism that keeps the receiver's fan legible. */
+.plane [data-slot='handfan'] {
+  z-index: 2;
+  overflow: visible;
+  border: 1px solid var(--rack-rule-faint);
+  border-radius: 4px;
+  background:
+    var(--card-back-image, none) center / cover no-repeat,
+    radial-gradient(circle at 50% 50%, var(--rack-rule-faint) 0 22%, transparent 24%),
+    var(--rack-back);
+  box-shadow: var(--shadow-rest);
+  rotate: var(--fan-angle, 0deg);
+  transform-origin: 50% 150%;
+  pointer-events: none;
 }

@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_GAME_VIEW } from '../../game-view.fixture';
 import type { GameResult, GameView, Permanent } from '../../protocol';
-import { SCENE_BATCH, SCENE_HUES, SCENE_MOTION, SCENE_SEAT_ACCENTS } from '../../sceneTokens';
+import {
+  SCENE_BATCH,
+  SCENE_HUES,
+  SCENE_MOTION,
+  SCENE_NEUTRALS,
+  SCENE_SEAT_ACCENTS,
+} from '../../sceneTokens';
 import { TRANSIENT_CAP } from '../effects';
 import {
   deriveGameViewPresentation,
   freezeDepartedEffectAnchors,
+  freezeDepartedRelationshipAnchors,
   type GameViewPresentation,
 } from './gameViewPresentation';
 import { momentBudgetMs, momentCapMs } from './sessionMoments';
@@ -668,13 +675,140 @@ describe('deriveGameViewPresentation', () => {
     expect(result.motions).toContainEqual(
       expect.objectContaining({ category: 'focus', to: 'seat:p2' }),
     );
+    // A path with no `pending` flag is a slot the player already answered:
+    // NOTE the state/endpoint fields below are the §4.4/§5 grammar (issue #535).
+    // PROVISIONAL (dashed, crawl stopped), aimed at a PLAYER endpoint — the
+    // classification is membership in `seat_order`, never a text reading.
     expect(result.persistent).toContainEqual({
       id: 'target:a1:target-0',
       category: 'targeting-path',
       from: { ref: 'perm_xyz' },
       to: { ref: 'seat:p2' },
       accent: '#E0784A',
+      state: 'provisional',
+      endpoint: 'player',
     });
+  });
+});
+
+/**
+ * The relationship grammar the adapter declares (issue #535, against
+ * `stack-and-relationships.md` §4.3 and §5). Everything here is a **server-stated
+ * pair** turned into a declared shape — no target is computed, no kind is
+ * inferred from text, and the destination's kind is a membership test over the
+ * view's own lists (gap G6) rather than a reading of anything.
+ */
+describe('deriveGameViewPresentation relationship grammar', () => {
+  it('declares combat as CONFIRMED — server-stated facts are solid and static', () => {
+    const current = view();
+    current.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      { ...permanent('blocker', 'p2'), blocking: 'attacker' },
+    ];
+
+    const { persistent } = deriveGameViewPresentation(undefined, current);
+    const attack = persistent.find((effect) => effect.id === 'attack:attacker')!;
+    expect(attack.state).toBe('confirmed');
+    // A defending player wears the §5.3 crest arc, not a reticle.
+    expect(attack.endpoint).toBe('player');
+    expect(persistent.find((effect) => effect.id === 'block:blocker')!.state).toBe('confirmed');
+  });
+
+  it('draws R9 attachment from `attached_to` in NEUTRAL line work, never a hue', () => {
+    const current = view();
+    current.battlefield = [
+      permanent('host', 'p1'),
+      { ...permanent('aura', 'p1'), attached_to: 'host' },
+    ];
+
+    const { persistent } = deriveGameViewPresentation(undefined, current);
+    const bracket = persistent.find((effect) => effect.id === 'attach:aura')!;
+    expect(bracket.category).toBe('attachment-bracket');
+    expect(bracket.from).toEqual({ ref: 'aura' });
+    expect(bracket.to).toEqual({ ref: 'host' });
+    // "Belongs to" must never be confusable with "acts on", so it is not orange.
+    expect(bracket.accent).not.toBe(SCENE_HUES.orange.value);
+    expect(bracket.accent).toBe(SCENE_NEUTRALS.text);
+  });
+
+  it('tethers an ability on the stack back to its source permanent (R9)', () => {
+    const current = view();
+    current.battlefield = [permanent('engine', 'p1')];
+    current.stack = [
+      { id: 'ability1', controller: 'p1', description: 'Draw a card.', source: 'engine' },
+      { id: 'spell1', controller: 'p1', description: 'A spell.' },
+    ];
+
+    const { persistent } = deriveGameViewPresentation(undefined, current);
+    const tether = persistent.find((effect) => effect.id === 'tether:ability1')!;
+    expect(tether.category).toBe('source-tether');
+    expect(tether.from).toEqual({ ref: 'stack:ability1' });
+    expect(tether.to).toEqual({ ref: 'engine' });
+    // A spell has no source, so it gets no tether — the presence of the tether
+    // IS the spell/ability discriminator the wire carries today.
+    expect(persistent.some((effect) => effect.id === 'tether:spell1')).toBe(false);
+  });
+
+  it('classifies a target destination by MEMBERSHIP in the view, never by name', () => {
+    const current = view();
+    current.battlefield = [permanent('perm_xyz', 'p1'), permanent('victim', 'p2')];
+    current.stack = [{ id: 'countered', controller: 'p2', description: 'A spell.' }];
+
+    const { persistent } = deriveGameViewPresentation(undefined, current, {
+      targetingPaths: [
+        { id: 'a', from: 'perm_xyz', to: 'victim', pending: true, numeral: 1 },
+        { id: 'b', from: 'perm_xyz', to: 'countered' },
+        { id: 'c', from: 'perm_xyz', to: 'p2' },
+      ],
+    });
+    const kind = (id: string): unknown => persistent.find((e) => e.id === `target:${id}`)?.endpoint;
+    expect(kind('a')).toBe('card');
+    expect(kind('b')).toBe('stack');
+    expect(kind('c')).toBe('player');
+    // The live slot crawls; the answered ones hold still. Both stay dashed.
+    expect(persistent.find((e) => e.id === 'target:a')!.state).toBe('pending');
+    expect(persistent.find((e) => e.id === 'target:a')!.numeral).toBe(1);
+    expect(persistent.find((e) => e.id === 'target:b')!.state).toBe('provisional');
+  });
+
+  it('calms every other relationship while one object is isolated (§4.4/§9.3)', () => {
+    const current = view();
+    current.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      { ...permanent('other', 'p1'), attacking: true, attacking_player: 'p2' },
+    ];
+
+    const { persistent } = deriveGameViewPresentation(undefined, current, {
+      isolatedId: 'attacker',
+    });
+    expect(persistent.find((e) => e.id === 'attack:attacker')!.state).toBe('confirmed');
+    // Reduced, not removed: the relationship is never silently lost.
+    expect(persistent.find((e) => e.id === 'attack:other')!.state).toBe('calmed');
+    expect(persistent).toHaveLength(2);
+  });
+
+  it('lands a fizzle terminal on the STACK OBJECT, never on its target (§6.3)', () => {
+    const previous = view();
+    const current = view();
+    current.log = [
+      {
+        sequence: 90,
+        event: { type: 'spell_countered', player: 'p1', card: { id: 'bolt', name: 'Bolt' } },
+      },
+    ];
+
+    const { transients } = deriveGameViewPresentation(previous, current);
+    const terminal = transients.find((invocation) => invocation.category === 'counter')!;
+    expect(terminal.target).toEqual({ ref: 'stack:bolt' });
+    expect(terminal.accent).toBe(SCENE_HUES.red.value);
+    // The object has left the stack in this very view, so the anchor resolves
+    // through the departed-anchor freeze onto the rect it occupied.
+    const frozen = freezeDepartedEffectAnchors(
+      [terminal],
+      new Map([['stack:bolt', { x: 10, y: 20, w: 48, h: 68 }]]),
+      new Map(),
+    );
+    expect(frozen[0]!.target).toEqual({ rect: { x: 10, y: 20, w: 48, h: 68 } });
   });
 });
 
@@ -841,5 +975,144 @@ describe('deriveGameViewPresentation off-focus staging', () => {
         to: { ref: 'seat:p3' },
       }),
     );
+  });
+});
+
+/**
+ * §6.2 / storyboard F6 — the resolution sequence, reached the way a real match
+ * reaches it. Production relationship construction emits only `pending`,
+ * `provisional`, and `confirmed`; when a stack entry, an attacker, a blocker, or
+ * an aura leaves the next `GameView`, its relationship is simply *absent*. These
+ * are the gates that the departure is staged rather than dropped, and that the
+ * staging is ephemeral, interruptible presentation and nothing the view depends
+ * on.
+ */
+describe('deriveGameViewPresentation — §6.2 departing relationships resolve', () => {
+  /** A one-ability stack whose tether the next view will drop. */
+  function withAbility(): { previous: GameView; current: GameView } {
+    const previous = view();
+    previous.battlefield = [permanent('source', 'p1')];
+    previous.stack = [
+      { id: 'ability', controller: 'p1', description: 'An ability.', source: 'source' },
+    ];
+    const current = structuredClone(previous);
+    current.stack = [];
+    return { previous, current };
+  }
+
+  const resolving = (result: GameViewPresentation): GameViewPresentation['persistent'] =>
+    result.persistent.filter((effect) => effect.state === 'resolving');
+
+  it('re-declares a resolved stack entry’s tether as a resolving path', () => {
+    const { previous, current } = withAbility();
+    const departed = resolving(deriveGameViewPresentation(previous, current));
+    expect(departed).toHaveLength(1);
+    expect(departed[0]).toMatchObject({
+      id: 'tether:ability',
+      category: 'source-tether',
+      from: { ref: 'stack:ability' },
+      to: { ref: 'source' },
+      state: 'resolving',
+    });
+  });
+
+  it('retracts a departed attack path and blocker link too', () => {
+    const previous = view();
+    previous.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      { ...permanent('blocker', 'p2'), blocking: 'attacker' },
+    ];
+    const current = view();
+    current.battlefield = [permanent('attacker', 'p1'), permanent('blocker', 'p2')];
+    const ids = resolving(deriveGameViewPresentation(previous, current)).map((e) => e.id);
+    expect(ids.sort()).toEqual(['attack:attacker', 'block:blocker']);
+  });
+
+  it('declares nothing for a relationship the current view still states', () => {
+    const previous = view();
+    previous.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+    ];
+    const current = structuredClone(previous);
+    const result = deriveGameViewPresentation(previous, current);
+    expect(resolving(result)).toHaveLength(0);
+    expect(result.persistent.find((e) => e.id === 'attack:attacker')!.state).toBe('confirmed');
+  });
+
+  it('is not load-bearing: a rebuild from one view alone declares no retraction', () => {
+    // §6.4 — `GameView` carries no "currently resolving" flag and must not need
+    // one. Reconnect, first mount, rebuild, and fast-forward all pass
+    // `previous === undefined`, and the settled stage is the whole truth.
+    const { current } = withAbility();
+    expect(resolving(deriveGameViewPresentation(undefined, current))).toHaveLength(0);
+  });
+
+  it('does not queue: a departure is only ever the LAST view’s departure', () => {
+    // A fast sequence of views must not stack retractions. Because departures
+    // are diffed against the immediately preceding view, an intent from N→N+1
+    // cannot reappear in N+1→N+2 — the newest view always wins outright.
+    const { previous, current } = withAbility();
+    const later = structuredClone(current);
+    later.turn = current.turn + 1;
+    expect(resolving(deriveGameViewPresentation(previous, current))).toHaveLength(1);
+    expect(resolving(deriveGameViewPresentation(current, later))).toHaveLength(0);
+  });
+
+  it('takes the reduced-motion equivalent instead of a retraction (§7.2)', () => {
+    const { previous, current } = withAbility();
+    const result = deriveGameViewPresentation(previous, current, { reducedMotion: true });
+    expect(resolving(result)).toHaveLength(0);
+  });
+
+  it('never lets a retraction change how the standing board reads', () => {
+    // The departure rides after the emphasis pass: it is not calmed by an
+    // isolation and it does not count toward the crowded-board threshold.
+    const previous = view();
+    previous.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      { ...permanent('other', 'p1'), attacking: true, attacking_player: 'p2' },
+    ];
+    const current = view();
+    current.battlefield = [
+      { ...permanent('attacker', 'p1'), attacking: true, attacking_player: 'p2' },
+      permanent('other', 'p1'),
+    ];
+    const result = deriveGameViewPresentation(previous, current, { isolatedId: 'attacker' });
+    expect(result.persistent.find((e) => e.id === 'attack:attacker')!.state).toBe('confirmed');
+    expect(result.persistent.find((e) => e.id === 'attack:other')!.state).toBe('resolving');
+  });
+});
+
+describe('freezeDepartedRelationshipAnchors — a retraction needs somewhere to retract from', () => {
+  const slot = { x: 10, y: 20, w: 48, h: 68 };
+  const tether = {
+    id: 'tether:ability',
+    category: 'source-tether' as const,
+    from: { ref: 'stack:ability' },
+    to: { ref: 'source' },
+    accent: SCENE_NEUTRALS.text,
+    state: 'resolving' as const,
+  };
+
+  it('freezes a departed endpoint onto the rect it last occupied', () => {
+    const [frozen] = freezeDepartedRelationshipAnchors(
+      [tether],
+      new Map([['stack:ability', slot]]),
+      new Map([['source', { x: 200, y: 300, w: 66, h: 92 }]]),
+    );
+    expect(frozen!.from).toEqual({ rect: slot });
+    // The endpoint that is still on the board stays LIVE, so the retraction
+    // tracks it while the reconciler is mid-motion.
+    expect(frozen!.to).toEqual({ ref: 'source' });
+  });
+
+  it('leaves a live relationship alone — a stale rect there would be a lie', () => {
+    const confirmed = { ...tether, state: 'confirmed' as const };
+    const [same] = freezeDepartedRelationshipAnchors(
+      [confirmed],
+      new Map([['stack:ability', slot]]),
+      new Map(),
+    );
+    expect(same).toEqual(confirmed);
   });
 });
