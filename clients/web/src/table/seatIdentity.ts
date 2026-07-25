@@ -31,7 +31,7 @@ import type { CommanderDamage, GameView, PlayerId } from '../protocol';
 import type { ColorIdentity } from '../tokens';
 import { SCENE_SEAT_ACCENTS } from '../sceneTokens';
 import { deriveColorIdentity } from './colorIdentity';
-import { monogramFor, portraitFor } from './seatPortraits';
+import { portraitFor } from './seatPortraits';
 import type { SeatClusterFacts } from './plane/cluster';
 
 /** The stable seat list accents and portraits index into (`seat_order`, #345). */
@@ -187,7 +187,6 @@ export function seatIdentityFacts(view: GameView, request: SeatIdentityRequest):
     autoPassed: request.local && view.auto_passed === true,
     deadline: request.local && view.action_deadline !== undefined,
     portrait: portraitFor(request.seat, seatOrder, request.local),
-    monogram: monogramFor(request.seat),
     accent: seatAccent(seatOrder, request.seat),
     eliminated: request.eliminated,
     priority: request.priority,

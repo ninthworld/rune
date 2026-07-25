@@ -80,9 +80,12 @@ export function clusterVars(cluster: SeatCluster): Record<string, string> {
  * **attacked ring** — combat against any seat is drawn regardless of which board
  * holds focus (layout-model §Focus model, "off-focus activity is never silent").
  *
- * `monogram` is the procedural rune the aperture draws when no plate resolved;
- * `portrait` says which of the two the medallion is showing, so the fallback is
- * a state the DOM declares rather than a CSS accident.
+ * `portrait` says whether a plate resolved, so "the aperture is showing its
+ * token background" is a state the DOM declares rather than a CSS accident.
+ * There is no monogram, no initial, and no substitute glyph of any kind: §1.3
+ * removed the procedural placeholder when the portrait consumer landed, and the
+ * seat's name reaches assistive technology through the crest control's
+ * `aria-label`, never through a painted mark.
  */
 export function crestMeta(region: PlaneRegion): Record<string, string> {
   const cluster = region.cluster;
@@ -101,7 +104,6 @@ export function crestMeta(region: PlaneRegion): Record<string, string> {
     // Dormant until a per-seat connection field lands (§11, issue #553).
     disconnected: String(cluster.channels.disconnected),
     portrait: String(cluster.portraitSrc !== undefined),
-    monogram: cluster.monogram,
   };
 }
 

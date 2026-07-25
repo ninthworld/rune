@@ -10,7 +10,16 @@
  * jsdom applies no CSS module and performs no layout, so nothing here asserts a
  * painted ring, a clip-path, or a contrast reading — only that the inputs the
  * stylesheet needs are present and correct.
+ *
+ * That blind spot is why the last suite reads `live-plane-cluster.module.css`
+ * as **source**. A cascade bug — a state rule respecifying `background-image`
+ * and silently dropping the §1.2 el. 1 rim underneath it — is invisible to a
+ * DOM assertion and to a snapshot, because jsdom resolves neither. The
+ * stylesheet-source idiom is the same one `card/dom/CardArt.test.tsx` and
+ * `card/back/cardBack.test.tsx` use.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { stagePlane, type StagedPlane } from './plane';
 import { PlaneReconciler, type PlaneFaceRenderer } from './planeReconciler';
@@ -126,9 +135,13 @@ describe('seat cluster DOM — one element per part of the cluster', () => {
     expect(crest.style.getPropertyValue('--seat-accent')).toMatch(/^#[0-9A-Fa-f]{6}$/);
     expect(crest.style.getPropertyValue('--cluster-d')).toMatch(/^\d+px$/);
     expect(crest.dataset.portrait).toBe('true');
-    // The monogram rides beside it and is never empty — it is what the aperture
-    // draws with no plate available, and that path can never regress away.
-    expect(crest.dataset.monogram).toBeTruthy();
+    // §1.3: no substitute glyph. The crest publishes nothing a stylesheet could
+    // paint a monogram, rune, or initial from — the aperture's token background
+    // is the whole fallback, and the seat's name lives in the crest control's
+    // accessible name instead.
+    expect(crest.dataset.monogram).toBeUndefined();
+    expect(crest.getAttribute('data-monogram')).toBeNull();
+    expect(crest.textContent).toBe('');
   });
 
   it('lays the status rail out as one element per drawn chip', () => {
@@ -236,5 +249,93 @@ describe('seat cluster DOM — reconcile hygiene and budget', () => {
     // elements against a 15 000-node scene ceiling.
     expect(clusterNodes).toBeLessThanOrEqual(6 * 10);
     expect(r.root.querySelectorAll('*').length).toBeLessThan(SCENE_DOM_CEILING / 10);
+  });
+});
+
+describe('the portrait medallion at the stylesheet source (§1.2 el. 1, §1.3, §4)', () => {
+  const CSS = readFileSync(
+    resolve(process.cwd(), 'src/table/live/live-plane-cluster.module.css'),
+    'utf8',
+  );
+
+  /** The stylesheet with its commentary stripped — declarations only. */
+  const DECLS = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  /** Every rule in the file whose selector touches the crest, selector and body. */
+  const CREST_RULES = [...DECLS.matchAll(/^[ \t]*(\.plane [^{}/*]*?)\s*\{([^}]*)\}/gm)]
+    .map((match) => ({ selector: match[1]!.trim(), body: match[2]! }))
+    .filter((rule) => rule.selector.includes("[data-slot='crest']"));
+
+  const bodyOf = (selector: string): string =>
+    CREST_RULES.find((rule) => rule.selector === selector)?.body ?? '';
+
+  it('draws the layered rim as ONE gradient on the base rule', () => {
+    // §1.2 el. 1: a `0.012` gold hairline, a `0.041` brushed band, and a `0.012`
+    // inner hairline — three stops of one gradient rather than three nested
+    // boxes, so the medallion costs the scene one node. Under it, the portrait
+    // plate clipped to the aperture, and under THAT the token aperture fill.
+    const base = bodyOf(".plane [data-slot='crest']");
+    expect(base).not.toBe('');
+    expect(base).toMatch(/^\s*background\s*:/m);
+    expect(base).toContain('circle at 50% 34%');
+    // Three gold stops: hairline, brushed band, inner hairline.
+    expect((base.match(/var\(--gold\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // The rim is a `border-box` layer; the art and the token fill are
+    // `content-box`, which is what clips the plate to the aperture, not the rim.
+    expect(base).toContain('border-box');
+    expect(base).toContain('var(--portrait-src, none)');
+    expect(base).toContain('var(--raised), var(--surface-base)');
+    expect(base).toContain('content-box');
+  });
+
+  it('never lets a crest STATE rule respecify the medallion background', () => {
+    // The finding this suite exists for. `background` and `background-image`
+    // replace the entire layer stack, so any state rule that sets one on the
+    // crest itself silently deletes the rim above — and `data-commander` is
+    // every seat in a Commander game. States paint through box-shadow, outline,
+    // border, filter, custom properties, or their own pseudo-element instead.
+    const stateRules = CREST_RULES.filter(
+      (rule) =>
+        rule.selector !== ".plane [data-slot='crest']" &&
+        !rule.selector.includes('::') &&
+        /\[data-(?!slot)/.test(rule.selector),
+    );
+    expect(stateRules.length).toBeGreaterThan(0);
+    for (const rule of stateRules) {
+      expect(rule.body, rule.selector).not.toMatch(/^\s*background(-image)?\s*:/m);
+    }
+  });
+
+  it('adds the commander crown mark as a pseudo-element, so the rim survives', () => {
+    // §4's 5-o'clock mark. A pseudo-element is free in node terms — the crest is
+    // still one element — and it composes with the rim instead of replacing it.
+    const crown = bodyOf(".plane [data-slot='crest'][data-commander='true']::before");
+    expect(crown).not.toBe('');
+    expect(crown).toMatch(/content:\s*''/);
+    expect(crown).toContain('position: absolute');
+    // 5 o'clock on the rim, sized in D like everything else in the cluster.
+    expect(crown).toContain('left: 78%');
+    expect(crown).toContain('top: 78%');
+    expect(crown).toContain('var(--cluster-d)');
+    expect(crown).toContain('border-radius: 50%');
+    expect(crown).toContain('background: var(--gold)');
+    // And no non-pseudo commander rule exists to undo the base stack.
+    expect(bodyOf(".plane [data-slot='crest'][data-commander='true']")).toBe('');
+  });
+
+  it('draws no substitute glyph in the aperture (§1.3)', () => {
+    // "the aperture keeps its token background and accessible player name but
+    // draws no substitute glyph". The procedural rune monogram is gone from the
+    // stylesheet as well as from the data, so nothing can resurrect it.
+    // Not anywhere in the file's declarations, under any selector.
+    expect(DECLS).not.toContain('monogram');
+    // And the crest's own pseudo-elements pull no text out of the DOM at all —
+    // the pennant and the crown mark are shapes, and there is nothing else.
+    expect(CREST_RULES.filter((r) => r.selector.includes('::')).length).toBeGreaterThan(0);
+    for (const rule of CREST_RULES.filter((r) => r.selector.includes('::'))) {
+      const content = /content:([^;]*);/.exec(rule.body)?.[1]?.trim();
+      expect(content ?? "''", rule.selector).toBe("''");
+      expect(rule.body, rule.selector).not.toContain('attr(');
+    }
   });
 });

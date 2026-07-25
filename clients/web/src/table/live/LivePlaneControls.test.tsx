@@ -26,7 +26,6 @@ function fixtureCluster(seat: string, label: string) {
       attackedCount: 0,
       autoPassed: false,
       deadline: false,
-      monogram: 'ᚠ',
       accent: '#4D7EC9',
       eliminated: false,
       priority: false,

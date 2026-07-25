@@ -145,8 +145,6 @@ export interface SeatClusterFacts {
   deadline: boolean;
   /** The plate this seat wears, when one resolved (§1.3). */
   portrait?: SeatPortrait;
-  /** The procedural monogram the aperture falls back to (§1.3). */
-  monogram: string;
   /** The seat's accent, from `sceneTokens`. */
   accent: string;
   /** Elimination, priority, active turn, focus, and attack, from the view. */
@@ -211,10 +209,13 @@ export interface SeatCluster {
   chips: ClusterChip[];
   /** The state channels (§6.8). */
   channels: ClusterChannels;
-  /** The plate's URL, when one resolved. */
+  /**
+   * The plate's URL, when one resolved. When it is absent — a loading plate, a
+   * failed one, or a build with none — the aperture keeps its token background
+   * and draws **no substitute glyph** (§1.3); the seat's name stays in the
+   * accessibility tree through {@link ariaLabel}.
+   */
   portraitSrc?: string;
-  /** The monogram the aperture draws when {@link portraitSrc} is absent. */
-  monogram: string;
   /** The seat's accent colour. */
   accent: string;
   /** The union of everything drawn, priority bloom included. */
@@ -655,7 +656,6 @@ export function stageSeatCluster(request: SeatClusterRequest): SeatCluster {
       disconnected: false,
     },
     portraitSrc: facts.portrait?.src,
-    monogram: facts.monogram,
     accent: facts.accent,
     bounds,
     ariaLabel: ariaFor(facts, chips),

@@ -57,23 +57,15 @@
   box-shadow: var(--shadow-rest);
 }
 
-/* The procedural rune monogram — the permanent fallback for a seat with no
-   plate (§1.3 / §12.26). It is a mark, not a letter, so it never reads as a
-   truncated name, and it is derived from the player id alone, so it is exactly
-   as stable as a plate. A seat WITH a plate hides it rather than dropping the
-   rule, so the two paths share one box. */
-.plane [data-slot='crest']::before {
-  content: attr(data-monogram);
-  color: color-mix(in srgb, var(--gold) 54%, var(--text));
-  font: 400 calc(var(--cluster-d) * 0.44) / 1 var(--rune-font-display);
-  opacity: 0.72;
-}
+/* §1.3: there is NO substitute glyph. While a plate is loading, or if it fails,
+   or where none resolved, the aperture keeps the token background above — the
+   innermost `content-box` gradient, which paints underneath `--portrait-src`
+   and is therefore always there — and nothing else. The seat's name stays in
+   the accessibility tree via the crest control's `aria-label`, never as a
+   painted mark. The procedural rune monogram this file used to draw was removed
+   with the portrait consumer.
 
-.plane [data-slot='crest'][data-portrait='true']::before {
-  content: '';
-}
-
-/* Active turn — the swallow-tail pennant at 12 o'clock, half overlapping the
+   Active turn — the swallow-tail pennant at 12 o'clock, half overlapping the
    rim (§6.2). Tab vs ring and top vs perimeter, so a seat that is active AND
    holds priority reads as both at once — the common case. */
 .plane [data-slot='crest']::after {
@@ -131,16 +123,23 @@
   border: calc(var(--cluster-d) * 0.03) dashed var(--orange);
 }
 
-/* Commander presence — the crown mark at 5 o'clock on the rim (§4). */
-.plane [data-slot='crest'][data-commander='true'] {
-  background-image:
-    radial-gradient(
-      circle at 78% 78%,
-      var(--gold) 0 calc(var(--cluster-d) * 0.055),
-      transparent calc(var(--cluster-d) * 0.062)
-    ),
-    var(--portrait-src, none),
-    radial-gradient(circle at 50% 30%, var(--raised), var(--surface-base));
+/* Commander presence — the crown mark at 5 o'clock on the rim (§4).
+   It rides on a PSEUDO-ELEMENT, not on a fourth background layer. A
+   `background-image` here would replace the whole stack declared above and take
+   the §1.2 el. 1 rim gradient with it — and in a Commander game every seat
+   wears this state, so every medallion would lose its rim at every rung. The
+   pseudo-element costs the scene no node (presentation-budgets §Performance),
+   so the medallion is still ONE element, rim and crown together. */
+.plane [data-slot='crest'][data-commander='true']::before {
+  content: '';
+  position: absolute;
+  left: 78%;
+  top: 78%;
+  width: calc(var(--cluster-d) * 0.11);
+  height: calc(var(--cluster-d) * 0.11);
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: var(--gold);
 }
 
 /* Eliminated (§6.5) — the aperture desaturates and drops to 45 % luminance and

@@ -21,10 +21,13 @@
  *   `opponents[]` — which is exactly what §2's spectator row requires.
  *
  * When no plate resolves — an older manifest, a ninth opponent, a seat the
- * server left out of `seat_order` — the aperture falls back to the procedural
- * **rune monogram**, which is likewise derived from the player id alone and is
- * therefore just as stable. That path is permanent: it is what a portrait-less
- * build renders, and it never becomes a bare counter.
+ * server left out of `seat_order` — there is **no substitute glyph**. §1.3:
+ * "While a plate is loading or if it fails, the aperture keeps its token
+ * background and accessible player name but draws no substitute glyph." The
+ * medallion's rim, its token aperture fill, and the seat's accessible name are
+ * all independent of the plate, so a portrait-less build still renders a
+ * complete, legible, named cluster. The procedural rune monogram that stood
+ * here before the portraits shipped was removed with them.
  */
 import assetManifest from '../../public/assets/manifest.json';
 import type { PlayerId } from '../protocol';
@@ -53,26 +56,6 @@ export const LOCAL_PORTRAIT: SeatPortrait | undefined = PORTRAITS.local;
 
 /** The opponent plate cycle, in manifest order. */
 export const OPPONENT_PORTRAITS: readonly SeatPortrait[] = PORTRAITS.opponents ?? [];
-
-/**
- * The procedural monogram alphabet — Elder Futhark runes, which read as marks
- * rather than as letters and so never look like a truncated name. One is chosen
- * per player id, so the fallback is as stable as a plate.
- */
-export const PORTRAIT_MONOGRAMS = [
-  'ᚠ',
-  'ᚢ',
-  'ᚦ',
-  'ᚨ',
-  'ᚱ',
-  'ᚲ',
-  'ᚷ',
-  'ᚹ',
-  'ᚺ',
-  'ᚾ',
-  'ᛁ',
-  'ᛃ',
-] as const;
 
 /**
  * FNV-1a over the player id — a stable, view-independent index source for the
@@ -109,9 +92,4 @@ export function portraitFor(
   const index = portraitSeatIndex(seatOrder, seat);
   const key = index >= 0 ? index : seatHash(seat);
   return OPPONENT_PORTRAITS[key % OPPONENT_PORTRAITS.length];
-}
-
-/** The procedural monogram a portrait-less aperture draws (§1.3 fallback). */
-export function monogramFor(seat: PlayerId): string {
-  return PORTRAIT_MONOGRAMS[seatHash(seat) % PORTRAIT_MONOGRAMS.length]!;
 }

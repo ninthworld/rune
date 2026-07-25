@@ -17,11 +17,15 @@
  * real browser, per issue #532's closure gate.
  */
 import { describe, expect, it } from 'vitest';
-import { PLANE, stagePlane, type SeatCluster, type StagedPlane } from './plane';
+import { PLANE, stagePlane, stageSeatCluster, type SeatCluster, type StagedPlane } from './plane';
 import { seatColorIdentity, worstCommanderDamage } from './seatIdentity';
-import { LOCAL_PORTRAIT, OPPONENT_PORTRAITS, monogramFor } from './seatPortraits';
+// A namespace import, so the §1.3 removal can be asserted as an absence: the
+// monogram helpers must not come back as exports of this module.
+import * as seatPortraits from './seatPortraits';
 import { clusterTable, type ClusterTableSpec } from './seat-cluster.fixture';
 import { DESKTOP, TABLET, ULTRAWIDE, WIDE16, clusterRects } from './plane.fixture';
+
+const { LOCAL_PORTRAIT, OPPONENT_PORTRAITS } = seatPortraits;
 
 const VIEWPORTS = [
   ['desktop 1280×800', DESKTOP],
@@ -622,15 +626,60 @@ describe('seat cluster §1.3/§10.1 — portrait plates', () => {
     }
   });
 
-  it('always carries a stable procedural monogram beside the plate', () => {
-    // The fallback path can never regress away: it is what a seat with no plate
-    // renders, and it is derived from the player id alone.
+  it('draws no substitute glyph beside the plate, and publishes none', () => {
+    // §1.3, as rewritten when the portraits shipped: "the aperture keeps its
+    // token background and accessible player name but draws no substitute
+    // glyph". The procedural rune monogram is gone from the module, from the
+    // facts, and from the staged cluster — a portrait-less aperture publishes
+    // nothing for a stylesheet to paint a mark from.
+    expect(Object.keys(seatPortraits)).not.toContain('monogramFor');
+    expect(Object.keys(seatPortraits)).not.toContain('PORTRAIT_MONOGRAMS');
     const plane = planeOf({ seats: seats(4), active: 'p2' });
     for (const [seat, cluster] of clustersOf(plane)) {
-      expect(cluster.monogram).toBe(monogramFor(seat));
-      expect(cluster.monogram).not.toBe('');
+      expect({ seat, keys: Object.keys(cluster) }).toEqual({
+        seat,
+        keys: expect.not.arrayContaining(['monogram']),
+      });
     }
-    expect(monogramFor('somebody')).toBe(monogramFor('somebody'));
+  });
+
+  it('keeps the seat legible with no plate at all: token aperture plus the name', () => {
+    // The state §1.3 describes — a plate still loading, a plate that failed, or
+    // a build that ships none. The aperture's token background is a stylesheet
+    // layer painting UNDER `--portrait-src`, so it needs no field; what the
+    // staged cluster must still carry is the absent-plate state and the name.
+    const cluster = stageSeatCluster({
+      seat: 'p2',
+      variant: 'focused',
+      anchor: { x: 300, y: 200 },
+      viewport: { width: 1280, height: 800 },
+      outboard: 'left',
+      facts: {
+        label: 'Veyra',
+        local: false,
+        life: 28,
+        handCount: 6,
+        libraryCount: 51,
+        commanderPresent: false,
+        statuses: [],
+        attackedCount: 0,
+        autoPassed: false,
+        deadline: false,
+        // No `portrait` at all — the fallback path, with nothing to fall back to.
+        accent: '#4D7EC9',
+        eliminated: false,
+        priority: false,
+        active: false,
+        focused: false,
+        attacked: false,
+      },
+    });
+    expect(cluster.portraitSrc).toBeUndefined();
+    // The medallion still exists at full size, so the aperture is a token
+    // surface and not a hole, and it still reads as one sentence.
+    expect(cluster.portrait.w).toBe(cluster.d);
+    expect(cluster.ariaLabel).toContain('Veyra');
+    expect(cluster.ariaLabel).toContain('28 life');
   });
 });
 
