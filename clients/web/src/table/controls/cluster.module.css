@@ -1,0 +1,65 @@
+/*
+ * The **control cluster**'s geometry (`docs/design/control-language.md` §3.3,
+ * issue #534, under ADR 0032).
+ *
+ * One rule from the spec produces almost this whole file: the cluster is a
+ * 268 px column, 28 px from the viewport edge, whose rows are separated by 12 px
+ * — the geometry of control-ui panel 6 and of the 2.5D baseline in situ. Every
+ * length below reads the token that declares one of those three numbers, so the
+ * column cannot drift from the plaque and the primary that are sized from the
+ * same tokens.
+ *
+ * ## Why it is fixed rather than a grid cell
+ *
+ * "28 px from the viewport edge" is a viewport-relative statement, not a
+ * placement inside a track, and ADR 0032 removed the permanent regions a track
+ * would have belonged to — the battlefield owns the viewport now, and the cluster
+ * floats over it. It therefore has to be mounted as a **sibling of the shell's
+ * regions**: a region carrying a `z-index` creates a stacking context, and a
+ * `position: fixed` child of one cannot climb out of it (see `shellLayout.ts`,
+ * LAYER). It sits on the `shell` rung, below `decision`, because a decision the
+ * server is waiting on must never be covered by chrome.
+ *
+ * The column is bottom-anchored, which is what makes the plaque's step list open
+ * upward (`plaque.module.css`).
+ */
+
+.cluster {
+  position: fixed;
+  right: var(--rune-cluster-margin);
+  bottom: var(--rune-cluster-margin);
+  z-index: var(--rune-z-shell);
+  display: flex;
+  flex-direction: column;
+  /* Right-aligned, so a 118 px pair and a 268 px plaque share one edge — the
+     edge the whole cluster is measured from. */
+  gap: var(--rune-cluster-gap);
+  align-items: flex-end;
+  width: var(--rune-control-w-cluster);
+}
+
+/* Panel 6b: plaque + menu icon on one row, so the degraded cluster is one band
+   tall instead of a 268 px column with a hole in it. */
+.clusterCompact {
+  width: auto;
+}
+
+/* The echo (§4.2 rules 4 and 7): equal-weight secondaries, right-aligned and
+   wrapping. Nothing here is promoted — the tie is the point. */
+.echo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-cluster-gap);
+  justify-content: flex-end;
+}
+
+/* Panel 6's second row: the menu icon and, when a local step can be retracted,
+   the utility pill. `--rune-cluster-gap` doubles as §3.3's icon↔pill gap, which
+   the spec gives the same 12 px value. */
+.utilityRow,
+.compactRow {
+  display: flex;
+  gap: var(--rune-cluster-gap);
+  align-items: center;
+  justify-content: flex-end;
+}

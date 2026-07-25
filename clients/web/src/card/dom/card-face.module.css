@@ -22,7 +22,8 @@
  * channel is zero-node —
  *   gold hairline        → .inner::before
  *   actionable edge bar  → .inner::after
- *   attacking top bar    → .title::before     ability marker → .title::after
+ *   attacking top bar    → .title/.identityStrip::before
+ *   ability marker       → .title/.identityStrip::after
  *   blocking left bar    → .status::before
  *   sick / +N plate      → .status::after (and .rules::after on a full card)
  *   selection ring+bloom → box-shadow on .inner
@@ -138,14 +139,18 @@
 }
 
 /* Attacker: top edge bar. A different edge from the gold bar, so the channel is
- * shape, not hue. Anchored on the title plate and offset back to the card's top
- * line, which keeps it present in every art mode. */
+ * shape, not hue. Anchored on the title band — whichever form it takes — and
+ * offset back to the card's top line, which keeps it present at every tier and
+ * in every art mode. */
 .title::before,
-.title::after {
+.title::after,
+.identityStrip::before,
+.identityStrip::after {
   content: none;
   position: absolute;
 }
 
+.attacking .identityStrip::before,
 .attacking .title::before {
   content: '';
   left: calc(-1 * var(--rule-inset) + var(--frame-edge-w));
@@ -166,6 +171,20 @@
   width: calc(var(--face-name-size) / 2);
   height: calc(var(--face-name-size) / 2);
   margin-top: calc(var(--face-name-size) / -4);
+  border-radius: 50%;
+  background: var(--ability-marker);
+  z-index: 1;
+}
+
+/* The same dot on the strip's right end, sized from the band instead of from a
+ * name the strip does not draw — the channel and its position are unchanged. */
+.hasAbility .identityStrip::after {
+  content: '';
+  right: calc(var(--rule-w) * 2);
+  top: 50%;
+  width: calc(var(--band-title-h) * 0.6);
+  height: calc(var(--band-title-h) * 0.6);
+  margin-top: calc(var(--band-title-h) * -0.3);
   border-radius: 50%;
   background: var(--ability-marker);
   z-index: 1;
@@ -259,6 +278,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  z-index: 1;
+}
+
+/*
+ * The colour-identity strip (§8.4): what the title band becomes at `mini`,
+ * where an 11 px name floor would claim a quarter of the card's height. Same
+ * box as `.title`, same two pseudo-element channels, no text — so no floor
+ * grows it and the art window keeps the difference. The accent reads as an edge
+ * band on the slate, never a body fill (§3.4), and identity moves to the
+ * accent + glyph + inspect path exactly as it does at `chip`.
+ */
+.identityStrip {
+  position: absolute;
+  left: var(--rule-inset);
+  right: var(--rule-inset);
+  top: var(--band-title-top);
+  height: var(--band-title-h);
+  border-radius: calc(var(--plate-radius) / 1.5);
+  background: var(--face-accent);
+  box-shadow: 0 0 0 var(--rule-w) var(--rune-gold-shade);
   z-index: 1;
 }
 

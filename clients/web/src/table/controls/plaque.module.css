@@ -1,0 +1,325 @@
+/*
+ * The **phase plaque** (`docs/design/control-language.md` §5, issue #534, under
+ * ADR 0032).
+ *
+ * The hexagonal plate at the foot of the lower-right control cluster: a 268 × 68
+ * plate with 22 px points at each end, a two-line text block, the five phase-group
+ * pips, and the disclosure chevron. §3 calls the hexagon one of the family's two
+ * non-button surfaces, which is why it lives beside `controls.module.css` rather
+ * than inside it — the button family has exactly two silhouettes and this is not
+ * one of them.
+ *
+ * ## Frame construction, shared with the button family
+ *
+ * The same two-box construction: `.frame` paints the 135° gold gradient and pads
+ * by the frame width, `.face` paints the plate. A CSS border carries neither a
+ * gradient nor a `clip-path`, so the frame has to be a box behind the face. Both
+ * boxes are clipped by the same hexagon custom property so the points cannot
+ * drift apart.
+ *
+ * ## Where the step list goes
+ *
+ * The cluster is bottom-anchored, so the disclosed list opens UPWARD (`bottom:
+ * 100%`) and is clamped to the viewport by a `max-height` built entirely from
+ * tokens. `ui-requirements.md` requires a phase expansion to render entirely
+ * within the viewport; opening it downward from a plaque 28 px off the bottom
+ * edge cannot satisfy that at any height.
+ *
+ * Every dimension reads a token from `chrome/tokens.css`; this file declares no
+ * length and no colour of its own (ADR 0019).
+ */
+
+/* The plaque's own box. `position: relative` anchors the two surfaces that
+   escape the plate: the auto-passed badge above it and the disclosed step list. */
+.plaque {
+  --point: var(--rune-plaque-point);
+  /* One polygon, declared once, so the frame and the face are cut identically. */
+  --hex: polygon(
+    var(--point) 0,
+    calc(100% - var(--point)) 0,
+    100% 50%,
+    calc(100% - var(--point)) 100%,
+    var(--point) 100%,
+    0 50%
+  );
+  position: relative;
+  width: var(--rune-control-w-cluster);
+}
+
+/* Panel 6b: the same form, one text line, sharing its row with the menu icon.
+   The baseline draws it 190 × 62, but §2.2 declares no compact plaque tokens and
+   §3.3 pins the cluster column at 268 px unconditionally — so the compact plaque
+   is the column minus the icon and the gap (212 px) rather than a second set of
+   hand-written lengths that would leave the compact row 22 px short of the edge
+   every other row is flush with. The plate height is unchanged, which is what
+   keeps the icon and the plaque optically on one line. */
+.compact {
+  width: calc(var(--rune-control-w-cluster) - var(--rune-control-hit) - var(--rune-cluster-gap));
+}
+
+.frame {
+  display: grid;
+  box-sizing: border-box;
+  min-height: var(--rune-plaque-h);
+  padding: var(--rune-control-frame-w);
+  clip-path: var(--hex);
+  background: var(--rune-control-frame-gradient);
+}
+
+.face {
+  display: flex;
+  gap: var(--rune-space-4);
+  align-items: center;
+  box-sizing: border-box;
+  /* The points eat the plate's ends; the text block starts inboard of them so a
+     long step name never runs into the bevel. */
+  padding: 0 var(--rune-plaque-point);
+  clip-path: var(--hex);
+  background: var(--rune-control-plate);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+/* ── The text block ──────────────────────────────────────────────────────── */
+
+.text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+  justify-content: center;
+  min-width: 0;
+}
+
+/* 6b's one line: the title and the pips run side by side. */
+.compact .text {
+  flex-direction: row;
+  gap: var(--rune-space-5);
+  align-items: center;
+}
+
+.title {
+  overflow: hidden;
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-title);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.subline {
+  display: flex;
+  gap: var(--rune-space-5);
+  align-items: center;
+  min-width: 0;
+}
+
+.ownership {
+  overflow: hidden;
+  color: var(--rune-selection);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-caption);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── The step pips (§5.1, D3) ────────────────────────────────────────────────
+   Five pips at the drawn 21 px pitch. The gap is derived from the pitch and the
+   diameter so changing either moves the row instead of overflowing the plate. */
+.pips {
+  display: flex;
+  flex: none;
+  gap: calc(var(--rune-pip-pitch) - var(--rune-pip-size));
+  align-items: center;
+}
+
+.pip {
+  box-sizing: border-box;
+  width: var(--rune-pip-size);
+  height: var(--rune-pip-size);
+  border-radius: 50%;
+}
+
+.pip[data-state='passed'] {
+  background: var(--rune-pip-on);
+}
+
+/* The current pip's non-colour channel is a RING around the disc — a distinct
+   shape, not a brighter hue, so the row survives a colour-blind path (§11). */
+.pip[data-state='current'] {
+  background: var(--rune-pip-on);
+  box-shadow: 0 0 0 2px var(--rune-selection);
+}
+
+.pip[data-state='upcoming'] {
+  box-shadow: inset 0 0 0 2px var(--rune-pip-off);
+}
+
+/* ── The disclosure chevron (§5.2, D4) ───────────────────────────────────────
+   A 18 × 20 glyph in a 44 px hit box. It is a DISCLOSURE and never a game
+   action: the only message it can produce is `set_stops` from the list it opens
+   (GAP-3 — no advance/skip action exists to wire it to). */
+.chevron {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--rune-control-hit);
+  height: var(--rune-control-hit);
+  /* Pull the target back over the plate's right point, so the 44 px box is
+     reachable without pushing the glyph off the drawn plate. */
+  margin-right: calc(-1 * var(--rune-space-5));
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--rune-chevron);
+  font-size: var(--rune-type-title);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chevron:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+
+/* The auto-pass cue (§5.2): a gold outline pointing at the fix — setting a stop
+   — while the view reports that priority was passed for the receiver. It is
+   display-only and, like the badge, dropped by the next view. It is deliberately
+   NOT a timed one-shot: a timer would make the cue depend on time-since-mount
+   rather than on the message, and the whole UI must rebuild from one view. */
+.chevron[data-cue] {
+  outline: 2px solid var(--rune-accent-gold);
+  outline-offset: -2px;
+}
+
+/* The default channel: the forward chevron rotates a quarter turn when open. */
+.glyphTurn {
+  display: block;
+  transition: transform var(--rune-transition);
+}
+
+.glyphTurn[data-open] {
+  transform: rotate(90deg);
+}
+
+/* The reduced-motion channel: a glyph SWAP instead of a rotation (§5.2, §12).
+   Exactly one of the two is ever drawn. */
+.glyphSwap {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glyphTurn {
+    display: none;
+  }
+
+  .glyphSwap {
+    display: block;
+  }
+}
+
+/* ── The auto-passed badge ───────────────────────────────────────────────────
+   Sits above the plate: the plate's two lines are the drawn form, and 6b has
+   only one, so the badge cannot live inside it without changing the plaque. */
+.autoPassed {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--rune-space-2));
+  padding: var(--rune-space-1) var(--rune-space-4);
+  border: var(--rune-control-frame-w) solid var(--rune-gold-border);
+  border-radius: var(--rune-radius-sm);
+  background: var(--rune-overlay-bg);
+  color: var(--rune-accent-gold);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-micro);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* ── The twelve-step list the chevron discloses ──────────────────────────────
+   Opens UPWARD because the cluster is bottom-anchored, and is clamped to the
+   viewport: the max-height is the viewport minus the cluster's own margins, the
+   plaque, and the gap, so the list scrolls internally rather than growing off
+   the top edge on a short viewport. */
+.steps {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--rune-cluster-gap));
+  z-index: var(--rune-z-popover);
+  box-sizing: border-box;
+  width: var(--rune-control-w-cluster);
+  max-width: 100vw;
+  max-height: calc(
+    100vh - var(--rune-plaque-h) - 2 * var(--rune-cluster-margin) - 2 * var(--rune-cluster-gap)
+  );
+  margin: 0;
+  padding: var(--rune-space-2);
+  overflow-y: auto;
+  border: var(--rune-control-frame-w) solid var(--rune-gold-border);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-overlay-bg);
+  box-shadow: var(--rune-elevation-2);
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  gap: var(--rune-space-4);
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--rune-control-hit);
+  padding: 0 var(--rune-space-4);
+  border-radius: var(--rune-radius-sm);
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-body);
+}
+
+/* The current step carries a leading bar as well as its brighter text — the
+   non-colour channel the row needs to read without hue. */
+.stepCurrent {
+  box-shadow: inset 3px 0 0 var(--rune-selection);
+  background: var(--rune-region-bg);
+  color: var(--rune-text);
+}
+
+.stepName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The per-step stop toggle. `aria-pressed` reflects `view.stops` — the server's
+   echo is the only source of truth, and the answer is the full new set. */
+.stopToggle {
+  flex: none;
+  min-width: calc(2 * var(--rune-space-10));
+  min-height: var(--rune-control-hit);
+  padding: 0 var(--rune-space-4);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-sm);
+  background: none;
+  color: var(--rune-text-muted);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* A set stop gains the gold frame AND a filled inner bar, so "stopping here" is
+   legible as a shape and not only as a colour. */
+.stopToggle[data-stop] {
+  border-color: var(--rune-accent-gold);
+  background: var(--rune-gold-fill);
+  box-shadow: inset 0 -3px 0 var(--rune-accent-gold);
+  color: var(--rune-text);
+}
+
+.stopToggle:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}

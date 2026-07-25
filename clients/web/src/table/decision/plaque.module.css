@@ -1,0 +1,116 @@
+/*
+ * The decision plaque (`docs/design/control-language.md` §3.1 last row and §10,
+ * issue #534, under ADR 0032).
+ *
+ * Control-ui panel 7: a dark plate with a gold frame, the action's label across
+ * the top, and a green CONFIRM leading a red CANCEL beneath it. The frame is
+ * built the same way every gold-framed control in `controls.module.css` is — two
+ * boxes, the outer painting the 135° gradient and padding by the frame width,
+ * the inner painting the fill — because a CSS `border` cannot carry a gradient.
+ *
+ * ## Two rules this stylesheet exists to hold
+ *
+ * **The decision rung.** The plaque reads `--rune-z-decision`, the rung ADR 0032
+ * created after #528 shipped a mulligan prompt that permanent chrome painted
+ * over. The binding rule is that a layer may only be covered by a layer the
+ * player explicitly invoked and can dismiss without answering it, and a decision
+ * the server is waiting on is neither. Two consequences a future edit must keep:
+ * the plaque has to be rendered as a SIBLING of the shell's regions (a region
+ * carrying a z-index creates a stacking context, so a plaque rendered inside the
+ * bottom shell is trapped at the shell's rung), and this rung may not be traded
+ * down to `popover` to fix a stacking surprise elsewhere.
+ *
+ * **Pointer transparency.** §10.2 requires the plaque to be pointer-transparent
+ * where it hosts no control, so the candidates underneath stay tappable — the
+ * shipped `data-pointer-through` behaviour of #451, which is what stopped the
+ * mulligan sheet from swallowing every click on the very cards being chosen.
+ * Here that is `pointer-events: none` on the plate and `auto` on the control row
+ * alone. The title is text, not a control, and is deliberately click-through.
+ *
+ * Every dimension and colour reads a token from `chrome/tokens.css` (ADR 0019);
+ * this file declares no length, no hue, and no duration of its own.
+ */
+
+/* The frame box. Positioned by the anchoring algorithm, which supplies
+   `left`/`top`/`width` (and `height`, for the bottom sheet) as inline values —
+   the only numbers in this component that are not tokens, because they are
+   computed per view and per viewport rather than designed. */
+.plaque {
+  position: fixed;
+  z-index: var(--rune-z-decision);
+  box-sizing: border-box;
+  padding: var(--rune-control-frame-w);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-control-frame-gradient);
+  box-shadow: var(--rune-elevation-2);
+  /* §10.2 pointer transparency — re-enabled on the control row only. */
+  pointer-events: none;
+  animation: plaque-in var(--rune-transition);
+}
+
+/* §12: the plaque's enter/exit has no reduced-motion equivalent beyond simply
+   appearing. `chrome/base.css` already collapses every duration globally; this
+   states the intent locally so a future enter animation is not written as if it
+   were exempt. */
+@media (prefers-reduced-motion: reduce) {
+  .plaque {
+    animation: none;
+  }
+}
+
+@keyframes plaque-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* The drawn plate. */
+.plate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-6);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: var(--rune-plaque-min-w);
+  padding: var(--rune-space-6);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-overlay-bg);
+  /* The 1 px inner line of §3.1's frame construction, drawn inside the plate so
+     it follows the radius with the rest of the box. */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+/* The bottom sheet (§10.2, phone / tablet portrait): the same plate at full
+   width, with its own height honoured so the 40 % cap the anchoring computed is
+   the height that is drawn. Its rows scroll rather than growing past the cap —
+   a sheet that outgrows its cap would reach down over the receiver's band. */
+.sheet .plate {
+  overflow-y: auto;
+}
+
+/* The title: the action's server label, printed verbatim in the drawn small
+   caps. The plaque titles itself from `action.label` and never writes its own
+   words (§10, and the client's hard rule that it does not name the server's
+   actions). */
+.title {
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-heading);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* The control row. The ONE part of the plaque that takes pointer events. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-cluster-gap);
+  align-items: center;
+  pointer-events: auto;
+}

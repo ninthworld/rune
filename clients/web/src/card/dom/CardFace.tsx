@@ -48,7 +48,13 @@ import { cx } from '../../chrome/cx';
 import { ART } from '../../tokens';
 import { CardArt, CardArtSlot } from './CardArt';
 import { glyphStripGeometry } from './glyphStrip';
-import { cardFaceVars, splayLayers, surfaceKindFor, type CardFaceTier } from './theme';
+import {
+  cardFaceVars,
+  drawsIdentityStrip,
+  splayLayers,
+  surfaceKindFor,
+  type CardFaceTier,
+} from './theme';
 import s from './card-face.module.css';
 
 /** The elevation ladder of visual-system §3: resting on the plane, lifted by
@@ -380,12 +386,15 @@ interface FaceBodyProps {
  *
  * Nodes, worst case: root, inner, art window, title plate, status band, glyph
  * `<svg>` + its two combined paths, P/T plate, consolidated badge, `×N` tab —
- * eleven, one inside the twelve-node ceiling. `chip` drops the title bar
- * entirely (§8.4: at W = 48 a name cannot reach the 11 px floor inside the
- * band) and carries identity on the land/type glyph plus the inspect path.
+ * eleven, one inside the twelve-node ceiling. The **title band** is the one
+ * thing the dense rungs spend differently (§8.4), at no change in node count:
+ * `mini` swaps the parchment name plate for the colour-identity strip, and
+ * `chip` drops the band entirely; both carry identity on the accent, the
+ * land/type glyph, and the inspect path instead.
  */
 function PermanentFace({ data, tier, url, full }: FaceBodyProps & { tier: CardFaceTier }) {
   const chip = tier === 'chip';
+  const identityStrip = drawsIdentityStrip(tier, 'permanent');
   const strip = full !== undefined ? { names: [], overflow: 0 } : keywordStrip(data, tier);
   const glyphs = chip && data.landGlyph !== undefined ? [data.landGlyph] : strip.names;
   return (
@@ -395,11 +404,18 @@ function PermanentFace({ data, tier, url, full }: FaceBodyProps & { tier: CardFa
       ) : (
         <ArtWindow url={url} monogram={data.name.slice(0, 1)} />
       )}
-      {/* The title plate always exists — empty in full-card mode and absent
-          only at `chip` — because its pseudo-elements carry the attacking
-          edge bar and the latent-ability marker dot, so those server-computed
-          channels survive every art mode unchanged. */}
-      {!chip && <div className={s.title}>{full !== undefined ? '' : data.name}</div>}
+      {/* The title band always exists — empty in full-card mode and absent only
+          at `chip` — because its pseudo-elements carry the attacking edge bar
+          and the latent-ability marker dot, so those server-computed channels
+          survive every art mode unchanged. At `mini` it is the colour-identity
+          strip rather than the name plate (§8.4): one node either way, so the
+          swap costs nothing and buys back the height the 11 px name floor was
+          taking out of the art window. */}
+      {identityStrip ? (
+        <div className={s.identityStrip} />
+      ) : (
+        !chip && <div className={s.title}>{full !== undefined ? '' : data.name}</div>
+      )}
       <div className={s.status} data-plate-extra={extraPlate(data, strip.overflow)}>
         <KeywordStrip names={glyphs} />
         <PtPlate data={data} />

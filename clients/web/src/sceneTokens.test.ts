@@ -59,8 +59,16 @@ describe('scene tokens — §2 color system', () => {
     ] as const) {
       expect(states).toContain(state);
     }
-    // Selection keeps its own family (it co-occurs with targeting on screen).
-    expect(SCENE_HUES.blue.states).toEqual(['selection']);
+    // Blue owns selection and priority (maintainer ruling, issue #534): the
+    // approved baseline draws the priority ring blue-white and the shipped
+    // cluster has always painted it that way. The two never collide, because
+    // priority is a ring concentric and OUTSIDE a seat's portrait medallion —
+    // a placement nothing else uses — while selection strokes a card's own
+    // outline. Blue keeps its own family from targeting, which is the
+    // separation that matters: those two co-occur on screen.
+    expect(SCENE_HUES.blue.states).toEqual(['selection', 'priority']);
+    // Gold is now offered-interaction only; it no longer doubles as priority.
+    expect(SCENE_HUES.gold.states).toEqual(['actionable']);
   });
 
   it('provides six distinct seat accents', () => {

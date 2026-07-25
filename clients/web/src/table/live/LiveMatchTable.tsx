@@ -18,19 +18,16 @@ import type { EntityId, PlayerId, ValidAction } from '../../protocol';
 import { playerName } from '../../playerNames';
 import { selectPendingPrompt, useGameStore } from '../../store';
 import { publishPlane, publishScene, publishView } from '../../testHooks';
-import { ActionDock } from '../ActionDock';
 import { ArtSettings } from '../ArtSettings';
 import { PresentationSettings } from '../PresentationSettings';
 import { CardInspect } from '../CardInspect';
 import { DecisionSheet } from '../DecisionSheet';
+import { GameMenu } from '../GameMenu';
 import { GameOverOverlay } from '../GameOverOverlay';
-import { MePanel } from '../MePanel';
 import type { BrowsableZone } from '../PanelChrome';
 import { PromptStrip, type MultiSelectBanner, type TargetingBanner } from '../PromptStrip';
-import { Rail } from '../Rail';
 import { RejectionToast } from '../RejectionToast';
 import { ShortcutHelp } from '../ShortcutHelp';
-import { TopBar, type RailSheet } from '../TopBar';
 import { ZoneBrowser } from '../ZoneBrowser';
 import type { EffectDensity, EffectQuality } from '../effects';
 import type { MotionPreference } from '../settings/presentationSettings';
@@ -55,12 +52,19 @@ import type { Rect } from '../scene';
 import { activeCandidates, activeRequirement } from '../targeting';
 import {
   buildShortcutBindings,
-  cardNameOf,
   demandsDecision,
   forcedDecision,
   isOnCanvas,
   resolveInspect,
 } from '../tableView';
+import { ControlCluster } from '../controls';
+import {
+  DecisionPlaque,
+  confirmDisabledReason,
+  estimatePlaqueSize,
+  placeDecisionPlaque,
+} from '../decision';
+import { ActivitySurface, StackStage } from '../stack';
 import { HandFan } from './HandFan';
 import { LivePlane } from './LivePlane';
 import type { LivePlaneInteractionProps } from './LivePlaneControls';
@@ -115,8 +119,8 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
   const [inspectedId, setInspectedId] = useState<EntityId | null>(null);
   const [peekId, setPeekId] = useState<EntityId | null>(null);
   const [browsing, setBrowsing] = useState<OpenZone | null>(null);
-  const [railSheet, setRailSheet] = useState<RailSheet | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showArtSettings, setShowArtSettings] = useState(false);
   const [previewTargetId, setPreviewTargetId] = useState<EntityId | PlayerId | null>(null);
@@ -166,7 +170,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     setInspectedId(null);
     setPeekId(null);
     setBrowsing(null);
-    setRailSheet(null);
     setHandDrag(null);
     setPreviewTargetId(null);
     // The setters are stable; the latest complete view is the sole reset trigger.
@@ -235,7 +238,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     inspectedId,
     peekId,
     browsing,
-    railSheet,
     focusedTileId: focusedSeat,
     mainRef,
     focusGeometryRef,
@@ -245,7 +247,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     setInspectedId,
     setPeekId,
     setBrowsing,
-    setRailSheet,
     setFocusedTileId: setFocusedSeat,
     setShowHelp,
     setShowSettings,
@@ -283,8 +284,11 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
   // One composition switch, shared with the stylesheet's media query and the
   // geometry mirror (`shellLayout.SHELL.compactBreakpoint`); all three move together.
   const compact = isCompactShell(viewport);
+  // The one geometry source: the scene's staging box, the hand's span, and the
+  // cluster's column all come from here, and `shellLayout.test.ts` proves none
+  // of them covers another (invariant I1).
+  const bands = shellBands(viewport, {}, { stackPresent: view.stack.length > 0 });
   const prompt = selectPendingPrompt(view);
-  const localId = view.you || undefined;
   const inspectId = inspectedId ?? peekId ?? selectedId;
   const inspectTarget = inspectId ? resolveInspect(view, inspectId) : null;
   const browserData = browsing
@@ -328,12 +332,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
       : [];
   const chosen = multiSelect ? msActiveChosen(multiSelect) : [];
   const routingAttacker = multiSelect && defenderSlot ? msActiveAttacker(multiSelect) : null;
-
-  const selectedActions =
-    selectedId === null || selecting
-      ? []
-      : view.valid_actions.filter((action) => action.subject?.includes(selectedId));
-  const selectedName = selectedId === null ? undefined : cardNameOf(view, selectedId);
 
   const activateEntity = (id: EntityId): void => {
     const actions = view.valid_actions.filter((action) => action.subject?.includes(id));
@@ -423,23 +421,25 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           slotKind: msSlot?.kind,
         }
       : null;
-  const multiSelectControls = multiSelect
-    ? {
-        canAdvance: multiSelect.slots.length > 1 && !isLastSlot(multiSelect),
-        onAdvance: advanceSlot,
-        confirm: hasOptions(multiSelect)
-          ? undefined
-          : {
-              label: 'Confirm',
-              enabled: allSlotsSatisfied(multiSelect),
-              onConfirm: confirmMultiSelect,
-            },
-        // A forced decision has nothing to fall back to, so it offers no cancel
-        // (issue #451) — the answer is the only way out, and the dock never shows a
-        // control that would immediately undo itself.
-        onCancel: forced === null ? cancelMultiSelect : undefined,
-      }
-    : undefined;
+  // The decision's controls, which the retired dock used to host. They now ride
+  // the plaque, placed near their subject by §10.1's anchoring algorithm — and
+  // the plaque may never cover the subject or a candidate, which is the whole
+  // reason that algorithm exists.
+  const plaqueControls =
+    (multiSelect !== null && !hasOptions(multiSelect) ? 1 : 0) +
+    (forced === null && selecting ? 1 : 0) +
+    (multiSelect !== null && multiSelect.slots.length > 1 && !isLastSlot(multiSelect) ? 1 : 0);
+  const plaqueSize = estimatePlaqueSize(plaqueControls);
+  const decisionPlacement = selecting
+    ? placeDecisionPlaque({
+        viewport: bands.viewport,
+        board: bands.staging,
+        size: plaqueSize,
+        cluster: bands.cluster,
+        seatCount: view.seat_order.length,
+        candidates: [],
+      })
+    : null;
 
   const highlight = (id: EntityId): void =>
     setHighlightedId((current) => (current === id ? null : id));
@@ -560,18 +560,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     onFocusGeometry: notePlaneGeometry,
   };
 
-  const rail = (
-    <Rail
-      view={view}
-      targeting={
-        targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
-      }
-      onInspect={setInspectedId}
-      onHighlight={highlight}
-      highlightedId={highlightedId}
-    />
-  );
-
   // The shell's session-moment flags (visual-system §8, issue #509), all pure
   // CSS staging over an unchanged, fully interactive tree:
   // - `data-moment` — the entry assembly, the reconnect cue, or the exit recede.
@@ -599,22 +587,10 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           null;
       }}
     >
-      <header className={styles.top} data-focus-region="top">
-        <TopBar
-          view={view}
-          mode={mode}
-          localId={localId}
-          compact={compact}
-          onSetStops={setStops}
-          onOpenSheet={compact ? setRailSheet : undefined}
-          concede={view.valid_actions.find((action) => action.type === 'concede')}
-          onChoose={choose}
-          onShowShortcuts={() => setShowHelp(true)}
-          onShowSettings={() => setShowSettings(true)}
-          onShowArtSettings={() => setShowArtSettings(true)}
-        />
-      </header>
-
+      {/* The battlefield spans the whole safe viewport (ADR 0032): the arena
+          stays visible BEHIND the contextual controls rather than ending where
+          they begin. What the plane may NOT do is stage an object under a
+          control — that is what `bands.staging` bounds (shellLayout.ts, I1). */}
       <section className={styles.scene} aria-label="Battlefield">
         <LivePlane
           view={view}
@@ -623,6 +599,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
             selectedId: routingAttacker ?? selectedId ?? highlightedId ?? undefined,
             candidates: pickingCandidates,
           }}
+          safeArea={bands.staging}
           quality={quality}
           density={density}
           reducedMotion={reducedMotion}
@@ -635,32 +612,14 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
         />
       </section>
 
-      {!compact && <aside className={styles.rail}>{rail}</aside>}
-
-      <section className={styles.bottom} aria-label="Player controls">
-        <div className={styles.identity}>
-          <MePanel
-            view={view}
-            localId={localId}
-            condensed
-            onOpenZone={openZone}
-            highlightedId={highlightedId}
-            targeting={
-              playerCandidates.length > 0
-                ? {
-                    candidates: playerCandidates,
-                    onPick: multiSelect ? pickDefender : pickTarget,
-                  }
-                : undefined
-            }
-          />
-        </div>
-        {/* The receiver's curved fan (issue #533). Its geometry, its overlap
-            rule, and its paging live in `table/handFan.ts`, which every
-            opponent's face-down fan reads too — one curve family, two tiers. */}
+      {/* The receiver's curved fan (issue #533), still a shell region rather
+          than a scene object (ADR 0032 §7). Its geometry, overlap rule, and
+          paging live in `table/handFan.ts`, which every opponent's face-down
+          fan reads too — one curve family, two tiers. */}
+      <div className={styles.hand}>
         <HandFan
           view={view}
-          bandWidth={shellBands(viewport).hand.w}
+          bandWidth={bands.hand.w}
           selecting={selecting}
           multiSelect={multiSelect !== null}
           candidates={pickingCandidates}
@@ -681,30 +640,107 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
             if (play) armHandDrag(card.id, card.name, play, event);
           }}
         />
-        <div className={styles.decisions} data-focus-region="actions">
-          <PromptStrip
-            view={view}
-            prompt={prompt}
-            targeting={targetingBanner}
-            multiSelect={multiSelectBanner}
-          />
-          <ActionDock
-            globalActions={
-              selecting
-                ? []
-                : (prompt?.globalActions ?? []).filter((action) => action.type !== 'concede')
-            }
-            selectedActions={selectedActions}
-            selectedName={selectedName}
-            onChoose={fire}
-            onClearSelection={selectedId !== null ? () => setSelectedId(null) : undefined}
-            onCancelTargeting={targeting ? cancelTargeting : undefined}
-            multiSelect={multiSelectControls}
-            waiting={prompt === null}
-            deadline={selecting ? undefined : prompt?.deadline}
-          />
-        </div>
-      </section>
+      </div>
+
+      {/* §10.1 splits the two halves of a decision: the strip carries the
+          SENTENCE (question, progress, count, deadline) and keeps its fixed
+          home; the plaque carries the CONTROLS, near its subject. */}
+      <PromptStrip
+        view={view}
+        prompt={prompt}
+        targeting={targetingBanner}
+        multiSelect={multiSelectBanner}
+      />
+
+      {/* The one action home — the ADR 0023 commitment kept, its location moved
+          from beside the hand to the lower-right cluster (ADR 0032 commitment
+          2, which is what settles control-language C5). */}
+      <div className={styles.cluster} data-focus-region="actions">
+        <ControlCluster
+          view={view}
+          selectedId={selectedId ?? undefined}
+          session={targeting ? 'targeting' : multiSelect ? 'multiSelect' : undefined}
+          onChoose={fire}
+          onRespond={() => {
+            // §4.3/D6: RESPOND sends nothing. It moves focus into the fan so the
+            // player can pick something to cast instead of passing.
+            mainRef.current
+              ?.querySelector<HTMLElement>('[data-focus-region="hand"] button:not(:disabled)')
+              ?.focus();
+          }}
+          onOpenMenu={() => setMenuOpen((current) => !current)}
+          menuOpen={menuOpen}
+          menuControls="game-menu"
+          onSetStops={setStops}
+          onUndo={targeting !== null && targeting.picks.length > 0 ? cancelTargeting : undefined}
+          shakeNonce={rejectionNonce}
+        />
+        {/* D5/D18: the menu is where settings, shortcuts, and CONCEDE live —
+            concede is deliberately never adjacent to the ordinary primary, and
+            it carries a two-step confirmation. The cluster's circular icon is
+            its handle, which is how §15's C7 duplication is resolved. */}
+        <GameMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          concede={view.valid_actions.find((action) => action.type === 'concede')}
+          onChoose={choose}
+          onShowShortcuts={() => setShowHelp(true)}
+          onShowSettings={() => setShowSettings(true)}
+          onShowArtSettings={() => setShowArtSettings(true)}
+        />
+      </div>
+
+      {/* Both absent when they have nothing to say — an empty stack and a quiet
+          log consume no battlefield width at all (#534). */}
+      <StackStage
+        view={view}
+        compact={compact}
+        targeting={
+          targeting ? { candidates: activeCandidates(targeting), onPick: pickTarget } : undefined
+        }
+        onInspect={setInspectedId}
+      />
+      <ActivitySurface view={view} onHighlight={highlight} highlightedId={highlightedId} />
+
+      {/* The decision's controls, near their subject. Absent unless a decision
+          is open — there is no permanent dock to park them in any more. */}
+      {decisionPlacement && (multiSelect || targeting) && (
+        <DecisionPlaque
+          testId="decision-plaque"
+          title={(multiSelect ?? targeting)!.action.label}
+          placement={decisionPlacement}
+          confirm={
+            multiSelect && !hasOptions(multiSelect)
+              ? {
+                  label: 'Confirm',
+                  onConfirm: confirmMultiSelect,
+                  // The ONE server-stated disablement (§3.2/D14): the slot's own
+                  // cardinality, which the server states as `count`.
+                  disabledReason: confirmDisabledReason(
+                    allSlotsSatisfied(multiSelect),
+                    msSlot?.prompt,
+                  ),
+                }
+              : undefined
+          }
+          onAdvance={
+            multiSelect && multiSelect.slots.length > 1 && !isLastSlot(multiSelect)
+              ? advanceSlot
+              : undefined
+          }
+          // §8: a decision the VIEW FORCES offers no cancel — there is no neutral
+          // state to return to, so the answer is the only way out (issue #451).
+          cancel={
+            forced !== null
+              ? undefined
+              : multiSelect
+                ? { onCancel: cancelMultiSelect }
+                : targeting
+                  ? { onCancel: cancelTargeting }
+                  : undefined
+          }
+        />
+      )}
 
       <DecisionSheet
         view={view}
@@ -726,22 +762,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
         </div>
       )}
 
-      {railSheet && (
-        <div className={styles.sheetBackdrop} data-testid={`rail-sheet-${railSheet}`}>
-          <div className={styles.sheet}>
-            <button
-              type="button"
-              className={styles.close}
-              aria-label="Close"
-              data-testid="rail-sheet-close"
-              onClick={() => setRailSheet(null)}
-            >
-              ×
-            </button>
-            {rail}
-          </div>
-        </div>
-      )}
       {browserData && (
         <ZoneBrowser
           title={browserData.title}

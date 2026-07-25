@@ -69,10 +69,16 @@ describe('LiveMatchTable', () => {
     expect(screen.getByTestId('live-match-table')).toBeTruthy();
     expect(screen.getByTestId('live-2-5d-plane')).toBeTruthy();
     expect(screen.getByTestId('effects-surface')).toBeTruthy();
-    expect(screen.getByTestId('top-bar')).toBeTruthy();
-    expect(screen.getByTestId('rail')).toBeTruthy();
+    // ADR 0032's anatomy: no permanent top bar and no permanent rail. The
+    // contextual surfaces stand in their place — the cluster is the one action
+    // home, the stack stage is drawn because this fixture's stack is two deep,
+    // and the activity surface replaces the rail's log column.
+    expect(screen.queryByTestId('top-bar')).toBeNull();
+    expect(screen.queryByTestId('rail')).toBeNull();
     expect(screen.getByTestId('prompt-banner')).toBeTruthy();
-    expect(screen.getByTestId('action-bar')).toBeTruthy();
+    expect(screen.getByTestId('control-cluster')).toBeTruthy();
+    expect(screen.getByTestId('stack-stage')).toBeTruthy();
+    expect(screen.getByTestId('activity-surface')).toBeTruthy();
     expect(screen.getByTestId('live-hand-card-c1')).toBeTruthy();
     expect(document.querySelector('canvas')).toBeNull();
   });
@@ -106,7 +112,7 @@ describe('LiveMatchTable', () => {
   it('drops ephemeral highlights when a new authoritative view arrives', () => {
     seed(SAMPLE_GAME_VIEW_JSON);
     render(<LiveMatchTable />);
-    const logReference = screen.getByTestId('log-ref-perm_xyz');
+    const logReference = screen.getByTestId('activity-ref-perm_xyz');
     fireEvent.click(logReference);
     expect(
       document.querySelector('[data-entity-id="perm_xyz"] [data-selected="true"]'),
@@ -231,7 +237,7 @@ describe('LiveMatchTable', () => {
     expect(choose).not.toHaveBeenCalled();
     expect(screen.getByTestId('target-atk_1').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByTestId('target-atk_2'));
-    fireEvent.click(screen.getByTestId('multiselect-confirm'));
+    fireEvent.click(screen.getByTestId('decision-plaque-confirm'));
 
     const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
     expect(action).toEqual(expect.objectContaining({ id: 'a5', token: 'h:atk0' }));

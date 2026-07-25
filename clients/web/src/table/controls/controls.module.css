@@ -1,0 +1,354 @@
+/*
+ * The match control **button family** (`docs/design/control-language.md` §3,
+ * issue #534, under ADR 0032).
+ *
+ * Two drawn shapes only, as the approved baselines draw them:
+ *
+ * - the **stadium pill**, which the large blue primary alone wears; and
+ * - the **chamfered rect** — 8 px 45° corner cuts — which every other control
+ *   wears: compact primary, confirm, cancel, secondary outline, utility pill.
+ *
+ * The **circle** (icon button) is the one non-button surface declared here; the
+ * hexagonal phase plaque lives in `plaque.module.css` beside it.
+ *
+ * Everything else in this file is a fill, a frame, or a size. There is no
+ * per-control stylesheet and no third shape — §3's whole point is that a reader
+ * can tell a control's rank from its silhouette without reading its label.
+ *
+ * ## Frame construction
+ *
+ * Every gold-framed control is TWO boxes, not a `border`: the `<button>` paints
+ * the 135° gold gradient and pads by the frame width; the inner `.face` paints
+ * the fill. A CSS border cannot carry a gradient, and `border-image` does not
+ * follow a `clip-path`, so a chamfered control with a bordered frame loses its
+ * corners. Padding one clipped box inside another keeps the 45° cut and the
+ * gradient together at every size.
+ *
+ * ## Plate versus hit box (D2)
+ *
+ * The `<button>` IS the hit box and is floored at `--rune-control-hit` (44 px);
+ * the `.face` is the drawn plate at `--rune-control-h` (36 px). Four controls the
+ * baselines draw — UNDO at 35, CONFIRM/CANCEL at 31, RESOLVE/RESPOND at 33 — are
+ * below the touch floor, so the drawn plate is preserved as the visual form and
+ * the transparent inset padding carries the target. Never set a height on the
+ * button: it would collapse the correction and ship a sub-floor target.
+ *
+ * Every dimension reads a token from `chrome/tokens.css`; this file declares no
+ * length and no colour of its own (ADR 0019).
+ */
+
+/* The 45° corner cut, shared by the chamfered family. Declared once as a custom
+   property so the frame box and the face box are clipped by the SAME polygon and
+   cannot drift apart at the corners. */
+.chamfered {
+  --cut: var(--rune-control-chamfer);
+  clip-path: polygon(
+    var(--cut) 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    var(--cut) 100%,
+    0 calc(100% - var(--cut)),
+    0 var(--cut)
+  );
+}
+
+/* ── The button ──────────────────────────────────────────────────────────────
+   The button is the HIT BOX and paints nothing. Its transparent inset padding is
+   what pads a 36 px plate out to the 44 px floor (D2); if the button painted the
+   frame gradient, that correction would fill with gold and the plate would read
+   as 44 px tall — the drawn proportion the baselines set would be lost. */
+.button {
+  display: inline-grid;
+  place-items: stretch;
+  box-sizing: border-box;
+  min-height: var(--rune-control-hit);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  cursor: pointer;
+  /* The hover lift and the pressed depression are the only transforms; both are
+     neutralized by `chrome/base.css` under `prefers-reduced-motion`. */
+  transition:
+    transform var(--rune-transition),
+    filter var(--rune-transition);
+}
+
+/* The frame: the drawn plate's gold edge. Centred in the hit box, so the
+   correction padding sits evenly above and below the plate. */
+.frame {
+  display: grid;
+  place-items: stretch;
+  align-self: center;
+  box-sizing: border-box;
+  padding: var(--rune-control-frame-w);
+  background: var(--rune-control-frame-gradient);
+}
+
+/* ── The face: the drawn plate ───────────────────────────────────────────── */
+.face {
+  position: relative;
+  display: flex;
+  gap: var(--rune-space-4);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--rune-control-h);
+  /* Clips the pending-server hairline to the plate. */
+  overflow: hidden;
+  padding: 0 var(--rune-space-6);
+  /* The 1 px inner line of §3.1's frame construction, drawn INSIDE the face so
+     it follows the chamfer with the rest of the box. */
+  box-shadow: inset 0 0 0 1px var(--rune-control-inner-line);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  /* Small caps, as every control label is drawn. */
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Variants: fill and size only ────────────────────────────────────────── */
+
+/* The large primary — the ONE stadium in the language, and the only control
+   that is ever blue-filled at full width (§4.1: at most one on screen). */
+.primary {
+  width: var(--rune-control-w-cluster);
+  min-height: var(--rune-control-h-primary);
+}
+
+.primary .frame {
+  padding: var(--rune-primary-frame-w);
+  border-radius: var(--rune-radius-pill);
+  background: var(--rune-primary-frame);
+  box-shadow: 0 0 var(--rune-space-6) var(--rune-primary-glow);
+}
+
+.primary .face {
+  min-height: calc(var(--rune-control-h-primary) - 2 * var(--rune-primary-frame-w));
+  border-radius: var(--rune-radius-pill);
+  /* The restrained bevel: a vertical enamel gradient with a pale inner rim at
+     the TOP EDGE ONLY and a dark outer edge, exactly as drawn. */
+  background: linear-gradient(
+    to bottom,
+    var(--rune-primary-face-top),
+    var(--rune-primary-face-bottom)
+  );
+  box-shadow:
+    inset 0 1px 0 var(--rune-primary-rim),
+    inset 0 0 0 1px var(--rune-control-inner-line);
+  color: var(--rune-primary-label);
+  font-size: var(--rune-type-action);
+}
+
+/* The compact primary (zones panel 10 RESOLVE): same enamel, chamfered, paired
+   width. §4.4/D7 — the cluster's primary switches to this form while the stack
+   is non-empty, so the pair reads against the stack stage above it. */
+.primaryCompact {
+  width: var(--rune-control-w-pair);
+}
+
+.primaryCompact .face {
+  background: linear-gradient(
+    to bottom,
+    var(--rune-primary-face-top),
+    var(--rune-primary-face-bottom)
+  );
+  color: var(--rune-primary-label);
+  font-size: var(--rune-type-heading);
+}
+
+.confirm,
+.cancel,
+.secondary,
+.utility {
+  width: var(--rune-control-w-pair);
+}
+
+.confirm .face {
+  background: var(--rune-confirm-face);
+}
+
+.cancel .face {
+  background: var(--rune-danger-face);
+}
+
+/* The outline secondary (RESPOND) and the utility pill (UNDO) are the same
+   drawn control; they differ only in what they do, which is why §3.1 gives them
+   one row each and one fill between them. */
+.secondary .face,
+.utility .face {
+  background: var(--rune-control-plate);
+}
+
+/* ── The icon button ─────────────────────────────────────────────────────────
+   44 ⌀ exactly — the control that pins the spec's 1 baseline px = 1 CSS px scale
+   anchor (D1). It is the game-menu handle (D5), which is what makes the compact
+   cluster coherent: plaque + menu are the two things always available. */
+.icon {
+  width: var(--rune-control-hit);
+  height: var(--rune-control-hit);
+  border-radius: 50%;
+}
+
+.icon .frame {
+  border-radius: 50%;
+}
+
+.icon .face {
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--rune-control-plate);
+  font-size: var(--rune-type-title);
+  line-height: 1;
+}
+
+/* ── The state matrix (§3.2) ─────────────────────────────────────────────────
+   Every delta below is ADDITIVE to the rest state, and every one carries a
+   non-colour channel: a lift, a depression, a ring, a filled bar, a hairline, a
+   chip, or a reason. `AGENTS.md` and `visual-system.md` §7 both require it, and
+   a state that reads only as a hue is a bug, not a style choice. */
+
+.button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.92);
+}
+
+.button:active:not(:disabled) .face {
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px var(--rune-control-inner-line);
+}
+
+/* The focus ring is drawn OUTSIDE the frame and is never suppressed (D15). The
+   baselines show no keyboard state at all, so this is the spec's own decision
+   rather than a transcription — which is exactly why it may not be traded away
+   for a cleaner rest state. */
+.button:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
+}
+
+/* Selected / toggled: the gold wash plus a filled inner bar along the bottom
+   edge — the shape channel, so the state survives without hue. */
+.button[aria-pressed='true'] .face {
+  background-image: linear-gradient(var(--rune-gold-fill), var(--rune-gold-fill));
+  box-shadow:
+    inset 0 -3px 0 var(--rune-accent-gold),
+    inset 0 0 0 1px var(--rune-control-inner-line);
+}
+
+/* Disabled is RARE BY CONSTRUCTION (§3.2, D14): an action the server has not
+   offered is not rendered at all. The single case that renders disabled is a
+   `PromptOption.requires` that is not yet satisfied, whose reason the server
+   states and the component prints verbatim. Any other greyed control is a bug. */
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.button:disabled .frame {
+  background: var(--rune-border);
+}
+
+/* Pending-server: a hairline sweeps the bottom edge — a SHAPE, not a hue — and
+   the control carries `aria-busy`. The lock is local and non-load-bearing
+   (D13/GAP-5): the protocol has no submission ack, so this can never be
+   authoritative and is released by any inbound view or after 5 s. */
+.button[aria-busy='true'] .face {
+  opacity: 0.7;
+}
+
+.sweep {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  height: 2px;
+  background: var(--rune-primary-rim);
+  animation: sweep var(--rune-control-sweep) linear infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(350%);
+  }
+}
+
+/* Deadline warning: the frame turns to the targeting accent and a countdown chip
+   with real digits is appended — the digits are the non-colour channel. */
+.button[data-deadline='true'] .frame {
+  background: var(--rune-targeting);
+}
+
+.chip {
+  padding: 0 var(--rune-space-2);
+  border-radius: var(--rune-radius-xs);
+  background: rgba(0, 0, 0, 0.4);
+  font-size: var(--rune-type-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rejection recovery: a ≤3 px shake, twice, and the non-blaming toast the shell
+   already owns. A `valid_actions`-driven client can only be rejected by a
+   stale-view race, never by user error, so the tone stays informational. */
+.button[data-shake='true'] {
+  animation: shake var(--rune-control-shake) ease-in-out;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-3px);
+  }
+
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+/* The keyboard hint that rides the pass primary (the shipped `P` binding). */
+.hint {
+  padding: 0 var(--rune-space-2);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-xs);
+  color: var(--rune-text-muted);
+  font-family: var(--rune-font-mono);
+  font-size: var(--rune-type-micro);
+}
+
+/* The server-stated reason a disabled option carries (the ONE disabled case). */
+.reason {
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-micro);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweep {
+    animation: none;
+    width: 100%;
+  }
+
+  .button[data-shake='true'] {
+    animation: none;
+  }
+}

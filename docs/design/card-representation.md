@@ -153,6 +153,7 @@ information and never encodes ownership (`visual-system.md` §2).
 | Property | Value |
 | --- | --- |
 | Inset from card edge | 0.063 · W each side |
+| Present at | `field` and `support`; at `mini` the plate is the color-identity strip and at `chip` there is no band at all (§8.4) |
 | Height (permanent) | 0.100 · H, floored (§9.3) |
 | Height (full card) | 0.077 · H, floored |
 | Fill | `SURFACES.plate` parchment, `RUNE_GOLD.plateRim` hairline rim |
@@ -340,7 +341,7 @@ of the card width `W` or height `H`; the face resolves them to px per tier.
 | **Blocking** | `INDICATORS.blockingBar` | **left edge bar** + doubled-stroke link | Carried from #332/#339. |
 | **Unavailable / ineligible** | — | dim | `FRAME.dimmedAlpha` multiplicative, non-interactive, during an active prompt only. |
 | **Summoning sick** | — | marker glyph plate | A dedicated glyph plate in the status band's left group (not a dim), so it survives at every tier and never competes with tap. Replaces `FRAME.sickAlpha` for the new frame. |
-| **Latent activated ability** | `INDICATORS.abilityMarker` | marker dot on the title bar's right end | Carried; distinct from the gold bar (latent vs live). |
+| **Latent activated ability** | `INDICATORS.abilityMarker` | marker dot on the title bar's right end — the color-identity strip's right end where the strip replaces it (§8.4) | Carried; distinct from the gold bar (latent vs live). |
 | **Commander** | — | gold crown plate, status band left group | Requires a wire field — see §14 gap G7. |
 | **Face-down permanent** | — | card back in the permanent silhouette | Requires a wire field — see §14 gap G8. |
 
@@ -416,7 +417,7 @@ degrades.
 | Receiver land tile | `field` land | 96 × 66 | — | — | — | — | 4 |
 | Focused opponent permanent | `support` | 78 × 78 | 11 | — | — | 12 | 9 |
 | Focused opponent land tile | `support` land | 78 × 54 | — | — | — | — | 4 |
-| Wing permanent | `mini` | 62 × 62 | 11 | — | — | 12 | 8 |
+| Wing permanent | `mini` | 62 × 62 | — (strip, §8.4) | — | — | 12 | 8 |
 | Digest chip | `chip` | 48 × 48 | — | — | — | 12 | 4 |
 | Hand card | `hand` | 116 × 162 | 13 | 11 | 11 | 14 | exempt |
 | Stack entry | `stack` | 104 × 145 | 12 | 11 | 11 | 13 | exempt |
@@ -432,7 +433,7 @@ text is already at reading size; it grows more slowly than the plane).
 | Receiver permanent | `field` | 126 × 126 | 12 | — | — | 15 |
 | Receiver land tile | `field` land | 126 × 87 | — | — | — | — |
 | Focused opponent permanent | `support` | 102 × 102 | 11 | — | — | 13 |
-| Wing permanent | `mini` | 81 × 81 | 11 | — | — | 12 |
+| Wing permanent | `mini` | 81 × 81 | — (strip, §8.4) | — | — | 12 |
 | Hand card | `hand` | 139 × 194 | 15 | 12 | 12 | 17 |
 | Stack entry | `stack` | 125 × 175 | 14 | 12 | 12 | 15 |
 | Inspect | `inspect` | 312 × 437 | 20 | 14 | 14 | 22 |
@@ -462,10 +463,22 @@ Consequences, stated so no implementation re-derives them:
 
 - At `field` (W = 96) the authored name size would be 7.1 px; it clamps to 11 px
   and the title bar grows from 9.6 px to 15 px.
+- At `mini` (W = 62) the clamp turns the tier inside out: an 11 px name grows the
+  title bar to 14.9 px and a 12 px P/T grows the status band to 16.2 px, so
+  **half** the card's height is type and the art window falls to 0.357 · H
+  against an authored 0.647. The `chip` treatment therefore applies one rung
+  earlier — the title bar is **replaced** by the color-identity strip, the same
+  band box at its authored 0.100 · H, carrying no text and so taking no floor.
+  The art window absorbs the difference (0.496 · H) and identity moves to the
+  accent + glyph + inspect path. The strip keeps the title band's two overlay
+  channels, the attacking top bar and the latent-ability marker dot, so no
+  server-computed channel is lost with the name. Every tier above `mini` keeps
+  the parchment name plate at the 11 px floor.
 - At `chip` (W = 48) the name cannot reach the 11 px floor inside the band at
-  all: the title bar is **replaced** by a color-identity strip plus the basic-land
-  or type glyph, and identity moves to the glyph + inspect path (budgets
-  §Accessibility, carried).
+  all, and the band no longer earns even a strip: the title bar is **dropped**,
+  the art window's own 100% identity rule (§3.4) carries the accent alongside the
+  basic-land or type glyph, and identity moves to the glyph + inspect path
+  (budgets §Accessibility, carried).
 - Every battlefield tier keeps a ≥ 44 px hit target regardless of drawn size.
 - Text scaling to 125% grows the floors; the art window absorbs it. Critical
   values never clip.
@@ -483,7 +496,7 @@ transform/opacity.
 | Tier | Nodes | Composition |
 | --- | --- | --- |
 | `chip` | **4** | root, inner, art/glyph, consolidated badge |
-| `mini` | **8** | root, inner, art, title, status band, glyph `<svg>` + path, P/T |
+| `mini` | **8** | root, inner, art, **color-identity strip** (§8.4), status band, glyph `<svg>` + path, P/T |
 | `support` | **9** | + consolidated badge row |
 | `field` | **10** | + top tab (`TOKEN` / `×N`) |
 | `field` land tile | **4** | root, inner, art, badge |
@@ -829,6 +842,13 @@ or inconsistent. This is the maintainer's review list.
 23. **Node counts per tier** (§9) and the two-node headroom rule at `field`.
 24. **Degradation step 4 is a no-op for Rune's own battlefield face** (there are no
     battlefield rules to shorten); it applies only in full-card art mode.
+25. **The color-identity strip replaces the title bar at `mini`, not only at
+    `chip`** (§8.4): at W = 62 the 11 px name floor and the 12 px P/T floor
+    together claimed half the card's height and left the art window at
+    0.357 · H against an authored 0.647. **Rejected alternative:** keep the name
+    plate and accept a tier that is mostly type. The strip is the `chip`
+    treatment applied one rung earlier, not a new device — and `chip` itself
+    drops the band entirely, one rung further down the same ladder.
 
 ---
 

@@ -103,19 +103,33 @@ export interface HueFamily {
 /**
  * The interaction accents as semantic hue families (visual-system §2): each hue
  * owns one meaning-group. Gold stays disciplined — every currently offered
- * interaction plus the priority holder, never decorative; selection keeps its
- * own family because it co-occurs with targeting on screen.
+ * interaction, never decorative; selection keeps its own family because it
+ * co-occurs with targeting on screen.
+ *
+ * **Priority is blue, not gold** (maintainer ruling, issue #534). It was listed
+ * under gold here and in `visual-system.md`, but `seat-identity.md` §6.1
+ * transcribes approved baseline panel 2 as a blue-white double glow ring, and
+ * that is what `live-plane-cluster.module.css` has always drawn — so the token
+ * disagreed with both the baseline and the shipped pixels. Gold also already
+ * carries the decision-deadline arc, which rides directly on top of the
+ * priority band, so keeping both there put two states in one hue in adjacent
+ * placements.
+ *
+ * Priority and selection therefore share the blue family and are separated by
+ * shape and placement, never by hue: priority is a ring drawn *concentric and
+ * outside* a seat's portrait medallion — a placement no other state uses —
+ * while selection is a stroke on a card's own outline plus elevation.
  */
 export const SCENE_HUES = {
   gold: {
     value: '#F2C94C',
     meaning: 'you can act',
-    states: ['actionable', 'priority'],
+    states: ['actionable'],
   },
   blue: {
     value: '#7FB2E5',
     meaning: 'your attention',
-    states: ['selection'],
+    states: ['selection', 'priority'],
   },
   orange: {
     value: '#E0784A',

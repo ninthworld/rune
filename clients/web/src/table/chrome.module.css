@@ -2865,9 +2865,11 @@ button.summaryTile:focus-visible {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: calc(var(--shell-top-h) + 16px + env(safe-area-inset-top, 0px))
-    calc(16px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px))
-    calc(16px + env(safe-area-inset-left, 0px));
+  /* #534: this used to add `--shell-top-h` so the sheet cleared the permanent
+     top bar. That bar is gone, so the backdrop clears the browser's own inset
+     and the ordinary gutter only. */
+  padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px))
+    calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
   background: var(--rune-scrim);
   z-index: var(--rune-z-decision);
 }

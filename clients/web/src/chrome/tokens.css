@@ -157,9 +157,95 @@
    * match shell root; these are the fallbacks for chrome rendered outside it
    * (the spectator shell, isolated component tests). Keep them in step with
    * `SHELL` — the same test asserts they agree. */
-  --shell-top-h: 56px;
   --shell-hand-card-w: 116px;
   --shell-hand-gutter: 4px;
+
+  /* ── Match controls (control-language.md §2, issue #534) ───────────────────
+   * The contextual control language of ADR 0032: the lower-right cluster's
+   * primary, its utility controls, the phase plaque, and the drag/drop
+   * affordances. Every value is transcribed from `docs/design/control-language.md`
+   * §2.1/§2.2, which sampled them off the approved baselines committed in
+   * `e58300b`. The spec's scale anchor (D1) is 1 baseline px = 1 CSS px, pinned
+   * by the 44px icon button, so these are fixed CSS lengths and NOT viewport
+   * fractions — board geometry scales, controls do not.
+   *
+   * `table/controls/controlTokens.ts` mirrors the geometry half of this block and
+   * `controlTokens.test.ts` parses these declarations and fails if the two drift,
+   * exactly as the z-ladder above is kept honest by `shellLayout.test.ts`. */
+
+  /* Control color (§2.1). */
+  --rune-primary-face-top: #315dbb;
+  --rune-primary-face-bottom: #2755b1;
+  --rune-primary-frame: #1c3977;
+  --rune-primary-rim: rgba(232, 240, 255, 0.45);
+  --rune-primary-glow: rgba(36, 133, 240, 0.4);
+  /* The primary's label, the one type colour that is not `--rune-text` — the
+   * enamel face is light enough that the ordinary body colour goes muddy on it
+   * (§3.1's primary row names it explicitly). */
+  --rune-primary-label: #f4f7ff;
+  /* The 1px inner line every framed control draws inside its plate (§3.1's
+   * frame construction), which is what keeps a chamfered edge from reading as
+   * a flat cut. */
+  --rune-control-inner-line: rgba(0, 0, 0, 0.5);
+  --rune-confirm-face: #2d7a4c;
+  --rune-confirm-frame: #1c4e31;
+  --rune-danger-face: #82412f;
+  --rune-danger-frame: #5a2c20;
+  --rune-control-plate: #1b2430;
+  --rune-control-frame: #8f8844;
+  --rune-control-frame-hi: #c6b472;
+  --rune-control-frame-lo: #5e5a31;
+  --rune-pip-on: #2c8cfa;
+  --rune-pip-off: rgba(232, 230, 225, 0.22);
+  --rune-chevron: #275bbe;
+  --rune-drag-glow: #2485f0;
+  --rune-origin-dash: #5e90c5;
+  --rune-drop-valid: #8fc49a;
+  --rune-drop-valid-fill: rgba(143, 196, 154, 0.16);
+  --rune-drop-invalid: #da866c;
+  /* §11/D16: the invalid state DIMS rather than reddens — the no-entry glyph
+   * carries the meaning, so it survives a color-blind or Lite quality path. */
+  --rune-drop-invalid-fill: rgba(0, 0, 0, 0.28);
+
+  /* Control geometry and type (§2.2). */
+  --rune-control-h-primary: 56px;
+  --rune-control-h: 36px;
+  --rune-control-hit: 44px;
+  --rune-control-w-cluster: 268px;
+  --rune-control-w-pair: 118px;
+  --rune-control-chamfer: 8px;
+  --rune-plaque-h: 68px;
+  --rune-plaque-point: 22px;
+  /* The decision plaque's drawn plate width (§3.1: "≥ 251 × content"), measured
+   * off control-ui panel 7. Mirrored by `table/decision/plaqueAnchor.ts`'s
+   * `PLAQUE.minW`, which sizes the plaque BEFORE layout so the §10.1 anchoring
+   * can reason about a rect the stylesheet will actually draw. */
+  --rune-plaque-min-w: 251px;
+  --rune-control-frame-w: 2px;
+  --rune-primary-frame-w: 3px;
+  --rune-pip-size: 11px;
+  --rune-pip-pitch: 21px;
+  --rune-type-action: 24px;
+  --rune-drop-radius: var(--rune-radius-lg);
+  --rune-drop-tick: 14px;
+  --rune-drop-stroke: 2px;
+  /* The cluster's own placement (§3.3): 268px column, 28px from the viewport
+   * edge, 12px between rows. */
+  --rune-cluster-margin: 28px;
+  --rune-cluster-gap: 12px;
+  /* The two control motions §3.2 bounds by name: the pending-server hairline's
+   * loop (≤600ms) and the rejection-recovery shake (≤200ms). Tokens rather than
+   * literals so `prefers-reduced-motion` and any future motion-scale setting
+   * have one place to reach, exactly as `--rune-transition` does. */
+  --rune-control-sweep: 600ms;
+  --rune-control-shake: 200ms;
+  /* The 135° gold frame every chamfered control and the plaque wear (§3.1). */
+  --rune-control-frame-gradient: linear-gradient(
+    135deg,
+    var(--rune-control-frame-hi),
+    var(--rune-control-frame),
+    var(--rune-control-frame-lo)
+  );
 
   /* ── Interaction ───────────────────────────────────────────────────────────*/
   /* Minimum touch target per AGENTS.md (44px), applied to every affordance. */

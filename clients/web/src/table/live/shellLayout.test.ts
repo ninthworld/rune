@@ -21,10 +21,11 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { CONTROL } from '../controls/controlTokens';
 import {
   LAYER,
   SHELL,
-  bottomShellHeight,
+  bottomChromeHeight,
   handBandHeight,
   handCardBounds,
   handFanFraction,
@@ -53,33 +54,28 @@ const SUPPORTED = [
   { label: 'phone portrait 390×844', width: 390, height: 844 },
 ];
 
-/** Every named region of a composition, as (name, rect) pairs. */
-function regionsOf(viewport: { width: number; height: number }): [string, ShellRect][] {
+/** The chrome regions that float over the scene, as (name, rect) pairs. */
+function chromeOf(viewport: { width: number; height: number }): [string, ShellRect][] {
   const bands = shellBands(viewport);
-  const named: [string, ShellRect][] = [
-    ['top', bands.top],
-    ['scene', bands.scene],
-    ['identity', bands.identity],
+  return [
     ['hand', bands.hand],
-    ['decisions', bands.decisions],
+    ['cluster', bands.cluster],
   ];
-  if (bands.rail) named.push(['rail', bands.rail]);
-  return named;
 }
 
 describe('shell bands — invariant I1: containment and non-overlap', () => {
   for (const vp of SUPPORTED) {
-    it(`keeps every region inside the viewport at ${vp.label}`, () => {
+    it(`keeps every chrome region inside the viewport at ${vp.label}`, () => {
       const bands = shellBands(vp);
-      for (const [name, rect] of regionsOf(vp)) {
+      for (const [name, rect] of chromeOf(vp)) {
         expect(rect.w, `${name} width`).toBeGreaterThan(0);
         expect(rect.h, `${name} height`).toBeGreaterThan(0);
         expect(rectContains(bands.viewport, rect), `${name} inside viewport`).toBe(true);
       }
     });
 
-    it(`never overlaps two fixed regions at ${vp.label}`, () => {
-      const named = regionsOf(vp);
+    it(`never overlaps two chrome regions at ${vp.label}`, () => {
+      const named = chromeOf(vp);
       for (let i = 0; i < named.length; i += 1) {
         for (let j = i + 1; j < named.length; j += 1) {
           const [aName, a] = named[i]!;
@@ -89,11 +85,29 @@ describe('shell bands — invariant I1: containment and non-overlap', () => {
       }
     });
 
-    it(`leaves the battlefield at or above the plane's staging floor at ${vp.label}`, () => {
-      // `LivePlane` clamps its staged height to `sceneMinH`; a scene band shorter
-      // than that stages a plane taller than the box that clips it, cutting off
-      // the receiver's own band.
-      expect(shellBands(vp).scene.h).toBeGreaterThanOrEqual(SHELL.sceneMinH);
+    it(`never lets chrome stand on the staging box at ${vp.label}`, () => {
+      // The invariant that replaced "no region overlaps another" when the scene
+      // grew to fill the viewport. Chrome floats OVER the scene by design; what
+      // it may never do is cover a staged object, and the staging box is the
+      // rect the plane is allowed to put those in.
+      const bands = shellBands(vp);
+      for (const [name, rect] of chromeOf(vp)) {
+        expect(rectsOverlap(rect, bands.staging), `${name} covers staged objects`).toBe(false);
+      }
+    });
+
+    it(`gives the battlefield the whole viewport at ${vp.label}`, () => {
+      // ADR 0032's first consequence: cards get the viewport back. The arena is
+      // visible behind the controls rather than ending where they begin.
+      const bands = shellBands(vp);
+      expect(bands.scene).toEqual(bands.viewport);
+    });
+
+    it(`leaves the staging box at or above the plane's floor at ${vp.label}`, () => {
+      // `LivePlane` clamps its staged height to `sceneMinH`; a staging box
+      // shorter than that stages a plane taller than the box that clips it,
+      // cutting off the receiver's own band.
+      expect(shellBands(vp).staging.h).toBeGreaterThanOrEqual(SHELL.sceneMinH);
     });
   }
 
@@ -102,15 +116,44 @@ describe('shell bands — invariant I1: containment and non-overlap', () => {
     const bands = shellBands({ width: 390, height: 844 }, inset);
     expect(bands.viewport).toEqual({ x: 0, y: 47, w: 390, h: 763 });
     for (const [name, rect] of [
-      ['top', bands.top],
       ['scene', bands.scene],
       ['hand', bands.hand],
-      ['decisions', bands.decisions],
+      ['cluster', bands.cluster],
     ] as [string, ShellRect][]) {
       expect(rectContains(bands.viewport, rect), `${name} inside safe viewport`).toBe(true);
     }
-    // The hand band's bottom clears the home indicator.
-    expect(bands.hand.y + bands.hand.h).toBeLessThanOrEqual(844 - inset.bottom);
+    // The cluster's bottom clears the home indicator.
+    expect(bands.cluster.y + bands.cluster.h).toBeLessThanOrEqual(844 - inset.bottom);
+  });
+});
+
+describe('shell bands — the stack stage claims width only when drawn', () => {
+  // #534: "Empty stack/log consumes no permanent battlefield width." Reserving
+  // the right-hand column unconditionally would be simpler and would fail this.
+  it('costs the battlefield nothing while the stack is empty', () => {
+    const empty = shellBands({ width: 1440, height: 900 });
+    expect(empty.staging.w).toBe(empty.viewport.w);
+  });
+
+  it('yields the right-hand column once the stack is drawn', () => {
+    const vp = { width: 1440, height: 900 };
+    const empty = shellBands(vp);
+    const live = shellBands(vp, {}, { stackPresent: true });
+    expect(live.staging.w).toBeLessThan(empty.staging.w);
+    // Exactly the cluster column plus its margins — the stack rail IS that
+    // column and the cluster sits at its foot (control-language §4.4/D7).
+    expect(empty.staging.w - live.staging.w).toBe(live.cluster.w + 2 * CONTROL.clusterMargin);
+  });
+
+  it('keeps the staging box clear of chrome whether or not the stack is drawn', () => {
+    const vp = { width: 1280, height: 800 };
+    for (const stackPresent of [false, true]) {
+      const bands = shellBands(vp, {}, { stackPresent });
+      expect(rectsOverlap(bands.hand, bands.staging), `hand, stack=${stackPresent}`).toBe(false);
+      expect(rectsOverlap(bands.cluster, bands.staging), `cluster, stack=${stackPresent}`).toBe(
+        false,
+      );
+    }
   });
 });
 
@@ -122,22 +165,24 @@ describe('shell bands — the compact composition', () => {
     expect(isCompactShell({ width: 1180 })).toBe(false);
   });
 
-  it('gives the hand its own full-width row, clear of the decisions column', () => {
-    // The shipped compact grid spanned the hand under an opaque decisions panel
-    // that covered most of a seven-card fan at 390×844.
+  it('stacks the hand above the cluster rather than beside it', () => {
+    // A phone has no room for a 268px control column beside a seven-card fan,
+    // so the compact composition gives the hand the full width and lifts it
+    // clear of the cluster instead.
     const bands = shellBands({ width: 390, height: 844 });
     expect(bands.compact).toBe(true);
     expect(bands.hand.w).toBe(390);
     expect(bands.hand.x).toBe(0);
-    expect(rectsOverlap(bands.hand, bands.decisions)).toBe(false);
-    expect(rectsOverlap(bands.hand, bands.identity)).toBe(false);
-    // The hand row sits below the controls row, not behind it.
-    expect(bands.hand.y).toBeGreaterThanOrEqual(bands.decisions.y + bands.decisions.h);
+    expect(rectsOverlap(bands.hand, bands.cluster)).toBe(false);
+    expect(bands.hand.y + bands.hand.h).toBeLessThanOrEqual(bands.cluster.y);
   });
 
-  it('drops the rail on the compact composition and keeps it otherwise', () => {
-    expect(shellBands({ width: 390, height: 844 }).rail).toBeUndefined();
-    expect(shellBands({ width: 1280, height: 800 }).rail?.w).toBe(SHELL.railW);
+  it('keeps the hand beside the cluster on the full composition', () => {
+    const bands = shellBands({ width: 1440, height: 900 });
+    expect(bands.compact).toBe(false);
+    expect(rectsOverlap(bands.hand, bands.cluster)).toBe(false);
+    // Side by side, sharing the bottom edge — not stacked.
+    expect(bands.hand.x + bands.hand.w).toBeLessThanOrEqual(bands.cluster.x);
   });
 });
 
@@ -203,17 +248,28 @@ describe('hand staging — invariant I2: the hand fits its band', () => {
 
 describe('shell style variables', () => {
   it('publishes the geometry the stylesheet lays out from', () => {
-    const full = shellStyleVars({ width: 1280 }) as Record<string, string>;
-    expect(full['--shell-top-h']).toBe(`${SHELL.topH}px`);
-    expect(full['--shell-bottom-h']).toBe(`${bottomShellHeight(false)}px`);
-    expect(full['--shell-hand-h']).toBe(`${handBandHeight()}px`);
-    expect(full['--shell-hand-card-w']).toBe(`${SHELL.handCardW}px`);
-    expect(full['--shell-hand-floor']).toBe(`${SHELL.handFloor}px`);
-    expect(full['--shell-rail-w']).toBe(`${SHELL.railW}px`);
+    const vp = { width: 1440, height: 900 };
+    const bands = shellBands(vp);
+    const vars = shellStyleVars(vp) as Record<string, string>;
+    // The stylesheet positions the two chrome regions absolutely from these;
+    // it declares no dimension of its own, so what the tests reason about is
+    // what ships.
+    expect(vars['--shell-hand-w']).toBe(`${bands.hand.w}px`);
+    expect(vars['--shell-cluster-w']).toBe(`${bands.cluster.w}px`);
+    expect(vars['--shell-cluster-h']).toBe(`${bands.cluster.h}px`);
+    expect(vars['--shell-bottom-chrome-h']).toBe(`${bottomChromeHeight()}px`);
+    expect(vars['--shell-hand-h']).toBe(`${handBandHeight()}px`);
+    expect(vars['--shell-hand-card-w']).toBe(`${SHELL.handCardW}px`);
+    expect(vars['--shell-hand-floor']).toBe(`${SHELL.handFloor}px`);
+  });
 
-    const compact = shellStyleVars({ width: 390 }) as Record<string, string>;
-    expect(compact['--shell-top-h']).toBe(`${SHELL.topHCompact}px`);
-    expect(compact['--shell-bottom-h']).toBe(`${bottomShellHeight(true)}px`);
+  it('narrows the published hand width on the full composition only', () => {
+    // The hand yields the cluster's column when there is room to sit beside it,
+    // and takes the full width when there is not.
+    const full = shellStyleVars({ width: 1440, height: 900 }) as Record<string, string>;
+    const compact = shellStyleVars({ width: 390, height: 844 }) as Record<string, string>;
+    expect(full['--shell-hand-w']).not.toBe('1440px');
+    expect(compact['--shell-hand-w']).toBe('390px');
   });
 });
 
@@ -266,7 +322,6 @@ describe('stacking ladder — invariant I3', () => {
   });
 
   it('keeps the tokens.css shell fallbacks in step with SHELL', () => {
-    expect(tokens).toContain(`--shell-top-h: ${SHELL.topH}px;`);
     expect(tokens).toContain(`--shell-hand-card-w: ${SHELL.handCardW}px;`);
     expect(tokens).toContain(`--shell-hand-gutter: ${SHELL.handGutter}px;`);
   });
@@ -312,35 +367,51 @@ describe('stylesheet contract', () => {
     expect(shell).toContain('height: 100dvh;');
     expect(shell).toContain('env(safe-area-inset-top, 0px)');
     expect(shell).toContain('env(safe-area-inset-bottom, 0px)');
-    // `100vw` includes a classic desktop scrollbar and pushes the rail off-screen.
+    // `100vw` includes a classic desktop scrollbar and overflows the shell.
     expect(shell).not.toContain('width: 100vw;');
   });
 
-  it('declares no dimensional literal in the shell grid', () => {
-    const grid = shell.slice(shell.indexOf('.shell {'), shell.indexOf('.top {'));
-    expect(grid).toContain('grid-template-rows: var(--shell-top-h)');
-    expect(grid).toContain('var(--shell-bottom-h);');
-    expect(grid).toContain('grid-template-columns: minmax(0, 1fr) var(--shell-rail-w);');
+  it('carves no permanent track for retired chrome', () => {
+    // ADR 0032's removal, asserted at the stylesheet rather than by eye. If any
+    // of these comes back as a grid track, the battlefield stops owning the
+    // viewport and #534's first acceptance criterion silently regresses.
+    for (const retired of [
+      '--shell-top-h',
+      '--shell-rail-w',
+      '--shell-bottom-h',
+      '--shell-identity-w',
+      '--shell-decisions-min-w',
+      '--shell-controls-h',
+    ]) {
+      expect(shell, `${retired} is still laid out`).not.toContain(retired);
+    }
+    expect(shell).not.toContain('grid-template-rows');
   });
 
-  it('gives the compact hand its own row rather than a shared cell', () => {
-    const compactBlock = shell.slice(shell.indexOf('@media (max-width: 899px)'));
+  it('sizes the two chrome regions from the published rects', () => {
     const rule = (selector: string): string =>
-      /\{([^}]*)\}/.exec(compactBlock.slice(compactBlock.indexOf(`${selector} {`)))?.[1] ?? '';
-    expect(rule('  .hand')).toContain('grid-row: 2;');
-    expect(rule('  .decisions')).toContain('grid-row: 1;');
-    // The shipped rule was `grid-row: 1 / 3` plus a z-index, which let the
-    // opaque decisions panel paint over the fan.
-    expect(rule('  .decisions')).not.toContain('grid-row: 1 / 3;');
-    expect(rule('  .decisions')).not.toContain('z-index');
+      /\{([^}]*)\}/.exec(shell.slice(shell.indexOf(`${selector} {`)))?.[1] ?? '';
+    expect(rule('.hand')).toContain('width: var(--shell-hand-w);');
+    expect(rule('.hand')).toContain('height: var(--shell-hand-h);');
+    expect(rule('.cluster')).toContain('width: var(--shell-cluster-w);');
+    expect(rule('.cluster')).toContain('var(--rune-cluster-margin)');
   });
 
-  it('reserves the top-bar band and the safe area in the decision sheet layer', () => {
+  it('lifts the compact hand clear of the cluster instead of sharing a cell', () => {
+    // The shipped compact grid let an opaque decisions panel span both rows and
+    // paint over most of a seven-card fan at 390x844 — the cards the mulligan
+    // asked about were covered by the prompt asking about them.
+    const compactBlock = shell.slice(shell.indexOf('@media (max-width: 899px)'));
+    expect(compactBlock).toContain('var(--shell-cluster-h)');
+    expect(compactBlock).not.toContain('.decisions');
+  });
+
+  it('reserves the safe area in the decision sheet layer', () => {
     const backdrop = chrome.slice(
       chrome.indexOf('.sheetBackdrop {'),
       chrome.indexOf('.sheetPanel {'),
     );
-    expect(backdrop).toContain('calc(var(--shell-top-h) + 16px + env(safe-area-inset-top, 0px))');
+    expect(backdrop).toContain('calc(16px + env(safe-area-inset-top, 0px))');
     expect(backdrop).toContain('z-index: var(--rune-z-decision);');
     // The pass-through variant blocks nothing, so it must not dim the hand it
     // is asking the player to read.

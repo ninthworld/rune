@@ -108,23 +108,25 @@ describe('match shell occlusion', () => {
         const sheet = screen.getByTestId('decision-sheet');
 
         // The sheet must be a SIBLING of the shell regions. Anything rendered
-        // inside `.top`, `.scene`, `.rail`, or `.bottom` is trapped in that
-        // region's stacking context and can never outrank it, no matter what
-        // z-index it declares.
+        // inside `.scene`, `.hand`, or `.cluster` is trapped in that region's
+        // stacking context and can never outrank it, no matter what z-index it
+        // declares. ADR 0032 removed the permanent regions but NOT this rule —
+        // it is the whole reason contextual chrome is safe.
         expect(sheet.parentElement).toBe(shell);
-        for (const region of ['top', 'hand', 'actions']) {
+        for (const region of ['hand', 'actions']) {
           const el = shell.querySelector(`[data-focus-region="${region}"]`);
           expect(el?.contains(sheet), `sheet nested inside ${region}`).not.toBe(true);
         }
 
         // The whole decision is present at once: prompt, both named options, and
-        // the dock carrying the selection state.
+        // the control cluster — the relocated one action home (ADR 0032) that
+        // replaced the dock this assertion used to name.
         expect(screen.getByText('Keep this hand or take a mulligan?')).toBeTruthy();
         const keep = screen.getByTestId<HTMLButtonElement>('multiselect-option-keep');
         const mulligan = screen.getByTestId<HTMLButtonElement>('multiselect-option-mulligan');
         expect(mulligan.disabled).toBe(false);
         expect(keep.disabled).toBe(true); // owes exactly one bottomed card
-        expect(screen.getByTestId('action-bar')).toBeTruthy();
+        expect(screen.getByTestId('control-cluster')).toBeTruthy();
         expect(screen.getByTestId('prompt-banner').textContent).toContain('bottom');
       });
     }
@@ -225,18 +227,39 @@ describe('match shell occlusion', () => {
     }
 
     it('switches composition at the one shared breakpoint', () => {
+      // The composition flag, `shellLayout.isCompactShell`, and the stylesheet's
+      // media query all move together; this pins the flag half.
       resizeTo(SHELL.compactBreakpoint - 1, 900);
       seed(SAMPLE_GAME_VIEW_JSON);
       const { unmount } = render(<LiveMatchTable />);
       expect(screen.getByTestId('live-match-table').dataset.composition).toBe('compact');
-      // The rail is collapsed to top-bar chips, so it cannot steal the hand's row.
-      expect(screen.queryByTestId('rail')).toBeNull();
+      // The cluster is the one action home at EVERY composition — it degrades
+      // to the compact form (panel 6b) rather than collapsing away, so there is
+      // no geometry at which the player loses their controls.
+      expect(screen.getByTestId('control-cluster')).toBeTruthy();
       unmount();
 
       resizeTo(SHELL.compactBreakpoint, 900);
       render(<LiveMatchTable />);
       expect(screen.getByTestId('live-match-table').dataset.composition).toBe('full');
-      expect(screen.getByTestId('rail')).toBeTruthy();
+      expect(screen.getByTestId('control-cluster')).toBeTruthy();
+    });
+
+    it('claims battlefield width for the stack only while it is drawn', () => {
+      // #534: "empty stack/log consumes no permanent battlefield width". The
+      // canonical fixture carries a two-deep stack, so here the stage IS drawn
+      // and the staging box pays for its column; the empty case is the geometry
+      // half, pinned in `shellLayout.test.ts`.
+      resizeTo(1440, 900);
+      seed(SAMPLE_GAME_VIEW_JSON);
+      render(<LiveMatchTable />);
+      expect(screen.getByTestId('stack-stage')).toBeTruthy();
+
+      const vp = { width: 1440, height: 900 };
+      const drawn = shellBands(vp, {}, { stackPresent: true });
+      const idle = shellBands(vp);
+      expect(drawn.staging.w).toBeLessThan(idle.staging.w);
+      expect(idle.staging.w).toBe(idle.viewport.w);
     });
   });
 });

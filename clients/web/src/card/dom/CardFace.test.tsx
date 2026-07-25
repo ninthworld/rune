@@ -10,10 +10,11 @@
  */
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RUNE_FRAME } from '../../tokens';
+import { PALETTE, RUNE_FRAME } from '../../tokens';
 import type { CardDisplayData } from '../cardFactory';
 import { CardFace, type CardFaceProps } from './CardFace';
 import { BATTLEFIELD_TIERS, faceFootprint, type CardFaceTier } from './theme';
+import s from './card-face.module.css';
 
 afterEach(cleanup);
 
@@ -86,8 +87,10 @@ describe('the surface contract (card-representation §4)', () => {
     for (const tier of ['mini', 'support', 'field'] as const) {
       const root = renderFace(bear(), tier);
       expect(root.dataset.kind, tier).toBe('permanent');
-      // Name and the server-computed P/T are present…
-      expect(root.textContent, tier).toContain('Runeclaw Bear');
+      // The name (as prose above `mini`, as the accessible name everywhere) and
+      // the server-computed P/T are present…
+      expect(root.getAttribute('aria-label'), tier).toBe('Runeclaw Bear');
+      if (tier !== 'mini') expect(root.textContent, tier).toContain('Runeclaw Bear');
       expect(root.textContent, tier).toContain('2/2');
       // …and the two bands the frame family removes are absent. This is a
       // normative rule of §3.3, transcribed from all three baselines — not a
@@ -175,6 +178,39 @@ describe('the surface contract (card-representation §4)', () => {
     }
   });
 
+  it('trades the mini title bar for the colour-identity strip (§8.4)', () => {
+    const root = renderFace(bear({ keywords: ['flying'], hasActivatedAbility: true }), 'mini');
+    const body = root.firstElementChild!;
+    // One band node either way — the parchment name plate steps aside and the
+    // strip stands in its box — so the swap costs nothing against the ceiling.
+    expect(body.getElementsByClassName(s.title)).toHaveLength(0);
+    expect(body.getElementsByClassName(s.identityStrip)).toHaveLength(1);
+    // The strip carries no prose: identity moves to the accent it paints, the
+    // glyph plate, and the inspect path, exactly as at `chip`.
+    expect(root.textContent).not.toContain('Runeclaw Bear');
+    expect(root.style.getPropertyValue('--face-accent')).toBe(PALETTE.G);
+    expect(root.querySelector('svg')?.getAttribute('aria-label')).toContain('flying');
+    // …and the card is never anonymous: the accessible name is on the root, and
+    // the state channels the title band carried are still declared.
+    expect(root.getAttribute('aria-label')).toBe('Runeclaw Bear');
+    expect(root.dataset.ability).toBe('true');
+    // The P/T plate — the authoritative surface — is untouched.
+    expect(root.textContent).toContain('2/2');
+  });
+
+  it('keeps the rungs on either side of `mini` composed as they were', () => {
+    // `support` keeps the parchment name plate…
+    const support = renderFace(bear(), 'support').firstElementChild!;
+    expect(support.getElementsByClassName(s.title)).toHaveLength(1);
+    expect(support.getElementsByClassName(s.identityStrip)).toHaveLength(0);
+    cleanup();
+    // …and `chip` keeps no title band at all — the strip is one rung, not a new
+    // floor applied to everything below it.
+    const chip = renderFace(bear(), 'chip').firstElementChild!;
+    expect(chip.getElementsByClassName(s.title)).toHaveLength(0);
+    expect(chip.getElementsByClassName(s.identityStrip)).toHaveLength(0);
+  });
+
   it('drops only the chip title bar, and keeps the glyph + P/T (§8.4)', () => {
     const root = renderFace(
       bear({ name: 'Forest', typeLine: 'Basic Land — Forest', landGlyph: 'land-forest' }),
@@ -187,7 +223,7 @@ describe('the surface contract (card-representation §4)', () => {
 });
 
 describe('the information budget per tier (card-representation §8)', () => {
-  it('mini / support / field carry name, P/T, glyphs, badges and the ability marker', () => {
+  it('mini / support / field carry identity, P/T, glyphs, badges and the marker', () => {
     for (const tier of ['mini', 'support', 'field'] as const) {
       const root = renderFace(
         bear({
@@ -198,7 +234,11 @@ describe('the information budget per tier (card-representation §8)', () => {
         }),
         tier,
       );
-      expect(root.textContent, tier).toContain('Runeclaw Bear');
+      // Identity is the name plate at `support` and above and the colour
+      // identity strip at `mini` (§8.4); the accessible name is on the root at
+      // every rung, so the card is never anonymous to assistive technology.
+      expect(root.getAttribute('aria-label'), tier).toBe('Runeclaw Bear');
+      if (tier !== 'mini') expect(root.textContent, tier).toContain('Runeclaw Bear');
       expect(root.textContent, tier).toContain('2/2');
       expect(root.textContent, tier).toContain('+1/+1 ×2');
       expect(root.textContent, tier).toContain('1 dmg');
