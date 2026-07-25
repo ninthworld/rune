@@ -306,6 +306,15 @@ export interface GameStore {
    * *harmless* extra rebuild of that same latest view.
    */
   sessionEpoch: number;
+  /**
+   * The address of the server this connection was opened against, or `null`
+   * before the first connect (issue #546). The pregame server plaque names the
+   * server a player is on, and a custom address must not be reported as the
+   * default one. Ephemeral connection metadata like {@link status}: nothing is
+   * reconstructed from it and it is never persisted here — the reclaim path's
+   * own copy lives in `sessionStorage` (see {@link restoreSession}).
+   */
+  serverUrl: string | null;
   /** Open (or replace) the connection to `url`. */
   connect: (url: string, options?: ConnectOptions) => void;
   /**
@@ -463,7 +472,11 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     intentionalClose = false;
     // Each opened socket is a new transport generation: bump the epoch so the first
     // view after a (re)connect is recognizable as a discontinuity (issue #493).
-    set((state) => ({ status: 'connecting', sessionEpoch: state.sessionEpoch + 1 }));
+    set((state) => ({
+      status: 'connecting',
+      serverUrl: url,
+      sessionEpoch: state.sessionEpoch + 1,
+    }));
 
     const factory = options.createSocket ?? defaultSocketFactory;
     const s = factory(url);
@@ -517,6 +530,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     rejectionNonce: 0,
     status: 'idle',
     sessionEpoch: 0,
+    serverUrl: null,
 
     connect(url, options = {}): void {
       clearReconnect();

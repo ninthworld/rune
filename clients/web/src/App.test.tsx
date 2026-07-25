@@ -75,12 +75,12 @@ afterEach(() => {
 });
 
 describe('App connection gating (issues #103, #114)', () => {
-  it('cold-starts on the front-door landing with a Play action', () => {
+  it('cold-starts on the front-door landing with a Connect action', () => {
     useGameStore.setState({ status: 'idle', view: null, lobby: null });
     render(<App />);
 
     expect(screen.getByTestId('connection-screen')).toBeDefined();
-    expect(screen.getByTestId('connect-button').textContent).toBe('Play');
+    expect(screen.getByTestId('connect-button').textContent).toBe('Connect');
   });
 
   it('walks idle → connecting → open → lobby → first GameView → table', () => {

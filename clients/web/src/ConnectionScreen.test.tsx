@@ -24,21 +24,22 @@ afterEach(() => {
 });
 
 describe('ConnectionScreen (front-door landing)', () => {
-  it('leads with Play and connects to the default server without opening settings', () => {
-    // The blueprint's front door: the address is a default + advanced affordance,
+  it('leads with Connect and reaches the default server without opening settings', () => {
+    // The approved front-door baseline (#546): the already-chosen server, one
+    // blue action, and the address behind a quiet Change server disclosure —
     // never a form the player must fill before playing.
     const { connect } = withStore('idle');
     render(<ConnectionScreen />);
 
     const play = screen.getByTestId('connect-button');
-    expect(play.textContent).toBe('Play');
+    expect(play.textContent).toBe('Connect');
     fireEvent.click(play);
 
     expect(connect).toHaveBeenCalledTimes(1);
     expect(connect).toHaveBeenCalledWith(DEFAULT_SERVER_URL, { autoReconnect: false });
   });
 
-  it('tucks the server address behind a settings disclosure, pre-filled and closed', () => {
+  it('tucks the server address behind the change-server disclosure, pre-filled and closed', () => {
     withStore('idle');
     render(<ConnectionScreen />);
 
@@ -49,7 +50,7 @@ describe('ConnectionScreen (front-door landing)', () => {
     expect(inputEl.value).toBe(DEFAULT_SERVER_URL);
   });
 
-  it('connects with an edited address from server settings', () => {
+  it('connects with an edited address from the change-server disclosure', () => {
     const { connect } = withStore('idle');
     render(<ConnectionScreen />);
 
@@ -83,7 +84,7 @@ describe('ConnectionScreen (front-door landing)', () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('surfaces a closed connection as a retryable error with server settings opened', () => {
+  it('surfaces a closed connection as a retryable error with the address opened', () => {
     const { connect } = withStore('closed');
     render(<ConnectionScreen />);
 

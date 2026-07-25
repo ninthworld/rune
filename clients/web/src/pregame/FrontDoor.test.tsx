@@ -10,7 +10,7 @@
  * `ConnectionScreen.test.tsx`, which passes unmigrated through the restyle.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ConnectionScreen } from '../ConnectionScreen';
 import { useGameStore, type SocketFactory } from '../store';
 
@@ -111,16 +111,39 @@ describe('Front door — criterion 14: reclaiming vs connecting', () => {
   });
 });
 
-describe('Front door — one gold, and settings preserved (criteria 10, 18)', () => {
-  it('spends exactly one gold on Play and keeps the Display settings button', () => {
+describe('Front door — one blue primary, and settings preserved (#546, criterion 18)', () => {
+  it('spends the one blue primary on Connect and keeps the settings handle', () => {
     useGameStore.setState({ status: 'idle', view: null, lobby: null });
     const { container } = render(<ConnectionScreen />);
 
-    const gold = container.querySelectorAll('[data-gold="true"]');
-    expect(gold).toHaveLength(1);
-    expect((gold[0] as HTMLElement).dataset.testid ?? gold[0]!.getAttribute('data-testid')).toBe(
-      'connect-button',
-    );
+    // `control-language.md` §4.1: at most one blue primary on screen. The
+    // variant is drawn by `ControlButton`, so counting the family's own
+    // `data-variant` marker is counting the thing the player sees.
+    const primaries = container.querySelectorAll('[data-variant="primary"]');
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0]!.getAttribute('data-testid')).toBe('connect-button');
+    expect(screen.getByTestId('connect-button').textContent).toBe('Connect');
+    // The #505 device-local settings path survives the restyle, now as the
+    // bottom-right handle every baseline draws.
     expect(screen.getByTestId('front-door-settings')).toBeDefined();
+  });
+
+  it('states which server the one action connects to, and hides the address', () => {
+    // "The default server is already selected; ordinary players do not configure
+    // anything" — so the plaque names it and the address stays behind Change
+    // server, closed.
+    useGameStore.setState({ status: 'idle', view: null, lobby: null });
+    render(<ConnectionScreen />);
+
+    expect(screen.getByTestId('server-name').textContent).toBe('Default Server');
+    expect((screen.getByTestId('server-settings') as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it('names a custom address rather than calling it the default server', () => {
+    useGameStore.setState({ status: 'idle', view: null, lobby: null });
+    render(<ConnectionScreen />);
+
+    fireEvent.change(screen.getByTestId('server-url'), { target: { value: 'ws://elsewhere:9' } });
+    expect(screen.getByTestId('server-name').textContent).toBe('ws://elsewhere:9');
   });
 });

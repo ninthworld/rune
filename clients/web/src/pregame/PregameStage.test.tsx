@@ -70,7 +70,7 @@ describe('PregameStage — criterion 2: one stage, three places', () => {
 
     // → Room. Same node, still: the place changed, the world did not.
     act(() => sockets[0]!.emitMessage(LOBBY_ROOM_DECKED_JSON));
-    expect(screen.getByTestId('room-panel')).toBeDefined();
+    expect(screen.getByTestId('seat-ring')).toBeDefined();
     expect(screen.getByTestId('pregame-environment')).toBe(environment);
 
     // …and back out to the lobby.
@@ -142,11 +142,11 @@ describe('PregameStage — criterion 17: a place change never gates on animation
       useGameStore.getState().connect('ws://test', { createSocket: factory, autoReconnect: false }),
     );
     act(() => sockets[0]!.emitOpen());
-    // No timers advanced, no animation awaited: the room's gold control is in
+    // No timers advanced, no animation awaited: the room's blue primary is in
     // the document and hit-testable the moment the view names the room.
     act(() => sockets[0]!.emitMessage(LOBBY_ROOM_DECKED_JSON));
-    const gold = screen.getByTestId('ready-button');
-    expect(gold.getAttribute('data-gold')).toBe('true');
-    expect(gold.hasAttribute('disabled')).toBe(false);
+    const primary = screen.getByTestId('ready-button');
+    expect(primary.getAttribute('data-variant')).toBe('primary');
+    expect(primary.hasAttribute('disabled')).toBe(false);
   });
 });
