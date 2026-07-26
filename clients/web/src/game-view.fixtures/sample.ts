@@ -140,7 +140,9 @@ export const SAMPLE_GAME_VIEW: GameView = {
       counters: [{ kind: '+1/+1', count: 2 }],
     },
   ],
-  stack: [{ id: 's1', controller: 'p2', description: 'Lightning Bolt' }],
+  // `targets` is materialized to `[]` by normalization from the omitted wire field
+  // (issue #550); the frame's terse entry states no kind and carries no card face.
+  stack: [{ id: 's1', controller: 'p2', description: 'Lightning Bolt', targets: [] }],
   graveyards: [{ player_id: 'p1', cards: [] }],
   exile: [], // filled in by normalization from the omitted wire field
   command: [], // no command zone in the sample frame; normalization defaults it (issue #372)

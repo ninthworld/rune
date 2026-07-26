@@ -27,7 +27,7 @@ use rune_protocol::{
     CommanderTax as CommanderTaxView, Counter, GameLogEntry, GameLogEvent, GameOverReason,
     GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
     Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
-    TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    StackItemKind, StackTarget, TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;
@@ -38,6 +38,7 @@ mod ids;
 mod log;
 mod prompt;
 mod requirements;
+mod stack;
 #[cfg(test)]
 mod test_support;
 
@@ -49,6 +50,7 @@ pub(crate) use ids::*;
 pub(crate) use log::*;
 pub(crate) use prompt::*;
 pub(crate) use requirements::*;
+pub(crate) use stack::*;
 
 /// Build the [`GameView`] the seat `viewer` is entitled to see.
 ///
