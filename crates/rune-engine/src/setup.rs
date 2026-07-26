@@ -285,6 +285,7 @@ impl GameState {
         // Persist the advanced generator state so subsequent randomness (future
         // in-game shuffles, etc.) continues the same deterministic stream.
         state.rng_seed = rng.state();
+        state.mark_active_turn_began();
 
         // Enter the London mulligan decision phase (CR 103.5): turn 1 does not
         // begin until every player has kept. Seat 0 decides first; priority is

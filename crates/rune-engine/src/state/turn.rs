@@ -68,6 +68,13 @@ impl GameState {
                 }
             }
         };
+        // CR 302.6 reads from "the beginning of its controller's most recent turn",
+        // which is now, for whoever just took the turn. Recorded here — the single
+        // point through which a turn ever begins — so extra turns and skipped
+        // eliminated seats are accounted for by construction.
+        if let Some(player) = self.players.get_mut(self.active_player.0) {
+            player.turn_began = self.turn;
+        }
         self.step = Step::Untap;
         self.land_played = false;
         // A new turn is a new combat: the previous turn's declarations no longer
@@ -105,6 +112,28 @@ impl GameState {
     pub fn with_extra_step(&self, step: Step) -> Self {
         let mut next = self.clone();
         next.extra_steps.push(step);
+        next
+    }
+}
+
+#[cfg(test)]
+impl GameState {
+    /// Walk [`Self::advance`] until the turn number changes, returning the state at
+    /// the untap step of the next turn.
+    ///
+    /// Test-only, and deliberately not a plain `turn += 1`: seat rotation, extra
+    /// turns, skipped eliminated seats, and [`crate::player::Player::turn_began`]
+    /// are all produced by the FSM, so a test that reaches turn *n* this way is
+    /// asserting against a turn the engine agrees exists rather than one the test
+    /// declared into being. Any rule measured from "its controller's most recent
+    /// turn" (CR 302.6) is only honestly testable this way.
+    #[must_use]
+    pub(crate) fn advance_to_next_turn(&self) -> Self {
+        let start = self.turn;
+        let mut next = self.clone();
+        while next.turn == start {
+            next = next.advance();
+        }
         next
     }
 }
