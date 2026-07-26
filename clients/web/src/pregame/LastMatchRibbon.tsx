@@ -25,6 +25,7 @@
  */
 import { cx } from '../chrome/cx';
 import type { LastMatchSummary } from '../store';
+import { ControlButton } from '../table/controls';
 import { setupLabel } from './gameSetups';
 import p from './styles';
 
@@ -59,33 +60,32 @@ export function LastMatchRibbon({
 
   return (
     <section className={p.ribbon} aria-label="Your last match" data-testid="last-match-ribbon">
-      <span className={p.ribbonText}>
-        <span
-          className={cx(p.ribbonOutcome, outcomeClass)}
-          data-testid="last-match-outcome"
-          data-outcome={summary.outcome}
-        >
-          {OUTCOME_WORD[summary.outcome]}
-        </span>
+      <span
+        className={cx(p.ribbonOutcome, outcomeClass)}
+        data-testid="last-match-outcome"
+        data-outcome={summary.outcome}
+      >
+        {OUTCOME_WORD[summary.outcome]}
+      </span>
+      <span className={p.muted}>
         {[against, setup].filter((part) => part !== undefined).join(' · ')}
       </span>
-      <span className={p.buttonRow}>
-        <button
-          type="button"
-          className={p.button}
-          onClick={onPlayAgain}
-          data-testid="last-match-play-again"
-        >
-          Play again
-        </button>
-        <button
-          type="button"
-          className={p.quiet}
-          onClick={onDismiss}
-          data-testid="last-match-dismiss"
-        >
-          Dismiss
-        </button>
+      <span className={p.fit}>
+        <ControlButton
+          variant="utility"
+          label="Play again"
+          onPress={onPlayAgain}
+          testId="last-match-play-again"
+        />
+      </span>
+      <span className={p.fit}>
+        <ControlButton
+          variant="utility"
+          label="Dismiss"
+          accessibleName="Dismiss the last-match ribbon"
+          onPress={onDismiss}
+          testId="last-match-dismiss"
+        />
       </span>
     </section>
   );

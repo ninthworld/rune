@@ -122,6 +122,84 @@
   box-shadow: 0 0 0 4px rgb(242 201 76 / 20%);
 }
 
+/* ── The multiplayer defender pick (issue #457) ───────────────────────────────
+   `defend_<id>` asks "whom does this creature attack", and its answer surface is
+   the PLAYER PANELS, not the board. #457's whole verdict is that the question is
+   posed correctly and simply missed — so a candidate seat cannot wear the same
+   quiet dashed ring an ordinary spell target does.
+
+   Four channels, only one of which is hue:
+   - a DOUBLED SOLID ring where the neutral crest and tile have no ring at all,
+     which is the shape difference against the dashed ordinary-candidate form;
+   - corner ticks, the `control-language.md` §11 "unique shape" vocabulary, drawn
+     from the same `--rune-drop-*` tokens the drop regions are specified with;
+   - a translucent halo in the combat/threat family (visual-system §2 orange, the
+     same family the attack path and the attacked ring already use);
+   - a slow pulse, whose period is derived from the control-motion token rather
+     than written as a literal (ADR 0019).
+
+   Reduced motion drops ONLY the pulse: §12's "region light-up → regions appear
+   at full treatment instantly", so the ring, the ticks, and the halo all stay. */
+.targetControl[data-defender-candidate] {
+  outline: 3px solid var(--orange);
+  outline-offset: 4px;
+  box-shadow:
+    0 0 0 2px var(--orange),
+    0 0 0 10px color-mix(in srgb, var(--orange) 22%, transparent);
+  animation: defenderCandidatePulse calc(2 * var(--rune-control-sweep)) ease-in-out infinite;
+}
+
+.targetControl[data-defender-candidate]::before {
+  --tick: linear-gradient(var(--orange), var(--orange));
+
+  content: '';
+  position: absolute;
+  inset: calc(-2 * var(--rune-drop-tick));
+  background:
+    var(--tick) 0 0 / var(--rune-drop-tick) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 0 0 / var(--rune-drop-stroke) var(--rune-drop-tick) no-repeat,
+    var(--tick) 100% 0 / var(--rune-drop-tick) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 100% 0 / var(--rune-drop-stroke) var(--rune-drop-tick) no-repeat,
+    var(--tick) 0 100% / var(--rune-drop-tick) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 0 100% / var(--rune-drop-stroke) var(--rune-drop-tick) no-repeat,
+    var(--tick) 100% 100% / var(--rune-drop-tick) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 100% 100% / var(--rune-drop-stroke) var(--rune-drop-tick) no-repeat;
+  pointer-events: none;
+}
+
+/* The seat this attacker has already been routed to: the ring stops pulsing and
+   fills, so "answered" and "still asking" are different shapes, not two hues. */
+.targetControl[data-defender-candidate][aria-pressed='true'] {
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+  animation: none;
+}
+
+/* The attacker whose defender is being chosen. Its own ring in the combat hue,
+   distinct from the blue selection ring the card already wears, so "the subject
+   of this question" never has to be inferred from "what is selected". */
+.entityControl[data-routing],
+.inspectControl[data-routing],
+.targetControl[data-routing] {
+  outline: 3px solid var(--orange);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--orange) 18%, transparent);
+}
+
+@keyframes defenderCandidatePulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--orange),
+      0 0 0 10px color-mix(in srgb, var(--orange) 22%, transparent);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 2px var(--orange),
+      0 0 0 18px color-mix(in srgb, var(--orange) 4%, transparent);
+  }
+}
+
 .entityControl:focus-visible,
 .targetControl:focus-visible,
 .inspectControl:focus-visible,
@@ -415,6 +493,13 @@
 @media (prefers-reduced-motion: reduce) {
   .tiltedPlane {
     transition: none !important;
+  }
+
+  /* §12: the region light-up appears at full treatment instantly. The ring, the
+     corner ticks, and the halo are all still drawn — only the pulse is dropped,
+     so nothing about which seats are pickable is carried by motion. */
+  .targetControl[data-defender-candidate] {
+    animation: none;
   }
 }
 

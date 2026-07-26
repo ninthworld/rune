@@ -256,7 +256,9 @@ describe('deriveStackStage — text is the server’s (§2.4 rule 3, §9.2)', ()
     );
     const model = deriveStackStage(view);
     expect(model.entries[0].label).toBe(
-      '1 of 2. Resolves next. Ability from Ridge Wolf, controlled by you. Tap: add {G}',
+      // The label is a pure-text context, so the description's symbol notation
+      // is spoken rather than braced (issue #462).
+      '1 of 2. Resolves next. Ability from Ridge Wolf, controlled by you. Tap: add green mana',
     );
     expect(model.entries[1].label).toBe('2 of 2. Spell, controlled by Sorel. Grizzly Bears');
   });

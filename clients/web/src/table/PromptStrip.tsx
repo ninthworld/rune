@@ -10,6 +10,7 @@
  * table passes down; nothing here is load-bearing across messages.
  */
 import type { GameView, Phase } from '../protocol';
+import { SymbolText } from '../chrome/symbols';
 import type { PendingPrompt } from '../store';
 import { DeadlineCountdown } from './DeadlineCountdown';
 import { playerName } from '../playerNames';
@@ -85,9 +86,12 @@ export function PromptStrip({ view, prompt, targeting, multiSelect }: Props) {
       <div data-testid="prompt-banner" role="status" className={s.promptStrip}>
         <span className={s.promptTag}>Select</span>
         <span className={s.promptText} data-testid="multiselect-prompt">
-          {multiSelect.prompt}
+          <SymbolText text={multiSelect.prompt} />
         </span>
-        <span className={s.promptMeta}>{multiSelect.label}</span>
+        {/* The action's own label; its `{…}` runs draw as symbols (issue #462). */}
+        <span className={s.promptMeta}>
+          <SymbolText text={multiSelect.label} />
+        </span>
         {showCount && (
           <span className={s.promptMeta} data-testid="multiselect-count">
             {count}
@@ -111,9 +115,11 @@ export function PromptStrip({ view, prompt, targeting, multiSelect }: Props) {
       <div data-testid="prompt-banner" role="status" className={s.promptStrip}>
         <span className={s.promptTagTargeting}>Target</span>
         <span className={s.promptText} data-testid="targeting-prompt">
-          Choose target: {targeting.prompt}
+          Choose target: <SymbolText text={targeting.prompt} />
         </span>
-        <span className={s.promptMeta}>{targeting.label}</span>
+        <span className={s.promptMeta}>
+          <SymbolText text={targeting.label} />
+        </span>
         {targeting.total > 1 && (
           <span className={s.promptMeta} data-testid="targeting-counter">
             Target {targeting.step} of {targeting.total}
@@ -135,7 +141,10 @@ export function PromptStrip({ view, prompt, targeting, multiSelect }: Props) {
         <span className={s.promptText}>
           {stackTop ? (
             <>
-              <b>{stackTop.description}</b> is on the stack — respond, or pass to let it resolve.
+              <b>
+                <SymbolText text={stackTop.description} />
+              </b>{' '}
+              is on the stack — respond, or pass to let it resolve.
             </>
           ) : (
             <>You have priority — select a card, or pass.</>

@@ -26,6 +26,12 @@ describe('parseManaCost', () => {
     expect(pip).toEqual({ symbol: 'X', bg: PIP.N.bg, fg: PIP.N.fg });
   });
 
+  it('still draws a pip for a code the vocabulary does not know (issue #462)', () => {
+    // The shared tokenizer classifies it as unknown; a cost may still never
+    // lose a symbol the server sent, so it draws neutral and verbatim.
+    expect(parseManaCost('{WEIRD}')).toEqual([{ symbol: 'WEIRD', bg: PIP.N.bg, fg: PIP.N.fg }]);
+  });
+
   it('returns nothing for an empty or symbol-free string', () => {
     expect(parseManaCost('')).toEqual([]);
     expect(parseManaCost('no braces')).toEqual([]);

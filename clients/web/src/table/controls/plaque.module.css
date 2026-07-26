@@ -126,6 +126,22 @@
   white-space: nowrap;
 }
 
+/* The turn ordinal (issue #455). A chip rather than more of the ownership
+   sentence: the settle loop can advance a whole turn between broadcasts, so this
+   number is the one the player loses, and it must not be the part that
+   ellipsises away when a seat has a long name. */
+.turn {
+  flex: none;
+  padding: 0 var(--rune-space-2);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-xs);
+  color: var(--rune-text);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-micro);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
 /* ── The step pips (§5.1, D3) ────────────────────────────────────────────────
    Five pips at the drawn 21 px pitch. The gap is derived from the pitch and the
    diameter so changing either moves the row instead of overflowing the plate. */
@@ -286,10 +302,39 @@
   color: var(--rune-text);
 }
 
+/* The row's leading group: the step name and, when the turn has already been
+   here, its trail mark. Grouped so the stop toggle stays flush right whether or
+   not the mark is drawn. */
+.stepLead {
+  display: flex;
+  gap: var(--rune-space-3);
+  align-items: center;
+  min-width: 0;
+}
+
 .stepName {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── The turn trail (issue #455, visual-system §8 "path taken") ───────────────
+   A step this turn has already passed through. Two channels, neither of them
+   motion: the row's own leading bar (a shape, distinct from the current step's
+   solid bar because it is inset from the left rather than filling it) and the
+   ✓ glyph beside the name. There is nothing to animate, so the reduced-motion
+   form is identical — which is the point: §8's compressed phase wipe has to stay
+   legible for a player who never sees the wipe. */
+.stepPassed {
+  box-shadow: inset 3px 0 0 var(--rune-gold-border);
+  color: var(--rune-text);
+}
+
+.stepPassedMark {
+  flex: none;
+  color: var(--rune-accent-gold);
+  font-size: var(--rune-type-micro);
+  line-height: 1;
 }
 
 /* The per-step stop toggle. `aria-pressed` reflects `view.stops` — the server's

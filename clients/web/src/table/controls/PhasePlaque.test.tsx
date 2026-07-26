@@ -231,6 +231,106 @@ describe('the auto-passed cue (§5.2)', () => {
   });
 });
 
+/**
+ * Turn pacing (issue #455). ADR 0020's settle loop can advance several steps —
+ * or a whole turn — between two broadcasts, and the playtest #455 records is a
+ * player who "believes they're still in turn 1" while the game is at turn 2.
+ * Both answers below are derived from the ONE view (the ordinal from
+ * `view.turn`, the path from `view.log`), so a hard reload mid-turn reproduces
+ * them exactly.
+ */
+describe('turn pacing legibility (issue #455)', () => {
+  function trailView(overrides: Partial<GameView> = {}): GameView {
+    return viewWith({
+      turn: 2,
+      phase: 'precombat_main',
+      log: [
+        {
+          sequence: 1,
+          event: { type: 'step_changed', turn: 1, active_player: 'p2', phase: 'end' },
+        },
+        {
+          sequence: 2,
+          event: { type: 'step_changed', turn: 2, active_player: 'p1', phase: 'untap' },
+        },
+        {
+          sequence: 3,
+          event: { type: 'step_changed', turn: 2, active_player: 'p1', phase: 'draw' },
+        },
+        {
+          sequence: 4,
+          event: { type: 'step_changed', turn: 2, active_player: 'p1', phase: 'precombat_main' },
+        },
+      ],
+      ...overrides,
+    });
+  }
+
+  it('draws the turn ordinal beside the ownership sentence', () => {
+    render(<PhasePlaque view={viewWith({ turn: 7 })} />);
+    expect(screen.getByTestId('plaque-turn').textContent).toBe('T7');
+    // §5's sentence is untouched — the ordinal is a separate chip, so a long
+    // seat name can ellipsise without taking the turn number with it.
+    expect(screen.getByTestId('plaque-ownership').textContent).toBe('Your turn');
+  });
+
+  it('carries the turn in the accessible sentence, including the compact form', () => {
+    // 6b drops the drawn ownership line; the number a settle makes easy to lose
+    // must still be answerable there, so it rides the status region's name.
+    render(<PhasePlaque view={viewWith({ turn: 7, phase: 'end' })} compact />);
+    expect(screen.queryByTestId('plaque-turn')).toBeNull();
+    expect(screen.getByRole('status').getAttribute('aria-label')).toBe(
+      'Turn 7. End Step. Your turn.',
+    );
+    // …and as data on the plaque itself, in both forms.
+    expect(screen.getByTestId('phase-plaque').getAttribute('data-turn')).toBe('7');
+  });
+
+  it('marks the steps this turn already passed through, and only those', () => {
+    render(<PhasePlaque view={trailView()} />);
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    expect(screen.getByTestId('plaque-step-untap').getAttribute('data-passed')).toBe('true');
+    expect(screen.getByTestId('plaque-step-draw').getAttribute('data-passed')).toBe('true');
+    // Never recorded for this turn: not on the path, even though it sits between
+    // two steps that are. Nothing is interpolated.
+    expect(screen.getByTestId('plaque-step-upkeep').getAttribute('data-passed')).toBeNull();
+    // The previous turn's end step belongs to the previous turn.
+    expect(screen.getByTestId('plaque-step-end').getAttribute('data-passed')).toBeNull();
+    // The current step is where the turn IS, not where it has been.
+    expect(screen.getByTestId('plaque-step-precombat_main').getAttribute('data-passed')).toBeNull();
+    expect(screen.getByTestId('plaque-step-precombat_main').getAttribute('data-current')).toBe(
+      'true',
+    );
+  });
+
+  it('gives each passed step a glyph and a phrase, not a hue', () => {
+    // The §11 non-colour requirement, and the reduced-motion form at once: there
+    // is no animation here to remove, so a reduced-motion player sees the same
+    // trail a standard-motion one does.
+    render(<PhasePlaque view={trailView()} />);
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    const mark = screen.getByTestId('plaque-passed-untap');
+    expect(mark.textContent).toBe('✓');
+    expect(mark.getAttribute('aria-label')).toBe('already passed this turn');
+  });
+
+  it('marks nothing when the log window carries no path for this turn', () => {
+    render(<PhasePlaque view={viewWith({ turn: 9, log: [] })} />);
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    for (const phase of PHASES) {
+      expect(screen.getByTestId(`plaque-step-${phase}`).getAttribute('data-passed')).toBeNull();
+    }
+  });
+
+  it('does not claim the seat was skipped anywhere — the badge is unchanged', () => {
+    // The wire's `auto_passed` is one boolean for a whole settle and never names
+    // the steps it covered, so the trail says "the turn has been here" and the
+    // badge keeps saying only what the server actually stated.
+    render(<PhasePlaque view={trailView({ auto_passed: true })} />);
+    expect(screen.getByTestId('plaque-auto-passed').textContent).toBe('Auto-passed');
+  });
+});
+
 /*
  * What jsdom cannot prove here, and what therefore belongs to the maintainer:
  * the drawn hexagon and its 22 px points, the gold gradient's direction, the

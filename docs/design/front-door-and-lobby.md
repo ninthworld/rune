@@ -8,6 +8,21 @@ back — including reconnect, spectating, and the postgame landing, and it fixes
 the composition that [#506](https://github.com/ninthworld/rune/issues/506)
 implements. It is a **presentation** decision: no protocol change.
 
+> **Superseded on composition by issue #546.** The flow, the principles (P1–P11),
+> the criteria, and every protocol/behaviour statement below still stand. The
+> **arrangements** in §5 do not: #546 rebuilt the four pregame screens against
+> the approved 2.5D menu baselines (`../ui-concepts/rune-pregame-*.jpg`) on
+> [ADR 0032](../decisions/0032-contextual-shell-anatomy.md)'s contextual anatomy
+> — an open arena with small edge-anchored controls, dark slate plaques, and one
+> blue primary per state — so the carved two-column panels, the persistent header
+> bar, the pinned ready bar, the inline Start-a-game card, and the deck-tile grid
+> described in §5.1–§5.3 are retired. Their *requirements* were carried, not
+> dropped: the ready gate in words is now the plaque in the middle of the seat
+> ring, the one action home is the primary under the local seat, and the session
+> menu is the bottom-right settings handle. §4.4's "one gold per place" is
+> restated by `control-language.md` §4.1 as **one blue primary per state**, which
+> is the rule the shipped code follows.
+
 Relationships to the other authorities:
 
 - [`visual-system.md`](visual-system.md) is binding. This document applies its

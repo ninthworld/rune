@@ -45,15 +45,24 @@ the table UI.
   `src/card/art/`: player-selected source, device-local storage, renderers only
   *look up* loaded textures. The UI must render fully with the art store empty, and
   nothing under `public/card-art/` may be anything but project-owned originals.
-- Pregame (issue #506) lives in `src/pregame/`: the front door, lobby, and room
-  are content compositions on **one** `PregameStage`, which mounts the scene
-  environment once (`App.tsx`) so a place change never re-mounts the backdrop.
-  All pregame color/shadow/duration flows from `sceneTokens.ts` through
-  `pregame/pregameScene.ts` as `--pregame-*` properties — the `deckScene.ts`
-  mold; no literal hex or duration belongs in `pregame.module.css`. Seat accents
-  come from `SCENE_SEAT_ACCENTS[seat]`, the same index the match uses, so a
-  seat's color survives the ready gate. `LobbyScreen.tsx` / `ConnectionScreen.tsx`
-  are thin mount points over that composition. `screens.module.css` is now the
+- Pregame (issues #506, #546) lives in `src/pregame/`: the front door, server
+  lobby, create-table setup, and ready room are content compositions on **one**
+  `PregameStage`, which mounts the scene environment once (`App.tsx`) so a place
+  change never re-mounts the backdrop, and on **one** edge-anchored `MenuFrame`
+  (ADR 0032's anatomy, the approved `docs/ui-concepts/rune-pregame-*.jpg`
+  baselines): open arena, small edge controls, dark slate plaques with narrow
+  warm trim, one blue primary per state. **Every pregame control is a
+  `ControlButton`/`IconButton` from `table/controls`** — never a second button
+  family; the pregame owns surfaces (`Plaque`) and layout only, and scopes the
+  family's own `--rune-control-w-*` tokens when it needs a different width.
+  Advanced rules, the deck library, AI configuration, and chat are contextual or
+  collapsible, never permanent panels. All pregame color/shadow/duration flows
+  from `sceneTokens.ts` through `pregame/pregameScene.ts` as `--pregame-*`
+  properties — the `deckScene.ts` mold; no literal hex, duration, or bare
+  `z-index` belongs in the pregame stylesheets. Seat accents come from
+  `SCENE_SEAT_ACCENTS[seat]`, the same index the match uses, so a seat's color
+  survives the ready gate. `LobbyScreen.tsx` / `ConnectionScreen.tsx` are thin
+  mount points over that composition. `screens.module.css` is now the
   deck-surface stylesheet only. See `docs/design/front-door-and-lobby.md`.
 - Presentation settings (issue #505) — quality level, effect density, motion —
   are device preferences in `src/table/settings/presentationSettings.ts` (the same

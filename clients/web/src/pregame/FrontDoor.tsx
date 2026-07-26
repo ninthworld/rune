@@ -1,218 +1,176 @@
 /**
- * The front door (issue #506; `front-door-and-lobby.md` §5.1) — the Play-first
- * landing, now a content column on the shared pregame stage rather than a carved
- * panel over the chrome vignette.
+ * The front door — the server-connection place (issue #546; the approved
+ * `docs/ui-concepts/rune-pregame-server-connection.jpg` baseline).
  *
- * Behavior is carried from the shipped `ConnectionScreen` verbatim; only the
- * dressing and one copy state changed:
+ * The baseline is the product's whole thesis in one screen: RUNE is a dumb
+ * client, so the first thing a player sees is the wordmark, the server they are
+ * already pointed at, and **one blue action**. Changing server is a quiet word
+ * underneath it, and the device-local settings handle sits at the corner. There
+ * is no form to fill in before playing.
  *
- * - `idle` → Play (connects to the resolved address) + the settings disclosure.
- * - `connecting` → a connecting pulse + Cancel (aborts via `disconnect`).
- * - `closed` → a disconnected notice + Retry, with the disclosure auto-opened so
+ * Behaviour is carried from the shipped screen verbatim — only the dressing and
+ * the primary's word changed:
+ *
+ * - `idle` → Connect (to the resolved address) + the change-server disclosure.
+ * - `connecting` → a connecting line + Cancel (aborts via `disconnect`).
+ * - `closed` → a disconnected alert + Retry, with the disclosure auto-opened so
  *   the address is right there to fix.
- * - **Reclaiming (P11)** — when `restoreSession()` is replaying a stored session
- *   token for this address, the connecting state reads *Reclaiming your seat*
- *   instead of *Opening a connection*, keeping the connecting treatment. Purely
- *   a copy/state change: the socket lifecycle is untouched.
+ * - **Reclaiming (P11)** — while `restoreSession()` replays a stored token for
+ *   this address the connecting line reads *Reclaiming your seat*. Purely a copy
+ *   change: the socket lifecycle is untouched.
  *
- * The three states stay visually distinct through the status pill, and each
- * keeps an interactive control on screen — never a dead screen. Identity is
- * procedural geometry only (the `RuneMark` and the display-face wordmark); no
- * card image, official frame, symbol, or WotC branding.
+ * Each state keeps an interactive control on screen — never a dead screen — and
+ * identity stays procedural geometry only (`RuneMark` plus the display-face
+ * wordmark); no card image, official frame, symbol, or WotC branding.
  *
  * We connect with `autoReconnect: false`: this is a manual, user-driven screen,
  * so the displayed status must always match the real socket.
  */
 import { useEffect, useState } from 'react';
 import { useGameStore } from '../store';
-import { PresentationSettings } from '../table/PresentationSettings';
 import { RuneMark } from '../chrome/RuneMark';
-import { cx } from '../chrome/cx';
+import { ControlButton } from '../table/controls';
+import { MenuFrame, Plaque, SessionMenu } from './MenuFrame';
+import { initialServerUrl, serverLabel } from './serverIdentity';
 import p from './styles';
-
-/** Compile-time fallback when no `VITE_RUNE_SERVER_URL` is configured. */
-export const DEFAULT_SERVER_URL = 'ws://localhost:9000';
-
-/** Resolve the pre-filled server URL from the Vite env, else the fallback. */
-function initialServerUrl(): string {
-  return import.meta.env.VITE_RUNE_SERVER_URL ?? DEFAULT_SERVER_URL;
-}
-
-/** The RUNE brand lockup at landing scale: mark, wordmark, and tagline. */
-function Brand() {
-  return (
-    <div className={p.brand}>
-      <div className={p.brandRow}>
-        <RuneMark size={56} className={p.mark} />
-        <h1 className={p.wordmark} data-place-heading tabIndex={-1}>
-          RUNE
-        </h1>
-      </div>
-      <p className={p.tagline}>Server-authoritative tabletop</p>
-    </div>
-  );
-}
-
-/**
- * The "Server settings" disclosure: the address input as an advanced affordance.
- * Controlled open state so a failed connection can open it (the address is the
- * likely fix); a user toggle stays in charge afterwards via `onToggle`.
- */
-function ServerSettings({
-  url,
-  open,
-  onToggle,
-  onChange,
-  onSubmit,
-}: {
-  url: string;
-  open: boolean;
-  onToggle: (open: boolean) => void;
-  onChange: (url: string) => void;
-  onSubmit: () => void;
-}) {
-  return (
-    <details
-      className={p.advanced}
-      open={open}
-      onToggle={(event) => onToggle((event.target as HTMLDetailsElement).open)}
-      data-testid="server-settings"
-    >
-      <summary className={p.advancedSummary}>Server settings</summary>
-      <label className={p.field}>
-        <span className={p.fieldLabel}>Server address</span>
-        <input
-          className={p.input}
-          type="text"
-          inputMode="url"
-          autoComplete="off"
-          spellCheck={false}
-          value={url}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') onSubmit();
-          }}
-          data-testid="server-url"
-          aria-label="Server address"
-        />
-      </label>
-      <span className={p.muted}>Play connects to this address.</span>
-    </details>
-  );
-}
 
 export function FrontDoor() {
   const status = useGameStore((state) => state.status);
   const reclaiming = useGameStore((state) => state.reclaimingSession);
   // A pending last-match record while connecting means #452's postgame exit is
   // in flight: it gives up the seat and REOPENS the server, so the lobby landing
-  // is reached across a reconnect rather than handed off in-session. Saying so
-  // is honest and stops the front door reading as a detour on the way back.
-  // Derived, not stored: no record, no claim.
+  // is reached across a reconnect rather than handed off in-session. Derived,
+  // not stored: no record, no claim.
   const returning = useGameStore((state) => state.lastMatch !== null);
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
+  // The address the connection was actually opened against, which the reclaim
+  // and postgame-return paths set without going through this field.
+  const serverUrl = useGameStore((state) => state.serverUrl);
   const [url, setUrl] = useState(initialServerUrl);
+  // Whether the player has typed in the field this visit. Once they have, their
+  // address is the truth and nothing may overwrite it.
+  const [edited, setEdited] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showDisplaySettings, setShowDisplaySettings] = useState(false);
 
-  // A failed connection opens Server settings: the address is the likely fix,
-  // so it should be on screen next to the Retry (never a dead end).
+  // Adopt the live connection's address (issue #546 follow-up).
+  //
+  // A restored session (`restoreSession`) and a postgame return (#452) both
+  // reopen the server from `sessionStorage`/the store, never from this field —
+  // so a player on a custom server saw "Default Server" on the plaque, and a
+  // failed reclaim put its address in the status line while Retry sent the
+  // BUILD DEFAULT instead. The field is what Retry uses, so it has to follow the
+  // connection rather than the build.
+  //
+  // Guarded on `edited` in both directions: a manual edit is never overwritten,
+  // including by the `connect` this component itself just fired.
+  useEffect(() => {
+    if (edited) return;
+    const target = (serverUrl ?? '').trim();
+    if (target.length === 0) return;
+    setUrl(target);
+  }, [edited, serverUrl]);
+
+  // A failed connection opens the change-server disclosure: the address is the
+  // likely fix, so it belongs on screen next to Retry (never a dead end).
   const isClosed = status === 'closed';
   useEffect(() => {
     if (isClosed) setSettingsOpen(true);
   }, [isClosed]);
 
-  // Manual, user-driven flow: Play/Retry is the only connect path, so the
-  // displayed status always matches the real socket (see file header).
+  // Manual, user-driven flow: Connect/Retry is the only connect path, so the
+  // displayed status always matches the real socket (see the file header).
   const attempt = (): void => {
     const target = url.trim();
     if (target.length === 0) return;
     connect(target, { autoReconnect: false });
   };
 
-  if (status === 'connecting') {
-    return (
-      <div className={p.frontDoor}>
-        <section
-          className={p.frontDoorColumn}
-          aria-label="Connecting"
-          data-testid="connection-screen"
-        >
-          <Brand />
-          <span className={cx(p.statePill, p.stateConnecting)}>
-            <span className={cx(p.dot, p.dotLive)} />
-            {reclaiming ? 'Reclaiming' : returning ? 'Returning' : 'Connecting'}
-          </span>
-          <span className={p.muted} data-testid="connection-status">
-            {reclaiming
-              ? `Reclaiming your seat at ${url}`
-              : returning
-                ? 'Returning to the lobby…'
-                : `Opening a connection to ${url}`}
-          </span>
-          <div className={p.buttonRow}>
-            <button type="button" className={p.button} onClick={disconnect}>
-              Cancel
-            </button>
-          </div>
-        </section>
-      </div>
-    );
-  }
+  const connecting = status === 'connecting';
 
-  // `idle` and `closed` share the Play landing; only the framing differs. There
-  // is no distinct 'error' status — an errored socket surfaces as a close, so we
-  // treat `closed` as the retryable error/closed state (see store.ts).
   return (
-    <div className={p.frontDoor}>
-      <section className={p.frontDoorColumn} aria-label="RUNE" data-testid="connection-screen">
-        <Brand />
-        {isClosed ? (
+    <MenuFrame
+      label="RUNE"
+      testId="connection-screen"
+      lockup={false}
+      footEnd={<SessionMenu testId="front-door-settings" />}
+    >
+      <div className={p.doorColumn}>
+        <RuneMark size={64} className={p.doorMark} />
+        <h1 className={p.doorWordmark} data-place-heading tabIndex={-1}>
+          RUNE
+        </h1>
+
+        <Plaque testId="server-plaque">
+          <span className={p.serverGem} aria-hidden="true" />
+          <span className={p.serverName} data-testid="server-name">
+            {serverLabel(url)}
+          </span>
+        </Plaque>
+
+        {connecting ? (
           <>
-            <span className={cx(p.statePill, p.stateClosed)}>
-              <span className={p.dot} />
-              Disconnected
+            <span className={p.doorStatus} data-testid="connection-status">
+              {reclaiming
+                ? `Reclaiming your seat at ${url}`
+                : returning
+                  ? 'Returning to the lobby…'
+                  : `Opening a connection to ${url}`}
             </span>
-            <span className={p.error} data-testid="connection-status" role="alert">
-              Connection closed. Check the server address and try again.
-            </span>
+            <ControlButton variant="cancel" label="Cancel" onPress={disconnect} />
           </>
         ) : (
-          <span className={cx(p.statePill, p.stateIdle)} data-testid="connection-status">
-            <span className={p.dot} />
-            Ready to play
-          </span>
+          <>
+            {isClosed ? (
+              <span className={p.error} data-testid="connection-status" role="alert">
+                Connection closed. Check the server address and try again.
+              </span>
+            ) : (
+              <span className={p.doorStatus} data-testid="connection-status">
+                Ready to play
+              </span>
+            )}
+            {/* The one blue primary of this state (§4.1). */}
+            <ControlButton
+              variant="primary"
+              label={isClosed ? 'Retry' : 'Connect'}
+              onPress={attempt}
+              testId="connect-button"
+            />
+            <details
+              className={p.disclosure}
+              open={settingsOpen}
+              onToggle={(event) => setSettingsOpen((event.target as HTMLDetailsElement).open)}
+              data-testid="server-settings"
+            >
+              <summary className={p.disclosureSummary}>Change server</summary>
+              <div className={p.disclosureBody}>
+                <label className={p.seatOptionsField}>
+                  <span className={p.fieldLabel}>Server address</span>
+                  <input
+                    className={p.input}
+                    type="text"
+                    inputMode="url"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={url}
+                    onChange={(event) => {
+                      setEdited(true);
+                      setUrl(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') attempt();
+                    }}
+                    data-testid="server-url"
+                    aria-label="Server address"
+                  />
+                </label>
+                <span className={p.muted}>Connect uses this address.</span>
+              </div>
+            </details>
+          </>
         )}
-        {/* The only gold on this place (§4.4). */}
-        <button
-          type="button"
-          className={p.gold}
-          data-gold="true"
-          onClick={attempt}
-          data-testid="connect-button"
-        >
-          {isClosed ? 'Retry' : 'Play'}
-        </button>
-        <ServerSettings
-          url={url}
-          open={settingsOpen}
-          onToggle={setSettingsOpen}
-          onChange={setUrl}
-          onSubmit={attempt}
-        />
-        <button
-          type="button"
-          className={p.quiet}
-          data-testid="front-door-settings"
-          onClick={() => setShowDisplaySettings(true)}
-        >
-          Display settings
-        </button>
-      </section>
-      {showDisplaySettings && (
-        <PresentationSettings onClose={() => setShowDisplaySettings(false)} />
-      )}
-    </div>
+      </div>
+    </MenuFrame>
   );
 }

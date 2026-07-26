@@ -54,6 +54,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { EntityId, GameView } from '../../protocol';
 import { cx } from '../../chrome/cx';
+import { SymbolText, symbolNotationText } from '../../chrome/symbols';
 import {
   deriveStackStage,
   stackStyleVars,
@@ -113,7 +114,11 @@ function EntryBody({ entry }: { entry: StackStageEntry }) {
             </span>
           )}
         </span>
-        <span className={s.title}>{entry.description}</span>
+        {/* The server's composed description, its `{…}` runs drawn as symbols
+            rather than printed as braces (issue #462). */}
+        <span className={s.title}>
+          <SymbolText text={entry.description} />
+        </span>
         <span className={s.subtitle} data-testid={`stack-subtitle-${entry.id}`}>
           {entry.subtitle}
         </span>
@@ -194,7 +199,7 @@ export function StackStage({ view, compact = false, targeting, onInspect }: Stac
         ref={registerBody(entry.id)}
         className={s.body}
         data-testid={`target-${entry.id}`}
-        aria-label={`Target ${entry.description}`}
+        aria-label={`Target ${symbolNotationText(entry.description)}`}
         tabIndex={tabIndex}
         onFocus={() => setFocusId(entry.id)}
         onClick={() => targeting?.onPick(entry.id)}
@@ -237,7 +242,7 @@ export function StackStage({ view, compact = false, targeting, onInspect }: Stac
             type="button"
             className={s.inspect}
             data-testid={`inspect-${entry.id}`}
-            aria-label={`Inspect ${entry.description}`}
+            aria-label={`Inspect ${symbolNotationText(entry.description)}`}
             tabIndex={-1}
             onClick={() => onInspect(entry.id)}
           >
@@ -280,7 +285,9 @@ export function StackStage({ view, compact = false, targeting, onInspect }: Stac
           onClick={() => setSheetOverride(true)}
         >
           <span>{`STACK (${model.count})`}</span>
-          <span className={s.handleTitle}>{top.description}</span>
+          <span className={s.handleTitle}>
+            <SymbolText text={top.description} />
+          </span>
         </button>
       );
     }

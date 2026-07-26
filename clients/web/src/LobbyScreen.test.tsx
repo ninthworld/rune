@@ -112,15 +112,26 @@ afterEach(() => {
   });
 });
 
+/** Open the create-table setup, which #546 made a destination, not a form. */
+function openCreate(): void {
+  fireEvent.click(screen.getByTestId('open-create-game-button'));
+}
+
+/** Pick a deck in the local seat's dropdown by its option id. */
+function pickDeck(id: string): void {
+  fireEvent.change(screen.getByTestId('deck-select'), { target: { value: id } });
+}
+
 describe('LobbyScreen (issue #114)', () => {
-  it('shows create + join when room-less; create sends the configured seats/setup', () => {
+  it('offers create and join-by-id when room-less; create sends the configured setup', () => {
     const socket = mountLobby(LOBBY_ROOMLESS_JSON);
 
-    expect(screen.getByTestId('create-room')).toBeDefined();
     expect(screen.getByTestId('join-room')).toBeDefined();
+    openCreate();
+    expect(screen.getByTestId('create-room')).toBeDefined();
 
-    // Pick a seat count on the segmented picker, then create.
-    fireEvent.click(screen.getByTestId('seat-count-6'));
+    // Step the seat count up from the 1v1 default of 2.
+    for (let i = 0; i < 4; i += 1) fireEvent.click(screen.getByTestId('seat-count-increase'));
     fireEvent.click(screen.getByTestId('create-room-button'));
 
     expect(lastSent(socket)).toEqual({
@@ -129,12 +140,13 @@ describe('LobbyScreen (issue #114)', () => {
     });
   });
 
-  it('picking a game-type tile pre-fills its designed seat count', () => {
+  it('picking a format pre-fills its designed seat count', () => {
     const socket = mountLobby(LOBBY_ROOMLESS_JSON);
+    openCreate();
 
-    // The free-for-all tile pre-fills 4 seats without a separate seat pick.
-    fireEvent.click(screen.getByTestId('game-setup-ffa-4'));
-    expect(screen.getByTestId('game-setup-ffa-4').getAttribute('aria-pressed')).toBe('true');
+    // The free-for-all format pre-fills 4 seats without a separate seat pick.
+    fireEvent.change(screen.getByTestId('game-setup-select'), { target: { value: 'ffa-4' } });
+    expect(screen.getByTestId('seat-count').textContent).toBe('4');
     fireEvent.click(screen.getByTestId('create-room-button'));
 
     expect(lastSent(socket)).toEqual({
@@ -158,13 +170,14 @@ describe('LobbyScreen (issue #114)', () => {
     expect(lastSent(socket)).toEqual({ type: 'join_room', room_id: 'r:7f3' });
   });
 
-  it('renders a room: copyable id, seat roster, and only advertised commands', () => {
+  it('renders a room: the seat ring, the invite id, and only advertised commands', () => {
     mountLobby(LOBBY_ROOM_DECKED_JSON);
 
+    // Seat 0 is mine; seat 1 is open and carries the invite contextually.
+    expect(screen.getByTestId('seat-0')).toBeDefined();
+    expect(screen.getByTestId('seat-1').textContent).toContain('Open seat');
+    fireEvent.click(screen.getByTestId('seat-1-options-button'));
     expect(screen.getByTestId('room-id').textContent).toBe('r:7f3');
-    // Seat 0 is mine and decked; seat 1 is open.
-    expect(screen.getByTestId('seat-0-decked')).toBeDefined();
-    expect(screen.queryByTestId('seat-1-decked')).toBeNull();
 
     // valid_commands = [submit_deck, ready, leave]: ready shown, unready hidden.
     expect(screen.getByTestId('ready-button')).toBeDefined();
@@ -188,18 +201,19 @@ describe('LobbyScreen (issue #114)', () => {
     expect(lastSent(socket)).toEqual({ type: 'ready', ready: true });
   });
 
-  it('shows per-seat filled/decked/ready for a full room', () => {
+  it('shows per-seat deck and ready state for a full room', () => {
     mountLobby(LOBBY_ROOM_ALL_READY_JSON);
     for (const seat of [0, 1]) {
-      expect(screen.getByTestId(`seat-${seat}-decked`)).toBeDefined();
-      expect(screen.getByTestId(`seat-${seat}-ready`)).toBeDefined();
+      // The seat states its deck in words and its readiness in a word.
+      expect(screen.getByTestId(`seat-${seat}-deck`).textContent).toBe('Deck submitted');
+      expect(screen.getByTestId(`seat-${seat}-ready`).textContent).toBe('Ready');
     }
     // Both ready: only unready/leave remain.
     expect(screen.queryByTestId('ready-button')).toBeNull();
     expect(screen.getByTestId('unready-button')).toBeDefined();
   });
 
-  it('copies the room id to the clipboard', async () => {
+  it('copies the room id to the clipboard from the open seat’s options', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -207,6 +221,7 @@ describe('LobbyScreen (issue #114)', () => {
     });
 
     mountLobby(LOBBY_ROOM_DECKED_JSON);
+    fireEvent.click(screen.getByTestId('seat-1-options-button'));
     await act(async () => {
       fireEvent.click(screen.getByTestId('copy-room-id-button'));
     });
@@ -226,35 +241,38 @@ describe('LobbyScreen (issue #114)', () => {
   it('lists open games: a joinable gathering room and an un-joinable in-progress one', () => {
     mountLobby(LOBBY_DIRECTORY_JSON);
 
-    // r0 is gathering with an open seat: a Join button and its occupancy show.
+    // r0 is gathering with an open seat: selecting it offers Join.
     expect(screen.getByTestId('room-row-r0')).toBeDefined();
-    expect(screen.getByTestId('room-r0-occupancy').textContent).toBe('1/2 filled');
-    expect(screen.getByTestId('join-directory-r0')).toBeDefined();
+    expect(screen.getByTestId('room-r0-occupancy').textContent).toContain('1/2 filled');
     expect(screen.queryByTestId('room-r0-in-progress')).toBeNull();
+    fireEvent.click(screen.getByTestId('room-row-r0'));
+    expect(screen.getByTestId('join-selected-button')).toBeDefined();
 
-    // r1 is in progress: visible but never a Join.
+    // r1 is in progress: visible, and never joinable.
     expect(screen.getByTestId('room-row-r1')).toBeDefined();
     expect(screen.getByTestId('room-r1-in-progress')).toBeDefined();
-    expect(screen.queryByTestId('join-directory-r1')).toBeNull();
+    fireEvent.click(screen.getByTestId('room-row-r1'));
+    expect(screen.queryByTestId('join-selected-button')).toBeNull();
   });
 
-  it('joins straight from the directory row (issue #280)', () => {
+  it('joins the selected table from the lobby’s one primary (issue #280)', () => {
     const socket = mountLobby(LOBBY_DIRECTORY_JSON);
-    fireEvent.click(screen.getByTestId('join-directory-r0'));
+    fireEvent.click(screen.getByTestId('room-row-r0'));
+    fireEvent.click(screen.getByTestId('join-selected-button'));
     expect(lastSent(socket)).toEqual({ type: 'join_room', room_id: 'r0' });
   });
 
-  it('hides directory Join buttons when join_room is not offered', () => {
+  it('offers no Join at all when join_room is not advertised', () => {
     // A directory can ride any view, but Join only renders when the server offers
-    // `join_room` (valid_commands gates interactivity). Strip it and the gathering
-    // room falls back to a non-interactive "Full"/status cell.
+    // `join_room` (valid_commands gates interactivity). Strip it and selecting a
+    // gathering room promotes nothing.
     const noJoin = JSON.stringify({
       ...JSON.parse(LOBBY_DIRECTORY_JSON),
       valid_commands: ['create_room'],
     });
     mountLobby(noJoin);
-    expect(screen.getByTestId('room-row-r0')).toBeDefined();
-    expect(screen.queryByTestId('join-directory-r0')).toBeNull();
+    fireEvent.click(screen.getByTestId('room-row-r0'));
+    expect(screen.queryByTestId('join-selected-button')).toBeNull();
   });
 
   it('names roster seats: a seat-derived fallback plus a You tag for the local seat (#300)', () => {
@@ -270,7 +288,7 @@ describe('LobbyScreen (issue #114)', () => {
     expect(seat1.textContent).not.toContain('p2');
   });
 
-  it('renders RUNE identity procedurally and puts the directory first (#300)', () => {
+  it('renders RUNE identity procedurally and leads with open games (#300, #546)', () => {
     mountLobby(LOBBY_DIRECTORY_JSON);
     // Procedural motif: an inline SVG mark and the wordmark, never an image
     // asset. The rule binds RUNE's IDENTITY; the environment backdrop behind it
@@ -281,10 +299,10 @@ describe('LobbyScreen (issue #114)', () => {
       expect(img.closest('[data-testid="scene-environment"]')).not.toBeNull();
     }
 
-    // The room directory (primary path) renders ahead of the create-room card in
-    // document order.
+    // Open games lead, and Create Game follows them as a destination rather than
+    // as a form competing for the same space (#546 acceptance).
     const directory = screen.getByTestId('room-directory');
-    const create = screen.getByTestId('create-room');
+    const create = screen.getByTestId('open-create-game-button');
     expect(
       directory.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -303,31 +321,23 @@ describe('LobbyScreen (issue #114)', () => {
     expect(screen.getByTestId('join-room-button')).toBeDefined();
   });
 
-  it('offers every starter deck as a tile, with the first selected by default', () => {
+  it('offers every starter deck in one dropdown, with the first selected by default', () => {
     mountLobby(LOBBY_ROOM_DECKED_JSON);
+    // One dropdown on the local seat — never the whole library at once (#546).
     for (const deck of STARTER_DECKLISTS) {
-      expect(screen.getByTestId(`deck-tile-${deck.id}`)).toBeDefined();
+      expect(screen.getByTestId(`deck-option-${deck.id}`)).toBeDefined();
     }
-    // Selection is carried for assistive tech (never color alone).
-    const first = screen.getByTestId(`deck-tile-${STARTER_DECKLISTS[0].id}`);
-    expect(first.getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByTestId('deck-select') as HTMLSelectElement).value).toBe(
+      STARTER_DECKLISTS[0].id,
+    );
   });
 
-  it('dresses deck selection in the builder’s 2.5D scene tokens (#508)', () => {
-    mountLobby(LOBBY_ROOM_DECKED_JSON);
-    // The deck-select group carries the scene elevation ladder as a --deck-* var, so
-    // the tiles read in the same visual language as the deck builder.
-    const group = screen.getByRole('group', { name: 'Starter decks' }) as HTMLElement;
-    expect(group.style.getPropertyValue('--deck-elev-rest')).not.toBe('');
-    expect(group.style.getPropertyValue('--deck-elev-lifted')).not.toBe('');
-  });
-
-  it('submits the deck picked on a tile (the tile drives the submitted list)', () => {
+  it('submits the deck picked in the dropdown (the dropdown drives the list)', () => {
     const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
     const picked = STARTER_DECKLISTS[STARTER_DECKLISTS.length - 1];
 
-    fireEvent.click(screen.getByTestId(`deck-tile-${picked.id}`));
-    expect(screen.getByTestId(`deck-tile-${picked.id}`).getAttribute('aria-pressed')).toBe('true');
+    pickDeck(picked.id);
+    expect((screen.getByTestId('deck-select') as HTMLSelectElement).value).toBe(picked.id);
 
     fireEvent.click(screen.getByTestId('submit-deck-button'));
     const sent = lastSent(socket) as { type: string; cards: string[] };
@@ -341,7 +351,7 @@ describe('LobbyScreen (issue #114)', () => {
     // gates the affordance.
     act(() => socket.emitMessage(catalogFrame([COMMANDER_FORMAT_FACTS])));
     // Pick the bundled commander deck; its designated commander is surfaced.
-    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    pickDeck('green-command');
     expect(screen.getByTestId('designated-commander').textContent).toContain('Jedit Ojanen');
 
     // Submitting carries the commander identity alongside the 100-card list.
@@ -359,7 +369,7 @@ describe('LobbyScreen (issue #114)', () => {
     // designation chrome appears — the gate is the advertised format rule, not the deck.
     const socket = mountLobby(LOBBY_ROOM_DECKED_JSON);
     act(() => socket.emitMessage(catalogFrame([DUEL_FORMAT_FACTS])));
-    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    pickDeck('green-command');
     expect(screen.queryByTestId('designated-commander')).toBeNull();
 
     fireEvent.click(screen.getByTestId('submit-deck-button'));
@@ -376,7 +386,7 @@ describe('LobbyScreen (issue #114)', () => {
     act(() =>
       socket.emitMessage(catalogFrame([{ ...COMMANDER_FORMAT_FACTS, requires_commander: false }])),
     );
-    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    pickDeck('green-command');
     expect(screen.queryByTestId('designated-commander')).toBeNull();
 
     fireEvent.click(screen.getByTestId('submit-deck-button'));
@@ -385,9 +395,13 @@ describe('LobbyScreen (issue #114)', () => {
     expect(sent.commander).toBeUndefined();
   });
 
-  it('summarizes the room state in one line (seats filled and ready counts)', () => {
+  it('summarizes the table on its own plaque (format, seats, occupancy, ready)', () => {
     mountLobby(LOBBY_ROOM_ALL_READY_JSON);
-    expect(screen.getByTestId('room-status').textContent).toBe('2/2 seats filled · 2 ready');
+    const status = screen.getByTestId('room-status').textContent ?? '';
+    expect(status).toContain('1v1 Duel');
+    expect(status).toContain('2 seats');
+    expect(status).toContain('2/2 filled');
+    expect(status).toContain('2 ready');
   });
 
   it('offers a display-name field when set_name is advertised, sending set_name (issue #294)', () => {
@@ -435,7 +449,7 @@ describe('LobbyScreen (issue #114)', () => {
     act(() => socket.emitMessage(catalogFrame([COMMANDER_FORMAT_FACTS])));
 
     // Pick the bundled commander deck; its designated commander surfaces near submit.
-    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    pickDeck('green-command');
     expect(screen.getByTestId('designated-commander').textContent).toContain('Jedit Ojanen');
 
     // Submitting carries the commander identity alongside the 100-card list.
@@ -452,7 +466,7 @@ describe('LobbyScreen (issue #114)', () => {
     act(() => socket.emitMessage(catalogFrame([DUEL_FORMAT_FACTS])));
 
     // Even picking the commander-capable deck: the 1v1 room never designates a commander.
-    fireEvent.click(screen.getByTestId('deck-tile-green-command'));
+    pickDeck('green-command');
     expect(screen.queryByTestId('designated-commander')).toBeNull();
 
     fireEvent.click(screen.getByTestId('submit-deck-button'));
@@ -463,7 +477,8 @@ describe('LobbyScreen (issue #114)', () => {
 
   it('offers the commander game-setup when creating a room (issue #372)', () => {
     const socket = mountLobby(LOBBY_ROOMLESS_JSON);
-    fireEvent.click(screen.getByTestId('game-setup-commander'));
+    openCreate();
+    fireEvent.change(screen.getByTestId('game-setup-select'), { target: { value: 'commander' } });
     fireEvent.click(screen.getByTestId('create-room-button'));
     expect(lastSent(socket)).toEqual({
       type: 'create_room',
@@ -585,13 +600,15 @@ describe('LobbyScreen (issue #114)', () => {
       });
     }
 
-    it('offers the host an AI seating card and sends add_ai with seat, kind, and deck', () => {
+    it('offers the host AI seating inside the open seat, sending seat, kind, and deck', () => {
       const socket = mountLobby(LOBBY_ROOM_HOST_CAN_ADD_AI_JSON);
-      // The card appears only once the catalog's advertised AI kinds arrive.
+      // Contextual (#546): it lives inside the seat it fills, so it does not
+      // exist until that seat's options are opened…
+      fireEvent.click(screen.getByTestId('seat-1-options-button'));
       expect(screen.queryByTestId('ai-seating')).toBeNull();
+      // …and only once the catalog's advertised AI kinds arrive.
       act(() => socket.emitMessage(catalogWithAi()));
 
-      // Now the host can pick a kind and seat an AI in the open seat (index 1).
       expect(screen.getByTestId('ai-seating')).toBeTruthy();
       expect(screen.getByTestId('ai-kind-random')).toBeTruthy();
       fireEvent.click(screen.getByTestId('add-ai-button'));
@@ -611,6 +628,9 @@ describe('LobbyScreen (issue #114)', () => {
     it('does not offer AI seating when the server does not advertise add_ai', () => {
       const socket = mountLobby(LOBBY_ROOM_DECKED_JSON); // no add_ai in valid_commands
       act(() => socket.emitMessage(catalogWithAi()));
+      fireEvent.click(screen.getByTestId('seat-1-options-button'));
+      // The invite is still there; seating an opponent is not.
+      expect(screen.getByTestId('room-id')).toBeTruthy();
       expect(screen.queryByTestId('ai-seating')).toBeNull();
     });
 
@@ -620,10 +640,10 @@ describe('LobbyScreen (issue #114)', () => {
       const aiSeat = screen.getByTestId('seat-1');
       expect(aiSeat.textContent).toContain('Random');
       expect(screen.getByTestId('seat-1-ai')).toBeTruthy();
-      expect(screen.getByTestId('seat-1-decked')).toBeTruthy();
-      expect(screen.getByTestId('seat-1-ready')).toBeTruthy();
-      // The room reads full: 2/2 seats filled counts the AI.
-      expect(screen.getByTestId('room-status').textContent).toContain('2/2');
+      expect(screen.getByTestId('seat-1-deck').textContent).toBe('Deck submitted');
+      expect(screen.getByTestId('seat-1-ready').textContent).toBe('Ready');
+      // The room reads full: 2/2 filled counts the AI.
+      expect(screen.getByTestId('room-status').textContent).toContain('2/2 filled');
 
       // Removing it sends remove_ai for that seat.
       fireEvent.click(screen.getByTestId('remove-ai-1-button'));

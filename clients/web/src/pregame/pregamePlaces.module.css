@@ -1,415 +1,167 @@
 /*
- * The pregame PLACES — front door, lobby, and room (issue #506;
- * `docs/design/front-door-and-lobby.md` §5.1–§5.5).
+ * The four pregame **places**, drawn to the approved baselines of issue #546:
  *
- * The companion to `pregame.module.css`, which owns the shared stage and the
- * surface/control primitives these compositions are built from (`composes:
- * … from './pregame.module.css'` pulls them in). Split for size along the one
- * seam that does not cut a rule in half: the stage and its vocabulary versus the
- * places that speak it.
+ * - `docs/ui-concepts/rune-pregame-server-connection.jpg` — the front door
+ * - `docs/ui-concepts/rune-pregame-server-lobby.jpg` — open games on a server
+ * - `docs/ui-concepts/rune-pregame-create-game.jpg` — the create-table setup
+ * - `docs/ui-concepts/rune-pregame-game-lobby.jpg` — the ready room
  *
- * The same rules apply here as there: every color, shadow, duration, and easing
- * is a `--pregame-*` custom property published by `pregameScene.ts` from
- * `sceneTokens.ts` — **no literal hex, no literal duration** — while geometry,
- * spacing, radii, type scale, and the 44 px touch floor read the shared chrome
- * tokens.
+ * Every one of them is the same picture: an open arena, a handful of dark slate
+ * plaques in its middle, and small controls at the edges. So this file holds
+ * only the four *arrangements*; the plaque, the frame, the type, and the control
+ * widths all come from `pregame.module.css`, and every control is a
+ * `ControlButton`/`IconButton` from `table/controls`.
+ *
+ * The carved-panel treatment of #506 — bounded panels in two columns, a
+ * persistent header bar, a pinned ready bar — is retired here. Those are the
+ * "permanent dashboard regions" ADR 0032 removed from the match, and the
+ * approved baselines do not draw them around it either.
+ *
+ * ADR 0019, gated by `pregameScene.test.ts`: no literal hex, no literal
+ * duration, no bare `z-index`.
  */
 
-/* ── Front door (§5.1) ─────────────────────────────────────────────────────── */
-.frontDoor {
-  display: grid;
-  place-items: center;
-  padding: var(--rune-space-10) var(--rune-space-7);
-  box-sizing: border-box;
-}
-
-.frontDoorColumn {
-  composes: panel from './pregame.module.css';
-  width: 100%;
-  max-width: 480px;
+/* ── 1. The front door ─────────────────────────────────────────────────────────
+ * One column on the centre of the arena: the wordmark at landing scale, the
+ * already-chosen server, the one blue action, and the quiet way to change it. */
+.doorColumn {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: var(--rune-space-7);
   text-align: center;
-  gap: var(--rune-space-8);
-  padding: var(--rune-space-10);
 }
 
-.brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--rune-space-4);
-}
-
-.brandRow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--rune-space-6);
-}
-
-/* Procedural geometry only: the RuneMark and the display-face wordmark. No card
- * image, official frame, symbol, or WotC branding on any pregame surface. */
-.mark {
-  display: block;
-  flex-shrink: 0;
-  color: var(--pregame-glow);
-}
-
-.wordmark {
+.doorWordmark {
   margin: 0;
   font-family: var(--rune-font-display);
-  font-weight: 800;
-  font-size: 42px;
-  letter-spacing: 0.32em;
-  padding-left: 0.32em;
-  line-height: 1;
-  color: var(--pregame-text);
-}
-
-.tagline {
-  margin: 0;
-  font-size: var(--rune-type-caption);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  font-size: calc(var(--rune-type-display) * 3);
   font-weight: 600;
-  color: var(--pregame-text-muted);
-}
-
-/* The three connection states stay visually distinct: a tinted pill with a
- * leading dot, and — the non-color channels — a distinct WORD per state plus a
- * live pulse shape while connecting (static under reduced motion). */
-.statePill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--rune-space-3);
-  font-size: var(--rune-type-caption);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.stateIdle {
-  color: var(--pregame-text-muted);
-}
-
-.stateConnecting {
-  color: var(--pregame-blue);
-}
-
-.stateClosed {
-  color: var(--pregame-red);
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--rune-radius-pill);
-  background: currentcolor;
-  flex-shrink: 0;
-}
-
-@keyframes livePulse {
-  0%,
-  100% {
-    opacity: 0.3;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-/* The connecting pulse's period is likewise token-derived (staging × 3.25 =
- * 1.3 s), so it goes static under reduced motion while the WORD "Connecting"
- * keeps carrying the state. */
-.dotLive {
-  animation: livePulse calc(var(--pregame-motion-staging) * 3.25) ease-in-out infinite;
-}
-
-.advanced {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--rune-space-5);
-  text-align: left;
-}
-
-.advancedSummary {
-  display: flex;
-  align-items: center;
-  min-height: var(--rune-touch);
-  font-size: var(--rune-type-caption);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--pregame-text-muted);
-  cursor: pointer;
-  list-style: none;
-}
-
-.advancedSummary::-webkit-details-marker {
-  display: none;
-}
-
-.advancedSummary:hover,
-.advancedSummary:focus-visible {
-  color: var(--pregame-text);
-}
-
-/* ── Session header, shared by Lobby and Room (§5.2, §6) ───────────────────── */
-/* The header is a SURFACE, not floating type: every pregame element sits on a
- * known scene surface, so the contrast floors are checked against `raised` /
- * `surface` and never against whatever slice of sky happens to be behind it. */
-.header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--rune-space-6);
-  padding: var(--rune-space-5) var(--rune-space-7);
-  box-sizing: border-box;
-  border: 1px solid var(--pregame-line);
-  border-radius: var(--rune-radius-lg);
-  background: var(--pregame-raised);
-  box-shadow: var(--pregame-elev-screen);
-}
-
-.headerBrand {
-  display: flex;
-  align-items: center;
-  gap: var(--rune-space-5);
-  min-width: 0;
-}
-
-.headerWordmark {
-  margin: 0;
-  font-family: var(--rune-font-display);
-  font-size: var(--rune-type-heading);
-  font-weight: 800;
-  letter-spacing: 0.24em;
-  padding-left: 0.24em;
-  color: var(--pregame-text);
-}
-
-.headerTag {
-  font-size: var(--rune-type-micro);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--pregame-text-muted);
-}
-
-.headerActions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-5);
-}
-
-/* The session menu: client-session actions only — display settings, card art,
- * and Disconnect. It never holds a lobby command. */
-.menu {
-  position: relative;
-  display: inline-flex;
-}
-
-.menuScrim {
-  position: fixed;
-  inset: 0;
-  z-index: 4;
-  border: none;
-  background: transparent;
-  cursor: default;
-}
-
-.menuDrawer {
-  position: absolute;
-  top: calc(100% + var(--rune-space-3));
-  right: 0;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  min-width: 13rem;
-  padding: var(--rune-space-3);
-  border: 1px solid var(--pregame-line-strong);
-  border-radius: var(--rune-radius-md);
-  background: var(--pregame-raised);
-  box-shadow: var(--pregame-elev-screen);
-}
-
-.menuItem {
-  composes: button from './pregame.module.css';
-  justify-content: flex-start;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  text-align: left;
-}
-
-.menuItem:hover,
-.menuItem:focus-visible {
-  border-color: var(--pregame-line-strong);
-  box-shadow: none;
-  transform: none;
-}
-
-/* ── Lobby (§5.2) ──────────────────────────────────────────────────────────── */
-.lobby,
-.room {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-  box-sizing: border-box;
-}
-
-.lobbyBody,
-.roomBody {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--rune-space-8);
-  width: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: var(--rune-space-8) var(--rune-space-7);
-  box-sizing: border-box;
-}
-
-/* Two columns at ≥ 1180 px (desktop and tablet landscape); one column below and
- * on phone portrait. The primary column always leads in document order, so the
- * collapsed layout keeps the same reading and tab order. */
-.columns {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--rune-space-8);
-  align-items: start;
-}
-
-@media (min-width: 1180px) {
-  .columns {
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  }
-}
-
-.column {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rune-space-8);
-  min-width: 0;
-}
-
-/* The "Playing as" strip wears the local player's crest chip, so the name and
- * the color are learned together. */
-.identityRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-5);
-  min-height: var(--rune-touch);
-  padding: var(--rune-space-4) var(--rune-space-7);
-  box-sizing: border-box;
-  border: 1px solid var(--pregame-line);
-  border-radius: var(--rune-radius-md);
-  background: var(--pregame-surface);
-}
-
-.identityLabel {
-  font-size: var(--rune-type-caption);
-  color: var(--pregame-text-muted);
-}
-
-.identityName {
-  font-family: var(--rune-font-display);
-  font-size: var(--rune-type-body-lg);
-  font-weight: 700;
   letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--pregame-gold);
+}
+
+.doorMark {
+  color: var(--pregame-gold);
+}
+
+/* The connection state, in words: idle / connecting / closed each read
+ * differently without relying on their hue (§11). */
+.doorStatus {
+  font-size: var(--rune-type-body);
+  color: var(--pregame-text-muted);
+}
+
+/* ── 2. The server plaque ──────────────────────────────────────────────────────
+ * Top-centre on every connected place, and mid-column on the front door: a gem,
+ * the server's name, and — in the lobby — the quiet way off it. */
+.serverGem {
+  width: var(--rune-space-6);
+  height: var(--rune-space-6);
+  flex: none;
+  transform: rotate(45deg);
+  border-radius: var(--rune-radius-xs);
+  background: var(--pregame-green);
+}
+
+.serverName {
+  font-size: var(--rune-type-body-lg);
   color: var(--pregame-text);
+  overflow-wrap: anywhere;
 }
 
-.identityInput {
-  composes: input from './pregame.module.css';
-  flex: 1 1 12rem;
-  min-width: 0;
-}
-
-/* ── Room directory (§5.2) ─────────────────────────────────────────────────── */
-.directoryList {
+/* ── 3. Open games ─────────────────────────────────────────────────────────────
+ * The focus of the lobby. Each table is a plaque list row, not a control:
+ * selecting one is what makes JOIN GAME — the single blue primary — the natural
+ * next action. */
+.gameList {
   display: flex;
   flex-direction: column;
   gap: var(--rune-space-5);
+  width: min(100%, calc(var(--rune-control-w-cluster) * 2.5));
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.directoryRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--rune-space-6);
-  min-height: var(--rune-touch);
-  padding: var(--rune-space-6) var(--rune-space-7);
-  border: 1px solid var(--pregame-line);
-  border-radius: var(--rune-radius-md);
-  background: var(--pregame-surface);
-  box-shadow: var(--pregame-elev-rest);
-  transition:
-    box-shadow var(--pregame-motion-micro) var(--pregame-ease-micro),
-    transform var(--pregame-motion-micro) var(--pregame-ease-micro);
+.gameRow {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--pregame-motion-micro) var(--pregame-ease-micro);
 }
 
-.directoryRow:hover,
-.directoryRow:focus-within {
-  box-shadow: var(--pregame-elev-lifted);
+.gameRow:hover {
   transform: translateY(-2px);
 }
 
-.directoryInfo {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rune-space-3);
-  min-width: 0;
+.gameRow:focus-visible {
+  outline: 2px solid var(--rune-selection);
+  outline-offset: 2px;
 }
 
-.directoryName {
+.gameRowFace {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--rune-space-7);
+  min-height: var(--rune-touch);
+}
+
+/* The leading pip: the non-colour half of selection — an unselected row draws a
+ * hollow ring, the selected one a filled diamond (§11, "disc plus ring"). */
+.rowPip {
+  width: var(--rune-pip-size);
+  height: var(--rune-pip-size);
+  flex: none;
+  transform: rotate(45deg);
+  border: 1px solid var(--pregame-line-strong);
+  background: none;
+}
+
+.rowPipOn {
+  border-color: var(--pregame-blue);
+  background: var(--rune-pip-on);
+}
+
+.rowName {
   font-family: var(--rune-font-display);
   font-size: var(--rune-type-body-lg);
-  font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--pregame-text);
+  overflow-wrap: anywhere;
 }
 
-.directoryMeta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-4);
+.rowMeta {
   font-size: var(--rune-type-caption);
   color: var(--pregame-text-muted);
 }
 
-.directoryActions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-4);
+.rowCount {
+  font-size: var(--rune-type-body-lg);
+  font-variant-numeric: tabular-nums;
+  color: var(--pregame-text);
 }
 
-/* Occupancy as a SHAPE as well as a number: one pip per seat, filled pips in
- * that seat's accent, empty pips as dashed outlines (§5.9). Pips are
- * indicator-class and never carry text. */
+/* Occupancy as a shape as well as a number: one pip per seat, filled pips in
+ * that seat's own accent. Indicator-class; it never carries text. */
 .pipRow {
   display: inline-flex;
   align-items: center;
-  gap: var(--rune-space-2);
+  gap: var(--rune-space-1);
 }
 
 .pip {
-  width: 9px;
-  height: 9px;
-  border-radius: var(--rune-radius-pill);
+  width: var(--rune-space-3);
+  height: var(--rune-space-3);
   border: 1px dashed var(--pregame-line-strong);
-  box-sizing: border-box;
+  border-radius: var(--rune-radius-pill);
 }
 
 .pipFilled {
@@ -418,70 +170,334 @@
   background: var(--pregame-accent);
 }
 
-/* The empty directory CONTAINS the create affordance rather than pointing at
- * one elsewhere (fixes P5). */
-.emptyDirectory {
+/* Before the first view: the shape a player is waiting for is the shape they
+ * see. Static — no shimmer competing with the arena. */
+.skeletonRow {
+  height: var(--rune-touch);
+  border: 1px dashed var(--pregame-line);
+  border-radius: var(--rune-radius-sm);
+  background: var(--pregame-surface);
+  opacity: 0.5;
+}
+
+.emptyGames {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--rune-space-6);
-  padding: var(--rune-space-9);
-  border: 1px dashed var(--pregame-line-strong);
-  border-radius: var(--rune-radius-md);
+  text-align: center;
   color: var(--pregame-text-muted);
 }
 
-/* Before the first LobbyView: the real composition with a skeleton directory —
- * the shape a player is waiting for is the shape they see (§5.7). */
-@keyframes skeletonShimmer {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 0.7;
-  }
+/* ── 4. The create-table setup ─────────────────────────────────────────────────
+ * A single plaque on the arena holding the essential decisions and nothing
+ * else. Everything further is behind Advanced. */
+.formPlaque {
+  width: min(100%, calc(var(--rune-control-w-cluster) * 2));
 }
 
-.skeletonRow {
+.formFace {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--rune-space-6);
+  padding: var(--rune-space-8) var(--rune-space-9) var(--rune-space-7);
+}
+
+.formTitle {
+  margin: 0 0 var(--rune-space-2);
+  padding-bottom: var(--rune-space-5);
+  border-bottom: 1px solid var(--pregame-line);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-title);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--pregame-gold);
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--rune-cluster-gap);
+  padding-top: var(--rune-space-4);
+}
+
+.formRules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--rune-type-caption);
+  color: var(--pregame-text-muted);
+}
+
+/* ── 5. The ready room ─────────────────────────────────────────────────────────
+ * The arena IS the seating diagram: seats sit around the ring, the local seat at
+ * the bottom where the player's own hand will be, and the room's state reads
+ * from the middle. No roster table, no dashboard. */
+/*
+ * The ring's own box, which decides whether anything in the room collides.
+ *
+ * Both a seat and the centre plaque are centred on their point, so each claims
+ * half its height either side of it. `seatRing.RING_RY` puts the nearest seat
+ * `RING_RY%` of the ring's height from the centre, and the room only reads
+ * correctly while that distance clears half a seat plus half the centre:
+ *
+ *     0.34 · H  >  seatHeight / 2 + centreHeight / 2
+ *
+ * The local seat is the tall one — plaque, deck row, primary, and a resubmit —
+ * at roughly `--rune-control-w-cluster` of height, and the centre plaque runs
+ * about a third of that. The floor below is what satisfies the inequality with
+ * margin; at the shipped `* 1.5` the two bands intersected and the room drew
+ * "everyone's here" across the host's own seat. `flex: none` keeps the arena's
+ * column from compressing the box back under that floor.
+ */
+.ring {
+  position: relative;
+  flex: none;
+  width: 100%;
+  max-width: calc(var(--rune-control-w-cluster) * 4);
+  aspect-ratio: 16 / 9;
+  min-height: calc(var(--rune-control-w-cluster) * 2.4);
+  margin: 0 auto;
+}
+
+/* One seat's slot. `--seat-x` / `--seat-y` are the ring position `seatRing.ts`
+ * derives; the element is centred on it. */
+.ringSeat {
+  position: absolute;
+  z-index: var(--rune-z-shell);
+  left: var(--seat-x);
+  top: var(--seat-y);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rune-space-4);
+  max-width: calc(var(--rune-control-w-cluster) * 1.4);
+  transform: translate(-50%, -50%);
+}
+
+/*
+ * A seat with its options open outranks every other seat.
+ *
+ * `transform` above makes each seat its own stacking context, so the popover's
+ * own `--rune-z-popover` is scoped INSIDE the seat that opened it and cannot
+ * lift it past anything outside. Sibling seats and the centre plaque then paint
+ * over the popover purely by document order — which is why the invite panel
+ * opened *underneath* the host's seat. The rung has to be worn by the element
+ * that actually competes with them, which is the seat.
+ */
+.ringSeat:has(.seatOptions) {
+  z-index: var(--rune-z-popover);
+}
+
+/* The room's own state, in the middle of the ring where the table would be.
+ * It is the room reporting on itself, so it yields to every seat: it is drawn
+ * last and would otherwise paint over one on any viewport where the two bands
+ * come close. */
+.ringCentre {
+  position: absolute;
+  z-index: var(--rune-z-scene);
+  left: 50%;
+  top: 50%;
+  width: max-content;
+  max-width: calc(var(--rune-control-w-cluster) * 1.2);
+  transform: translate(-50%, -50%);
+}
+
+.centreFace {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rune-space-2);
+  padding: var(--rune-space-6) var(--rune-space-8);
+  text-align: center;
+}
+
+.centreGate {
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pregame-text);
+}
+
+.centreCount {
+  font-size: var(--rune-type-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--pregame-text-muted);
+}
+
+/* A seat plaque: identity, readiness, and only the selected deck NAME. The
+ * local seat expands for its deck choice. */
+.seatFace {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--rune-space-3);
+  padding: var(--rune-space-5) var(--rune-space-7);
+}
+
+.seatHead {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-5);
+}
+
+.seatName {
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-body-lg);
+  letter-spacing: 0.04em;
+  color: var(--pregame-text);
+  overflow-wrap: anywhere;
+}
+
+.seatDeck {
+  font-size: var(--rune-type-caption);
+  color: var(--pregame-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* The crest chip: a monogram inside a seat-accent ring, at the touch floor. The
+ * monogram is the non-colour channel beside the accent. */
+.crest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--rune-touch);
   height: var(--rune-touch);
-  border-radius: var(--rune-radius-md);
-  background: var(--pregame-line-strong);
-  animation: skeletonShimmer calc(var(--pregame-motion-micro) * 10) var(--pregame-ease-micro)
-    infinite;
+  flex: none;
+  border: 2px solid var(--pregame-accent, var(--pregame-line-strong));
+  border-radius: var(--rune-radius-pill);
+  background: var(--pregame-surface);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-heading);
+  color: var(--pregame-text);
 }
 
-/* ── Last-match ribbon (§5.5) ──────────────────────────────────────────────── */
-/* Quiet, explicitly ephemeral: the outcome WORD carries the meaning, the hue
- * family only tints it. The lobby renders identically with the ribbon absent. */
+.crestLocal {
+  box-shadow:
+    0 0 0 2px var(--pregame-surface),
+    0 0 0 4px var(--pregame-accent);
+}
+
+/* The seat's portrait plate, filling the ring's aperture. Decorative: the
+ * seat's display name beside it is the reading channel. */
+.crestPlate {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--rune-radius-pill);
+  object-fit: cover;
+}
+
+.crestOpen {
+  border-style: dashed;
+  color: var(--pregame-text-muted);
+}
+
+/* The local seat's deck row: one dropdown — never every deck at once — plus the
+ * quiet edit/import shortcuts into the builder, which owns that interface. */
+.deckRow {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+
+.deckSelect {
+  composes: select from './pregame.module.css';
+  min-width: calc(var(--rune-control-w-pair) * 1.2);
+}
+
+/* An empty seat's contextual options, opened from the seat itself and anchored
+ * to it — never a permanent panel and never a room-wide dashboard. */
+.seatOptions {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + var(--rune-space-4));
+  z-index: var(--rune-z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-5);
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(var(--rune-control-w-cluster) * 1.2);
+  padding: var(--rune-space-7);
+  border: 1px solid var(--pregame-line-strong);
+  border-radius: var(--rune-radius-md);
+  background: var(--pregame-raised);
+  box-shadow: var(--pregame-elev-screen);
+  transform: translateX(-50%);
+}
+
+.seatOptionsField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-3);
+}
+
+/* The room's invite: the protocol's join key IS a room id, so the UI says so. */
+.codeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--rune-space-4);
+}
+
+.codeText {
+  padding: var(--rune-space-2) var(--rune-space-5);
+  border-radius: var(--rune-radius-xs);
+  background: var(--pregame-surface);
+  font-family: var(--rune-font-mono);
+  font-size: var(--rune-type-caption);
+  color: var(--pregame-text);
+  overflow-wrap: anywhere;
+}
+
+/* ── 6. Chat — a collapsed edge surface ────────────────────────────────────────
+ * The baselines put chat on the right edge, collapsed, with room to become
+ * functional later. It stays a tab until it is asked for and never consumes the
+ * arena. */
+.chatTab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--rune-space-4);
+}
+
+.chatPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-4);
+  box-sizing: border-box;
+  width: var(--rune-control-w-cluster);
+  padding: var(--rune-space-7);
+  border: 1px solid var(--pregame-line-strong);
+  border-radius: var(--rune-radius-md);
+  background: var(--pregame-raised);
+  box-shadow: var(--pregame-elev-screen);
+  font-size: var(--rune-type-caption);
+  color: var(--pregame-text-muted);
+}
+
+/* ── 7. The last-match ribbon ──────────────────────────────────────────────────
+ * Explicitly ephemeral: the lobby renders identically, and stays fully
+ * functional, with it absent. */
 .ribbon {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: var(--rune-space-6);
-  padding: var(--rune-space-6) var(--rune-space-7);
-  border: 1px solid var(--pregame-line-strong);
-  border-radius: var(--rune-radius-md);
-  background: var(--pregame-surface);
-  animation: placeRise var(--pregame-motion-micro) var(--pregame-ease-micro) both;
-}
-
-.ribbonText {
-  flex: 1 1 16rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--rune-space-4);
-  min-width: 0;
-  font-size: var(--rune-type-caption);
-  color: var(--pregame-text-muted);
 }
 
 .ribbonOutcome {
   font-family: var(--rune-font-display);
   font-size: var(--rune-type-body-lg);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -494,253 +510,25 @@
 }
 
 .outcomeDraw {
-  color: var(--pregame-text);
-}
-
-/* ── Room (§5.3) ───────────────────────────────────────────────────────────── */
-.roomHeader {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--rune-space-6);
-}
-
-.roomHeadText {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rune-space-3);
-  min-width: 0;
-}
-
-.roomStatus {
-  font-size: var(--rune-type-caption);
   color: var(--pregame-text-muted);
 }
 
-.roomHeadActions {
+/* ── 8. The identity strip ─────────────────────────────────────────────────────
+ * "Playing as <name>", with its inline editor — quiet, under the wordmark. */
+.identityRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--rune-space-5);
 }
 
-/* The invite: the room id plus one line of instruction, matched word-for-word
- * by the Join field's label (fixes P6 as far as the protocol allows). */
-.codeChip {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-4);
-  padding: var(--rune-space-3) var(--rune-space-4) var(--rune-space-3) var(--rune-space-6);
-  border: 1px solid var(--pregame-line-strong);
-  border-radius: var(--rune-radius-md);
-  background: var(--pregame-surface);
-}
-
-.codeText {
-  font-family: var(--rune-font-mono);
-  font-size: var(--rune-type-caption);
-  color: var(--pregame-text);
-  word-break: break-all;
-}
-
-.shareLine {
-  font-size: var(--rune-type-micro);
-  color: var(--pregame-text-muted);
-}
-
-/* ── Roster (§5.3) ─────────────────────────────────────────────────────────── */
-.rosterList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rune-space-5);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.rosterRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-5);
-  min-height: var(--rune-touch);
-  padding: var(--rune-space-5) var(--rune-space-6);
-  border: 1px solid var(--pregame-line);
-  border-left: 3px solid var(--pregame-accent, var(--pregame-line-strong));
-  border-radius: var(--rune-radius-md);
-  background: var(--pregame-surface);
-  box-shadow: var(--pregame-elev-rest);
+.identityName {
   font-size: var(--rune-type-body);
-}
-
-/* An open seat is an invitation, not a person: dashed bound, no accent. */
-.seatOpen {
-  border: 1px dashed var(--pregame-line-strong);
-  background: transparent;
-  box-shadow: none;
-  color: var(--pregame-text-muted);
-}
-
-/* The crest chip — visual-system §6's crest cluster reduced to chip scale: a
- * monogram inside a seat-accent ring. The local player's chip carries the same
- * ring the match's crest wears, which is what makes "that's me" survive the
- * ready gate. ≥ 44 px in both dimensions. */
-.crest {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--rune-touch);
-  height: var(--rune-touch);
-  flex-shrink: 0;
-  box-sizing: border-box;
-  border: 2px solid var(--pregame-accent, var(--pregame-line-strong));
-  border-radius: var(--rune-radius-pill);
-  background: color-mix(in srgb, var(--pregame-accent, transparent) 14%, var(--pregame-ink));
-  color: var(--pregame-text);
-  font-family: var(--rune-font-display);
-  font-size: var(--rune-type-heading);
-  font-weight: 700;
-}
-
-.crestLocal {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pregame-accent, transparent) 45%, transparent);
-}
-
-.crestOpen {
-  border-style: dashed;
-  border-color: var(--pregame-line-strong);
-  background: transparent;
-  color: var(--pregame-text-muted);
-}
-
-.rosterWho {
-  display: flex;
-  align-items: center;
-  gap: var(--rune-space-5);
-  flex: 1 1 10rem;
-  min-width: 0;
-}
-
-.rosterNames {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-3);
-  min-width: 0;
-}
-
-.seatName {
-  font-weight: 600;
   color: var(--pregame-text);
   overflow-wrap: anywhere;
 }
 
-.seatOpen .seatName {
-  font-weight: 500;
-  color: var(--pregame-text-muted);
-}
-
-.rosterState {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-4);
-}
-
-.youTag {
-  padding: 1px 7px;
-  border: 1px solid var(--pregame-blue);
-  border-radius: var(--rune-radius-pill);
-  font-size: var(--rune-type-micro);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--pregame-blue);
-  flex-shrink: 0;
-}
-
-/* Glyph-coded state chips: shape + word, never color alone. */
-.stateChip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--rune-space-2);
-  padding: 2px 8px;
-  border: 1px solid var(--pregame-line-strong);
-  border-radius: var(--rune-radius-pill);
-  font-size: var(--rune-type-caption);
-  font-weight: 600;
-  color: var(--pregame-text-muted);
-}
-
-.stateChipOn {
-  composes: stateChip;
-  border-color: var(--pregame-blue);
-  color: var(--pregame-blue);
-}
-
-/* ── Ready bar (§5.3, fixes P3 and P4) ─────────────────────────────────────── */
-/* Pinned to the bottom of the room composition at the screen elevation, so the
- * single gold control is on screen at every scroll position and every reference
- * geometry — the pregame echo of ADR 0023's one action home. It grows in height
- * and wraps at 125 % text rather than clipping. */
-.readyBar {
-  position: sticky;
-  bottom: 0;
-  z-index: 3;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--rune-space-6);
-  padding: var(--rune-space-6) var(--rune-space-8);
-  border-top: 1px solid var(--pregame-line-strong);
-  background: var(--pregame-raised);
-  box-shadow: var(--pregame-elev-screen);
-}
-
-.readyBarInner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--rune-space-6);
-  width: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
-}
-
-/* The gate, in words: the sentence names the reason the gold control is what it
- * is. It cross-fades at the `micro` class as the view changes. */
-.gateSentence {
-  flex: 1 1 16rem;
-  min-width: 0;
-  font-size: var(--rune-type-body-lg);
-  font-weight: 600;
-  color: var(--pregame-text);
-  animation: gateFade var(--pregame-motion-micro) var(--pregame-ease-micro) both;
-}
-
-@keyframes gateFade {
-  from {
-    opacity: 0.4;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.readyBarActions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--rune-space-5);
-}
-
-/* ── Deck column (§5.3) ────────────────────────────────────────────────────── */
-.deckColumn {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rune-space-6);
+.identityInput {
+  composes: input from './pregame.module.css';
+  width: var(--rune-control-w-cluster);
 }

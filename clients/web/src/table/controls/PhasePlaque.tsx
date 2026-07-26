@@ -36,6 +36,7 @@ import { PHASES } from '../../protocol';
 import { cx } from '../../chrome/cx';
 import { playerName } from '../../playerNames';
 import { PHASE_GROUPS, STEP_NAME, pipStates } from './phaseSteps';
+import { turnTrail } from './turnTrail';
 import s from './plaque.module.css';
 
 export interface PhasePlaqueProps {
@@ -75,6 +76,18 @@ function ownershipLine(view: GameView): string {
   return `${playerName(view, view.active_player)}'s turn`;
 }
 
+/**
+ * The plaque's one accessible sentence (issue #455). §5 fixes the two drawn
+ * lines; this is what assistive technology hears, and it carries the **turn
+ * ordinal** in every form — including the compact one, which drops the drawn
+ * ownership line. The playtest #455 records lost exactly this fact ("the player
+ * believes they're still in turn 1; the game is at turn 2"), and an ordinal that
+ * only survives in the wide layout would lose it again on a phone.
+ */
+function plaqueSentence(view: GameView, title: string, ownership: string): string {
+  return `Turn ${view.turn}. ${title}. ${ownership}.`;
+}
+
 export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueProps) {
   // Ephemeral presentation, defaulting closed: a fresh mount from one GameView
   // renders the plaque alone (nothing load-bearing across messages).
@@ -86,6 +99,12 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
   const ownership = ownershipLine(view);
   const stops = view.stops ?? [];
   const states = pipStates(view.phase);
+  // The path this turn has already taken (issue #455) — read off `view.log`, so
+  // the marks below rebuild from the same single message the rest of the plaque
+  // does. It says "the turn has been here", never "you were skipped here": the
+  // wire's one `auto_passed` boolean covers a whole settle and never names the
+  // steps it ran through (ADR 0020).
+  const passed = new Set<Phase>(turnTrail(view));
 
   // The full new set on every toggle — the server stores it and echoes it back in
   // `view.stops`, which is the toggles' only source of truth.
@@ -99,6 +118,9 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
       className={cx(s.plaque, compact && s.compact)}
       data-testid="phase-plaque"
       data-compact={compact || undefined}
+      // The turn ordinal as data, so it is assertable and available to CSS in
+      // both forms even where §5's drawn ownership line is dropped.
+      data-turn={view.turn}
     >
       {/* The transient "Auto-passed" badge (shipped behaviour, ADR 0020). It sits
           above the plate rather than inside it: the plate's two text lines are
@@ -111,7 +133,7 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
 
       <div className={s.frame}>
         <div className={s.face}>
-          <div className={s.text} role="status" aria-label="Turn and phase">
+          <div className={s.text} role="status" aria-label={plaqueSentence(view, title, ownership)}>
             <span className={s.title} data-testid="plaque-step">
               {title}
             </span>
@@ -120,9 +142,20 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
                 keeps the pips, which is what makes it one line. */}
             <span className={s.subline}>
               {!compact && (
-                <span className={s.ownership} data-testid="plaque-ownership">
-                  {ownership}
-                </span>
+                <>
+                  {/* Issue #455: the turn ordinal, drawn beside §5's ownership
+                      sentence rather than folded into it, so the sentence the
+                      spec fixes is unchanged and the number the settle loop
+                      makes easy to lose is on the plate. The compact row keeps
+                      its one-line form (it drops the ownership line too) and
+                      answers through the accessible sentence above. */}
+                  <span className={s.turn} data-testid="plaque-turn">
+                    T{view.turn}
+                  </span>
+                  <span className={s.ownership} data-testid="plaque-ownership">
+                    {ownership}
+                  </span>
+                </>
               )}
               {/* Decorative: the semantic step sequence is the <ol> behind the
                   chevron, so the row is hidden from assistive tech (§5.1). */}
@@ -175,17 +208,34 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
           {PHASES.map((phase) => {
             const current = phase === view.phase;
             const stopped = stops.includes(phase);
+            const wentThrough = passed.has(phase);
             return (
               <li
                 key={phase}
-                className={cx(s.step, current && s.stepCurrent)}
+                className={cx(s.step, current && s.stepCurrent, wentThrough && s.stepPassed)}
                 data-testid={`plaque-step-${phase}`}
                 data-phase={phase}
                 data-current={current || undefined}
+                data-passed={wentThrough || undefined}
                 data-stop={stopped || undefined}
                 aria-current={current ? 'step' : undefined}
               >
-                <span className={s.stepName}>{STEP_NAME[phase]}</span>
+                <span className={s.stepLead}>
+                  <span className={s.stepName}>{STEP_NAME[phase]}</span>
+                  {/* The §8 "path taken" mark (issue #455): a glyph, not a hue,
+                      so the trail reads on a colour-blind path and under
+                      reduced motion alike — there is no animation to remove. */}
+                  {wentThrough && (
+                    <span
+                      className={s.stepPassedMark}
+                      data-testid={`plaque-passed-${phase}`}
+                      role="img"
+                      aria-label="already passed this turn"
+                    >
+                      ✓
+                    </span>
+                  )}
+                </span>
                 {onSetStops && (
                   <button
                     type="button"

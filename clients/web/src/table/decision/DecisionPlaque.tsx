@@ -58,6 +58,7 @@
  * is no hover-only and no drag-only affordance here.
  */
 import { cx } from '../../chrome/cx';
+import { SymbolText, symbolNotationText } from '../../chrome/symbols';
 import { ControlButton } from '../controls';
 import type { PlaquePlacement } from './plaqueAnchor';
 import s from './plaque.module.css';
@@ -142,7 +143,7 @@ export function DecisionPlaque({
       // assistive reader reaches the controls without hunting, and the title
       // names the decision the strip is describing in words.
       role="group"
-      aria-label={title}
+      aria-label={symbolNotationText(title)}
       style={{
         left: rect.x,
         top: rect.y,
@@ -154,7 +155,8 @@ export function DecisionPlaque({
     >
       <div className={s.plate}>
         <span className={s.title} data-testid={`${testId}-title`}>
-          {title}
+          {/* The action's own label: symbol notation draws as symbols (#462). */}
+          <SymbolText text={title} />
         </span>
         <div className={s.controls}>
           {/* §11: confirm always LEADS and cancel always TRAILS. The order is

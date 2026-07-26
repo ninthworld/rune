@@ -20,7 +20,15 @@ describe('CardInspect (issue #261)', () => {
     render(<CardInspect target={{ kind: 'card', card }} onClose={vi.fn()} />);
 
     expect(screen.getByTestId('card-inspect-name').textContent).toBe('Serra Angel');
-    expect(screen.getByTestId('card-inspect-cost').textContent).toBe('{3}{W}{W}');
+    // Issue #462: the cost is the server's string, drawn as symbols — the
+    // player never sees brace notation, and each symbol announces its own name.
+    const cost = screen.getByTestId('card-inspect-cost');
+    expect(cost.textContent).not.toContain('{');
+    expect(
+      within(cost)
+        .getAllByRole('img')
+        .map((pip) => pip.getAttribute('aria-label')),
+    ).toEqual(['three generic mana', 'white mana', 'white mana']);
     expect(screen.getByTestId('card-inspect-type').textContent).toContain('Angel');
     expect(screen.getByTestId('card-inspect-pt').textContent).toBe('4/4');
     expect(screen.getByTestId('card-inspect-rules').textContent).toContain('Vigilance');

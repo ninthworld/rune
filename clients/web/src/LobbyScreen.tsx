@@ -10,12 +10,18 @@
  * up. When every seat is filled, decked, and ready the server constructs the
  * game and pushes the first `GameView`; the app then switches to the table.
  *
- * **This module is a mount point, not the composition.** The design document's
- * §7 requires the ~1 070-line original to land split along its seams, so the
- * composition lives in `src/pregame/` (stage shell, front door, lobby entry,
- * room, roster, ready bar) and is re-exported from `pregame/index.ts`. This file
- * keeps the stable import path and mounts the place inside the shared
- * {@link PregameStage} — the environment the front door and the match share.
+ * **This module is a mount point, not the composition.** The composition lives
+ * in `src/pregame/` — the shared stage, the edge-anchored `MenuFrame`, the
+ * server lobby, the create-table setup, and the ready room — and is re-exported
+ * from `pregame/index.ts`. This file keeps the stable import path and mounts the
+ * place inside the shared {@link PregameStage}, the environment the front door
+ * and the match share.
+ *
+ * Issue #546 rebuilt those places against the approved 2.5D menu baselines in
+ * `docs/ui-concepts/rune-pregame-*.jpg`: open games are the arena's focus and
+ * selecting a table is what promotes Join to the one blue primary, the create
+ * setup is a destination rather than an embedded form, and the room is a seat
+ * ring rather than a roster. The hard rules below are unchanged by that.
  *
  * Hard rules (AGENTS.md, ADR 0012) — unchanged by the restyle:
  * - **Reconstruct from one `LobbyView`.** Every control is derived from the
@@ -28,6 +34,9 @@
  * - **No card logic**; the server validates a submitted deck authoritatively.
  * - **Never a dead screen.** Before the first `LobbyView`, and on every error, an
  *   interactive control is always on screen.
+ * - **One control family.** Every control here is a `ControlButton`/`IconButton`
+ *   from `table/controls` (`docs/design/control-language.md` §3); the pregame
+ *   draws surfaces of its own, never a second button.
  */
 import { useGameStore } from './store';
 import { LobbyContent, PregameStage } from './pregame';

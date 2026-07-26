@@ -1,5 +1,5 @@
 import type { CardView, Counter } from '../../protocol';
-import { cardVisualSignature, type CardDisplayData } from '../../card/cardFactory';
+import { cardVisualSignature, type CardDisplayData, type RenderTier } from '../../card/cardFactory';
 import { artKeyFor } from '../../card/art/artStore';
 import type { GlyphName } from '../../chrome/glyphs';
 import { deriveColorIdentity } from '../colorIdentity';
@@ -82,6 +82,34 @@ export function basicLandGlyph(typeLine: string): GlyphName | undefined {
   if (/\bMountain\b/.test(typeLine)) return 'land-mountain';
   if (/\bForest\b/.test(typeLine)) return 'land-forest';
   return undefined;
+}
+
+/**
+ * The tier a land actually renders at (issue #463, card-representation §15.9 /
+ * decision 19: **a nonbasic land never collapses to an anonymous chip**).
+ *
+ * The land row's baseline rung is the digest `chip`, which draws no name at all
+ * (`TIER.chip.name` is `0`, §8.4) — right for a basic, whose emblem carries its
+ * whole identity, and wrong for everything else: playtesting found nonbasic
+ * lands reduced to a 48 px art field with no readable identity at all. A land
+ * with no basic emblem therefore steps up one rung, to the smallest tier whose
+ * name clears the 11 px floor, and its face draws the bottom name strip
+ * `LandTileFace` already implements. Basics are untouched and keep chipping.
+ *
+ * This is display glue over the server's own type line — the same glue that
+ * picks the emblem — never a rules computation: whether a land is basic changes
+ * nothing about what it can do, only how big its tile is drawn.
+ *
+ * §15.9 also excludes an **actionable** land from the chip rung. That half is
+ * deliberately not implemented here: actionability changes with priority, so
+ * keying a tier to it would resize a seat's whole land row every time priority
+ * moved, and §15.9 is recorded in the spec as an open question awaiting the
+ * maintainer's confirmation. The face already draws the name strip for that
+ * case (`CardFace.LandTileFace`) if a tier above chip ever supplies it.
+ */
+export function landRenderTier(typeLine: string, rowTier: RenderTier): RenderTier {
+  if (rowTier !== 'chip') return rowTier;
+  return basicLandGlyph(typeLine) === undefined ? 'mini' : 'chip';
 }
 
 /**

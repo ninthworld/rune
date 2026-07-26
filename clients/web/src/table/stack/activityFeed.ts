@@ -106,9 +106,42 @@ export const ACTIVITY = {
 /**
  * Whether an event is worth surfacing on its own. See the module note: this is a
  * test on the server's event type, in agreement with `groupEntries`' folding.
+ *
+ * A **turn change** is the one exception, and it is handled by
+ * {@link turnChangeSequences} rather than here, because "did the turn change"
+ * cannot be answered from one event in isolation.
  */
 export function isMeaningful(event: GameLogEvent): boolean {
   return event.type !== 'step_changed';
+}
+
+/**
+ * The sequences of the `step_changed` entries that **start a new turn** (issue
+ * #455).
+ *
+ * `isMeaningful` folds every step change away, which is right for the twelve
+ * steps inside one turn and wrong for the boundary between two: ADR 0020's
+ * settle loop can run a whole opponent turn between broadcasts, and #455 records
+ * the playtest consequence verbatim — *"the player believes they're still in
+ * turn 1; the game is at turn 2."* A turn boundary is the single thing the
+ * ticker most has to say, so it surfaces while the eleven intra-turn advances
+ * stay folded and the column ADR 0032 removed stays removed.
+ *
+ * The test is a comparison of the server's own `turn` field between consecutive
+ * `step_changed` entries. Nothing is inferred about turn structure, and the
+ * window's **first** step entry never counts: after a reconnect the window opens
+ * mid-turn, and calling that a turn change would announce a boundary that never
+ * happened.
+ */
+export function turnChangeSequences(entries: readonly GameLogEntry[]): Set<number> {
+  const sequences = new Set<number>();
+  let previousTurn: number | undefined;
+  for (const { sequence, event } of entries) {
+    if (event.type !== 'step_changed') continue;
+    if (previousTurn !== undefined && event.turn !== previousTurn) sequences.add(sequence);
+    previousTurn = event.turn;
+  }
+  return sequences;
 }
 
 /**
@@ -145,6 +178,7 @@ export function deriveActivity(
   }
 
   const since = options.sinceSequence ?? -1;
+  const turnChanges = turnChangeSequences(entries);
   const surfaced: ActivityLine[] = [];
   // Walk newest-first and stop at the dwell watermark: the ticker is a "what
   // just happened" surface, so the newest line reads first and older ones fall
@@ -152,7 +186,7 @@ export function deriveActivity(
   for (let i = entries.length - 1; i >= 0 && surfaced.length < ACTIVITY.surfaceMax; i -= 1) {
     const entry = entries[i];
     if (entry.sequence <= since) break;
-    if (!isMeaningful(entry.event)) continue;
+    if (!isMeaningful(entry.event) && !turnChanges.has(entry.sequence)) continue;
     const segments = describeEvent(entry.event, view);
     // An event kind the composer does not know yields no words; showing an empty
     // line would be worse than showing nothing.

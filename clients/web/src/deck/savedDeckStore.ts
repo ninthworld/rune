@@ -196,6 +196,44 @@ export function configureSavedDeckStore(overrides: Partial<SavedDeckStoreDeps>):
 /** Drop the configured effects — a fresh store on next access (tests). */
 export function resetSavedDeckStore(): void {
   deps = null;
+  bumpSavedDecks();
+}
+
+/*
+ * The change seam (issue #546 follow-up).
+ *
+ * Every reader of this store used to read it exactly once, so a deck saved,
+ * overwritten, imported, or deleted inside the builder left every list of
+ * choices behind it stale until that list's component remounted — the ready
+ * room's dropdown most visibly, where a player could save a deck and then not
+ * find it in the seat they were sitting in.
+ *
+ * The store is device-local and single-process, so the seam is the same
+ * `useSyncExternalStore` pair `card/art/artStore.ts` already uses: a version
+ * that every mutation bumps, and a listener set. It carries no deck data — a
+ * subscriber re-reads through {@link listSavedDecks} and stays a single source
+ * of truth. Nothing here is game state and nothing crosses the wire.
+ */
+let version = 0;
+const listeners = new Set<() => void>();
+
+/** Note a mutation and wake every subscriber. */
+function bumpSavedDecks(): void {
+  version += 1;
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to saved-deck mutations; returns the unsubscribe. */
+export function subscribeSavedDecks(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** The current mutation count — the `useSyncExternalStore` snapshot. */
+export function getSavedDeckVersion(): number {
+  return version;
 }
 
 /** Trim a player-chosen deck name; the empty string is not a valid name. */
@@ -260,10 +298,12 @@ export async function saveDeck(contents: DeckContents): Promise<SavedDeck> {
       : {}),
   };
   await store().db.put(deck);
+  bumpSavedDecks();
   return deck;
 }
 
 /** Delete a saved deck by name (explicit intent enforced by the caller). */
-export function deleteSavedDeck(name: string): Promise<void> {
-  return store().db.delete(normalizeDeckName(name));
+export async function deleteSavedDeck(name: string): Promise<void> {
+  await store().db.delete(normalizeDeckName(name));
+  bumpSavedDecks();
 }
