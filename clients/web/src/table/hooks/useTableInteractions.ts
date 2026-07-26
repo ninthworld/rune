@@ -19,6 +19,7 @@ import {
   beginTargeting,
   pick,
   requiresTargets,
+  retract,
   type TargetingSession,
 } from '../targeting';
 import {
@@ -52,6 +53,8 @@ export interface TableInteractions {
   /** Set the active `number` slot's value (issue #554), clamped to the server's range. */
   setNumber: (value: number) => void;
   chooseOption: (optionId: string) => void;
+  /** Retract the most recent target pick, keeping the session and earlier picks. */
+  retractTarget: () => void;
   cancelTargeting: () => void;
   cancelMultiSelect: () => void;
 }
@@ -173,6 +176,14 @@ export function useTableInteractions(choose: ChooseFn): TableInteractions {
     setMultiSelect(null);
   };
 
+  // Take back the most recent target pick, reopening that slot (§8's one-step
+  // UNDO). Deliberately *not* `cancelTargeting`: the action and every earlier
+  // pick stay live, so a mis-click on the second of three targets costs one
+  // re-pick rather than the whole session. Leaving the action is CANCEL's job.
+  const retractTarget = (): void => {
+    setTargeting((prev) => (prev ? retract(prev) : prev));
+  };
+
   const cancelTargeting = (): void => setTargeting(null);
   const cancelMultiSelect = (): void => setMultiSelect(null);
 
@@ -193,6 +204,7 @@ export function useTableInteractions(choose: ChooseFn): TableInteractions {
     moveOrder,
     setNumber,
     chooseOption,
+    retractTarget,
     cancelTargeting,
     cancelMultiSelect,
   };

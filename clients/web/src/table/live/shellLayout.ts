@@ -93,7 +93,7 @@ import type { Viewport } from '../hooks/useViewport';
  *   do so even at `position: static`). Everything inside `.scene`, `.hand`, and
  *   `.cluster` is therefore trapped at that region's rung. Anything that must
  *   outrank a chrome region has to be a **sibling** of those regions, as the
- *   decision sheet, the decision plaque, the stack stage, and the overlays all
+ *   decision area, the stack stage, and the overlays all
  *   are — `LiveMatchTable` mounts them at the shell root for exactly this
  *   reason, and `LiveMatchTable.occlusion.test.tsx` asserts it.
  * - The plane's own layers (`live-plane.module.css`) are scoped by
@@ -115,7 +115,7 @@ export const LAYER = {
    */
   shellTop: 20,
   /**
-   * A pending decision (the decision sheet). Above every fixed region — a
+   * A pending decision (the decision area). Above every fixed region — a
    * forced mulligan/keep/bottoming prompt is what the server is waiting on and
    * cannot be dismissed, so chrome yields to it.
    */
@@ -409,7 +409,8 @@ export function handCardBounds(t: number, bandWidth: number): { left: number; ri
 /**
  * The `--shell-*` custom properties the stylesheet lays out from. Applied to the
  * shell root, so every region — and every overlay rendered inside it, including
- * the decision sheet — inherits the same geometry contract.
+ * the decision area, which composes its offsets from them — inherits the same
+ * geometry contract.
  *
  * `--shell-safe-*` carry the browser's own insets through `env()`, with a 0
  * fallback: the shell is inset by them, so no region can ever be hidden under a

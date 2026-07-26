@@ -63,3 +63,44 @@
   align-items: center;
   justify-content: flex-end;
 }
+
+/* ── The mana reservoir (issue #567, absorbing #462) ──────────────────────────
+ * The receiver's floating mana, sitting directly above the phase plaque so the
+ * column reads primary → utilities → what you are holding → where the turn is.
+ * It is a status row, not a control: nothing in it is focusable, because nothing
+ * about a mana pool is an action the server offered.
+ *
+ * No plate and no frame. §3 gives the family exactly two button silhouettes plus
+ * the circle and the hexagon; a fifth surface here would be a new shape in a
+ * language whose whole point is that rank reads from silhouette. The pips carry
+ * their own colour, which is all the emphasis this row needs. */
+.reservoir {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-4);
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.reservoirTag {
+  color: var(--rune-text-muted);
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.reservoirPool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--rune-space-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* A touch larger than the pips inside body text: this row IS the value, rather
+   than a symbol inside a sentence. */
+.reservoirSymbol {
+  font-size: var(--rune-type-body-lg);
+}

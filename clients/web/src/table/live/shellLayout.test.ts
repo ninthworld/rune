@@ -437,15 +437,38 @@ describe('stylesheet contract', () => {
     expect(compactBlock).not.toContain('.decisions');
   });
 
-  it('reserves the safe area in the decision sheet layer', () => {
-    const backdrop = chrome.slice(
-      chrome.indexOf('.sheetBackdrop {'),
-      chrome.indexOf('.sheetPanel {'),
-    );
-    expect(backdrop).toContain('calc(16px + env(safe-area-inset-top, 0px))');
-    expect(backdrop).toContain('z-index: var(--rune-z-decision);');
-    // The pass-through variant blocks nothing, so it must not dim the hand it
-    // is asking the player to read.
-    expect(backdrop).toContain('background: transparent;');
+  it('reserves the safe area in the decision layer', () => {
+    // #567 replaced the full-viewport decision sheet with the decision area at
+    // the head of the lower-right action column, so the containment rules moved
+    // with it: the offsets are composed from the shell's own published rects
+    // plus the browser's insets, and it still declares the `decision` rung.
+    const area = css('../decision/decision.module.css');
+    const block = area.slice(area.indexOf('.area {'), area.indexOf('.frame {'));
+    expect(block).toContain('z-index: var(--rune-z-decision);');
+    expect(block).toContain('env(safe-area-inset-right, 0px)');
+    expect(block).toContain('env(safe-area-inset-bottom, 0px)');
+    // It stands ON the cluster's own published height, so growing the cluster
+    // moves the decision rather than letting the two overlap.
+    expect(block).toContain('var(--shell-cluster-h)');
+    // The region blocks nothing outside its own plate: the cards a mulligan is
+    // asking about stay clickable (#451), and nothing dims them either.
+    expect(block).toContain('pointer-events: none;');
+
+    // The retired sheet's classes are gone from the shell's stylesheet, so
+    // there is no second decision layer left to drift.
+    expect(chrome).not.toContain('.sheetBackdrop');
+    expect(chrome).not.toContain('.promptStrip');
+  });
+
+  it('clears the whole hand band on the compact composition', () => {
+    // On compact the hand spans the full width ABOVE the cluster, so an area
+    // offset only by the cluster would sit on the very cards a mulligan is
+    // asking the player to bottom — #528's defect, one composition over.
+    const area = css('../decision/decision.module.css');
+    const compact = area.slice(area.indexOf('@media (max-width: 899px)'));
+    expect(compact).toContain('var(--shell-hand-h)');
+    expect(compact).toContain('var(--shell-cluster-h)');
+    // The same breakpoint the shell stylesheet and `isCompactShell` use.
+    expect(compact).toContain(`max-width: ${SHELL.compactBreakpoint - 1}px`);
   });
 });

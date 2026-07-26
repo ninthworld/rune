@@ -37,9 +37,12 @@
  * length and no colour of its own (ADR 0019).
  */
 
-/* The 45° corner cut, shared by the chamfered family. Declared once as a custom
-   property so the frame box and the face box are clipped by the SAME polygon and
-   cannot drift apart at the corners. */
+/* The 45° corner cut, shared by the chamfered family. One polygon shape, two
+   cut depths: the hit box and the frame take the drawn 8px, the face takes the
+   frame's outline offset inward by the stroke (`.face.chamfered`, below).
+   Clipping both boxes at the same depth is what put 2.83px of gold in every
+   corner against 2px along the edges (issue #571) — a shared polygon is only an
+   even trim when the two boxes are the same size, and they are not. */
 .chamfered {
   --cut: var(--rune-control-chamfer);
   clip-path: polygon(
@@ -109,6 +112,13 @@
   /* Small caps, as every control label is drawn. */
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+/* The face's own corner cut: the frame's 8px chamfer offset inward by the 2px
+   stroke, which is `cut - stroke * (2 - √2)`. Derived in `plaqueGeometry.ts` and
+   shipped as a token so the arithmetic lives in one place and is tested. */
+.face.chamfered {
+  --cut: var(--rune-control-chamfer-face);
 }
 
 /* ── Variants: fill and size only ────────────────────────────────────────── */

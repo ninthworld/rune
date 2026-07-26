@@ -13,9 +13,18 @@
  *
  * The same two-box construction: `.frame` paints the 135° gold gradient and pads
  * by the frame width, `.face` paints the plate. A CSS border carries neither a
- * gradient nor a `clip-path`, so the frame has to be a box behind the face. Both
- * boxes are clipped by the same hexagon custom property so the points cannot
- * drift apart.
+ * gradient nor a `clip-path`, so the frame has to be a box behind the face.
+ *
+ * The two boxes are clipped by two polygons, not one (issue #571). Sharing one
+ * looks right and is not: the face box is `2 × --rune-control-frame-w` shorter
+ * and narrower, so an absolute 22px point resolved against it meets a different
+ * slope, the diagonals stop being parallel, and the gold narrows from 2.77px at
+ * the plate's corners to 1.68px at the leading point — a trim that thins into
+ * exactly the corner the reader is looking at. `--hex-face` is `--hex` offset
+ * INWARD by the stroke, so the trim is even the whole way round including the
+ * point. Its two lengths are derived in `plaqueGeometry.ts`, shipped as tokens,
+ * and guarded by `plaqueGeometry.test.ts`; jsdom resolves no `clip-path`, so the
+ * drawn result stays a browser check.
  *
  * ## Where the step list goes
  *
@@ -33,7 +42,7 @@
    escape the plate: the auto-passed badge above it and the disclosed step list. */
 .plaque {
   --point: var(--rune-plaque-point);
-  /* One polygon, declared once, so the frame and the face are cut identically. */
+  /* The frame's outline: the drawn silhouette, 22px points at each end. */
   --hex: polygon(
     var(--point) 0,
     calc(100% - var(--point)) 0,
@@ -41,6 +50,18 @@
     calc(100% - var(--point)) 100%,
     var(--point) 100%,
     0 50%
+  );
+  /* The same outline offset inward by one frame stroke — the face's own cut.
+     The vertical stops are unchanged (0 / 50% / 100% of a box already inset by
+     the stroke top and bottom); only the two horizontal lengths differ, and
+     both are derived rather than designed (see the file note). */
+  --hex-face: polygon(
+    var(--rune-plaque-face-point) 0,
+    calc(100% - var(--rune-plaque-face-point)) 0,
+    calc(100% - var(--rune-plaque-face-tip)) 50%,
+    calc(100% - var(--rune-plaque-face-point)) 100%,
+    var(--rune-plaque-face-point) 100%,
+    var(--rune-plaque-face-tip) 50%
   );
   position: relative;
   width: var(--rune-control-w-cluster);
@@ -74,7 +95,7 @@
   /* The points eat the plate's ends; the text block starts inboard of them so a
      long step name never runs into the bevel. */
   padding: 0 var(--rune-plaque-point);
-  clip-path: var(--hex);
+  clip-path: var(--hex-face);
   background: var(--rune-control-plate);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
@@ -184,9 +205,13 @@
   place-items: center;
   width: var(--rune-control-hit);
   height: var(--rune-control-hit);
-  /* Pull the target back over the plate's right point, so the 44 px box is
-     reachable without pushing the glyph off the drawn plate. */
-  margin-right: calc(-1 * var(--rune-space-5));
+  /* The target sits INSIDE the plate's right padding, which is the point depth
+     and therefore already clears the bevel. The shipped rule pulled it 10px
+     back over the point; a 44px round box there overhangs the face's own
+     `clip-path`, which cut the top and bottom of both the focus ring and the
+     auto-pass cue drawn on this control — and D15 says the focus ring is never
+     suppressed. Nothing can escape a clip-path, so the box has to fit. */
+  margin-right: 0;
   padding: 0;
   border: 0;
   border-radius: 50%;
