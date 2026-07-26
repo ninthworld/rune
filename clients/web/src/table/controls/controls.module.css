@@ -36,21 +36,20 @@
  * Every dimension reads a token from `chrome/tokens.css`; this file declares no
  * length and no colour of its own (ADR 0019).
  *
- * ## The scale rung (§3.4, issue #566)
+ * ## The menu rung (§3.4, issue #566)
  *
- * Every plate length and every label size below is its §3.1 value multiplied by
- * `--rune-control-scale`, which is `1` everywhere except on a surface that has
- * opted into the menu rung. That is the whole mechanism: the component sheet
- * still fixes the proportions, and a screen that needs the family drawn larger
- * sets one property instead of restyling a control or growing a second button
- * vocabulary.
+ * Nothing in this file knows about it, and that is the design. A surface that
+ * wants the family drawn larger re-points the §3.1 tokens below at the
+ * `--rune-menu-*` set — the same idiom `.wide` in the pregame already uses for
+ * `--rune-control-w-pair` — so every rule here keeps reading exactly one token
+ * and the match is untouched. There is no multiplier to forget and no second
+ * size vocabulary.
  *
- * Two things deliberately do NOT scale. The **chamfer** and the **frame stroke**
- * are trim, not size: `--rune-control-chamfer-face` is the frame outline offset
- * inward by the stroke (issue #571), an exact derivation that only holds while
- * both are the drawn values, and a 45° cut reads as the same cut at any plate
- * height. And the **hit floor** is a floor — the rung only ever grows a target,
- * because `--rune-control-scale` is never below 1.
+ * Two tokens are deliberately absent from that set. The **chamfer** and the
+ * **frame stroke** are trim, not size: `--rune-control-chamfer-face` is the
+ * frame outline offset inward by the stroke (issue #571), an exact derivation
+ * that only holds while both are the drawn values, and a 45° cut reads as the
+ * same cut at any plate height.
  */
 
 /* The 45° corner cut, shared by the chamfered family. One polygon shape, two
@@ -82,7 +81,7 @@
   display: inline-grid;
   place-items: stretch;
   box-sizing: border-box;
-  min-height: calc(var(--rune-control-hit) * var(--rune-control-scale));
+  min-height: var(--rune-control-hit);
   padding: 0;
   border: 0;
   background: none;
@@ -115,14 +114,14 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  min-height: calc(var(--rune-control-h) * var(--rune-control-scale));
+  min-height: var(--rune-control-h);
   /* Clips the pending-server hairline to the plate. */
   overflow: hidden;
-  padding: 0 calc(var(--rune-space-6) * var(--rune-control-scale));
+  padding: 0 var(--rune-space-6);
   /* The 1 px inner line of §3.1's frame construction, drawn INSIDE the face so
      it follows the chamfer with the rest of the box. */
   box-shadow: inset 0 0 0 1px var(--rune-control-inner-line);
-  font-size: calc(var(--rune-type-body-lg) * var(--rune-control-scale));
+  font-size: var(--rune-type-body-lg);
   font-weight: 600;
   letter-spacing: 0.06em;
   /* Small caps, as every control label is drawn. */
@@ -142,8 +141,8 @@
 /* The large primary — the ONE stadium in the language, and the only control
    that is ever blue-filled at full width (§4.1: at most one on screen). */
 .primary {
-  width: calc(var(--rune-control-w-cluster) * var(--rune-control-scale));
-  min-height: calc(var(--rune-control-h-primary) * var(--rune-control-scale));
+  width: var(--rune-control-w-cluster);
+  min-height: var(--rune-control-h-primary);
 }
 
 .primary .frame {
@@ -154,9 +153,7 @@
 }
 
 .primary .face {
-  min-height: calc(
-    var(--rune-control-h-primary) * var(--rune-control-scale) - 2 * var(--rune-primary-frame-w)
-  );
+  min-height: calc(var(--rune-control-h-primary) - 2 * var(--rune-primary-frame-w));
   border-radius: var(--rune-radius-pill);
   /* The restrained bevel: a vertical enamel gradient with a pale inner rim at
      the TOP EDGE ONLY and a dark outer edge, exactly as drawn. */
@@ -169,14 +166,14 @@
     inset 0 1px 0 var(--rune-primary-rim),
     inset 0 0 0 1px var(--rune-control-inner-line);
   color: var(--rune-primary-label);
-  font-size: calc(var(--rune-type-action) * var(--rune-control-scale));
+  font-size: var(--rune-type-action);
 }
 
 /* The compact primary (zones panel 10 RESOLVE): same enamel, chamfered, paired
    width. §4.4/D7 — the cluster's primary switches to this form while the stack
    is non-empty, so the pair reads against the stack stage above it. */
 .primaryCompact {
-  width: calc(var(--rune-control-w-pair) * var(--rune-control-scale));
+  width: var(--rune-control-w-pair);
 }
 
 .primaryCompact .face {
@@ -186,18 +183,18 @@
     var(--rune-primary-face-bottom)
   );
   color: var(--rune-primary-label);
-  font-size: calc(var(--rune-type-heading) * var(--rune-control-scale));
+  font-size: var(--rune-type-heading);
 }
 
-.confirm,
+/* Issue #586 retired the green `.confirm` fill that used to head this group.
+   A decision's CONFIRM is the one blue primary while a decision is open (§4.1,
+   §4.2 rule 1), so it renders as `.primaryCompact` and there is no second
+   primary hue in the family. Red survives, on `.cancel` alone, where it means
+   "destructive" and nothing else. */
 .cancel,
 .secondary,
 .utility {
-  width: calc(var(--rune-control-w-pair) * var(--rune-control-scale));
-}
-
-.confirm .face {
-  background: var(--rune-confirm-face);
+  width: var(--rune-control-w-pair);
 }
 
 .cancel .face {
@@ -217,8 +214,8 @@
    anchor (D1). It is the game-menu handle (D5), which is what makes the compact
    cluster coherent: plaque + menu are the two things always available. */
 .icon {
-  width: calc(var(--rune-control-hit) * var(--rune-control-scale));
-  height: calc(var(--rune-control-hit) * var(--rune-control-scale));
+  width: var(--rune-control-hit);
+  height: var(--rune-control-hit);
   border-radius: 50%;
 }
 
@@ -231,7 +228,7 @@
   padding: 0;
   border-radius: 50%;
   background: var(--rune-control-plate);
-  font-size: calc(var(--rune-type-title) * var(--rune-control-scale));
+  font-size: var(--rune-type-title);
   line-height: 1;
 }
 
@@ -326,7 +323,7 @@
   padding: 0 var(--rune-space-2);
   border-radius: var(--rune-radius-xs);
   background: rgba(0, 0, 0, 0.4);
-  font-size: calc(var(--rune-type-micro) * var(--rune-control-scale));
+  font-size: var(--rune-type-micro);
   font-variant-numeric: tabular-nums;
 }
 
@@ -359,13 +356,13 @@
   border-radius: var(--rune-radius-xs);
   color: var(--rune-text-muted);
   font-family: var(--rune-font-mono);
-  font-size: calc(var(--rune-type-micro) * var(--rune-control-scale));
+  font-size: var(--rune-type-micro);
 }
 
 /* The server-stated reason a disabled option carries (the ONE disabled case). */
 .reason {
   color: var(--rune-text-muted);
-  font-size: calc(var(--rune-type-micro) * var(--rune-control-scale));
+  font-size: var(--rune-type-micro);
   letter-spacing: 0;
   text-transform: none;
 }

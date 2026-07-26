@@ -29,13 +29,14 @@
  * `.fit`), never by restyling a control.
  *
  * **Scale is the menu rung, not a local number** (§3.4, issue #566). `.stage`
- * sets `--rune-control-scale` to `--rune-menu-scale` once, and every length and
- * type size on these screens is either that rung applied by the control family
- * itself or a `--rune-menu-*` token derived from the same rung. The shipped
- * pregame sized itself from the match's fixed cluster widths and the fixed type
- * ramp with no viewport term anywhere, which is why the maintainer read a UI
- * shrunk into the corner of a picture; the rung is the one viewport term, and it
- * lives in the control language so #580 can spend it too.
+ * composes `.rungOpen` once, which re-points the control language's own §3.1
+ * tokens at their fluid `--rune-menu-*` restatements; the ready room's ring
+ * composes `.rungDense` for the smaller one. Every length and type size on
+ * these screens is therefore still §3.1's own value — read through the same
+ * token name it always was, just no longer fixed. The shipped pregame had no
+ * viewport term anywhere, which is why the maintainer read a UI shrunk into the
+ * corner of a picture; the rung is that term, and it lives in the control
+ * language so #580 can spend it too.
  *
  * Places live in `pregamePlaces.module.css`; `styles.ts` merges the two into the
  * one flat class map the components import. The split is for file size only —
@@ -47,22 +48,75 @@
  * **no literal hex, no literal duration, and no bare `z-index`**.
  */
 
+/* ── The menu rung ─────────────────────────────────────────────────────────────
+ * `control-language.md` §3.4. A menu surface takes a rung by re-pointing the
+ * control language's OWN §3.1 tokens at one of the `--rune-menu-*` sets, which
+ * are `clamp(§3.1 value, fluid vmin term, ceiling)` — the same value, fluid,
+ * never a different one. Nothing in `table/controls` knows this happened: every
+ * rule there still reads exactly one token, so a control on a menu and the same
+ * control in a match are one component drawn at two sizes.
+ *
+ * Re-pointing rather than deriving is load-bearing, and it is the second design
+ * this took. A derived `--rune-menu-w: calc(var(--base) * var(--scale))` is
+ * substituted at computed-value time **on the element it is declared on**, so a
+ * set declared at `:root` freezes against `:root`'s scale and inherits that
+ * frozen value past every override. The tokens below are consumed by ordinary
+ * properties on descendants, which resolve per element, so an override here
+ * reaches all of them. (And the scale itself could not be a unitless multiplier
+ * at all: see the note in `chrome/tokens.css`.)
+ */
+.rungOpen {
+  --rune-control-h-primary: var(--rune-menu-control-h-primary);
+  --rune-control-h: var(--rune-menu-control-h);
+  --rune-control-hit: var(--rune-menu-control-hit);
+  --rune-control-w-cluster: var(--rune-menu-control-w-cluster);
+  --rune-control-w-pair: var(--rune-menu-control-w-pair);
+  --rune-cluster-margin: var(--rune-menu-cluster-margin);
+  --rune-cluster-gap: var(--rune-menu-cluster-gap);
+  --rune-touch: var(--rune-menu-touch);
+  --rune-type-display: var(--rune-menu-type-display);
+  --rune-type-title: var(--rune-menu-type-title);
+  --rune-type-heading: var(--rune-menu-type-heading);
+  --rune-type-body-lg: var(--rune-menu-type-body-lg);
+  --rune-type-body: var(--rune-menu-type-body);
+  --rune-type-caption: var(--rune-menu-type-caption);
+  --rune-type-micro: var(--rune-menu-type-micro);
+  --rune-type-action: var(--rune-menu-type-action);
+}
+
+.rungDense {
+  --rune-control-h-primary: var(--rune-menu-dense-control-h-primary);
+  --rune-control-h: var(--rune-menu-dense-control-h);
+  --rune-control-hit: var(--rune-menu-dense-control-hit);
+  --rune-control-w-cluster: var(--rune-menu-dense-control-w-cluster);
+  --rune-control-w-pair: var(--rune-menu-dense-control-w-pair);
+  --rune-cluster-margin: var(--rune-menu-dense-cluster-margin);
+  --rune-cluster-gap: var(--rune-menu-dense-cluster-gap);
+  --rune-touch: var(--rune-menu-dense-touch);
+  --rune-type-display: var(--rune-menu-dense-type-display);
+  --rune-type-title: var(--rune-menu-dense-type-title);
+  --rune-type-heading: var(--rune-menu-dense-type-heading);
+  --rune-type-body-lg: var(--rune-menu-dense-type-body-lg);
+  --rune-type-body: var(--rune-menu-dense-type-body);
+  --rune-type-caption: var(--rune-menu-dense-type-caption);
+  --rune-type-micro: var(--rune-menu-dense-type-micro);
+  --rune-type-action: var(--rune-menu-dense-type-action);
+}
+
 /* ── The shared stage ──────────────────────────────────────────────────────── */
 /* One stage, three places (§5.0). The environment is mounted ONCE and never
  * re-mounts across a place change; only the content layer swaps. */
 .stage {
   /*
-   * The menu rung (`control-language.md` §3.4, issue #566). This ONE
-   * declaration is what makes every control on every pregame place read at menu
-   * scale: `table/controls` multiplies its §3.1 plate by it, and the surfaces
-   * around a control read the `--rune-menu-*` lengths and type ramp the same
-   * rung derives. There is no second button family and no local size here —
-   * §3.1's widths still win, multiplied.
+   * The open rung (`control-language.md` §3.4, issue #566). Composing it is the
+   * whole of what makes every control, plaque, and type size on every pregame
+   * place read at menu scale — §3.1's own values, fluid, with no second button
+   * family and no local size anywhere below.
    *
-   * The match sets nothing and stays at the rung's floor of 1, because an arena
-   * full of cards wants small edge furniture and an empty one does not.
+   * The match composes nothing and stays at the §3.1 values exactly, because an
+   * arena full of cards wants small edge furniture and an empty one does not.
    */
-  --rune-control-scale: var(--rune-menu-scale);
+  composes: rungOpen;
 
   position: relative;
   min-height: 100vh;
@@ -167,10 +221,10 @@
     'topStart top   topEnd'
     'start    arena end'
     'footStart foot footEnd';
-  gap: var(--rune-menu-gap);
+  gap: var(--rune-cluster-gap);
   box-sizing: border-box;
   min-height: 100vh;
-  padding: var(--rune-menu-margin);
+  padding: var(--rune-cluster-margin);
 }
 
 .frameTopStart {
@@ -218,7 +272,7 @@
   grid-area: foot;
   display: flex;
   align-items: center;
-  gap: var(--rune-menu-gap);
+  gap: var(--rune-cluster-gap);
   justify-self: center;
   align-self: end;
 }
@@ -244,7 +298,7 @@
 .lockupWord {
   margin: 0;
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-title);
+  font-size: var(--rune-type-title);
   font-weight: 600;
   letter-spacing: 0.1em;
   color: var(--pregame-gold);
@@ -297,7 +351,7 @@
   align-items: center;
   gap: var(--rune-space-6);
   box-sizing: border-box;
-  min-height: var(--rune-menu-h);
+  min-height: var(--rune-control-h);
   padding: var(--rune-space-4) var(--rune-space-7);
   background: var(--rune-control-plate);
   box-shadow: inset 0 0 0 1px var(--rune-control-inner-line);
@@ -315,7 +369,7 @@
 }
 
 .plaqueMeta {
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   letter-spacing: 0.04em;
   color: var(--pregame-text-muted);
 }
@@ -326,7 +380,7 @@
   composes: ground;
   margin: 0;
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-display);
+  font-size: var(--rune-type-display);
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -360,7 +414,7 @@
 /* ── Type and status ───────────────────────────────────────────────────────── */
 .kicker {
   composes: ground;
-  font-size: var(--rune-menu-type-micro);
+  font-size: var(--rune-type-micro);
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -368,12 +422,12 @@
 }
 
 .muted {
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   color: var(--pregame-text-muted);
 }
 
 .error {
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   font-weight: 600;
   color: var(--pregame-red);
 }
@@ -387,7 +441,7 @@
   padding: var(--rune-space-1) var(--rune-space-5);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-xs);
-  font-size: var(--rune-menu-type-micro);
+  font-size: var(--rune-type-micro);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -411,7 +465,7 @@
 }
 
 .fieldLabel {
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -422,14 +476,14 @@
 .select {
   box-sizing: border-box;
   width: 100%;
-  min-height: var(--rune-menu-touch);
+  min-height: var(--rune-touch);
   padding: var(--rune-space-4) var(--rune-space-6);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-sm);
   background: var(--pregame-surface);
   color: var(--pregame-text);
   font-family: inherit;
-  font-size: var(--rune-menu-type-body);
+  font-size: var(--rune-type-body);
 }
 
 .input:focus-visible,
@@ -441,7 +495,7 @@
 /* The seat stepper of the create baseline: − value + as one bounded control. */
 .stepper {
   display: grid;
-  grid-template-columns: var(--rune-menu-touch) minmax(0, 1fr) var(--rune-menu-touch);
+  grid-template-columns: var(--rune-touch) minmax(0, 1fr) var(--rune-touch);
   align-items: stretch;
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-sm);
@@ -449,13 +503,13 @@
 }
 
 .stepperButton {
-  min-width: var(--rune-menu-touch);
-  min-height: var(--rune-menu-touch);
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
   border: 0;
   background: var(--pregame-raised);
   color: var(--pregame-text);
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-title);
+  font-size: var(--rune-type-title);
   line-height: 1;
   cursor: pointer;
 }
@@ -473,9 +527,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--rune-menu-touch);
+  min-height: var(--rune-touch);
   background: var(--pregame-surface);
-  font-size: var(--rune-menu-type-body-lg);
+  font-size: var(--rune-type-body-lg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -492,10 +546,10 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--rune-space-6);
-  min-height: var(--rune-menu-touch);
+  min-height: var(--rune-touch);
   padding: var(--rune-space-4) var(--rune-space-2);
   color: var(--pregame-text-muted);
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -509,7 +563,7 @@
 
 .disclosureSummary::after {
   content: '›';
-  font-size: var(--rune-menu-type-title);
+  font-size: var(--rune-type-title);
   line-height: 1;
   transition: transform var(--pregame-motion-micro) var(--pregame-ease-micro);
 }
@@ -552,11 +606,11 @@
 .menuDrawer {
   position: absolute;
   right: 0;
-  bottom: calc(var(--rune-menu-touch) + var(--rune-menu-gap));
+  bottom: calc(var(--rune-touch) + var(--rune-cluster-gap));
   z-index: var(--rune-z-overlay);
   display: flex;
   flex-direction: column;
-  min-width: var(--rune-menu-w-cluster);
+  min-width: var(--rune-control-w-cluster);
   padding: var(--rune-space-3);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-md);
@@ -567,14 +621,14 @@
 .menuItem {
   display: flex;
   align-items: center;
-  min-height: var(--rune-menu-touch);
+  min-height: var(--rune-touch);
   padding: var(--rune-space-4) var(--rune-space-6);
   border: 0;
   border-radius: var(--rune-radius-sm);
   background: none;
   color: var(--pregame-text);
   font-family: inherit;
-  font-size: var(--rune-menu-type-body);
+  font-size: var(--rune-type-body);
   text-align: left;
   cursor: pointer;
 }

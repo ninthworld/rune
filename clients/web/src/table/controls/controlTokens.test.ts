@@ -14,11 +14,34 @@ import {
   CONTROL,
   CONTROL_TOKEN_NAMES,
   MENU_RUNG,
-  MENU_RUNG_TOKEN_NAMES,
   PIP_COUNT,
   menuRung,
   pipRowWidth,
 } from './controlTokens';
+
+/**
+ * The §3.1 values a rung restates, keyed by the suffix the `--rune-menu-*` set
+ * uses. The type ramp is not in {@link CONTROL} (it is not control geometry),
+ * so those baselines are stated here against `chrome/tokens.css`'s own scale.
+ */
+const SCALED_BY_RUNG: Record<string, number> = {
+  'control-h-primary': CONTROL.hPrimary,
+  'control-h': CONTROL.h,
+  'control-hit': CONTROL.hit,
+  'control-w-cluster': CONTROL.wCluster,
+  'control-w-pair': CONTROL.wPair,
+  'cluster-margin': CONTROL.clusterMargin,
+  'cluster-gap': CONTROL.clusterGap,
+  touch: 44,
+  'type-display': 30,
+  'type-title': 20,
+  'type-heading': 16,
+  'type-body-lg': 14,
+  'type-body': 13,
+  'type-caption': 12,
+  'type-micro': 11,
+  'type-action': 24,
+};
 
 /**
  * Read a stylesheet from the client source tree — the same helper shape
@@ -94,24 +117,51 @@ describe('control geometry mirror', () => {
 /**
  * The menu rung (§3.4, issue #566). The rung is the pregame's answer to "the
  * controls are too small to read as the primary thing on the screen", so what
- * has to hold is that it is a *multiplier on §3.1* rather than a second size
+ * has to hold is that it is a *restatement of §3.1* rather than a second size
  * vocabulary, that it never draws a control smaller than the match does, and
  * that the stylesheet and the mirror cannot drift apart.
  */
 describe('the menu rung', () => {
   const tokens = css('../../chrome/tokens.css');
 
-  it('agrees with the clamp declared in chrome/tokens.css', () => {
-    for (const [name, token] of Object.entries(MENU_RUNG_TOKEN_NAMES)) {
-      const declared = new RegExp(
-        `${token}:\\s*clamp\\(([\\d.]+),\\s*calc\\(100vmin\\s*/\\s*(\\d+)\\),\\s*([\\d.]+)\\);`,
-      ).exec(tokens);
-      expect(declared, `${token} is not declared as a 100vmin clamp`).not.toBeNull();
-      const rung = MENU_RUNG[name as keyof typeof MENU_RUNG];
-      expect(
-        [Number(declared![1]), Number(declared![2]), Number(declared![3])],
-        `${token} drifted from MENU_RUNG.${name}`,
-      ).toEqual([rung.min, rung.basis, rung.max]);
+  it('declares a fluid restatement of every §3.1 token it scales', () => {
+    // A rung is `clamp(§3.1 value, base / basis × 100vmin, base × cap)`, one
+    // entry per token, and the numbers are recomputed here from `MENU_RUNG` so
+    // the stylesheet cannot drift from the mirror.
+    //
+    // It is a clamp of LENGTHS rather than one unitless multiplier because a
+    // multiplier cannot be derived from the viewport: `calc(100vmin / 620)` is
+    // a length, so `clamp(1, <length>, 1.6)` is invalid and every property
+    // multiplying by it is dropped. `pregame/menuRung.test.ts` resolves the
+    // whole chain; this is the mirror's own half.
+    for (const [name, rung] of Object.entries(MENU_RUNG)) {
+      const prefix = name === 'dense' ? 'dense-' : '';
+      for (const [token, base] of Object.entries(SCALED_BY_RUNG)) {
+        const declared = new RegExp(
+          `--rune-menu-${prefix}${token}:\\s*clamp\\((\\d+)px,\\s*([\\d.]+)vmin,\\s*([\\d.]+)px\\);`,
+        ).exec(tokens);
+        expect(declared, `--rune-menu-${prefix}${token} is not a clamp of lengths`).not.toBeNull();
+        expect(Number(declared![1]), `--rune-menu-${prefix}${token} floor`).toBe(base);
+        expect(Number(declared![2]), `--rune-menu-${prefix}${token} fluid term`).toBeCloseTo(
+          (base / rung.basis) * 100,
+          3,
+        );
+        expect(Number(declared![3]), `--rune-menu-${prefix}${token} ceiling`).toBeCloseTo(
+          base * rung.max,
+          3,
+        );
+      }
+    }
+  });
+
+  it('leaves the frame trim off every rung (issue #571 keeps its exact offset)', () => {
+    // `--rune-control-chamfer-face` is the frame outline offset inward by the
+    // stroke — an exact derivation that only holds at the drawn values. Scaling
+    // one of the pair and not the other is how the trim went uneven the first
+    // time, so neither may appear in a rung set at all.
+    for (const trim of ['control-chamfer', 'control-frame-w', 'primary-frame-w']) {
+      expect(tokens, `${trim} must not be scaled by a rung`).not.toContain(`--rune-menu-${trim}:`);
+      expect(tokens).not.toContain(`--rune-menu-dense-${trim}:`);
     }
   });
 
@@ -164,19 +214,23 @@ describe('the menu rung', () => {
 });
 
 /**
- * The rung reaches a control through exactly one property, and the control
- * family is the only thing that spends it. These parse the stylesheets rather
- * than the DOM, because jsdom computes no layout and `var()` arithmetic never
- * resolves there.
+ * The control family does not know the rung exists, and that is the mechanism.
+ * A menu surface re-points the §3.1 tokens (`pregame/pregame.module.css`), so
+ * every rule here keeps reading exactly one token and a control on a menu is
+ * the same component as the control in a match, drawn larger. These parse the
+ * stylesheet rather than the DOM, because jsdom computes no layout and `var()`
+ * arithmetic never resolves there.
  */
-describe('the control family at the rung', () => {
+describe('the control family reads one token per length', () => {
   const controls = css('./controls.module.css');
   const tokens = css('../../chrome/tokens.css');
 
-  it('multiplies every plate length and label size by --rune-control-scale', () => {
-    // Each of these is a §3.1 value; none of them may reach the stylesheet
-    // unmultiplied, or a menu control would draw at match scale beside one that
-    // did not.
+  it('never multiplies a §3.1 token by anything', () => {
+    // The first cut multiplied every plate by a `--rune-control-scale` that was
+    // invalid at computed-value time, which dropped the declarations outright.
+    // There is no multiplier now, and there is no token to reintroduce one.
+    expect(controls).not.toContain('--rune-control-scale');
+    expect(tokens).not.toContain('--rune-control-scale');
     for (const token of [
       '--rune-control-hit',
       '--rune-control-h',
@@ -185,32 +239,30 @@ describe('the control family at the rung', () => {
       '--rune-control-w-pair',
       '--rune-type-action',
       '--rune-type-body-lg',
-      '--rune-type-heading',
-      '--rune-type-title',
     ]) {
-      for (const use of controls.matchAll(new RegExp(`var\\(${token}\\)[^;]*`, 'g'))) {
-        expect(use[0], `${token} is used without the rung in controls.module.css`).toContain(
-          'var(--rune-control-scale)',
-        );
-      }
+      // The token itself is never a factor. (`.primary .face` does subtract the
+      // frame stroke, which is arithmetic ON the plate and not a scale OF it.)
+      expect(
+        new RegExp(`var\\(${token}\\)\\s*\\*`).test(controls),
+        `${token} is multiplied in controls.module.css`,
+      ).toBe(false);
     }
   });
 
-  it('leaves the frame trim off the rung (issue #571 keeps its exact offset)', () => {
-    // `--rune-control-chamfer-face` is the frame outline offset inward by the
-    // stroke — an exact derivation that only holds at the drawn values. Scaling
-    // one of the pair and not the other is how the trim went uneven the first
-    // time.
-    for (const token of ['--rune-control-chamfer', '--rune-control-frame-w']) {
-      for (const use of controls.matchAll(new RegExp(`var\\(${token}\\)[^;]*`, 'g'))) {
-        expect(use[0], `${token} is trim and must not scale`).not.toContain(
-          'var(--rune-control-scale)',
-        );
-      }
+  it('sizes every variant from a token a rung can re-point', () => {
+    // The other half: a plate that hard-codes a length cannot follow a rung, so
+    // a menu would draw it at match size beside controls that grew.
+    for (const [selector, token] of [
+      ['.button', '--rune-control-hit'],
+      ['.face', '--rune-control-h'],
+      ['.primary', '--rune-control-w-cluster'],
+      ['.primaryCompact', '--rune-control-w-pair'],
+      ['.icon', '--rune-control-hit'],
+    ] as [string, string][]) {
+      const at = controls.indexOf(`${selector} {`);
+      expect(at, `${selector} has no rule`).toBeGreaterThanOrEqual(0);
+      const block = /\{([^}]*)\}/.exec(controls.slice(at))?.[1] ?? '';
+      expect(block, `${selector} does not size from ${token}`).toContain(`var(${token})`);
     }
-  });
-
-  it('is unscaled by default, so the match is untouched', () => {
-    expect(tokens).toContain('--rune-control-scale: 1;');
   });
 });

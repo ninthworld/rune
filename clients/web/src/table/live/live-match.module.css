@@ -320,19 +320,71 @@
   cursor: pointer;
 }
 
-.dragGhost {
+/*
+ * The drag proxy (`control-language.md` §6.2 stage 2, issue #569).
+ *
+ * It used to be a 104 px box printing the card's NAME. It is now the real card
+ * face — the component draws `CardFace` inside this element — so what the player
+ * lifts out of the fan is visibly the card they picked up. This rule therefore
+ * carries position, the drag rim, and the tilt only; the card's own size, frame,
+ * and paint belong to the face.
+ *
+ * `pointer-events: none` is load-bearing twice over: the proxy must not eat the
+ * pointer that is mid-drag, and the drop resolution reads
+ * `document.elementFromPoint` under the cursor — a hit-testable proxy would
+ * always be the element found and no drop would ever resolve.
+ */
+.dragProxy {
   position: fixed;
   z-index: var(--rune-z-drag);
-  width: 104px;
-  min-height: 64px;
-  padding: 10px;
-  border: 2px solid var(--rune-accent-gold);
-  border-radius: 8px;
-  color: var(--rune-text);
-  background: var(--rune-raised-bg);
-  box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
   translate: -50% -50%;
+  rotate: -4deg;
   pointer-events: none;
+  filter: drop-shadow(0 12px 30px rgb(0 0 0 / 45%));
+}
+
+/* The §6.2 glow rim, drawn on the proxy rather than on the card, so the face
+   stays byte-identical to the one still in the fan. */
+.dragProxy::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--rune-space-2));
+  border: var(--rune-control-frame-w) solid var(--rune-drag-glow);
+  border-radius: var(--rune-radius-lg);
+  box-shadow: 0 0 10px var(--rune-drag-glow);
+  pointer-events: none;
+}
+
+/* Stage 2a — the origin slot is HELD OPEN. The button stays in the tree with its
+   rect, its focus, and its handlers intact; only the face inside is hidden and
+   the dashed outline drawn, so a cancelled drag restores nothing (there is
+   nothing to restore) and the fan never collapses around the gap. */
+.handCard[data-vacated] > * {
+  visibility: hidden;
+}
+
+/* The outline is a pseudo-element, not a `border`: a border would grow the
+   button and move the slot the drag is supposed to be holding still, and an
+   `outline` would fight the focus ring the same button still has to be able to
+   show. `> *` above does not match a pseudo-element, so this survives the hide. */
+.handCard[data-vacated] {
+  filter: none;
+}
+
+.handCard[data-vacated]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 3px dashed var(--rune-origin-dash);
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-drop-invalid-fill);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Reduced motion keeps the glow and drops the tilt (§12 / §6.2 stage 2). */
+  .dragProxy {
+    rotate: none;
+  }
 }
 
 /* The pre-first-view screen uses the same safe viewport as the shell it becomes. */

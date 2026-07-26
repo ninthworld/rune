@@ -462,23 +462,45 @@ never gated on animation), including for empty zones.
 
 ### 8.2 Zone browser
 
-`ZoneBrowser.tsx` is today a full-screen modal with a backdrop. Two normative changes:
+`ZoneBrowser.tsx` was a full-screen modal listing card **names as text rows**. Issue #584
+landed points 0, 3, 4, and 6 below; points 1 and 2 remain outstanding.
 
-1. **Anchored, not full-screen** [D]. The browser opens as a panel anchored to the rack's
-   inboard side, sized to leave the owning rack and the seat's region visible. The player
-   must never lose spatial context — the point of a physical rack is defeated if opening
-   it hides where it was.
-2. **Selection mode.** When a `requirement` or a `select_from_zone` prompt names cards in
-   the opened zone, the browser renders those entries as **candidates** (orange ring +
-   beacon, the shipped target language) and every other entry as inert. Confirming
-   submits the ids as the slot's answer; it does not send a separate message. Candidate
-   membership comes only from `candidates[]` — the browser never filters by rule.
-3. Order is wire order, top of the pile last, unchanged. Each entry opens the shared
-   inspect popover, unchanged.
-4. **Windowing** [D]: above 120 entries the list virtualizes, so a 400-card exile does not
-   spend the scene's DOM budget.
+0. **Real card faces** [shipped, #584]. Every entry is drawn by the one card renderer
+   (`card/dom/CardFace`) at the **`stack` tier** — the 0.715 portrait card of
+   `card-representation.md` §3.2, big enough to read a name, a cost, and a type line, and
+   already one of the three budget-exempt screen-space tiers. A grid of faces on the
+   control language's framed plate, never the generic overlay chrome. The browser is the
+   one surface whose whole job is looking at cards; it may not be the one surface that
+   does not draw them.
+1. **Anchored, not full-screen** [D, not yet shipped]. The browser opens as a panel
+   anchored to the rack's inboard side, sized to leave the owning rack and the seat's
+   region visible. The player must never lose spatial context — the point of a physical
+   rack is defeated if opening it hides where it was.
+2. **Selection mode** [not yet shipped]. When a `requirement` or a `select_from_zone`
+   prompt names cards in the opened zone, the browser renders those entries as
+   **candidates** (orange ring + beacon, the shipped target language) and every other
+   entry as inert. Confirming submits the ids as the slot's answer; it does not send a
+   separate message. Candidate membership comes only from `candidates[]` — the browser
+   never filters by rule.
+3. **Order is the server's; the reading direction is top-first and is stated** [amended by
+   #584]. `ZonePile.cards` is top-of-pile-last on the wire and stays exactly that — the
+   browser reverses nothing in the data and carries each entry's wire index on the entry
+   itself. What it *presents* is the top of the pile first, because the card a player is
+   looking for is almost always the one that just arrived, and the heading says
+   `top of pile first` so the direction is never inferred from the contents. Each entry
+   opens the shared inspect surface, unchanged.
+4. **Bounded DOM** [D, amended by #584]. The cap is 120 entries, as before, now read as a
+   hard ceiling on *mounted faces*: a pile at or under it is one scrolling block, and a
+   larger pile pages through blocks of 120 with ordinary ≥ 44 px controls. Scroll
+   virtualization inside a block is the finer instrument and is not needed at this
+   ceiling; if the cap is ever raised, it becomes so.
 5. At most one browser is open. It is ephemeral (I4): a new `GameView` re-derives it from
    the pending prompt, or closes it.
+6. **Exile is not a second graveyard, in the browser too** [shipped, #584]. §3.3's rule
+   applies to the surface a player actually reads the pile on, not only to the rack: the
+   panel carries the zone's cast (warm ash versus the cool rune-iris glass) and exile
+   alone gets the oversized pane. Both zones are also named in the heading and in the
+   dialog's accessible name, so the channel is never colour alone.
 
 ### 8.3 Drag and drop
 

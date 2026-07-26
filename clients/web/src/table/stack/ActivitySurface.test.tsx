@@ -127,6 +127,28 @@ describe('ActivitySurface — the explicit door to the full history', () => {
     expect(screen.queryByTestId('activity-ticker')).toBeNull();
   });
 
+  it('draws the history on the control family’s surfaces (#583)', () => {
+    // ADR 0032 gave the log a contextual home; it did not give it a face, and it
+    // shipped as a plain dark rectangle in no visual language. The panel is now
+    // §3.1's two-box frame construction — an outer box painting the gold
+    // gradient, the plate inside it — and the composition is untouched: the same
+    // `GameLog`, the same grouping, the same clickable references.
+    //
+    // jsdom applies no stylesheet, so what this can prove is the STRUCTURE the
+    // stylesheet needs: a frame box wrapping the labelled panel. Whether the
+    // trim draws is the maintainer's browser check.
+    render(<ActivitySurface view={viewWith([cast(1, 'Shock')])} />);
+    fireEvent.click(screen.getByTestId('activity-badge'));
+
+    const panel = screen.getByRole('region', { name: 'Full game history' });
+    expect(panel.className).toMatch(/historyPanel/);
+    expect(panel.parentElement?.className).toMatch(/historyFrame/);
+    // The panel the badge names is still the panel it discloses, and the log is
+    // still inside it.
+    expect(panel.id).toBe('stack-activity-history');
+    expect(within(panel).getByTestId('game-log')).toBeTruthy();
+  });
+
   it('carries an accessible sentence on the badge, never a bare glyph', () => {
     render(<ActivitySurface view={viewWith([cast(1, 'Shock')])} />);
     const badge = screen.getByTestId('activity-badge');

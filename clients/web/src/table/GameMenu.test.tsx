@@ -87,6 +87,26 @@ describe('GameMenu', () => {
     expect(screen.queryByTestId('menu-concede-confirm')).toBeNull();
   });
 
+  it('anchors the drawer to whichever control is its handle (#583)', () => {
+    // Controlled means the CONTROL CLUSTER's icon opened it (ADR 0032/#534), so
+    // the drawer opens upward from the cluster. Uncontrolled is the spectator
+    // overview, where `.menuButton` above is still the handle and the top bar's
+    // offsets are still the right ones. The defect was one placement for both:
+    // `top: 52px`, the height of a bar the match no longer has, which put the
+    // drawer over the activity badge in the opposite corner.
+    const { rerender } = render(
+      <GameMenu open onOpenChange={() => {}} onChoose={() => {}} onShowShortcuts={() => {}} />,
+    );
+    expect(screen.getByTestId('game-menu').className).toMatch(/menuDrawerCluster/);
+    // Controlled also means this component renders no handle of its own — §15's
+    // C7 duplication, resolved in favour of the cluster's icon.
+    expect(screen.queryByTestId('game-menu-button')).toBeNull();
+
+    rerender(<GameMenu onChoose={() => {}} onShowShortcuts={() => {}} />);
+    fireEvent.click(screen.getByTestId('game-menu-button'));
+    expect(screen.getByTestId('game-menu').className).not.toMatch(/menuDrawerCluster/);
+  });
+
   it('closes on Escape', () => {
     render(<GameMenu concede={CONCEDE} onChoose={() => {}} onShowShortcuts={() => {}} />);
     fireEvent.click(screen.getByTestId('game-menu-button'));

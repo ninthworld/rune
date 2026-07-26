@@ -36,7 +36,7 @@
 .doorWordmark {
   margin: 0;
   font-family: var(--rune-font-display);
-  font-size: calc(var(--rune-menu-type-display) * 3);
+  font-size: calc(var(--rune-type-display) * 3);
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -50,7 +50,7 @@
 /* The connection state, in words: idle / connecting / closed each read
  * differently without relying on their hue (§11). */
 .doorStatus {
-  font-size: var(--rune-menu-type-body);
+  font-size: var(--rune-type-body);
   color: var(--pregame-text-muted);
 }
 
@@ -67,7 +67,7 @@
 }
 
 .serverName {
-  font-size: var(--rune-menu-type-body-lg);
+  font-size: var(--rune-type-body-lg);
   color: var(--pregame-text);
   overflow-wrap: anywhere;
 }
@@ -80,7 +80,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--rune-space-5);
-  width: min(100%, calc(var(--rune-menu-w-cluster) * 2.5));
+  width: min(100%, calc(var(--rune-control-w-cluster) * 2.5));
   margin: 0;
   padding: 0;
   list-style: none;
@@ -112,7 +112,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--rune-space-7);
-  min-height: var(--rune-menu-touch);
+  min-height: var(--rune-touch);
 }
 
 /* The leading pip: the non-colour half of selection — an unselected row draws a
@@ -133,19 +133,19 @@
 
 .rowName {
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-body-lg);
+  font-size: var(--rune-type-body-lg);
   letter-spacing: 0.04em;
   color: var(--pregame-text);
   overflow-wrap: anywhere;
 }
 
 .rowMeta {
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   color: var(--pregame-text-muted);
 }
 
 .rowCount {
-  font-size: var(--rune-menu-type-body-lg);
+  font-size: var(--rune-type-body-lg);
   font-variant-numeric: tabular-nums;
   color: var(--pregame-text);
 }
@@ -174,7 +174,7 @@
 /* Before the first view: the shape a player is waiting for is the shape they
  * see. Static — no shimmer competing with the arena. */
 .skeletonRow {
-  height: var(--rune-menu-touch);
+  height: var(--rune-touch);
   border: 1px dashed var(--pregame-line);
   border-radius: var(--rune-radius-sm);
   background: var(--pregame-surface);
@@ -195,7 +195,7 @@
  * A single plaque on the arena holding the essential decisions and nothing
  * else. Everything further is behind Advanced. */
 .formPlaque {
-  width: min(100%, calc(var(--rune-menu-w-cluster) * 2));
+  width: min(100%, calc(var(--rune-control-w-cluster) * 2));
 }
 
 .formFace {
@@ -210,7 +210,7 @@
   padding-bottom: var(--rune-space-5);
   border-bottom: 1px solid var(--pregame-line);
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-title);
+  font-size: var(--rune-type-title);
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -222,7 +222,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--rune-menu-gap);
+  gap: var(--rune-cluster-gap);
   padding-top: var(--rune-space-4);
 }
 
@@ -233,7 +233,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   color: var(--pregame-text-muted);
 }
 
@@ -252,7 +252,7 @@
  *     0.34 · H  >  seatHeight / 2 + centreHeight / 2
  *
  * The local seat is the tall one — plaque, deck row, primary, and a resubmit —
- * at roughly `--rune-menu-w-cluster` of height, and the centre plaque runs
+ * at roughly `--rune-control-w-cluster` of height, and the centre plaque runs
  * about a third of that. The floor below is what satisfies the inequality with
  * margin; at the shipped `* 1.5` the two bands intersected and the room drew
  * "everyone's here" across the host's own seat. `flex: none` keeps the arena's
@@ -278,16 +278,20 @@
    * player plus the table's plaque in a single box whose height is the left-hand
    * side of the inequality above. Seats scale with the rung and the arena does
    * not, so the open rung would grow the seats past the room at the 900 px-tall
-   * reference and reintroduce the collision #546 fixed. Picking a rung is one
-   * declaration and it carries the controls, the plaque widths, and the type.
+   * reference and reintroduce the collision #546 fixed.
+   *
+   * Composing the dense rung re-points the same §3.1 tokens the stage did, one
+   * level down, so everything inside the ring — controls, seat plaques, type,
+   * and the min-height floor below that keeps a seat and the centre apart —
+   * moves together onto the smaller rung.
    */
-  --rune-control-scale: var(--rune-menu-scale-dense);
+  composes: rungDense from './pregame.module.css';
 
   position: relative;
   flex: 1 1 auto;
   align-self: stretch;
   width: 100%;
-  min-height: calc(var(--rune-menu-w-cluster) * 2.4);
+  min-height: calc(var(--rune-control-w-cluster) * 2.4);
 }
 
 /* One seat's slot. `--seat-x` / `--seat-y` are the ring position `seatRing.ts`
@@ -301,7 +305,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--rune-space-4);
-  max-width: calc(var(--rune-menu-w-cluster) * 1.4);
+  max-width: calc(var(--rune-control-w-cluster) * 1.4);
   transform: translate(-50%, -50%);
 }
 
@@ -329,7 +333,7 @@
   left: 50%;
   top: 50%;
   width: max-content;
-  max-width: calc(var(--rune-menu-w-cluster) * 1.2);
+  max-width: calc(var(--rune-control-w-cluster) * 1.2);
   transform: translate(-50%, -50%);
 }
 
@@ -350,7 +354,7 @@
 
 .centreGate {
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-body-lg);
+  font-size: var(--rune-type-body-lg);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -358,7 +362,7 @@
 }
 
 .centreCount {
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   font-variant-numeric: tabular-nums;
   color: var(--pregame-text-muted);
 }
@@ -380,14 +384,14 @@
 
 .seatName {
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-body-lg);
+  font-size: var(--rune-type-body-lg);
   letter-spacing: 0.04em;
   color: var(--pregame-text);
   overflow-wrap: anywhere;
 }
 
 .seatDeck {
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   color: var(--pregame-text-muted);
   overflow-wrap: anywhere;
 }
@@ -399,14 +403,14 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: var(--rune-menu-touch);
-  height: var(--rune-menu-touch);
+  width: var(--rune-touch);
+  height: var(--rune-touch);
   flex: none;
   border: 2px solid var(--pregame-accent, var(--pregame-line-strong));
   border-radius: var(--rune-radius-pill);
   background: var(--pregame-surface);
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-heading);
+  font-size: var(--rune-type-heading);
   color: var(--pregame-text);
 }
 
@@ -440,7 +444,7 @@
 
 .deckSelect {
   composes: select from './pregame.module.css';
-  min-width: calc(var(--rune-menu-w-pair) * 1.2);
+  min-width: calc(var(--rune-control-w-pair) * 1.2);
 }
 
 /* An empty seat's contextual options, opened from the seat itself and anchored
@@ -455,7 +459,7 @@
   gap: var(--rune-space-5);
   box-sizing: border-box;
   width: max-content;
-  max-width: calc(var(--rune-menu-w-cluster) * 1.2);
+  max-width: calc(var(--rune-control-w-cluster) * 1.2);
   padding: var(--rune-space-7);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-md);
@@ -482,7 +486,7 @@
   border-radius: var(--rune-radius-xs);
   background: var(--pregame-surface);
   font-family: var(--rune-font-mono);
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   color: var(--pregame-text);
   overflow-wrap: anywhere;
 }
@@ -503,13 +507,13 @@
   flex-direction: column;
   gap: var(--rune-space-4);
   box-sizing: border-box;
-  width: var(--rune-menu-w-cluster);
+  width: var(--rune-control-w-cluster);
   padding: var(--rune-space-7);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-md);
   background: var(--pregame-raised);
   box-shadow: var(--pregame-elev-screen);
-  font-size: var(--rune-menu-type-caption);
+  font-size: var(--rune-type-caption);
   color: var(--pregame-text-muted);
 }
 
@@ -527,7 +531,7 @@
 
 .ribbonOutcome {
   font-family: var(--rune-font-display);
-  font-size: var(--rune-menu-type-body-lg);
+  font-size: var(--rune-type-body-lg);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -556,12 +560,12 @@
 }
 
 .identityName {
-  font-size: var(--rune-menu-type-body);
+  font-size: var(--rune-type-body);
   color: var(--pregame-text);
   overflow-wrap: anywhere;
 }
 
 .identityInput {
   composes: input from './pregame.module.css';
-  width: var(--rune-menu-w-cluster);
+  width: var(--rune-control-w-cluster);
 }

@@ -41,10 +41,18 @@ import s from './controls.module.css';
 export type ControlVariant =
   /** The large stadium pill — the single blue primary of §4.1. */
   | 'primary'
-  /** The compact blue pair-width primary (zones panel 10 `RESOLVE`). */
+  /**
+   * The compact blue pair-width primary (zones panel 10 `RESOLVE`), and the
+   * decision area's CONFIRM.
+   *
+   * Control-ui panel 7 drew that confirm green, and it shipped that way until
+   * issue #586: green is a second primary hue, and §4.1 allows exactly one
+   * primary treatment at a time. §4.2 rule 1 already made the resolution
+   * obvious — while a decision is open the cluster's blue slot is empty
+   * *because* the decision's confirm carries the advance — so the confirm IS
+   * the primary and wears the primary's enamel. There is no green control.
+   */
   | 'primaryCompact'
-  /** Green confirm (control-ui panel 7). Always leads its pair. */
-  | 'confirm'
   /** Red cancel / destructive (control-ui panel 7). Always trails its pair. */
   | 'cancel'
   /** Dark outline secondary (zones panel 10 `RESPOND`). */

@@ -341,7 +341,8 @@ One decided representation per surface. No implementation PR chooses ad hoc.
 | **Token** | 1.00 permanent + arch | arch tab, art, status | no | no | plate | `TOKEN` tab; no cost reservation; strong ×N pile |
 | **Spell on stack** | 0.715 full card | title, art, type, rules | yes | yes | plate if creature | screen-space stack-rail slot; the **slot** wears the controller's seat accent and the order index **[D]** |
 | **Ability on stack** | 0.715 **ability plate** | source thumbnail, description field | no | server description | no | not a fake card: a slate plate with a 0.30 · W circular source thumbnail top-left, the server `description` as body text, controller ribbon and order index on the slot, and an anchor line back to the source permanent **[D]** |
-| **Inspect** | 0.715 full card, fixed screen tier | all, at reading size | yes | full | plate | plus counters, damage, attachments, linked objects, art-source controls; never depends on battlefield card size |
+| **Inspect** | 0.715 full card, fixed screen tier | all, at reading size | yes | full | plate | the card brought forward — the same `CardFace`, at the `inspect` tier (#569), never a second renderer re-listing the fields. An **annex** beside it carries what a printed face has no home for: spelled-out keyword names, counters, damage, attachments, linked objects, and the art-source entry point. Never depends on battlefield card size |
+| **Dragged hand card** | 0.715 full card, elevation `held` | as hand | yes | yes | plate | the real face is the drag proxy (#569, `control-language.md` §6.2 stage 2); the origin slot is held open, not left looking occupied |
 | **Card back** | matches the surface's silhouette | §13 | — | — | — | one skin per device, applied to every hidden card |
 | **Folded identical stack** | top card at full fidelity | as its kind | as its kind | as its kind | as its kind | up to 3 splayed edges **down-and-left**; `×N` tab on the top edge |
 
@@ -940,6 +941,7 @@ or inconsistent. This is the maintainer's review list.
 | **#529** (card face implementation) | §3, §5, §8, §9, §12 — the frame, the tokens, the tiers, the budget |
 | **#533 / #535** | the surface contract (§4) and the states sheet (§6); neither may finalize card visuals before this closes |
 | **#531 / #534** (card portions) | stack and inspect surfaces (§4), badge channels (§7) |
+| **#569 / #584** (card interaction surfaces) | §4's inspect, dragged-card, and browsable-pile rows: every one of them draws this frame, at a tier from §8.1, through the one renderer. A surface that shows cards and does not use `CardFace` is a defect against this document |
 | **#548** | §13.3 — the card-back placeholder key and swap contract |
 | **#536** (convergence gate) | §15's open questions must be answered and §16 approved before convergence is declared |
 | **Protocol work** | §14.1 G1, G3, G6, G7, G8 are contract changes, each needing `docs/protocol.md` + `rune-protocol` + the TS mirror in one PR. Filed as **#551** (card state flags: G1, G3, G4, G7, G8, G9) and **#550** (`StackItem` contract: G6). G2 and G5 are not filed. |

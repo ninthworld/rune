@@ -249,8 +249,13 @@
    * frame construction), which is what keeps a chamfered edge from reading as
    * a flat cut. */
   --rune-control-inner-line: rgba(0, 0, 0, 0.5);
-  --rune-confirm-face: #2d7a4c;
-  --rune-confirm-frame: #1c4e31;
+  /* There is no confirm hue. Control-ui panel 7 drew a green CONFIRM and it
+   * shipped, which gave the product two primary colours — the blue enamel on
+   * PASS / CONNECT / CREATE GAME / SUBMIT DECK, and green on the one control
+   * that commits a decision. §4.1 allows exactly one primary treatment, and
+   * §4.2 rule 1 says the decision's confirm is what carries the advance while a
+   * decision is open, so it wears the primary's enamel (issue #586). Red is
+   * kept, on `.cancel` alone, where it means destructive. */
   --rune-danger-face: #82412f;
   --rune-danger-frame: #5a2c20;
   --rune-control-plate: #1b2430;
@@ -268,6 +273,17 @@
   /* §11/D16: the invalid state DIMS rather than reddens — the no-entry glyph
    * carries the meaning, so it survives a color-blind or Lite quality path. */
   --rune-drop-invalid-fill: rgba(0, 0, 0, 0.28);
+
+  /* Public-zone identity (`docs/design/zone-geography.md` §3.2/§3.3). Exile
+   * "must not read as a second graveyard": the graveyard's cast is warm-dark
+   * ash, exile's is the cool rune-iris glass, and exile alone gets a pane that
+   * is visibly larger than the cards inside it. These carry the same separation
+   * the rack draws into the zone browser, where a player actually reads the
+   * pile. Colour is never the only channel — both zones are also named. */
+  --rune-zone-graveyard-cast: rgba(120, 92, 68, 0.16);
+  --rune-zone-exile-cast: rgba(126, 132, 214, 0.18);
+  --rune-zone-exile-pane: rgba(126, 132, 214, 0.07);
+  --rune-zone-exile-rim: rgba(160, 172, 240, 0.3);
 
   /* Control geometry and type (§2.2). */
   --rune-control-h-primary: 56px;
@@ -308,6 +324,12 @@
   --rune-drop-radius: var(--rune-radius-lg);
   --rune-drop-tick: 14px;
   --rune-drop-stroke: 2px;
+  /* §6.2 stage 3's "L-shaped corner ticks (14 px arms, 6 px inset)" and stage
+   * 4's "ticks extend 4 px" on hover. Named rather than written into the
+   * stylesheet so the two drop surfaces cannot drift from each other or from
+   * the spec (ADR 0019). */
+  --rune-drop-tick-inset: var(--rune-space-3);
+  --rune-drop-tick-hover: var(--rune-space-2);
   /* The cluster's own placement (§3.3): 268px column, 28px from the viewport
    * edge, 12px between rows. */
   --rune-cluster-margin: 28px;
@@ -326,58 +348,75 @@
    * maintainer reported against the shipped pregame (issue #566).
    *
    * So the control language gains a viewport term, and only the menus spend it.
-   * A rung is a **multiplier, never a replacement**: every menu length below is
-   * §3.1's own value times the rung, so the component sheet still decides the
-   * proportions and the rung only decides how large the whole family is drawn.
-   * At a rung's floor of 1 a menu control is bit-for-bit the match control,
-   * which is what keeps this a scale pass and not a second button vocabulary.
+   * A rung is a **restatement of §3.1's own value**, fluid between that value
+   * and a ceiling — never a different number. At a rung's floor a menu control
+   * is bit-for-bit the match control, which is what keeps this a scale pass and
+   * not a second button vocabulary. A menu surface picks a rung by re-pointing
+   * the §3.1 tokens at one of these sets, which is the idiom the pregame
+   * already uses for `--rune-control-w-pair` (`AGENTS.md`: "scopes the family's
+   * own `--rune-control-w-*` tokens when it needs a different width").
    *
-   * `100vmin` rather than `vw` or `vh`: the rung must not grow with an
-   * ultrawide's surplus width (that is gutter, not content) and must not shrink
-   * on a landscape phone. The floor of 1 means a small or zoomed viewport never
-   * draws a control SMALLER than the match does.
+   * Each entry is `clamp(base, base / basis x 100vmin, base x cap)` —
+   * arithmetic, not taste. `controlTokens.ts` mirrors `basis` and `cap` as
+   * `MENU_RUNG` and `menuRung.test.ts` recomputes every clamp below from the
+   * §3.1 value it scales, so none of these numbers can drift from it.
    *
-   * There are two rungs because there are two kinds of pregame arena:
+   * **Why a clamp of lengths rather than one scale multiplier.** The obvious
+   * shape is a unitless `--rune-scale: clamp(1, calc(100vmin / 620), 1.6)` that
+   * every length multiplies by. It is invalid CSS: `100vmin / 620` is a
+   * *length*, so the clamp mixes a length with two numbers, the whole
+   * declaration is dropped at computed-value time, and every property that
+   * multiplied by it is dropped with it. That shipped in the first cut of this
+   * work and took the pregame type ramp, the plaque widths, AND the primary
+   * control down with it. There is no portable way to derive a unitless ratio
+   * from the viewport — `calc(100vmin / 620px)` is `<length>/<length>`, which
+   * Firefox does not resolve — so the fluid term is carried by each length
+   * itself. Verified in a browser, which is the only place it could be.
    *
-   * - **open** — the front door, the server lobby, the create-table setup. One
-   *   decision on an empty plaza, so the rung is generous.
-   * - **dense** — the ready room's seating ring, which puts a seat per player
-   *   plus the table's own plaque inside one box and only reads correctly while
-   *   the ring's height clears half a seat plus half the centre
-   *   (`pregamePlaces.module.css`). Seats scale with the rung and the arena does
-   *   not, so the generous rung would reintroduce exactly the collision #546
-   *   fixed. This one grows more slowly and stops sooner.
+   * `100vmin` rather than `vw` or `vh`: an ultrawide's surplus width is gutter
+   * (the plane spends it the same way, `layout-model.md`), and growing controls
+   * into it would push an arena's content off a short window.
    *
-   * `table/controls/controlTokens.ts` mirrors both as `MENU_RUNG`, and
-   * `controlTokens.test.ts` fails if the two drift. */
-  --rune-menu-scale: clamp(1, calc(100vmin / 620), 1.6);
-  --rune-menu-scale-dense: clamp(1, calc(100vmin / 900), 1.25);
-  /* **The one knob.** Every control in `table/controls` multiplies its §3.1
-   * plate by this, and every `--rune-menu-*` length and type size below is
-   * derived from it — so a surface picks a rung once and its controls, its
-   * plaques, and its type all move together. It is `1` everywhere by default:
-   * the match is the unscaled case and §3.1's widths win there untouched. */
-  --rune-control-scale: 1;
-  /* The lengths the surfaces AROUND a control lay out from — plaque widths,
-   * arena columns, the menu frame's own inset and gutter. Derived from the
-   * chosen rung, so they never disagree with the control beside them. */
-  --rune-menu-w-cluster: calc(var(--rune-control-w-cluster) * var(--rune-control-scale));
-  --rune-menu-w-pair: calc(var(--rune-control-w-pair) * var(--rune-control-scale));
-  --rune-menu-h: calc(var(--rune-control-h) * var(--rune-control-scale));
-  --rune-menu-touch: calc(var(--rune-touch) * var(--rune-control-scale));
-  --rune-menu-margin: calc(var(--rune-cluster-margin) * var(--rune-control-scale));
-  --rune-menu-gap: calc(var(--rune-cluster-gap) * var(--rune-control-scale));
-  /* The type ramp at the chosen rung. Separate names rather than a
-   * re-declaration of `--rune-type-*`: a custom property that resolves through
-   * itself is invalid at computed-value time, so the menus USE these rather
-   * than shadowing the scale the match reads. */
-  --rune-menu-type-display: calc(var(--rune-type-display) * var(--rune-control-scale));
-  --rune-menu-type-title: calc(var(--rune-type-title) * var(--rune-control-scale));
-  --rune-menu-type-heading: calc(var(--rune-type-heading) * var(--rune-control-scale));
-  --rune-menu-type-body-lg: calc(var(--rune-type-body-lg) * var(--rune-control-scale));
-  --rune-menu-type-body: calc(var(--rune-type-body) * var(--rune-control-scale));
-  --rune-menu-type-caption: calc(var(--rune-type-caption) * var(--rune-control-scale));
-  --rune-menu-type-micro: calc(var(--rune-type-micro) * var(--rune-control-scale));
+   * **Open** — one decision on an empty plaza: the front door, the server
+   * lobby, the create-table setup. */
+  --rune-menu-control-h-primary: clamp(56px, 9.0323vmin, 89.6px);
+  --rune-menu-control-h: clamp(36px, 5.8065vmin, 57.6px);
+  --rune-menu-control-hit: clamp(44px, 7.0968vmin, 70.4px);
+  --rune-menu-control-w-cluster: clamp(268px, 43.2258vmin, 428.8px);
+  --rune-menu-control-w-pair: clamp(118px, 19.0323vmin, 188.8px);
+  --rune-menu-cluster-margin: clamp(28px, 4.5161vmin, 44.8px);
+  --rune-menu-cluster-gap: clamp(12px, 1.9355vmin, 19.2px);
+  --rune-menu-touch: clamp(44px, 7.0968vmin, 70.4px);
+  --rune-menu-type-display: clamp(30px, 4.8387vmin, 48px);
+  --rune-menu-type-title: clamp(20px, 3.2258vmin, 32px);
+  --rune-menu-type-heading: clamp(16px, 2.5806vmin, 25.6px);
+  --rune-menu-type-body-lg: clamp(14px, 2.2581vmin, 22.4px);
+  --rune-menu-type-body: clamp(13px, 2.0968vmin, 20.8px);
+  --rune-menu-type-caption: clamp(12px, 1.9355vmin, 19.2px);
+  --rune-menu-type-micro: clamp(11px, 1.7742vmin, 17.6px);
+  --rune-menu-type-action: clamp(24px, 3.871vmin, 38.4px);
+
+  /* **Dense** — the ready room's seating ring, which puts a seat per player
+   * plus the table's own plaque inside one box whose height must clear half a
+   * seat plus half the centre (`pregamePlaces.module.css`). Seats grow with the
+   * rung and the arena does not, so the open rung would reintroduce exactly the
+   * collision #546 fixed. This one grows more slowly and stops sooner. */
+  --rune-menu-dense-control-h-primary: clamp(56px, 6.2222vmin, 70px);
+  --rune-menu-dense-control-h: clamp(36px, 4vmin, 45px);
+  --rune-menu-dense-control-hit: clamp(44px, 4.8889vmin, 55px);
+  --rune-menu-dense-control-w-cluster: clamp(268px, 29.7778vmin, 335px);
+  --rune-menu-dense-control-w-pair: clamp(118px, 13.1111vmin, 147.5px);
+  --rune-menu-dense-cluster-margin: clamp(28px, 3.1111vmin, 35px);
+  --rune-menu-dense-cluster-gap: clamp(12px, 1.3333vmin, 15px);
+  --rune-menu-dense-touch: clamp(44px, 4.8889vmin, 55px);
+  --rune-menu-dense-type-display: clamp(30px, 3.3333vmin, 37.5px);
+  --rune-menu-dense-type-title: clamp(20px, 2.2222vmin, 25px);
+  --rune-menu-dense-type-heading: clamp(16px, 1.7778vmin, 20px);
+  --rune-menu-dense-type-body-lg: clamp(14px, 1.5556vmin, 17.5px);
+  --rune-menu-dense-type-body: clamp(13px, 1.4444vmin, 16.25px);
+  --rune-menu-dense-type-caption: clamp(12px, 1.3333vmin, 15px);
+  --rune-menu-dense-type-micro: clamp(11px, 1.2222vmin, 13.75px);
+  --rune-menu-dense-type-action: clamp(24px, 2.6667vmin, 30px);
 
   /* The 135° gold frame every chamfered control and the plaque wear (§3.1). */
   --rune-control-frame-gradient: linear-gradient(

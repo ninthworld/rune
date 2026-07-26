@@ -64,6 +64,21 @@
   justify-content: flex-end;
 }
 
+/* Panel 6b's row is the one place a round control sits BESIDE the plaque, and
+   the plaque's trailing end is a 22 px point, not an edge (issue #586).
+   `--rune-cluster-gap` is measured between bounding boxes, so a 44 ⌀ circle
+   12 px from the plaque's box is 12 px from the *tip* — and both are centred on
+   the same midline, which is exactly where the tip is. Optically the icon lands
+   in the bevel and the trim reads as broken at the trailing point, which is what
+   the maintainer reported.
+   The gap therefore carries the point depth as well, so the clearance is 12 px
+   from the drawn diagonal rather than from the box. `plaque.module.css` takes
+   the same term back out of the compact plaque's width, so the row still
+   measures one 268 px column and stays flush with every other row's edge. */
+.compactRow {
+  gap: calc(var(--rune-cluster-gap) + var(--rune-plaque-point));
+}
+
 /* ── The mana reservoir (issue #567, absorbing #462) ──────────────────────────
  * The receiver's floating mana, sitting directly above the phase plaque so the
  * column reads primary → utilities → what you are holding → where the turn is.

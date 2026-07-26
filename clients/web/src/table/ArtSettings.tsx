@@ -15,6 +15,31 @@
  * Everything here is presentation preference and cache management. The overlay
  * derives no rules and holds no load-bearing state: closing it (or clearing the
  * cache) leaves a UI still fully reconstructable from the next GameView.
+ *
+ * ## Scope, stated (issue #569)
+ *
+ * The one thing this overlay used to leave the player to guess is *what a choice
+ * applies to*. It is now said in the surface, not only here: **both choices are
+ * device preferences that apply to every card, everywhere**. There is no
+ * per-card art override, no per-source override, and nothing here travels to the
+ * server or to another player. The style choice is a sub-choice of the Scryfall
+ * source and is shown only while that source is active, so the two can never be
+ * read as independent settings.
+ *
+ * ## One pipeline
+ *
+ * The optional preview draws {@link CardFace} through the same `domCardArt`
+ * lookup every other card surface uses, so what the player sees here is
+ * literally the face the hand fan, the zone browser, and the enlarged inspect
+ * surface will draw — this overlay creates no second art path (ADR 0024).
+ *
+ * ## Entry and exit
+ *
+ * Entered from the in-match game menu, the pregame menu, and — since issue #569
+ * — from the inspect surface, which is where a player is looking at art closely
+ * enough to want to change it. Left by DONE, by the close control, by `Escape`,
+ * or by clicking outside; all four are equivalent, and none of them commits
+ * anything (each choice already applied when it was made).
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
@@ -29,13 +54,32 @@ import {
   subscribeArt,
 } from '../card/art/artStore';
 import type { ArtSource, ArtStyle } from '../card/art/artSettings';
+import { CardFace } from '../card/dom';
 import { cx } from '../chrome/cx';
+import type { CardView } from '../protocol';
+import { domCardArt } from './planeDisplayData';
+import { toDisplayData } from './scene/card-helpers';
 import s from './chrome.module.css';
 
 interface Props {
   /** Close the overlay (backdrop click, Escape via Table, or the close control). */
   onClose: () => void;
+  /**
+   * A card from the current game to draw the live preview from (issue #569).
+   * Rendered through the same face + art lookup every table surface uses, so the
+   * preview is the setting's actual effect rather than an illustration of it.
+   * Absent outside a match (the pregame menu), where there is no card to show and
+   * the overlay simply omits the preview.
+   */
+  previewCard?: CardView;
 }
+
+/**
+ * The scope line every group carries. Said once per group rather than once per
+ * overlay because the two groups nest — the style is a sub-choice of the source
+ * — and a player reading only one of them still has to learn the same fact.
+ */
+const DEVICE_SCOPE = 'Applies to every card, on this device only.';
 
 /** The selectable sources, in display order, with their user-facing copy. */
 const SOURCE_OPTIONS: { source: ArtSource; label: string; description: string }[] = [
@@ -82,7 +126,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function ArtSettings({ onClose }: Props) {
+export function ArtSettings({ onClose, previewCard }: Props) {
   // Re-render as illustrations finish loading so the progress line stays live.
   useSyncExternalStore(subscribeArt, getArtVersion);
   const source = getArtSource();
@@ -130,8 +174,51 @@ export function ArtSettings({ onClose }: Props) {
         aria-label="Card art settings"
         onClick={(event) => event.stopPropagation()}
       >
+        <button
+          type="button"
+          className={s.artClose}
+          data-testid="art-settings-close"
+          aria-label="Close card art settings"
+          onClick={onClose}
+        >
+          ×
+        </button>
         <h2 className={s.shortcutTitle}>Card art</h2>
-        <div role="radiogroup" aria-label="Art source" className={s.artOptions}>
+        <p className={s.artNote} data-testid="art-scope">
+          A device preference, not a game setting: it applies to every card in every game in this
+          browser, never to one card, and it is never sent to the server or seen by other players.
+        </p>
+
+        {/* The live preview: the SAME face and the SAME art lookup the table,
+            the hand, the zone browser, and the enlarged inspect surface use, so
+            the overlay demonstrates the setting instead of describing it — and
+            proves there is only one art pipeline (ADR 0024). */}
+        {previewCard && (
+          <div className={s.artPreview} data-testid="art-preview">
+            <CardFace
+              data={toDisplayData(previewCard, { selected: false, actionable: false })}
+              tier="stack"
+              art={domCardArt(previewCard)}
+              rulesText={previewCard.rules_text}
+            />
+            <p className={s.artNote}>
+              The face every surface draws — hand, battlefield, zone browser, and inspect.
+            </p>
+          </div>
+        )}
+
+        <h3 className={s.artGroupTitle} id="art-source-heading">
+          Where art comes from
+        </h3>
+        <p className={s.artNote} data-testid="art-source-scope">
+          {DEVICE_SCOPE}
+        </p>
+        <div
+          role="radiogroup"
+          aria-labelledby="art-source-heading"
+          aria-describedby="art-source-scope"
+          className={s.artOptions}
+        >
           {SOURCE_OPTIONS.map((option) => (
             <button
               key={option.source}
@@ -183,9 +270,12 @@ export function ArtSettings({ onClose }: Props) {
         )}
 
         {source === 'scryfall' && (
+          <h3 className={s.artGroupTitle}>How a downloaded image is drawn</h3>
+        )}
+        {source === 'scryfall' && (
           <div
             role="radiogroup"
-            aria-label="Card presentation"
+            aria-label={`How a downloaded image is drawn. ${DEVICE_SCOPE}`}
             className={s.artOptions}
             data-testid="art-style"
           >
@@ -231,6 +321,20 @@ export function ArtSettings({ onClose }: Props) {
             )}
           </div>
         )}
+
+        {/* The explicit way out. Nothing is committed here — every choice
+            applied when it was made — so DONE only closes, and `Escape`, the
+            close control, and a click outside are all exactly equivalent. */}
+        <div className={s.artActionsRow}>
+          <button
+            type="button"
+            className={s.button}
+            data-testid="art-settings-done"
+            onClick={onClose}
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );

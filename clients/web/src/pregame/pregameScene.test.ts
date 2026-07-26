@@ -278,13 +278,13 @@ describe('ready room CSS — the seating ring cannot collide with itself', () =>
    */
   it('floors the ring high enough for a seat and the centre to clear', () => {
     const ring = rule('.ring');
-    const floor = /min-height: calc\(var\(--rune-menu-w-cluster\) \* ([\d.]+)\)/.exec(ring)?.[1];
+    const floor = /min-height: calc\(var\(--rune-control-w-cluster\) \* ([\d.]+)\)/.exec(ring)?.[1];
     expect(floor, '.ring states no min-height in cluster units').toBeDefined();
     expect(Number(floor)).toBeGreaterThanOrEqual(2.4);
-    // The floor is stated against the MENU cluster width, not the match's, so it
-    // tracks the rung a seat's own controls are drawn at (issue #566). A floor in
-    // unscaled units would fall behind the seats the moment the rung grew them.
-    expect(ring).toContain('--rune-control-scale: var(--rune-menu-scale-dense);');
+    // The cluster width it multiplies is the one the ring's OWN rung re-pointed,
+    // so the floor tracks the size a seat's controls are actually drawn at
+    // (issue #566). `menuRung.test.ts` resolves that chain and checks the number.
+    expect(ring).toContain("composes: rungDense from './pregame.module.css';");
   });
 
   /**

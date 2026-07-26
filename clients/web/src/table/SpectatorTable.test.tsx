@@ -128,13 +128,21 @@ describe('SpectatorTable (ADR 0022 / ADR 0030 plane, issue #504)', () => {
     fireEvent.click(screen.getByTestId('table-graveyard-p0'));
     const browser = screen.getByTestId('zone-browser');
     expect(within(browser).getByTestId('zone-browser-title').textContent).toContain('Graveyard');
+    // Real faces, not text rows (issue #584).
+    expect(
+      within(browser).getByTestId('browser-card-gy_0').querySelector('[data-tier="stack"]'),
+    ).not.toBeNull();
     expect(within(browser).getByTestId('browser-card-gy_0').textContent).toContain('Shock');
   });
 
   it('pins the inspect popover from a card’s read-only surface', () => {
     render(<SpectatorTable view={spectatorView()} />);
     fireEvent.click(screen.getByTestId('inspect-surface-perm_1'));
-    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Grizzly Bears');
+    // The pinned surface is the card itself, brought forward (issue #569).
+    const face = within(screen.getByTestId('card-inspect')).getByRole('img', {
+      name: 'Grizzly Bears',
+    });
+    expect(face.getAttribute('data-tier')).toBe('inspect');
   });
 
   it('docks the rail with the quiet empty-stack state and the log', () => {

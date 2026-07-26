@@ -529,12 +529,14 @@ space."*
 
 **Scale is the control language's menu rung**
 ([`control-language.md`](control-language.md) §3.4), not a local number. Every
-pregame place sets `--rune-control-scale` once — the *open* rung on the front
-door, the lobby, and create-table; the *dense* rung inside the ready room's ring
-— and every control, plaque width, arena column, and type size on that place is
-derived from it. §3.1's component sheet still fixes the proportions; the rung is
-the one viewport term, and it lives in the control language so #580's match-side
-version of the same problem spends the same term rather than inventing a second.
+pregame place takes a rung once — the *open* rung on the front door, the lobby,
+and create-table; the *dense* rung inside the ready room's ring — by re-pointing
+§3.1's own tokens at that rung's fluid restatements. Every control, plaque
+width, arena column, and type size on that place then follows, because they all
+read the tokens the rung moved. §3.1's component sheet still fixes the
+proportions; the rung is the one viewport term, and it lives in the control
+language so #580's match-side version of the same problem spends the same term
+rather than inventing a second.
 
 The consequence for §5.3: **the ring is the arena.** It was a fixed 16:9 box
 capped at four cluster widths and centred in the plaza — at the 1440×900

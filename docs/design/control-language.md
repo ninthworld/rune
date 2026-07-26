@@ -153,7 +153,7 @@ Two shapes only, as drawn. Everything else is a fill, a frame, or a size.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Primary (large) | 268 × 56 | full plate | stadium, `999px` | vertical `--rune-primary-face-top` → `-bottom` | 3 px `--rune-primary-frame` + 1 px `--rune-primary-rim` inner top | 24 px display caps, `#F4F7FF` | control-ui 6 |
 | Primary (compact) | 118 × 36 | 118 × 44 | chamfer 8 px | same gradient | 2 px gold | 16 px | zones 10 RESOLVE |
-| Confirm | 118 × 36 | 118 × 44 | chamfer 8 px | `--rune-confirm-face` | 2 px gold | 14 px | control-ui 7 |
+| Confirm | 118 × 36 | 118 × 44 | chamfer 8 px | the primary's blue enamel (see below) | 2 px gold | 14 px | control-ui 7 |
 | Cancel / destructive | 118 × 36 | 118 × 44 | chamfer 8 px | `--rune-danger-face` | 2 px gold | 14 px | control-ui 7 |
 | Secondary outline | 118 × 36 | 118 × 44 | chamfer 8 px | `--rune-control-plate` | 2 px gold | 14 px | zones 10 RESPOND |
 | Utility pill | 118 × 36 | 118 × 44 | chamfer 8 px | `--rune-control-plate` | 2 px gold | 14 px | control-ui 6 UNDO |
@@ -173,8 +173,32 @@ its leading point (issue #571). The offset is derived in
 construction in the blue family, with the pale inner rim at the top edge only —
 "restrained bevel, pale inner highlight, dark outer edge", exactly as drawn.
 
+**There is one primary colour, and no green control** (issue #586). Control-ui
+panel 7 draws CONFIRM green, and it shipped that way. Drawn beside the blue
+enamel that every other primary action in the product wears — `PASS`, `CONNECT`,
+`CREATE GAME`, `SUBMIT DECK` — that is a second primary hue, and §4.1 allows
+exactly one primary treatment at a time. §4.2 rule 1 already resolves it: while a
+decision is open the cluster's blue slot is empty *because* the decision's
+CONFIRM carries the advance. The confirm therefore **is** the primary and wears
+the compact primary's enamel, and `--rune-confirm-face` is retired. Red survives
+on cancel/destructive alone, where it means exactly one thing.
+
+Several **named choices** offered on equal terms are the tie of rules 4 and 7,
+not a row of primaries: they render as equal-weight secondaries. Promoting one
+would be the client ranking the server's own options.
+
 Every control ships an accessible name. Icon buttons carry `aria-label` and a
 tooltip; there are no unlabeled glyphs (issue #543 requirement, carried).
+
+**Two icon buttons may not draw the same picture** (issue #583). The family has
+one circular silhouette, so an icon button's *only* distinguishing mark at 44 px
+is its glyph, and the match shipped two — the activity badge at the top right and
+the game-menu handle at the bottom right — as `≡` and `☰`: different codepoints,
+one picture. The accessible names were correct and invisible; a sighted player
+had two identical controls in opposite corners. The drawn glyphs are declared
+together in `table/controls/iconGlyphs.ts` (the badge keeps the rule stack, the
+menu handle takes a gear, which is also what its drawer holds), so a future
+collision is a failing assertion rather than something a reviewer has to notice.
 
 ### 3.2 State matrix
 
@@ -216,6 +240,14 @@ the reason — today the single case is `PromptOption.requires` not yet satisfie
 - **The bar never enumerates per-card actions** (ADR 0004). The cluster holds
   subject-less actions plus the contextual echo of the current selection, and
   nothing else, at any board size.
+- **A surface opens at the control that discloses it** (issue #583). The cluster
+  is bottom-anchored, so everything it discloses opens **upward** from its own
+  top edge, clamped to the viewport by a max-height built from the cluster's
+  band height and margins — the plaque's step list, and the game menu's drawer.
+  A disclosed surface may never land on a control in another corner. The drawer
+  shipped at `top: 52px`, the height of the top bar ADR 0032 removed, so
+  pressing the handle in one corner made a panel appear over the activity badge
+  in the other.
 
 ### 3.4 The menu rung — the language's one viewport term (issue #566)
 
@@ -227,25 +259,27 @@ with no viewport term anywhere, and the maintainer read the result as a UI shrun
 into the corner of a picture: the `RUNE` lockup, the status lines, and `CONNECT`
 all too small to be the screen's one action.
 
-So the family gains a **rung**: a multiplier on §3.1, never a replacement for it.
+So the family gains a **rung**: a restatement of §3.1's own values, fluid
+between each value and a ceiling. Each rung is one `clamp()` per token —
 
-| Rung | Value | Where |
-| --- | --- | --- |
-| (none) | `1` | the match — §3.1 exactly, untouched |
-| open | `clamp(1, 100vmin / 620, 1.6)` | front door, server lobby, create-table |
-| dense | `clamp(1, 100vmin / 900, 1.25)` | the ready room's seating ring |
+    clamp(§3.1 value, §3.1 value / basis × 100vmin, §3.1 value × cap)
+
+| Rung | basis | cap | Where |
+| --- | --- | --- | --- |
+| (none) | — | — | the match — §3.1 exactly, untouched |
+| open | 620 | 1.6 | front door, server lobby, create-table |
+| dense | 900 | 1.25 | the ready room's seating ring |
 
 The rules the rung follows:
 
-- **It multiplies the component sheet.** Every plate length and every label size
-  in §3.1 is drawn at `value × rung`. §3.1 still decides the proportions; the
-  rung only decides how large the family is drawn. At a rung of `1` a menu
-  control is bit-for-bit a match control, which is what keeps this a scale pass
-  and not a second button vocabulary.
-- **The floor is `1`.** A rung never draws a control *smaller* than the match
-  does, so the 44 px anchor D1 pins can never be undercut by a small or zoomed
-  viewport.
-- **Trim does not scale.** The chamfer and the frame stroke are fixed: the
+- **It restates the component sheet; it never states a new number.** Every
+  length is derived from the §3.1 value it scales, so §3.1 still decides the
+  proportions. At a rung's floor a menu control is bit-for-bit a match control,
+  which is what keeps this a scale pass and not a second button vocabulary.
+- **The floor is the §3.1 value.** A rung never draws a control *smaller* than
+  the match does, so the 44 px anchor D1 pins can never be undercut by a small
+  or zoomed viewport.
+- **Trim is not on a rung.** The chamfer and the frame stroke are fixed: the
   face-outline offsets of §3.1 (issue #571) are an exact derivation that only
   holds at the drawn values, and a 45° cut reads as the same cut at any plate
   height.
@@ -256,15 +290,33 @@ The rules the rung follows:
   serves a place that puts one decision on an empty plaza. The *dense* rung
   serves the ready room, which puts a seat per player plus the table's own
   plaque inside one box whose height must clear half a seat plus half the
-  centre; seats scale with the rung and the arena does not, so the open rung
+  centre; seats grow with the rung and the arena does not, so the open rung
   would reintroduce the collision #546 fixed.
 
-**One knob.** A surface picks a rung by setting `--rune-control-scale` once;
-`table/controls` multiplies its plate by it, and the `--rune-menu-*` lengths and
-type ramp are derived from the same property, so a control, the plaque behind it,
-and the text beside it can never disagree. `chrome/tokens.css` declares the
-rungs, `table/controls/controlTokens.ts` mirrors them as `MENU_RUNG`, and
-`controlTokens.test.ts` fails if the two drift.
+**How a surface takes a rung.** It re-points §3.1's own tokens at that rung's
+set — the idiom the pregame already uses for `--rune-control-w-pair`. Nothing in
+`table/controls` knows a rung exists: every rule there reads exactly one token,
+so a control on a menu and the same control in a match are one component drawn
+at two sizes, and the plaque behind it and the text beside it move with it
+because they read the same tokens.
+
+**Why not a single scale multiplier.** The obvious shape is one unitless
+`clamp(1, calc(100vmin / 620), 1.6)` that every length multiplies by. It is
+invalid CSS — `100vmin / 620` is a *length*, so the clamp mixes a length with
+two numbers, the declaration is dropped at computed-value time, and every
+property that multiplied by it is dropped with it. There is no portable way to
+derive a unitless ratio from the viewport (`calc(100vmin / 620px)` is
+`<length>/<length>`, which Firefox does not resolve), so the fluid term is
+carried by each length. A second trap sits behind the first: a *derived* custom
+property is substituted where it is declared, so `:root { --w: calc(var(--base)
+* var(--scale)) }` cannot see a `--scale` a descendant overrides. Re-pointing
+avoids both, because the tokens are read by ordinary properties on descendants.
+
+`chrome/tokens.css` declares both rungs, `table/controls/controlTokens.ts`
+mirrors `basis` and `cap` as `MENU_RUNG`, `controlTokens.test.ts` recomputes
+every clamp from the token it restates, and `pregame/menuRung.test.ts` resolves
+the stylesheets under CSS's own substitution model and checks the number each
+scope ends up laying out from.
 
 The rung is stated here rather than in the pregame because #580 is the same
 fixed-width-versus-viewport failure in the match and should spend the same term
@@ -366,6 +418,28 @@ Transcribed from control-ui panels 6 and 6b and the 2.5D in-situ cluster.
 | Forward chevron | step-list disclosure | — | 18 × 20 glyph, 44 px hit box |
 | Auto-passed badge | transient "Auto-passed" | `view.auto_passed` | 11 px |
 
+Two rules the drawn plaque needs and the transcription did not state (issue
+#586; the frame/face construction itself is unchanged):
+
+- **Nothing overlaps a point.** The plaque's ends are 22 px diagonals, not
+  edges, and the gaps around it are measured between bounding boxes — so panel
+  6b's menu icon, 12 px from the plaque's box and centred on the same midline,
+  lands 12 px from the *tip* and reads as sitting on it. A control beside the
+  plaque clears the point depth as well as the gap, and the compact plaque gives
+  the same term back out of its width so the row still measures one 268 px
+  column.
+- **The Auto-passed badge is a tab, not a toast.** It shares the plate's top
+  edge and its material — no gap, no free-floating capsule on the overlay
+  background — and is held inboard of the trailing point. It is still transient,
+  still driven by `view.auto_passed` alone, and still outside the plate because
+  6b has only one text line.
+
+**The plaque says the phase; a decision says the question.** When a decision's
+action label is the same words as `STEP_NAME[view.phase]` — "Declare Attackers"
+is both — the decision surface drops its drawn heading rather than printing the
+phrase twice in two treatments a few hundred pixels apart. Its accessible name
+still carries the title; no server word is ever rewritten, only not repeated.
+
 ### 5.1 Step pips
 
 The baseline draws four pips (three filled) in panel 6 and three (two filled)
@@ -440,6 +514,30 @@ Notes that follow from the hard rules:
 - Drop regions are recomputed from each fresh `GameView`. A newer view during
   a drag ends the drag (§6.3, stage 9).
 
+**When a region lights, stated once** (issue #586's third defect was that it was
+not): *a region highlight belongs to the drag gesture and marks the commit area;
+everything picked by name lights on the card.* Three consequences, and they cover
+every state the shell can be in:
+
+| State | Region lit? | Cards lit? |
+| --- | --- | --- |
+| Land drop / permanent cast — a drag whose action carries no requirements | **yes**, the receiver's band | — |
+| A drag whose action carries requirements | **no** | the active slot's candidates |
+| Targeting or a combat declaration — no drag in progress | **no** | the active slot's candidates |
+
+The rule is "the region lights exactly when dropping on it commits". Lighting a
+band that a drop would not answer is the inconsistency the maintainer saw between
+a Main Phase 1 land drag (full-band highlight) and a Declare Attackers
+declaration (none): the same amount of chrome for two states that are not the
+same gesture. Note the second row is narrower than the §6.1 table's third
+column: the commit area is *derivable* there, but no shipped path routes a drop
+on it into the decision surface, so it is not drawn. Drawing an inert region is
+the defect; wiring that route is a separate change.
+
+Treatment is §6.2 stages 3–5 and §11 — a lit surface with a falloff and corner
+ticks, never a flat uniform stroke. Gold is the selection and actionable-edge
+accent; a drop region wears `--rune-drop-*` and nothing else.
+
 ### 6.2 Drag lifecycle
 
 Visual treatments are transcribed from zones panels 5 and 6.
@@ -459,6 +557,18 @@ Visual treatments are transcribed from zones panels 5 and 6.
 | 9 | Server reject | next `GameView` with `action_rejected: true` | the card is already in hand (the client never moved game state); ≤3 px shake ×2 + non-blaming toast | ≤200 ms | toast only |
 | 10 | Drop, invalid or outside | pointer up anywhere else | eased arc snap-back to the origin slot; **nothing is sent** | 250–350 ms | card reappears in slot |
 | 11 | Interrupt | newer view, `Escape`, right-click, blur, or pointer cancel | drag ends, origin restored, nothing sent | ≤150 ms | instant |
+
+**Shipped state (issue #569).** Stages 2 and 2a are implemented as specified in
+substance and differ in two stated numbers. The proxy is the **real card face** —
+`card/dom/CardFace` at the `hand` tier, elevation `held`, `aria-hidden` and
+`pointer-events: none` so it is invisible to assistive technology and to the
+`elementFromPoint` walk that resolves the drop — and the origin slot is held open
+by keeping the fan's button in the tree and marking it `data-vacated`, so a
+cancelled drag restores nothing because nothing was removed. The two differences:
+the shipped arming threshold is **6 px** for both pointer and touch rather than
+D11's 8 px / 10 px, and the tilt is a fixed −4° rather than one that follows
+travel. Both are the pre-#569 behaviour, deliberately preserved; changing them is
+a separate decision, not a side effect of drawing the card properly.
 
 The **pending-server** lock (stage 7) is local, non-load-bearing presentation:
 it is released by any inbound view or after 5 s, whichever is first, and a
@@ -736,7 +846,8 @@ already carries one. The interaction-specific additions:
 | Dragged card | `--rune-drag-glow` | elevation 2 + tilt |
 | Hovered destination | — | stroke weight 2 → 3 px + **drawn tether** |
 | Primary vs secondary | blue vs slate | **height** (56 vs 36) and **shape** (stadium vs chamfer) |
-| Confirm vs cancel | green vs red | **order** (confirm always leading) + labels |
+| Confirm vs cancel | blue enamel vs red | **order** (confirm always leading) + labels |
+| Eligible vs chosen candidate | one accent | eligible = **thin dashed** ring, chosen = **solid doubled** ring + **check mark** |
 | Current step pip | `--rune-pip-on` | disc **plus ring** |
 | Pending-server | — | sweeping **hairline** + `aria-busy` |
 | Deadline warning | `--rune-targeting` | **countdown chip** with digits |
