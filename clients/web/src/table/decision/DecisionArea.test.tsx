@@ -35,6 +35,9 @@ function surfaceOf(overrides: Partial<DecisionSurface> = {}): DecisionSurface {
   return {
     kind: 'multiSelect',
     title: 'Declare attackers',
+    // The default surface draws its heading; the phase-echo case (#586) is its
+    // own test below, which sets this explicitly.
+    titleEchoesPhase: false,
     prompt: 'Choose attackers',
     confirm: true,
     advance: false,
@@ -57,6 +60,33 @@ describe('DecisionArea', () => {
     // The area announces itself on appearance, which is the accessibility cost
     // ADR 0032 accepts for contextual chrome.
     expect(screen.getByRole('status')).toBeTruthy();
+  });
+
+  it('does not draw the phase name a second time (#586)', () => {
+    // The defect: during Declare Attackers the words appeared in this heading
+    // AND on the phase plaque, in two treatments, a few hundred pixels apart.
+    // The plaque is the phase surface; this one is the question. The title is
+    // still the surface's accessible name, so nothing is lost to a reader who
+    // cannot see the plaque beside it — and the sentence still renders.
+    render(<DecisionArea surface={surfaceOf({ titleEchoesPhase: true })} {...handlers()} />);
+
+    expect(screen.queryByTestId('decision-area-title')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Declare attackers' })).toBeTruthy();
+    expect(screen.getByTestId('decision-prompt').textContent).toBe('Choose attackers');
+  });
+
+  it('gives the advance the one primary treatment, not a second primary hue (#586)', () => {
+    // §4.2 rule 1: while a decision is open the cluster's blue slot is empty
+    // BECAUSE this control carries the advance. It is therefore the one primary
+    // on screen and wears the primary's enamel; green is retired from the family
+    // and `ControlVariant` no longer has a `confirm` member to regress to.
+    render(<DecisionArea surface={surfaceOf()} {...handlers()} />);
+    const confirm = screen.getByTestId<HTMLButtonElement>('decision-area-confirm');
+    expect(confirm.dataset.variant).toBe('primaryCompact');
+    // Cancel keeps the danger treatment: red still means exactly one thing.
+    expect(screen.getByTestId<HTMLButtonElement>('decision-area-cancel').dataset.variant).toBe(
+      'cancel',
+    );
   });
 
   it('answers with the controls the derivation offered, and only those', () => {
@@ -120,7 +150,11 @@ describe('DecisionArea', () => {
     const keep = screen.getByTestId<HTMLButtonElement>('multiselect-option-keep');
     const mulligan = screen.getByTestId<HTMLButtonElement>('multiselect-option-mulligan');
     // The shared family, not a bespoke button: `data-variant` is `ControlButton`'s.
-    expect(keep.dataset.variant).toBe('confirm');
+    // Equal-weight secondaries, never a row of primaries (#586): several options
+    // offered on equal terms are §4.2 rules 4/7's tie, and promoting one would be
+    // the client ranking the server's own choices.
+    expect(keep.dataset.variant).toBe('secondary');
+    expect(mulligan.dataset.variant).toBe('secondary');
     // The ONE permitted disablement prints the server's reason beside the label
     // (§3.2, D14) — a greyed control with no reason is unwritable by construction.
     expect(keep.disabled).toBe(true);

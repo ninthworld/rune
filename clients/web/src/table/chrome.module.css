@@ -2013,7 +2013,12 @@ button.zonePile:focus-visible {
   background: transparent;
   cursor: default;
 }
-/* The drawer: a tier-4 panel below the menu button. */
+/* The drawer: a tier-4 panel below the menu button.
+ *
+ * These offsets belong to the UNCONTROLLED form only — the spectator overview's
+ * top bar, where `.menuButton` above still renders and `52px` is that bar's
+ * height. In the match the bar is gone (ADR 0032 / #534) and the handle is the
+ * control cluster's icon, so the controlled form re-anchors below. */
 .menuDrawer {
   position: fixed;
   top: 52px;
@@ -2028,6 +2033,38 @@ button.zonePile:focus-visible {
   border: 1px solid var(--rune-border-strong);
   background: var(--rune-overlay-bg);
   box-shadow: var(--rune-elevation-2);
+}
+/* ── The cluster-anchored drawer (issue #583) ────────────────────────────────
+ * The defect: `top: 52px; right: 8px` is the height of the top bar ADR 0032 and
+ * #534 removed. The handle moved to the lower-right control cluster and the
+ * drawer it discloses stayed pinned to the top edge — a full viewport away from
+ * the control that opened it, and landing on the activity badge, the OTHER icon
+ * button in the family (#583's "no disclosed surface covers the other corner's
+ * control").
+ *
+ * The fix is the treatment the phase plaque's step list already ships: the
+ * cluster is bottom-anchored, so a surface it discloses opens UPWARD from the
+ * cluster's own top edge and is clamped to the viewport by a max-height built
+ * from the same `--shell-*`/`--rune-cluster-*` geometry the cluster and the
+ * decision area are placed with. Not a second set of hand-written offsets —
+ * every length here is the one the surfaces above and below it already use, so
+ * the drawer cannot drift from the handle when the cluster's band changes.
+ *
+ * `--shell-cluster-h` is published on the shell root by `shellLayout.ts`;
+ * `GameMenu` renders inside that root, so a `position: fixed` box still inherits
+ * it. The safe-area insets match `.area`'s in `decision.module.css`. */
+.menuDrawerCluster {
+  top: auto;
+  right: calc(var(--rune-cluster-margin) + env(safe-area-inset-right, 0px));
+  bottom: calc(
+    var(--shell-cluster-h) + var(--rune-cluster-margin) + var(--rune-cluster-gap) +
+      env(safe-area-inset-bottom, 0px)
+  );
+  max-width: calc(100vw - 2 * var(--rune-cluster-margin));
+  max-height: calc(
+    100dvh - var(--shell-cluster-h) - 2 * var(--rune-cluster-margin) - var(--rune-cluster-gap)
+  );
+  overflow-y: auto;
 }
 .menuItem {
   min-height: var(--rune-touch);

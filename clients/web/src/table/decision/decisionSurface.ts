@@ -48,6 +48,7 @@ import {
 } from '../multiSelect';
 import { activeCandidates as targetCandidates, activeRequirement } from '../targeting';
 import type { TargetingSession } from '../targeting';
+import { STEP_NAME } from '../controls/phaseSteps';
 import { cardNameOf, isOnCanvas } from '../tableView';
 import { confirmDisabledReason } from './confirmReason';
 
@@ -105,6 +106,23 @@ export interface DecisionSurface {
   kind: 'targeting' | 'multiSelect';
   /** The action's server `label`, verbatim — the surface's title. */
   title: string;
+  /**
+   * Whether {@link title} is the same words the phase plaque is already drawing
+   * (issue #586).
+   *
+   * During Declare Attackers the server's action label and `STEP_NAME[phase]`
+   * are both "Declare Attackers", so the match drew the phrase twice — in the
+   * decision heading and on the plaque, in two treatments, a few hundred pixels
+   * apart. #567 unified the decision, mana, and phase controls into one action
+   * area; the duplication survived the unification.
+   *
+   * The surface says so rather than deciding what to do about it: the component
+   * drops the drawn heading (the plaque is the phase surface and the prompt is
+   * the question), and the accessible name still carries the title, so nothing
+   * is lost to a reader who cannot see the plaque beside it. No word is
+   * rewritten — a server label is still printed verbatim wherever it is printed.
+   */
+  titleEchoesPhase: boolean;
   /** The active slot's server prompt — the sentence the strip used to carry. */
   prompt: string;
   /** "Target 2 of 3" / "Step 2 of 3", when the action walks more than one slot. */
@@ -226,6 +244,22 @@ function rowsFor(view: GameView, session: MultiSelectSession, slot: MultiSelectS
   };
 }
 
+/**
+ * Whether an action label and the current step's name are the same words (issue
+ * #586).
+ *
+ * Both sides are drawn in display caps with the same letter-spacing, so the
+ * comparison is on the words alone: case-folded, with runs of whitespace
+ * collapsed. It is a string comparison and nothing more — no rule, phase, or
+ * combat judgement is made from it, and a server that labels the action
+ * something else simply keeps its heading.
+ */
+function echoesPhase(view: GameView, title: string): boolean {
+  const normalize = (text: string): string => text.trim().replace(/\s+/g, ' ').toLowerCase();
+  const step = STEP_NAME[view.phase];
+  return step !== undefined && normalize(step) === normalize(title);
+}
+
 /** A slot's running count, for the kinds where "how many so far" means anything. */
 function countFor(slot: MultiSelectSlot | null, chosen: number): string | undefined {
   if (!slot || (slot.kind !== 'count' && slot.kind !== 'subset')) return undefined;
@@ -256,6 +290,7 @@ export function deriveDecision(view: GameView, sessions: DecisionSessions): Deci
       surface: {
         kind: 'multiSelect',
         title: multiSelect.action.label,
+        titleEchoesPhase: echoesPhase(view, multiSelect.action.label),
         prompt: slot?.prompt ?? options?.prompt ?? '',
         progress:
           multiSelect.slots.length > 1
@@ -309,6 +344,7 @@ export function deriveDecision(view: GameView, sessions: DecisionSessions): Deci
         ? {
             kind: 'targeting',
             title: targeting.action.label,
+            titleEchoesPhase: echoesPhase(view, targeting.action.label),
             prompt: requirement.prompt,
             progress: total > 1 ? `Target ${targeting.picks.length + 1} of ${total}` : undefined,
             deadline: sessions.deadline,
