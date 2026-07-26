@@ -55,6 +55,55 @@ const MANA_VIEW_JSON = JSON.stringify({
   ],
 });
 
+/**
+ * A two-target cast, so a targeting session can sit *between* slots — the only
+ * state in which retracting one pick is distinguishable from abandoning the
+ * session. The single-target fixtures auto-submit on their first pick.
+ */
+const TWO_TARGET_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [
+    {
+      id: 'c4',
+      name: 'Twin Bolt',
+      type_line: 'Instant',
+      mana_cost: '{1}{R}',
+      rules_text: 'Twin Bolt deals 1 damage to each of two targets.',
+    },
+  ],
+  opponents: [{ player_id: 'p2', hand_size: 3, life: 20, library_size: 40 }],
+  battlefield: [
+    {
+      id: 'perm_a',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'perm_a', name: 'Grizzly Bears', type_line: 'Creature — Bear' },
+    },
+    {
+      id: 'perm_b',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'perm_b', name: 'Runeclaw Bear', type_line: 'Creature — Bear' },
+    },
+  ],
+  phase: 'precombat_main',
+  priority_player: 'p1',
+  valid_actions: [
+    {
+      id: 'a6',
+      type: 'cast_spell',
+      label: 'Cast Twin Bolt',
+      subject: ['c4'],
+      token: 'h:twin',
+      requirements: [
+        { slot: 't0', prompt: 'first target creature', candidates: ['perm_a', 'perm_b'] },
+        { slot: 't1', prompt: 'second target creature', candidates: ['perm_a', 'perm_b'] },
+      ],
+    },
+    { id: 'a1', type: 'pass_priority', label: 'Pass' },
+  ],
+});
+
 describe('LiveMatchTable', () => {
   beforeEach(() => {
     effectsMock.persistent = [];
@@ -217,6 +266,42 @@ describe('LiveMatchTable', () => {
     const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
     expect(action).toEqual(expect.objectContaining({ id: 'a3', token: 'h:9f2c' }));
     expect(targets).toEqual([{ slot: 't0', chosen: ['perm_xyz'] }]);
+  });
+
+  it('retracts one target pick with Undo and keeps the rest of the session', () => {
+    // #567 review: Undo is "retract the last pick", not "leave targeting". On a
+    // two-target action the first pick must survive an Undo of the second slot's
+    // opportunity, the action must stay open, and nothing may be submitted.
+    const choose = seed(TWO_TARGET_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByTestId('live-hand-card-c4'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast Twin Bolt' }));
+    expect(screen.getByTestId('decision-progress').textContent).toBe('Target 1 of 2');
+    // Nothing to take back on the first slot.
+    expect(screen.queryByTestId('decision-area-undo')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('target-perm_a'));
+    expect(choose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('decision-progress').textContent).toBe('Target 2 of 2');
+
+    fireEvent.click(screen.getByTestId('decision-area-undo'));
+    // Back on the first slot with the action still open — not cancelled.
+    expect(screen.getByTestId('decision-progress').textContent).toBe('Target 1 of 2');
+    expect(screen.getByTestId('decision-prompt').textContent).toContain('first target');
+    expect(screen.getByTestId('target-perm_a')).toBeTruthy();
+    expect(choose).not.toHaveBeenCalled();
+
+    // Re-picking both slots submits the whole answer atomically, with the
+    // re-picked id in the retracted slot.
+    fireEvent.click(screen.getByTestId('target-perm_b'));
+    fireEvent.click(screen.getByTestId('target-perm_a'));
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action).toEqual(expect.objectContaining({ id: 'a6', token: 'h:twin' }));
+    expect(targets).toEqual([
+      { slot: 't0', chosen: ['perm_b'] },
+      { slot: 't1', chosen: ['perm_a'] },
+    ]);
   });
 
   it('previews a one-target path from the hand to the focused legal candidate', () => {

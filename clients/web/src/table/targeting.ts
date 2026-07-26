@@ -78,6 +78,30 @@ export function pick(session: TargetingSession, entityId: EntityId): TargetingSe
 }
 
 /**
+ * Whether the session has a pick to take back — the gate the UNDO control
+ * renders behind. `false` on a session sitting at its first slot: there is
+ * nothing to retract there, and CANCEL is what leaves the action entirely.
+ */
+export function canRetract(session: TargetingSession): boolean {
+  return session.picks.length > 0;
+}
+
+/**
+ * Drop the most recent pick, returning the session reopened at that slot.
+ *
+ * One step, never the session: the action and every earlier pick survive, so a
+ * player who mis-clicks the second target of a three-target spell re-picks it
+ * without re-choosing the first. Discarding the whole session is
+ * {@link beginTargeting}'s inverse and belongs to CANCEL, not to UNDO — the
+ * control's accessible name promises exactly this. A no-op with no picks, so the
+ * caller may wire it unconditionally.
+ */
+export function retract(session: TargetingSession): TargetingSession {
+  if (!canRetract(session)) return session;
+  return { action: session.action, picks: session.picks.slice(0, -1) };
+}
+
+/**
  * Assemble the atomic answer once every slot is filled: one {@link TargetChoice}
  * per requirement, keyed by its `slot`. Returns `null` while the session is still
  * incomplete, so the caller only submits a fully-answered action.

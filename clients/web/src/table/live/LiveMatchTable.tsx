@@ -37,7 +37,7 @@ import { useViewport } from '../hooks/useViewport';
 import { activeSlot as msActiveSlot, beginMultiSelect, toggle as msToggle } from '../multiSelect';
 import { declarationFor } from '../scene/action-helpers';
 import type { Rect } from '../scene';
-import { activeCandidates, activeRequirement } from '../targeting';
+import { activeCandidates, activeRequirement, canRetract } from '../targeting';
 import {
   buildShortcutBindings,
   demandsDecision,
@@ -132,6 +132,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     moveOrder,
     setNumber,
     chooseOption,
+    retractTarget,
     cancelTargeting,
     cancelMultiSelect,
   } = useTableInteractions(choose);
@@ -294,7 +295,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     multiSelect,
     forced,
     deadline: prompt?.deadline,
-    canRetract: targeting !== null && targeting.picks.length > 0,
+    canRetract: targeting !== null && canRetract(targeting),
   });
   const selecting = decisionStaging.selecting;
   const passOffered =
@@ -597,7 +598,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           menuOpen={menuOpen}
           menuControls="game-menu"
           onSetStops={setStops}
-          onUndo={targeting !== null && targeting.picks.length > 0 ? cancelTargeting : undefined}
+          onUndo={targeting !== null && canRetract(targeting) ? retractTarget : undefined}
           shakeNonce={rejectionNonce}
         />
         {/* D5/D18: the menu is where settings, shortcuts, and CONCEDE live —
@@ -640,7 +641,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           surface={decision}
           onConfirm={confirmMultiSelect}
           onAdvance={advanceSlot}
-          onUndo={cancelTargeting}
+          onUndo={retractTarget}
           onCancel={multiSelect ? cancelMultiSelect : cancelTargeting}
           onToggleRow={toggleCandidate}
           onMoveRow={moveOrder}
