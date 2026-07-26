@@ -472,6 +472,15 @@ The match is fully interactive at T0. No transition between states may move a hi
 target, change a rect, or interrupt an animation; each layer cross-fades in on the
 `staging` class (reduced motion: snap).
 
+The cross-fade is a **swap, not a stack**: a slot's token composition holds it until
+that slot's plate reports pixels, and is then retired in the same transition. It may
+never be left painted behind a resolved plate. A plate is not required to be opaque —
+L1's is a cut-out disc, and L2's and L3's carry alpha by definition (§9.1) — while the
+token compositions are, and by §4.3 the plaza fill spans the whole canvas at every
+landscape aspect. A composition left underneath therefore draws from a layer node that
+outranks every layer below it, and L1's alone is enough to hide the entire far surround
+(issue #581: the Runic Vale reading as a flat `plazaEdge` field with no greenery).
+
 ### 8.3 Failure
 
 | Failure | Behaviour |
