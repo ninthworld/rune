@@ -136,7 +136,9 @@ describe('LobbyScreen (issue #114)', () => {
 
     expect(lastSent(socket)).toEqual({
       type: 'create_room',
-      config: { seats: 6, game_setup: '1v1' },
+      // A table the host did not name carries no `name` (issue #546); `visibility`
+      // rides every config, defaulting to the public listing every room already had.
+      config: { seats: 6, game_setup: '1v1', visibility: 'public' },
     });
   });
 
@@ -151,7 +153,7 @@ describe('LobbyScreen (issue #114)', () => {
 
     expect(lastSent(socket)).toEqual({
       type: 'create_room',
-      config: { seats: 4, game_setup: 'ffa-4' },
+      config: { seats: 4, game_setup: 'ffa-4', visibility: 'public' },
     });
   });
 
@@ -482,7 +484,7 @@ describe('LobbyScreen (issue #114)', () => {
     fireEvent.click(screen.getByTestId('create-room-button'));
     expect(lastSent(socket)).toEqual({
       type: 'create_room',
-      config: { seats: 4, game_setup: 'commander' },
+      config: { seats: 4, game_setup: 'commander', visibility: 'public' },
     });
   });
 

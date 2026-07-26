@@ -8,6 +8,7 @@
  * human labels those ids render as. An unknown setup falls back to its raw id,
  * so a newer server's format still renders rather than going blank.
  */
+import type { RoomConfig, RoomVisibility } from '../protocol';
 
 /** A game-setup option offered by the create-room form. */
 export interface GameSetupOption {
@@ -32,4 +33,26 @@ export const SEAT_COUNTS = [2, 3, 4, 5, 6, 7, 8] as const;
 /** A human label for an opaque `game_setup` id, falling back to the raw id. */
 export function setupLabel(gameSetup: string): string {
   return GAME_SETUPS.find((option) => option.id === gameSetup)?.label ?? gameSetup;
+}
+
+/**
+ * What to call a table (issue #546): the host's chosen `RoomConfig.name`, or — when the
+ * table is unnamed — the label of its format.
+ *
+ * The fallback is deliberately the client's, not the server's: `RoomConfig.name` is
+ * absent rather than defaulted on the wire precisely so no display prose rides the
+ * protocol, and so a room created before the field existed still reads exactly as it
+ * always did.
+ */
+export function tableName(config: RoomConfig): string {
+  const named = config.name?.trim() ?? '';
+  return named.length > 0 ? named : setupLabel(config.game_setup);
+}
+
+/**
+ * The word for a table's listing rule (issue #546). Rendered as a word, never as a
+ * colour or an icon alone — `front-door-and-lobby.md` §5.9's non-colour-channel rule.
+ */
+export function visibilityLabel(visibility: RoomVisibility | undefined): string {
+  return visibility === 'private' ? 'Private' : 'Public';
 }
