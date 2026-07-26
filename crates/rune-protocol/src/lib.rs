@@ -20,6 +20,7 @@
 //! root so every type is reachable as `rune_protocol::Foo` regardless of where it
 //! is defined:
 //! - [`log`] — structured game-log events
+//! - [`moment`] — the display-only presentation-moment window
 //! - [`card`] — in-game card, board, and zone views
 //! - [`action`] — the valid-action and prompt/targeting contract
 //! - [`interaction`] — action destinations and submission acknowledgement
@@ -38,6 +39,7 @@ mod client;
 mod interaction;
 mod lobby;
 mod log;
+mod moment;
 mod presentation;
 mod result;
 mod spectator;
@@ -58,6 +60,9 @@ pub use lobby::{
     UpdateRoom,
 };
 pub use log::{GameLogEntry, GameLogEvent, LogBlock, LogDamageTarget, LogEntity};
+pub use moment::{
+    AutoPassReason, MomentKind, MomentObject, MomentZone, PresentationMoment, PRESENTATION_WINDOW,
+};
 pub use presentation::{Color, CommanderIdentity, MatchFormat, COLORS};
 pub use result::{CommanderDamage, CommanderTax, GameOverReason, GameResult};
 pub use spectator::SpectatorView;
@@ -86,6 +91,22 @@ pub(crate) fn is_true(b: &bool) -> bool {
 /// when it is `false`.
 pub(crate) fn default_true() -> bool {
     true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+pub(crate) fn is_one(n: &u32) -> bool {
+    *n == 1
+}
+
+/// The `serde(default)` for a count whose **absence means one** — a
+/// [`PresentationMoment::count`](crate::PresentationMoment::count) (issue #594), where an
+/// aggregation tally of a single occurrence is the overwhelming majority and zero is not
+/// a meaningful value at all (a moment stands for at least the one occurrence that
+/// produced it). Paired with [`is_one`] as its `skip_serializing_if`, so the wire carries
+/// the count only when the server actually collapsed repeats — the same shape
+/// [`default_true`] gives the flag whose absence means `true`.
+pub(crate) fn default_one() -> u32 {
+    1
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]

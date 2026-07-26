@@ -339,6 +339,10 @@ fn game_view_round_trips_through_json() {
                 count: 1,
             },
         }],
+        // Presentation moments (issue #594): the display-only pacing window, empty on
+        // this frame, so its default rides the exhaustive round trip too. Its own
+        // populated cases live in `view/presentation_tests.rs`.
+        presentation: Vec::new(),
         stops: Vec::new(),
         // Pacing contract (issue #455): the own-turn half of the stop preference and
         // the steps a settle skipped this receiver at. Both empty on this frame, so

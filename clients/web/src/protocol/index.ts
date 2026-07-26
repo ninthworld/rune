@@ -25,6 +25,7 @@ export * from './presentation.js';
 export * from './result.js';
 export * from './view.js';
 export * from './log.js';
+export * from './moment.js';
 export * from './spectator.js';
 export * from './client.js';
 export * from './lobby.js';

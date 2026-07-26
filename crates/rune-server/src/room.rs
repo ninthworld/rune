@@ -51,6 +51,7 @@ mod driver;
 mod handle;
 mod input;
 mod policy;
+mod presentation;
 #[cfg(test)]
 mod test_support;
 
@@ -58,6 +59,7 @@ pub use connection::{serve_connection, serve_spectator_connection};
 pub use handle::{RoomHandle, RoomInput, Seat};
 use policy::SeatStops;
 pub use policy::{AutoPassPolicy, StopPolicy};
+use presentation::PresentationTrail;
 // `TimerPolicy` is reachable only through `Room::with_timer_policy` (the lobby never
 // re-exports it), so the barrel re-export stays crate-internal — the same reach it
 // had when the enum was defined inline in this module.
@@ -156,6 +158,19 @@ pub struct Room {
     /// because each entry carries its own turn, where a boundary actually fell.
     /// Not load-bearing state — the authoritative record of a settle is the game log.
     auto_passed_steps: Vec<Vec<AutoPassedStep>>,
+    /// The ordered window of **presentation moments** the room has produced (issue
+    /// #594), with the public faces they are rendered with: what happened, in the order
+    /// it happened, projected per receiver onto every view.
+    ///
+    /// Room state by necessity. The engine states a *state*; only the room saw the
+    /// sequence of states one settle passed through, and only the room knows the outbox
+    /// is latest-value — a view pushed while an earlier one is in flight replaces it, so
+    /// a seat is routinely handed a final board for a sequence it never saw. The trail
+    /// carries the recent unconsumed suffix on every view, the same no-loss contract
+    /// [`GameView::log`] uses, so no moment depends on the previous message having been
+    /// received. Display-only and never load-bearing: the board, the legal actions, and
+    /// the result are complete without it, and the room never sleeps on its account.
+    presentation: PresentationTrail,
     /// The **acknowledgement** each seat is owed for its most recent correlated
     /// submission (issue #554), indexed by seat. Written when a `ChooseAction`
     /// carrying a [`ChooseAction::submission`](rune_protocol::ChooseAction) is routed
@@ -192,6 +207,7 @@ impl Room {
             stops: vec![None; seat_count],
             stop_policy: StopPolicy::None,
             auto_passed_steps: vec![Vec::new(); seat_count],
+            presentation: PresentationTrail::default(),
             pending_acks: (0..seat_count).map(|_| None).collect(),
             spectators: Vec::new(),
         }

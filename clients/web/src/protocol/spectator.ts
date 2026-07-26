@@ -8,6 +8,7 @@ import type { Phase } from './view.js';
 import type { GameResult, CommanderDamage, CommanderTax } from './result.js';
 import type { CommanderIdentity, MatchFormat } from './presentation.js';
 import type { GameLogEntry } from './log.js';
+import type { PresentationMoment } from './moment.js';
 
 /**
  * The state a **spectator** connection receives (ADR 0022, issue #351): a non-seated
@@ -49,6 +50,18 @@ export interface SpectatorView {
   result?: GameResult;
   /** Bounded structured public log window. */
   log?: GameLogEntry[];
+  /**
+   * The bounded, ordered window of **public** presentation moments (issue #594) — the
+   * same advisory pacing window seated views carry (see {@link GameView.presentation}),
+   * projected to what a non-seated observer may see.
+   *
+   * A spectator's stream never contains a `phases_skipped` moment: that one names where
+   * a *particular seat* was passed, and a spectator holds no seat to speak for. Its
+   * absence is by construction, not by redaction — nothing is filtered out of a
+   * spectator's moment after the fact, so nothing private can leak through one.
+   * {@link normalizeSpectatorView} always sets it (to `[]`).
+   */
+  presentation?: PresentationMoment[];
   /** Public display names keyed by player id. */
   player_names: Record<PlayerId, string>;
   /**

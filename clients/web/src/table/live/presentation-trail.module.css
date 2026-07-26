@@ -1,0 +1,103 @@
+/*
+ * The **presentation caption** (issue #594) — one plate, one line, replaced by
+ * the next moment when its dwell elapses.
+ *
+ * ## Token discipline (ADR 0019)
+ *
+ * No colour, no length, and no duration is authored here: every value is a
+ * `--rune-*` token from `chrome/tokens.css`, exactly as `stack.module.css` does
+ * for the activity ticker this surface is the sibling of.
+ *
+ * ## No motion, in any mode
+ *
+ * There is not one `transition`, `animation`, or `transform`-over-time rule in
+ * this file, and there must never be. What paces this surface is a **dwell** — the
+ * caption appears at full opacity, holds for its budget, and is replaced — which
+ * is the same construction the activity ticker uses and for the same reason: the
+ * information must never depend on motion. `prefers-reduced-motion` therefore has
+ * nothing to neutralize here, and the reduced-motion rendering is identical, word
+ * for word. Travel elsewhere in the scene is the trail's `data-travel` hook, not
+ * this plate's business.
+ *
+ * ## Layering and hit testing
+ *
+ * `--rune-z-shell`, deliberately BELOW `--rune-z-decision`: a caption is not a
+ * decision and must never be in a position to cover one (ADR 0032's rule). It is
+ * `pointer-events: none` throughout, so it can never swallow a click meant for the
+ * board it is describing — it is not interactive, and there is nothing in it to
+ * acknowledge.
+ *
+ * Mounted as a direct child of the shell root, a sibling of the shell regions
+ * (like `StackStage` and `ActivitySurface`): a region carrying a z-index creates a
+ * stacking context its children cannot climb out of.
+ */
+
+.trail {
+  position: absolute;
+  z-index: var(--rune-z-shell);
+  /* Head of the arena, centred: clear of the activity column on the right flank,
+     clear of the cluster and the hand band at the foot, and clear of the decision
+     area's whole lower-right quadrant. */
+  top: calc(env(safe-area-inset-top, 0px) + var(--rune-space-8));
+  left: 50%;
+  display: flex;
+  gap: var(--rune-space-4);
+  align-items: center;
+  box-sizing: border-box;
+  /* Never wider than a readable measure, and never wider than the viewport it is
+     centred in — a long card name must wrap, not push the plate off screen. */
+  max-width: min(46ch, calc(100% - 2 * var(--rune-space-9)));
+  padding: var(--rune-space-3) var(--rune-space-6);
+  transform: translateX(-50%);
+  border: 1px solid var(--rune-border);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-table-strong);
+  box-shadow: var(--rune-elevation-1);
+  color: var(--rune-text);
+  pointer-events: none;
+}
+
+/* The retained public face: a small illustration of the object the caption is
+   about, drawn only when the player's own opt-in art pipeline has an image for it
+   (ADR 0024). The box is fixed here so a late-arriving image cannot resize the
+   plate; `CardArt` owns the containment inside it. */
+.face {
+  flex: none;
+  display: block;
+  width: var(--rune-space-10);
+  overflow: hidden;
+  border-radius: var(--rune-radius-xs);
+}
+
+/* The words: the sentence, and under it the cue when the moment has one. */
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+  min-width: 0;
+}
+
+.caption {
+  margin: 0;
+  color: var(--rune-text);
+  font-size: var(--rune-type-body);
+  line-height: 1.35;
+}
+
+/* The aggregation count — "×3" — for a run the server or the scheduler folded
+   into one entry. It is a magnitude, not a second sentence, so it rides the
+   caption's own line in the muted rank. */
+.count {
+  margin-left: var(--rune-space-3);
+  color: var(--rune-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The quiet second line: today only the auto-pass reason, which is the one fact
+   this surface carries that the game log does not. */
+.cue {
+  margin: 0;
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-micro);
+  line-height: 1.3;
+}

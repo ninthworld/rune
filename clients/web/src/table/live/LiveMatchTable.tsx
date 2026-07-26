@@ -53,7 +53,9 @@ import { HandFan } from './HandFan';
 import { LivePlane } from './LivePlane';
 import type { LivePlaneInteractionProps } from './LivePlaneControls';
 import type { TargetingPresentationPath } from './gameViewPresentation';
+import { PresentationTrail } from './PresentationTrail';
 import { isCompactShell, shellBands, shellStyleVars } from './shellLayout';
+import { usePresentationTrail } from './usePresentationTrail';
 import { useSessionMoments } from './useSessionMoments';
 import styles from './live-match.module.css';
 
@@ -118,6 +120,10 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
   // The §8 session moments the shell owns: the game-start assembly, the
   // reconnect acknowledgment, and the recede that hands off to the lobby.
   const { moment, notePresentationMode, leave } = useSessionMoments(reducedMotion, leaveGame);
+  // The settle's ordered presentation window (issue #594), paced one caption at a
+  // time. It never delays this view: the store is applied on arrival and the
+  // caption describes a board that is already authoritative and already answerable.
+  const stagedMoment = usePresentationTrail(view, { reducedMotion, sessionEpoch });
   const swallowClick = useRef(false);
   const dragCleanup = useRef<(() => void) | null>(null);
   const focusedEntity = useRef<EntityId | null>(null);
@@ -634,6 +640,11 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
         onInspect={setInspectedId}
       />
       <ActivitySurface view={view} onHighlight={highlight} highlightedId={highlightedId} />
+      {/* The ordered caption for what the settle just did (#594). A sibling of the
+          shell regions for the same reason the two surfaces above are, and
+          pointer-transparent chrome below `--rune-z-decision`: it is never a
+          prompt, never covers a decision, and never gates a frame. */}
+      <PresentationTrail staged={stagedMoment} view={view} />
 
       {/* THE decision surface (#567): the question, its rows, its named choices,
           and its controls, at the top of the same lower-right action area the

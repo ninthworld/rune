@@ -11,7 +11,6 @@
 import {
   type ActionAck,
   type AiOption,
-  type AutoPassedStep,
   type CardView,
   type CatalogCard,
   type CatalogFormat,
@@ -22,15 +21,12 @@ import {
   type CommanderIdentity,
   type CommanderTax,
   type Counter,
-  type GameResult,
   type GameView,
   type LobbyRejection,
   type LobbyView,
   type MatchFormat,
   type Permanent,
-  PHASES,
   type Phase,
-  type PlayerId,
   type RoomConfig,
   type RoomState,
   type RoomSummary,
@@ -40,37 +36,17 @@ import {
   type SpectatorView,
   type StackItem,
   type StackTarget,
+  isPhase,
   isStackItemKind,
 } from './protocol';
+import { ProtocolError, asArray, asString, isRecord, normalizeGameResult } from './wirePrimitives';
+import { normalizeAutoPassedSteps, normalizePresentationMoments } from './wireMoments';
 
-/** Raised when a server payload is not a decodable {@link GameView}. */
-export class ProtocolError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ProtocolError';
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isPhase(value: unknown): value is Phase {
-  return typeof value === 'string' && (PHASES as readonly string[]).includes(value);
-}
-
-/**
- * Coerce a wire value into an array, treating an omitted field (`undefined`) as
- * the documented empty default. A present-but-non-array value is a protocol
- * violation and throws.
- */
-function asArray<T>(value: unknown, field: string): T[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) {
-    throw new ProtocolError(`GameView.${field} must be an array`);
-  }
-  return value as T[];
-}
+// Root re-exports of the two seams this module was split along (AGENTS.md, file size).
+// `ProtocolError` is the same class every existing `import … from './wire'` already
+// names; the moment reader (issue #594) is re-exported so consumers have one entry point.
+export { ProtocolError } from './wirePrimitives';
+export { normalizePresentationMoments } from './wireMoments';
 
 /**
  * Coerce a wire value into a string→string map, treating an omitted field as the
@@ -204,25 +180,6 @@ function normalizeStackItem(payload: unknown): StackItem {
   // from `unknown`; the face itself is carried verbatim, never reshaped.)
   if (isRecord(record.card)) item.card = record.card as unknown as CardView;
   return item;
-}
-
-/**
- * Normalize the optional terminal {@link GameResult} half of a {@link GameView}.
- * Returns `undefined` while the game is live (the server omits `result`, or sends
- * a malformed object with no string `reason`), so its mere presence signals game
- * over. `losers` defaults to the empty array; `winner` stays absent for a draw.
- * The `reason` is carried through verbatim — the client renders it and derives no
- * terminality of its own; an unrecognized future value is tolerated (forward
- * compatibility) and handled generically by the game-over overlay.
- */
-function normalizeGameResult(payload: unknown): GameResult | undefined {
-  if (!isRecord(payload) || typeof payload.reason !== 'string') return undefined;
-  const result: GameResult = {
-    losers: asArray<PlayerId>(payload.losers, 'result.losers'),
-    reason: payload.reason as GameResult['reason'],
-  };
-  if (typeof payload.winner === 'string') result.winner = payload.winner;
-  return result;
 }
 
 /**
@@ -376,6 +333,10 @@ export function normalizeGameView(payload: unknown): GameView {
       typeof payload.action_deadline === 'number' ? payload.action_deadline : undefined,
     result: normalizeGameResult(payload.result),
     log: asArray(payload.log, 'log'),
+    // The presentation window (issue #594): display-only pacing cues in the order they
+    // happened, defaulting to `[]` when the server elides it (or predates the field).
+    // Applying the view never waits on them — see `GameView.presentation`.
+    presentation: normalizePresentationMoments(payload.presentation),
     // Priority-stop preferences (issue #264): a list of phase names the server elides
     // when empty; keep only recognized phases so an unknown future value never breaks
     // rendering, defaulting to `[]` (stop nowhere).
@@ -446,6 +407,10 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
       typeof payload.priority_player === 'string' ? payload.priority_player : undefined,
     result: normalizeGameResult(payload.result),
     log: asArray(payload.log, 'log'),
+    // The same public presentation window seated views carry (issue #594), read by the
+    // same normalizer. A spectator's stream simply never contains a per-seat
+    // `phases_skipped` moment — the server does not send one, and nothing here filters.
+    presentation: normalizePresentationMoments(payload.presentation),
     player_names: normalizeStringMap(payload.player_names),
     // Commander combat-damage tally (issue #371): the same public list seated views
     // carry, elided when empty.
@@ -471,30 +436,6 @@ function normalizePhaseList(value: unknown): Phase[] {
 }
 
 /**
- * Coerce a wire value into `GameView.auto_passed_steps` (issue #455): the ordered
- * path of turn-and-step positions a settle carried the receiver through.
- *
- * **Order and repeats are the payload**, so this only drops entries it cannot read —
- * it never sorts, never merges, and never de-duplicates. A settle can revisit a step
- * both across a turn boundary and inside one turn (an extra combat phase, CR 506.1),
- * and collapsing those occurrences would silently under-report how far the game moved.
- * An entry missing a usable `turn` is dropped rather than defaulted, because a wrong
- * turn would place a real skip on the wrong turn's step list — worse than omitting it.
- */
-function normalizeAutoPassedSteps(value: unknown): AutoPassedStep[] {
-  if (!Array.isArray(value)) return [];
-  const steps: AutoPassedStep[] = [];
-  for (const entry of value) {
-    if (typeof entry !== 'object' || entry === null) continue;
-    const { phase, turn } = entry as { phase?: unknown; turn?: unknown };
-    if (!isPhase(phase)) continue;
-    if (typeof turn !== 'number' || !Number.isFinite(turn)) continue;
-    steps.push({ phase, turn });
-  }
-  return steps;
-}
-
-/**
  * Parse a raw server→client text frame into a {@link GameView}. Throws
  * {@link ProtocolError} on malformed JSON or an invalid shape.
  */
@@ -506,11 +447,6 @@ export function parseGameView(raw: string): GameView {
     throw new ProtocolError(`server frame is not valid JSON: ${String(cause)}`);
   }
   return normalizeGameView(parsed);
-}
-
-/** Coerce a wire value into a string, treating an omitted field as `''`. */
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
 }
 
 /**

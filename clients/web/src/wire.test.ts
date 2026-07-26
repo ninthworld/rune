@@ -66,6 +66,9 @@ describe('parseGameView', () => {
       own_turn_stops: [],
       auto_passed: false,
       auto_passed_steps: [],
+      // The presentation window (issue #594): advisory pacing cues, elided when empty
+      // and absent entirely from a server that predates them.
+      presentation: [],
       action_rejected: false,
       player_names: {},
       commander_damage: [],

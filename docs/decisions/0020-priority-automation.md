@@ -207,6 +207,15 @@ that reasons about whether a *possible* response is *worth* making.
   spell that resolved and a creature that died while the receiver held no priority
   are recoverable from the same single message.
 
+- **2026-07-26 — saying what the seat missed, in order ([ADR 0033](0033-presentation-timeline.md),
+  #594).** This ADR established that the room may act for a seat, and the #455 entry above
+  established that it must then say *where* it acted; #594 is the evidence that a list of
+  positions is still not enough, because the settle also collapses the cast, the resolution,
+  and the death that happened while the seat was being passed. ADR 0033 adds an ordered,
+  bounded, monotonically identified window of presentation moments to every view — derived
+  from the ADR 0021 log plus this ADR's `auto_passed_steps` accumulator, so the settle loop,
+  its policies, and `AutoPassPolicy::Off` are untouched and the server still never sleeps.
+
 - **client polish:** richer auto-pass affordances (a log entry, a per-step "you
   were skipped here" marker) beyond the basic indicator — the per-step marker landed
   with #455 above, reading `auto_passed_steps`; the log entry folds into the game-log

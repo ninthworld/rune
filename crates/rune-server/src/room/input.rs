@@ -8,7 +8,7 @@ use rune_engine::{
     apply_action, forced_declaration_without_choice, priority_has_no_meaningful_action, Action,
     PlayerId,
 };
-use rune_protocol::{ActionAck, ClientMessage, SetStops};
+use rune_protocol::{ActionAck, AutoPassReason, ClientMessage, SetStops};
 use tracing::warn;
 
 use crate::view::{phase_of, resolve_action};
@@ -43,6 +43,11 @@ impl Room {
                 self.record_ack(seat, &choose.submission, resolved.is_some());
                 match resolved {
                     Some(action) => {
+                        // Retain the public faces of everything about to be affected
+                        // (issue #594) *before* the state moves: a moment is shown after
+                        // its object is gone, so this is the last instant a face can be
+                        // taken. Costs one walk of the public zones; nothing blocks.
+                        self.observe_presentation();
                         self.state = apply_action(&self.state, &action, &self.db);
                         // Auto-pass any idle priority the action left behind (a no-op
                         // when automation is off), then restart the clock for whatever
@@ -140,12 +145,32 @@ impl Room {
     /// has a meaningful action, owes a forced choice it could actually answer, or has
     /// opted to stop at this step; a fixed [`MAX_AUTO_PASSES`] cap is a defensive
     /// backstop so no configuration can hang the task.
+    ///
+    /// Every settle ends by recording its **presentation moments** (issue #594) — the
+    /// ordered window of what visibly happened, which is the only way a seat that was
+    /// passed through a resolution learns the order it happened in. That is why the loop
+    /// itself lives in [`Self::run_settle`]: recording has to happen on *every* path out,
+    /// including the automation-off early return, and a single wrapper is the only shape
+    /// in which no future path can forget.
     pub(super) fn settle_auto_passes(&mut self) -> bool {
+        let (advanced, reasons) = self.run_settle();
+        self.record_presentation(&reasons);
+        advanced
+    }
+
+    /// The settle loop proper. Returns whether anything was applied, and why the room
+    /// acted for each seat — [`AutoPassReason::ForcedDeclaration`] for a seat whose
+    /// choiceless declaration the room submitted (issue #453), and the ordinary
+    /// [`AutoPassReason::NoResponseAvailable`] otherwise. The reason is per seat and
+    /// carried out of the loop rather than re-derived afterwards, because by the time
+    /// the settle ends the board no longer shows which of the two it was.
+    fn run_settle(&mut self) -> (bool, Vec<AutoPassReason>) {
         for steps in &mut self.auto_passed_steps {
             steps.clear();
         }
+        let mut reasons = vec![AutoPassReason::NoResponseAvailable; self.auto_passed_steps.len()];
         if self.auto_pass != AutoPassPolicy::On {
-            return false;
+            return (false, reasons);
         }
         let mut advanced = false;
         let mut applied = 0usize;
@@ -173,6 +198,17 @@ impl Room {
                 phase: phase_of(self.state.step),
                 turn: self.state.turn,
             };
+            // Why the room is acting, recorded for the same reason and at the same
+            // moment as *where* (issue #594): a settle can pass a seat and submit an
+            // empty declaration for it, and the finished board cannot say which.
+            if !matches!(action, Action::PassPriority) {
+                if let Some(reason) = reasons.get_mut(seat) {
+                    *reason = AutoPassReason::ForcedDeclaration;
+                }
+            }
+            // The public faces as they stand, before this automatic action moves the
+            // game past them (issue #594).
+            self.observe_presentation();
             let next = apply_action(&self.state, &action, &self.db);
             // Defensive: a step that does not change state would loop forever.
             if next == self.state {
@@ -192,7 +228,7 @@ impl Room {
             advanced = true;
             applied += 1;
         }
-        advanced
+        (advanced, reasons)
     }
 
     /// The action, if any, the room may take on `seat`'s behalf while it holds
@@ -245,5 +281,7 @@ impl Room {
 
 #[cfg(test)]
 mod pacing_tests;
+#[cfg(test)]
+mod presentation_tests;
 #[cfg(test)]
 mod tests;

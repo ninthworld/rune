@@ -9,6 +9,7 @@ import type { GameResult, CommanderDamage, CommanderTax } from './result.js';
 import type { CommanderIdentity, MatchFormat } from './presentation.js';
 import type { ActionAck } from './interaction.js';
 import type { GameLogEntry } from './log.js';
+import type { PresentationMoment } from './moment.js';
 
 /**
  * Every `Phase` value in turn order, for runtime validation of the wire. This is
@@ -33,6 +34,16 @@ export const PHASES = [
 
 /** The current turn step; one of {@link PHASES}. */
 export type Phase = (typeof PHASES)[number];
+
+/**
+ * Whether a wire value is a known {@link Phase} — the runtime half of the union,
+ * validated against {@link PHASES} exactly as {@link isStackItemKind} validates a stack
+ * kind. Shared by every normalizer that has to read a step off the wire, so an
+ * unrecognized future phase is recognized as unknown in one place rather than in each.
+ */
+export function isPhase(value: unknown): value is Phase {
+  return typeof value === 'string' && (PHASES as readonly string[]).includes(value);
+}
 
 /**
  * One position a settle passed the receiver through (issue #455): a step, and the
@@ -135,6 +146,24 @@ export interface GameView {
   result?: GameResult;
   /** Bounded structured log window; older servers may omit it. */
   log?: GameLogEntry[];
+  /**
+   * The bounded, ordered window of **presentation moments** (issue #594) — see
+   * {@link PresentationMoment}: what visibly happened, in the order it happened, so the
+   * client can pace a board the settle has already finished moving.
+   *
+   * The same no-loss contract {@link log} uses: every view carries the recent suffix
+   * (at most {@link PRESENTATION_WINDOW} entries), so a client that missed the previous
+   * message loses nothing it could have used. **Advisory and never load-bearing** — the
+   * whole UI reconstructs from this view without it, and pacing a caption must never
+   * delay applying the view itself.
+   *
+   * Ordered by {@link PresentationMoment.id}, which a receiver's stream may start after
+   * and may skip: a client de-duplicates against the highest id it has staged and MUST
+   * NOT re-sort, wait for a gap, or ask for a backfill (there is none). Omitted on the
+   * wire when empty; {@link normalizeGameView} always sets it (to `[]`). Optional on the
+   * interface so existing view literals need not restate it.
+   */
+  presentation?: PresentationMoment[];
   /**
    * The receiver's own current **priority-stop preferences** (issue #264, ADR 0020):
    * the steps at which they want priority even when the engine reports no meaningful

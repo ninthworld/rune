@@ -40,6 +40,14 @@ export default defineConfig({
       '@protocol-fixtures/gameview-actions.json': fileURLToPath(
         new URL('../../crates/rune-protocol/fixtures/gameview-actions.json', import.meta.url),
       ),
+      // The presentation-window fixture (issue #594): one causal batch of ordered
+      // moments — a cast, its resolution, the death and zone move it caused, an
+      // aggregated damage moment, and the per-seat skipped-phase path — carried on a
+      // mid-game frame whose board has already moved past them. Round-tripped by the
+      // Rust crate and asserted here so the moment wire shape cannot drift.
+      '@protocol-fixtures/gameview-moments.json': fileURLToPath(
+        new URL('../../crates/rune-protocol/fixtures/gameview-moments.json', import.meta.url),
+      ),
     },
   },
   test: {

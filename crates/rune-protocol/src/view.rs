@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ActionAck, CardView, CommanderDamage, CommanderIdentity, CommanderTax, GameLogEntry,
-    GameResult, MatchFormat, OpponentView, Permanent, Phase, PlayerId, SelfView, StackItem,
-    ValidAction, ZonePile,
+    GameResult, MatchFormat, OpponentView, Permanent, Phase, PlayerId, PresentationMoment,
+    SelfView, StackItem, ValidAction, ZonePile,
 };
 
 /// The personalized state the server sends after every change (docs/protocol.md).
@@ -110,6 +110,29 @@ pub struct GameView {
     /// local log state.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log: Vec<GameLogEntry>,
+    /// A bounded, monotonically identified window of **presentation moments** (issue
+    /// #594) — the ordered sequence of things that visibly happened on the way to this
+    /// state. See [`PresentationMoment`].
+    ///
+    /// A settle applies many actions before one broadcast, and this channel is
+    /// latest-value: a view pushed while an earlier one is in flight replaces it. So a
+    /// receiver is handed the *final* board of a sequence it never saw, and no board diff
+    /// recovers the order — a diff says a creature is gone, not whether it was countered,
+    /// killed, or exiled. This field carries the server's ordering instead of inviting the
+    /// client to invent one. Like [`Self::log`], it rides **every** view carrying the
+    /// recent unconsumed suffix (at most [`PRESENTATION_WINDOW`](crate::PRESENTATION_WINDOW)
+    /// entries), so nothing
+    /// depends on the previous message having been seen.
+    ///
+    /// **Never load-bearing.** The board, [`Self::valid_actions`], and [`Self::result`]
+    /// are complete without it; a consumer that ignores the field entirely — the CLI, the
+    /// AI harness — plays the identical game. Presentation may delay a *caption*; it may
+    /// never delay applying a view, and no moment states a rules fact. Ids may start above
+    /// one and may have gaps (the window is bounded, and per-seat moments are filtered out
+    /// of other seats' streams); a client de-duplicates by id and MUST NOT fill a gap,
+    /// wait for one, or request backfill. Omitted from the wire when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presentation: Vec<PresentationMoment>,
     /// The receiver's own current **priority-stop preferences** (issue #264): the
     /// steps at which they want to receive priority even when the engine reports
     /// they have no meaningful action, so basic auto-pass (ADR 0020) does not skip
@@ -294,5 +317,7 @@ pub struct AutoPassedStep {
     pub turn: u32,
 }
 
+#[cfg(test)]
+mod presentation_tests;
 #[cfg(test)]
 mod tests;

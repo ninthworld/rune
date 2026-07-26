@@ -31,6 +31,10 @@ impl Room {
     /// sees the finished board, then stops; the lobby reclaims the room afterward
     /// (issue #54).
     pub async fn run(mut self, mut inbox: mpsc::Receiver<RoomInput>) {
+        // Retain the opening board's public faces (issue #594) before anything moves:
+        // the opening settle can carry the game a long way, and a moment for a permanent
+        // that left during it still has to render.
+        self.observe_presentation();
         // Fast-forward any idle opening priority (a no-op when automation is off),
         // then start the clock on whatever decision actually rests (issue #264).
         self.settle_auto_passes();
@@ -111,6 +115,9 @@ impl Room {
     /// the decision then waits for the player (or a future idle-escalation policy).
     fn on_timeout(&mut self) {
         if let Some(action) = timeout_default_action(&self.state, &self.db) {
+            // The same pre-action face retention every other applied action gets (issue
+            // #594): a default action moves the board exactly as a click does.
+            self.observe_presentation();
             let next = apply_action(&self.state, &action, &self.db);
             if next != self.state {
                 self.state = next;

@@ -27,6 +27,9 @@
       ],
       "@protocol-fixtures/gameview-actions.json": [
         "../../crates/rune-protocol/fixtures/gameview-actions.json"
+      ],
+      "@protocol-fixtures/gameview-moments.json": [
+        "../../crates/rune-protocol/fixtures/gameview-moments.json"
       ]
     }
   },

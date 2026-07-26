@@ -36,6 +36,7 @@ mod cards;
 mod destinations;
 mod ids;
 mod log;
+mod moments;
 mod prompt;
 mod requirements;
 mod stack;
@@ -48,6 +49,7 @@ pub(crate) use cards::*;
 pub(crate) use destinations::*;
 pub(crate) use ids::*;
 pub(crate) use log::*;
+pub(crate) use moments::*;
 pub(crate) use prompt::*;
 pub(crate) use requirements::*;
 pub(crate) use stack::*;
@@ -220,6 +222,12 @@ pub(crate) fn personalized_view(
         // omitted from the wire — while the game is live.
         result: state.result().map(result_view),
         log: log_entries(state, db),
+        // Presentation moments (issue #594) are room state by construction: only the
+        // room saw the *sequence* of states a settle passed through, and only it holds
+        // the ordered window and the retained faces. Empty here — a pure projection of
+        // one state cannot know what happened before it — and filled in by the room
+        // after projection, exactly as `auto_passed_steps` is.
+        presentation: Vec::new(),
         // Priority-stop preferences and the auto-pass indicator are room/session
         // state, not engine state; the room fills them in after projection (issue
         // #264), exactly as it does the player names. Defaults here (no stops, not
@@ -340,6 +348,10 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
         priority_player: holds_priority.then(|| player_id(state.priority)),
         result: state.result().map(result_view),
         log: log_entries(state, db),
+        // Presentation moments (issue #594): room state, filled in after projection —
+        // and a spectator receives only the **public** ones, never a per-seat
+        // `phases_skipped`, because there is no seat here to speak for.
+        presentation: Vec::new(),
         // Names are a lobby/session concern; the room fills them after projection.
         player_names: std::collections::BTreeMap::new(),
         // Commander combat-damage tally (CR 903.10a, issue #371): public information a

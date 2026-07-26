@@ -64,6 +64,9 @@ impl Room {
     /// public presentation facts, and the format is advertised in the lobby.
     fn overlay_spectator_presentation(&self, view: &mut SpectatorView) {
         view.format.clone_from(&self.format);
+        // The **public** moment window only (issue #594): a spectator owns no seat, so
+        // there is no `phases_skipped` that could be theirs to receive.
+        view.presentation = self.presentation.public();
         for (seat, player) in view.players.iter_mut().enumerate() {
             player.connected = self.seat_connected(seat);
             player.ai = self.seat_is_ai(seat);
@@ -177,6 +180,12 @@ impl Room {
             .cloned()
             .unwrap_or_default();
         view.auto_passed = !view.auto_passed_steps.is_empty();
+        // The ordered window of what visibly happened (issue #594), projected for this
+        // receiver. Carried, not drained — for exactly the reason the ack below is
+        // copied rather than taken: this outbox is latest-value, so anything removed on
+        // the first send is lost on every coalesced broadcast. Riding the newest view
+        // makes the window survive any amount of it; the client de-duplicates by id.
+        view.presentation = self.presentation.for_seat(seat);
         // Room-owned presentation metadata (issue #553): the match format, and each
         // seat's connection/AI state. Engine-derived commander identity and the
         // per-permanent commander marker already rode the pure projection.

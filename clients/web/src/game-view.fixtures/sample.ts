@@ -160,6 +160,9 @@ export const SAMPLE_GAME_VIEW: GameView = {
   // The structured game-history window (issue #259 / #260); an older frame may omit it
   // and normalization defaults it to empty.
   log: SAMPLE_LOG,
+  // No presentation moments in the sample frame; normalization defaults the window to
+  // `[]` (issue #594), which is also what a server that predates it sends.
+  presentation: [],
   result: undefined,
   // No stops or auto-pass in the sample frame; normalization defaults them (issue
   // #264), along with the own-turn half and the skipped-step path (issue #455).

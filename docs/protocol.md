@@ -5,7 +5,7 @@ exchanges complete lobby views and lobby commands. Once the room constructs a ga
 same connection exchanges personalized game views and chosen actions.
 
 The Rust types in `crates/rune-protocol/src/lib.rs` are the wire authority. The TypeScript
-mirror in `clients/web/src/protocol.ts` and this document must change with them.
+mirror in `clients/web/src/protocol/` and this document must change with them.
 
 ## Message lifecycle
 
@@ -52,6 +52,7 @@ redacted before serialization.
 | `action_deadline` | `number?` | Seconds remaining for the receiver’s current decision |
 | `result` | `GameResult?` | Terminal result; absent during a live game |
 | `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent public game history |
+| `presentation` | `PresentationMoment[]` | Bounded, monotonically identified window of display-only **presentation moments** — what visibly happened, in order, on the way to this state (issue #594); omitted when empty |
 | `stops` | `Phase[]` | Receiver’s own priority-stop preferences, applying on **any** turn; omitted when empty |
 | `own_turn_stops` | `Phase[]` | The same preference for steps that stop **only while the receiver is the active player** (issue #455); omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
@@ -276,6 +277,142 @@ blaming. Like `auto_passed`, it is advisory and transient: `valid_actions` alrea
 the true current legal set, the UI reconstructs fully without it, and it is omitted when
 `false` (so every normal broadcast and every resync clears it). A client renders it as
 ephemeral presentation only (an auto-dismissing toast) — never load-bearing state.
+
+### Presentation moments
+
+`presentation` is a bounded, monotonically identified window of `PresentationMoment`
+values (issue #594): the ordered sequence of things that **visibly happened** on the way
+to the state this view describes.
+
+It exists because the server applies an action and then *settles* — resolving the stack,
+passing priority for idle seats (ADR 0020), advancing steps — before it broadcasts, and
+the per-seat view channel is latest-value: a view pushed while an earlier one is in flight
+replaces it. A receiver is therefore handed the **final** board of a sequence it never saw,
+and no client-side diff recovers the order. A diff says a creature is gone; it cannot say
+whether it was countered, killed by damage, sacrificed to its own resolution, or exiled and
+returned. The server states the order instead of inviting the client to invent it. Like
+`log`, the window rides **every** view carrying the recent unconsumed suffix, so nothing
+depends on the previous message having been seen.
+
+**Advisory, display-only, and never load-bearing.** The board, `valid_actions`, and
+`result` are reconstructable from the view **alone**; a consumer that ignores the field
+entirely — the CLI, the AI harness — plays the identical game. A moment states no rules
+fact: it does not say an action is legal, that a permanent is still on the battlefield, or
+that a spell is still on the stack. A client may delay a *caption*; it must never delay
+applying a view, and it must never gate input on playback.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | `number` | Monotonically increasing per room — the de-duplication key and the ordering authority |
+| `batch` | `number` | The causal group: one applied action together with the settle that followed it |
+| `turn` | `number` | The turn this moment happened on |
+| `phase` | `Phase` | The step this moment happened at |
+| `kind` | `MomentKind` | What happened, tagged by an inner `kind` |
+| `cause` | `number?` | The `id` of the moment that caused this one, when the server knows it; omitted otherwise |
+| `count` | `number?` | Occurrence tally for collapsed repeats; **omitted means `1`** |
+
+**The window is bounded and may start late.** At most `PRESENTATION_WINDOW` (32) moments
+ride one view. A stream **may start after id 1**, and a receiver's stream **may have
+gaps** — the bound drops old moments, and per-seat moments (`phases_skipped`, which names
+where *this* receiver was passed) are filtered out of every other seat's stream. Neither
+is a lost message. A client de-duplicates by `id` against a watermark, renders what it was
+given in the order it was given, and **MUST NOT** fill a gap, wait for a missing id,
+re-sort, renumber, or request backfill — there is no backfill request in this protocol.
+Ids are opaque ordering handles; nothing may be derived from their arithmetic beyond
+"later".
+
+**`turn`/`phase` are where the game *was*, not where it *is*.** A cross-turn settle
+broadcasts one view whose own `turn`/`phase` have already moved past the moments it
+carries. A client labels each moment from the moment and reads the current position from
+the view — never the reverse. `batch` groups a run into "these happened because of that one
+action", which arrival timing cannot carry (a whole batch arrives in a single view); it is
+a grouping hint only, not a transaction, an undo unit, or a rules concept. `cause` is
+stated rather than inferred because adjacency is not causation — a settle interleaves
+independent seats' events. A `cause` naming an id that has fallen off the window is
+rendered as a moment on its own. `count` is an *occurrence* tally, never an amount:
+consecutive moments with an identical `kind` are collapsed into one entry (six copies of
+the same trigger read as one caption, "×6"), while damage and life carry their own
+magnitudes inside the kind.
+
+`kind` is tagged by an inner `kind` field, the same nesting `damage_dealt` uses for its
+target:
+
+```json
+{
+  "id": 414,
+  "batch": 57,
+  "turn": 8,
+  "phase": "precombat_main",
+  "cause": 413,
+  "kind": {
+    "kind": "died",
+    "object": { "id": "perm_bear", "name": "Grizzly Bears", "card": { "…": "…" } }
+  }
+}
+```
+
+The vocabulary is deliberately **narrower than the game log's** and answers a different
+question: the log is the authoritative record of what happened, this is the set of things
+worth a beat of screen time as they happen. So a mulligan has a log entry and no moment,
+while a zone move has a moment and no distinct log entry.
+
+| `kind` | Payload | Notes |
+| --- | --- | --- |
+| `cast` | `player`, `object` | A spell was put on the stack (CR 601.2) |
+| `resolved` | `player`, `object` | A spell or ability finished resolving (CR 608.2) |
+| `countered` | `player`, `object` | Countered (CR 701.5) — an opponent *had* an answer |
+| `fizzled` | `player`, `object` | Removed from the stack with all targets illegal (CR 608.2b) — nobody answered it |
+| `zone_move` | `object`, `from`, `to` | An object changed zones (CR 400.7); **both** endpoints stated |
+| `died` | `object` | A creature moved from the battlefield to a graveyard (CR 700.4) |
+| `damage` | `target`, `amount` | Damage dealt or marked (CR 119); `target` is the log's tagged `LogDamageTarget` |
+| `life` | `player`, `amount` | Signed **non-damage** life movement (CR 118) |
+| `attacked` | `player`, `attackers` | One whole attack declaration (CR 508.1), possibly empty |
+| `blocked` | `player`, `blocks` | One whole block declaration (CR 509.1), as the log's `LogBlock` pairs |
+| `drew` | `player`, `count` | Cards drawn (CR 121.1); identities are absent by construction |
+| `turn_change` | `turn`, `active_player` | A new turn and/or active player (CR 500.1) |
+| `phase_change` | `phase` | A new step (CR 500.1) — the cheapest moment, and the first to drop when behind |
+| `phases_skipped` | `steps`, `reason` | **Per-seat**: where the room passed priority for this receiver |
+| `eliminated` | `player`, `reason` | A player left the game mid-game (CR 800.4a) |
+| `game_over` | `result` | The game ended (CR 104.2a); `result` on the view stays the authority |
+
+A kind a client does not recognize is **unclassified** and is skipped or rendered
+generically, like every other classifying field in this protocol — never guessed at.
+
+`object` is a `MomentObject`: `{ id, name, card? }`. It is a **retained snapshot**, not a
+reference, because a moment is shown *after* the state it describes is gone — the creature
+that died is not on the battlefield of the view that carries its death, so a lookup by id
+would resolve to nothing at exactly the moment it is needed. `name` is fixed when the
+moment was recorded and is never re-resolved, the same promise `LogEntity.name` makes.
+`card` is a **public face only**: it is present only for an object that was visible in a
+public zone — battlefield, stack, graveyard, exile, command. A hand or library face is
+**never** retained, for any receiver: moments cross seats (a spectator and every opponent
+read the same public moments), so a retained private face would be an unredactable leak.
+An absent `card` means "no public face was known" and carries no information — a client
+renders the name and MUST NOT infer secrecy, zone, or ownership from the absence.
+
+`from`/`to` on a `zone_move` are the closed presentational vocabulary `battlefield`,
+`graveyard`, `exile`, `hand`, `library`, `stack`, `command`. Both endpoints are named
+because the destination alone cannot say what the movement *was*: "graveyard →
+battlefield" is a reanimation and "hand → battlefield" is a land drop, and no board diff
+that shows only the arrival can tell them apart.
+
+`phases_skipped` is the moment form of `auto_passed_steps`, so the "we moved without you"
+beat takes its place in the same ordered stream as the events it happened around. It
+carries the settle's **whole ordered path in one moment** — never one per priority window
+— as the same `AutoPassedStep` entries (each with its own `turn`), and a `reason` of
+`no_response_available` (the ordinary ADR 0020 pass: no meaningful action, no stop listed)
+or `forced_declaration` (issue #453: a combat declaration with no legal non-empty answer,
+submitted rather than prompted). It is the **only per-seat kind**, and therefore the reason
+a receiver's ids skip: another seat's is filtered out of this stream, and a spectator
+receives none at all.
+
+**Counter-change moments are deliberately absent.** A `+1/+1` counter landing is exactly
+the kind of small board change that deserves a beat — but the engine emits no
+counter-change event and no general zone-change event, and a server that diffed two states
+to manufacture one would be inventing game information in the very layer whose purpose is
+to stop clients doing that. The honest answer is a missing moment, not a guessed one. When
+the engine states counter changes, a kind is added here and both ends learn it in the same
+change.
 
 ### Card and zone views
 
@@ -650,6 +787,7 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 | `priority_player` | `PlayerId?` | Player currently holding priority (whose turn it is to act — never the actions themselves) |
 | `result` | `GameResult?` | Terminal result; absent during a live game |
 | `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent **public** game history |
+| `presentation` | `PresentationMoment[]` | The **public** projection of the presentation-moment window (issue #594): the same ordered, display-only pacing cues seated views carry, minus the per-seat `phases_skipped`; omitted when empty |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed (CR 903.8, issue #372); omitted when empty |
@@ -659,7 +797,11 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 A `SpectatorView` carries **no** `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
 `action_deadline`, `stops`, `own_turn_stops`, `auto_passed`, `auto_passed_steps`, or
 `action_rejected` — those fields do not exist on
-the type. The issue #553 presentation metadata it does carry is public by construction: the
+the type. Its `presentation` window is the public projection of the same moments: it never
+contains a `phases_skipped`, which names where one particular seat was passed and means
+nothing to an observer who holds no priority, and its retained faces are public by
+construction — so a spectator's ids skip values for the same reason a seated receiver's do,
+and a gap is expected rather than repaired. The issue #553 presentation metadata it does carry is public by construction: the
 format is advertised in the lobby, a commander is announced before the game, and a seat’s
 connection/AI state is what every seated player already sees, so a spectator’s `players[]`
 entries carry the same `connected`/`ai` flags a seated `OpponentView` does. A spectator reconstructs the whole public board from a single `SpectatorView` (the
@@ -987,7 +1129,12 @@ is public data only — it never carries a deck, a roster, or any game state.
   an omitted `connected` means **connected**, an omitted `format` means **not Commander**,
   an omitted `commander_identity`/`is_commander` means no commander presentation at all.
 - Relationships between objects are **stated by the server, typed at the source**, and
-  never reconstructed by a client — from prose, from id membership in a collection, or
-  from anything else. `Permanent.blocking`/`attacking_player`/`attached_to` and
-  `StackItem.targets` are the whole set; each names its subject explicitly, and an
-  omitted one means "no such relationship", never "work it out".
+  never reconstructed by a client — from prose, from id membership in a collection, from a
+  diff of two views, or from anything else. `Permanent.blocking`/`attacking_player`/
+  `attached_to`, `StackItem.targets`, and — for what *happened* rather than what *is* —
+  `PresentationMoment.cause` with the `from`/`to` of a `zone_move` are the whole set; each
+  names its subject explicitly, and an omitted one means "no such relationship", never
+  "work it out".
+- Presentation is never load-bearing. `presentation` orders what a client shows; it never
+  gates what a client applies, offers, or believes about the board — every such fact is
+  reconstructable from the view alone.

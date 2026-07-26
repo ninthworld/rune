@@ -6,14 +6,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     CommanderDamage, CommanderIdentity, CommanderTax, GameLogEntry, GameResult, MatchFormat,
-    OpponentView, Permanent, Phase, PlayerId, StackItem, ZonePile,
+    OpponentView, Permanent, Phase, PlayerId, PresentationMoment, StackItem, ZonePile,
 };
 
 /// The state a **spectator** connection receives (ADR 0022, issue #351): a
 /// non-seated observer watching a live game with all hidden information redacted
 /// **by construction**. It shares [`GameView`]'s public component types verbatim —
 /// [`OpponentView`], [`Permanent`], [`StackItem`], [`ZonePile`], [`GameLogEntry`],
-/// [`Phase`], [`PlayerId`], [`GameResult`] — but carries **no receiver fields**:
+/// [`PresentationMoment`], [`Phase`], [`PlayerId`], [`GameResult`] — but carries **no
+/// receiver fields**:
 /// there is no `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`, `action_deadline`,
 /// or per-seat prompt, because those fields simply do not exist on the type. A
 /// projection therefore *cannot* leak a hand, a library's contents, or a decision
@@ -74,6 +75,22 @@ pub struct SpectatorView {
     /// per-viewer redaction gives a spectator the public log for free).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log: Vec<GameLogEntry>,
+    /// The bounded window of **public** presentation moments (issue #594) — the same
+    /// ordered, display-only pacing cues seated views carry (see
+    /// [`GameView::presentation`]), so a spectator watches a settle unfold in order
+    /// instead of receiving its final board.
+    ///
+    /// A spectator's stream is the **public** projection: it never contains a
+    /// [`MomentKind::PhasesSkipped`](crate::MomentKind::PhasesSkipped), which names where
+    /// one particular seat was passed and has no meaning for an observer who holds no
+    /// priority. That filtering is why a spectator's ids, like a seated receiver's, may
+    /// start above one and may skip values — a gap is expected, and a client must not fill
+    /// it. Retained faces are public by construction (see
+    /// [`MomentObject`](crate::MomentObject)), so this field cannot leak a hand or a
+    /// library to a spectator any more than the rest of the type can. Advisory and never
+    /// load-bearing: the public board is complete without it. Omitted when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presentation: Vec<PresentationMoment>,
     /// Public display names, keyed by [`PlayerId`] (issue #294) — the same public map
     /// seated views carry, so a spectator labels every player without a lobby round-trip.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -189,6 +206,9 @@ mod tests {
             priority_player: Some("p0".into()),
             result: None,
             log: vec![],
+            // The public presentation window (issue #594): empty here, populated in the
+            // dedicated test below.
+            presentation: Vec::new(),
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
             commander_tax: Vec::new(),
@@ -249,5 +269,50 @@ mod tests {
         let back: SpectatorView =
             serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
         assert_eq!(back, view);
+    }
+
+    #[test]
+    fn issue_594_spectator_presentation_elides_round_trips_and_stays_public() {
+        // The window is additive on this type too: a spectator view from a server that
+        // predates it deserializes to an empty window, and an empty one never rides the
+        // wire.
+        let json = r#"{"players":[],"phase":"upkeep","turn":1}"#;
+        let mut view: SpectatorView = serde_json::from_str(json).unwrap();
+        assert!(view.presentation.is_empty());
+        assert!(serde_json::to_value(&view)
+            .unwrap()
+            .get("presentation")
+            .is_none());
+
+        // Populated, it carries the *public* moments verbatim — the same ordered pacing
+        // cues a seated view gets, with the same retained public faces.
+        view.presentation = vec![PresentationMoment {
+            id: 77,
+            batch: 12,
+            turn: 1,
+            phase: Phase::Upkeep,
+            kind: MomentKind::Died {
+                object: MomentObject {
+                    id: "perm_bear".into(),
+                    name: "Grizzly Bears".into(),
+                    card: None,
+                },
+            },
+            cause: None,
+            count: 1,
+        }];
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json["presentation"][0]["kind"]["kind"], "died");
+        let back: SpectatorView = serde_json::from_value(json).unwrap();
+        assert_eq!(back, view);
+
+        // A spectator holds no priority, so the per-seat moment has nothing to say to
+        // one: the server never projects a `phases_skipped` into this stream. Filtering
+        // it out is also why a spectator's ids may skip values — a gap is expected, and
+        // a client must not fill it.
+        assert!(!view
+            .presentation
+            .iter()
+            .any(|moment| matches!(moment.kind, MomentKind::PhasesSkipped { .. })));
     }
 }
