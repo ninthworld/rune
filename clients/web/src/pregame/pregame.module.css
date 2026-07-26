@@ -28,6 +28,16 @@
  * it says it by scoping the family's own `--rune-control-w-*` token (`.wide`,
  * `.fit`), never by restyling a control.
  *
+ * **Scale is the menu rung, not a local number** (§3.4, issue #566). `.stage`
+ * composes `.rungOpen` once, which re-points the control language's own §3.1
+ * tokens at their fluid `--rune-menu-*` restatements; the ready room's ring
+ * composes `.rungDense` for the smaller one. Every length and type size on
+ * these screens is therefore still §3.1's own value — read through the same
+ * token name it always was, just no longer fixed. The shipped pregame had no
+ * viewport term anywhere, which is why the maintainer read a UI shrunk into the
+ * corner of a picture; the rung is that term, and it lives in the control
+ * language so #580 can spend it too.
+ *
  * Places live in `pregamePlaces.module.css`; `styles.ts` merges the two into the
  * one flat class map the components import. The split is for file size only —
  * the two class sets are disjoint.
@@ -38,10 +48,76 @@
  * **no literal hex, no literal duration, and no bare `z-index`**.
  */
 
+/* ── The menu rung ─────────────────────────────────────────────────────────────
+ * `control-language.md` §3.4. A menu surface takes a rung by re-pointing the
+ * control language's OWN §3.1 tokens at one of the `--rune-menu-*` sets, which
+ * are `clamp(§3.1 value, fluid vmin term, ceiling)` — the same value, fluid,
+ * never a different one. Nothing in `table/controls` knows this happened: every
+ * rule there still reads exactly one token, so a control on a menu and the same
+ * control in a match are one component drawn at two sizes.
+ *
+ * Re-pointing rather than deriving is load-bearing, and it is the second design
+ * this took. A derived `--rune-menu-w: calc(var(--base) * var(--scale))` is
+ * substituted at computed-value time **on the element it is declared on**, so a
+ * set declared at `:root` freezes against `:root`'s scale and inherits that
+ * frozen value past every override. The tokens below are consumed by ordinary
+ * properties on descendants, which resolve per element, so an override here
+ * reaches all of them. (And the scale itself could not be a unitless multiplier
+ * at all: see the note in `chrome/tokens.css`.)
+ */
+.rungOpen {
+  --rune-control-h-primary: var(--rune-menu-control-h-primary);
+  --rune-control-h: var(--rune-menu-control-h);
+  --rune-control-hit: var(--rune-menu-control-hit);
+  --rune-control-w-cluster: var(--rune-menu-control-w-cluster);
+  --rune-control-w-pair: var(--rune-menu-control-w-pair);
+  --rune-cluster-margin: var(--rune-menu-cluster-margin);
+  --rune-cluster-gap: var(--rune-menu-cluster-gap);
+  --rune-touch: var(--rune-menu-touch);
+  --rune-type-display: var(--rune-menu-type-display);
+  --rune-type-title: var(--rune-menu-type-title);
+  --rune-type-heading: var(--rune-menu-type-heading);
+  --rune-type-body-lg: var(--rune-menu-type-body-lg);
+  --rune-type-body: var(--rune-menu-type-body);
+  --rune-type-caption: var(--rune-menu-type-caption);
+  --rune-type-micro: var(--rune-menu-type-micro);
+  --rune-type-action: var(--rune-menu-type-action);
+}
+
+.rungDense {
+  --rune-control-h-primary: var(--rune-menu-dense-control-h-primary);
+  --rune-control-h: var(--rune-menu-dense-control-h);
+  --rune-control-hit: var(--rune-menu-dense-control-hit);
+  --rune-control-w-cluster: var(--rune-menu-dense-control-w-cluster);
+  --rune-control-w-pair: var(--rune-menu-dense-control-w-pair);
+  --rune-cluster-margin: var(--rune-menu-dense-cluster-margin);
+  --rune-cluster-gap: var(--rune-menu-dense-cluster-gap);
+  --rune-touch: var(--rune-menu-dense-touch);
+  --rune-type-display: var(--rune-menu-dense-type-display);
+  --rune-type-title: var(--rune-menu-dense-type-title);
+  --rune-type-heading: var(--rune-menu-dense-type-heading);
+  --rune-type-body-lg: var(--rune-menu-dense-type-body-lg);
+  --rune-type-body: var(--rune-menu-dense-type-body);
+  --rune-type-caption: var(--rune-menu-dense-type-caption);
+  --rune-type-micro: var(--rune-menu-dense-type-micro);
+  --rune-type-action: var(--rune-menu-dense-type-action);
+}
+
 /* ── The shared stage ──────────────────────────────────────────────────────── */
 /* One stage, three places (§5.0). The environment is mounted ONCE and never
  * re-mounts across a place change; only the content layer swaps. */
 .stage {
+  /*
+   * The open rung (`control-language.md` §3.4, issue #566). Composing it is the
+   * whole of what makes every control, plaque, and type size on every pregame
+   * place read at menu scale — §3.1's own values, fluid, with no second button
+   * family and no local size anywhere below.
+   *
+   * The match composes nothing and stays at the §3.1 values exactly, because an
+   * arena full of cards wants small edge furniture and an empty one does not.
+   */
+  composes: rungOpen;
+
   position: relative;
   min-height: 100vh;
   display: grid;
@@ -99,6 +175,34 @@
   grid-template-rows: 1fr;
   min-height: 0;
   animation: placeRise var(--pregame-motion-staging) var(--pregame-ease-staging) both;
+}
+
+/* ── The ground plate ──────────────────────────────────────────────────────────
+ * The one surface under text that is NOT on a plaque (issue #566).
+ *
+ * The baselines draw the wordmark, the arena heading, the status lines, and the
+ * empty-state sentence straight onto the plaza, and #546 shipped them that way —
+ * against the *previous* implementation's flat surfaces. Over the shipped
+ * environment plates none of them survives: `--pregame-text-muted` clears the
+ * project's 4.5:1 floor on the foundation surfaces the contrast gate checks, and
+ * an illustrated, light, high-texture floor is not one of them.
+ *
+ * So arena text sits on this: a soft veil at `--pregame-ground`, whose alpha is
+ * chosen (in `sceneTokens.ts`) so that the composite over EVERY slot of EVERY
+ * shipped theme clears the floor for every pregame foreground. Because the
+ * background is uniform across the padded box and the halo is the same colour
+ * spreading outward, every descendant of `.ground` provably sits on at least
+ * that composite — which is what makes the gate a check on the drawn result
+ * rather than on a token.
+ *
+ * It is a *veil*, not a panel: no border, no corner, no edge to read as chrome,
+ * and the halo dissolves it into the plaza. The carved-panel treatment #506
+ * shipped and #546 retired does not come back through this door. */
+.ground {
+  padding: var(--rune-space-7) var(--rune-space-9);
+  border-radius: var(--rune-radius-lg);
+  background: var(--pregame-ground);
+  box-shadow: 0 0 var(--rune-space-10) var(--rune-space-9) var(--pregame-ground);
 }
 
 /* ── The menu frame ────────────────────────────────────────────────────────────
@@ -180,8 +284,11 @@
 }
 
 /* The corner lockup: the same procedural mark and display face the front door
- * shows at landing scale, so identity is continuous across the place change. */
+ * shows at landing scale, so identity is continuous across the place change.
+ * It sits on the ground plate, like every other mark drawn straight onto the
+ * arena — the wordmark was the first thing the maintainer named as unreadable. */
 .lockup {
+  composes: ground;
   display: flex;
   align-items: center;
   gap: var(--rune-space-4);
@@ -270,6 +377,7 @@
 /* The arena's own heading (OPEN GAMES, CREATE GAME), drawn on the ground rather
  * than on a plate — the baselines set it in warm display caps with no plate. */
 .arenaTitle {
+  composes: ground;
   margin: 0;
   font-family: var(--rune-font-display);
   font-size: var(--rune-type-display);
@@ -305,6 +413,7 @@
 
 /* ── Type and status ───────────────────────────────────────────────────────── */
 .kicker {
+  composes: ground;
   font-size: var(--rune-type-micro);
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -497,7 +606,7 @@
 .menuDrawer {
   position: absolute;
   right: 0;
-  bottom: calc(var(--rune-control-hit) + var(--rune-cluster-gap));
+  bottom: calc(var(--rune-touch) + var(--rune-cluster-gap));
   z-index: var(--rune-z-overlay);
   display: flex;
   flex-direction: column;

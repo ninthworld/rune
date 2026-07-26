@@ -142,7 +142,8 @@
    * `.rail`, or `.bottom` can climb past that region's rung. Anything that must
    * outrank a shell region has to be a sibling of the regions. The plane's own
    * z-indices are scoped by `isolation: isolate` and are deliberately off this
-   * ladder — they order objects within the scene only. */
+   * ladder — they order objects within the scene only, and they have their own
+   * declared ladder below (`--rune-z-plane-*`, issue #582). */
   --rune-z-scene: 1;
   --rune-z-shell: 10;
   --rune-z-shell-raised: 12;
@@ -152,6 +153,66 @@
   --rune-z-popover: 50;
   --rune-z-overlay: 60;
   --rune-z-toast: 70;
+
+  /*
+   * ── The plane's own depth ladder (issue #582) ────────────────────────────
+   * Everything staged INSIDE the scene, ordered. It is a second ladder rather
+   * than more rungs on the one below because the plane host carries
+   * `isolation: isolate`: these order objects within the scene only, and the
+   * whole scene then sits at `--rune-z-scene` against the shell's chrome.
+   *
+   * It exists because the shipped plane spread eleven bare `z-index` numbers
+   * across two stylesheets with no statement anywhere of what the order was
+   * supposed to be. A card at `3` painted under a medallion at `5` and over a
+   * nameplate at `4` — a real decision that nothing recorded and nothing could
+   * check, which is why the maintainer read the seat cluster's overlap as
+   * "falling out of render order". `planeDepth.test.ts` parses the plane
+   * stylesheets and fails on any bare number.
+   *
+   * Three groups, because the plane has three stacking contexts.
+   *
+   * **The host's layers.** The staged plane, the effects surface, and the
+   * semantic-control overlay.
+   */
+  --rune-z-plane-stage: 2;
+  --rune-z-plane-effects: 30;
+  --rune-z-plane-controls: 40;
+  /*
+   * **The objects on the plane**, bottom to top: the *ground* a seat's board is
+   * shaded onto; the seat's own *fixtures* (an opponent's face-down fan) behind
+   * its cards; the *cards*, which are the game; the seat's *zones* and its
+   * nameplate, objects beside the cards rather than on them; then the identity
+   * *cluster* and its details, which stay readable over a crowded board because
+   * the medallion is the player-targeting surface and can never degrade away;
+   * and finally travel *ghosts*, and a prompt *candidate*, which is the one
+   * thing the server is asking about and outranks every other object.
+   */
+  --rune-z-plane-ground: 1;
+  --rune-z-plane-fixture: 2;
+  --rune-z-plane-card: 3;
+  --rune-z-plane-zone: 4;
+  --rune-z-plane-cluster: 5;
+  --rune-z-plane-cluster-detail: 6;
+  --rune-z-plane-cluster-status: 7;
+  --rune-z-plane-cluster-rail: 8;
+  --rune-z-plane-ghost: 9;
+  --rune-z-plane-candidate: 20;
+  /*
+   * **Inside the control overlay.** A drop *board* is a whole region lit up and
+   * sits behind the individual drop *targets* carved out of it.
+   */
+  --rune-z-plane-drop-board: 1;
+  --rune-z-plane-drop-target: 50;
+  /*
+   * **Inside the hand band.** The fan's own order: a resting card, the selected
+   * one raised clear of its neighbours, a hovered/focused one above that, and
+   * the page controls above all of them (they sit in the gutters the fan gives
+   * back, so they never cover a card, but they must stay reachable).
+   */
+  --rune-z-hand-card: 1;
+  --rune-z-hand-selected: 4;
+  --rune-z-hand-lifted: 6;
+  --rune-z-hand-pager: 7;
 
   /* ── Shell geometry fallbacks (issue #528) ─────────────────────────────────
    * `table/live/shellLayout.ts` publishes the live values as `--shell-*` on the
@@ -279,6 +340,84 @@
    * have one place to reach, exactly as `--rune-transition` does. */
   --rune-control-sweep: 600ms;
   --rune-control-shake: 200ms;
+  /* ── The menu rungs (control-language.md §3.4, issue #566) ────────────────
+   * D1's scale anchor — 1 baseline px = 1 CSS px — is right for the MATCH,
+   * where the arena is full of cards and the cluster is deliberately small edge
+   * furniture. It is wrong for the menus, where the arena is empty: the same
+   * numbers read as a UI shrunk into a corner of a picture, which is what the
+   * maintainer reported against the shipped pregame (issue #566).
+   *
+   * So the control language gains a viewport term, and only the menus spend it.
+   * A rung is a **restatement of §3.1's own value**, fluid between that value
+   * and a ceiling — never a different number. At a rung's floor a menu control
+   * is bit-for-bit the match control, which is what keeps this a scale pass and
+   * not a second button vocabulary. A menu surface picks a rung by re-pointing
+   * the §3.1 tokens at one of these sets, which is the idiom the pregame
+   * already uses for `--rune-control-w-pair` (`AGENTS.md`: "scopes the family's
+   * own `--rune-control-w-*` tokens when it needs a different width").
+   *
+   * Each entry is `clamp(base, base / basis x 100vmin, base x cap)` —
+   * arithmetic, not taste. `controlTokens.ts` mirrors `basis` and `cap` as
+   * `MENU_RUNG` and `menuRung.test.ts` recomputes every clamp below from the
+   * §3.1 value it scales, so none of these numbers can drift from it.
+   *
+   * **Why a clamp of lengths rather than one scale multiplier.** The obvious
+   * shape is a unitless `--rune-scale: clamp(1, calc(100vmin / 620), 1.6)` that
+   * every length multiplies by. It is invalid CSS: `100vmin / 620` is a
+   * *length*, so the clamp mixes a length with two numbers, the whole
+   * declaration is dropped at computed-value time, and every property that
+   * multiplied by it is dropped with it. That shipped in the first cut of this
+   * work and took the pregame type ramp, the plaque widths, AND the primary
+   * control down with it. There is no portable way to derive a unitless ratio
+   * from the viewport — `calc(100vmin / 620px)` is `<length>/<length>`, which
+   * Firefox does not resolve — so the fluid term is carried by each length
+   * itself. Verified in a browser, which is the only place it could be.
+   *
+   * `100vmin` rather than `vw` or `vh`: an ultrawide's surplus width is gutter
+   * (the plane spends it the same way, `layout-model.md`), and growing controls
+   * into it would push an arena's content off a short window.
+   *
+   * **Open** — one decision on an empty plaza: the front door, the server
+   * lobby, the create-table setup. */
+  --rune-menu-control-h-primary: clamp(56px, 9.0323vmin, 89.6px);
+  --rune-menu-control-h: clamp(36px, 5.8065vmin, 57.6px);
+  --rune-menu-control-hit: clamp(44px, 7.0968vmin, 70.4px);
+  --rune-menu-control-w-cluster: clamp(268px, 43.2258vmin, 428.8px);
+  --rune-menu-control-w-pair: clamp(118px, 19.0323vmin, 188.8px);
+  --rune-menu-cluster-margin: clamp(28px, 4.5161vmin, 44.8px);
+  --rune-menu-cluster-gap: clamp(12px, 1.9355vmin, 19.2px);
+  --rune-menu-touch: clamp(44px, 7.0968vmin, 70.4px);
+  --rune-menu-type-display: clamp(30px, 4.8387vmin, 48px);
+  --rune-menu-type-title: clamp(20px, 3.2258vmin, 32px);
+  --rune-menu-type-heading: clamp(16px, 2.5806vmin, 25.6px);
+  --rune-menu-type-body-lg: clamp(14px, 2.2581vmin, 22.4px);
+  --rune-menu-type-body: clamp(13px, 2.0968vmin, 20.8px);
+  --rune-menu-type-caption: clamp(12px, 1.9355vmin, 19.2px);
+  --rune-menu-type-micro: clamp(11px, 1.7742vmin, 17.6px);
+  --rune-menu-type-action: clamp(24px, 3.871vmin, 38.4px);
+
+  /* **Dense** — the ready room's seating ring, which puts a seat per player
+   * plus the table's own plaque inside one box whose height must clear half a
+   * seat plus half the centre (`pregamePlaces.module.css`). Seats grow with the
+   * rung and the arena does not, so the open rung would reintroduce exactly the
+   * collision #546 fixed. This one grows more slowly and stops sooner. */
+  --rune-menu-dense-control-h-primary: clamp(56px, 6.2222vmin, 70px);
+  --rune-menu-dense-control-h: clamp(36px, 4vmin, 45px);
+  --rune-menu-dense-control-hit: clamp(44px, 4.8889vmin, 55px);
+  --rune-menu-dense-control-w-cluster: clamp(268px, 29.7778vmin, 335px);
+  --rune-menu-dense-control-w-pair: clamp(118px, 13.1111vmin, 147.5px);
+  --rune-menu-dense-cluster-margin: clamp(28px, 3.1111vmin, 35px);
+  --rune-menu-dense-cluster-gap: clamp(12px, 1.3333vmin, 15px);
+  --rune-menu-dense-touch: clamp(44px, 4.8889vmin, 55px);
+  --rune-menu-dense-type-display: clamp(30px, 3.3333vmin, 37.5px);
+  --rune-menu-dense-type-title: clamp(20px, 2.2222vmin, 25px);
+  --rune-menu-dense-type-heading: clamp(16px, 1.7778vmin, 20px);
+  --rune-menu-dense-type-body-lg: clamp(14px, 1.5556vmin, 17.5px);
+  --rune-menu-dense-type-body: clamp(13px, 1.4444vmin, 16.25px);
+  --rune-menu-dense-type-caption: clamp(12px, 1.3333vmin, 15px);
+  --rune-menu-dense-type-micro: clamp(11px, 1.2222vmin, 13.75px);
+  --rune-menu-dense-type-action: clamp(24px, 2.6667vmin, 30px);
+
   /* The 135° gold frame every chamfered control and the plaque wear (§3.1). */
   --rune-control-frame-gradient: linear-gradient(
     135deg,

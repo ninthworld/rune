@@ -182,6 +182,56 @@ describe('pregame CSS — criterion 3: no literal hex or duration', () => {
   });
 });
 
+/**
+ * The ground plate reaches the screen (issue #566).
+ *
+ * `sceneTokens.test.ts` proves the plate's *value* clears the contrast floor
+ * over every slot of every theme. That is only worth anything while the text
+ * the issue names is actually drawn on it, which is what this pins — jsdom
+ * computes no layout and no `var()`, so structure is the honest thing to check.
+ */
+describe('pregame CSS — arena text sits on the ground plate', () => {
+  const files = ['pregame.module.css', 'pregamePlaces.module.css'].map((file) =>
+    readFileSync(resolve(process.cwd(), 'src/pregame', file), 'utf8'),
+  );
+  const css = files.join('\n');
+
+  it('publishes the plate as a scene token, never as a local value', () => {
+    expect(pregameSceneVars(false)['--pregame-ground']).toBe('rgb(13 15 19 / 78.0%)');
+    expect(css).toContain('background: var(--pregame-ground);');
+  });
+
+  it('draws it as a veil: uniform under the text, dissolving outward, no edge', () => {
+    const ground = /\.ground \{([^}]*)\}/.exec(files[0]!)?.[1] ?? '';
+    expect(ground, '.ground has no rule').not.toBe('');
+    // Uniform across the padded box — which is what makes "every descendant sits
+    // on at least the composite" true rather than approximately true.
+    expect(ground).toContain('background: var(--pregame-ground);');
+    // The halo is the same colour spreading outward, so there is no edge to read
+    // as a carved panel. A border here would bring #506's treatment back.
+    expect(ground).toContain('box-shadow: 0 0');
+    expect(ground).not.toContain('border:');
+    // Text may not reach the plate's own corner.
+    expect(ground).toMatch(/padding: var\(--rune-space-\d+\) var\(--rune-space-\d+\);/);
+  });
+
+  it('puts every block the issue named on it', () => {
+    // Point for point against #566's list: the RUNE lockup (both the landing
+    // column and the corner mark), "Ready to play" / "Change server" (the door
+    // column), the lobby's "Open games" heading and its empty-state sentence.
+    for (const selector of ['.lockup', '.arenaTitle', '.kicker']) {
+      const block = /\{([^}]*)\}/.exec(css.slice(css.indexOf(`${selector} {`)))?.[1] ?? '';
+      expect(block, `${selector} does not compose the ground plate`).toContain('composes: ground');
+    }
+    for (const selector of ['.doorColumn', '.emptyGames', '.ribbon', '.identityRow']) {
+      const block = /\{([^}]*)\}/.exec(css.slice(css.indexOf(`${selector} {`)))?.[1] ?? '';
+      expect(block, `${selector} does not compose the ground plate`).toContain(
+        "composes: ground from './pregame.module.css'",
+      );
+    }
+  });
+});
+
 describe('ready room CSS — the seating ring cannot collide with itself', () => {
   const css = readFileSync(resolve(process.cwd(), 'src/pregame/pregamePlaces.module.css'), 'utf8');
 
@@ -231,7 +281,26 @@ describe('ready room CSS — the seating ring cannot collide with itself', () =>
     const floor = /min-height: calc\(var\(--rune-control-w-cluster\) \* ([\d.]+)\)/.exec(ring)?.[1];
     expect(floor, '.ring states no min-height in cluster units').toBeDefined();
     expect(Number(floor)).toBeGreaterThanOrEqual(2.4);
-    // …and the arena's column may not compress it back under that floor.
-    expect(ring).toContain('flex: none;');
+    // The cluster width it multiplies is the one the ring's OWN rung re-pointed,
+    // so the floor tracks the size a seat's controls are actually drawn at
+    // (issue #566). `menuRung.test.ts` resolves that chain and checks the number.
+    expect(ring).toContain("composes: rungDense from './pregame.module.css';");
+  });
+
+  /**
+   * Issue #566: "the ready room's ring in particular claims the arena rather
+   * than a box in the centre of it". The shipped ring was a fixed 16:9 box
+   * capped at four cluster widths, so at the 1440×900 reference it drew
+   * 1072 × 643 inside a ~1358 × 690 arena and left the rest of the plaza empty.
+   */
+  it('claims the whole arena instead of a fixed box centred in it', () => {
+    const ring = rule('.ring');
+    // Full width of the arena column, and every row the frame does not use.
+    expect(ring).toContain('width: 100%;');
+    expect(ring).toContain('align-self: stretch;');
+    expect(ring).toMatch(/flex: 1 1 auto;/);
+    // No fixed cap and no fixed aspect: both are what pinned it to a box.
+    expect(ring).not.toContain('max-width:');
+    expect(ring).not.toContain('aspect-ratio:');
   });
 });

@@ -43,18 +43,18 @@
 }
 
 .plane {
-  z-index: 2;
+  z-index: var(--rune-z-plane-stage);
   transform-style: preserve-3d;
 }
 
 .effects {
-  z-index: 6;
+  z-index: var(--rune-z-plane-effects);
   pointer-events: none;
 }
 
 .controls {
   position: absolute;
-  z-index: 7;
+  z-index: var(--rune-z-plane-controls);
   inset: 0;
   transform-style: preserve-3d;
 }
@@ -103,7 +103,7 @@
  * (it is the routing target), the per-card targets take none. */
 .dropBoard {
   position: absolute;
-  z-index: 1;
+  z-index: var(--rune-z-plane-drop-board);
   box-sizing: border-box;
   border-radius: var(--rune-drop-radius);
   /* The lit surface: brightest where the card is heading, falling off before it
@@ -139,7 +139,7 @@
    at card scale: a lit face rather than a stroked box, and the same ticks. */
 .dropTarget {
   position: absolute;
-  z-index: 30;
+  z-index: var(--rune-z-plane-drop-target);
   box-sizing: border-box;
   border-radius: var(--rune-radius-md);
   background: var(--rune-drop-valid-fill);
@@ -409,7 +409,7 @@
    drawn to a region's bounds any more, and a wing that bleeds past the plane
    edge must not clip its own grounding. */
 .plane [data-slot='region'] {
-  z-index: 1;
+  z-index: var(--rune-z-plane-ground);
   overflow: visible;
   border-radius: 50%;
   background: radial-gradient(
@@ -451,7 +451,7 @@
    pile and nowhere else (§4 / I5). */
 
 .plane [data-slot='zone'] {
-  z-index: 4;
+  z-index: var(--rune-z-plane-zone);
   overflow: visible;
   border-radius: 4px;
   box-shadow: var(--shadow-rest);
@@ -521,29 +521,109 @@
 
 /* An eliminated seat's rack desaturates whole; its public zones stay browsable. */
 .plane [data-slot='zone'][data-eliminated='true'],
+.plane [data-slot='rackpip'][data-eliminated='true'],
 .plane [data-slot='rack'][data-eliminated='true'] {
   filter: saturate(var(--dim-saturate)) brightness(var(--dim-brightness));
 }
 
-/* The digest rack (§6.1): one ≥ 44 px button carrying the four counts, used
+/* The digest rack (§6.1): one ≥ 44 px button carrying the four zones, used
    where the fitted `u` falls under the 30 px floor or the clearance rule fails.
-   Every zone anchor resolves to it, so no zone is ever lost. */
+   Every zone anchor resolves to it, so no zone is ever lost.
+
+   It is a **frame** and nothing else now. The shipped rule drew
+   `attr(data-library) '\A' attr(data-graveyard) '\A' attr(data-exile)` — a
+   column of bare numbers in a featureless dark rectangle, with nothing saying
+   which number was which zone and the command count missing entirely (issue
+   #582 §5). §6.1's digest is "one rack button with four SHAPED sub-indicators",
+   and the shapes are `[data-slot='rackpip']` below: the same four materials the
+   full rack draws, at chip size, inside this frame. */
 .plane [data-slot='rack'] {
-  z-index: 4;
+  z-index: var(--rune-z-plane-zone);
   border: 1px solid var(--rack-rule-faint);
   border-radius: 7px;
   background: var(--rack-back);
   box-shadow: var(--shadow-rest);
 }
 
-.plane [data-slot='rack']::after {
-  content: attr(data-library) '\A ' attr(data-graveyard) '\A ' attr(data-exile);
-  white-space: pre;
+/* ── The digest sub-indicators ────────────────────────────────────────────────
+   One chip per zone anchor, laid in the grid `plane/rack.ts` derives, each
+   wearing its zone's own material from §3.3 above — so a digested rack reads as
+   the same four objects, read small, rather than as a different component. The
+   count rides on the chip, which is what ties a number to a zone; the chips are
+   decoration on the button, never hotspots, so nothing here is a target and the
+   button keeps the single ≥ 44 px hit rect every zone key resolves to.
+
+   Both seats' digests are this identical block whichever axis their drawn rack
+   runs on (§2.5 keeps the axis for the drawn variants), which is the other half
+   of "both racks read as the same component". */
+.plane [data-slot='rackpip'] {
+  z-index: var(--rune-z-plane-zone);
+  overflow: visible;
+  border-radius: 3px;
+  box-shadow: var(--shadow-rest);
+}
+
+/* The count, on its own chip and nowhere else (§4 / I5). */
+.plane [data-slot='rackpip']::after {
+  content: attr(data-count);
   position: absolute;
-  inset: 6px;
+  right: 0;
+  bottom: 0;
+  min-width: 13px;
+  padding: 0 2px;
+  border-radius: 2px;
   color: var(--text);
-  font: 700 9px/1.5 var(--rune-font-display);
+  font: 700 9px/1.3 var(--rune-font-display);
   text-align: center;
+  background: var(--ink);
+}
+
+/* An empty zone: the etched language of §5 — a dashed outline and no numeral,
+   rather than a `0` competing with the counts that mean something. */
+.plane [data-slot='rackpip'][data-count='0'] {
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.plane [data-slot='rackpip'][data-count='0']::after {
+  content: '';
+  background: none;
+}
+
+/* Library — the same card back the full pile paints, at chip size. */
+.plane [data-slot='rackpip'][data-zone='library'] {
+  border: 1px solid var(--rack-rule);
+  background:
+    var(--card-back-image, none) center / cover no-repeat,
+    radial-gradient(circle at 50% 50%, var(--rack-rule-faint) 0 22%, transparent 24%),
+    var(--rack-back);
+}
+
+/* Graveyard — the ash-dimmed card. */
+.plane [data-slot='rackpip'][data-zone='graveyard'] {
+  border: 1px solid var(--rack-rule-faint);
+  background: var(--rack-ash);
+}
+
+/* Exile — the glass pane, still LARGER than the card it holds: the silhouette
+   difference §3.3 makes load-bearing survives the digest, which is the whole
+   point of keeping the shapes. */
+.plane [data-slot='rackpip'][data-zone='exile'] {
+  border: 1px solid var(--rack-glass-edge);
+  background: var(--rack-glass);
+  outline: 1px solid var(--rack-glass-edge);
+  outline-offset: 2px;
+}
+
+/* Command — the heaviest gold rule, wearing the seat's accent as a rim. It is
+   drawn here at all, which the number column was not doing (§5's slot is either
+   present or absent, never silently dropped). */
+.plane [data-slot='rackpip'][data-zone='command'] {
+  border: 2px solid var(--gold);
+  background: var(--rack-back);
+  box-shadow:
+    0 0 0 1px var(--seat-azure),
+    var(--shadow-rest);
 }
 
 /* The compact rung's summary tile IS the §2 **minimal** cluster variant: no
@@ -553,7 +633,7 @@
    and with no plate it falls back to a disc in the seat's accent rather than to
    a bare counter. */
 .plane [data-slot='tile'] {
-  z-index: 5;
+  z-index: var(--rune-z-plane-cluster);
   border: 1px solid rgb(232 230 225 / 17%);
   border-left: 4px solid var(--seat-accent, var(--seat-teal));
   border-radius: 9px;
@@ -616,7 +696,7 @@
 }
 
 .plane [data-layer='entities'] {
-  z-index: 3;
+  z-index: var(--rune-z-plane-card);
   transform-style: preserve-3d;
 }
 
@@ -626,11 +706,11 @@
 }
 
 .plane [data-layer='entities'] > div[data-candidate='true'] {
-  z-index: 20;
+  z-index: var(--rune-z-plane-candidate);
 }
 
 .plane [data-layer='ghosts'] {
-  z-index: 8;
+  z-index: var(--rune-z-plane-ghost);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -674,7 +754,7 @@
    backs' TOP edges spread further apart than their origins do — the same
    mechanism that keeps the receiver's fan legible. */
 .plane [data-slot='handfan'] {
-  z-index: 2;
+  z-index: var(--rune-z-plane-fixture);
   overflow: visible;
   border: 1px solid var(--rack-rule-faint);
   border-radius: 4px;

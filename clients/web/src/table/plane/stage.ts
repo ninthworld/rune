@@ -128,15 +128,6 @@ export function stagePlane(
       digestBaseline: wing?.digestBaseline ?? false,
       corridor: slots.corridor,
     });
-    const content = stageRegionContent(
-      seat,
-      itemsOf(seat),
-      rect,
-      surface,
-      kind,
-      wing?.digestBaseline ?? false,
-      rack.inset,
-    );
     const flags = flagsOf(seat);
     const focused = !duel && kind === 'far';
     const label = bandLabel(view, seat, seat === receiverSeat);
@@ -175,6 +166,21 @@ export function stagePlane(
           rack.variant === 'digest' || !rack.slots.some((slot) => slot.zone === 'command'),
       }),
     });
+    // The board stages LAST, after both seat fixtures, and around both of them
+    // (issue #582 §1). The cluster depends on the rack and on nothing the board
+    // produces, so the order is free — and it is the only order in which the
+    // board can be laid out against the medallion that is actually drawn rather
+    // than against a constant that was never read.
+    const content = stageRegionContent(
+      seat,
+      itemsOf(seat),
+      rect,
+      surface,
+      kind,
+      wing?.digestBaseline ?? false,
+      rack.inset,
+      cluster.core,
+    );
     // An opponent's hand is a face-down fan beside their cluster — a seat
     // fixture at every rung (issue #533). The receiver's own hand stays a
     // screen-space shell region (ADR 0032 §7), so it stages no plane fan; the
@@ -333,9 +339,17 @@ function clusterAnchor(
   let cy: number;
   if (variant === 'local') {
     cx = slot.x + slot.w / 2;
-    // Low enough to read as the receiver's own piece above the hand, high
-    // enough that the life medallion and hand pip stay on the plane.
-    cy = Math.min(slot.y + slot.h - 0.62 * d, viewport.height - 1.05 * d - 4);
+    // **On** the band's outer edge, not inside it — §8's word is "straddling",
+    // and the focused seat above already reads exactly that way (`cy = slot.y`).
+    // The shipped `slot.h - 0.62·D` put 62 % of a 112 px medallion, and all of
+    // its priority bloom, life ring, and hand pip, INSIDE the band, which is
+    // what the maintainer's capture shows drawn over their own creatures. It
+    // also cost the board more than half its height once the row began
+    // reserving for what is actually drawn (issue #582 §1): 129 px of a 195 px
+    // band, against 68 px here.
+    //
+    // The clamp keeps the half that hangs below on the plane.
+    cy = Math.min(slot.y + slot.h, viewport.height - 0.7 * d - 4);
   } else if (variant === 'focused') {
     cx = slot.x + slot.w / 2;
     cy = slot.y;

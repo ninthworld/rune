@@ -45,6 +45,7 @@ const region: PlaneRegion = {
   piles: { x: 540, y: 220, w: 44, h: 62 },
   rack: {
     seat: 'p1',
+    indicators: [],
     variant: 'local',
     axis: 'vertical',
     u: 40,

@@ -220,6 +220,14 @@ export interface SeatCluster {
   accent: string;
   /** The union of everything drawn, priority bloom included. */
   bounds: Rect;
+  /**
+   * The medallion group — portrait, priority bloom, life ring, hand pip, gem.
+   * The part of the cluster that cannot move, and therefore the part a seat's
+   * own board reserves against (issue #582 §1). {@link bounds} additionally
+   * covers the nameplate and the status rail, both of which place themselves
+   * around obstacles and are not charged to the board.
+   */
+  core: Rect;
   /** The whole seat as one sentence (§9 screen readers). */
   ariaLabel: string;
 }
@@ -629,6 +637,22 @@ export function stageSeatCluster(request: SeatClusterRequest): SeatCluster {
       }));
 
   const glow = unit(anchor, d, 0, 0, 2 * c.priorityOuter, 2 * c.priorityOuter);
+  // The **medallion group**: the portrait, its priority bloom, the life ring,
+  // the hand pip, and the identity gem — the discs that are the seat, drawn at
+  // fixed offsets from the anchor and unable to move out of anything's way.
+  // This is what a board reserves against (issue #582 §1, `regions.ts`), and it
+  // is deliberately not the whole cluster: the nameplate already steps around
+  // keep-outs and hangs below when neither side fits (§8's documented
+  // departure), and the status rail already arcs around the portrait. Charging
+  // a board for a plate that reaches two D to one side would cost it a row for
+  // an element that is free to be somewhere else.
+  const core = union([
+    glow,
+    portrait,
+    life,
+    ...(pip ? [pip.rect] : []),
+    ...(gem ? [gem.rect] : []),
+  ]);
   const bounds = union([
     glow,
     portrait,
@@ -667,6 +691,7 @@ export function stageSeatCluster(request: SeatClusterRequest): SeatCluster {
     portraitSrc: facts.portrait?.src,
     accent: facts.accent,
     bounds,
+    core,
     ariaLabel: ariaFor(facts, chips),
   };
 }

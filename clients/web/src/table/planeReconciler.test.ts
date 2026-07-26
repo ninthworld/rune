@@ -67,9 +67,23 @@ describe('PlaneReconciler add/update/move/remove (by entity id)', () => {
     expect(r.root.querySelectorAll('[data-slot="zone"]')).toHaveLength(
       racks.filter((rack) => rack.variant !== 'digest').length * 3,
     );
-    expect(r.root.querySelectorAll('[data-slot="rack"]')).toHaveLength(
-      racks.filter((rack) => rack.variant === 'digest').length,
-    );
+    const digests = racks.filter((rack) => rack.variant === 'digest');
+    expect(r.root.querySelectorAll('[data-slot="rack"]')).toHaveLength(digests.length);
+    // …and every digest button carries a shaped sub-indicator per zone anchor,
+    // rather than a column of unlabelled numbers (zone-geography §6.1, issue
+    // #582 §5). A zone's identity survives the digest.
+    const chips = [...r.root.querySelectorAll('[data-slot="rackpip"]')];
+    expect(chips).toHaveLength(digests.reduce((sum, rack) => sum + rack.indicators.length, 0));
+    for (const rack of digests) {
+      const mine = chips.filter((chip) => chip.getAttribute('data-seat') === rack.seat);
+      expect(mine.map((chip) => chip.getAttribute('data-zone'))).toEqual(
+        rack.slots.map((slot) => slot.zone),
+      );
+      // The count rides its own chip, which is what ties a number to a zone.
+      expect(mine.map((chip) => chip.getAttribute('data-count'))).toEqual(
+        rack.slots.map((slot) => String(slot.count)),
+      );
+    }
     expect(
       r.root.querySelector('[data-slot="region"][data-seat="p2"]')?.getAttribute('data-life'),
     ).toBe('40');

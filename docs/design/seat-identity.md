@@ -487,6 +487,16 @@ its right (panels 3–5). The focused cluster is **always top centre**. Wing
 clusters step down the ellipse in `seat_order`, alternating sides, and never
 cross the centre corridor.
 
+**"Straddling" is literal (issue #582).** The portrait medallion's centre sits
+*on* the band's outer edge, so half the cluster hangs below the board and half
+overlaps it — which is exactly what the focused cluster already does at the top
+(`cy = slot.y`). The first implementation put the centre `0.62 D` *inside* the
+band, so 62 % of a 112 px medallion plus all of its priority bloom, life ring,
+and hand pip were drawn over the player's own creatures, and the board's
+reservation for it (`layout-model.md`) cost 129 px of a 195 px band instead of
+68 px. The clamp that keeps the lower half on the plane is the only thing that
+may move it.
+
 > The 5-seat panel stages wings as **one left, two right**, while
 > `layout-model.md` §Staging per player count specifies **2 left, 1 right**.
 > See §13.

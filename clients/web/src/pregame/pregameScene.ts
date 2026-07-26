@@ -24,12 +24,14 @@ import type { CSSProperties } from 'react';
 import {
   DEFAULT_SCENE_THEME,
   SCENE_ELEVATION,
+  SCENE_GROUND_PLATE,
   SCENE_HUES,
   SCENE_MOTION,
   SCENE_NEUTRALS,
   SCENE_SEAT_ACCENTS,
   SCENE_THEMES,
   sceneMotionMs,
+  withAlpha,
 } from '../sceneTokens';
 
 /** Custom-property style object usable as an inline `style`. */
@@ -73,6 +75,14 @@ export function pregameSceneVars(reducedMotion: boolean): SceneVars {
     '--pregame-line-strong': SCENE_NEUTRALS.lineStrong,
     '--pregame-text': SCENE_NEUTRALS.text,
     '--pregame-text-muted': SCENE_NEUTRALS.textMuted,
+
+    // The ground plate (issue #566): the veil that goes UNDER text drawn
+    // straight onto the arena, so the contrast floor is met against the shipped
+    // environment plates rather than against a flat token. Publishing the
+    // composited alpha here — rather than a `rgba()` literal in the stylesheet —
+    // is what lets `sceneTokens.test.ts` check the drawn result against every
+    // slot of every theme.
+    '--pregame-ground': withAlpha(SCENE_GROUND_PLATE.color, SCENE_GROUND_PLATE.alpha),
 
     // §2 semantic hue families. Gold is the one advance-the-game accent; blue
     // is selection; red/green carry the ribbon's outcome families.

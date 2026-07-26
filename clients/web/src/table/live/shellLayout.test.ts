@@ -184,6 +184,43 @@ describe('shell bands — the compact composition', () => {
     // Side by side, sharing the bottom edge — not stacked.
     expect(bands.hand.x + bands.hand.w).toBeLessThanOrEqual(bands.cluster.x);
   });
+
+  /**
+   * Invariant I2b (issue #582): "the fan reads as offset from the centre of the
+   * screen". The band kept the left edge and gave up only the cluster's column
+   * on the right, so `HandFan`'s own centring landed the fan left of centre by
+   * half the cluster's column — half of 324 px at every desktop geometry.
+   */
+  it('centres the hand band on the screen at every composition', () => {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1280, height: 800 },
+      { width: 1180, height: 820 },
+      { width: 2560, height: 1440 },
+      { width: 390, height: 844 },
+      { width: 720, height: 450 },
+    ]) {
+      const bands = shellBands(viewport);
+      const bandCentre = bands.hand.x + bands.hand.w / 2;
+      const screenCentre = bands.viewport.x + bands.viewport.w / 2;
+      expect(
+        bandCentre,
+        `hand band off centre at ${viewport.width}×${viewport.height}`,
+      ).toBeCloseTo(screenCentre, 6);
+      // …and centring never buys itself space by reaching under the cluster.
+      expect(rectsOverlap(bands.hand, bands.cluster)).toBe(false);
+    }
+  });
+
+  it('centres it by yielding the cluster’s column on both sides, safe area included', () => {
+    const inset = { left: 20, right: 8, top: 10, bottom: 30 };
+    const bands = shellBands({ width: 1440, height: 900 }, inset);
+    const gutter = bands.hand.x - bands.viewport.x;
+    // The gutter is the cluster's own column plus the margin either side of it,
+    // which is exactly the space the cluster occupies on the right.
+    expect(gutter).toBe(bands.cluster.w + 2 * CONTROL.clusterMargin);
+    expect(bands.viewport.x + bands.viewport.w - (bands.hand.x + bands.hand.w)).toBe(gutter);
+  });
 });
 
 describe('hand staging — invariant I2: the hand fits its band', () => {
@@ -203,6 +240,58 @@ describe('hand staging — invariant I2: the hand fits its band', () => {
     // The shipped rule was `bottom: -72px` inside an `overflow: hidden` band,
     // which cut roughly half of every hand card off the bottom of the screen.
     expect(SHELL.handFloor).toBeGreaterThan(0);
+  });
+
+  /**
+   * Issue #582 §3: "the bottom of every hand card is cut off by the screen
+   * edge". The reservation itself was never wrong — the box it was measured
+   * against was. `.shell` floored at a 480 px height and clips its own
+   * overflow, so on a shorter viewport the shell's bottom edge, the band pinned
+   * to it, and the bottom of every card all hung below the screen.
+   */
+  it('keeps the whole band, and every card in it, on the screen', () => {
+    for (const viewport of [
+      ...SUPPORTED,
+      // …plus the maintainer's capture: 200% browser zoom on a 1440×900 panel,
+      // which is below the old 480px `min-height` on the axis that mattered.
+      { label: '720x450 (200% zoom)', width: 720, height: 450 },
+      { label: '360x400', width: 360, height: 400 },
+    ]) {
+      const bands = shellBands(viewport);
+      // The band is inside the safe viewport on every edge…
+      expect(rectContains(bands.viewport, bands.hand), `band escapes at ${viewport.label}`).toBe(
+        true,
+      );
+      // …and it still holds a resting card plus its largest lift wherever the
+      // full reservation fits, which is what makes containment mean "no card is
+      // clipped" rather than only "the band is on screen".
+      if (bands.hand.h >= handBandHeight()) {
+        const cardTop = bands.hand.h - SHELL.handFloor - SHELL.handCardH - SHELL.handLiftMax;
+        expect(cardTop, `card lifted out of the band at ${viewport.label}`).toBeGreaterThanOrEqual(
+          0,
+        );
+      }
+    }
+  });
+
+  it('never reports a band taller than the viewport it is pinned inside', () => {
+    // The degenerate guard. Below the nominal band height there is no
+    // reservation that fits, so the honest answer is the viewport itself rather
+    // than a number that puts the card off-screen.
+    expect(handBandHeight({ height: 900 })).toBe(handBandHeight());
+    expect(handBandHeight({ height: 120 })).toBe(120);
+    expect(handBandHeight({ height: 0 })).toBe(0);
+    expect(handBandHeight({ height: -50 })).toBe(0);
+  });
+
+  it('is the reservation the shell is actually laid out from', () => {
+    // `--shell-hand-h` used to be the nominal height regardless of the viewport,
+    // so on a short screen the stylesheet drew a band the geometry never
+    // reported. It is the band rect's own height now.
+    const short = { width: 720, height: 450 };
+    const vars = shellStyleVars(short) as Record<string, string>;
+    expect(vars['--shell-hand-h']).toBe(`${shellBands(short).hand.h}px`);
+    expect(vars['--shell-hand-x']).toBe(`${shellBands(short).hand.x}px`);
   });
 
   it('bounds the fan fractions to the usable span', () => {
@@ -284,6 +373,11 @@ describe('stacking ladder — invariant I3', () => {
   it('declares exactly the LAYER ladder in tokens.css', () => {
     const declared = new Map<string, number>();
     for (const [, name, value] of tokens.matchAll(/--rune-z-([a-z-]+):\s*(-?\d+);/g)) {
+      // The plane's own depth ladder (`--rune-z-plane-*`) and the hand band's
+      // (`--rune-z-hand-*`) are separate stacking contexts with their own
+      // tokens, pinned by `planeDepth.test.ts` (issue #582). `LAYER` mirrors
+      // the SHELL ladder and only the shell ladder.
+      if (name!.startsWith('plane-') || name!.startsWith('hand-')) continue;
       declared.set(name!, Number(value));
     }
     const expected = new Map(
@@ -424,8 +518,32 @@ describe('stylesheet contract', () => {
       /\{([^}]*)\}/.exec(shell.slice(shell.indexOf(`${selector} {`)))?.[1] ?? '';
     expect(rule('.hand')).toContain('width: var(--shell-hand-w);');
     expect(rule('.hand')).toContain('height: var(--shell-hand-h);');
+    // The band is no longer flush with the viewport's left edge (I2b), so its
+    // origin is a published rect too rather than a bare `env()`.
+    expect(rule('.hand')).toContain('left: var(--shell-hand-x);');
     expect(rule('.cluster')).toContain('width: var(--shell-cluster-w);');
     expect(rule('.cluster')).toContain('var(--rune-cluster-margin)');
+  });
+
+  it('is exactly the viewport, so nothing pinned to its bottom leaves the screen', () => {
+    // A `min-height` on a box that clips its own overflow puts the bottom of
+    // the shell — and the hand band pinned to it — below a short screen's edge
+    // (issue #582 §3). `100dvh` is the whole contract.
+    const rule = (selector: string): string =>
+      /\{([^}]*)\}/.exec(shell.slice(shell.indexOf(`${selector} {`)))?.[1] ?? '';
+    const block = rule('.shell').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(block).toContain('height: 100dvh;');
+    expect(block, '.shell declares a min-height taller than a short viewport').not.toContain(
+      'min-height',
+    );
+  });
+
+  it('draws no zone caption on the hand band', () => {
+    // The `HAND` pseudo-element landed at the far edge of the screen, at mid
+    // height, labelling empty arena — and the 2.5D direction has no other zone
+    // captions (issue #582 §4).
+    expect(shell).not.toContain('.hand::before');
+    expect(shell).not.toContain("content: 'HAND'");
   });
 
   it('lifts the compact hand clear of the cluster instead of sharing a cell', () => {

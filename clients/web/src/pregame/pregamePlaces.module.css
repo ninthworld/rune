@@ -25,6 +25,7 @@
  * One column on the centre of the arena: the wordmark at landing scale, the
  * already-chosen server, the one blue action, and the quiet way to change it. */
 .doorColumn {
+  composes: ground from './pregame.module.css';
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -181,6 +182,7 @@
 }
 
 .emptyGames {
+  composes: ground from './pregame.module.css';
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -255,15 +257,41 @@
  * margin; at the shipped `* 1.5` the two bands intersected and the room drew
  * "everyone's here" across the host's own seat. `flex: none` keeps the arena's
  * column from compressing the box back under that floor.
+ *
+ * **The ring claims the arena** (issue #566). The shipped box was a fixed
+ * `268 × 4` wide, `16/9`, floored at `268 × 2.4` tall — the same rectangle on
+ * every viewport, centred in a plaza that is usually much larger. That is the
+ * "small box in the centre of a very large arena" the maintainer reported: at
+ * the 1440 × 900 reference it drew 1072 × 643 inside a ~1358 × 690 arena and
+ * left the rest of the plaza empty. The ring is now the arena — full width,
+ * `flex: 1` so it takes every row the frame does not — and the fixed aspect
+ * ratio is gone, because the arena's own aspect is the one to fill.
+ *
+ * The min-height stays, and stays scaled: it is the collision floor above, and
+ * a seat's height moves with the rung. It is expressed against the DENSE rung
+ * for the same reason the ring picks that rung below.
  */
 .ring {
+  /*
+   * The dense rung (`control-language.md` §3.4). Every other pregame place puts
+   * ONE decision on the arena and takes the open rung; this one puts a seat per
+   * player plus the table's plaque in a single box whose height is the left-hand
+   * side of the inequality above. Seats scale with the rung and the arena does
+   * not, so the open rung would grow the seats past the room at the 900 px-tall
+   * reference and reintroduce the collision #546 fixed.
+   *
+   * Composing the dense rung re-points the same §3.1 tokens the stage did, one
+   * level down, so everything inside the ring — controls, seat plaques, type,
+   * and the min-height floor below that keeps a seat and the centre apart —
+   * moves together onto the smaller rung.
+   */
+  composes: rungDense from './pregame.module.css';
+
   position: relative;
-  flex: none;
+  flex: 1 1 auto;
+  align-self: stretch;
   width: 100%;
-  max-width: calc(var(--rune-control-w-cluster) * 4);
-  aspect-ratio: 16 / 9;
   min-height: calc(var(--rune-control-w-cluster) * 2.4);
-  margin: 0 auto;
 }
 
 /* One seat's slot. `--seat-x` / `--seat-y` are the ring position `seatRing.ts`
@@ -493,6 +521,7 @@
  * Explicitly ephemeral: the lobby renders identically, and stays fully
  * functional, with it absent. */
 .ribbon {
+  composes: ground from './pregame.module.css';
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -523,6 +552,7 @@
 /* ── 8. The identity strip ─────────────────────────────────────────────────────
  * "Playing as <name>", with its inline editor — quiet, under the wordmark. */
 .identityRow {
+  composes: ground from './pregame.module.css';
   display: flex;
   flex-wrap: wrap;
   align-items: center;

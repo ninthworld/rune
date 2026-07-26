@@ -70,18 +70,34 @@ export function carveSlots(
 ): PlaneSlotFrames {
   const box = stagingBox(viewport);
   const { w: W, h: H } = box;
+
+  const duel = peripherals.length === 0;
+  const farSpec = duel ? PLANE.duelFar : PLANE.far;
+
+  // **The board is symmetric about the arena** (issue #582 §2). In a duel the
+  // receiver's band is dropped off the bottom of the staging box by exactly the
+  // margin the far side keeps off the top — derived from `farSpec.y`, so the two
+  // cannot be set independently and drift apart again. The shipped pair (far
+  // dropped 0.09 clear of the top, receiver flush with the bottom) drew the
+  // player's row near the middle of the arena and the opponent's jammed against
+  // the top edge, with the corridor left over rather than reserved.
+  //
+  // At 3+ players the receiver stays flush. The band between the far side and
+  // the receiver is not empty there — it is where the flank wings hang, down to
+  // `0.64·H` at one-per-side staging — so lifting the receiver would push it
+  // into the peripheral seats, and #500's staging validated those positions
+  // against exactly this receiver edge. The duel is also the case the issue
+  // reports and the only one with nothing in the middle to begin with.
   const receiverH = H * PLANE.receiver.h;
+  const receiverBottomMargin = duel ? H * farSpec.y : 0;
   const receiver: Rect | undefined = hasReceiver
     ? {
         x: box.x + W * PLANE.receiver.x,
-        y: box.y + H - receiverH,
+        y: box.y + H - receiverBottomMargin - receiverH,
         w: W * PLANE.receiver.w,
         h: receiverH,
       }
     : undefined;
-
-  const duel = peripherals.length === 0;
-  const farSpec = duel ? PLANE.duelFar : PLANE.far;
 
   // Ultrawide surplus-width policy (layout-model §Hand-offs and open items):
   // beyond `corridorMaxAspect` the multiplayer far side and the center corridor

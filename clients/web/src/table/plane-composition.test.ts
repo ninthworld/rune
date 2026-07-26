@@ -185,12 +185,22 @@ describe('battlefield composition — the baseline arena’s spatial ratios', ()
 
   it('leaves the focused opponent room for its own crest above its board', () => {
     // At the shipped `y = 0.02` the far side's crest resolved above the plane's
-    // top edge at every reference viewport. The band's top must clear a full
-    // crest so the seat's identity is staged, not clamped into its own board.
+    // top edge at every reference viewport. The band's top must clear half the
+    // medallion **that is actually drawn** so the seat's identity is staged, not
+    // clamped into its own board.
+    //
+    // It used to be measured against `PLANE.crest`, a 52 px constant that was
+    // smaller than every rung of the ladder and that no staging code read
+    // (issue #582 §1). Measuring against the staged cluster's own `D` is the
+    // point: a reservation that cannot see what it reserves for reserves
+    // nothing.
     for (const [, viewport] of VIEWPORTS) {
       for (const opponents of [1, 3] as const) {
         const plane = stage(seatTable({ opponents, active: 'p2' }), viewport);
-        expect(plane.farSide!.rect.y).toBeGreaterThanOrEqual(PLANE.crest.h + 6);
+        const far = plane.farSide!;
+        expect(far.rect.y).toBeGreaterThanOrEqual(far.cluster.d / 2 + 6);
+        // …and the medallion group is staged whole, on the plane.
+        expect(far.cluster.core.y).toBeGreaterThanOrEqual(0);
       }
     }
   });
@@ -236,7 +246,12 @@ describe('battlefield composition — the baseline arena’s spatial ratios', ()
       for (const opponents of SEAT_COUNTS) {
         const plane = stage(seatTable({ opponents, active: 'p2' }), viewport);
         const receiver = plane.receiver!;
-        expect(receiver.rect.y + receiver.rect.h).toBeCloseTo(viewport.height, 6);
+        // Flush with the box's bottom edge at 3+ players, where the flank wings
+        // hang in the band above it; dropped by the far side's own top margin in
+        // a duel, where the two rows are the whole board and sit symmetrically
+        // inside the arena (issue #582 §2).
+        const margin = opponents === 1 ? viewport.height * PLANE.duelFar.y : 0;
+        expect(receiver.rect.y + receiver.rect.h).toBeCloseTo(viewport.height - margin, 6);
         for (const other of [plane.farSide!, ...plane.wings]) {
           expect(other.rect.y + other.rect.h).toBeLessThanOrEqual(receiver.rect.y);
         }
@@ -275,6 +290,88 @@ describe('battlefield composition — the open central arena', () => {
         const corridor = toFractionRect(plane.corridor, viewport);
         expect(corridor.y).toBeLessThanOrEqual(0.4);
         expect(corridor.y + corridor.h).toBeGreaterThanOrEqual(0.4);
+      }
+    }
+  });
+
+  /**
+   * Issue #582 §2. The shipped duel put the far side at `0.09…0.36` of the
+   * staging box and the receiver flush with its bottom edge, which resolves —
+   * in the maintainer's capture — to the player's row near the CENTRE of the
+   * arena and the opponent's jammed against the top, with the opponent's
+   * creature clipped by the viewport and their hand fan cut off above it.
+   */
+  it('seats both duel rows symmetrically inside the arena', () => {
+    for (const [label, viewport] of VIEWPORTS) {
+      const plane = stage(seatTable({ opponents: 1, active: 'p2' }), viewport);
+      const far = plane.farSide!.rect;
+      const receiver = plane.receiver!.rect;
+      // The staging box, which is the plane itself in this fixture.
+      const topMargin = far.y;
+      const bottomMargin = viewport.height - (receiver.y + receiver.h);
+      expect(bottomMargin, `asymmetric board at ${label}`).toBeCloseTo(topMargin, 6);
+      // Neither row runs off an edge of the box it is carved in.
+      expect(far.y).toBeGreaterThan(0);
+      expect(receiver.y + receiver.h).toBeLessThanOrEqual(viewport.height);
+    }
+  });
+
+  it('reserves a legible corridor between the two duel rows', () => {
+    for (const [label, viewport] of VIEWPORTS) {
+      const plane = stage(
+        seatTable({
+          opponents: 1,
+          active: 'p2',
+          perms: [...menagerie('p1', 8), ...bears('p2', 8)],
+        }),
+        viewport,
+      );
+      const gap = plane.receiver!.rect.y - (plane.farSide!.rect.y + plane.farSide!.rect.h);
+      // The band Declare Attackers is drawn in. Stated as a floor rather than
+      // left as whatever the two rows happen not to take.
+      expect(gap / viewport.height, `corridor too tight at ${label}`).toBeGreaterThanOrEqual(
+        PLANE.corridorMinH,
+      );
+      expect(plane.corridor.h).toBeGreaterThanOrEqual(viewport.height * PLANE.corridorMinH);
+    }
+  });
+
+  /**
+   * Issue #582 §1. The local seat's medallion, life ring, and hand-count hex
+   * were drawn over the player's own battlefield row — in the maintainer's
+   * capture two of their own creatures were behind the disc, one entirely
+   * unreadable — and the opponent's medallion covered their own creature.
+   *
+   * The reservation is derived from the staged cluster now (`regions.ts`), so
+   * this is checkable at every seat count and geometry rather than asserted for
+   * the one case the constant happened to describe.
+   */
+  it('never draws a card under any seat’s medallion group', () => {
+    for (const [label, viewport] of VIEWPORTS) {
+      for (const opponents of SEAT_COUNTS) {
+        const plane = stage(
+          seatTable({
+            opponents,
+            active: 'p2',
+            perms: [
+              ...menagerie('p1', 9),
+              ...menagerie('p2', 9),
+              ...bears('p3', 12),
+              ...bears('p4', 6),
+            ],
+          }),
+          viewport,
+        );
+        for (const region of regionsOf(plane)) {
+          for (const other of regionsOf(plane)) {
+            for (const render of other.renders) {
+              expect(
+                rectsOverlap(render.rect, region.cluster.core),
+                `${other.seat}'s card under ${region.seat}'s medallion at ${label}, ${opponents} opponents`,
+              ).toBe(false);
+            }
+          }
+        }
       }
     }
   });

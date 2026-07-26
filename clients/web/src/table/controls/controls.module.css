@@ -35,6 +35,21 @@
  *
  * Every dimension reads a token from `chrome/tokens.css`; this file declares no
  * length and no colour of its own (ADR 0019).
+ *
+ * ## The menu rung (§3.4, issue #566)
+ *
+ * Nothing in this file knows about it, and that is the design. A surface that
+ * wants the family drawn larger re-points the §3.1 tokens below at the
+ * `--rune-menu-*` set — the same idiom `.wide` in the pregame already uses for
+ * `--rune-control-w-pair` — so every rule here keeps reading exactly one token
+ * and the match is untouched. There is no multiplier to forget and no second
+ * size vocabulary.
+ *
+ * Two tokens are deliberately absent from that set. The **chamfer** and the
+ * **frame stroke** are trim, not size: `--rune-control-chamfer-face` is the
+ * frame outline offset inward by the stroke (issue #571), an exact derivation
+ * that only holds while both are the drawn values, and a 45° cut reads as the
+ * same cut at any plate height.
  */
 
 /* The 45° corner cut, shared by the chamfered family. One polygon shape, two

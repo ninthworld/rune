@@ -217,7 +217,7 @@ export function RoomPlace({ view }: { view: LobbyView }) {
       footEnd={<SessionMenu onDisconnect={disconnect} />}
     >
       {lobbyError !== null && (
-        <span className={cx(p.error, p.rejected)} role="alert" data-testid="lobby-error">
+        <span className={cx(p.error, p.rejected, p.ground)} role="alert" data-testid="lobby-error">
           {lobbyError}
         </span>
       )}

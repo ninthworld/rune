@@ -29,7 +29,15 @@
   height: 100vh;
   height: 100dvh;
   min-width: 320px;
-  min-height: 480px;
+  /*
+   * No `min-height` (issue #582). The shell used to floor at 480px, and it
+   * `overflow: hidden`s its own box, so on any shorter viewport — a small
+   * window, a 125% text scale, the maintainer's 200% browser zoom — the shell
+   * was TALLER than the screen and its bottom edge hung below it. The hand band
+   * is pinned to that edge, so the bottom of every card in hand went with it:
+   * the exact clipping #528's invariant I2 reserves against, produced by the
+   * one thing the reservation cannot see. The shell is the viewport, exactly.
+   */
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   overflow: hidden;
@@ -114,7 +122,11 @@
   position: absolute;
   z-index: var(--rune-z-shell);
   bottom: env(safe-area-inset-bottom, 0px);
-  left: env(safe-area-inset-left, 0px);
+  /* `--shell-hand-x` already includes the safe-area inset (`shellBands` lays out
+     inside it), so the band is positioned from the shell's border box and NOT
+     from `env()` a second time. It is the cluster's column plus its margins on
+     both sides, which is what centres the fan on the screen (invariant I2b). */
+  left: var(--shell-hand-x);
   width: var(--shell-hand-w);
   height: var(--shell-hand-h);
   overflow: hidden;
@@ -124,15 +136,18 @@
   background: radial-gradient(ellipse at 50% 100%, rgb(78 154 155 / 12%), transparent 65%);
 }
 
-.hand::before {
-  content: 'HAND';
-  position: absolute;
-  top: 4px;
-  left: 8px;
-  color: var(--rune-text-muted);
-  font: 700 10px/1 var(--rune-font-display);
-  letter-spacing: 0.12em;
-}
+/*
+ * There is no zone caption here (issue #582).
+ *
+ * The shipped band drew a 10 px muted `HAND` from a `::before` at its top-left
+ * corner. The band spans the shell and is anchored to an edge, so that label
+ * landed at the far edge of the screen at mid height, nowhere near the fan it
+ * named — labelling empty arena — and it was `--rune-text-muted` over an
+ * illustrated floor with no plate, so it was barely visible even there. The
+ * 2.5D direction has no other zone captions; this one was leftover scaffolding
+ * from the dock era, and it is gone rather than repositioned. The fan is the
+ * player's own hand: nothing on screen needs to say so.
+ */
 
 /*
  * One card of the fan (issue #533). Three custom properties carry its place on
@@ -178,7 +193,7 @@
 /* Hover / focus lifts the subject clear of its neighbours at full tier. */
 .handCard:hover,
 .handCard:focus-visible {
-  z-index: 6;
+  z-index: var(--rune-z-hand-lifted);
   transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift)))
     rotate(var(--hand-angle));
 }
@@ -199,7 +214,7 @@
  * upright, as the baseline draws the held card.
  */
 .handCard[aria-pressed='true'] {
-  z-index: 4;
+  z-index: var(--rune-z-hand-selected);
   outline: 3px solid var(--rune-selection);
   outline-offset: 2px;
   transform: translateX(-50%) translateY(calc(-1 * var(--shell-hand-lift-selected))) rotate(0deg);
@@ -219,7 +234,7 @@
  */
 .handPage {
   position: absolute;
-  z-index: 7;
+  z-index: var(--rune-z-hand-pager);
   bottom: var(--shell-hand-floor);
   width: var(--rune-touch);
   height: var(--rune-touch);
@@ -289,7 +304,11 @@
 
 .close {
   position: absolute;
-  z-index: 1;
+  /* Raised inside the sheet's own stacking context, over the surface it
+     closes. The shell rung is the honest name for "raised within its own
+     region" — the sheet is `position: relative`, so nothing here competes with
+     the ladder outside it. */
+  z-index: var(--rune-z-shell-raised);
   top: 0;
   right: 0;
   width: 44px;

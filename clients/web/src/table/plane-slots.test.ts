@@ -32,8 +32,12 @@ describe('stagePlane fixed slots per player count (issue #478, layout-model §St
     for (const opponents of [1, 2, 3, 4, 5]) {
       const plane = stage(seatTable({ opponents }));
       const receiver = plane.receiver!;
-      // Bottom third (±) of the plane, below every other region.
-      expect(receiver.rect.y + receiver.rect.h).toBeCloseTo(DESKTOP.height);
+      // Bottom third (±) of the plane, below every other region — flush with
+      // the box's edge at 3+ players, and dropped by the far side's own top
+      // margin in a duel, where the two rows are symmetric about the arena
+      // (issue #582 §2).
+      const margin = opponents === 1 ? DESKTOP.height * PLANE.duelFar.y : 0;
+      expect(receiver.rect.y + receiver.rect.h).toBeCloseTo(DESKTOP.height - margin);
       expect(receiver.rect.h).toBeCloseTo(DESKTOP.height * PLANE.receiver.h);
       for (const other of [plane.farSide!, ...plane.wings]) {
         expect(other.rect.y + other.rect.h).toBeLessThanOrEqual(receiver.rect.y);

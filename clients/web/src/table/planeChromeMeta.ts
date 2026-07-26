@@ -25,6 +25,7 @@ import type {
   ClusterChip,
   HandFanSlot,
   PlaneRegion,
+  RackIndicator,
   RackSlot,
   SeatCluster,
   SummaryTileSlot,
@@ -216,6 +217,27 @@ export function rackMeta(region: PlaneRegion, slots: readonly RackSlot[]): Recor
   };
   for (const slot of slots) meta[slot.zone] = String(slot.count);
   return meta;
+}
+
+/**
+ * One digest sub-indicator's inputs (zone-geography §6.1, issue #582 §5).
+ *
+ * `zone` is what the stylesheet keys the chip's material off — the card back,
+ * the ash, the glass pane, the gold rule — so a digested rack keeps every
+ * zone's identity instead of degrading to a column of unlabelled numbers. It is
+ * decoration, not a target: `aria` is absent because the button it sits on
+ * already names every zone and its count.
+ */
+export function rackIndicatorMeta(
+  region: PlaneRegion,
+  indicator: RackIndicator,
+): Record<string, string> {
+  return {
+    seat: region.seat,
+    zone: indicator.zone,
+    count: String(indicator.count),
+    eliminated: String(region.eliminated),
+  };
 }
 
 /** A compact tile's non-geometry inputs as data attributes (a tile owes the

@@ -249,6 +249,79 @@ the reason — today the single case is `PromptOption.requires` not yet satisfie
   pressing the handle in one corner made a panel appear over the activity badge
   in the other.
 
+### 3.4 The menu rung — the language's one viewport term (issue #566)
+
+D1's scale anchor (§1) is right for the **match**: the arena is full of cards,
+the cluster is deliberately small edge furniture, and chrome that grew with the
+viewport would eat the board. It is wrong for the **menus**, where the arena is
+empty. The pregame sized itself from §3.1's fixed widths and the fixed type ramp
+with no viewport term anywhere, and the maintainer read the result as a UI shrunk
+into the corner of a picture: the `RUNE` lockup, the status lines, and `CONNECT`
+all too small to be the screen's one action.
+
+So the family gains a **rung**: a restatement of §3.1's own values, fluid
+between each value and a ceiling. Each rung is one `clamp()` per token —
+
+    clamp(§3.1 value, §3.1 value / basis × 100vmin, §3.1 value × cap)
+
+| Rung | basis | cap | Where |
+| --- | --- | --- | --- |
+| (none) | — | — | the match — §3.1 exactly, untouched |
+| open | 620 | 1.6 | front door, server lobby, create-table |
+| dense | 900 | 1.25 | the ready room's seating ring |
+
+The rules the rung follows:
+
+- **It restates the component sheet; it never states a new number.** Every
+  length is derived from the §3.1 value it scales, so §3.1 still decides the
+  proportions. At a rung's floor a menu control is bit-for-bit a match control,
+  which is what keeps this a scale pass and not a second button vocabulary.
+- **The floor is the §3.1 value.** A rung never draws a control *smaller* than
+  the match does, so the 44 px anchor D1 pins can never be undercut by a small
+  or zoomed viewport.
+- **Trim is not on a rung.** The chamfer and the frame stroke are fixed: the
+  face-outline offsets of §3.1 (issue #571) are an exact derivation that only
+  holds at the drawn values, and a 45° cut reads as the same cut at any plate
+  height.
+- **`vmin`, never `vw`.** An ultrawide's surplus width is gutter — the plane
+  spends it the same way (`layout-model.md`) — and growing controls into it
+  would push an arena's content off the top and bottom of a short window.
+- **Two rungs, because there are two kinds of menu arena.** The *open* rung
+  serves a place that puts one decision on an empty plaza. The *dense* rung
+  serves the ready room, which puts a seat per player plus the table's own
+  plaque inside one box whose height must clear half a seat plus half the
+  centre; seats grow with the rung and the arena does not, so the open rung
+  would reintroduce the collision #546 fixed.
+
+**How a surface takes a rung.** It re-points §3.1's own tokens at that rung's
+set — the idiom the pregame already uses for `--rune-control-w-pair`. Nothing in
+`table/controls` knows a rung exists: every rule there reads exactly one token,
+so a control on a menu and the same control in a match are one component drawn
+at two sizes, and the plaque behind it and the text beside it move with it
+because they read the same tokens.
+
+**Why not a single scale multiplier.** The obvious shape is one unitless
+`clamp(1, calc(100vmin / 620), 1.6)` that every length multiplies by. It is
+invalid CSS — `100vmin / 620` is a *length*, so the clamp mixes a length with
+two numbers, the declaration is dropped at computed-value time, and every
+property that multiplied by it is dropped with it. There is no portable way to
+derive a unitless ratio from the viewport (`calc(100vmin / 620px)` is
+`<length>/<length>`, which Firefox does not resolve), so the fluid term is
+carried by each length. A second trap sits behind the first: a *derived* custom
+property is substituted where it is declared, so `:root { --w: calc(var(--base)
+* var(--scale)) }` cannot see a `--scale` a descendant overrides. Re-pointing
+avoids both, because the tokens are read by ordinary properties on descendants.
+
+`chrome/tokens.css` declares both rungs, `table/controls/controlTokens.ts`
+mirrors `basis` and `cap` as `MENU_RUNG`, `controlTokens.test.ts` recomputes
+every clamp from the token it restates, and `pregame/menuRung.test.ts` resolves
+the stylesheets under CSS's own substitution model and checks the number each
+scope ends up laying out from.
+
+The rung is stated here rather than in the pregame because #580 is the same
+fixed-width-versus-viewport failure in the match and should spend the same term
+rather than inventing a second one.
+
 ---
 
 ## 4. One blue primary per state, and how its label is derived

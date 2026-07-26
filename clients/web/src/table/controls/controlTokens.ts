@@ -81,6 +81,54 @@ export const CONTROL_TOKEN_NAMES: Record<keyof typeof CONTROL, string> = {
 };
 
 /**
+ * The **menu rungs** (§3.4, issue #566) — the one viewport term the control
+ * language has, and the mirror of `--rune-menu-scale` / `--rune-menu-scale-dense`
+ * in `chrome/tokens.css`.
+ *
+ * A rung multiplies §3.1's own plate values; it never replaces them. `min` is
+ * the floor a rung clamps to, and it is `1` on both: a small or zoomed viewport
+ * draws the menus at exactly the match's control sizes and never smaller. `basis`
+ * is the `100vmin` divisor and `max` the ceiling, so the rung a viewport takes is
+ * `clamp(min, vmin / basis, max)` — {@link menuRung} is that formula, and
+ * `controlTokens.test.ts` parses the stylesheet and fails if the two disagree.
+ *
+ * `vmin` rather than `vw`: an ultrawide's surplus width is gutter (the plane's
+ * own policy in `plane/metrics.ts` spends it the same way), and growing controls
+ * into it would push the arena's content off the top and bottom of a short
+ * window.
+ */
+export const MENU_RUNG = {
+  /** One decision on an empty plaza: the front door, the lobby, create-table. */
+  open: { min: 1, basis: 620, max: 1.6 },
+  /**
+   * A seat per player plus the table's plaque in one box — the ready room's
+   * ring. Seats scale with the rung and the arena does not, so a generous rung
+   * grows the seats past the room; this one grows more slowly and stops sooner.
+   */
+  dense: { min: 1, basis: 900, max: 1.25 },
+} as const;
+
+/** A menu rung's name. */
+export type MenuRungName = keyof typeof MENU_RUNG;
+
+/** The token in `chrome/tokens.css` each rung mirrors. */
+export const MENU_RUNG_TOKEN_NAMES: Record<MenuRungName, string> = {
+  open: '--rune-menu-scale',
+  dense: '--rune-menu-scale-dense',
+};
+
+/**
+ * The multiplier a rung resolves to on a viewport — the TS form of the
+ * stylesheet's `clamp(min, 100vmin / basis, max)`. Layout code that has to
+ * reason about a menu's drawn size (and the tests that pin the rung's behaviour
+ * at the reference geometries) reads this rather than re-deriving the clamp.
+ */
+export function menuRung(rung: MenuRungName, viewport: { width: number; height: number }): number {
+  const { min, basis, max } = MENU_RUNG[rung];
+  return Math.max(min, Math.min(max, Math.min(viewport.width, viewport.height) / basis));
+}
+
+/**
  * The five phase groups the step pips render (D3), in turn order.
  *
  * The baselines draw four pips in panel 6 and three in situ; those counts are
