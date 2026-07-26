@@ -520,6 +520,46 @@ restyle must not drop one.
   ≥ 3:1. Seat accents are indicator-class (`#4D7EC9` on `#23262B` is ≈ 3.7:1) —
   they may carry rings, stripes, and pips, and must **never** carry text.
 
+### 5.11 Scale and the ground plate (issue #566)
+
+Two things the composition above assumed and did not state, both reported by the
+maintainer against the shipped pregame: *"the text (including the logo) are
+almost impossible to read, and everything is so small with so much wasted
+space."*
+
+**Scale is the control language's menu rung**
+([`control-language.md`](control-language.md) §3.4), not a local number. Every
+pregame place sets `--rune-control-scale` once — the *open* rung on the front
+door, the lobby, and create-table; the *dense* rung inside the ready room's ring
+— and every control, plaque width, arena column, and type size on that place is
+derived from it. §3.1's component sheet still fixes the proportions; the rung is
+the one viewport term, and it lives in the control language so #580's match-side
+version of the same problem spends the same term rather than inventing a second.
+
+The consequence for §5.3: **the ring is the arena.** It was a fixed 16:9 box
+capped at four cluster widths and centred in the plaza — at the 1440×900
+reference, 1072 × 643 inside a ~1358 × 690 arena. It now takes the arena's full
+width and every row the menu frame does not, keeping only the collision floor
+that stops a seat and the centre plaque intersecting. It picks the dense rung
+because that floor is the left-hand side of an inequality whose right-hand side
+is seat height, and seats scale with the rung while the arena does not.
+
+**Text drawn on the arena sits on a ground plate.** The contrast floor above is
+met against a *surface*, and the pregame's own tokens were chosen against the
+flat surfaces of the previous implementation. Over the shipped environment
+plates — an illustrated, light, high-texture floor — the wordmark, the arena
+heading, the status lines, and the empty-state sentence had nothing behind them
+at all. There is no single foreground that clears 4.5:1 over both Moonlit Ruins'
+slate and Runic Vale's pale sand while staying one palette, so the plate is what
+makes the surface knowable: a soft veil at `--pregame-ground`, uniform under the
+text and dissolving outward with no edge, whose alpha is chosen so that the
+composite over **every slot of every shipped theme** clears the floor for every
+pregame foreground. `sceneTokens.test.ts` computes that composite rather than
+checking the token, and `pregameScene.test.ts` pins which blocks sit on it.
+
+It is a veil, not a panel: the carved-panel treatment §4 retired does not come
+back through this door.
+
 ## 6. Where settings live (#505)
 
 The presentation settings surface (`table/PresentationSettings.tsx`, backed by

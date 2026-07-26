@@ -60,6 +60,26 @@ export interface RackSlot {
   count: number;
 }
 
+/**
+ * One shaped sub-indicator inside a **digest** button (§6.1, issue #582 §5).
+ *
+ * A digest rack resolves every zone anchor to one button, which is right for
+ * *anchors* — a motion must terminate somewhere — and says nothing about what
+ * the button shows. These are what it shows: one chip per zone, carrying that
+ * zone's own material and its count, so a digested rack still answers "which
+ * number is which zone" without expanding. They are not hotspots; the button is
+ * the single ≥ 44 px target, and {@link digestExpansionRects} is what separates
+ * the zones into pickable rects.
+ */
+export interface RackIndicator {
+  /** Which zone this chip stands for. */
+  zone: RackZone;
+  /** Its drawn box, inside the button. */
+  rect: Rect;
+  /** The zone's count, straight from the view (§4 — one home per datum). */
+  count: number;
+}
+
 /** A seat's staged zone rack. */
 export interface SeatRack {
   /** The seat this rack belongs to. */
@@ -76,6 +96,12 @@ export interface SeatRack {
   slots: RackSlot[];
   /** The union of every slot's hit rect — the `zone:<seat>:rack` anchor (§7). */
   bounds: Rect;
+  /**
+   * The digest button's shaped sub-indicators, in the fixed §1 order. Empty for
+   * every drawn variant, where each zone has its own slot and its own material
+   * already.
+   */
+  indicators: RackIndicator[];
   /** How far the region's card content must be inset to clear the rack, per edge. */
   inset: { left: number; right: number };
 }
@@ -302,14 +328,31 @@ export function stageRack(request: RackRequest): SeatRack {
     origin,
     slots,
     bounds,
+    indicators: [],
     inset: insetFor(outboard, request.rect, bounds),
   };
 }
 
 /**
+ * The size of a digest button holding `count` shaped sub-indicators — derived
+ * from the chip grid, never a literal, so growing a chip grows the button that
+ * has to hold it instead of overflowing it. Floored at the 44 px hit target.
+ */
+function digestButtonSize(count: number): { w: number; h: number } {
+  const { chip, gap, pad, columns } = PLANE.rack.digest;
+  const cols = Math.min(columns, Math.max(1, count));
+  const rows = Math.max(1, Math.ceil(count / columns));
+  return {
+    w: Math.max(PLANE.minHit, 2 * pad + cols * chip.w + (cols - 1) * gap),
+    h: Math.max(PLANE.minHit, 2 * pad + rows * chip.h + (rows - 1) * gap),
+  };
+}
+
+/**
  * The digest rack (§6.1): one ≥ 44 px button on the region's outer edge. Every
- * zone key resolves to it (§7), so an anchor is never lost — the four counts
- * ride as sub-indicators, which are a paint concern, not geometry.
+ * zone key resolves to it (§7), so an anchor is never lost — and the counts
+ * ride on **shaped sub-indicators**, one per zone, rather than as a column of
+ * unlabelled numbers (issue #582 §5).
  */
 function digestRack(
   request: RackRequest,
@@ -319,8 +362,8 @@ function digestRack(
 ): SeatRack {
   const { seat, zones, commander } = request;
   const pad = PLANE.pad + PLANE.rack.halo;
-  const w = Math.max(PLANE.minHit, PLANE.pile.w);
-  const h = Math.max(PLANE.minHit, PLANE.pile.h);
+  const counts = countsFor(zones, commander);
+  const { w, h } = digestButtonSize(counts.length);
   const rect: Rect = {
     x: outboard ? region.x + region.w - pad - w : region.x + pad,
     y: region.y + pad,
@@ -328,11 +371,25 @@ function digestRack(
     h,
   };
   const hitRect = hitRectFor(rect);
-  const slots: RackSlot[] = countsFor(zones, commander).map(({ zone, count }) => ({
+  const slots: RackSlot[] = counts.map(({ zone, count }) => ({
     zone,
     rect,
     hitRect,
     count,
+  }));
+  // The chip grid, in the fixed §1 order: library, graveyard, exile, command,
+  // reading left-to-right then down. The order never reverses, exactly as it
+  // never reverses on a drawn rack, so the digest is the same object read small.
+  const g = PLANE.rack.digest;
+  const indicators: RackIndicator[] = counts.map(({ zone, count }, index) => ({
+    zone,
+    count,
+    rect: {
+      x: rect.x + g.pad + (index % g.columns) * (g.chip.w + g.gap),
+      y: rect.y + g.pad + Math.floor(index / g.columns) * (g.chip.h + g.gap),
+      w: g.chip.w,
+      h: g.chip.h,
+    },
   }));
   return {
     seat,
@@ -342,6 +399,7 @@ function digestRack(
     origin: { x: rect.x + w / 2, y: rect.y + h / 2 },
     slots,
     bounds: hitRect,
+    indicators,
     inset: insetFor(outboard, request.rect, hitRect),
   };
 }

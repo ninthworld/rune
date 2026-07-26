@@ -54,6 +54,38 @@ export const SCENE_NEUTRALS = {
   textMuted: '#9BA0A8',
 } as const;
 
+/**
+ * The **ground plate** (issue #566) — the veil that holds text up where it is
+ * drawn straight onto the arena rather than onto a plaque.
+ *
+ * The pregame's text tokens were chosen against the flat surfaces of the
+ * previous implementation and then re-used over an illustrated, light,
+ * high-texture floor. {@link SCENE_NEUTRALS.textMuted} in particular has nothing
+ * behind it there: the contrast gate below holds it to 4.5:1 against the
+ * *foundation* surfaces, and an environment plate is not one of those. The
+ * maintainer's report is the consequence — the wordmark, "Ready to play",
+ * "Change server", the lobby's heading and empty-state sentence, and "Join with
+ * an ID" all read as close to invisible.
+ *
+ * A plate rather than a heavier text token, because the requirement is a floor
+ * against **every shipped theme's plates**, and there is no single foreground
+ * that clears 4.5:1 over both `moonlitRuins`' slate and `runicVale`'s pale sand
+ * while staying one palette. Compositing a known veil over the arena makes the
+ * effective surface theme-independent instead, which is a property a test can
+ * check — see the ground-plate gate in `sceneTokens.test.ts`, which composites
+ * this over all thirteen slots of all four themes.
+ *
+ * `alpha` is the smallest step of 0.02 at which every pregame foreground clears
+ * its floor over every slot of every theme with margin; the binding case is
+ * `verdantCanals.propCool` (`#3FC2E0`) under muted text, which lands at 4.87:1.
+ */
+export const SCENE_GROUND_PLATE = {
+  /** The veil's colour — the world's own ink, so the plate is not a new hue. */
+  color: SCENE_NEUTRALS.ink,
+  /** Its opacity over the arena. */
+  alpha: 0.78,
+} as const;
+
 // ── §2 Frame accents — carried verbatim from the card set ────────────────────
 
 /**
@@ -574,6 +606,35 @@ export function relativeLuminance(hex: string): number {
     return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
   };
   return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+/**
+ * `#RRGGBB` composite of `fg` at `alpha` over `bg` — ordinary source-over
+ * compositing in sRGB, which is what a browser paints for a translucent
+ * background over an opaque one.
+ *
+ * It exists so a *drawn* surface can be contrast-checked. Every gate above
+ * compares a foreground against a token; the ground plate (issue #566) is a
+ * token laid over an environment plate, and the thing a reader actually sees is
+ * the composite. Checking the plate's own colour instead would pass while the
+ * shipped screen failed.
+ */
+export function compositeOver(fg: string, alpha: number, bg: string): string {
+  const mix = (offset: number): string => {
+    const f = parseInt(fg.slice(offset, offset + 2), 16);
+    const b = parseInt(bg.slice(offset, offset + 2), 16);
+    return Math.round(f * alpha + b * (1 - alpha))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+  };
+  return `#${mix(1)}${mix(3)}${mix(5)}`;
+}
+
+/** A `#RRGGBB` token as the `rgb(… / …%)` a stylesheet can lay over the arena. */
+export function withAlpha(hex: string, alpha: number): string {
+  const channel = (offset: number): number => parseInt(hex.slice(offset, offset + 2), 16);
+  return `rgb(${channel(1)} ${channel(3)} ${channel(5)} / ${(alpha * 100).toFixed(1)}%)`;
 }
 
 /** WCAG contrast ratio between two `#RRGGBB` colors (order-independent). */

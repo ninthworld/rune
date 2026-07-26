@@ -217,6 +217,59 @@ the reason — today the single case is `PromptOption.requires` not yet satisfie
   subject-less actions plus the contextual echo of the current selection, and
   nothing else, at any board size.
 
+### 3.4 The menu rung — the language's one viewport term (issue #566)
+
+D1's scale anchor (§1) is right for the **match**: the arena is full of cards,
+the cluster is deliberately small edge furniture, and chrome that grew with the
+viewport would eat the board. It is wrong for the **menus**, where the arena is
+empty. The pregame sized itself from §3.1's fixed widths and the fixed type ramp
+with no viewport term anywhere, and the maintainer read the result as a UI shrunk
+into the corner of a picture: the `RUNE` lockup, the status lines, and `CONNECT`
+all too small to be the screen's one action.
+
+So the family gains a **rung**: a multiplier on §3.1, never a replacement for it.
+
+| Rung | Value | Where |
+| --- | --- | --- |
+| (none) | `1` | the match — §3.1 exactly, untouched |
+| open | `clamp(1, 100vmin / 620, 1.6)` | front door, server lobby, create-table |
+| dense | `clamp(1, 100vmin / 900, 1.25)` | the ready room's seating ring |
+
+The rules the rung follows:
+
+- **It multiplies the component sheet.** Every plate length and every label size
+  in §3.1 is drawn at `value × rung`. §3.1 still decides the proportions; the
+  rung only decides how large the family is drawn. At a rung of `1` a menu
+  control is bit-for-bit a match control, which is what keeps this a scale pass
+  and not a second button vocabulary.
+- **The floor is `1`.** A rung never draws a control *smaller* than the match
+  does, so the 44 px anchor D1 pins can never be undercut by a small or zoomed
+  viewport.
+- **Trim does not scale.** The chamfer and the frame stroke are fixed: the
+  face-outline offsets of §3.1 (issue #571) are an exact derivation that only
+  holds at the drawn values, and a 45° cut reads as the same cut at any plate
+  height.
+- **`vmin`, never `vw`.** An ultrawide's surplus width is gutter — the plane
+  spends it the same way (`layout-model.md`) — and growing controls into it
+  would push an arena's content off the top and bottom of a short window.
+- **Two rungs, because there are two kinds of menu arena.** The *open* rung
+  serves a place that puts one decision on an empty plaza. The *dense* rung
+  serves the ready room, which puts a seat per player plus the table's own
+  plaque inside one box whose height must clear half a seat plus half the
+  centre; seats scale with the rung and the arena does not, so the open rung
+  would reintroduce the collision #546 fixed.
+
+**One knob.** A surface picks a rung by setting `--rune-control-scale` once;
+`table/controls` multiplies its plate by it, and the `--rune-menu-*` lengths and
+type ramp are derived from the same property, so a control, the plaque behind it,
+and the text beside it can never disagree. `chrome/tokens.css` declares the
+rungs, `table/controls/controlTokens.ts` mirrors them as `MENU_RUNG`, and
+`controlTokens.test.ts` fails if the two drift.
+
+The rung is stated here rather than in the pregame because #580 is the same
+fixed-width-versus-viewport failure in the match and should spend the same term
+rather than inventing a second one.
+
 ---
 
 ## 4. One blue primary per state, and how its label is derived

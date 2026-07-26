@@ -142,7 +142,8 @@
    * `.rail`, or `.bottom` can climb past that region's rung. Anything that must
    * outrank a shell region has to be a sibling of the regions. The plane's own
    * z-indices are scoped by `isolation: isolate` and are deliberately off this
-   * ladder — they order objects within the scene only. */
+   * ladder — they order objects within the scene only, and they have their own
+   * declared ladder below (`--rune-z-plane-*`, issue #582). */
   --rune-z-scene: 1;
   --rune-z-shell: 10;
   --rune-z-shell-raised: 12;
@@ -152,6 +153,66 @@
   --rune-z-popover: 50;
   --rune-z-overlay: 60;
   --rune-z-toast: 70;
+
+  /*
+   * ── The plane's own depth ladder (issue #582) ────────────────────────────
+   * Everything staged INSIDE the scene, ordered. It is a second ladder rather
+   * than more rungs on the one below because the plane host carries
+   * `isolation: isolate`: these order objects within the scene only, and the
+   * whole scene then sits at `--rune-z-scene` against the shell's chrome.
+   *
+   * It exists because the shipped plane spread eleven bare `z-index` numbers
+   * across two stylesheets with no statement anywhere of what the order was
+   * supposed to be. A card at `3` painted under a medallion at `5` and over a
+   * nameplate at `4` — a real decision that nothing recorded and nothing could
+   * check, which is why the maintainer read the seat cluster's overlap as
+   * "falling out of render order". `planeDepth.test.ts` parses the plane
+   * stylesheets and fails on any bare number.
+   *
+   * Three groups, because the plane has three stacking contexts.
+   *
+   * **The host's layers.** The staged plane, the effects surface, and the
+   * semantic-control overlay.
+   */
+  --rune-z-plane-stage: 2;
+  --rune-z-plane-effects: 30;
+  --rune-z-plane-controls: 40;
+  /*
+   * **The objects on the plane**, bottom to top: the *ground* a seat's board is
+   * shaded onto; the seat's own *fixtures* (an opponent's face-down fan) behind
+   * its cards; the *cards*, which are the game; the seat's *zones* and its
+   * nameplate, objects beside the cards rather than on them; then the identity
+   * *cluster* and its details, which stay readable over a crowded board because
+   * the medallion is the player-targeting surface and can never degrade away;
+   * and finally travel *ghosts*, and a prompt *candidate*, which is the one
+   * thing the server is asking about and outranks every other object.
+   */
+  --rune-z-plane-ground: 1;
+  --rune-z-plane-fixture: 2;
+  --rune-z-plane-card: 3;
+  --rune-z-plane-zone: 4;
+  --rune-z-plane-cluster: 5;
+  --rune-z-plane-cluster-detail: 6;
+  --rune-z-plane-cluster-status: 7;
+  --rune-z-plane-cluster-rail: 8;
+  --rune-z-plane-ghost: 9;
+  --rune-z-plane-candidate: 20;
+  /*
+   * **Inside the control overlay.** A drop *board* is a whole region lit up and
+   * sits behind the individual drop *targets* carved out of it.
+   */
+  --rune-z-plane-drop-board: 1;
+  --rune-z-plane-drop-target: 50;
+  /*
+   * **Inside the hand band.** The fan's own order: a resting card, the selected
+   * one raised clear of its neighbours, a hovered/focused one above that, and
+   * the page controls above all of them (they sit in the gutters the fan gives
+   * back, so they never cover a card, but they must stay reachable).
+   */
+  --rune-z-hand-card: 1;
+  --rune-z-hand-selected: 4;
+  --rune-z-hand-lifted: 6;
+  --rune-z-hand-pager: 7;
 
   /* ── Shell geometry fallbacks (issue #528) ─────────────────────────────────
    * `table/live/shellLayout.ts` publishes the live values as `--shell-*` on the
@@ -257,6 +318,67 @@
    * have one place to reach, exactly as `--rune-transition` does. */
   --rune-control-sweep: 600ms;
   --rune-control-shake: 200ms;
+  /* ── The menu rungs (control-language.md §3.4, issue #566) ────────────────
+   * D1's scale anchor — 1 baseline px = 1 CSS px — is right for the MATCH,
+   * where the arena is full of cards and the cluster is deliberately small edge
+   * furniture. It is wrong for the menus, where the arena is empty: the same
+   * numbers read as a UI shrunk into a corner of a picture, which is what the
+   * maintainer reported against the shipped pregame (issue #566).
+   *
+   * So the control language gains a viewport term, and only the menus spend it.
+   * A rung is a **multiplier, never a replacement**: every menu length below is
+   * §3.1's own value times the rung, so the component sheet still decides the
+   * proportions and the rung only decides how large the whole family is drawn.
+   * At a rung's floor of 1 a menu control is bit-for-bit the match control,
+   * which is what keeps this a scale pass and not a second button vocabulary.
+   *
+   * `100vmin` rather than `vw` or `vh`: the rung must not grow with an
+   * ultrawide's surplus width (that is gutter, not content) and must not shrink
+   * on a landscape phone. The floor of 1 means a small or zoomed viewport never
+   * draws a control SMALLER than the match does.
+   *
+   * There are two rungs because there are two kinds of pregame arena:
+   *
+   * - **open** — the front door, the server lobby, the create-table setup. One
+   *   decision on an empty plaza, so the rung is generous.
+   * - **dense** — the ready room's seating ring, which puts a seat per player
+   *   plus the table's own plaque inside one box and only reads correctly while
+   *   the ring's height clears half a seat plus half the centre
+   *   (`pregamePlaces.module.css`). Seats scale with the rung and the arena does
+   *   not, so the generous rung would reintroduce exactly the collision #546
+   *   fixed. This one grows more slowly and stops sooner.
+   *
+   * `table/controls/controlTokens.ts` mirrors both as `MENU_RUNG`, and
+   * `controlTokens.test.ts` fails if the two drift. */
+  --rune-menu-scale: clamp(1, calc(100vmin / 620), 1.6);
+  --rune-menu-scale-dense: clamp(1, calc(100vmin / 900), 1.25);
+  /* **The one knob.** Every control in `table/controls` multiplies its §3.1
+   * plate by this, and every `--rune-menu-*` length and type size below is
+   * derived from it — so a surface picks a rung once and its controls, its
+   * plaques, and its type all move together. It is `1` everywhere by default:
+   * the match is the unscaled case and §3.1's widths win there untouched. */
+  --rune-control-scale: 1;
+  /* The lengths the surfaces AROUND a control lay out from — plaque widths,
+   * arena columns, the menu frame's own inset and gutter. Derived from the
+   * chosen rung, so they never disagree with the control beside them. */
+  --rune-menu-w-cluster: calc(var(--rune-control-w-cluster) * var(--rune-control-scale));
+  --rune-menu-w-pair: calc(var(--rune-control-w-pair) * var(--rune-control-scale));
+  --rune-menu-h: calc(var(--rune-control-h) * var(--rune-control-scale));
+  --rune-menu-touch: calc(var(--rune-touch) * var(--rune-control-scale));
+  --rune-menu-margin: calc(var(--rune-cluster-margin) * var(--rune-control-scale));
+  --rune-menu-gap: calc(var(--rune-cluster-gap) * var(--rune-control-scale));
+  /* The type ramp at the chosen rung. Separate names rather than a
+   * re-declaration of `--rune-type-*`: a custom property that resolves through
+   * itself is invalid at computed-value time, so the menus USE these rather
+   * than shadowing the scale the match reads. */
+  --rune-menu-type-display: calc(var(--rune-type-display) * var(--rune-control-scale));
+  --rune-menu-type-title: calc(var(--rune-type-title) * var(--rune-control-scale));
+  --rune-menu-type-heading: calc(var(--rune-type-heading) * var(--rune-control-scale));
+  --rune-menu-type-body-lg: calc(var(--rune-type-body-lg) * var(--rune-control-scale));
+  --rune-menu-type-body: calc(var(--rune-type-body) * var(--rune-control-scale));
+  --rune-menu-type-caption: calc(var(--rune-type-caption) * var(--rune-control-scale));
+  --rune-menu-type-micro: calc(var(--rune-type-micro) * var(--rune-control-scale));
+
   /* The 135° gold frame every chamfered control and the plaque wear (§3.1). */
   --rune-control-frame-gradient: linear-gradient(
     135deg,

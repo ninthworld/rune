@@ -277,6 +277,94 @@ describe('zone rack — the four variants (§6)', () => {
   });
 
   /**
+   * §6.1's digest form is "one rack button with four **shaped** sub-indicators".
+   * The shipped button drew a column of bare numbers — `28 / 1 / 0` in a
+   * featureless dark rectangle, nothing saying which number was which zone, and
+   * the command count dropped entirely (issue #582 §5). The numbers are the one
+   * part of a pile that is NOT its identity, so a digest that keeps only the
+   * numbers has kept the wrong half.
+   */
+  it('keeps every zone’s identity in the digest, one shaped chip each', () => {
+    for (const [zones, table] of [
+      [3, seatTable],
+      [4, commanderTable],
+    ] as const) {
+      const plane = stage(table({ opponents: 5, active: 'p2' }), BASELINE);
+      for (const wing of plane.wings) {
+        expect(wing.rack.variant).toBe('digest');
+        // One chip per zone anchor, in the fixed §1 order, never fewer.
+        expect(wing.rack.indicators.map((i) => i.zone)).toEqual(wing.rack.slots.map((s) => s.zone));
+        expect(wing.rack.indicators).toHaveLength(zones);
+        // Each carries its own count — the number is tied to a zone rather than
+        // floating in a column.
+        for (const indicator of wing.rack.indicators) {
+          const slot = wing.rack.slots.find((s) => s.zone === indicator.zone)!;
+          expect(indicator.count).toBe(slot.count);
+        }
+        // The chips are separate, drawn boxes inside the button — so a
+        // stylesheet can give each its own material and silhouette.
+        for (const indicator of wing.rack.indicators) {
+          expect(indicator.rect.w).toBeGreaterThan(0);
+          expect(indicator.rect.h).toBeGreaterThan(0);
+          expect(indicator.rect.x).toBeGreaterThanOrEqual(wing.rack.bounds.x);
+          expect(indicator.rect.y).toBeGreaterThanOrEqual(wing.rack.bounds.y);
+          expect(indicator.rect.x + indicator.rect.w).toBeLessThanOrEqual(
+            wing.rack.bounds.x + wing.rack.bounds.w,
+          );
+          expect(indicator.rect.y + indicator.rect.h).toBeLessThanOrEqual(
+            wing.rack.bounds.y + wing.rack.bounds.h,
+          );
+        }
+        for (let i = 0; i < wing.rack.indicators.length; i += 1) {
+          for (let j = i + 1; j < wing.rack.indicators.length; j += 1) {
+            expect(rectsOverlap(wing.rack.indicators[i]!.rect, wing.rack.indicators[j]!.rect)).toBe(
+              false,
+            );
+          }
+        }
+        // …and the button still clears the touch floor around them.
+        expect(wing.rack.bounds.w).toBeGreaterThanOrEqual(PLANE.minHit);
+        expect(wing.rack.bounds.h).toBeGreaterThanOrEqual(PLANE.minHit);
+      }
+    }
+  });
+
+  it('draws the same digest block for every seat, whichever axis its rack runs on', () => {
+    // §2.5 orients a DRAWN rack with its seat, which is the rule the maintainer
+    // read as "two different components". The digest is where that reading did
+    // real damage, and it is the one form that is identical everywhere: the same
+    // grid, the same order, the same chips (issue #582 §5).
+    const plane = stage(seatTable({ opponents: 5, active: 'p2' }), BASELINE);
+    const shapes = plane.wings.map((wing) =>
+      wing.rack.indicators
+        .map((i) => `${i.zone}@${i.rect.x - wing.rack.bounds.x},${i.rect.y - wing.rack.bounds.y}`)
+        .join('|'),
+    );
+    expect(new Set(shapes).size).toBe(1);
+    // Including the two flanks, whose drawn racks would sit on opposite sides.
+    expect(new Set(plane.wings.map((w) => w.side)).size).toBe(2);
+  });
+
+  it('drops no zone from a digest — the command slot is drawn, not omitted', () => {
+    // The shipped button's `::after` listed library, graveyard, and exile and
+    // simply had no fourth line, so a Commander game's digested rack silently
+    // lost its command zone (issue #582 §5).
+    const plane = stage(commanderTable({ opponents: 5, active: 'p2' }), BASELINE);
+    for (const wing of plane.wings) {
+      expect(wing.rack.variant).toBe('digest');
+      expect(wing.rack.indicators.map((i) => i.zone)).toEqual([...RACK_ZONES]);
+    }
+  });
+
+  it('states no drawn variant’s sub-indicators — those zones have their own slots', () => {
+    const plane = stage(seatTable({ opponents: 1, active: 'p2' }), BASELINE);
+    for (const region of [plane.receiver!, plane.farSide!]) {
+      if (region.rack.variant === 'digest') continue;
+      expect(region.rack.indicators).toEqual([]);
+    }
+  });
+
+  /**
    * §6.2's expansion, as geometry. A digest rack resolving every zone key to one
    * rect is right for *anchors* (§7) and unusable for *targets*: controls
    * positioned from it coincide, so only the last one painted can be reached by
@@ -315,6 +403,7 @@ describe('zone rack — the four variants (§6)', () => {
       u: 0,
       origin: { x: 100, y: 400 },
       slots: [],
+      indicators: [],
       // Pinned to the plane's bottom edge: expanding downward would leave it.
       bounds: { x: 80, y: 418, w: 44, h: 62 },
       inset: { left: 0, right: 0 },

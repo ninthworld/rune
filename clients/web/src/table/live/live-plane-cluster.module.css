@@ -30,7 +30,7 @@
 
 .plane [data-slot='crest'] {
   --rim: calc(var(--cluster-d) * 0.065);
-  z-index: 5;
+  z-index: var(--rune-z-plane-cluster);
   overflow: visible;
   display: grid;
   align-content: center;
@@ -156,7 +156,7 @@
 /* ── Nameplate (§1.2 el. 4/5) ─────────────────────────────────────────────── */
 
 .plane [data-slot='plate'] {
-  z-index: 4;
+  z-index: var(--rune-z-plane-zone);
   overflow: visible;
   display: grid;
   align-content: center;
@@ -198,7 +198,7 @@
    a dormant slot renders nothing rather than a guess. */
 
 .plane [data-slot='gem'] {
-  z-index: 6;
+  z-index: var(--rune-z-plane-cluster-detail);
   border: 1px solid var(--gold);
   rotate: 45deg;
   background: linear-gradient(
@@ -247,7 +247,7 @@
    the value grows. */
 
 .plane [data-slot='life'] {
-  z-index: 7;
+  z-index: var(--rune-z-plane-cluster-status);
   overflow: visible;
   display: grid;
   align-content: center;
@@ -310,7 +310,7 @@
    seat-identity §1.2 el. 8). There is no library pip, at any rung. */
 
 .plane [data-slot='pip'] {
-  z-index: 7;
+  z-index: var(--rune-z-plane-cluster-status);
   display: grid;
   align-content: center;
   justify-items: center;
@@ -346,7 +346,7 @@
    threshold is inferred from it (§11's standing prohibition). */
 
 .plane [data-slot='chip'] {
-  z-index: 8;
+  z-index: var(--rune-z-plane-cluster-rail);
   display: grid;
   align-content: center;
   justify-items: center;

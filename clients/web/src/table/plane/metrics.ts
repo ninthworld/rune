@@ -17,16 +17,37 @@ export const PLANE = {
   cardGap: 6,
   /** The interactive-target floor: every hotspot is at least this square. */
   minHit: 44,
-  /**
-   * The crest cluster's **minimum** footprint (≥ minHit). Since issue #532 the
-   * drawn medallion is `D` from {@link cluster}'s rung ladder, which is always
-   * larger; this stays as the headroom constant a slot must clear above its
-   * board for the seat's identity to stage on-plane.
+  /*
+   * There is no `crest` constant here any more (issue #582 §1).
+   *
+   * It was `{ w: 52, h: 52 }`, documented as "the headroom constant a slot must
+   * clear above its board for the seat's identity to stage on-plane". It was
+   * neither: the drawn medallion is `D` from {@link PLANE.cluster}'s rung ladder
+   * — 112 px local, 96 px focused — so the constant was always smaller than the
+   * thing it claimed to reserve for, and no staging code ever read it, so no
+   * slot ever cleared anything. The seat cluster was simply drawn over its own
+   * board. The board's reservation is derived from the staged cluster's own
+   * bounds now (`regions.ts`, `clusterReserve`), which cannot go stale.
    */
-  crest: { w: 52, h: 52 },
-  /** Zone-pile cluster footprint (the digest rack button's floor). */
-  pile: { w: 44, h: 62 },
-  /** The receiver's band: full-width bottom third (±), fractions of W/H. */
+  /*
+   * …and no `pile` constant either. It was `{ w: 44, h: 62 }`, "the digest rack
+   * button's floor", and it was the reason a digested rack could only hold a
+   * column of numbers: 44 × 62 is too small for four identified zones. The
+   * button is derived from the chip grid it has to hold now
+   * ({@link PLANE.rack.digest}, `rack.ts`), floored at {@link PLANE.minHit} —
+   * so growing a sub-indicator grows the button instead of overflowing it.
+   */
+  /**
+   * The receiver's band: full-width bottom third (±), fractions of W/H.
+   *
+   * In a **duel** it is not flush with the box's bottom edge — `carveSlots`
+   * drops it by exactly the far side's own top margin, so the two rows sit
+   * symmetrically inside the arena with the corridor between them (issue #582
+   * §2). Flush against a far side dropped `0.09` clear of the top is what the
+   * maintainer's capture shows: the player's row near the CENTRE of the arena,
+   * the opponent's jammed against the top edge, and no shared space for the one
+   * relationship the screen most needs to express during Declare Attackers.
+   */
   receiver: { x: 0.12, w: 0.76, h: 0.33 },
   /**
    * The far side at 2 players: the opponent, full width. Dropped clear of the
@@ -39,6 +60,14 @@ export const PLANE = {
   /** The far side at 3+ players: the focused opponent, top center — same drop,
    * same unchanged `0.36` bottom edge. */
   far: { x: 0.2, y: 0.1, w: 0.6, h: 0.26 },
+  /**
+   * The clear band between the two rows, as a fraction of the staging box's
+   * height. Not a slot — it is what is left once the two rows take their share
+   * — but it is the space combat is drawn in, so it is stated as a floor rather
+   * than left to arithmetic. `plane-composition.test.ts` checks it at every
+   * supported viewport and player count.
+   */
+  corridorMinH: 0.2,
   /**
    * Ultrawide surplus-width policy (layout-model §Hand-offs and open items):
    * beyond this aspect the focused far side and the center corridor stop
@@ -161,6 +190,36 @@ export const PLANE = {
     },
     /** The pile-card width each rack variant asks for before fitting (§6). */
     nominal: { receiver: 96, far: 78, wing: 62 },
+    /**
+     * The digest button's **shaped sub-indicators** (§6.1, issue #582 §5).
+     *
+     * §6.1's digest form is "one rack button with four shaped sub-indicators".
+     * The shipped button drew `attr(data-library) '\\A' attr(data-graveyard)
+     * '\\A' attr(data-exile)` — a column of bare numbers in a featureless dark
+     * rectangle, with nothing saying which number was which zone, and the
+     * command count dropped entirely. A rack that has lost every zone's
+     * identity has stopped being a rack; the numbers are the one part of a pile
+     * that is NOT its identity.
+     *
+     * So the button holds a grid of small chips, one per zone anchor, each
+     * carrying that zone's own material and silhouette from the full rack (the
+     * library's card back, the graveyard's ash, exile's oversized glass pane,
+     * command's gold rule) with its count on it. Two columns, because a
+     * two-by-two block reads as one object at this size and a four-tall column
+     * reads as a list — and because it is the same block whichever axis the
+     * seat's rack runs on, which is what makes both seats' digests one
+     * component (§2.5 keeps the *drawn* rack's axis).
+     */
+    digest: {
+      /** One sub-indicator's drawn box. */
+      chip: { w: 24, h: 28 },
+      /** Gap between chips, both axes. */
+      gap: 3,
+      /** Inset from the button's edge to the grid. */
+      pad: 4,
+      /** Chips per row. */
+      columns: 2,
+    },
   },
   /**
    * The seat **identity cluster** (`docs/design/seat-identity.md` §1, §2, §6).

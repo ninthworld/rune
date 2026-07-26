@@ -28,6 +28,15 @@
  * it says it by scoping the family's own `--rune-control-w-*` token (`.wide`,
  * `.fit`), never by restyling a control.
  *
+ * **Scale is the menu rung, not a local number** (§3.4, issue #566). `.stage`
+ * sets `--rune-control-scale` to `--rune-menu-scale` once, and every length and
+ * type size on these screens is either that rung applied by the control family
+ * itself or a `--rune-menu-*` token derived from the same rung. The shipped
+ * pregame sized itself from the match's fixed cluster widths and the fixed type
+ * ramp with no viewport term anywhere, which is why the maintainer read a UI
+ * shrunk into the corner of a picture; the rung is the one viewport term, and it
+ * lives in the control language so #580 can spend it too.
+ *
  * Places live in `pregamePlaces.module.css`; `styles.ts` merges the two into the
  * one flat class map the components import. The split is for file size only —
  * the two class sets are disjoint.
@@ -42,6 +51,19 @@
 /* One stage, three places (§5.0). The environment is mounted ONCE and never
  * re-mounts across a place change; only the content layer swaps. */
 .stage {
+  /*
+   * The menu rung (`control-language.md` §3.4, issue #566). This ONE
+   * declaration is what makes every control on every pregame place read at menu
+   * scale: `table/controls` multiplies its §3.1 plate by it, and the surfaces
+   * around a control read the `--rune-menu-*` lengths and type ramp the same
+   * rung derives. There is no second button family and no local size here —
+   * §3.1's widths still win, multiplied.
+   *
+   * The match sets nothing and stays at the rung's floor of 1, because an arena
+   * full of cards wants small edge furniture and an empty one does not.
+   */
+  --rune-control-scale: var(--rune-menu-scale);
+
   position: relative;
   min-height: 100vh;
   display: grid;
@@ -101,6 +123,34 @@
   animation: placeRise var(--pregame-motion-staging) var(--pregame-ease-staging) both;
 }
 
+/* ── The ground plate ──────────────────────────────────────────────────────────
+ * The one surface under text that is NOT on a plaque (issue #566).
+ *
+ * The baselines draw the wordmark, the arena heading, the status lines, and the
+ * empty-state sentence straight onto the plaza, and #546 shipped them that way —
+ * against the *previous* implementation's flat surfaces. Over the shipped
+ * environment plates none of them survives: `--pregame-text-muted` clears the
+ * project's 4.5:1 floor on the foundation surfaces the contrast gate checks, and
+ * an illustrated, light, high-texture floor is not one of them.
+ *
+ * So arena text sits on this: a soft veil at `--pregame-ground`, whose alpha is
+ * chosen (in `sceneTokens.ts`) so that the composite over EVERY slot of EVERY
+ * shipped theme clears the floor for every pregame foreground. Because the
+ * background is uniform across the padded box and the halo is the same colour
+ * spreading outward, every descendant of `.ground` provably sits on at least
+ * that composite — which is what makes the gate a check on the drawn result
+ * rather than on a token.
+ *
+ * It is a *veil*, not a panel: no border, no corner, no edge to read as chrome,
+ * and the halo dissolves it into the plaza. The carved-panel treatment #506
+ * shipped and #546 retired does not come back through this door. */
+.ground {
+  padding: var(--rune-space-7) var(--rune-space-9);
+  border-radius: var(--rune-radius-lg);
+  background: var(--pregame-ground);
+  box-shadow: 0 0 var(--rune-space-10) var(--rune-space-9) var(--pregame-ground);
+}
+
 /* ── The menu frame ────────────────────────────────────────────────────────────
  * The anatomy every baseline draws: the arena owns the middle, and the controls
  * that are not about *this* decision sit at the edges — wordmark top-left, the
@@ -117,10 +167,10 @@
     'topStart top   topEnd'
     'start    arena end'
     'footStart foot footEnd';
-  gap: var(--rune-cluster-gap);
+  gap: var(--rune-menu-gap);
   box-sizing: border-box;
   min-height: 100vh;
-  padding: var(--rune-cluster-margin);
+  padding: var(--rune-menu-margin);
 }
 
 .frameTopStart {
@@ -168,7 +218,7 @@
   grid-area: foot;
   display: flex;
   align-items: center;
-  gap: var(--rune-cluster-gap);
+  gap: var(--rune-menu-gap);
   justify-self: center;
   align-self: end;
 }
@@ -180,8 +230,11 @@
 }
 
 /* The corner lockup: the same procedural mark and display face the front door
- * shows at landing scale, so identity is continuous across the place change. */
+ * shows at landing scale, so identity is continuous across the place change.
+ * It sits on the ground plate, like every other mark drawn straight onto the
+ * arena — the wordmark was the first thing the maintainer named as unreadable. */
 .lockup {
+  composes: ground;
   display: flex;
   align-items: center;
   gap: var(--rune-space-4);
@@ -191,7 +244,7 @@
 .lockupWord {
   margin: 0;
   font-family: var(--rune-font-display);
-  font-size: var(--rune-type-title);
+  font-size: var(--rune-menu-type-title);
   font-weight: 600;
   letter-spacing: 0.1em;
   color: var(--pregame-gold);
@@ -244,7 +297,7 @@
   align-items: center;
   gap: var(--rune-space-6);
   box-sizing: border-box;
-  min-height: var(--rune-control-h);
+  min-height: var(--rune-menu-h);
   padding: var(--rune-space-4) var(--rune-space-7);
   background: var(--rune-control-plate);
   box-shadow: inset 0 0 0 1px var(--rune-control-inner-line);
@@ -262,7 +315,7 @@
 }
 
 .plaqueMeta {
-  font-size: var(--rune-type-caption);
+  font-size: var(--rune-menu-type-caption);
   letter-spacing: 0.04em;
   color: var(--pregame-text-muted);
 }
@@ -270,9 +323,10 @@
 /* The arena's own heading (OPEN GAMES, CREATE GAME), drawn on the ground rather
  * than on a plate — the baselines set it in warm display caps with no plate. */
 .arenaTitle {
+  composes: ground;
   margin: 0;
   font-family: var(--rune-font-display);
-  font-size: var(--rune-type-display);
+  font-size: var(--rune-menu-type-display);
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -305,7 +359,8 @@
 
 /* ── Type and status ───────────────────────────────────────────────────────── */
 .kicker {
-  font-size: var(--rune-type-micro);
+  composes: ground;
+  font-size: var(--rune-menu-type-micro);
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -313,12 +368,12 @@
 }
 
 .muted {
-  font-size: var(--rune-type-caption);
+  font-size: var(--rune-menu-type-caption);
   color: var(--pregame-text-muted);
 }
 
 .error {
-  font-size: var(--rune-type-caption);
+  font-size: var(--rune-menu-type-caption);
   font-weight: 600;
   color: var(--pregame-red);
 }
@@ -332,7 +387,7 @@
   padding: var(--rune-space-1) var(--rune-space-5);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-xs);
-  font-size: var(--rune-type-micro);
+  font-size: var(--rune-menu-type-micro);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -356,7 +411,7 @@
 }
 
 .fieldLabel {
-  font-size: var(--rune-type-caption);
+  font-size: var(--rune-menu-type-caption);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -367,14 +422,14 @@
 .select {
   box-sizing: border-box;
   width: 100%;
-  min-height: var(--rune-touch);
+  min-height: var(--rune-menu-touch);
   padding: var(--rune-space-4) var(--rune-space-6);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-sm);
   background: var(--pregame-surface);
   color: var(--pregame-text);
   font-family: inherit;
-  font-size: var(--rune-type-body);
+  font-size: var(--rune-menu-type-body);
 }
 
 .input:focus-visible,
@@ -386,7 +441,7 @@
 /* The seat stepper of the create baseline: − value + as one bounded control. */
 .stepper {
   display: grid;
-  grid-template-columns: var(--rune-touch) minmax(0, 1fr) var(--rune-touch);
+  grid-template-columns: var(--rune-menu-touch) minmax(0, 1fr) var(--rune-menu-touch);
   align-items: stretch;
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-sm);
@@ -394,13 +449,13 @@
 }
 
 .stepperButton {
-  min-width: var(--rune-touch);
-  min-height: var(--rune-touch);
+  min-width: var(--rune-menu-touch);
+  min-height: var(--rune-menu-touch);
   border: 0;
   background: var(--pregame-raised);
   color: var(--pregame-text);
   font-family: var(--rune-font-display);
-  font-size: var(--rune-type-title);
+  font-size: var(--rune-menu-type-title);
   line-height: 1;
   cursor: pointer;
 }
@@ -418,9 +473,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--rune-touch);
+  min-height: var(--rune-menu-touch);
   background: var(--pregame-surface);
-  font-size: var(--rune-type-body-lg);
+  font-size: var(--rune-menu-type-body-lg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -437,10 +492,10 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--rune-space-6);
-  min-height: var(--rune-touch);
+  min-height: var(--rune-menu-touch);
   padding: var(--rune-space-4) var(--rune-space-2);
   color: var(--pregame-text-muted);
-  font-size: var(--rune-type-caption);
+  font-size: var(--rune-menu-type-caption);
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -454,7 +509,7 @@
 
 .disclosureSummary::after {
   content: '›';
-  font-size: var(--rune-type-title);
+  font-size: var(--rune-menu-type-title);
   line-height: 1;
   transition: transform var(--pregame-motion-micro) var(--pregame-ease-micro);
 }
@@ -497,11 +552,11 @@
 .menuDrawer {
   position: absolute;
   right: 0;
-  bottom: calc(var(--rune-control-hit) + var(--rune-cluster-gap));
+  bottom: calc(var(--rune-menu-touch) + var(--rune-menu-gap));
   z-index: var(--rune-z-overlay);
   display: flex;
   flex-direction: column;
-  min-width: var(--rune-control-w-cluster);
+  min-width: var(--rune-menu-w-cluster);
   padding: var(--rune-space-3);
   border: 1px solid var(--pregame-line-strong);
   border-radius: var(--rune-radius-md);
@@ -512,14 +567,14 @@
 .menuItem {
   display: flex;
   align-items: center;
-  min-height: var(--rune-touch);
+  min-height: var(--rune-menu-touch);
   padding: var(--rune-space-4) var(--rune-space-6);
   border: 0;
   border-radius: var(--rune-radius-sm);
   background: none;
   color: var(--pregame-text);
   font-family: inherit;
-  font-size: var(--rune-type-body);
+  font-size: var(--rune-menu-type-body);
   text-align: left;
   cursor: pointer;
 }

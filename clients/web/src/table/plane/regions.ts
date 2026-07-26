@@ -334,6 +334,65 @@ function digestStage(
   return { renders: laid.renders, rung: 4, surface, digest };
 }
 
+/** How far a board steps off each edge of its slot for the seat's own fixtures. */
+interface PlaneInset {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/** No inset at all — the board gets its whole padded slot. */
+const NO_INSET: PlaneInset = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * How far the board must step off an edge of its own content area to clear the
+ * seat's identity cluster (issue #582 §1).
+ *
+ * `PLANE.crest` — a 52 × 52 "headroom constant a slot must clear above its
+ * board" — was the reservation this was *supposed* to be, and it had two
+ * problems: the drawn medallion is `cluster`'s rung `D`, which is 112 px local
+ * and 96 px focused and therefore always larger than the constant, and nothing
+ * in the staging path ever read the constant at all. The result is what the
+ * maintainer's capture shows — the local medallion, life ring, and hand-count
+ * hex drawn over the player's own creatures, and the opponent's medallion over
+ * theirs. The reservation is derived from the cluster that is actually staged
+ * now, so it cannot be smaller than the thing it reserves for.
+ *
+ * `core` is the cluster's medallion group (`cluster.ts`), not everything it
+ * draws: that group is fixed at the anchor and cannot move, while the nameplate
+ * steps around keep-outs and the status rail arcs around the portrait. Charging
+ * a board for a plate that reaches two `D` to one side would cost it a whole row
+ * for an element that is free to be somewhere else.
+ *
+ * The board steps off **one** edge, by whichever axis costs it least. That is
+ * not a tie-breaker, it is the geometry: `seat-identity.md` §8 anchors the local
+ * cluster on its band's bottom edge and the focused one on its top, so those two
+ * are cheapest vertically and the row simply starts lower or ends higher; a
+ * wing's cluster sits in the flank beside its board, so that one is cheapest
+ * horizontally and the row simply starts further inboard, exactly as it already
+ * does for the rack.
+ *
+ * A cluster whose core does not overlap the board's rect at all costs nothing —
+ * which is the ordinary case for a wing, whose medallion sits in the flank the
+ * rack inset already gave up.
+ */
+function clusterReserve(core: Rect, content: Rect): PlaneInset {
+  const x0 = Math.max(core.x, content.x);
+  const x1 = Math.min(core.x + core.w, content.x + content.w);
+  const y0 = Math.max(core.y, content.y);
+  const y1 = Math.min(core.y + core.h, content.y + content.h);
+  if (x1 <= x0 || y1 <= y0) return NO_INSET;
+  const left = x1 - content.x;
+  const right = content.x + content.w - x0;
+  const top = y1 - content.y;
+  const bottom = content.y + content.h - y0;
+  if (Math.min(top, bottom) <= Math.min(left, right)) {
+    return top <= bottom ? { ...NO_INSET, top } : { ...NO_INSET, bottom };
+  }
+  return left <= right ? { ...NO_INSET, left } : { ...NO_INSET, right };
+}
+
 /**
  * Stage one region's permanents inside its fixed slot, engaging the degradation
  * ladder per region, independently (one hoarding player never shrinks another):
@@ -349,6 +408,7 @@ export function stageRegionContent(
   kind: PlaneRegionKind,
   digestBaseline: boolean,
   rackInset: { left: number; right: number } = { left: 0, right: 0 },
+  clusterCore?: Rect,
 ): RegionContent {
   const wing = kind === 'wing';
   const order = rowOrderFor(kind);
@@ -356,11 +416,21 @@ export function stageRegionContent(
   // The seat's zone rack owns its region's outer flank (zone-geography §2.4), so
   // the board's content area starts inboard of it: the rack and the cards never
   // contend for the same pixels, at any rung.
-  const content: Rect = {
+  const flank: Rect = {
     x: padded.x + rackInset.left,
     y: padded.y,
     w: Math.max(0, padded.w - rackInset.left - rackInset.right),
     h: padded.h,
+  };
+  // …and the seat's identity cluster owns the band it is staged on, for the
+  // same reason and by the same rule: a seat fixture is a physical object at a
+  // fixed place, and the board lays out around it rather than under it.
+  const fixture = clusterCore === undefined ? NO_INSET : clusterReserve(clusterCore, flank);
+  const content: Rect = {
+    x: flank.x + fixture.left,
+    y: flank.y + fixture.top,
+    w: Math.max(0, flank.w - fixture.left - fixture.right),
+    h: Math.max(0, flank.h - fixture.top - fixture.bottom),
   };
   if (wing && digestBaseline) return digestStage(seat, items, content, baseSurface, order);
 
@@ -372,6 +442,17 @@ export function stageRegionContent(
       : []),
     { rung: 2, surface: stepped, fold: true, wrap: false },
     { rung: 3, surface: stepped, fold: true, wrap: true },
+    // A second tier step at the wrapping rung (issue #582 §1). Now that a board
+    // gives up the band its own seat cluster stands on, a slot can be shorter
+    // than one card at the stepped tier — and the compression fallback below
+    // moves line STARTS without changing card heights, so a card taller than the
+    // content area would still be drawn over the medallion the reservation
+    // exists to clear. Stepping the tier again is the ladder's own answer to
+    // "the board does not fit"; the compression that follows is for the case
+    // where even the smallest tier does not.
+    ...(stepDown(stepped) !== stepped
+      ? [{ rung: 3 as LadderRung, surface: stepDown(stepped), fold: true, wrap: true }]
+      : []),
   ];
 
   let last: { laid: LayResult; surface: SurfaceTier } | undefined;

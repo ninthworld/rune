@@ -16,6 +16,9 @@ import {
   SCENE_SEAT_ACCENTS,
   SCENE_ELEVATION,
   SCENE_FOCUS_DIM,
+  SCENE_GROUND_PLATE,
+  compositeOver,
+  withAlpha,
   SCENE_MOTION,
   SCENE_BATCH,
   SCENE_SESSION,
@@ -161,6 +164,106 @@ describe('scene tokens — contrast floors (presentation-budgets §Accessibility
         expect(contrastRatio(accent, surface)).toBeGreaterThanOrEqual(3);
       }
     }
+  });
+});
+
+/**
+ * The ground plate (issue #566).
+ *
+ * The gates above check text against the FOUNDATION surfaces and against a
+ * theme's slots directly. Neither describes the failure the maintainer
+ * reported: the pregame draws the wordmark, the arena heading, the status
+ * lines, and the empty-state sentence with no plate at all, over an
+ * illustrated, light, high-texture floor. The acceptance criterion is a floor
+ * "against the *shipped* environment plates, in every environment theme — not
+ * against a flat token", so what has to be checked is the **composite** a
+ * reader actually sees: the plate laid over each slot.
+ *
+ * The plate is what makes that checkable at all. There is no single foreground
+ * that clears 4.5:1 over both `moonlitRuins`' slate and `runicVale`'s pale sand
+ * while staying one palette; compositing a known veil makes the effective
+ * surface theme-independent instead.
+ */
+describe('scene tokens — the ground plate under arena text', () => {
+  /** Every slot of every shipped theme, which is every plate text can land on. */
+  const slots = SCENE_THEME_NAMES.flatMap((name) =>
+    Object.entries(SCENE_THEMES[name])
+      .filter(([, value]) => typeof value === 'string' && value.startsWith('#'))
+      .map(([slot, value]) => ({ theme: name, slot, value: value as string })),
+  );
+
+  /** The surface a reader sees where arena text sits on the plate. */
+  const under = (plate: string): string =>
+    compositeOver(SCENE_GROUND_PLATE.color, SCENE_GROUND_PLATE.alpha, plate);
+
+  it('composites source-over in sRGB (sanity: 0 and 1 are the two backgrounds)', () => {
+    expect(compositeOver('#FFFFFF', 0, '#123456')).toBe('#123456');
+    expect(compositeOver('#FFFFFF', 1, '#123456')).toBe('#FFFFFF');
+    expect(compositeOver('#000000', 0.5, '#FFFFFF')).toBe('#808080');
+  });
+
+  it('holds body and secondary text to 4.5:1 over every slot of every theme', () => {
+    expect(slots.length).toBeGreaterThan(40);
+    for (const { theme, slot, value } of slots) {
+      const surface = under(value);
+      expect(
+        contrastRatio(SCENE_NEUTRALS.text, surface),
+        `text over ${theme}.${slot}`,
+      ).toBeGreaterThanOrEqual(4.5);
+      // `textMuted` is the one the issue names: "`--pregame-text-muted` in
+      // particular has nothing to hold it up". It is body text, so it takes the
+      // text floor and not the 3:1 indicator floor.
+      expect(
+        contrastRatio(SCENE_NEUTRALS.textMuted, surface),
+        `muted text over ${theme}.${slot}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('holds the gold lockup to 4.5:1 over every slot of every theme', () => {
+    // The `RUNE` wordmark and every arena heading are drawn in gold and are
+    // TEXT, not an indicator — "barely distinguishable from the arena" is the
+    // first symptom the issue lists.
+    for (const { theme, slot, value } of slots) {
+      expect(
+        contrastRatio(SCENE_HUES.gold.value, under(value)),
+        `gold over ${theme}.${slot}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('holds every status hue to the 3:1 indicator floor over every slot', () => {
+    for (const hue of Object.values(SCENE_HUES)) {
+      for (const { theme, slot, value } of slots) {
+        expect(
+          contrastRatio(hue.value, under(value)),
+          `${hue.value} over ${theme}.${slot}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it('would fail without the plate — the gate is not vacuous', () => {
+    // The shipped screen: muted text straight onto Runic Vale's plaza core. If
+    // this ever passes, the plate has stopped being what carries the floor and
+    // these tests have stopped meaning anything.
+    expect(contrastRatio(SCENE_NEUTRALS.textMuted, SCENE_THEMES.runicVale.plazaCore)).toBeLessThan(
+      4.5,
+    );
+    expect(contrastRatio(SCENE_HUES.gold.value, SCENE_THEMES.runicVale.plazaCore)).toBeLessThan(
+      4.5,
+    );
+  });
+
+  it('is the world’s own ink, and stays a veil rather than an opaque panel', () => {
+    // A new hue here would be a new surface in a palette that has four.
+    expect(SCENE_GROUND_PLATE.color).toBe(SCENE_NEUTRALS.ink);
+    // Fully opaque would erase the arena the direction is built on; the plate
+    // has to let the environment read through it.
+    expect(SCENE_GROUND_PLATE.alpha).toBeLessThan(1);
+    expect(withAlpha(SCENE_GROUND_PLATE.color, SCENE_GROUND_PLATE.alpha)).toBe(
+      'rgb(13 15 19 / 78.0%)',
+    );
   });
 });
 

@@ -172,7 +172,7 @@ function JoinById({ view }: { view: LobbyView }) {
   };
 
   return (
-    <details className={p.disclosure} data-testid="join-room">
+    <details className={cx(p.disclosure, p.ground)} data-testid="join-room">
       <summary className={p.disclosureSummary}>Join with an id</summary>
       <div className={p.disclosureBody}>
         <label className={p.seatOptionsField}>
@@ -319,7 +319,7 @@ export function LobbyPlace({ view }: { view?: LobbyView }) {
       footEnd={<SessionMenu onDisconnect={disconnect} />}
     >
       {lobbyError !== null && (
-        <span className={cx(p.error, p.rejected)} role="alert" data-testid="lobby-error">
+        <span className={cx(p.error, p.rejected, p.ground)} role="alert" data-testid="lobby-error">
           {lobbyError}
         </span>
       )}

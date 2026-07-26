@@ -51,6 +51,51 @@ The **center corridor** between the far side and the receiver's band stays
 clear: it is the interaction area for targeting paths, combat webs, the
 resolving object, and temporary staging. Nothing parks there.
 
+### The two rows sit symmetrically in the arena (issue #582)
+
+In a **duel** the receiver's band is dropped off the bottom of the staging box by
+exactly the margin the far side keeps off the top, so the two rows and the
+corridor between them read as one composition. It is derived from the far side's
+own `y`, not written down twice.
+
+The shipped pair was asymmetric — the far side dropped `0.09·H` clear of the top
+and the receiver flush with the bottom — which at a 200 % browser zoom drew the
+player's row near the *centre* of the arena, the opponent's jammed against the
+top edge with their creature clipped, and nothing in the middle. During Declare
+Attackers the one relationship the screen most needs to express had no geometry
+to express it in.
+
+At **3+ players** the receiver stays flush. The band between the far side and
+the receiver is not empty there — it is where the flank wings hang, down to
+`0.64·H` at one-per-side staging — so lifting the receiver would push it into
+the peripheral seats.
+
+### A seat's own fixtures are reserved, not painted over (issue #582)
+
+A seat's board stages **around** its zone rack *and* its identity cluster. The
+rack reservation is carried; the cluster's is new, and it is derived from the
+**medallion that is actually drawn** — `seat-identity.md` §1.1's rung `D` — never
+from a constant. A 52 px `PLANE.crest` constant, smaller than every rung of that
+ladder and read by no staging code, is what let the local seat's medallion, life
+ring, and hand-count hex render over the player's own creatures.
+
+The board steps off **one** edge, by whichever axis costs it least: the local and
+focused clusters are anchored on their band's outer edge (`seat-identity.md` §8),
+so those are cheapest vertically and the row starts lower or ends higher; a
+wing's cluster sits in the flank beside its board, so that one is cheapest
+horizontally and the row starts further inboard, exactly as it already does for
+the rack.
+
+Only the **medallion group** is charged to the board — portrait, priority bloom,
+life ring, hand pip, gem. The nameplate and the status rail place themselves
+around obstacles and are free to be somewhere else; charging the board for a
+plate that reaches two `D` to one side would cost it a whole row.
+
+The consequence is that a seat's board is smaller than its slot, and a crowded
+one therefore engages the ladder sooner. That is the ladder working: a card that
+steps down a tier is still readable and addressable, and a card under a medallion
+is neither.
+
 ## Staging per player count
 
 | Players | Far side | Wings | Wing rung |

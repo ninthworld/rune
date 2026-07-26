@@ -69,7 +69,7 @@ export { stageSeatHandFan, HAND_FAN } from './seatHandFan';
 export type { HandFanSlot, SeatHandFan, SeatHandFanRequest } from './seatHandFan';
 
 export { stageRack, digestExpansionRects, RACK_ZONES } from './rack';
-export type { RackZone, RackVariant, RackSlot, SeatRack, RackRequest } from './rack';
+export type { RackZone, RackVariant, RackSlot, RackIndicator, SeatRack, RackRequest } from './rack';
 
 export { carveSlots, carveCompactSlots } from './slots';
 export type { WingSlotFrame, PlaneSlotFrames } from './slots';

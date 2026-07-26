@@ -60,6 +60,7 @@ import {
   lifeMeta,
   plateMeta,
   rackMeta,
+  rackIndicatorMeta,
   regionMeta,
   tileMeta,
   zoneSlotMeta,
@@ -747,6 +748,20 @@ export class PlaneReconciler {
           region.rack.bounds,
           rackMeta(region, region.rack.slots),
         );
+        // …and its shaped sub-indicators (zone-geography §6.1, issue #582 §5):
+        // one chip per zone anchor, each carrying that zone's own material and
+        // count. They are decoration on the button, never targets — the button
+        // is the single ≥ 44 px hotspot every zone key resolves to, and
+        // `digestExpansionRects` is what separates the zones into pickable
+        // rects when the player opens it.
+        for (const indicator of region.rack.indicators) {
+          upsert(
+            `rackpip:${region.seat}:${indicator.zone}`,
+            'rackpip',
+            indicator.rect,
+            rackIndicatorMeta(region, indicator),
+          );
+        }
       } else {
         for (const slot of region.rack.slots) {
           upsert(`zone:${region.seat}:${slot.zone}`, 'zone', slot.rect, zoneSlotMeta(region, slot));

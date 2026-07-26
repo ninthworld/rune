@@ -31,11 +31,27 @@
  * action, or a path endpoint. That is exactly what the staging box enforces,
  * which is why it is a band here and an input to `stagePlane` there.
  *
- * **I2 — the hand fits its band.** The hand band is tall enough for a full
- * `hand`-tier card *plus its largest lift* ({@link SHELL.handLiftMax}, the
- * forced-decision selected state) and wide enough that the fan's outermost cards
- * are inset by half a card. Nothing in the hand is ever drawn outside the band
- * that clips it. See {@link handFanFraction} / {@link handFanSpacing}.
+ * **I2 — the hand fits its band, and the band fits the screen.** The hand band
+ * is tall enough for a full `hand`-tier card *plus its largest lift*
+ * ({@link SHELL.handLiftMax}, the forced-decision selected state) and wide
+ * enough that the fan's outermost cards are inset by half a card. Nothing in the
+ * hand is ever drawn outside the band that clips it. See
+ * {@link handFanFraction} / {@link handFanSpacing}.
+ *
+ * The second half of that sentence is issue #582's correction. The band's
+ * reservation is exact and always was; what failed is that the band was pinned
+ * to the bottom of a shell with a `min-height` **larger than a short viewport**,
+ * so the shell's own bottom — and with it the band, and with it the bottom of
+ * every card in hand — hung below the screen edge. A reservation measured
+ * against a box that is not on screen reserves nothing. The shell is the
+ * viewport now, exactly, and {@link handBandHeight} additionally refuses to
+ * report a band taller than the viewport it is laid in.
+ *
+ * **I2b — the fan is centred on the screen.** The band used to keep the left
+ * edge and give up only the cluster's column on the right, so `HandFan`'s
+ * centring put the fan visibly left of centre. The band is symmetric now: it
+ * yields the cluster's column on *both* sides, so the band's centre and the
+ * viewport's centre are the same point and the fan needs no offset of its own.
  *
  * **I3 — the ladder yields to decisions.** A pending server decision outranks
  * *every* chrome region. Only layers the player
@@ -241,9 +257,18 @@ export function isCompactShell(viewport: Pick<Viewport, 'width'>): boolean {
  * The hand band's height: floor + card + the largest lift + headroom. Derived,
  * never a literal — raising {@link SHELL.handLiftMax} or moving to a different
  * card tier grows the band instead of clipping the cards (invariant I2).
+ *
+ * Passing the viewport additionally caps the band at the viewport's own height.
+ * That is a degenerate guard, not a scale policy: the band is a fixed reservation
+ * (`control-language.md` D1 — chrome does not scale with the viewport, and the
+ * fan compresses spacing and rotation before card size, never card size itself),
+ * and how large a share of a short screen it claims is issue #580's question.
+ * What this refuses is the one case the reservation cannot survive — a band
+ * taller than the box it is pinned inside, which clips rather than crowds.
  */
-export function handBandHeight(): number {
-  return SHELL.handFloor + SHELL.handLiftMax + SHELL.handCardH + SHELL.handHeadroom;
+export function handBandHeight(viewport?: Pick<Viewport, 'height'>): number {
+  const nominal = SHELL.handFloor + SHELL.handLiftMax + SHELL.handCardH + SHELL.handHeadroom;
+  return viewport === undefined ? nominal : Math.min(nominal, Math.max(0, viewport.height));
 }
 
 /**
@@ -262,8 +287,8 @@ export function clusterHeight(): number {
  * hand fan and the inset control cluster reaches higher. The staging box stops
  * here, so the receiver's band is never laid under either.
  */
-export function bottomChromeHeight(): number {
-  return Math.max(handBandHeight(), clusterHeight() + 2 * CONTROL.clusterMargin);
+export function bottomChromeHeight(viewport?: Pick<Viewport, 'height'>): number {
+  return Math.max(handBandHeight(viewport), clusterHeight() + 2 * CONTROL.clusterMargin);
 }
 
 /**
@@ -302,17 +327,36 @@ export function shellBands(
     h: clusterH,
   };
 
-  // The hand fan keeps the bottom edge but yields the cluster's column, so the
-  // two never overlap — on the compact composition it yields the whole width
-  // and sits above the cluster instead, because a phone has no room for both
-  // side by side.
-  const handH = handBandHeight();
+  // The hand fan keeps the bottom edge and yields the cluster's column on BOTH
+  // sides, so the band's centre is the viewport's centre and the fan reads as
+  // the player's own hand in front of them rather than as a row shoved left
+  // (issue #582, invariant I2b). The asymmetric band was cheaper in width and
+  // wrong in the one way the composition is read.
+  //
+  // The cost is real and is the documented degradation: between the compact
+  // breakpoint and roughly 1030 px of width the symmetric band is narrower than
+  // a seven-card opening fan needs at the 44 px exposure floor, so the fan pages
+  // (`layout-model.md` §Stress dispositions). Paging keeps every card at the
+  // floor and addressable; an off-centre fan keeps neither promise it was making.
+  //
+  // On the compact composition the band still takes the whole width and sits
+  // above the cluster, because a phone has no room for both side by side — and
+  // that band is already centred.
+  const handH = handBandHeight(viewport);
+  const sideGutter = clusterW + 2 * margin;
   const hand: ShellRect = compact
-    ? { x: left, y: cluster.y - margin - handH, w, h: handH }
+    ? // Clamped to the top of the safe viewport. Below the supported envelope
+      // (a 450 px-tall window, say) a 210 px band stacked above a 192 px cluster
+      // does not fit at all, and the shipped arithmetic answered with a negative
+      // `y` — the band, and the top of every card in it, off the top of the
+      // screen. Overlapping chrome is recoverable; off-canvas is not. That the
+      // two regions cannot both fit at that size is a scale question (#580), not
+      // a containment one.
+      { x: left, y: Math.max(top, cluster.y - margin - handH), w, h: handH }
     : {
-        x: left,
+        x: left + sideGutter,
         y: top + h - handH,
-        w: Math.max(0, w - clusterW - 2 * margin),
+        w: Math.max(0, w - 2 * sideGutter),
         h: handH,
       };
 
@@ -321,7 +365,7 @@ export function shellBands(
   // so an empty stack costs the battlefield nothing (#534's own criterion).
   const bottomInset = compact
     ? Math.max(top + h - hand.y, handH)
-    : Math.max(bottomChromeHeight(), handH);
+    : Math.max(bottomChromeHeight(viewport), handH);
   const rightInset = occupancy.stackPresent ? clusterW + 2 * margin : 0;
   const staging: ShellRect = {
     x: left,
@@ -423,10 +467,13 @@ export function shellStyleVars(viewport: Pick<Viewport, 'width' | 'height'>): CS
     // under ADR 0032 they overlay the scene instead of carving it, so the
     // stylesheet positions them absolutely from these.
     '--shell-hand-w': `${bands.hand.w}px`,
+    // Where the band starts, so the stylesheet can anchor a band that is no
+    // longer flush with the viewport's left edge (issue #582's centring).
+    '--shell-hand-x': `${bands.hand.x}px`,
     '--shell-cluster-w': `${bands.cluster.w}px`,
     '--shell-cluster-h': `${bands.cluster.h}px`,
-    '--shell-bottom-chrome-h': `${bottomChromeHeight()}px`,
-    '--shell-hand-h': `${handBandHeight()}px`,
+    '--shell-bottom-chrome-h': `${bottomChromeHeight(viewport)}px`,
+    '--shell-hand-h': `${bands.hand.h}px`,
     '--shell-hand-card-w': `${SHELL.handCardW}px`,
     '--shell-hand-card-h': `${SHELL.handCardH}px`,
     '--shell-hand-floor': `${SHELL.handFloor}px`,

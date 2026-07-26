@@ -126,7 +126,7 @@ export function RoomDirectory({ view, selectedId, onSelect }: RoomDirectoryProps
       </h2>
       {view === undefined ? (
         <>
-          <span className={p.muted} data-testid="room-directory-loading">
+          <span className={cx(p.muted, p.ground)} data-testid="room-directory-loading">
             Loading open games…
           </span>
           <DirectorySkeleton />

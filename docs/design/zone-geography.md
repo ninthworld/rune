@@ -367,22 +367,42 @@ Four variants. All four keep the same slot order and the same four anchors.
 | **Local** | receiver band | largest, `u` at field tier | full: face, depth layers, name band on public tops, count badges, crown + tax |
 | **Focused** | far side | one tier down | full anatomy, `u` one rung smaller |
 | **Wing** | wings at rungs 0–3 | `u` at mini tier | **tightened but distinct**: same four slots, same order, same materials. Name band on public tops suppressed (glyph + count carry identity); depth layers capped at 2 (library) / 1 (graveyard) / 2 (exile); command keeps crown + tax |
-| **Digest** | wings at rung 4, summary tiles at rung 5, or any rack failing §2.3 / §2.4 | — | **one rack button** carrying four shaped sub-indicators |
+| **Digest** | wings at rung 4, summary tiles at rung 5, or any rack failing §2.3 / §2.4 | — | **one rack button** carrying four shaped sub-indicators, in §3's own materials at chip scale (§6.1) |
 
 ### 6.1 The digest rack
 
 One ≥ 44 px button. Four sub-indicators, each a distinct **shape** so the channel is not
-colour (budgets §Accessibility):
+colour (budgets §Accessibility). They are laid in a two-column block inside the button,
+in §1's fixed order — library, graveyard, exile, command — reading left to right then
+down.
 
-| Zone | Sub-indicator shape | Carries |
+| Zone | Sub-indicator | Carries |
 | --- | --- | --- |
-| Library | rounded rectangle (card-back silhouette) | count |
-| Graveyard | arched tombstone silhouette | count |
-| Exile | diamond / rune-iris outline | count |
-| Command | crown pentagon | occupied dot + tax `+N` |
+| Library | the §3.1 card back, at chip size | count |
+| Graveyard | the §3.2 ash-dimmed card | count |
+| Exile | the §3.3 glass pane, still larger than the card it holds | count |
+| Command | the §3.4 gold rule with the seat's accent rim | count (and, when present, tax `+N`) |
 
 A zone absent from the format (command) contributes no sub-indicator. A zone at 0 shows
 its shape as a dashed outline with no numeral — the same etched language as §5.
+
+**Departure from this section's first draft (issue #582 §5).** The drafted shapes were
+four bespoke silhouettes — a rounded rectangle, an arched tombstone, a diamond iris, a
+crown pentagon — chosen only to be distinct from each other. What shipped instead was
+neither those nor anything else: `28 / 1 / 0` stacked in a featureless dark rectangle,
+with nothing saying which number was which zone and the command count dropped entirely,
+which is what the maintainer reported. The fix reuses **§3's own materials at chip
+scale** rather than reinstating the bespoke set, for the reason the same report gives:
+the maintainer's other complaint is that a seat's rack "reads as two different
+components", and a digest drawn in a vocabulary the player has not seen anywhere else
+is a third. The silhouettes stay four-way distinct with hue stripped — an opaque card
+back, an ash card, a card inside a larger glass pane, a heavy gold rule — which is the
+requirement §3.3 already makes load-bearing, and they are the four the player already
+learned from the drawn rack.
+
+The block is **identical at every seat**, on both flanks and whichever axis §2.5 gives
+that seat's drawn rack. Orientation is a property of the drawn variants; the digest is
+one object read small.
 
 ### 6.2 What expands what
 
