@@ -188,8 +188,13 @@
    * frame construction), which is what keeps a chamfered edge from reading as
    * a flat cut. */
   --rune-control-inner-line: rgba(0, 0, 0, 0.5);
-  --rune-confirm-face: #2d7a4c;
-  --rune-confirm-frame: #1c4e31;
+  /* There is no confirm hue. Control-ui panel 7 drew a green CONFIRM and it
+   * shipped, which gave the product two primary colours — the blue enamel on
+   * PASS / CONNECT / CREATE GAME / SUBMIT DECK, and green on the one control
+   * that commits a decision. §4.1 allows exactly one primary treatment, and
+   * §4.2 rule 1 says the decision's confirm is what carries the advance while a
+   * decision is open, so it wears the primary's enamel (issue #586). Red is
+   * kept, on `.cancel` alone, where it means destructive. */
   --rune-danger-face: #82412f;
   --rune-danger-frame: #5a2c20;
   --rune-control-plate: #1b2430;
@@ -247,6 +252,12 @@
   --rune-drop-radius: var(--rune-radius-lg);
   --rune-drop-tick: 14px;
   --rune-drop-stroke: 2px;
+  /* §6.2 stage 3's "L-shaped corner ticks (14 px arms, 6 px inset)" and stage
+   * 4's "ticks extend 4 px" on hover. Named rather than written into the
+   * stylesheet so the two drop surfaces cannot drift from each other or from
+   * the spec (ADR 0019). */
+  --rune-drop-tick-inset: var(--rune-space-3);
+  --rune-drop-tick-hover: var(--rune-space-2);
   /* The cluster's own placement (§3.3): 268px column, 28px from the viewport
    * edge, 12px between rows. */
   --rune-cluster-margin: 28px;

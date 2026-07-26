@@ -167,29 +167,35 @@ export function ActivitySurface({ view, onHighlight, highlightedId }: ActivitySu
       </div>
       {historyOpen && (
         <div className={s.history} data-testid="activity-history">
-          <section className={s.historyPanel} id={HISTORY_ID} aria-label="Full game history">
-            <div className={s.historyHead}>
-              <h2 className={s.historyTitle}>History</h2>
-              <IconButton
-                glyph="×"
-                label="Close the full history"
-                onPress={() => setHistoryOpen(false)}
-                testId="activity-history-close"
-              />
-            </div>
-            <div className={s.historyBody}>
-              {/* The shipped log panel, unchanged: grouping, auto-scroll pin,
-                  unread marker, and clickable references all carried. */}
-              <GameLog
-                view={view}
-                onHighlight={onHighlight}
-                highlightedId={highlightedId}
-                isUnseen={isUnseen}
-                unreadCount={unreadCount}
-                onSeen={markSeen}
-              />
-            </div>
-          </section>
+          {/* The control family's two-box frame construction (§3.1, issue #583):
+              the outer box paints the gold gradient and pads by the stroke, the
+              inner one is the plate. A CSS border carries no gradient, which is
+              why the frame is a box and not a `border`. */}
+          <div className={s.historyFrame}>
+            <section className={s.historyPanel} id={HISTORY_ID} aria-label="Full game history">
+              <div className={s.historyHead}>
+                <h2 className={s.historyTitle}>History</h2>
+                <IconButton
+                  glyph="×"
+                  label="Close the full history"
+                  onPress={() => setHistoryOpen(false)}
+                  testId="activity-history-close"
+                />
+              </div>
+              <div className={s.historyBody}>
+                {/* The shipped log panel, unchanged: grouping, auto-scroll pin,
+                    unread marker, and clickable references all carried. */}
+                <GameLog
+                  view={view}
+                  onHighlight={onHighlight}
+                  highlightedId={highlightedId}
+                  isUnseen={isUnseen}
+                  unreadCount={unreadCount}
+                  onSeen={markSeen}
+                />
+              </div>
+            </section>
+          </div>
         </div>
       )}
     </>

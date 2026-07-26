@@ -31,13 +31,7 @@ describe('ControlButton', () => {
     );
     expect(container.querySelector('button')?.className).not.toMatch(/chamfered/);
 
-    for (const variant of [
-      'primaryCompact',
-      'confirm',
-      'cancel',
-      'secondary',
-      'utility',
-    ] as const) {
+    for (const variant of ['primaryCompact', 'cancel', 'secondary', 'utility'] as const) {
       rerender(<ControlButton variant={variant} label="X" onPress={() => {}} />);
       expect(container.querySelector('button')?.className).toMatch(/chamfered/);
     }
@@ -49,7 +43,7 @@ describe('ControlButton', () => {
     // which §3.2 forbids — an unoffered action is ABSENT, never greyed.
     render(
       <ControlButton
-        variant="confirm"
+        variant="secondary"
         label="KEEP"
         onPress={() => {}}
         disabledReason="needs: choose a land"
@@ -61,7 +55,7 @@ describe('ControlButton', () => {
   });
 
   it('is enabled whenever no reason is supplied', () => {
-    render(<ControlButton variant="confirm" label="KEEP" onPress={() => {}} />);
+    render(<ControlButton variant="secondary" label="KEEP" onPress={() => {}} />);
     expect((screen.getByRole('button', { name: 'KEEP' }) as HTMLButtonElement).disabled).toBe(
       false,
     );

@@ -8,6 +8,7 @@
  */
 export { ControlButton, IconButton } from './ControlButton';
 export type { ControlVariant, ControlButtonProps, IconButtonProps } from './ControlButton';
+export { ACTIVITY_GLYPH, MENU_GLYPH, iconGlyphsCollide } from './iconGlyphs';
 export { CONTROL, CONTROL_TOKEN_NAMES, PIP_COUNT, pipRowWidth } from './controlTokens';
 export { FACE_TOKEN_NAMES, faceChamfer, facePointDepth, faceTipInset } from './plaqueGeometry';
 export { derivePrimary, RESPOND_LABEL, RESPOND_ACCESSIBLE_NAME } from './controlPrimary';

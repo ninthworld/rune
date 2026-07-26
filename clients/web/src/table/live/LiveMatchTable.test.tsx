@@ -467,6 +467,43 @@ describe('LiveMatchTable', () => {
     expect(choose.mock.calls[0]![0]).toEqual(expect.objectContaining({ id: 'play-c1' }));
   });
 
+  it('lights a region only when dropping on it commits (#585)', () => {
+    // §6.1's one rule, stated: a region highlight belongs to the drag gesture
+    // and marks the commit area; everything picked by name lights on the card.
+    // A drag whose action carries requirements has candidates to answer first,
+    // and no shipped path routes a drop on the band into the decision surface —
+    // so lighting the band would offer a destination that answers nothing. The
+    // inconsistency the maintainer saw (full-band gold while dragging a land,
+    // none during Declare Attackers) is two different gestures, not two rules.
+    const raw = JSON.parse(SAMPLE_GAME_VIEW_JSON) as Record<string, unknown>;
+    raw.valid_actions = [
+      {
+        id: 'bolt-c1',
+        type: 'cast_spell',
+        label: 'Cast Lightning Bolt',
+        subject: ['c1'],
+        token: 'h:bolt',
+        requirements: [{ id: 'target', prompt: 'Choose a target', candidates: ['perm_a'] }],
+      },
+    ];
+    seed(JSON.stringify(raw));
+    render(<LiveMatchTable />);
+
+    fireEvent.pointerDown(screen.getByTestId('live-hand-card-c1'), {
+      button: 0,
+      clientX: 40,
+      clientY: 500,
+    });
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 420 });
+
+    expect(screen.getByTestId('drag-ghost')).toBeTruthy();
+    expect(screen.queryByTestId('drop-board')).toBeNull();
+    // Ended with the §6.3 stage-11 interrupt rather than a drop: nothing is
+    // sent, and the drag's window listeners detach without a hit test.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('drag-ghost')).toBeNull();
+  });
+
   it('does not play an untargeted hand card onto an opponent region', () => {
     const raw = JSON.parse(SAMPLE_GAME_VIEW_JSON) as Record<string, unknown>;
     raw.valid_actions = [

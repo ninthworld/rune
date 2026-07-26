@@ -171,15 +171,15 @@
   font-size: var(--rune-type-heading);
 }
 
-.confirm,
+/* Issue #586 retired the green `.confirm` fill that used to head this group.
+   A decision's CONFIRM is the one blue primary while a decision is open (§4.1,
+   §4.2 rule 1), so it renders as `.primaryCompact` and there is no second
+   primary hue in the family. Red survives, on `.cancel` alone, where it means
+   "destructive" and nothing else. */
 .cancel,
 .secondary,
 .utility {
   width: var(--rune-control-w-pair);
-}
-
-.confirm .face {
-  background: var(--rune-confirm-face);
 }
 
 .cancel .face {
