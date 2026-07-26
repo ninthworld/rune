@@ -225,8 +225,12 @@ describe('states the baselines do not show (card-representation §6.2)', () => {
     // band on the slate, never a parchment plate and never a body fill (§3.4).
     expect(strip).toContain('top: var(--band-title-top)');
     expect(strip).toContain('height: var(--band-title-h)');
-    expect(strip).toContain('background: var(--face-accent)');
+    expect(strip).toContain('background-color: var(--face-accent)');
     expect(strip).not.toContain('var(--plate)');
+    // …tinted THROUGH the identity material plate (§3.12), so the accent reads
+    // as a surface with a light source rather than as a flat colour block.
+    expect(strip).toContain('background-image: var(--plate-identity)');
+    expect(strip).toContain('background-blend-mode: overlay');
     const root = renderFace(bear({ attacking: true, hasActivatedAbility: true }), { tier: 'mini' });
     expect(root.dataset.attacking).toBe('true');
     expect(root.dataset.ability).toBe('true');

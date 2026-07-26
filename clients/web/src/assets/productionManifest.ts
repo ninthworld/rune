@@ -96,12 +96,46 @@ export interface ProductionCardBack {
   height: number;
 }
 
+/**
+ * One shipped card-frame plate (issue #570) — the material the Rune frame is
+ * drawn from, as `card-representation.md` §3.12 specifies it.
+ *
+ * A plate is a nine-sliceable **alpha light map**: it carries bevel, shadow,
+ * grain, and the structural gold hairline, and nothing else, so every body
+ * colour still arrives from `src/tokens.ts` underneath it. That is what lets
+ * one set serve every environment theme and every colour identity.
+ */
+export interface ProductionFramePlate {
+  /** Absolute, content-hashed URL under the built root. */
+  src: string;
+  /** Intrinsic width in px. */
+  width: number;
+  /** Intrinsic height in px. */
+  height: number;
+  /** The nine-slice inset in authored px; `0` marks a plate that tiles. */
+  slice: number;
+  /**
+   * The fraction of the card width `W` the drawn band occupies — resolved per
+   * tier into `border-image-width` by `card/dom/plates.ts`. This is the whole
+   * of the "one asset for every tier" contract: the band is a `calc()` on `W`,
+   * so the drawn bevel is the authored ratio at the hand fan and at the chip.
+   */
+  band: number;
+  /** Whether the middle patch paints (a printed surface) or drops out (a ring). */
+  fill: boolean;
+  /** Load class; every plate is `first-match` — the frame is on every card. */
+  load: string;
+  /** Tile size ÷ `W`, on the tiling plate only. */
+  tile?: number;
+}
+
 /** The sections of the shipped manifest this module surfaces. */
 interface ProductionManifest {
   version: number;
   environments: Record<string, ProductionEnvironment>;
   environmentStudies: Record<string, ProductionStudy>;
   cardBacks: { default: string; skins: Record<string, ProductionCardBack> };
+  cardFrames: { plates: Record<string, ProductionFramePlate> };
 }
 
 /**
@@ -141,6 +175,15 @@ export function productionEnvironment(theme: string): ProductionEnvironment | un
 /** The shipped study plate for a theme, or `undefined` for a production theme. */
 export function productionStudy(theme: string): ProductionStudy | undefined {
   return PRODUCTION_ENVIRONMENT_STUDIES[theme];
+}
+
+/** Every shipped card-frame plate, keyed as the generator keys it. */
+export const PRODUCTION_FRAME_PLATES: Readonly<Record<string, ProductionFramePlate>> =
+  MANIFEST.cardFrames.plates;
+
+/** One shipped frame plate by key, or `undefined` when the key is unknown. */
+export function productionFramePlate(key: string): ProductionFramePlate | undefined {
+  return PRODUCTION_FRAME_PLATES[key];
 }
 
 /** One shipped card-back skin by id, or `undefined` when the id is unknown. */

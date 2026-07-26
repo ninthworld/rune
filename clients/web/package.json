@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "assets": "node scripts/checkAssetLedger.js",
+    "frames": "node scripts/generateFramePlates.js",
     "build": "tsc --noEmit && vite build",
     "budget": "node scripts/checkLoadBudget.js",
     "typecheck": "tsc --noEmit",

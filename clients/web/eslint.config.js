@@ -27,7 +27,8 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
-  // Build-output gates run under Node against `dist/` (issue #510).
+  // Build-output gates run under Node against `dist/` (issue #510), and the
+  // card-frame plate generator (issue #570) runs under Node on demand.
   {
     files: ['scripts/**/*.js'],
     languageOptions: {

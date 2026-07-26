@@ -77,6 +77,30 @@ describe('production asset manifests (#548)', () => {
     expect(Object.keys(manifest.cardBacks.skins).sort()).toEqual(['runeSpiral', 'verdantKnot']);
   });
 
+  it('ships the seven card-frame plates the DOM frame is drawn from (#570)', () => {
+    const plates = manifest.cardFrames.plates as Record<
+      string,
+      { slice: number; band: number; load: string }
+    >;
+    expect(Object.keys(plates).sort()).toEqual([
+      'artSeam',
+      'frameEdge',
+      'headerField',
+      'identityWeave',
+      'infoStrip',
+      'ptPlate',
+      'statusStrip',
+    ]);
+    for (const [key, plate] of Object.entries(plates)) {
+      // Every plate is in the first-match set: the frame is on every card, and
+      // a card whose frame arrives late is a card with no frame at all.
+      expect(plate.load, key).toBe('first-match');
+      // A sliced plate declares the band it is drawn at; the tiling one does
+      // not slice and declares neither.
+      expect(plate.slice > 0, key).toBe(plate.band > 0);
+    }
+  });
+
   it('references only files that exist in the public shipping tree', () => {
     for (const src of assetSources(manifest)) {
       expect(src.startsWith('/')).toBe(true);

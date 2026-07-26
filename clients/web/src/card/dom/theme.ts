@@ -46,6 +46,7 @@ import {
   TIER,
 } from '../../tokens';
 import type { CardDisplayData } from '../cardFactory';
+import { PLATE_MATERIAL, plateGeometryVars } from './plates';
 
 /**
  * The size tiers the DOM card face renders (card-representation §8.1). Four
@@ -446,6 +447,11 @@ function faceGeometryVars(tier: CardFaceTier, kind: CardSurfaceKind): Record<str
     '--ring-w': px(RUNE_FRAME.selectRing * m.w),
     '--ring-glow-w': px(RUNE_FRAME.selectGlow * m.w),
     '--target-ring-w': px(RUNE_FRAME.targetRing * m.w),
+
+    // ── Frame-plate bands (§3.12, issue #570) ─────────────────────────────
+    // The nine-slice band each plate draws, resolved from its authored ratio
+    // of W — one asset per surface for every tier and every silhouette.
+    ...plateGeometryVars(m.w),
   };
   if (m.bands.status.h > 0) {
     vars['--band-status-top'] = px(m.bands.status.top);
@@ -467,11 +473,17 @@ function faceGeometryVars(tier: CardFaceTier, kind: CardSurfaceKind): Record<str
 }
 
 /**
- * The frame's material — slate, parchment, gold, and the shared motion class.
- * The same for every card at every identity, because color identity is an edge
- * accent and never a body fill (§3.4), so it is one frozen object.
+ * The frame's material — slate, parchment, gold, the bundled frame plates
+ * (§3.12), and the shared motion class. The same for every card at every
+ * identity, because color identity is an edge accent and never a body fill
+ * (§3.4), so it is one frozen object.
+ *
+ * The plates are alpha light maps composed **over** these colors, never instead
+ * of them: every value below still resolves and still paints, so the frame
+ * renders exactly as it does today if a plate never arrives.
  */
 const MATERIAL: Record<string, string> = {
+  ...PLATE_MATERIAL,
   '--face-body': SURFACES.frameEdge,
   '--face-edge-shade': SURFACES.frameEdgeShade,
   '--plate': SURFACES.plate,

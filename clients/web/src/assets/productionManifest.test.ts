@@ -18,9 +18,11 @@ import {
   PRODUCTION_CARD_BACK_DEFAULT,
   PRODUCTION_ENVIRONMENTS,
   PRODUCTION_ENVIRONMENT_STUDIES,
+  PRODUCTION_FRAME_PLATES,
   PRODUCTION_MANIFEST_VERSION,
   productionCardBack,
   productionEnvironment,
+  productionFramePlate,
   productionStudy,
 } from './productionManifest';
 
@@ -34,6 +36,19 @@ describe('the production manifest reader', () => {
     expect(PRODUCTION_ENVIRONMENT_STUDIES).toEqual(onDisk.environmentStudies);
     expect(PRODUCTION_CARD_BACKS).toEqual(onDisk.cardBacks.skins);
     expect(PRODUCTION_CARD_BACK_DEFAULT).toBe(onDisk.cardBacks.default);
+    expect(PRODUCTION_FRAME_PLATES).toEqual(onDisk.cardFrames.plates);
+  });
+
+  it('resolves the card-frame plates the DOM frame composes (issue #570)', () => {
+    // The frame is on every card, so its material is the one asset set that can
+    // never be deferred — and every plate declares the fraction of W its band
+    // occupies, which is what makes one asset serve every tier.
+    for (const key of ['frameEdge', 'artSeam', 'headerField', 'ptPlate', 'identityWeave']) {
+      const plate = productionFramePlate(key);
+      expect(plate?.load, key).toBe('first-match');
+      expect(plate?.src, key).toMatch(/^\/assets\/frames\//);
+    }
+    expect(productionFramePlate('notAPlate')).toBeUndefined();
   });
 
   it('resolves all four production layer sets while retaining the approved studies', () => {

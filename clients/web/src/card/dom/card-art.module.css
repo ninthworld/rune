@@ -72,6 +72,22 @@
   border-radius: var(--plate-radius, 0px);
   outline: var(--rule-w, 0px) solid var(--face-accent, transparent);
   outline-offset: calc(-1 * var(--rule-w, 0px));
+  /* The art window's seam (`card-representation.md` §3.12, issue #570). The
+   * SAME plate the procedural field draws, on the same band, so the window's
+   * surround is identical whether or not an illustration loaded — the whole
+   * point of contract 3 above, extended to the frame's material.
+   *
+   * The border is the plate's carrier: the declared box is already the border
+   * box (see `.art`), so the seam overlaps the crop rather than widening the
+   * window, and `cover` simply refits. `background-clip` keeps the empty-state
+   * fill inside the seam, so a plate that never arrives reads as the card body
+   * in a recessed lip rather than as a ring of art fill. */
+  border: var(--plate-seam-band, 0px) solid transparent;
+  background-clip: padding-box;
+  border-image-source: var(--plate-art-seam, none);
+  border-image-slice: var(--plate-art-seam-slice, 0);
+  border-image-width: var(--plate-seam-band, 0px);
+  border-image-repeat: stretch;
   z-index: 0;
 }
 
