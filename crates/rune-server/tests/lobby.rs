@@ -108,6 +108,7 @@ fn config(seats: u8) -> RoomConfig {
     RoomConfig {
         seats,
         game_setup: "standard_2p".to_string(),
+        ..Default::default()
     }
 }
 

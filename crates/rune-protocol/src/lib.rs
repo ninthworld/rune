@@ -51,7 +51,8 @@ pub use interaction::{ActionAck, ActionDestination};
 pub use lobby::{
     AddAi, CardIdentity, CreateRoom, GameSetupId, Hello, JoinRoom, LobbyCommand, LobbyErrorFrame,
     LobbyRejection, LobbyView, Ready, RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary,
-    RoomView, SeatView, SessionToken, SetName, SpectateRoom, SubmitDeck,
+    RoomView, RoomVisibility, SeatView, SessionToken, SetName, SpectateRoom, SubmitDeck,
+    UpdateRoom,
 };
 pub use log::{GameLogEntry, GameLogEvent, LogBlock, LogDamageTarget, LogEntity};
 pub use presentation::{Color, CommanderIdentity, MatchFormat, COLORS};

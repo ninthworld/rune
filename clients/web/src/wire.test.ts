@@ -611,7 +611,7 @@ describe('lobby wire (issue #114)', () => {
   it('normalizes a room with a seat roster, defaulting decked/ready to false', () => {
     const view = normalizeLobbyView(JSON.parse(LOBBY_ROOM_UNDECKED_JSON));
     expect(view.room?.room_id).toBe('r:7f3');
-    expect(view.room?.config).toEqual({ seats: 2, game_setup: '1v1' });
+    expect(view.room?.config).toEqual({ seats: 2, game_setup: '1v1', visibility: 'public' });
     // Seat 0 is occupied but not decked/ready; seat 1 is empty.
     expect(view.room?.seats[0]).toEqual({
       seat: 0,
@@ -652,20 +652,72 @@ describe('lobby wire (issue #114)', () => {
     expect(view.room?.seats[0].ai).toBeUndefined();
   });
 
+  it('normalizes a named, private room config and defaults the absent fields (issue #546)', () => {
+    const view = normalizeLobbyView({
+      session: 's:1',
+      you: 'p1',
+      room: {
+        room_id: 'r:7f3',
+        config: {
+          seats: 4,
+          game_setup: 'commander',
+          name: 'Casual Commander',
+          visibility: 'private',
+        },
+        seats: [{ seat: 0, occupied_by: 'p1' }],
+      },
+      valid_commands: ['update_room', 'leave'],
+    });
+    expect(view.room?.config).toEqual({
+      seats: 4,
+      game_setup: 'commander',
+      name: 'Casual Commander',
+      visibility: 'private',
+    });
+
+    // A pre-#546 payload elides both: the name stays absent (the UI labels the table by
+    // its format) and the visibility reads as the public default.
+    const legacy = normalizeLobbyView({
+      session: 's:1',
+      you: 'p1',
+      room: { room_id: 'r:7f3', config: { seats: 2, game_setup: '1v1' }, seats: [] },
+      valid_commands: [],
+    });
+    expect(legacy.room?.config.name).toBeUndefined();
+    expect(legacy.room?.config.visibility).toBe('public');
+
+    // An unknown future visibility degrades to public rather than breaking rendering,
+    // and a blank name is not a name.
+    const odd = normalizeLobbyView({
+      session: 's:1',
+      you: 'p1',
+      room: {
+        room_id: 'r',
+        config: { seats: 2, game_setup: '1v1', name: '', visibility: 'friends_only' },
+        seats: [],
+      },
+      valid_commands: [],
+    });
+    expect(odd.room?.config.name).toBeUndefined();
+    expect(odd.room?.config.visibility).toBe('public');
+  });
+
   it('normalizes the room directory, defaulting an unknown state to gathering (issue #280)', () => {
     const view = normalizeLobbyView(JSON.parse(LOBBY_DIRECTORY_JSON));
     expect(view.room).toBeUndefined();
     expect(view.directory).toEqual([
       {
         room_id: 'r0',
-        config: { seats: 2, game_setup: '1v1' },
+        // `visibility` normalizes to the default `public` (issue #546): a listed room
+        // is public by definition, and the server elides the field at that default.
+        config: { seats: 2, game_setup: '1v1', visibility: 'public' },
         filled: 1,
         spectators: 0,
         state: 'gathering',
       },
       {
         room_id: 'r1',
-        config: { seats: 4, game_setup: 'ffa-4' },
+        config: { seats: 4, game_setup: 'ffa-4', visibility: 'public' },
         filled: 4,
         spectators: 0,
         state: 'in_progress',
@@ -678,7 +730,7 @@ describe('lobby wire (issue #114)', () => {
     expect(sparse.directory).toEqual([
       {
         room_id: '',
-        config: { seats: 0, game_setup: '' },
+        config: { seats: 0, game_setup: '', visibility: 'public' },
         filled: 0,
         spectators: 0,
         state: 'gathering',

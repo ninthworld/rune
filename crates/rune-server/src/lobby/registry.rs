@@ -25,6 +25,19 @@ pub(crate) fn validate_name(requested: &str) -> Result<String, NameError> {
     Ok(trimmed.to_string())
 }
 
+/// Validate an optional **table name** (issue #546) under the same bounds a display
+/// name gets ([`validate_name`]): trimmed, at most [`MAX_NAME_LEN`] scalar values, and
+/// printable. A table is allowed to have no name — the client then labels it by its
+/// format — so an absent or blank-after-trimming name normalizes to `None` rather than
+/// being rejected or stored as whitespace.
+pub(crate) fn validate_room_name(requested: Option<&str>) -> Result<Option<String>, NameError> {
+    match requested {
+        None => Ok(None),
+        Some(raw) if raw.trim().is_empty() => Ok(None),
+        Some(raw) => validate_name(raw).map(Some),
+    }
+}
+
 /// Clear a seat's occupant and reset its pre-game gate state (a vacated seat is
 /// undecked and unready). A stale room id/seat is ignored.
 pub(crate) fn vacate(registry: &mut Registry, room_id: &RoomId, seat: usize) {

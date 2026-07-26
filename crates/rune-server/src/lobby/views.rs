@@ -33,10 +33,17 @@ fn build_view(registry: &Registry, token: &SessionToken) -> Option<LobbyView> {
 /// A room is `gathering` while pre-game, `in_progress` once its game has started, and
 /// **omitted** once that game has ended (the room task has stopped, so its handle is
 /// no longer active) — a finished room simply leaves the list.
+///
+/// A [`RoomVisibility::Private`] room (issue #546) is omitted from **every** connection's
+/// directory, including its own occupants' — that is what the host asked for, and it is
+/// what makes the visibility field a server behaviour rather than a label. A private room
+/// is still reachable by the [`RoomId`] its host shares out-of-band, and its occupants see
+/// it in their own [`RoomView`] as they always did.
 fn build_directory(registry: &Registry) -> Vec<RoomSummary> {
     let mut directory: Vec<RoomSummary> = registry
         .rooms
         .iter()
+        .filter(|(_, room)| room.config.visibility != RoomVisibility::Private)
         .filter_map(|(room_id, room)| {
             let state = match &room.game {
                 None => RoomState::Gathering,
@@ -72,8 +79,9 @@ fn build_directory(registry: &Registry) -> Vec<RoomSummary> {
 ///
 /// Roomless: `create_room`/`join_room`. Seated in a pre-game room: always
 /// `submit_deck` and `leave`, plus `ready` once the seat is decked, or `unready`
-/// once it is ready. (A started room's seats are on the in-game contract and never
-/// see a `LobbyView`, so no in-game case appears here.)
+/// once it is ready. The **host** (seat 0) additionally gets `update_room` (issue #546)
+/// and the AI-seat commands. (A started room's seats are on the in-game contract and
+/// never see a `LobbyView`, so no in-game case appears here.)
 fn valid_commands(registry: &Registry, session: &Session) -> Vec<String> {
     // `set_name` is always available in the pre-game phase (issue #294): a connection
     // may name itself before joining a room and rename at any point up to game start.
@@ -101,6 +109,12 @@ fn valid_commands(registry: &Registry, session: &Session) -> Vec<String> {
         // only signal the client needs — it renders the affordance from this, never from a
         // client-side "host" inference.
         if seat == 0 {
+            // The host may also reconfigure its own table while the room is pre-game
+            // (issue #546). This advertisement is the *only* thing that puts an Edit
+            // Table affordance on screen — a client never infers host-ness itself.
+            if room.game.is_none() {
+                commands.push("update_room".to_string());
+            }
             let has_empty_seat = room
                 .seats
                 .iter()
@@ -177,7 +191,7 @@ pub(crate) fn push_view(registry: &Registry, token: &SessionToken) {
         return;
     }
     if let Some(view) = build_view(registry, token) {
-        let _ = session.outbox.send(Some(LobbySignal::View(view)));
+        let _ = session.outbox.send(Some(LobbySignal::View(Box::new(view))));
     }
 }
 
@@ -246,13 +260,14 @@ mod tests {
             .iter()
             .all(|s| !s.decked && !s.ready && s.ai.is_none()));
         // Seated but undecked: the seat may submit a deck or leave, not ready up. As the
-        // host (seat 0) of a room with an open seat, it may also fill it with an AI
-        // opponent (`add_ai`, issue #415).
+        // host (seat 0) it may also reconfigure the table (`update_room`, issue #546)
+        // and, while a seat is open, fill it with an AI opponent (`add_ai`, issue #415).
         assert_eq!(
             view.valid_commands,
             vec![
                 "set_name".to_string(),
                 "submit_deck".to_string(),
+                "update_room".to_string(),
                 "add_ai".to_string(),
                 "leave".to_string()
             ]
@@ -293,11 +308,14 @@ mod tests {
                 "leave".to_string()
             ]
         );
+        // Alice hosts, so she alone is offered the table's configuration (issue #546);
+        // the room is full, so neither seat is offered `add_ai`.
         assert_eq!(
             alice.view().await.valid_commands,
             vec![
                 "set_name".to_string(),
                 "submit_deck".to_string(),
+                "update_room".to_string(),
                 "leave".to_string()
             ]
         );
@@ -376,6 +394,7 @@ mod tests {
                 "set_name".to_string(),
                 "submit_deck".to_string(),
                 "ready".to_string(),
+                "update_room".to_string(),
                 "leave".to_string()
             ]
         );
@@ -408,6 +427,7 @@ mod tests {
                 "set_name".to_string(),
                 "submit_deck".to_string(),
                 "unready".to_string(),
+                "update_room".to_string(),
                 "leave".to_string()
             ]
         );

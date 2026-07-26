@@ -22,6 +22,7 @@ pub(crate) fn config_with(seats: u8, game_setup: &str) -> RoomConfig {
     RoomConfig {
         seats,
         game_setup: game_setup.to_string(),
+        ..Default::default()
     }
 }
 
@@ -125,7 +126,7 @@ impl Client {
     /// The latest pre-game view pushed to this client (awaiting the next change).
     pub(crate) async fn view(&mut self) -> LobbyView {
         match self.signal().await {
-            LobbySignal::View(view) => view,
+            LobbySignal::View(view) => *view,
             LobbySignal::Start { .. } | LobbySignal::Spectate { .. } => {
                 panic!("expected a lobby view, got a hand-off")
             }
@@ -135,7 +136,7 @@ impl Client {
     /// The current view without waiting for a further change.
     pub(crate) fn current(&self) -> LobbyView {
         match self.rx.borrow().clone().expect("a signal is present") {
-            LobbySignal::View(view) => view,
+            LobbySignal::View(view) => *view,
             LobbySignal::Start { .. } | LobbySignal::Spectate { .. } => {
                 panic!("expected a lobby view, got a hand-off")
             }

@@ -24,12 +24,41 @@ export type GameSetupId = string;
  */
 export type CardIdentity = string;
 
-/** A room's configuration, supplied by the creator and echoed in every view. */
+/**
+ * Whether a room is listed in the lobby's public {@link LobbyView.directory} (issue
+ * #546). A `private` room is omitted from the directory for **every** connection and is
+ * reachable only by the {@link RoomId} its host shares out-of-band — a server behaviour,
+ * not a badge. A client tolerates an unknown future value by treating it as `'public'`.
+ */
+export type RoomVisibility = 'public' | 'private';
+
+/**
+ * A room's configuration, supplied by the creator, changed by its host with an
+ * {@link UpdateRoomCommand}, and echoed in every view.
+ *
+ * {@link RoomConfig.name} and {@link RoomConfig.visibility} are additive (issue #546):
+ * both elide from the wire at their defaults, so a payload that omits them describes
+ * exactly the room the pre-#546 shape described.
+ */
 export interface RoomConfig {
   /** Number of seats, validated server-side into the inclusive range `2..=8`. */
   seats: number;
   /** Opaque game-setup id naming which setup the room builds its game from. */
   game_setup: GameSetupId;
+  /**
+   * The host's chosen table name (issue #546) — public, display-only text the server
+   * validates under the same bounds a {@link SetNameCommand} name gets. Absent when the
+   * table is unnamed, in which case a client labels it by its
+   * {@link RoomConfig.game_setup}, exactly as every client did before this field
+   * existed. The server never invents a name, so the fallback is the client's own
+   * display concern.
+   */
+  name?: string;
+  /**
+   * Whether the room is listed in the public directory (issue #546). Absent means
+   * `'public'`, which is what every room was before this field existed.
+   */
+  visibility?: RoomVisibility;
 }
 
 /**
@@ -205,6 +234,24 @@ export interface CreateRoomCommand {
   config: RoomConfig;
 }
 
+/**
+ * Change the configuration of the room this connection **hosts** (issue #546) — its
+ * name, format, seat count, or visibility.
+ *
+ * It carries a **whole** {@link RoomConfig}, not a patch of changed fields, which is why
+ * one client surface can serve both creating and editing a table. The server accepts it
+ * only from the seat 0 occupant and only before the game starts, validates the config
+ * exactly as it validates a {@link CreateRoomCommand}, and **rejects** — never clamps —
+ * a seat count that would remove an occupied seat. A client renders Edit Table only when
+ * the server advertises `update_room` in `valid_commands`; it never computes host-ness.
+ */
+export interface UpdateRoomCommand {
+  /** Discriminator. */
+  type: 'update_room';
+  /** The room's complete new configuration. */
+  config: RoomConfig;
+}
+
 /** Join an existing room by id (no matchmaking or discovery). */
 export interface JoinRoomCommand {
   /** Discriminator. */
@@ -318,6 +365,7 @@ export interface LeaveCommand {
 export type LobbyCommand =
   | HelloCommand
   | CreateRoomCommand
+  | UpdateRoomCommand
   | JoinRoomCommand
   | SpectateRoomCommand
   | SubmitDeckCommand
@@ -338,6 +386,11 @@ export function helloCommand(token?: SessionToken): HelloCommand {
 /** Build a `create_room` command for the given config. */
 export function createRoomCommand(config: RoomConfig): CreateRoomCommand {
   return { type: 'create_room', config };
+}
+
+/** Build an `update_room` command carrying the room's whole new config (issue #546). */
+export function updateRoomCommand(config: RoomConfig): UpdateRoomCommand {
+  return { type: 'update_room', config };
 }
 
 /** Build a `join_room` command for the given room id. */

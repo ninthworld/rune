@@ -553,10 +553,31 @@ The client stores `session` per browser tab and echoes it on a later `hello`. It
 identity/reconnect handle, not a user account or human authentication credential.
 
 `RoomView` contains an opaque `room_id`, a `config`, and the ordered seat roster. The room
-config contains `seats` and an opaque `game_setup` id. The lobby validates a 2–8 seat range,
+config contains `seats`, an opaque `game_setup` id, an optional table `name`, and a
+`visibility` (issue #546). The lobby validates a 2–8 seat range,
 requires the setup id to exist in the server format registry, and rejects a seat count
 outside the chosen format's own range (issue #349). Two-player formats and 3–4 seat
 free-for-all formats both start real games.
+
+| `RoomConfig` field | Type | Meaning |
+| --- | --- | --- |
+| `seats` | `number` | Seat count, validated into `2..=8` and against the format's own range |
+| `game_setup` | `GameSetupId` | Opaque id naming the format the room builds its game from |
+| `name` | `string?` | The host's chosen table name (issue #546); omitted when unnamed |
+| `visibility` | `RoomVisibility?` | `public` (default, omitted) or `private` (issue #546) |
+
+`name` is public, display-only text validated exactly like a `set_name` display name —
+trimmed, non-empty, at most 32 characters, printable — and a blank name normalizes to
+*absent* rather than being stored. The server never invents one: when `name` is omitted a
+client labels the table by its `game_setup`, which is what every client did before the
+field existed. `visibility` is `public` or `private`; both `name` and `visibility` are
+omitted from the wire at their defaults, so a client that sends neither creates exactly
+the room the pre-#546 shape created, and an older client ignores both.
+
+A `private` room is **omitted from the public directory for every connection** — that is
+the whole of what the field does, and it is a server behaviour rather than a label. It
+stays reachable by the `room_id` its host shares out of band, so `join_room` works on it
+exactly as before; its own occupants still see it in their `RoomView`.
 
 Each seat contains:
 
@@ -586,11 +607,14 @@ Each `directory` entry exposes only the information needed to browse rooms:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `room_id` | `RoomId` | Opaque id accepted by `join_room` |
-| `config` | `RoomConfig` | Seat count and game setup |
+| `config` | `RoomConfig` | The room's whole config — seat count, game setup, and (issue #546) table name |
 | `filled` | `number` | Occupied seat count |
 | `spectators` | `number` | How many observers are watching (issue #351); omitted when `0` |
 | `state` | `RoomState` | `gathering` or `in_progress` |
 
+A directory entry carries the room's whole `RoomConfig`, so a table's `name` reaches the
+browser through the field it already had rather than through a second, divergent copy; a
+listed room is public by definition, so its `visibility` is always the elided default.
 The directory never exposes rosters, deck lists, or game state. A `gathering` room is joinable
 while it has an open seat. An `in_progress` room is not seat-joinable, but it **can be
 spectated** (`spectate_room`, ADR 0022 / issue #351): observers do not consume seats, so
@@ -607,6 +631,7 @@ Lobby commands are tagged by `type`:
 | --- | --- | --- |
 | `hello` | optional `token` | Start a session or reclaim one |
 | `create_room` | `config` | Create and occupy a room |
+| `update_room` | `config` | Host-only: change the room's whole configuration (issue #546) |
 | `join_room` | `room_id` | Join a listed room or a room identified out of band |
 | `spectate_room` | `room_id` | Watch an in-progress room as an observer (issue #351) |
 | `submit_deck` | `cards`, optional `commander` | Submit functional card identities, and (commander format) the designated commander |
@@ -620,6 +645,7 @@ Lobby commands are tagged by `type`:
 ```json
 { "type": "hello", "token": "s:ab12" }
 { "type": "create_room", "config": { "seats": 2, "game_setup": "standard_2p" } }
+{ "type": "update_room", "config": { "seats": 4, "game_setup": "commander", "name": "Casual Commander", "visibility": "private" } }
 { "type": "join_room", "room_id": "r:7f3" }
 { "type": "spectate_room", "room_id": "r:7f3" }
 { "type": "submit_deck", "cards": ["forest", "verdant_scout"] }
@@ -641,6 +667,30 @@ commander format, a **legendary creature** whose color identity (and every deck 
 rules (see `CatalogFormat` and the deck-legality notes below); an illegal deck or designation is
 rejected with the lobby’s non-fatal error and the seat keeps whatever deck it had. Deck legality
 is server policy — the client never computes it.
+
+`update_room` lets the room **host** change its table's configuration after the room
+exists (issue #546). It carries a **whole** `RoomConfig`, not a patch of changed fields —
+the same full-state discipline `LobbyView` follows, and the reason one client surface can
+serve both creating and editing a table. The server:
+
+- accepts it only from the seat 0 occupant (`add_ai`'s host rule), and advertises
+  `update_room` in that connection's `valid_commands` while the room is pre-game — the
+  client renders Edit Table from that advertisement, never from its own idea of who the
+  host is;
+- rejects it once the game has started;
+- validates the new config with exactly the rules a `create_room` gets (seat range,
+  known `game_setup`, the format's own seat range, table-name bounds) — a table you could
+  not have created is a table you cannot edit into;
+- **rejects, never clamps, a seat count that would remove an occupied seat.** Growing a
+  table appends empty, joinable seats; shrinking is allowed only onto seats that hold
+  neither a player nor an AI, at any index. Nobody is evicted by a configuration change.
+
+Readiness follows the change. Changing the **seat count** or the **format** clears every
+seat's `ready` flag, because nobody stays ready to a table they did not agree to; changing
+the **format** additionally clears every submitted deck (and empties any AI seat), because
+each deck was validated against a format that no longer applies and must be resubmitted.
+A name- or visibility-only edit disturbs nothing. An accepted update can therefore only
+ever *clear* gate state, so it never completes the ready gate and never starts a game.
 
 `add_ai` and `remove_ai` let the room **host** seat and clear **AI opponents** (issue #415, ADR
 0028). They are host-only: the server accepts them only from the seat 0 occupant, and advertises
@@ -708,7 +758,14 @@ other frame (`LobbyView`, `GameView`, `SpectatorView`, `CatalogView`):
 `commander_not_in_deck`, `commander_not_legendary_creature`, `out_of_identity` (the deck-legality
 classes), or `unknown_card` (a decklist identity that does not resolve). `card` is present for
 `copy_limit`, `out_of_identity`, `commander_not_in_deck`, `commander_not_legendary_creature`, and
-`unknown_card`; the size and missing-commander classes name no card. The client shows `reason`
+`unknown_card`; the size and missing-commander classes name no card.
+
+The same frame also carries the **table-configuration** rejection classes (issue #546) —
+`invalid_seat_count`, `seat_count_for_format`, `unknown_format`, `seats_below_occupancy`,
+`invalid_room_name`, and `not_host` — so a refused `create_room`/`update_room` explains
+itself instead of leaving a host watching a control do nothing. These name no card, and
+each reports only what the sender itself sent (a seat count, a format id, its own table
+name, its own room's occupancy), so nothing leaks. The client shows `reason`
 and keeps its builder state so the list can be corrected and resubmitted in the same room session;
 an older client that does not recognize the frame simply ignores it and keeps its `LobbyView`, so
 the feedback is additive. The client computes no legality of its own — this reason is the server’s
