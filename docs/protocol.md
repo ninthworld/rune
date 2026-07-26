@@ -52,7 +52,7 @@ redacted before serialization.
 | `stops` | `Phase[]` | Receiver’s own priority-stop preferences; omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
-| `action_ack` | `ActionAck?` | Acknowledgement of the receiver's last correlated submission (issue #554); present only on the one view that answers it, omitted everywhere else and by an older server |
+| `action_ack` | `ActionAck?` | Acknowledgement of the receiver's last correlated submission (issue #554); rides that receiver's views from the one answering it until its next submission supersedes it, omitted for every other seat and by an older server |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed on the next cast from the command zone (CR 903.8, issue #372); omitted when empty |
@@ -431,19 +431,32 @@ A message may also carry an opaque, client-generated `submission` correlation id
 }
 ```
 
-The server echoes it verbatim in `action_ack` on the **one** view that answers this
+The server echoes it verbatim in `action_ack`, starting with the view that answers this
 message — `{ "submission": "s:17", "accepted": true }` when the action was applied,
 `accepted: false` when it was rejected (the same event `action_rejected` flags, now tied
 to a specific submission). `accepted` is always present, so a client never reads an
 absence as a verdict; the *ack itself* is the optional part, and its presence is the
-signal that “this view answers my click”. Every other broadcast, resync, and reconnect
-carries no ack, and the ack is delivered exactly once, so a later resync never re-fires
-it. The id identifies the **message**, not the action: it is never part of the content
-`token`, and resubmitting the same action with a new id is a new submission. It is
-optional — a client that omits it sends exactly the message it always sent and receives
-no ack — and, like `action_rejected`, purely advisory: the UI reconstructs fully without
-it, so a client must release a pending indicator rather than wait forever for an ack
-that an older server will never send.
+signal that “this view answers my click”. Only that receiver's views ever carry it —
+every other seat's, and every spectator's, carry none.
+
+**The ack is matched, not counted.** It rides that receiver's views until its next
+submission supersedes it (a submission with no id supersedes it too, to `null`), and it
+is dropped when the seat reconnects. That is deliberate: a seat's view channel is
+latest-value, so a view pushed while an earlier one is still in flight replaces it, and
+an ack that answered exactly one view would be lost whenever an unrelated broadcast
+overtook it. A client therefore compares `submission` against the id it is still waiting
+on and ignores anything else — a repeat of an ack it has already consumed names nothing
+and does nothing.
+
+Correspondingly, **a view carrying no ack says nothing about a submission in flight.**
+An ordinary broadcast — another seat acting — is ack-less, so a client must not read one
+as an answer to its own click; that is the race the correlation exists to remove. The id
+identifies the **message**, not the action: it is never part of the content `token`, and
+resubmitting the same action with a new id is a new submission. It is optional — a client
+that omits it sends exactly the message it always sent and receives no ack — and, like
+`action_rejected`, purely advisory: the UI reconstructs fully without it, so a client
+releases a pending indicator on a transport discontinuity rather than waiting forever for
+an ack an older server will never send.
 
 ### `SetStops`
 

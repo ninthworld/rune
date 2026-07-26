@@ -143,13 +143,21 @@ export interface GameView {
   action_rejected?: boolean;
   /**
    * The acknowledgement of the receiver's last submitted action (issue #554) — see
-   * {@link ActionAck}. Present only on the one view that answers a
-   * {@link ChooseAction} carrying a {@link ChooseAction.submission} correlation id,
-   * and delivered exactly once; every other broadcast, resync, and reconnect carries
-   * none, so the ack's presence is itself the signal that "this view answers *my*
-   * click". It completes what {@link GameView.action_rejected} could only half-say —
-   * that flag reports *that* a submission was refused but never *which*. Transient
-   * and advisory; the UI reconstructs fully without it.
+   * {@link ActionAck}. Carried from the view that answers a {@link ChooseAction}
+   * bearing a {@link ChooseAction.submission} correlation id, and on this receiver's
+   * subsequent views until their next submission supersedes it. Only this receiver's
+   * views ever carry it.
+   *
+   * Matched, not counted: compare `submission` against the id still awaited and ignore
+   * anything else — a repeat of an already-consumed ack names nothing. Riding more than
+   * one view is what lets it survive a latest-value view channel, where a broadcast can
+   * replace a view still in flight.
+   *
+   * Its **absence answers nothing**: an ordinary broadcast (another seat acting) is
+   * ack-less, so it must not be read as the answer to this client's own click — that is
+   * the race this field removes. It completes what {@link GameView.action_rejected}
+   * could only half-say: that flag reports *that* a submission was refused but never
+   * *which*. Transient and advisory; the UI reconstructs fully without it.
    */
   action_ack?: ActionAck;
   /**

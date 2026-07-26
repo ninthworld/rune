@@ -66,19 +66,20 @@ impl Room {
     }
 
     /// Record the acknowledgement `seat` is owed for a submission (issue #554), to be
-    /// delivered on the next view sent to it. A submission with no correlation id is
-    /// not acknowledged at all — an older client sends exactly the message it always
-    /// sent and receives exactly the view it always received.
+    /// delivered on every view sent to it until this seat's next submission supersedes
+    /// it (see the ack's note in [`Self::send_view_flagged`] for why it rides more than
+    /// one view). A submission with no correlation id is not acknowledged at all — an
+    /// older client sends exactly the message it always sent and receives exactly the
+    /// view it always received — and it *clears* any ack still riding, so an
+    /// uncorrelated submission is never answered with the previous one's id.
     fn record_ack(&mut self, seat: Seat, submission: &str, accepted: bool) {
-        if submission.is_empty() {
+        let Some(slot) = self.pending_acks.get_mut(seat) else {
             return;
-        }
-        if let Some(slot) = self.pending_acks.get_mut(seat) {
-            *slot = Some(ActionAck {
-                submission: submission.to_string(),
-                accepted,
-            });
-        }
+        };
+        *slot = (!submission.is_empty()).then(|| ActionAck {
+            submission: submission.to_string(),
+            accepted,
+        });
     }
 
     /// Record a seat's priority-stop preferences (issue #264, ADR 0020) and reflect

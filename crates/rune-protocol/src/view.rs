@@ -142,11 +142,22 @@ pub struct GameView {
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub action_rejected: bool,
     /// The **acknowledgement** of the receiver's last submitted action (issue #554)
-    /// — see [`ActionAck`]. Present only on the one view that answers a
-    /// [`ChooseAction`](crate::ChooseAction) carrying a
-    /// [`submission`](crate::ChooseAction::submission) correlation id, and delivered
-    /// exactly once; every other broadcast, resync, and reconnect carries none, so
-    /// the ack's presence is itself the signal that "this view answers *my* click".
+    /// — see [`ActionAck`]. Carried from the view that answers a
+    /// [`ChooseAction`](crate::ChooseAction) bearing a
+    /// [`submission`](crate::ChooseAction::submission) correlation id, and on that
+    /// receiver's subsequent views until their next submission supersedes it. Only
+    /// that receiver's views ever carry it.
+    ///
+    /// **Matched, not counted.** A client compares [`ActionAck::submission`] against
+    /// the id it is still waiting on; a repeat of one it has already consumed names
+    /// nothing and does nothing. Riding more than one view is what makes the ack
+    /// survive a latest-value view channel, where a broadcast pushed while an earlier
+    /// view is still in flight replaces it — an ack answering exactly one view would
+    /// be lost to any unrelated broadcast that overtook it.
+    ///
+    /// Correspondingly, its **absence answers nothing**: an ordinary broadcast (another
+    /// seat acting) is ack-less, so a client must not read one as the answer to its own
+    /// click — that is precisely the race this field removes.
     ///
     /// It completes what [`Self::action_rejected`] could only half-say: that flag
     /// reports *that* a submission was refused but never *which*, so a client could

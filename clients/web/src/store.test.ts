@@ -149,17 +149,52 @@ describe('game store', () => {
     expect(store.getState().view?.action_ack).toEqual({ submission, accepted: true });
   });
 
-  it('releases a pending submission on an unacknowledged view (issue #554)', () => {
-    // A view with no ack at all — an older server, a resync, a reconnect — releases
-    // the marker. It is presentation only, so releasing early is always safe while
-    // holding forever would wedge the UI in "pending" after one lost answer.
+  it('keeps a pending submission across an unrelated ack-less view (issue #554)', () => {
+    // The race the correlation exists to remove: an ordinary broadcast — another
+    // seat acting — carries no ack, and arrives at this seat before its own answer
+    // does. Clearing on it would drop the marker for a submission still in flight,
+    // which is precisely the pre-#554 "a view arrived, so I must be answered"
+    // heuristic wearing a new name.
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0]!.emitOpen();
+    store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass' });
+    const submission = store.getState().pendingSubmission!;
+    expect(submission).not.toBeNull();
+
+    sockets[0]!.emitMessage('{"phase":"upkeep"}');
+    expect(store.getState().pendingSubmission).toBe(submission);
+
+    // Only the frame that names this submission answers it.
+    sockets[0]!.emitMessage(
+      JSON.stringify({ phase: 'upkeep', action_ack: { submission, accepted: true } }),
+    );
+    expect(store.getState().pendingSubmission).toBeNull();
+  });
+
+  it('releases a pending submission on a transport discontinuity (issue #554)', () => {
+    // What an ack-less view is *not* allowed to infer, a closed socket knows: the
+    // connection the answer was owed on is gone, so nothing can still be in flight
+    // over it and the marker cannot wedge. The reopened socket clears it again, so
+    // a reconnect starts a generation with nothing outstanding.
     const store = createGameStore();
     const { factory, sockets } = recordingFactory();
     store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
     sockets[0]!.emitOpen();
     store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass' });
     expect(store.getState().pendingSubmission).not.toBeNull();
-    sockets[0]!.emitMessage('{"phase":"upkeep"}');
+
+    sockets[0]!.drop();
+    expect(store.getState().pendingSubmission).toBeNull();
+    expect(store.getState().status).toBe('closed');
+
+    // And again on the next open, for a discontinuity with no observed close.
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[1]!.emitOpen();
+    store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass' });
+    expect(store.getState().pendingSubmission).not.toBeNull();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
     expect(store.getState().pendingSubmission).toBeNull();
   });
 

@@ -300,8 +300,11 @@ export interface GameStore {
    * had no way to tell the two apart.
    *
    * Ephemeral and **never load-bearing**: the table rebuilds fully from {@link view}
-   * alone, this is not persisted, and a reconnect (which re-sends state but no ack)
-   * clears it, so a dropped answer can never wedge the UI in "pending".
+   * alone, and it is not persisted. A transport discontinuity — any socket close, and
+   * every socket open, the same events {@link GameStore.sessionEpoch} counts — clears
+   * it, so a dropped answer can never wedge the UI in "pending". An ack-less view does
+   * *not*: an ordinary broadcast carries no ack, and clearing on one would be the
+   * pre-#554 heuristic again.
    */
   pendingSubmission: string | null;
   /** Current connection lifecycle state. */
@@ -414,14 +417,20 @@ export interface GameStore {
  * view acknowledges it, and unchanged when the view answers some *other* submission —
  * which is exactly the case a bare "a view arrived" heuristic got wrong.
  *
- * A view carrying no ack at all also clears it. That is deliberate: a reconnect or a
- * resync re-sends full state without an ack, and the pending marker is presentation
- * only, so releasing it is always safe while holding it forever is not.
+ * A view carrying **no ack at all** also leaves it alone. An ordinary broadcast is
+ * ack-less — another seat acting pushes a full view to every seat — so clearing on one
+ * would reintroduce the very race the correlation exists to remove: this seat's marker
+ * would drop the instant an opponent moved, before its own answer arrived.
+ *
+ * Nothing here can therefore release a marker whose answer is genuinely lost. That is
+ * not left to a heuristic: a lost answer means the transport it was owed on is gone, so
+ * the marker is cleared on an explicit transport discontinuity (see the socket lifecycle
+ * — every open and every close), where the fact is known rather than inferred.
  */
 function resolvePending(pending: string | null, view: GameView): string | null {
   if (pending === null) return null;
   const ack = view.action_ack;
-  if (ack === undefined) return null;
+  if (ack === undefined) return pending;
   return ack.submission === pending ? null : pending;
 }
 
@@ -509,6 +518,11 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       status: 'connecting',
       serverUrl: url,
       sessionEpoch: state.sessionEpoch + 1,
+      // A new transport generation cannot answer anything the old one was owed
+      // (issue #554). This — not an ack-less broadcast — is the discontinuity that
+      // releases the marker, so a dropped answer can never wedge the UI in
+      // "pending" while an ordinary broadcast never releases it early.
+      pendingSubmission: null,
     }));
 
     const factory = options.createSocket ?? defaultSocketFactory;
@@ -536,7 +550,15 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       // Drop any pre-game lobby state: a closed socket returns to the interactive
       // connection screen (never a dead lobby whose buttons cannot send). In-game
       // `view` is untouched so a reconnecting game still replaces it wholesale.
-      set({ status: 'closed', lobby: null, lobbyError: null, reclaimingSession: false });
+      set({
+        status: 'closed',
+        lobby: null,
+        lobbyError: null,
+        reclaimingSession: false,
+        // The socket a submission was owed its answer on is gone, so nothing can
+        // still be in flight over it (issue #554).
+        pendingSubmission: null,
+      });
       const autoReconnect = options.autoReconnect ?? true;
       if (!intentionalClose && autoReconnect && lastUrl !== null) {
         clearReconnect();
@@ -722,8 +744,9 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         // Submission acknowledgement (issue #554): clear the pending marker only when
         // this frame's `action_ack` names the submission still in flight. A view
         // answering someone else's action carries no ack (or another id), so it leaves
-        // the marker alone; a resync/reconnect carries none either, and the marker is
-        // cleared there too so a lost answer cannot wedge the UI in "pending".
+        // the marker alone. A lost answer is released by the transport discontinuity
+        // that lost it (see the socket lifecycle), never inferred from an ack-less
+        // frame — inferring it is exactly the race the correlation removes.
         set((state) => ({
           view: frame.view,
           // A seated game frame supersedes any spectator session.

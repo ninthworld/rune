@@ -82,6 +82,13 @@ impl Room {
             return;
         };
         *slot = Some(outbox);
+        // A submission belongs to the connection that sent it (issue #554). A fresh
+        // connection is owed no answer to the previous one's traffic, and the client
+        // clears its own pending marker on that same discontinuity, so the ack is
+        // dropped here rather than re-fired at a client that would ignore it.
+        if let Some(ack) = self.pending_acks.get_mut(seat) {
+            *ack = None;
+        }
         self.broadcast();
     }
 
@@ -168,10 +175,23 @@ impl Room {
         // rejection re-send, and the game state is unchanged, so this rides an otherwise
         // ordinary resync — advisory presentation, never load-bearing.
         view.action_rejected = action_rejected;
-        // The acknowledgement for this seat's last correlated submission (issue #554),
-        // *taken* rather than copied: it answers exactly one view, so a later resync or
-        // reconnect never re-fires it. Every other seat's view carries none.
-        view.action_ack = self.pending_acks.get_mut(seat).and_then(Option::take);
+        // The acknowledgement for this seat's last correlated submission (issue #554).
+        // Every other seat's view carries none.
+        //
+        // Copied, not taken. A seat's outbox is a latest-value `watch`, so a view sent
+        // before the socket task drains the previous one *replaces* it: taking the ack
+        // out on the first send would drop it on the floor whenever a second broadcast
+        // (another seat acting, a settle) overtook it, and the client — which correctly
+        // does not release its marker on an ack-less frame — would sit pending forever.
+        // Riding every view until it is superseded makes the ack survive any amount of
+        // coalescing: whichever view actually arrives carries it.
+        //
+        // Re-delivery is harmless because the ack is *correlated*: a client matches it
+        // against the submission it is still waiting on, so a repeat of one already
+        // consumed names nothing and does nothing. It is superseded by this seat's next
+        // submission (correlated or not, see `record_ack`) and dropped when the seat
+        // reconnects, so it never outlives the connection that earned it.
+        view.action_ack = self.pending_acks.get(seat).cloned().flatten();
         if let Some(at) = self.deadline {
             if !view.valid_actions.is_empty() {
                 view.action_deadline =
@@ -413,7 +433,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn issue_554_a_submission_is_acknowledged_once_on_the_view_that_answers_it() {
+    async fn issue_554_a_submission_is_acknowledged_by_its_own_id_on_the_view_that_answers_it() {
         // The correlation loop: a client tags its `ChooseAction` with an opaque id, and
         // exactly the view answering *that* submission carries the ack. This is what
         // `action_rejected` alone could not give — it says something was refused, never
@@ -478,7 +498,9 @@ mod tests {
             "the existing flag still rides too"
         );
 
-        // Delivered exactly once: a later resync (a reconnect) never re-fires it.
+        // The ack belongs to the connection that earned it: a reconnect starts with
+        // nothing outstanding, so a later resync never re-fires it at a client whose
+        // own marker that same discontinuity already cleared.
         assert!(handle.send(RoomInput::Leave { seat: 0 }));
         let (tx0b, mut rx0b) = view_channel();
         assert!(handle.send(RoomInput::Join {
@@ -487,6 +509,121 @@ mod tests {
         }));
         let resumed = wait_for_view(&mut rx0b).await;
         assert!(resumed.action_ack.is_none());
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_554_an_ack_rides_every_view_until_it_is_superseded() {
+        // A seat's outbox is a latest-value `watch`: a view pushed before the socket
+        // task drains the previous one *replaces* it. An ack taken out on its first
+        // send is therefore lost whenever a second broadcast — another seat acting, a
+        // seat dropping, a settle — overtakes it, and the client, which correctly keeps
+        // its pending marker on an ack-less frame, would sit pending forever.
+        //
+        // The property that makes coalescing harmless is asserted directly: the ack is
+        // on *every* view this seat is sent until something supersedes it, so whichever
+        // view survives the overwrite carries it.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        let (tx1, rx1) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        assert!(handle.send(RoomInput::Join {
+            seat: 1,
+            outbox: tx1
+        }));
+        let view = wait_for_view(&mut rx0).await;
+        let pass = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .cloned()
+            .expect("a pass is offered to the priority holder");
+
+        assert!(handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                submission: "s:42".into(),
+                action_id: pass.id.clone(),
+                token: pass.token.clone(),
+                targets: vec![],
+            }),
+        }));
+        let answered = wait_for_view(&mut rx0).await;
+        assert_eq!(
+            answered
+                .action_ack
+                .as_ref()
+                .map(|ack| ack.submission.clone()),
+            Some("s:42".into())
+        );
+        // Seat 1's own view never carries another seat's ack.
+        assert!(rx1.borrow().as_ref().unwrap().action_ack.is_none());
+
+        // An unrelated broadcast — seat 1 dropping — is exactly the frame that would
+        // overwrite seat 0's answer in flight. It carries the ack too.
+        assert!(handle.send(RoomInput::Leave { seat: 1 }));
+        let unrelated = wait_for_view(&mut rx0).await;
+        assert!(!unrelated.opponents[0].connected, "seat 1 dropped");
+        assert_eq!(
+            unrelated.action_ack.map(|ack| ack.submission),
+            Some("s:42".into()),
+            "a view coalescing over the answer must still carry it"
+        );
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_554_an_uncorrelated_submission_supersedes_a_riding_ack() {
+        // The ack rides views until this seat's next submission replaces it. An
+        // *uncorrelated* submission is a replacement too — it clears the slot — so a
+        // client that stops correlating is never answered with a stale id.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        let view = wait_for_view(&mut rx0).await;
+        let pass = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .cloned()
+            .expect("a pass is offered");
+        assert!(handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                submission: "s:7".into(),
+                action_id: pass.id.clone(),
+                token: pass.token.clone(),
+                targets: vec![],
+            }),
+        }));
+        let acked = wait_for_view(&mut rx0).await;
+        assert_eq!(
+            acked.action_ack.map(|ack| ack.submission),
+            Some("s:7".into())
+        );
+
+        // A rejected, uncorrelated submission: it is answered with a resync carrying
+        // no ack at all, not with "s:7" again.
+        assert!(handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: "a-nope".into(),
+                ..Default::default()
+            }),
+        }));
+        let answered = wait_for_view(&mut rx0).await;
+        assert!(answered.action_rejected);
+        assert!(answered.action_ack.is_none());
 
         drop(handle);
         task.await.unwrap();
