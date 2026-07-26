@@ -130,13 +130,14 @@ pub struct Room {
     auto_pass: AutoPassPolicy,
     /// Each seat's priority-stop preferences in seat order (issue #264, ADR 0020):
     /// the steps at which that seat wants priority even when the engine reports no
-    /// meaningful action, so auto-pass does not skip it there. Set over the protocol
+    /// meaningful action — or no *choice* in a declaration it owes (issue #453) — so
+    /// automation does not settle past it there. Set over the protocol
     /// (`set_stops`) and held here — like [`Self::player_names`], a per-seat concern
     /// that is *not* engine state — so a preference survives a disconnect/reconnect
     /// (the room is never torn down on leave). Empty per seat by default (stop
     /// nowhere); reflected back in each seat's [`GameView::stops`].
     stops: Vec<Vec<Phase>>,
-    /// Which seats were auto-passed during the most recent settle (issue #264): a
+    /// Which seats the room acted for during the most recent settle (issue #264): a
     /// transient, display-only signal, recomputed each settle and projected into the
     /// affected seat's [`GameView::auto_passed`] on the following broadcast so a
     /// client can show a "passed for you" indicator. Not load-bearing state.

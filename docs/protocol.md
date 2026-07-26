@@ -192,11 +192,20 @@ from skipping past a step they care about. It is set with the `set_stops` messag
 stored server-side, and reflected here so the stops UI is reconstructable from a single
 view and survives reconnect; it is omitted when empty (“stop nowhere”, the default), and a
 client treats a missing field as an empty set. `auto_passed` is a display-only flag set on
-the broadcast that follows a settle in which the server passed priority on this receiver’s
-behalf, so a client can show a transient “passed for you” indicator; it is advisory (the UI
+the broadcast that follows a settle in which the server acted on this receiver’s behalf, so
+a client can show a transient “passed for you” indicator; it is advisory (the UI
 reconstructs without it) and omitted when `false`. The decision of whether a player has “no
 meaningful action” is the server’s alone — the client never computes it and never
 auto-passes on its own.
+
+A settle also resolves a forced combat declaration that has **no legal non-empty answer**
+(issue #453): a seat with no eligible attacker is never handed a `declare_attackers` prompt
+it could only answer with an empty selection, and likewise for `declare_blockers`. This is
+the same server-side judgment, made by the same rules authority — the empty declaration is
+submitted as an ordinary action, so nothing new appears on the wire and a client sees only
+that the step passed. A declaration the seat *could* answer non-emptily is always prompted;
+automation never resolves a real choice. A seat that has listed the step in its `stops`
+receives the prompt regardless, as it does for an idle pass.
 
 `action_rejected` is the in-game counterpart of the lobby’s non-fatal error pattern (issue
 #265). A rejected `choose_action` is answered by re-sending the receiver’s current, unchanged

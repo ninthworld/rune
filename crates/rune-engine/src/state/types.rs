@@ -232,11 +232,14 @@ pub struct Permanent {
     /// current controller (came under their control). Raw stored state, set on
     /// battlefield entry from [`GameState::turn`](crate::GameState::turn); `0` for the empty [`Default`].
     ///
-    /// This is the fact "summoning sickness" is derived from (CR 302.6): a
+    /// This is half the fact "summoning sickness" is derived from (CR 302.6): a
     /// creature has been controlled continuously since its controller's most
-    /// recent turn began exactly when it entered on an *earlier* turn than the
-    /// current one. The engine cannot derive that from a bare snapshot — it is
-    /// history — so, like [`Self::damage`], it is stored rather than computed.
+    /// recent turn began exactly when it entered on an *earlier* turn than the one
+    /// that controller most recently began — which, for every seat but the active
+    /// player, is not the current turn. The other half is
+    /// [`Player::turn_began`](crate::player::Player::turn_began). The engine cannot
+    /// derive either from a bare snapshot — both are history — so, like
+    /// [`Self::damage`], they are stored rather than computed.
     /// Not a zone-change counter: a permanent re-entering the battlefield gets a
     /// fresh [`PermanentId`] and a fresh `entered_turn`; nothing counts entries.
     pub entered_turn: u32,
