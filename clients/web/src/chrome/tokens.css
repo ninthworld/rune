@@ -208,6 +208,17 @@
    * carries the meaning, so it survives a color-blind or Lite quality path. */
   --rune-drop-invalid-fill: rgba(0, 0, 0, 0.28);
 
+  /* Public-zone identity (`docs/design/zone-geography.md` §3.2/§3.3). Exile
+   * "must not read as a second graveyard": the graveyard's cast is warm-dark
+   * ash, exile's is the cool rune-iris glass, and exile alone gets a pane that
+   * is visibly larger than the cards inside it. These carry the same separation
+   * the rack draws into the zone browser, where a player actually reads the
+   * pile. Colour is never the only channel — both zones are also named. */
+  --rune-zone-graveyard-cast: rgba(120, 92, 68, 0.16);
+  --rune-zone-exile-cast: rgba(126, 132, 214, 0.18);
+  --rune-zone-exile-pane: rgba(126, 132, 214, 0.07);
+  --rune-zone-exile-rim: rgba(160, 172, 240, 0.3);
+
   /* Control geometry and type (§2.2). */
   --rune-control-h-primary: 56px;
   --rune-control-h: 36px;

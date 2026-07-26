@@ -407,6 +407,18 @@ Visual treatments are transcribed from zones panels 5 and 6.
 | 10 | Drop, invalid or outside | pointer up anywhere else | eased arc snap-back to the origin slot; **nothing is sent** | 250–350 ms | card reappears in slot |
 | 11 | Interrupt | newer view, `Escape`, right-click, blur, or pointer cancel | drag ends, origin restored, nothing sent | ≤150 ms | instant |
 
+**Shipped state (issue #569).** Stages 2 and 2a are implemented as specified in
+substance and differ in two stated numbers. The proxy is the **real card face** —
+`card/dom/CardFace` at the `hand` tier, elevation `held`, `aria-hidden` and
+`pointer-events: none` so it is invisible to assistive technology and to the
+`elementFromPoint` walk that resolves the drop — and the origin slot is held open
+by keeping the fan's button in the tree and marking it `data-vacated`, so a
+cancelled drag restores nothing because nothing was removed. The two differences:
+the shipped arming threshold is **6 px** for both pointer and touch rather than
+D11's 8 px / 10 px, and the tilt is a fixed −4° rather than one that follows
+travel. Both are the pre-#569 behaviour, deliberately preserved; changing them is
+a separate decision, not a side effect of drawing the card properly.
+
 The **pending-server** lock (stage 7) is local, non-load-bearing presentation:
 it is released by any inbound view or after 5 s, whichever is first, and a
 fresh mount never reproduces it (**D13**). The protocol carries no per-submission

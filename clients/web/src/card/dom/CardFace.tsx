@@ -212,6 +212,12 @@ function Pips({ data, flow }: { data: CardDisplayData; flow?: boolean }) {
         <span
           key={i}
           className={cx(s.pip, flow && s.pipFlow)}
+          // A pip draws a bare glyph, so its spoken name is the only thing a
+          // screen reader has to go on (issue #462). An attribute, not a node:
+          // the ≤ 12-node ceiling is untouched (and the battlefield face draws
+          // no cost at all).
+          role="img"
+          aria-label={pip.name}
           style={
             {
               '--pip-i': i,

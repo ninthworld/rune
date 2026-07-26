@@ -1,16 +1,21 @@
 /**
- * The inspector's illustration (ADR 0024): shown only when the player's chosen
- * art source has one loaded for the card's `functional_id`; the panel itself is
- * the baseline (and the whole panel remains pure render of the view).
+ * The inspected card's illustration (ADR 0024): shown only when the player's
+ * chosen art source has one loaded for the card's `functional_id`.
  *
- * The art REGION, by contrast, is not conditional (issue #527). The popover
- * reserves it permanently and at one size for both art modes, so a download
- * finishing mid-inspect and a change of ADR 0024 art style both paint into a
- * rectangle that is already there. jsdom lays nothing out, so the assertions
- * below pin the declared contract — the slot element, its classes, and the
- * custom properties its stylesheet rule sizes itself from — not a measured
- * height; a measured height is browser verification and stays with the
- * maintainer.
+ * Since issue #569 the surface draws the shared `CardFace` at its `inspect`
+ * tier, so the art here is the face's own reserved slot rather than a second
+ * panel-owned art block — which is exactly the point: there is one art path, and
+ * the enlarged view shows the face the art mode already resolved. These tests
+ * therefore address the slot through the primitive's own stable hooks
+ * (`data-art-slot`, `data-art-mode`) rather than a surface-local test id.
+ *
+ * The art REGION is not conditional (issue #527). It is reserved permanently and
+ * at one size for both art modes, so a download finishing mid-inspect and a
+ * change of ADR 0024 art style both paint into a rectangle that is already
+ * there. jsdom lays nothing out, so the assertions below pin the declared
+ * contract — the slot element, its classes, and the custom properties its
+ * stylesheet rule sizes itself from — not a measured height; a measured height
+ * is browser verification and stays with the maintainer.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
@@ -85,19 +90,36 @@ async function publishArt(): Promise<void> {
   await loadArt();
 }
 
+/** The card image inside the inspected face, or `null` when none has landed. */
+function artImage(): HTMLImageElement | null {
+  return screen.getByTestId('card-inspect').querySelector('img[data-art-mode]');
+}
+
+/** The face's permanently reserved art slot (issue #527). */
+function artSlot(): HTMLElement {
+  const slot = screen.getByTestId('card-inspect').querySelector<HTMLElement>('[data-art-slot]');
+  if (!slot) throw new Error('the inspected face reserved no art slot');
+  return slot;
+}
+
+/** The drawn face's own root, addressed by its tier. */
+function inspectFace(): HTMLElement | null {
+  return screen.getByTestId('card-inspect').querySelector('[data-tier="inspect"]');
+}
+
 describe('CardInspect art (ADR 0024)', () => {
   it('shows the loaded illustration for the inspected card', async () => {
     await publishArt();
     render(<CardInspect target={{ kind: 'card', card: CARD }} onClose={vi.fn()} />);
-    const img = screen.getByTestId('card-inspect-art');
-    expect(img.getAttribute('src')).toBe('blob:art-url');
+    expect(artImage()?.getAttribute('src')).toBe('blob:art-url');
   });
 
-  it('renders the text-only panel when no art is loaded', () => {
+  it('draws the procedural face when no art is loaded', () => {
     configureArtStore({ cache: new MemoryArtCache() });
     render(<CardInspect target={{ kind: 'card', card: CARD }} onClose={vi.fn()} />);
-    expect(screen.queryByTestId('card-inspect-art')).toBeNull();
-    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Shock');
+    expect(artImage()).toBeNull();
+    // The card is still there, drawn by the one renderer under its own name.
+    expect(inspectFace()?.getAttribute('aria-label')).toBe('Shock');
   });
 });
 
@@ -105,7 +127,7 @@ describe('CardInspect reserved art slot (#527)', () => {
   /** The slot's declared geometry: the element, the classes that select its
    * stylesheet rule, and the properties that rule reads its box from. */
   function slotShape(): Record<string, string | null> {
-    const slot = screen.getByTestId('card-inspect-art-slot');
+    const slot = artSlot();
     return {
       tag: slot.tagName,
       className: slot.className,
@@ -116,7 +138,7 @@ describe('CardInspect reserved art slot (#527)', () => {
   it('reserves the slot when the card has no art at all', () => {
     configureArtStore({ cache: new MemoryArtCache() });
     render(<CardInspect target={{ kind: 'card', card: CARD }} onClose={vi.fn()} />);
-    const slot = screen.getByTestId('card-inspect-art-slot');
+    const slot = artSlot();
     expect(slot.querySelector('img')).toBeNull();
     // Reserved, not empty: the frame's monogram placeholder on the token fill,
     // so a text-only card reads as a card with no illustration.
@@ -127,15 +149,14 @@ describe('CardInspect reserved art slot (#527)', () => {
     stubArtStore();
     render(<CardInspect target={{ kind: 'card', card: CARD }} onClose={vi.fn()} />);
     const before = slotShape();
-    expect(screen.queryByTestId('card-inspect-art')).toBeNull();
+    expect(artImage()).toBeNull();
 
     await act(async () => {
       await loadArt();
     });
 
     // The image landed INSIDE the rectangle that was already reserved…
-    const img = screen.getByTestId('card-inspect-art');
-    expect(img.parentElement).toBe(screen.getByTestId('card-inspect-art-slot'));
+    expect(artImage()?.parentElement).toBe(artSlot());
     // …and nothing about that rectangle's declared box changed.
     expect(slotShape()).toEqual(before);
   });
@@ -144,20 +165,20 @@ describe('CardInspect reserved art slot (#527)', () => {
     await publishArt();
     render(<CardInspect target={{ kind: 'card', card: CARD }} onClose={vi.fn()} />);
     const windowed = slotShape();
-    expect(screen.getByTestId('card-inspect-art').getAttribute('data-art-mode')).toBe('panel');
+    expect(artImage()?.getAttribute('data-art-mode')).toBe('panel');
 
     // Switching style starts a fresh download for the other image kind, so the
     // surface passes through "mode changed, nothing loaded yet" — the state
     // that used to remove the art block entirely. The slot survives it.
     act(() => setArtStyle('full'));
-    expect(screen.queryByTestId('card-inspect-art')).toBeNull();
+    expect(artImage()).toBeNull();
     expect(slotShape()).toEqual(windowed);
 
     // …and the substantially taller full-card mode then lands in the SAME slot.
     await act(async () => {
       await flush();
     });
-    expect(screen.getByTestId('card-inspect-art').getAttribute('data-art-mode')).toBe('panelFull');
+    expect(artImage()?.getAttribute('data-art-mode')).toBe('panelFull');
     expect(slotShape()).toEqual(windowed);
 
     // Back again: the cached window image returns instantly, still same slot.
@@ -165,7 +186,7 @@ describe('CardInspect reserved art slot (#527)', () => {
       setArtStyle('window');
       await flush();
     });
-    expect(screen.getByTestId('card-inspect-art').getAttribute('data-art-mode')).toBe('panel');
+    expect(artImage()?.getAttribute('data-art-mode')).toBe('panel');
     expect(slotShape()).toEqual(windowed);
   });
 });

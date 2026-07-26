@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { DeckBuilder } from './DeckBuilder';
 import { STARTER_DECKLISTS, decklistCounts, decklistSize } from './decklists';
 import { CATALOG_VIEW } from './catalog-view.fixture';
@@ -87,10 +87,12 @@ describe('DeckBuilder (issue #368)', () => {
   it('inspects a card with its rules text through the shared inspect treatment', () => {
     renderBuilder();
     fireEvent.click(screen.getByTestId('deck-builder-inspect-serra_angel'));
-    // The universal CardInspect popover renders the server-computed rules text verbatim.
-    expect(screen.getByTestId('card-inspect')).toBeDefined();
-    expect(screen.getByTestId('card-inspect-name').textContent).toBe('Serra Angel');
-    expect(screen.getByTestId('card-inspect-rules').textContent).toContain('Flying, vigilance');
+    // The universal inspect surface brings the real card face forward (issue
+    // #569) and renders the server-computed rules text on it verbatim.
+    const inspect = screen.getByTestId('card-inspect');
+    const face = within(inspect).getByRole('img', { name: 'Serra Angel' });
+    expect(face.getAttribute('data-tier')).toBe('inspect');
+    expect(face.textContent).toContain('Flying, vigilance');
   });
 
   it('adds and removes copies, tracking per-card and running counts', () => {

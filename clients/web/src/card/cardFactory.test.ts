@@ -18,18 +18,23 @@ describe('parseManaCost', () => {
   it('splits a braced cost into one pip per symbol, in order', () => {
     const pips = parseManaCost('{1}{G}{G}');
     expect(pips.map((p) => p.symbol)).toEqual(['1', 'G', 'G']);
-    expect(pips[1]).toEqual({ symbol: 'G', bg: PIP.G.bg, fg: PIP.G.fg });
+    expect(pips[1]).toEqual({ symbol: 'G', name: 'green mana', bg: PIP.G.bg, fg: PIP.G.fg });
+    // Every pip carries its spoken name (issue #462): a pip draws a bare glyph,
+    // so the name is the only thing a screen reader has to read out.
+    expect(pips.map((p) => p.name)).toEqual(['one generic mana', 'green mana', 'green mana']);
   });
 
   it('falls back to the neutral swatch for an unknown symbol', () => {
     const [pip] = parseManaCost('{X}');
-    expect(pip).toEqual({ symbol: 'X', bg: PIP.N.bg, fg: PIP.N.fg });
+    expect(pip).toEqual({ symbol: 'X', name: 'X generic mana', bg: PIP.N.bg, fg: PIP.N.fg });
   });
 
   it('still draws a pip for a code the vocabulary does not know (issue #462)', () => {
     // The shared tokenizer classifies it as unknown; a cost may still never
     // lose a symbol the server sent, so it draws neutral and verbatim.
-    expect(parseManaCost('{WEIRD}')).toEqual([{ symbol: 'WEIRD', bg: PIP.N.bg, fg: PIP.N.fg }]);
+    expect(parseManaCost('{WEIRD}')).toEqual([
+      { symbol: 'WEIRD', name: 'WEIRD', bg: PIP.N.bg, fg: PIP.N.fg },
+    ]);
   });
 
   it('returns nothing for an empty or symbol-free string', () => {

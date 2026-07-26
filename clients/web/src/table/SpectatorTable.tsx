@@ -113,9 +113,8 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
   const inspectTarget = inspectedId !== null ? resolveInspect(publicView, inspectedId) : null;
   const browserData = browsing
     ? {
-        title: `${playerName(publicView, browsing.playerId)} — ${
-          browsing.zone === 'graveyard' ? 'Graveyard' : 'Exile'
-        }`,
+        zone: browsing.zone,
+        owner: playerName(publicView, browsing.playerId),
         cards:
           (browsing.zone === 'graveyard' ? publicView.graveyards : publicView.exile).find(
             (pile) => pile.player_id === browsing.playerId,
@@ -185,7 +184,8 @@ export function SpectatorTable({ view: spec }: { view: SpectatorView }) {
 
       {browserData && (
         <ZoneBrowser
-          title={browserData.title}
+          zone={browserData.zone}
+          owner={browserData.owner}
           cards={browserData.cards}
           onInspect={setInspectedId}
           onClose={() => setBrowsing(null)}

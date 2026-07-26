@@ -512,7 +512,7 @@ describe('LobbyScreen (issue #114)', () => {
 
       // A card carries its server-computed rules text for browsing (inspect).
       fireEvent.click(screen.getByTestId('deck-builder-inspect-shock'));
-      expect(screen.getByTestId('card-inspect-rules').textContent).toContain('2 damage');
+      expect(screen.getByTestId('card-inspect').textContent).toContain('2 damage');
       fireEvent.click(screen.getByTestId('card-inspect-close'));
 
       // Start from an empty deck, assemble an arbitrary list, and submit it through

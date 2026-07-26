@@ -14,10 +14,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { collectArtCards, getArtVersion, noteCards, subscribeArt } from '../../card/art/artStore';
-import type { EntityId, PlayerId, ValidAction } from '../../protocol';
+import type { CardView, EntityId, PlayerId, ValidAction } from '../../protocol';
 import { playerName } from '../../playerNames';
 import { selectPendingPrompt, useGameStore } from '../../store';
 import { publishPlane, publishScene, publishView } from '../../testHooks';
+import { CardFace } from '../../card/dom';
 import { ArtSettings } from '../ArtSettings';
 import { PresentationSettings } from '../PresentationSettings';
 import { CardInspect } from '../CardInspect';
@@ -35,6 +36,7 @@ import { useTableInteractions } from '../hooks/useTableInteractions';
 import { useTableKeyboard } from '../hooks/useTableKeyboard';
 import { useViewport } from '../hooks/useViewport';
 import { activeSlot as msActiveSlot, beginMultiSelect, toggle as msToggle } from '../multiSelect';
+import { domCardArt, handDisplayData } from '../planeDisplayData';
 import { declarationFor } from '../scene/action-helpers';
 import type { Rect } from '../scene';
 import { activeCandidates, activeRequirement, canRetract } from '../targeting';
@@ -71,9 +73,15 @@ interface OpenZone {
   zone: BrowsableZone;
 }
 
+/**
+ * A live hand drag. The **card** rides here, not just its name (issue #569): the
+ * proxy draws the real resolved face with the one card renderer, so what follows
+ * the pointer is the card the player picked up rather than a text box standing
+ * in for it. `action` is the server-issued action the drop will fire — the
+ * client still sends nothing but an `action_id`.
+ */
 interface HandDrag {
-  cardId: EntityId;
-  name: string;
+  card: CardView;
   action: ValidAction;
   x: number;
   y: number;
@@ -277,9 +285,8 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
   const inspectTarget = inspectId ? resolveInspect(view, inspectId) : null;
   const browserData = browsing
     ? {
-        title: `${playerName(view, browsing.playerId)} — ${
-          browsing.zone === 'graveyard' ? 'Graveyard' : 'Exile'
-        }`,
+        zone: browsing.zone,
+        owner: playerName(view, browsing.playerId),
         cards:
           (browsing.zone === 'graveyard' ? view.graveyards : view.exile).find(
             (pile) => pile.player_id === browsing.playerId,
@@ -384,8 +391,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     );
 
   const armHandDrag = (
-    cardId: EntityId,
-    name: string,
+    card: CardView,
     action: ValidAction,
     event: ReactPointerEvent<HTMLButtonElement>,
   ): void => {
@@ -402,7 +408,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     const onMove = (move: PointerEvent): void => {
       if (!live && Math.hypot(move.clientX - start.x, move.clientY - start.y) < 6) return;
       live = true;
-      setHandDrag({ cardId, name, action, x: move.clientX, y: move.clientY });
+      setHandDrag({ card, action, x: move.clientX, y: move.clientY });
     };
     const endDrag = (): void => {
       setHandDrag(null);
@@ -562,6 +568,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           chosen={decisionStaging.chosen}
           selectedId={selectedId}
           previewTargetId={previewTargetId}
+          draggingId={handDrag?.card.id ?? null}
           shouldSwallowClick={() => {
             if (!swallowClick.current) return false;
             swallowClick.current = false;
@@ -573,7 +580,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           onPreviewTarget={setPreviewTargetId}
           onCardPointerDown={(card, event) => {
             const play = playActionFor(card.id);
-            if (play) armHandDrag(card.id, card.name, play, event);
+            if (play) armHandDrag(card, play, event);
           }}
         />
       </div>
@@ -650,20 +657,35 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
         />
       )}
 
+      {/* The drag proxy (`control-language.md` §6.2 stage 2): the REAL card,
+          drawn by the one card renderer at its hand tier and held at the drag
+          elevation, following the pointer. It is `aria-hidden` and pointer-
+          transparent, so it is invisible both to assistive technology — the
+          origin button keeps the accessible name and every keyboard path — and
+          to hit testing, which is what lets `elementFromPoint` find the drop
+          receiver underneath it. */}
       {handDrag && (
         <div
-          className={styles.dragGhost}
+          className={styles.dragProxy}
           data-testid="drag-ghost"
+          data-entity-drag={handDrag.card.id}
           aria-hidden="true"
           style={{ left: handDrag.x, top: handDrag.y }}
         >
-          {handDrag.name}
+          <CardFace
+            data={handDisplayData(view, handDrag.card)}
+            tier="hand"
+            elevation="held"
+            art={domCardArt(handDrag.card)}
+            rulesText={handDrag.card.rules_text}
+          />
         </div>
       )}
 
       {browserData && (
         <ZoneBrowser
-          title={browserData.title}
+          zone={browserData.zone}
+          owner={browserData.owner}
           cards={browserData.cards}
           onInspect={setInspectedId}
           onClose={() => setBrowsing(null)}
@@ -673,6 +695,11 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
         <CardInspect
           target={inspectTarget}
           transient={inspectedId === null}
+          // A pinned inspect opened while a decision is live parks clear of the
+          // action column and drops its veil, so neither the decision nor any
+          // candidate it lit is covered (`control-language.md` §10).
+          deferring={decision !== null}
+          onOpenArtSettings={() => setShowArtSettings(true)}
           onClose={() => {
             setInspectedId(null);
             setPeekId(null);
@@ -681,7 +708,14 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
       )}
       {showHelp && <ShortcutHelp bindings={shortcuts} onClose={() => setShowHelp(false)} />}
       {showSettings && <PresentationSettings onClose={() => setShowSettings(false)} />}
-      {showArtSettings && <ArtSettings onClose={() => setShowArtSettings(false)} />}
+      {showArtSettings && (
+        <ArtSettings
+          // A card from this game, so the preview is the player's own board
+          // under the chosen art mode rather than a stock illustration.
+          previewCard={view.my_hand[0] ?? view.battlefield[0]?.card}
+          onClose={() => setShowArtSettings(false)}
+        />
+      )}
       {view.result && (
         <GameOverOverlay
           result={view.result}
