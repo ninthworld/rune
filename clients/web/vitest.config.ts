@@ -27,6 +27,13 @@ export default defineConfig({
       '@protocol-fixtures/gameview-prompts.json': fileURLToPath(
         new URL('../../crates/rune-protocol/fixtures/gameview-prompts.json', import.meta.url),
       ),
+      // The Commander presentation fixture (issue #553): a mid-game Commander frame
+      // whose command zones are all empty, so the format signal, the per-seat
+      // commander identity and the per-permanent marker are the only things that can
+      // carry the presentation. Round-tripped by the Rust crate and asserted here.
+      '@protocol-fixtures/gameview-commander.json': fileURLToPath(
+        new URL('../../crates/rune-protocol/fixtures/gameview-commander.json', import.meta.url),
+      ),
     },
   },
   test: {

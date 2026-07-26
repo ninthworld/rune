@@ -55,6 +55,8 @@ redacted before serialization.
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed on the next cast from the command zone (CR 903.8, issue #372); omitted when empty |
+| `format` | `MatchFormat?` | The format this match is played under (issue #553); omitted by an older server, which a client MUST read as "unknown format, not Commander" |
+| `commander_identity` | `CommanderIdentity[]` | Public per-seat commander name and colour identity (CR 903.3/903.4, issue #553); omitted when empty, and by an older server |
 
 `command` is each player's command zone (CR 903.6), carried in the same public `ZonePile`
 shape as `graveyards`/`exile` (`{ player_id, cards }`), one entry per player with a card
@@ -75,6 +77,50 @@ is how many times that commander has been cast from the command zone this game, 
 is the generic mana the tax adds to the next such cast (`2 * casts`). `casts` and `tax`
 are omitted when zero. Public information; the list is omitted (defaults to `[]`) in a
 non-commander game.
+
+`format` is the match’s format signal (issue #553): `{ id, commander }`, where `id` is the
+room’s free-form `game_setup` identifier (`"standard"`, `"commander"`, …) and `commander`
+is the typed flag a client keys Commander-specific presentation off. It exists because
+**no client can infer the format from zone contents**: a Commander game whose commanders
+are all on the battlefield has an empty `command`, an elided all-zero `commander_tax`, and
+an empty `commander_damage`, which is indistinguishable from a non-Commander game. `id` is
+omitted when empty and `commander` when `false`; the whole object is omitted by a server
+that has no registered format for the room, and by an older server — in every one of those
+cases the documented default is **not a Commander game**, exactly the pre-#553 reading. It
+is public information (a room’s format is advertised in the lobby), so spectators receive
+the identical value.
+
+`commander_identity` carries each seat’s commander name and colour identity (CR 903.3 /
+903.4, issue #553): one `{ commander, name, color_identity }` entry per player that
+designated a commander, keyed — like `commander_damage` and `commander_tax` — by the owning
+player’s `PlayerId`. It is **stable for the whole game**: the entry does not change when
+the commander is cast, dies, is exiled, or returns to the command zone, which is the point,
+since the `command` pile (the only previous source of a commander’s name and colours)
+disappears the instant the commander leaves it. `color_identity` is an array of the closed
+colour letters `"W"`, `"U"`, `"B"`, `"R"`, `"G"` in that order; it is **omitted for a
+colourless commander**, which is a real, empty identity rather than a missing value, and
+`name` is omitted only for a card the server cannot resolve. Public information, computed
+by the same server-side CR 903.4 routine that validated the deck, so what a client renders
+can never disagree with what the format enforced. The list is omitted (defaults to `[]`) in
+a non-commander game and by an older server.
+
+Per-seat presentation state (issue #553) rides the seat records themselves rather than a
+parallel list. `OpponentView` gains `connected` and `ai`; `SelfView` gains `eliminated`,
+`connected`, and `ai`, so the **receiver’s own** elimination — losing while two or more
+players remain, CR 800.4a — has an authoritative source while the game continues (`result`
+arrives only at game over, and the bounded `log` window is not reconstructable, so neither
+may stand in for it). `connected` is the **one flag on the wire whose omitted value is
+`true`**: the server holds a disconnected seat open, so the flag rides the wire only as
+`false` and a client must test `=== false` rather than falsiness — an older server that
+never sends it means every seat is connected. `ai` carries the lobby’s `SeatView.ai` into
+the match so the marker is not lost at the hand-off; it is public presentation information
+and exposes nothing about the AI’s decisions or policy. Both default to
+connected/human when omitted. `Permanent` likewise gains `is_commander`, the server-computed
+marker that this object *is* somebody’s commander; it is omitted (defaults to `false`) for
+every other permanent, and a client MUST NOT infer it — a commander on the battlefield is an
+ordinary permanent, and “legendary creature” is neither necessary (a commander may be a
+planeswalker) nor sufficient (most legends are not commanders). `result` remains the sole
+authority for the game’s outcome; none of these fields lets a client conclude a loss.
 
 `player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
 any in-game surface — the turn indicator, player tiles, zone-browser titles, the
@@ -202,7 +248,11 @@ A `Permanent` contains:
 - optional `blocking`, naming the attacker’s entity id;
 - optional marked `damage`;
 - optional `attached_to`, naming the host permanent’s entity id when this permanent
-  (e.g. an Aura, CR 303.4) is attached to another; and
+  (e.g. an Aura, CR 303.4) is attached to another;
+- optional `is_commander` (default `false`, issue #553), the server-computed marker that
+  this object **is** somebody’s commander (CR 903.3) — matched on the card instance, so it
+  survives every zone change and recast; a client must never infer it from a name, a zone,
+  or a type line; and
 - optional `counters`, each `{ "kind": string, "count": number }`.
 
 These fields describe server-computed state. They do not authorize interaction.
@@ -378,7 +428,7 @@ the game live with all hidden information redacted. Redaction is **structural**:
 simply has no receiver or decision fields, so a projection cannot leak a hand, a library’s
 contents, a mana pool, or a `valid_actions` list to a spectator. It reuses `GameView`’s public
 component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, `GameLogEntry`,
-`Phase`, `PlayerId`, `GameResult`, `CommanderDamage`).
+`Phase`, `PlayerId`, `GameResult`, `CommanderDamage`, `MatchFormat`, `CommanderIdentity`).
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -398,10 +448,15 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed (CR 903.8, issue #372); omitted when empty |
+| `format` | `MatchFormat?` | The match format signal (issue #553); omitted by an older server (read as "not Commander") |
+| `commander_identity` | `CommanderIdentity[]` | Public per-seat commander name and colour identity (issue #553); omitted when empty |
 
 A `SpectatorView` carries **no** `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
 `action_deadline`, `stops`, `auto_passed`, or `action_rejected` — those fields do not exist on
-the type. A spectator reconstructs the whole public board from a single `SpectatorView` (the
+the type. The issue #553 presentation metadata it does carry is public by construction: the
+format is advertised in the lobby, a commander is announced before the game, and a seat’s
+connection/AI state is what every seated player already sees, so a spectator’s `players[]`
+entries carry the same `connected`/`ai` flags a seated `OpponentView` does. A spectator reconstructs the whole public board from a single `SpectatorView` (the
 complete-view principle), so it may join mid-game and resume after a reconnect with no history.
 The client distinguishes a `SpectatorView` from a seated `GameView` structurally: a
 `SpectatorView` has no `you` field, whereas a `GameView` always serializes one.
@@ -662,3 +717,6 @@ is public data only — it never carries a deck, a roster, or any game state.
 - `valid_commands` and `valid_actions` are the only sources of interactivity.
 - Clients display server-computed characteristics and never infer legal choices.
 - Unknown fields are ignored, and omitted optional fields receive documented defaults.
+- A default is what the protocol documents, not what the type’s zero value happens to be:
+  an omitted `connected` means **connected**, an omitted `format` means **not Commander**,
+  an omitted `commander_identity`/`is_commander` means no commander presentation at all.

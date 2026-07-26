@@ -74,6 +74,28 @@ pub struct OpponentView {
     /// stored loss state; never derived by the client.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub eliminated: bool,
+    /// Whether this seat currently has a live connection (issue #553). The server
+    /// **holds a disconnected seat open** — the game does not end, the seat is not
+    /// conceded, and play simply waits on whoever must act — so a client needs to
+    /// say "waiting on a disconnected player" rather than "not responding".
+    ///
+    /// The one field on this type whose **absent value is `true`**: a payload that
+    /// omits it (an older server, or any connected seat) means *connected*, so it
+    /// rides the wire only as `false`. Room state, not engine state.
+    #[serde(
+        default = "crate::default_true",
+        skip_serializing_if = "crate::is_true"
+    )]
+    pub connected: bool,
+    /// Whether this seat is played by a server-side **AI** (issue #415/#553) rather
+    /// than a human. Public presentation information — the lobby already shows the
+    /// AI kind's name on the seat before the game, and it does not stop being true
+    /// once the game starts — so carrying it in-game lets a client mark the seat
+    /// instead of losing the fact at the hand-off. Additive: omitted (and defaults
+    /// to `false`, i.e. human). Room state, not engine state; nothing about the AI's
+    /// decisions or its policy is exposed.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub ai: bool,
 }
 
 /// The receiver's own public stats — the self-counterpart of [`OpponentView`].
@@ -84,12 +106,57 @@ pub struct OpponentView {
 /// player — life total and library size — had no home, so a player could see everyone's
 /// life but their own. This is that home; it exposes no hidden information (a player's
 /// own life and library size are public).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// [`Default`] is written by hand rather than derived because
+/// [`connected`](Self::connected) defaults to `true`: a [`GameView`] from an older
+/// server omits `me` entirely and falls back to `SelfView::default()`, which must
+/// agree with what deserializing `{}` produces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SelfView {
     /// The receiver's current life total.
     pub life: i32,
     /// Number of cards left in the receiver's library.
     pub library_size: u32,
+    /// Whether the receiver has been eliminated — they lost while two or more
+    /// players remained, so the game continues without them (CR 800.4a, issue
+    /// #553). The self-counterpart of [`OpponentView::eliminated`], and the only
+    /// authoritative source for a *local* elimination: `result` arrives at game
+    /// over, which in a multiplayer game can be many turns later, and the bounded
+    /// `log` window is not reconstructable, so neither may stand in for this.
+    /// Additive: omitted (and defaults to `false`) so a two-player view is
+    /// unchanged. Server-computed; the client never infers its own loss.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub eliminated: bool,
+    /// Whether the receiver's own seat has a live connection (issue #553) — see
+    /// [`OpponentView::connected`]. Trivially `true` for the connection reading it,
+    /// so it exists for symmetry: a surface that renders a seat cluster reads the
+    /// same field for every seat rather than special-casing itself. Absent ⇒
+    /// connected; rides the wire only as `false`.
+    #[serde(
+        default = "crate::default_true",
+        skip_serializing_if = "crate::is_true"
+    )]
+    pub connected: bool,
+    /// Whether the receiver's own seat is AI-controlled (issue #553) — see
+    /// [`OpponentView::ai`]. True only for the server's in-process AI driver, which
+    /// receives the same `GameView` a human would; present for the same symmetry
+    /// reason as [`Self::connected`]. Omitted (and defaults to `false`).
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub ai: bool,
+}
+
+impl Default for SelfView {
+    /// A zero placeholder for a view that carries no `me` — life `0`, empty
+    /// library, still in the game, **connected**, human.
+    fn default() -> Self {
+        Self {
+            life: 0,
+            library_size: 0,
+            eliminated: false,
+            connected: true,
+            ai: false,
+        }
+    }
 }
 
 /// A permanent on the battlefield with its server-computed characteristics.
@@ -139,6 +206,22 @@ pub struct Permanent {
     /// clusters the attachment with its host and derives no rules from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attached_to: Option<EntityId>,
+    /// Whether this permanent **is** its controller's commander (CR 903.3, issue
+    /// #553): the server-computed marker that says "this object is the commander",
+    /// so a client can put the commander crown on the card without inferring it.
+    ///
+    /// The inference it replaces was never sound. A commander on the battlefield is
+    /// an ordinary permanent: its name is not distinguished, its zone is shared with
+    /// every other permanent, and "legendary creature" is neither necessary
+    /// (a commander may be a planeswalker) nor sufficient (most legends are not
+    /// commanders). Only the server holds the designation, which is keyed to the
+    /// card *instance* and so survives every zone change and recast.
+    ///
+    /// Public information (a commander is announced before the game). Additive:
+    /// omitted (and defaults to `false`) for every non-commander permanent and in
+    /// every non-Commander game.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub is_commander: bool,
     /// Named counters and their quantities, e.g. `{"+1/+1": 2}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub counters: Vec<Counter>,
@@ -179,10 +262,16 @@ pub struct ZonePile {
 
 /// The current turn step. The full sequence lives in the engine's phase FSM
 /// (backlog); the protocol carries the current step for overview/focus rendering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// [`Default`] is the untap step — the first step of a turn, and the zero value
+/// [`GameView::default()`](crate::GameView) needs. It is a *placeholder*, not a
+/// claim about any real game: `phase` is the one mandatory field on the wire, so a
+/// defaulted phase never reaches a client.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
     /// Untap step.
+    #[default]
     Untap,
     /// Upkeep step.
     Upkeep,
@@ -219,6 +308,7 @@ mod tests {
         let me = SelfView {
             life: 15,
             library_size: 40,
+            ..Default::default()
         };
         let back: SelfView = serde_json::from_str(&serde_json::to_string(&me).unwrap()).unwrap();
         assert_eq!(back, me);
@@ -258,6 +348,7 @@ mod tests {
             blocking: None,
             damage: 0,
             attached_to: None,
+            is_commander: false,
             counters: vec![],
         };
 
@@ -336,6 +427,7 @@ mod tests {
             blocking: None,
             damage: 0,
             attached_to: None,
+            is_commander: false,
             counters: vec![],
         };
 

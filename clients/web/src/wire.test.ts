@@ -25,6 +25,10 @@ import { submitDeckCommand } from './protocol';
 // The prompt-shapes fixture (issue #156): a mulligan frame carrying `option` +
 // `select_from_zone` prompts, round-tripped by the Rust crate and asserted here.
 import CONTRACT_FIXTURE_PROMPTS from '@protocol-fixtures/gameview-prompts.json';
+// The Commander presentation fixture (issue #553): a mid-game Commander frame with
+// every command zone empty, so the format signal, the per-seat commander identity and
+// the per-permanent marker are the only things that can carry the presentation.
+import CONTRACT_FIXTURE_COMMANDER from '@protocol-fixtures/gameview-commander.json';
 
 describe('parseGameView', () => {
   it('decodes a representative wire frame into the expected GameView', () => {
@@ -61,6 +65,10 @@ describe('parseGameView', () => {
       player_names: {},
       commander_damage: [],
       commander_tax: [],
+      // In-match presentation metadata (issue #553): the format stays `undefined`
+      // (absent ⇒ not Commander) and the identity list defaults to `[]`.
+      format: undefined,
+      commander_identity: [],
     });
   });
 
@@ -439,6 +447,84 @@ describe('cross-language contract fixture (issue #56)', () => {
         prompt: 'Order these triggered abilities',
         items: ['stack_1', 'stack_2'],
       },
+    ]);
+  });
+
+  it('carries the Commander presentation fixture through with no command zone', () => {
+    // Cross-language parity is assertion-based: a field added in Rust and forgotten
+    // here fails nothing unless it is asserted, so every #553 field is asserted.
+    const view = parseGameView(JSON.stringify(CONTRACT_FIXTURE_COMMANDER));
+
+    // The format signal, independent of zone contents — there is no `command` key.
+    expect(view.command).toEqual([]);
+    expect(view.format).toEqual({ id: 'commander', commander: true });
+
+    // Commander identity, keyed to the designation and present for all three seats
+    // wherever their commanders currently sit. A colourless identity elides.
+    expect(view.commander_identity).toEqual([
+      { commander: 'p0', name: 'Karn, Silver Golem' },
+      { commander: 'p1', name: 'Jedit Ojanen', color_identity: ['G'] },
+      { commander: 'p2', name: 'Thraximundar', color_identity: ['U', 'B', 'R'] },
+    ]);
+
+    // The server marks the commander's battlefield object; the creature beside it is
+    // untouched, so the client never infers commander-ness from a type line.
+    expect(view.battlefield[0].is_commander).toBe(true);
+    expect(view.battlefield[1].is_commander).toBeUndefined();
+
+    // Local elimination while the game continues: `result` is still absent.
+    expect(view.me.eliminated).toBe(true);
+    expect(view.result).toBeUndefined();
+
+    // Per-seat connection and AI state, both carried verbatim.
+    expect(view.opponents[0].connected).toBe(false);
+    expect(view.opponents[1].ai).toBe(true);
+    expect(view.opponents[1].connected).toBeUndefined();
+  });
+
+  it('defaults every #553 field to the pre-553 reading when the server omits it', () => {
+    // The compatibility contract in one place: connected, not eliminated, human,
+    // non-Commander, no marker — never a `false`-ish reading of an absent flag.
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'upkeep',
+        you: 'p0',
+        me: { life: 20, library_size: 53 },
+        opponents: [
+          { player_id: 'p1', hand_size: 7, life: 20, library_size: 53, graveyard_size: 0 },
+        ],
+        battlefield: [
+          {
+            id: 'perm_1',
+            controller: 'p1',
+            owner: 'p1',
+            card: { id: 'perm_1', name: 'Bear', type_line: 'Creature' },
+          },
+        ],
+      }),
+    );
+    expect(view.format).toBeUndefined();
+    expect(view.commander_identity).toEqual([]);
+    expect(view.me.connected).toBeUndefined();
+    expect(view.me.eliminated).toBeUndefined();
+    expect(view.me.ai).toBeUndefined();
+    expect(view.battlefield[0].is_commander).toBeUndefined();
+  });
+
+  it('drops an unrecognized colour letter rather than widening the union', () => {
+    // The derived-union discipline: `COLORS` is the runtime validator, so a future
+    // (or malformed) letter is filtered out instead of smuggling an invalid value in.
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'upkeep',
+        commander_identity: [
+          { commander: 'p0', name: 'Odd', color_identity: ['G', 'X', 7, 'U'] },
+          { name: 'no commander id' },
+        ],
+      }),
+    );
+    expect(view.commander_identity).toEqual([
+      { commander: 'p0', name: 'Odd', color_identity: ['G', 'U'] },
     ]);
   });
 

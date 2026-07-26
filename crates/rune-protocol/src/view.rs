@@ -5,15 +5,26 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CardView, CommanderDamage, CommanderTax, GameLogEntry, GameResult, OpponentView, Permanent,
-    Phase, PlayerId, SelfView, StackItem, ValidAction, ZonePile,
+    CardView, CommanderDamage, CommanderIdentity, CommanderTax, GameLogEntry, GameResult,
+    MatchFormat, OpponentView, Permanent, Phase, PlayerId, SelfView, StackItem, ValidAction,
+    ZonePile,
 };
 
 /// The personalized state the server sends after every change (docs/protocol.md).
 /// Hidden information is redacted server-side before this is built. A client must
 /// be able to fully reconstruct its UI from a single `GameView` — no client state
 /// is load-bearing across messages.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+///
+/// `Default` yields an **empty placeholder** view — no seat, no zones, the untap
+/// step — which is not a meaningful game state and is never sent. It exists for the
+/// same reason [`ValidAction`]'s does: every field is additive and optional except
+/// `phase`, so a caller building a view field-by-field (test fixtures, the CLI's and
+/// the AI's harnesses) should not have to restate a dozen empty collections, and
+/// adding the *next* additive field should not touch a dozen unrelated literals.
+/// The one literal that deliberately still enumerates every field is
+/// `game_view_round_trips_through_json` below — it is the exhaustive round-trip, so
+/// a new field must be considered there exactly once.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct GameView {
     /// The receiver's own seat entity id (the `p{N}` form used for players
     /// throughout the view). Lets a client identify itself directly instead of
@@ -159,6 +170,28 @@ pub struct GameView {
     /// for a non-commander game. Server-computed; never derived by the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commander_tax: Vec<CommanderTax>,
+    /// The **format** this match is played under (issue #553) — see [`MatchFormat`].
+    /// The authoritative signal that a game is Commander, independent of whether any
+    /// command zone, tax entry, or damage entry is currently populated: all three
+    /// are legitimately empty in ordinary Commander states, so no client can infer
+    /// the format from them. **Public information** (a room's format is advertised
+    /// in the lobby), so it is the same for every receiver and for spectators.
+    /// Room/session state, like [`Self::player_names`] — the room fills it in after
+    /// projection. Additive: omitted (and defaults to `None`, read as "unknown
+    /// format, not Commander") so an older server and an older client are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<MatchFormat>,
+    /// Each seat's **commander identity** (CR 903.3/903.4, issue #553): the
+    /// commander's display name and color identity, one entry per player who
+    /// designated one — see [`CommanderIdentity`]. Keyed to the designation, so it
+    /// is **stable for the whole game** and does not change when the commander is
+    /// cast, dies, is exiled, or returns to the command zone; the `command` pile,
+    /// the only previous source, disappears the moment the commander leaves it.
+    /// **Public information**, so every receiver and every spectator sees the same
+    /// list. Additive: omitted (and defaults to empty) for a non-commander game.
+    /// Server-computed; never derived by the client.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commander_identity: Vec<CommanderIdentity>,
 }
 
 #[cfg(test)]
@@ -174,30 +207,11 @@ mod tests {
         // defaults (empty / false) and round-trip when present.
         let mut view = GameView {
             you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p0".into(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
             priority_player: Some("p0".into()),
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: vec![],
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
+            ..Default::default()
         };
         // Defaults elide.
         let json = serde_json::to_value(&view).unwrap();
@@ -242,6 +256,7 @@ mod tests {
             blocking: None,
             damage: 0,
             attached_to: None,
+            is_commander: false,
             counters: vec![],
         };
         let json = serde_json::to_value(&attacker).unwrap();
@@ -268,6 +283,8 @@ mod tests {
             graveyard_size: 0,
             statuses: vec![],
             eliminated: true,
+            connected: true,
+            ai: false,
         };
         assert_eq!(serde_json::to_value(&out).unwrap()["eliminated"], true);
         let alive = OpponentView {
@@ -311,6 +328,9 @@ mod tests {
             me: SelfView {
                 life: 18,
                 library_size: 52,
+                eliminated: false,
+                connected: true,
+                ai: false,
             },
             opponents: vec![OpponentView {
                 player_id: "p2".into(),
@@ -320,6 +340,8 @@ mod tests {
                 graveyard_size: 0,
                 statuses: vec!["monarch".into()],
                 eliminated: false,
+                connected: true,
+                ai: false,
             }],
             battlefield: vec![Permanent {
                 id: "perm_xyz".into(),
@@ -342,6 +364,7 @@ mod tests {
                 blocking: None,
                 damage: 0,
                 attached_to: None,
+                is_commander: false,
                 counters: vec![Counter {
                     kind: "+1/+1".into(),
                     count: 2,
@@ -395,6 +418,11 @@ mod tests {
                 amount: 14,
             }],
             commander_tax: Vec::new(),
+            // In-match presentation metadata (issue #553): the format signal and the
+            // designation-keyed commander identity, both absent for this non-Commander
+            // frame so their defaults ride the exhaustive round trip too.
+            format: None,
+            commander_identity: Vec::new(),
         };
 
         let json = serde_json::to_string(&view).unwrap();
@@ -482,30 +510,8 @@ mod tests {
     fn empty_game_view_round_trips() {
         let view = GameView {
             you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::Upkeep,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
+            ..Default::default()
         };
         let json = serde_json::to_string(&view).unwrap();
         let back: GameView = serde_json::from_str(&json).unwrap();
@@ -516,30 +522,8 @@ mod tests {
     fn mana_pool_is_omitted_when_empty_and_round_trips_when_present() {
         let mut view = GameView {
             you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::PrecombatMain,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
+            ..Default::default()
         };
         // Empty pool is elided from the wire.
         let json = serde_json::to_value(&view).unwrap();
@@ -633,6 +617,146 @@ mod tests {
     }
 
     #[test]
+    fn issue_553_commander_fixture_renders_without_a_populated_command_zone() {
+        // Cross-language contract fixture (issue #553): a three-seat Commander game
+        // **mid-game**, in which every commander has left the command zone — one is on
+        // the battlefield, one is in a graveyard, one belongs to an eliminated seat.
+        // The frame therefore carries no `command` key at all, which is exactly the
+        // state a client used to have to guess at. The web client's `wire.test.ts`
+        // consumes these same bytes.
+        let json = include_str!("../fixtures/gameview-commander.json");
+        let view: GameView = serde_json::from_str(json).unwrap();
+
+        // Round-trips through serde JSON without loss.
+        let reencoded = serde_json::to_string(&view).unwrap();
+        let back: GameView = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(back, view);
+
+        // The format signal is independent of zone contents: no command zone, and the
+        // frame still says, authoritatively, that this is Commander.
+        assert!(view.command.is_empty(), "every commander is elsewhere");
+        let Some(format) = view.format.as_ref() else {
+            panic!("the format signal rides the view");
+        };
+        assert_eq!(format.id, "commander");
+        assert!(format.commander);
+
+        // Commander identity is keyed to the designation, so it is present for all
+        // three seats regardless of where each commander currently sits — including
+        // the eliminated seat, whose commander is in no visible zone at all.
+        let identity = |seat: &str| {
+            view.commander_identity
+                .iter()
+                .find(|c| c.commander == seat)
+                .unwrap_or_else(|| panic!("seat {seat} has a commander identity"))
+        };
+        assert_eq!(identity("p1").name, "Jedit Ojanen");
+        assert_eq!(identity("p1").color_identity, vec![Color::Green]);
+        assert_eq!(
+            identity("p2").color_identity,
+            vec![Color::Blue, Color::Black, Color::Red]
+        );
+        // A colorless commander's identity is empty, which is a value, not a gap.
+        assert_eq!(identity("p0").name, "Karn, Silver Golem");
+        assert!(identity("p0").color_identity.is_empty());
+
+        // The commander on the battlefield is marked by the server; the ordinary
+        // creature beside it is not — the client never infers this from the type line.
+        let perm = |id: &str| {
+            view.battlefield
+                .iter()
+                .find(|p| p.id == id)
+                .unwrap_or_else(|| panic!("{id} is on the battlefield"))
+        };
+        assert!(perm("perm_jedit").is_commander);
+        assert!(!perm("perm_bear").is_commander);
+
+        // Local elimination while the game continues: the receiver is out, and says so
+        // on its own `me` — `result` is still absent because two seats remain.
+        assert!(view.me.eliminated);
+        assert!(view.result.is_none());
+        assert!(!view.opponents[0].eliminated);
+
+        // Per-seat connection and AI state, both public presentation facts.
+        assert!(
+            !view.opponents[0].connected,
+            "p1 is held open, disconnected"
+        );
+        assert!(!view.opponents[0].ai);
+        assert!(view.opponents[1].connected);
+        assert!(view.opponents[1].ai, "p2 is a server-side AI seat");
+    }
+
+    #[test]
+    fn issue_553_absent_presentation_metadata_defaults_to_the_pre_553_reading() {
+        // The compatibility contract in one place: a payload from a server that
+        // predates this shape omits every new field, and each must read as the
+        // status quo ante — connected, not eliminated, human, non-Commander, no
+        // marker — rather than as its `bool::default()`.
+        let legacy: GameView = serde_json::from_str(
+            r#"{"you":"p0","phase":"upkeep","me":{"life":20,"library_size":53},
+                "opponents":[{"player_id":"p1","hand_size":7,"life":20,
+                              "library_size":53,"graveyard_size":0}],
+                "battlefield":[{"id":"perm_1","controller":"p1","owner":"p1",
+                                "card":{"id":"perm_1","name":"Bear","type_line":"Creature"}}]}"#,
+        )
+        .unwrap();
+        assert!(legacy.format.is_none(), "no format ⇒ not a Commander game");
+        assert!(legacy.commander_identity.is_empty());
+        assert!(legacy.me.connected, "absent ⇒ connected, not disconnected");
+        assert!(!legacy.me.eliminated);
+        assert!(!legacy.me.ai);
+        assert!(legacy.opponents[0].connected);
+        assert!(!legacy.opponents[0].ai);
+        assert!(!legacy.battlefield[0].is_commander);
+
+        // A view that omits `me` entirely falls back to `SelfView::default()`, which
+        // must agree with the wire default rather than reading as "disconnected".
+        let nameless: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
+        assert_eq!(nameless.me, SelfView::default());
+        assert!(nameless.me.connected);
+
+        // And the defaults all elide again on the way out, so a non-Commander frame
+        // serializes exactly as it did before issue #553.
+        let round = serde_json::to_value(&nameless).unwrap();
+        for absent in ["format", "commander_identity"] {
+            assert!(round.get(absent).is_none(), "`{absent}` elides at default");
+        }
+    }
+
+    #[test]
+    fn issue_553_commander_identity_survives_a_zone_change() {
+        // The property the `command` pile could never provide: moving a commander out
+        // of the command zone changes nothing about the seat's identity. Same view,
+        // command zone emptied, identity untouched.
+        let mut view = GameView {
+            you: "p0".into(),
+            phase: Phase::PrecombatMain,
+            command: vec![ZonePile {
+                player_id: "p0".into(),
+                cards: vec![],
+            }],
+            format: Some(MatchFormat {
+                id: "commander".into(),
+                commander: true,
+            }),
+            commander_identity: vec![CommanderIdentity {
+                commander: "p0".into(),
+                name: "Jedit Ojanen".into(),
+                color_identity: vec![Color::Green],
+            }],
+            ..Default::default()
+        };
+        let before = view.commander_identity.clone();
+        // The commander is cast: its pile goes away entirely.
+        view.command.clear();
+        assert_eq!(view.commander_identity, before);
+        assert!(view.format.as_ref().is_some_and(|f| f.commander));
+        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
+        assert_eq!(back.commander_identity, before);
+    }
+
+    #[test]
     fn unknown_fields_are_ignored() {
         // Forward-compat invariant (docs/protocol.md): a newer server may add
         // fields; older clients must still deserialize the message.
@@ -658,30 +782,8 @@ mod tests {
         // game is live, and round-trips (winner/losers/reason) once it is over.
         let mut view = GameView {
             you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::End,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
+            ..Default::default()
         };
         // Live game: the field elides entirely.
         let json = serde_json::to_value(&view).unwrap();
@@ -720,30 +822,8 @@ mod tests {
     fn game_view_serializes_you_on_the_wire() {
         let view = GameView {
             you: "p1".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::Upkeep,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
+            ..Default::default()
         };
         let json = serde_json::to_value(&view).unwrap();
         // The receiver's own seat id is always present on the wire (like `phase`),
@@ -760,30 +840,10 @@ mod tests {
         // server that omits it deserializes to an empty map (backward compatibility).
         let mut view = GameView {
             you: "p1".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p1".into(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
+            ..Default::default()
         };
         // Empty map elides from the wire.
         assert!(serde_json::to_value(&view)
@@ -814,30 +874,10 @@ mod tests {
         // rejection, and an older server that never sends it deserializes to `false`.
         let mut view = GameView {
             you: "p1".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::Upkeep,
             turn: 1,
             active_player: "p1".into(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
+            ..Default::default()
         };
         // Not rejected: the field elides from the wire (the common case).
         assert!(serde_json::to_value(&view)

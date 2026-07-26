@@ -6,6 +6,7 @@ import type { PlayerId } from './index.js';
 import type { CardView, OpponentView, SelfView, Permanent, StackItem, ZonePile } from './card.js';
 import type { ValidAction } from './action.js';
 import type { GameResult, CommanderDamage, CommanderTax } from './result.js';
+import type { CommanderIdentity, MatchFormat } from './presentation.js';
 import type { GameLogEntry } from './log.js';
 
 /**
@@ -166,4 +167,23 @@ export interface GameView {
    * literals need not restate it.
    */
   commander_tax?: CommanderTax[];
+  /**
+   * The format this match is played under (issue #553) — see {@link MatchFormat}.
+   * The authoritative signal that a game is Commander, independent of whether any
+   * command zone, tax entry, or damage entry is currently populated: all three are
+   * legitimately empty in ordinary Commander states, so the client must never infer
+   * the format from them. Public information. Absent (from an older server, or a
+   * room with no registered format) means "unknown format, not Commander", so
+   * {@link normalizeGameView} leaves it `undefined` rather than inventing one.
+   */
+  format?: MatchFormat;
+  /**
+   * Each seat's commander identity (CR 903.3/903.4, issue #553) — see
+   * {@link CommanderIdentity}. Keyed to the designation, so a seat's commander name
+   * and colors are stable for the whole game regardless of the commander's current
+   * zone. {@link normalizeGameView} always sets it (to `[]` when omitted for a
+   * non-commander game). Optional on the interface so existing view literals need
+   * not restate it.
+   */
+  commander_identity?: CommanderIdentity[];
 }

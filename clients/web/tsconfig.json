@@ -21,6 +21,9 @@
       ],
       "@protocol-fixtures/gameview-prompts.json": [
         "../../crates/rune-protocol/fixtures/gameview-prompts.json"
+      ],
+      "@protocol-fixtures/gameview-commander.json": [
+        "../../crates/rune-protocol/fixtures/gameview-commander.json"
       ]
     }
   },

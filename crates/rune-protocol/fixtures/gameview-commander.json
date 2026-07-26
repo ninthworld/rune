@@ -1,0 +1,122 @@
+{
+  "you": "p0",
+  "me": {
+    "life": 0,
+    "library_size": 31,
+    "eliminated": true
+  },
+  "opponents": [
+    {
+      "player_id": "p1",
+      "hand_size": 5,
+      "life": 34,
+      "library_size": 71,
+      "graveyard_size": 3,
+      "connected": false
+    },
+    {
+      "player_id": "p2",
+      "hand_size": 7,
+      "life": 40,
+      "library_size": 74,
+      "graveyard_size": 0,
+      "ai": true
+    }
+  ],
+  "battlefield": [
+    {
+      "id": "perm_jedit",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_jedit",
+        "name": "Jedit Ojanen",
+        "type_line": "Legendary Creature — Cat Warrior",
+        "mana_cost": "{4}{G}{G}",
+        "power": "5",
+        "toughness": "5",
+        "functional_id": "jedit_ojanen"
+      },
+      "is_commander": true
+    },
+    {
+      "id": "perm_bear",
+      "controller": "p2",
+      "owner": "p2",
+      "card": {
+        "id": "perm_bear",
+        "name": "Grizzly Bears",
+        "type_line": "Creature — Bear",
+        "mana_cost": "{1}{G}",
+        "power": "2",
+        "toughness": "2",
+        "functional_id": "grizzly_bears"
+      }
+    }
+  ],
+  "graveyards": [
+    {
+      "player_id": "p2",
+      "cards": [
+        {
+          "id": "g_thraximundar",
+          "name": "Thraximundar",
+          "type_line": "Legendary Creature — Zombie Assassin",
+          "mana_cost": "{5}{U}{B}{R}",
+          "power": "6",
+          "toughness": "6",
+          "functional_id": "thraximundar"
+        }
+      ]
+    }
+  ],
+  "phase": "precombat_main",
+  "turn": 11,
+  "active_player": "p1",
+  "seat_order": ["p0", "p1", "p2"],
+  "priority_player": "p1",
+  "player_names": {
+    "p0": "Alice",
+    "p1": "Bob",
+    "p2": "Random"
+  },
+  "commander_damage": [
+    {
+      "commander": "p1",
+      "damaged": "p0",
+      "amount": 21
+    }
+  ],
+  "commander_tax": [
+    {
+      "commander": "p1",
+      "casts": 1,
+      "tax": 2
+    },
+    {
+      "commander": "p2",
+      "casts": 2,
+      "tax": 4
+    }
+  ],
+  "format": {
+    "id": "commander",
+    "commander": true
+  },
+  "commander_identity": [
+    {
+      "commander": "p0",
+      "name": "Karn, Silver Golem"
+    },
+    {
+      "commander": "p1",
+      "name": "Jedit Ojanen",
+      "color_identity": ["G"]
+    },
+    {
+      "commander": "p2",
+      "name": "Thraximundar",
+      "color_identity": ["U", "B", "R"]
+    }
+  ]
+}

@@ -2,6 +2,26 @@
 
 use super::*;
 
+/// Whether this battlefield object **is** somebody's commander (CR 903.3, issue
+/// #553) — the marker `Permanent::is_commander` carries.
+///
+/// Matched on the card **instance**, which is the engine's designation key
+/// ([`CommanderState::instance`](rune_engine::CommanderState)): a
+/// [`PermanentId`] is minted fresh on every battlefield entry, so a recast
+/// commander is a new object but the same instance. Every seat's designation is
+/// checked rather than only the controller's, because a commander that has changed
+/// control is still its owner's commander.
+///
+/// This is a *lookup*, not a derivation: nothing about a name, a zone, or a type
+/// line participates, which is exactly why a client cannot compute it.
+pub(crate) fn is_commander_permanent(state: &GameState, perm: &rune_engine::Permanent) -> bool {
+    state.players.iter().any(|player| {
+        player
+            .commander
+            .is_some_and(|c| c.instance == perm.instance)
+    })
+}
+
 /// Projects a permanent's stored engine counters into the wire [`Counter`] list.
 ///
 /// Ordering follows the permanent's `BTreeMap<CounterKind, _>` iteration, which

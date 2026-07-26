@@ -14,13 +14,17 @@ import {
   type CatalogCard,
   type CatalogFormat,
   type CatalogView,
+  type Color,
+  COLORS,
   type CommanderDamage,
+  type CommanderIdentity,
   type CommanderTax,
   type Counter,
   type GameResult,
   type GameView,
   type LobbyRejection,
   type LobbyView,
+  type MatchFormat,
   type Permanent,
   PHASES,
   type Phase,
@@ -85,10 +89,19 @@ function normalizeStringMap(value: unknown): Record<string, string> {
  */
 function normalizeSelfView(payload: unknown): SelfView {
   if (!isRecord(payload)) return { life: 0, library_size: 0 };
-  return {
+  const self: SelfView = {
     life: typeof payload.life === 'number' ? payload.life : 0,
     library_size: typeof payload.library_size === 'number' ? payload.library_size : 0,
   };
+  // Local elimination (issue #553): the receiver may be out while the game continues.
+  // Absent means still in, so the flag is carried only when the server states it.
+  if (payload.eliminated === true) self.eliminated = true;
+  // Connection state (issue #553) is the one flag whose absent value is `true`, so it
+  // is recorded only as an explicit `false` — never invented, never inverted.
+  if (payload.connected === false) self.connected = false;
+  // AI-controlled seat (issue #553): absent means human.
+  if (payload.ai === true) self.ai = true;
+  return self;
 }
 
 /**
@@ -123,6 +136,10 @@ function normalizePermanent(payload: unknown): Permanent {
   // Aura attachment (issue #333): the host's entity id, present only when attached;
   // a view that omits it (older server) degrades to an unattached permanent.
   if (typeof record.attached_to === 'string') perm.attached_to = record.attached_to;
+  // The commander marker (issue #553, CR 903.3): server-computed, present only on the
+  // one permanent that *is* a commander. Never derived here — a commander on the
+  // battlefield is otherwise indistinguishable from any other legendary permanent.
+  if (record.is_commander === true) perm.is_commander = true;
   if (Array.isArray(record.counters)) perm.counters = record.counters as Counter[];
   return perm;
 }
@@ -193,6 +210,48 @@ function normalizeCommanderTax(value: unknown): CommanderTax[] {
 }
 
 /**
+ * Normalize the match **format** signal (issue #553). Genuinely optional: the server
+ * omits it for a room with no registered format, and an older server never sends it,
+ * so a missing or malformed value stays `undefined` — "unknown format, not Commander"
+ * — rather than being invented as a non-Commander format the server never claimed.
+ */
+function normalizeMatchFormat(value: unknown): MatchFormat | undefined {
+  if (!isRecord(value)) return undefined;
+  const format: MatchFormat = {};
+  if (typeof value.id === 'string') format.id = value.id;
+  if (value.commander === true) format.commander = true;
+  return format;
+}
+
+/**
+ * Normalize the public per-seat commander identity (CR 903.3/903.4, issue #553). The
+ * server elides it when empty, so a missing or malformed value degrades to `[]`; each
+ * entry keeps a well-formed `commander` id plus its optional name and color identity,
+ * dropping anything else so an unexpected shape never breaks rendering. Unrecognized
+ * colour letters are filtered out against {@link COLORS} — the same derived-union
+ * discipline `PHASES` uses — so a future colour cannot smuggle an invalid value into
+ * the typed union. Wire hygiene, not game logic: no identity is ever computed here.
+ */
+function normalizeCommanderIdentity(value: unknown): CommanderIdentity[] {
+  if (!Array.isArray(value)) return [];
+  const out: CommanderIdentity[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    if (typeof raw.commander !== 'string') continue;
+    const entry: CommanderIdentity = { commander: raw.commander };
+    if (typeof raw.name === 'string') entry.name = raw.name;
+    if (Array.isArray(raw.color_identity)) {
+      const colors = raw.color_identity.filter((c): c is Color =>
+        (COLORS as readonly unknown[]).includes(c),
+      );
+      if (colors.length > 0) entry.color_identity = colors;
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
+/**
  * Normalize an already-parsed payload into a complete {@link GameView}. Missing
  * collections become empty arrays; optional scalars (`priority_player`,
  * `action_deadline`) are carried through untouched, and the terminal `result` is
@@ -257,6 +316,12 @@ export function normalizeGameView(payload: unknown): GameView {
     commander_damage: normalizeCommanderDamage(payload.commander_damage),
     // Commander tax (issue #372): public, elided when empty; default to `[]`.
     commander_tax: normalizeCommanderTax(payload.commander_tax),
+    // The match format signal (issue #553): genuinely optional, so it stays
+    // `undefined` when the server sends none — absent reads as "not Commander".
+    format: normalizeMatchFormat(payload.format),
+    // Per-seat commander identity (issue #553): public, elided when empty; default
+    // to `[]` so a non-commander game and an older server are unchanged.
+    commander_identity: normalizeCommanderIdentity(payload.commander_identity),
   };
 }
 
@@ -296,6 +361,9 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
     commander_damage: normalizeCommanderDamage(payload.commander_damage),
     // Commander tax (issue #372): the same public list seated views carry.
     commander_tax: normalizeCommanderTax(payload.commander_tax),
+    // The same public presentation metadata seated views carry (issue #553).
+    format: normalizeMatchFormat(payload.format),
+    commander_identity: normalizeCommanderIdentity(payload.commander_identity),
   };
 }
 

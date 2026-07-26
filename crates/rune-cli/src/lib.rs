@@ -819,32 +819,16 @@ mod tests {
     use rune_protocol::{Phase, ValidAction};
 
     fn view_with_actions(actions: Vec<ValidAction>) -> GameView {
+        // `GameView` derives `Default` (issue #553), so a harness view names only the
+        // fields it exercises and never has to restate the additive rest.
         GameView {
             you: "p0".into(),
-            my_hand: vec![],
-            me: rune_protocol::SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::PrecombatMain,
             turn: 1,
             active_player: "p0".into(),
-            mana_pool: vec![],
             priority_player: Some("p0".into()),
             valid_actions: actions,
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: std::collections::BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-            seat_order: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -953,6 +937,7 @@ mod tests {
         view.me = rune_protocol::SelfView {
             life: 15,
             library_size: 30,
+            ..Default::default()
         };
         let text = render(&view);
         assert!(

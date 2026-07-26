@@ -280,7 +280,11 @@ impl Format {
 /// Colorless mana ([`Effect::AddColorlessMana`]) contributes nothing — colorless is
 /// not a color (CR 105.1) — so an artifact that taps for `{C}` stays identity-empty
 /// and is legal under any commander.
-fn color_identity(db: &CardDatabase, card: CardId) -> HashSet<Color> {
+///
+/// Visible to the crate (issue #553) because the *same* computation now also feeds
+/// the in-match `CommanderIdentity` a client renders a seat's identity gems from —
+/// deck legality and the displayed identity must never be able to disagree.
+pub(crate) fn color_identity(db: &CardDatabase, card: CardId) -> HashSet<Color> {
     let mut identity = HashSet::new();
     let Some(data) = db.card(card) else {
         return identity;

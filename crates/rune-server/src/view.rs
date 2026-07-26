@@ -15,18 +15,19 @@ use rune_engine::{
     blocker_candidates_for, bottom_requirement, characteristics, declared_attackers,
     defender_candidates, defending_player, is_mana_ability, pending_blocker_declarer,
     scripted_rules_text, target_requirements, valid_actions, Action, Attack, Block, CardData,
-    CardDatabase, CardId, CardInstance, CardInstanceId, CounterKind, DamageOrder, DamageTarget,
-    GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player,
-    PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    CardDatabase, CardId, CardInstance, CardInstanceId, Color, CounterKind, DamageOrder,
+    DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason,
+    PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{ability_text, effects_description, rules_text};
 use rune_protocol::{
-    CardView, ChooseAction, CommanderDamage as CommanderDamageView,
-    CommanderTax as CommanderTaxView, Counter, GameLogEntry, GameLogEvent, GameOverReason,
-    GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
-    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
-    TargetChoice, TargetRequirement, ValidAction, ZonePile,
+    CardView, ChooseAction, Color as ColorView, CommanderDamage as CommanderDamageView,
+    CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
+    GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView, GameView, LogBlock,
+    LogDamageTarget, LogEntity, OpponentView, Permanent as PermanentView, Phase, Prompt,
+    PromptOption, SelfView, SpectatorView, StackItem, TargetChoice, TargetRequirement, ValidAction,
+    ZonePile,
 };
 
 mod actions;
@@ -93,6 +94,12 @@ pub(crate) fn personalized_view(
             // Eliminated state (CR 800.4a, issue #342/#345): an opponent who left the
             // game. Additive — false (and omitted) in a two-player game.
             eliminated: player.has_lost,
+            // Connection and AI state (issue #553) are room/lobby knowledge, not engine
+            // state: this pure shim leaves them at their "connected human" defaults and
+            // the room overlays the truth after projection, exactly as it does
+            // `player_names` and `stops`.
+            connected: true,
+            ai: false,
         })
         .collect();
 
@@ -123,6 +130,11 @@ pub(crate) fn personalized_view(
             // projected from the engine's `PermanentId` to its view entity id
             // exactly as `blocking` above. `None` for an unattached permanent.
             attached_to: perm.attached_to.map(permanent_entity_id),
+            // Commander marker (CR 903.3, issue #553): whether this object *is* its
+            // controller's commander. Matched on the card **instance**, the designation
+            // key that survives every zone change and recast — never on a name, a zone,
+            // or a type line, none of which distinguish a commander.
+            is_commander: is_commander_permanent(state, perm),
             counters: permanent_counters(perm),
         })
         .collect();
@@ -153,6 +165,12 @@ pub(crate) fn personalized_view(
         .map(|player| SelfView {
             life: player.life,
             library_size: count(player.library.len()),
+            // Local elimination (CR 800.4a, issue #553): the receiver's own seat may be
+            // out while the game continues, which `result` (game over only) cannot say.
+            eliminated: player.has_lost,
+            // Room knowledge, defaulted here and overlaid by the room (see `opponents`).
+            connected: true,
+            ai: false,
         })
         .unwrap_or_default();
 
@@ -219,6 +237,14 @@ pub(crate) fn personalized_view(
         // Commander tax (CR 903.8, issue #372): public information — {2} per prior
         // cast from the command zone — projected from each designation's cast count.
         commander_tax: commander_tax_view(state),
+        // The match format (issue #553) is a room/lobby concern — only the room knows
+        // which registered format it started the game under — so, like `player_names`,
+        // it is left `None` here and filled in after projection.
+        format: None,
+        // Commander identity (CR 903.3/903.4, issue #553): public information derived
+        // from the engine's designations plus the card database, so it belongs in this
+        // engine-derived shim rather than on the room.
+        commander_identity: commander_identity_view(state, db),
     }
 }
 
@@ -250,6 +276,9 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             graveyard_size: count(player.graveyard.len()),
             statuses: Vec::new(),
             eliminated: player.has_lost,
+            // Room knowledge; the room overlays it after projection (issue #553).
+            connected: true,
+            ai: false,
         })
         .collect();
 
@@ -267,6 +296,11 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             blocking: perm.blocking.map(permanent_entity_id),
             damage: perm.damage,
             attached_to: perm.attached_to.map(permanent_entity_id),
+            // Commander marker (CR 903.3, issue #553): whether this object *is* its
+            // controller's commander. Matched on the card **instance**, the designation
+            // key that survives every zone change and recast — never on a name, a zone,
+            // or a type line, none of which distinguish a commander.
+            is_commander: is_commander_permanent(state, perm),
             counters: permanent_counters(perm),
         })
         .collect();
@@ -304,6 +338,11 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
         // Commander tax (CR 903.8, issue #372): public information a spectator sees
         // exactly as seated players do.
         commander_tax: commander_tax_view(state),
+        // The match format is room state; the room fills it after projection (#553).
+        format: None,
+        // Commander identity (issue #553): the same public, designation-keyed list
+        // seated views carry, so a spectator's seat clusters are equally stable.
+        commander_identity: commander_identity_view(state, db),
     }
 }
 
@@ -523,6 +562,125 @@ mod tests {
             .unwrap();
         assert!(opp1.eliminated, "seat 1 left the game");
         assert!(!opp2.eliminated, "seat 2 is still in");
+    }
+
+    /// A commander that has *left* the command zone still projects its seat's
+    /// identity and marks its battlefield object (issue #553). This is the state the
+    /// `command` pile cannot describe: the zone is empty, so every zone-derived
+    /// inference a client could make is wrong.
+    #[test]
+    fn issue_553_commander_identity_and_marker_survive_the_command_zone_emptying() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_multiplayer(3);
+        state.step = Step::PrecombatMain;
+
+        // Seat 0 designates a green commander and casts it: the command zone is empty
+        // and the commander is an ordinary-looking permanent on the battlefield.
+        let commander_card = fixture("jedit_ojanen");
+        let commander = state.new_instance(commander_card);
+        state.players[0].commander = Some(rune_engine::CommanderState::new(
+            commander.card,
+            commander.id,
+        ));
+        let perm = PermanentId(state.mint_id());
+        state.battlefield.push(rune_engine::Permanent {
+            id: perm,
+            instance: commander.id,
+            card: commander_card,
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: None,
+        });
+        // A plain creature beside it, to prove the marker is not "every legend".
+        let plain = put_permanent(
+            &mut state,
+            fixture("walking_corpse"),
+            PlayerId(1),
+            false,
+            false,
+        );
+
+        let view = personalized_view(&state, &db, PlayerId(1));
+
+        // The command zone is empty, yet the seat's identity is fully present.
+        assert!(view.command.is_empty(), "the commander was cast");
+        assert_eq!(view.commander_identity.len(), 1);
+        let identity = &view.commander_identity[0];
+        assert_eq!(identity.commander, "p0");
+        assert_eq!(identity.name, "Jedit Ojanen");
+        assert_eq!(identity.color_identity, vec![rune_protocol::Color::Green]);
+
+        // Exactly the commander's object is marked — a lookup on the designation's
+        // card instance, never on the name or the type line.
+        let marked: Vec<&str> = view
+            .battlefield
+            .iter()
+            .filter(|p| p.is_commander)
+            .map(|p| p.id.as_str())
+            .collect();
+        assert_eq!(marked, vec![permanent_entity_id(perm)]);
+        assert!(
+            !view
+                .battlefield
+                .iter()
+                .find(|p| p.id == permanent_entity_id(plain))
+                .unwrap()
+                .is_commander
+        );
+
+        // Public: a spectator sees the identical identity list and marker.
+        let spectator = spectator_view(&state, &db);
+        assert_eq!(spectator.commander_identity, view.commander_identity);
+        assert!(spectator
+            .battlefield
+            .iter()
+            .any(|p| p.id == permanent_entity_id(perm) && p.is_commander));
+    }
+
+    #[test]
+    fn issue_553_local_elimination_rides_the_receivers_own_self_view() {
+        // A seat that lost while two others remain is out of the game, but `result` is
+        // still absent (the game continues) — so `me.eliminated` is the only
+        // authoritative source for the *local* elimination treatment.
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_multiplayer(3);
+        state.players[0].has_lost = true;
+
+        let out = personalized_view(&state, &db, PlayerId(0));
+        assert!(out.me.eliminated);
+        assert!(out.result.is_none(), "the game continues without them");
+        // Every other seat sees the same fact through the opponent projection.
+        let other = personalized_view(&state, &db, PlayerId(1));
+        assert!(
+            other
+                .opponents
+                .iter()
+                .find(|o| o.player_id == "p0")
+                .unwrap()
+                .eliminated
+        );
+        assert!(!other.me.eliminated);
+    }
+
+    #[test]
+    fn issue_553_pure_projection_leaves_room_owned_metadata_at_its_defaults() {
+        // The seam: connection state, AI state, and the format are room knowledge, so
+        // this pure engine→wire shim must not invent them. It projects the safe
+        // "connected human, unknown format" defaults and the room overlays the truth.
+        let db = CardDatabase::bundled().unwrap();
+        let state = GameState::new_multiplayer(3);
+        let view = personalized_view(&state, &db, PlayerId(0));
+        assert!(view.format.is_none());
+        assert!(view.me.connected && !view.me.ai);
+        assert!(view.opponents.iter().all(|o| o.connected && !o.ai));
+        let spectator = spectator_view(&state, &db);
+        assert!(spectator.format.is_none());
+        assert!(spectator.players.iter().all(|p| p.connected && !p.ai));
     }
 
     #[test]

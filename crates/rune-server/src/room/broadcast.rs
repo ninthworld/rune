@@ -24,21 +24,79 @@ impl Room {
             .collect()
     }
 
+    /// Whether `seat` currently has a live connection (issue #553). A disconnected
+    /// seat is *held open* — the game is untouched and the seat is never conceded —
+    /// so this is presentation state, not a lifecycle signal.
+    fn seat_connected(&self, seat: Seat) -> bool {
+        self.seats.get(seat).is_some_and(Option::is_some)
+    }
+
+    /// Whether `seat` is played by a server-side AI (issue #553). A seat past the end
+    /// of the room's roster is human, matching the all-human default.
+    fn seat_is_ai(&self, seat: Seat) -> bool {
+        self.ai_seats.get(seat).copied().unwrap_or(false)
+    }
+
+    /// Overlay the room-owned per-seat presentation state (issue #553) onto an
+    /// already-projected seat record: whether that seat is connected, and whether it
+    /// is AI-controlled.
+    ///
+    /// Neither fact is engine state — the engine has no notion of a socket or of an
+    /// AI — so [`personalized_view`] leaves both at their "connected human" defaults
+    /// and the room, which is the only thing that knows, fills them in here. This is
+    /// the same seam `player_names`, `stops`, and `auto_passed` already ride.
+    fn overlay_seat_presentation(&self, view: &mut GameView) {
+        for (seat, opponent) in view.opponents.iter_mut().enumerate().map(|(i, o)| {
+            // `opponents` skips the receiver, so recover each entry's seat index from
+            // its own id rather than from its position (issue #553).
+            let seat = o.player_id.strip_prefix('p').and_then(|n| n.parse().ok());
+            (seat.unwrap_or(i), o)
+        }) {
+            opponent.connected = self.seat_connected(seat);
+            opponent.ai = self.seat_is_ai(seat);
+        }
+    }
+
+    /// The spectator counterpart of [`Self::overlay_seat_presentation`]: a
+    /// [`SpectatorView`] projects **every** seat as an [`OpponentView`], so its seat
+    /// index *is* its position, and it carries the same public format signal a seated
+    /// view does (issue #553). No private state is added — connection and AI state are
+    /// public presentation facts, and the format is advertised in the lobby.
+    fn overlay_spectator_presentation(&self, view: &mut SpectatorView) {
+        view.format.clone_from(&self.format);
+        for (seat, player) in view.players.iter_mut().enumerate() {
+            player.connected = self.seat_connected(seat);
+            player.ai = self.seat_is_ai(seat);
+        }
+    }
+
     /// Seat (or re-seat) a connection and bring it current with a full view.
+    ///
+    /// Seating changes the table's *public* connection state (issue #553), so this
+    /// broadcasts rather than pushing to the joining seat alone: every other seat and
+    /// every spectator needs the view in which this seat is connected again. The
+    /// joining seat is one of the recipients, so it is still brought current in full.
     pub(super) fn on_join(&mut self, seat: Seat, outbox: watch::Sender<Option<GameView>>) {
         let Some(slot) = self.seats.get_mut(seat) else {
             warn!(seat, "join for a seat that does not exist; ignoring");
             return;
         };
         *slot = Some(outbox);
-        self.send_view(seat);
+        self.broadcast();
     }
 
     /// Hold a disconnected seat open without disturbing the game.
+    ///
+    /// The *game* is untouched — that is the whole disconnect policy — but the table's
+    /// public connection state changed, so the remaining seats and any spectators are
+    /// re-sent a view in which this seat reads as disconnected (issue #553). Without
+    /// that push they would keep rendering it as present until some unrelated action
+    /// happened to trigger the next broadcast.
     pub(super) fn on_leave(&mut self, seat: Seat) {
         if let Some(slot) = self.seats.get_mut(seat) {
             *slot = None;
             info!(seat, "seat disconnected; held open for reconnect");
+            self.broadcast();
         }
     }
 
@@ -49,6 +107,7 @@ impl Room {
     pub(super) fn on_join_spectator(&mut self, outbox: watch::Sender<Option<SpectatorView>>) {
         let mut view = spectator_view(&self.state, &self.db);
         view.player_names = self.player_names_map();
+        self.overlay_spectator_presentation(&mut view);
         // If the receiver is already gone, don't retain the sender.
         if outbox.send(Some(view)).is_ok() {
             self.spectators.push(outbox);
@@ -64,6 +123,7 @@ impl Room {
         }
         let mut view = spectator_view(&self.state, &self.db);
         view.player_names = self.player_names_map();
+        self.overlay_spectator_presentation(&mut view);
         self.spectators
             .retain(|outbox| outbox.send(Some(view.clone())).is_ok());
     }
@@ -97,6 +157,13 @@ impl Room {
         // state auto-passed it.
         view.stops = self.stops.get(seat).cloned().unwrap_or_default();
         view.auto_passed = self.auto_passed_seats.get(seat).copied().unwrap_or(false);
+        // Room-owned presentation metadata (issue #553): the match format, and each
+        // seat's connection/AI state. Engine-derived commander identity and the
+        // per-permanent commander marker already rode the pure projection.
+        view.format.clone_from(&self.format);
+        view.me.connected = self.seat_connected(seat);
+        view.me.ai = self.seat_is_ai(seat);
+        self.overlay_seat_presentation(&mut view);
         // Rejected-action feedback (issue #265): the only caller that sets this is the
         // rejection re-send, and the game state is unchanged, so this rides an otherwise
         // ordinary resync — advisory presentation, never load-bearing.
@@ -246,6 +313,96 @@ mod tests {
         let view0 = wait_for_view(&mut rx0).await;
         assert_eq!(view0.you, "p0");
         assert!(!view0.valid_actions.is_empty());
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_553_seat_presentation_and_format_ride_the_room_overlay() {
+        // The room owns the three facts the engine cannot know: which seats hold a
+        // live connection, which are AI, and what format the game is played under.
+        // Each must reach every seat's view and every spectator's, and a seat that
+        // disconnects must be *broadcast* as disconnected rather than waiting for an
+        // unrelated action to trigger the next push.
+        let (handle, task) = Room::new(dealt_state(), db())
+            .with_ai_seats(vec![false, true])
+            .with_format(rune_protocol::MatchFormat {
+                id: "commander".into(),
+                commander: true,
+            })
+            .spawn();
+        let (tx0, mut rx0) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        let view0 = wait_for_view(&mut rx0).await;
+
+        // The format signal reaches the seat verbatim.
+        let format = view0.format.clone().expect("the room supplies a format");
+        assert_eq!(format.id, "commander");
+        assert!(format.commander);
+
+        // Seat 1 is an AI seat and has never connected: both facts are public.
+        assert_eq!(view0.opponents.len(), 1);
+        assert!(view0.opponents[0].ai, "seat 1 is AI-controlled");
+        assert!(!view0.opponents[0].connected, "seat 1 never joined");
+        // The receiver's own record reads as a connected human.
+        assert!(view0.me.connected && !view0.me.ai);
+
+        // Seat 1 connects: seat 0 is re-broadcast a view in which it is connected.
+        let (tx1, mut rx1) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 1,
+            outbox: tx1
+        }));
+        let view1 = wait_for_view(&mut rx1).await;
+        assert!(view1.me.ai, "the AI seat's own record says so");
+        let mut view0 = wait_for_view(&mut rx0).await;
+        while !view0.opponents[0].connected {
+            view0 = wait_for_view(&mut rx0).await;
+        }
+
+        // A spectator sees the same public facts, seat-indexed, with the format.
+        let (stx, mut srx) = watch::channel::<Option<SpectatorView>>(None);
+        assert!(handle.send(RoomInput::JoinSpectator { outbox: stx }));
+        let spec = wait_for_spectator_view(&mut srx).await;
+        assert!(spec.format.is_some_and(|f| f.commander));
+        assert!(spec.players[0].connected && !spec.players[0].ai);
+        assert!(spec.players[1].connected && spec.players[1].ai);
+
+        // Seat 1 drops. The seat is held open (the game is untouched), and seat 0 is
+        // pushed a view that says so — directly from authoritative state.
+        assert!(handle.send(RoomInput::Leave { seat: 1 }));
+        let mut after = wait_for_view(&mut rx0).await;
+        while after.opponents[0].connected {
+            after = wait_for_view(&mut rx0).await;
+        }
+        assert!(after.opponents[0].ai, "AI-ness is unaffected by the drop");
+        assert!(!after.valid_actions.is_empty(), "the game is untouched");
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_553_a_room_with_no_format_or_ai_seats_sends_the_pre_553_shape() {
+        // The additive default: a room built the old way (no format, no AI roster)
+        // projects no format at all and marks nothing, so the wire is unchanged.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        let view = wait_for_view(&mut rx0).await;
+        assert!(view.format.is_none());
+        assert!(!view.opponents[0].ai);
+        assert!(view.me.connected && !view.me.ai && !view.me.eliminated);
+        let json = serde_json::to_value(&view).unwrap();
+        for absent in ["format", "commander_identity"] {
+            assert!(json.get(absent).is_none(), "`{absent}` elides at default");
+        }
         drop(handle);
         task.await.unwrap();
     }
