@@ -161,9 +161,12 @@ export const SAMPLE_GAME_VIEW: GameView = {
   // and normalization defaults it to empty.
   log: SAMPLE_LOG,
   result: undefined,
-  // No stops or auto-pass in the sample frame; normalization defaults them (issue #264).
+  // No stops or auto-pass in the sample frame; normalization defaults them (issue
+  // #264), along with the own-turn half and the skipped-step path (issue #455).
   stops: [],
+  own_turn_stops: [],
   auto_passed: false,
+  auto_passed_steps: [],
   // Not a rejection re-send; normalization defaults action_rejected to `false` (issue #265).
   action_rejected: false,
   // No names in the sample wire frame; normalization defaults player_names to `{}`.

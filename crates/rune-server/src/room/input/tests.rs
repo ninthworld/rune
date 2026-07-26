@@ -231,6 +231,7 @@ async fn issue_264_stop_preferences_survive_reconnect() {
         seat: 0,
         message: ClientMessage::SetStops(SetStops {
             stops: vec![Phase::Upkeep, Phase::End],
+            ..Default::default()
         }),
     });
     let after = wait_for_view(&mut rx0).await;

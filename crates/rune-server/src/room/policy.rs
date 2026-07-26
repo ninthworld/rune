@@ -11,6 +11,7 @@ use std::time::Duration;
 use rune_engine::{
     attackers_needing_damage_order, valid_actions, Action, CardDatabase, DamageOrder, GameState,
 };
+use rune_protocol::Phase;
 
 /// A room's decision-timer policy (issue #263).
 ///
@@ -125,4 +126,94 @@ pub enum AutoPassPolicy {
     /// declaration the engine reports has no legal non-empty answer (issue #453) —
     /// both per the seat's stop preferences.
     On,
+}
+
+/// The steps a human seat stops at by default under
+/// [`StopPolicy::HumanMainPhases`] (issue #455): **its own main phases**.
+///
+/// These are the two windows a turn's owner acts in at sorcery speed, so they are
+/// the two the settle loop must not carry them past — CR 505.5b makes a main phase
+/// the only place a land drop, a sorcery, or a creature can be played, which is
+/// precisely the decision a fast-forward would take away. Every other step keeps
+/// ADR 0020's pacing: a seat with a real instant-speed play is non-idle and is
+/// never auto-passed anywhere, and a seat with nothing to do sails through the
+/// other ten steps as before.
+pub(super) const DEFAULT_HUMAN_OWN_TURN_STOPS: [Phase; 2] =
+    [Phase::PrecombatMain, Phase::PostcombatMain];
+
+/// A room's **default-stop** policy (issue #455): the stop preferences a seat that
+/// has never sent `set_stops` starts with.
+///
+/// ADR 0020 chose an empty default deliberately, on the grounds that automation only
+/// ever passes a seat whose *sole* meaningful move is a pass — so an empty default
+/// never skips a real decision. Issue #455 is the playtest evidence that the
+/// argument, while true about decisions, is false about **comprehension**: a human
+/// whose own turn contains nothing castable watches the settle run the whole turn,
+/// and both their main phases, between two broadcasts. Nothing was decided for them
+/// and they still lost the turn.
+///
+/// So the room seeds a *default*, not a rule. It is the ordinary
+/// [`AutoPassPolicy`]/[`TimerPolicy`] shape — **off by default**, so every existing
+/// construction (and every AI-only or headless game that never opts in) is
+/// bit-for-bit unchanged — and the lobby turns it on for real games. It is only a
+/// starting value: the first `set_stops` a seat sends replaces it wholesale, so a
+/// player who wants ADR 0020's original pacing back clears it in one message and the
+/// room never re-seeds it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum StopPolicy {
+    /// Every seat starts with no stops at all — ADR 0020's original default, and the
+    /// behavior before default stops existed.
+    #[default]
+    None,
+    /// Every **human** seat starts stopped at its own main phases
+    /// ([`DEFAULT_HUMAN_OWN_TURN_STOPS`]); AI seats start with no stops, so AI-only
+    /// and mixed games keep exactly the throughput they had. Humanness is the room's
+    /// existing `ai_seats` knowledge (issue #415) — the same fact every seat's view
+    /// already reports — so no new configuration is introduced to express it.
+    HumanMainPhases,
+}
+
+impl StopPolicy {
+    /// The stop preference a seat starts with under this policy, given whether that
+    /// seat is AI-controlled. Only ever consulted for a seat that has never sent
+    /// `set_stops` — the first one it sends replaces this wholesale.
+    pub(super) fn seed(self, ai: bool) -> SeatStops {
+        match self {
+            Self::None => SeatStops::default(),
+            Self::HumanMainPhases if ai => SeatStops::default(),
+            Self::HumanMainPhases => SeatStops {
+                any_turn: Vec::new(),
+                own_turn: DEFAULT_HUMAN_OWN_TURN_STOPS.to_vec(),
+            },
+        }
+    }
+}
+
+/// One seat's **priority-stop preference**: the steps at which it wants priority
+/// even when the engine reports it idle (issues #264 and #455).
+///
+/// Two lists, because a stop answers two different questions. `any_turn` is ADR
+/// 0020's original set — "hand me priority here whoever's turn it is", the escape
+/// hatch for wanting to act at an opponent's end step. `own_turn` is issue #455's
+/// narrower claim — "hand me priority here **while the turn is mine**", which is
+/// what a main-phase stop has to mean: stopping a human in every opponent main
+/// phase would reintroduce exactly the per-step click ADR 0020 removed, for a window
+/// in which they have nothing to do that they could not already do at instant speed.
+///
+/// A step in both stops on every turn: `any_turn` is the wider claim and subsumes
+/// the narrower one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct SeatStops {
+    /// Steps to stop at on any player's turn.
+    pub(super) any_turn: Vec<Phase>,
+    /// Steps to stop at only while this seat is the active player.
+    pub(super) own_turn: Vec<Phase>,
+}
+
+impl SeatStops {
+    /// Whether this preference asks for priority at `here`, given whether the seat
+    /// holding it is the active player.
+    pub(super) fn stops_at(&self, here: Phase, own_turn: bool) -> bool {
+        self.any_turn.contains(&here) || (own_turn && self.own_turn.contains(&here))
+    }
 }

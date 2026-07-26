@@ -469,8 +469,18 @@ step carries its stop toggle and answers with `set_stops`. It:
   viewport-clamped, per `ui-requirements.md` (phase expansions must render
   entirely within the viewport);
 - commits nothing to the game. The only message it can produce is `set_stops`,
-  whose full new set is sent on each toggle and whose sole source of truth is
-  `view.stops` (nothing is stored client-side).
+  whose full new preference is sent on each toggle and whose sole source of
+  truth is `view.stops` / `view.own_turn_stops` (nothing is stored
+  client-side).
+
+Each step's toggle has **three** settings, not two — `Auto` → `Your turn` →
+`Always`, cycling — because the server keeps two stop lists per seat (issue
+#455): one that fires on any turn, and one that fires only while the seat is the
+active player. The second is where the server seeds the *human default* (your
+own main phases), so a two-state toggle could not draw a seat that already
+carries stops it never set, nor let it clear them. The two set states differ by
+their word and by frame shape (solid vs dashed), never by hue alone; every click
+sends both whole lists.
 
 The chevron's forward-pointing form reads as "where the turn is going next",
 which is what the step list shows. It must **not** be wired to a
@@ -481,6 +491,12 @@ ADR 0020 specifies, and the chevron is the door to setting one.
 When `view.auto_passed` is set, the plaque shows the transient "Auto-passed"
 badge (shipped behaviour) and the chevron's affordance gets a one-shot gold
 outline for ≤ 1 s to point at the fix — display-only, dropped on the next view.
+`view.auto_passed_steps` says *where* the settle acted for this seat, so the
+badge's accessible name names those steps and each one is marked in the step
+list with its own glyph (`↷`, distinct from the turn trail's `✓` — "you were
+passed here" is a stronger claim than "the turn went through here", and the two
+are never both drawn on one step). Neither mark animates, so the reduced-motion
+form carries exactly the same information.
 
 ---
 
@@ -903,8 +919,9 @@ The normative mapping. Every interactive state must appear here with a concrete
 | Plaque ownership line | `view.active_player`, `view.priority_player`, `view.you`, `view.player_names` | — |
 | Step pips | `view.phase` → `PHASE_GROUPS` | — |
 | Chevron → step list | `PHASES` (static) | — |
-| Per-step stop toggle | `view.stops` | `SetStops{stops:[Phase…]}` |
+| Per-step stop toggle (tri-state) | `view.stops`, `view.own_turn_stops` | `SetStops{stops:[Phase…], own_turn:[Phase…]}` |
 | Auto-passed badge | `view.auto_passed` | — |
+| Per-step "passed for you here" mark | `view.auto_passed_steps` | — |
 | Deadline chip / warning frame | `view.action_deadline` | — |
 | Rejection shake + toast | `view.action_rejected` | — |
 | "Waiting" / compact cluster | `valid_actions` empty | — |

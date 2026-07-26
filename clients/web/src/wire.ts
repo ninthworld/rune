@@ -379,9 +379,15 @@ export function normalizeGameView(payload: unknown): GameView {
     // when empty; keep only recognized phases so an unknown future value never breaks
     // rendering, defaulting to `[]` (stop nowhere).
     stops: normalizePhaseList(payload.stops),
+    // The own-turn half of the same preference (issue #455), normalized identically.
+    own_turn_stops: normalizePhaseList(payload.own_turn_stops),
     // The auto-pass indicator (issue #264): display-only, defaults to `false` when the
     // seat was not auto-passed (or an older server omits it).
     auto_passed: payload.auto_passed === true,
+    // Where that settle skipped the seat (issue #455). A *path*, so unlike `stops` it
+    // may legitimately repeat a phase; the filter only drops values that are not
+    // phases at all, exactly as it does for the stop lists.
+    auto_passed_steps: normalizePhaseList(payload.auto_passed_steps),
     // Rejected-action feedback (issue #265): display-only, defaults to `false` on every
     // normal broadcast/resync (or when an older server omits it). Only the one re-send
     // answering a rejected action sets it, driving a transient toast.
@@ -453,9 +459,10 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
 
 /**
  * Coerce a wire value into a list of known {@link Phase} values, dropping any
- * non-phase entry. Used for `GameView.stops` (issue #264): the server elides it when
- * empty, so a missing or malformed value degrades to `[]` and an unrecognized future
- * phase is simply ignored rather than throwing.
+ * non-phase entry. Used for `GameView.stops` (issue #264) and its `own_turn_stops` /
+ * `auto_passed_steps` siblings (issue #455): the server elides each when empty, so a
+ * missing or malformed value degrades to `[]` and an unrecognized future phase is
+ * simply ignored rather than throwing.
  */
 function normalizePhaseList(value: unknown): Phase[] {
   if (!Array.isArray(value)) return [];

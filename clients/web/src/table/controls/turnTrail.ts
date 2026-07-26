@@ -26,11 +26,14 @@
  *
  * Every entry is a `step_changed` the server recorded, compared on its own
  * `turn` field. No legality, no priority reasoning, and — deliberately — **no
- * claim about which steps the seat was auto-passed at**. The wire carries one
- * `auto_passed` boolean for the whole settle (ADR 0020) and never names the
- * steps it covered, so this module says only *"the turn has been here"*. The
- * plaque phrases it that way too; over-claiming would be inventing game
- * information, which is exactly what #455 is trying to stop losing.
+ * claim about which steps the seat was auto-passed at**. That is a different and
+ * stronger fact, and the server now states it directly in
+ * `view.auto_passed_steps` (issue #455), which the plaque draws beside this trail
+ * with its own mark. This module says only *"the turn has been here"* — a step
+ * the turn passed through is not a step *you* were skipped at, since another seat
+ * may have held priority there or you may have acted there yourself. Deriving one
+ * from the other would be inventing game information, which is exactly what #455
+ * is trying to stop losing.
  *
  * Consumed by {@link ../PhasePlaque.PhasePlaque}, its only production caller.
  */

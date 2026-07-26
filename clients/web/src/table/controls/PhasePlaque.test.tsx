@@ -159,23 +159,64 @@ describe('the chevron is a disclosure, never a game action (§5.2, D4, GAP-3)', 
   });
 });
 
-describe('per-step stops answer set_stops (ADR 0020)', () => {
-  it('sends the FULL new set when a step is switched on', () => {
-    // The message carries the whole set, not a delta: `view.stops` is the only
-    // source of truth and the client stores nothing.
+describe('per-step stops answer set_stops (ADR 0020, issue #455)', () => {
+  it('sends the FULL new preference — both lists — when a step is switched on', () => {
+    // The message carries the whole preference, not a delta: `view.stops` and
+    // `view.own_turn_stops` are the only source of truth and the client stores
+    // nothing. One click off "Auto" lands on the narrower own-turn setting.
     const onSetStops = vi.fn();
     render(<PhasePlaque view={viewWith({ stops: ['end'] })} onSetStops={onSetStops} />);
     fireEvent.click(screen.getByTestId('plaque-chevron'));
     fireEvent.click(screen.getByTestId('plaque-stop-upkeep'));
-    expect(onSetStops).toHaveBeenCalledWith<[Phase[]]>(['end', 'upkeep']);
+    expect(onSetStops).toHaveBeenCalledWith<[Phase[], Phase[]]>(['end'], ['upkeep']);
   });
 
-  it('sends the full new set with the step removed when switched off', () => {
+  it('cycles Auto → your turn → every turn → Auto, moving the step between lists', () => {
+    // Three settings because the server has three answers. Each click sends the
+    // preference the *next* setting implies; a step is never on both lists.
     const onSetStops = vi.fn();
-    render(<PhasePlaque view={viewWith({ stops: ['end', 'upkeep'] })} onSetStops={onSetStops} />);
+    const { rerender } = render(
+      <PhasePlaque view={viewWith({ stops: [] })} onSetStops={onSetStops} />,
+    );
     fireEvent.click(screen.getByTestId('plaque-chevron'));
-    fireEvent.click(screen.getByTestId('plaque-stop-end'));
-    expect(onSetStops).toHaveBeenCalledWith<[Phase[]]>(['upkeep']);
+
+    fireEvent.click(screen.getByTestId('plaque-stop-upkeep'));
+    expect(onSetStops).toHaveBeenLastCalledWith<[Phase[], Phase[]]>([], ['upkeep']);
+
+    rerender(
+      <PhasePlaque view={viewWith({ own_turn_stops: ['upkeep'] })} onSetStops={onSetStops} />,
+    );
+    fireEvent.click(screen.getByTestId('plaque-stop-upkeep'));
+    expect(onSetStops).toHaveBeenLastCalledWith<[Phase[], Phase[]]>(['upkeep'], []);
+
+    rerender(<PhasePlaque view={viewWith({ stops: ['upkeep'] })} onSetStops={onSetStops} />);
+    fireEvent.click(screen.getByTestId('plaque-stop-upkeep'));
+    expect(onSetStops).toHaveBeenLastCalledWith<[Phase[], Phase[]]>([], []);
+  });
+
+  it('clears a seeded main-phase default by sending two empty lists', () => {
+    // The default stops (#455) arrive as `own_turn_stops` the player never set, so
+    // the *only* way the UI can retire them is a message that states the whole new
+    // preference. Cycling the seeded step twice lands on "Auto" and does exactly that.
+    const onSetStops = vi.fn();
+    const seeded = viewWith({ own_turn_stops: ['precombat_main', 'postcombat_main'] });
+    const { rerender } = render(<PhasePlaque view={seeded} onSetStops={onSetStops} />);
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    expect(screen.getByTestId('plaque-stop-precombat_main').getAttribute('data-stop')).toBe('own');
+
+    fireEvent.click(screen.getByTestId('plaque-stop-precombat_main'));
+    expect(onSetStops).toHaveBeenLastCalledWith<[Phase[], Phase[]]>(
+      ['precombat_main'],
+      ['postcombat_main'],
+    );
+    rerender(
+      <PhasePlaque
+        view={viewWith({ stops: ['precombat_main'], own_turn_stops: ['postcombat_main'] })}
+        onSetStops={onSetStops}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('plaque-stop-precombat_main'));
+    expect(onSetStops).toHaveBeenLastCalledWith<[Phase[], Phase[]]>([], ['postcombat_main']);
   });
 
   it("reflects the server's echo, never a client-held toggle state", () => {
@@ -185,14 +226,14 @@ describe('per-step stops answer set_stops (ADR 0020)', () => {
     );
     fireEvent.click(screen.getByTestId('plaque-chevron'));
     const toggle = screen.getByTestId('plaque-stop-upkeep');
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle.getAttribute('data-stop')).toBeNull();
 
     // Pressing it must NOT flip the toggle by itself — only a new view may.
     fireEvent.click(toggle);
-    expect(screen.getByTestId('plaque-stop-upkeep').getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByTestId('plaque-stop-upkeep').getAttribute('data-stop')).toBeNull();
 
     rerender(<PhasePlaque view={viewWith({ stops: ['upkeep'] })} onSetStops={onSetStops} />);
-    expect(screen.getByTestId('plaque-stop-upkeep').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('plaque-stop-upkeep').getAttribute('data-stop')).toBe('any');
   });
 
   it('offers no toggles at all when no setter is wired (the read-only board)', () => {
@@ -204,12 +245,15 @@ describe('per-step stops answer set_stops (ADR 0020)', () => {
     expect(list.children.length).toBe(PHASES.length);
   });
 
-  it('names every step it can stop at, using the same twelve labels', () => {
-    render(<PhasePlaque view={viewWith()} onSetStops={() => {}} />);
+  it('names every step it can stop at, and states the setting it is on', () => {
+    // Three settings cannot ride `aria-pressed`, so the accessible name says which
+    // one is current rather than leaving a screen-reader user to infer it.
+    render(<PhasePlaque view={viewWith({ own_turn_stops: ['draw'] })} onSetStops={() => {}} />);
     fireEvent.click(screen.getByTestId('plaque-chevron'));
     for (const phase of PHASES) {
+      const described = phase === 'draw' ? 'stop on your turn' : 'passed automatically';
       expect(screen.getByTestId(`plaque-stop-${phase}`).getAttribute('aria-label')).toBe(
-        `Stop at ${STEP_NAME[phase]}`,
+        `Stop at ${STEP_NAME[phase]} — ${described}`,
       );
     }
   });
@@ -235,9 +279,13 @@ describe('the auto-passed cue (§5.2)', () => {
  * Turn pacing (issue #455). ADR 0020's settle loop can advance several steps —
  * or a whole turn — between two broadcasts, and the playtest #455 records is a
  * player who "believes they're still in turn 1" while the game is at turn 2.
- * Both answers below are derived from the ONE view (the ordinal from
- * `view.turn`, the path from `view.log`), so a hard reload mid-turn reproduces
- * them exactly.
+ * Every answer below is derived from the ONE view — the ordinal from `view.turn`,
+ * the turn's path from `view.log`, and the seat's own skipped steps from
+ * `view.auto_passed_steps` — so a hard reload mid-turn reproduces them exactly.
+ *
+ * The last two are deliberately kept apart. "The turn went through here" and
+ * "the server took your priority here" are different claims, only one of which
+ * the server actually makes about this seat.
  */
 describe('turn pacing legibility (issue #455)', () => {
   function trailView(overrides: Partial<GameView> = {}): GameView {
@@ -322,12 +370,54 @@ describe('turn pacing legibility (issue #455)', () => {
     }
   });
 
-  it('does not claim the seat was skipped anywhere — the badge is unchanged', () => {
-    // The wire's `auto_passed` is one boolean for a whole settle and never names
-    // the steps it covered, so the trail says "the turn has been here" and the
-    // badge keeps saying only what the server actually stated.
+  it('marks the steps the server says it was skipped at, and only those', () => {
+    // The pacing contract's second half. `auto_passed_steps` is the server's own
+    // per-seat statement, so the mark is not inferred from the trail: a step the
+    // turn merely went through is not a step this seat was passed at.
+    render(<PhasePlaque view={trailView({ auto_passed: true, auto_passed_steps: ['untap'] })} />);
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    expect(screen.getByTestId('plaque-step-untap').getAttribute('data-skipped')).toBe('true');
+    // On the path, but the server did not say the seat was passed there.
+    expect(screen.getByTestId('plaque-step-draw').getAttribute('data-passed')).toBe('true');
+    expect(screen.getByTestId('plaque-step-draw').getAttribute('data-skipped')).toBeNull();
+  });
+
+  it('gives a skipped step its own glyph and phrase, replacing the trail mark', () => {
+    // Two claims, two glyphs, and never both on one step — and, as with the trail,
+    // no animation, so the reduced-motion reading is identical.
+    render(<PhasePlaque view={trailView({ auto_passed: true, auto_passed_steps: ['untap'] })} />);
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    const mark = screen.getByTestId('plaque-skipped-untap');
+    expect(mark.textContent).toBe('↷');
+    expect(mark.getAttribute('aria-label')).toBe('passed for you here');
+    expect(screen.queryByTestId('plaque-passed-untap')).toBeNull();
+  });
+
+  it("names the skipped steps in the badge's accessible sentence", () => {
+    // The drawn word stays "Auto-passed" — the plate has no room for a list — but
+    // what a screen reader is told is now the same fact the step list marks, which
+    // is the non-visual half of the reduced-motion requirement.
+    render(
+      <PhasePlaque
+        view={trailView({ auto_passed: true, auto_passed_steps: ['untap', 'upkeep', 'draw'] })}
+      />,
+    );
+    const badge = screen.getByTestId('plaque-auto-passed');
+    expect(badge.textContent).toBe('Auto-passed');
+    expect(badge.getAttribute('aria-label')).toBe('Auto-passed for you at Untap, Upkeep and Draw.');
+  });
+
+  it('claims nothing beyond the boolean when the server names no steps', () => {
+    // An older server sends `auto_passed` alone. The badge then says exactly what
+    // it always said and the step list marks nothing — over-claiming would be
+    // inventing game information, which is what #455 exists to stop losing.
     render(<PhasePlaque view={trailView({ auto_passed: true })} />);
     expect(screen.getByTestId('plaque-auto-passed').textContent).toBe('Auto-passed');
+    expect(screen.getByTestId('plaque-auto-passed').getAttribute('aria-label')).toBeNull();
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    for (const phase of PHASES) {
+      expect(screen.getByTestId(`plaque-step-${phase}`).getAttribute('data-skipped')).toBeNull();
+    }
   });
 });
 

@@ -121,14 +121,53 @@ pub struct GameView {
     /// client treats a missing field as "no stops".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stops: Vec<Phase>,
+    /// The receiver's **own-turn** priority stops (issue #455): the steps at which
+    /// they want priority even when idle, but *only while they are the active
+    /// player*. The narrower half of the same preference [`Self::stops`] carries —
+    /// a step listed there stops on every turn and wins outright.
+    ///
+    /// This is the half that carries the human default: a seat the room considers
+    /// human is seeded with its own main phases, so a turn never fast-forwards past
+    /// the point where its owner would act, while the eleven other steps — and the
+    /// whole of every opponent's turn — keep the ADR 0020 pacing. Set with
+    /// `set_stops` alongside [`Self::stops`], stored on the room, and reflected here
+    /// so the stops UI is reconstructable from a single message and survives
+    /// reconnect. Omitted from the wire when empty; a client treats a missing field
+    /// as "no own-turn stops".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub own_turn_stops: Vec<Phase>,
     /// Whether reaching this state **auto-passed** priority on the receiver's behalf
     /// (issue #264, ADR 0020): set on the broadcast that follows a settle in which
     /// the room passed priority for this seat, so the client can show a display-only
     /// "passed for you" indicator. Advisory and transient — the UI reconstructs
     /// fully without it, and a reconnect re-send need not preserve it. Omitted from
-    /// the wire when `false`.
+    /// the wire when `false`. Exactly `!auto_passed_steps.is_empty()`: the boolean
+    /// summary of the list below, kept because a client may want only the summary.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub auto_passed: bool,
+    /// **Which steps** the room acted at on the receiver's behalf during the settle
+    /// that produced this view (issue #455), in the order it acted, consecutive
+    /// duplicates collapsed.
+    ///
+    /// [`Self::auto_passed`] says a settle skipped you; this says *where*. That is
+    /// the difference between "you were passed" and "you were passed at upkeep,
+    /// draw, and beginning of combat", and it is the whole reason the field exists:
+    /// ADR 0020's settle loop can advance a dozen steps between two broadcasts, and
+    /// a client that only knows *that* it happened cannot tell a player what they
+    /// did not get to see.
+    ///
+    /// A settle can cross a turn boundary, so a step may appear more than once
+    /// (non-adjacently) — the list is a path, not a set. It names only steps the
+    /// room acted at **for this receiver**; a step where another seat was passed is
+    /// that seat's entry, not this one's.
+    ///
+    /// Advisory, transient, and display-only, exactly like [`Self::auto_passed`]:
+    /// the UI reconstructs fully without it, `valid_actions` is unaffected, and a
+    /// reconnect re-send need not preserve it. The authoritative record of *what
+    /// happened* during a settle remains [`Self::log`] (ADR 0021), which carries the
+    /// events themselves. Omitted from the wire when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub auto_passed_steps: Vec<Phase>,
     /// Whether this view was pushed **because the receiver's last in-game action was
     /// rejected** (issue #265): a stale-view race meant the chosen action was no longer
     /// on offer (unknown id, mismatched [`ValidAction::token`], or a now-illegal target),

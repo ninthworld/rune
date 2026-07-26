@@ -64,14 +64,32 @@ pub struct TargetChoice {
 /// ADR 0020): the steps at which the seat wants priority even when it has no
 /// meaningful action, so basic auto-pass does not skip it there. Server-authoritative
 /// and reconnect-durable — the room stores the set per seat (like a display name) and
-/// reflects it back in [`GameView::stops`]. An unparseable message is ignored and the
-/// current view re-sent (the non-fatal pattern); the empty set means "stop nowhere".
+/// reflects it back in [`GameView::stops`]/[`GameView::own_turn_stops`]. An
+/// unparseable message is ignored and the current view re-sent (the non-fatal
+/// pattern); two empty sets mean "stop nowhere".
+///
+/// **The message is authoritative for both lists at once.** It replaces the seat's
+/// whole preference, which is what lets a player *clear* the human default stops
+/// issue #455 seeds — a bare `{"type":"set_stops"}` means "stop nowhere", not
+/// "leave my defaults alone".
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SetStops {
-    /// The steps to stop at, as [`Phase`] values. Replaces the seat's current set
-    /// wholesale (not additive). Empty (and omitted from the wire) to clear all stops.
+    /// The steps to stop at on **any** player's turn, as [`Phase`] values. Replaces
+    /// the seat's current set wholesale (not additive). Empty (and omitted from the
+    /// wire) to clear them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stops: Vec<Phase>,
+    /// The steps to stop at **only while this seat is the active player** (issue
+    /// #455). The narrower half of the preference: a stop at your own main phase is
+    /// how a human keeps the turn from fast-forwarding out from under them, while
+    /// the same step on an opponent's turn stays auto-passed because there is
+    /// nothing there to decide.
+    ///
+    /// A step listed in both is stopped at on every turn — [`Self::stops`] is the
+    /// wider claim and wins. Additive: an older client sends only `stops` and gets
+    /// exactly the behavior it always got.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub own_turn: Vec<Phase>,
 }
 
 /// Everything a client can send about the game. Serializes with a `type`
@@ -154,6 +172,7 @@ mod tests {
         // as `choose_action`, carrying the stop phases as snake_case `Phase` names.
         let msg = ClientMessage::SetStops(SetStops {
             stops: vec![Phase::Upkeep, Phase::End],
+            ..Default::default()
         });
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(
@@ -167,10 +186,44 @@ mod tests {
     #[test]
     fn issue_264_empty_set_stops_elides_the_list() {
         // Clearing all stops sends an empty list, which elides — the minimal wire shape.
-        let msg = ClientMessage::SetStops(SetStops { stops: vec![] });
+        let msg = ClientMessage::SetStops(SetStops::default());
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json, serde_json::json!({ "type": "set_stops" }));
         let back: ClientMessage = serde_json::from_value(json).unwrap();
         assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_455_set_stops_carries_the_own_turn_half_and_stays_additive() {
+        // The own-turn half rides its own list, so the two halves of the preference
+        // are never confused for one another on the wire.
+        let msg = ClientMessage::SetStops(SetStops {
+            stops: vec![Phase::End],
+            own_turn: vec![Phase::PrecombatMain, Phase::PostcombatMain],
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "set_stops",
+                "stops": ["end"],
+                "own_turn": ["precombat_main", "postcombat_main"],
+            })
+        );
+        let back: ClientMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+
+        // An older client that never learned the field sends exactly what it always
+        // sent, and the absent list reads as empty.
+        let older: ClientMessage =
+            serde_json::from_value(serde_json::json!({ "type": "set_stops", "stops": ["upkeep"] }))
+                .unwrap();
+        assert_eq!(
+            older,
+            ClientMessage::SetStops(SetStops {
+                stops: vec![Phase::Upkeep],
+                own_turn: Vec::new(),
+            })
+        );
     }
 }

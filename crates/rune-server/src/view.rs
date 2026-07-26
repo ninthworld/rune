@@ -225,7 +225,9 @@ pub(crate) fn personalized_view(
         // #264), exactly as it does the player names. Defaults here (no stops, not
         // auto-passed) keep this pure shim automation-agnostic and elide from the wire.
         stops: Vec::new(),
+        own_turn_stops: Vec::new(),
         auto_passed: false,
+        auto_passed_steps: Vec::new(),
         // Rejected-action feedback is likewise a room concern, not engine state (issue
         // #265): only the room knows an action was rejected, and it flags the one
         // re-sent view answering that rejection. Not-rejected here by default, so it

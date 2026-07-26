@@ -124,13 +124,44 @@ export interface GameView {
    */
   stops?: Phase[];
   /**
+   * The receiver's **own-turn** priority stops (issue #455): the steps they want
+   * priority at even when idle, but *only while they are the active player*. The
+   * narrower half of the same preference {@link stops} carries — a step listed there
+   * stops on every turn and wins outright.
+   *
+   * This is the half the server seeds the human default into: a human seat starts
+   * stopped at its own main phases, so a turn never fast-forwards past the point
+   * where its owner would act, while every opponent turn keeps ADR 0020's pacing.
+   * Set with a {@link SetStopsMessage} alongside {@link stops}. Omitted (treated as
+   * empty) by the server when empty; {@link normalizeGameView} defaults it to `[]`.
+   */
+  own_turn_stops?: Phase[];
+  /**
    * Whether reaching this state **auto-passed** priority on the receiver's behalf
    * (issue #264, ADR 0020): set on the broadcast that follows a settle in which the
    * server passed priority for this seat, so the client can show a display-only
    * "passed for you" indicator. Advisory and transient — the UI reconstructs fully
    * without it. Omitted (treated as `false`) when the seat was not auto-passed.
+   * Exactly `auto_passed_steps.length > 0` — the boolean summary of the list below.
    */
   auto_passed?: boolean;
+  /**
+   * **Which steps** the server acted at on the receiver's behalf during the settle
+   * that produced this view (issue #455), in the order it acted, consecutive
+   * duplicates collapsed.
+   *
+   * {@link auto_passed} says a settle skipped you; this says *where*. ADR 0020's
+   * settle loop can advance a dozen steps between two broadcasts, and a client that
+   * only knows *that* it happened cannot tell a player what they did not get to see.
+   * A settle may cross a turn boundary, so a step can appear more than once
+   * (non-adjacently) — it is a path, not a set.
+   *
+   * Advisory, transient, and display-only exactly like {@link auto_passed}: the UI
+   * reconstructs fully without it, and the authoritative record of *what happened*
+   * during a settle stays {@link log}. Omitted (treated as empty) when the settle
+   * did not act for this receiver; {@link normalizeGameView} defaults it to `[]`.
+   */
+  auto_passed_steps?: Phase[];
   /**
    * Whether this view answers a **rejected in-game action** by the receiver (issue
    * #265): a stale-view race meant the chosen action was no longer on offer, so the

@@ -46,6 +46,51 @@ fn issue_264_game_view_stops_and_auto_passed_round_trip_and_elide() {
 }
 
 #[test]
+fn issue_455_own_turn_stops_and_auto_passed_steps_round_trip_and_elide() {
+    // The pacing contract's two additive fields: the narrower half of the stop
+    // preference, and the path a settle took on this receiver's behalf. Both elide
+    // at their empty defaults, so a view from before they existed is unchanged.
+    let mut view = GameView {
+        you: "p0".into(),
+        phase: Phase::DeclareAttackers,
+        turn: 2,
+        active_player: "p1".into(),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&view).unwrap();
+    assert!(json.get("own_turn_stops").is_none());
+    assert!(json.get("auto_passed_steps").is_none());
+
+    // The seat defaults to stopping at its own main phases, and this settle ran it
+    // through the three idle steps before combat.
+    view.own_turn_stops = vec![Phase::PrecombatMain, Phase::PostcombatMain];
+    view.auto_passed = true;
+    view.auto_passed_steps = vec![Phase::Upkeep, Phase::Draw, Phase::BeginCombat];
+    let json = serde_json::to_value(&view).unwrap();
+    assert_eq!(
+        json["own_turn_stops"],
+        serde_json::json!(["precombat_main", "postcombat_main"])
+    );
+    assert_eq!(
+        json["auto_passed_steps"],
+        serde_json::json!(["upkeep", "draw", "begin_combat"])
+    );
+    let back: GameView = serde_json::from_value(json).unwrap();
+    assert_eq!(back, view);
+
+    // The step list is a *path*, not a set: a settle that crosses a turn boundary
+    // legitimately names the same step twice.
+    view.auto_passed_steps = vec![Phase::End, Phase::Upkeep, Phase::End];
+    let back: GameView = serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
+    assert_eq!(back.auto_passed_steps.len(), 3);
+
+    // An older server that omits both still deserializes to the defaults.
+    let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
+    assert!(legacy.own_turn_stops.is_empty());
+    assert!(legacy.auto_passed_steps.is_empty());
+}
+
+#[test]
 fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
     // The multiplayer contract fields — a permanent's `attacking_player`, an
     // opponent's `eliminated`, and the view's `seat_order` — round-trip and elide
@@ -223,7 +268,12 @@ fn game_view_round_trips_through_json() {
             },
         }],
         stops: Vec::new(),
+        // Pacing contract (issue #455): the own-turn half of the stop preference and
+        // the steps a settle skipped this receiver at. Both empty on this frame, so
+        // their defaults ride the exhaustive round trip too.
+        own_turn_stops: Vec::new(),
         auto_passed: false,
+        auto_passed_steps: Vec::new(),
         action_rejected: false,
         // Submission acknowledgement (issue #554): absent on an ordinary broadcast.
         action_ack: None,
