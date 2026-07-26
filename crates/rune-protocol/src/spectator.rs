@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CommanderDamage, CommanderTax, GameLogEntry, GameResult, OpponentView, Permanent, Phase,
-    PlayerId, StackItem, ZonePile,
+    CommanderDamage, CommanderIdentity, CommanderTax, GameLogEntry, GameResult, MatchFormat,
+    OpponentView, Permanent, Phase, PlayerId, StackItem, ZonePile,
 };
 
 /// The state a **spectator** connection receives (ADR 0022, issue #351): a
@@ -90,6 +90,19 @@ pub struct SpectatorView {
     /// game.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commander_tax: Vec<CommanderTax>,
+    /// The **format** this match is played under (issue #553) — the same public
+    /// signal seated views carry (see [`GameView::format`]). A spectator renders
+    /// Commander-specific presentation from this, never from zone contents.
+    /// Omitted (defaults to `None`) by an older server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<MatchFormat>,
+    /// Each seat's **commander identity** (CR 903.3/903.4, issue #553) — the same
+    /// public, designation-keyed list seated views carry (see
+    /// [`GameView::commander_identity`]), so a spectator's seat clusters keep a
+    /// stable name and color identity while commanders move between zones. Omitted
+    /// (defaults to empty) in a non-commander game.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commander_identity: Vec<CommanderIdentity>,
 }
 
 #[cfg(test)]
@@ -113,6 +126,8 @@ mod tests {
                     graveyard_size: 2,
                     statuses: vec![],
                     eliminated: false,
+                    connected: true,
+                    ai: false,
                 },
                 OpponentView {
                     player_id: "p1".into(),
@@ -121,7 +136,11 @@ mod tests {
                     library_size: 0,
                     graveyard_size: 7,
                     statuses: vec![],
+                    // A held-open, disconnected seat is public presentation state; an
+                    // eliminated one need not be connected at all (issue #553).
                     eliminated: true,
+                    connected: false,
+                    ai: false,
                 },
                 OpponentView {
                     player_id: "p2".into(),
@@ -131,6 +150,8 @@ mod tests {
                     graveyard_size: 1,
                     statuses: vec![],
                     eliminated: false,
+                    connected: true,
+                    ai: true,
                 },
             ],
             battlefield: vec![],
@@ -148,6 +169,17 @@ mod tests {
             player_names: BTreeMap::new(),
             commander_damage: Vec::new(),
             commander_tax: Vec::new(),
+            // In-match presentation metadata (issue #553): public, so a spectator sees
+            // exactly what a seated player does.
+            format: Some(MatchFormat {
+                id: "commander".into(),
+                commander: true,
+            }),
+            commander_identity: vec![CommanderIdentity {
+                commander: "p0".into(),
+                name: "Jedit Ojanen".into(),
+                color_identity: vec![Color::Green],
+            }],
         };
         let json = serde_json::to_value(&view).unwrap();
         // Redaction is structural: the type has no receiver/decision fields at all.
@@ -170,6 +202,21 @@ mod tests {
         // Every seat appears as a public OpponentView; the eliminated seat is flagged.
         assert_eq!(json["players"].as_array().unwrap().len(), 3);
         assert_eq!(json["players"][1]["eliminated"], true);
+        // Per-seat presentation state rides the public seat shape (issue #553): the
+        // disconnected seat says so explicitly, a connected one elides the flag, and
+        // the AI seat is marked.
+        assert_eq!(json["players"][1]["connected"], false);
+        assert!(json["players"][0].get("connected").is_none());
+        assert_eq!(json["players"][2]["ai"], true);
+        // The public format signal and the designation-keyed commander identity.
+        assert_eq!(
+            json["format"],
+            serde_json::json!({ "id": "commander", "commander": true })
+        );
+        assert_eq!(
+            json["commander_identity"][0]["color_identity"],
+            serde_json::json!(["G"])
+        );
         let back: SpectatorView =
             serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
         assert_eq!(back, view);

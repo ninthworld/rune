@@ -116,6 +116,111 @@ describe('game store', () => {
     expect(selectPendingPrompt(view)).toBeNull();
   });
 
+  it('correlates a submission with its acknowledgement (issue #554)', () => {
+    // The gap `action_rejected` left: it says *something* was refused, never which
+    // submission, so a pending indicator could not tell its own answer from a view
+    // another seat's action caused.
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0]!.emitOpen();
+    expect(store.getState().pendingSubmission).toBeNull();
+
+    store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass', token: 't1' });
+    const sent = JSON.parse(sockets[0]!.sent.at(-1)!) as Record<string, unknown>;
+    expect(sent.action_id).toBe('a1');
+    expect(typeof sent.submission).toBe('string');
+    const submission = sent.submission as string;
+    expect(store.getState().pendingSubmission).toBe(submission);
+
+    // An ack naming a *different* submission is definitively not this answer, so the
+    // marker survives it — the discrimination `action_rejected` could never make.
+    sockets[0]!.emitMessage(
+      JSON.stringify({ phase: 'upkeep', action_ack: { submission: 'other', accepted: true } }),
+    );
+    expect(store.getState().pendingSubmission).toBe(submission);
+
+    // The view that acknowledges *this* submission clears it, and the verdict is
+    // readable on the view itself.
+    sockets[0]!.emitMessage(
+      JSON.stringify({ phase: 'upkeep', action_ack: { submission, accepted: true } }),
+    );
+    expect(store.getState().pendingSubmission).toBeNull();
+    expect(store.getState().view?.action_ack).toEqual({ submission, accepted: true });
+  });
+
+  it('keeps a pending submission across an unrelated ack-less view (issue #554)', () => {
+    // The race the correlation exists to remove: an ordinary broadcast — another
+    // seat acting — carries no ack, and arrives at this seat before its own answer
+    // does. Clearing on it would drop the marker for a submission still in flight,
+    // which is precisely the pre-#554 "a view arrived, so I must be answered"
+    // heuristic wearing a new name.
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0]!.emitOpen();
+    store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass' });
+    const submission = store.getState().pendingSubmission!;
+    expect(submission).not.toBeNull();
+
+    sockets[0]!.emitMessage('{"phase":"upkeep"}');
+    expect(store.getState().pendingSubmission).toBe(submission);
+
+    // Only the frame that names this submission answers it.
+    sockets[0]!.emitMessage(
+      JSON.stringify({ phase: 'upkeep', action_ack: { submission, accepted: true } }),
+    );
+    expect(store.getState().pendingSubmission).toBeNull();
+  });
+
+  it('releases a pending submission on a transport discontinuity (issue #554)', () => {
+    // What an ack-less view is *not* allowed to infer, a closed socket knows: the
+    // connection the answer was owed on is gone, so nothing can still be in flight
+    // over it and the marker cannot wedge. The reopened socket clears it again, so
+    // a reconnect starts a generation with nothing outstanding.
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0]!.emitOpen();
+    store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass' });
+    expect(store.getState().pendingSubmission).not.toBeNull();
+
+    sockets[0]!.drop();
+    expect(store.getState().pendingSubmission).toBeNull();
+    expect(store.getState().status).toBe('closed');
+
+    // And again on the next open, for a discontinuity with no observed close.
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[1]!.emitOpen();
+    store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass' });
+    expect(store.getState().pendingSubmission).not.toBeNull();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    expect(store.getState().pendingSubmission).toBeNull();
+  });
+
+  it('clears a pending submission on a rejection and never wedges (issue #554)', () => {
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0]!.emitOpen();
+    store.getState().choose({ id: 'a1', type: 'pass_priority', label: 'Pass' });
+    const submission = store.getState().pendingSubmission!;
+    expect(submission).not.toBeNull();
+
+    // A rejection is acknowledged too, tied to the submission that caused it, and
+    // still bumps the existing transient toast trigger.
+    sockets[0]!.emitMessage(
+      JSON.stringify({
+        phase: 'upkeep',
+        action_rejected: true,
+        action_ack: { submission, accepted: false },
+      }),
+    );
+    expect(store.getState().pendingSubmission).toBeNull();
+    expect(store.getState().rejectionNonce).toBe(1);
+    expect(store.getState().view?.action_ack?.accepted).toBe(false);
+  });
+
   it('bumps rejectionNonce only on a view flagged action_rejected (issue #265)', () => {
     const store = createGameStore();
     expect(store.getState().rejectionNonce).toBe(0);
@@ -147,8 +252,15 @@ describe('game store', () => {
 
     store.getState().choose({ id: 'a2', type: 'activate_ability', label: 'Tap for mana' });
     // The socket also carried the lobby `Hello` on open; the ChooseAction is the
-    // frame under test here.
-    expect(sockets[0].sent).toContain(JSON.stringify({ type: 'choose_action', action_id: 'a2' }));
+    // frame under test here. It carries the store's own correlation id (issue #554)
+    // so the view answering it can be recognized; nothing else about it changed.
+    expect(sockets[0].sent).toContain(
+      JSON.stringify({
+        type: 'choose_action',
+        action_id: 'a2',
+        submission: store.getState().pendingSubmission,
+      }),
+    );
   });
 
   it('sends a set_stops message with the chosen phases (issue #264)', () => {
@@ -194,6 +306,7 @@ describe('game store', () => {
         action_id: 'a3',
         token: 'h:9f2c',
         targets: [{ slot: 't0', chosen: ['perm_xyz'] }],
+        submission: store.getState().pendingSubmission,
       }),
     );
   });

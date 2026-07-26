@@ -127,6 +127,7 @@ async fn play_seeded_game_with(
                 let targets = fill_answers(&view, action).expect("the agent fills every slot");
                 transcript.push((seat, action.id.clone()));
                 let choose = ChooseAction {
+                    submission: String::new(),
                     action_id: action.id.clone(),
                     token: action.token.clone(),
                     targets,
@@ -264,6 +265,7 @@ async fn play_seeded_game_collecting_log(seed: u64) -> Vec<(u64, GameLogEvent)> 
                 let action = choose_action(&view).expect("the agent always has a move");
                 let targets = fill_answers(&view, action).expect("the agent fills every slot");
                 let choose = ChooseAction {
+                    submission: String::new(),
                     action_id: action.id.clone(),
                     token: action.token.clone(),
                     targets,

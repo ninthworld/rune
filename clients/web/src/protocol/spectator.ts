@@ -6,6 +6,7 @@ import type { PlayerId } from './index.js';
 import type { OpponentView, Permanent, StackItem, ZonePile } from './card.js';
 import type { Phase } from './view.js';
 import type { GameResult, CommanderDamage, CommanderTax } from './result.js';
+import type { CommanderIdentity, MatchFormat } from './presentation.js';
 import type { GameLogEntry } from './log.js';
 
 /**
@@ -62,4 +63,17 @@ export interface SpectatorView {
    * always sets it (to `[]` when omitted for a non-commander game).
    */
   commander_tax?: CommanderTax[];
+  /**
+   * The format this match is played under (issue #553) — the same public signal
+   * seated views carry (see {@link GameView.format}). Absent means "unknown format,
+   * not Commander".
+   */
+  format?: MatchFormat;
+  /**
+   * Each seat's commander identity (CR 903.3/903.4, issue #553) — the same public,
+   * designation-keyed list seated views carry, so a spectator's seat clusters stay
+   * stable while commanders move between zones. {@link normalizeSpectatorView}
+   * always sets it (to `[]` when omitted).
+   */
+  commander_identity?: CommanderIdentity[];
 }

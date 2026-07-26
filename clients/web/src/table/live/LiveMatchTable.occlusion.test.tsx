@@ -25,12 +25,31 @@
  * hit-testable at each supported viewport. The rendered result is the
  * maintainer's browser check.
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MULLIGAN_GAME_VIEW_JSON, SAMPLE_GAME_VIEW_JSON } from '../../game-view.fixture';
 import { registerTableTestHooks, seed } from '../table-test-support';
 import { LiveMatchTable } from './LiveMatchTable';
-import { SHELL, handCardBounds, handFanSpacing, shellBands, shellStyleVars } from './shellLayout';
+import {
+  LAYER,
+  SHELL,
+  handCardBounds,
+  handFanSpacing,
+  shellBands,
+  shellStyleVars,
+} from './shellLayout';
+
+/**
+ * Read a stylesheet from the source tree. Vitest does not process CSS modules,
+ * so a rule can only be asserted as text — which is enough for the two things
+ * that matter here: which custom properties an offset is composed from, and
+ * which rung it declares.
+ */
+function readStyleSheet(relative: string): string {
+  return readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
+}
 
 vi.mock('../EffectsSurface', () => ({
   EffectsSurface: () => <div data-testid="effects-surface" aria-hidden="true" />,
@@ -105,46 +124,92 @@ describe('match shell occlusion', () => {
         render(<LiveMatchTable />);
 
         const shell = screen.getByTestId('live-match-table');
-        const sheet = screen.getByTestId('decision-sheet');
+        const area = screen.getByTestId('decision-area');
 
-        // The sheet must be a SIBLING of the shell regions. Anything rendered
+        // The area must be a SIBLING of the shell regions. Anything rendered
         // inside `.scene`, `.hand`, or `.cluster` is trapped in that region's
         // stacking context and can never outrank it, no matter what z-index it
         // declares. ADR 0032 removed the permanent regions but NOT this rule —
-        // it is the whole reason contextual chrome is safe.
-        expect(sheet.parentElement).toBe(shell);
+        // it is the whole reason contextual chrome is safe, and it is why #567
+        // did not simply nest the decision inside the cluster it now sits over.
+        expect(area.parentElement).toBe(shell);
         for (const region of ['hand', 'actions']) {
           const el = shell.querySelector(`[data-focus-region="${region}"]`);
-          expect(el?.contains(sheet), `sheet nested inside ${region}`).not.toBe(true);
+          expect(el?.contains(area), `decision area nested inside ${region}`).not.toBe(true);
         }
 
-        // The whole decision is present at once: prompt, both named options, and
-        // the control cluster — the relocated one action home (ADR 0032) that
-        // replaced the dock this assertion used to name.
-        expect(screen.getByText('Keep this hand or take a mulligan?')).toBeTruthy();
+        // The whole decision is present at once, on ONE surface: the question,
+        // both named options, and the controls, beside the control cluster —
+        // the relocated one action home (ADR 0032).
+        expect(screen.getByTestId('decision-prompt').textContent).toContain('bottom');
         const keep = screen.getByTestId<HTMLButtonElement>('multiselect-option-keep');
         const mulligan = screen.getByTestId<HTMLButtonElement>('multiselect-option-mulligan');
+        expect(area.contains(keep)).toBe(true);
         expect(mulligan.disabled).toBe(false);
         expect(keep.disabled).toBe(true); // owes exactly one bottomed card
         expect(screen.getByTestId('control-cluster')).toBeTruthy();
-        expect(screen.getByTestId('prompt-banner').textContent).toContain('bottom');
+
+        // #567's first bullet: the question is drawn once. There is no strip
+        // restating it and no control-less plaque beside it.
+        expect(document.querySelectorAll('[data-decision-prompt]')).toHaveLength(1);
+        expect(document.querySelectorAll('[data-testid="decision-area"]')).toHaveLength(1);
+        expect(screen.queryByTestId('prompt-banner')).toBeNull();
+        expect(screen.queryByTestId('decision-sheet')).toBeNull();
+        expect(screen.queryByTestId('decision-plaque')).toBeNull();
       });
     }
 
     it('passes pointer events through to the cards the prompt is asking about', () => {
-      // Issue #451's fix, re-pinned here because the layer it depends on moved:
-      // the option-only sheet blocks nothing, so the on-canvas/hand picks stay
-      // clickable and the scrim is dropped so it does not dim them either.
+      // Issue #451's fix, re-pinned here because the layer it depends on moved
+      // again: the area takes no pointer events outside its own plate, so the
+      // on-canvas/hand picks stay clickable and nothing dims them either.
       resizeTo(390, 844);
       seed(sevenCardMulliganJson());
       render(<LiveMatchTable />);
 
-      const sheet = screen.getByTestId('decision-sheet');
-      expect(sheet.getAttribute('data-pointer-through')).toBe('true');
+      const area = screen.getByTestId('decision-area');
+      expect(area.getAttribute('data-pointer-through')).toBe('true');
 
       fireEvent.click(screen.getByTestId('live-hand-card-card_3'));
       expect(screen.getByTestId('live-hand-card-card_3').getAttribute('aria-pressed')).toBe('true');
       expect(screen.getByTestId<HTMLButtonElement>('multiselect-option-keep').disabled).toBe(false);
+    });
+
+    it('clears the hand band at both compositions, in the geometry that ships', () => {
+      // jsdom computes no layout, so this reads the CONTRACT the stylesheet is
+      // written from: the decision area is placed from `--shell-cluster-h` and
+      // `--shell-hand-h`, and at each composition the offsets it composes leave
+      // the hand band untouched. Mulligan bottoming happens on those cards.
+      const sheet = readStyleSheet('../decision/decision.module.css');
+      const area = /\.area\s*\{([\s\S]*?)\}/.exec(sheet)?.[1] ?? '';
+      const compact = /@media \(max-width: 899px\)[\s\S]*?\.area\s*\{([\s\S]*?)\}/.exec(sheet)?.[1];
+
+      // Full composition: the cluster's own column, which `shellBands` already
+      // subtracts from the hand band's width, offset above the cluster.
+      expect(area).toContain('var(--rune-control-w-cluster)');
+      expect(area).toContain('--shell-cluster-h');
+      expect(area).not.toContain('--shell-hand-h');
+
+      // Compact: the hand spans the full width above the cluster, so the area
+      // has to clear the whole band, not just the cluster.
+      expect(compact).toBeDefined();
+      expect(compact).toContain('--shell-hand-h');
+      expect(compact).toContain('--shell-cluster-h');
+
+      // Both bands are published by `shellStyleVars`, so the numbers the offsets
+      // add up are the numbers the shell ships.
+      const published = shellStyleVars({ width: 390, height: 844 }) as Record<string, string>;
+      expect(published['--shell-cluster-h']).toBeDefined();
+      expect(published['--shell-hand-h']).toBeDefined();
+    });
+
+    it('never lets the decision rung be traded down to a chrome rung', () => {
+      // I3: a decision the server is waiting on outranks every chrome region.
+      const sheet = readStyleSheet('../decision/decision.module.css');
+      expect(sheet).toContain('z-index: var(--rune-z-decision)');
+      expect(LAYER.decision).toBeGreaterThan(LAYER.shellTop);
+      expect(LAYER.decision).toBeGreaterThan(LAYER.shellRaised);
+      expect(LAYER.decision).toBeGreaterThan(LAYER.shell);
     });
 
     it('keeps every hand card mounted and enabled while the decision is forced', () => {

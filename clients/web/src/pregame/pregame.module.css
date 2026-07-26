@@ -229,6 +229,14 @@
   box-shadow: var(--pregame-elev-rest);
 }
 
+/* The face's own cut: the frame's chamfer offset inward by the stroke, so the
+   warm trim is the same width in the corners as along the edges (issue #571).
+   Clipping both boxes at the same depth put 41 % more trim in every corner —
+   the same defect the match plaque wore, because it is the same construction. */
+.plaqueFace.cut {
+  --cut: var(--rune-control-chamfer-face);
+}
+
 .plaqueFace {
   composes: cut;
   position: relative;

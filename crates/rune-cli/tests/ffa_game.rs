@@ -168,6 +168,7 @@ async fn play_seeded_ffa(seed: u64) -> FfaOutcome {
             let targets = fill_answers(&view, action).expect("the agent fills every slot");
             transcript.push((seat, action.id.clone()));
             let choose = ChooseAction {
+                submission: String::new(),
                 action_id: action.id.clone(),
                 token: action.token.clone(),
                 targets,

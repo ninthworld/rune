@@ -4,7 +4,7 @@
  * text.
  *
  * Every DOM surface that shows server prose — the inspector's cost and rules,
- * an ability control's label, the prompt strip, a stack entry, a card face's
+ * an ability control's label, a decision's question, a stack entry, a card face's
  * rules area — renders it through here, so brace notation reaches the player
  * nowhere and the drawn vocabulary is defined in exactly one place
  * ({@link tokenizeNotation}).

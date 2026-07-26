@@ -3,6 +3,7 @@
  */
 
 import type { EntityId, PlayerId } from './index.js';
+import type { ActionDestination } from './interaction.js';
 
 /**
  * One choice step of a multi-step {@link ValidAction}: a single target slot the
@@ -102,7 +103,34 @@ export interface OrderPrompt {
  * {@link TargetChoice} keyed by `slot` and submitted atomically. Clients tolerate
  * an unknown future `kind`.
  */
-export type Prompt = OptionPrompt | SelectFromZonePrompt | OrderPrompt;
+/**
+ * Choose a **number** within the server-stated inclusive range
+ * {@link NumberPrompt.min}..{@link NumberPrompt.max} (issue #554) — the value of X in
+ * a cost, how many counters to remove, how much of a divided effect goes to one
+ * recipient. Answered with the chosen number rendered as a decimal string, as the
+ * single {@link TargetChoice.chosen} entry (e.g. `["3"]`), so one atomic
+ * {@link ChooseAction} still answers the whole action.
+ *
+ * **The bounds are the server's**, computed from available mana, the source's text,
+ * and the game state; the client offers a control over exactly this range and
+ * computes no affordability of its own. A *divided* value is posed as one `number`
+ * slot per recipient, each with its own bounds, and the server validates the total on
+ * resolution — the client never enforces a sum.
+ */
+export interface NumberPrompt {
+  /** Discriminator. */
+  kind: 'number';
+  /** Opaque slot id the client echoes back as {@link TargetChoice.slot}. */
+  slot: string;
+  /** Human-readable prompt describing what the number means. */
+  prompt: string;
+  /** The smallest legal value, inclusive (often `0` — X may be zero). */
+  min: number;
+  /** The largest legal value, inclusive. */
+  max: number;
+}
+
+export type Prompt = OptionPrompt | SelectFromZonePrompt | OrderPrompt | NumberPrompt;
 
 /**
  * One entry of {@link GameView.valid_actions}: the only source of interactivity.
@@ -149,6 +177,19 @@ export interface ValidAction {
    * {@link TargetChoice} keyed by `slot`. Absent for a plain action.
    */
   prompts?: Prompt[];
+  /**
+   * The server-authoritative destinations this action may be taken to (issue #554) —
+   * see {@link ActionDestination}. The complete set of drop regions a
+   * direct-manipulation gesture may offer for this action, and the **only** source of
+   * them: the client derives its drop targets from this list alone and **fails
+   * closed**, offering no drop target at all for an action that names none.
+   *
+   * Deliberately separate from {@link ValidAction.subject}, which names what the
+   * action belongs *to* (the card it renders on); this names where it goes. Absent
+   * for most actions — passing, conceding, a mana ability are a click, not a drag —
+   * and a client that ignores it loses nothing, since drag is optional input.
+   */
+  destinations?: ActionDestination[];
   /**
    * Content-binding token: an opaque server-issued value bound to this action's
    * exact content (subject + requirements + prompts). The client echoes it back

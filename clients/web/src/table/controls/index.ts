@@ -9,6 +9,7 @@
 export { ControlButton, IconButton } from './ControlButton';
 export type { ControlVariant, ControlButtonProps, IconButtonProps } from './ControlButton';
 export { CONTROL, CONTROL_TOKEN_NAMES, PIP_COUNT, pipRowWidth } from './controlTokens';
+export { FACE_TOKEN_NAMES, faceChamfer, facePointDepth, faceTipInset } from './plaqueGeometry';
 export { derivePrimary, RESPOND_LABEL, RESPOND_ACCESSIBLE_NAME } from './controlPrimary';
 export type {
   ControlSession,
@@ -23,3 +24,5 @@ export { PHASE_GROUPS, STEP_NAME, pipStates } from './phaseSteps';
 export type { PhaseGroup, PipState } from './phaseSteps';
 export { ControlCluster } from './ControlCluster';
 export type { ControlClusterProps } from './ControlCluster';
+export { ManaReservoir } from './ManaReservoir';
+export type { ManaReservoirProps } from './ManaReservoir';

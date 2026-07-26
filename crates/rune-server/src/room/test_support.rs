@@ -114,6 +114,7 @@ pub(crate) fn forced_move(view: &GameView) -> ChooseAction {
         action_id: action.id.clone(),
         token: action.token.clone(),
         targets: Vec::new(),
+        ..Default::default()
     }
 }
 

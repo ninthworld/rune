@@ -6,6 +6,8 @@ import type { PlayerId } from './index.js';
 import type { CardView, OpponentView, SelfView, Permanent, StackItem, ZonePile } from './card.js';
 import type { ValidAction } from './action.js';
 import type { GameResult, CommanderDamage, CommanderTax } from './result.js';
+import type { CommanderIdentity, MatchFormat } from './presentation.js';
+import type { ActionAck } from './interaction.js';
 import type { GameLogEntry } from './log.js';
 
 /**
@@ -140,6 +142,25 @@ export interface GameView {
    */
   action_rejected?: boolean;
   /**
+   * The acknowledgement of the receiver's last submitted action (issue #554) — see
+   * {@link ActionAck}. Carried from the view that answers a {@link ChooseAction}
+   * bearing a {@link ChooseAction.submission} correlation id, and on this receiver's
+   * subsequent views until their next submission supersedes it. Only this receiver's
+   * views ever carry it.
+   *
+   * Matched, not counted: compare `submission` against the id still awaited and ignore
+   * anything else — a repeat of an already-consumed ack names nothing. Riding more than
+   * one view is what lets it survive a latest-value view channel, where a broadcast can
+   * replace a view still in flight.
+   *
+   * Its **absence answers nothing**: an ordinary broadcast (another seat acting) is
+   * ack-less, so it must not be read as the answer to this client's own click — that is
+   * the race this field removes. It completes what {@link GameView.action_rejected}
+   * could only half-say: that flag reports *that* a submission was refused but never
+   * *which*. Transient and advisory; the UI reconstructs fully without it.
+   */
+  action_ack?: ActionAck;
+  /**
    * Public display names keyed by {@link PlayerId} (issue #294): every player who has
    * chosen a name maps to it, so any in-game surface (turn indicator, player tiles,
    * zone-browser titles, game-over verdict) can label any player — `you`, an opponent,
@@ -166,4 +187,23 @@ export interface GameView {
    * literals need not restate it.
    */
   commander_tax?: CommanderTax[];
+  /**
+   * The format this match is played under (issue #553) — see {@link MatchFormat}.
+   * The authoritative signal that a game is Commander, independent of whether any
+   * command zone, tax entry, or damage entry is currently populated: all three are
+   * legitimately empty in ordinary Commander states, so the client must never infer
+   * the format from them. Public information. Absent (from an older server, or a
+   * room with no registered format) means "unknown format, not Commander", so
+   * {@link normalizeGameView} leaves it `undefined` rather than inventing one.
+   */
+  format?: MatchFormat;
+  /**
+   * Each seat's commander identity (CR 903.3/903.4, issue #553) — see
+   * {@link CommanderIdentity}. Keyed to the designation, so a seat's commander name
+   * and colors are stable for the whole game regardless of the commander's current
+   * zone. {@link normalizeGameView} always sets it (to `[]` when omitted for a
+   * non-commander game). Optional on the interface so existing view literals need
+   * not restate it.
+   */
+  commander_identity?: CommanderIdentity[];
 }

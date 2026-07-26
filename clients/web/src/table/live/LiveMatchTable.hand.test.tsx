@@ -422,8 +422,10 @@ describe('mulligan bottoming uses the same fan', () => {
     expect(screen.getByTestId('live-match-table').dataset.forcedDecision).toBe('true');
     expect(band().dataset.pages).toBe('1');
     expect(drawnCards()).toHaveLength(7);
-    // The sheet blocks nothing, so the cards it is asking about stay clickable.
-    expect(screen.getByTestId('decision-sheet').getAttribute('data-pointer-through')).toBe('true');
+    // The decision area blocks nothing: it stands above the control cluster, off
+    // the band entirely, and takes no pointer events outside its own plate, so
+    // the cards it is asking about stay clickable.
+    expect(screen.getByTestId('decision-area').getAttribute('data-pointer-through')).toBe('true');
     for (let i = 0; i < 7; i += 1) {
       const card = screen.getByTestId<HTMLButtonElement>(`live-hand-card-card_${i}`);
       expect(card.disabled).toBe(false);

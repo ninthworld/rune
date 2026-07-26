@@ -21,11 +21,9 @@ import { publishPlane, publishScene, publishView } from '../../testHooks';
 import { ArtSettings } from '../ArtSettings';
 import { PresentationSettings } from '../PresentationSettings';
 import { CardInspect } from '../CardInspect';
-import { DecisionSheet } from '../DecisionSheet';
 import { GameMenu } from '../GameMenu';
 import { GameOverOverlay } from '../GameOverOverlay';
 import type { BrowsableZone } from '../PanelChrome';
-import { PromptStrip, type MultiSelectBanner, type TargetingBanner } from '../PromptStrip';
 import { RejectionToast } from '../RejectionToast';
 import { ShortcutHelp } from '../ShortcutHelp';
 import { ZoneBrowser } from '../ZoneBrowser';
@@ -36,34 +34,18 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useTableInteractions } from '../hooks/useTableInteractions';
 import { useTableKeyboard } from '../hooks/useTableKeyboard';
 import { useViewport } from '../hooks/useViewport';
-import {
-  activeAttacker as msActiveAttacker,
-  activeCandidates as msActiveCandidates,
-  activeChosen as msActiveChosen,
-  activeSlot as msActiveSlot,
-  allSlotsSatisfied,
-  beginMultiSelect,
-  hasOptions,
-  isLastSlot,
-  toggle as msToggle,
-} from '../multiSelect';
+import { activeSlot as msActiveSlot, beginMultiSelect, toggle as msToggle } from '../multiSelect';
 import { declarationFor } from '../scene/action-helpers';
 import type { Rect } from '../scene';
-import { activeCandidates, activeRequirement } from '../targeting';
+import { activeCandidates, activeRequirement, canRetract } from '../targeting';
 import {
   buildShortcutBindings,
   demandsDecision,
   forcedDecision,
-  isOnCanvas,
   resolveInspect,
 } from '../tableView';
 import { ControlCluster } from '../controls';
-import {
-  DecisionPlaque,
-  confirmDisabledReason,
-  estimatePlaqueSize,
-  placeDecisionPlaque,
-} from '../decision';
+import { DecisionArea, deriveDecision } from '../decision';
 import { ActivitySurface, StackStage } from '../stack';
 import { HandFan } from './HandFan';
 import { LivePlane } from './LivePlane';
@@ -148,7 +130,9 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     advanceSlot,
     confirmMultiSelect,
     moveOrder,
+    setNumber,
     chooseOption,
+    retractTarget,
     cancelTargeting,
     cancelMultiSelect,
   } = useTableInteractions(choose);
@@ -302,36 +286,22 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           )?.cards ?? [],
       }
     : null;
-  const selecting = targeting !== null || multiSelect !== null;
+  // ONE derivation of the open decision (#567): the surface's words, rows,
+  // choices, and controls, and the candidates the plane lights, all from a single
+  // pure read of the session. Three surfaces used to derive this separately and
+  // draw the same question at once.
+  const { surface: decision, staging: decisionStaging } = deriveDecision(view, {
+    targeting,
+    multiSelect,
+    forced,
+    deadline: prompt?.deadline,
+    canRetract: targeting !== null && canRetract(targeting),
+  });
+  const selecting = decisionStaging.selecting;
   const passOffered =
     view.valid_actions.some((action) => action.type === 'pass_priority') && !selecting;
   const shortcuts = buildShortcutBindings(passOffered);
   const mode = selecting || demandsDecision(view) ? 'focus' : 'overview';
-
-  const msSlot = multiSelect ? msActiveSlot(multiSelect) : null;
-  const defenderSlot = msSlot?.kind === 'defender';
-  const sheetMode =
-    !!msSlot &&
-    !defenderSlot &&
-    (msSlot.kind === 'order' || !msSlot.candidates.some((id) => isOnCanvas(view, id)));
-  const pickingCandidates = multiSelect
-    ? sheetMode || defenderSlot
-      ? []
-      : msActiveCandidates(multiSelect)
-    : targeting
-      ? activeCandidates(targeting)
-      : [];
-  const playerCandidates = multiSelect
-    ? defenderSlot
-      ? msActiveCandidates(multiSelect)
-      : []
-    : targeting
-      ? activeCandidates(targeting).filter(
-          (id) => id === view.you || view.opponents.some((opponent) => opponent.player_id === id),
-        )
-      : [];
-  const chosen = multiSelect ? msActiveChosen(multiSelect) : [];
-  const routingAttacker = multiSelect && defenderSlot ? msActiveAttacker(multiSelect) : null;
 
   const activateEntity = (id: EntityId): void => {
     const actions = view.valid_actions.filter((action) => action.subject?.includes(id));
@@ -400,46 +370,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
                 },
               ]),
         ];
-  const targetingBanner: TargetingBanner | null =
-    targeting && activeReq
-      ? {
-          label: targeting.action.label,
-          prompt: activeReq.prompt,
-          step: targeting.picks.length + 1,
-          total: targeting.action.requirements?.length ?? 0,
-        }
-      : null;
-  const multiSelectBanner: MultiSelectBanner | null =
-    multiSelect && (msSlot || hasOptions(multiSelect))
-      ? {
-          label: multiSelect.action.label,
-          prompt: msSlot?.prompt ?? multiSelect.options[0]?.prompt ?? '',
-          step: multiSelect.active + 1,
-          total: multiSelect.slots.length,
-          chosen: msActiveChosen(multiSelect).length,
-          required: msSlot?.kind === 'count' ? msSlot.count : undefined,
-          slotKind: msSlot?.kind,
-        }
-      : null;
-  // The decision's controls, which the retired dock used to host. They now ride
-  // the plaque, placed near their subject by §10.1's anchoring algorithm — and
-  // the plaque may never cover the subject or a candidate, which is the whole
-  // reason that algorithm exists.
-  const plaqueControls =
-    (multiSelect !== null && !hasOptions(multiSelect) ? 1 : 0) +
-    (forced === null && selecting ? 1 : 0) +
-    (multiSelect !== null && multiSelect.slots.length > 1 && !isLastSlot(multiSelect) ? 1 : 0);
-  const plaqueSize = estimatePlaqueSize(plaqueControls);
-  const decisionPlacement = selecting
-    ? placeDecisionPlaque({
-        viewport: bands.viewport,
-        board: bands.staging,
-        size: plaqueSize,
-        cluster: bands.cluster,
-        seatCount: view.seat_order.length,
-        candidates: [],
-      })
-    : null;
 
   const highlight = (id: EntityId): void =>
     setHighlightedId((current) => (current === id ? null : id));
@@ -542,15 +472,15 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     selectedId,
     picking: selecting,
     multiSelect: multiSelect !== null,
-    candidates: pickingCandidates,
-    chosen,
-    playerCandidates,
+    candidates: decisionStaging.candidates,
+    chosen: decisionStaging.chosen,
+    playerCandidates: decisionStaging.playerCandidates,
     // Issue #457: the multiplayer "whom does this creature attack" question. Both
     // values come straight off the active `defend_` slot — the seats the server
     // listed and the attacker the slot is keyed by — so the control layer can make
     // the panels unmistakable without deriving anything about combat.
-    assigningDefender: defenderSlot,
-    routedAttacker: routingAttacker,
+    assigningDefender: decisionStaging.assigningDefender,
+    routedAttacker: decisionStaging.routedAttacker,
     dropBoard: handDrag !== null && (handDrag.action.requirements?.length ?? 0) === 0,
     dropCandidates: handDrag?.action.requirements?.[0]?.candidates,
     onActivateEntity: activateEntity,
@@ -602,8 +532,8 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           view={view}
           staging={{
             focusSeat: focusedSeat ?? undefined,
-            selectedId: routingAttacker ?? selectedId ?? highlightedId ?? undefined,
-            candidates: pickingCandidates,
+            selectedId: decisionStaging.routedAttacker ?? selectedId ?? highlightedId ?? undefined,
+            candidates: decisionStaging.candidates,
           }}
           safeArea={bands.staging}
           quality={quality}
@@ -628,8 +558,8 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           bandWidth={bands.hand.w}
           selecting={selecting}
           multiSelect={multiSelect !== null}
-          candidates={pickingCandidates}
-          chosen={chosen}
+          candidates={decisionStaging.candidates}
+          chosen={decisionStaging.chosen}
           selectedId={selectedId}
           previewTargetId={previewTargetId}
           shouldSwallowClick={() => {
@@ -647,16 +577,6 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           }}
         />
       </div>
-
-      {/* §10.1 splits the two halves of a decision: the strip carries the
-          SENTENCE (question, progress, count, deadline) and keeps its fixed
-          home; the plaque carries the CONTROLS, near its subject. */}
-      <PromptStrip
-        view={view}
-        prompt={prompt}
-        targeting={targetingBanner}
-        multiSelect={multiSelectBanner}
-      />
 
       {/* The one action home — the ADR 0023 commitment kept, its location moved
           from beside the hand to the lower-right cluster (ADR 0032 commitment
@@ -678,7 +598,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           menuOpen={menuOpen}
           menuControls="game-menu"
           onSetStops={setStops}
-          onUndo={targeting !== null && targeting.picks.length > 0 ? cancelTargeting : undefined}
+          onUndo={targeting !== null && canRetract(targeting) ? retractTarget : undefined}
           shakeNonce={rejectionNonce}
         />
         {/* D5/D18: the menu is where settings, shortcuts, and CONCEDE live —
@@ -708,55 +628,28 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
       />
       <ActivitySurface view={view} onHighlight={highlight} highlightedId={highlightedId} />
 
-      {/* The decision's controls, near their subject. Absent unless a decision
-          is open — there is no permanent dock to park them in any more. */}
-      {decisionPlacement && (multiSelect || targeting) && (
-        <DecisionPlaque
-          testId="decision-plaque"
-          title={(multiSelect ?? targeting)!.action.label}
-          placement={decisionPlacement}
-          confirm={
-            multiSelect && !hasOptions(multiSelect)
-              ? {
-                  label: 'Confirm',
-                  onConfirm: confirmMultiSelect,
-                  // The ONE server-stated disablement (§3.2/D14): the slot's own
-                  // cardinality, which the server states as `count`.
-                  disabledReason: confirmDisabledReason(
-                    allSlotsSatisfied(multiSelect),
-                    msSlot?.prompt,
-                  ),
-                }
-              : undefined
-          }
-          onAdvance={
-            multiSelect && multiSelect.slots.length > 1 && !isLastSlot(multiSelect)
-              ? advanceSlot
-              : undefined
-          }
-          // §8: a decision the VIEW FORCES offers no cancel — there is no neutral
-          // state to return to, so the answer is the only way out (issue #451).
-          cancel={
-            forced !== null
-              ? undefined
-              : multiSelect
-                ? { onCancel: cancelMultiSelect }
-                : targeting
-                  ? { onCancel: cancelTargeting }
-                  : undefined
-          }
+      {/* THE decision surface (#567): the question, its rows, its named choices,
+          and its controls, at the top of the same lower-right action area the
+          cluster occupies. Absent unless a decision is open — there is no
+          permanent dock to park it in any more, and no second surface repeating
+          the question. It is a SIBLING of the shell's regions on purpose: a
+          region carrying a z-index creates a stacking context, so a decision
+          rendered inside `.cluster` could be covered by the chrome the
+          `decision` rung exists to keep off it (#528). */}
+      {decision && (
+        <DecisionArea
+          surface={decision}
+          onConfirm={confirmMultiSelect}
+          onAdvance={advanceSlot}
+          onUndo={retractTarget}
+          onCancel={multiSelect ? cancelMultiSelect : cancelTargeting}
+          onToggleRow={toggleCandidate}
+          onMoveRow={moveOrder}
+          onChooseOption={chooseOption}
+          onNumber={setNumber}
         />
       )}
 
-      <DecisionSheet
-        view={view}
-        multiSelect={multiSelect}
-        sheetMode={sheetMode}
-        msSlot={msSlot}
-        onToggle={toggleCandidate}
-        onMove={moveOrder}
-        onChooseOption={chooseOption}
-      />
       {handDrag && (
         <div
           className={styles.dragGhost}

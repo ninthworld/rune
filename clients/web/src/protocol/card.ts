@@ -64,6 +64,23 @@ export interface OpponentView {
   /** Whether this opponent has been eliminated — they left the game (CR 800.4a,
    * issue #342/#345). Omitted (treated as `false`) in a two-player game. */
   eliminated?: boolean;
+  /**
+   * Whether this seat currently has a live connection (issue #553). The server holds
+   * a disconnected seat open — the game does not end and the seat is never conceded —
+   * so this says "waiting on a disconnected player", not "gone".
+   *
+   * **Absent means `true`.** This is the one flag on the wire whose omitted value is
+   * `true`: it rides the wire only as `false`, so an older server (and every
+   * connected seat) reads as connected. Test `=== false`, never falsiness.
+   */
+  connected?: boolean;
+  /**
+   * Whether this seat is played by a server-side AI (issue #415/#553) rather than a
+   * human — the lobby's `SeatView.ai` carried into the match, so the marker is not
+   * lost at the hand-off. Public presentation information; nothing about the AI's
+   * decisions is exposed. Omitted (treated as `false`, i.e. human).
+   */
+  ai?: boolean;
 }
 
 /**
@@ -79,6 +96,28 @@ export interface SelfView {
   life: number;
   /** Number of cards left in the receiver's library. */
   library_size: number;
+  /**
+   * Whether the receiver has been eliminated — they lost while two or more players
+   * remained, so the game continues without them (CR 800.4a, issue #553). The
+   * self-counterpart of {@link OpponentView.eliminated}, and the **only**
+   * authoritative source for a local elimination: `result` arrives at game over,
+   * which can be many turns later, and the bounded `log` window is not
+   * reconstructable. Omitted (treated as `false`).
+   */
+  eliminated?: boolean;
+  /**
+   * Whether the receiver's own seat has a live connection (issue #553) — see
+   * {@link OpponentView.connected}, including its absent-means-`true` rule. Trivially
+   * true for the connection reading it; present so a seat-cluster surface reads the
+   * same field for every seat instead of special-casing itself.
+   */
+  connected?: boolean;
+  /**
+   * Whether the receiver's own seat is AI-controlled (issue #553) — see
+   * {@link OpponentView.ai}. True only for the server's in-process AI driver, which
+   * receives the same view a human would. Omitted (treated as `false`).
+   */
+  ai?: boolean;
 }
 
 /** A named counter on a permanent. */
@@ -134,6 +173,15 @@ export interface Permanent {
    * The client clusters the attachment with its host and derives no rules from it.
    */
   attached_to?: EntityId;
+  /**
+   * Whether this permanent **is** its controller's commander (CR 903.3, issue #553):
+   * the server-computed marker the commander crown renders from. The client must not
+   * infer it — a commander on the battlefield is an ordinary permanent, and
+   * "legendary creature" is neither necessary (a commander may be a planeswalker) nor
+   * sufficient (most legends are not commanders). Omitted (treated as `false`) for
+   * every other permanent and in every non-Commander game.
+   */
+  is_commander?: boolean;
   /** Named counters and their quantities. */
   counters?: Counter[];
 }

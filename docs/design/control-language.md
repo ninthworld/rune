@@ -163,7 +163,13 @@ Two shapes only, as drawn. Everything else is a fill, a frame, or a size.
 
 Frame construction (all gold-framed components): 2 px stroke, a 135° gradient
 `--rune-control-frame-hi` → `--rune-control-frame` → `--rune-control-frame-lo`,
-plus a 1 px `rgba(0,0,0,0.5)` inner line. The primary's bevel is the same
+plus a 1 px `rgba(0,0,0,0.5)` inner line. The stroke is drawn as two clipped
+boxes, and the inner box's outline is the outer's **offset inward by the stroke**,
+not the same outline re-resolved against a smaller box — a shared polygon puts
+2.83 px of gold in a chamfer's corners and thins the plaque's trim to 1.68 px at
+its leading point (issue #571). The offset is derived in
+`table/controls/plaqueGeometry.ts` and shipped as `--rune-control-chamfer-face`,
+`--rune-plaque-face-point`, and `--rune-plaque-face-tip`. The primary's bevel is the same
 construction in the blue family, with the pale inner rim at the top edge only —
 "restrained bevel, pale inner highlight, dark outer edge", exactly as drawn.
 
@@ -602,6 +608,17 @@ a stale-view race, never by user error (protocol §`action_rejected`).
 
 ## 10. Prompt and decision placement
 
+> **Superseded in part by issue #567 (see C11).** §10.1's anchoring walk and its
+> split of "the strip carries the sentence, the plaque carries the controls" no
+> longer describe the shipped client. There is now **one** decision surface — the
+> **decision area** (`table/decision/DecisionArea.tsx`) — at the head of the
+> lower-right action column, carrying the question, the numeric control of a
+> `number` slot (issue #554), *and* the controls, and
+> `PromptStrip`, `DecisionSheet`, and the anchoring module are removed. §10.1's
+> constraint below survives and is what the new placement satisfies by
+> construction; the algorithm that used to satisfy it does not. §10.2's phone
+> bottom-sheet row survives as the area's compact form.
+
 The decision plaque (control-ui panel 7) is a titled surface with the action's
 label as its title and its controls beneath. It **must not occlude the subject
 of the decision or any candidate**.
@@ -769,7 +786,7 @@ until each has a server shape, the affordance does not render.
 | D14 | Disabled controls render only for the one server-stated reason (`PromptOption.requires`); everything else is absent rather than greyed. |
 | D15 | Focus ring: 2 px `--rune-selection`, 2 px offset, drawn outside the frame, never suppressed (the baselines show no keyboard state). |
 | D16 | Invalid-drop feedback dims rather than reddens the fill; the no-entry glyph carries the meaning, so the state survives a color-blind or Lite quality path. |
-| D17 | Decision-plaque anchoring precedence (below/above the subject → slide → dock at the cluster), and the phone bottom-sheet form. |
+| D17 | Decision-plaque anchoring precedence (below/above the subject → slide → dock at the cluster), and the phone bottom-sheet form. **Superseded by #567 (C11): the decision area has a fixed home at the head of the action column, so there is no anchoring; the bottom-sheet form survives as its compact form.** |
 | D18 | Concede lives behind the menu with a two-step confirmation and the danger treatment, never adjacent to the ordinary primary. |
 | D19 | The cancel taxonomy of §8, including "no cancel is offered for a view-forced decision" and "no post-submission undo". |
 | D20 | Drop-validity green/red are a **distinct semantic pair** from the gain/loss hue families of `visual-system.md` §2; they are disambiguated by shape (corner ticks vs no-entry glyph) and by never co-occurring with a gain/loss moment on the same object. See §15 C3. |
@@ -856,6 +873,45 @@ a server-known reason — which does not exist (GAP-4).
 cluster primary, and now drag all fire the same single offered action. That is
 intentional redundancy for input parity, but it means an implementation must
 route all three through one code path so they cannot diverge.
+
+**C11 — One decision surface, or a sentence and a plaque. Resolved by issue
+#567 (maintainer-authored).** §10.1 gave a decision two surfaces — the strip at a
+fixed home for the sentence, the plaque next to the subject for the controls —
+and §10.1/D17 specified the anchoring walk that kept the plaque off its subject.
+Shipped, that produced three surfaces, not two: `PromptStrip` drew the sentence,
+`DecisionSheet` drew it again above its option buttons, and `DecisionPlaque` drew
+a third copy of the title — control-less for a forced mulligan, whose confirm was
+absent (named options answer it) and whose cancel was absent (§8/D19). The
+anchoring never ran on real inputs either: the shell had no subject, candidate, or
+wing rects to give it, so every landscape ≥ 1180 px call docked at the cluster and
+every other call took the sheet form with no receiver band.
+
+#567 asks for "one coherent lower-right action area for authoritative decisions,
+phase/priority controls, and the player's current mana" and "one 2.5D-native
+choice surface **adjacent to the primary action**". That is the resolution: the
+**decision area** carries the question, the progress, the count, the deadline, the
+rows, the **numeric control**, the named choices, and the controls, at the head of
+the control cluster's column. `PromptStrip` and `DecisionSheet` are deleted; the
+anchoring module is deleted with them, because a surface with a fixed home has
+nothing to anchor.
+
+The numeric control is `NumberPromptSurface`, the answer to a server-posed `number`
+slot (issue #554 — the value of X, a count of counters, one share of a divided
+effect). It landed in `DecisionSheet` while that surface still existed, and moved
+here with the rest of the question rather than being deleted with its host: a
+`number` slot is the one slot kind with **no candidates at all**, so neither the
+board nor a row list can answer it and it must bring its own control. It is
+submitted by the area's own Confirm, like every other slot — the sheet had a
+second one — and the slot opens pre-filled at the server's minimum, so confirming
+without touching it is a legal answer. Every bound is the server's.
+§10's own constraint — never occlude the subject or a candidate — is now met by
+geometry rather than by search: the area stands on the cluster's published height
+on the full composition and on the hand band's top edge on the compact one, so the
+cards a mulligan is asking about are never under it.
+
+Two things §10 decided that this does **not** change: a decision the view forces
+still offers no cancel (§8/D19), and mulligan bottoming is still picked on the
+cards rather than listed in the surface.
 
 **C10 — Pip semantics were guessed.** D3 picks the five phase groups. If the
 baseline's pips were meant as "seats yet to pass priority" or "steps within the

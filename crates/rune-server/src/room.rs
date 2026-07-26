@@ -41,7 +41,7 @@
 //! `impl Room` block can reach the private fields as an ancestor module.
 
 use rune_engine::{CardDatabase, GameState};
-use rune_protocol::{GameView, Phase, SpectatorView};
+use rune_protocol::{ActionAck, GameView, MatchFormat, Phase, SpectatorView};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
@@ -112,6 +112,19 @@ pub struct Room {
     /// [`personalized_view`](crate::view::personalized_view) shim.
     /// Empty (all-`None`) when no name was ever set, so the map elides from the wire.
     player_names: Vec<Option<String>>,
+    /// Which seats are played by a server-side **AI** (issue #415/#553), in seat
+    /// order. Public presentation information the lobby already shows before the
+    /// game; carried here — like [`Self::player_names`], a *session* concern the
+    /// engine knows nothing about — so every seat's view can mark the seat instead
+    /// of losing the fact at the hand-off. All-`false` (and empty) by default.
+    ai_seats: Vec<bool>,
+    /// The **format** this room's game is played under (issue #553), or `None` when
+    /// the room was constructed without one (unit tests, and any older path). Room
+    /// state by definition: the format registry lives in the server, the engine holds
+    /// no format policy at all (ADR 0013 §4). Projected into every seat's
+    /// [`GameView::format`] and every spectator's, so a client can render
+    /// Commander-specific presentation without inferring it from zone contents.
+    format: Option<MatchFormat>,
     /// The basic priority-automation policy (issue #264). [`AutoPassPolicy::Off`] by
     /// default, so automation is opt-in and existing behavior is unchanged.
     auto_pass: AutoPassPolicy,
@@ -128,6 +141,13 @@ pub struct Room {
     /// affected seat's [`GameView::auto_passed`] on the following broadcast so a
     /// client can show a "passed for you" indicator. Not load-bearing state.
     auto_passed_seats: Vec<bool>,
+    /// The **acknowledgement** each seat is owed for its most recent correlated
+    /// submission (issue #554), indexed by seat. Written when a `ChooseAction`
+    /// carrying a [`ChooseAction::submission`](rune_protocol::ChooseAction) is routed
+    /// — accepted or rejected — and **taken** by the next view sent to that seat, so
+    /// it is delivered exactly once and a later resync never re-fires it. Transient
+    /// and display-only, like [`Self::auto_passed_seats`]; the game never reads it.
+    pending_acks: Vec<Option<ActionAck>>,
     /// The connected **spectators** (ADR 0022, issue #351): each a latest-value sender
     /// the room pushes a redacted [`SpectatorView`] to on every broadcast. Spectators
     /// own no seat and are not held open across disconnects — a sender whose receiver
@@ -151,9 +171,12 @@ impl Room {
             timer: TimerPolicy::Off,
             deadline: None,
             player_names: Vec::new(),
+            ai_seats: Vec::new(),
+            format: None,
             auto_pass: AutoPassPolicy::Off,
             stops: vec![Vec::new(); seat_count],
             auto_passed_seats: vec![false; seat_count],
+            pending_acks: (0..seat_count).map(|_| None).collect(),
             spectators: Vec::new(),
         }
     }
@@ -195,6 +218,28 @@ impl Room {
     #[must_use]
     pub fn with_player_names(mut self, names: Vec<Option<String>>) -> Self {
         self.player_names = names;
+        self
+    }
+
+    /// Mark which seats are played by a server-side **AI** (issue #553), indexed by
+    /// seat. Chainable on [`Room::new`]; the default is every seat human, so
+    /// `OpponentView::ai`/`SelfView::ai` stay `false` and elide from the wire. A seat
+    /// index past the end of `ai` is treated as human. Mirrors
+    /// [`Room::with_player_names`]: the same lobby knowledge, carried the same way.
+    #[must_use]
+    pub fn with_ai_seats(mut self, ai: Vec<bool>) -> Self {
+        self.ai_seats = ai;
+        self
+    }
+
+    /// Set the **format** this room's game is played under (issue #553). Chainable on
+    /// [`Room::new`]; the default is `None` (unknown format, not Commander), which is
+    /// exactly what an older server's views said. Mirrors
+    /// [`Room::with_player_names`]: format is registry/lobby knowledge, never engine
+    /// state, so it is carried on the room and projected after the pure shim.
+    #[must_use]
+    pub fn with_format(mut self, format: MatchFormat) -> Self {
+        self.format = Some(format);
         self
     }
 }

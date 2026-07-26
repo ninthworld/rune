@@ -372,6 +372,9 @@ where
             action_id,
             token,
             targets,
+            // The terminal client sends one action at a time and blocks on the reply,
+            // so it needs no submission correlation id (issue #554).
+            ..Default::default()
         });
         let json = serde_json::to_string(&choose).map_err(SessionError::Encode)?;
         write
@@ -546,6 +549,33 @@ where
             Ok(Some(TargetChoice {
                 slot: slot.clone(),
                 chosen: items.clone(),
+            }))
+        }
+        // A numeric slot (issue #554): read a value inside the server's inclusive
+        // range and answer with its decimal string. The bounds are the server's, so
+        // the terminal client only re-prompts until the input lands inside them.
+        Prompt::Number {
+            slot,
+            prompt: text,
+            min,
+            max,
+        } => {
+            write_str(output, &format!("\n{text} ({min}-{max}):\n")).await?;
+            let chosen = loop {
+                write_str(output, "> ").await?;
+                output.flush().await.map_err(SessionError::Io)?;
+                line.clear();
+                if input.read_line(line).await.map_err(SessionError::Io)? == 0 {
+                    return Ok(None);
+                }
+                match line.trim().parse::<u32>() {
+                    Ok(value) if (*min..=*max).contains(&value) => break value,
+                    _ => write_str(output, &not_listed(line)).await?,
+                }
+            };
+            Ok(Some(TargetChoice {
+                slot: slot.clone(),
+                chosen: vec![chosen.to_string()],
             }))
         }
     }
@@ -819,32 +849,16 @@ mod tests {
     use rune_protocol::{Phase, ValidAction};
 
     fn view_with_actions(actions: Vec<ValidAction>) -> GameView {
+        // `GameView` derives `Default` (issue #553), so a harness view names only the
+        // fields it exercises and never has to restate the additive rest.
         GameView {
             you: "p0".into(),
-            my_hand: vec![],
-            me: rune_protocol::SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::PrecombatMain,
             turn: 1,
             active_player: "p0".into(),
-            mana_pool: vec![],
             priority_player: Some("p0".into()),
             valid_actions: actions,
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: std::collections::BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-            seat_order: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -953,6 +967,7 @@ mod tests {
         view.me = rune_protocol::SelfView {
             life: 15,
             library_size: 30,
+            ..Default::default()
         };
         let text = render(&view);
         assert!(

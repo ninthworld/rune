@@ -144,6 +144,7 @@ fn mana_ability(actions: &[ValidAction]) -> Option<&ValidAction> {
 /// Build the wire answer for `action`, filling its slots per [`fill_answers`].
 fn answer(view: &GameView, action: &ValidAction) -> ChooseAction {
     ChooseAction {
+        submission: String::new(),
         action_id: action.id.clone(),
         token: action.token.clone(),
         targets: fill_answers(view, action).unwrap_or_default(),
@@ -154,6 +155,7 @@ fn answer(view: &GameView, action: &ValidAction) -> ChooseAction {
 /// attackers/blockers" (CR 508.1a / 509.1a), which the server binds from empty targets.
 fn decline(action: &ValidAction) -> ChooseAction {
     ChooseAction {
+        submission: String::new(),
         action_id: action.id.clone(),
         token: action.token.clone(),
         targets: Vec::<TargetChoice>::new(),
@@ -257,6 +259,7 @@ impl Driver {
                     // The profitable blocker (the 10/10) is assigned to the 5/5
                     // commander: it survives, the commander dies (CR 704.5g).
                     return Some(ChooseAction {
+                        submission: String::new(),
                         action_id: action.id.clone(),
                         token: action.token.clone(),
                         targets,

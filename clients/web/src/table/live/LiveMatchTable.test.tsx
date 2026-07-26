@@ -55,6 +55,55 @@ const MANA_VIEW_JSON = JSON.stringify({
   ],
 });
 
+/**
+ * A two-target cast, so a targeting session can sit *between* slots — the only
+ * state in which retracting one pick is distinguishable from abandoning the
+ * session. The single-target fixtures auto-submit on their first pick.
+ */
+const TWO_TARGET_VIEW_JSON = JSON.stringify({
+  you: 'p1',
+  my_hand: [
+    {
+      id: 'c4',
+      name: 'Twin Bolt',
+      type_line: 'Instant',
+      mana_cost: '{1}{R}',
+      rules_text: 'Twin Bolt deals 1 damage to each of two targets.',
+    },
+  ],
+  opponents: [{ player_id: 'p2', hand_size: 3, life: 20, library_size: 40 }],
+  battlefield: [
+    {
+      id: 'perm_a',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'perm_a', name: 'Grizzly Bears', type_line: 'Creature — Bear' },
+    },
+    {
+      id: 'perm_b',
+      controller: 'p1',
+      owner: 'p1',
+      card: { id: 'perm_b', name: 'Runeclaw Bear', type_line: 'Creature — Bear' },
+    },
+  ],
+  phase: 'precombat_main',
+  priority_player: 'p1',
+  valid_actions: [
+    {
+      id: 'a6',
+      type: 'cast_spell',
+      label: 'Cast Twin Bolt',
+      subject: ['c4'],
+      token: 'h:twin',
+      requirements: [
+        { slot: 't0', prompt: 'first target creature', candidates: ['perm_a', 'perm_b'] },
+        { slot: 't1', prompt: 'second target creature', candidates: ['perm_a', 'perm_b'] },
+      ],
+    },
+    { id: 'a1', type: 'pass_priority', label: 'Pass' },
+  ],
+});
+
 describe('LiveMatchTable', () => {
   beforeEach(() => {
     effectsMock.persistent = [];
@@ -75,7 +124,12 @@ describe('LiveMatchTable', () => {
     // and the activity surface replaces the rail's log column.
     expect(screen.queryByTestId('top-bar')).toBeNull();
     expect(screen.queryByTestId('rail')).toBeNull();
-    expect(screen.getByTestId('prompt-banner')).toBeTruthy();
+    // The decision surface is contextual (#567): with nothing being decided it
+    // is absent, and the phase plaque in the cluster carries step and priority.
+    // The permanent prompt strip that used to say so is retired with it.
+    expect(screen.queryByTestId('prompt-banner')).toBeNull();
+    expect(screen.queryByTestId('decision-area')).toBeNull();
+    expect(screen.getByTestId('phase-plaque')).toBeTruthy();
     expect(screen.getByTestId('control-cluster')).toBeTruthy();
     expect(screen.getByTestId('stack-stage')).toBeTruthy();
     expect(screen.getByTestId('activity-surface')).toBeTruthy();
@@ -204,7 +258,7 @@ describe('LiveMatchTable', () => {
     fireEvent.click(screen.getByTestId('live-hand-card-c3'));
     fireEvent.click(screen.getByRole('button', { name: 'Cast Lightning Bolt' }));
     expect(choose).not.toHaveBeenCalled();
-    expect(screen.getByTestId('targeting-prompt').textContent).toContain(
+    expect(screen.getByTestId('decision-prompt').textContent).toContain(
       'target creature or player',
     );
 
@@ -212,6 +266,42 @@ describe('LiveMatchTable', () => {
     const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
     expect(action).toEqual(expect.objectContaining({ id: 'a3', token: 'h:9f2c' }));
     expect(targets).toEqual([{ slot: 't0', chosen: ['perm_xyz'] }]);
+  });
+
+  it('retracts one target pick with Undo and keeps the rest of the session', () => {
+    // #567 review: Undo is "retract the last pick", not "leave targeting". On a
+    // two-target action the first pick must survive an Undo of the second slot's
+    // opportunity, the action must stay open, and nothing may be submitted.
+    const choose = seed(TWO_TARGET_VIEW_JSON);
+    render(<LiveMatchTable />);
+
+    fireEvent.click(screen.getByTestId('live-hand-card-c4'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast Twin Bolt' }));
+    expect(screen.getByTestId('decision-progress').textContent).toBe('Target 1 of 2');
+    // Nothing to take back on the first slot.
+    expect(screen.queryByTestId('decision-area-undo')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('target-perm_a'));
+    expect(choose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('decision-progress').textContent).toBe('Target 2 of 2');
+
+    fireEvent.click(screen.getByTestId('decision-area-undo'));
+    // Back on the first slot with the action still open — not cancelled.
+    expect(screen.getByTestId('decision-progress').textContent).toBe('Target 1 of 2');
+    expect(screen.getByTestId('decision-prompt').textContent).toContain('first target');
+    expect(screen.getByTestId('target-perm_a')).toBeTruthy();
+    expect(choose).not.toHaveBeenCalled();
+
+    // Re-picking both slots submits the whole answer atomically, with the
+    // re-picked id in the retracted slot.
+    fireEvent.click(screen.getByTestId('target-perm_b'));
+    fireEvent.click(screen.getByTestId('target-perm_a'));
+    const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
+    expect(action).toEqual(expect.objectContaining({ id: 'a6', token: 'h:twin' }));
+    expect(targets).toEqual([
+      { slot: 't0', chosen: ['perm_b'] },
+      { slot: 't1', chosen: ['perm_a'] },
+    ]);
   });
 
   it('previews a one-target path from the hand to the focused legal candidate', () => {
@@ -250,7 +340,7 @@ describe('LiveMatchTable', () => {
     expect(choose).not.toHaveBeenCalled();
     expect(screen.getByTestId('target-atk_1').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByTestId('target-atk_2'));
-    fireEvent.click(screen.getByTestId('decision-plaque-confirm'));
+    fireEvent.click(screen.getByTestId('decision-area-confirm'));
 
     const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
     expect(action).toEqual(expect.objectContaining({ id: 'a5', token: 'h:atk0' }));
@@ -304,9 +394,10 @@ describe('LiveMatchTable', () => {
     expect(keep.disabled).toBe(true);
     expect(another.disabled).toBe(false);
 
-    // The sheet floats over the hand it is asking about, so it must not swallow
-    // the clicks that answer it (the scrim used to, with no `pointer-events`).
-    expect(screen.getByTestId('decision-sheet').dataset.pointerThrough).toBe('true');
+    // The surface stands above the control cluster, clear of the hand it is
+    // asking about, and takes no pointer events outside its own plate — so it
+    // cannot swallow the clicks that answer it (the retired scrim did).
+    expect(screen.getByTestId('decision-area').dataset.pointerThrough).toBe('true');
 
     fireEvent.click(screen.getByTestId('live-hand-card-card_a'));
     expect(screen.getByTestId('live-hand-card-card_a').getAttribute('aria-pressed')).toBe('true');
@@ -319,14 +410,19 @@ describe('LiveMatchTable', () => {
     expect(choose).not.toHaveBeenCalled();
   });
 
-  it('keeps its scrim for a decision answered in the sheet itself', () => {
-    // The pass-through is scoped to picks made on the scene: a decision whose
-    // candidates live in the sheet (a non-board zone) still owns the surface.
+  it('hosts a non-board zone pick as rows on the same one surface', () => {
+    // A decision whose candidates are not on the board — a graveyard return —
+    // used to open a second surface (the sheet) with its own copy of the
+    // question. Now the rows ride the same area as the question and the
+    // controls, so there is one place to read it and one place to answer it.
     seed(ZONE_SELECT_GAME_VIEW_JSON);
     render(<LiveMatchTable />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Return a card to hand' }));
-    expect(screen.getByTestId('decision-sheet').dataset.pointerThrough).toBeUndefined();
+    const area = screen.getByTestId('decision-area');
+    expect(area.contains(screen.getByTestId('prompt-surface'))).toBe(true);
+    expect(screen.queryByTestId('decision-sheet')).toBeNull();
+    expect(document.querySelectorAll('[data-decision-prompt]')).toHaveLength(1);
   });
 
   it('clears an in-progress target session on the next complete view', () => {
@@ -338,7 +434,8 @@ describe('LiveMatchTable', () => {
 
     act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
     expect(screen.queryByTestId('target-perm_xyz')).toBeNull();
-    expect(screen.queryByTestId('targeting-prompt')).toBeNull();
+    expect(screen.queryByTestId('decision-prompt')).toBeNull();
+    expect(screen.queryByTestId('decision-area')).toBeNull();
     expect(choose).not.toHaveBeenCalled();
   });
 

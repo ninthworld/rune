@@ -133,8 +133,9 @@
    * explicitly invoked and can dismiss WITHOUT answering it. That is why
    * `--rune-z-decision` sits above `--rune-z-shell-top` — a forced mulligan
    * prompt is what the server is waiting on, so permanent chrome yields to it.
-   * The shipped shell had the sheet at 14 and the top bar at 20, which painted
-   * the top bar over the mulligan prompt: a covered, unanswerable decision.
+   * The shipped shell had the decision layer at 14 and the top bar at 20, which
+   * painted the top bar over the mulligan prompt: a covered, unanswerable
+   * decision.
    *
    * A region carrying a z-index creates a stacking context (grid items do so
    * even at `position: static`), so nothing rendered INSIDE `.top`, `.scene`,
@@ -216,6 +217,23 @@
   --rune-control-chamfer: 8px;
   --rune-plaque-h: 68px;
   --rune-plaque-point: 22px;
+  /* ── The face outlines (issue #571) ───────────────────────────────────────
+   * Every gold-trimmed surface is two clipped boxes, the outer painting the
+   * frame gradient and the inner painting the plate (§3.1). The inner box is
+   * `2 × --rune-control-frame-w` smaller, so clipping it with the SAME polygon
+   * does not produce an even trim — an absolute point depth or corner cut lands
+   * on a different slope in a smaller box. On the plaque that thinned the gold
+   * from 2.77px at the plate's corners to 1.68px at the leading point, which is
+   * the trim that reads as cut off before the point; on the chamfered family it
+   * fattened every corner to 2.83px.
+   *
+   * These three are the frame outline offset INWARD by the stroke — a true
+   * parallel offset, so the trim is even all the way round. They are derived,
+   * not designed: `table/controls/plaqueGeometry.ts` states the closed form and
+   * its test recomputes them from the three tokens above and fails on drift. */
+  --rune-plaque-face-point: 21.088px;
+  --rune-plaque-face-tip: 0.382px;
+  --rune-control-chamfer-face: 6.828px;
   /* The decision plaque's drawn plate width (§3.1: "≥ 251 × content"), measured
    * off control-ui panel 7. Mirrored by `table/decision/plaqueAnchor.ts`'s
    * `PLAQUE.minW`, which sizes the plaque BEFORE layout so the §10.1 anchoring

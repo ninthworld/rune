@@ -14,6 +14,7 @@ import {
   isMultiSelect,
   moveInActiveSlot,
   optionSubmittable,
+  setActiveNumber,
   toggle,
 } from './multiSelect';
 
@@ -415,5 +416,64 @@ describe('multi-select per-attacker defender flow (multiplayer, issue #347)', ()
     s = toggle(s, 'perm_1');
     expect(isLastSlot(s)).toBe(true);
     expect(assembleChoices(s)).toEqual([{ slot: 'attackers', chosen: ['perm_1'] }]);
+  });
+
+  it('walks a `number` slot from the server\u2019s own bounds (issue #554)', () => {
+    // A numeric slot has no candidates: it opens on the server's minimum (always a
+    // legal answer), is edited by setting a value, and answers with the decimal
+    // string every other slot kind shares.
+    const xSpell: ValidAction = {
+      id: 'a9',
+      type: 'cast_spell',
+      label: 'Cast Emberfall Surge',
+      token: 'h:x',
+      prompts: [{ kind: 'number', slot: 'x', prompt: 'Choose a value for X', min: 0, max: 3 }],
+    };
+    expect(classifyAction(xSpell)).toBe('multi');
+    let session = beginMultiSelect(xSpell);
+    expect(session.slots.map((slot) => slot.kind)).toEqual(['number']);
+    expect(activeSlot(session)?.min).toBe(0);
+    expect(activeSlot(session)?.max).toBe(3);
+    // Pre-filled with the minimum, so the action is submittable untouched.
+    expect(activeChosen(session)).toEqual(['0']);
+    expect(allSlotsSatisfied(session)).toBe(true);
+
+    session = setActiveNumber(session, 2);
+    expect(activeChosen(session)).toEqual(['2']);
+    expect(assembleChoices(session)).toEqual([{ slot: 'x', chosen: ['2'] }]);
+
+    // The server's bounds are the only bounds: a value outside them is clamped in,
+    // never submitted as-is, and a non-integer is not invented into one.
+    expect(activeChosen(setActiveNumber(session, 9))).toEqual(['3']);
+    expect(activeChosen(setActiveNumber(session, -4))).toEqual(['0']);
+    expect(activeChosen(setActiveNumber(session, Number.NaN))).toEqual(['0']);
+  });
+
+  it('walks a number slot alongside a target slot in one atomic answer (#554)', () => {
+    // X and its target are two slots of the same action, answered together.
+    const xBolt: ValidAction = {
+      id: 'a10',
+      type: 'cast_spell',
+      label: 'Cast Emberfall Surge',
+      token: 'h:xt',
+      requirements: [{ slot: 't0', prompt: 'Target', candidates: ['perm_1'] }],
+      prompts: [{ kind: 'number', slot: 'x', prompt: 'Choose a value for X', min: 1, max: 4 }],
+    };
+    let session = beginMultiSelect(xBolt);
+    expect(session.slots.map((slot) => slot.kind)).toEqual(['subset', 'number']);
+    session = toggle(session, 'perm_1');
+    session = advance(session);
+    expect(activeSlot(session)?.kind).toBe('number');
+    session = setActiveNumber(session, 3);
+    expect(allSlotsSatisfied(session)).toBe(true);
+    expect(assembleChoices(session)).toEqual([
+      { slot: 't0', chosen: ['perm_1'] },
+      { slot: 'x', chosen: ['3'] },
+    ]);
+  });
+
+  it('ignores a number set on a slot that is not numeric', () => {
+    const session = beginMultiSelect(attackers);
+    expect(setActiveNumber(session, 3)).toBe(session);
   });
 });
