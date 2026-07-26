@@ -42,6 +42,9 @@ afterEach(() => {
     lobby: null,
     reclaimingSession: false,
     lastMatch: null,
+    // The front door reads this now, so a leaked address from a prior test would
+    // pre-fill the next one's field.
+    serverUrl: null,
   });
   sessionStorage.clear();
 });
@@ -140,10 +143,60 @@ describe('Front door — one blue primary, and settings preserved (#546, criteri
   });
 
   it('names a custom address rather than calling it the default server', () => {
-    useGameStore.setState({ status: 'idle', view: null, lobby: null });
+    useGameStore.setState({ status: 'idle', view: null, lobby: null, serverUrl: null });
     render(<ConnectionScreen />);
 
     fireEvent.change(screen.getByTestId('server-url'), { target: { value: 'ws://elsewhere:9' } });
     expect(screen.getByTestId('server-name').textContent).toBe('ws://elsewhere:9');
+  });
+});
+
+/**
+ * The field Retry sends to has to be the server the session is actually on.
+ *
+ * A reclaim (`restoreSession`) and a postgame return (#452) both reopen the
+ * stored address without going through this field, so a custom server was
+ * displayed as "Default Server" — and after a failure, Retry sent the BUILD
+ * DEFAULT rather than the address that had just failed.
+ */
+describe('Front door — the address follows the connection', () => {
+  it('adopts the address the live connection was opened against', () => {
+    useGameStore.setState({ status: 'closed', view: null, lobby: null, serverUrl: 'ws://mine:7' });
+    render(<ConnectionScreen />);
+
+    expect(screen.getByTestId('server-name').textContent).toBe('ws://mine:7');
+    expect((screen.getByTestId('server-url') as HTMLInputElement).value).toBe('ws://mine:7');
+  });
+
+  it('retries the address that failed, not the build default', () => {
+    const opened: string[] = [];
+    const realConnect = useGameStore.getState().connect;
+    useGameStore.setState({
+      status: 'closed',
+      view: null,
+      lobby: null,
+      serverUrl: 'ws://mine:7',
+      connect: (url: string) => {
+        opened.push(url);
+      },
+    } as never);
+    render(<ConnectionScreen />);
+
+    fireEvent.click(screen.getByTestId('connect-button'));
+    useGameStore.setState({ connect: realConnect } as never);
+    expect(opened).toEqual(['ws://mine:7']);
+  });
+
+  it('never overwrites an address the player is typing', () => {
+    useGameStore.setState({ status: 'idle', view: null, lobby: null, serverUrl: null });
+    render(<ConnectionScreen />);
+
+    fireEvent.change(screen.getByTestId('server-url'), { target: { value: 'ws://typed:1' } });
+    // A connection resolving underneath — the reclaim path setting `serverUrl` —
+    // must not pull the field out from under the edit in progress.
+    act(() => useGameStore.setState({ serverUrl: 'ws://elsewhere:2' }));
+
+    expect((screen.getByTestId('server-url') as HTMLInputElement).value).toBe('ws://typed:1');
+    expect(screen.getByTestId('server-name').textContent).toBe('ws://typed:1');
   });
 });

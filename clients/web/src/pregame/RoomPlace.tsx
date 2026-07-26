@@ -323,7 +323,14 @@ export function RoomPlace({ view }: { view: LobbyView }) {
           // format, so opening the builder keeps a legal starting point to edit.
           initialCommander={requiresCommander ? picked?.commander : undefined}
           error={lobbyError}
-          onSubmit={(cards, commander) => sendLobby(submitDeckCommand(cards, commander))}
+          // Same gate as the seat's own deck choice: a seat that has readied is
+          // no longer offered `submit_deck`, so the builder is a library there
+          // too rather than drawing a control the server would refuse.
+          onSubmit={
+            canSubmit
+              ? (cards, commander) => sendLobby(submitDeckCommand(cards, commander))
+              : undefined
+          }
           onClose={() => setBuilderOpen(false)}
         />
       )}

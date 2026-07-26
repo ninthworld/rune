@@ -374,7 +374,18 @@ export function LobbyPlace({ view }: { view?: LobbyView }) {
           catalog={catalog}
           initialCounts={decklistCounts(STARTER_DECKLISTS[0]!)}
           error={lobbyError}
-          onSubmit={(cards, commander) => sendLobby(submitDeckCommand(cards, commander))}
+          // From the lobby the builder is a LIBRARY: a player who has not taken
+          // a seat cannot `submit_deck`, and the server says so by leaving the
+          // command out of `valid_commands` — it answers `NotSeated`. Offering
+          // Submit here sent a command the server never advertised, which is the
+          // one thing the client is not allowed to decide for itself. The gate is
+          // `valid_commands` rather than "are we in a room", so the control
+          // follows the server if a future setup ever seats a player earlier.
+          onSubmit={
+            view !== undefined && can(view, 'submit_deck')
+              ? (cards, commander) => sendLobby(submitDeckCommand(cards, commander))
+              : undefined
+          }
           onClose={() => setBuilderOpen(false)}
         />
       )}

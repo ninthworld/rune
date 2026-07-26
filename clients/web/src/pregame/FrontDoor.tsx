@@ -44,8 +44,32 @@ export function FrontDoor() {
   const returning = useGameStore((state) => state.lastMatch !== null);
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
+  // The address the connection was actually opened against, which the reclaim
+  // and postgame-return paths set without going through this field.
+  const serverUrl = useGameStore((state) => state.serverUrl);
   const [url, setUrl] = useState(initialServerUrl);
+  // Whether the player has typed in the field this visit. Once they have, their
+  // address is the truth and nothing may overwrite it.
+  const [edited, setEdited] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Adopt the live connection's address (issue #546 follow-up).
+  //
+  // A restored session (`restoreSession`) and a postgame return (#452) both
+  // reopen the server from `sessionStorage`/the store, never from this field —
+  // so a player on a custom server saw "Default Server" on the plaque, and a
+  // failed reclaim put its address in the status line while Retry sent the
+  // BUILD DEFAULT instead. The field is what Retry uses, so it has to follow the
+  // connection rather than the build.
+  //
+  // Guarded on `edited` in both directions: a manual edit is never overwritten,
+  // including by the `connect` this component itself just fired.
+  useEffect(() => {
+    if (edited) return;
+    const target = (serverUrl ?? '').trim();
+    if (target.length === 0) return;
+    setUrl(target);
+  }, [edited, serverUrl]);
 
   // A failed connection opens the change-server disclosure: the address is the
   // likely fix, so it belongs on screen next to Retry (never a dead end).
@@ -130,7 +154,10 @@ export function FrontDoor() {
                     autoComplete="off"
                     spellCheck={false}
                     value={url}
-                    onChange={(event) => setUrl(event.target.value)}
+                    onChange={(event) => {
+                      setEdited(true);
+                      setUrl(event.target.value);
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') attempt();
                     }}

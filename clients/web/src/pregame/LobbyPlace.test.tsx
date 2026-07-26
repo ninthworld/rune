@@ -11,9 +11,17 @@
  * the #505 settings path survived.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { LobbyScreen } from '../LobbyScreen';
 import { useGameStore, type SocketFactory } from '../store';
+import {
+  MemorySavedDeckDb,
+  configureSavedDeckStore,
+  countsToCards,
+  deleteSavedDeck,
+  resetSavedDeckStore,
+  saveDeck,
+} from '../deck/savedDeckStore';
 import { SCENE_SEAT_ACCENTS } from '../sceneTokens';
 import { LOCAL_PORTRAIT, OPPONENT_PORTRAITS } from '../table/seatPortraits';
 import {
@@ -543,5 +551,74 @@ describe('Pregame controls — the shared control family, at the touch floor', (
       // The family's own marker: a control drawn anywhere else would not have it.
       expect(control.querySelector('span')).not.toBeNull();
     }
+  });
+});
+
+/**
+ * `submit_deck` is a seated command. From the server lobby the player has no
+ * seat, so the server answers `NotSeated` and leaves the command out of
+ * `valid_commands` — the builder opened there is a deck LIBRARY, and offering
+ * Submit sent a command the server had never advertised.
+ */
+describe('Deck builder — submission follows valid_commands (#546)', () => {
+  /** Every `submit_deck` frame this socket has carried. */
+  function submissions(socket: FakeSocket): string[] {
+    return socket.sent.filter((frame) => frame.includes('submit_deck'));
+  }
+
+  it('offers no submission from the roomless lobby, and sends none', () => {
+    const socket = mountLobby(LOBBY_ROOMLESS_JSON);
+
+    fireEvent.click(screen.getByTestId('open-deck-builder-button'));
+    expect(screen.getByTestId('deck-builder-cancel')).toBeDefined();
+    expect(screen.queryByTestId('deck-builder-submit')).toBeNull();
+    // The library still closes, and no deck ever reached the wire. (Opening it
+    // may legitimately request the catalog; that is not a submission.)
+    fireEvent.click(screen.getByTestId('deck-builder-cancel'));
+    expect(submissions(socket)).toEqual([]);
+  });
+
+  it('offers submission in a room, where the seat may still submit', () => {
+    mountLobby(LOBBY_ROOM_UNDECKED_JSON);
+
+    fireEvent.click(screen.getByTestId('open-deck-builder-button'));
+    expect(screen.getByTestId('deck-builder-submit')).toBeDefined();
+  });
+});
+
+/**
+ * The room's deck dropdown is a read of the device-local store (ADR 0027), and
+ * it used to be read exactly once. Saving or importing a deck inside the builder
+ * therefore left the dropdown behind until `RoomPlace` remounted: a player could
+ * save a deck and then not find it in the seat they were sitting in.
+ */
+describe('Ready room — the deck choices follow the device store (#546)', () => {
+  afterEach(() => resetSavedDeckStore());
+
+  it('offers a deck saved after the room was already on screen', async () => {
+    configureSavedDeckStore({ db: new MemorySavedDeckDb(), now: () => 1 });
+    mountLobby(LOBBY_ROOM_UNDECKED_JSON);
+
+    expect(screen.queryByTestId('deck-option-saved:Ember Rites')).toBeNull();
+
+    await act(async () => {
+      await saveDeck({ name: 'Ember Rites', cards: countsToCards({ shock: 4 }) });
+    });
+
+    // No remount: the same dropdown now carries the row.
+    expect(await screen.findByTestId('deck-option-saved:Ember Rites')).toBeDefined();
+  });
+
+  it('drops a deck deleted after the room was already on screen', async () => {
+    configureSavedDeckStore({ db: new MemorySavedDeckDb(), now: () => 1 });
+    await saveDeck({ name: 'Ember Rites', cards: countsToCards({ shock: 4 }) });
+    mountLobby(LOBBY_ROOM_UNDECKED_JSON);
+    expect(await screen.findByTestId('deck-option-saved:Ember Rites')).toBeDefined();
+
+    await act(async () => {
+      await deleteSavedDeck('Ember Rites');
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('deck-option-saved:Ember Rites')).toBeNull());
   });
 });

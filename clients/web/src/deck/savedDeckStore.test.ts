@@ -5,11 +5,13 @@ import {
   configureSavedDeckStore,
   countsToCards,
   deleteSavedDeck,
+  getSavedDeckVersion,
   listSavedDecks,
   loadSavedDeck,
   resetSavedDeckStore,
   saveDeck,
   savedDeckExists,
+  subscribeSavedDecks,
   type SavedDeckDb,
 } from './savedDeckStore';
 
@@ -119,5 +121,42 @@ describe('savedDeckStore (ADR 0027)', () => {
     configureSavedDeckStore({ db: failingDb() });
     await expect(listSavedDecks()).rejects.toThrow('storage unavailable');
     await expect(saveDeck({ name: 'X', cards: countsToCards({ shock: 1 }) })).rejects.toThrow();
+  });
+});
+
+/**
+ * The change seam every reader keys its re-read on. Without it a deck saved,
+ * overwritten, imported, or deleted inside the builder left the ready room's
+ * dropdown stale until the place remounted — a player could save a deck and
+ * then not find it in the seat they were sitting in.
+ */
+describe('saved decks — mutations notify their readers', () => {
+  it('bumps the version and wakes subscribers on save and on delete', async () => {
+    configureSavedDeckStore({ db: new MemorySavedDeckDb(), now: () => 1 });
+    const seen: number[] = [];
+    const unsubscribe = subscribeSavedDecks(() => seen.push(getSavedDeckVersion()));
+
+    const before = getSavedDeckVersion();
+    await saveDeck({ name: 'Ember', cards: countsToCards({ shock: 4 }) });
+    expect(getSavedDeckVersion()).toBe(before + 1);
+
+    // An overwrite is a change too — the dropdown's row keeps its name and its
+    // contents move underneath it.
+    await saveDeck({ name: 'Ember', cards: countsToCards({ shock: 2 }) });
+    await deleteSavedDeck('Ember');
+    expect(getSavedDeckVersion()).toBe(before + 3);
+    expect(seen).toEqual([before + 1, before + 2, before + 3]);
+
+    unsubscribe();
+    await saveDeck({ name: 'Verdant', cards: countsToCards({ shock: 1 }) });
+    expect(seen).toHaveLength(3);
+  });
+
+  it('does not notify when the save itself failed', async () => {
+    configureSavedDeckStore({ db: failingDb() });
+    const before = getSavedDeckVersion();
+    await expect(saveDeck({ name: 'X', cards: countsToCards({ shock: 1 }) })).rejects.toThrow();
+    // Nothing changed, so no reader is woken to re-read the same list.
+    expect(getSavedDeckVersion()).toBe(before);
   });
 });

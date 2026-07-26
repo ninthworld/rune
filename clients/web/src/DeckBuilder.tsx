@@ -77,8 +77,16 @@ interface DeckBuilderProps {
    * Submit the built list (functional ids, duplicates repeated) through `submit_deck`,
    * carrying the designated `commander` (issue #396) when the format requires one and a
    * card is designated. The client never computes legality — the server validates both.
+   *
+   * **Absent means the builder is a library.** `submit_deck` is a seated command:
+   * a player who has not taken a seat is answered `NotSeated`, and the server
+   * says so by leaving the command out of `valid_commands`. A caller that cannot
+   * offer it omits this handler and the builder draws no Submit control at all,
+   * rather than drawing one that sends a command the server has not advertised.
+   * Building, saving, and importing are unaffected — those are device-local
+   * (ADR 0027) and never touch the wire.
    */
-  onSubmit: (cards: CardIdentity[], commander?: CardIdentity) => void;
+  onSubmit?: (cards: CardIdentity[], commander?: CardIdentity) => void;
   /** Close the builder without submitting (backdrop, Cancel, or Escape). */
   onClose: () => void;
   /**
@@ -410,7 +418,7 @@ export function DeckBuilder({
     }
     // Carry the designation only in a commander format and only when one is set; the
     // server validates it (and rejects a missing/illegal one) — no legality here.
-    onSubmit(list, requiresCommander && commander !== null ? commander : undefined);
+    onSubmit?.(list, requiresCommander && commander !== null ? commander : undefined);
   };
 
   // The designated commander's display name for the header line, resolved from the deck
@@ -605,21 +613,27 @@ export function DeckBuilder({
           )}
 
           <footer className={l.builderFoot}>
-            <button
-              type="button"
-              className={cx(s.button, s.buttonPrimary)}
-              onClick={submit}
-              data-testid="deck-builder-submit"
-            >
-              Submit deck
-            </button>
+            {/* No handler means the caller cannot offer `submit_deck` — see the
+                prop's contract. The control is omitted rather than disabled: a
+                disabled primary would still claim submission is what this
+                builder is for, when from the lobby it is a deck library. */}
+            {onSubmit !== undefined && (
+              <button
+                type="button"
+                className={cx(s.button, s.buttonPrimary)}
+                onClick={submit}
+                data-testid="deck-builder-submit"
+              >
+                Submit deck
+              </button>
+            )}
             <button
               type="button"
               className={s.button}
               onClick={onClose}
               data-testid="deck-builder-cancel"
             >
-              Cancel
+              {onSubmit === undefined ? 'Close' : 'Cancel'}
             </button>
           </footer>
         </div>

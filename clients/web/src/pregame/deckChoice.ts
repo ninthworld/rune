@@ -13,10 +13,15 @@
  * authoritatively server-side behind the unchanged `submit_deck` gate**. Choosing
  * a deck here claims nothing about its legality.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { STARTER_DECKLISTS, decklistCards } from '../decklists';
 import type { CardIdentity } from '../protocol';
-import { listSavedDecks, type SavedDeck } from '../deck/savedDeckStore';
+import {
+  getSavedDeckVersion,
+  listSavedDecks,
+  subscribeSavedDecks,
+  type SavedDeck,
+} from '../deck/savedDeckStore';
 import { commanderName } from './deckPresentation';
 
 /** A deck the player can pick, from either source, flattened for the dropdown. */
@@ -92,14 +97,22 @@ export function optionCounts(option: DeckChoiceOption | undefined): Record<CardI
 }
 
 /**
- * Read this device's saved decks once (ADR 0027).
+ * Read this device's saved decks, and re-read them whenever they change (ADR 0027).
  *
  * Never load-bearing: the room renders completely with the store empty, which is
  * also what it does while the read is in flight and what it does forever if the
  * read fails (private-mode storage, a blocked transaction). A failure degrades to
  * the bundled starters and never reaches the screen.
+ *
+ * The read is keyed on the store's mutation version rather than run once. Saving,
+ * overwriting, importing, or deleting a deck inside the builder used to leave this
+ * list stale until the whole place remounted — a player could save a deck and
+ * then not find it in the dropdown of the seat they were sitting in. The version
+ * is the store's own, so this stays a read of one source of truth rather than a
+ * second copy kept in step by hand.
  */
 export function useSavedDecks(): SavedDeck[] {
+  const version = useSyncExternalStore(subscribeSavedDecks, getSavedDeckVersion, () => 0);
   const [saved, setSaved] = useState<SavedDeck[]>([]);
   useEffect(() => {
     let live = true;
@@ -114,6 +127,6 @@ export function useSavedDecks(): SavedDeck[] {
     return () => {
       live = false;
     };
-  }, []);
+  }, [version]);
   return saved;
 }
