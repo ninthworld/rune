@@ -72,6 +72,21 @@
   border-radius: var(--plate-radius, 0px);
   outline: var(--rule-w, 0px) solid var(--face-accent, transparent);
   outline-offset: calc(-1 * var(--rule-w, 0px));
+  /* The art window's seam (`card-representation.md` §3.12, issue #570). The
+   * SAME plate the procedural field draws, on the same band, so the window's
+   * surround is identical whether or not an illustration loaded — the whole
+   * point of contract 3 above, extended to the frame's material.
+   *
+   * The carrier's `border-width` is **zero** and `border-image-width` is an
+   * explicit length, which is what keeps contract 3 true here: the seam paints
+   * over the crop's outer band without narrowing the content box, so the
+   * illustration is framed identically whether the plate paints, 404s, or is
+   * declined — a bordered carrier would have re-cropped a replaced element that
+   * had nothing to do with the plate arriving. The frame-relative variables are
+   * optional on a surface that publishes no frame at all (the inspect
+   * popover), so each carries its inert default. */
+  border: 0 solid transparent;
+  border-image: var(--plate-art-seam, none);
   z-index: 0;
 }
 

@@ -46,6 +46,7 @@ import {
   TIER,
 } from '../../tokens';
 import type { CardDisplayData } from '../cardFactory';
+import { PLATE_MATERIAL } from './plates';
 
 /**
  * The size tiers the DOM card face renders (card-representation §8.1). Four
@@ -467,11 +468,17 @@ function faceGeometryVars(tier: CardFaceTier, kind: CardSurfaceKind): Record<str
 }
 
 /**
- * The frame's material — slate, parchment, gold, and the shared motion class.
- * The same for every card at every identity, because color identity is an edge
- * accent and never a body fill (§3.4), so it is one frozen object.
+ * The frame's material — slate, parchment, gold, the bundled frame plates
+ * (§3.12), and the shared motion class. The same for every card at every
+ * identity, because color identity is an edge accent and never a body fill
+ * (§3.4), so it is one frozen object.
+ *
+ * The plates are alpha light maps composed **over** these colors, never instead
+ * of them: every value below still resolves and still paints, so the frame
+ * renders exactly as it does today if a plate never arrives.
  */
 const MATERIAL: Record<string, string> = {
+  ...PLATE_MATERIAL,
   '--face-body': SURFACES.frameEdge,
   '--face-edge-shade': SURFACES.frameEdgeShade,
   '--plate': SURFACES.plate,

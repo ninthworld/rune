@@ -307,5 +307,73 @@
         "height": 1000
       }
     }
+  },
+  "cardFrames": {
+    "plates": {
+      "frameEdge": {
+        "src": "/assets/frames/frame-edge.22d16d0b.png",
+        "width": 128,
+        "height": 128,
+        "slice": 30,
+        "band": 0.073,
+        "fill": false,
+        "load": "first-match"
+      },
+      "artSeam": {
+        "src": "/assets/frames/art-seam.297a103b.png",
+        "width": 72,
+        "height": 72,
+        "slice": 24,
+        "band": 0.04,
+        "fill": false,
+        "load": "first-match"
+      },
+      "headerField": {
+        "src": "/assets/frames/header-field.918c585e.png",
+        "width": 96,
+        "height": 48,
+        "slice": 20,
+        "band": 0.04,
+        "fill": true,
+        "load": "first-match"
+      },
+      "infoStrip": {
+        "src": "/assets/frames/info-strip.54bec507.png",
+        "width": 96,
+        "height": 48,
+        "slice": 20,
+        "band": 0.04,
+        "fill": true,
+        "load": "first-match"
+      },
+      "statusStrip": {
+        "src": "/assets/frames/status-strip.b678ba50.png",
+        "width": 96,
+        "height": 48,
+        "slice": 20,
+        "band": 0.04,
+        "fill": true,
+        "load": "first-match"
+      },
+      "ptPlate": {
+        "src": "/assets/frames/pt-plate.9e45e937.png",
+        "width": 64,
+        "height": 48,
+        "slice": 20,
+        "band": 0.04,
+        "fill": true,
+        "load": "first-match"
+      },
+      "identityWeave": {
+        "src": "/assets/frames/identity-weave.69b91265.png",
+        "width": 64,
+        "height": 64,
+        "slice": 0,
+        "band": 0,
+        "fill": true,
+        "load": "first-match",
+        "tile": 0.5
+      }
+    }
   }
 }

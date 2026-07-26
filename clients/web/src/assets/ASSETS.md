@@ -1,15 +1,32 @@
 # Bundled presentation assets
 
-All assets below are original AI-generated work under ADR 0031 provenance
-class 2, compressed to shipping WebP files and distributed under the
-repository's MIT license. The machine-readable authority is `ledger.json`,
-which records the generating tool per asset.
+Every asset below is original work made for RUNE, distributed under the
+repository's MIT license — the illustrated sets as compressed WebP, the
+card-frame plates as PNG (see below). The machine-readable
+authority is `ledger.json`, which records the provenance class and the
+generating tool per asset.
 
-Two tools produced this set. Environment, portrait, and card-back art was
-created with OpenAI's built-in image generation. Card art was created locally
-with Chroma1-HD via ComfyUI — an Apache-2.0 base model, chosen because its
-output carries no downstream licence restriction that would conflict with
-redistributing these files under this repository's MIT terms.
+The illustrated sets — environments, portraits, card backs, card art — are
+ADR 0031 provenance **class 2** (original AI-generated work). Two tools
+produced them: environment, portrait, and card-back art with OpenAI's built-in
+image generation, and card art locally with Chroma1-HD via ComfyUI — an
+Apache-2.0 base model, chosen because its output carries no downstream licence
+restriction that would conflict with redistributing these files under this
+repository's MIT terms.
+
+The **card-frame plates** are provenance **class 1** (original created work),
+because the tool for them is arithmetic rather than a model: they are
+synthesised by `../../scripts/generateFramePlates.js`, a committed,
+deterministic generator. Re-running `npm run frames` reproduces the same bytes,
+and that is *checked*, not asserted: `framePlates.test.js` re-encodes every
+plate and compares it byte-for-byte with the committed file. They ship as PNG
+rather than WebP for exactly that reason — the encoder is in-process, so there
+is no external tool whose version could change the committed bytes.
+
+They are also the only set that is not a picture — each plate is an alpha
+**light map** (bevel, shadow, grain, and the structural gold hairline) composed
+over the token colours, which is why one set serves both environment themes and
+all eight colour identities. See `docs/design/card-representation.md` §3.12.
 
 No prompt referenced an existing game, publisher, protected property, or named
 artist as a style target. Card art is composed from RUNE's own functional card
@@ -82,3 +99,10 @@ set reads as a single commission.
 | Cancel | card art | Hexagonal barrier of force flaring as a spell shatters |
 | Island | card art | Lone rocky island ringed by calm reflective sea |
 | Jedit Ojanen | card art | Powerful great-cat warrior in deep green forest |
+| Layered edge and inner border | card frame | Outer contour, lit slate bevel, thicker bottom paper edge, engraved gold hairline |
+| Art window surround | card frame | Recessed lip: shadowed on the light side, catching light on the far side |
+| Name/cost header field | card frame | Raised printed field — lit top rim, shaded lower rim, paper grain |
+| Lower information strip | card frame | Recessed printed strip the type line and rules text sit in |
+| Status band surface | card frame | Slate channel cut a shade deeper, so its plates read as objects lying in it |
+| P/T plate | card frame | Small strongly bevelled tile with a tighter radius — a distinct object |
+| Colour-identity material | card frame | Seamless woven tile the identity surfaces are tinted through |

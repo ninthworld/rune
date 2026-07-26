@@ -82,8 +82,22 @@
   }
 }
 
-/* The single warm-gold hairline, inset and following the outer radius. Lit on
- * the top/left run, shaded on the bottom/right — the one key light (§3.11). */
+/*
+ * The frame's layered edge (§3.12, issue #570).
+ *
+ * The border itself is the single warm-gold hairline the frame has always
+ * drawn — inset, following the outer radius, lit on the top/left run and shaded
+ * on the bottom/right (§3.11) — and it is what renders when no plate arrives.
+ * Over it, `border-image` composes the **frame-edge plate**: the outer contour,
+ * the slate bevel, the thicker bottom paper edge, and the hairline engraved
+ * into metal rather than stroked flat.
+ *
+ * The plate is pushed out to the card's own boundary by an outset of exactly
+ * the hairline inset, and drawn `--plate-edge-band` deep — `ruleInset + rule`
+ * by construction — so its inner lip lands on the inner edge of the hairline
+ * and the card body takes over with no seam. Both are ratios of W, which is why
+ * one asset serves the hand fan and the battlefield chip.
+ */
 .inner::before {
   content: '';
   position: absolute;
@@ -92,6 +106,7 @@
   border-right-color: var(--rune-gold-shade);
   border-bottom-color: var(--rune-gold-shade);
   border-radius: calc(var(--face-radius) - var(--rule-inset));
+  border-image: var(--plate-frame-edge);
   pointer-events: none;
   z-index: 0;
 }
@@ -225,16 +240,27 @@
   width: calc(100% - var(--rule-inset) * 2);
   height: var(--band-art-h);
   border-radius: var(--plate-radius);
-  background: color-mix(
-    in srgb,
-    var(--face-accent) calc(var(--face-mono-alpha) * 100%),
-    var(--face-body)
-  );
+  /* The identity material (§3.12): the procedural field is tinted THROUGH a
+   * woven light map rather than painted flat, so a colour identity carries a
+   * surface with a light source. One grayscale tile serves all eight
+   * identities — the alternative, an asset per colour, is what would put the
+   * most budget-sensitive set in the project over its ceiling. */
+  background:
+    var(--plate-identity),
+    color-mix(in srgb, var(--face-accent) calc(var(--face-mono-alpha) * 100%), var(--face-body));
+  background-blend-mode: overlay;
   /* Color identity as an edge accent, never a body fill (§3.4), plus the inner
    * bevel from the single key light (§3.6). */
   outline: var(--rule-w) solid var(--face-accent);
   outline-offset: calc(-1 * var(--rule-w));
   box-shadow: inset var(--rule-w) var(--rule-w) calc(var(--rule-w) * 3) var(--face-edge-shade);
+  /* The window's surround (§3.12): the seam plate is a recessed lip — shadowed
+   * on the light side, catching light on the far side — so the window sits IN
+   * the card. Zero-width carrier, as on the plate surfaces: the window's box is
+   * the same with or without it, so a missing plate falls back to the inset
+   * shadow above and crops nothing differently. */
+  border: 0 solid transparent;
+  border-image: var(--plate-art-seam);
   overflow: hidden;
   z-index: 0;
 }
@@ -259,8 +285,28 @@
 
 /* ── Parchment plates ─────────────────────────────────────────────────────── */
 
-/* The title plate: name left, ellipsised at the cost disc's edge, never wrapped
- * and never shrunk below the floor (§3.5). */
+/*
+ * The title plate: name left, ellipsised at the cost disc's edge, never wrapped
+ * and never shrunk below the floor (§3.5). It carries the **header field**
+ * plate (§3.12): a raised printed surface with a lit top rim and a shaded lower
+ * one, so the name and cost sit in a field that belongs to the card rather than
+ * on a flat fill.
+ *
+ * The carrier pattern every plate surface below repeats, and why it is shaped
+ * this way: `border-width` is **zero** and `border-image-width` is an explicit
+ * length. `border-image-width` is only a multiple of `border-width` when it is
+ * given as a `<number>`; given a length it is independent, so the image is
+ * drawn `--plate-surface-band` deep — overflowing inward into the padding box —
+ * while the border itself occupies nothing. `border-style` must not be `none`
+ * for a border image to paint at all, which is the whole reason the declaration
+ * is there.
+ *
+ * The consequence is the property that matters: **the carrier costs no layout**.
+ * The band's box, its padding, and its line box are identical whether the plate
+ * paints, 404s, or is declined by the browser, so the degraded frame is the
+ * frame as it rendered before this set landed — the parchment fill and the gold
+ * rim shadow below are exactly that treatment, still declared and still painted.
+ */
 .title {
   position: absolute;
   left: var(--rule-inset);
@@ -268,9 +314,11 @@
   top: var(--band-title-top);
   height: var(--band-title-h);
   padding: 0 calc(var(--rule-inset) / 2);
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  border-image: var(--plate-header);
   color: var(--plate-ink);
   font-size: var(--face-name-size);
   font-weight: 600;
@@ -296,7 +344,11 @@
   top: var(--band-title-top);
   height: var(--band-title-h);
   border-radius: calc(var(--plate-radius) / 1.5);
-  background: var(--face-accent);
+  /* The same identity material as the art window (§3.12): the strip is the
+   * surface most at risk of reading as a flat colour block, so it is the one
+   * that most needs a material under the accent. */
+  background: var(--plate-identity), var(--face-accent);
+  background-blend-mode: overlay;
   box-shadow: 0 0 0 var(--rule-w) var(--rune-gold-shade);
   z-index: 1;
 }
@@ -309,9 +361,11 @@
   top: var(--band-type-top);
   height: var(--band-type-h);
   padding: 0 calc(var(--rule-inset) / 2);
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  border-image: var(--plate-info);
   color: var(--plate-ink);
   font-size: var(--face-type-size);
   line-height: var(--band-type-h);
@@ -321,7 +375,9 @@
   z-index: 1;
 }
 
-/* The rules area: full card only, rendering `rules_text` VERBATIM (§3.8). */
+/* The rules area: full card only, rendering `rules_text` VERBATIM (§3.8). It
+ * takes the same recessed information-strip plate as the type bar (§3.12) — one
+ * asset for both, since the two are one lower information field cut in two. */
 .rules {
   position: absolute;
   left: var(--rule-inset);
@@ -329,9 +385,11 @@
   top: var(--band-rules-top);
   height: var(--band-rules-h);
   padding: calc(var(--rule-w) * 2) calc(var(--rule-inset) / 2);
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  border-image: var(--plate-info);
   color: var(--plate-ink);
   font-size: var(--face-rules-size);
   line-height: var(--face-line);
@@ -352,8 +410,12 @@
   align-items: center;
   gap: calc(var(--rule-w) * 2);
   padding: 0 calc(var(--rule-w) * 2);
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--status-band);
+  /* The status channel is cut a shade deeper than the parchment strip (§3.12)
+   * so the glyph plates and the P/T plate read as objects lying IN it. */
+  border-image: var(--plate-status);
   z-index: 1;
 }
 
@@ -455,9 +517,13 @@
 .pt {
   margin-left: auto;
   padding: 0 calc(var(--face-pt-size) * 0.3);
+  border: 0 solid transparent;
   border-radius: calc(var(--plate-radius) / 1.5);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
+  /* Its own plate, with its own tighter radius and a stronger bevel (§3.12) —
+   * the P/T is a distinct object fixed to the card, not a printed field. */
+  border-image: var(--plate-pt);
   color: var(--plate-ink);
   font-size: var(--face-pt-size);
   font-weight: 700;
