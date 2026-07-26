@@ -69,8 +69,14 @@ describe('2.5D fixture scenarios', () => {
     }
   });
 
-  it('rebuilds every scenario through the real plane and CardFace stack inside budget', () => {
-    for (const scenario of FIXTURE_SCENARIOS) {
+  // One case per scenario rather than one loop over all twelve: a failure names
+  // the offending scenario by itself, and each case carries only its own sixteen
+  // rebuilds instead of the whole set's (#519). The case's own wall clock is not
+  // a budget, so it still gets room beyond vitest's default per-test limit for a
+  // contended runner — an order of magnitude less than the loop needed.
+  it.each(FIXTURE_SCENARIOS)(
+    'rebuilds $id through the real plane and CardFace stack inside budget',
+    (scenario) => {
       const frame = scenario.frames[0]!;
       const { plane, root, reconciler } = mountFrame(frame, scenario.viewport);
 
@@ -90,22 +96,18 @@ describe('2.5D fixture scenarios', () => {
       );
       const compact = scenario.viewport.height > scenario.viewport.width;
 
-      expect(rebuildMs, `${scenario.id} rebuild`).toBeLessThanOrEqual(
+      expect(rebuildMs, 'rebuild').toBeLessThanOrEqual(
         fixtureBudget('standard', compact).maxRebuildMs,
       );
-      expect(root.querySelectorAll('*').length, `${scenario.id} DOM`).toBeLessThanOrEqual(
+      expect(root.querySelectorAll('*').length, 'DOM').toBeLessThanOrEqual(
         fixtureBudget('standard', compact).maxDomNodes,
       );
-      expect(
-        root.querySelectorAll('[data-entity-id]').length,
-        `${scenario.id} staged entities`,
-      ).toBe(planeRenders(plane).length);
-    }
-    // The loop's own wall clock is not a budget — it rebuilds every scenario
-    // sixteen times to take a stable minimum — so it gets room beyond vitest's
-    // default per-test limit on a contended runner. The ≤50 ms budget the
-    // measurement checks is unchanged.
-  }, 60_000);
+      expect(root.querySelectorAll('[data-entity-id]').length, 'staged entities').toBe(
+        planeRenders(plane).length,
+      );
+    },
+    15_000,
+  );
 });
 
 describe('token-wall stress states (presentation-budgets §Performance)', () => {
