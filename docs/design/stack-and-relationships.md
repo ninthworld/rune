@@ -732,7 +732,7 @@ and the element cannot be rendered correctly without it.
 | Body text | `StackItem.description` | OK |
 | Spell vs ability | `StackItem.kind` (`spell` / `ability`), server-stated (#550) | OK |
 | Ability source thumbnail + name | `StackItem.card` (the source's current face), with `StackItem.source` for the tether | OK (both absent once the source has left play — render the C5 plate state) |
-| **Activated vs triggered** | — | **GAP G2 — now an *engine* gap** (#550 landed the discriminator; the engine's `StackObjectKind::Ability` records only that an ability is on the stack) |
+| **Activated vs triggered** | — | **GAP G2 — now an *engine* gap, tracked as #579** (#550 landed the discriminator; the engine's `StackObjectKind::Ability` records only that an ability is on the stack) |
 | **Copy marker** | — | **GAP G3 — deferred** (no copy mechanic exists to project) |
 | **Mini card face** (name, `type_line`, `mana_cost`, `rules_text`, frame accent, art identity) | `StackItem.card` (#550) | OK |
 | **Target list and order** (chips ①②③, target count, `No targets`) | `StackItem.targets` (#550), ordered | OK |
@@ -765,7 +765,7 @@ Each is a protocol change and therefore must land in `rune-protocol`,
 | # | Gap | Minimal shape | Consequence if not closed | Tracked by |
 | --- | --- | --- | --- | --- |
 | **G1** | `StackItem` carries no targets — targets exist only as prose baked into `description` | `targets?: EntityId[]` on `StackItem`, **ordered**, matching the order the description names them | **Blocking.** No confirmed relationship can be drawn for anything already on the stack. Panel 8 of the zones baseline — an arc from a stack entry to a permanent — is unimplementable. The client must not parse `description` to recover them (I1). | #550 |
-| **G2** | No kind discriminator | `kind?: "spell" \| "activated" \| "triggered" \| "copy"` | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. | #550 |
+| **G2** | No kind discriminator | `kind?: "spell" \| "activated" \| "triggered" \| "copy"` | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. | #550 → **#579** (engine half) |
 | **G3** | No copy relation | `copy_of?: EntityId` | The `Copy` chip and the doubled outline cannot be driven; copy folding cannot be validated. | #550 |
 | **G4** | No card face on a stack object | `card?: CardView` on `StackItem` | The Expanded entry cannot show name, cost pip, type strip, frame accent, or an art window — the baseline's stack card anatomy degrades to a single text line. | #550 |
 | **G5** | No mode / X / additional-cost summary | free-form `choices?: string[]` | The issue's "mode/X/additional-cost summary where data exists" cannot be met; the row is simply omitted until it exists. | #550 |
@@ -780,11 +780,12 @@ attachment (R9) — a rendering change, exactly as this document intended.
 
 Three remain open, each for a stated reason rather than an oversight:
 
-- **G2** became an *engine* gap. The protocol has the discriminator, but the
-  engine's `StackObjectKind::Ability` records only that an ability is on the
-  stack — an activation and a trigger push the identical object — so the server
-  can prove `spell` vs `ability` and no more. §2.3's trigger caret stays dormant
-  until the engine stores which it was; the wire union then widens additively.
+- **G2** became an *engine* gap and is **tracked as #579**, not closed with #550.
+  The protocol has the discriminator, but the engine's `StackObjectKind::Ability`
+  records only that an ability is on the stack — an activation and a trigger push
+  the identical object — so the server can prove `spell` vs `ability` and no more.
+  §2.3's trigger caret stays dormant until the engine stores which it was; the wire
+  union then widens additively.
 - **G3** and **G5** are deferred: there is no copy mechanic, no modal spell, and
   no `X` cost to project, so `copy_of` and a choices summary would be fields no
   projection could ever fill. They land with the mechanics that need them.

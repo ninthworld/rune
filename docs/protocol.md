@@ -296,7 +296,8 @@ Three rules govern these fields:
   longer in the view is a rendering decision, not a protocol one.
 - **`kind` is only as fine-grained as the server can prove.** An activated and a
   triggered ability are both `ability` today because the engine’s stack object records
-  only that *an ability* is on the stack. The union widens additively when the engine can
+  only that *an ability* is on the stack — an **engine** gap, tracked as issue #579. The
+  union widens additively when the engine can
   prove more (and `copy` arrives with a copy mechanic); an unrecognized value must leave
   the entry unclassified rather than being coerced into a known one. There is
   deliberately **no** mode/X/additional-cost summary and **no zone target kind**: the

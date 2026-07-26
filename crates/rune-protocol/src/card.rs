@@ -244,7 +244,7 @@ pub struct Counter {
 /// activated ability are both [`StackItemKind::Ability`] today because the engine's
 /// stack object records only *that* an ability is on the stack, not how it got
 /// there; splitting `ability` into `activated`/`triggered` (and adding `copy`) is an
-/// engine change first, and this enum widens additively when it lands. A client must
+/// engine change first (issue #579), and this enum widens additively when it lands. A client must
 /// therefore treat an unrecognized future value as "unclassified" and fall back to
 /// [`StackItem::description`], never invent the distinction itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

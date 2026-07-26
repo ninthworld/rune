@@ -199,7 +199,8 @@ export const STACK_ITEM_KINDS = ['spell', 'ability'] as const;
  * What an object on the stack is (issue #550); one of {@link STACK_ITEM_KINDS}:
  * - `spell` — a card cast onto the stack (CR 601); its `card` is the card being cast.
  * - `ability` — an ability on the stack (CR 113.3), activated *or* triggered; the
- *   server does not distinguish the two today, so neither may the client.
+ *   server does not distinguish the two today (an engine gap, issue #579), so neither
+ *   may the client.
  *
  * Server-stated: the client never derives a kind from the presence of
  * {@link StackItem.source}. The union widens additively when the engine can prove a
