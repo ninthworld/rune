@@ -45,7 +45,7 @@ pub use actions::{
     target_requirements, valid_actions, Action, Attack, Block, DamageOrder, TargetRequirement,
 };
 pub use apply::apply_action;
-pub use automation::priority_has_no_meaningful_action;
+pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
     abilities_of, AuraGrant, CardData, CardDatabase, CatalogError, Keyword, Printing,
     PrintingDatabase, Rarity, SCHEMA_VERSION,

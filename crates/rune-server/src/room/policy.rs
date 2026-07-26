@@ -50,6 +50,15 @@ pub enum TimerPolicy {
 /// All legality is still enforced by [`apply_action`](rune_engine::apply_action);
 /// this only picks *which* offered action to take, reading the engine's own
 /// [`valid_actions`].
+///
+/// Not to be confused with the settle loop's
+/// [`forced_declaration_without_choice`](rune_engine::forced_declaration_without_choice)
+/// (issue #453), which produces the same empty declarations for a deliberately
+/// different reason. This function answers "the player did not respond in time, so
+/// take the safest of the moves they *could* have made"; that predicate fires only
+/// when the engine can prove there was no non-empty move to make. The two stay
+/// separate because their preconditions differ: a timeout must resolve a real
+/// choice, and automation must never resolve one.
 pub(super) fn timeout_default_action(state: &GameState, db: &CardDatabase) -> Option<Action> {
     let actions = valid_actions(state, db);
     if actions.iter().any(|a| matches!(a, Action::PassPriority)) {
@@ -97,19 +106,23 @@ pub(super) fn timeout_default_action(state: &GameState, db: &CardDatabase) -> Op
 ///
 /// Like [`TimerPolicy`], automation is a room-layer concern layered over the pure,
 /// automation-free engine: the engine only *reports* (via
-/// [`priority_has_no_meaningful_action`](rune_engine::priority_has_no_meaningful_action))
-/// whether the priority holder has a meaningful action; the room owns the loop that
-/// acts on it. **Off by default** — an off policy reproduces exactly the
-/// pre-automation behavior, so every existing flow and test is unchanged — and, when
-/// on, auto-passes a seat's priority while the engine says it is idle and the seat
-/// has not opted to stop at the current step (its `set_stops` preferences, held per
-/// seat on the room).
+/// [`priority_has_no_meaningful_action`](rune_engine::priority_has_no_meaningful_action)
+/// and [`forced_declaration_without_choice`](rune_engine::forced_declaration_without_choice))
+/// whether the priority holder has a meaningful action, and whether a declaration it
+/// owes has any legal non-empty answer; the room owns the loop that acts on both.
+/// **Off by default** — an off policy reproduces exactly the pre-automation behavior,
+/// so every existing flow and test is unchanged — and, when on, auto-passes a seat's
+/// priority while the engine says it is idle, auto-submits a choiceless combat
+/// declaration, and does neither where the seat has opted to stop at the current step
+/// (its `set_stops` preferences, held per seat on the room).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum AutoPassPolicy {
     /// No automation: every priority pass is manual (the default, and the behavior
     /// before automation existed).
     #[default]
     Off,
-    /// Auto-pass an idle seat's priority (per its stop preferences).
+    /// Auto-pass an idle seat's priority, and auto-submit a forced combat
+    /// declaration the engine reports has no legal non-empty answer (issue #453) —
+    /// both per the seat's stop preferences.
     On,
 }

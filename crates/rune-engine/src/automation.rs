@@ -13,6 +13,10 @@
 use crate::ability::{is_mana_ability, Ability, Effect};
 use crate::actions::{valid_actions, Action};
 use crate::card::abilities_of;
+use crate::combat::{
+    attacker_candidates, attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for,
+    declared_attackers, defender_candidates, pending_blocker_declarer,
+};
 use crate::id::PermanentId;
 use crate::state::GameState;
 use crate::CardDatabase;
@@ -57,6 +61,90 @@ pub fn priority_has_no_meaningful_action(state: &GameState, db: &CardDatabase) -
     actions
         .iter()
         .all(|action| is_idle_action(&hypothetical, db, action))
+}
+
+/// The forced combat declaration the priority holder owes whose **only legal
+/// answer is the empty one**, returned as that empty declaration — or `None` when
+/// the seat owes no such declaration.
+///
+/// The companion to [`priority_has_no_meaningful_action`] for the one window that
+/// predicate deliberately refuses to judge. A combat declaration is advertised
+/// *without* a `PassPriority` alongside, so the idle predicate short-circuits to
+/// `false` there and any settle loop stops — correct when the seat owes a real
+/// choice, but the active player is asked to declare attackers even on a turn-one
+/// board with no creature at all (issue #453). This predicate answers the narrower
+/// rules question: *is there any non-empty declaration this seat could legally
+/// make?* When there is not, the empty declaration is not a choice, and the caller
+/// may apply it as the ordinary engine action it is.
+///
+/// - **Attackers** (CR 508.1a): no legal attack exists when [`attacker_candidates`]
+///   is empty, or when there is no opponent left to attack
+///   ([`defender_candidates`]).
+/// - **Blockers** (CR 509.1a): no legal block exists when no candidate blocker of
+///   the player who owes the declaration ([`blocker_candidates_for`] the
+///   [`pending_blocker_declarer`]) may be assigned to any attacker attacking *them*
+///   — the same per-pair test the declaration's legality check applies, so evasion
+///   (CR 702.9c/702.17b) counts. This covers the common shape the attacker fix
+///   creates: an empty attacker declaration walks the game into the declare-blockers
+///   step (CR 508.8 step-skipping is not modeled) with nothing to block.
+///
+/// Conservative by construction: it fires only when *every* non-empty declaration
+/// is illegal, so no player is ever declared past a decision they could have made.
+/// `None` when no one holds priority or the game is over. Pure over `state` and
+/// `db`; the returned action is an ordinary [`Action`], so applying it is
+/// indistinguishable from the player having clicked it and determinism is preserved.
+///
+/// Like [`priority_has_no_meaningful_action`], this is the *predicate* only — the
+/// loop that acts on it, and the policy that gates it, live in the room layer
+/// (ADR 0002, ADR 0020).
+#[must_use]
+pub fn forced_declaration_without_choice(state: &GameState, db: &CardDatabase) -> Option<Action> {
+    if state.priority_holder().is_none() || state.is_over() {
+        return None;
+    }
+    let actions = valid_actions(state, db);
+    if actions
+        .iter()
+        .any(|a| matches!(a, Action::DeclareAttackers { .. }))
+        && (attacker_candidates(state, db).is_empty() || defender_candidates(state).is_empty())
+    {
+        return Some(Action::DeclareAttackers {
+            attackers: Vec::new(),
+        });
+    }
+    if actions
+        .iter()
+        .any(|a| matches!(a, Action::DeclareBlockers { .. }))
+        && !a_legal_block_exists(state, db)
+    {
+        return Some(Action::DeclareBlockers { blocks: Vec::new() });
+    }
+    None
+}
+
+/// Whether the player who owes the pending blocker declaration could legally block
+/// *anything* (CR 509.1a): some candidate blocker of theirs may be assigned to some
+/// attacker that is attacking them. `false` when no declaration is owed.
+///
+/// Deliberately the single-assignment legality test rather than a bare
+/// candidate-set emptiness check: a multi-creature block is legal only if each of
+/// its assignments is, so "no single assignment is legal" is exactly "no non-empty
+/// declaration is legal".
+fn a_legal_block_exists(state: &GameState, db: &CardDatabase) -> bool {
+    let Some(declarer) = pending_blocker_declarer(state) else {
+        return false;
+    };
+    let attackers: Vec<PermanentId> = declared_attackers(state)
+        .into_iter()
+        .filter(|&attacker| attacking_defender_of(state, attacker) == Some(declarer))
+        .collect();
+    blocker_candidates_for(state, declarer, db)
+        .into_iter()
+        .any(|blocker| {
+            attackers
+                .iter()
+                .any(|&attacker| blocker_can_block_attacker(state, attacker, blocker, db))
+        })
 }
 
 /// Add to the priority seat's mana pool every unit of mana its untapped permanents
@@ -347,6 +435,110 @@ mod tests {
         state.turn = 2;
         state.step = Step::DeclareAttackers;
         assert!(!priority_has_no_meaningful_action(&state, &db()));
+    }
+
+    /// A two-player game parked in `step` with `priority` holding, ready to owe a
+    /// combat declaration. Turn 2, so a permanent placed by [`place`] (which records
+    /// `entered_turn: 0`) is free of summoning sickness.
+    fn combat_state(step: Step, priority: PlayerId) -> GameState {
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        state.step = step;
+        state.priority = priority;
+        state
+    }
+
+    #[test]
+    fn issue_453_declare_attackers_with_no_candidates_is_the_empty_declaration() {
+        // The observed bug: the active player is asked to declare attackers on a
+        // board with no creature at all. There is no legal non-empty declaration, so
+        // the predicate hands back the empty one for the room to apply.
+        let state = combat_state(Step::DeclareAttackers, PlayerId(0));
+        assert!(
+            !priority_has_no_meaningful_action(&state, &db()),
+            "the forced window still short-circuits the idle predicate"
+        );
+        assert_eq!(
+            forced_declaration_without_choice(&state, &db()),
+            Some(Action::DeclareAttackers {
+                attackers: Vec::new()
+            })
+        );
+    }
+
+    #[test]
+    fn issue_453_a_seat_with_a_legal_attacker_keeps_its_forced_choice() {
+        // The safety property: one eligible attacker is a real decision, and must
+        // never be declared away. A tapped creature is not eligible, so the same
+        // board with its only creature tapped is auto-resolvable again.
+        let db = db();
+        let mut state = combat_state(Step::DeclareAttackers, PlayerId(0));
+        let bear = place(&mut state, fixture("walking_corpse"), PlayerId(0));
+        assert_eq!(forced_declaration_without_choice(&state, &db), None);
+
+        state
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == bear)
+            .unwrap()
+            .tapped = true;
+        assert_eq!(
+            forced_declaration_without_choice(&state, &db),
+            Some(Action::DeclareAttackers {
+                attackers: Vec::new()
+            })
+        );
+    }
+
+    #[test]
+    fn issue_453_declare_blockers_with_nothing_to_block_is_the_empty_declaration() {
+        // CR 508.8 step-skipping is not modeled, so an empty attacker declaration
+        // still walks the game into the declare-blockers step. The defender has an
+        // untapped creature but no attacker is attacking them: no legal block exists.
+        let db = db();
+        let mut state = combat_state(Step::DeclareBlockers, PlayerId(1));
+        state.attackers_declared = true;
+        place(&mut state, fixture("walking_corpse"), PlayerId(1));
+        assert_eq!(
+            forced_declaration_without_choice(&state, &db),
+            Some(Action::DeclareBlockers { blocks: Vec::new() })
+        );
+    }
+
+    #[test]
+    fn issue_453_a_seat_with_a_legal_blocker_keeps_its_forced_choice() {
+        // The safety property for blockers: with an attacker attacking them and an
+        // untapped creature to block with, the defender owes a real choice.
+        let db = db();
+        let mut state = combat_state(Step::DeclareBlockers, PlayerId(1));
+        state.attackers_declared = true;
+        let attacker = place(&mut state, fixture("walking_corpse"), PlayerId(0));
+        state
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == attacker)
+            .unwrap()
+            .attacking = Some(PlayerId(1));
+        place(&mut state, fixture("walking_corpse"), PlayerId(1));
+        assert_eq!(forced_declaration_without_choice(&state, &db), None);
+    }
+
+    #[test]
+    fn issue_453_an_ordinary_priority_window_owes_no_declaration() {
+        // Outside a declare step — and on a state with no priority holder or a
+        // finished game — there is nothing to auto-resolve.
+        let db = db();
+        let state = combat_state(Step::PrecombatMain, PlayerId(0));
+        assert_eq!(forced_declaration_without_choice(&state, &db), None);
+        assert_eq!(
+            forced_declaration_without_choice(&GameState::default(), &db),
+            None
+        );
+
+        let mut over = combat_state(Step::DeclareAttackers, PlayerId(0));
+        over.players[1].has_lost = true;
+        assert!(over.is_over());
+        assert_eq!(forced_declaration_without_choice(&over, &db), None);
     }
 
     #[test]
