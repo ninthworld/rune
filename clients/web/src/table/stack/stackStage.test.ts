@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameView, Permanent, StackItem } from '../../protocol';
+import { parseGameView } from '../../wire';
 import {
   CLUSTER_CLEARANCE,
   STACK_STAGE,
@@ -273,6 +274,58 @@ describe('deriveStackStage — the four channels that never degrade (§2.4 rule 
     expect(entry('coarse')?.origin).toBeUndefined();
     expect(entry('coarse')?.label).toContain('Ability from Dawn Herald');
     expect(entry('coarse')?.label).not.toContain('Triggered');
+  });
+
+  it('leaves an unrecognized kind unclassified end to end, never falling back to `source`', () => {
+    // The forward-compatibility path, driven through the *real* normalizer rather
+    // than a hand-built model: a server states `copy` (gap G3), which this build does
+    // not know. `normalizeStackItem` refuses to carry it as a `kind` — nothing may
+    // mistake it for a known one — but records that a kind *was* stated, so the
+    // legacy `source`-presence fallback stays switched off. Without that, an entry
+    // the server explicitly classified as something else would be silently redrawn
+    // as an ability, which is the guess the contract forbids.
+    const wire = JSON.stringify({
+      you: 'p1',
+      phase: 'precombat_main',
+      player_names: { p1: 'Imogen' },
+      battlefield: [
+        { id: 'perm1', controller: 'p1', owner: 'p1', card: { id: 'perm1', name: 'Dawn Herald' } },
+      ],
+      stack: [
+        { id: 'future', controller: 'p1', description: 'Copy of Shock', kind: 'copy' },
+        {
+          id: 'sourced',
+          controller: 'p1',
+          description: 'Copy of a trigger',
+          kind: 'copy',
+          source: 'perm1',
+        },
+        { id: 'legacy', controller: 'p1', description: 'Tap: add {G}', source: 'perm1' },
+      ],
+    });
+    const view = parseGameView(wire);
+    expect(view.stack[0]!.kind).toBeUndefined();
+    expect(view.stack[0]!.kindUnknown).toBe(true);
+    // The pre-#550 entry states no kind at all, so it carries no marker and keeps
+    // the fallback it is entitled to.
+    expect(view.stack[2]!.kindUnknown).toBeUndefined();
+
+    const entry = (id: string) => deriveStackStage(view).entries.find((e) => e.id === id);
+    expect(entry('future')?.kind).toBe('unclassified');
+    expect(entry('future')?.origin).toBeUndefined();
+    // The one that would otherwise have been coerced: it names a source, and under
+    // the legacy fallback alone that presence would have made it an ability.
+    expect(entry('sourced')?.kind).toBe('unclassified');
+    expect(entry('legacy')?.kind).toBe('ability');
+
+    // The entry is still fully rendered — unclassified is a state, not a hole. It
+    // reads from `description` and says plainly that it is unrecognized, and the
+    // source tether (a server fact, independent of kind) still survives.
+    expect(entry('future')?.description).toBe('Copy of Shock');
+    expect(entry('future')?.glyph).toBe('?');
+    expect(entry('future')?.subtitle).toBe('unrecognized kind · You');
+    expect(entry('future')?.label).toContain('Object of an unrecognized kind, controlled by you.');
+    expect(entry('sourced')?.label).toContain('unrecognized kind from Dawn Herald');
   });
 
   it('names an ability source from the battlefield, and says so when it is gone (C5)', () => {

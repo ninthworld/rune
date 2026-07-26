@@ -407,6 +407,21 @@ describe('stack item wire (issue #550)', () => {
     expect(item.targets).toEqual([{ kind: 'permanent', id: 'perm_a' }]);
   });
 
+  it('records that an unknown kind was stated, apart from no kind at all', () => {
+    // The two absences are different facts and only one of them earns the legacy
+    // `source`-presence fallback. A server that stated `copy` said *something*; a
+    // pre-#550 server said nothing. Collapsing them would let a stated-but-unknown
+    // kind be overruled by a guess downstream (see `stackStage.test.ts`).
+    expect(stackFrame({ kind: 'copy', source: 'perm_a' }).stack[0]!.kindUnknown).toBe(true);
+    expect(stackFrame({ source: 'perm_a' }).stack[0]!.kindUnknown).toBeUndefined();
+    // A known kind is carried, so there is nothing unknown to record…
+    expect(stackFrame({ kind: 'triggered' }).stack[0]!.kindUnknown).toBeUndefined();
+    // …and a non-string `kind` is malformed rather than a future value: it is not a
+    // kind the server could ever have stated, so it degrades to the older-server
+    // reading rather than freezing the entry as unclassified.
+    expect(stackFrame({ kind: 7 }).stack[0]!.kindUnknown).toBeUndefined();
+  });
+
   it('degrades a malformed targets field to the empty list', () => {
     expect(stackFrame({ targets: 'perm_a' }).stack[0]!.targets).toEqual([]);
   });

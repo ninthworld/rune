@@ -271,8 +271,25 @@ export interface StackItem {
    * What this object is. Server-stated and never inferred from `source`. Absent when
    * the entry is unclassified — an older server that omits the field, or a future
    * kind this client does not know; render such an entry generically.
+   *
+   * The two absences are **not** the same and {@link kindUnknown} tells them apart.
    */
   kind?: StackItemKind;
+  /**
+   * Normalization state, **not a wire field** (hence camelCase among the snake_case
+   * mirror): the server stated a `kind` and it is one this client does not know — a
+   * value added to the union after this build, such as `copy` (gap G3).
+   * {@link normalizeGameView} sets it and leaves {@link kind} unset, so no consumer
+   * can mistake an unknown value for a known one.
+   *
+   * It exists to *withhold* classification, never to enable one. An entry carrying it
+   * stays unclassified and is rendered from `description`; in particular the
+   * documented older-server fallback — reading `source`'s presence as "ability" —
+   * must **not** apply to it. That fallback is for an entry whose server never stated
+   * a kind; this server did state one, and disagreeing with it would be exactly the
+   * client-side rules interpretation ADR 0002 forbids.
+   */
+  kindUnknown?: true;
   /**
    * The targets this object named, in the order its effects consume them (CR
    * 601.2c) — the ordering the client's target numerals (①②③) come from. Omitted on

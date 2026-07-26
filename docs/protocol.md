@@ -315,7 +315,11 @@ Three rules govern these fields:
     “neither activated nor triggered”.
   - **An unrecognized value leaves the entry unclassified**, never coerced into a known
     one — render it from `description`. A `copy` value arrives with a copy mechanic
-    (gap G3).
+    (gap G3). “Unclassified” here is *stronger* than an omitted `kind`: a client that
+    reads a missing `kind` as “ability when `source` is present” — the only inference an
+    older-server payload permits — must not apply that reading to a kind it merely
+    failed to recognize. The server stated one; overruling it with a guess is the same
+    rules interpretation the field exists to prevent.
 
   A client must never reconstruct activated-vs-triggered from `description` prose or from
   when the entry appeared: that is rules interpretation, which ADR 0002 puts on the
