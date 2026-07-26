@@ -47,6 +47,7 @@
  * production caller.
  */
 import type { GameLogEntry, GameLogEvent, GameView } from '../../protocol';
+import { ACTIVITY_GLYPH } from '../controls/iconGlyphs';
 import { describeEvent, type LogSegment } from '../logComposition';
 
 /** The subset of a `GameView` the activity surface reads. */
@@ -198,8 +199,16 @@ export function deriveActivity(
     });
   }
 
+  // The quiet-state glyph is declared in `table/controls/iconGlyphs.ts` beside
+  // the game-menu handle's, not written here: the two are the only 44 ⌀ icon
+  // buttons in the match and issue #583 is the shipped proof that choosing their
+  // pictures in separate files produces one picture twice.
   const badgeText =
-    unread > 0 ? (unread > ACTIVITY.badgeMax ? `${ACTIVITY.badgeMax}+` : String(unread)) : '≡';
+    unread > 0
+      ? unread > ACTIVITY.badgeMax
+        ? `${ACTIVITY.badgeMax}+`
+        : String(unread)
+      : ACTIVITY_GLYPH;
   const badgeLabel =
     unread > 0
       ? `Activity — ${unread} new ${unread === 1 ? 'event' : 'events'}. Open the full history.`

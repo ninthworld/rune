@@ -28,6 +28,7 @@ const ABILITY = '{T}: Add {G}.';
 const SURFACE: DecisionSurface = {
   kind: 'multiSelect',
   title: ABILITY,
+  titleEchoesPhase: false,
   prompt: `Pay ${ABILITY}`,
   confirm: false,
   advance: false,

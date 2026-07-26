@@ -49,6 +49,7 @@
 import type { EntityId, GameView, Phase, ValidAction } from '../../protocol';
 import { cx } from '../../chrome/cx';
 import { ControlButton, IconButton } from './ControlButton';
+import { MENU_GLYPH } from './iconGlyphs';
 import type { ControlSession } from './controlPrimary';
 import { RESPOND_ACCESSIBLE_NAME, RESPOND_LABEL, derivePrimary } from './controlPrimary';
 import { ManaReservoir } from './ManaReservoir';
@@ -223,6 +224,11 @@ export function ControlCluster({
  * D5's menu handle. Extracted because it renders in two places — the full
  * cluster's utility row and the compact cluster's plaque row — and the two must
  * stay the same control, not two controls that drift.
+ *
+ * Its glyph comes from `iconGlyphs.ts` rather than being written here: the
+ * activity badge in the opposite corner is the same 44 ⌀ circle from the same
+ * family, and issue #583 is what happens when the two pictures are chosen in
+ * files that cannot see each other.
  */
 function MenuIcon({
   onOpenMenu,
@@ -231,7 +237,7 @@ function MenuIcon({
 }: Pick<ControlClusterProps, 'onOpenMenu' | 'menuOpen' | 'menuControls'>) {
   return (
     <IconButton
-      glyph="☰"
+      glyph={MENU_GLYPH}
       label="Game menu"
       onPress={onOpenMenu}
       expanded={menuOpen}

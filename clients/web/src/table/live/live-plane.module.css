@@ -65,23 +65,116 @@
   pointer-events: none;
 }
 
+/* ── Drop affordances (issue #585, `control-language.md` §6.2 stages 3–4, §11) ─
+ * The defect these rules exist to remove: both surfaces were a hard 4 px
+ * `--gold` stroke on a rounded box — no bevel, no falloff, no material, and no
+ * relationship to the illustrated floor underneath. That treatment is what a
+ * hit-box visualiser looks like, which is how the maintainer read it.
+ *
+ * §6.2 stage 3 already specified the replacement and it had never been built:
+ * `--rune-drop-valid-fill`, a 2 px `--rune-drop-valid` stroke, radius, and
+ * **L-shaped corner ticks**. Three things follow from taking it literally:
+ *
+ * - The **region reacts** rather than being outlined. The fill is a pool of
+ *   light with a falloff, laid over the seat's own grounding, and the edge is an
+ *   inset soft stroke, not a border box. The region reads as the floor accepting
+ *   the card.
+ * - The **ticks are the primary mark**, at full strength where the edge is not.
+ *   They are §11's "unique shape" channel for a valid drop region, so the state
+ *   survives with hue stripped — `presentation-budgets.md` §Accessibility's rule
+ *   that nothing may depend on colour alone.
+ * - The **hue is the drop family's**, not `--gold`. Gold is the selection and
+ *   actionable-edge accent everywhere else in the match; a drop region wearing
+ *   it is a fourth meaning for one colour. `--rune-drop-valid` exists for this.
+ *
+ * **The one rule for when a region lights** (#585's third defect, §6.1's note):
+ * *a region highlight belongs to the drag gesture and marks the commit area;
+ * everything picked by name lights on the card.* So a land drop and a permanent
+ * cast — a drag whose action carries no requirements, and whose drop therefore
+ * commits — light the receiver's band. A drag that carries requirements lights
+ * its candidate cards and no band, because dropping on the band would answer
+ * nothing. Targeting and combat declarations are not drags at all, so they light
+ * candidates and never a region. `LiveMatchTable` derives `dropBoard` from
+ * exactly that test, and drop routing is untouched: hit testing still walks
+ * `[data-drop-receiver]`, the proxy stays out of hit testing, and legality stays
+ * the server's.
+ *
+ * Both surfaces keep their pointer contract: the region takes pointer events
+ * (it is the routing target), the per-card targets take none. */
 .dropBoard {
   position: absolute;
   z-index: 1;
-  border: 4px solid var(--gold);
-  border-radius: 18px;
-  box-shadow: inset 0 0 34px rgb(242 201 76 / 16%);
+  box-sizing: border-box;
+  border-radius: var(--rune-drop-radius);
+  /* The lit surface: brightest where the card is heading, falling off before it
+     reaches the region's own edge, so there is no rectangle to read. */
+  background: radial-gradient(ellipse at 50% 55%, var(--rune-drop-valid-fill) 0%, transparent 74%);
+  box-shadow:
+    inset 0 0 0 var(--rune-drop-stroke) color-mix(in srgb, var(--rune-drop-valid) 42%, transparent),
+    inset 0 0 var(--rune-space-9) color-mix(in srgb, var(--rune-drop-valid) 20%, transparent);
   pointer-events: auto;
+  transition:
+    background var(--rune-transition),
+    box-shadow var(--rune-transition);
 }
 
+/* Stage 4, hover valid: the edge firms, the pool brightens, the ticks extend.
+   The region has `pointer-events: auto` and the drag proxy has none, so the
+   pointer really is over this box mid-drag and `:hover` is the honest test —
+   no second hit-testing path, and therefore no way for the reaction to disagree
+   with where the drop will actually land. */
+.dropBoard:hover {
+  background: radial-gradient(
+    ellipse at 50% 55%,
+    color-mix(in srgb, var(--rune-drop-valid) 24%, transparent) 0%,
+    transparent 78%
+  );
+  box-shadow:
+    inset 0 0 0 calc(var(--rune-drop-stroke) + 1px)
+      color-mix(in srgb, var(--rune-drop-valid) 68%, transparent),
+    inset 0 0 var(--rune-space-10) color-mix(in srgb, var(--rune-drop-valid) 26%, transparent);
+}
+
+/* A card the server named as a candidate for the active slot. The same material
+   at card scale: a lit face rather than a stroked box, and the same ticks. */
 .dropTarget {
   position: absolute;
   z-index: 30;
   box-sizing: border-box;
-  border: 4px solid var(--gold);
-  border-radius: 9px;
-  box-shadow: 0 0 0 4px rgb(242 201 76 / 18%);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-drop-valid-fill);
+  box-shadow:
+    inset 0 0 0 var(--rune-drop-stroke) color-mix(in srgb, var(--rune-drop-valid) 55%, transparent),
+    0 0 var(--rune-space-6) color-mix(in srgb, var(--rune-drop-valid) 22%, transparent);
   pointer-events: none;
+}
+
+/* §11's non-colour channel for both: the L-shaped corner ticks. Eight
+   single-pixel-thin background slices, two per corner, drawn from the drop
+   tokens — no extra node, which is what `presentation-budgets.md` §Performance
+   asks of a treatment that can be on every candidate at once. */
+.dropBoard::after,
+.dropTarget::after {
+  --tick-arm: var(--rune-drop-tick);
+  --tick: linear-gradient(var(--rune-drop-valid), var(--rune-drop-valid));
+
+  content: '';
+  position: absolute;
+  inset: var(--rune-drop-tick-inset);
+  background:
+    var(--tick) 0 0 / var(--tick-arm) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 0 0 / var(--rune-drop-stroke) var(--tick-arm) no-repeat,
+    var(--tick) 100% 0 / var(--tick-arm) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 100% 0 / var(--rune-drop-stroke) var(--tick-arm) no-repeat,
+    var(--tick) 0 100% / var(--tick-arm) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 0 100% / var(--rune-drop-stroke) var(--tick-arm) no-repeat,
+    var(--tick) 100% 100% / var(--tick-arm) var(--rune-drop-stroke) no-repeat,
+    var(--tick) 100% 100% / var(--rune-drop-stroke) var(--tick-arm) no-repeat;
+  pointer-events: none;
+}
+
+.dropBoard:hover::after {
+  --tick-arm: calc(var(--rune-drop-tick) + var(--rune-drop-tick-hover));
 }
 
 .entityControl,
@@ -112,14 +205,57 @@
   outline-offset: 2px;
 }
 
+/* ── Eligible and chosen (issue #585) ─────────────────────────────────────────
+ * The defect: eligible was `3px dashed gold` and chosen was the same ring with
+ * `outline-style: solid` and a faint halo. One treatment at two settings, on one
+ * hue, at a size where dashes and solids blur together — so two creatures wore
+ * "gold outline" while the decision panel read `0 SELECTED`, and the board and
+ * the panel appeared to contradict each other with no way to recover which was
+ * right.
+ *
+ * They are now different in KIND. Eligible is a thin dashed ring and nothing
+ * else. Chosen is a solid doubled ring, an outer bloom, and a check mark on the
+ * corner — the shape channel §11 requires, and the same fact the panel's count
+ * is counting, so "how many are chosen" is answerable from the board alone.
+ *
+ * Neither puts anything over the card's face: #529's rule for a card under a
+ * decision is controlled outer light without obscuring art, and it holds for
+ * every state here. */
 .targetControl {
-  outline: 3px dashed var(--gold);
-  outline-offset: 2px;
+  outline: var(--rune-drop-stroke) dashed var(--gold);
+  outline-offset: 3px;
 }
 
 .targetControl[aria-pressed='true'] {
-  outline-style: solid;
-  box-shadow: 0 0 0 4px rgb(242 201 76 / 20%);
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+  /* The doubled ring: a dark separator against the board, then the accent's own
+     halo, then the bloom. Three rings of one shadow, no node, no fill. */
+  box-shadow:
+    0 0 0 var(--rune-drop-stroke) var(--ink),
+    0 0 0 6px color-mix(in srgb, var(--gold) 34%, transparent),
+    0 0 var(--rune-space-8) color-mix(in srgb, var(--gold) 26%, transparent);
+}
+
+/* The chosen mark. It rides the corner rather than the face, and it is the one
+   channel that survives with hue stripped — which is what makes "chosen" legible
+   to a player who cannot separate the dashed ring from the solid one. */
+.targetControl[aria-pressed='true']::after {
+  content: '✓';
+  position: absolute;
+  top: calc(-1 * var(--rune-space-3));
+  right: calc(-1 * var(--rune-space-3));
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--rune-space-9);
+  height: var(--rune-space-9);
+  border: var(--rune-drop-stroke) solid var(--ink);
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--gold);
+  font: 700 var(--rune-type-micro) / 1 var(--rune-font-display);
+  pointer-events: none;
 }
 
 /* ── The multiplayer defender pick (issue #457) ───────────────────────────────
@@ -172,6 +308,13 @@
 .targetControl[data-defender-candidate][aria-pressed='true'] {
   background: color-mix(in srgb, var(--orange) 14%, transparent);
   animation: none;
+}
+
+/* The chosen mark follows the combat hue here, because a seat routed an attacker
+   is answered in the combat family and not in the selection one (issue #457's
+   four channels). The mark itself is the same shape as everywhere else. */
+.targetControl[data-defender-candidate][aria-pressed='true']::after {
+  background: var(--orange);
 }
 
 /* The attacker whose defender is being chosen. Its own ring in the combat hue,
@@ -500,6 +643,15 @@
      so nothing about which seats are pickable is carried by motion. */
   .targetControl[data-defender-candidate] {
     animation: none;
+  }
+
+  /* The same rule for the drop region (issue #585): §12's "region light-up →
+     regions appear at full treatment instantly". The fill, the edge, and the
+     corner ticks are all still drawn, and the hover reaction still fires — only
+     the tween between the two states is dropped. Nothing about where a card may
+     be dropped is carried by motion. */
+  .dropBoard {
+    transition: none;
   }
 }
 

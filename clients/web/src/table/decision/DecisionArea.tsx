@@ -125,9 +125,20 @@ export function DecisionArea({
       <div className={s.frame}>
         <div className={s.plate}>
           <header className={s.head} role="status">
-            <span className={s.title} data-testid={`${testId}-title`}>
-              <SymbolText text={title} />
-            </span>
+            {/* The heading is dropped when it would repeat the phase plaque's
+                current step name (#586): during Declare Attackers both surfaces
+                drew "DECLARE ATTACKERS" a few hundred pixels apart in two
+                treatments, and one of the two has to say something the other
+                does not. The plaque is the phase surface; this one is the
+                question. The `aria-label` on the section still carries the
+                title, so nothing is lost to a reader who cannot see the plaque
+                beside it, and the words are never rewritten — only not printed
+                twice. */}
+            {!surface.titleEchoesPhase && (
+              <span className={s.title} data-testid={`${testId}-title`}>
+                <SymbolText text={title} />
+              </span>
+            )}
             {/* THE sentence. It is drawn here and nowhere else — the whole point
                 of #567's first bullet, and what `decisionSurface.test.ts` and the
                 shell's "asks once" test pin. */}
@@ -181,13 +192,17 @@ export function DecisionArea({
           {/* The named choices, in the control language rather than the retired
               sheet's bespoke buttons (#567: "named choices use the new visual
               language beside the primary action"). Pressing one IS the answer,
-              which is why a decision with choices carries no separate confirm. */}
+              which is why a decision with choices carries no separate confirm.
+              They render as equal-weight secondaries: several options offered on
+              equal terms is §4.2 rules 4/7's tie, and promoting one of them
+              would be the client ranking the server's choices — the same refusal
+              `controlPrimary.ts` makes for the cluster's blue slot (#586). */}
           {choices && choices.length > 0 && (
             <div className={s.choices} data-testid="multiselect-options">
               {choices.map((choice) => (
                 <ControlButton
                   key={choice.id}
-                  variant="confirm"
+                  variant="secondary"
                   label={choice.label}
                   onPress={() => onChooseOption(choice.id)}
                   disabledReason={choice.disabledReason}
@@ -201,10 +216,18 @@ export function DecisionArea({
             <div className={s.controls}>
               {/* §11: confirm always LEADS and cancel always TRAILS. The order is
                   the pair's non-colour channel — the cue that survives a
-                  colour-blind path — so it is not a layout preference. */}
+                  colour-blind path — so it is not a layout preference.
+
+                  Confirm wears the BLUE primary, not a second primary hue
+                  (#586). §4.2 rule 1 already says this control "carries the
+                  advance" while a decision is open, and the cluster's blue slot
+                  is deliberately empty for exactly that reason — so this is the
+                  one primary on screen, and the product has one primary colour
+                  from CONNECT through SUBMIT DECK to here. The compact form is
+                  the pair width the row is built for. */}
               {surface.confirm && (
                 <ControlButton
-                  variant="confirm"
+                  variant="primaryCompact"
                   label="Confirm"
                   onPress={onConfirm}
                   disabledReason={surface.confirmDisabledReason}

@@ -70,12 +70,21 @@
 /* Panel 6b: the same form, one text line, sharing its row with the menu icon.
    The baseline draws it 190 × 62, but §2.2 declares no compact plaque tokens and
    §3.3 pins the cluster column at 268 px unconditionally — so the compact plaque
-   is the column minus the icon and the gap (212 px) rather than a second set of
+   is the column minus the icon and the gap rather than a second set of
    hand-written lengths that would leave the compact row 22 px short of the edge
    every other row is flush with. The plate height is unchanged, which is what
-   keeps the icon and the plaque optically on one line. */
+   keeps the icon and the plaque optically on one line.
+
+   The point depth comes out too (issue #586). `.compactRow` widens its gap by
+   exactly that term so the round icon clears the plaque's trailing bevel instead
+   of sitting in it — the two must move together or the row stops measuring one
+   268 px column. Nothing here is hand-measured: every term is a token the row
+   itself is built from. */
 .compact {
-  width: calc(var(--rune-control-w-cluster) - var(--rune-control-hit) - var(--rune-cluster-gap));
+  width: calc(
+    var(--rune-control-w-cluster) - var(--rune-control-hit) - var(--rune-cluster-gap) -
+      var(--rune-plaque-point)
+  );
 }
 
 .frame {
@@ -265,15 +274,37 @@
 
 /* ── The auto-passed badge ───────────────────────────────────────────────────
    Sits above the plate: the plate's two lines are the drawn form, and 6b has
-   only one, so the badge cannot live inside it without changing the plaque. */
+   only one, so the badge cannot live inside it without changing the plaque.
+
+   It is drawn as a TAB, not a pill (issue #586). The shipped form floated a
+   gold-outlined capsule 4 px clear of the plaque on the overlay background — no
+   tail, no shared edge, no shared material — which reads as a debug toast rather
+   than as something the plaque is saying. `position: relative` on `.plaque`
+   exists to anchor it, so the anchoring was always intended; what was missing
+   was the contact.
+
+   Three changes make it part of the surface, and none of them touches the
+   plaque's own frame/face construction:
+   - it sits ON the plate's top edge (`bottom: 100%`, no gap) and drops its
+     bottom border, so the two share one edge rather than facing each other;
+   - it wears the plate's own material and the family's frame gradient, so it is
+     the same object in the same light;
+   - it is held inboard by the point depth, so a tab never overhangs the
+     trailing bevel the way the menu icon did. */
 .autoPassed {
   position: absolute;
-  right: 0;
-  bottom: calc(100% + var(--rune-space-2));
+  right: var(--rune-plaque-point);
+  bottom: 100%;
   padding: var(--rune-space-1) var(--rune-space-4);
-  border: var(--rune-control-frame-w) solid var(--rune-gold-border);
-  border-radius: var(--rune-radius-sm);
-  background: var(--rune-overlay-bg);
+  border: var(--rune-control-frame-w) solid transparent;
+  border-bottom: 0;
+  border-radius: var(--rune-radius-sm) var(--rune-radius-sm) 0 0;
+  /* The frame gradient on the border box and the plate on the padding box: the
+     same two-layer stroke the framed family is built from, expressed with one
+     element because a three-sided tab has no polygon to clip. */
+  background:
+    linear-gradient(var(--rune-control-plate), var(--rune-control-plate)) padding-box,
+    var(--rune-control-frame-gradient) border-box;
   color: var(--rune-accent-gold);
   font-family: var(--rune-font-display);
   font-size: var(--rune-type-micro);

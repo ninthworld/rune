@@ -107,7 +107,16 @@ export function GameMenu({
             data-testid="game-menu-scrim"
             onClick={close}
           />
-          <div className={s.menuDrawer} role="menu" data-testid="game-menu">
+          {/* Controlled means the CLUSTER's icon is the handle (ADR 0032/#534),
+              so the drawer opens upward from the cluster instead of from the
+              top bar that is no longer there (#583). Uncontrolled is the
+              spectator overview, where `.menuButton` above is the handle and
+              the top bar's offsets are still the right ones. */}
+          <div
+            className={cx(s.menuDrawer, controlled && s.menuDrawerCluster)}
+            role="menu"
+            data-testid="game-menu"
+          >
             <button
               type="button"
               role="menuitem"

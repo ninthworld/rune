@@ -166,6 +166,39 @@ describe('deriveDecision', () => {
     expect(surface!.rows).toBeUndefined();
   });
 
+  it('reports when its title is the words the phase plaque already draws (#586)', () => {
+    const view = viewOf(DECLARE_ATTACKERS_GAME_VIEW_JSON);
+    const action = decisionActionOf(view);
+    const { surface } = deriveDecision(view, {
+      targeting: null,
+      multiSelect: beginMultiSelect(action),
+      forced: null,
+    });
+
+    // The server's label is "Declare attackers"; the plaque draws
+    // `STEP_NAME.declare_attackers` = "Declare Attackers". Both surfaces printed
+    // the phrase at once, in two treatments, a few hundred pixels apart. The
+    // title itself is untouched — a server label is still carried verbatim; the
+    // surface only reports that the plaque is already saying it.
+    expect(surface!.title).toBe('Declare attackers');
+    expect(surface!.titleEchoesPhase).toBe(true);
+  });
+
+  it('keeps its title when the plaque is saying something else', () => {
+    const view = viewOf(MULLIGAN_GAME_VIEW_JSON);
+    const forced = forcedDecision(view);
+    const { surface } = deriveDecision(view, {
+      targeting: null,
+      multiSelect: beginMultiSelect(forced!),
+      forced,
+    });
+
+    // "Keep or mulligan" is nothing the plaque says, so the heading stays. The
+    // test that matters is that the comparison is on the words and not on the
+    // decision's kind: nothing about mulligans is special-cased.
+    expect(surface!.titleEchoesPhase).toBe(false);
+  });
+
   it('walks a targeting session with progress and no confirm', () => {
     const view = viewOf(TARGETING_GAME_VIEW_JSON);
     const action = view.valid_actions.find((entry) => (entry.requirements?.length ?? 0) > 0)!;
