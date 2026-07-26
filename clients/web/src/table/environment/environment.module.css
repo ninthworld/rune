@@ -81,12 +81,13 @@
    aspect below the authoring aspect matches the plate's height and takes a
    centred horizontal slice, and ultrawide reveals rather than stretches.
 
-   The plate is *stacked over* its slot's T0 composition rather than replacing
-   it (§8.2, §8.3): `position: absolute` takes it out of flow so the token
-   surround / plaza SVG underneath keeps the whole slot, and the plate covers
-   that composition only once it actually has pixels. There is therefore no
-   frame — first paint, slow request, theme change, decode failure — in which
-   the arena floor and its medallion are absent. */
+   The plate is the second half of the `.underlay` cross-fade above (§8.2, §8.3),
+   not a cover over it: `position: absolute` takes it out of flow so both halves
+   hold the whole slot, and the two swap on one transition — the plate fades in
+   as the composition retires, each keyed to the same decode. There is therefore
+   no frame — first paint, slow request, theme change, decode failure — in which
+   the arena floor and its medallion are absent, and none in which a retired
+   composition is still painting over the layers below (issue #581). */
 .plate {
   position: absolute;
   inset: 0;
