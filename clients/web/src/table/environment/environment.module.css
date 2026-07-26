@@ -52,11 +52,29 @@
   z-index: 3;
 }
 
-.layer > svg,
+.layer svg,
 .plate {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* The T0 composition a plate cross-fades with (§8.2). It holds the slot from the
+   first frame, and is RETIRED once the plate reports pixels — never left painted
+   underneath. A shipped plate may carry alpha (L1's is a cut-out disc), and a T0
+   composition showing through one is not harmless: it draws from a layer node
+   that outranks every layer below it, so L1's opaque plaza fill would cover L0's
+   far surround entirely and the environment would read as a flat token field
+   (issue #581). Same duration, same easing, same `staging` class as the plate's
+   fade-in, so the two are one cross-fade and snap together under reduced motion. */
+.underlay {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--env-motion-staging) var(--env-ease-staging);
+}
+
+.underlay[data-revealed='true'] {
+  opacity: 0;
 }
 
 /* L0–L2: one continuous 21:9 plate. `cover` IS the §4.2 crop — every landscape
@@ -170,6 +188,7 @@
  */
 @media (prefers-reduced-motion: reduce) {
   .layer,
+  .underlay,
   .plate,
   .spriteFrame {
     transition: none !important;

@@ -133,6 +133,70 @@ describe('SceneEnvironment — §10.2 the slot identity in the DOM', () => {
     );
   });
 
+  it('holds each plate slot with its T0 composition until the plate has pixels', () => {
+    // §8.2: T0 is always the first frame. Before any decode reports back, the
+    // slot is the token composition — never a hole, and never the plate's own
+    // empty box.
+    const { root } = mount();
+    const nodes = layerNodes(root);
+    for (const id of ['l0', 'l1'] as const) {
+      const underlay = nodes.get(id)!.querySelector<HTMLElement>('[data-underlay]')!;
+      expect(underlay.dataset.underlay).toBe(id);
+      expect(underlay.dataset.revealed).toBe('false');
+    }
+  });
+
+  it('retires the T0 composition once the plate reveals, so it cannot veil a layer below', () => {
+    // Issue #581. A shipped plate is not necessarily opaque — L1's is a cut-out
+    // disc — while its T0 plaza fill is, and by §4.3 that fill spans the whole
+    // canvas at every landscape aspect. Left painted underneath, it draws from a
+    // layer node that outranks L0 and hides the entire far surround, which is
+    // the flat token field the issue reports in place of the Runic Vale.
+    const { root } = mount();
+    const nodes = layerNodes(root);
+    for (const node of nodes.values()) {
+      for (const plate of node.querySelectorAll<HTMLImageElement>('img')) {
+        fireEvent.load(plate);
+      }
+    }
+    const underlays = [...root.querySelectorAll<HTMLElement>('[data-underlay]')];
+    // Every plated slot still has its composition mounted (the fade needs a node
+    // to fade), and every one of them has stood down.
+    expect(underlays.map((node) => node.dataset.underlay)).toEqual(['l0', 'l1']);
+    for (const underlay of underlays) {
+      expect(underlay.dataset.revealed).toBe('true');
+    }
+    // The plates themselves are the visible form now.
+    for (const id of ['l0', 'l1', 'l2'] as const) {
+      expect(nodes.get(id)!.querySelector('img')!.dataset.loaded).toBe('true');
+    }
+  });
+
+  it('re-enters a slot unrevealed when the theme changes, so the new plate is never a hole', () => {
+    // The slot is keyed by the plate URL: a theme switch brings the retired
+    // composition back to hold the slot while the new plate is in flight.
+    const { root, view } = mount();
+    for (const plate of root.querySelectorAll<HTMLImageElement>('img')) fireEvent.load(plate);
+    expect(root.querySelector<HTMLElement>('[data-underlay]')!.dataset.revealed).toBe('true');
+    act(() => setEnvironmentTheme('moonlitRuins'));
+    view.rerender(<SceneEnvironment quality="high" reducedMotion={false} viewport={DESKTOP} />);
+    const underlay = root.querySelector<HTMLElement>('[data-underlay]')!;
+    expect(underlay.dataset.revealed).toBe('false');
+  });
+
+  it('cross-fades the composition out on the same staging class the plate fades in on', () => {
+    // jsdom applies no stylesheet, so the retirement is pinned in the source:
+    // one duration token for both halves means reduced motion snaps them
+    // together, with no media query to remember (ADR 0019).
+    const css = readFileSync(
+      resolve(process.cwd(), 'src/table/environment/environment.module.css'),
+      'utf8',
+    );
+    expect(css).toContain("[data-revealed='true']");
+    expect(css).toMatch(/\.underlay\b[^}]*transition:\s*opacity var\(--env-motion-staging\)/);
+    expect(css).toMatch(/\.underlay\[data-revealed='true'\]\s*\{\s*opacity:\s*0;/);
+  });
+
   it('authors L0–L2 on the crop’s viewBox whenever it falls back to the placeholder', () => {
     // The placeholder is permanent (§10.5, last paragraph): it is the T0 form,
     // the per-layer failure fallback, and Lite's L0. Its crop path is the same
