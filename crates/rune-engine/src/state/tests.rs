@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, unused_imports)]
 
 use crate::id::PlayerId;
+use crate::mana::{Color, ManaPool};
 use crate::phase::Step;
 use crate::player::{LossReason, STARTING_LIFE};
 
@@ -291,4 +292,93 @@ fn issue_342_extra_turn_owed_to_an_eliminated_player_is_discarded() {
         "the discarded extra turn does not resurrect seat 1; seat 2 acts"
     );
     assert!(state.extra_turns.is_empty());
+}
+
+// ----- Mana pools empty at every step and phase boundary (issue #537) -----
+
+#[test]
+fn issue_537_cr_500_4_advance_empties_every_players_mana_pool() {
+    // CR 500.4: when a step or phase ends, unused mana empties from *every*
+    // player's pool — a non-active seat that floated mana in response loses it too,
+    // not just the active player.
+    let mut state = GameState::new_multiplayer(4);
+    state.step = Step::PrecombatMain;
+    for seat in 0..4 {
+        state.players[seat].mana_pool.add(Color::Green, 2);
+        state.players[seat].mana_pool.add_colorless(1);
+    }
+
+    let next = state.advance();
+
+    assert_eq!(
+        next.step,
+        Step::BeginCombat,
+        "the precombat main phase ended"
+    );
+    for seat in 0..4 {
+        assert_eq!(
+            next.players[seat].mana_pool,
+            ManaPool::default(),
+            "seat {seat}'s pool emptied when the phase ended (CR 500.4)"
+        );
+    }
+}
+
+#[test]
+fn issue_537_cr_500_4_mana_does_not_survive_a_step_boundary() {
+    // The narrow step-to-step case: upkeep to draw is a step change *within* the
+    // beginning phase, and it empties the pool just the same.
+    let mut state = GameState::new_two_player();
+    state.step = Step::Upkeep;
+    state.players[0].mana_pool.add(Color::Red, 3);
+
+    let next = state.advance();
+
+    assert_eq!(next.step, Step::Draw);
+    assert_eq!(next.players[0].mana_pool.red, 0);
+    assert_eq!(next.players[0].mana_pool.total(), 0);
+}
+
+#[test]
+fn issue_537_cr_500_4_mana_does_not_survive_the_turn_boundary() {
+    // Advancing past cleanup begins the next player's turn; nothing floats across.
+    let mut state = GameState::new_two_player();
+    state.step = Step::Cleanup;
+    state.players[0].mana_pool.add(Color::Green, 1);
+    state.players[1].mana_pool.add(Color::Blue, 1);
+
+    let next = state.advance();
+
+    assert_eq!(next.turn, 2);
+    assert_eq!(next.step, Step::Untap);
+    assert_eq!(next.players[0].mana_pool, ManaPool::default());
+    assert_eq!(next.players[1].mana_pool, ManaPool::default());
+}
+
+#[test]
+fn issue_537_cr_500_4_mana_does_not_survive_an_extra_step() {
+    // A queued extra step is still a step ending, so the pool empties on the way
+    // into it — the extra-step branch is not a hole in CR 500.4.
+    let mut state = GameState::new_two_player();
+    state.step = Step::PostcombatMain;
+    state.players[0].mana_pool.add(Color::White, 2);
+    let state = state.with_extra_step(Step::PrecombatMain);
+
+    let next = state.advance();
+
+    assert_eq!(next.step, Step::PrecombatMain);
+    assert_eq!(next.players[0].mana_pool, ManaPool::default());
+}
+
+#[test]
+fn issue_537_emptying_the_pool_does_not_mutate_the_input_state() {
+    // `advance` stays pure: the caller's floating mana is untouched.
+    let mut before = GameState::new_two_player();
+    before.players[0].mana_pool.add(Color::Green, 2);
+    let snapshot = before.clone();
+
+    let _ = before.advance();
+
+    assert_eq!(before, snapshot);
+    assert_eq!(before.players[0].mana_pool.green, 2);
 }

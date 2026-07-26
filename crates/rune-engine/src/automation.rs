@@ -217,6 +217,67 @@ mod tests {
     }
 
     #[test]
+    fn issue_537_a_seat_that_floated_mana_and_cast_nothing_is_idle_after_the_step_ends() {
+        // The ADR 0020 stall behind issue #537. A seat taps its land, casts nothing,
+        // and the step ends. Before CR 500.4 was implemented the floating mana
+        // persisted forever, so `valid_actions` kept offering the mana-dependent
+        // `CastSpell` and this predicate kept reporting the seat non-idle — the room
+        // never auto-passed it and every seat that had ever tapped a land stalled.
+        //
+        // Revitalize is a {W} instant with no targets, so its castability turns on
+        // the pool alone and not on timing or a legal target.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let plains = place(&mut state, fixture("plains"), PlayerId(0));
+        let heal = state.new_instance(fixture("revitalize"));
+        state.players[0].hand = vec![heal];
+
+        // Untapped land plus an affordable-after-tapping spell: still non-idle. The
+        // fix must not break the `float_potential_mana` hypothetical (ADR 0020).
+        assert!(
+            !priority_has_no_meaningful_action(&state, &db),
+            "a spell castable once the seat taps its land is a meaningful action"
+        );
+
+        // The seat taps for {W} and then declines to cast.
+        let state = crate::apply_action(
+            &state,
+            &Action::ActivateAbility {
+                permanent: plains,
+                index: 0,
+                targets: Vec::new(),
+            },
+            &db,
+        );
+        assert_eq!(
+            state.players[0].mana_pool.white, 1,
+            "the pool is floating {{W}}"
+        );
+        assert!(
+            !priority_has_no_meaningful_action(&state, &db),
+            "with the mana in hand the cast is a real, offered action"
+        );
+
+        // Both seats pass, ending the precombat main phase (CR 500.4).
+        let after = crate::apply_action(&state, &Action::PassPriority, &db);
+        let after = crate::apply_action(&after, &Action::PassPriority, &db);
+
+        assert_eq!(after.step, Step::BeginCombat);
+        assert_eq!(after.priority, PlayerId(0));
+        assert_eq!(
+            after.players[0].mana_pool.total(),
+            0,
+            "the pool emptied when the phase ended"
+        );
+        assert!(
+            priority_has_no_meaningful_action(&after, &db),
+            "with its land tapped and its pool emptied the seat has nothing but a \
+             pass — it must auto-pass rather than stall (ADR 0020)"
+        );
+    }
+
+    #[test]
     fn a_seat_holding_an_uncastable_instant_off_turn_is_not_idle() {
         // Off-turn, a seat with an untapped land and an affordable-after-tapping
         // instant keeps priority — the "instant-speed option" acceptance criterion.
