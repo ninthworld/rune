@@ -288,13 +288,23 @@ mod tests {
     /// Put a permanent of `card` on the battlefield under player 0 (untapped),
     /// recorded as having entered on turn `entered_turn`.
     fn place(state: &mut GameState, card: CardId, entered_turn: u32) -> PermanentId {
+        place_for(state, card, PlayerId(0), entered_turn)
+    }
+
+    /// [`place`], but under an explicit controller.
+    fn place_for(
+        state: &mut GameState,
+        card: CardId,
+        controller: PlayerId,
+        entered_turn: u32,
+    ) -> PermanentId {
         let inst = state.new_instance(card);
         let id = PermanentId(state.mint_id());
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
             card,
-            controller: PlayerId(0),
+            controller,
             tapped: false,
             entered_turn,
             attacking: None,
@@ -306,12 +316,27 @@ mod tests {
         id
     }
 
-    /// A two-player game at player 0's precombat main on turn `turn`.
+    /// Put `state` at its active player's precombat main, holding priority.
+    fn at_main_phase(mut state: GameState) -> GameState {
+        state.step = Step::PrecombatMain;
+        state.priority = state.active_player;
+        state
+    }
+
+    /// A two-player game at player 0's precombat main on turn `turn`, reached by
+    /// walking real turns — so `turn` must be one player 0 actually takes (odd, in
+    /// an unmodified two-player rotation).
     fn main_phase(turn: u32) -> GameState {
         let mut state = GameState::new_two_player();
-        state.turn = turn;
-        state.step = Step::PrecombatMain;
-        state
+        while state.turn < turn {
+            state = state.advance_to_next_turn();
+        }
+        assert_eq!(
+            (state.turn, state.active_player),
+            (turn, PlayerId(0)),
+            "fixture turn must belong to player 0"
+        );
+        at_main_phase(state)
     }
 
     /// Whether `actions` offers an activation of `permanent`'s ability `index`.
@@ -326,7 +351,12 @@ mod tests {
     fn cr_302_6_a_creature_that_entered_this_turn_offers_no_tap_ability() {
         // CR 302.6 / 605.3a (issue #454): Llanowar Elves cast this turn may not
         // activate its `{T}: Add {G}` — being a *mana* ability exempts it from
-        // nothing. Next turn the same permanent offers it.
+        // nothing. On its controller's next turn the same permanent offers it.
+        //
+        // The turns are walked, not assigned: the restriction lasts until the
+        // *controller's* next turn begins, which in a two-player rotation is two
+        // turn boundaries away, and a test that only bumped `state.turn` would call
+        // the opponent's turn the controller's own.
         let db = db();
         let mut state = main_phase(3);
         let elves = place(&mut state, fixture("llanowar_elves"), 3);
@@ -335,10 +365,53 @@ mod tests {
             "a creature that entered this turn offers no {{T}} mana ability"
         );
 
-        state.turn = 4;
+        state = at_main_phase(state.advance_to_next_turn());
+        assert_eq!((state.turn, state.active_player), (4, PlayerId(1)));
+        // Player 0 may hold priority at instant speed during their opponent's turn,
+        // so their offer set is the one under test here.
+        state.priority = PlayerId(0);
+        assert!(
+            !offers_activation(&valid_actions(&state, &db), elves, 0),
+            "the restriction lasts through the opponent's whole turn"
+        );
+
+        state = at_main_phase(state.advance_to_next_turn());
+        assert_eq!((state.turn, state.active_player), (5, PlayerId(0)));
         assert!(
             offers_activation(&valid_actions(&state, &db), elves, 0),
             "on its controller's next turn the same creature taps freely"
+        );
+    }
+
+    #[test]
+    fn cr_302_6_holds_across_multiplayer_rotation_for_a_non_active_controller() {
+        // Three seats. Seat 1's Llanowar Elves entered on seat 1's own turn 2; it
+        // stays restricted through seat 2's turn 3 and seat 0's turn 4 — with seat 1
+        // holding priority at instant speed each time — and is offered only once
+        // seat 1's turn 5 begins.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3).advance_to_next_turn();
+        assert_eq!((state.turn, state.active_player), (2, PlayerId(1)));
+        let elves = place_for(&mut state, fixture("llanowar_elves"), PlayerId(1), 2);
+        let mut state = at_main_phase(state);
+        assert!(!offers_activation(&valid_actions(&state, &db), elves, 0));
+
+        for expected in [(3, PlayerId(2)), (4, PlayerId(0))] {
+            state = at_main_phase(state.advance_to_next_turn());
+            assert_eq!((state.turn, state.active_player), expected);
+            state.priority = PlayerId(1);
+            assert!(
+                !offers_activation(&valid_actions(&state, &db), elves, 0),
+                "still restricted on turn {}",
+                state.turn
+            );
+        }
+
+        state = at_main_phase(state.advance_to_next_turn());
+        assert_eq!((state.turn, state.active_player), (5, PlayerId(1)));
+        assert!(
+            offers_activation(&valid_actions(&state, &db), elves, 0),
+            "offered once its own controller's next turn begins"
         );
     }
 

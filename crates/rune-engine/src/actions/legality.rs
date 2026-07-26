@@ -224,7 +224,9 @@ mod tests {
     fn elves_state(entered_turn: u32) -> (GameState, CardDatabase, Action) {
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
-        state.turn = 3;
+        while state.turn < 3 {
+            state = state.advance_to_next_turn();
+        }
         state.step = Step::PrecombatMain;
         let card = fixture("llanowar_elves");
         let inst = state.new_instance(card);
@@ -291,6 +293,39 @@ mod tests {
             &db,
             PermanentId(9999),
             0
+        ));
+    }
+
+    #[test]
+    fn issue_454_the_gate_holds_while_the_controller_is_not_the_active_player() {
+        // The activation the gate protects against is submittable at instant speed
+        // during someone *else's* turn, so the gate is measured from the
+        // controller's most recent turn. Player 0's Elves entered on their turn 3;
+        // through player 1's turn 4 it is still restricted, and only player 0's
+        // turn 5 clears it. The turns are walked so the rotation is the engine's.
+        let (state, db, action) = elves_state(3);
+        let Action::ActivateAbility {
+            permanent, index, ..
+        } = action
+        else {
+            panic!("the fixture builds an activation");
+        };
+
+        let opponents_turn = state.advance_to_next_turn();
+        assert_eq!(
+            (opponents_turn.turn, opponents_turn.active_player),
+            (4, PlayerId(1))
+        );
+        assert!(
+            !activation_clears_summoning_sickness(&opponents_turn, &db, permanent, index),
+            "still restricted during the opponent's turn"
+        );
+        assert!(!action_is_legal(&opponents_turn, &action, &db));
+
+        let own_turn = opponents_turn.advance_to_next_turn();
+        assert_eq!((own_turn.turn, own_turn.active_player), (5, PlayerId(0)));
+        assert!(activation_clears_summoning_sickness(
+            &own_turn, &db, permanent, index
         ));
     }
 }
