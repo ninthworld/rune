@@ -83,6 +83,14 @@ export interface HandFanProps {
   selectedId: EntityId | null;
   /** The id currently previewed as a target, if any. */
   previewTargetId: EntityId | PlayerId | null;
+  /**
+   * The hand card currently being dragged, if any (issue #569). Its slot is
+   * **held open** rather than left looking occupied: `control-language.md`
+   * §6.2 stage 2a draws the vacated slot as a dashed outline with a dimmed
+   * fill, so the fan shows where the card came from and where a cancelled drag
+   * puts it back. The card itself is drawn by the drag proxy, not here.
+   */
+  draggingId?: EntityId | null;
   /** Whether a click should be swallowed because a drag just ended. */
   shouldSwallowClick: () => boolean;
   /** Pick (or toggle) a candidate. */
@@ -109,6 +117,7 @@ export function HandFan({
   chosen,
   selectedId,
   previewTargetId,
+  draggingId = null,
   shouldSwallowClick,
   onPick,
   onActivate,
@@ -186,6 +195,10 @@ export function HandFan({
       {shown.map((card, offset) => {
         const picking = candidates.includes(card.id);
         const playable = view.valid_actions.some((action) => action.subject?.includes(card.id));
+        // The slot the drag proxy lifted this card out of (§6.2 stage 2a). The
+        // button stays in the tree — same rect, same focus, same handlers — so a
+        // cancelled drag needs no restoration; only its paint changes.
+        const vacated = draggingId === card.id;
         const cardStyle: HandStyle = {
           // Position along the fan as a 0…1 fraction of the band's usable span;
           // the stylesheet insets that span by `--hand-inset`, so the outermost
@@ -203,6 +216,7 @@ export function HandFan({
             data-entity={card.id}
             data-hand-index={start + offset}
             data-actionable={(!selecting && playable) || undefined}
+            data-vacated={vacated || undefined}
             aria-label={
               picking
                 ? `${multiSelect ? 'Toggle' : 'Target'} ${card.name}`

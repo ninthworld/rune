@@ -1,0 +1,270 @@
+/*
+ * The public zone browser's surface (issue #584).
+ *
+ * The browser used to be the generic pre-2.5D overlay rectangle — 380 px,
+ * `--rune-overlay-bg`, a 1 px border — holding text rows. It is now a member of
+ * the **control language's framed family** (`docs/design/control-language.md`
+ * §3.1): a gradient frame box padding a chamfered face, exactly the two-box
+ * construction `controls/controls.module.css` documents, because a CSS border
+ * can carry neither the gradient nor the 45° cut.
+ *
+ * Inside it, every entry is a real {@link CardFace}; this file positions those
+ * faces and paints the zone's identity, and draws no card itself.
+ *
+ * **Exile must not read as a second graveyard** (`docs/design/zone-geography.md`
+ * §3.3). The rack separates them by pane and cast; the browser carries the same
+ * separation on `[data-zone]` — the graveyard's warm ash versus exile's cool
+ * rune-iris glass, plus a distinct grid matte — so the distinction survives into
+ * the surface a player actually reads the cards on. Both are also named in the
+ * heading, so the channel is never colour alone (`visual-system.md` §7).
+ *
+ * Every length and colour is a token (ADR 0019). The one non-token value is
+ * `--zb-card-w`, which the component supplies from `CARD_BOX` — the drawn box of
+ * the browse tier — so the grid's column and the face inside it cannot disagree.
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--rune-space-7);
+  background: var(--rune-scrim);
+  z-index: var(--rune-z-overlay);
+}
+
+/* The 45° corner cut of the chamfered family, at the frame's cut depth. */
+.frame {
+  --cut: var(--rune-control-chamfer);
+  display: grid;
+  place-items: stretch;
+  box-sizing: border-box;
+  width: min(920px, 100%);
+  max-height: min(82vh, 100%);
+  padding: var(--rune-control-frame-w);
+  background: var(--rune-control-frame-gradient);
+  clip-path: polygon(
+    var(--cut) 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    var(--cut) 100%,
+    0 calc(100% - var(--cut)),
+    0 var(--cut)
+  );
+  box-shadow: var(--rune-elevation-2);
+}
+
+/* The face takes the frame's outline offset inward by the stroke, so the gold
+   trim is even at the corners as well as along the edges (issue #571). */
+.face {
+  --cut: var(--rune-control-chamfer-face);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-6);
+  min-height: 0;
+  box-sizing: border-box;
+  padding: var(--rune-space-8);
+  background: var(--rune-control-plate);
+  box-shadow: inset 0 0 0 1px var(--rune-control-inner-line);
+  clip-path: polygon(
+    var(--cut) 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%,
+    var(--cut) 100%,
+    0 calc(100% - var(--cut)),
+    0 var(--cut)
+  );
+}
+
+/* ── Zone identity ─────────────────────────────────────────────────────────── */
+
+/* The graveyard: warm-dark ash washing up from the pile's own end of the panel. */
+.frame[data-zone='graveyard'] .face {
+  background:
+    radial-gradient(120% 80% at 50% 100%, var(--rune-zone-graveyard-cast), transparent 70%),
+    var(--rune-control-plate);
+}
+
+/* Exile: the cool rune-iris glass, lit from the top edge the iris opens at, and
+   a visibly *larger* pane than the cards it holds (§3.3's outline diagnostic). */
+.frame[data-zone='exile'] .face {
+  background:
+    radial-gradient(120% 80% at 50% 0%, var(--rune-zone-exile-cast), transparent 70%),
+    var(--rune-control-plate);
+}
+
+.frame[data-zone='exile'] .grid {
+  padding: var(--rune-space-6);
+  border-radius: var(--rune-radius-lg);
+  background: var(--rune-zone-exile-pane);
+  box-shadow: inset 0 0 0 1px var(--rune-zone-exile-rim);
+}
+
+/* ── Heading ───────────────────────────────────────────────────────────────── */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rune-space-1);
+  padding-right: var(--rune-touch);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--rune-font-display);
+  font-size: var(--rune-type-title);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--rune-text);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--rune-type-caption);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+
+.close {
+  position: absolute;
+  top: var(--rune-space-4);
+  right: var(--rune-space-4);
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0;
+  border: none;
+  border-radius: var(--rune-radius-md);
+  background: transparent;
+  color: var(--rune-text-muted);
+  font-size: var(--rune-type-title);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--rune-text);
+  background: var(--rune-region-bg-soft);
+}
+
+/* ── The grid of faces ─────────────────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--zb-card-w), 1fr));
+  gap: var(--rune-space-7);
+  justify-items: center;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cell {
+  display: flex;
+}
+
+/* The card is the hit box and paints nothing: the face inside draws the card,
+   at its own tier box, so the browser can never restyle a card face. */
+.card {
+  display: block;
+  min-width: var(--rune-touch);
+  min-height: var(--rune-touch);
+  padding: 0;
+  border: 0;
+  border-radius: var(--rune-radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: transform var(--rune-transition);
+}
+
+.card:hover,
+.card:focus-visible {
+  transform: translateY(-4px);
+}
+
+.card:focus-visible {
+  outline: 3px solid var(--rune-accent-gold);
+  outline-offset: 3px;
+}
+
+/* ── The empty state ───────────────────────────────────────────────────────── */
+/* `zone-geography.md` §Empty states: a quiet etched outline of the card
+   silhouette carrying the zone glyph — a designed rest state, not a sentence
+   standing in for a pile. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rune-space-6);
+  padding: var(--rune-space-10) 0;
+}
+
+.emptySilhouette {
+  display: grid;
+  place-items: center;
+  width: var(--zb-card-w);
+  aspect-ratio: var(--zb-card-w) / var(--zb-card-h);
+  border: 1px dashed var(--rune-border-strong);
+  border-radius: var(--rune-radius-lg);
+  color: var(--rune-text-muted);
+  opacity: 0.35;
+}
+
+.emptyNote {
+  margin: 0;
+  font-size: var(--rune-type-body);
+  color: var(--rune-text-muted);
+}
+
+/* ── Block controls ────────────────────────────────────────────────────────── */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--rune-space-7);
+}
+
+.pageButton {
+  width: var(--rune-touch);
+  height: var(--rune-touch);
+  border: 1px solid var(--rune-border-strong);
+  border-radius: var(--rune-radius-md);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-title);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pageButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pageLabel {
+  margin: 0;
+  font-size: var(--rune-type-caption);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rune-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+
+  .card:hover,
+  .card:focus-visible {
+    transform: none;
+  }
+}

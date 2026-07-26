@@ -678,7 +678,11 @@ other card (an opponent's permanent, an inert hand card) on a transparent, focus
 **inspect surface** — invisible, but keyboard/AT-reachable, so no visible control
 scales with the board. A peek renders as a non-blocking, `pointer-events: none`
 preview (the transient `CardInspect`) in a fixed home, honoring `prefers-reduced-motion`;
-right-click / select+I / activating a surface pins the full panel. Hover and
+right-click / select+I / activating a surface pins it. Since #569 all three states draw the
+**real card face** (`card/dom/CardFace` at its `inspect` tier) brought forward over the
+arena, with a small annex for what a printed face has no home for; a pin opened while a
+decision is live parks clear of the action column and drops its veil, so neither the
+decision nor any candidate it lit is covered. Hover and
 long-press are suppressed mid-pick (targeting); pinning stays reachable.
 
 ## Spectate mode

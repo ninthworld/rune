@@ -214,6 +214,13 @@ export function cardVisualSignature(data: CardDisplayData, tier: RenderTier = 'f
 export interface ManaPip {
   /** The symbol as displayed inside the pip, e.g. `"1"` or `"G"`. */
   symbol: string;
+  /**
+   * The symbol's spoken name, e.g. `"three generic mana"` (issue #462). A pip
+   * draws a bare glyph, so this is the only thing a screen reader has to say
+   * about it; the drawn pip carries it as an `aria-label`, which costs no node.
+   * An unrecognized code speaks itself rather than vanishing.
+   */
+  name: string;
   /** Pip disc fill color. */
   bg: string;
   /** Pip glyph color. */
@@ -234,8 +241,8 @@ export function parseManaCost(manaCost: string): ManaPip[] {
   return tokenizeNotation(manaCost).flatMap((token) => {
     if (token.kind === 'text') return [];
     if (token.kind === 'unknown') {
-      return [{ symbol: token.code, bg: PIP.N.bg, fg: PIP.N.fg }];
+      return [{ symbol: token.code, name: token.code, bg: PIP.N.bg, fg: PIP.N.fg }];
     }
-    return [{ symbol: token.caption, bg: token.swatch.bg, fg: token.swatch.fg }];
+    return [{ symbol: token.caption, name: token.name, bg: token.swatch.bg, fg: token.swatch.fg }];
   });
 }

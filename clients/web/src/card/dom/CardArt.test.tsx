@@ -506,17 +506,25 @@ describe('no other stylesheet sizes a card image (#527)', () => {
     }
   });
 
-  it('leaves the inspect panel chrome with decoration only', () => {
+  it('leaves the table chrome with no card-art rules at all', () => {
+    // Issue #569 moved inspect onto the shared `CardFace`, whose `inspect` tier
+    // mounts the reserved slot itself — so the table chrome no longer decorates
+    // a card image, and the containment guarantee rests entirely on the
+    // primitive. Anything named `inspectArt*` reappearing here is a surface
+    // starting to size a card image again.
     const css = read('table', 'chrome.module.css');
-    const body = ruleOf(css, 'inspectArt');
-    expect(body).not.toBe('');
-    expect(body).not.toMatch(/(^|[;{]\s*)(width|height|max-height|max-width):/);
-    expect(body).not.toContain('object-fit');
-    expect(body).not.toContain('aspect-ratio');
-    // And the chrome carries NO art-mode variant at all: the reserved slot is
-    // one identical element under both ADR 0024 art styles, so the panel's
-    // no-shift guarantee does not rest on which declarations are geometric.
-    expect(ruleOf(css, 'inspectArtFull')).toBe('');
-    expect(css).not.toContain('inspectArtFull');
+    expect(css).not.toContain('inspectArt');
+  });
+
+  it('leaves the inspect and zone-browser stages with no card-art rules either', () => {
+    for (const sheet of [
+      read('table', 'inspect.module.css'),
+      read('table', 'zone-browser.module.css'),
+    ]) {
+      expect(sheet).not.toContain('object-fit');
+      // `.face` in either stage positions the card; it must never size the image
+      // inside it (the tier's own box is the only thing that may).
+      expect(ruleOf(sheet, 'face')).not.toContain('aspect-ratio');
+    }
   });
 });
