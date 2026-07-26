@@ -491,12 +491,25 @@ ADR 0020 specifies, and the chevron is the door to setting one.
 When `view.auto_passed` is set, the plaque shows the transient "Auto-passed"
 badge (shipped behaviour) and the chevron's affordance gets a one-shot gold
 outline for ≤ 1 s to point at the fix — display-only, dropped on the next view.
-`view.auto_passed_steps` says *where* the settle acted for this seat, so the
-badge's accessible name names those steps and each one is marked in the step
-list with its own glyph (`↷`, distinct from the turn trail's `✓` — "you were
-passed here" is a stronger claim than "the turn went through here", and the two
-are never both drawn on one step). Neither mark animates, so the reduced-motion
-form carries exactly the same information.
+`view.auto_passed_steps` says *where* the settle acted for this seat — an ordered
+path of turn-and-step positions, which the plaque reports in two places because
+neither alone can carry all of it:
+
+- the **badge's accessible name** reads the whole path in order, grouped into
+  per-turn runs ("Auto-passed for you at End Step on turn 1, then Upkeep, Draw
+  and End Step on turn 2"). This is where a settle that crossed a turn is
+  actually reported, since a twelve-row list cannot show a step belonging to two
+  turns at once. Every occurrence is spoken; nothing is de-duplicated.
+- the **step list** marks the positions belonging to `view.turn` only, with its
+  own glyph (`↷`, distinct from the turn trail's `✓` — "you were passed here" is
+  a stronger claim than "the turn went through here", and the two are never both
+  drawn on one step). A step the settle visited twice this turn carries a count
+  (`↷×2`), because one row and two visits are different quantities.
+
+Marking a row from a *previous* turn's entry would claim a skip at a step this
+turn has not reached, so the filter is not an optimisation — it is the
+correctness condition. Neither mark animates, so the reduced-motion form carries
+exactly the same information.
 
 ---
 
@@ -921,7 +934,8 @@ The normative mapping. Every interactive state must appear here with a concrete
 | Chevron → step list | `PHASES` (static) | — |
 | Per-step stop toggle (tri-state) | `view.stops`, `view.own_turn_stops` | `SetStops{stops:[Phase…], own_turn:[Phase…]}` |
 | Auto-passed badge | `view.auto_passed` | — |
-| Per-step "passed for you here" mark | `view.auto_passed_steps` | — |
+| Per-step "passed for you here" mark (counted) | `view.auto_passed_steps` entries whose `turn` is `view.turn` | — |
+| Auto-passed badge's spoken path | all of `view.auto_passed_steps`, grouped into per-turn runs | — |
 | Deadline chip / warning frame | `view.action_deadline` | — |
 | Rejection shake + toast | `view.action_rejected` | — |
 | "Waiting" / compact cluster | `valid_actions` empty | — |

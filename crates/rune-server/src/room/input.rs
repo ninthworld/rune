@@ -164,9 +164,15 @@ impl Room {
                 break;
             }
             // Where the room is acting, recorded *before* the action moves the game
-            // on — the step the seat was skipped at is the one it held priority in,
-            // not the one the pass lands in (issue #455).
-            let here = phase_of(self.state.step);
+            // on — the position the seat was skipped at is the one it held priority
+            // in, not the one the pass lands in (issue #455). The turn rides along
+            // because a repeated step is not evidence of a turn boundary: an extra
+            // combat phase (CR 506.1) revisits the combat steps inside one turn. Only
+            // the room can say which happened, so only the room does.
+            let here = AutoPassedStep {
+                phase: phase_of(self.state.step),
+                turn: self.state.turn,
+            };
             let next = apply_action(&self.state, &action, &self.db);
             // Defensive: a step that does not change state would loop forever.
             if next == self.state {
@@ -176,7 +182,9 @@ impl Room {
             if let Some(steps) = self.auto_passed_steps.get_mut(seat) {
                 // Several priority windows inside one step (each stack resolution
                 // opens another) collapse to one entry: the seat was skipped *at*
-                // that step, and saying so three times reads as three steps.
+                // that position, and saying so three times reads as three steps. Only
+                // *consecutive* identical positions collapse — a position genuinely
+                // revisited later in the path is a second visit and stays one.
                 if steps.last() != Some(&here) {
                     steps.push(here);
                 }

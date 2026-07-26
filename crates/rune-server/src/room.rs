@@ -41,7 +41,7 @@
 //! `impl Room` block can reach the private fields as an ancestor module.
 
 use rune_engine::{CardDatabase, GameState};
-use rune_protocol::{ActionAck, GameView, MatchFormat, Phase, SpectatorView};
+use rune_protocol::{ActionAck, AutoPassedStep, GameView, MatchFormat, Phase, SpectatorView};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
@@ -148,13 +148,14 @@ pub struct Room {
     /// sent `set_stops`. [`StopPolicy::None`] by default, so every existing room —
     /// and every headless or AI-only game — starts exactly where ADR 0020 left it.
     stop_policy: StopPolicy,
-    /// The steps the room acted at on each seat's behalf during the most recent
-    /// settle (issues #264 and #455), in the order it acted: a transient,
+    /// The turn-and-step positions the room acted at on each seat's behalf during the
+    /// most recent settle (issues #264 and #455), in the order it acted: a transient,
     /// display-only signal, recomputed each settle and projected into that seat's
     /// [`GameView::auto_passed`]/[`GameView::auto_passed_steps`] on the following
-    /// broadcast so a client can say not just *that* it was skipped but *where*.
+    /// broadcast so a client can say not just *that* it was skipped but *where* — and,
+    /// because each entry carries its own turn, where a boundary actually fell.
     /// Not load-bearing state — the authoritative record of a settle is the game log.
-    auto_passed_steps: Vec<Vec<Phase>>,
+    auto_passed_steps: Vec<Vec<AutoPassedStep>>,
     /// The **acknowledgement** each seat is owed for its most recent correlated
     /// submission (issue #554), indexed by seat. Written when a `ChooseAction`
     /// carrying a [`ChooseAction::submission`](rune_protocol::ChooseAction) is routed

@@ -62,10 +62,23 @@ fn issue_455_own_turn_stops_and_auto_passed_steps_round_trip_and_elide() {
     assert!(json.get("auto_passed_steps").is_none());
 
     // The seat defaults to stopping at its own main phases, and this settle ran it
-    // through the three idle steps before combat.
+    // through the three idle steps before combat. Every entry carries its own turn.
     view.own_turn_stops = vec![Phase::PrecombatMain, Phase::PostcombatMain];
     view.auto_passed = true;
-    view.auto_passed_steps = vec![Phase::Upkeep, Phase::Draw, Phase::BeginCombat];
+    view.auto_passed_steps = vec![
+        AutoPassedStep {
+            phase: Phase::Upkeep,
+            turn: 2,
+        },
+        AutoPassedStep {
+            phase: Phase::Draw,
+            turn: 2,
+        },
+        AutoPassedStep {
+            phase: Phase::BeginCombat,
+            turn: 2,
+        },
+    ];
     let json = serde_json::to_value(&view).unwrap();
     assert_eq!(
         json["own_turn_stops"],
@@ -73,21 +86,80 @@ fn issue_455_own_turn_stops_and_auto_passed_steps_round_trip_and_elide() {
     );
     assert_eq!(
         json["auto_passed_steps"],
-        serde_json::json!(["upkeep", "draw", "begin_combat"])
+        serde_json::json!([
+            { "phase": "upkeep", "turn": 2 },
+            { "phase": "draw", "turn": 2 },
+            { "phase": "begin_combat", "turn": 2 },
+        ])
     );
     let back: GameView = serde_json::from_value(json).unwrap();
     assert_eq!(back, view);
-
-    // The step list is a *path*, not a set: a settle that crosses a turn boundary
-    // legitimately names the same step twice.
-    view.auto_passed_steps = vec![Phase::End, Phase::Upkeep, Phase::End];
-    let back: GameView = serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
-    assert_eq!(back.auto_passed_steps.len(), 3);
 
     // An older server that omits both still deserializes to the defaults.
     let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
     assert!(legacy.own_turn_stops.is_empty());
     assert!(legacy.auto_passed_steps.is_empty());
+}
+
+#[test]
+fn issue_455_the_auto_passed_path_keeps_every_occurrence_and_states_its_turn() {
+    // The path property, and the reason each entry carries a turn at all.
+    //
+    // A repeated step does NOT mean the settle crossed a turn: an extra combat phase
+    // (CR 506.1) revisits the combat steps inside one turn, and an extra cleanup
+    // (CR 514.3a) revisits cleanup. So "same phase twice" and "new turn" are
+    // independent facts, and the wire states both rather than letting a client derive
+    // one from the other — which is why the two halves of this test look alike on the
+    // phase axis and differ entirely on the turn axis.
+    let crossed = vec![
+        AutoPassedStep {
+            phase: Phase::End,
+            turn: 3,
+        },
+        AutoPassedStep {
+            phase: Phase::Upkeep,
+            turn: 4,
+        },
+        AutoPassedStep {
+            phase: Phase::End,
+            turn: 4,
+        },
+    ];
+    let within = vec![
+        AutoPassedStep {
+            phase: Phase::DeclareAttackers,
+            turn: 4,
+        },
+        AutoPassedStep {
+            phase: Phase::EndCombat,
+            turn: 4,
+        },
+        AutoPassedStep {
+            phase: Phase::DeclareAttackers,
+            turn: 4,
+        },
+    ];
+
+    for path in [&crossed, &within] {
+        let view = GameView {
+            you: "p0".into(),
+            phase: Phase::End,
+            auto_passed: true,
+            auto_passed_steps: path.clone(),
+            ..Default::default()
+        };
+        let back: GameView = serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
+        assert_eq!(
+            back.auto_passed_steps, *path,
+            "every occurrence survives in order"
+        );
+    }
+
+    // The two paths are told apart by their turns alone — a phase-only reading would
+    // call both of them a turn change, and be wrong about one of them.
+    let turns = |path: &[AutoPassedStep]| path.iter().map(|s| s.turn).collect::<Vec<_>>();
+    assert_eq!(turns(&crossed), vec![3, 4, 4]);
+    assert_eq!(turns(&within), vec![4, 4, 4]);
 }
 
 #[test]

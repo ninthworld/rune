@@ -188,13 +188,24 @@ that reasons about whether a *possible* response is *worth* making.
   **The settle now reports its path.** `auto_passed` was one boolean for a whole
   settle and never named the steps it covered — enough to say "you were skipped",
   never enough to say what you missed, which is the second half of what #455
-  reports. `GameView.auto_passed_steps` carries the steps the room acted at *for that
-  receiver*, in order, consecutive duplicates collapsed; `auto_passed` is now exactly
-  that list being non-empty. It is a path, not a set: a settle crossing a turn
-  boundary may name a step twice. It stays advisory and display-only — the
-  authoritative record of what happened inside a settle is the ADR 0021 log window,
-  which the view already carries, so a spell that resolved and a creature that died
-  while the receiver held no priority are recoverable from the same single message.
+  reports. `GameView.auto_passed_steps` carries the positions the room acted at *for
+  that receiver*, in order, consecutive duplicates collapsed; `auto_passed` is now
+  exactly that list being non-empty. It is a path, not a set: a position genuinely
+  revisited appears twice, and consumers must not de-duplicate it.
+
+  Each entry carries **its own turn**, rather than leaving a client to read a repeated
+  phase as a turn boundary. That inference looks safe and is not: an extra combat
+  phase (CR 506.1) revisits the combat steps inside one turn, and an extra cleanup
+  (CR 514.3a) revisits cleanup, so "same step twice" and "new turn" are independent
+  facts. Deriving one from the other would be the client asserting game structure the
+  server never stated — the thing this issue exists to stop. The *active player* is
+  deliberately left off: this refines an indicator, it is not a second game log, and
+  the `step_changed` entries already carry turn, active player, and phase together.
+
+  It stays advisory and display-only — the authoritative record of what happened
+  inside a settle is the ADR 0021 log window, which the view already carries, so a
+  spell that resolved and a creature that died while the receiver held no priority
+  are recoverable from the same single message.
 
 - **client polish:** richer auto-pass affordances (a log entry, a per-step "you
   were skipped here" marker) beyond the basic indicator — the per-step marker landed

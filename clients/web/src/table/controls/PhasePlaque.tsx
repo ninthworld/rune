@@ -113,25 +113,47 @@ const STOP_LABEL: Record<StopMode, { text: string; described: string }> = {
   any: { text: 'Always', described: 'stop on every turn' },
 };
 
+/** Join names as an English list: `A`, `A and B`, `A, B and C`. */
+function readAsList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
 /**
- * The accessible sentence for the auto-passed steps of the settle that produced
- * this view (issue #455) — the words behind the badge that until now could only
- * say "Auto-passed".
+ * The accessible sentence for the settle that produced this view (issue #455) — the
+ * words behind the badge, which on its own could only say "Auto-passed".
  *
- * `auto_passed_steps` is a *path*, so a settle that crossed a turn boundary can
- * name a step twice; the sentence de-duplicates for reading while the wire value
- * is left alone. Empty when the settle did not act for this receiver, which is
- * also when the badge does not render.
+ * `auto_passed_steps` is an ordered **path**, and this reads it as one: every
+ * occurrence in the order the server recorded it, split into per-turn runs so a
+ * settle that crossed a boundary says so. Nothing is de-duplicated, because a
+ * repeated step is real information — how far the game moved while the player was
+ * not asked — and dropping it is exactly what would leave a cross-turn settle
+ * looking like a single-turn one.
+ *
+ * The turn boundaries come from each entry's own `turn`, never from spotting a
+ * repeated phase: an extra combat phase (CR 506.1) repeats a step *inside* one turn,
+ * so that inference would be wrong, and inventing game structure is what the client
+ * may not do.
+ *
+ * Empty when the settle did not act for this receiver — which is also when the badge
+ * does not render — and empty for an older server that sends only the boolean.
  */
 function autoPassedSentence(view: GameView): string {
   const steps = view.auto_passed_steps ?? [];
   if (steps.length === 0) return '';
-  const names = [...new Set(steps)].map((phase) => STEP_NAME[phase]);
-  const list =
-    names.length === 1
-      ? names[0]
-      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  return `Auto-passed for you at ${list}.`;
+  // Group into consecutive runs of the same turn. The path is ordered, so a run is
+  // exactly "the part of the settle that happened on turn N" — and a run boundary is
+  // exactly a turn change, stated rather than guessed.
+  const runs: { turn: number; names: string[] }[] = [];
+  for (const { phase, turn } of steps) {
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.turn === turn) last.names.push(STEP_NAME[phase]);
+    else runs.push({ turn, names: [STEP_NAME[phase]] });
+  }
+  const clauses = runs.map(({ turn, names }) => `${readAsList(names)} on turn ${turn}`);
+  // "then" between runs: the settle moved on to another turn, and the word is what
+  // carries that in speech, where the numbers alone would run together.
+  return `Auto-passed for you at ${clauses.join(', then ')}.`;
 }
 
 export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueProps) {
@@ -155,7 +177,21 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
   // whole settle — and it is the server's own statement, not an inference from
   // the trail: a step the turn merely went through is not a step you were skipped
   // at (another seat may have held priority, or you may have acted there yourself).
-  const skipped = new Set<Phase>(view.auto_passed_steps ?? []);
+  //
+  // The step list below is **this turn's** twelve steps, so only entries the server
+  // stamped with this turn may mark a row: a settle that crossed a boundary carries
+  // the previous turn's positions too, and drawing those here would claim the seat
+  // was skipped at a step of the current turn that it has not reached yet. Counted
+  // rather than set-tested, because one turn can visit a step twice (an extra combat
+  // phase, CR 506.1) and "skipped here twice" is not "skipped here".
+  const skippedThisTurn = new Map<Phase, number>();
+  for (const { phase, turn } of view.auto_passed_steps ?? []) {
+    if (turn !== view.turn) continue;
+    skippedThisTurn.set(phase, (skippedThisTurn.get(phase) ?? 0) + 1);
+  }
+  // The whole path, every occurrence, with its turn boundaries — the badge's
+  // accessible sentence is where a cross-turn settle is actually reported, since the
+  // twelve-row list structurally cannot show a step belonging to two turns at once.
   const skippedSentence = autoPassedSentence(view);
 
   const stopMode = (phase: Phase): StopMode =>
@@ -282,7 +318,10 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
             const current = phase === view.phase;
             const mode = stopMode(phase);
             const wentThrough = passed.has(phase);
-            const wasSkipped = skipped.has(phase);
+            // How many times this turn the server said it acted here — 0 for not at
+            // all. A second visit is a real event (an extra combat phase), so the
+            // mark counts rather than merely appearing.
+            const skips = skippedThisTurn.get(phase) ?? 0;
             return (
               <li
                 key={phase}
@@ -291,7 +330,7 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
                 data-phase={phase}
                 data-current={current || undefined}
                 data-passed={wentThrough || undefined}
-                data-skipped={wasSkipped || undefined}
+                data-skipped={skips > 0 ? String(skips) : undefined}
                 data-stop={mode === 'auto' ? undefined : mode}
                 aria-current={current ? 'step' : undefined}
               >
@@ -303,17 +342,21 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
 
                       Two marks, two different claims. The check is the turn's
                       path (from `view.log`); the arrow is the stronger one the
-                      server now makes for this seat alone (`auto_passed_steps`),
-                      and it replaces the check where both are true so a step
-                      never carries two glyphs saying overlapping things. */}
-                  {wasSkipped ? (
+                      server makes for this seat alone (`auto_passed_steps`), and
+                      it replaces the check where both are true so a step never
+                      carries two glyphs saying overlapping things. A step the
+                      settle visited twice this turn says so with a count — the
+                      row exists once, the visits did not. */}
+                  {skips > 0 ? (
                     <span
                       className={s.stepPassedMark}
                       data-testid={`plaque-skipped-${phase}`}
                       role="img"
-                      aria-label="passed for you here"
+                      aria-label={
+                        skips > 1 ? `passed for you here ${skips} times` : 'passed for you here'
+                      }
                     >
-                      ↷
+                      {skips > 1 ? `↷×${skips}` : '↷'}
                     </span>
                   ) : (
                     wentThrough && (

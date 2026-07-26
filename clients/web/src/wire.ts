@@ -11,6 +11,7 @@
 import {
   type ActionAck,
   type AiOption,
+  type AutoPassedStep,
   type CardView,
   type CatalogCard,
   type CatalogFormat,
@@ -385,9 +386,9 @@ export function normalizeGameView(payload: unknown): GameView {
     // seat was not auto-passed (or an older server omits it).
     auto_passed: payload.auto_passed === true,
     // Where that settle skipped the seat (issue #455). A *path*, so unlike `stops` it
-    // may legitimately repeat a phase; the filter only drops values that are not
-    // phases at all, exactly as it does for the stop lists.
-    auto_passed_steps: normalizePhaseList(payload.auto_passed_steps),
+    // may legitimately repeat a position; nothing here de-duplicates, and every
+    // surviving entry keeps its order and its own turn.
+    auto_passed_steps: normalizeAutoPassedSteps(payload.auto_passed_steps),
     // Rejected-action feedback (issue #265): display-only, defaults to `false` on every
     // normal broadcast/resync (or when an older server omits it). Only the one re-send
     // answering a rejected action sets it, driving a transient toast.
@@ -459,14 +460,38 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
 
 /**
  * Coerce a wire value into a list of known {@link Phase} values, dropping any
- * non-phase entry. Used for `GameView.stops` (issue #264) and its `own_turn_stops` /
- * `auto_passed_steps` siblings (issue #455): the server elides each when empty, so a
- * missing or malformed value degrades to `[]` and an unrecognized future phase is
- * simply ignored rather than throwing.
+ * non-phase entry. Used for `GameView.stops` (issue #264) and its `own_turn_stops`
+ * sibling (issue #455): the server elides each when empty, so a missing or malformed
+ * value degrades to `[]` and an unrecognized future phase is simply ignored rather
+ * than throwing.
  */
 function normalizePhaseList(value: unknown): Phase[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isPhase);
+}
+
+/**
+ * Coerce a wire value into `GameView.auto_passed_steps` (issue #455): the ordered
+ * path of turn-and-step positions a settle carried the receiver through.
+ *
+ * **Order and repeats are the payload**, so this only drops entries it cannot read —
+ * it never sorts, never merges, and never de-duplicates. A settle can revisit a step
+ * both across a turn boundary and inside one turn (an extra combat phase, CR 506.1),
+ * and collapsing those occurrences would silently under-report how far the game moved.
+ * An entry missing a usable `turn` is dropped rather than defaulted, because a wrong
+ * turn would place a real skip on the wrong turn's step list — worse than omitting it.
+ */
+function normalizeAutoPassedSteps(value: unknown): AutoPassedStep[] {
+  if (!Array.isArray(value)) return [];
+  const steps: AutoPassedStep[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { phase, turn } = entry as { phase?: unknown; turn?: unknown };
+    if (!isPhase(phase)) continue;
+    if (typeof turn !== 'number' || !Number.isFinite(turn)) continue;
+    steps.push({ phase, turn });
+  }
+  return steps;
 }
 
 /**

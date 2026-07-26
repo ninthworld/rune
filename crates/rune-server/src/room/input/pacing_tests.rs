@@ -11,7 +11,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use rune_engine::Step;
-use rune_protocol::{Phase, SetStops};
+use rune_protocol::{ChooseAction, Phase, SetStops};
 
 use super::*;
 use crate::room::test_support::*;
@@ -33,6 +33,15 @@ async fn paced_resting_view(
     handle.send(RoomInput::Join { seat, outbox: tx });
     let view = wait_for_view(&mut rx).await;
     (view, handle, task)
+}
+
+/// A view's `auto_passed_steps` as `(phase, turn)` pairs — the shape these tests
+/// reason about, since the point of the field is that neither half answers alone.
+fn path(view: &GameView) -> Vec<(Phase, u32)> {
+    view.auto_passed_steps
+        .iter()
+        .map(|step| (step.phase, step.turn))
+        .collect()
 }
 
 #[tokio::test]
@@ -270,16 +279,109 @@ async fn issue_455_auto_passed_steps_name_where_the_settle_skipped_the_seat() {
     assert_eq!(view.phase, Phase::PrecombatMain);
     assert!(view.auto_passed, "the settle did act for this seat");
     assert_eq!(
-        view.auto_passed_steps,
-        vec![Phase::Untap, Phase::Upkeep, Phase::Draw],
-        "each step it was carried through, once, in order — and never the step it \
-         was handed priority at"
+        path(&view),
+        vec![(Phase::Untap, 1), (Phase::Upkeep, 1), (Phase::Draw, 1),],
+        "each position it was carried through, once, in order, each stating its own \
+         turn — and never the step it was handed priority at"
     );
     assert_eq!(
         view.auto_passed,
         !view.auto_passed_steps.is_empty(),
         "the boolean is exactly the list's summary"
     );
+    drop(handle);
+    task.await.unwrap();
+}
+
+#[tokio::test]
+async fn issue_455_a_settle_that_crosses_a_turn_keeps_both_visits_and_states_the_turn() {
+    // The cross-turn case the path exists for. Seat 1 can never act, so once seat 0
+    // is out of the way the settle runs it through the rest of seat 0's turn, the
+    // whole of its own, and into the next — visiting several steps twice.
+    //
+    // The two visits must both survive, and each must say which turn it belonged to:
+    // a client cannot read "End appears twice" as "the turn changed", because an
+    // extra combat phase (CR 506.1) repeats a step *inside* one turn. Only the server
+    // knows which happened, and this is where it says so.
+    let mut state = spell_less_state();
+    state.step = Step::Upkeep;
+    let (handle, task) = Room::new(state, db())
+        .with_auto_pass(AutoPassPolicy::On)
+        // Seat 0 stops at its own main phases (the human default); seat 1 stops
+        // nowhere, so it is the seat the settle carries across the boundary.
+        .with_stop_policy(StopPolicy::HumanMainPhases)
+        .with_ai_seats(vec![false, true])
+        .spawn();
+    let (tx0, mut rx0) = view_channel();
+    let (tx1, mut rx1) = view_channel();
+    handle.send(RoomInput::Join {
+        seat: 0,
+        outbox: tx0,
+    });
+    handle.send(RoomInput::Join {
+        seat: 1,
+        outbox: tx1,
+    });
+    let opening = wait_for_view(&mut rx0).await;
+    let _ = wait_for_view(&mut rx1).await;
+
+    // Seat 0 passes its way out of both of its own main phases; the settle then has
+    // nothing to stop for until seat 0's main phase comes round again next turn.
+    let mut view = opening;
+    for _ in 0..8usize {
+        let Some(pass) = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .cloned()
+        else {
+            break;
+        };
+        handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: pass.id.clone(),
+                token: pass.token.clone(),
+                ..Default::default()
+            }),
+        });
+        view = wait_for_view(&mut rx0).await;
+        if view.turn > 1 {
+            break;
+        }
+    }
+
+    let seat1 = rx1.borrow_and_update().clone().expect("a pushed view");
+    let crossed = path(&seat1);
+    assert!(
+        crossed.iter().any(|(_, turn)| *turn == 1) && crossed.iter().any(|(_, turn)| *turn == 2),
+        "the settle carried seat 1 across the turn boundary: {crossed:?}"
+    );
+    let repeated = crossed
+        .iter()
+        .filter(|(phase, _)| *phase == Phase::End)
+        .count();
+    assert!(
+        repeated >= 2,
+        "and both visits to the end step survive as separate entries: {crossed:?}"
+    );
+    // The turns are what tell the two visits apart. Nothing in the phase sequence
+    // alone could, which is the whole reason the field carries a turn.
+    let end_turns: Vec<u32> = crossed
+        .iter()
+        .filter(|(phase, _)| *phase == Phase::End)
+        .map(|(_, turn)| *turn)
+        .collect();
+    assert!(
+        end_turns.windows(2).any(|w| w[0] != w[1]),
+        "the repeated end step is stated as belonging to different turns: {end_turns:?}"
+    );
+    // Turns never go backwards along the path.
+    assert!(
+        crossed.windows(2).all(|w| w[0].1 <= w[1].1),
+        "the path is ordered: {crossed:?}"
+    );
+
     drop(handle);
     task.await.unwrap();
 }
@@ -360,7 +462,7 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
         "and so is the death it caused: {events:?}"
     );
     assert!(
-        view.auto_passed_steps.contains(&Phase::Upkeep),
+        path(&view).contains(&(Phase::Upkeep, 2)),
         "the seat is told its priority over that spell was passed for it, and where: \
          {:?}",
         view.auto_passed_steps

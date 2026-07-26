@@ -145,21 +145,29 @@ pub struct GameView {
     /// summary of the list below, kept because a client may want only the summary.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub auto_passed: bool,
-    /// **Which steps** the room acted at on the receiver's behalf during the settle
-    /// that produced this view (issue #455), in the order it acted, consecutive
-    /// duplicates collapsed.
+    /// **Where** the room acted on the receiver's behalf during the settle that
+    /// produced this view (issue #455): the ordered path of turn-and-step positions
+    /// it passed them through — see [`AutoPassedStep`].
     ///
-    /// [`Self::auto_passed`] says a settle skipped you; this says *where*. That is
-    /// the difference between "you were passed" and "you were passed at upkeep,
-    /// draw, and beginning of combat", and it is the whole reason the field exists:
-    /// ADR 0020's settle loop can advance a dozen steps between two broadcasts, and
-    /// a client that only knows *that* it happened cannot tell a player what they
-    /// did not get to see.
+    /// [`Self::auto_passed`] says a settle skipped you; this says where. That is the
+    /// difference between "you were passed" and "you were passed at upkeep, draw and
+    /// beginning of combat on turn 4", and it is the whole reason the field exists:
+    /// ADR 0020's settle loop can advance a dozen steps between two broadcasts, and a
+    /// client that only knows *that* it happened cannot tell a player what they did
+    /// not get to see.
     ///
-    /// A settle can cross a turn boundary, so a step may appear more than once
-    /// (non-adjacently) — the list is a path, not a set. It names only steps the
-    /// room acted at **for this receiver**; a step where another seat was passed is
-    /// that seat's entry, not this one's.
+    /// A **path, not a set.** Consecutive entries for the same position collapse (one
+    /// step opens a fresh priority window after every stack resolution, and saying so
+    /// three times reads as three steps), but a position genuinely reached twice
+    /// appears twice — which happens both across a turn boundary and *within* one
+    /// turn, since an extra combat phase (CR 506.1) revisits the combat steps and an
+    /// extra cleanup (CR 514.3a) revisits cleanup. Each entry therefore carries its
+    /// own [`turn`](AutoPassedStep::turn) rather than leaving a client to infer a
+    /// boundary from a repeat: that inference is wrong in exactly those cases, and
+    /// inventing game information is what this field exists to stop.
+    ///
+    /// It names only positions the room acted at **for this receiver**; a step where
+    /// another seat was passed is that seat's entry, not this one's.
     ///
     /// Advisory, transient, and display-only, exactly like [`Self::auto_passed`]:
     /// the UI reconstructs fully without it, `valid_actions` is unaffected, and a
@@ -167,7 +175,7 @@ pub struct GameView {
     /// happened* during a settle remains [`Self::log`] (ADR 0021), which carries the
     /// events themselves. Omitted from the wire when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub auto_passed_steps: Vec<Phase>,
+    pub auto_passed_steps: Vec<AutoPassedStep>,
     /// Whether this view was pushed **because the receiver's last in-game action was
     /// rejected** (issue #265): a stale-view race meant the chosen action was no longer
     /// on offer (unknown id, mismatched [`ValidAction::token`], or a now-illegal target),
@@ -256,6 +264,34 @@ pub struct GameView {
     /// Server-computed; never derived by the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commander_identity: Vec<CommanderIdentity>,
+}
+
+/// One position a settle passed the receiver through (issue #455): a step, and the
+/// turn that step belonged to. An entry in [`GameView::auto_passed_steps`].
+///
+/// **Why the turn rides along.** The path is ordered and may repeat a step, and the
+/// obvious reading of a repeat — "the settle crossed into a new turn" — is simply
+/// wrong twice over: an extra combat phase (CR 506.1) revisits the combat steps
+/// inside one turn, and an extra cleanup step (CR 514.3a) revisits cleanup. A client
+/// that inferred a turn boundary from a repeated phase would be asserting game
+/// structure the server never stated, which the client is not allowed to do. So the
+/// server states it. With `turn` present, a presentation can group the path into
+/// per-turn runs, keep every occurrence in order, and say where a boundary actually
+/// fell — all of it read off the one view, none of it inferred.
+///
+/// The **active player** is deliberately *not* carried. This is an indicator that
+/// refines [`GameView::auto_passed`], not a second game log: the authoritative record
+/// of whose turn it was, and of everything that happened during it, is the
+/// `step_changed` entry in [`GameView::log`] (ADR 0021), which already carries turn,
+/// active player, and phase together.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutoPassedStep {
+    /// The step the room acted at.
+    pub phase: Phase,
+    /// The turn number that step belonged to. Present on every entry — including a
+    /// single-entry path — so a client never has to decide whether it may read one
+    /// entry's turn as another's.
+    pub turn: u32,
 }
 
 #[cfg(test)]

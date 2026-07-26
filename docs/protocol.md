@@ -55,7 +55,7 @@ redacted before serialization.
 | `stops` | `Phase[]` | Receiver’s own priority-stop preferences, applying on **any** turn; omitted when empty |
 | `own_turn_stops` | `Phase[]` | The same preference for steps that stop **only while the receiver is the active player** (issue #455); omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
-| `auto_passed_steps` | `Phase[]` | Which steps the settle acted at on the receiver’s behalf, in order (issue #455); omitted when empty |
+| `auto_passed_steps` | `AutoPassedStep[]` | The ordered path of turn-and-step positions the settle acted at on the receiver’s behalf (issue #455); omitted when empty |
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
 | `action_ack` | `ActionAck?` | Acknowledgement of the receiver's last correlated submission (issue #554); rides that receiver's views from the one answering it until its next submission supersedes it, omitted for every other seat and by an older server |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
@@ -224,11 +224,34 @@ renders exactly what the server honours, defaults included, from a single view.
 
 `auto_passed_steps` says *where* a settle acted for this receiver, where `auto_passed` says
 only *that* it did. A settle can advance a dozen steps between two broadcasts, so a client
-that knows only the boolean cannot tell a player what they did not get to see. Entries are
-in the order the server acted, with consecutive duplicates collapsed (several priority
-windows inside one step are one entry); it is a **path, not a set**, so a settle that
-crosses a turn boundary may name a step more than once, non-adjacently. It names only steps
-where *this receiver* was acted for. `auto_passed` is exactly `auto_passed_steps` being
+that knows only the boolean cannot tell a player what they did not get to see. Each entry
+is an `AutoPassedStep`:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `phase` | `Phase` | The step the server acted at |
+| `turn` | `number` | The turn that step belonged to; present on every entry |
+
+Entries are in the order the server acted, with consecutive entries for the same position
+collapsed (several priority windows inside one step are one entry). It is a **path, not a
+set**: a position genuinely reached twice appears twice, and a consumer must not
+de-duplicate it — every occurrence is part of how far the game moved unasked.
+
+**Each entry carries its own turn, and a client must not infer one.** The tempting reading
+of a repeated phase — “the settle crossed into a new turn” — is wrong in two ordinary
+cases: an extra combat phase (CR 506.1) revisits the combat steps inside one turn, and an
+extra cleanup step (CR 514.3a) revisits cleanup. Only the server knows which happened, so
+the server says. With `turn` present a presentation can group the path into per-turn runs,
+keep every occurrence in order, and report a boundary where one actually fell. Note the
+consequence for any per-step UI keyed to the *current* turn (the client's phase plaque, for
+one): only entries whose `turn` matches `GameView.turn` may mark a step there, since a
+cross-turn path also carries the previous turn's positions.
+
+The **active player** is deliberately not carried: this field refines an indicator, it is
+not a second game log. Whose turn it was lives in the `step_changed` entries of `log`.
+
+The list names only positions where *this receiver* was acted for; a step where another
+seat was passed is that seat's entry. `auto_passed` is exactly `auto_passed_steps` being
 non-empty. Both are advisory, transient, and display-only, and both are omitted at their
 empty defaults — the authoritative record of what happened during a settle remains `log`
 (ADR 0021), which carries the events themselves so a resolved spell, a death, or a turn

@@ -11,7 +11,7 @@
  */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { GameView, Phase } from '../../protocol';
+import type { AutoPassedStep, GameView, Phase } from '../../protocol';
 import { PHASES } from '../../protocol';
 import { PhasePlaque } from './PhasePlaque';
 import { PHASE_GROUPS, STEP_NAME, pipStates } from './phaseSteps';
@@ -288,6 +288,9 @@ describe('the auto-passed cue (§5.2)', () => {
  * the server actually makes about this seat.
  */
 describe('turn pacing legibility (issue #455)', () => {
+  /** One `auto_passed_steps` entry: a step, and the turn the server stamped it with. */
+  const at = (phase: Phase, turn: number): AutoPassedStep => ({ phase, turn });
+
   function trailView(overrides: Partial<GameView> = {}): GameView {
     return viewWith({
       turn: 2,
@@ -374,9 +377,11 @@ describe('turn pacing legibility (issue #455)', () => {
     // The pacing contract's second half. `auto_passed_steps` is the server's own
     // per-seat statement, so the mark is not inferred from the trail: a step the
     // turn merely went through is not a step this seat was passed at.
-    render(<PhasePlaque view={trailView({ auto_passed: true, auto_passed_steps: ['untap'] })} />);
+    render(
+      <PhasePlaque view={trailView({ auto_passed: true, auto_passed_steps: [at('untap', 2)] })} />,
+    );
     fireEvent.click(screen.getByTestId('plaque-chevron'));
-    expect(screen.getByTestId('plaque-step-untap').getAttribute('data-skipped')).toBe('true');
+    expect(screen.getByTestId('plaque-step-untap').getAttribute('data-skipped')).toBe('1');
     // On the path, but the server did not say the seat was passed there.
     expect(screen.getByTestId('plaque-step-draw').getAttribute('data-passed')).toBe('true');
     expect(screen.getByTestId('plaque-step-draw').getAttribute('data-skipped')).toBeNull();
@@ -385,7 +390,9 @@ describe('turn pacing legibility (issue #455)', () => {
   it('gives a skipped step its own glyph and phrase, replacing the trail mark', () => {
     // Two claims, two glyphs, and never both on one step — and, as with the trail,
     // no animation, so the reduced-motion reading is identical.
-    render(<PhasePlaque view={trailView({ auto_passed: true, auto_passed_steps: ['untap'] })} />);
+    render(
+      <PhasePlaque view={trailView({ auto_passed: true, auto_passed_steps: [at('untap', 2)] })} />,
+    );
     fireEvent.click(screen.getByTestId('plaque-chevron'));
     const mark = screen.getByTestId('plaque-skipped-untap');
     expect(mark.textContent).toBe('↷');
@@ -393,18 +400,88 @@ describe('turn pacing legibility (issue #455)', () => {
     expect(screen.queryByTestId('plaque-passed-untap')).toBeNull();
   });
 
-  it("names the skipped steps in the badge's accessible sentence", () => {
+  it("names the skipped steps in the badge's accessible sentence, with their turn", () => {
     // The drawn word stays "Auto-passed" — the plate has no room for a list — but
     // what a screen reader is told is now the same fact the step list marks, which
     // is the non-visual half of the reduced-motion requirement.
     render(
       <PhasePlaque
-        view={trailView({ auto_passed: true, auto_passed_steps: ['untap', 'upkeep', 'draw'] })}
+        view={trailView({
+          auto_passed: true,
+          auto_passed_steps: [at('untap', 2), at('upkeep', 2), at('draw', 2)],
+        })}
       />,
     );
     const badge = screen.getByTestId('plaque-auto-passed');
     expect(badge.textContent).toBe('Auto-passed');
-    expect(badge.getAttribute('aria-label')).toBe('Auto-passed for you at Untap, Upkeep and Draw.');
+    expect(badge.getAttribute('aria-label')).toBe(
+      'Auto-passed for you at Untap, Upkeep and Draw on turn 2.',
+    );
+  });
+
+  it('reports a settle that crossed a turn, keeping every occurrence in order', () => {
+    // The case the path exists for, and the one a `Set` silently destroyed: the
+    // settle ran the tail of turn 1, the whole of turn 2's opening, and came to rest.
+    // "End" appears twice and must be heard twice, each on its own turn — otherwise
+    // the player cannot tell a turn changed, let alone how far the game advanced.
+    render(
+      <PhasePlaque
+        view={trailView({
+          auto_passed: true,
+          auto_passed_steps: [at('end', 1), at('upkeep', 2), at('draw', 2), at('end', 2)],
+        })}
+      />,
+    );
+    expect(screen.getByTestId('plaque-auto-passed').getAttribute('aria-label')).toBe(
+      'Auto-passed for you at End Step on turn 1, then Upkeep, Draw and End Step on turn 2.',
+    );
+  });
+
+  it('marks only the current turn on the twelve-step list of a cross-turn settle', () => {
+    // The list is *this turn's* structure, so a previous turn's position may not
+    // mark a row on it: the view is at turn 2's precombat main and has not reached
+    // turn 2's end step, so marking "End Step" from the turn-1 entry would claim a
+    // skip at a step the game has not been to yet. The full path still reaches the
+    // player through the badge's sentence, which is not bound to twelve rows.
+    render(
+      <PhasePlaque
+        view={trailView({
+          auto_passed: true,
+          auto_passed_steps: [at('end', 1), at('upkeep', 2)],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    expect(screen.getByTestId('plaque-step-upkeep').getAttribute('data-skipped')).toBe('1');
+    expect(screen.getByTestId('plaque-step-end').getAttribute('data-skipped')).toBeNull();
+  });
+
+  it('counts a step the settle visited twice within one turn', () => {
+    // A repeat is not evidence of a turn change — an extra combat phase (CR 506.1)
+    // revisits the combat steps inside one turn, which is why the turn is carried
+    // per entry rather than inferred. One row, two visits, so the row says two.
+    render(
+      <PhasePlaque
+        view={trailView({
+          auto_passed: true,
+          auto_passed_steps: [
+            at('declare_attackers', 2),
+            at('end_combat', 2),
+            at('declare_attackers', 2),
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByTestId('plaque-auto-passed').getAttribute('aria-label')).toBe(
+      'Auto-passed for you at Declare Attackers, End of Combat and Declare Attackers on turn 2.',
+    );
+    fireEvent.click(screen.getByTestId('plaque-chevron'));
+    expect(screen.getByTestId('plaque-step-declare_attackers').getAttribute('data-skipped')).toBe(
+      '2',
+    );
+    const mark = screen.getByTestId('plaque-skipped-declare_attackers');
+    expect(mark.textContent).toBe('↷×2');
+    expect(mark.getAttribute('aria-label')).toBe('passed for you here 2 times');
   });
 
   it('claims nothing beyond the boolean when the server names no steps', () => {
