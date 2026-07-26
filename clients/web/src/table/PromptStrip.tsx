@@ -53,7 +53,7 @@ export interface MultiSelectBanner {
    * prompt already names the attacker — issue #347). Absent when there is no walked
    * slot (a pure option decision).
    */
-  slotKind?: 'subset' | 'count' | 'order' | 'defender';
+  slotKind?: 'subset' | 'count' | 'order' | 'defender' | 'number';
 }
 
 interface Props {

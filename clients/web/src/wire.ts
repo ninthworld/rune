@@ -9,6 +9,7 @@
  * forward compatibility.
  */
 import {
+  type ActionAck,
   type AiOption,
   type CardView,
   type CatalogCard,
@@ -210,6 +211,22 @@ function normalizeCommanderTax(value: unknown): CommanderTax[] {
 }
 
 /**
+ * Normalize the **acknowledgement** of the receiver's last submission (issue #554).
+ * Genuinely optional: the presence of an ack is itself the signal that this view
+ * answers *this client's* click, so a missing or malformed value stays `undefined`
+ * rather than being invented as an empty ack. A well-formed entry needs both halves —
+ * the correlation id and an explicit verdict — so an absent `accepted` is never read
+ * as "rejected".
+ */
+function normalizeActionAck(value: unknown): ActionAck | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.submission !== 'string' || typeof value.accepted !== 'boolean') {
+    return undefined;
+  }
+  return { submission: value.submission, accepted: value.accepted };
+}
+
+/**
  * Normalize the match **format** signal (issue #553). Genuinely optional: the server
  * omits it for a room with no registered format, and an older server never sends it,
  * so a missing or malformed value stays `undefined` — "unknown format, not Commander"
@@ -307,6 +324,10 @@ export function normalizeGameView(payload: unknown): GameView {
     // normal broadcast/resync (or when an older server omits it). Only the one re-send
     // answering a rejected action sets it, driving a transient toast.
     action_rejected: payload.action_rejected === true,
+    // Submission acknowledgement (issue #554): genuinely optional and transient — it
+    // rides only the one view answering a correlated `choose_action`, so it stays
+    // `undefined` on every ordinary broadcast, resync, and older-server frame.
+    action_ack: normalizeActionAck(payload.action_ack),
     // Public display names (issue #294): a string→string map the server elides when
     // empty; default to `{}` so every surface can look a name up and fall back when
     // absent (older servers never send it).

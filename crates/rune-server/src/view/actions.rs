@@ -134,6 +134,10 @@ fn build_mulligan_decision(state: &GameState, id: String) -> Projected {
             subject,
             requirements,
             prompts,
+            // A pre-game decision is answered in a prompt, not by dragging anything
+            // anywhere, so it names no destination (issue #554) — and a client
+            // therefore offers no drop target for it.
+            destinations: Vec::new(),
             token,
         },
         bind: Bind::MulliganDecision,
@@ -181,6 +185,10 @@ fn build_discard(state: &GameState, id: String) -> Projected {
             subject,
             requirements,
             prompts,
+            // The card to discard is picked in the prompt; the destination that would
+            // describe it (the graveyard) is not where the *gesture* goes, so this
+            // action names none (issue #554).
+            destinations: Vec::new(),
             token,
         },
         bind: Bind::DiscardFromHand,
@@ -219,7 +227,7 @@ fn valid_action_view(
     ) = match action {
         Action::PassPriority => (
             "pass_priority".to_string(),
-            "Pass priority".to_string(),
+            pass_priority_label(state),
             Vec::new(),
             Vec::new(),
         ),
@@ -350,6 +358,7 @@ fn valid_action_view(
             .unwrap_or(false),
         _ => false,
     };
+    let destinations = action_destinations(state, action, mana_ability);
     let token = content_token(&kind, &subject, &requirements, &prompts);
     ValidAction {
         id,
@@ -359,6 +368,7 @@ fn valid_action_view(
         mana_ability,
         requirements,
         prompts,
+        destinations,
         token,
     }
 }
@@ -482,6 +492,7 @@ mod tests {
 
         // Both options resolve back to the concrete engine actions.
         let keep = ChooseAction {
+            submission: String::new(),
             action_id: decision.id.clone(),
             token: decision.token.clone(),
             targets: vec![TargetChoice {
@@ -494,6 +505,7 @@ mod tests {
             Some(Action::Keep { bottom: Vec::new() }),
         );
         let mull = ChooseAction {
+            submission: String::new(),
             action_id: decision.id.clone(),
             token: decision.token.clone(),
             targets: vec![TargetChoice {
@@ -507,6 +519,7 @@ mod tests {
         );
         // An unknown option id is rejected.
         let bogus = ChooseAction {
+            submission: String::new(),
             action_id: decision.id.clone(),
             token: decision.token.clone(),
             targets: vec![TargetChoice {
@@ -585,6 +598,7 @@ mod tests {
 
         // A keep naming one card to bottom resolves to a Keep bottoming exactly it.
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: decision.id.clone(),
             token: decision.token.clone(),
             targets: vec![
@@ -610,6 +624,7 @@ mod tests {
         // A keep that omits the owed bottoming is rejected (the mandatory slot is
         // unfilled), so a stale/empty answer cannot bottom nothing when one is owed.
         let empty_keep = ChooseAction {
+            submission: String::new(),
             action_id: decision.id.clone(),
             token: decision.token.clone(),
             targets: vec![TargetChoice {
@@ -623,6 +638,7 @@ mod tests {
         // (issue #451): the wire now advertises the count, so a client can keep this
         // answer from ever being sent, and the server still refuses it if one does.
         let over_keep = ChooseAction {
+            submission: String::new(),
             action_id: decision.id.clone(),
             token: decision.token.clone(),
             targets: vec![
@@ -665,6 +681,7 @@ mod tests {
 
         // And that keep resolves with no bottoming at all.
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: decision.id.clone(),
             token: decision.token.clone(),
             targets: vec![TargetChoice {
@@ -725,6 +742,7 @@ mod tests {
 
         // Choosing one card resolves to a Discard of exactly that instance.
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: discard.id.clone(),
             token: discard.token.clone(),
             targets: vec![TargetChoice {
@@ -739,6 +757,7 @@ mod tests {
 
         // A card not among the candidates (never in hand) is rejected.
         let foreign = ChooseAction {
+            submission: String::new(),
             action_id: discard.id.clone(),
             token: discard.token.clone(),
             targets: vec![TargetChoice {

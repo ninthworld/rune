@@ -168,6 +168,10 @@ impl Room {
         // rejection re-send, and the game state is unchanged, so this rides an otherwise
         // ordinary resync — advisory presentation, never load-bearing.
         view.action_rejected = action_rejected;
+        // The acknowledgement for this seat's last correlated submission (issue #554),
+        // *taken* rather than copied: it answers exactly one view, so a later resync or
+        // reconnect never re-fires it. Every other seat's view carries none.
+        view.action_ack = self.pending_acks.get_mut(seat).and_then(Option::take);
         if let Some(at) = self.deadline {
             if !view.valid_actions.is_empty() {
                 view.action_deadline =
@@ -290,6 +294,7 @@ mod tests {
                 action_id: action.id,
                 token: action.token,
                 targets: vec![],
+                ..Default::default()
             }),
         }));
         let updated = wait_for_spectator_view(&mut srx).await;
@@ -403,6 +408,122 @@ mod tests {
         for absent in ["format", "commander_identity"] {
             assert!(json.get(absent).is_none(), "`{absent}` elides at default");
         }
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_554_a_submission_is_acknowledged_once_on_the_view_that_answers_it() {
+        // The correlation loop: a client tags its `ChooseAction` with an opaque id, and
+        // exactly the view answering *that* submission carries the ack. This is what
+        // `action_rejected` alone could not give — it says something was refused, never
+        // which submission, so a pending indicator could not tell its own answer from a
+        // broadcast another seat caused.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        let view = wait_for_view(&mut rx0).await;
+        assert!(
+            view.action_ack.is_none(),
+            "a join resync answers no submission"
+        );
+        let pass = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .cloned()
+            .expect("a pass is offered to the priority holder");
+
+        // An accepted submission comes back acknowledged, by its own id.
+        assert!(handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                submission: "s:17".into(),
+                action_id: pass.id.clone(),
+                token: pass.token.clone(),
+                targets: vec![],
+            }),
+        }));
+        let answered = wait_for_view(&mut rx0).await;
+        let ack = answered
+            .action_ack
+            .clone()
+            .expect("the submission is acked");
+        assert_eq!(ack.submission, "s:17");
+        assert!(ack.accepted);
+
+        // A stale/unknown id is rejected — and the rejection is tied to the submission
+        // that caused it, not merely flagged in the abstract.
+        assert!(handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                submission: "s:18".into(),
+                action_id: "a-nope".into(),
+                token: String::new(),
+                targets: vec![],
+            }),
+        }));
+        let rejected = wait_for_view(&mut rx0).await;
+        let ack = rejected
+            .action_ack
+            .clone()
+            .expect("a rejection is acked too");
+        assert_eq!(ack.submission, "s:18");
+        assert!(!ack.accepted);
+        assert!(
+            rejected.action_rejected,
+            "the existing flag still rides too"
+        );
+
+        // Delivered exactly once: a later resync (a reconnect) never re-fires it.
+        assert!(handle.send(RoomInput::Leave { seat: 0 }));
+        let (tx0b, mut rx0b) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0b
+        }));
+        let resumed = wait_for_view(&mut rx0b).await;
+        assert!(resumed.action_ack.is_none());
+
+        drop(handle);
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn issue_554_an_uncorrelated_submission_is_answered_exactly_as_before() {
+        // A client that sends no correlation id gets no ack, so the wire an older
+        // client sees is byte-for-byte what it saw before issue #554.
+        let (handle, task) = Room::new(dealt_state(), db()).spawn();
+        let (tx0, mut rx0) = view_channel();
+        assert!(handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0
+        }));
+        let view = wait_for_view(&mut rx0).await;
+        let pass = view
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .cloned()
+            .expect("a pass is offered");
+        assert!(handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: pass.id.clone(),
+                token: pass.token.clone(),
+                ..Default::default()
+            }),
+        }));
+        let answered = wait_for_view(&mut rx0).await;
+        assert!(answered.action_ack.is_none());
+        assert!(serde_json::to_value(&answered)
+            .unwrap()
+            .get("action_ack")
+            .is_none());
+
         drop(handle);
         task.await.unwrap();
     }

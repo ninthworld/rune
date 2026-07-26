@@ -41,7 +41,7 @@
 //! `impl Room` block can reach the private fields as an ancestor module.
 
 use rune_engine::{CardDatabase, GameState};
-use rune_protocol::{GameView, MatchFormat, Phase, SpectatorView};
+use rune_protocol::{ActionAck, GameView, MatchFormat, Phase, SpectatorView};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
@@ -141,6 +141,13 @@ pub struct Room {
     /// affected seat's [`GameView::auto_passed`] on the following broadcast so a
     /// client can show a "passed for you" indicator. Not load-bearing state.
     auto_passed_seats: Vec<bool>,
+    /// The **acknowledgement** each seat is owed for its most recent correlated
+    /// submission (issue #554), indexed by seat. Written when a `ChooseAction`
+    /// carrying a [`ChooseAction::submission`](rune_protocol::ChooseAction) is routed
+    /// — accepted or rejected — and **taken** by the next view sent to that seat, so
+    /// it is delivered exactly once and a later resync never re-fires it. Transient
+    /// and display-only, like [`Self::auto_passed_seats`]; the game never reads it.
+    pending_acks: Vec<Option<ActionAck>>,
     /// The connected **spectators** (ADR 0022, issue #351): each a latest-value sender
     /// the room pushes a redacted [`SpectatorView`] to on every broadcast. Spectators
     /// own no seat and are not held open across disconnects — a sender whose receiver
@@ -169,6 +176,7 @@ impl Room {
             auto_pass: AutoPassPolicy::Off,
             stops: vec![Vec::new(); seat_count],
             auto_passed_seats: vec![false; seat_count],
+            pending_acks: (0..seat_count).map(|_| None).collect(),
             spectators: Vec::new(),
         }
     }

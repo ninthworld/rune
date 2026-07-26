@@ -5,7 +5,8 @@
  *
  * - A **sheet-mode slot**: an `order` list (items in current order) or a non-canvas
  *   `select_from_zone` (graveyard/library candidates with the chosen ones marked),
- *   shown through {@link PromptSurface}.
+ *   shown through {@link PromptSurface}; or a `number` slot (issue #554), which has no
+ *   candidates at all and is answered through {@link NumberPromptSurface}.
  * - An **option picker**: the named choices of an option slot (e.g. a mulligan's
  *   keep / take-another), each disabled until the slots *that* choice requires are
  *   answered (a keep owing a bottoming waits for exactly the owed cards).
@@ -20,6 +21,7 @@
  * itself, only routing toggles/reorders/option-picks back through the handlers.
  */
 import type { GameView } from '../protocol';
+import { NumberPromptSurface } from './NumberPromptSurface';
 import { PromptSurface } from './PromptSurface';
 import { SymbolText, hasSymbolNotation, symbolNotationText } from '../chrome/symbols';
 import { activeChosen as msActiveChosen, hasOptions, optionSubmittable } from './multiSelect';
@@ -36,6 +38,8 @@ interface Props {
   msSlot: MultiSelectSlot | null;
   onToggle: (entityId: string) => void;
   onMove: (entityId: string, direction: -1 | 1) => void;
+  /** Set the active `number` slot's value (issue #554). */
+  onNumber: (value: number) => void;
   onChooseOption: (optionId: string) => void;
 }
 
@@ -46,6 +50,7 @@ export function DecisionSheet({
   msSlot,
   onToggle,
   onMove,
+  onNumber,
   onChooseOption,
 }: Props) {
   // The option picker's named choices (issue #157), if the active session poses one.
@@ -57,13 +62,17 @@ export function DecisionSheet({
   // or a non-canvas `select_from_zone` (candidates with chosen).
   const surfaceChosen = multiSelect ? msActiveChosen(multiSelect) : [];
   const surfaceItems =
-    sheetMode && msSlot
+    sheetMode && msSlot && msSlot.kind !== 'number'
       ? (msSlot.kind === 'order' ? surfaceChosen : msSlot.candidates).map((id) => ({
           id,
           label: cardNameOf(view, id),
           chosen: surfaceChosen.includes(id),
         }))
       : [];
+
+  // A `number` slot's answer is the value as a decimal string (issue #554); the
+  // session pre-fills the server's minimum, so there is always one to render.
+  const numberValue = Number(surfaceChosen[0] ?? msSlot?.min ?? 0);
 
   // Nothing is answered in the sheet itself: the picks are on the scene, so the
   // scrim must let them through (the panel keeps its own pointer events).
@@ -76,7 +85,16 @@ export function DecisionSheet({
       data-pointer-through={passThrough || undefined}
     >
       <div className={s.sheetPanel}>
-        {sheetMode && msSlot && (
+        {sheetMode && msSlot && msSlot.kind === 'number' && (
+          <NumberPromptSurface
+            prompt={msSlot.prompt}
+            min={msSlot.min ?? 0}
+            max={msSlot.max ?? msSlot.min ?? 0}
+            value={numberValue}
+            onChange={onNumber}
+          />
+        )}
+        {sheetMode && msSlot && msSlot.kind !== 'number' && (
           <PromptSurface
             mode={msSlot.kind === 'order' ? 'order' : 'select'}
             prompt={msSlot.prompt}

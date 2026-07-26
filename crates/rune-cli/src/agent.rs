@@ -403,6 +403,7 @@ where
             action_id: action.id.clone(),
             token: action.token.clone(),
             targets,
+            ..Default::default()
         }));
     }
 
@@ -423,6 +424,7 @@ where
                 action_id: pass.id.clone(),
                 token: pass.token.clone(),
                 targets: Vec::new(),
+                ..Default::default()
             }))
         }
         None => {

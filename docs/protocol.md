@@ -52,6 +52,7 @@ redacted before serialization.
 | `stops` | `Phase[]` | Receiver’s own priority-stop preferences; omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
+| `action_ack` | `ActionAck?` | Acknowledgement of the receiver's last correlated submission (issue #554); present only on the one view that answers it, omitted everywhere else and by an older server |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed on the next cast from the command zone (CR 903.8, issue #372); omitted when empty |
@@ -282,8 +283,26 @@ for an ability originating from a permanent.
   (CR 605): no targets, no stack, only mana production. Server-computed so a client may
   offer a lighter gesture — one-click tap-for-mana (ADR 0025) — for exactly these actions
   without ever classifying abilities itself. Omitted when `false`.
+- `destinations` (optional, issue #554) lists the server-authoritative surfaces this
+  action may be taken *to*, each `{ type, id, owner?, label? }` where `type` is
+  `"zone"`, `"entity"`, or `"player"` (free form — clients ignore kinds they do not
+  recognize) and `id` is a zone name, an entity id, or a player id. `owner` names whose
+  copy of a per-player zone this is and is omitted for a shared zone. **A client derives
+  its drop regions from this list alone and fails closed**: an action with no
+  `destinations` has no drop target at all. Drag remains optional input — every action
+  is also reachable by click, keyboard, and touch — so a client that ignores this field
+  loses nothing.
 - `token` binds the answer to the action’s exact current content. The client echoes it
-  verbatim and never derives or parses it.
+  verbatim and never derives or parses it. `submission` (below) is deliberately *not*
+  part of it: the token binds the action, the submission identifies the message.
+
+`label` is **contextual**, and choosing it is the server’s job (issue #554). A
+`pass_priority` is labelled `"Resolve"` when passing would resolve the top of the stack
+and `"Pass"` otherwise — the same action either way, with the same id and the same
+token, so only the presentation differs. The distinction is a rules judgment (CR 117.4
+plus CR 800.4a: an eliminated seat neither receives nor passes priority, so a round of
+passes is not a seat count), which is why the client renders the string verbatim rather
+than deciding the word itself.
 
 Current action categories include `pass_priority`, `play_land`, `cast_spell`,
 `activate_ability`, `mulligan_decision`, `discard`, `declare_attackers`,
@@ -328,6 +347,7 @@ Non-target choices use tagged `prompts`:
 | `option` | `slot`, `prompt`, `options[{id,label,requires}]` | One option id |
 | `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `candidates` | Exactly `count` candidate ids |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
+| `number` | `slot`, `prompt`, `min`, `max` | The chosen number as a decimal string |
 
 `option` is used for choices such as keep or mulligan. An option's `requires` (issue #451)
 lists the action's other slots **that choice** owes an answer to, and is omitted when it owes
@@ -342,6 +362,20 @@ discarding or bottoming cards. `order` requests a permutation of its `items`; th
 creatures, so its controller chooses the combat-damage assignment order (CR 510.1, issue
 #346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
 with 0–1 blockers produces no ordering prompt.
+
+`number` (issue #554) requests a value in the inclusive range `min`..`max` — the value
+of X, how many counters to remove, one share of a divided effect. It is answered with
+the chosen number rendered as a **decimal string** in the slot’s `chosen` array (e.g.
+`["3"]`), sharing `TargetChoice` with every other slot kind so one atomic
+`choose_action` still answers a whole action and the content `token` still binds every
+slot (the bounds are folded into it, so an answer bound to a range the server no longer
+offers is rejected like any other stale binding). **The bounds are the server’s**,
+computed from available mana, the source’s text, and the game state; the client offers a
+control over exactly that range and computes no affordability of its own. Both `min` and
+`max` are always present — a zero `min` is not elided — so the range reads completely
+rather than by inference. A *divided* value is posed as one `number` slot per recipient,
+each with its own bounds, and the server validates the total on resolution; the client
+never enforces a sum.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. In a game with more than one
@@ -384,6 +418,32 @@ prompt kinds. The server regenerates the action, checks the content token, and v
 choice against the fresh legal set. Invalid input is a no-op followed by the current
 `GameView`, and that re-send sets `action_rejected: true` (above) so the receiver gets a
 brief, non-blaming notice rather than a silently unchanged screen.
+
+A message may also carry an opaque, client-generated `submission` correlation id (issue
+#554):
+
+```json
+{
+  "type": "choose_action",
+  "action_id": "a2",
+  "token": "t00000000deadbeef",
+  "submission": "s:17"
+}
+```
+
+The server echoes it verbatim in `action_ack` on the **one** view that answers this
+message — `{ "submission": "s:17", "accepted": true }` when the action was applied,
+`accepted: false` when it was rejected (the same event `action_rejected` flags, now tied
+to a specific submission). `accepted` is always present, so a client never reads an
+absence as a verdict; the *ack itself* is the optional part, and its presence is the
+signal that “this view answers my click”. Every other broadcast, resync, and reconnect
+carries no ack, and the ack is delivered exactly once, so a later resync never re-fires
+it. The id identifies the **message**, not the action: it is never part of the content
+`token`, and resubmitting the same action with a new id is a new submission. It is
+optional — a client that omits it sends exactly the message it always sent and receives
+no ack — and, like `action_rejected`, purely advisory: the UI reconstructs fully without
+it, so a client must release a pending indicator rather than wait forever for an ack
+that an older server will never send.
 
 ### `SetStops`
 
@@ -717,6 +777,9 @@ is public data only — it never carries a deck, a roster, or any game state.
 - `valid_commands` and `valid_actions` are the only sources of interactivity.
 - Clients display server-computed characteristics and never infer legal choices.
 - Unknown fields are ignored, and omitted optional fields receive documented defaults.
+- Drag and drop is optional input. Drop regions come only from `destinations`, and an
+  action naming none has no drop target; every action stays reachable by click,
+  keyboard, and touch.
 - A default is what the protocol documents, not what the type’s zero value happens to be:
   an omitted `connected` means **connected**, an omitted `format` means **not Commander**,
   an omitted `commander_identity`/`is_commander` means no commander presentation at all.

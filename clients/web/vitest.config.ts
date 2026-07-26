@@ -34,6 +34,12 @@ export default defineConfig({
       '@protocol-fixtures/gameview-commander.json': fileURLToPath(
         new URL('../../crates/rune-protocol/fixtures/gameview-commander.json', import.meta.url),
       ),
+      // The action-contract fixture (issue #554): contextual labels, a submission
+      // acknowledgement, a numeric prompt, and server-authoritative destinations
+      // (including actions that name none). Round-tripped by the Rust crate.
+      '@protocol-fixtures/gameview-actions.json': fileURLToPath(
+        new URL('../../crates/rune-protocol/fixtures/gameview-actions.json', import.meta.url),
+      ),
     },
   },
   test: {

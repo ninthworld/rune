@@ -175,4 +175,6 @@ export const SAMPLE_GAME_VIEW: GameView = {
   format: undefined,
   // No commander designations either; normalization defaults the list to `[]` (#553).
   commander_identity: [],
+  // The sample frame answers no submission, so it carries no ack (issue #554).
+  action_ack: undefined,
 };

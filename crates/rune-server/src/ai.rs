@@ -204,6 +204,8 @@ impl RandomPolicy {
             action_id: action.id.clone(),
             token: action.token.clone(),
             targets,
+            // An in-process AI driver has no pending UI to correlate (issue #554).
+            ..Default::default()
         })
     }
 
@@ -280,6 +282,16 @@ impl RandomPolicy {
                     // "As given": a legal permutation with no ranking logic.
                     chosen: items.clone(),
                 },
+                // A numeric slot (issue #554): a uniform pick inside the server's own
+                // inclusive range, so the AI stays random-but-always-legal.
+                Prompt::Number { slot, min, max, .. } => {
+                    let span = max.saturating_sub(*min).saturating_add(1) as usize;
+                    let value = min.saturating_add(self.rng.below(span) as u32);
+                    TargetChoice {
+                        slot: slot.clone(),
+                        chosen: vec![value.to_string()],
+                    }
+                }
             };
             out.push(choice);
         }

@@ -59,8 +59,10 @@ async fn renders_numbered_menu_reprompts_invalid_and_exits_on_eof() {
     let text = String::from_utf8(out).expect("utf-8 output");
     // The whole display is reconstructed from the single pushed view.
     assert!(text.contains("Priority: p0"), "renders the pushed view");
+    // The server labels the pass contextually (issue #554): nothing is on the stack
+    // here, so the label it issues — and the CLI renders verbatim — is "Pass".
     assert!(
-        text.contains("1) Pass priority"),
+        text.contains("1) Pass"),
         "offers valid_actions as a numbered menu:\n{text}"
     );
     // Both "0" (out of range) and "banana" (non-numeric) are re-prompted locally.
@@ -126,7 +128,7 @@ async fn chosen_action_routes_through_the_engine_and_passes_priority() {
     assert!(passed, "seat 0's CLI pass moved priority to seat 1");
     let text = String::from_utf8(out).expect("utf-8 output");
     assert!(
-        text.contains("1) Pass priority"),
+        text.contains("1) Pass"),
         "the pass was offered and chosen by menu number:\n{text}"
     );
 

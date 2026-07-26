@@ -5,7 +5,7 @@
 //! no behavior change.
 
 use rune_engine::{apply_action, priority_has_no_meaningful_action, Action, PlayerId};
-use rune_protocol::{ClientMessage, SetStops};
+use rune_protocol::{ActionAck, ClientMessage, SetStops};
 use tracing::warn;
 
 use crate::view::{phase_of, resolve_action};
@@ -27,7 +27,13 @@ impl Room {
     pub(super) fn on_message(&mut self, seat: Seat, message: &ClientMessage) {
         match message {
             ClientMessage::ChooseAction(choose) => {
-                match resolve_action(&self.state, &self.db, PlayerId(seat), choose) {
+                let resolved = resolve_action(&self.state, &self.db, PlayerId(seat), choose);
+                // Correlate the answer with this exact submission (issue #554), before
+                // the state moves, so the seat's pending UI clears on *its own* answer
+                // rather than on whichever broadcast arrives next. An uncorrelated
+                // submission (no id) records nothing and the wire is unchanged.
+                self.record_ack(seat, &choose.submission, resolved.is_some());
+                match resolved {
                     Some(action) => {
                         self.state = apply_action(&self.state, &action, &self.db);
                         // Auto-pass any idle priority the action left behind (a no-op
@@ -56,6 +62,22 @@ impl Room {
                 }
             }
             ClientMessage::SetStops(set) => self.on_set_stops(seat, set),
+        }
+    }
+
+    /// Record the acknowledgement `seat` is owed for a submission (issue #554), to be
+    /// delivered on the next view sent to it. A submission with no correlation id is
+    /// not acknowledged at all — an older client sends exactly the message it always
+    /// sent and receives exactly the view it always received.
+    fn record_ack(&mut self, seat: Seat, submission: &str, accepted: bool) {
+        if submission.is_empty() {
+            return;
+        }
+        if let Some(slot) = self.pending_acks.get_mut(seat) {
+            *slot = Some(ActionAck {
+                submission: submission.to_string(),
+                accepted,
+            });
         }
     }
 

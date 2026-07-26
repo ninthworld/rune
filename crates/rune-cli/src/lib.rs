@@ -372,6 +372,9 @@ where
             action_id,
             token,
             targets,
+            // The terminal client sends one action at a time and blocks on the reply,
+            // so it needs no submission correlation id (issue #554).
+            ..Default::default()
         });
         let json = serde_json::to_string(&choose).map_err(SessionError::Encode)?;
         write
@@ -546,6 +549,33 @@ where
             Ok(Some(TargetChoice {
                 slot: slot.clone(),
                 chosen: items.clone(),
+            }))
+        }
+        // A numeric slot (issue #554): read a value inside the server's inclusive
+        // range and answer with its decimal string. The bounds are the server's, so
+        // the terminal client only re-prompts until the input lands inside them.
+        Prompt::Number {
+            slot,
+            prompt: text,
+            min,
+            max,
+        } => {
+            write_str(output, &format!("\n{text} ({min}-{max}):\n")).await?;
+            let chosen = loop {
+                write_str(output, "> ").await?;
+                output.flush().await.map_err(SessionError::Io)?;
+                line.clear();
+                if input.read_line(line).await.map_err(SessionError::Io)? == 0 {
+                    return Ok(None);
+                }
+                match line.trim().parse::<u32>() {
+                    Ok(value) if (*min..=*max).contains(&value) => break value,
+                    _ => write_str(output, &not_listed(line)).await?,
+                }
+            };
+            Ok(Some(TargetChoice {
+                slot: slot.clone(),
+                chosen: vec![chosen.to_string()],
             }))
         }
     }

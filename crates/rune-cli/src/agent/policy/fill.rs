@@ -83,6 +83,13 @@ pub fn fill_answers(view: &GameView, action: &ValidAction) -> Option<Vec<TargetC
                 // "As given": echo the items in their advertised order.
                 chosen: items.clone(),
             },
+            // A numeric slot (issue #554): the deterministic agent answers with the
+            // server's own lower bound — always legal, and the smallest commitment,
+            // matching the "simplest sound rule" every other arm here follows.
+            Prompt::Number { slot, min, .. } => TargetChoice {
+                slot: slot.clone(),
+                chosen: vec![min.to_string()],
+            },
         };
         out.push(choice);
     }

@@ -291,6 +291,19 @@ export interface GameStore {
    * increment (a counter, not a boolean, so back-to-back rejections each re-fire it).
    */
   rejectionNonce: number;
+  /**
+   * The correlation id of the action submission this client is still waiting on
+   * (issue #554), or `null` when nothing is in flight. Set when {@link choose} sends a
+   * `ChooseAction`, and cleared by the `GameView` whose `action_ack` names *this*
+   * submission — never by an unrelated broadcast, which is the whole point: another
+   * seat's action pushes a view too, and before the ack existed a pending indicator
+   * had no way to tell the two apart.
+   *
+   * Ephemeral and **never load-bearing**: the table rebuilds fully from {@link view}
+   * alone, this is not persisted, and a reconnect (which re-sends state but no ack)
+   * clears it, so a dropped answer can never wedge the UI in "pending".
+   */
+  pendingSubmission: string | null;
   /** Current connection lifecycle state. */
   status: ConnectionStatus;
   /**
@@ -396,6 +409,22 @@ export interface GameStore {
   ingest: (raw: string) => void;
 }
 
+/**
+ * The still-pending submission id after ingesting `view` (issue #554): `null` once the
+ * view acknowledges it, and unchanged when the view answers some *other* submission —
+ * which is exactly the case a bare "a view arrived" heuristic got wrong.
+ *
+ * A view carrying no ack at all also clears it. That is deliberate: a reconnect or a
+ * resync re-sends full state without an ack, and the pending marker is presentation
+ * only, so releasing it is always safe while holding it forever is not.
+ */
+function resolvePending(pending: string | null, view: GameView): string | null {
+  if (pending === null) return null;
+  const ack = view.action_ack;
+  if (ack === undefined) return null;
+  return ack.submission === pending ? null : pending;
+}
+
 const defaultSocketFactory: SocketFactory = (url) => new WebSocket(url);
 
 /** `sessionStorage` key for the reconnect session token (ADR 0012). */
@@ -458,6 +487,10 @@ const initializer: StateCreator<GameStore> = (set, get) => {
   // The lobby command kind awaiting a server reply, for non-fatal error
   // reconciliation (see PendingLobbyKind). Transient; not part of the state tree.
   let pendingLobby: PendingLobbyKind | null = null;
+  // Monotonic source of action-submission correlation ids (issue #554). Opaque to the
+  // server, which only echoes them back, so a plain counter is enough; it is scoped to
+  // the store instance, not persisted, and never derived from game state.
+  let nextSubmission = 0;
 
   const clearReconnect = (): void => {
     if (reconnectTimer !== null) {
@@ -528,6 +561,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
     lastMatch: null,
     reclaimingSession: false,
     rejectionNonce: 0,
+    pendingSubmission: null,
     status: 'idle',
     sessionEpoch: 0,
     serverUrl: null,
@@ -653,7 +687,13 @@ const initializer: StateCreator<GameStore> = (set, get) => {
       // the assembled per-slot targets. The server validates all three against
       // what it issued; no legality is computed here (hard rule).
       if (!socket) return;
-      socket.send(JSON.stringify(chooseAction(action.id, action.token, targets)));
+      // Tag the submission so the view that answers *this* click can be recognized
+      // (issue #554). Purely a correlation handle: it never participates in the
+      // content token, and the server only echoes it back in `action_ack`.
+      nextSubmission += 1;
+      const submission = `s:${nextSubmission}`;
+      set({ pendingSubmission: submission });
+      socket.send(JSON.stringify(chooseAction(action.id, action.token, targets, submission)));
     },
 
     setStops(stops): void {
@@ -678,6 +718,12 @@ const initializer: StateCreator<GameStore> = (set, get) => {
         // transient "the game moved on" toast. The flag never survives into stored
         // state — only the counter changes — so the view stays the sole load-bearing
         // truth and a resync (which clears the flag) never re-fires the toast.
+        //
+        // Submission acknowledgement (issue #554): clear the pending marker only when
+        // this frame's `action_ack` names the submission still in flight. A view
+        // answering someone else's action carries no ack (or another id), so it leaves
+        // the marker alone; a resync/reconnect carries none either, and the marker is
+        // cleared there too so a lost answer cannot wedge the UI in "pending".
         set((state) => ({
           view: frame.view,
           // A seated game frame supersedes any spectator session.
@@ -685,6 +731,7 @@ const initializer: StateCreator<GameStore> = (set, get) => {
           rejectionNonce: frame.view.action_rejected
             ? state.rejectionNonce + 1
             : state.rejectionNonce,
+          pendingSubmission: resolvePending(state.pendingSubmission, frame.view),
         }));
         return;
       }

@@ -29,6 +29,9 @@ import CONTRACT_FIXTURE_PROMPTS from '@protocol-fixtures/gameview-prompts.json';
 // every command zone empty, so the format signal, the per-seat commander identity and
 // the per-permanent marker are the only things that can carry the presentation.
 import CONTRACT_FIXTURE_COMMANDER from '@protocol-fixtures/gameview-commander.json';
+// The action-contract fixture (issue #554): contextual labels, a submission
+// acknowledgement, a numeric prompt, and server-authoritative destinations.
+import CONTRACT_FIXTURE_ACTIONS from '@protocol-fixtures/gameview-actions.json';
 
 describe('parseGameView', () => {
   it('decodes a representative wire frame into the expected GameView', () => {
@@ -69,6 +72,9 @@ describe('parseGameView', () => {
       // (absent ⇒ not Commander) and the identity list defaults to `[]`.
       format: undefined,
       commander_identity: [],
+      // Submission acknowledgement (issue #554): absent on any view that answers no
+      // correlated submission, which is every ordinary broadcast.
+      action_ack: undefined,
     });
   });
 
@@ -526,6 +532,57 @@ describe('cross-language contract fixture (issue #56)', () => {
     expect(view.commander_identity).toEqual([
       { commander: 'p0', name: 'Odd', color_identity: ['G', 'U'] },
     ]);
+  });
+
+  it('carries the action-contract fixture through with labels, ack, X and destinations', () => {
+    // Parity is assertion-based: a field added in Rust and forgotten here fails
+    // nothing unless it is asserted, so every #554 field is asserted.
+    const view = parseGameView(JSON.stringify(CONTRACT_FIXTURE_ACTIONS));
+    const action = (id: string) => {
+      const found = view.valid_actions.find((a) => a.id === id);
+      if (found === undefined) throw new Error(`no action ${id}`);
+      return found;
+    };
+
+    // The contextual label is rendered verbatim — the client never picks the word.
+    expect(view.stack).toHaveLength(1);
+    expect(action('a0').type).toBe('pass_priority');
+    expect(action('a0').label).toBe('Resolve');
+
+    // The acknowledgement, tied to the exact submission the client sent.
+    expect(view.action_ack).toEqual({ submission: 's:17', accepted: true });
+
+    // A numeric prompt with the server's own bounds, alongside a target slot.
+    expect(action('a2').prompts).toEqual([
+      { kind: 'number', slot: 'x', prompt: 'Choose a value for X', min: 0, max: 3 },
+    ]);
+    expect(action('a2').requirements?.[0]?.slot).toBe('t0');
+
+    // Destinations, including the two actions that name none (fail closed).
+    expect(action('a1').destinations).toEqual([
+      { type: 'zone', id: 'battlefield', label: 'Battlefield' },
+    ]);
+    expect(action('a2').destinations).toEqual([{ type: 'zone', id: 'stack', label: 'Stack' }]);
+    expect(action('a0').destinations).toBeUndefined();
+    expect(action('a3').destinations).toBeUndefined();
+  });
+
+  it('defaults every #554 field to the pre-554 reading when the server omits it', () => {
+    const view = parseGameView(
+      '{"phase":"upkeep","valid_actions":[{"id":"a0","type":"x","label":"y"}]}',
+    );
+    expect(view.action_ack).toBeUndefined();
+    expect(view.valid_actions[0].destinations).toBeUndefined();
+  });
+
+  it('drops a malformed acknowledgement rather than inventing a verdict (issue #554)', () => {
+    // An ack needs both halves: a missing `accepted` must never read as "rejected",
+    // and a missing correlation id names no submission, so neither is kept.
+    for (const ack of [{ submission: 's:1' }, { accepted: true }, 'nope', null]) {
+      expect(parseGameView(JSON.stringify({ phase: 'upkeep', action_ack: ack })).action_ack).toBe(
+        undefined,
+      );
+    }
   });
 
   it('parses the terminal counterpart fixture into a game-over GameView', () => {

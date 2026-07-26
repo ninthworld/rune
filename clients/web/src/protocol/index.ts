@@ -20,6 +20,7 @@ export type EntityId = string;
 // Shared types are exported directly; re-export all modules at the root.
 export * from './card.js';
 export * from './action.js';
+export * from './interaction.js';
 export * from './presentation.js';
 export * from './result.js';
 export * from './view.js';

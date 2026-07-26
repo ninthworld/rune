@@ -22,17 +22,18 @@ use rune_engine::{
 
 use crate::rules_text::{ability_text, effects_description, rules_text};
 use rune_protocol::{
-    CardView, ChooseAction, Color as ColorView, CommanderDamage as CommanderDamageView,
-    CommanderIdentity as CommanderIdentityView, CommanderTax as CommanderTaxView, Counter,
-    GameLogEntry, GameLogEvent, GameOverReason, GameResult as GameResultView, GameView, LogBlock,
-    LogDamageTarget, LogEntity, OpponentView, Permanent as PermanentView, Phase, Prompt,
-    PromptOption, SelfView, SpectatorView, StackItem, TargetChoice, TargetRequirement, ValidAction,
-    ZonePile,
+    ActionDestination, CardView, ChooseAction, Color as ColorView,
+    CommanderDamage as CommanderDamageView, CommanderIdentity as CommanderIdentityView,
+    CommanderTax as CommanderTaxView, Counter, GameLogEntry, GameLogEvent, GameOverReason,
+    GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity, OpponentView,
+    Permanent as PermanentView, Phase, Prompt, PromptOption, SelfView, SpectatorView, StackItem,
+    TargetChoice, TargetRequirement, ValidAction, ZonePile,
 };
 
 mod actions;
 mod binding;
 mod cards;
+mod destinations;
 mod ids;
 mod log;
 mod prompt;
@@ -43,6 +44,7 @@ mod test_support;
 pub(crate) use actions::*;
 pub(crate) use binding::*;
 pub(crate) use cards::*;
+pub(crate) use destinations::*;
 pub(crate) use ids::*;
 pub(crate) use log::*;
 pub(crate) use prompt::*;
@@ -227,6 +229,10 @@ pub(crate) fn personalized_view(
         // re-sent view answering that rejection. Not-rejected here by default, so it
         // elides from the wire on every normal projection.
         action_rejected: false,
+        // Submission acknowledgement is likewise a room concern (issue #554): only the
+        // room saw the `ChooseAction` this view answers, so it attaches the ack to the
+        // one view it belongs on. `None` here, so it elides from every projection.
+        action_ack: None,
         // Player display names are a lobby/session concern, not engine state; the room
         // fills this in after projection (issue #294). Empty here so this pure shim
         // stays name-agnostic and the field elides from the wire by default.

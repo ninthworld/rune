@@ -18,6 +18,9 @@
  * - **Ordering (issue #157)** — an `order` prompt slot; the answer is all of its
  *   `items` arranged into the chosen order (a permutation), reordered rather than
  *   toggled. Every item is always included; only its position changes.
+ * - **A number (issue #554)** — a `number` prompt slot; the answer is one value
+ *   inside the server's inclusive `min`..`max`, held as its decimal string. Nothing
+ *   is toggled and no candidate list exists, so it is set rather than picked.
  *
  * As with targeting, **zero legality lives here**: candidate ids, counts, options,
  * and order items all come straight off the {@link ValidAction} the server issued;
@@ -81,8 +84,10 @@ export interface MultiSelectSlot {
    * `defender` — exactly one candidate (a defending player), for the multiplayer
    *   per-attacker attack-target choice (`defend_<id>`, issue #341/#347). Active only
    *   while its {@link MultiSelectSlot.attacker} is chosen in the `attackers` slot.
+   * `number` — one value in {@link MultiSelectSlot.min}..{@link MultiSelectSlot.max}
+   *   (issue #554), held as its decimal string. It has no candidates at all.
    */
-  kind: 'subset' | 'count' | 'order' | 'defender';
+  kind: 'subset' | 'count' | 'order' | 'defender' | 'number';
   /**
    * The server-listed candidate entity ids — for `subset`/`count` the only ids the
    * client may toggle; for `order` the full item set the player arranges; for
@@ -91,6 +96,10 @@ export interface MultiSelectSlot {
   candidates: EntityId[];
   /** For a `count` slot, exactly how many must be chosen. */
   count?: number;
+  /** The smallest legal value of a `number` slot (issue #554); absent otherwise. */
+  min?: number;
+  /** The largest legal value of a `number` slot (issue #554); absent otherwise. */
+  max?: number;
   /**
    * For a `defender` slot, the attacker (permanent entity id) whose defending player
    * this slot chooses. The slot is walked only while that attacker is in the
@@ -150,6 +159,21 @@ function isOrder(prompt: Prompt): prompt is Extract<Prompt, { kind: 'order' }> {
   return prompt.kind === 'order';
 }
 
+/** Whether a prompt is a `number` slot (issue #554). */
+function isNumber(prompt: Prompt): prompt is Extract<Prompt, { kind: 'number' }> {
+  return prompt.kind === 'number';
+}
+
+/** Clamp `value` into a slot's server-stated inclusive range. Presentation hygiene,
+ * not legality: the bounds are the server's and are only ever narrowed to, never
+ * widened — a value outside them would simply be rejected. */
+function clampToSlot(slot: MultiSelectSlot, value: number): number {
+  const min = slot.min ?? 0;
+  const max = slot.max ?? min;
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
 /**
  * Begin a multi-select over an action. Walked slots are its target `requirements`
  * (subset) followed by any `select_from_zone` (count) and `order` prompts;
@@ -198,13 +222,30 @@ export function beginMultiSelect(action: ValidAction): MultiSelectSession {
         kind: 'order',
         candidates: prompt.items ?? [],
       });
+    } else if (isNumber(prompt)) {
+      // A numeric slot has no candidates to toggle; it starts at the server's own
+      // lower bound, which is always legal, so the action is submittable immediately.
+      slots.push({
+        slot: prompt.slot,
+        prompt: prompt.prompt,
+        kind: 'number',
+        candidates: [],
+        min: prompt.min,
+        max: prompt.max,
+      });
     } else if (isOption(prompt)) {
       options.push({ slot: prompt.slot, prompt: prompt.prompt, options: prompt.options ?? [] });
     }
   }
   // An `order` slot is answered with all its items, so it starts pre-filled in the
   // server's initial order; every other slot starts empty (nothing chosen yet).
-  const chosen = slots.map((slot) => (slot.kind === 'order' ? [...slot.candidates] : []));
+  const chosen = slots.map((slot) => {
+    if (slot.kind === 'order') return [...slot.candidates];
+    // A number slot is pre-filled with the server's minimum (issue #554), so the
+    // control opens on a legal value and "confirm without touching it" is meaningful.
+    if (slot.kind === 'number') return [String(slot.min ?? 0)];
+    return [];
+  });
   return { action, slots, options, active: 0, chosen };
 }
 
@@ -279,6 +320,19 @@ export function toggle(session: MultiSelectSession, entityId: EntityId): MultiSe
 }
 
 /**
+ * Set the active `number` slot's value (issue #554), clamped into the server's own
+ * inclusive range and stored as its decimal string — the shared `TargetChoice.chosen`
+ * shape every other slot kind answers with. A no-op for any other slot kind.
+ */
+export function setActiveNumber(session: MultiSelectSession, value: number): MultiSelectSession {
+  const slot = activeSlot(session);
+  if (!slot || slot.kind !== 'number') return session;
+  const next = [String(clampToSlot(slot, value))];
+  const chosen = session.chosen.map((ids, i) => (i === session.active ? next : ids));
+  return { ...session, chosen };
+}
+
+/**
  * Toggle a candidate is not how an `order` slot is edited — its items are
  * rearranged. Move `entityId` one step within the active slot's order (`-1` earlier,
  * `+1` later), returning the advanced session. A no-op for a non-order slot, an id
@@ -309,6 +363,12 @@ export function moveInActiveSlot(
 function slotSatisfied(slot: MultiSelectSlot, chosen: EntityId[]): boolean {
   if (slot.kind === 'count') return chosen.length === (slot.count ?? 0);
   if (slot.kind === 'order') return chosen.length === slot.candidates.length;
+  // A number slot needs exactly one value, inside the server's advertised range.
+  if (slot.kind === 'number') {
+    if (chosen.length !== 1) return false;
+    const value = Number(chosen[0]);
+    return Number.isInteger(value) && value >= (slot.min ?? 0) && value <= (slot.max ?? 0);
+  }
   // A declared attacker must be assigned exactly one defending player (issue #347).
   if (slot.kind === 'defender') return chosen.length === 1;
   return true;

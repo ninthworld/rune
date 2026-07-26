@@ -980,6 +980,7 @@ mod tests {
                         seat: 0,
                         message: rune_protocol::ClientMessage::ChooseAction(
                             rune_protocol::ChooseAction {
+                                submission: String::new(),
                                 action_id: decision.id.clone(),
                                 token: decision.token.clone(),
                                 targets: vec![rune_protocol::TargetChoice {

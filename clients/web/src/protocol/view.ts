@@ -7,6 +7,7 @@ import type { CardView, OpponentView, SelfView, Permanent, StackItem, ZonePile }
 import type { ValidAction } from './action.js';
 import type { GameResult, CommanderDamage, CommanderTax } from './result.js';
 import type { CommanderIdentity, MatchFormat } from './presentation.js';
+import type { ActionAck } from './interaction.js';
 import type { GameLogEntry } from './log.js';
 
 /**
@@ -140,6 +141,17 @@ export interface GameView {
    * normal broadcast and resync; {@link normalizeGameView} defaults it to `false`.
    */
   action_rejected?: boolean;
+  /**
+   * The acknowledgement of the receiver's last submitted action (issue #554) — see
+   * {@link ActionAck}. Present only on the one view that answers a
+   * {@link ChooseAction} carrying a {@link ChooseAction.submission} correlation id,
+   * and delivered exactly once; every other broadcast, resync, and reconnect carries
+   * none, so the ack's presence is itself the signal that "this view answers *my*
+   * click". It completes what {@link GameView.action_rejected} could only half-say —
+   * that flag reports *that* a submission was refused but never *which*. Transient
+   * and advisory; the UI reconstructs fully without it.
+   */
+  action_ack?: ActionAck;
   /**
    * Public display names keyed by {@link PlayerId} (issue #294): every player who has
    * chosen a name maps to it, so any in-game surface (turn indicator, player tiles,
