@@ -271,6 +271,22 @@ describe('environment quality — §8.2 T0 / T1 / T2 and the raster swap', () =>
     }
   });
 
+  it('resolves L0 to its plate at the auto-detected default tier, in every theme', () => {
+    // Issue #581's fourth criterion, pinned at the tier a first run actually
+    // lands on (`detectDefaultQuality` biases to Standard, never High). L0 is
+    // the whole screen outside the arena, and it is the one plate in the
+    // `first-match` class under `/assets/` rather than `/lazy/` — so it is the
+    // one whose resolution a `lazy`-only assumption could silently drop.
+    for (const theme of Object.keys(ENV_MANIFESTS) as SceneThemeName[]) {
+      const l0 = layer(plan({ theme, quality: 'standard' }), 'l0');
+      expect(l0.treatment).toBe('plate');
+      expect(l0.degraded).toBe(false);
+      expect(l0.variant).toBe('l0');
+      expect(l0.rasterPath).toBe(ENV_MANIFESTS[theme].assets.l0.src);
+      expect(l0.rasterPath).toMatch(/\.webp$/);
+    }
+  });
+
   it('selects the tier’s variant, so Lite fetches the half-resolution L1', () => {
     // §8.1's quality matrix, now that the variants resolve to different files:
     // High and Standard draw the 1× plate, Lite the 0.5× one, and Lite's L0/L2/
