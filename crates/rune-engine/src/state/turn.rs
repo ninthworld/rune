@@ -1,6 +1,7 @@
 //! Turn structure and advancement methods.
 
 use crate::id::PlayerId;
+use crate::mana::ManaPool;
 use crate::phase::Step;
 
 use super::GameState;
@@ -15,9 +16,23 @@ impl GameState {
     ///
     /// This is the turn-structure FSM only. It does not touch priority, the
     /// stack, or state-based actions — those arrive with the action pipeline.
+    ///
+    /// It *does* empty every player's mana pool (CR 500.4: "When a step or phase
+    /// ends, any unused mana left in a player's mana pool empties"). That belongs
+    /// here rather than in the pipeline wrapper because this method is the single
+    /// point through which a step or phase ever ends: the natural [`Step::next`]
+    /// walk, a queued extra step, and the turn boundary via
+    /// [`Self::begin_next_turn`] all funnel through it, and the pipeline's walk
+    /// past the no-priority steps calls it once per step it crosses. Emptying here
+    /// makes CR 500.4 a property of the state machine rather than something every
+    /// caller must remember.
     #[must_use]
     pub fn advance(&self) -> Self {
         let mut next = self.clone();
+        // CR 500.4: the ending step empties every pool — the active player's and
+        // everyone else's — before the next step is entered, so no turn-based
+        // action of the incoming step ever observes stale floating mana.
+        next.empty_all_mana_pools();
         if let Some(step) = next.extra_steps.pop() {
             next.step = step;
         } else if next.step == Step::Cleanup {
@@ -61,6 +76,16 @@ impl GameState {
         self.blockers_declared = false;
         self.damage_orders.clear();
         self.blockers_declared_by.clear();
+    }
+
+    /// Empty every player's mana pool on this owned state (CR 500.4). Applies to
+    /// all seats, not just the active player: an opponent who floated mana in
+    /// response loses it at the same step boundary. Mana burn was removed from the
+    /// rules, so unspent mana simply vanishes with no penalty.
+    fn empty_all_mana_pools(&mut self) {
+        for player in &mut self.players {
+            player.mana_pool = ManaPool::default();
+        }
     }
 
     /// Return a copy with an extra turn granted to `player`. Because extra turns

@@ -533,4 +533,127 @@ mod tests {
         drop(handle);
         task.await.unwrap();
     }
+
+    // ----- Floating mana no longer stalls the settle (issue #537) -----
+
+    #[tokio::test]
+    async fn issue_537_a_seat_that_tapped_mana_and_cast_nothing_still_auto_passes() {
+        // Regression for the stall behind issue #537. Mana pools were never emptied
+        // (CR 500.4), so a seat that tapped a land and cast nothing carried the mana
+        // forever; `valid_actions` kept offering the now-affordable spell and
+        // `priority_has_no_meaningful_action` kept reporting the seat non-idle, so the
+        // room's settle refused to auto-pass it ever again. In a four-player slice
+        // that stalled every seat that had ever tapped a land.
+        //
+        // Revitalize is a {W} instant with no targets, so whether it is castable turns
+        // on the mana pool alone — not on timing or on a legal target being present.
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let plains = rune_engine::PermanentId(state.mint_id());
+        let land = state.new_instance(fixture("plains"));
+        state.battlefield.push(rune_engine::Permanent {
+            id: plains,
+            instance: land.id,
+            card: fixture("plains"),
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: std::collections::BTreeMap::new(),
+            attached_to: None,
+        });
+        let heal = state.new_instance(fixture("revitalize"));
+        state.players[0].hand = vec![heal];
+
+        let (handle, task) = Room::new(state, db())
+            .with_auto_pass(AutoPassPolicy::On)
+            .spawn();
+        let (tx0, mut rx0) = view_channel();
+        handle.send(RoomInput::Join {
+            seat: 0,
+            outbox: tx0,
+        });
+
+        // Seat 0 is not idle (tapping the Plains would pay for Revitalize), so it is
+        // handed priority and offered the land's mana ability.
+        let view0 = wait_for_view(&mut rx0).await;
+        assert_eq!(view0.phase, Phase::PrecombatMain);
+        let tap = view0
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "activate_ability")
+            .expect("the untapped land's mana ability is offered");
+        handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: tap.id.clone(),
+                token: tap.token.clone(),
+                ..Default::default()
+            }),
+        });
+
+        // The mana is floating and the spell is now genuinely castable.
+        let floated = wait_for_view(&mut rx0).await;
+        assert_eq!(
+            floated.mana_pool,
+            vec!["{W}".to_string()],
+            "tapping the Plains floated {{W}}"
+        );
+        let pass = floated
+            .valid_actions
+            .iter()
+            .find(|a| a.kind == "pass_priority")
+            .expect("the seat may still pass");
+        assert!(
+            floated.valid_actions.iter().any(|a| a.kind == "cast_spell"),
+            "the floated mana makes Revitalize castable"
+        );
+
+        // Seat 0 declines to cast and passes. The step ends, CR 500.4 empties the
+        // pool, and the seat is idle again — the settle must carry it forward.
+        handle.send(RoomInput::Message {
+            seat: 0,
+            message: ClientMessage::ChooseAction(ChooseAction {
+                action_id: pass.id.clone(),
+                token: pass.token.clone(),
+                ..Default::default()
+            }),
+        });
+
+        let mut resting = wait_for_view(&mut rx0).await;
+        for _ in 0..16usize {
+            if resting.phase != Phase::PrecombatMain && !resting.valid_actions.is_empty() {
+                break;
+            }
+            resting = wait_for_view(&mut rx0).await;
+        }
+        assert!(
+            resting.mana_pool.is_empty(),
+            "the pool emptied when the precombat main phase ended (CR 500.4), got {:?}",
+            resting.mana_pool
+        );
+        assert!(
+            !resting.valid_actions.iter().any(|a| a.kind == "cast_spell"),
+            "with the pool empty and the land tapped nothing is castable — the seat is \
+             not held on a phantom cast"
+        );
+        assert_eq!(
+            resting.phase,
+            Phase::DeclareAttackers,
+            "the settle auto-passed the now-idle seat through to its forced combat \
+             declaration instead of stalling"
+        );
+        assert!(
+            resting
+                .valid_actions
+                .iter()
+                .any(|a| a.kind == "declare_attackers"),
+            "the resting view is the forced declaration, not another pass"
+        );
+
+        drop(handle);
+        task.await.unwrap();
+    }
 }

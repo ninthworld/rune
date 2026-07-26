@@ -410,6 +410,116 @@ mod tests {
         assert_eq!(apply_action(&state, &Action::Concede, &db), state);
     }
 
+    // ----- CR 500.4: unused mana empties at every step and phase (issue #537) -----
+
+    /// Tap `seat`'s Forest for {G} through the real action pipeline, so the pool is
+    /// filled the way a game fills it rather than by poking the field.
+    fn tap_for_green(state: &GameState, db: &CardDatabase, forest: PermanentId) -> GameState {
+        apply_action(
+            state,
+            &Action::ActivateAbility {
+                permanent: forest,
+                index: 0,
+                targets: Vec::new(),
+            },
+            db,
+        )
+    }
+
+    #[test]
+    fn issue_537_cr_500_4_mana_tapped_in_a_main_phase_is_gone_by_the_combat_step() {
+        // The headline case: mana floated in the precombat main does not survive
+        // into begin combat. The pipeline (not just the FSM) must empty it.
+        let db = db();
+        let mut state = main_phase_p0();
+        let forest = place_permanent(&mut state, fixture("forest"), PlayerId(0), false, 0);
+
+        let state = tap_for_green(&state, &db, forest);
+        assert_eq!(
+            state.players[0].mana_pool.green, 1,
+            "the mana ability filled the pool"
+        );
+
+        let after = pass_full_round(&state, &db);
+
+        assert_eq!(after.step, Step::BeginCombat);
+        assert_eq!(
+            after.players[0].mana_pool.total(),
+            0,
+            "the precombat main phase ended, so the pool emptied (CR 500.4)"
+        );
+    }
+
+    #[test]
+    fn issue_537_cr_500_4_mana_tapped_on_one_turn_is_gone_on_the_next() {
+        // Floating mana never crosses a turn boundary, however many step boundaries
+        // the walk crosses on the way there.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End; // player 0, turn 1; hand empty so cleanup needs no discard.
+        let forest = place_permanent(&mut state, fixture("forest"), PlayerId(0), false, 0);
+
+        let state = tap_for_green(&state, &db, forest);
+        assert_eq!(state.players[0].mana_pool.green, 1);
+
+        let after = pass_full_round(&state, &db);
+
+        assert_eq!(after.turn, 2, "the turn boundary was crossed");
+        assert_eq!(after.active_player, PlayerId(1));
+        assert_eq!(
+            after.players[0].mana_pool.total(),
+            0,
+            "mana tapped last turn is gone this turn (CR 500.4)"
+        );
+    }
+
+    #[test]
+    fn issue_537_cr_500_4_a_non_active_seats_floating_mana_empties_too() {
+        // CR 500.4 is not active-player-only: a responding seat's floated mana
+        // empties at the same step boundary. Seat 1 taps in seat 0's upkeep.
+        let db = db();
+        let mut state = GameState::new_multiplayer(4);
+        state.step = Step::Upkeep;
+        state.priority = PlayerId(1);
+        let forest = place_permanent(&mut state, fixture("forest"), PlayerId(1), false, 0);
+
+        let state = tap_for_green(&state, &db, forest);
+        assert_eq!(state.players[1].mana_pool.green, 1);
+
+        // Every living seat passes in succession to end the step.
+        let mut after = state;
+        for _ in 0..4 {
+            after = apply_action(&after, &Action::PassPriority, &db);
+        }
+
+        assert_eq!(after.step, Step::Draw);
+        for seat in 0..4 {
+            assert_eq!(
+                after.players[seat].mana_pool.total(),
+                0,
+                "seat {seat}'s pool emptied when the upkeep step ended (CR 500.4)"
+            );
+        }
+    }
+
+    #[test]
+    fn issue_537_cr_500_4_the_no_priority_walk_empties_each_step_it_crosses() {
+        // The walk from end step through cleanup and untap into the next upkeep
+        // crosses several steps that grant no priority. Mana floated by the seat
+        // about to become non-active is gone by the time the walk stops.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        state.step = Step::End;
+        let forest = place_permanent(&mut state, fixture("forest"), PlayerId(0), false, 0);
+        let state = tap_for_green(&state, &db, forest);
+
+        let after = pass_full_round(&state, &db);
+
+        assert_eq!(after.step, Step::Upkeep, "the walk skipped untap/cleanup");
+        assert_eq!(after.players[0].mana_pool.total(), 0);
+        assert_eq!(after.players[1].mana_pool.total(), 0);
+    }
+
     #[test]
     fn issue_259_step_transition_is_recorded_in_authoritative_log() {
         let database = db();
