@@ -2,8 +2,7 @@ use crate::id::{PermanentId, PlayerId};
 use crate::state::GameState;
 use crate::CardDatabase;
 
-use super::helpers::{has_keyword, has_summoning_sickness};
-use crate::card::Keyword;
+use super::helpers::summoning_sickness_restricts;
 
 /// The players an attacker may legally be declared to attack (CR 508.1a): every
 /// opponent still in the game — a seat other than the active (attacking) player
@@ -62,8 +61,7 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
                 && !perm.tapped
                 // CR 302.6, with the CR 702.10b haste exemption: a hasty creature
                 // ignores the summoning-sickness attack restriction.
-                && (!has_summoning_sickness(perm, state)
-                    || has_keyword(state, perm, Keyword::Haste, db))
+                && !summoning_sickness_restricts(state, perm, db)
         })
         .map(|perm| perm.id)
         .collect()

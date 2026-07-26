@@ -28,6 +28,29 @@ pub(super) fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
         .is_some_and(|c| c.has_type(CardType::Creature))
 }
 
+/// Whether the summoning-sickness restriction of CR 302.6 currently applies to
+/// `perm`: it is a creature, it has [`has_summoning_sickness`], and it does not
+/// have haste (CR 702.10b, which exempts it).
+///
+/// CR 302.6 imposes **one** restriction that governs **two** things: such a
+/// creature can't attack, *and* an ability of it whose cost contains `{T}` (or
+/// `{Q}`) can't be activated. Both call sites — [`super::attacker_candidates`] and
+/// the activated-ability arm of [`crate::valid_actions`] — read this single
+/// predicate, so the haste exemption can never drift between them.
+///
+/// Only creatures are ever summoning sick: a land or mana rock that entered this
+/// turn taps freely, so this is `false` for every non-creature permanent.
+#[must_use]
+pub(crate) fn summoning_sickness_restricts(
+    state: &GameState,
+    perm: &Permanent,
+    db: &CardDatabase,
+) -> bool {
+    is_creature(perm, db)
+        && has_summoning_sickness(perm, state)
+        && !has_keyword(state, perm, Keyword::Haste, db)
+}
+
 /// Whether `perm` currently has keyword `keyword` (CR 702): its printed keywords
 /// unioned with any granted at CR 613 layer 6 (CR 613.1f). Reads through the
 /// computed [`characteristics`], so a keyword granted by an Aura, an anthem, or an

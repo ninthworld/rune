@@ -1,5 +1,7 @@
 //! Action legality validation — checking that actions conform to game rules.
 
+use crate::ability::Ability;
+use crate::card::abilities_of;
 use crate::combat::{
     attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocker_can_block_attacker, blocker_candidates_for, declared_attackers, defender_candidates,
@@ -13,7 +15,7 @@ use crate::CardDatabase;
 use super::definition::{Action, Attack, Block, DamageOrder};
 use super::generation::valid_actions;
 use super::targeting::action_target_specs;
-use super::utilities::all_unique;
+use super::utilities::{all_unique, tap_cost_is_summoning_sick};
 
 /// Whether `action` — including any targets it carries — is legal against the
 /// current `state`. This is the gate [`crate::apply_action`] runs before it
@@ -60,6 +62,20 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         _ => {}
     }
 
+    // 1c. Hardening (CR 302.6, issue #454): a `{T}`-cost ability of a summoning-sick
+    //     creature is never activatable. Check 1 above already withholds the offer,
+    //     so this is a second, independent gate that re-derives the restriction from
+    //     current state — a stale or forged action id can never slip a sick creature's
+    //     tap ability through [`crate::apply_action`].
+    if let Action::ActivateAbility {
+        permanent, index, ..
+    } = action
+    {
+        if !activation_clears_summoning_sickness(state, db, *permanent, *index) {
+            return false;
+        }
+    }
+
     // 2. The carried targets must fill every slot the action declares, each with
     //    a target that is legal *now*. `target_is_legal` is the same predicate the
     //    resolve path re-checks with (CR 608.2b) and the one `legal_targets_for_spec`
@@ -73,6 +89,31 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
             .iter()
             .zip(chosen)
             .all(|(&spec, &target)| target_is_legal(spec, target, state, db))
+}
+
+/// Whether activating ability `index` of `permanent` clears the CR 302.6
+/// summoning-sickness restriction (issue #454): `false` exactly when the ability's
+/// cost contains `{T}` and its source is a creature that has not been under its
+/// controller's control since their most recent turn began (haste, CR 702.10b,
+/// exempts it). A mana ability is gated like any other (CR 605.3a).
+///
+/// `false` for a permanent that is not on the battlefield — a stale id names no
+/// source to pay a cost with. `true` for an index that is not an activated ability:
+/// there is no `{T}` cost to restrict, and check 1 of [`action_is_legal`] has
+/// already rejected the action on its own terms.
+fn activation_clears_summoning_sickness(
+    state: &GameState,
+    db: &CardDatabase,
+    permanent: PermanentId,
+    index: usize,
+) -> bool {
+    let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
+        return false;
+    };
+    match abilities_of(db, perm.card).get(index) {
+        Some(Ability::Activated { cost, .. }) => !tap_cost_is_summoning_sick(state, perm, cost, db),
+        _ => true,
+    }
 }
 
 /// Whether a declared attacker selection is legal (CR 508.1a): every named
@@ -164,4 +205,92 @@ fn damage_orders_are_legal(state: &GameState, orders: &[DamageOrder]) -> bool {
         chosen.sort_by_key(|id| id.0);
         all_unique(&order.blockers) && chosen == declared
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
+    use super::*;
+    use crate::apply_action;
+    use crate::fixtures::fixture;
+    use crate::id::PlayerId;
+    use crate::phase::Step;
+    use crate::state::Permanent;
+
+    /// A two-player game at player 0's precombat main on turn 3 with a Llanowar
+    /// Elves that entered on `entered_turn`, and the action that activates its
+    /// `{T}: Add {G}`.
+    fn elves_state(entered_turn: u32) -> (GameState, CardDatabase, Action) {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.turn = 3;
+        state.step = Step::PrecombatMain;
+        let card = fixture("llanowar_elves");
+        let inst = state.new_instance(card);
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(Permanent {
+            id,
+            instance: inst.id,
+            card,
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+            attached_to: None,
+        });
+        let action = Action::ActivateAbility {
+            permanent: id,
+            index: 0,
+            targets: Vec::new(),
+        };
+        (state, db, action)
+    }
+
+    #[test]
+    fn issue_454_apply_rejects_a_summoning_sick_tap_ability_handed_directly() {
+        // CR 302.6: even handed the action directly — a stale or forged action id
+        // that `valid_actions` never offered — the apply path refuses it, so
+        // `apply_action` is a no-op (no mana floated, the creature left untapped).
+        let (state, db, action) = elves_state(3);
+        assert!(!action_is_legal(&state, &action, &db));
+        let after = apply_action(&state, &action, &db);
+        assert_eq!(after, state, "an illegal activation changes nothing");
+        assert_eq!(after.players[0].mana_pool.green, 0);
+        assert!(!after.battlefield[0].tapped);
+    }
+
+    #[test]
+    fn issue_454_the_hardening_gate_is_independent_of_the_offer_check() {
+        // The gate re-derives CR 302.6 from current state rather than trusting the
+        // offer list, so it rejects on its own — not only because check 1 would.
+        let (sick, db, action) = elves_state(3);
+        let Action::ActivateAbility {
+            permanent, index, ..
+        } = action
+        else {
+            panic!("the fixture builds an activation");
+        };
+        assert!(!activation_clears_summoning_sickness(
+            &sick, &db, permanent, index
+        ));
+
+        // The same creature, in play since an earlier turn, clears the gate.
+        let (seasoned, db, action) = elves_state(1);
+        assert!(activation_clears_summoning_sickness(
+            &seasoned, &db, permanent, index
+        ));
+        assert!(action_is_legal(&seasoned, &action, &db));
+
+        // A permanent id that names nothing on the battlefield clears nothing.
+        assert!(!activation_clears_summoning_sickness(
+            &seasoned,
+            &db,
+            PermanentId(9999),
+            0
+        ));
+    }
 }

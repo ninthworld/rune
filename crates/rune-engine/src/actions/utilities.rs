@@ -3,7 +3,7 @@
 use crate::ability::Cost;
 use crate::card_type::CardType;
 use crate::id::{CardId, PermanentId};
-use crate::state::Permanent;
+use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
 
 /// Whether `card` is a land, by its structured printed types.
@@ -29,6 +29,35 @@ pub(crate) fn cost_payable(cost: &[Cost], permanent: &Permanent) -> bool {
     cost.iter().all(|c| match c {
         Cost::Tap => !permanent.tapped,
     })
+}
+
+/// Whether `cost` contains the tap symbol `{T}` (CR 118.3f) — the cost component
+/// CR 302.6 forbids a summoning-sick creature from paying.
+///
+/// NOTE: [`Cost::Tap`] is the only cost the effect IR models today. When the untap
+/// symbol `{Q}` (CR 118.3g) is added it belongs in this predicate too: CR 302.6
+/// restricts *both* symbols on a summoning-sick creature, and this is the one seam
+/// that gate runs through.
+pub(crate) fn cost_requires_tapping(cost: &[Cost]) -> bool {
+    cost.contains(&Cost::Tap)
+}
+
+/// Whether CR 302.6 forbids activating an ability of `permanent` whose activation
+/// cost is `cost`: the cost includes `{T}` and the permanent is a creature still
+/// affected by summoning sickness (see
+/// [`summoning_sickness_restricts`](crate::combat::summoning_sickness_restricts),
+/// which applies the CR 702.10b haste exemption).
+///
+/// CR 605.3a exempts nothing: a mana ability with `{T}` in its cost is gated
+/// exactly like any other activated ability. Non-creature permanents are never
+/// summoning sick, so a land played this turn still taps for mana.
+pub(crate) fn tap_cost_is_summoning_sick(
+    state: &GameState,
+    permanent: &Permanent,
+    cost: &[Cost],
+    db: &CardDatabase,
+) -> bool {
+    cost_requires_tapping(cost) && crate::combat::summoning_sickness_restricts(state, permanent, db)
 }
 
 /// Whether every element of `ids` is distinct. O(n²), which is fine for the

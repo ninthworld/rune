@@ -65,6 +65,12 @@ pub fn priority_has_no_meaningful_action(state: &GameState, db: &CardDatabase) -
 /// a source can only be tapped for one of them — because over-estimating mana can
 /// only make more spells look castable, which makes the seat look *less* idle: the
 /// safe direction (never auto-pass a seat that might have had a play).
+///
+/// The over-estimate deliberately includes a summoning-sick creature's mana ability
+/// (CR 302.6, issue #454), which [`valid_actions`] will not offer this turn. That
+/// stays correct for the same reason: crediting mana the seat cannot actually make
+/// only ever keeps it non-idle, and a seat kept non-idle is never auto-passed past a
+/// play. Filtering it out would be a strictly *less* conservative estimate.
 fn float_potential_mana(state: &mut GameState, db: &CardDatabase) {
     let seat = state.priority;
     let mut produced: Vec<Effect> = Vec::new();
@@ -171,6 +177,33 @@ mod tests {
         state.step = Step::PrecombatMain;
         place(&mut state, fixture("forest"), PlayerId(0));
         place(&mut state, fixture("forest"), PlayerId(0));
+        assert!(priority_has_no_meaningful_action(&state, &db()));
+    }
+
+    #[test]
+    fn issue_454_a_seat_whose_only_source_is_a_summoning_sick_creature_is_idle() {
+        // A Llanowar Elves cast this turn offers nothing (CR 302.6), so the seat's
+        // whole offer is pass + concede: idle, and safe to auto-pass. The predicate
+        // still *floats* the Elves' mana while judging (see `float_potential_mana`) —
+        // a deliberate over-estimate that only ever errs toward not auto-passing —
+        // but with nothing in hand there is no spell for it to make castable.
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+        let elves = place(&mut state, fixture("llanowar_elves"), PlayerId(0));
+        let perm = state
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == elves)
+            .unwrap();
+        perm.entered_turn = state.turn;
+
+        assert!(
+            !valid_actions(&state, &db()).iter().any(|a| matches!(
+                a,
+                Action::ActivateAbility { permanent, .. } if *permanent == elves
+            )),
+            "the sick creature's {{T}} mana ability is not offered"
+        );
         assert!(priority_has_no_meaningful_action(&state, &db()));
     }
 
