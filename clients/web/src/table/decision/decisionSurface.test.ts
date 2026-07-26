@@ -19,9 +19,9 @@ import {
   TARGETING_GAME_VIEW_JSON,
   ZONE_SELECT_GAME_VIEW_JSON,
 } from '../../game-view.fixture';
-import type { GameView } from '../../protocol';
+import type { GameView, ValidAction } from '../../protocol';
 import { normalizeGameView } from '../../wire';
-import { beginMultiSelect, toggle } from '../multiSelect';
+import { beginMultiSelect, setActiveNumber, toggle } from '../multiSelect';
 import { beginTargeting } from '../targeting';
 import { forcedDecision } from '../tableView';
 import { deriveDecision } from './decisionSurface';
@@ -186,6 +186,58 @@ describe('deriveDecision', () => {
     expect(staging.candidates).toEqual(action.requirements![0]!.candidates);
     // A seat is a candidate exactly when the server listed it as one.
     expect(staging.playerCandidates).toContain('p2');
+  });
+
+  it('carries a numeric slot as its own control, not as an empty row list', () => {
+    // A `number` slot (issue #554) is the one slot kind with no candidates at all.
+    // Classified by candidate emptiness alone it reads as "answered in a list the
+    // board cannot show", which would draw an empty row surface and no way to
+    // answer; it is excluded explicitly instead, and brings its own control.
+    const view = viewOf(TARGETING_GAME_VIEW_JSON);
+    const x: ValidAction = {
+      id: 'a9',
+      type: 'cast_spell',
+      label: 'Cast Emberfall Surge',
+      token: 'h:x',
+      prompts: [{ kind: 'number', slot: 'x', prompt: 'Choose a value for X', min: 1, max: 4 }],
+    };
+    const { surface, staging } = deriveDecision(view, {
+      ...IDLE,
+      multiSelect: beginMultiSelect(x),
+    });
+
+    expect(surface!.rows).toBeUndefined();
+    // Every bound is the server's, and the value opens pre-filled at the minimum,
+    // so Confirm is meaningful without touching the control.
+    expect(surface!.number).toEqual({
+      prompt: 'Choose a value for X',
+      min: 1,
+      max: 4,
+      value: 1,
+    });
+    expect(surface!.confirm).toBe(true);
+    // Nothing on the board or on a crest is staged for a numeric answer.
+    expect(staging.candidates).toEqual([]);
+    expect(staging.playerCandidates).toEqual([]);
+
+    // The chosen value is what the control reads back.
+    const raised = deriveDecision(view, {
+      ...IDLE,
+      multiSelect: setActiveNumber(beginMultiSelect(x), 3),
+    });
+    expect(raised.surface!.number?.value).toBe(3);
+    // Out-of-range input is the session's clamp, not the surface's invention.
+    const clamped = deriveDecision(view, {
+      ...IDLE,
+      multiSelect: setActiveNumber(beginMultiSelect(x), 99),
+    });
+    expect(clamped.surface!.number?.value).toBe(4);
+  });
+
+  it('leaves `number` undefined for every slot that is not one', () => {
+    const view = viewOf(ZONE_SELECT_GAME_VIEW_JSON);
+    const session = beginMultiSelect(decisionActionOf(view));
+    expect(deriveDecision(view, { ...IDLE, multiSelect: session }).surface!.number).toBeUndefined();
   });
 
   it('offers the local retract only while there is a pick to give back', () => {

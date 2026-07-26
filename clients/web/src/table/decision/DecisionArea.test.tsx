@@ -27,6 +27,7 @@ function handlers() {
     onToggleRow: vi.fn(),
     onMoveRow: vi.fn(),
     onChooseOption: vi.fn(),
+    onNumber: vi.fn(),
   };
 }
 

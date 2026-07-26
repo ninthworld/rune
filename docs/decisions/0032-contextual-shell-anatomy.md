@@ -129,7 +129,10 @@ ADR disagree, this ADR governs the anatomy and they govern the detail.
   phase plaque, and is the single place a decision is stated and answered.
   `PromptStrip.tsx` and `DecisionSheet.tsx` are deleted — the first had no laid-out
   home left after this ADR removed the bottom shell, and both restated a question
-  the plaque was already titling. `MePanel.tsx` is deleted rather than reworked;
+  the plaque was already titling. The one thing the sheet carried that nothing else
+  did — `NumberPromptSurface`, the control for a `number` slot (issue #554) — moved
+  into the area with the question, since a slot with no candidates can be answered
+  by neither the board nor a row list. `MePanel.tsx` is deleted rather than reworked;
   its only surviving content was the receiver's mana pool, which is now the
   cluster's reservoir. Commitment 4's layer contract is unchanged and is exactly
   what let the decision move: the area is a sibling of the shell's regions on the

@@ -68,6 +68,7 @@ import { SymbolText, symbolNotationText } from '../../chrome/symbols';
 import type { EntityId } from '../../protocol';
 import { ControlButton } from '../controls';
 import { DeadlineCountdown } from '../DeadlineCountdown';
+import { NumberPromptSurface } from '../NumberPromptSurface';
 import { PromptSurface } from '../PromptSurface';
 import type { DecisionSurface } from './decisionSurface';
 import s from './decision.module.css';
@@ -89,6 +90,8 @@ export interface DecisionAreaProps {
   onMoveRow: (id: EntityId, direction: -1 | 1) => void;
   /** Answer an `option` prompt with the chosen option id. */
   onChooseOption: (optionId: string) => void;
+  /** Set the active `number` slot's value (issue #554). The caller clamps it. */
+  onNumber: (value: number) => void;
   testId?: string;
 }
 
@@ -101,9 +104,10 @@ export function DecisionArea({
   onToggleRow,
   onMoveRow,
   onChooseOption,
+  onNumber,
   testId = 'decision-area',
 }: DecisionAreaProps) {
-  const { title, prompt, progress, count, deadline, rows, choices } = surface;
+  const { title, prompt, progress, count, deadline, rows, number, choices } = surface;
 
   return (
     <section
@@ -151,6 +155,25 @@ export function DecisionArea({
                 items={rows.items}
                 onToggle={onToggleRow}
                 onMove={onMoveRow}
+              />
+            </div>
+          )}
+
+          {/* A `number` slot (issue #554) brings its own control: it has no
+              candidates, so neither the board nor a row list can answer it. The
+              surface offers exactly the server's `min`..`max` — the same range
+              `setActiveNumber` clamps to — and the Confirm below submits it, which
+              is why the slot opens pre-filled at the minimum. This is the surface
+              #554 wired into the retired `DecisionSheet`; #567 moved it here with
+              the rest of the question rather than leaving it with the deletion. */}
+          {number && (
+            <div className={s.rows}>
+              <NumberPromptSurface
+                prompt={number.prompt}
+                min={number.min}
+                max={number.max}
+                value={number.value}
+                onChange={onNumber}
               />
             </div>
           )}

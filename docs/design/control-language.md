@@ -612,7 +612,8 @@ a stale-view race, never by user error (protocol §`action_rejected`).
 > split of "the strip carries the sentence, the plaque carries the controls" no
 > longer describe the shipped client. There is now **one** decision surface — the
 > **decision area** (`table/decision/DecisionArea.tsx`) — at the head of the
-> lower-right action column, carrying the question *and* the controls, and
+> lower-right action column, carrying the question, the numeric control of a
+> `number` slot (issue #554), *and* the controls, and
 > `PromptStrip`, `DecisionSheet`, and the anchoring module are removed. §10.1's
 > constraint below survives and is what the new placement satisfies by
 > construction; the algorithm that used to satisfy it does not. §10.2's phone
@@ -889,9 +890,20 @@ every other call took the sheet form with no receiver band.
 phase/priority controls, and the player's current mana" and "one 2.5D-native
 choice surface **adjacent to the primary action**". That is the resolution: the
 **decision area** carries the question, the progress, the count, the deadline, the
-rows, the named choices, and the controls, at the head of the control cluster's
-column. `PromptStrip` and `DecisionSheet` are deleted; the anchoring module is
-deleted with them, because a surface with a fixed home has nothing to anchor.
+rows, the **numeric control**, the named choices, and the controls, at the head of
+the control cluster's column. `PromptStrip` and `DecisionSheet` are deleted; the
+anchoring module is deleted with them, because a surface with a fixed home has
+nothing to anchor.
+
+The numeric control is `NumberPromptSurface`, the answer to a server-posed `number`
+slot (issue #554 — the value of X, a count of counters, one share of a divided
+effect). It landed in `DecisionSheet` while that surface still existed, and moved
+here with the rest of the question rather than being deleted with its host: a
+`number` slot is the one slot kind with **no candidates at all**, so neither the
+board nor a row list can answer it and it must bring its own control. It is
+submitted by the area's own Confirm, like every other slot — the sheet had a
+second one — and the slot opens pre-filled at the server's minimum, so confirming
+without touching it is a legal answer. Every bound is the server's.
 §10's own constraint — never occlude the subject or a candidate — is now met by
 geometry rather than by search: the area stands on the cluster's published height
 on the full composition and on the hand band's top edge on the compact one, so the

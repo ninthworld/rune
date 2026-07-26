@@ -83,6 +83,22 @@ export interface DecisionChoice {
   disabledReason?: string;
 }
 
+/**
+ * The numeric control of an active `number` slot (issue #554) — the value of X,
+ * a count of counters, one share of a divided effect.
+ *
+ * Every bound is the server's own, carried through untouched; the surface offers
+ * exactly `min`..`max` and computes no legality of its own. `value` is the
+ * session's current answer, which opens pre-filled at `min` so the decision is
+ * submittable without touching the control.
+ */
+export interface DecisionNumber {
+  prompt: string;
+  min: number;
+  max: number;
+  value: number;
+}
+
 /** The surface's own model: everything drawn, in the order it is drawn. */
 export interface DecisionSurface {
   /** `targeting` auto-submits on the last pick; `multiSelect` confirms. */
@@ -99,6 +115,8 @@ export interface DecisionSurface {
   deadline?: number;
   /** The rows of a list-answered slot, when the active slot is one. */
   rows?: DecisionRows;
+  /** The numeric control, when the active slot is a `number` slot (#554). */
+  number?: DecisionNumber;
   /** The named choices of an `option` prompt, when the decision poses one. */
   choices?: DecisionChoice[];
   /** The confirm control's reason it is closed, when it renders closed. */
@@ -170,8 +188,31 @@ const IDLE: DecisionStaging = {
  * A `defender` slot never is: its candidates are seats, picked on their crests.
  */
 function listAnswered(view: GameView, slot: MultiSelectSlot | null): boolean {
-  if (!slot || slot.kind === 'defender') return false;
+  if (!slot || slot.kind === 'defender' || slot.kind === 'number') return false;
   return slot.kind === 'order' || !slot.candidates.some((id) => isOnCanvas(view, id));
+}
+
+/**
+ * The numeric control for `slot`, or `undefined` when the active slot is not a
+ * `number` one. A `number` slot has no candidates at all, so it is answered by
+ * neither the board nor a row list — it is the one slot kind that brings its own
+ * control (issue #554).
+ *
+ * The value is read from the session's chosen answer, which the slot opened
+ * pre-filled at the server's minimum; `min` stands in for a missing bound and
+ * `max` for a missing ceiling, matching `setActiveNumber`'s own clamp, so a
+ * malformed prompt degrades to a single legal value rather than an open range.
+ */
+function numberFor(slot: MultiSelectSlot | null, chosen: string[]): DecisionNumber | undefined {
+  if (!slot || slot.kind !== 'number') return undefined;
+  const min = slot.min ?? 0;
+  const value = Number(chosen[0] ?? min);
+  return {
+    prompt: slot.prompt,
+    min,
+    max: slot.max ?? min,
+    value: Number.isFinite(value) ? value : min,
+  };
 }
 
 /** The rows a list-answered slot shows: the arranged items, or the candidates. */
@@ -223,6 +264,7 @@ export function deriveDecision(view: GameView, sessions: DecisionSessions): Deci
         count: countFor(slot, chosen.length),
         deadline: sessions.deadline,
         rows,
+        number: numberFor(slot, chosen),
         choices: options?.options.map((option) => {
           // The server's own words for why this choice is closed: the prompts of
           // the slots it is still waiting on. Never a client-invented reason —

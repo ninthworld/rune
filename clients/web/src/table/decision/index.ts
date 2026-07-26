@@ -62,6 +62,7 @@ export { confirmDisabledReason } from './confirmReason';
 export { deriveDecision } from './decisionSurface';
 export type {
   DecisionChoice,
+  DecisionNumber,
   DecisionPresentation,
   DecisionRow,
   DecisionRows,

@@ -646,6 +646,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
           onToggleRow={toggleCandidate}
           onMoveRow={moveOrder}
           onChooseOption={chooseOption}
+          onNumber={setNumber}
         />
       )}
 
