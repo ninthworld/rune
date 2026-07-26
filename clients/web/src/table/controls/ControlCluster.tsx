@@ -8,8 +8,13 @@
  * ```
  *   PASS PRIORITY                 primary  (§4.2, one blue control at most)
  *   ◉  UNDO                       menu icon (D5) + utility pill (§8)
+ *   MANA ⓖⓖ                       the receiver's floating mana (#567)
  *   MAIN PHASE / YOUR TURN ●●●○›  phase plaque (§5)
  * ```
+ *
+ * The decision surface (`table/decision`) stacks directly above this column when
+ * the server is waiting on an answer, which is what makes the whole lower-right
+ * corner one action area rather than three places to look.
  *
  * ADR 0032 moved this surface: ADR 0023 put the action dock beside the hand, both
  * approved baselines put it here, and C5 records the resolution — the
@@ -46,6 +51,7 @@ import { cx } from '../../chrome/cx';
 import { ControlButton, IconButton } from './ControlButton';
 import type { ControlSession } from './controlPrimary';
 import { RESPOND_ACCESSIBLE_NAME, RESPOND_LABEL, derivePrimary } from './controlPrimary';
+import { ManaReservoir } from './ManaReservoir';
 import { PhasePlaque } from './PhasePlaque';
 import s from './cluster.module.css';
 
@@ -194,6 +200,12 @@ export function ControlCluster({
           )}
         </div>
       )}
+
+      {/* The receiver's floating mana, above the plaque and below the controls
+          that spend it (#567). Absent when the pool is empty — an empty
+          reservoir is a permanent widget reading zero, which is the always-there
+          dashboard ADR 0032 removed. */}
+      <ManaReservoir pool={view.mana_pool} />
 
       {compact ? (
         <div className={s.compactRow}>

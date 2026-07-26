@@ -48,7 +48,7 @@ export function findCard(scene: TableScene, id: EntityId | null): RenderedCard |
 
 /**
  * A display-name lookup across every zone whose cards the view exposes (hand,
- * battlefield, graveyards, exile). Used to label the decision sheet's rows for a
+ * battlefield, graveyards, exile). Used to label the decision area's rows for a
  * `select_from_zone`/`order` over a non-canvas zone; an id with no known card
  * (e.g. a hidden library card or an abstract ordered trigger) falls back to its id.
  */

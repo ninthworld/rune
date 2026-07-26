@@ -123,6 +123,17 @@ ADR disagree, this ADR governs the anatomy and they govern the detail.
   and `PhaseIndicator.tsx` are all reworked or retired under #534. `styles.ts`'s
   fixed-shell geometry and `scene/types.ts`'s carved band rects lose their
   ADR 0023 rationale and follow.
+- **Status (#567).** The one action home is now the whole lower-right corner, not
+  just the control cluster: the decision surface (`table/decision/DecisionArea`)
+  stacks directly above the cluster's primary, utilities, mana reservoir, and
+  phase plaque, and is the single place a decision is stated and answered.
+  `PromptStrip.tsx` and `DecisionSheet.tsx` are deleted — the first had no laid-out
+  home left after this ADR removed the bottom shell, and both restated a question
+  the plaque was already titling. `MePanel.tsx` is deleted rather than reworked;
+  its only surviving content was the receiver's mana pool, which is now the
+  cluster's reservoir. Commitment 4's layer contract is unchanged and is exactly
+  what let the decision move: the area is a sibling of the shell's regions on the
+  `decision` rung, so no chrome can paint over it.
 - `ui-blueprint.md` and `ui-redesign-plan.md` described the ADR 0023 anatomy and
   are superseded on that point; #511's audit retires them.
 - ADR 0003 (DOM/canvas split), ADR 0004 (subject-owned actions), ADR 0029 and

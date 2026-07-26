@@ -75,7 +75,12 @@ describe('LiveMatchTable', () => {
     // and the activity surface replaces the rail's log column.
     expect(screen.queryByTestId('top-bar')).toBeNull();
     expect(screen.queryByTestId('rail')).toBeNull();
-    expect(screen.getByTestId('prompt-banner')).toBeTruthy();
+    // The decision surface is contextual (#567): with nothing being decided it
+    // is absent, and the phase plaque in the cluster carries step and priority.
+    // The permanent prompt strip that used to say so is retired with it.
+    expect(screen.queryByTestId('prompt-banner')).toBeNull();
+    expect(screen.queryByTestId('decision-area')).toBeNull();
+    expect(screen.getByTestId('phase-plaque')).toBeTruthy();
     expect(screen.getByTestId('control-cluster')).toBeTruthy();
     expect(screen.getByTestId('stack-stage')).toBeTruthy();
     expect(screen.getByTestId('activity-surface')).toBeTruthy();
@@ -204,7 +209,7 @@ describe('LiveMatchTable', () => {
     fireEvent.click(screen.getByTestId('live-hand-card-c3'));
     fireEvent.click(screen.getByRole('button', { name: 'Cast Lightning Bolt' }));
     expect(choose).not.toHaveBeenCalled();
-    expect(screen.getByTestId('targeting-prompt').textContent).toContain(
+    expect(screen.getByTestId('decision-prompt').textContent).toContain(
       'target creature or player',
     );
 
@@ -250,7 +255,7 @@ describe('LiveMatchTable', () => {
     expect(choose).not.toHaveBeenCalled();
     expect(screen.getByTestId('target-atk_1').getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByTestId('target-atk_2'));
-    fireEvent.click(screen.getByTestId('decision-plaque-confirm'));
+    fireEvent.click(screen.getByTestId('decision-area-confirm'));
 
     const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
     expect(action).toEqual(expect.objectContaining({ id: 'a5', token: 'h:atk0' }));
@@ -304,9 +309,10 @@ describe('LiveMatchTable', () => {
     expect(keep.disabled).toBe(true);
     expect(another.disabled).toBe(false);
 
-    // The sheet floats over the hand it is asking about, so it must not swallow
-    // the clicks that answer it (the scrim used to, with no `pointer-events`).
-    expect(screen.getByTestId('decision-sheet').dataset.pointerThrough).toBe('true');
+    // The surface stands above the control cluster, clear of the hand it is
+    // asking about, and takes no pointer events outside its own plate — so it
+    // cannot swallow the clicks that answer it (the retired scrim did).
+    expect(screen.getByTestId('decision-area').dataset.pointerThrough).toBe('true');
 
     fireEvent.click(screen.getByTestId('live-hand-card-card_a'));
     expect(screen.getByTestId('live-hand-card-card_a').getAttribute('aria-pressed')).toBe('true');
@@ -319,14 +325,19 @@ describe('LiveMatchTable', () => {
     expect(choose).not.toHaveBeenCalled();
   });
 
-  it('keeps its scrim for a decision answered in the sheet itself', () => {
-    // The pass-through is scoped to picks made on the scene: a decision whose
-    // candidates live in the sheet (a non-board zone) still owns the surface.
+  it('hosts a non-board zone pick as rows on the same one surface', () => {
+    // A decision whose candidates are not on the board — a graveyard return —
+    // used to open a second surface (the sheet) with its own copy of the
+    // question. Now the rows ride the same area as the question and the
+    // controls, so there is one place to read it and one place to answer it.
     seed(ZONE_SELECT_GAME_VIEW_JSON);
     render(<LiveMatchTable />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Return a card to hand' }));
-    expect(screen.getByTestId('decision-sheet').dataset.pointerThrough).toBeUndefined();
+    const area = screen.getByTestId('decision-area');
+    expect(area.contains(screen.getByTestId('prompt-surface'))).toBe(true);
+    expect(screen.queryByTestId('decision-sheet')).toBeNull();
+    expect(document.querySelectorAll('[data-decision-prompt]')).toHaveLength(1);
   });
 
   it('clears an in-progress target session on the next complete view', () => {
@@ -338,7 +349,8 @@ describe('LiveMatchTable', () => {
 
     act(() => useGameStore.getState().ingest(SAMPLE_GAME_VIEW_JSON));
     expect(screen.queryByTestId('target-perm_xyz')).toBeNull();
-    expect(screen.queryByTestId('targeting-prompt')).toBeNull();
+    expect(screen.queryByTestId('decision-prompt')).toBeNull();
+    expect(screen.queryByTestId('decision-area')).toBeNull();
     expect(choose).not.toHaveBeenCalled();
   });
 

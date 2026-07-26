@@ -399,12 +399,32 @@ export function allSlotsSatisfied(session: MultiSelectSession): boolean {
  *   satisfied), so a half-finished pick never rides along with an option answer.
  */
 export function optionSubmittable(session: MultiSelectSession, option: PromptOption): boolean {
+  return optionBlockers(session, option).length === 0;
+}
+
+/**
+ * **Which** slots stand in the way of a named choice — the same two rules as
+ * {@link optionSubmittable}, reported rather than collapsed to a boolean.
+ *
+ * The control language permits a disabled control only where the **server**
+ * states the reason (§3.2, D14, GAP-4), and `ControlButton.disabledReason` is a
+ * string precisely so nothing can be greyed silently. The reason a choice is
+ * closed is the prompt of the slots it is still waiting on, so the surface needs
+ * the slots, not the verdict. Deriving them at the call site would be the client
+ * computing cardinality twice, which is why this lives here beside
+ * {@link slotSatisfied} and why {@link optionSubmittable} is now defined in terms
+ * of it.
+ */
+export function optionBlockers(
+  session: MultiSelectSession,
+  option: PromptOption,
+): MultiSelectSlot[] {
   const required = option.requires ?? [];
-  return session.slots.every((slot, i) => {
+  return session.slots.filter((slot, i) => {
     const chosen = session.chosen[i] ?? [];
-    if (required.includes(slot.slot)) return slotSatisfied(slot, chosen);
-    if (slot.kind !== 'count') return true;
-    return chosen.length === 0 || chosen.length === (slot.count ?? 0);
+    if (required.includes(slot.slot)) return !slotSatisfied(slot, chosen);
+    if (slot.kind !== 'count') return false;
+    return chosen.length !== 0 && chosen.length !== (slot.count ?? 0);
   });
 }
 

@@ -17,12 +17,13 @@
  * server's prompt into the phrasing the button requires, so the wording lives in
  * one place rather than being re-invented at each call site.
  *
- * It lives in its own module rather than beside {@link DecisionPlaque} so that
+ * It lives in its own module rather than beside {@link DecisionArea} so that
  * file exports components only — the react-refresh boundary the client's lint
  * config draws.
  *
- * Consumed in production by `LiveMatchTable`, building the plaque's
- * `confirm.disabledReason`.
+ * Consumed by `deriveDecision`, for both the confirm control and each named
+ * choice; the slots a choice is waiting on come from `multiSelect.optionBlockers`
+ * so the cardinality is never computed twice.
  */
 export function confirmDisabledReason(
   satisfied: boolean,

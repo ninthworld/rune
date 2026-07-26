@@ -68,12 +68,12 @@ describe('defender assignment with two or more living opponents (issue #457)', (
     // two `defend_` slots it puts in play are not.
     fireEvent.click(screen.getByTestId('entity-perm_1'));
     fireEvent.click(screen.getByTestId('target-perm_2'));
-    expect(screen.getByTestId('decision-plaque-confirm').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('decision-area-confirm').hasAttribute('disabled')).toBe(true);
 
     // Walk to the first attacker's defender slot: the question is the server's
     // own prompt, naming the creature being routed.
-    fireEvent.click(screen.getByTestId('decision-plaque-advance'));
-    expect(screen.getByTestId('prompt-banner').textContent).toContain(
+    fireEvent.click(screen.getByTestId('decision-area-advance'));
+    expect(screen.getByTestId('decision-prompt').textContent).toContain(
       'Choose whom Charging Rhino attacks',
     );
 
@@ -81,18 +81,18 @@ describe('defender assignment with two or more living opponents (issue #457)', (
     expect(screen.getByTestId('target-player-p2')).toBeTruthy();
     expect(screen.getByTestId('target-player-p3')).toBeTruthy();
     expect(screen.queryByTestId('target-player-p1')).toBeNull();
-    expect(screen.getByTestId('decision-plaque-confirm').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('decision-area-confirm').hasAttribute('disabled')).toBe(true);
 
     // Answering one attacker walks straight to the next one that owes an answer
     // (`pickDefender` advances), and confirm stays gated until it has one.
     fireEvent.click(screen.getByTestId('target-player-p2'));
-    expect(screen.getByTestId('decision-plaque-confirm').hasAttribute('disabled')).toBe(true);
-    expect(screen.getByTestId('prompt-banner').textContent).toContain(
+    expect(screen.getByTestId('decision-area-confirm').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('decision-prompt').textContent).toContain(
       'Choose whom Skyshroud Falcon attacks',
     );
     fireEvent.click(screen.getByTestId('target-player-p3'));
 
-    fireEvent.click(screen.getByTestId('decision-plaque-confirm'));
+    fireEvent.click(screen.getByTestId('decision-area-confirm'));
     const [action, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
     expect(action).toEqual(expect.objectContaining({ id: 'a5', token: 'h:atk0' }));
     expect(targets).toEqual([
@@ -107,7 +107,7 @@ describe('defender assignment with two or more living opponents (issue #457)', (
     render(<LiveMatchTable />);
 
     fireEvent.click(screen.getByTestId('entity-perm_1'));
-    fireEvent.click(screen.getByTestId('decision-plaque-advance'));
+    fireEvent.click(screen.getByTestId('decision-area-advance'));
 
     for (const seat of ['p2', 'p3']) {
       const panel = screen.getByTestId(`target-player-${seat}`);
@@ -167,11 +167,11 @@ describe('defender assignment with a single living opponent (issue #457)', () =>
     render(<LiveMatchTable />);
 
     fireEvent.click(screen.getByTestId('entity-atk_1'));
-    expect(screen.queryByTestId('decision-plaque-advance')).toBeNull();
+    expect(screen.queryByTestId('decision-area-advance')).toBeNull();
     expect(screen.queryByTestId('target-player-p2')).toBeNull();
-    expect(screen.getByTestId('decision-plaque-confirm').hasAttribute('disabled')).toBe(false);
+    expect(screen.getByTestId('decision-area-confirm').hasAttribute('disabled')).toBe(false);
 
-    fireEvent.click(screen.getByTestId('decision-plaque-confirm'));
+    fireEvent.click(screen.getByTestId('decision-area-confirm'));
     const [, targets] = choose.mock.calls[0] as [ValidAction, TargetChoice[]];
     expect(targets).toEqual([{ slot: 'attackers', chosen: ['atk_1'] }]);
   });

@@ -14,10 +14,9 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameView, StackItem } from '../protocol';
-import { ControlButton } from './controls';
-import { DecisionPlaque } from './decision';
-import type { PlaquePlacement } from './decision';
-import { PromptStrip } from './PromptStrip';
+import { ControlButton, ManaReservoir } from './controls';
+import { DecisionArea } from './decision';
+import type { DecisionSurface } from './decision';
 import { StackStage } from './stack';
 
 afterEach(cleanup);
@@ -25,11 +24,26 @@ afterEach(cleanup);
 /** The mana ability every surface below is asked to show. */
 const ABILITY = '{T}: Add {G}.';
 
-const PLACEMENT: PlaquePlacement = {
-  rect: { x: 100, y: 100, w: 272, h: 102 },
-  form: 'anchored',
-  side: 'below',
-  slide: 0,
+/** A decision surface whose title and sentence both carry notation. */
+const SURFACE: DecisionSurface = {
+  kind: 'multiSelect',
+  title: ABILITY,
+  prompt: `Pay ${ABILITY}`,
+  confirm: false,
+  advance: false,
+  undo: false,
+  cancel: false,
+};
+
+/** Every handler the area needs; none of these tests presses anything. */
+const NOOPS = {
+  onConfirm: vi.fn(),
+  onAdvance: vi.fn(),
+  onUndo: vi.fn(),
+  onCancel: vi.fn(),
+  onToggleRow: vi.fn(),
+  onMoveRow: vi.fn(),
+  onChooseOption: vi.fn(),
 };
 
 function viewWith(stack: StackItem[] = []): GameView {
@@ -77,17 +91,27 @@ describe('symbol notation reaches no player-visible surface (issue #462)', () =>
     expect(screen.getByRole('button', { name: 'PASS PRIORITY' })).toBeTruthy();
   });
 
-  it('draws the prompt strip’s action label and the stack top it names', () => {
-    render(
-      <PromptStrip
-        view={viewWith([{ id: 's1', controller: 'p1', description: ABILITY }])}
-        prompt={{ kind: 'priority' } as never}
-        multiSelect={{ label: ABILITY, prompt: 'Choose lands', step: 1, total: 1, chosen: 0 }}
-      />,
-    );
-    const strip = screen.getByTestId('prompt-banner');
-    expect(strip.textContent).not.toContain('{');
-    expect(symbols(strip)).toEqual(['tap', 'green mana']);
+  it('draws the decision area’s question, and draws it exactly once', () => {
+    render(<DecisionArea surface={SURFACE} {...NOOPS} />);
+    const area = screen.getByTestId('decision-area');
+    expect(area.textContent).not.toContain('{');
+    // Title then sentence — two runs of the same notation, and no third copy
+    // anywhere: the strip and the sheet that used to restate it are gone.
+    expect(symbols(area)).toEqual(['tap', 'green mana', 'tap', 'green mana']);
+    expect(document.querySelectorAll('[data-decision-prompt]')).toHaveLength(1);
+  });
+
+  it('draws the mana reservoir’s pool and speaks each symbol’s name', () => {
+    render(<ManaReservoir pool={['{G}', '{U}']} />);
+    const reservoir = screen.getByTestId('mana-reservoir');
+    expect(reservoir.textContent).not.toContain('{');
+    expect(symbols(reservoir)).toEqual(['green mana', 'blue mana']);
+    expect(screen.getByRole('group', { name: 'Mana pool: green mana, blue mana' })).toBeTruthy();
+  });
+
+  it('prints an unknown mana code literally rather than dropping it', () => {
+    render(<ManaReservoir pool={['{G}', '{WEIRD}']} />);
+    expect(screen.getByTestId('mana-reservoir').textContent).toContain('{WEIRD}');
   });
 
   it('draws a stack entry’s server description', () => {
@@ -99,9 +123,9 @@ describe('symbol notation reaches no player-visible surface (issue #462)', () =>
     expect(entry.getAttribute('aria-label')).toContain('tap: Add green mana.');
   });
 
-  it('draws the decision plaque’s title and speaks its group name', () => {
-    render(<DecisionPlaque title={ABILITY} placement={PLACEMENT} testId="plaque" />);
-    const title = screen.getByTestId('plaque-title');
+  it('speaks the decision area’s group name from its server title', () => {
+    render(<DecisionArea surface={SURFACE} {...NOOPS} testId="area" />);
+    const title = screen.getByTestId('area-title');
     expect(title.textContent).not.toContain('{');
     expect(symbols(title)).toEqual(['tap', 'green mana']);
     expect(screen.getByRole('group', { name: 'tap: Add green mana.' })).toBeTruthy();

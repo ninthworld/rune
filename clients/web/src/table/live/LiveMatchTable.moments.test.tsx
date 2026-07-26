@@ -145,9 +145,10 @@ describe('LiveMatchTable session moments', () => {
 
     // The mulligan is the one decision the view leaves no way around (#451); the
     // hand is lifted forward as the subject of the question, and stays fully
-    // interactive underneath — the sheet passes pointer events through.
+    // interactive underneath — the decision area stands above the cluster and
+    // takes no pointer events outside its own plate.
     expect(shell.dataset.forcedDecision).toBe('true');
-    expect(screen.getByTestId('decision-sheet').dataset.pointerThrough).toBe('true');
+    expect(screen.getByTestId('decision-area').dataset.pointerThrough).toBe('true');
     fireEvent.click(screen.getByTestId('live-hand-card-card_a'));
     expect(screen.getByTestId('live-hand-card-card_a').getAttribute('aria-pressed')).toBe('true');
 
