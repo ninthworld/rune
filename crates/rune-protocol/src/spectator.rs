@@ -155,7 +155,30 @@ mod tests {
                 },
             ],
             battlefield: vec![],
-            stack: vec![],
+            // A spectator sees the stack exactly as a seated player does: an object
+            // on the stack is public, so its kind, targets, and card face (issue
+            // #550) ride the same shared `StackItem` with nothing redacted.
+            stack: vec![StackItem {
+                id: "s1".into(),
+                controller: "p0".into(),
+                description: "Lightning Bolt".into(),
+                source: None,
+                kind: Some(StackItemKind::Spell),
+                targets: vec![StackTarget::Player {
+                    player: "p2".into(),
+                }],
+                card: Some(CardView {
+                    id: "card_31".into(),
+                    name: "Lightning Bolt".into(),
+                    type_line: "Instant".into(),
+                    mana_cost: Some("{R}".into()),
+                    rules_text: "Lightning Bolt deals 3 damage to any target.".into(),
+                    functional_id: "lightning_bolt".into(),
+                    power: None,
+                    toughness: None,
+                    keywords: vec![],
+                }),
+            }],
             graveyards: vec![],
             exile: vec![],
             command: vec![],
@@ -217,6 +240,12 @@ mod tests {
             json["commander_identity"][0]["color_identity"],
             serde_json::json!(["G"])
         );
+        // The public stack keeps its structure for a spectator (issue #550): the kind
+        // is stated, the target is typed, and the card face survives the wire.
+        assert_eq!(json["stack"][0]["kind"], "spell");
+        assert_eq!(json["stack"][0]["targets"][0]["kind"], "player");
+        assert_eq!(json["stack"][0]["targets"][0]["player"], "p2");
+        assert_eq!(json["stack"][0]["card"]["name"], "Lightning Bolt");
         let back: SpectatorView =
             serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
         assert_eq!(back, view);

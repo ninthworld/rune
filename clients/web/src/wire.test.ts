@@ -333,6 +333,133 @@ describe('parseGameView', () => {
   });
 });
 
+describe('stack item wire (issue #550)', () => {
+  /** A one-entry stack frame, with `entry` merged into the single stack item. */
+  function stackFrame(entry: Record<string, unknown>) {
+    return parseGameView(
+      JSON.stringify({
+        phase: 'precombat_main',
+        stack: [{ id: 's1', controller: 'p2', description: 'Lightning Bolt', ...entry }],
+      }),
+    );
+  }
+
+  it('carries a server-stated kind, an ordered target list, and the card face', () => {
+    const view = stackFrame({
+      kind: 'spell',
+      targets: [
+        { kind: 'permanent', id: 'perm_a' },
+        { kind: 'player', player: 'p1' },
+        { kind: 'stack', id: 's0' },
+        { kind: 'card', id: 'card_7' },
+      ],
+      card: { id: 'card_9', name: 'Lightning Bolt', type_line: 'Instant', mana_cost: '{R}' },
+    });
+    const item = view.stack[0]!;
+    expect(item.kind).toBe('spell');
+    // Order is the numbering channel: it must survive normalization untouched, and
+    // every kind must survive typed — the client never classifies a bare id itself.
+    expect(item.targets).toEqual([
+      { kind: 'permanent', id: 'perm_a' },
+      { kind: 'player', player: 'p1' },
+      { kind: 'stack', id: 's0' },
+      { kind: 'card', id: 'card_7' },
+    ]);
+    expect(item.card?.name).toBe('Lightning Bolt');
+  });
+
+  it('defaults an older server’s entry to unclassified, targetless, and faceless', () => {
+    // Backward compatibility: an entry from a server predating #550 carries none of
+    // the three fields. It must still normalize — with no *guessed* kind.
+    const item = stackFrame({ source: 'perm_bear' }).stack[0]!;
+    expect(item.kind).toBeUndefined();
+    expect(item.card).toBeUndefined();
+    expect(item.targets).toEqual([]);
+    expect(item.source).toBe('perm_bear');
+  });
+
+  it('drops an unknown kind and any malformed target rather than throwing', () => {
+    // Forward compatibility: a kind this client does not know leaves the entry
+    // unclassified (never coerced into a known one), and a malformed target entry is
+    // dropped like every other normalizer drops — the rest of the list survives.
+    const item = stackFrame({
+      kind: 'triggered',
+      targets: [
+        { kind: 'permanent', id: 'perm_a' },
+        { kind: 'zone', seat: 0 },
+        { kind: 'permanent' },
+        { kind: 'player' },
+        'perm_b',
+        null,
+      ],
+    }).stack[0]!;
+    expect(item.kind).toBeUndefined();
+    expect(item.targets).toEqual([{ kind: 'permanent', id: 'perm_a' }]);
+  });
+
+  it('degrades a malformed targets field to the empty list', () => {
+    expect(stackFrame({ targets: 'perm_a' }).stack[0]!.targets).toEqual([]);
+  });
+
+  it('rebuilds the same stack and paths on a mid-resolution reconnect', () => {
+    // The reconnect contract: the server re-sends one complete view, so parsing the
+    // same frame twice — and a later frame in which a target has become illegal —
+    // rebuilds the identical relationships with no client state carried across.
+    const wire = JSON.stringify({
+      phase: 'precombat_main',
+      battlefield: [],
+      stack: [
+        {
+          id: 's1',
+          controller: 'p2',
+          description: 'Twin Bolt deals 1 damage to each of two targets.',
+          kind: 'spell',
+          targets: [
+            { kind: 'permanent', id: 'perm_gone' },
+            { kind: 'player', player: 'p1' },
+          ],
+          card: { id: 'card_9', name: 'Twin Bolt', type_line: 'Instant' },
+        },
+      ],
+    });
+    expect(parseGameView(wire).stack).toEqual(parseGameView(wire).stack);
+    const item = parseGameView(wire).stack[0]!;
+    // The permanent is no longer on the battlefield, yet the entry still names it
+    // (CR 608.2b): the relationship is reconstructed, and what to draw for a missing
+    // endpoint is a rendering decision, not a normalization one.
+    expect(item.targets?.[0]).toEqual({ kind: 'permanent', id: 'perm_gone' });
+    expect(item.targets).toHaveLength(2);
+    expect(item.card?.name).toBe('Twin Bolt');
+  });
+
+  it('carries the same public stack through a SpectatorView', () => {
+    // ADR 0022: a spectator sees the public stack exactly as a seated player does —
+    // the same per-item normalization, nothing added and nothing redacted.
+    const view = normalizeSpectatorView({
+      phase: 'precombat_main',
+      players: [],
+      stack: [
+        {
+          id: 's1',
+          controller: 'p2',
+          description: 'Lightning Bolt',
+          kind: 'spell',
+          targets: [{ kind: 'player', player: 'p1' }],
+          card: { id: 'card_9', name: 'Lightning Bolt', type_line: 'Instant' },
+        },
+      ],
+    });
+    expect(view.stack[0]).toEqual({
+      id: 's1',
+      controller: 'p2',
+      description: 'Lightning Bolt',
+      kind: 'spell',
+      targets: [{ kind: 'player', player: 'p1' }],
+      card: { id: 'card_9', name: 'Lightning Bolt', type_line: 'Instant' },
+    });
+  });
+});
+
 describe('cross-language contract fixture (issue #56)', () => {
   // The same JSON the Rust `rune-protocol` round-trip test consumes. If a field is
   // renamed/retyped/removed in the Rust crate and this fixture is updated to match,
@@ -369,6 +496,26 @@ describe('cross-language contract fixture (issue #56)', () => {
     // Stack: an ability carries its `source`; a spell does not.
     expect(view.stack[0].source).toBeUndefined();
     expect(view.stack[1].source).toBe('perm_bear');
+
+    // Stack structure (issue #550): the kind is server-stated, the card face rides
+    // along, and the target list is typed and ordered.
+    expect(view.stack[0].kind).toBe('spell');
+    expect(view.stack[0].card?.name).toBe('Lightning Bolt');
+    expect(view.stack[0].targets).toEqual([{ kind: 'permanent', id: 'perm_bear' }]);
+    // The terse ability entry keeps the pre-#550 body: no face, no targets — not an
+    // error — while still stating its kind.
+    expect(view.stack[1].kind).toBe('ability');
+    expect(view.stack[1].card).toBeUndefined();
+    expect(view.stack[1].targets).toEqual([]);
+
+    // A multi-target spell reconstructs its full relationship set from this one
+    // view: two targets, typed differently, in the order the client numbers them.
+    expect(view.stack[2].targets).toEqual([
+      { kind: 'permanent', id: 'perm_nissa' },
+      { kind: 'player', player: 'p2' },
+    ]);
+    // ...and a stack object may itself be a target (CR 701.5).
+    expect(view.stack[3].targets).toEqual([{ kind: 'stack', id: 's3' }]);
 
     // Public piles round-trip populated.
     expect(view.graveyards[0].cards[0].id).toBe('g1');

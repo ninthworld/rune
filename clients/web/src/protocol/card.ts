@@ -187,8 +187,57 @@ export interface Permanent {
 }
 
 /**
+ * Every {@link StackItemKind} value, mirroring the `StackItemKind` enum's
+ * snake_case serde encoding in `crates/rune-protocol/src/card.rs`. This is the
+ * single source of truth: the {@link StackItemKind} union is derived from it and
+ * {@link isStackItemKind} validates a wire value against it, so a kind added here
+ * can never drift out of the type (and vice versa).
+ */
+export const STACK_ITEM_KINDS = ['spell', 'ability'] as const;
+
+/**
+ * What an object on the stack is (issue #550); one of {@link STACK_ITEM_KINDS}:
+ * - `spell` — a card cast onto the stack (CR 601); its `card` is the card being cast.
+ * - `ability` — an ability on the stack (CR 113.3), activated *or* triggered; the
+ *   server does not distinguish the two today, so neither may the client.
+ *
+ * Server-stated: the client never derives a kind from the presence of
+ * {@link StackItem.source}. The union widens additively when the engine can prove a
+ * finer distinction, so an unrecognized future value must be treated as
+ * "unclassified" (see {@link normalizeGameView}) and rendered from `description`.
+ */
+export type StackItemKind = (typeof STACK_ITEM_KINDS)[number];
+
+/** Whether a wire value is a known {@link StackItemKind}. */
+export function isStackItemKind(value: unknown): value is StackItemKind {
+  return typeof value === 'string' && (STACK_ITEM_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * One target chosen for an object on the stack (CR 601.2c), typed at the source.
+ *
+ * The `kind` discriminator states what is targeted, so the client never classifies a
+ * target by testing which collection its id appears in — that classification is rules
+ * interpretation and belongs to the server. A `player` target carries a
+ * {@link PlayerId} (the key `controller`, `seat_order`, and `player_names` share);
+ * every other kind carries an {@link EntityId} from the matching collection.
+ */
+export type StackTarget =
+  | { kind: 'player'; player: PlayerId }
+  | { kind: 'permanent'; id: EntityId }
+  | { kind: 'card'; id: EntityId }
+  | { kind: 'stack'; id: EntityId };
+
+/** Every {@link StackTarget} `kind` tag, for runtime validation of the wire. */
+export const STACK_TARGET_KINDS = ['player', 'permanent', 'card', 'stack'] as const;
+
+/**
  * One object on the stack — a spell or an ability. Ability entries carry their
  * source permanent so the client can point back at it.
+ *
+ * `description` is the authoritative human-readable text; `kind`, `targets`, and
+ * `card` are additive structure for presentation geometry (issue #550). The client
+ * must never parse one to recover the other.
  */
 export interface StackItem {
   /** Entity id of this stack object. */
@@ -199,6 +248,30 @@ export interface StackItem {
   description: string;
   /** Source permanent for an ability; absent for a spell. */
   source?: EntityId;
+  /**
+   * What this object is. Server-stated and never inferred from `source`. Absent when
+   * the entry is unclassified — an older server that omits the field, or a future
+   * kind this client does not know; render such an entry generically.
+   */
+  kind?: StackItemKind;
+  /**
+   * The targets this object named, in the order its effects consume them (CR
+   * 601.2c) — the ordering the client's target numerals (①②③) come from. Omitted on
+   * the wire when empty; {@link normalizeGameView} materializes it to `[]`, and a
+   * targetless entry is normal, not an error.
+   *
+   * The list is as it currently stands: a target that has become illegal stays named
+   * until the object resolves or fizzles (CR 608.2b), so a client that reconnects
+   * mid-resolution rebuilds exactly the relationships the game holds.
+   */
+  targets?: StackTarget[];
+  /**
+   * The card face to render: for a `spell` the card being cast, for an `ability` the
+   * current face of its source permanent (the entry's thumbnail). Absent when there
+   * is no face to show — notably an ability whose source has already left the
+   * battlefield (CR 608.2) — or when omitted by an older server.
+   */
+  card?: CardView;
 }
 
 /** A public, ordered pile owned by one player (graveyard or exile). */

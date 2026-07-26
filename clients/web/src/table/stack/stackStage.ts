@@ -39,10 +39,12 @@
  *
  * ## What is not here, and why
  *
- * The Expanded anatomy of §2.2 is mostly **dormant**: `StackItem` carries no card
- * face (gap G4), no targets (G1), no activated/triggered discriminator (G2), and
- * no copy relation (G3). Those are `#550`'s protocol changes. Rather than invent
- * them, the stage renders the four channels §2.4 rule 2 says may never degrade —
+ * The Expanded anatomy of §2.2 is still partly **dormant**. `#550` landed the
+ * contract for a card face (gap G4), an ordered target list (G1), and the
+ * spell/ability discriminator; drawing them is a later rendering change. What no
+ * protocol field can supply stays out entirely: activated vs triggered (G2) is an
+ * engine gap, and a copy relation (G3) awaits a copy mechanic. Rather than invent
+ * either, the stage renders the four channels §2.4 rule 2 says may never degrade —
  * controller stripe, order index, kind marker, and (when it exists) the source
  * tether — and leaves the rest absent. Absence is stated positively where the
  * player could otherwise infer something false: an ability whose source has left
@@ -100,8 +102,9 @@ export interface StackStageEntry {
   /** The density tier this entry draws at (§2.1). */
   tier: StackTier;
   /**
-   * Spell or ability. `StackItem.source`'s presence is the only discriminator the
-   * protocol offers today; activated vs triggered is gap G2 and is not guessed.
+   * Spell or ability, as `StackItem.kind` states it (issue #550), falling back to
+   * `StackItem.source`'s presence only for an entry that predates the field.
+   * Activated vs triggered is gap G2 — an engine gap — and is never guessed.
    */
   kind: 'spell' | 'ability';
   /** `StackItem.description`, verbatim. The client never composes rules prose. */
@@ -405,7 +408,9 @@ export function deriveStackStage(
     const isTop = i === 0;
     const focused = options.focusId != null && item.id === options.focusId;
     const tier = tierFor({ compact, count, isTop, focused, anyFocus });
-    const kind = item.source !== undefined ? 'ability' : 'spell';
+    // The server states the kind (issue #550); the `source`-presence reading is a
+    // fallback for an entry that predates the field, never a second opinion.
+    const kind = item.kind ?? (item.source !== undefined ? 'ability' : 'spell');
     const source = item.source !== undefined ? resolveSource(view, item.source) : undefined;
     const controllerName = controllerLabel(view, item.controller);
 

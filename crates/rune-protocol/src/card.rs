@@ -236,8 +236,71 @@ pub struct Counter {
     pub count: u32,
 }
 
+/// What an object on the stack **is** (issue #550): the server-stated
+/// discriminator a client renders from, instead of inferring a kind from which
+/// other fields happen to be present.
+///
+/// Deliberately only as fine-grained as the engine can prove. A triggered and an
+/// activated ability are both [`StackItemKind::Ability`] today because the engine's
+/// stack object records only *that* an ability is on the stack, not how it got
+/// there; splitting `ability` into `activated`/`triggered` (and adding `copy`) is an
+/// engine change first, and this enum widens additively when it lands. A client must
+/// therefore treat an unrecognized future value as "unclassified" and fall back to
+/// [`StackItem::description`], never invent the distinction itself.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StackItemKind {
+    /// A spell: a card cast onto the stack (CR 601). Its [`StackItem::card`] is the
+    /// card being cast.
+    Spell,
+    /// An ability on the stack (CR 113.3) — activated or triggered; the engine does
+    /// not distinguish the two today. Its [`StackItem::source`] names the permanent
+    /// the ability came from.
+    Ability,
+}
+
+/// One target chosen for an object on the stack (CR 601.2c), **typed at the source**
+/// (issue #550, gaps G1/G6).
+///
+/// The variant states what kind of thing is targeted, so a client never classifies a
+/// target by testing which collection its id appears in — that classification is
+/// rules interpretation and belongs to the server (ADR 0002). Serialized internally
+/// tagged as `{"kind": "...", ...}`; the id field is named per variant so a `player`
+/// carries a [`PlayerId`] (the same id `controller`, `seat_order`, and
+/// `player_names` are keyed by) while every other variant carries an [`EntityId`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StackTarget {
+    /// A player (CR 115.1).
+    Player {
+        /// The targeted player's id — the seat key, not an entity id.
+        player: PlayerId,
+    },
+    /// A permanent on the battlefield.
+    Permanent {
+        /// The targeted permanent's entity id, as it appears in `battlefield[].id`.
+        id: EntityId,
+    },
+    /// A physical card in a zone other than the battlefield or the stack (e.g. a
+    /// card in a graveyard).
+    Card {
+        /// The targeted card's entity id, as it appears in a [`ZonePile`].
+        id: EntityId,
+    },
+    /// Another object on the stack — what a counterspell names (CR 701.5).
+    Stack {
+        /// The targeted stack object's entity id, as it appears in `stack[].id`.
+        id: EntityId,
+    },
+}
+
 /// One object on the stack — a spell or an ability. Ability entries carry their
 /// source permanent so the client can point back at it.
+///
+/// [`description`](Self::description) stays the authoritative human-readable text;
+/// [`kind`](Self::kind), [`targets`](Self::targets), and [`card`](Self::card) are
+/// additive structure for *presentation geometry* (issue #550), never a replacement
+/// a client must reassemble prose from.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StackItem {
     /// Entity id of this stack object.
@@ -249,6 +312,35 @@ pub struct StackItem {
     /// Source permanent for an ability; `None` for a spell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<EntityId>,
+    /// What this object is (issue #550). Server-stated; a client never derives it
+    /// from the presence of [`source`](Self::source). `None` only when the payload
+    /// came from a server predating the field — an unclassified entry, which a
+    /// client renders generically rather than guessing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<StackItemKind>,
+    /// The targets chosen for this object, **in the order the object's own effects
+    /// consume them** (CR 601.2c) — the ordering channel the client's target
+    /// numerals (①②③) come from. Empty (and omitted) for a targetless object; an
+    /// object that targets nothing is not an error.
+    ///
+    /// This is the list **as it currently stands**: targets are locked in on
+    /// announcement and a target that has since become illegal stays named here
+    /// until the object resolves or fizzles (CR 608.2b), so a client that
+    /// reconnects mid-resolution rebuilds exactly the relationships the game holds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<StackTarget>,
+    /// The card face to render for this entry (issue #550): for a
+    /// [`StackItemKind::Spell`] the card being cast; for a
+    /// [`StackItemKind::Ability`] the **current** face of its source permanent, so
+    /// the entry can show a source thumbnail without a battlefield lookup.
+    ///
+    /// `None` when there is no face to show — notably an ability whose source has
+    /// already left the battlefield (CR 608.2), which is the same degradation
+    /// [`description`](Self::description) makes when it can no longer name its
+    /// source. Public information only: an object on the stack is visible to every
+    /// player, so this leaks nothing a spectator may not see.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<CardView>,
 }
 
 /// A public, ordered pile owned by one player (graveyard or exile).
@@ -478,5 +570,128 @@ mod tests {
         };
         let vanilla_json = serde_json::to_value(&vanilla).unwrap();
         assert!(vanilla_json.get("keywords").is_none());
+    }
+
+    #[test]
+    fn issue_550_stack_item_kind_targets_and_card_elide_when_absent() {
+        // The pre-#550 shape: a spell entry with none of the additive fields set
+        // serializes to exactly the four keys it always had, so an existing payload
+        // (and the canonical fixture's terse entries) is unchanged on the wire.
+        let bare = StackItem {
+            id: "s1".into(),
+            controller: "p2".into(),
+            description: "Lightning Bolt".into(),
+            source: None,
+            kind: None,
+            targets: vec![],
+            card: None,
+        };
+        let json = serde_json::to_value(&bare).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "id": "s1",
+                "controller": "p2",
+                "description": "Lightning Bolt",
+            })
+        );
+        assert_eq!(serde_json::from_value::<StackItem>(json).unwrap(), bare);
+    }
+
+    #[test]
+    fn issue_550_an_older_payload_parses_with_the_new_fields_defaulted() {
+        // Backward compatibility: a stack entry from a server predating #550 carries
+        // no `kind`, `targets`, or `card`. It must still deserialize, defaulting to
+        // "unclassified, targetless, no face" rather than failing the whole message —
+        // and, crucially, never defaulting `kind` to a *guess*.
+        let older =
+            r#"{"id":"s2","controller":"p1","description":"Add {G}.","source":"perm_bear"}"#;
+        let item: StackItem = serde_json::from_str(older).unwrap();
+        assert_eq!(item.kind, None, "an absent kind is unknown, never guessed");
+        assert!(item.targets.is_empty());
+        assert_eq!(item.card, None);
+        assert_eq!(item.source.as_deref(), Some("perm_bear"));
+    }
+
+    #[test]
+    fn issue_550_every_stack_target_variant_round_trips_tagged_by_kind() {
+        // Targets are typed at the source (gap G6): each variant states what it names,
+        // so a client never classifies a target by testing which collection its id is
+        // in. The `player` variant deliberately carries a `PlayerId` under its own key.
+        let cases = [
+            (
+                StackTarget::Player {
+                    player: "p2".into(),
+                },
+                serde_json::json!({"kind": "player", "player": "p2"}),
+            ),
+            (
+                StackTarget::Permanent {
+                    id: "perm_bear".into(),
+                },
+                serde_json::json!({"kind": "permanent", "id": "perm_bear"}),
+            ),
+            (
+                StackTarget::Card {
+                    id: "card_7".into(),
+                },
+                serde_json::json!({"kind": "card", "id": "card_7"}),
+            ),
+            (
+                StackTarget::Stack { id: "s1".into() },
+                serde_json::json!({"kind": "stack", "id": "s1"}),
+            ),
+        ];
+        for (target, expected) in cases {
+            let json = serde_json::to_value(&target).unwrap();
+            assert_eq!(json, expected);
+            assert_eq!(serde_json::from_value::<StackTarget>(json).unwrap(), target);
+        }
+    }
+
+    #[test]
+    fn issue_550_a_multi_target_spell_entry_round_trips_in_order() {
+        // The ordered, server-authored target list is the client's numbering channel
+        // (①②③): order must survive the wire exactly as sent, and the whole entry —
+        // kind, card face, and targets — must round-trip so a reconnecting client
+        // rebuilds every relationship from one message.
+        let item = StackItem {
+            id: "s3".into(),
+            controller: "p1".into(),
+            description: "Twin Bolt deals 1 damage to each of two targets.".into(),
+            source: None,
+            kind: Some(StackItemKind::Spell),
+            targets: vec![
+                StackTarget::Permanent {
+                    id: "perm_bear".into(),
+                },
+                StackTarget::Player {
+                    player: "p2".into(),
+                },
+            ],
+            card: Some(CardView {
+                id: "card_31".into(),
+                name: "Twin Bolt".into(),
+                type_line: "Instant".into(),
+                mana_cost: Some("{1}{R}".into()),
+                rules_text: "Twin Bolt deals 1 damage to each of two targets.".into(),
+                functional_id: "twin_bolt".into(),
+                power: None,
+                toughness: None,
+                keywords: vec![],
+            }),
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let back: StackItem = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, item);
+        assert_eq!(
+            back.targets[0],
+            StackTarget::Permanent {
+                id: "perm_bear".into()
+            },
+            "the first target stays first — numbering comes from this order"
+        );
+        assert_eq!(back.kind, Some(StackItemKind::Spell));
+        assert_eq!(back.card.map(|c| c.name).as_deref(), Some("Twin Bolt"));
     }
 }

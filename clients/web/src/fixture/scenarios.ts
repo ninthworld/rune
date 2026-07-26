@@ -100,6 +100,10 @@ function stack(count: number): StackItem[] {
       'Return to the Pale Court',
     ][index % 4]!,
     source: index % 2 === 0 ? `p${2 + (index % 3)}-beast-0` : undefined,
+    // Targetless entries (issue #550): the server elides the list, and normalization
+    // materializes it to `[]` — so the fixture must carry the normalized form to stay
+    // round-trip identical.
+    targets: [],
   }));
 }
 
