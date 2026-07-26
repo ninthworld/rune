@@ -1,7 +1,7 @@
 use crate::card::Keyword;
 use crate::card_type::CardType;
 use crate::characteristics::{characteristics, permanent_has_keyword};
-use crate::id::PermanentId;
+use crate::id::{PermanentId, PlayerId};
 use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
 
@@ -9,14 +9,39 @@ use crate::CardDatabase;
 /// **not** been under that player's control continuously since their most recent
 /// turn began.
 ///
-/// Derived from [`Permanent::entered_turn`]: a permanent that entered on an
-/// earlier turn than the current one was already in play when this turn began, so
-/// it is not sick; one that entered this turn is. Written for the active player,
-/// whose most recent turn is the current [`GameState::turn`] — the only player
-/// who declares attackers in this slice.
+/// Derived from [`Permanent::entered_turn`] and [`turn_began_for`]: the permanent
+/// is sick exactly when it came under its controller's control on or after the
+/// turn that controller most recently began.
+///
+/// The comparison is against **the controller's** most recent turn, not the
+/// current one. Those differ for every seat that is not the active player, and
+/// getting it wrong frees a creature too early: a creature cast by seat 0 on
+/// turn 1 is still restricted throughout seat 1's turn 2 and only loses the
+/// restriction when seat 0's turn 3 begins. Since a non-active player may hold
+/// priority and activate abilities at instant speed, that difference is
+/// observable, not academic.
 #[must_use]
 pub(crate) fn has_summoning_sickness(perm: &Permanent, state: &GameState) -> bool {
-    perm.entered_turn >= state.turn
+    perm.entered_turn >= turn_began_for(state, perm.controller)
+}
+
+/// The turn number on which `player`'s most recent turn began — the reference
+/// point CR 302.6 measures continuous control from.
+///
+/// The active player's most recent turn is, by definition, the current one, so
+/// their answer is read from [`GameState::turn`] rather than from stored state.
+/// Everyone else is answered from [`crate::player::Player::turn_began`], which the turn boundary
+/// records; `0` there means the seat has not taken a turn yet, so nothing that
+/// entered during the game has been controlled since one began.
+#[must_use]
+pub(crate) fn turn_began_for(state: &GameState, player: PlayerId) -> u32 {
+    if player == state.active_player {
+        return state.turn;
+    }
+    state
+        .players
+        .get(player.0)
+        .map_or(state.turn, |p| p.turn_began)
 }
 
 /// Whether `perm` is a creature by its printed card types. Type-changing
@@ -26,6 +51,29 @@ pub(crate) fn has_summoning_sickness(perm: &Permanent, state: &GameState) -> boo
 pub(super) fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
     db.card(perm.card)
         .is_some_and(|c| c.has_type(CardType::Creature))
+}
+
+/// Whether the summoning-sickness restriction of CR 302.6 currently applies to
+/// `perm`: it is a creature, it has [`has_summoning_sickness`], and it does not
+/// have haste (CR 702.10b, which exempts it).
+///
+/// CR 302.6 imposes **one** restriction that governs **two** things: such a
+/// creature can't attack, *and* an ability of it whose cost contains `{T}` (or
+/// `{Q}`) can't be activated. Both call sites — [`super::attacker_candidates`] and
+/// the activated-ability arm of [`crate::valid_actions`] — read this single
+/// predicate, so the haste exemption can never drift between them.
+///
+/// Only creatures are ever summoning sick: a land or mana rock that entered this
+/// turn taps freely, so this is `false` for every non-creature permanent.
+#[must_use]
+pub(crate) fn summoning_sickness_restricts(
+    state: &GameState,
+    perm: &Permanent,
+    db: &CardDatabase,
+) -> bool {
+    is_creature(perm, db)
+        && has_summoning_sickness(perm, state)
+        && !has_keyword(state, perm, Keyword::Haste, db)
 }
 
 /// Whether `perm` currently has keyword `keyword` (CR 702): its printed keywords
@@ -275,6 +323,94 @@ mod tests {
         let seasoned = state.battlefield.iter().find(|p| p.id == seasoned).unwrap();
         assert!(has_summoning_sickness(fresh, &state));
         assert!(!has_summoning_sickness(seasoned, &state));
+    }
+
+    #[test]
+    fn cr_302_6_measures_the_controllers_most_recent_turn_not_the_current_one() {
+        // A creature that entered under seat 0 on turn 1 is restricted until seat
+        // 0's *next* turn begins. Through the whole of seat 1's turn 2 it is still
+        // sick, even though `state.turn` has moved on — that is the difference
+        // between "the current turn" and "its controller's most recent turn", and
+        // seat 0 can hold priority during turn 2 and try to tap it.
+        let mut state = GameState::new_two_player();
+        let sick = creature(&mut state, PlayerId(0), false, 1);
+        let is_sick = |state: &GameState| {
+            let perm = state.battlefield.iter().find(|p| p.id == sick).unwrap();
+            has_summoning_sickness(perm, state)
+        };
+
+        assert!(is_sick(&state), "the turn it entered");
+
+        let state = state.advance_to_next_turn();
+        assert_eq!((state.turn, state.active_player), (2, PlayerId(1)));
+        assert!(
+            is_sick(&state),
+            "still restricted throughout the opponent's turn"
+        );
+
+        let state = state.advance_to_next_turn();
+        assert_eq!((state.turn, state.active_player), (3, PlayerId(0)));
+        assert!(!is_sick(&state), "freed when its controller's turn begins");
+    }
+
+    #[test]
+    fn cr_302_6_follows_multiplayer_rotation_around_the_table() {
+        // Three seats: a creature that entered under seat 1 on seat 1's turn stays
+        // restricted across both intervening seats' turns. A predicate written
+        // against `state.turn` would free it one turn into the rotation.
+        let state = GameState::new_multiplayer(3).advance_to_next_turn();
+        assert_eq!((state.turn, state.active_player), (2, PlayerId(1)));
+        let mut state = state;
+        let sick = creature(&mut state, PlayerId(1), false, 2);
+        let is_sick = |state: &GameState| {
+            let perm = state.battlefield.iter().find(|p| p.id == sick).unwrap();
+            has_summoning_sickness(perm, state)
+        };
+        assert!(is_sick(&state));
+
+        for expected in [(3, PlayerId(2)), (4, PlayerId(0))] {
+            state = state.advance_to_next_turn();
+            assert_eq!((state.turn, state.active_player), expected);
+            assert!(is_sick(&state), "still sick on turn {}", state.turn);
+        }
+
+        state = state.advance_to_next_turn();
+        assert_eq!((state.turn, state.active_player), (5, PlayerId(1)));
+        assert!(!is_sick(&state), "freed on its controller's next turn");
+    }
+
+    #[test]
+    fn cr_302_6_is_not_lifted_by_an_opponents_extra_turn() {
+        // CR 720.1: an extra turn taken by seat 0 is not seat 1's turn, so seat 1's
+        // creature is still restricted during it. Turn *numbers* advance either
+        // way, which is exactly why the reference point is stored per seat.
+        let mut state = GameState::new_two_player().advance_to_next_turn();
+        assert_eq!(state.active_player, PlayerId(1));
+        let entered = state.turn;
+        let sick = creature(&mut state, PlayerId(1), false, entered);
+        let is_sick = |state: &GameState| {
+            let perm = state.battlefield.iter().find(|p| p.id == sick).unwrap();
+            has_summoning_sickness(perm, state)
+        };
+
+        // Seat 0 takes turn 3, then an extra turn 4 instead of passing to seat 1.
+        let mut state = state.advance_to_next_turn();
+        assert_eq!((state.turn, state.active_player), (3, PlayerId(0)));
+        assert!(is_sick(&state));
+        state = state.with_extra_turn(PlayerId(0)).advance_to_next_turn();
+        assert_eq!(
+            (state.turn, state.active_player),
+            (4, PlayerId(0)),
+            "the extra turn is seat 0's"
+        );
+        assert!(
+            is_sick(&state),
+            "an extra turn is not the controller's turn"
+        );
+
+        state = state.advance_to_next_turn();
+        assert_eq!((state.turn, state.active_player), (5, PlayerId(1)));
+        assert!(!is_sick(&state));
     }
 
     #[test]

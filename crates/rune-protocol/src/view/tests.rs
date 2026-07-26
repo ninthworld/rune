@@ -184,6 +184,11 @@ fn game_view_round_trips_through_json() {
             controller: "p2".into(),
             description: "Lightning Bolt".into(),
             source: None,
+            kind: Some(StackItemKind::Spell),
+            targets: vec![StackTarget::Player {
+                player: "p1".into(),
+            }],
+            card: None,
         }],
         graveyards: vec![ZonePile {
             player_id: "p1".into(),
@@ -404,6 +409,44 @@ fn canonical_fixture_round_trips_and_matches_typed_fields() {
     // Stack: an ability carries its `source`; a spell does not.
     assert_eq!(view.stack[0].source, None);
     assert_eq!(view.stack[1].source.as_deref(), Some("perm_bear"));
+
+    // Stack structure (issue #550): the kind is server-stated, the card face
+    // rides along, and the target list is typed and ordered.
+    assert_eq!(view.stack[0].kind, Some(StackItemKind::Spell));
+    assert_eq!(
+        view.stack[0].card.as_ref().map(|c| c.name.as_str()),
+        Some("Lightning Bolt")
+    );
+    assert_eq!(
+        view.stack[0].targets,
+        vec![StackTarget::Permanent {
+            id: "perm_bear".into()
+        }]
+    );
+    // The terse ability entry keeps the pre-#550 body: an entry with no face and
+    // no targets is not an error, and its kind is still stated.
+    assert_eq!(view.stack[1].kind, Some(StackItemKind::Ability));
+    assert_eq!(view.stack[1].card, None);
+    assert!(view.stack[1].targets.is_empty());
+
+    // A multi-target spell reconstructs its full relationship set from this one
+    // view: two targets, typed differently, in the order the client numbers them.
+    assert_eq!(
+        view.stack[2].targets,
+        vec![
+            StackTarget::Permanent {
+                id: "perm_nissa".into()
+            },
+            StackTarget::Player {
+                player: "p2".into()
+            },
+        ]
+    );
+    // ...and a stack object may itself be a target (CR 701.5).
+    assert_eq!(
+        view.stack[3].targets,
+        vec![StackTarget::Stack { id: "s3".into() }]
+    );
 
     // Public piles round-trip populated.
     assert_eq!(view.graveyards[0].cards[0].id, "g1");

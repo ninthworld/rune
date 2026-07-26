@@ -37,6 +37,9 @@ import {
   type SeatView,
   type SelfView,
   type SpectatorView,
+  type StackItem,
+  type StackTarget,
+  isStackItemKind,
 } from './protocol';
 
 /** Raised when a server payload is not a decodable {@link GameView}. */
@@ -143,6 +146,58 @@ function normalizePermanent(payload: unknown): Permanent {
   if (record.is_commander === true) perm.is_commander = true;
   if (Array.isArray(record.counters)) perm.counters = record.counters as Counter[];
   return perm;
+}
+
+/**
+ * Normalize one wire {@link StackTarget} (issue #550). The `kind` tag is the
+ * server's own classification, so this only validates it and the id beside it — an
+ * unknown kind, or a kind whose id is missing, yields `undefined` and is dropped by
+ * the caller. The client never falls back to classifying a bare id by testing which
+ * collection it appears in: that is rules interpretation and belongs to the server.
+ */
+function normalizeStackTarget(raw: unknown): StackTarget | undefined {
+  if (!isRecord(raw)) return undefined;
+  // The player arm carries a `PlayerId` under its own key, matching the Rust enum.
+  if (raw.kind === 'player') {
+    return typeof raw.player === 'string' ? { kind: 'player', player: raw.player } : undefined;
+  }
+  if (raw.kind === 'permanent' || raw.kind === 'card' || raw.kind === 'stack') {
+    return typeof raw.id === 'string' ? { kind: raw.kind, id: raw.id } : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Normalize one wire {@link StackItem}. `id`/`controller`/`description` default to
+ * `''`; `source` stays absent rather than being invented (the `normalizePermanent`
+ * rule). The fields added by issue #550 follow the same discipline: `kind` is kept
+ * only when it is a kind this client knows — an unrecognized future value leaves the
+ * entry unclassified rather than being guessed at — `card` rides through untouched
+ * like every other server-computed face, and `targets` is always materialized to an
+ * array, dropping any malformed entry so an unexpected shape never breaks rendering.
+ */
+function normalizeStackItem(payload: unknown): StackItem {
+  const record = isRecord(payload) ? payload : {};
+  const item: StackItem = {
+    id: asString(record.id),
+    controller: asString(record.controller),
+    description: asString(record.description),
+    // Ordered, server-authored targets (issue #550): omitted when empty, so a missing
+    // or malformed value degrades to `[]` — a targetless entry is not an error.
+    targets: (Array.isArray(record.targets) ? record.targets : [])
+      .map(normalizeStackTarget)
+      .filter((target): target is StackTarget => target !== undefined),
+  };
+  if (typeof record.source === 'string') item.source = record.source;
+  // Spell vs. ability (issue #550): server-stated, never derived from `source`.
+  if (isStackItemKind(record.kind)) item.kind = record.kind;
+  // The face to render (issue #550): the card being cast, or an ability's source
+  // thumbnail. Absent when the server has no face to show (e.g. a source that has
+  // left the battlefield), never substituted with one the client assembles.
+  // (`as unknown as` because the record guard has already narrowed the value away
+  // from `unknown`; the face itself is carried verbatim, never reshaped.)
+  if (isRecord(record.card)) item.card = record.card as unknown as CardView;
+  return item;
 }
 
 /**
@@ -291,7 +346,9 @@ export function normalizeGameView(payload: unknown): GameView {
     me: normalizeSelfView(payload.me),
     opponents: asArray(payload.opponents, 'opponents'),
     battlefield: asArray<unknown>(payload.battlefield, 'battlefield').map(normalizePermanent),
-    stack: asArray(payload.stack, 'stack'),
+    // The stack, bottom first: every entry through the one per-item normalizer so
+    // the kind/target/face structure of issue #550 is validated in exactly one place.
+    stack: asArray<unknown>(payload.stack, 'stack').map(normalizeStackItem),
     graveyards: asArray(payload.graveyards, 'graveyards'),
     exile: asArray(payload.exile, 'exile'),
     // Command zone (CR 903.6, issue #372): the same public pile treatment as
@@ -363,7 +420,8 @@ export function normalizeSpectatorView(payload: unknown): SpectatorView {
   return {
     players: asArray(payload.players, 'players'),
     battlefield: asArray<unknown>(payload.battlefield, 'battlefield').map(normalizePermanent),
-    stack: asArray(payload.stack, 'stack'),
+    // The same public stack a seated view carries, through the same normalizer.
+    stack: asArray<unknown>(payload.stack, 'stack').map(normalizeStackItem),
     graveyards: asArray(payload.graveyards, 'graveyards'),
     exile: asArray(payload.exile, 'exile'),
     // Command zone (issue #372): the same public pile seated views carry.

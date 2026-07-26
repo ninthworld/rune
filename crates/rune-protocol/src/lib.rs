@@ -44,7 +44,10 @@ mod spectator;
 mod view;
 
 pub use action::{Prompt, PromptOption, TargetRequirement, ValidAction};
-pub use card::{CardView, Counter, OpponentView, Permanent, Phase, SelfView, StackItem, ZonePile};
+pub use card::{
+    CardView, Counter, OpponentView, Permanent, Phase, SelfView, StackItem, StackItemKind,
+    StackTarget, ZonePile,
+};
 pub use catalog::{AiOption, CatalogCard, CatalogFormat, CatalogView, CATALOG_VERSION};
 pub use client::{ChooseAction, ClientMessage, SetStops, TargetChoice};
 pub use interaction::{ActionAck, ActionDestination};

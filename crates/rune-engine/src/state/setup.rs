@@ -26,7 +26,7 @@ impl GameState {
     /// (e.g. shuffling); see [`Self::rng_seed`].
     #[must_use]
     pub fn new_two_player_with_seed(rng_seed: u64) -> Self {
-        Self {
+        let mut state = Self {
             turn: 1,
             active_player: PlayerId(0),
             priority: PlayerId(0),
@@ -53,6 +53,19 @@ impl GameState {
             mulligan: None,
             log: Vec::new(),
             next_log_sequence: 1,
+        };
+        state.mark_active_turn_began();
+        state
+    }
+
+    /// Record that the active player's most recent turn is the current one — the
+    /// construction-time counterpart of what
+    /// [`GameState::advance`](crate::GameState::advance) does at every later turn
+    /// boundary, so [`Player::turn_began`] is never a lie about seat 0's first turn.
+    pub(crate) fn mark_active_turn_began(&mut self) {
+        let turn = self.turn;
+        if let Some(player) = self.players.get_mut(self.active_player.0) {
+            player.turn_began = turn;
         }
     }
 
@@ -63,10 +76,12 @@ impl GameState {
     /// combat and elimination tests (issues #341/#342/#344).
     #[must_use]
     pub fn new_multiplayer_with_seed(seats: usize, rng_seed: u64) -> Self {
-        Self {
+        let mut state = Self {
             players: (0..seats.max(2)).map(|_| Player::new()).collect(),
             ..Self::new_two_player_with_seed(rng_seed)
-        }
+        };
+        state.mark_active_turn_began();
+        state
     }
 
     /// A bare in-progress scaffold with `seats` players (clamped to at least two);

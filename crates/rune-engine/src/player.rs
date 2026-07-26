@@ -90,6 +90,19 @@ pub struct Player {
     /// Unspent mana in the player's pool. Emptied between steps (not yet modeled
     /// for the vertical slice, which spends mana within one step).
     pub mana_pool: ManaPool,
+    /// The turn number on which this player's most recent turn began, or `0`
+    /// before they have taken one. Raw stored history, set by
+    /// [`GameState::advance`](crate::GameState::advance) as each turn begins.
+    ///
+    /// This is the other half of the fact summoning sickness is derived from
+    /// (CR 302.6): "continuously controlled since the beginning of its
+    /// controller's most recent turn" is a statement about *that player's* turn,
+    /// not the current one, and turn rotation is not recoverable from a snapshot —
+    /// extra turns (CR 720.1) and eliminated seats (CR 800.4a) both move it. So,
+    /// like [`Permanent::entered_turn`](crate::state::Permanent::entered_turn), it
+    /// is stored rather than computed. Compared against `entered_turn` by
+    /// `crate::combat::has_summoning_sickness`.
+    pub turn_began: u32,
 }
 
 impl Player {

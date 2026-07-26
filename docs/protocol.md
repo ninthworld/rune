@@ -19,7 +19,10 @@ rejected or stale input. There is no patch or event-stream protocol. The client 
 its current UI from the latest view.
 
 Empty collections and optional values are generally omitted. Clients must normalize missing
-fields to the defaults defined by the protocol types and tolerate unknown fields.
+fields to the defaults defined by the protocol types and tolerate unknown fields. A field
+that classifies something (a `kind`, a reason, a phase) has no safe default: when it is
+absent, or carries a value this client does not know, the thing is **unclassified** and is
+rendered generically — a client never substitutes a guess.
 
 ## Game phase
 
@@ -192,11 +195,20 @@ from skipping past a step they care about. It is set with the `set_stops` messag
 stored server-side, and reflected here so the stops UI is reconstructable from a single
 view and survives reconnect; it is omitted when empty (“stop nowhere”, the default), and a
 client treats a missing field as an empty set. `auto_passed` is a display-only flag set on
-the broadcast that follows a settle in which the server passed priority on this receiver’s
-behalf, so a client can show a transient “passed for you” indicator; it is advisory (the UI
+the broadcast that follows a settle in which the server acted on this receiver’s behalf, so
+a client can show a transient “passed for you” indicator; it is advisory (the UI
 reconstructs without it) and omitted when `false`. The decision of whether a player has “no
 meaningful action” is the server’s alone — the client never computes it and never
 auto-passes on its own.
+
+A settle also resolves a forced combat declaration that has **no legal non-empty answer**
+(issue #453): a seat with no eligible attacker is never handed a `declare_attackers` prompt
+it could only answer with an empty selection, and likewise for `declare_blockers`. This is
+the same server-side judgment, made by the same rules authority — the empty declaration is
+submitted as an ordinary action, so nothing new appears on the wire and a client sees only
+that the step passed. A declaration the seat *could* answer non-emptily is always prompted;
+automation never resolves a real choice. A seat that has listed the step in its `stops`
+receives the prompt regardless, as it does for an idle pass.
 
 `action_rejected` is the in-game counterpart of the lobby’s non-fatal error pattern (issue
 #265). A rejected `choose_action` is answered by re-sending the receiver’s current, unchanged
@@ -258,8 +270,48 @@ A `Permanent` contains:
 
 These fields describe server-computed state. They do not authorize interaction.
 
-A `StackItem` contains `id`, `controller`, a display `description`, and optional `source`
-for an ability originating from a permanent.
+A `StackItem` describes one object on the stack:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | `EntityId` | Per-game id of this stack object |
+| `controller` | `PlayerId` | Player who controls it (chooses targets and resolution) |
+| `description` | `string` | Display text: a spell’s name, or an ability’s composed sentence |
+| `source` | `EntityId?` | Source permanent for an ability; **omitted for a spell** |
+| `kind` | `"spell" \| "ability"?` | What this object is (issue #550); **omitted by an older server**, and then unclassified — never guessed |
+| `targets` | `StackTarget[]?` | Targets chosen for it, in the order its effects consume them; **omitted when empty** (and by an older server), meaning no targets |
+| `card` | `CardView?` | The face to render: a spell’s card, or an ability’s source permanent; **omitted when there is no face** (and by an older server) |
+
+A `StackTarget` is an internally tagged object — the target’s kind is **stated by the
+server**, so a client never classifies a target by testing which collection its id appears
+in (that classification is rules interpretation, ADR 0002):
+
+| `kind` | Payload | Names |
+| --- | --- | --- |
+| `player` | `player: PlayerId` | A player — the same seat key `controller`, `seat_order`, and `player_names` use |
+| `permanent` | `id: EntityId` | A permanent, as it appears in `battlefield[].id` |
+| `card` | `id: EntityId` | A card in a public pile, as it appears in a `ZonePile` |
+| `stack` | `id: EntityId` | Another object on the stack (what a counterspell names, CR 701.5) |
+
+Three rules govern these fields:
+
+- **`description` stays authoritative for text.** `targets` is additive structure for
+  presentation geometry (which entry points at what), never a replacement a client
+  reassembles prose from — and a client must never parse `description` to recover targets.
+- **The list is as it currently stands.** Targets are locked in on announcement
+  (CR 601.2c) and a target that has since become illegal stays named until the object
+  resolves or fizzles (CR 608.2b), so a client reconnecting mid-resolution rebuilds
+  exactly the relationships the game holds. What to draw for an endpoint that is no
+  longer in the view is a rendering decision, not a protocol one.
+- **`kind` is only as fine-grained as the server can prove.** An activated and a
+  triggered ability are both `ability` today because the engine’s stack object records
+  only that *an ability* is on the stack — an **engine** gap, tracked as issue #579. The
+  union widens additively when the engine can
+  prove more (and `copy` arrives with a copy mechanic); an unrecognized value must leave
+  the entry unclassified rather than being coerced into a known one. There is
+  deliberately **no** mode/X/additional-cost summary and **no zone target kind**: the
+  engine has no modal spells, no `X` costs, and no zone targets, so carrying either would
+  be a field no projection could ever fill.
 
 ### Valid actions
 
@@ -853,3 +905,8 @@ is public data only — it never carries a deck, a roster, or any game state.
 - A default is what the protocol documents, not what the type’s zero value happens to be:
   an omitted `connected` means **connected**, an omitted `format` means **not Commander**,
   an omitted `commander_identity`/`is_commander` means no commander presentation at all.
+- Relationships between objects are **stated by the server, typed at the source**, and
+  never reconstructed by a client — from prose, from id membership in a collection, or
+  from anything else. `Permanent.blocking`/`attacking_player`/`attached_to` and
+  `StackItem.targets` are the whole set; each names its subject explicitly, and an
+  omitted one means "no such relationship", never "work it out".

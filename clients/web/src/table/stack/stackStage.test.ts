@@ -210,6 +210,23 @@ describe('deriveStackStage — the four channels that never degrade (§2.4 rule 
     expect(ability?.glyph).not.toBe(spell?.glyph);
   });
 
+  it('takes the kind the server states, falling back to `source` only without one', () => {
+    // Issue #550: the discriminator is server-stated. The `source`-presence reading
+    // survives only for an entry from a server that predates the field — it is a
+    // fallback, never a second opinion the client weighs against the server's.
+    const model = deriveStackStage(
+      viewWith([
+        { id: 'stated', controller: 'p1', description: 'Trigger', kind: 'ability' },
+        { id: 'legacy', controller: 'p1', description: 'Tap: add {G}', source: 'perm1' },
+        { id: 'bare', controller: 'p2', description: 'Counterspell' },
+      ]),
+    );
+    // An ability with no source permanent (the server said so) is still an ability.
+    expect(model.entries.find((e) => e.id === 'stated')?.kind).toBe('ability');
+    expect(model.entries.find((e) => e.id === 'legacy')?.kind).toBe('ability');
+    expect(model.entries.find((e) => e.id === 'bare')?.kind).toBe('spell');
+  });
+
   it('names an ability source from the battlefield, and says so when it is gone (C5)', () => {
     const resolved = deriveStackStage(
       viewWith(

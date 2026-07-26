@@ -160,42 +160,6 @@ pub(crate) fn permanent_card_view(
     view
 }
 
-/// Project one engine [`StackObject`] onto its wire [`StackItem`].
-///
-/// An ability's description is composed by the same formatter that writes a card's
-/// rules text ([`crate::rules_text::effects_description`]), so the stack and the card
-/// never describe one effect two different ways.
-pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatabase) -> StackItem {
-    match &object.kind {
-        StackObjectKind::Spell { card } => StackItem {
-            id: stack_entity_id(object.id),
-            controller: player_id(object.controller),
-            description: card_name(card.card, db),
-            source: None,
-        },
-        StackObjectKind::Ability { source, effects } => StackItem {
-            id: stack_entity_id(object.id),
-            controller: player_id(object.controller),
-            description: effects_description(&source_name(state, *source, db), effects),
-            source: Some(permanent_entity_id(*source)),
-        },
-    }
-}
-
-/// The name of the permanent an ability on the stack came from — what its sentences
-/// call themselves. A permanent that has already left the battlefield (its ability
-/// outlives it on the stack, CR 608.2) has no name left to give.
-fn source_name(state: &GameState, source: PermanentId, db: &CardDatabase) -> String {
-    state
-        .battlefield
-        .iter()
-        .find(|perm| perm.id == source)
-        .map_or_else(
-            || "This ability's source".to_string(),
-            |perm| card_name(perm.card, db),
-        )
-}
-
 /// Build the [`ZonePile`]s for a public per-player pile (graveyard or exile),
 /// skipping empty piles so the wire stays terse.
 pub(crate) fn zone_piles(

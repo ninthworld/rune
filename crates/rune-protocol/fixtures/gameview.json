@@ -84,13 +84,73 @@
     {
       "id": "s1",
       "controller": "p2",
-      "description": "Lightning Bolt"
+      "description": "Lightning Bolt",
+      "kind": "spell",
+      "targets": [
+        {
+          "kind": "permanent",
+          "id": "perm_bear"
+        }
+      ],
+      "card": {
+        "id": "card_31",
+        "name": "Lightning Bolt",
+        "type_line": "Instant",
+        "mana_cost": "{R}",
+        "rules_text": "Lightning Bolt deals 3 damage to any target.",
+        "functional_id": "lightning_bolt"
+      }
     },
     {
       "id": "s2",
       "controller": "p1",
       "description": "Add {G}.",
-      "source": "perm_bear"
+      "source": "perm_bear",
+      "kind": "ability"
+    },
+    {
+      "id": "s3",
+      "controller": "p1",
+      "description": "Twin Bolt deals 1 damage to each of two targets.",
+      "kind": "spell",
+      "targets": [
+        {
+          "kind": "permanent",
+          "id": "perm_nissa"
+        },
+        {
+          "kind": "player",
+          "player": "p2"
+        }
+      ],
+      "card": {
+        "id": "card_32",
+        "name": "Twin Bolt",
+        "type_line": "Instant",
+        "mana_cost": "{1}{R}",
+        "rules_text": "Twin Bolt deals 1 damage to each of two targets.",
+        "functional_id": "twin_bolt"
+      }
+    },
+    {
+      "id": "s4",
+      "controller": "p2",
+      "description": "Counterspell targeting Twin Bolt",
+      "kind": "spell",
+      "targets": [
+        {
+          "kind": "stack",
+          "id": "s3"
+        }
+      ],
+      "card": {
+        "id": "card_33",
+        "name": "Counterspell",
+        "type_line": "Instant",
+        "mana_cost": "{U}{U}",
+        "rules_text": "Counter target spell.",
+        "functional_id": "counterspell"
+      }
     }
   ],
   "graveyards": [

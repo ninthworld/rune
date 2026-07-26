@@ -137,6 +137,23 @@ that reasons about whether a *possible* response is *worth* making.
 
 ## Follow-up
 
+- **2026-07-26 — automation also resolves *choiceless* forced declarations (#453).**
+  The Decision above rests on "a window with no pass on offer is never idle", and
+  that was load-bearing in both directions: it kept a seat from being auto-passed
+  out of a choice it owed, but it also stopped the settle dead on a
+  declare-attackers step for a player who controls no legal attacker at all — an
+  empty prompt with exactly one possible answer. The split stands; the engine gains
+  a second pure predicate beside the first,
+  [`forced_declaration_without_choice`](../../crates/rune-engine/src/automation.rs),
+  which returns the empty `DeclareAttackers`/`DeclareBlockers` **only** when it can
+  prove no non-empty declaration is legal (CR 508.1a / 509.1a, evasion included).
+  The room's settle loop applies it as the ordinary engine action it is, behind the
+  same `AutoPassPolicy` and the same per-seat stops, so `Off` still reproduces
+  pre-automation behavior bit for bit and determinism is untouched. One consequence
+  is worth recording: the loop's natural per-turn terminator ("the declare-attackers
+  step is a forced choice") no longer holds on a board where neither seat can ever
+  act, so `MAX_AUTO_PASSES` — previously a pure bug-detector — is now also the
+  ordinary stopping point for a game with genuinely nothing left to do.
 - **client polish:** richer auto-pass affordances (a log entry, a per-step "you
   were skipped here" marker) beyond the basic indicator — folds into the game-log
   work (#260).

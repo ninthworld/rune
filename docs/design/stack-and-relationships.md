@@ -730,13 +730,13 @@ and the element cannot be rendered correctly without it.
 | Entry identity | `StackItem.id` | OK |
 | Controller stripe, portrait, name | `StackItem.controller` + `GameView.player_names` + `seat_order` (accent assignment) | OK |
 | Body text | `StackItem.description` | OK |
-| Spell vs ability | presence of `StackItem.source` (the only discriminator today) | OK (coarse) |
-| Ability source thumbnail + name | `StackItem.source` → `GameView.battlefield[].card.name` | OK (fails when the source has left play or is hidden — falls back to the raw id today) |
-| **Activated vs triggered** | — | **GAP G2** |
-| **Copy marker** | — | **GAP G3** |
-| **Mini card face** (name, `type_line`, `mana_cost`, `rules_text`, frame accent, art identity) | — | **GAP G4** |
-| **Target list and order** (chips ①②③, target count, `No targets`) | — | **GAP G1** |
-| **Mode / X / additional-cost summary** | — | **GAP G5** |
+| Spell vs ability | `StackItem.kind` (`spell` / `ability`), server-stated (#550) | OK |
+| Ability source thumbnail + name | `StackItem.card` (the source's current face), with `StackItem.source` for the tether | OK (both absent once the source has left play — render the C5 plate state) |
+| **Activated vs triggered** | — | **GAP G2 — now an *engine* gap, tracked as #579** (#550 landed the discriminator; the engine's `StackObjectKind::Ability` records only that an ability is on the stack) |
+| **Copy marker** | — | **GAP G3 — deferred** (no copy mechanic exists to project) |
+| **Mini card face** (name, `type_line`, `mana_cost`, `rules_text`, frame accent, art identity) | `StackItem.card` (#550) | OK |
+| **Target list and order** (chips ①②③, target count, `No targets`) | `StackItem.targets` (#550), ordered | OK |
+| **Mode / X / additional-cost summary** | — | **GAP G5 — deferred** (no modal spell or `X` cost exists to project) |
 | Inspect content | `onInspect(item.id)` → existing inspect surface | OK |
 
 ### 11.2 Relationships
@@ -744,14 +744,14 @@ and the element cannot be rendered correctly without it.
 | Relationship | Source | Status |
 | --- | --- | --- |
 | R1/R2/R3/R4 **pending** path (targeting session) | `ValidAction.requirements[].candidates` + the local `TargetingSession.picks` | OK — this is the only target relationship the client can draw today |
-| R1/R2/R3/R4 **confirmed** path (object already on the stack) | — | **GAP G1** — blocking |
-| R5 multi-target fan | `requirements[]` (pending) / `StackItem.targets` (confirmed) | OK pending / **GAP G1** confirmed |
+| R1/R2/R3/R4 **confirmed** path (object already on the stack) | `StackItem.targets` (#550) | OK for R1/R2/R4; R3 stays dormant (G7) |
+| R5 multi-target fan | `requirements[]` (pending) / `StackItem.targets` (confirmed) | OK |
 | R6/R7 attack | `Permanent.attacking`, `Permanent.attacking_player` | OK |
 | R8 block | `Permanent.blocking` | OK |
 | R9 attachment | `Permanent.attached_to` | OK |
 | R9 ability source tether | `StackItem.source` | OK |
-| Destination is a **player** vs a **permanent** | must be inferred by testing the candidate id against `battlefield[].id` and the seat ids | **GAP G6** — see below |
-| Destination is a **zone** | — | **GAP G7** |
+| Destination is a **player** vs a **permanent** | `StackTarget.kind` (`player` / `permanent` / `card` / `stack`), typed at the source (#550) | OK for a confirmed path; a *pending* one still classifies `candidates[]` locally |
+| Destination is a **zone** | — | **GAP G7 — deferred** (no zone target exists to project) |
 | Impact category at resolution | `GameView.log` entries + view diff (the existing presentation adapter) | OK (coarse) |
 | Fizzle terminal | log entry | OK (coarse) |
 | Seat crest anchor | `seat:<player_id>` ref (existing) | OK |
@@ -765,17 +765,32 @@ Each is a protocol change and therefore must land in `rune-protocol`,
 | # | Gap | Minimal shape | Consequence if not closed | Tracked by |
 | --- | --- | --- | --- | --- |
 | **G1** | `StackItem` carries no targets — targets exist only as prose baked into `description` | `targets?: EntityId[]` on `StackItem`, **ordered**, matching the order the description names them | **Blocking.** No confirmed relationship can be drawn for anything already on the stack. Panel 8 of the zones baseline — an arc from a stack entry to a permanent — is unimplementable. The client must not parse `description` to recover them (I1). | #550 |
-| **G2** | No kind discriminator | `kind?: "spell" \| "activated" \| "triggered" \| "copy"` | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. | #550 |
+| **G2** | No kind discriminator | `kind?: "spell" \| "activated" \| "triggered" \| "copy"` | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. | #550 → **#579** (engine half) |
 | **G3** | No copy relation | `copy_of?: EntityId` | The `Copy` chip and the doubled outline cannot be driven; copy folding cannot be validated. | #550 |
 | **G4** | No card face on a stack object | `card?: CardView` on `StackItem` | The Expanded entry cannot show name, cost pip, type strip, frame accent, or an art window — the baseline's stack card anatomy degrades to a single text line. | #550 |
 | **G5** | No mode / X / additional-cost summary | free-form `choices?: string[]` | The issue's "mode/X/additional-cost summary where data exists" cannot be met; the row is simply omitted until it exists. | #550 |
 | **G6** | Player vs permanent vs stack-object destinations are not typed | either a `kind` on the target reference, or a documented guarantee that a client may classify by membership in `battlefield` / `seat_order` / `stack` | Endpoint treatment (§5.3 vs §5.2 vs §5.5) is chosen by client-side classification, which is fragile and brushes against I1. | #550 |
 | **G7** | Zones are not targetable references | a zone reference form (`{player, zone}`) | R3 (card → zone target) has no data source and is specified but dormant. | #550 |
 
-Until G1 lands, §4's confirmed states are implementable **only** for combat
-(R6–R8) and attachment (R9), which have their own fields. This document
-specifies the full grammar so that closing G1 is a rendering change, not a
-redesign.
+**Status after #550.** G1, G4, and G6 are closed: `StackItem` now carries
+`kind`, an ordered `targets` list typed at the source, and the `card` face to
+render (see `docs/protocol.md`, *Permanents and stack objects*). §4's confirmed
+states are therefore implementable for R1/R2/R4/R5 as well as combat (R6–R8) and
+attachment (R9) — a rendering change, exactly as this document intended.
+
+Three remain open, each for a stated reason rather than an oversight:
+
+- **G2** became an *engine* gap and is **tracked as #579**, not closed with #550.
+  The protocol has the discriminator, but the engine's `StackObjectKind::Ability`
+  records only that an ability is on the stack — an activation and a trigger push
+  the identical object — so the server can prove `spell` vs `ability` and no more.
+  §2.3's trigger caret stays dormant until the engine stores which it was; the wire
+  union then widens additively.
+- **G3** and **G5** are deferred: there is no copy mechanic, no modal spell, and
+  no `X` cost to project, so `copy_of` and a choices summary would be fields no
+  projection could ever fill. They land with the mechanics that need them.
+- **G7** is deferred for the same reason (no zone target exists), so R3 stays
+  specified and dormant, as C7 already ruled.
 
 ---
 
