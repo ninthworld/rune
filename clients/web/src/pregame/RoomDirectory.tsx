@@ -19,7 +19,7 @@
 import { cx } from '../chrome/cx';
 import type { LobbyView, RoomSummary } from '../protocol';
 import { Plaque } from './MenuFrame';
-import { setupLabel } from './gameSetups';
+import { setupLabel, tableName } from './gameSetups';
 import { seatAccentVars } from './pregameScene';
 import p from './styles';
 
@@ -58,6 +58,9 @@ export function RoomDirectoryRow({
   const total = room.config.seats;
   const started = room.state === 'in_progress';
   const full = room.filled >= total;
+  // The row's second line stays the table's *state* where it has one to report, and
+  // otherwise names the format — which is what the host's chosen name (issue #546)
+  // is now free to stop doing on the first line.
   const state = started ? 'In progress' : full ? 'Full' : setupLabel(room.config.game_setup);
 
   return (
@@ -72,7 +75,7 @@ export function RoomDirectoryRow({
         <Plaque selected={selected} faceClass={p.gameRowFace}>
           {/* The non-colour half of selection: a hollow diamond fills in. */}
           <span className={cx(p.rowPip, selected && p.rowPipOn)} aria-hidden="true" />
-          <span className={p.rowName}>{setupLabel(room.config.game_setup)}</span>
+          <span className={p.rowName}>{tableName(room.config)}</span>
           <span
             className={p.rowMeta}
             data-testid={started ? `room-${room.room_id}-in-progress` : undefined}

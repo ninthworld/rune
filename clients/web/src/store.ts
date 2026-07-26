@@ -138,6 +138,12 @@ function pendingKindOf(command: LobbyCommand): PendingLobbyKind | null {
       return command.ready ? 'ready' : 'unready';
     case 'leave':
       return 'leave';
+    case 'update_room':
+      // Host-only table configuration (issue #546). A rejected update re-sends the view
+      // unchanged, and the server explains *why* on the structured `lobby_error` frame
+      // (an evicting seat count, an invalid name, a format that refuses the count), so a
+      // generic client-side retry hint would only talk over a better message.
+      return null;
     case 'add_ai':
     case 'remove_ai':
       // Host-only AI-seat management (issue #415): a rejected command re-sends the view

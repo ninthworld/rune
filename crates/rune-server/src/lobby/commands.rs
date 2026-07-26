@@ -1,80 +1,17 @@
-//! Command handlers for the lobby state machine: room creation, membership
-//! (join/spectate/leave), the deck-submission and ready gate that constructs the game,
-//! and display-name setting. The `Lobby` methods here are an additional `impl Lobby`
-//! block; the free functions round out the [`LobbyCommand`] routing in the module root.
-//! Pure code motion out of the lobby module root (issue #409) — no behavior change.
+//! Command handlers for the lobby state machine: membership (join/spectate/leave), the
+//! deck-submission and ready gate that constructs the game, AI seating, and display-name
+//! setting. The `Lobby` methods here are an additional `impl Lobby` block; the free
+//! functions round out the [`LobbyCommand`] routing in the module root. Pure code motion
+//! out of the lobby module root (issue #409) — no behavior change.
+//!
+//! The two commands that own a room's [`RoomConfig`] — `create_room` and the host-only
+//! `update_room` (issue #546) — live next door in [`room_config`](super::room_config),
+//! so the rules a config is judged by have one home and this module stays under the
+//! file-size ceiling.
 
 use super::*;
 
 impl Lobby {
-    /// Handle `create_room`: validate the config, reap empty rooms, enforce the room
-    /// cap, then open a room and seat the creator at seat 0.
-    pub(crate) fn create_room(
-        &self,
-        registry: &mut Registry,
-        token: &SessionToken,
-        config: RoomConfig,
-    ) -> Result<(), LobbyError> {
-        if registry
-            .sessions
-            .get(token)
-            .is_some_and(|s| s.room.is_some())
-        {
-            return Err(LobbyError::AlreadyInRoom);
-        }
-        if !SEAT_RANGE.contains(&config.seats) {
-            return Err(LobbyError::InvalidSeatCount(config.seats));
-        }
-        // The `game_setup` id must name a registered format (ADR 0013 §4); an unknown
-        // id is refused before a room is opened, so no room ever holds a setup the
-        // server cannot build a game from or validate decks against.
-        let Some(format) = self.inner.formats.get(&config.game_setup) else {
-            return Err(LobbyError::UnknownFormat(config.game_setup.clone()));
-        };
-        // The seat count must also be one the chosen format allows (issue #349): a
-        // two-player format refuses a free-for-all count, and a free-for-all refuses a
-        // duel. Non-fatal — the current lobby view is re-sent, like every other
-        // rejected command.
-        if !format.seats.contains(&config.seats) {
-            return Err(LobbyError::SeatCountForFormat {
-                seats: config.seats,
-                format: config.game_setup.clone(),
-            });
-        }
-        // Free capacity held by empty rooms before checking the cap, so a creator is
-        // never refused for a slot no live room still needs.
-        reap_empty(registry);
-        if registry.rooms.len() >= self.inner.max_rooms {
-            return Err(LobbyError::AtCapacity);
-        }
-
-        let n = registry.next_room;
-        registry.next_room += 1;
-        let room_id = format!("r{n}");
-        let seat_count = config.seats as usize;
-        let mut seats = vec![None; seat_count];
-        seats[0] = Some(token.clone());
-        registry.rooms.insert(
-            room_id.clone(),
-            RoomEntry {
-                config,
-                seats,
-                ai_seats: vec![None; seat_count],
-                gate: vec![SeatGate::default(); seat_count],
-                game: None,
-                spectators: Vec::new(),
-            },
-        );
-        if let Some(session) = registry.sessions.get_mut(token) {
-            session.room = Some(room_id.clone());
-            session.seat = Some(0);
-        }
-        // A new room appeared in the directory: re-project it to everyone browsing.
-        broadcast_views(registry);
-        info!(%token, %room_id, "opened room");
-        Ok(())
-    }
-
     /// Handle `submit_deck`: resolve every card identity against the database, then
     /// validate the whole decklist against the room's **format** (ADR 0013 §4) and,
     /// on success, store the seat's deck (leaving it decked) and re-notify the room.
@@ -1051,92 +988,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn room_config_supports_two_through_eight_seats() {
-        let lobby = lobby(8);
-        for seats in SEAT_RANGE {
-            let mut client = Client::connect(&lobby).await;
-            let _ = client.view().await;
-            lobby
-                .command(
-                    &client.token,
-                    LobbyCommand::CreateRoom(CreateRoom {
-                        config: config(seats),
-                    }),
-                )
-                .await
-                .unwrap_or_else(|_| panic!("{seats} seats is in range"));
-            let room = client.view().await.room.expect("room created");
-            assert_eq!(room.seats.len(), usize::from(seats));
-        }
-    }
-
-    #[tokio::test]
-    async fn create_room_rejects_seat_counts_outside_the_range() {
-        let lobby = lobby(4);
-        for seats in [0u8, 1, 9, 255] {
-            let mut client = Client::connect(&lobby).await;
-            let _ = client.view().await;
-            let err = lobby
-                .command(
-                    &client.token,
-                    LobbyCommand::CreateRoom(CreateRoom {
-                        config: config(seats),
-                    }),
-                )
-                .await
-                .expect_err("out-of-range seat count is rejected");
-            assert_eq!(err, LobbyError::InvalidSeatCount(seats));
-            // Rejection re-sends the current view: still roomless.
-            assert!(client.current().room.is_none());
-        }
-    }
-
-    #[tokio::test]
-    async fn create_room_with_an_unknown_game_setup_is_rejected() {
-        // The `game_setup` id must key into the format registry (ADR 0013 §4); an
-        // unknown id is refused and no room is opened.
-        let lobby = lobby(4);
-        let mut client = Client::connect(&lobby).await;
-        let _ = client.view().await;
-        let err = lobby
-            .command(
-                &client.token,
-                LobbyCommand::CreateRoom(CreateRoom {
-                    config: RoomConfig {
-                        seats: 2,
-                        game_setup: "no-such-format".to_string(),
-                    },
-                }),
-            )
-            .await
-            .expect_err("unknown game_setup is rejected");
-        assert_eq!(err, LobbyError::UnknownFormat("no-such-format".to_string()));
-        // Rejection re-sends the current view: still roomless.
-        assert!(client.current().room.is_none());
-    }
-
-    #[tokio::test]
-    async fn create_room_accepts_the_seeded_starter_format() {
-        // The seeded "starter-1v1" format resolves, so a room can be opened with it.
-        let lobby = lobby(4);
-        let mut client = Client::connect(&lobby).await;
-        let _ = client.view().await;
-        lobby
-            .command(
-                &client.token,
-                LobbyCommand::CreateRoom(CreateRoom {
-                    config: RoomConfig {
-                        seats: 2,
-                        game_setup: "starter-1v1".to_string(),
-                    },
-                }),
-            )
-            .await
-            .expect("the seeded starter format is accepted");
-        assert!(client.view().await.room.is_some());
-    }
-
-    #[tokio::test]
     async fn join_by_id_seats_the_joiner_and_updates_every_roster() {
         let lobby = lobby(4);
         let mut alice = Client::connect(&lobby).await;
@@ -1450,33 +1301,6 @@ mod tests {
                 .await,
             Err(LobbyError::GameStarted)
         );
-    }
-
-    #[tokio::test]
-    async fn issue_349_ffa_format_rejects_a_seat_count_it_does_not_allow() {
-        // The free-for-all format seats 3–4 (issue #349): a two-seat request is a
-        // valid lobby seat count but not one this format allows, so it is rejected
-        // non-fatally and no room opens.
-        let lobby = lobby(4);
-        let mut client = Client::connect(&lobby).await;
-        let _ = client.view().await;
-        let err = lobby
-            .command(
-                &client.token,
-                LobbyCommand::CreateRoom(CreateRoom {
-                    config: config_with(2, "standard_ffa"),
-                }),
-            )
-            .await
-            .expect_err("2 seats is not a free-for-all count");
-        assert_eq!(
-            err,
-            LobbyError::SeatCountForFormat {
-                seats: 2,
-                format: "standard_ffa".to_string(),
-            }
-        );
-        assert!(client.current().room.is_none());
     }
 
     #[tokio::test]

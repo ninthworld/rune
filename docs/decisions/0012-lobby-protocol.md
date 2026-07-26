@@ -224,3 +224,88 @@ following are **explicitly out of scope** and deferred to later milestones:
   card-identity vocabulary the decklist uses are defined by **ADR 0013 (#106,
   forthcoming)**; this ADR treats both as opaque values carried by the lobby
   protocol and does not fix their internal shape.
+
+## Amendment — 2026-07-26 (issue #546): a room config is named, listable, and editable
+
+The decision above is unchanged in every respect except one: **a created room's
+configuration is no longer immutable, and the config carries two more fields.** The
+message envelope, the identity/reconnect model, the deck-submission rules, and the ready
+gate are all untouched.
+
+### Why the immutable-room constraint is lifted
+
+The original config was the minimum M1 needed — a seat count and a setup id — and rooms
+had no way to change after creation because nothing yet asked them to. Two things now do.
+
+The approved pregame baselines (`docs/ui-concepts/rune-pregame-create-game.jpg`,
+`…-game-lobby.jpg`) draw a table with a **name** and a **visibility**, and give its host
+an **Edit Table** control. Issue #546's visual pass shipped the rest of those screens and
+deliberately did *not* fake these three: a table name the client invented would exist on
+one screen and nowhere else, a Private toggle would be a claim about server behaviour the
+server never made, and an Edit Table that silently did nothing is worse than its absence.
+It reported them instead, in as many words, in `CreateGame.tsx` and `RoomPlace.tsx`.
+
+Separately, the room directory (#280) turned "share the id out of band" into "browse the
+open games." Discovery makes a name worth having — a list of six rooms all reading
+"Commander" identifies nothing — and it makes *not* being discovered a thing a host must
+be able to ask for. Before the directory existed, every room was effectively private;
+after it, every room was effectively public, and neither was ever a decision anyone made.
+
+### What is added
+
+- **`RoomConfig` gains `name: Option<String>` and `visibility`.** Both are additive and
+  elide from the wire at their defaults, so a client that omits them creates exactly the
+  room the pre-#546 shape created. `name` is public, display-only text validated under the
+  same bounds a `SetName` display name gets; a blank name normalizes to *absent*. The
+  server **never invents a name** — an unnamed table is rendered by its `game_setup`, the
+  same label every client already showed, which keeps display prose out of the wire.
+
+- **`visibility` is an enum (`public` | `private`), not a boolean.** A `private: bool`
+  would have fit the crate's shared `is_false` skip predicate, which is the argument for
+  it. It was rejected: `RoomState` — the nearest neighbour in the same module, and the
+  other lifecycle-ish value a directory entry carries — is already a closed, `snake_case`
+  string enum, and the UI renders this value as a *word*. An enum carries that vocabulary
+  on the wire; a boolean would have made every client invent the words "Public"/"Private"
+  from `!private`, which is exactly the kind of client-side prose this protocol keeps out.
+  It also leaves room for a third listing rule (friends-only, invite-only) without a
+  second boolean. The cost is one bespoke `skip_serializing_if` predicate.
+
+- **Visibility is a behaviour, not a badge.** A `private` room is omitted from the public
+  directory for **every** connection. It stays joinable by the `room_id` its host shares
+  out of band — the original join-by-id path, which never went away — and its occupants
+  still see it in their own `RoomView`.
+
+- **A new `update_room { config }` command**, host-only and pre-game. It carries a
+  **whole config**, not a patch. A partial `set_room_config { seats?, name?, … }` was
+  considered and rejected on the same grounds this ADR chose full-state `LobbyView`s over
+  a stateful handshake: a patch is a diff against state the client believes it has, and
+  the client is not allowed to believe anything the latest view did not tell it. A whole
+  config is idempotent, is validated by exactly the code path a `create_room` is validated
+  by — a table you could not have created is a table you must not be able to edit into —
+  and lets one client surface serve both creating and editing, which is what the baseline
+  draws.
+
+### The rules `update_room` enforces
+
+- **Host only** (the seat 0 occupant, the same host rule `add_ai` established in #415),
+  rejected with the existing `LobbyRejection`/`LobbyErrorFrame` mechanism. No new error
+  channel. The client's Edit Table exists because `update_room` appears in
+  `valid_commands`; the client never computes host-ness.
+- **Pre-game only.** A started room's config is what its running game was built from.
+- **Shrinking is rejected, never clamped.** A seat count that would drop a seat holding a
+  player or an AI — at any index, not merely a smaller total — is refused, and the
+  rejection names the smallest count that keeps everyone seated. A configuration change
+  never evicts anybody.
+- **Readiness follows the change.** Changing the seat count or the format clears every
+  seat's ready flag: nobody stays ready to a table they did not agree to. Changing the
+  **format** additionally clears every submitted deck (and empties AI seats), because each
+  deck was validated against a format that no longer applies — the alternative is a seat
+  sitting decked with a deck the room would now refuse. A name- or visibility-only edit
+  disturbs nothing. Since an accepted update can only ever *clear* gate state, it can
+  never complete the ready gate, so `update_room` never constructs a game.
+
+### What this does not change
+
+Still no matchmaking, no accounts, no chat, and no rematch — `visibility` is a listing
+rule, not an access-control system, and a private room's id remains the only credential
+there has ever been. The out-of-scope list above stands as written.

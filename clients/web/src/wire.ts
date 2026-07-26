@@ -476,13 +476,23 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/** Normalize a wire `RoomConfig`, defaulting a missing/invalid `seats` to `0`. */
+/**
+ * Normalize a wire `RoomConfig`, defaulting a missing/invalid `seats` to `0`.
+ *
+ * `name` and `visibility` (issue #546) are additive and elided at their defaults, so an
+ * absent `name` stays absent — the caller labels the table by its `game_setup` — and any
+ * value other than `'private'` reads as `'public'`, which is what every room was before
+ * the field existed and what an unknown future value must degrade to.
+ */
 function normalizeRoomConfig(payload: unknown): RoomConfig {
   const record = isRecord(payload) ? payload : {};
-  return {
+  const config: RoomConfig = {
     seats: typeof record.seats === 'number' ? record.seats : 0,
     game_setup: asString(record.game_setup),
+    visibility: record.visibility === 'private' ? 'private' : 'public',
   };
+  if (typeof record.name === 'string' && record.name !== '') config.name = record.name;
+  return config;
 }
 
 /**

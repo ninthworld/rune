@@ -71,8 +71,10 @@
 //! and the connection lifecycle (`connect`/`hello`/`disconnect`/`command`) plus
 //! [`serve_lobby_connection`]:
 //!
-//! - [`commands`] — the command handlers (`create_room`, `submit_deck`, `ready`,
-//!   `start_game`, and the `join`/`spectate`/`leave`/`set_name` routing).
+//! - [`commands`] — the command handlers (`submit_deck`, `ready`, `start_game`, and
+//!   the `join`/`spectate`/`leave`/`set_name`/AI-seat routing).
+//! - [`room_config`] — the two commands that own a room's [`RoomConfig`]:
+//!   `create_room` and the host-only `update_room` (issue #546).
 //! - [`views`] — building and pushing the `LobbyView`/directory/room roster.
 //! - [`registry`] — registry and session helpers (seat/room lookup, card and name
 //!   validation, seed/token minting).
@@ -89,8 +91,8 @@ use rune_engine::{
 };
 use rune_protocol::{
     AddAi, CatalogView, CreateRoom, JoinRoom, LobbyCommand, LobbyView, MatchFormat, PlayerId,
-    Ready, RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken,
-    SetName, SpectateRoom, SubmitDeck,
+    Ready, RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary, RoomView, RoomVisibility,
+    SeatView, SessionToken, SetName, SpectateRoom, SubmitDeck, UpdateRoom,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};
@@ -106,6 +108,7 @@ use crate::room::{
 
 mod commands;
 mod registry;
+mod room_config;
 mod views;
 
 #[cfg(test)]
@@ -137,8 +140,10 @@ const MAX_NAME_LEN: usize = 32;
 /// hands off to [`serve_connection`], after which the room speaks `GameView`s.
 #[derive(Clone)]
 pub(crate) enum LobbySignal {
-    /// A fresh pre-game snapshot to serialize and send.
-    View(LobbyView),
+    /// A fresh pre-game snapshot to serialize and send. Boxed because a full
+    /// `LobbyView` dwarfs the two hand-off variants, and every push would otherwise
+    /// carry that footprint through the channel.
+    View(Box<LobbyView>),
     /// The gate passed: this connection now owns `seat` of a started room and
     /// should switch to the in-game contract driven by `room`.
     Start {
@@ -350,6 +355,20 @@ pub(crate) enum LobbyError {
     /// `create_room` whose `game_setup` id names no format in the registry (ADR
     /// 0013 §4). Carries the offending id; no room is opened.
     UnknownFormat(String),
+    /// `update_room` (issue #546) whose new seat count would remove an **occupied**
+    /// seat. Shrinking a table is rejected outright rather than silently clamped or
+    /// evicting anybody: carries the requested count and the number of seats the room
+    /// must keep (one past its highest occupied seat). The config is left untouched.
+    SeatsBelowOccupancy {
+        /// The requested seat count.
+        seats: u8,
+        /// The smallest seat count that keeps every current occupant seated.
+        needed: u8,
+    },
+    /// `create_room`/`update_room` whose table name failed validation (issue #546).
+    /// A table name obeys the same bounds a [`SetName`] display name does; carries the
+    /// specific [`NameError`]. The room's config is left untouched.
+    InvalidRoomName(NameError),
     /// `join_room` with an id no active room has.
     UnknownRoom,
     /// `join_room` on a room whose every seat is occupied.
@@ -378,9 +397,10 @@ pub(crate) enum LobbyError {
     /// A lobby command aimed at a room whose game has already started (its seats
     /// speak `GameView`s now, not lobby commands).
     GameStarted,
-    /// `add_ai`/`remove_ai` from a session that is not the room's **host** (the seat 0
-    /// occupant, issue #415). Only the host manages AI seats; a non-host request is a
-    /// non-fatal rejection.
+    /// A host-only command (`add_ai`/`remove_ai`, issue #415; `update_room`, issue
+    /// #546) from a session that is not the room's **host** — the seat 0 occupant. Only
+    /// the host manages AI seats and the table's configuration; a non-host request is a
+    /// non-fatal rejection that changes nothing.
     NotHost,
     /// `add_ai`/`remove_ai` naming a seat index outside the room's seat range. Carries the
     /// offending index.
@@ -439,6 +459,11 @@ impl std::fmt::Display for LobbyError {
                 write!(f, "seat count {seats} is not allowed by format {format}")
             }
             Self::UnknownFormat(id) => write!(f, "unknown game_setup format {id}"),
+            Self::SeatsBelowOccupancy { seats, needed } => write!(
+                f,
+                "seat count {seats} would remove an occupied seat; {needed} seats are in use"
+            ),
+            Self::InvalidRoomName(error) => write!(f, "invalid table name: {error}"),
             Self::UnknownRoom => write!(f, "unknown room id"),
             Self::RoomFull => write!(f, "room is full"),
             Self::RoomNotStarted => write!(f, "room's game has not started yet"),
@@ -448,7 +473,10 @@ impl std::fmt::Display for LobbyError {
             Self::IllegalDeck(error) => write!(f, "illegal deck: {error}"),
             Self::NotDecked => write!(f, "seat has not submitted a valid deck"),
             Self::GameStarted => write!(f, "the room's game has already started"),
-            Self::NotHost => write!(f, "only the room host may manage AI seats"),
+            Self::NotHost => write!(
+                f,
+                "only the room host may manage AI seats and the table configuration"
+            ),
             Self::SeatIndexOutOfRange(seat) => write!(f, "seat index {seat} is out of range"),
             Self::SeatOccupied(seat) => write!(f, "seat {seat} is already occupied"),
             Self::UnknownAiKind(kind) => write!(f, "unknown AI kind {kind}"),
@@ -708,6 +736,9 @@ impl Lobby {
             LobbyCommand::CreateRoom(CreateRoom { config }) => {
                 self.create_room(&mut registry, token, config)
             }
+            LobbyCommand::UpdateRoom(UpdateRoom { config }) => {
+                self.update_room(&mut registry, token, config)
+            }
             LobbyCommand::JoinRoom(JoinRoom { room_id }) => {
                 join_room(&mut registry, token, &room_id)
             }
@@ -750,16 +781,31 @@ impl Lobby {
     /// [`LobbyRejection`] the serve loop delivers to the **rejecting connection only**
     /// (issue #395), or `None` when the rejection carries no deck reason worth naming.
     ///
-    /// Only deck-content rejections are surfaced this way: an illegal decklist
+    /// Deck-content rejections are surfaced this way: an illegal decklist
     /// ([`LobbyError::IllegalDeck`], with the structured [`DeckError`] reason) and an
     /// unresolvable card identity ([`LobbyError::UnknownCard`]). Both name a card from
     /// the **sender's own** submission, so nothing about another seat's deck or hidden
-    /// state can leak. Every other rejection returns `None`; the client still infers a
-    /// generic retry hint from the unchanged re-sent view (ADR 0012).
+    /// state can leak.
+    ///
+    /// So are the **table-configuration** rejections (issue #546), which ride the same
+    /// channel rather than inventing a second one: a rejected `create_room`/`update_room`
+    /// otherwise changes nothing observable, so without a reason the host would watch an
+    /// Edit Table press do nothing at all. Each reports only what the sender itself sent
+    /// — a seat count, a format id, its own table name, its own room's occupancy — so
+    /// there is nothing to leak. Every other rejection returns `None`; the client still
+    /// infers a generic retry hint from the unchanged re-sent view (ADR 0012).
     pub(crate) fn deck_rejection(
         &self,
         error: &LobbyError,
     ) -> Option<rune_protocol::LobbyRejection> {
+        /// A rejection with no offending card — the shape every config rejection takes.
+        fn config(code: &str, reason: String) -> Option<rune_protocol::LobbyRejection> {
+            Some(rune_protocol::LobbyRejection {
+                code: code.to_string(),
+                reason,
+                card: None,
+            })
+        }
         match error {
             LobbyError::IllegalDeck(deck_error) => Some(deck_error.to_rejection(&self.inner.db)),
             LobbyError::UnknownCard(identity) => Some(rune_protocol::LobbyRejection {
@@ -767,6 +813,16 @@ impl Lobby {
                 reason: format!("unknown card identity {identity}"),
                 card: Some(identity.clone()),
             }),
+            LobbyError::InvalidSeatCount(_) => config("invalid_seat_count", error.to_string()),
+            LobbyError::SeatCountForFormat { .. } => {
+                config("seat_count_for_format", error.to_string())
+            }
+            LobbyError::UnknownFormat(_) => config("unknown_format", error.to_string()),
+            LobbyError::SeatsBelowOccupancy { .. } => {
+                config("seats_below_occupancy", error.to_string())
+            }
+            LobbyError::InvalidRoomName(_) => config("invalid_room_name", error.to_string()),
+            LobbyError::NotHost => config("not_host", error.to_string()),
             _ => None,
         }
     }

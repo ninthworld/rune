@@ -9,7 +9,8 @@
  * middle. Everything else is at the edges or behind the seat that owns it:
  *
  * - **Top** — the server plaque, then the table's own plaque: its name, and the
- *   `format · seats · visibility` line under it.
+ *   `format · seats · visibility` line under it, with the host's **Edit Table**
+ *   beside it.
  * - **The ring** — one `SeatPlaque` per seat, positioned by `seatRing.ts`.
  *   Occupied seats show identity, readiness, and their deck state; the local
  *   seat expands for its deck dropdown and quiet edit/import shortcuts; an empty
@@ -24,14 +25,16 @@
  *
  * ## Where the baseline and the shipped contract disagree
  *
- * The baseline draws each occupied seat's chosen deck by NAME, and gives the
- * host an **Edit Table** control. The wire supports neither: a `SeatView` is
- * `{ seat, occupied_by?, name?, decked?, ready?, ai? }` — the decklist is
- * deliberately redacted, so no seat's deck name is knowable, not even the local
- * player's after a reload — and there is no `update_room` command, so a created
- * room's configuration is immutable. Both are reported rather than faked: a deck
- * name the client made up, or an Edit Table that silently did nothing, would be
- * worse than their absence.
+ * The baseline draws each occupied seat's chosen deck by NAME. The wire does not
+ * support it: a `SeatView` is `{ seat, occupied_by?, name?, decked?, ready?, ai? }`
+ * — the decklist is deliberately redacted, so no seat's deck name is knowable, not
+ * even the local player's after a reload. That is reported rather than faked; a
+ * deck name the client made up would be worse than its absence.
+ *
+ * The baseline's other gap is closed: **Edit Table** is real (issue #546). It is
+ * drawn because the server advertises `update_room`, never because this component
+ * decided who the host is, and it reopens {@link CreateGame} — the same surface
+ * that created the table — rather than a second edit interface.
  *
  * Everything is derived from the latest `LobbyView`; local state is ephemeral
  * form input only (the picked deck, a "Copied" flash, the open builder). **No
@@ -55,8 +58,9 @@ import { ControlButton } from '../table/controls';
 import { deckOptionById, deckOptions, optionCounts, useSavedDecks } from './deckChoice';
 import { serverLabel } from './serverIdentity';
 import { ChatEdge, MenuFrame, Plaque, ServerPlaque, SessionMenu } from './MenuFrame';
+import { CreateGame } from './CreateGame';
 import { SeatPlaque } from './SeatPlaque';
-import { setupLabel } from './gameSetups';
+import { setupLabel, tableName, visibilityLabel } from './gameSetups';
 import { readyGate } from './readyGate';
 import { seatRing } from './seatRing';
 import { seatFilled } from './seatIdentity';
@@ -79,6 +83,10 @@ export function RoomPlace({ view }: { view: LobbyView }) {
   const [deckId, setDeckId] = useState(STARTER_DECKLISTS[0]!.id);
   const [copied, setCopied] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  // Whether the host has Edit Table open. Ephemeral presentation: the room rebuilds
+  // identically from the view with it closed, and it is only ever reachable while
+  // `update_room` is advertised.
+  const [editing, setEditing] = useState(false);
 
   // The "Copied" flash is transient chrome; clear it shortly after it shows.
   useEffect(() => {
@@ -138,6 +146,7 @@ export function RoomPlace({ view }: { view: LobbyView }) {
 
   const gate = readyGate(view);
   const slots = seatRing(total, mySeat?.seat);
+  const canEdit = can(view, 'update_room');
 
   // The one blue primary of this state (§4.1): the gate names which advertised
   // command it is, and it is the ONLY blue control the room draws.
@@ -157,12 +166,26 @@ export function RoomPlace({ view }: { view: LobbyView }) {
           <ServerPlaque name={serverLabel(serverUrl)} />
           <Plaque faceClass={p.centreFace} testId="room-plaque">
             <h2 className={p.arenaTitle} data-place-heading tabIndex={-1}>
-              {setupLabel(room.config.game_setup)}
+              {tableName(room.config)}
             </h2>
             <span className={p.plaqueMeta} data-testid="room-status">
-              {setupLabel(room.config.game_setup)} · {total} seats · Public · {filled}/{total}{' '}
-              filled · {ready} ready
+              {setupLabel(room.config.game_setup)} · {total} seats ·{' '}
+              {visibilityLabel(room.config.visibility)} · {filled}/{total} filled · {ready} ready
             </span>
+            {/* Host-only, and host-only because the SERVER says so (issue #546): the
+                control exists exactly while `update_room` is advertised. It reopens the
+                create surface rather than a second edit interface. */}
+            {canEdit && !editing && (
+              <span className={cx(p.fit, p.plaqueAction)}>
+                <ControlButton
+                  variant="utility"
+                  label="Edit Table"
+                  accessibleName="Edit this table's settings"
+                  onPress={() => setEditing(true)}
+                  testId="edit-table-button"
+                />
+              </span>
+            )}
           </Plaque>
         </>
       }
@@ -199,120 +222,124 @@ export function RoomPlace({ view }: { view: LobbyView }) {
         </span>
       )}
 
-      <div className={p.ring} data-testid="seat-ring">
-        {slots.map((slot) => {
-          const seat = room.seats[slot.seat]!;
-          const local = slot.local;
-          return (
-            <div
-              key={slot.seat}
-              className={p.ringSeat}
-              style={{ '--seat-x': slot.x, '--seat-y': slot.y } as CSSProperties}
-            >
-              <SeatPlaque
-                seat={seat}
-                local={local}
-                deckChoice={
-                  local && canSubmit
-                    ? {
-                        options,
-                        selectedId: picked?.id ?? deckId,
-                        onSelect: setDeckId,
-                        onEdit: openBuilder,
-                        onImport: openBuilder,
-                      }
-                    : undefined
-                }
-                seatOptions={
-                  seatFilled(seat)
-                    ? undefined
-                    : {
-                        roomId: room.room_id,
-                        onCopyRoomId: copyRoomId,
-                        copied,
-                        aiOptions: catalog?.ai_opponents ?? [],
-                        deckOptions: options,
-                        onAddAi: can(view, 'add_ai')
-                          ? (seatIndex, kind, chosenDeckId) => {
-                              const deck = deckOptionById(options, chosenDeckId);
-                              if (deck === undefined) return;
-                              sendLobby(
-                                addAiCommand(
-                                  seatIndex,
-                                  kind,
-                                  deck.cards,
-                                  requiresCommander ? deck.commander : undefined,
-                                ),
-                              );
-                            }
-                          : undefined,
-                      }
-                }
-                onRemoveAi={
-                  can(view, 'remove_ai') ? () => sendLobby(removeAiCommand(seat.seat)) : undefined
-                }
-              />
-              {/* The primary lives under the local seat, where the baseline puts
-                  READY — the decision belongs to that seat, not to a bar. */}
-              {local && (
-                <div className={p.controlColumn}>
-                  {primary !== undefined && (
-                    <ControlButton
-                      variant="primary"
-                      label={primary.label}
-                      onPress={primary.press}
-                      testId={primary.testId}
-                    />
-                  )}
-                  {/* A resubmit stays offered while advertised, but it is never
-                      the blue one — that is the gate's job to decide. */}
-                  {canSubmit && gate?.gold !== 'submit_deck' && (
-                    <span className={p.wide}>
-                      <ControlButton
-                        variant="secondary"
-                        label="Resubmit deck"
-                        onPress={submitDeck}
-                        testId="submit-deck-button"
-                      />
-                    </span>
-                  )}
-                  {gate?.unready === true && (
-                    <span className={p.wide}>
-                      <ControlButton
-                        variant="secondary"
-                        label="Not ready"
-                        onPress={() => sendLobby(readyCommand(false))}
-                        testId="unready-button"
-                      />
-                    </span>
-                  )}
-                  {requiresCommander && picked?.commanderLabel !== undefined && (
-                    <span className={p.muted} data-testid="designated-commander">
-                      Commander: {picked.commanderLabel}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {gate !== null && (
-          <div className={p.ringCentre}>
-            <Plaque faceClass={p.centreFace} testId="ready-gate">
-              <span
-                className={p.centreGate}
-                data-testid={gate.ready && !gate.starting ? 'ready-waiting' : undefined}
+      {editing && canEdit ? (
+        <CreateGame editing={room.config} onCancel={() => setEditing(false)} />
+      ) : (
+        <div className={p.ring} data-testid="seat-ring">
+          {slots.map((slot) => {
+            const seat = room.seats[slot.seat]!;
+            const local = slot.local;
+            return (
+              <div
+                key={slot.seat}
+                className={p.ringSeat}
+                style={{ '--seat-x': slot.x, '--seat-y': slot.y } as CSSProperties}
               >
-                {gate.sentence}
-              </span>
-              <span className={p.centreCount}>
-                {ready} of {total} ready
-              </span>
-            </Plaque>
-          </div>
-        )}
-      </div>
+                <SeatPlaque
+                  seat={seat}
+                  local={local}
+                  deckChoice={
+                    local && canSubmit
+                      ? {
+                          options,
+                          selectedId: picked?.id ?? deckId,
+                          onSelect: setDeckId,
+                          onEdit: openBuilder,
+                          onImport: openBuilder,
+                        }
+                      : undefined
+                  }
+                  seatOptions={
+                    seatFilled(seat)
+                      ? undefined
+                      : {
+                          roomId: room.room_id,
+                          onCopyRoomId: copyRoomId,
+                          copied,
+                          aiOptions: catalog?.ai_opponents ?? [],
+                          deckOptions: options,
+                          onAddAi: can(view, 'add_ai')
+                            ? (seatIndex, kind, chosenDeckId) => {
+                                const deck = deckOptionById(options, chosenDeckId);
+                                if (deck === undefined) return;
+                                sendLobby(
+                                  addAiCommand(
+                                    seatIndex,
+                                    kind,
+                                    deck.cards,
+                                    requiresCommander ? deck.commander : undefined,
+                                  ),
+                                );
+                              }
+                            : undefined,
+                        }
+                  }
+                  onRemoveAi={
+                    can(view, 'remove_ai') ? () => sendLobby(removeAiCommand(seat.seat)) : undefined
+                  }
+                />
+                {/* The primary lives under the local seat, where the baseline puts
+                  READY — the decision belongs to that seat, not to a bar. */}
+                {local && (
+                  <div className={p.controlColumn}>
+                    {primary !== undefined && (
+                      <ControlButton
+                        variant="primary"
+                        label={primary.label}
+                        onPress={primary.press}
+                        testId={primary.testId}
+                      />
+                    )}
+                    {/* A resubmit stays offered while advertised, but it is never
+                      the blue one — that is the gate's job to decide. */}
+                    {canSubmit && gate?.gold !== 'submit_deck' && (
+                      <span className={p.wide}>
+                        <ControlButton
+                          variant="secondary"
+                          label="Resubmit deck"
+                          onPress={submitDeck}
+                          testId="submit-deck-button"
+                        />
+                      </span>
+                    )}
+                    {gate?.unready === true && (
+                      <span className={p.wide}>
+                        <ControlButton
+                          variant="secondary"
+                          label="Not ready"
+                          onPress={() => sendLobby(readyCommand(false))}
+                          testId="unready-button"
+                        />
+                      </span>
+                    )}
+                    {requiresCommander && picked?.commanderLabel !== undefined && (
+                      <span className={p.muted} data-testid="designated-commander">
+                        Commander: {picked.commanderLabel}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {gate !== null && (
+            <div className={p.ringCentre}>
+              <Plaque faceClass={p.centreFace} testId="ready-gate">
+                <span
+                  className={p.centreGate}
+                  data-testid={gate.ready && !gate.starting ? 'ready-waiting' : undefined}
+                >
+                  {gate.sentence}
+                </span>
+                <span className={p.centreCount}>
+                  {ready} of {total} ready
+                </span>
+              </Plaque>
+            </div>
+          )}
+        </div>
+      )}
 
       {builderOpen && (
         <DeckBuilder

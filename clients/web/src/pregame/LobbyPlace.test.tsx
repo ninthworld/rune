@@ -236,11 +236,11 @@ describe('Create setup — a destination, not an embedded form (#546)', () => {
     const advanced = screen.getByTestId('create-advanced') as HTMLDetailsElement;
     expect(advanced.open).toBe(false);
     const face = screen.getByTestId('create-room');
-    expect(face.textContent).toContain('not configurable yet');
-    expect(advanced.textContent).toContain('not configurable yet');
+    expect(face.textContent).toContain('not overridable per table');
+    expect(advanced.textContent).toContain('not overridable per table');
     // Nothing advanced has leaked out of the disclosure onto the plaque.
     expect(face.textContent!.replace(advanced.textContent!, '')).not.toContain(
-      'not configurable yet',
+      'not overridable per table',
     );
   });
 
@@ -259,8 +259,157 @@ describe('Create setup — a destination, not an embedded form (#546)', () => {
     fireEvent.click(screen.getByTestId('create-room-button'));
     expect(JSON.parse(socket.sent[socket.sent.length - 1]!)).toEqual({
       type: 'create_room',
-      config: { seats: 8, game_setup: '1v1' },
+      // An unnamed table sends no `name` at all (issue #546): the client labels it by
+      // its format, and the server is never handed display prose.
+      config: { seats: 8, game_setup: '1v1', visibility: 'public' },
     });
+  });
+});
+
+describe('Table configuration — one surface creates and edits (#546)', () => {
+  /** A host's view of a named, private 4-seat table. */
+  const NAMED_ROOM_JSON = JSON.stringify({
+    session: 's:ab12',
+    you: 'p1',
+    room: {
+      room_id: 'r:7f3',
+      config: {
+        seats: 4,
+        game_setup: 'commander',
+        name: 'Casual Commander',
+        visibility: 'private',
+      },
+      seats: [{ seat: 0, occupied_by: 'p1' }, { seat: 1 }, { seat: 2 }, { seat: 3 }],
+    },
+    valid_commands: ['submit_deck', 'update_room', 'add_ai', 'leave'],
+  });
+
+  it('sends the name and visibility the host chose when creating a table', () => {
+    const socket = mountLobby(LOBBY_ROOMLESS_JSON);
+    fireEvent.click(screen.getByTestId('open-create-game-button'));
+
+    fireEvent.change(screen.getByTestId('create-table-name'), {
+      target: { value: '  Casual Commander  ' },
+    });
+    fireEvent.change(screen.getByTestId('create-visibility'), { target: { value: 'private' } });
+    fireEvent.click(screen.getByTestId('create-room-button'));
+
+    expect(JSON.parse(socket.sent[socket.sent.length - 1]!)).toEqual({
+      type: 'create_room',
+      // Trimmed here as well as server-side, so what was typed and what the table is
+      // called cannot drift over a stray space.
+      config: { seats: 2, game_setup: '1v1', name: 'Casual Commander', visibility: 'private' },
+    });
+  });
+
+  it('leaves an unnamed table unnamed rather than sending the format label as prose', () => {
+    const socket = mountLobby(LOBBY_ROOMLESS_JSON);
+    fireEvent.click(screen.getByTestId('open-create-game-button'));
+    // The format label is the *placeholder*: what the table will be called if the host
+    // names nothing. It is never sent, because the server invents no names either.
+    expect(screen.getByTestId('create-table-name').getAttribute('placeholder')).toBe('1v1 Duel');
+    fireEvent.change(screen.getByTestId('create-table-name'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByTestId('create-room-button'));
+    const sent = JSON.parse(socket.sent[socket.sent.length - 1]!) as {
+      config: { name?: string };
+    };
+    expect(sent.config.name).toBeUndefined();
+  });
+
+  it('shows the table by its name, with format, size, and visibility under it', () => {
+    mountLobby(NAMED_ROOM_JSON);
+    expect(screen.getByTestId('room-plaque').textContent).toContain('Casual Commander');
+    const status = screen.getByTestId('room-status').textContent!;
+    expect(status).toContain('Commander');
+    expect(status).toContain('4 seats');
+    // Visibility is a word, never a hue or an icon alone.
+    expect(status).toContain('Private');
+  });
+
+  it('falls back to the format label for an unnamed table', () => {
+    mountLobby(LOBBY_ROOM_UNDECKED_JSON);
+    expect(screen.getByTestId('room-plaque').textContent).toContain('1v1 Duel');
+    expect(screen.getByTestId('room-status').textContent).toContain('Public');
+  });
+
+  it('offers Edit Table only when the server advertises update_room', () => {
+    // The host's own view advertises it…
+    mountLobby(NAMED_ROOM_JSON);
+    expect(screen.getByTestId('edit-table-button')).toBeDefined();
+    cleanup();
+    act(() => useGameStore.getState().disconnect());
+
+    // …and a seat that is not the host is simply never offered it. The client never
+    // decides host-ness for itself.
+    mountLobby(LOBBY_ROOM_UNDECKED_JSON);
+    expect(screen.queryByTestId('edit-table-button')).toBeNull();
+  });
+
+  it('reopens the create surface to edit, seeded from the table, and sends update_room', () => {
+    const socket = mountLobby(NAMED_ROOM_JSON);
+    fireEvent.click(screen.getByTestId('edit-table-button'));
+
+    // The SAME surface, not a second edit interface: same plaque, same four fields.
+    expect(screen.getByTestId('create-room').textContent).toContain('Edit Table');
+    expect(screen.queryByTestId('seat-ring')).toBeNull();
+    expect((screen.getByTestId('create-table-name') as HTMLInputElement).value).toBe(
+      'Casual Commander',
+    );
+    expect((screen.getByTestId('game-setup-select') as HTMLSelectElement).value).toBe('commander');
+    expect(screen.getByTestId('seat-count').textContent).toBe('4');
+    expect((screen.getByTestId('create-visibility') as HTMLSelectElement).value).toBe('private');
+    // Still exactly one blue action.
+    expect(primaries()).toHaveLength(1);
+
+    fireEvent.click(screen.getByTestId('seat-count-decrease'));
+    fireEvent.change(screen.getByTestId('create-visibility'), { target: { value: 'public' } });
+    fireEvent.click(screen.getByTestId('create-room-button'));
+
+    // A whole config, exactly as `update_room` carries it — never a patch.
+    expect(JSON.parse(socket.sent[socket.sent.length - 1]!)).toEqual({
+      type: 'update_room',
+      config: {
+        seats: 3,
+        game_setup: 'commander',
+        name: 'Casual Commander',
+        visibility: 'public',
+      },
+    });
+    // The arena comes back: whether the change took is the next view's to say.
+    expect(screen.getByTestId('seat-ring')).toBeDefined();
+  });
+
+  it('abandons an edit without sending anything', () => {
+    const socket = mountLobby(NAMED_ROOM_JSON);
+    const before = socket.sent.length;
+    fireEvent.click(screen.getByTestId('edit-table-button'));
+    fireEvent.change(screen.getByTestId('create-table-name'), { target: { value: 'Nope' } });
+    fireEvent.click(screen.getByTestId('create-room-cancel'));
+    expect(socket.sent.length).toBe(before);
+    expect(screen.getByTestId('seat-ring')).toBeDefined();
+    expect(screen.getByTestId('room-plaque').textContent).toContain('Casual Commander');
+  });
+
+  it('names the table in the open-games list, so a name is not the host’s alone', () => {
+    mountLobby(
+      JSON.stringify({
+        session: 's:1',
+        you: 'p1',
+        directory: [
+          {
+            room_id: 'r0',
+            config: { seats: 4, game_setup: 'commander', name: 'Casual Commander' },
+            filled: 1,
+            state: 'gathering',
+          },
+        ],
+        valid_commands: ['create_room', 'join_room'],
+      }),
+    );
+    const row = screen.getByTestId('room-row-r0');
+    expect(row.textContent).toContain('Casual Commander');
+    // The format still reads, on the row's second line.
+    expect(row.textContent).toContain('Commander');
   });
 });
 
@@ -437,7 +586,7 @@ describe('Lobby — the last-match ribbon', () => {
     fireEvent.click(screen.getByTestId('create-room-button'));
     expect(JSON.parse(socket.sent[socket.sent.length - 1]!)).toEqual({
       type: 'create_room',
-      config: { seats: 4, game_setup: 'commander' },
+      config: { seats: 4, game_setup: 'commander', visibility: 'public' },
     });
   });
 

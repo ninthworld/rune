@@ -24,7 +24,7 @@
 use futures_util::{SinkExt, StreamExt};
 use rune_protocol::{
     AddAi, CreateRoom, GameView, JoinRoom, LobbyCommand, LobbyView, Ready, RemoveAi, RoomConfig,
-    SetName, SpectateRoom, SubmitDeck,
+    SetName, SpectateRoom, SubmitDeck, UpdateRoom,
 };
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::Message;
@@ -147,6 +147,7 @@ impl LobbyConfig {
             Some(RoomAction::Create(RoomConfig {
                 seats,
                 game_setup: game_setup.unwrap_or_else(|| DEFAULT_GAME_SETUP.to_string()),
+                ..Default::default()
             }))
         } else {
             None
@@ -226,8 +227,9 @@ pub(crate) fn parse_deck(raw: &str) -> Vec<String> {
 /// One decoded pre-game frame: either a lobby snapshot to act on, or the first game
 /// view that signals the ready gate passed and the connection is now in a game.
 enum LobbyFrame {
-    /// A fresh full [`LobbyView`] to render/drive.
-    Lobby(LobbyView),
+    /// A fresh full [`LobbyView`] to render/drive. Boxed like the `GameView` half:
+    /// the two variants differ by hundreds of bytes otherwise.
+    Lobby(Box<LobbyView>),
     /// The hand-off: the server switched this socket to the in-game contract.
     /// Boxed: a full [`GameView`] is much larger than a [`LobbyView`], so keeping it
     /// behind a pointer keeps the enum small (clippy `large_enum_variant`).
@@ -254,7 +256,7 @@ where
                         return Ok(Some(LobbyFrame::Game(Box::new(view))));
                     }
                 } else if let Ok(view) = serde_json::from_value::<LobbyView>(value) {
-                    return Ok(Some(LobbyFrame::Lobby(view)));
+                    return Ok(Some(LobbyFrame::Lobby(Box::new(view))));
                 }
             }
             Some(Ok(Message::Close(_))) | None => return Ok(None),
@@ -299,7 +301,7 @@ where
     loop {
         let view = match read_lobby_frame(read).await? {
             Some(LobbyFrame::Game(view)) => return Ok(Some(*view)),
-            Some(LobbyFrame::Lobby(view)) => view,
+            Some(LobbyFrame::Lobby(view)) => *view,
             None => {
                 write_str(output, "\nServer closed the connection. Goodbye.\n").await?;
                 return Ok(None);
@@ -476,7 +478,11 @@ where
                 game_setup
             };
             Ok(Some(LobbyCommand::CreateRoom(CreateRoom {
-                config: RoomConfig { seats, game_setup },
+                config: RoomConfig {
+                    seats,
+                    game_setup,
+                    ..Default::default()
+                },
             })))
         }
         "join_room" => {
@@ -613,6 +619,7 @@ fn not_listed(line: &str) -> String {
 fn command_label(kind: &str) -> &str {
     match kind {
         "create_room" => "Create a room",
+        "update_room" => "Change the table settings",
         "join_room" => "Join a room by id",
         "set_name" => "Set your display name",
         "submit_deck" => "Submit a deck",
@@ -629,6 +636,15 @@ fn describe_command(command: &LobbyCommand) -> String {
         LobbyCommand::CreateRoom(CreateRoom { config }) => {
             format!(
                 "creating a {}-seat room ({})",
+                config.seats, config.game_setup
+            )
+        }
+        // The terminal client creates rooms with the default config and never edits one
+        // (issue #546's create/edit surface is the web client's); the arm exists so a
+        // scripted agent's log still reads correctly if one is ever sent.
+        LobbyCommand::UpdateRoom(UpdateRoom { config }) => {
+            format!(
+                "updating the room to {} seats ({})",
                 config.seats, config.game_setup
             )
         }
@@ -698,6 +714,7 @@ mod tests {
                 config: RoomConfig {
                     seats: seats.len() as u8,
                     game_setup: DEFAULT_GAME_SETUP.into(),
+                    ..Default::default()
                 },
                 seats,
             }),
@@ -721,6 +738,7 @@ mod tests {
             Some(RoomAction::Create(RoomConfig {
                 seats: DEFAULT_SEATS,
                 game_setup: DEFAULT_GAME_SETUP.into(),
+                ..Default::default()
             }))
         );
         assert!(default.auto_ready);
@@ -741,6 +759,7 @@ mod tests {
             Some(RoomAction::Create(RoomConfig {
                 seats: 4,
                 game_setup: "commander".into(),
+                ..Default::default()
             }))
         );
         assert_eq!(
@@ -784,6 +803,7 @@ mod tests {
             action: Some(RoomAction::Create(RoomConfig {
                 seats: 2,
                 game_setup: DEFAULT_GAME_SETUP.into(),
+                ..Default::default()
             })),
             deck: Some(vec!["1".into(), "2".into()]),
             auto_ready: true,

@@ -1,5 +1,5 @@
 /**
- * The create-table setup (issue #546; the approved
+ * The create-table setup, and the host's **Edit Table** (issue #546; the approved
  * `docs/ui-concepts/rune-pregame-create-game.jpg` baseline).
  *
  * A **destination, not an inline form**: the lobby no longer embeds it, because
@@ -8,27 +8,32 @@
  * same arena, over the same environment, reached from CREATE GAME and left by
  * Cancel — the shared world never changes.
  *
- * Only the essential decisions are on the face; everything else is behind
- * Advanced.
+ * **One surface serves both creating and editing.** Passing {@link CreateGameProps.editing}
+ * a room's current config is what turns it into Edit Table: same fields, same
+ * layout, same Advanced disclosure, different title and different command. There
+ * is deliberately no second edit interface, because a table's configuration is one
+ * set of decisions and a player should not have to learn it twice — and because
+ * `update_room` carries a *whole* `RoomConfig` (ADR 0012's #546 amendment), which
+ * is exactly the shape this form already produces.
  *
- * ## Where the baseline and the shipped contract disagree
+ * Only the essential decisions are on the face — name, format, seats, visibility,
+ * the four the baseline draws; everything else is behind Advanced.
  *
- * The baseline draws four editable decisions: table name, format, seats, and
- * visibility. The lobby protocol carries **two**: `RoomConfig` is
- * `{ seats, game_setup }` and nothing else (`protocol/lobby.ts`), the directory
- * summary has no name field, and every room in the registry is listed publicly.
- * A client may not invent the other two — a table name it made up would exist on
- * this screen and nowhere else, and a "Private" toggle would be a claim about
- * server behaviour the server never made.
- *
- * So the two uncarried rows are drawn as the **facts they are** — a table is
- * named by its format, and every table on this server is public — rather than as
- * controls that quietly do nothing. Advanced says so in as many words. Making
- * them real is a protocol change and is out of scope for a visual pass; this is
- * reported rather than papered over.
+ * Nothing here computes legality. The seat stepper is clamped to the protocol's own
+ * `2..=8` range purely so the control has ends, but which counts a *format* allows,
+ * whether a name is acceptable, and whether a shrink would evict a seated player are
+ * all the server's to decide: it answers with the current view plus a structured
+ * `lobby_error` the place renders. The surface is mounted only while the server
+ * advertises the command it sends.
  */
 import { useEffect, useRef, useState } from 'react';
-import { createRoomCommand, type CatalogFormat } from '../protocol';
+import {
+  createRoomCommand,
+  updateRoomCommand,
+  type CatalogFormat,
+  type RoomConfig,
+  type RoomVisibility,
+} from '../protocol';
 import { useGameStore } from '../store';
 import { ControlButton } from '../table/controls';
 import { Plaque } from './MenuFrame';
@@ -38,6 +43,12 @@ import p from './styles';
 /** The protocol's own inclusive seat range (`RoomConfig.seats` is `2..=8`). */
 const MIN_SEATS = SEAT_COUNTS[0];
 const MAX_SEATS = SEAT_COUNTS[SEAT_COUNTS.length - 1]!;
+
+/** The visibility choices the protocol defines, with the words the UI shows. */
+const VISIBILITIES: readonly { readonly id: RoomVisibility; readonly label: string }[] = [
+  { id: 'public', label: 'Public — listed in Open Games' },
+  { id: 'private', label: 'Private — reachable only by its id' },
+];
 
 /** A pre-fill for the setup, raised by the last-match ribbon's Play again. */
 export interface CreatePrefill {
@@ -67,20 +78,34 @@ function formatRuleLines(format: CatalogFormat): string[] {
 }
 
 export interface CreateGameProps {
-  /** Pre-fill raised from elsewhere in the lobby (Play again). */
+  /** Pre-fill raised from elsewhere in the lobby (Play again). Create only. */
   prefill?: CreatePrefill | null;
   /**
-   * Leave the setup and return to open games. The setup is only ever mounted
-   * while the server advertises `create_room`, so it derives no legality itself.
+   * The existing table's config when the **host** reopened this surface as Edit
+   * Table. Its presence is the whole of the difference between the two modes: the
+   * fields seed from it and the primary sends `update_room` instead of
+   * `create_room`.
+   */
+  editing?: RoomConfig;
+  /**
+   * Leave the setup and return to where it was opened from. The setup is only ever
+   * mounted while the server advertises the command it would send, so it derives no
+   * legality itself.
    */
   onCancel: () => void;
 }
 
-export function CreateGame({ prefill, onCancel }: CreateGameProps) {
+export function CreateGame({ prefill, editing, onCancel }: CreateGameProps) {
   const sendLobby = useGameStore((state) => state.sendLobby);
   const catalog = useGameStore((state) => state.catalog);
-  const [setupId, setSetupId] = useState(prefill?.setupId ?? GAME_SETUPS[0]!.id);
-  const [seats, setSeats] = useState<number>(prefill?.seats ?? GAME_SETUPS[0]!.seats);
+  const [setupId, setSetupId] = useState(
+    editing?.game_setup ?? prefill?.setupId ?? GAME_SETUPS[0]!.id,
+  );
+  const [seats, setSeats] = useState<number>(
+    editing?.seats ?? prefill?.seats ?? GAME_SETUPS[0]!.seats,
+  );
+  const [name, setName] = useState(editing?.name ?? '');
+  const [visibility, setVisibility] = useState<RoomVisibility>(editing?.visibility ?? 'public');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const lastNonce = useRef(prefill?.nonce ?? 0);
 
@@ -98,19 +123,46 @@ export function CreateGame({ prefill, onCancel }: CreateGameProps) {
   const stepSeats = (delta: number): void =>
     setSeats((current) => Math.min(MAX_SEATS, Math.max(MIN_SEATS, current + delta)));
 
+  // The whole config this form describes — the shape both commands carry. A blank
+  // name is sent as *absent*, matching the server's own normalization, so an
+  // unnamed table stays labelled by its format rather than by an empty string.
+  const submit = (): void => {
+    const trimmed = name.trim();
+    const config: RoomConfig = { seats, game_setup: setupId, visibility };
+    if (trimmed.length > 0) config.name = trimmed;
+    sendLobby(editing === undefined ? createRoomCommand(config) : updateRoomCommand(config));
+    // Editing stays on the same room, so the surface hands the arena back; the next
+    // `LobbyView` is what says whether the change took. Creating lands in a new room,
+    // which swaps the place out from under this component on its own.
+    if (editing !== undefined) onCancel();
+  };
+
   return (
     <Plaque className={p.formPlaque} faceClass={p.formFace} testId="create-room">
       <h2 className={p.formTitle} data-place-heading tabIndex={-1} ref={headingRef}>
-        Create Game
+        {editing === undefined ? 'Create Game' : 'Edit Table'}
       </h2>
 
-      {/* A room is named by its format on the wire; see the file header. */}
-      <div className={p.field}>
+      <label className={p.field}>
         <span className={p.fieldLabel}>Table name</span>
-        <span className={p.identityName} data-testid="create-table-name">
-          {setupLabel(setupId)}
-        </span>
-      </div>
+        <input
+          className={p.input}
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={32}
+          // The placeholder is the honest default: leave it blank and the table is
+          // labelled by its format, exactly as every table was before names existed.
+          placeholder={setupLabel(setupId)}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') submit();
+          }}
+          data-testid="create-table-name"
+          aria-label="Table name"
+        />
+      </label>
 
       <label className={p.field}>
         <span className={p.fieldLabel}>Format</span>
@@ -163,13 +215,21 @@ export function CreateGame({ prefill, onCancel }: CreateGameProps) {
         </div>
       </div>
 
-      {/* Every room in the registry is listed in the public directory. */}
-      <div className={p.field}>
+      <label className={p.field}>
         <span className={p.fieldLabel}>Visibility</span>
-        <span className={p.identityName} data-testid="create-visibility">
-          Public
-        </span>
-      </div>
+        <select
+          className={p.select}
+          value={visibility}
+          onChange={(event) => setVisibility(event.target.value as RoomVisibility)}
+          data-testid="create-visibility"
+        >
+          {VISIBILITIES.map((option) => (
+            <option key={option.id} value={option.id} data-testid={`visibility-${option.id}`}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <details className={p.disclosure} data-testid="create-advanced">
         <summary className={p.disclosureSummary}>Advanced</summary>
@@ -183,10 +243,14 @@ export function CreateGame({ prefill, onCancel }: CreateGameProps) {
           ) : (
             <span className={p.muted}>This server has not advertised the format’s rules.</span>
           )}
+          {/* The variant rules and permissions the baseline files under Advanced are
+              the format's own, and they are the server's to state — a room carries a
+              format id, not a rules override. Said plainly rather than drawn as
+              controls that would change nothing. */}
           <span className={p.muted}>
-            This server’s lobby carries a seat count and a format and nothing else: tables are named
-            by their format, every table is listed publicly, and variant rules and permissions are
-            not configurable yet.
+            Variant rules come with the format and are not overridable per table, and this server
+            carries no per-table permissions. A private table is not listed in Open Games; anyone
+            you send its id to can still join it.
           </span>
         </div>
       </details>
@@ -204,8 +268,8 @@ export function CreateGame({ prefill, onCancel }: CreateGameProps) {
         <span className={p.fit}>
           <ControlButton
             variant="primaryCompact"
-            label="Create Table"
-            onPress={() => sendLobby(createRoomCommand({ seats, game_setup: setupId }))}
+            label={editing === undefined ? 'Create Table' : 'Save Table'}
+            onPress={submit}
             testId="create-room-button"
           />
         </span>

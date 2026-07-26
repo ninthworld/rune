@@ -104,6 +104,7 @@ fn config_in(seats: u8, game_setup: &str) -> RoomConfig {
     RoomConfig {
         seats,
         game_setup: game_setup.to_string(),
+        ..Default::default()
     }
 }
 
@@ -311,6 +312,7 @@ fn config(seats: u8) -> RoomConfig {
     RoomConfig {
         seats,
         game_setup: "standard_2p".to_string(),
+        ..Default::default()
     }
 }
 
@@ -442,6 +444,7 @@ async fn issue_372_commander_game_starts_at_forty_life_with_command_zone_visible
             config: RoomConfig {
                 seats: 2,
                 game_setup: "commander".to_string(),
+                ..Default::default()
             },
         }))
         .await;

@@ -36,9 +36,42 @@ pub type GameSetupId = String;
 /// as an opaque string; the note is here so nobody reintroduces an integer.
 pub type CardIdentity = String;
 
-/// Configuration for a room, supplied by the creator in [`CreateRoom`] and echoed
-/// back in every [`RoomView`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Whether a room is listed in the lobby's public [`directory`](LobbyView::directory)
+/// (issue #546). A closed, `snake_case`-tagged enum in the shape of [`RoomState`], its
+/// nearest neighbour on the wire: the value is a *vocabulary* the UI renders as a word,
+/// not a flag the client would have to invent prose for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoomVisibility {
+    /// Listed in the public room directory: anyone browsing the lobby can find the
+    /// room and join an open seat. The default, and the behaviour of every room
+    /// created before this field existed.
+    #[default]
+    Public,
+    /// Not listed anywhere: the room is reachable only by a [`JoinRoom`] carrying its
+    /// [`RoomId`], which its host shares out-of-band. It is omitted from the directory
+    /// for **every** connection, so it cannot be browsed or spectated by strangers.
+    Private,
+}
+
+impl RoomVisibility {
+    /// Whether this is the default (`public`) visibility. The `skip_serializing_if`
+    /// predicate for [`RoomConfig::visibility`]: the crate's shared predicates in
+    /// `lib.rs` cover `bool`/integer fields only, so an enum-valued field carries its
+    /// own, which keeps the default off the wire exactly like every other elided field.
+    pub(crate) fn is_public(&self) -> bool {
+        matches!(self, Self::Public)
+    }
+}
+
+/// Configuration for a room, supplied by the creator in [`CreateRoom`], changed by its
+/// host with [`UpdateRoom`], and echoed back in every [`RoomView`] and [`RoomSummary`].
+///
+/// [`name`](RoomConfig::name) and [`visibility`](RoomConfig::visibility) are additive
+/// (issue #546): both elide from the wire at their defaults, so a client that omits
+/// them creates exactly the room the pre-#546 shape created — a public table the UI
+/// labels by its format.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoomConfig {
     /// Number of seats in the room. Validated server-side into the inclusive
     /// range `2..=8`; the lobby supports 2–8 seats even while the engine remains
@@ -47,6 +80,20 @@ pub struct RoomConfig {
     /// Which game setup the room will build its game from (opaque; see
     /// [`GameSetupId`]).
     pub game_setup: GameSetupId,
+    /// The host's chosen name for the table (issue #546) — public, display-only text,
+    /// validated server-side under the same bounds a [`SetName`] display name gets
+    /// (trimmed, non-empty, ≤ 32 characters, printable). `None`/omitted when the host
+    /// named nothing, in which case a client labels the table by its
+    /// [`game_setup`](RoomConfig::game_setup) exactly as it did before this field
+    /// existed. The server never invents a name: the fallback is the client's own
+    /// display concern, so no prose rides the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Whether the room is listed in the public directory (issue #546). Defaults to
+    /// [`RoomVisibility::Public`] and elides from the wire at that default, so an
+    /// older client that omits it gets today's behaviour.
+    #[serde(default, skip_serializing_if = "RoomVisibility::is_public")]
+    pub visibility: RoomVisibility,
 }
 
 /// One seat in a room's roster, as seen by any connection. Hidden information
@@ -124,8 +171,12 @@ pub struct RoomSummary {
     /// The room's opaque id — the same id a [`JoinRoom`] command carries, so a client
     /// can join directly from the listing.
     pub room_id: RoomId,
-    /// The room's configuration (seat count and game setup): the config summary the
-    /// browser renders.
+    /// The room's configuration: the config summary the browser renders. It is the
+    /// **whole** [`RoomConfig`], so the host's chosen [`name`](RoomConfig::name) reaches
+    /// the directory through the field it already carried (issue #546) rather than
+    /// through a second, divergent copy. A [`RoomVisibility::Private`] room never
+    /// appears here at all, so the visibility a listed entry reports is always
+    /// [`Public`](RoomVisibility::Public).
     pub config: RoomConfig,
     /// How many of the room's seats are currently occupied. The total is
     /// [`RoomConfig::seats`]; a [`RoomState::Gathering`] room with `filled` below that
@@ -179,9 +230,11 @@ pub struct LobbyView {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub directory: Vec<RoomSummary>,
     /// The lobby command kinds currently legal for this connection (e.g.
-    /// `"create_room"`, `"join_room"`, `"submit_deck"`, `"ready"`, `"unready"`,
-    /// `"leave"`). Free-form strings so new command kinds do not break older
-    /// clients; the client renders exactly these and computes no legality.
+    /// `"create_room"`, `"update_room"`, `"join_room"`, `"submit_deck"`, `"ready"`,
+    /// `"unready"`, `"leave"`). Free-form strings so new command kinds do not break
+    /// older clients; the client renders exactly these and computes no legality — a
+    /// host-only affordance such as Edit Table exists because `"update_room"` is
+    /// advertised here, never because a client decided it was the host.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub valid_commands: Vec<String>,
 }
@@ -248,6 +301,27 @@ pub struct Hello {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateRoom {
     /// The configuration for the new room.
+    pub config: RoomConfig,
+}
+
+/// Change the configuration of the room this connection **hosts** (issue #546).
+///
+/// The counterpart of [`CreateRoom`], and deliberately the same shape: it carries a
+/// **whole** [`RoomConfig`], not a patch of changed fields, so the command says what the
+/// table *is* rather than what moved — the same full-state discipline [`LobbyView`]
+/// follows, and the reason one client surface can serve both creating and editing.
+///
+/// The server accepts it only from the room's host (the seat 0 occupant,
+/// like [`AddAi`]) and only before the game starts, validates the new config exactly as
+/// [`CreateRoom`] does, and additionally refuses a seat count that would remove an
+/// occupied seat — shrinking is rejected, never silently clamped. On acceptance every
+/// seat's readiness is cleared when the seats or the format changed (nobody stays ready
+/// to a table they did not agree to), and a changed
+/// [`game_setup`](RoomConfig::game_setup) additionally clears every submitted deck,
+/// since those decks were validated against a format that no longer applies.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateRoom {
+    /// The room's complete new configuration.
     pub config: RoomConfig,
 }
 
@@ -366,6 +440,8 @@ pub enum LobbyCommand {
     Hello(Hello),
     /// Create a new room with a config.
     CreateRoom(CreateRoom),
+    /// Change the configuration of the room this connection hosts (issue #546).
+    UpdateRoom(UpdateRoom),
     /// Join an existing room by id.
     JoinRoom(JoinRoom),
     /// Submit a decklist for this connection's seat.
@@ -426,6 +502,7 @@ mod tests {
             config: RoomConfig {
                 seats: 4,
                 game_setup: "standard_2p".into(),
+                ..Default::default()
             },
         });
         let json = serde_json::to_value(&msg).unwrap();
@@ -438,6 +515,103 @@ mod tests {
         );
         let back: LobbyCommand = serde_json::from_value(json).unwrap();
         assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_546_room_config_carries_a_name_and_visibility_and_elides_the_defaults() {
+        // A named private table round-trips with both new fields on the wire.
+        let named = RoomConfig {
+            seats: 4,
+            game_setup: "commander".into(),
+            name: Some("Casual Commander".into()),
+            visibility: RoomVisibility::Private,
+        };
+        let json = serde_json::to_value(&named).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "seats": 4,
+                "game_setup": "commander",
+                "name": "Casual Commander",
+                "visibility": "private"
+            })
+        );
+        assert_eq!(serde_json::from_value::<RoomConfig>(json).unwrap(), named);
+
+        // An unnamed public table is byte-for-byte the pre-#546 shape: both fields
+        // elide, so an older server/client sees exactly what it always saw.
+        let plain = RoomConfig {
+            seats: 2,
+            game_setup: "standard_2p".into(),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&plain).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "seats": 2, "game_setup": "standard_2p" })
+        );
+
+        // And a pre-#546 payload deserializes to that same default: unnamed, public.
+        let legacy: RoomConfig =
+            serde_json::from_str(r#"{"seats":2,"game_setup":"standard_2p"}"#).unwrap();
+        assert_eq!(legacy, plain);
+        assert_eq!(legacy.name, None);
+        assert_eq!(legacy.visibility, RoomVisibility::Public);
+    }
+
+    #[test]
+    fn issue_546_lobby_command_update_room_round_trips() {
+        // The host's edit carries a whole config, exactly like `create_room`, so the
+        // same client surface can serve both.
+        let msg = LobbyCommand::UpdateRoom(UpdateRoom {
+            config: RoomConfig {
+                seats: 4,
+                game_setup: "commander".into(),
+                name: Some("Casual Commander".into()),
+                visibility: RoomVisibility::Private,
+            },
+        });
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "update_room",
+                "config": {
+                    "seats": 4,
+                    "game_setup": "commander",
+                    "name": "Casual Commander",
+                    "visibility": "private"
+                }
+            })
+        );
+        let back: LobbyCommand = serde_json::from_value(json).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn issue_546_room_summary_carries_the_table_name_through_its_config() {
+        // The directory renders a table's name from the config it already carried —
+        // there is no second, divergent name field to keep in sync.
+        let listed = RoomSummary {
+            room_id: "r0".into(),
+            config: RoomConfig {
+                seats: 4,
+                game_setup: "commander".into(),
+                name: Some("Casual Commander".into()),
+                ..Default::default()
+            },
+            filled: 2,
+            spectators: 0,
+            state: RoomState::Gathering,
+        };
+        let json = serde_json::to_value(&listed).unwrap();
+        assert_eq!(
+            json["config"]["name"],
+            serde_json::json!("Casual Commander")
+        );
+        // A listed room is public by definition, so `visibility` stays elided.
+        assert!(json["config"].get("visibility").is_none());
+        assert_eq!(serde_json::from_value::<RoomSummary>(json).unwrap(), listed);
     }
 
     #[test]
@@ -611,6 +785,7 @@ mod tests {
             config: RoomConfig {
                 seats: 4,
                 game_setup: "standard_ffa".into(),
+                ..Default::default()
             },
             filled: 4,
             spectators: 3,
@@ -650,6 +825,7 @@ mod tests {
                 config: RoomConfig {
                     seats: 2,
                     game_setup: "standard_2p".into(),
+                    ..Default::default()
                 },
                 seats: vec![
                     SeatView {
@@ -758,6 +934,7 @@ mod tests {
             config: RoomConfig {
                 seats: 2,
                 game_setup: "standard_2p".into(),
+                ..Default::default()
             },
             filled: 1,
             spectators: 0,
@@ -817,6 +994,7 @@ mod tests {
                 config: RoomConfig {
                     seats: 2,
                     game_setup: "standard_2p".into(),
+                    ..Default::default()
                 },
                 filled: 1,
                 spectators: 0,
@@ -827,6 +1005,7 @@ mod tests {
                 config: RoomConfig {
                     seats: 4,
                     game_setup: "ffa-4".into(),
+                    ..Default::default()
                 },
                 filled: 4,
                 spectators: 2,

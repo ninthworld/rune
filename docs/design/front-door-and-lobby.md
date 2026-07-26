@@ -541,11 +541,19 @@ rides #452/#509 and the §9 spectate fix respectively.
 
 ## 7. Constraints carried
 
-- **No protocol change.** ADR 0012's `LobbyView` / `LobbyCommand` contract is
-  untouched: no new command, no new field, no new frame. Every affordance is
-  either advertised in `valid_commands` or a client-session action. ADR 0022
-  (spectators join and leave through the existing commands) and ADR 0027
-  (device-local decks, unchanged) likewise.
+- ~~**No protocol change.**~~ **Superseded by #546's second half.** This was a true
+  constraint on **#506**, and it held: that PR added no command, field, or frame.
+  It is no longer a constraint on the pregame as a whole. #546 found that three
+  things the approved baselines draw — a table **name**, a **visibility**, and the
+  host's **Edit Table** — could not be honest without the wire carrying them, and
+  landed that change: `RoomConfig` gained `name` and `visibility`, and
+  `update_room` joined `LobbyCommand`, under a dated amendment to
+  [ADR 0012](../decisions/0012-lobby-protocol.md). What did **not** change is the
+  rule underneath this line, which still holds absolutely: **every affordance is
+  either advertised in `valid_commands` or a client-session action** — Edit Table
+  is on screen because the server advertises `update_room`, never because the
+  client decided it was the host. ADR 0022 (spectators join and leave through the
+  existing commands) and ADR 0027 (device-local decks) remain untouched.
 - **Zero game logic in the client.** Counts, gate sentences, and pips are
   presentation reads of the view; deck legality stays server-side behind the
   unchanged `submit_deck` gate.

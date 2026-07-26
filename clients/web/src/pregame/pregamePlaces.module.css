@@ -317,6 +317,13 @@
   text-align: center;
 }
 
+/* The host's Edit Table, under the table's own meta line (issue #546). It sits in
+ * the table plaque because that is what it edits, and it is a `utility` control so
+ * the room keeps exactly one blue primary. */
+.plaqueAction {
+  margin-top: var(--rune-space-3);
+}
+
 .centreGate {
   font-family: var(--rune-font-display);
   font-size: var(--rune-type-body-lg);

@@ -125,6 +125,7 @@ async fn two_cli_clients_drive_lobby_to_game_start() {
         action: Some(RoomAction::Create(RoomConfig {
             seats: 2,
             game_setup: "standard_2p".to_string(),
+            ..Default::default()
         })),
         deck: Some(decklist()),
         auto_ready: true,
@@ -191,6 +192,7 @@ async fn interactive_cli_drives_numbered_menus_to_a_game_start() {
         action: Some(RoomAction::Create(RoomConfig {
             seats: 2,
             game_setup: "standard_2p".to_string(),
+            ..Default::default()
         })),
         deck: Some(decklist()),
         auto_ready: true,
