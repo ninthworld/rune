@@ -193,21 +193,39 @@ export interface Permanent {
  * {@link isStackItemKind} validates a wire value against it, so a kind added here
  * can never drift out of the type (and vice versa).
  */
-export const STACK_ITEM_KINDS = ['spell', 'ability'] as const;
+export const STACK_ITEM_KINDS = ['spell', 'ability', 'activated', 'triggered'] as const;
 
 /**
- * What an object on the stack is (issue #550); one of {@link STACK_ITEM_KINDS}:
+ * What an object on the stack is (issues #550, #579); one of {@link STACK_ITEM_KINDS}:
  * - `spell` — a card cast onto the stack (CR 601); its `card` is the card being cast.
- * - `ability` — an ability on the stack (CR 113.3), activated *or* triggered; the
- *   server does not distinguish the two today (an engine gap, issue #579), so neither
- *   may the client.
+ * - `ability` — an ability on the stack (CR 113.3) whose provenance the server does not
+ *   state: the coarse value a pre-#579 server sends. Render it generically.
+ * - `activated` — an activated ability (CR 602.2): a player chose it and paid its costs.
+ * - `triggered` — a triggered ability (CR 603.3): the game put it on the stack. This is
+ *   the value §2.3's trigger caret reads.
  *
  * Server-stated: the client never derives a kind from the presence of
- * {@link StackItem.source}. The union widens additively when the engine can prove a
- * finer distinction, so an unrecognized future value must be treated as
- * "unclassified" (see {@link normalizeGameView}) and rendered from `description`.
+ * {@link StackItem.source}, and never reconstructs activated-vs-triggered from
+ * `description` prose or from when the entry appeared — that is rules interpretation,
+ * which ADR 0002 puts on the server. The union widens additively as the engine proves
+ * more (`copy` arrives with a copy mechanic), so an unrecognized future value must be
+ * treated as "unclassified" (see {@link normalizeGameView}) and rendered from
+ * `description`.
  */
 export type StackItemKind = (typeof STACK_ITEM_KINDS)[number];
+
+/**
+ * The ability kinds — the values that mean "an ability is on the stack", coarse and
+ * fine. A client deciding *ability plate vs spell plate* tests membership here rather
+ * than comparing against `'ability'` alone, so the pre-#579 value and the two finer
+ * ones stay one category.
+ */
+export const ABILITY_STACK_ITEM_KINDS = ['ability', 'activated', 'triggered'] as const;
+
+/** Whether a {@link StackItemKind} denotes an ability of any provenance. */
+export function isAbilityStackItemKind(kind: StackItemKind | undefined): boolean {
+  return (ABILITY_STACK_ITEM_KINDS as readonly string[]).includes(kind ?? '');
+}
 
 /** Whether a wire value is a known {@link StackItemKind}. */
 export function isStackItemKind(value: unknown): value is StackItemKind {
@@ -253,8 +271,25 @@ export interface StackItem {
    * What this object is. Server-stated and never inferred from `source`. Absent when
    * the entry is unclassified — an older server that omits the field, or a future
    * kind this client does not know; render such an entry generically.
+   *
+   * The two absences are **not** the same and {@link kindUnknown} tells them apart.
    */
   kind?: StackItemKind;
+  /**
+   * Normalization state, **not a wire field** (hence camelCase among the snake_case
+   * mirror): the server stated a `kind` and it is one this client does not know — a
+   * value added to the union after this build, such as `copy` (gap G3).
+   * {@link normalizeGameView} sets it and leaves {@link kind} unset, so no consumer
+   * can mistake an unknown value for a known one.
+   *
+   * It exists to *withhold* classification, never to enable one. An entry carrying it
+   * stays unclassified and is rendered from `description`; in particular the
+   * documented older-server fallback — reading `source`'s presence as "ability" —
+   * must **not** apply to it. That fallback is for an entry whose server never stated
+   * a kind; this server did state one, and disagreeing with it would be exactly the
+   * client-side rules interpretation ADR 0002 forbids.
+   */
+  kindUnknown?: true;
   /**
    * The targets this object named, in the order its effects consume them (CR
    * 601.2c) — the ordering the client's target numerals (①②③) come from. Omitted on

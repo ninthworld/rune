@@ -52,23 +52,42 @@
   z-index: 3;
 }
 
-.layer > svg,
+.layer svg,
 .plate {
   display: block;
   width: 100%;
   height: 100%;
 }
 
+/* The T0 composition a plate cross-fades with (§8.2). It holds the slot from the
+   first frame, and is RETIRED once the plate reports pixels — never left painted
+   underneath. A shipped plate may carry alpha (L1's is a cut-out disc), and a T0
+   composition showing through one is not harmless: it draws from a layer node
+   that outranks every layer below it, so L1's opaque plaza fill would cover L0's
+   far surround entirely and the environment would read as a flat token field
+   (issue #581). Same duration, same easing, same `staging` class as the plate's
+   fade-in, so the two are one cross-fade and snap together under reduced motion. */
+.underlay {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--env-motion-staging) var(--env-ease-staging);
+}
+
+.underlay[data-revealed='true'] {
+  opacity: 0;
+}
+
 /* L0–L2: one continuous 21:9 plate. `cover` IS the §4.2 crop — every landscape
    aspect below the authoring aspect matches the plate's height and takes a
    centred horizontal slice, and ultrawide reveals rather than stretches.
 
-   The plate is *stacked over* its slot's T0 composition rather than replacing
-   it (§8.2, §8.3): `position: absolute` takes it out of flow so the token
-   surround / plaza SVG underneath keeps the whole slot, and the plate covers
-   that composition only once it actually has pixels. There is therefore no
-   frame — first paint, slow request, theme change, decode failure — in which
-   the arena floor and its medallion are absent. */
+   The plate is the second half of the `.underlay` cross-fade above (§8.2, §8.3),
+   not a cover over it: `position: absolute` takes it out of flow so both halves
+   hold the whole slot, and the two swap on one transition — the plate fades in
+   as the composition retires, each keyed to the same decode. There is therefore
+   no frame — first paint, slow request, theme change, decode failure — in which
+   the arena floor and its medallion are absent, and none in which a retired
+   composition is still painting over the layers below (issue #581). */
 .plate {
   position: absolute;
   inset: 0;
@@ -170,6 +189,7 @@
  */
 @media (prefers-reduced-motion: reduce) {
   .layer,
+  .underlay,
   .plate,
   .spriteFrame {
     transition: none !important;

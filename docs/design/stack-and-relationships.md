@@ -732,7 +732,7 @@ and the element cannot be rendered correctly without it.
 | Body text | `StackItem.description` | OK |
 | Spell vs ability | `StackItem.kind` (`spell` / `ability`), server-stated (#550) | OK |
 | Ability source thumbnail + name | `StackItem.card` (the source's current face), with `StackItem.source` for the tether | OK (both absent once the source has left play — render the C5 plate state) |
-| **Activated vs triggered** | — | **GAP G2 — now an *engine* gap, tracked as #579** (#550 landed the discriminator; the engine's `StackObjectKind::Ability` records only that an ability is on the stack) |
+| **Activated vs triggered** | `StackItem.kind` (`activated` / `triggered`), server-stated (#579) | OK — the engine records an `AbilityOrigin` at each push site and the projection states it; the caret glyph of §2.3 is a rendering change on top of it |
 | **Copy marker** | — | **GAP G3 — deferred** (no copy mechanic exists to project) |
 | **Mini card face** (name, `type_line`, `mana_cost`, `rules_text`, frame accent, art identity) | `StackItem.card` (#550) | OK |
 | **Target list and order** (chips ①②③, target count, `No targets`) | `StackItem.targets` (#550), ordered | OK |
@@ -760,32 +760,39 @@ and the element cannot be rendered correctly without it.
 
 Each is a protocol change and therefore must land in `rune-protocol`,
 `docs/protocol.md`, and the TypeScript mirror in one PR. All seven are the
-`StackItem` contract gaps filed as **#550**.
+`StackItem` contract gaps filed as **#550**; G2 needed an engine change first
+and closed with **#579**.
 
 | # | Gap | Minimal shape | Consequence if not closed | Tracked by |
 | --- | --- | --- | --- | --- |
 | **G1** | `StackItem` carries no targets — targets exist only as prose baked into `description` | `targets?: EntityId[]` on `StackItem`, **ordered**, matching the order the description names them | **Blocking.** No confirmed relationship can be drawn for anything already on the stack. Panel 8 of the zones baseline — an arc from a stack entry to a permanent — is unimplementable. The client must not parse `description` to recover them (I1). | #550 |
-| **G2** | No kind discriminator | `kind?: "spell" \| "activated" \| "triggered" \| "copy"` | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. | #550 → **#579** (engine half) |
+| **G2** | No kind discriminator | `kind?: "spell" \| "ability" \| "activated" \| "triggered"` (`copy` with G3) | Triggered and activated abilities are indistinguishable; §2.3's trigger caret cannot be driven. | **Closed** — #550 (protocol half) + #579 (engine half) |
 | **G3** | No copy relation | `copy_of?: EntityId` | The `Copy` chip and the doubled outline cannot be driven; copy folding cannot be validated. | #550 |
 | **G4** | No card face on a stack object | `card?: CardView` on `StackItem` | The Expanded entry cannot show name, cost pip, type strip, frame accent, or an art window — the baseline's stack card anatomy degrades to a single text line. | #550 |
 | **G5** | No mode / X / additional-cost summary | free-form `choices?: string[]` | The issue's "mode/X/additional-cost summary where data exists" cannot be met; the row is simply omitted until it exists. | #550 |
 | **G6** | Player vs permanent vs stack-object destinations are not typed | either a `kind` on the target reference, or a documented guarantee that a client may classify by membership in `battlefield` / `seat_order` / `stack` | Endpoint treatment (§5.3 vs §5.2 vs §5.5) is chosen by client-side classification, which is fragile and brushes against I1. | #550 |
 | **G7** | Zones are not targetable references | a zone reference form (`{player, zone}`) | R3 (card → zone target) has no data source and is specified but dormant. | #550 |
 
-**Status after #550.** G1, G4, and G6 are closed: `StackItem` now carries
-`kind`, an ordered `targets` list typed at the source, and the `card` face to
-render (see `docs/protocol.md`, *Permanents and stack objects*). §4's confirmed
-states are therefore implementable for R1/R2/R4/R5 as well as combat (R6–R8) and
-attachment (R9) — a rendering change, exactly as this document intended.
+**Status after #550 and #579.** G1, G4, and G6 were closed by #550: `StackItem`
+carries `kind`, an ordered `targets` list typed at the source, and the `card`
+face to render (see `docs/protocol.md`, *Permanents and stack objects*). §4's
+confirmed states are therefore implementable for R1/R2/R4/R5 as well as combat
+(R6–R8) and attachment (R9) — a rendering change, exactly as this document
+intended.
+
+**G2 is closed by #579.** #550 landed the discriminator but the engine's
+`StackObjectKind::Ability` recorded only that an ability was on the stack — an
+activation and a trigger pushed the identical object — so the server could prove
+`spell` vs `ability` and no more. #579 added an `AbilityOrigin`
+(`Activated` / `Triggered`) set at each of the two push sites, and the projection
+states it as `kind: "activated" | "triggered"`. The wire union widened additively:
+`ability` remains the coarse value a pre-#579 server sends, and a client that sees
+it renders generically rather than picking one. §2.3's trigger caret therefore has
+a data source; drawing the glyph is a rendering change on top of it, not a
+contract change.
 
 Three remain open, each for a stated reason rather than an oversight:
 
-- **G2** became an *engine* gap and is **tracked as #579**, not closed with #550.
-  The protocol has the discriminator, but the engine's `StackObjectKind::Ability`
-  records only that an ability is on the stack — an activation and a trigger push
-  the identical object — so the server can prove `spell` vs `ability` and no more.
-  §2.3's trigger caret stays dormant until the engine stores which it was; the wire
-  union then widens additively.
 - **G3** and **G5** are deferred: there is no copy mechanic, no modal spell, and
   no `X` cost to project, so `copy_of` and a choices summary would be fields no
   projection could ever fill. They land with the mechanics that need them.
@@ -854,7 +861,7 @@ Recorded here rather than resolved by editing other documents.
 | Acceptance criterion | Where met |
 | --- | --- |
 | A viewer can tell what is on top, who controls it, where it came from, what it targets, and which direction the effect travels | §2.2, §3.3, §4.2, §4.3, §9.1 |
-| Spell and ability entries are visually distinct | §2.3 (plate substrate, square corners, no frame accent, source thumbnail) — needs G2 for activated/triggered separation |
+| Spell and ability entries are visually distinct | §2.3 (plate substrate, square corners, no frame accent, source thumbnail); activated/triggered separation has its data source since G2 closed (#579), and the caret glyph is the remaining rendering change |
 | Targeting and resolution are distinct moments | §4.4 (path states), §6.1, §7.1 F2–F3 vs F6–F8 |
 | Multi-target and crowded states remain traceable | §4.5, §4.4 Calmed / Endpoint-only, §10.2 bundling, §10.3 edge indicators |
 | Empty stack consumes no permanent screen region | §1.2 empty state |

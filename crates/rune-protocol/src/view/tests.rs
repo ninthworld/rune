@@ -424,7 +424,8 @@ fn canonical_fixture_round_trips_and_matches_typed_fields() {
         }]
     );
     // The terse ability entry keeps the pre-#550 body: an entry with no face and
-    // no targets is not an error, and its kind is still stated.
+    // no targets is not an error, and its kind is still stated. `ability` is also
+    // the coarse value a pre-#579 server sends, and it must keep deserializing.
     assert_eq!(view.stack[1].kind, Some(StackItemKind::Ability));
     assert_eq!(view.stack[1].card, None);
     assert!(view.stack[1].targets.is_empty());
@@ -447,6 +448,13 @@ fn canonical_fixture_round_trips_and_matches_typed_fields() {
         view.stack[3].targets,
         vec![StackTarget::Stack { id: "s3".into() }]
     );
+    // The finer ability kinds (issue #579): two entries alike in every other
+    // field — same source, same description — separated only by their kind, which
+    // is exactly why a client may not reconstruct the distinction from prose.
+    assert_eq!(view.stack[4].kind, Some(StackItemKind::Activated));
+    assert_eq!(view.stack[5].kind, Some(StackItemKind::Triggered));
+    assert_eq!(view.stack[4].description, view.stack[5].description);
+    assert_eq!(view.stack[4].source, view.stack[5].source);
 
     // Public piles round-trip populated.
     assert_eq!(view.graveyards[0].cards[0].id, "g1");

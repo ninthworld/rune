@@ -4,6 +4,7 @@ use crate::card::{abilities_of, apply_enters_replacements};
 use crate::commander::commander_tax_cost;
 use crate::id::{CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
+use crate::stack::AbilityOrigin;
 use crate::state::{Duration, EffectAffects, Modification, Permanent, StaticEffect};
 
 /// Play a land from the active player's hand onto the battlefield. Not via the
@@ -89,6 +90,11 @@ pub(crate) fn apply_activate_ability(
             controller,
             kind: StackObjectKind::Ability {
                 source: permanent,
+                // This is the *activation* push site (CR 602.2): a player chose
+                // this ability and paid for it above. Recording that here is the
+                // only place the fact exists — the object it produces is
+                // otherwise identical to a trigger's (issue #579).
+                origin: AbilityOrigin::Activated,
                 effects: effects.clone(),
             },
             // The targets chosen for this activation (CR 601.2c), already

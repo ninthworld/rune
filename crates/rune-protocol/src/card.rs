@@ -240,23 +240,43 @@ pub struct Counter {
 /// discriminator a client renders from, instead of inferring a kind from which
 /// other fields happen to be present.
 ///
-/// Deliberately only as fine-grained as the engine can prove. A triggered and an
-/// activated ability are both [`StackItemKind::Ability`] today because the engine's
-/// stack object records only *that* an ability is on the stack, not how it got
-/// there; splitting `ability` into `activated`/`triggered` (and adding `copy`) is an
-/// engine change first (issue #579), and this enum widens additively when it lands. A client must
-/// therefore treat an unrecognized future value as "unclassified" and fall back to
-/// [`StackItem::description`], never invent the distinction itself.
+/// Deliberately only as fine-grained as the engine can prove, and it **widens
+/// additively** as the engine proves more. Issue #579 landed the first widening:
+/// the engine now records an ability's provenance (`AbilityOrigin` on its stack
+/// object), so a server states
+/// [`Activated`](Self::Activated) or [`Triggered`](Self::Triggered) where it
+/// previously could only say [`Ability`](Self::Ability). A `copy` value arrives with
+/// a copy mechanic (gap G3).
+///
+/// Two compatibility rules follow, and both are load-bearing:
+///
+/// - **A server that states only `ability` stays valid.** [`Ability`](Self::Ability)
+///   is the coarse value — what a server predating #579 sends, and what any server
+///   sends for an ability whose provenance it cannot prove. It never stops
+///   deserializing and never means "neither activated nor triggered".
+/// - **A client that knows only `ability` renders generically.** Treat an
+///   unrecognized value as *unclassified* and fall back to
+///   [`StackItem::description`] — never coerce it into a known variant, and never
+///   invent the activated/triggered distinction from prose or timing. That
+///   reconstruction is rules interpretation, which ADR 0002 puts on the server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StackItemKind {
     /// A spell: a card cast onto the stack (CR 601). Its [`StackItem::card`] is the
     /// card being cast.
     Spell,
-    /// An ability on the stack (CR 113.3) — activated or triggered; the engine does
-    /// not distinguish the two today. Its [`StackItem::source`] names the permanent
-    /// the ability came from.
+    /// An ability on the stack (CR 113.3) whose provenance the server does not
+    /// state — the coarse value a pre-#579 server sends. Its [`StackItem::source`]
+    /// names the permanent the ability came from.
     Ability,
+    /// An **activated** ability (CR 602.2): a player chose it and paid its costs.
+    /// Carries the same [`StackItem::source`] and face as [`Ability`](Self::Ability).
+    Activated,
+    /// A **triggered** ability (CR 603.3): a condition was met and the game put it on
+    /// the stack — no player activated it. This is the value §2.3's trigger caret
+    /// reads. Carries the same [`StackItem::source`] and face as
+    /// [`Ability`](Self::Ability).
+    Triggered,
 }
 
 /// One target chosen for an object on the stack (CR 601.2c), **typed at the source**
@@ -312,10 +332,12 @@ pub struct StackItem {
     /// Source permanent for an ability; `None` for a spell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<EntityId>,
-    /// What this object is (issue #550). Server-stated; a client never derives it
-    /// from the presence of [`source`](Self::source). `None` only when the payload
-    /// came from a server predating the field — an unclassified entry, which a
-    /// client renders generically rather than guessing.
+    /// What this object is (issue #550), as finely as the server can prove it —
+    /// including whether an ability was activated or triggered (issue #579).
+    /// Server-stated; a client never derives it from the presence of
+    /// [`source`](Self::source). `None` only when the payload came from a server
+    /// predating the field — an unclassified entry, which a client renders
+    /// generically rather than guessing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<StackItemKind>,
     /// The targets chosen for this object, **in the order the object's own effects
@@ -330,9 +352,9 @@ pub struct StackItem {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub targets: Vec<StackTarget>,
     /// The card face to render for this entry (issue #550): for a
-    /// [`StackItemKind::Spell`] the card being cast; for a
-    /// [`StackItemKind::Ability`] the **current** face of its source permanent, so
-    /// the entry can show a source thumbnail without a battlefield lookup.
+    /// [`StackItemKind::Spell`] the card being cast; for an ability of any kind the
+    /// **current** face of its source permanent, so the entry can show a source
+    /// thumbnail without a battlefield lookup.
     ///
     /// `None` when there is no face to show — notably an ability whose source has
     /// already left the battlefield (CR 608.2), which is the same degradation
@@ -611,6 +633,37 @@ mod tests {
         assert!(item.targets.is_empty());
         assert_eq!(item.card, None);
         assert_eq!(item.source.as_deref(), Some("perm_bear"));
+    }
+
+    #[test]
+    fn issue_579_every_stack_item_kind_round_trips_as_its_documented_snake_case_value() {
+        // The union after #579's widening. Each value is the exact string
+        // `docs/protocol.md` and the TypeScript mirror's `STACK_ITEM_KINDS` list, so a
+        // rename here fails cross-language rather than silently drifting.
+        let cases = [
+            (StackItemKind::Spell, "spell"),
+            (StackItemKind::Ability, "ability"),
+            (StackItemKind::Activated, "activated"),
+            (StackItemKind::Triggered, "triggered"),
+        ];
+        for (kind, wire) in cases {
+            let json = serde_json::to_value(kind).unwrap();
+            assert_eq!(json, serde_json::json!(wire));
+            assert_eq!(serde_json::from_value::<StackItemKind>(json).unwrap(), kind);
+        }
+    }
+
+    #[test]
+    fn issue_579_the_coarse_ability_kind_survives_the_widening() {
+        // The compatibility rule the widening rests on: a server that predates #579
+        // states only `ability`, and that payload must keep deserializing to the coarse
+        // variant — not become a parse error, and not be refined into a guess.
+        let legacy = r#"{"id":"s2","controller":"p1","description":"Add {G}.",
+                         "source":"perm_bear","kind":"ability"}"#;
+        let item: StackItem = serde_json::from_str(legacy).unwrap();
+        assert_eq!(item.kind, Some(StackItemKind::Ability));
+        assert_ne!(item.kind, Some(StackItemKind::Activated));
+        assert_ne!(item.kind, Some(StackItemKind::Triggered));
     }
 
     #[test]

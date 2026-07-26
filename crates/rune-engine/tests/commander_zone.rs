@@ -8,9 +8,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use rune_engine::{
-    apply_action, valid_actions, Action, CardDatabase, CardId, CardInstance, Color, CommanderState,
-    Effect, GameEvent, GameState, Permanent, PermanentId, PlayerId, StackId, StackObject,
-    StackObjectKind, Step, Target, TargetSpec,
+    apply_action, valid_actions, AbilityOrigin, Action, CardDatabase, CardId, CardInstance, Color,
+    CommanderState, Effect, GameEvent, GameState, Permanent, PermanentId, PlayerId, StackId,
+    StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 /// An inline catalog with a legendary creature commander costing `{G}` and a
@@ -178,6 +178,7 @@ fn exile_ability_targeting(state: &mut GameState, target: PermanentId) {
         controller: PlayerId(0),
         kind: StackObjectKind::Ability {
             source: target,
+            origin: AbilityOrigin::Activated,
             effects: vec![Effect::Exile {
                 target: TargetSpec::AnyPermanent,
             }],

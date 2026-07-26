@@ -218,7 +218,11 @@ button.body {
   font-weight: 600;
 }
 
-.tile[data-kind='ability'] {
+/* An entry whose stated kind this build does not know shares the ability tile's
+   square, non-card treatment: "not a card" is the one claim that is safe to make
+   about an object of an unrecognized kind (§2.4 rule 1). */
+.tile[data-kind='ability'],
+.tile[data-kind='unclassified'] {
   border-radius: 0;
   color: var(--rune-text-muted);
 }

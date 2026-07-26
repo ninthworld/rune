@@ -151,6 +151,20 @@
         "rules_text": "Counter target spell.",
         "functional_id": "counterspell"
       }
+    },
+    {
+      "id": "s5",
+      "controller": "p1",
+      "description": "Tap target creature.",
+      "source": "perm_bear",
+      "kind": "activated"
+    },
+    {
+      "id": "s6",
+      "controller": "p1",
+      "description": "Tap target creature.",
+      "source": "perm_bear",
+      "kind": "triggered"
     }
   ],
   "graveyards": [

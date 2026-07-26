@@ -10,6 +10,8 @@ use crate::apply::{apply_effect, apply_targeted_effect};
 use crate::card::{apply_enters_replacements, spell_effects_of, CardData};
 use crate::card_type::CardType;
 use crate::id::PermanentId;
+#[cfg(test)]
+use crate::stack::AbilityOrigin;
 use crate::stack::{StackObject, StackObjectKind};
 use crate::state::{GameEvent, GameState, Permanent};
 use crate::CardDatabase;
@@ -339,6 +341,7 @@ mod tests {
             controller: PlayerId(0),
             kind: StackObjectKind::Ability {
                 source,
+                origin: AbilityOrigin::Activated,
                 effects: vec![Effect::Tap {
                     target: TargetSpec::AnyCreature,
                 }],
@@ -479,6 +482,7 @@ mod tests {
             controller: PlayerId(0),
             kind: StackObjectKind::Ability {
                 source: crate::id::PermanentId(1),
+                origin: AbilityOrigin::Activated,
                 effects: vec![Effect::DrawCard { count: 1 }],
             },
             targets: Vec::new(),
@@ -574,6 +578,7 @@ mod tests {
             controller: PlayerId(0),
             kind: StackObjectKind::Ability {
                 source: creature,
+                origin: AbilityOrigin::Activated,
                 effects: vec![Effect::PutCounters {
                     target: TargetSpec::AnyCreature,
                     counter: CounterKind::PlusOnePlusOne,

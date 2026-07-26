@@ -189,8 +189,13 @@ function normalizeStackItem(payload: unknown): StackItem {
       .filter((target): target is StackTarget => target !== undefined),
   };
   if (typeof record.source === 'string') item.source = record.source;
-  // Spell vs. ability (issue #550): server-stated, never derived from `source`.
+  // The kind (issues #550, #579): server-stated, never derived from `source`. A value
+  // this client does not know is not carried as `kind` — nothing downstream may
+  // mistake it for a known one — but the *fact* that the server stated one is kept, so
+  // "unknown kind" stays distinguishable from "older server, no kind at all". Only the
+  // latter earns the documented `source`-presence fallback; see `StackItem.kindUnknown`.
   if (isStackItemKind(record.kind)) item.kind = record.kind;
+  else if (typeof record.kind === 'string') item.kindUnknown = true;
   // The face to render (issue #550): the card being cast, or an ability's source
   // thumbnail. Absent when the server has no face to show (e.g. a source that has
   // left the battlefield), never substituted with one the client assembles.

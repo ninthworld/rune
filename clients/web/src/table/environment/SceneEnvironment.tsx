@@ -29,16 +29,27 @@
  * the placeholder. The match is interactive at T0 either way, and a plate that
  * never arrives changes nothing but the pixels.
  *
- * **The plate never replaces the composition, it covers it.** A raster slot
- * renders its T0 form *and* the plate, the plate layered over it and revealed
- * only once the decode reports back ({@link RasterImage}). That is what makes
- * §8.2's "T0 is always the first frame" and §8.3's "no state in which the
- * environment is a hole" hold literally rather than eventually: on the first
- * frame, throughout a slow or lazily-scheduled T2 request, across a theme
- * change (the plate is keyed by its URL, so a new source re-enters unrevealed),
- * and after an `onError` — in every one of those states the arena floor and its
- * medallion are already on screen, because they were never taken away. The
- * reveal is the §8.2 cross-fade: an opacity transition on the `staging` class,
+ * **The plate cross-fades with the composition, it does not sit on top of it.**
+ * A raster slot renders its T0 form *and* the plate ({@link PlatedLayer}): the
+ * composition holds the slot until the decode reports back, and the two then
+ * swap on one opacity transition. That is what makes §8.2's "T0 is always the
+ * first frame" and §8.3's "no state in which the environment is a hole" hold
+ * literally rather than eventually: on the first frame, throughout a slow or
+ * lazily-scheduled T2 request, across a theme change (the slot is keyed by the
+ * plate's URL, so a new source re-enters unrevealed), and after an `onError` —
+ * in every one of those states the arena floor and its medallion are already on
+ * screen, because they were never taken away.
+ *
+ * The composition is **retired** on the reveal rather than left underneath, and
+ * that is load-bearing rather than tidiness (issue #581). A shipped plate is not
+ * necessarily opaque: L1's is a cut-out disc, and its T0 plaza ellipse is opaque
+ * and — at every landscape aspect, by §4.3's "the plaza field must span the
+ * tightest crop" — geometrically covers the whole viewport. Left painted, it
+ * therefore sits *above* L0 (its layer node is the higher rung) and hides the
+ * entire far surround outside the arena, which is exactly the flat token field
+ * #581 reports in place of the Runic Vale.
+ *
+ * The swap is the §8.2 cross-fade: an opacity transition on the `staging` class,
  * which `environmentScene.ts` collapses to `0ms` under reduced motion, so the
  * reduced-motion form is a snap and needs no media query to remember it.
  *
@@ -296,23 +307,19 @@ function LayerArt({
     // portrait recomposition, which needs no separate anchor for the same
     // reason. Ultrawide reveals rather than stretches.
     //
-    // The T0 composition stays mounted *underneath* for the life of the slot
-    // (§8.2, §8.3): the plate is opaque and `cover`-fitted, so it costs nothing
-    // visible once revealed, and it means there is no instant — first frame,
-    // slow request, theme change, or decode failure — in which this slot is a
-    // hole. `key={plan.rasterPath}` re-enters the plate unrevealed whenever the
-    // source changes, so a theme switch cross-fades from the T0 composition
-    // rather than flashing.
+    // `key={plan.rasterPath}` re-enters the whole slot unrevealed whenever the
+    // source changes, so a theme switch cross-fades from that theme's own T0
+    // composition rather than flashing — and, just as importantly, the retired
+    // composition comes back to hold the slot while the new plate is in flight.
     return (
-      <>
-        {t0Composition(plan.layer, crop, idPrefix)}
-        <RasterImage
-          key={plan.rasterPath}
-          className={s.plate}
-          src={plan.rasterPath}
-          onError={() => onFailed(key)}
-        />
-      </>
+      <PlatedLayer
+        key={plan.rasterPath}
+        layer={plan.layer}
+        src={plan.rasterPath}
+        crop={crop}
+        idPrefix={idPrefix}
+        onError={() => onFailed(key)}
+      />
     );
   }
 
@@ -328,6 +335,54 @@ function LayerArt({
     case 'l3':
       return <EnvLayerL3 props={props} />;
   }
+}
+
+/**
+ * One L0–L2 plate slot: the layer's T0 composition and its plate, cross-faded.
+ *
+ * The composition holds the slot until the plate reports pixels, then retires to
+ * `opacity: 0` on the same `staging` class the plate fades in on. Both halves
+ * ride one flag, so "the arena while it loads" and "the arena once the plate has
+ * arrived" cannot drift, and neither can ever be absent at the same time.
+ *
+ * Retiring it is the fix for #581 and not an optimisation: a plate may carry
+ * alpha (L1's is a cut-out disc), and a T0 composition left painted behind one
+ * shows *through* it — from a layer node that outranks every layer below, which
+ * on L1 means the whole far surround disappears behind an opaque plaza fill.
+ *
+ * The node stays mounted rather than unmounting so the retirement is a fade
+ * rather than a pop, and so a re-render can never resurrect it as a flash.
+ */
+function PlatedLayer({
+  layer,
+  src,
+  crop,
+  idPrefix,
+  onError,
+}: {
+  layer: EnvLayerPlan['layer'];
+  src: string;
+  crop: string;
+  idPrefix: string;
+  onError: () => void;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const composition = t0Composition(layer, crop, idPrefix);
+  return (
+    <>
+      {composition !== null && (
+        <div className={s.underlay} data-underlay={layer} data-revealed={String(revealed)}>
+          {composition}
+        </div>
+      )}
+      <RasterImage
+        className={s.plate}
+        src={src}
+        onLoaded={() => setRevealed(true)}
+        onError={onError}
+      />
+    </>
+  );
 }
 
 /**
@@ -350,18 +405,25 @@ function RasterImage({
   className,
   src,
   style,
+  onLoaded,
   onError,
 }: {
   className: string;
   src: string;
   style?: CSSProperties;
+  /** Called the first time this node has pixels, so a caller can cross-fade with it. */
+  onLoaded?: () => void;
   onError: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const reveal = (): void => {
+    setLoaded(true);
+    onLoaded?.();
+  };
   return (
     <img
       ref={(node) => {
-        if (node !== null && node.complete && node.naturalWidth > 0) setLoaded(true);
+        if (node !== null && node.complete && node.naturalWidth > 0) reveal();
       }}
       className={className}
       src={src}
@@ -369,7 +431,7 @@ function RasterImage({
       aria-hidden="true"
       decoding="async"
       data-loaded={String(loaded)}
-      onLoad={() => setLoaded(true)}
+      onLoad={reveal}
       onError={onError}
       {...(style === undefined ? {} : { style })}
     />
