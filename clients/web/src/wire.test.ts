@@ -378,12 +378,22 @@ describe('stack item wire (issue #550)', () => {
     expect(item.source).toBe('perm_bear');
   });
 
+  it('carries the finer activated and triggered ability kinds (issue #579)', () => {
+    // The engine records how an ability got onto the stack, so the server states it
+    // and the client carries it verbatim. `ability` stays valid — it is what a
+    // pre-#579 server sends — and is never refined into a guess.
+    expect(stackFrame({ kind: 'activated', source: 'perm_a' }).stack[0]!.kind).toBe('activated');
+    expect(stackFrame({ kind: 'triggered', source: 'perm_a' }).stack[0]!.kind).toBe('triggered');
+    expect(stackFrame({ kind: 'ability', source: 'perm_a' }).stack[0]!.kind).toBe('ability');
+  });
+
   it('drops an unknown kind and any malformed target rather than throwing', () => {
     // Forward compatibility: a kind this client does not know leaves the entry
     // unclassified (never coerced into a known one), and a malformed target entry is
     // dropped like every other normalizer drops — the rest of the list survives.
+    // `copy` is gap G3 — a real future value this client does not yet know.
     const item = stackFrame({
-      kind: 'triggered',
+      kind: 'copy',
       targets: [
         { kind: 'permanent', id: 'perm_a' },
         { kind: 'zone', seat: 0 },
@@ -395,6 +405,21 @@ describe('stack item wire (issue #550)', () => {
     }).stack[0]!;
     expect(item.kind).toBeUndefined();
     expect(item.targets).toEqual([{ kind: 'permanent', id: 'perm_a' }]);
+  });
+
+  it('records that an unknown kind was stated, apart from no kind at all', () => {
+    // The two absences are different facts and only one of them earns the legacy
+    // `source`-presence fallback. A server that stated `copy` said *something*; a
+    // pre-#550 server said nothing. Collapsing them would let a stated-but-unknown
+    // kind be overruled by a guess downstream (see `stackStage.test.ts`).
+    expect(stackFrame({ kind: 'copy', source: 'perm_a' }).stack[0]!.kindUnknown).toBe(true);
+    expect(stackFrame({ source: 'perm_a' }).stack[0]!.kindUnknown).toBeUndefined();
+    // A known kind is carried, so there is nothing unknown to record…
+    expect(stackFrame({ kind: 'triggered' }).stack[0]!.kindUnknown).toBeUndefined();
+    // …and a non-string `kind` is malformed rather than a future value: it is not a
+    // kind the server could ever have stated, so it degrades to the older-server
+    // reading rather than freezing the entry as unclassified.
+    expect(stackFrame({ kind: 7 }).stack[0]!.kindUnknown).toBeUndefined();
   });
 
   it('degrades a malformed targets field to the empty list', () => {
@@ -503,7 +528,8 @@ describe('cross-language contract fixture (issue #56)', () => {
     expect(view.stack[0].card?.name).toBe('Lightning Bolt');
     expect(view.stack[0].targets).toEqual([{ kind: 'permanent', id: 'perm_bear' }]);
     // The terse ability entry keeps the pre-#550 body: no face, no targets — not an
-    // error — while still stating its kind.
+    // error — while still stating its kind. `ability` is also the coarse value a
+    // pre-#579 server sends, and it must keep normalizing.
     expect(view.stack[1].kind).toBe('ability');
     expect(view.stack[1].card).toBeUndefined();
     expect(view.stack[1].targets).toEqual([]);
@@ -516,6 +542,13 @@ describe('cross-language contract fixture (issue #56)', () => {
     ]);
     // ...and a stack object may itself be a target (CR 701.5).
     expect(view.stack[3].targets).toEqual([{ kind: 'stack', id: 's3' }]);
+    // The finer ability kinds (issue #579): two entries alike in every other field —
+    // same source, same description — separated only by the kind the server states,
+    // which is why the client may not reconstruct the distinction from prose.
+    expect(view.stack[4].kind).toBe('activated');
+    expect(view.stack[5].kind).toBe('triggered');
+    expect(view.stack[4].description).toBe(view.stack[5].description);
+    expect(view.stack[4].source).toBe(view.stack[5].source);
 
     // Public piles round-trip populated.
     expect(view.graveyards[0].cards[0].id).toBe('g1');

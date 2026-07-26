@@ -48,7 +48,30 @@ pub enum StackObjectKind {
     Ability {
         /// The permanent whose ability this is.
         source: PermanentId,
+        /// How this ability got onto the stack (CR 113.3).
+        origin: AbilityOrigin,
         /// The effects to apply on resolution.
         effects: Vec<Effect>,
     },
+}
+
+/// How an ability came to be on the stack — its rules provenance (CR 113.3).
+///
+/// The two ways differ in rule, not only in flavour: an activated ability is put
+/// on the stack by a player who paid its cost (CR 602.2), a triggered one by the
+/// game itself the next time a player would receive priority (CR 603.3). Nothing
+/// else on a [`StackObject`] separates them — the effects, the source, and the
+/// composed description can all be identical — so the distinction is recorded at
+/// the moment of the push or it is gone (issue #579).
+///
+/// Storing it here is what lets the server *state* the finer kind on the wire
+/// instead of guessing. A client may never reconstruct this from `description`
+/// prose or from when the object appeared: that is rules interpretation, which
+/// ADR 0002 puts on the server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AbilityOrigin {
+    /// A player activated it, paying its costs (CR 602.2).
+    Activated,
+    /// A trigger condition was met and the game put it on the stack (CR 603.3).
+    Triggered,
 }

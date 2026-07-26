@@ -41,10 +41,12 @@
  *
  * The Expanded anatomy of §2.2 is still partly **dormant**. `#550` landed the
  * contract for a card face (gap G4), an ordered target list (G1), and the
- * spell/ability discriminator; drawing them is a later rendering change. What no
- * protocol field can supply stays out entirely: activated vs triggered (G2) is an
- * engine gap, and a copy relation (G3) awaits a copy mechanic. Rather than invent
- * either, the stage renders the four channels §2.4 rule 2 says may never degrade —
+ * spell/ability discriminator, and `#579` refined that discriminator into
+ * activated vs triggered (G2); drawing them is a later rendering change, so the
+ * provenance reaches {@link StackStageEntry.origin} and the accessible name but
+ * not yet §2.3's caret glyph. What no protocol field can supply stays out
+ * entirely: a copy relation (G3) awaits a copy mechanic. Rather than invent one,
+ * the stage renders the four channels §2.4 rule 2 says may never degrade —
  * controller stripe, order index, kind marker, and (when it exists) the source
  * tether — and leaves the rest absent. Absence is stated positively where the
  * player could otherwise infer something false: an ability whose source has left
@@ -55,6 +57,7 @@
  */
 import type { CSSProperties } from 'react';
 import type { EntityId, GameView, PlayerId, StackItem } from '../../protocol';
+import { isAbilityStackItemKind } from '../../protocol';
 import { playerName } from '../../playerNames';
 // The pure tokenizer directly: this derivation module stays free of React.
 import { symbolNotationText } from '../../chrome/symbols/notation';
@@ -102,11 +105,29 @@ export interface StackStageEntry {
   /** The density tier this entry draws at (§2.1). */
   tier: StackTier;
   /**
-   * Spell or ability, as `StackItem.kind` states it (issue #550), falling back to
-   * `StackItem.source`'s presence only for an entry that predates the field.
-   * Activated vs triggered is gap G2 — an engine gap — and is never guessed.
+   * The plate category, as `StackItem.kind` states it (issue #550): the finer
+   * `activated`/`triggered` kinds both land on `ability` here and keep their
+   * provenance in {@link origin}.
+   *
+   * `unclassified` is a real third state, not a failure: the server stated a kind
+   * this build does not know (`StackItem.kindUnknown`). Such an entry draws the
+   * neutral plate and reads from `description` — it is **not** run through the
+   * `source`-presence fallback, which is reserved for an entry whose server never
+   * stated a kind at all (a pre-#550 server). Guessing against a stated kind would
+   * be client-side rules interpretation (ADR 0002).
    */
-  kind: 'spell' | 'ability';
+  kind: 'spell' | 'ability' | 'unclassified';
+  /**
+   * Which kind of ability the server said this is (issue #579, gap G2 closed):
+   * `activated` (CR 602.2) or `triggered` (CR 603.3). `undefined` for a spell, and
+   * for an ability whose server states only the coarse `ability` kind — an older
+   * server, whose entries stay generic rather than being guessed at.
+   *
+   * This is the data source §2.3's trigger caret reads. It is used by the
+   * accessible name today ("Triggered ability from Dawn Herald", §9.2); the caret
+   * glyph itself is a later rendering change.
+   */
+  origin?: 'activated' | 'triggered';
   /** `StackItem.description`, verbatim. The client never composes rules prose. */
   description: string;
   /** `StackItem.controller`. */
@@ -344,18 +365,43 @@ function spellGlyph(description: string): string {
   return (/[\p{L}\p{N}]/u.exec(spoken)?.[0] ?? '?').toUpperCase();
 }
 
+/**
+ * §9.2's `kind` slot. An ability whose provenance the server states says which it
+ * is ("Triggered ability from Dawn Herald", issue #579); one it does not stays the
+ * generic "Ability". An entry whose stated kind this build does not know says so
+ * outright rather than being sorted into either — the listener learns there is an
+ * object here and reads it from the description, which is the honest report.
+ */
+function kindWord(entry: Omit<StackStageEntry, 'label'>): string {
+  if (entry.kind === 'spell') return 'Spell';
+  if (entry.kind === 'unclassified') return 'Object of an unrecognized kind';
+  if (entry.origin === 'activated') return 'Activated ability';
+  if (entry.origin === 'triggered') return 'Triggered ability';
+  return 'Ability';
+}
+
+/** §9.2's `source` insert, for an entry that names a source permanent. */
+function sourceClause(entry: Omit<StackStageEntry, 'label'>): string {
+  return entry.sourceResolved
+    ? ` from ${entry.sourceName}`
+    : ', source no longer on the battlefield';
+}
+
 /** The `n of N. …` accessible name of §9.2, assembled in its fixed order. */
 function accessibleName(entry: Omit<StackStageEntry, 'label'>): string {
   const parts = [`${entry.index} of ${entry.total}.`];
   if (entry.isTop) parts.push('Resolves next.');
-  const kindWord = entry.kind === 'ability' ? 'Ability' : 'Spell';
+  const kindWord_ = kindWord(entry);
+  // The source tether is a channel of its own (§2.4 rule 2) and `StackItem.source`
+  // is server-stated independently of the kind, so an unclassified entry that names
+  // one still names it — reporting a server fact is not classifying the entry.
   const source =
-    entry.kind === 'ability'
-      ? entry.sourceResolved
-        ? ` from ${entry.sourceName}`
-        : ', source no longer on the battlefield'
+    entry.kind === 'ability' || (entry.kind === 'unclassified' && entry.sourceId !== undefined)
+      ? sourceClause(entry)
       : '';
-  parts.push(`${kindWord}${source}, controlled by ${entry.isMine ? 'you' : entry.controllerName}.`);
+  parts.push(
+    `${kindWord_}${source}, controlled by ${entry.isMine ? 'you' : entry.controllerName}.`,
+  );
   // Pure text: the description's symbol notation is spoken, not braced (#462).
   parts.push(symbolNotationText(entry.description));
   return parts.join(' ');
@@ -408,9 +454,28 @@ export function deriveStackStage(
     const isTop = i === 0;
     const focused = options.focusId != null && item.id === options.focusId;
     const tier = tierFor({ compact, count, isTop, focused, anyFocus });
-    // The server states the kind (issue #550); the `source`-presence reading is a
-    // fallback for an entry that predates the field, never a second opinion.
-    const kind = item.kind ?? (item.source !== undefined ? 'ability' : 'spell');
+    // The server states the kind (issues #550, #579). The finer ability kinds
+    // collapse to the `ability` plate category and keep their provenance in
+    // `origin` — the client narrows, it never invents. Three readings, in order:
+    //
+    //   1. a kind this build knows            → use it;
+    //   2. a kind this build does not know    → `unclassified`, full stop;
+    //   3. no kind at all (a pre-#550 server) → the documented `source`-presence
+    //      fallback, which is the *only* inference this client is allowed.
+    //
+    // Case 2 must not fall through to case 3: the server did state a kind, and
+    // overruling it with a guess is the rules interpretation ADR 0002 forbids.
+    const stated = item.kind;
+    const kind: StackStageEntry['kind'] = stated
+      ? isAbilityStackItemKind(stated)
+        ? 'ability'
+        : 'spell'
+      : item.kindUnknown
+        ? 'unclassified'
+        : item.source !== undefined
+          ? 'ability'
+          : 'spell';
+    const origin = stated === 'activated' || stated === 'triggered' ? stated : undefined;
     const source = item.source !== undefined ? resolveSource(view, item.source) : undefined;
     const controllerName = controllerLabel(view, item.controller);
 
@@ -437,6 +502,7 @@ export function deriveStackStage(
       isTop,
       tier,
       kind,
+      origin,
       description: item.description,
       controller: item.controller,
       controllerName,
@@ -446,13 +512,19 @@ export function deriveStackStage(
       sourceName: source?.name,
       sourceResolved: source?.resolved ?? false,
       // A letter tile for a spell (the deep-rail mock's `C`, `S`, `G`), an open
-      // diamond for an ability. Shape, not hue: an ability's tile is also square
-      // -cornered, so it can never be read as a card (§2.3).
-      glyph: kind === 'ability' ? '◇' : spellGlyph(item.description),
+      // diamond for an ability, a question mark for an entry this build cannot
+      // classify. Shape, not hue: an ability's tile is also square-cornered, so it
+      // can never be read as a card (§2.3) — and the unclassified tile shares that
+      // square, non-card treatment, since "not a card" is the safe claim to make
+      // about something whose kind is unknown (§2.4 rule 1).
+      glyph:
+        kind === 'ability' ? '◇' : kind === 'unclassified' ? '?' : spellGlyph(item.description),
       subtitle:
         kind === 'ability'
           ? `ability — ${source?.resolved ? source.name : 'source left play'} · ${controllerName}`
-          : `spell · ${controllerName}`,
+          : kind === 'unclassified'
+            ? `unrecognized kind · ${controllerName}`
+            : `spell · ${controllerName}`,
       offsetX,
       scale,
       zOrder: count - index + 1,

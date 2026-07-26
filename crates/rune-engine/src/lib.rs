@@ -73,7 +73,7 @@ pub use scripted::scripted_rules_text;
 pub use setup::{
     GameSetup, PlayerSetup, SetupError, DEFAULT_STARTING_HAND_SIZE, DEFAULT_STARTING_LIFE,
 };
-pub use stack::{StackId, StackObject, StackObjectKind};
+pub use stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
 pub use state::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry,
     GameResult, GameState, LoggedPermanent, Modification, Permanent, StaticEffect,
