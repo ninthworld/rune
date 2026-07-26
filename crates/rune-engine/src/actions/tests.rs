@@ -10,7 +10,7 @@ use crate::fixtures::{fixture, id_in};
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::mana::{Color, ManaPool};
 use crate::phase::Step;
-use crate::stack::{StackId, StackObject, StackObjectKind};
+use crate::stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
 use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
 
@@ -674,6 +674,7 @@ fn issue_148_counterspell_cannot_target_an_ability_on_the_stack_cr_605_3() {
         controller: PlayerId(1),
         kind: StackObjectKind::Ability {
             source: PermanentId(999),
+            origin: AbilityOrigin::Activated,
             effects: vec![crate::ability::Effect::DrawCard { count: 1 }],
         },
         targets: Vec::new(),

@@ -278,7 +278,7 @@ A `StackItem` describes one object on the stack:
 | `controller` | `PlayerId` | Player who controls it (chooses targets and resolution) |
 | `description` | `string` | Display text: a spell’s name, or an ability’s composed sentence |
 | `source` | `EntityId?` | Source permanent for an ability; **omitted for a spell** |
-| `kind` | `"spell" \| "ability"?` | What this object is (issue #550); **omitted by an older server**, and then unclassified — never guessed |
+| `kind` | `"spell" \| "ability" \| "activated" \| "triggered"?` | What this object is (issues #550, #579); **omitted by an older server**, and then unclassified — never guessed |
 | `targets` | `StackTarget[]?` | Targets chosen for it, in the order its effects consume them; **omitted when empty** (and by an older server), meaning no targets |
 | `card` | `CardView?` | The face to render: a spell’s card, or an ability’s source permanent; **omitted when there is no face** (and by an older server) |
 
@@ -303,15 +303,25 @@ Three rules govern these fields:
   resolves or fizzles (CR 608.2b), so a client reconnecting mid-resolution rebuilds
   exactly the relationships the game holds. What to draw for an endpoint that is no
   longer in the view is a rendering decision, not a protocol one.
-- **`kind` is only as fine-grained as the server can prove.** An activated and a
-  triggered ability are both `ability` today because the engine’s stack object records
-  only that *an ability* is on the stack — an **engine** gap, tracked as issue #579. The
-  union widens additively when the engine can
-  prove more (and `copy` arrives with a copy mechanic); an unrecognized value must leave
-  the entry unclassified rather than being coerced into a known one. There is
-  deliberately **no** mode/X/additional-cost summary and **no zone target kind**: the
-  engine has no modal spells, no `X` costs, and no zone targets, so carrying either would
-  be a field no projection could ever fill.
+- **`kind` is only as fine-grained as the server can prove, and the union widens
+  additively.** Issue #579 landed the first widening: the engine now records how an
+  ability got onto the stack, so a server states `activated` (CR 602.2 — a player chose
+  it and paid its costs) or `triggered` (CR 603.3 — the game put it there) where it
+  previously could only say `ability`. Two compatibility rules follow, and both are
+  load-bearing:
+  - **`ability` stays valid.** It is the coarse value — what a server predating #579
+    sends, and what any server sends for an ability whose provenance it cannot prove. A
+    client keeps accepting it and renders such an entry generically; it never means
+    “neither activated nor triggered”.
+  - **An unrecognized value leaves the entry unclassified**, never coerced into a known
+    one — render it from `description`. A `copy` value arrives with a copy mechanic
+    (gap G3).
+
+  A client must never reconstruct activated-vs-triggered from `description` prose or from
+  when the entry appeared: that is rules interpretation, which ADR 0002 puts on the
+  server. There is deliberately **no** mode/X/additional-cost summary and **no zone
+  target kind**: the engine has no modal spells, no `X` costs, and no zone targets, so
+  carrying either would be a field no projection could ever fill.
 
 ### Valid actions
 

@@ -14,8 +14,8 @@ use rune_engine::{
     abilities_of, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocker_candidates_for, bottom_requirement, characteristics, declared_attackers,
     defender_candidates, defending_player, is_mana_ability, pending_blocker_declarer,
-    scripted_rules_text, target_requirements, valid_actions, Action, Attack, Block, CardData,
-    CardDatabase, CardId, CardInstance, CardInstanceId, Color, CounterKind, DamageOrder,
+    scripted_rules_text, target_requirements, valid_actions, AbilityOrigin, Action, Attack, Block,
+    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, Color, CounterKind, DamageOrder,
     DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason,
     PermanentId, Player, PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };

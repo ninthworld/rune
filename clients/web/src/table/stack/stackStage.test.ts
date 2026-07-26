@@ -227,6 +227,54 @@ describe('deriveStackStage — the four channels that never degrade (§2.4 rule 
     expect(model.entries.find((e) => e.id === 'bare')?.kind).toBe('spell');
   });
 
+  it('carries the activated/triggered provenance the server states (issue #579)', () => {
+    // Gap G2 closed: the engine records how an ability got onto the stack, so the
+    // stage carries it as `origin` — the data source §2.3's trigger caret reads —
+    // and speaks it in the accessible name (§9.2's "Triggered ability from …").
+    // Both finer kinds still draw the *ability* plate: `kind` is the plate category.
+    const model = deriveStackStage(
+      viewWith(
+        [
+          {
+            id: 'act',
+            controller: 'p1',
+            description: 'Tap target creature.',
+            source: 'perm1',
+            kind: 'activated',
+          },
+          {
+            id: 'trg',
+            controller: 'p1',
+            description: 'Tap target creature.',
+            source: 'perm1',
+            kind: 'triggered',
+          },
+          {
+            id: 'coarse',
+            controller: 'p1',
+            description: 'Tap target creature.',
+            source: 'perm1',
+            kind: 'ability',
+          },
+        ],
+        [permanent('perm1', 'Dawn Herald')],
+      ),
+    );
+    const entry = (id: string) => model.entries.find((e) => e.id === id);
+    expect(entry('act')?.origin).toBe('activated');
+    expect(entry('trg')?.origin).toBe('triggered');
+    expect(entry('act')?.kind).toBe('ability');
+    expect(entry('trg')?.kind).toBe('ability');
+    expect(entry('trg')?.label).toContain('Triggered ability from Dawn Herald');
+    expect(entry('act')?.label).toContain('Activated ability from Dawn Herald');
+
+    // A server that states only the coarse `ability` gets the generic reading: the
+    // client leaves it unclassified rather than picking one.
+    expect(entry('coarse')?.origin).toBeUndefined();
+    expect(entry('coarse')?.label).toContain('Ability from Dawn Herald');
+    expect(entry('coarse')?.label).not.toContain('Triggered');
+  });
+
   it('names an ability source from the battlefield, and says so when it is gone (C5)', () => {
     const resolved = deriveStackStage(
       viewWith(

@@ -37,17 +37,21 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             // battlefield.
             card: Some(card_view(card_entity_id(card.id), card.card, db)),
         },
-        StackObjectKind::Ability { source, effects } => StackItem {
+        StackObjectKind::Ability {
+            source,
+            origin,
+            effects,
+        } => StackItem {
             id: stack_entity_id(object.id),
             controller: player_id(object.controller),
             description: effects_description(&source_name(state, *source, db), effects),
             source: Some(permanent_entity_id(*source)),
-            // The engine's stack object records only that an *ability* is on the
-            // stack: an activation (`apply_activate_ability`) and a trigger
-            // (`collect_triggers`) both push `StackObjectKind::Ability`, so nothing
-            // here can tell them apart. The projection states what it can prove and
-            // does not guess (issue #550, gap G2 stays open on the engine side).
-            kind: Some(StackItemKind::Ability),
+            // The engine records which push site put this here (issue #579), so the
+            // projection states the finer kind rather than the coarse `ability` it
+            // was limited to under #550. Still proof, not inference: the value comes
+            // from the engine's own record of the push, never from the description
+            // or from when the object appeared.
+            kind: Some(ability_kind(*origin)),
             targets,
             // An ability's face is its *source permanent's* current face, so the
             // entry can show a source thumbnail without a battlefield lookup. It
@@ -55,6 +59,20 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             // the battlefield (CR 608.2) has no face left to give.
             card: source_permanent(state, *source).map(|perm| permanent_card_view(state, perm, db)),
         },
+    }
+}
+
+/// The wire kind for an ability, from the provenance the engine recorded at the push
+/// site (issue #579, gap G2).
+///
+/// Exhaustive by construction, like [`stack_target`]: a new engine origin forces a
+/// matching wire value here rather than silently collapsing to the coarse
+/// [`StackItemKind::Ability`], which stays reserved for a server that genuinely
+/// cannot prove which it was.
+fn ability_kind(origin: AbilityOrigin) -> StackItemKind {
+    match origin {
+        AbilityOrigin::Activated => StackItemKind::Activated,
+        AbilityOrigin::Triggered => StackItemKind::Triggered,
     }
 }
 
@@ -143,7 +161,7 @@ mod tests {
 
     /// A spell on the stack projects its kind, the face of the card being cast, and
     /// the target it named — and an ability projects its kind, its source, and the
-    /// **current** face of that source permanent (issue #550, gaps G1/G2/G4).
+    /// **current** face of that source permanent (issue #550, gaps G1/G4).
     #[test]
     fn issue_550_a_spell_and_an_ability_project_kind_targets_and_a_card_face() {
         let db = CardDatabase::bundled().unwrap();
@@ -179,6 +197,7 @@ mod tests {
             PlayerId(0),
             StackObjectKind::Ability {
                 source: elves,
+                origin: AbilityOrigin::Activated,
                 effects: vec![Effect::DrawCard { count: 1 }],
             },
             Vec::new(),
@@ -210,7 +229,11 @@ mod tests {
 
         let ability_view = &view.stack[1];
         assert_eq!(ability_view.id, stack_entity_id(ability));
-        assert_eq!(ability_view.kind, Some(StackItemKind::Ability));
+        assert_eq!(
+            ability_view.kind,
+            Some(StackItemKind::Activated),
+            "an activation states the finer kind (issue #579)",
+        );
         assert_eq!(
             ability_view.source.as_deref(),
             Some(permanent_entity_id(elves).as_str())
@@ -306,6 +329,7 @@ mod tests {
             PlayerId(0),
             StackObjectKind::Ability {
                 source: ghost,
+                origin: AbilityOrigin::Triggered,
                 effects: vec![Effect::DealDamage {
                     target: TargetSpec::AnyTarget,
                     amount: 1,
@@ -316,7 +340,11 @@ mod tests {
 
         let view = personalized_view(&state, &db, PlayerId(0));
         let entry = &view.stack[0];
-        assert_eq!(entry.kind, Some(StackItemKind::Ability));
+        assert_eq!(
+            entry.kind,
+            Some(StackItemKind::Triggered),
+            "provenance survives the source leaving play — it is recorded on the push",
+        );
         assert_eq!(entry.card, None, "no source permanent, no face");
         assert_eq!(
             entry.source.as_deref(),
@@ -393,5 +421,90 @@ mod tests {
         let rebuilt_spectator: rune_protocol::SpectatorView =
             serde_json::from_str(&serde_json::to_string(&spectated).unwrap()).unwrap();
         assert_eq!(rebuilt_spectator.stack, after.stack);
+    }
+
+    /// An activated and a triggered ability sharing the stack project **different**
+    /// kinds, and the distinction is the same in every view an audience can hold —
+    /// the controller's, the opponent's, and a spectator's (issue #579, gap G2).
+    ///
+    /// Nothing else on the two entries separates them: same source permanent, same
+    /// effect, therefore the same composed `description` and the same face. That is
+    /// the point — only the engine's recorded provenance can tell them apart, which
+    /// is why a client inferring it from prose would be guessing.
+    #[test]
+    fn issue_579_an_activation_and_a_trigger_project_distinct_kinds_in_every_view() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::PrecombatMain;
+
+        let elves = put_permanent(
+            &mut state,
+            fixture("llanowar_elves"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let effects = vec![Effect::DrawCard { count: 1 }];
+        let activated = push(
+            &mut state,
+            PlayerId(0),
+            StackObjectKind::Ability {
+                source: elves,
+                origin: AbilityOrigin::Activated,
+                effects: effects.clone(),
+            },
+            Vec::new(),
+        );
+        let triggered = push(
+            &mut state,
+            PlayerId(0),
+            StackObjectKind::Ability {
+                source: elves,
+                origin: AbilityOrigin::Triggered,
+                effects,
+            },
+            Vec::new(),
+        );
+
+        let mine = personalized_view(&state, &db, PlayerId(0));
+        assert_eq!(mine.stack[0].id, stack_entity_id(activated));
+        assert_eq!(mine.stack[0].kind, Some(StackItemKind::Activated));
+        assert_eq!(mine.stack[1].id, stack_entity_id(triggered));
+        assert_eq!(mine.stack[1].kind, Some(StackItemKind::Triggered));
+        assert_eq!(
+            mine.stack[0].description, mine.stack[1].description,
+            "the prose is identical — the kind is the only channel that separates them",
+        );
+
+        // The stack is public (ADR 0022), so the opponent's and a spectator's copies
+        // are the same entries, finer kind included. Nothing here is personalized.
+        let theirs = personalized_view(&state, &db, PlayerId(1));
+        assert_eq!(theirs.stack, mine.stack);
+        assert_eq!(spectator_view(&state, &db).stack, mine.stack);
+
+        // Cross-language shape: the finer kinds are the documented snake_case values
+        // the TypeScript mirror validates against, and they survive a round trip.
+        let json = serde_json::to_value(&mine.stack).unwrap();
+        assert_eq!(json[0]["kind"], "activated");
+        assert_eq!(json[1]["kind"], "triggered");
+        let rebuilt: Vec<StackItem> = serde_json::from_value(json).unwrap();
+        assert_eq!(rebuilt, mine.stack);
+    }
+
+    /// The coarse `ability` value keeps deserializing: a payload from a server that
+    /// predates issue #579 states only that an ability is on the stack, and that must
+    /// remain a legal frame rather than becoming a parse error (issue #579).
+    #[test]
+    fn issue_579_the_coarse_ability_kind_still_deserializes() {
+        let legacy = r#"{"id":"s1","controller":"p1","description":"Add {G}.",
+                         "source":"perm_1","kind":"ability"}"#;
+        let item: StackItem = serde_json::from_str(legacy).unwrap();
+        assert_eq!(item.kind, Some(StackItemKind::Ability));
+
+        // …as does a payload predating #550, which states no kind at all. Absent is
+        // unclassified, never a guess.
+        let older = r#"{"id":"s1","controller":"p1","description":"Add {G}."}"#;
+        let item: StackItem = serde_json::from_str(older).unwrap();
+        assert_eq!(item.kind, None);
     }
 }

@@ -41,10 +41,12 @@
  *
  * The Expanded anatomy of §2.2 is still partly **dormant**. `#550` landed the
  * contract for a card face (gap G4), an ordered target list (G1), and the
- * spell/ability discriminator; drawing them is a later rendering change. What no
- * protocol field can supply stays out entirely: activated vs triggered (G2) is an
- * engine gap, and a copy relation (G3) awaits a copy mechanic. Rather than invent
- * either, the stage renders the four channels §2.4 rule 2 says may never degrade —
+ * spell/ability discriminator, and `#579` refined that discriminator into
+ * activated vs triggered (G2); drawing them is a later rendering change, so the
+ * provenance reaches {@link StackStageEntry.origin} and the accessible name but
+ * not yet §2.3's caret glyph. What no protocol field can supply stays out
+ * entirely: a copy relation (G3) awaits a copy mechanic. Rather than invent one,
+ * the stage renders the four channels §2.4 rule 2 says may never degrade —
  * controller stripe, order index, kind marker, and (when it exists) the source
  * tether — and leaves the rest absent. Absence is stated positively where the
  * player could otherwise infer something false: an ability whose source has left
@@ -55,6 +57,7 @@
  */
 import type { CSSProperties } from 'react';
 import type { EntityId, GameView, PlayerId, StackItem } from '../../protocol';
+import { isAbilityStackItemKind } from '../../protocol';
 import { playerName } from '../../playerNames';
 // The pure tokenizer directly: this derivation module stays free of React.
 import { symbolNotationText } from '../../chrome/symbols/notation';
@@ -103,10 +106,22 @@ export interface StackStageEntry {
   tier: StackTier;
   /**
    * Spell or ability, as `StackItem.kind` states it (issue #550), falling back to
-   * `StackItem.source`'s presence only for an entry that predates the field.
-   * Activated vs triggered is gap G2 — an engine gap — and is never guessed.
+   * `StackItem.source`'s presence only for an entry that predates the field. The
+   * coarse category the plate draws from: the finer `activated`/`triggered` kinds
+   * both land on `ability` here and are carried separately in {@link origin}.
    */
   kind: 'spell' | 'ability';
+  /**
+   * Which kind of ability the server said this is (issue #579, gap G2 closed):
+   * `activated` (CR 602.2) or `triggered` (CR 603.3). `undefined` for a spell, and
+   * for an ability whose server states only the coarse `ability` kind — an older
+   * server, whose entries stay generic rather than being guessed at.
+   *
+   * This is the data source §2.3's trigger caret reads. It is used by the
+   * accessible name today ("Triggered ability from Dawn Herald", §9.2); the caret
+   * glyph itself is a later rendering change.
+   */
+  origin?: 'activated' | 'triggered';
   /** `StackItem.description`, verbatim. The client never composes rules prose. */
   description: string;
   /** `StackItem.controller`. */
@@ -348,7 +363,17 @@ function spellGlyph(description: string): string {
 function accessibleName(entry: Omit<StackStageEntry, 'label'>): string {
   const parts = [`${entry.index} of ${entry.total}.`];
   if (entry.isTop) parts.push('Resolves next.');
-  const kindWord = entry.kind === 'ability' ? 'Ability' : 'Spell';
+  // §9.2's `kind` slot. An ability whose provenance the server states says which
+  // it is ("Triggered ability from Dawn Herald", issue #579); one it does not
+  // stays the generic "Ability" rather than being classified by the client.
+  const kindWord =
+    entry.kind === 'ability'
+      ? entry.origin === 'activated'
+        ? 'Activated ability'
+        : entry.origin === 'triggered'
+          ? 'Triggered ability'
+          : 'Ability'
+      : 'Spell';
   const source =
     entry.kind === 'ability'
       ? entry.sourceResolved
@@ -408,9 +433,19 @@ export function deriveStackStage(
     const isTop = i === 0;
     const focused = options.focusId != null && item.id === options.focusId;
     const tier = tierFor({ compact, count, isTop, focused, anyFocus });
-    // The server states the kind (issue #550); the `source`-presence reading is a
-    // fallback for an entry that predates the field, never a second opinion.
-    const kind = item.kind ?? (item.source !== undefined ? 'ability' : 'spell');
+    // The server states the kind (issues #550, #579); the `source`-presence reading
+    // is a fallback for an entry that predates the field, never a second opinion.
+    // The finer ability kinds collapse to the `ability` plate category and keep
+    // their provenance in `origin` — the client narrows, it never invents.
+    const stated = item.kind;
+    const kind: 'spell' | 'ability' = stated
+      ? isAbilityStackItemKind(stated)
+        ? 'ability'
+        : 'spell'
+      : item.source !== undefined
+        ? 'ability'
+        : 'spell';
+    const origin = stated === 'activated' || stated === 'triggered' ? stated : undefined;
     const source = item.source !== undefined ? resolveSource(view, item.source) : undefined;
     const controllerName = controllerLabel(view, item.controller);
 
@@ -437,6 +472,7 @@ export function deriveStackStage(
       isTop,
       tier,
       kind,
+      origin,
       description: item.description,
       controller: item.controller,
       controllerName,

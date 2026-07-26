@@ -19,7 +19,7 @@ pub(crate) use crate::id::{CardId, CardInstance, PermanentId, PlayerId};
 pub(crate) use crate::mana::Color;
 pub(crate) use crate::phase::Step;
 pub(crate) use crate::player::{LossReason, MAX_HAND_SIZE};
-pub(crate) use crate::stack::{StackId, StackObject, StackObjectKind};
+pub(crate) use crate::stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
 pub(crate) use crate::state::{
     Duration, EffectAffects, GameState, Modification, Permanent, StaticEffect,
 };
@@ -334,7 +334,13 @@ pub(crate) fn push_ability(
     state.stack.push(StackObject {
         id: StackId(id),
         controller: PlayerId(0),
-        kind: StackObjectKind::Ability { source, effects },
+        kind: StackObjectKind::Ability {
+            source,
+            // These helpers stand in for an activation; a resolution behaves the
+            // same either way, so the origin only has to be stated, not varied.
+            origin: AbilityOrigin::Activated,
+            effects,
+        },
         targets,
     });
 }

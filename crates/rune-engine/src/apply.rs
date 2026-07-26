@@ -10,7 +10,7 @@
 
 use crate::actions::{action_is_legal, Action};
 use crate::sba::run_state_based_actions;
-use crate::stack::{StackId, StackObject, StackObjectKind};
+use crate::stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
 use crate::state::{GameEvent, GameState};
 use crate::triggers::collect_triggers;
 use crate::CardDatabase;
@@ -98,6 +98,10 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             controller: trigger.controller,
             kind: StackObjectKind::Ability {
                 source: trigger.source,
+                // The *trigger* push site (CR 603.3): the game put this here, no
+                // player activated it. The counterpart to the activation push in
+                // `apply_activate_ability` (issue #579).
+                origin: AbilityOrigin::Triggered,
                 effects: trigger.effects,
             },
             // Target choosing on announcement is issue #71; triggers carry none.
