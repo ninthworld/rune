@@ -30,8 +30,8 @@
 //! This module is a barrel over cohesive submodules, split from a single oversized
 //! file by pure code motion:
 //! - [`handle`] — the [`Seat`] alias, [`RoomInput`] messages, and [`RoomHandle`].
-//! - [`policy`] — the [`TimerPolicy`]/[`AutoPassPolicy`] policies and the timeout
-//!   default action.
+//! - [`policy`] — the [`TimerPolicy`]/[`AutoPassPolicy`]/[`StopPolicy`] policies,
+//!   the per-seat stop preference, and the timeout default action.
 //! - [`driver`] — [`Room::spawn`], the [`Room::run`] loop, and the decision clock.
 //! - [`input`] — client-message routing and the auto-pass settle loop.
 //! - [`broadcast`] — seat/spectator plumbing and personalized-view fan-out.
@@ -41,7 +41,7 @@
 //! `impl Room` block can reach the private fields as an ancestor module.
 
 use rune_engine::{CardDatabase, GameState};
-use rune_protocol::{ActionAck, GameView, MatchFormat, Phase, SpectatorView};
+use rune_protocol::{ActionAck, AutoPassedStep, GameView, MatchFormat, Phase, SpectatorView};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
@@ -56,7 +56,8 @@ mod test_support;
 
 pub use connection::{serve_connection, serve_spectator_connection};
 pub use handle::{RoomHandle, RoomInput, Seat};
-pub use policy::AutoPassPolicy;
+use policy::SeatStops;
+pub use policy::{AutoPassPolicy, StopPolicy};
 // `TimerPolicy` is reachable only through `Room::with_timer_policy` (the lobby never
 // re-exports it), so the barrel re-export stays crate-internal — the same reach it
 // had when the enum was defined inline in this module.
@@ -134,14 +135,27 @@ pub struct Room {
     /// automation does not settle past it there. Set over the protocol
     /// (`set_stops`) and held here — like [`Self::player_names`], a per-seat concern
     /// that is *not* engine state — so a preference survives a disconnect/reconnect
-    /// (the room is never torn down on leave). Empty per seat by default (stop
-    /// nowhere); reflected back in each seat's [`GameView::stops`].
-    stops: Vec<Vec<Phase>>,
-    /// Which seats the room acted for during the most recent settle (issue #264): a
-    /// transient, display-only signal, recomputed each settle and projected into the
-    /// affected seat's [`GameView::auto_passed`] on the following broadcast so a
-    /// client can show a "passed for you" indicator. Not load-bearing state.
-    auto_passed_seats: Vec<bool>,
+    /// (the room is never torn down on leave). Reflected back in each seat's
+    /// [`GameView::stops`]/[`GameView::own_turn_stops`].
+    ///
+    /// `None` means **this seat has never expressed a preference**, so
+    /// [`Self::stop_policy`] seeds one (issue #455). That distinction is the whole
+    /// point of the `Option`: "never asked" and "explicitly asked for nothing" have
+    /// to differ, or a player could not clear a default stop — they would send an
+    /// empty set and the room would hand the default straight back.
+    stops: Vec<Option<SeatStops>>,
+    /// The **default-stop** policy (issue #455) that seeds a seat which has never
+    /// sent `set_stops`. [`StopPolicy::None`] by default, so every existing room —
+    /// and every headless or AI-only game — starts exactly where ADR 0020 left it.
+    stop_policy: StopPolicy,
+    /// The turn-and-step positions the room acted at on each seat's behalf during the
+    /// most recent settle (issues #264 and #455), in the order it acted: a transient,
+    /// display-only signal, recomputed each settle and projected into that seat's
+    /// [`GameView::auto_passed`]/[`GameView::auto_passed_steps`] on the following
+    /// broadcast so a client can say not just *that* it was skipped but *where* — and,
+    /// because each entry carries its own turn, where a boundary actually fell.
+    /// Not load-bearing state — the authoritative record of a settle is the game log.
+    auto_passed_steps: Vec<Vec<AutoPassedStep>>,
     /// The **acknowledgement** each seat is owed for its most recent correlated
     /// submission (issue #554), indexed by seat. Written when a `ChooseAction`
     /// carrying a [`ChooseAction::submission`](rune_protocol::ChooseAction) is routed
@@ -175,8 +189,9 @@ impl Room {
             ai_seats: Vec::new(),
             format: None,
             auto_pass: AutoPassPolicy::Off,
-            stops: vec![Vec::new(); seat_count],
-            auto_passed_seats: vec![false; seat_count],
+            stops: vec![None; seat_count],
+            stop_policy: StopPolicy::None,
+            auto_passed_steps: vec![Vec::new(); seat_count],
             pending_acks: (0..seat_count).map(|_| None).collect(),
             spectators: Vec::new(),
         }
@@ -198,15 +213,44 @@ impl Room {
         self
     }
 
-    /// Preset each seat's priority-stop preferences (issue #264), indexed by seat.
-    /// Chainable on [`Room::new`]; the default is no stops for any seat. A seat with
-    /// an index past the end of `stops` keeps its empty default. In production the
-    /// preferences arrive over the wire (`set_stops`); this seeds them for tests.
+    /// Set this room's **default-stop** policy (issue #455). Chainable on
+    /// [`Room::new`]; the default is [`StopPolicy::None`], which reproduces exactly
+    /// ADR 0020's "stop nowhere" starting preference. The policy only seeds a seat
+    /// that has never sent `set_stops`; the first one it sends replaces the seed.
+    #[must_use]
+    pub fn with_stop_policy(mut self, policy: StopPolicy) -> Self {
+        self.stop_policy = policy;
+        self
+    }
+
+    /// Preset each seat's **any-turn** priority-stop preferences (issue #264),
+    /// indexed by seat. Chainable on [`Room::new`]; the default is no stops for any
+    /// seat. A seat with an index past the end of `stops` keeps its default. In
+    /// production the preferences arrive over the wire (`set_stops`); this seeds
+    /// them for tests.
+    ///
+    /// Presetting a seat counts as that seat having expressed a preference, so it
+    /// also opts that seat out of any [`StopPolicy`] seed — including an entry that
+    /// is deliberately empty.
     #[must_use]
     pub fn with_stops(mut self, stops: Vec<Vec<Phase>>) -> Self {
         for (seat, set) in stops.into_iter().enumerate() {
             if let Some(slot) = self.stops.get_mut(seat) {
-                *slot = set;
+                slot.get_or_insert_with(SeatStops::default).any_turn = set;
+            }
+        }
+        self
+    }
+
+    /// Preset each seat's **own-turn** priority-stop preferences (issue #455),
+    /// indexed by seat: the steps that seat wants priority at while it is the active
+    /// player. The sibling of [`Room::with_stops`], and it opts a seat out of the
+    /// [`StopPolicy`] seed in exactly the same way.
+    #[must_use]
+    pub fn with_own_turn_stops(mut self, stops: Vec<Vec<Phase>>) -> Self {
+        for (seat, set) in stops.into_iter().enumerate() {
+            if let Some(slot) = self.stops.get_mut(seat) {
+                slot.get_or_insert_with(SeatStops::default).own_turn = set;
             }
         }
         self

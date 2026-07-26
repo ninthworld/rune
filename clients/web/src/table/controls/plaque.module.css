@@ -393,8 +393,23 @@
   line-height: 1;
 }
 
-/* The per-step stop toggle. `aria-pressed` reflects `view.stops` — the server's
-   echo is the only source of truth, and the answer is the full new set. */
+/* ── "Passed for you here" (issue #455, `auto_passed_steps`) ─────────────────
+   The stronger claim beside the trail: not "the turn went through here" but
+   "the server took your priority here". It reads as a *brighter* row — the
+   selection hue rather than the trail's gold — and the row's mark is a different
+   glyph (↷ against ✓), so the two are told apart by shape as well as by hue.
+   Still nothing to animate, so the reduced-motion form is again identical. */
+.step[data-skipped] {
+  box-shadow: inset 3px 0 0 var(--rune-selection);
+}
+
+.step[data-skipped] .stepPassedMark {
+  color: var(--rune-selection);
+}
+
+/* The per-step stop toggle. Its `data-stop` reflects `view.stops` /
+   `view.own_turn_stops` — the server's echo is the only source of truth, and the
+   answer is the full new preference (both lists). */
 .stopToggle {
   flex: none;
   min-width: calc(2 * var(--rune-space-10));
@@ -418,6 +433,16 @@
   background: var(--rune-gold-fill);
   box-shadow: inset 0 -3px 0 var(--rune-accent-gold);
   color: var(--rune-text);
+}
+
+/* The two set states differ by shape, not only by their word: an own-turn stop
+   is framed dashed and drops the filled bar, an every-turn stop keeps the solid
+   frame and the bar (issue #455). The button's own text ("Your turn" /
+   "Always") remains the primary distinction — this is the redundant channel for
+   a reader scanning the column, and it costs no colour. */
+.stopToggle[data-stop='own'] {
+  border-style: dashed;
+  box-shadow: none;
 }
 
 .stopToggle:focus-visible {

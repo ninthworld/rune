@@ -5,8 +5,10 @@
  * The properties that matter are as much about what it refuses to say as what it
  * says — it must not invent a path the server never recorded, must not carry a
  * previous turn's steps into this one, and must never claim the seat was
- * *skipped* anywhere (the wire has one `auto_passed` boolean for a whole settle
- * and never names the steps it covered).
+ * *skipped* anywhere. That last is a different fact with its own wire field
+ * (`auto_passed_steps`, issue #455) drawn by its own mark on the plaque; the two
+ * are not derivable from each other, and conflating them would announce a skip
+ * that never happened.
  */
 import { describe, expect, it } from 'vitest';
 import type { GameLogEntry, GameView, Phase, PlayerId } from '../../protocol';

@@ -266,7 +266,9 @@ describe('sessions and view-driven state', () => {
     );
     fireEvent.click(screen.getByTestId('plaque-chevron'));
     fireEvent.click(screen.getByTestId('plaque-stop-upkeep'));
-    expect(onSetStops).toHaveBeenCalledWith(['upkeep']);
+    // Both halves of the preference reach the setter (issue #455): one click off
+    // "Auto" lands on the narrower own-turn stop, and the any-turn list rides empty.
+    expect(onSetStops).toHaveBeenCalledWith([], ['upkeep']);
   });
 
   it('rebuilds entirely from one view: a fresh mount reproduces the same cluster', () => {

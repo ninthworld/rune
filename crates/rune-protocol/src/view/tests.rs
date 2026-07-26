@@ -46,6 +46,123 @@ fn issue_264_game_view_stops_and_auto_passed_round_trip_and_elide() {
 }
 
 #[test]
+fn issue_455_own_turn_stops_and_auto_passed_steps_round_trip_and_elide() {
+    // The pacing contract's two additive fields: the narrower half of the stop
+    // preference, and the path a settle took on this receiver's behalf. Both elide
+    // at their empty defaults, so a view from before they existed is unchanged.
+    let mut view = GameView {
+        you: "p0".into(),
+        phase: Phase::DeclareAttackers,
+        turn: 2,
+        active_player: "p1".into(),
+        ..Default::default()
+    };
+    let json = serde_json::to_value(&view).unwrap();
+    assert!(json.get("own_turn_stops").is_none());
+    assert!(json.get("auto_passed_steps").is_none());
+
+    // The seat defaults to stopping at its own main phases, and this settle ran it
+    // through the three idle steps before combat. Every entry carries its own turn.
+    view.own_turn_stops = vec![Phase::PrecombatMain, Phase::PostcombatMain];
+    view.auto_passed = true;
+    view.auto_passed_steps = vec![
+        AutoPassedStep {
+            phase: Phase::Upkeep,
+            turn: 2,
+        },
+        AutoPassedStep {
+            phase: Phase::Draw,
+            turn: 2,
+        },
+        AutoPassedStep {
+            phase: Phase::BeginCombat,
+            turn: 2,
+        },
+    ];
+    let json = serde_json::to_value(&view).unwrap();
+    assert_eq!(
+        json["own_turn_stops"],
+        serde_json::json!(["precombat_main", "postcombat_main"])
+    );
+    assert_eq!(
+        json["auto_passed_steps"],
+        serde_json::json!([
+            { "phase": "upkeep", "turn": 2 },
+            { "phase": "draw", "turn": 2 },
+            { "phase": "begin_combat", "turn": 2 },
+        ])
+    );
+    let back: GameView = serde_json::from_value(json).unwrap();
+    assert_eq!(back, view);
+
+    // An older server that omits both still deserializes to the defaults.
+    let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
+    assert!(legacy.own_turn_stops.is_empty());
+    assert!(legacy.auto_passed_steps.is_empty());
+}
+
+#[test]
+fn issue_455_the_auto_passed_path_keeps_every_occurrence_and_states_its_turn() {
+    // The path property, and the reason each entry carries a turn at all.
+    //
+    // A repeated step does NOT mean the settle crossed a turn: an extra combat phase
+    // (CR 506.1) revisits the combat steps inside one turn, and an extra cleanup
+    // (CR 514.3a) revisits cleanup. So "same phase twice" and "new turn" are
+    // independent facts, and the wire states both rather than letting a client derive
+    // one from the other — which is why the two halves of this test look alike on the
+    // phase axis and differ entirely on the turn axis.
+    let crossed = vec![
+        AutoPassedStep {
+            phase: Phase::End,
+            turn: 3,
+        },
+        AutoPassedStep {
+            phase: Phase::Upkeep,
+            turn: 4,
+        },
+        AutoPassedStep {
+            phase: Phase::End,
+            turn: 4,
+        },
+    ];
+    let within = vec![
+        AutoPassedStep {
+            phase: Phase::DeclareAttackers,
+            turn: 4,
+        },
+        AutoPassedStep {
+            phase: Phase::EndCombat,
+            turn: 4,
+        },
+        AutoPassedStep {
+            phase: Phase::DeclareAttackers,
+            turn: 4,
+        },
+    ];
+
+    for path in [&crossed, &within] {
+        let view = GameView {
+            you: "p0".into(),
+            phase: Phase::End,
+            auto_passed: true,
+            auto_passed_steps: path.clone(),
+            ..Default::default()
+        };
+        let back: GameView = serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
+        assert_eq!(
+            back.auto_passed_steps, *path,
+            "every occurrence survives in order"
+        );
+    }
+
+    // The two paths are told apart by their turns alone — a phase-only reading would
+    // call both of them a turn change, and be wrong about one of them.
+    let turns = |path: &[AutoPassedStep]| path.iter().map(|s| s.turn).collect::<Vec<_>>();
+    assert_eq!(turns(&crossed), vec![3, 4, 4]);
+    assert_eq!(turns(&within), vec![4, 4, 4]);
+}
+
+#[test]
 fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
     // The multiplayer contract fields — a permanent's `attacking_player`, an
     // opponent's `eliminated`, and the view's `seat_order` — round-trip and elide
@@ -223,7 +340,12 @@ fn game_view_round_trips_through_json() {
             },
         }],
         stops: Vec::new(),
+        // Pacing contract (issue #455): the own-turn half of the stop preference and
+        // the steps a settle skipped this receiver at. Both empty on this frame, so
+        // their defaults ride the exhaustive round trip too.
+        own_turn_stops: Vec::new(),
         auto_passed: false,
+        auto_passed_steps: Vec::new(),
         action_rejected: false,
         // Submission acknowledgement (issue #554): absent on an ordinary broadcast.
         action_ack: None,

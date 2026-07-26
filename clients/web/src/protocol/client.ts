@@ -87,13 +87,26 @@ export function chooseAction(
 export interface SetStopsMessage {
   /** Discriminator for the client→server message envelope. */
   type: 'set_stops';
-  /** The steps to stop at; omitted when clearing all stops. */
+  /** The steps to stop at on any player's turn; omitted when empty. */
   stops?: Phase[];
+  /**
+   * The steps to stop at **only while this seat is the active player** (issue #455)
+   * — the narrower half of the same preference; omitted when empty. A step listed in
+   * {@link stops} too is stopped at on every turn: that is the wider claim and wins.
+   */
+  own_turn?: Phase[];
 }
 
-/** Build a `set_stops` message, eliding `stops` when the set is empty (clear all). */
-export function setStopsMessage(stops: Phase[]): SetStopsMessage {
+/**
+ * Build a `set_stops` message, eliding each list when empty.
+ *
+ * The message is authoritative for **both** halves at once, so a call with two empty
+ * lists means "stop nowhere" — which is exactly how a player clears the human default
+ * stops (issue #455) the server seeds. It is never read as "leave my defaults alone".
+ */
+export function setStopsMessage(stops: Phase[], ownTurn: Phase[] = []): SetStopsMessage {
   const message: SetStopsMessage = { type: 'set_stops' };
   if (stops.length > 0) message.stops = stops;
+  if (ownTurn.length > 0) message.own_turn = ownTurn;
   return message;
 }

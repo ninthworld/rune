@@ -280,6 +280,24 @@ describe('game store', () => {
     expect(sockets[0].sent).toContain(JSON.stringify({ type: 'set_stops' }));
   });
 
+  it('carries the own-turn half of the stop preference (issue #455)', () => {
+    const store = createGameStore();
+    const { factory, sockets } = recordingFactory();
+    store.getState().connect('ws://test', { createSocket: factory, autoReconnect: false });
+    sockets[0].emitOpen();
+    sockets[0].emitMessage(SAMPLE_GAME_VIEW_JSON);
+
+    store.getState().setStops(['end'], ['precombat_main']);
+    expect(sockets[0].sent).toContain(
+      JSON.stringify({ type: 'set_stops', stops: ['end'], own_turn: ['precombat_main'] }),
+    );
+
+    // Both halves ride every message, so clearing a seeded main-phase default is the
+    // same minimal message — the server never reads it as "leave my defaults alone".
+    store.getState().setStops([], []);
+    expect(sockets[0].sent).toContain(JSON.stringify({ type: 'set_stops' }));
+  });
+
   it('answers a targeted action atomically: echoes the token and per-slot targets', () => {
     const store = createGameStore();
     const { factory, sockets } = recordingFactory();

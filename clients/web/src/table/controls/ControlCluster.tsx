@@ -78,8 +78,12 @@ export interface ControlClusterProps {
   menuOpen?: boolean;
   /** The id of the menu surface the icon discloses. */
   menuControls?: string;
-  /** Set the receiver's priority stops from the plaque's step list (ADR 0020). */
-  onSetStops?: (stops: Phase[]) => void;
+  /**
+   * Set the receiver's priority stops from the plaque's step list (ADR 0020).
+   * Both halves of the preference (issue #455): the steps to stop at on any turn,
+   * and the steps to stop at only while the receiver is the active player.
+   */
+  onSetStops?: (stops: Phase[], ownTurn: Phase[]) => void;
   /**
    * §8's retract-one-local-step control, offered ONLY while a targeting session
    * has an answered slot to give back. It is never a takeback: no `undo` exists

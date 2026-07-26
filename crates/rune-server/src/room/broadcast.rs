@@ -33,7 +33,7 @@ impl Room {
 
     /// Whether `seat` is played by a server-side AI (issue #553). A seat past the end
     /// of the room's roster is human, matching the all-human default.
-    fn seat_is_ai(&self, seat: Seat) -> bool {
+    pub(super) fn seat_is_ai(&self, seat: Seat) -> bool {
         self.ai_seats.get(seat).copied().unwrap_or(false)
     }
 
@@ -158,12 +158,25 @@ impl Room {
         // Names are a lobby/session concern, not engine state, so the room labels
         // players here rather than in the pure projection shim (issue #294).
         view.player_names = self.player_names_map();
-        // Priority-stop preferences and the auto-pass indicator are likewise room
-        // state, not engine state, and per-viewer (issue #264): reflect this seat's
-        // stops so its stops UI is reconstructable, and flag whether reaching this
-        // state auto-passed it.
-        view.stops = self.stops.get(seat).cloned().unwrap_or_default();
-        view.auto_passed = self.auto_passed_seats.get(seat).copied().unwrap_or(false);
+        // Priority-stop preferences and the auto-pass indicators are likewise room
+        // state, not engine state, and per-viewer (issues #264 and #455).
+        //
+        // The stops reflected are the **effective** ones, policy seeds included: the
+        // client must be shown the set the room actually honours, or a seat carrying
+        // the human main-phase default would draw those steps as "Auto" while the
+        // settle stopped at them.
+        let stops = self.effective_stops(seat);
+        view.stops = stops.any_turn;
+        view.own_turn_stops = stops.own_turn;
+        // Where the last settle acted for this seat, and the boolean summary of that
+        // list ADR 0020 shipped first — derived from it rather than tracked beside it,
+        // so the two can never disagree.
+        view.auto_passed_steps = self
+            .auto_passed_steps
+            .get(seat)
+            .cloned()
+            .unwrap_or_default();
+        view.auto_passed = !view.auto_passed_steps.is_empty();
         // Room-owned presentation metadata (issue #553): the match format, and each
         // seat's connection/AI state. Engine-derived commander identity and the
         // per-permanent commander marker already rode the pure projection.

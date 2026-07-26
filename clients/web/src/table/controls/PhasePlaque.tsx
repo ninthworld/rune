@@ -14,8 +14,19 @@
  * `STEP_NAME` is the same twelve labels, `PHASE_GROUPS` the same five groups in
  * the same order (both carried into `phaseSteps.ts`), the step list is the same
  * `PHASES` sequence, and each step's toggle still answers with the **full new
- * stop set**, whose sole source of truth is `view.stops` — nothing is stored
- * client-side, so a reconnect rebuilds the toggles from one message.
+ * stop set**, whose sole source of truth is `view.stops` (and, since issue #455,
+ * `view.own_turn_stops`) — nothing is stored client-side, so a reconnect
+ * rebuilds the toggles from one message.
+ *
+ * ## A stop has three settings, because the server has three answers (#455)
+ *
+ * The server keeps two stop lists per seat: one that fires on any turn, and one
+ * that fires only while the seat is the active player — and it seeds a *human
+ * default* into the second, so a turn never fast-forwards past its owner's own
+ * main phases. A two-state toggle could not draw a seat that already has stops
+ * it never set, so each step cycles **Auto → Your turn → Always → Auto** and
+ * every click sends both whole lists. Nothing here decides where a stop
+ * *should* be: the drawn state is whatever the two lists on the view say.
  *
  * ## The chevron is a door, not a verb (D4)
  *
@@ -43,11 +54,12 @@ export interface PhasePlaqueProps {
   /** The one authoritative view. Every line below is read straight off it. */
   view: GameView;
   /**
-   * Set the receiver's priority-stop preferences (ADR 0020, issue #264). When
-   * absent — the read-only game-over board, or a spectator — the step list still
-   * discloses, but carries no toggles. The answer is the full new set.
+   * Set the receiver's priority-stop preferences (ADR 0020, issues #264 and
+   * #455). When absent — the read-only game-over board, or a spectator — the step
+   * list still discloses, but carries no toggles. The answer is the full new
+   * preference: both lists, every time, so clearing a seeded default sticks.
    */
-  onSetStops?: (stops: Phase[]) => void;
+  onSetStops?: (stops: Phase[], ownTurn: Phase[]) => void;
   /**
    * Panel 6b's one-line form, used by the compact cluster. The ownership line is
    * dropped; the title, the pips, and the chevron all stay, because those are the
@@ -88,6 +100,62 @@ function plaqueSentence(view: GameView, title: string, ownership: string): strin
   return `Turn ${view.turn}. ${title}. ${ownership}.`;
 }
 
+/** How a step's stop is set: not at all, on your own turn only, or on every turn. */
+type StopMode = 'auto' | 'own' | 'any';
+
+/** The three settings in cycle order, so one click advances to the next. */
+const STOP_CYCLE: Record<StopMode, StopMode> = { auto: 'own', own: 'any', any: 'auto' };
+
+/** The word drawn on the toggle, and the phrase the accessible name ends with. */
+const STOP_LABEL: Record<StopMode, { text: string; described: string }> = {
+  auto: { text: 'Auto', described: 'passed automatically' },
+  own: { text: 'Your turn', described: 'stop on your turn' },
+  any: { text: 'Always', described: 'stop on every turn' },
+};
+
+/** Join names as an English list: `A`, `A and B`, `A, B and C`. */
+function readAsList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * The accessible sentence for the settle that produced this view (issue #455) — the
+ * words behind the badge, which on its own could only say "Auto-passed".
+ *
+ * `auto_passed_steps` is an ordered **path**, and this reads it as one: every
+ * occurrence in the order the server recorded it, split into per-turn runs so a
+ * settle that crossed a boundary says so. Nothing is de-duplicated, because a
+ * repeated step is real information — how far the game moved while the player was
+ * not asked — and dropping it is exactly what would leave a cross-turn settle
+ * looking like a single-turn one.
+ *
+ * The turn boundaries come from each entry's own `turn`, never from spotting a
+ * repeated phase: an extra combat phase (CR 506.1) repeats a step *inside* one turn,
+ * so that inference would be wrong, and inventing game structure is what the client
+ * may not do.
+ *
+ * Empty when the settle did not act for this receiver — which is also when the badge
+ * does not render — and empty for an older server that sends only the boolean.
+ */
+function autoPassedSentence(view: GameView): string {
+  const steps = view.auto_passed_steps ?? [];
+  if (steps.length === 0) return '';
+  // Group into consecutive runs of the same turn. The path is ordered, so a run is
+  // exactly "the part of the settle that happened on turn N" — and a run boundary is
+  // exactly a turn change, stated rather than guessed.
+  const runs: { turn: number; names: string[] }[] = [];
+  for (const { phase, turn } of steps) {
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.turn === turn) last.names.push(STEP_NAME[phase]);
+    else runs.push({ turn, names: [STEP_NAME[phase]] });
+  }
+  const clauses = runs.map(({ turn, names }) => `${readAsList(names)} on turn ${turn}`);
+  // "then" between runs: the settle moved on to another turn, and the word is what
+  // carries that in speech, where the numbers alone would run together.
+  return `Auto-passed for you at ${clauses.join(', then ')}.`;
+}
+
 export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueProps) {
   // Ephemeral presentation, defaulting closed: a fresh mount from one GameView
   // renders the plaque alone (nothing load-bearing across messages).
@@ -98,19 +166,48 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
   const title = waiting ? 'Waiting' : stepName;
   const ownership = ownershipLine(view);
   const stops = view.stops ?? [];
+  const ownTurnStops = view.own_turn_stops ?? [];
   const states = pipStates(view.phase);
-  // The path this turn has already taken (issue #455) — read off `view.log`, so
-  // the marks below rebuild from the same single message the rest of the plaque
-  // does. It says "the turn has been here", never "you were skipped here": the
-  // wire's one `auto_passed` boolean covers a whole settle and never names the
-  // steps it ran through (ADR 0020).
+  // The path this turn has already taken — read off `view.log`, so the marks below
+  // rebuild from the same single message the rest of the plaque does. It says
+  // "the turn has been here", which is a weaker claim than the one beside it.
   const passed = new Set<Phase>(turnTrail(view));
+  // Where the settle acted *for this seat* (issue #455). This is the stronger
+  // claim the wire could not make before — ADR 0020 shipped one boolean for a
+  // whole settle — and it is the server's own statement, not an inference from
+  // the trail: a step the turn merely went through is not a step you were skipped
+  // at (another seat may have held priority, or you may have acted there yourself).
+  //
+  // The step list below is **this turn's** twelve steps, so only entries the server
+  // stamped with this turn may mark a row: a settle that crossed a boundary carries
+  // the previous turn's positions too, and drawing those here would claim the seat
+  // was skipped at a step of the current turn that it has not reached yet. Counted
+  // rather than set-tested, because one turn can visit a step twice (an extra combat
+  // phase, CR 506.1) and "skipped here twice" is not "skipped here".
+  const skippedThisTurn = new Map<Phase, number>();
+  for (const { phase, turn } of view.auto_passed_steps ?? []) {
+    if (turn !== view.turn) continue;
+    skippedThisTurn.set(phase, (skippedThisTurn.get(phase) ?? 0) + 1);
+  }
+  // The whole path, every occurrence, with its turn boundaries — the badge's
+  // accessible sentence is where a cross-turn settle is actually reported, since the
+  // twelve-row list structurally cannot show a step belonging to two turns at once.
+  const skippedSentence = autoPassedSentence(view);
 
-  // The full new set on every toggle — the server stores it and echoes it back in
-  // `view.stops`, which is the toggles' only source of truth.
-  const toggleStop = (phase: Phase): void => {
+  const stopMode = (phase: Phase): StopMode =>
+    stops.includes(phase) ? 'any' : ownTurnStops.includes(phase) ? 'own' : 'auto';
+
+  // The full new preference on every toggle — both lists, since the server replaces
+  // the whole thing and `view.stops`/`view.own_turn_stops` are the toggles' only
+  // source of truth. A step never rides both lists: `any` is the wider claim.
+  const cycleStop = (phase: Phase): void => {
     if (!onSetStops) return;
-    onSetStops(stops.includes(phase) ? stops.filter((p) => p !== phase) : [...stops, phase]);
+    const next = STOP_CYCLE[stopMode(phase)];
+    const withoutPhase = (list: Phase[]): Phase[] => list.filter((p) => p !== phase);
+    onSetStops(
+      next === 'any' ? [...withoutPhase(stops), phase] : withoutPhase(stops),
+      next === 'own' ? [...withoutPhase(ownTurnStops), phase] : withoutPhase(ownTurnStops),
+    );
   };
 
   return (
@@ -124,9 +221,21 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
     >
       {/* The transient "Auto-passed" badge (shipped behaviour, ADR 0020). It sits
           above the plate rather than inside it: the plate's two text lines are
-          the drawn form, and 6b has only one. */}
+          the drawn form, and 6b has only one.
+
+          The drawn word is unchanged — the plate has no room for a step list and
+          the badge is a glance, not a report — but issue #455's `auto_passed_steps`
+          now supplies the *accessible* name, so what a screen reader is told is the
+          same fact the step list marks below rather than a bare "it happened".
+          There is no animation here in either path, so the reduced-motion reading
+          is identical to the default one. */}
       {view.auto_passed && (
-        <span className={s.autoPassed} role="status" data-testid="plaque-auto-passed">
+        <span
+          className={s.autoPassed}
+          role="status"
+          data-testid="plaque-auto-passed"
+          aria-label={skippedSentence || undefined}
+        >
           Auto-passed
         </span>
       )}
@@ -207,8 +316,12 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
         <ol id={listId} className={s.steps} data-testid="plaque-steps">
           {PHASES.map((phase) => {
             const current = phase === view.phase;
-            const stopped = stops.includes(phase);
+            const mode = stopMode(phase);
             const wentThrough = passed.has(phase);
+            // How many times this turn the server said it acted here — 0 for not at
+            // all. A second visit is a real event (an extra combat phase), so the
+            // mark counts rather than merely appearing.
+            const skips = skippedThisTurn.get(phase) ?? 0;
             return (
               <li
                 key={phase}
@@ -217,23 +330,45 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
                 data-phase={phase}
                 data-current={current || undefined}
                 data-passed={wentThrough || undefined}
-                data-stop={stopped || undefined}
+                data-skipped={skips > 0 ? String(skips) : undefined}
+                data-stop={mode === 'auto' ? undefined : mode}
                 aria-current={current ? 'step' : undefined}
               >
                 <span className={s.stepLead}>
                   <span className={s.stepName}>{STEP_NAME[phase]}</span>
                   {/* The §8 "path taken" mark (issue #455): a glyph, not a hue,
                       so the trail reads on a colour-blind path and under
-                      reduced motion alike — there is no animation to remove. */}
-                  {wentThrough && (
+                      reduced motion alike — there is no animation to remove.
+
+                      Two marks, two different claims. The check is the turn's
+                      path (from `view.log`); the arrow is the stronger one the
+                      server makes for this seat alone (`auto_passed_steps`), and
+                      it replaces the check where both are true so a step never
+                      carries two glyphs saying overlapping things. A step the
+                      settle visited twice this turn says so with a count — the
+                      row exists once, the visits did not. */}
+                  {skips > 0 ? (
                     <span
                       className={s.stepPassedMark}
-                      data-testid={`plaque-passed-${phase}`}
+                      data-testid={`plaque-skipped-${phase}`}
                       role="img"
-                      aria-label="already passed this turn"
+                      aria-label={
+                        skips > 1 ? `passed for you here ${skips} times` : 'passed for you here'
+                      }
                     >
-                      ✓
+                      {skips > 1 ? `↷×${skips}` : '↷'}
                     </span>
+                  ) : (
+                    wentThrough && (
+                      <span
+                        className={s.stepPassedMark}
+                        data-testid={`plaque-passed-${phase}`}
+                        role="img"
+                        aria-label="already passed this turn"
+                      >
+                        ✓
+                      </span>
+                    )
                   )}
                 </span>
                 {onSetStops && (
@@ -241,12 +376,14 @@ export function PhasePlaque({ view, onSetStops, compact, waiting }: PhasePlaqueP
                     type="button"
                     className={s.stopToggle}
                     data-testid={`plaque-stop-${phase}`}
-                    data-stop={stopped || undefined}
-                    aria-pressed={stopped}
-                    aria-label={`Stop at ${STEP_NAME[phase]}`}
-                    onClick={() => toggleStop(phase)}
+                    data-stop={mode === 'auto' ? undefined : mode}
+                    // Three settings, so `aria-pressed` (a binary) would have to
+                    // lie about one of them; the accessible name states the
+                    // current setting outright instead.
+                    aria-label={`Stop at ${STEP_NAME[phase]} — ${STOP_LABEL[mode].described}`}
+                    onClick={() => cycleStop(phase)}
                   >
-                    {stopped ? 'Stop' : 'Auto'}
+                    {STOP_LABEL[mode].text}
                   </button>
                 )}
               </li>

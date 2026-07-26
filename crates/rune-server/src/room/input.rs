@@ -90,21 +90,34 @@ impl Room {
         });
     }
 
-    /// Record a seat's priority-stop preferences (issue #264, ADR 0020) and reflect
-    /// them back. The preferences are held on the room, like the display name, so
-    /// they survive reconnect; a stops change can make the current priority holder
+    /// Record a seat's priority-stop preferences (issues #264 and #455, ADR 0020) and
+    /// reflect them back. The preferences are held on the room, like the display name,
+    /// so they survive reconnect; a stops change can make the current priority holder
     /// newly eligible to auto-pass (they cleared a stop), so a settle runs, and the
     /// clock is re-armed only if that settle actually advanced the game.
+    ///
+    /// Both halves are replaced together, and recording *any* preference retires the
+    /// [`StopPolicy`] seed for this seat for good — that is what makes the human
+    /// default (#455) a starting value a player can clear rather than a rule they
+    /// cannot escape. A bare `set_stops` with both lists empty therefore means "stop
+    /// nowhere", not "give me the defaults again".
     fn on_set_stops(&mut self, seat: Seat, set: &SetStops) {
         let Some(slot) = self.stops.get_mut(seat) else {
             warn!(seat, "set_stops for a seat that does not exist; ignoring");
             return;
         };
-        // Replace the seat's set wholesale, de-duplicated so the reflected list is
-        // canonical (a client that sends the same phase twice sees it once back).
-        let mut stops = set.stops.clone();
-        stops.dedup();
-        *slot = stops;
+        // Replace the seat's preference wholesale, de-duplicated so the reflected
+        // lists are canonical (a client that sends the same phase twice sees it once
+        // back). A step claimed on both lists keeps only the wider `any_turn` claim,
+        // which is what `SeatStops::stops_at` already resolves it to — the client
+        // renders one tri-state per step, so echoing it back on both would draw a
+        // step as two different things at once.
+        let mut any_turn = set.stops.clone();
+        any_turn.dedup();
+        let mut own_turn = set.own_turn.clone();
+        own_turn.dedup();
+        own_turn.retain(|phase| !any_turn.contains(phase));
+        *slot = Some(SeatStops { any_turn, own_turn });
         let advanced = self.settle_auto_passes();
         if advanced {
             self.arm_deadline();
@@ -128,8 +141,8 @@ impl Room {
     /// opted to stop at this step; a fixed [`MAX_AUTO_PASSES`] cap is a defensive
     /// backstop so no configuration can hang the task.
     pub(super) fn settle_auto_passes(&mut self) -> bool {
-        for flag in &mut self.auto_passed_seats {
-            *flag = false;
+        for steps in &mut self.auto_passed_steps {
+            steps.clear();
         }
         if self.auto_pass != AutoPassPolicy::On {
             return false;
@@ -150,14 +163,31 @@ impl Room {
                 warn!("auto-pass settle hit its cap without reaching a decision; stopping");
                 break;
             }
+            // Where the room is acting, recorded *before* the action moves the game
+            // on — the position the seat was skipped at is the one it held priority
+            // in, not the one the pass lands in (issue #455). The turn rides along
+            // because a repeated step is not evidence of a turn boundary: an extra
+            // combat phase (CR 506.1) revisits the combat steps inside one turn. Only
+            // the room can say which happened, so only the room does.
+            let here = AutoPassedStep {
+                phase: phase_of(self.state.step),
+                turn: self.state.turn,
+            };
             let next = apply_action(&self.state, &action, &self.db);
             // Defensive: a step that does not change state would loop forever.
             if next == self.state {
                 break;
             }
             self.state = next;
-            if let Some(flag) = self.auto_passed_seats.get_mut(seat) {
-                *flag = true;
+            if let Some(steps) = self.auto_passed_steps.get_mut(seat) {
+                // Several priority windows inside one step (each stack resolution
+                // opens another) collapse to one entry: the seat was skipped *at*
+                // that position, and saying so three times reads as three steps. Only
+                // *consecutive* identical positions collapse — a position genuinely
+                // revisited later in the path is a second visit and stays one.
+                if steps.last() != Some(&here) {
+                    steps.push(here);
+                }
             }
             advanced = true;
             applied += 1;
@@ -185,15 +215,35 @@ impl Room {
         forced_declaration_without_choice(&self.state, &self.db)
     }
 
-    /// Whether `seat` has opted to stop at the current step (issue #264) — its
-    /// opt-in escape hatch from any automation the room would otherwise apply.
+    /// Whether `seat` has opted to stop at the current step (issues #264 and #455) —
+    /// its escape hatch from any automation the room would otherwise apply.
+    ///
+    /// The own-turn half of the preference is answered against the **active player**,
+    /// not the priority holder: "my main phase" means the main phase of the turn I
+    /// own, which is the only reading under which the human default (#455) both fixes
+    /// the lost turn and leaves every opponent turn at ADR 0020's pacing.
     fn stops_here(&self, seat: Seat) -> bool {
         let here = phase_of(self.state.step);
-        self.stops
-            .get(seat)
-            .is_some_and(|stops| stops.contains(&here))
+        let own_turn = self.state.active_player.0 == seat;
+        self.effective_stops(seat).stops_at(here, own_turn)
+    }
+
+    /// The stop preference in force for `seat`: the one it set, or — if it has never
+    /// set one — the room's [`StopPolicy`] seed for a seat of its kind (issue #455).
+    ///
+    /// This is the single place the seed is resolved, so the settle loop and the view
+    /// projection can never disagree about what a seat's stops *are*: the client
+    /// renders what the room actually honours, defaults included, which is what keeps
+    /// the stops UI reconstructable from one message.
+    pub(super) fn effective_stops(&self, seat: Seat) -> SeatStops {
+        match self.stops.get(seat) {
+            Some(Some(set)) => set.clone(),
+            _ => self.stop_policy.seed(self.seat_is_ai(seat)),
+        }
     }
 }
 
+#[cfg(test)]
+mod pacing_tests;
 #[cfg(test)]
 mod tests;

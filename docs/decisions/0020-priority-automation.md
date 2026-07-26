@@ -154,8 +154,62 @@ that reasons about whether a *possible* response is *worth* making.
   step is a forced choice") no longer holds on a board where neither seat can ever
   act, so `MAX_AUTO_PASSES` — previously a pure bug-detector — is now also the
   ordinary stopping point for a game with genuinely nothing left to do.
+- **2026-07-26 — human seats stop at their own main phases by default, and a settle
+  says where it acted (#455).** The Decision above chose an **empty** default stop
+  set, reasoning that automation only ever passes a seat whose sole meaningful move
+  is a pass, so an empty default can never skip a real decision. That argument is
+  correct about *decisions* and false about *comprehension*, which is what the #455
+  playtest records: a human whose own turn holds nothing castable watches the settle
+  run both main phases and the whole turn between two broadcasts, and reports
+  believing they are still on the previous turn. Nothing was decided for them and
+  they still lost the turn. Two changes follow, neither of which touches the engine.
+
+  **A default, not a rule.** The room gains a third policy beside `TimerPolicy` and
+  `AutoPassPolicy` — [`StopPolicy`](../../crates/rune-server/src/room/policy.rs),
+  **off by default**, turned on by the lobby for real games — which *seeds* a seat
+  that has never sent `set_stops`. A human seat is seeded with its own main phases;
+  an AI seat (the room's existing `ai_seats` knowledge) is seeded with nothing, so
+  AI-only, mixed, and headless games keep exactly the throughput they had and
+  `AutoPassPolicy::Off` still reproduces pre-automation behavior bit for bit. The
+  seed is retired for good by the first `set_stops` a seat sends, which is why the
+  room now distinguishes "never asked" from "asked for nothing": without that
+  distinction a player could not clear a default — they would send the empty set and
+  be handed the seed straight back.
+
+  **Stops gained a scope.** "Your own main phase" is not expressible in the original
+  per-step set, and seeding the unscoped one would hand a player priority in every
+  *opponent* main phase too — reintroducing the per-step click this ADR removed, for
+  a window where they have nothing to do they could not already do at instant speed.
+  So the preference is two lists: `stops` (any turn, unchanged) and `own_turn_stops`
+  (only while the seat is the active player), with the wider claim winning where a
+  step is on both. Both ride `set_stops` and both are reflected in the view as the
+  *effective* sets, seeds included, so the stops UI still rebuilds from one message.
+
+  **The settle now reports its path.** `auto_passed` was one boolean for a whole
+  settle and never named the steps it covered — enough to say "you were skipped",
+  never enough to say what you missed, which is the second half of what #455
+  reports. `GameView.auto_passed_steps` carries the positions the room acted at *for
+  that receiver*, in order, consecutive duplicates collapsed; `auto_passed` is now
+  exactly that list being non-empty. It is a path, not a set: a position genuinely
+  revisited appears twice, and consumers must not de-duplicate it.
+
+  Each entry carries **its own turn**, rather than leaving a client to read a repeated
+  phase as a turn boundary. That inference looks safe and is not: an extra combat
+  phase (CR 506.1) revisits the combat steps inside one turn, and an extra cleanup
+  (CR 514.3a) revisits cleanup, so "same step twice" and "new turn" are independent
+  facts. Deriving one from the other would be the client asserting game structure the
+  server never stated — the thing this issue exists to stop. The *active player* is
+  deliberately left off: this refines an indicator, it is not a second game log, and
+  the `step_changed` entries already carry turn, active player, and phase together.
+
+  It stays advisory and display-only — the authoritative record of what happened
+  inside a settle is the ADR 0021 log window, which the view already carries, so a
+  spell that resolved and a creature that died while the receiver held no priority
+  are recoverable from the same single message.
+
 - **client polish:** richer auto-pass affordances (a log entry, a per-step "you
-  were skipped here" marker) beyond the basic indicator — folds into the game-log
+  were skipped here" marker) beyond the basic indicator — the per-step marker landed
+  with #455 above, reading `auto_passed_steps`; the log entry folds into the game-log
   work (#260).
 - **M6 — expanded automation:** auto-yield and hold-priority, which generalize the
   stop set into a full per-step yield/stop/act matrix; this ADR's engine predicate

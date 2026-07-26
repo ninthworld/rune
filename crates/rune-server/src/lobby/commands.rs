@@ -310,6 +310,14 @@ impl Lobby {
             .with_ai_seats(ai_seats)
             .with_format(match_format)
             .with_auto_pass(AutoPassPolicy::On)
+            // Human seats start stopped at their own main phases (issue #455). ADR
+            // 0020's automation is what makes a spell-less turn cheap; the default
+            // stop is what keeps it from being *invisible* — without it a human whose
+            // turn holds nothing castable watches the settle run both of their main
+            // phases, and the whole turn, between two broadcasts. AI seats are seeded
+            // with nothing, so an AI-only or mixed game keeps its throughput, and the
+            // first `set_stops` a player sends replaces the seed for good.
+            .with_stop_policy(StopPolicy::HumanMainPhases)
             .spawn();
 
         // Hand every seated *human* session off to the in-game contract.

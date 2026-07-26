@@ -52,8 +52,10 @@ redacted before serialization.
 | `action_deadline` | `number?` | Seconds remaining for the receiver’s current decision |
 | `result` | `GameResult?` | Terminal result; absent during a live game |
 | `log` | `GameLogEntry[]` | Bounded, sequence-numbered recent public game history |
-| `stops` | `Phase[]` | Receiver’s own priority-stop preferences; omitted when empty |
+| `stops` | `Phase[]` | Receiver’s own priority-stop preferences, applying on **any** turn; omitted when empty |
+| `own_turn_stops` | `Phase[]` | The same preference for steps that stop **only while the receiver is the active player** (issue #455); omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
+| `auto_passed_steps` | `AutoPassedStep[]` | The ordered path of turn-and-step positions the settle acted at on the receiver’s behalf (issue #455); omitted when empty |
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
 | `action_ack` | `ActionAck?` | Acknowledgement of the receiver's last correlated submission (issue #554); rides that receiver's views from the one answering it until its next submission supersedes it, omitted for every other seat and by an older server |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
@@ -188,18 +190,72 @@ restart the clock. The client displays the countdown but does not enforce it. On
 server may pass priority or submit an empty combat declaration; it does not concede for the
 player.
 
-`stops` and `auto_passed` carry basic priority automation (issue #264, ADR 0020). `stops`
-is the receiver’s own set of steps at which they want to receive priority even when the
-engine reports they have no meaningful action — the per-phase opt-in that keeps automation
-from skipping past a step they care about. It is set with the `set_stops` message (below),
+`stops`, `own_turn_stops`, `auto_passed`, and `auto_passed_steps` carry basic priority
+automation and its pacing contract (issues #264 and #455, ADR 0020). `stops` is the
+receiver’s own set of steps at which they want to receive priority even when the engine
+reports they have no meaningful action — the per-phase opt-in that keeps automation from
+skipping past a step they care about. It is set with the `set_stops` message (below),
 stored server-side, and reflected here so the stops UI is reconstructable from a single
-view and survives reconnect; it is omitted when empty (“stop nowhere”, the default), and a
-client treats a missing field as an empty set. `auto_passed` is a display-only flag set on
-the broadcast that follows a settle in which the server acted on this receiver’s behalf, so
-a client can show a transient “passed for you” indicator; it is advisory (the UI
-reconstructs without it) and omitted when `false`. The decision of whether a player has “no
-meaningful action” is the server’s alone — the client never computes it and never
-auto-passes on its own.
+view and survives reconnect; it is omitted when empty, and a client treats a missing field
+as an empty set. `auto_passed` is a display-only flag set on the broadcast that follows a
+settle in which the server acted on this receiver’s behalf, so a client can show a
+transient “passed for you” indicator; it is advisory (the UI reconstructs without it) and
+omitted when `false`. The decision of whether a player has “no meaningful action” is the
+server’s alone — the client never computes it and never auto-passes on its own.
+
+`own_turn_stops` is the **narrower half** of the same preference: those steps stop only
+while the receiver is the active player. A step listed in `stops` stops on every turn and
+wins outright, so a step never appears in both lists on the wire. Two lists rather than one
+because a stop answers two different questions — “hand me priority here whoever’s turn it
+is” (the escape hatch for acting at an opponent’s end step) and “hand me priority here
+while the turn is mine”, which is what a main-phase stop has to mean. Stopping a player in
+every opponent main phase would reintroduce the per-step click automation exists to remove,
+for a window in which they have nothing to do they could not already do at instant speed.
+
+**Human seats have default stops.** A seat the server considers human, in a room whose
+default-stop policy is on (real games; off in headless and unit-test rooms), starts with
+`own_turn_stops` seeded to its own precombat and postcombat main phases, so a turn never
+fast-forwards past the point where its owner would act. AI seats are seeded with nothing,
+so AI-only and mixed games keep their throughput. The seed is a *starting value*, not a
+rule: the first `set_stops` a seat sends replaces the whole preference and the server never
+re-seeds it, so a bare `{"type":"set_stops"}` means “stop nowhere” and the defaults stay
+cleared across reconnects. Because the reflected lists are the **effective** ones, a client
+renders exactly what the server honours, defaults included, from a single view.
+
+`auto_passed_steps` says *where* a settle acted for this receiver, where `auto_passed` says
+only *that* it did. A settle can advance a dozen steps between two broadcasts, so a client
+that knows only the boolean cannot tell a player what they did not get to see. Each entry
+is an `AutoPassedStep`:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `phase` | `Phase` | The step the server acted at |
+| `turn` | `number` | The turn that step belonged to; present on every entry |
+
+Entries are in the order the server acted, with consecutive entries for the same position
+collapsed (several priority windows inside one step are one entry). It is a **path, not a
+set**: a position genuinely reached twice appears twice, and a consumer must not
+de-duplicate it — every occurrence is part of how far the game moved unasked.
+
+**Each entry carries its own turn, and a client must not infer one.** The tempting reading
+of a repeated phase — “the settle crossed into a new turn” — is wrong in two ordinary
+cases: an extra combat phase (CR 506.1) revisits the combat steps inside one turn, and an
+extra cleanup step (CR 514.3a) revisits cleanup. Only the server knows which happened, so
+the server says. With `turn` present a presentation can group the path into per-turn runs,
+keep every occurrence in order, and report a boundary where one actually fell. Note the
+consequence for any per-step UI keyed to the *current* turn (the client's phase plaque, for
+one): only entries whose `turn` matches `GameView.turn` may mark a step there, since a
+cross-turn path also carries the previous turn's positions.
+
+The **active player** is deliberately not carried: this field refines an indicator, it is
+not a second game log. Whose turn it was lives in the `step_changed` entries of `log`.
+
+The list names only positions where *this receiver* was acted for; a step where another
+seat was passed is that seat's entry. `auto_passed` is exactly `auto_passed_steps` being
+non-empty. Both are advisory, transient, and display-only, and both are omitted at their
+empty defaults — the authoritative record of what happened during a settle remains `log`
+(ADR 0021), which carries the events themselves so a resolved spell, a death, or a turn
+change is recoverable even when the receiver never held priority over it.
 
 A settle also resolves a forced combat declaration that has **no legal non-empty answer**
 (issue #453): a seat with no eligible attacker is never handed a `declare_attackers` prompt
@@ -531,17 +587,27 @@ ADR 0020): the steps at which they want priority even when they have no meaningf
 basic auto-pass does not skip them there.
 
 ```json
-{ "type": "set_stops", "stops": ["upkeep", "end"] }
+{ "type": "set_stops", "stops": ["end"], "own_turn": ["precombat_main", "postcombat_main"] }
 ```
 
-`stops` is a list of `Phase` values and replaces the seat’s current set wholesale; an empty
-set clears all stops and is omitted from the wire (`{"type":"set_stops"}`). The server is
-authoritative: it stores the set per seat — so it survives reconnect — and reflects the
-accepted set back in `GameView.stops`, which is the sole source of the client’s toggle state
-(nothing is stored client-side). An unparseable message is ignored and the current `GameView`
-re-sent, the same non-fatal pattern the lobby uses. Automation itself (whether an idle seat’s
-priority is auto-passed) is a server decision; the client only configures where to stop and
-renders the `auto_passed` indicator.
+Both fields are lists of `Phase` values: `stops` for steps that stop on any turn, `own_turn`
+for steps that stop only while the sender is the active player (issue #455). Each is omitted
+from the wire when empty, so the minimal message is `{"type":"set_stops"}`.
+
+The message replaces the seat’s **whole** preference — both lists at once, never a delta —
+which is what lets a player clear the human default stops the server seeds: two empty lists
+mean “stop nowhere”, not “leave my defaults alone”, and the server never re-seeds a seat
+that has sent one. A step named on both lists keeps only the wider `stops` claim, and the
+echo reflects that, so a client drawing one control per step is never told a step is two
+things at once.
+
+The server is authoritative: it stores the preference per seat — so it survives reconnect —
+and reflects the accepted, *effective* lists back in `GameView.stops` and
+`GameView.own_turn_stops`, which together are the sole source of the client’s toggle state
+(nothing is stored client-side). An unparseable message is ignored and the current
+`GameView` re-sent, the same non-fatal pattern the lobby uses. Automation itself (whether an
+idle seat’s priority is auto-passed) is a server decision; the client only configures where
+to stop and renders the `auto_passed`/`auto_passed_steps` indicators.
 
 ### Game result
 
@@ -591,7 +657,8 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 | `commander_identity` | `CommanderIdentity[]` | Public per-seat commander name and colour identity (issue #553); omitted when empty |
 
 A `SpectatorView` carries **no** `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
-`action_deadline`, `stops`, `auto_passed`, or `action_rejected` — those fields do not exist on
+`action_deadline`, `stops`, `own_turn_stops`, `auto_passed`, `auto_passed_steps`, or
+`action_rejected` — those fields do not exist on
 the type. The issue #553 presentation metadata it does carry is public by construction: the
 format is advertised in the lobby, a commander is announced before the game, and a seat’s
 connection/AI state is what every seated player already sees, so a spectator’s `players[]`

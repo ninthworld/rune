@@ -63,7 +63,9 @@ describe('parseGameView', () => {
       result: undefined,
       log: [],
       stops: [],
+      own_turn_stops: [],
       auto_passed: false,
+      auto_passed_steps: [],
       action_rejected: false,
       player_names: {},
       commander_damage: [],
@@ -1068,6 +1070,87 @@ describe('priority stops and auto-pass (issue #264)', () => {
   it('treats a malformed stops value as empty rather than throwing', () => {
     const view = parseGameView('{"phase":"upkeep","you":"p0","stops":"upkeep"}');
     expect(view.stops).toEqual([]);
+  });
+
+  it('defaults the own-turn stops and the skipped-step path to empty (issue #455)', () => {
+    // Both are additive, so a server that never sends them — including one from
+    // before the pacing contract existed — normalizes to the pre-#455 reading.
+    const view = parseGameView('{"phase":"upkeep","you":"p0"}');
+    expect(view.own_turn_stops).toEqual([]);
+    expect(view.auto_passed_steps).toEqual([]);
+  });
+
+  it('carries the own-turn stops and the skipped-step path when set (issue #455)', () => {
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'begin_combat',
+        you: 'p0',
+        turn: 2,
+        own_turn_stops: ['precombat_main', 'postcombat_main', 'not_a_phase'],
+        auto_passed: true,
+        auto_passed_steps: [
+          { phase: 'upkeep', turn: 2 },
+          { phase: 'draw', turn: 2 },
+        ],
+      }),
+    );
+    expect(view.own_turn_stops).toEqual(['precombat_main', 'postcombat_main']);
+    expect(view.auto_passed_steps).toEqual([
+      { phase: 'upkeep', turn: 2 },
+      { phase: 'draw', turn: 2 },
+    ]);
+  });
+
+  it('keeps every occurrence in the skipped-step path — it is a path, not a set', () => {
+    // The property the presentation depends on. A settle can revisit a step both
+    // across a turn boundary and inside one turn (an extra combat phase, CR 506.1),
+    // and collapsing either occurrence would misreport how far the game moved. The
+    // turn on each entry is what tells the two cases apart, so it must survive too.
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'upkeep',
+        you: 'p0',
+        auto_passed_steps: [
+          { phase: 'end', turn: 1 },
+          { phase: 'upkeep', turn: 2 },
+          { phase: 'end', turn: 2 },
+        ],
+      }),
+    );
+    expect(view.auto_passed_steps).toEqual([
+      { phase: 'end', turn: 1 },
+      { phase: 'upkeep', turn: 2 },
+      { phase: 'end', turn: 2 },
+    ]);
+  });
+
+  it('drops a path entry it cannot read rather than defaulting its turn', () => {
+    // An unknown phase, a missing turn, and a non-object all name no real position.
+    // A defaulted turn would be worse than an omission: it would file a genuine skip
+    // under the wrong turn, and the plaque draws its step list per turn.
+    const view = parseGameView(
+      JSON.stringify({
+        phase: 'upkeep',
+        you: 'p0',
+        auto_passed_steps: [
+          { phase: 'upkeep', turn: 2 },
+          { phase: 'nonsense', turn: 2 },
+          { phase: 'draw' },
+          'end',
+          null,
+          { phase: 'end', turn: 3 },
+        ],
+      }),
+    );
+    expect(view.auto_passed_steps).toEqual([
+      { phase: 'upkeep', turn: 2 },
+      { phase: 'end', turn: 3 },
+    ]);
+  });
+
+  it('treats a malformed skipped-step path as empty rather than throwing', () => {
+    const view = parseGameView('{"phase":"upkeep","you":"p0","auto_passed_steps":"upkeep"}');
+    expect(view.auto_passed_steps).toEqual([]);
   });
 });
 

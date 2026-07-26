@@ -35,6 +35,29 @@ export const PHASES = [
 export type Phase = (typeof PHASES)[number];
 
 /**
+ * One position a settle passed the receiver through (issue #455): a step, and the
+ * turn that step belonged to. An entry in {@link GameView.auto_passed_steps}.
+ *
+ * **Why the turn rides along.** The path is ordered and may repeat a step, and the
+ * obvious reading of a repeat — "the settle crossed into a new turn" — is wrong twice
+ * over: an extra combat phase (CR 506.1) revisits the combat steps inside one turn,
+ * and an extra cleanup step (CR 514.3a) revisits cleanup. Inferring a boundary from a
+ * repeated phase would be asserting game structure the server never stated, which the
+ * client is not allowed to do. So the server states it, and a presentation groups the
+ * path into per-turn runs instead of guessing.
+ *
+ * The **active player** is deliberately not carried: this refines the
+ * {@link GameView.auto_passed} indicator, it is not a second game log. Whose turn it
+ * was lives in the `step_changed` entries of {@link GameView.log}.
+ */
+export interface AutoPassedStep {
+  /** The step the server acted at. */
+  phase: Phase;
+  /** The turn number that step belonged to. Present on every entry. */
+  turn: number;
+}
+
+/**
  * The personalized state the server sends after every change. A client must be
  * able to fully reconstruct its UI from a single `GameView` — no client state is
  * load-bearing across messages. Optional collections may be omitted on the wire
@@ -124,13 +147,47 @@ export interface GameView {
    */
   stops?: Phase[];
   /**
+   * The receiver's **own-turn** priority stops (issue #455): the steps they want
+   * priority at even when idle, but *only while they are the active player*. The
+   * narrower half of the same preference {@link stops} carries — a step listed there
+   * stops on every turn and wins outright.
+   *
+   * This is the half the server seeds the human default into: a human seat starts
+   * stopped at its own main phases, so a turn never fast-forwards past the point
+   * where its owner would act, while every opponent turn keeps ADR 0020's pacing.
+   * Set with a {@link SetStopsMessage} alongside {@link stops}. Omitted (treated as
+   * empty) by the server when empty; {@link normalizeGameView} defaults it to `[]`.
+   */
+  own_turn_stops?: Phase[];
+  /**
    * Whether reaching this state **auto-passed** priority on the receiver's behalf
    * (issue #264, ADR 0020): set on the broadcast that follows a settle in which the
    * server passed priority for this seat, so the client can show a display-only
    * "passed for you" indicator. Advisory and transient — the UI reconstructs fully
    * without it. Omitted (treated as `false`) when the seat was not auto-passed.
+   * Exactly `auto_passed_steps.length > 0` — the boolean summary of the list below.
    */
   auto_passed?: boolean;
+  /**
+   * **Where** the server acted on the receiver's behalf during the settle that
+   * produced this view (issue #455): the ordered path of turn-and-step positions it
+   * passed them through — see {@link AutoPassedStep}.
+   *
+   * {@link auto_passed} says a settle skipped you; this says where. ADR 0020's settle
+   * loop can advance a dozen steps between two broadcasts, and a client that only
+   * knows *that* it happened cannot tell a player what they did not get to see.
+   *
+   * A **path, not a set**: consecutive entries for the same position collapse, but a
+   * position genuinely reached twice appears twice, so a consumer must not de-duplicate
+   * it. Each entry states its own {@link AutoPassedStep.turn}, which is the only sound
+   * way to tell a turn boundary from a step revisited inside one turn.
+   *
+   * Advisory, transient, and display-only exactly like {@link auto_passed}: the UI
+   * reconstructs fully without it, and the authoritative record of *what happened*
+   * during a settle stays {@link log}. Omitted (treated as empty) when the settle
+   * did not act for this receiver; {@link normalizeGameView} defaults it to `[]`.
+   */
+  auto_passed_steps?: AutoPassedStep[];
   /**
    * Whether this view answers a **rejected in-game action** by the receiver (issue
    * #265): a stale-view race meant the chosen action was no longer on offer, so the
