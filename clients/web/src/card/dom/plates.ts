@@ -21,12 +21,20 @@
  *   per tier is what lets ONE asset serve the hand fan, the inspect panel, and
  *   the battlefield chip, in all three silhouettes, exactly as the tokens'
  *   other ratios do.
- * - **A plate is never load-bearing.** Every rule that consumes one keeps its
- *   token treatment underneath (the gold hairline is still a real border, the
- *   parchment is still a real background, the rims are still box-shadows), so
- *   a plate that 404s or a browser that declines `border-image` leaves the
- *   frame exactly as it renders today. Nothing here is awaited and nothing
- *   about the layout depends on a plate arriving.
+ * - **A plate is never load-bearing, and the carriers cost no layout.** Every
+ *   rule that consumes a plate keeps its token treatment underneath — the gold
+ *   hairline is still a real border, the parchment still a real background, the
+ *   rims still box-shadows — and every value published here reaches the
+ *   stylesheet through `border-image-*` or `background-image`/`-size`/`-blend`,
+ *   which are paint-only. The carriers declare `border-width: 0` and give
+ *   `border-image-width` an explicit length, which is independent of the border
+ *   width (it is a multiple of it only when given as a `<number>`), so the image
+ *   overflows inward into the padding box while the border itself occupies
+ *   nothing. Consequently a plate that 404s, a browser that declines
+ *   `border-image`, and a build with no frames tree at all produce the SAME
+ *   boxes, line heights, and crops as the frame rendered before this set
+ *   landed. `plates.test.ts` asserts that mechanically rather than by
+ *   inspection: no plate property may appear outside the paint-only set.
  *
  * Paths and slices come from the committed manifest — never transcribed here —
  * for the reason `assets/productionManifest.ts` sets out: a hash changes on

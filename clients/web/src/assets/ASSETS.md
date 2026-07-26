@@ -1,7 +1,8 @@
 # Bundled presentation assets
 
-Every asset below is original work made for RUNE, compressed to shipping WebP
-files and distributed under the repository's MIT license. The machine-readable
+Every asset below is original work made for RUNE, distributed under the
+repository's MIT license — the illustrated sets as compressed WebP, the
+card-frame plates as PNG (see below). The machine-readable
 authority is `ledger.json`, which records the provenance class and the
 generating tool per asset.
 
@@ -16,12 +17,16 @@ repository's MIT terms.
 The **card-frame plates** are provenance **class 1** (original created work),
 because the tool for them is arithmetic rather than a model: they are
 synthesised by `../../scripts/generateFramePlates.js`, a committed,
-deterministic generator, and re-running `npm run frames` reproduces the same
-bytes. They are also the only set that is not a picture — each plate is an
-alpha **light map** (bevel, shadow, grain, and the structural gold hairline)
-composed over the token colours, which is why one set serves both environment
-themes and all eight colour identities. See `docs/design/card-representation.md`
-§3.12.
+deterministic generator. Re-running `npm run frames` reproduces the same bytes,
+and that is *checked*, not asserted: `framePlates.test.js` re-encodes every
+plate and compares it byte-for-byte with the committed file. They ship as PNG
+rather than WebP for exactly that reason — the encoder is in-process, so there
+is no external tool whose version could change the committed bytes.
+
+They are also the only set that is not a picture — each plate is an alpha
+**light map** (bevel, shadow, grain, and the structural gold hairline) composed
+over the token colours, which is why one set serves both environment themes and
+all eight colour identities. See `docs/design/card-representation.md` §3.12.
 
 No prompt referenced an existing game, publisher, protected property, or named
 artist as a style target. Card art is composed from RUNE's own functional card

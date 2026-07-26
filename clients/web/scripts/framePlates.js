@@ -535,3 +535,153 @@ export function renderPlate(spec) {
 export function authoringScale(spec) {
   return spec.band > 0 ? spec.slice / spec.band : spec.width;
 }
+
+/* ── PNG ──────────────────────────────────────────────────────────────────── */
+
+/*
+ * The shipping encoder lives here, beside the synthesis and inside the pure
+ * module, for one reason: **the committed bytes have to be checkable**.
+ *
+ * The first cut of this generator probed for `cwebp`, then ImageMagick, then
+ * fell back to PNG. That produced a smaller file and an undeliverable promise:
+ * three code paths, two file extensions, and encoder-version-dependent output,
+ * all feeding a content hash that names the committed file and a ledger that
+ * calls the result reproducible. Two contributors running the documented
+ * command could leave the repository in different states, and no test could
+ * tell, because none of the three encoders was available to one.
+ *
+ * So the plates ship as PNG from the encoder below — in-process, no external
+ * tool, no probing — and `framePlates.test.js` re-encodes every plate and
+ * compares it byte-for-byte against the file in the tree. Regeneration is now a
+ * checked no-op rather than a promise. (ADR 0031 prefers WebP for raster and
+ * allows PNG "where a consumer requires it"; the consumer here is the ledger's
+ * own reproducibility claim. The whole set is still ~60 KB.)
+ *
+ * The one input this cannot pin is zlib itself. That is exactly why the
+ * byte-equality test exists: a zlib whose output differs fails CI loudly
+ * instead of silently rewriting seven committed assets.
+ */
+
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+
+function crc32(buffer) {
+  let c = 0xffffffff;
+  for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function chunk(type, body) {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(body.length, 0);
+  head.write(type, 4, 'ascii');
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), body])), 0);
+  return Buffer.concat([head, body, crc]);
+}
+
+/**
+ * Whether every opaque pixel is neutral, so the plate can ship as greyscale +
+ * alpha (PNG colour type 4) at half the samples. Six of the seven plates are —
+ * they are light maps — and only the frame edge, which carries the structural
+ * gold hairline, needs full colour.
+ */
+function isGreyscale(rgba) {
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] === 0) continue;
+    if (rgba[i] !== rgba[i + 1] || rgba[i + 1] !== rgba[i + 2]) return false;
+  }
+  return true;
+}
+
+/** The PNG filter that costs the fewest bits on this scanline (the standard
+ * minimum-sum-of-absolute-differences heuristic; deterministic, so the choice
+ * is part of the reproducible output). */
+function filterScanline(row, previous, bpp) {
+  const width = row.length;
+  let best = null;
+  for (let type = 0; type < 5; type += 1) {
+    const out = Buffer.alloc(width);
+    let score = 0;
+    for (let i = 0; i < width; i += 1) {
+      const a = i >= bpp ? row[i - bpp] : 0;
+      const b = previous[i];
+      const c = i >= bpp ? previous[i - bpp] : 0;
+      let predictor = 0;
+      if (type === 1) predictor = a;
+      else if (type === 2) predictor = b;
+      else if (type === 3) predictor = (a + b) >> 1;
+      else if (type === 4) predictor = paeth(a, b, c);
+      const value = (row[i] - predictor) & 0xff;
+      out[i] = value;
+      score += value < 128 ? value : 256 - value;
+    }
+    if (best === null || score < best.score) best = { type, out, score };
+  }
+  return best;
+}
+
+function paeth(a, b, c) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  return pb <= pc ? b : c;
+}
+
+/**
+ * Encode 8-bit RGBA as PNG. `deflate` is the injected `zlib.deflateSync`, so
+ * this module stays free of Node imports and the CLI owns the one binding.
+ */
+export function encodePng(width, height, rgba, deflate) {
+  const grey = isGreyscale(rgba);
+  const bpp = grey ? 2 : 4;
+  const stride = width * bpp;
+  const raw = Buffer.alloc((stride + 1) * height);
+  let previous = Buffer.alloc(stride);
+  for (let y = 0; y < height; y += 1) {
+    const row = Buffer.alloc(stride);
+    for (let x = 0; x < width; x += 1) {
+      const source = (y * width + x) * 4;
+      if (grey) {
+        row[x * 2] = rgba[source];
+        row[x * 2 + 1] = rgba[source + 3];
+      } else {
+        row[x * 4] = rgba[source];
+        row[x * 4 + 1] = rgba[source + 1];
+        row[x * 4 + 2] = rgba[source + 2];
+        row[x * 4 + 3] = rgba[source + 3];
+      }
+    }
+    const { type, out } = filterScanline(row, previous, bpp);
+    raw[y * (stride + 1)] = type;
+    out.copy(raw, y * (stride + 1) + 1);
+    previous = row;
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = grey ? 4 : 6; // colour type: greyscale+alpha or RGBA
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    // Every deflate parameter is pinned, so the only remaining variable is the
+    // zlib build — which the byte-equality test turns into a CI failure.
+    chunk('IDAT', deflate(raw, { level: 9, memLevel: 9, windowBits: 15, strategy: 0 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** The shipping filename of a plate, given the hash of its encoded bytes. */
+export function plateFilename(spec, hash) {
+  return `${spec.id}.${hash}.png`;
+}

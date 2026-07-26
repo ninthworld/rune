@@ -243,7 +243,6 @@
   top: var(--band-art-top);
   width: calc(100% - var(--rule-inset) * 2);
   height: var(--band-art-h);
-  box-sizing: border-box;
   border-radius: var(--plate-radius);
   background-color: color-mix(
     in srgb,
@@ -265,9 +264,10 @@
   box-shadow: inset var(--rule-w) var(--rule-w) calc(var(--rule-w) * 3) var(--face-edge-shade);
   /* The window's surround (§3.12): the seam plate is a recessed lip — shadowed
    * on the light side, catching light on the far side — so the window sits IN
-   * the card. The transparent border is only its carrier; the inset shadow
-   * above is what a missing plate falls back to. */
-  border: var(--plate-seam-band) solid transparent;
+   * the card. Zero-width carrier, as on the plate surfaces: the window's box is
+   * the same with or without it, so a missing plate falls back to the inset
+   * shadow above and crops nothing differently. */
+  border: 0 solid transparent;
   border-image-source: var(--plate-art-seam);
   border-image-slice: var(--plate-art-seam-slice);
   border-image-width: var(--plate-seam-band);
@@ -296,19 +296,27 @@
 
 /* ── Parchment plates ─────────────────────────────────────────────────────── */
 
-/* The title plate: name left, ellipsised at the cost disc's edge, never wrapped
- * and never shrunk below the floor (§3.5). */
 /*
- * The title plate carries the **header field** plate (§3.12): a raised printed
- * surface with a lit top rim and a shaded lower one, so the name and cost sit
- * in a field that belongs to the card rather than on a flat fill.
+ * The title plate: name left, ellipsised at the cost disc's edge, never wrapped
+ * and never shrunk below the floor (§3.5). It carries the **header field**
+ * plate (§3.12): a raised printed surface with a lit top rim and a shaded lower
+ * one, so the name and cost sit in a field that belongs to the card rather than
+ * on a flat fill.
  *
- * The pattern every plate surface below repeats: `box-sizing: border-box` and a
- * hairline transparent border carry the image without changing the band's box,
- * `--plate-surface-band` lets the bevel overflow inward past that border, and
- * the parchment fill plus the gold rim shadow stay underneath as the treatment
- * a missing plate falls back to. Line boxes lose the carrier's two hairlines so
- * the text stays centred in the band the floor rule resolved.
+ * The carrier pattern every plate surface below repeats, and why it is shaped
+ * this way: `border-width` is **zero** and `border-image-width` is an explicit
+ * length. `border-image-width` is only a multiple of `border-width` when it is
+ * given as a `<number>`; given a length it is independent, so the image is
+ * drawn `--plate-surface-band` deep — overflowing inward into the padding box —
+ * while the border itself occupies nothing. `border-style` must not be `none`
+ * for a border image to paint at all, which is the whole reason the declaration
+ * is there.
+ *
+ * The consequence is the property that matters: **the carrier costs no layout**.
+ * The band's box, its padding, and its line box are identical whether the plate
+ * paints, 404s, or is declined by the browser, so the degraded frame is the
+ * frame as it rendered before this set landed — the parchment fill and the gold
+ * rim shadow below are exactly that treatment, still declared and still painted.
  */
 .title {
   position: absolute;
@@ -316,9 +324,8 @@
   right: var(--rule-inset);
   top: var(--band-title-top);
   height: var(--band-title-h);
-  box-sizing: border-box;
   padding: 0 calc(var(--rule-inset) / 2);
-  border: var(--rule-w) solid transparent;
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
@@ -329,7 +336,7 @@
   color: var(--plate-ink);
   font-size: var(--face-name-size);
   font-weight: 600;
-  line-height: calc(var(--band-title-h) - var(--rule-w) * 2);
+  line-height: var(--band-title-h);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -350,7 +357,6 @@
   right: var(--rule-inset);
   top: var(--band-title-top);
   height: var(--band-title-h);
-  box-sizing: border-box;
   border-radius: calc(var(--plate-radius) / 1.5);
   background-color: var(--face-accent);
   /* The same identity material as the art window (§3.12): the strip is the
@@ -370,9 +376,8 @@
   right: var(--rule-inset);
   top: var(--band-type-top);
   height: var(--band-type-h);
-  box-sizing: border-box;
   padding: 0 calc(var(--rule-inset) / 2);
-  border: var(--rule-w) solid transparent;
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
@@ -382,7 +387,7 @@
   border-image-repeat: stretch;
   color: var(--plate-ink);
   font-size: var(--face-type-size);
-  line-height: calc(var(--band-type-h) - var(--rule-w) * 2);
+  line-height: var(--band-type-h);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -398,9 +403,8 @@
   right: var(--rule-inset);
   top: var(--band-rules-top);
   height: var(--band-rules-h);
-  box-sizing: border-box;
   padding: calc(var(--rule-w) * 2) calc(var(--rule-inset) / 2);
-  border: var(--rule-w) solid transparent;
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
@@ -424,12 +428,11 @@
   right: var(--rule-inset);
   top: var(--band-status-top);
   height: var(--band-status-h);
-  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: calc(var(--rule-w) * 2);
   padding: 0 calc(var(--rule-w) * 2);
-  border: var(--rule-w) solid transparent;
+  border: 0 solid transparent;
   border-radius: var(--plate-radius);
   background: var(--status-band);
   /* The status channel is cut a shade deeper than the parchment strip (§3.12)
@@ -538,9 +541,8 @@
  */
 .pt {
   margin-left: auto;
-  box-sizing: border-box;
   padding: 0 calc(var(--face-pt-size) * 0.3);
-  border: var(--rule-w) solid transparent;
+  border: 0 solid transparent;
   border-radius: calc(var(--plate-radius) / 1.5);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
@@ -553,7 +555,7 @@
   color: var(--plate-ink);
   font-size: var(--face-pt-size);
   font-weight: 700;
-  line-height: calc(var(--face-pt-size) * var(--face-line) - var(--rule-w) * 2);
+  line-height: calc(var(--face-pt-size) * var(--face-line));
   white-space: nowrap;
   z-index: 2;
 }

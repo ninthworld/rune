@@ -77,13 +77,15 @@
    * surround is identical whether or not an illustration loaded — the whole
    * point of contract 3 above, extended to the frame's material.
    *
-   * The border is the plate's carrier: the declared box is already the border
-   * box (see `.art`), so the seam overlaps the crop rather than widening the
-   * window, and `cover` simply refits. `background-clip` keeps the empty-state
-   * fill inside the seam, so a plate that never arrives reads as the card body
-   * in a recessed lip rather than as a ring of art fill. */
-  border: var(--plate-seam-band, 0px) solid transparent;
-  background-clip: padding-box;
+   * The carrier's `border-width` is **zero** and `border-image-width` is an
+   * explicit length, which is what keeps contract 3 true here: the seam paints
+   * over the crop's outer band without narrowing the content box, so the
+   * illustration is framed identically whether the plate paints, 404s, or is
+   * declined — a bordered carrier would have re-cropped a replaced element that
+   * had nothing to do with the plate arriving. The frame-relative variables are
+   * optional on a surface that publishes no frame at all (the inspect
+   * popover), so each carries its inert default. */
+  border: 0 solid transparent;
   border-image-source: var(--plate-art-seam, none);
   border-image-slice: var(--plate-art-seam-slice, 0);
   border-image-width: var(--plate-seam-band, 0px);

@@ -109,14 +109,59 @@ describe('the frame stylesheet composes plates without depending on them', () =>
       // `fill` paints the middle patch: these are surfaces the text sits in,
       // not rings around it.
       expect(body, selector).toContain('border-image-slice: var(--plate-surface-slice) fill');
-      // The carrier must not change the band's box, so the plate can never
-      // move a line of text: border-box plus a hairline border, and the line
-      // box gives back exactly those two hairlines.
-      expect(body, selector).toContain('box-sizing: border-box');
-      expect(body, selector).toContain('border: var(--rule-w) solid transparent');
     }
     expect(rule(faceCss, '\\.status')).toContain('background: var(--status-band)');
     expect(rule(faceCss, '\\.pt')).toContain('border-image-source: var(--plate-pt)');
+  });
+
+  it('carries every plate on a ZERO-width border, so no plate can move a box', () => {
+    // The degraded frame has to be the frame as it rendered before this set
+    // landed — not merely one that still has the right colours. A carrier with
+    // a real border width would shrink its content box, re-crop the art, and
+    // shift a line of text whether or not the plate ever painted; that is a
+    // layout change caused by an asset, which is precisely what "never
+    // load-bearing" must exclude.
+    //
+    // `border-image-width` is a multiple of `border-width` ONLY when given as a
+    // `<number>`; given a length it is independent, so the image still paints
+    // its full band and overflows inward. `border-style` may not be `none`,
+    // which is why the zero-width declaration is present at all.
+    for (const [css, selector] of [
+      [faceCss, '\\.artField'],
+      [faceCss, '\\.title'],
+      [faceCss, '\\.type'],
+      [faceCss, '\\.rules'],
+      [faceCss, '\\.status'],
+      [faceCss, '\\.pt'],
+      [artCss, '\\.window'],
+    ] as const) {
+      const body = rule(css, selector);
+      expect(body, selector).toContain('border: 0 solid transparent');
+      expect(body, selector).not.toContain('box-sizing');
+    }
+  });
+
+  it('lets no plate value reach a property that can affect layout', () => {
+    // The mechanical form of the contract above, over BOTH stylesheets: every
+    // custom property this module publishes may only be read by a paint-only
+    // property. Nothing else can then make a box depend on an asset — including
+    // a future edit that reaches for a plate band as a padding or an inset.
+    const published = [
+      ...Object.keys(PLATE_MATERIAL),
+      ...Object.keys(plateGeometryVars(100)),
+    ] as const;
+    const paintOnly =
+      /^(?:border-image-(?:source|slice|width|outset|repeat)|background-(?:image|size|blend-mode))$/;
+    for (const css of [faceCss, artCss]) {
+      for (const declaration of css.replace(/\/\*[\s\S]*?\*\//g, '').split(';')) {
+        const [property, value] = declaration.split(':');
+        if (value === undefined) continue;
+        for (const name of published) {
+          if (!value.includes(`var(${name}`)) continue;
+          expect(property.trim(), `${name} in ${property.trim()}`).toMatch(paintOnly);
+        }
+      }
+    }
   });
 
   it('gives the P/T plate its own asset and its own tighter band', () => {
@@ -148,8 +193,11 @@ describe('the frame stylesheet composes plates without depending on them', () =>
     expect(window).toContain('border-image-source: var(--plate-art-seam, none)');
     expect(window).toContain('border-image-width: var(--plate-seam-band, 0px)');
     // The frame-relative variables are optional on a surface that publishes no
-    // frame at all (the inspect popover), so each carries its inert default.
-    expect(window).toContain('border: var(--plate-seam-band, 0px) solid transparent');
+    // frame at all (the inspect popover), so each carries its inert default —
+    // a `none` source and a zero band, which draw nothing rather than throwing
+    // the declaration away.
+    expect(window).toContain('border-image-source: var(--plate-art-seam, none)');
+    expect(window).toContain('border-image-slice: var(--plate-art-seam-slice, 0)');
   });
 
   it('adds no element to any face — every plate rides a node that already exists', () => {

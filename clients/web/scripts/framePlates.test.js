@@ -1,21 +1,24 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
   authoringScale,
+  encodePng,
   PLATE_FRAME,
   PLATE_GOLD,
   PLATE_SPECS,
+  plateFilename,
   renderPlate,
 } from './framePlates.js';
 import { RUNE_FRAME, RUNE_GOLD } from '../src/tokens';
 
+const clientRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const framesDir = resolve(clientRoot, 'public/assets/frames');
 const manifest = JSON.parse(
-  readFileSync(
-    resolve(dirname(fileURLToPath(import.meta.url)), '../public/assets/manifest.json'),
-    'utf8',
-  ),
+  readFileSync(resolve(clientRoot, 'public/assets/manifest.json'), 'utf8'),
 );
 const plates = manifest.cardFrames.plates;
 
@@ -57,14 +60,35 @@ describe('card-frame plate synthesis (issue #570)', () => {
     expect(edge.band).toBeCloseTo(RUNE_FRAME.ruleInset + RUNE_FRAME.rule, 10);
   });
 
-  it('renders deterministically — the same spec, the same bytes', () => {
-    // The content hash in every filename is only meaningful if a re-run
-    // reproduces the pixels; the synthesis therefore uses integer hashing
-    // rather than a PRNG, and this is the assertion that keeps it that way.
+  it('regenerates to the committed bytes — `npm run frames` is a checked no-op', () => {
+    // The end-to-end reproducibility check, and the reason the shipping encoder
+    // is in-process rather than a probe for cwebp/ImageMagick: two contributors
+    // running the documented command must leave the repository in the same
+    // state, and that is only a claim worth making if something verifies it.
+    //
+    // This re-runs the whole pipeline — synthesis, PNG encode, content hash,
+    // filename — and compares against what is actually committed. Any drift,
+    // whether in the drawing code, the encoder, or the zlib build underneath
+    // it, fails here instead of silently rewriting seven assets on someone
+    // else's machine.
     for (const spec of PLATE_SPECS) {
-      const first = renderPlate(spec);
-      const second = renderPlate(spec);
-      expect(Buffer.from(first.rgba).equals(Buffer.from(second.rgba)), spec.id).toBe(true);
+      const { width, height, rgba } = renderPlate(spec);
+      const bytes = encodePng(width, height, rgba, deflateSync);
+      const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
+      const file = plateFilename(spec, hash);
+      expect(plates[spec.key].src, spec.id).toBe(`/assets/frames/${file}`);
+      expect(bytes.equals(readFileSync(resolve(framesDir, file))), spec.id).toBe(true);
+    }
+  });
+
+  it('ships greyscale plates as greyscale, colour only where a hue is carried', () => {
+    // PNG colour type 4 halves the samples of a light map. Only the frame edge,
+    // which carries the structural gold hairline, needs type 6 — so this is
+    // also a second guard on the light-map property asserted below.
+    for (const spec of PLATE_SPECS) {
+      const committed = readFileSync(resolve(framesDir, basename(plates[spec.key].src)));
+      // IHDR colour type: byte 25 of a PNG (8 signature + 8 chunk header + 9).
+      expect(committed[25], spec.id).toBe(spec.key === 'frameEdge' ? 6 : 4);
     }
   });
 
@@ -83,10 +107,9 @@ describe('card-frame plate synthesis (issue #570)', () => {
   });
 
   it('ships exactly the specified plates, with the manifest the generator wrote', () => {
-    // Byte equality with the committed WebP is not asserted: the shipping
-    // encode runs through cwebp/ImageMagick, which is not a client dependency.
-    // The structural contract is, and it is what the stylesheet resolves
-    // against — a spec edited without re-running the generator fails here.
+    // The structural half of the contract, and what the stylesheet resolves
+    // against — a spec edited without re-running the generator fails here as
+    // well as in the byte-equality check above.
     expect(Object.keys(plates).sort()).toEqual(PLATE_SPECS.map((spec) => spec.key).sort());
     for (const spec of PLATE_SPECS) {
       expect(plates[spec.key], spec.id).toMatchObject({
@@ -100,7 +123,7 @@ describe('card-frame plate synthesis (issue #570)', () => {
         load: 'first-match',
       });
       expect(plates[spec.key].src).toMatch(
-        new RegExp(`^/assets/frames/${spec.id}\\.[a-f0-9]{8}\\.(?:webp|png)$`),
+        new RegExp(`^/assets/frames/${spec.id}\\.[a-f0-9]{8}\\.png$`),
       );
     }
   });

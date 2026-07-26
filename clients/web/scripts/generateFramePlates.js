@@ -21,21 +21,20 @@
  * touched, and stale hashed files from a previous run are deleted, so a
  * re-run after a token change leaves the tree coherent rather than accreting.
  *
- * Encoding: the plates are synthesised as PNG with the zero-dependency encoder
- * below (the client toolchain has no image library, and adding one for a script
- * that runs on demand is not worth the audit surface). If `cwebp` or ImageMagick
- * is on PATH the PNG is converted to lossless WebP — smaller for the same
- * pixels, and the format ADR 0031 asks for. Without either, the PNG ships; both
- * are ledger-legal rasters and the manifest records whichever landed.
+ * Encoding: the plates ship as PNG from the in-process encoder in
+ * `framePlates.js` — no external tool and no probing, because the committed
+ * bytes have to be reproducible and checkable. `framePlates.test.js` re-encodes
+ * every plate and compares it byte-for-byte with the file in the tree, so a
+ * re-run of this command is a verified no-op rather than a promise. That module
+ * documents the trade in full.
  */
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 import prettier from 'prettier';
-import { PLATE_SPECS, renderPlate } from './framePlates.js';
+import { encodePng, PLATE_SPECS, plateFilename, renderPlate } from './framePlates.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const clientRoot = resolve(scriptDir, '..');
@@ -46,86 +45,6 @@ const ledgerPath = resolve(clientRoot, 'src/assets/ledger.json');
 
 /** The ledger category these assets file under. */
 const CATEGORY = 'card-frame';
-
-/* ── PNG ──────────────────────────────────────────────────────────────────── */
-
-const CRC_TABLE = (() => {
-  const table = new Int32Array(256);
-  for (let n = 0; n < 256; n += 1) {
-    let c = n;
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c;
-  }
-  return table;
-})();
-
-function crc32(buffer) {
-  let c = 0xffffffff;
-  for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-
-function chunk(type, body) {
-  const head = Buffer.alloc(8);
-  head.writeUInt32BE(body.length, 0);
-  head.write(type, 4, 'ascii');
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), body])), 0);
-  return Buffer.concat([head, body, crc]);
-}
-
-/** Encode 8-bit RGBA to PNG. Filter 0 on every scanline; deflate does the rest. */
-function encodePng(width, height, rgba) {
-  const stride = width * 4;
-  const raw = Buffer.alloc((stride + 1) * height);
-  for (let y = 0; y < height; y += 1) {
-    raw[y * (stride + 1)] = 0;
-    Buffer.from(rgba.buffer, rgba.byteOffset + y * stride, stride).copy(raw, y * (stride + 1) + 1);
-  }
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header[8] = 8; // bit depth
-  header[9] = 6; // colour type: RGBA
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', header),
-    chunk('IDAT', deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
-
-/* ── WebP ─────────────────────────────────────────────────────────────────── */
-
-function tryConvert(command, args) {
-  try {
-    execFileSync(command, args, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Convert PNG bytes to lossless WebP, or return `null` when no converter is
- * installed. Lossless because a light map's value steps are the whole asset:
- * lossy banding in a bevel is visible on every card at once.
- */
-function toWebp(png, scratch) {
-  writeFileSync(scratch, png);
-  const target = `${scratch}.webp`;
-  const converted =
-    tryConvert('cwebp', ['-quiet', '-lossless', '-exact', '-z', '9', scratch, '-o', target]) ||
-    tryConvert('magick', [scratch, '-define', 'webp:lossless=true', '-quality', '100', target]);
-  if (!converted) {
-    rmSync(scratch, { force: true });
-    return null;
-  }
-  const bytes = readFileSync(target);
-  rmSync(scratch, { force: true });
-  rmSync(target, { force: true });
-  return bytes;
-}
 
 /* ── Records ──────────────────────────────────────────────────────────────── */
 
@@ -184,12 +103,9 @@ async function main() {
 
   for (const spec of PLATE_SPECS) {
     const { width, height, rgba } = renderPlate(spec);
-    const png = encodePng(width, height, rgba);
-    const webp = toWebp(png, resolve(outputDir, `.${spec.id}.tmp.png`));
-    const bytes = webp ?? png;
-    const extension = webp ? 'webp' : 'png';
+    const bytes = encodePng(width, height, rgba, deflateSync);
     const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
-    const file = `${spec.id}.${hash}.${extension}`;
+    const file = plateFilename(spec, hash);
     writeFileSync(resolve(outputDir, file), bytes);
     total += bytes.length;
 

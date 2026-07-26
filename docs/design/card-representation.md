@@ -301,7 +301,13 @@ client imposes:
    `clients/web/scripts/generateFramePlates.js` (`npm run frames`) synthesises
    the pixels, content-hashes them, and rewrites both the manifest section and
    the ledger entries. Provenance is ADR 0031 class 1, and a re-run reproduces
-   the same bytes. The whole set is ~46 KB — the frame is on every card, so it
+   the same bytes — **checked**, not claimed: the suite re-encodes every plate
+   and compares it byte-for-byte with the committed file, so regeneration is a
+   verified no-op and any drift fails CI instead of silently rewriting seven
+   assets. That check is why the plates ship as PNG from an in-process encoder
+   rather than WebP through an external converter whose version would decide
+   the bytes; ADR 0031 allows PNG "where a consumer requires it", and the
+   consumer here is the ledger's own reproducibility claim. The whole set is ~62 KB — the frame is on every card, so it
    is the most budget-sensitive set in the project.
 
 Card backs (§13) need nothing further: the production raster skins shipped with
