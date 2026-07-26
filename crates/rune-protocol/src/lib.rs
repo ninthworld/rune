@@ -22,6 +22,8 @@
 //! - [`log`] — structured game-log events
 //! - [`card`] — in-game card, board, and zone views
 //! - [`action`] — the valid-action and prompt/targeting contract
+//! - [`interaction`] — action destinations and submission acknowledgement
+//! - [`presentation`] — in-match format and commander-identity metadata
 //! - [`result`] — game-end outcome and commander tallies
 //! - [`view`] — the personalized in-game [`GameView`]
 //! - [`spectator`] — the redacted [`SpectatorView`]
@@ -33,8 +35,10 @@ mod action;
 mod card;
 mod catalog;
 mod client;
+mod interaction;
 mod lobby;
 mod log;
+mod presentation;
 mod result;
 mod spectator;
 mod view;
@@ -43,12 +47,14 @@ pub use action::{Prompt, PromptOption, TargetRequirement, ValidAction};
 pub use card::{CardView, Counter, OpponentView, Permanent, Phase, SelfView, StackItem, ZonePile};
 pub use catalog::{AiOption, CatalogCard, CatalogFormat, CatalogView, CATALOG_VERSION};
 pub use client::{ChooseAction, ClientMessage, SetStops, TargetChoice};
+pub use interaction::{ActionAck, ActionDestination};
 pub use lobby::{
     AddAi, CardIdentity, CreateRoom, GameSetupId, Hello, JoinRoom, LobbyCommand, LobbyErrorFrame,
     LobbyRejection, LobbyView, Ready, RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary,
     RoomView, SeatView, SessionToken, SetName, SpectateRoom, SubmitDeck,
 };
 pub use log::{GameLogEntry, GameLogEvent, LogBlock, LogDamageTarget, LogEntity};
+pub use presentation::{Color, CommanderIdentity, MatchFormat, COLORS};
 pub use result::{CommanderDamage, CommanderTax, GameOverReason, GameResult};
 pub use spectator::SpectatorView;
 pub use view::GameView;
@@ -62,6 +68,20 @@ pub type EntityId = String;
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn is_false(b: &bool) -> bool {
     !*b
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+pub(crate) fn is_true(b: &bool) -> bool {
+    *b
+}
+
+/// The `serde(default)` for a flag whose **absence means `true`** — the
+/// per-seat `connected` flag (issue #553), where an older server that never sends
+/// it must be read as "connected", not as "disconnected". Paired with
+/// [`is_true`] as its `skip_serializing_if`, so the wire carries the flag only
+/// when it is `false`.
+pub(crate) fn default_true() -> bool {
+    true
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]

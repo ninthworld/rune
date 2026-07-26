@@ -12,6 +12,7 @@ pub(crate) fn answer(action: &ValidAction) -> ChooseAction {
         action_id: action.id.clone(),
         token: action.token.clone(),
         targets: Vec::new(),
+        ..Default::default()
     }
 }
 

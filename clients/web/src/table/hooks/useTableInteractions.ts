@@ -27,6 +27,7 @@ import {
   beginMultiSelect,
   isMultiSelect,
   moveInActiveSlot as msMove,
+  setActiveNumber as msSetNumber,
   toggle as msToggle,
   type MultiSelectSession,
 } from '../multiSelect';
@@ -48,6 +49,8 @@ export interface TableInteractions {
   advanceSlot: () => void;
   confirmMultiSelect: () => void;
   moveOrder: (entityId: EntityId, direction: -1 | 1) => void;
+  /** Set the active `number` slot's value (issue #554), clamped to the server's range. */
+  setNumber: (value: number) => void;
   chooseOption: (optionId: string) => void;
   cancelTargeting: () => void;
   cancelMultiSelect: () => void;
@@ -151,6 +154,14 @@ export function useTableInteractions(choose: ChooseFn): TableInteractions {
     setMultiSelect(msMove(multiSelect, entityId, direction));
   };
 
+  // Set the active `number` slot's value (issue #554). Like every other slot edit,
+  // nothing is submitted until the player confirms; the value is clamped into the
+  // server's own advertised range and never widened past it.
+  const setNumber = (value: number): void => {
+    if (!multiSelect) return;
+    setMultiSelect(msSetNumber(multiSelect, value));
+  };
+
   // Submit an option decision (the sheet's modal picker, e.g. mulligan keep/take-
   // another) together with the current per-slot selection (e.g. the bottomed cards)
   // in one atomic answer, keyed by the option slot the server posed.
@@ -180,6 +191,7 @@ export function useTableInteractions(choose: ChooseFn): TableInteractions {
     advanceSlot,
     confirmMultiSelect,
     moveOrder,
+    setNumber,
     chooseOption,
     cancelTargeting,
     cancelMultiSelect,

@@ -85,6 +85,21 @@ fn hash_prompt(prompt: &Prompt, hasher: &mut impl std::hash::Hasher) {
             prompt.hash(hasher);
             items.hash(hasher);
         }
+        // A numeric slot (issue #554): its bounds are part of the action's content, so
+        // an answer bound to a *wider* range the server no longer offers is rejected
+        // like any other stale binding (ADR 0009).
+        Prompt::Number {
+            slot,
+            prompt,
+            min,
+            max,
+        } => {
+            3u8.hash(hasher);
+            slot.hash(hasher);
+            prompt.hash(hasher);
+            min.hash(hasher);
+            max.hash(hasher);
+        }
     }
 }
 
@@ -169,6 +184,7 @@ mod tests {
             .find(|a| a.kind == "discard")
             .expect("a discard is offered while over the hand limit");
         let stale = ChooseAction {
+            submission: String::new(),
             action_id: discard_before.id.clone(),
             token: discard_before.token.clone(),
             targets: vec![TargetChoice {
@@ -198,6 +214,7 @@ mod tests {
         // The current token for that same id does resolve, proving it is the token
         // (not the bare id) that binds a prompt answer.
         let fresh = ChooseAction {
+            submission: String::new(),
             action_id: discard_after.id.clone(),
             token: discard_after.token.clone(),
             targets: vec![TargetChoice {

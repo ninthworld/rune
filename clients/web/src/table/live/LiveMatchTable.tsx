@@ -148,6 +148,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
     advanceSlot,
     confirmMultiSelect,
     moveOrder,
+    setNumber,
     chooseOption,
     cancelTargeting,
     cancelMultiSelect,
@@ -755,6 +756,7 @@ export function LiveMatchTable(props: LiveMatchTableProps = {}) {
         msSlot={msSlot}
         onToggle={toggleCandidate}
         onMove={moveOrder}
+        onNumber={setNumber}
         onChooseOption={chooseOption}
       />
       {handDrag && (

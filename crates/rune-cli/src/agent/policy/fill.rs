@@ -83,6 +83,13 @@ pub fn fill_answers(view: &GameView, action: &ValidAction) -> Option<Vec<TargetC
                 // "As given": echo the items in their advertised order.
                 chosen: items.clone(),
             },
+            // A numeric slot (issue #554): the deterministic agent answers with the
+            // server's own lower bound — always legal, and the smallest commitment,
+            // matching the "simplest sound rule" every other arm here follows.
+            Prompt::Number { slot, min, .. } => TargetChoice {
+                slot: slot.clone(),
+                chosen: vec![min.to_string()],
+            },
         };
         out.push(choice);
     }
@@ -272,32 +279,16 @@ mod tests {
     };
 
     fn view_with_actions(actions: Vec<ValidAction>) -> GameView {
+        // `GameView` derives `Default` (issue #553), so a harness view names only the
+        // fields it exercises and never has to restate the additive rest.
         GameView {
             you: "p0".into(),
-            my_hand: vec![],
-            me: rune_protocol::SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
             phase: Phase::PrecombatMain,
             turn: 1,
             active_player: "p0".into(),
-            mana_pool: vec![],
             priority_player: Some("p0".into()),
             valid_actions: actions,
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: std::collections::BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-            seat_order: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -335,6 +326,7 @@ mod tests {
             blocking: None,
             damage: 0,
             attached_to: None,
+            is_commander: false,
             counters: vec![],
         }
     }
@@ -547,6 +539,8 @@ mod tests {
             graveyard_size: 0,
             statuses: vec![],
             eliminated: false,
+            connected: true,
+            ai: false,
         }];
         let act = ValidAction {
             requirements: vec![TargetRequirement {

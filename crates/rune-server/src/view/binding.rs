@@ -325,6 +325,7 @@ mod tests {
             action_id: land.id.clone(),
             token: "t0000000000000000".to_string(),
             targets: Vec::new(),
+            ..Default::default()
         };
         assert!(resolve_action(&state, &db, PlayerId(0), &tampered).is_none());
     }
@@ -392,6 +393,7 @@ mod tests {
             action_id: pass.id.clone(),
             token: String::new(),
             targets: Vec::new(),
+            ..Default::default()
         };
         assert_eq!(
             resolve_action(&state, &db, PlayerId(0), &legacy),
@@ -415,6 +417,7 @@ mod tests {
             .expect("pass is always offered");
 
         let spurious = ChooseAction {
+            submission: String::new(),
             action_id: pass.id.clone(),
             token: pass.token.clone(),
             targets: vec![TargetChoice {

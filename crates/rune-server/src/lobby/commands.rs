@@ -354,8 +354,24 @@ impl Lobby {
         // priority auto-passes so a spell-less turn does not cost a click per step,
         // gated by each seat's own `set_stops` preferences. Off only in unit tests
         // that drive priority pass-by-pass.
+        // In-match presentation metadata (issue #553), both room/lobby knowledge the
+        // engine has no notion of: which seats are AI-controlled, and the format this
+        // game is played under. The `commander` flag comes from the registered format's
+        // own `requires_commander` deck rule — the single source of truth (issue #394)
+        // — so a client never string-matches the format id to decide it is Commander.
+        let ai_seats: Vec<bool> = room.ai_seats.iter().map(Option::is_some).collect();
+        let match_format = MatchFormat {
+            id: room.config.game_setup.clone(),
+            commander: self
+                .inner
+                .formats
+                .get(&room.config.game_setup)
+                .is_some_and(|format| format.deck_rules.require_commander),
+        };
         let (handle, _task) = Room::new(state, db)
             .with_player_names(player_names)
+            .with_ai_seats(ai_seats)
+            .with_format(match_format)
             .with_auto_pass(AutoPassPolicy::On)
             .spawn();
 
@@ -964,6 +980,7 @@ mod tests {
                         seat: 0,
                         message: rune_protocol::ClientMessage::ChooseAction(
                             rune_protocol::ChooseAction {
+                                submission: String::new(),
                                 action_id: decision.id.clone(),
                                 token: decision.token.clone(),
                                 targets: vec![rune_protocol::TargetChoice {

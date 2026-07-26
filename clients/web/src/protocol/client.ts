@@ -39,6 +39,18 @@ export interface ChooseAction {
   token?: string;
   /** One entry per {@link ValidAction.requirements} slot; omitted when empty. */
   targets?: TargetChoice[];
+  /**
+   * An opaque, client-generated **correlation id** for this submission (issue #554).
+   * The server echoes it verbatim in {@link ActionAck.submission} on the one view that
+   * answers this message, so a pending indicator clears on *its own* answer rather
+   * than on whichever broadcast arrives next (another seat's action produces one too).
+   *
+   * Never part of the content {@link ValidAction.token} — it identifies the *message*,
+   * not the action, so resubmitting the same action with a new id is a new submission.
+   * Omitted when empty: a client that does not correlate sends exactly the message it
+   * sent before, and the server issues no ack.
+   */
+  submission?: string;
 }
 
 /**
@@ -51,10 +63,14 @@ export function chooseAction(
   actionId: string,
   token?: string,
   targets?: TargetChoice[],
+  submission?: string,
 ): ChooseAction {
   const message: ChooseAction = { type: 'choose_action', action_id: actionId };
   if (token !== undefined && token !== '') message.token = token;
   if (targets !== undefined && targets.length > 0) message.targets = targets;
+  // The correlation id (issue #554) rides only when the caller wants an ack back;
+  // omitting it produces exactly the message this function produced before.
+  if (submission !== undefined && submission !== '') message.submission = submission;
   return message;
 }
 

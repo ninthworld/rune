@@ -52,9 +52,12 @@ redacted before serialization.
 | `stops` | `Phase[]` | Receiver’s own priority-stop preferences; omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
+| `action_ack` | `ActionAck?` | Acknowledgement of the receiver's last correlated submission (issue #554); rides that receiver's views from the one answering it until its next submission supersedes it, omitted for every other seat and by an older server |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed on the next cast from the command zone (CR 903.8, issue #372); omitted when empty |
+| `format` | `MatchFormat?` | The format this match is played under (issue #553); omitted by an older server, which a client MUST read as "unknown format, not Commander" |
+| `commander_identity` | `CommanderIdentity[]` | Public per-seat commander name and colour identity (CR 903.3/903.4, issue #553); omitted when empty, and by an older server |
 
 `command` is each player's command zone (CR 903.6), carried in the same public `ZonePile`
 shape as `graveyards`/`exile` (`{ player_id, cards }`), one entry per player with a card
@@ -75,6 +78,50 @@ is how many times that commander has been cast from the command zone this game, 
 is the generic mana the tax adds to the next such cast (`2 * casts`). `casts` and `tax`
 are omitted when zero. Public information; the list is omitted (defaults to `[]`) in a
 non-commander game.
+
+`format` is the match’s format signal (issue #553): `{ id, commander }`, where `id` is the
+room’s free-form `game_setup` identifier (`"standard"`, `"commander"`, …) and `commander`
+is the typed flag a client keys Commander-specific presentation off. It exists because
+**no client can infer the format from zone contents**: a Commander game whose commanders
+are all on the battlefield has an empty `command`, an elided all-zero `commander_tax`, and
+an empty `commander_damage`, which is indistinguishable from a non-Commander game. `id` is
+omitted when empty and `commander` when `false`; the whole object is omitted by a server
+that has no registered format for the room, and by an older server — in every one of those
+cases the documented default is **not a Commander game**, exactly the pre-#553 reading. It
+is public information (a room’s format is advertised in the lobby), so spectators receive
+the identical value.
+
+`commander_identity` carries each seat’s commander name and colour identity (CR 903.3 /
+903.4, issue #553): one `{ commander, name, color_identity }` entry per player that
+designated a commander, keyed — like `commander_damage` and `commander_tax` — by the owning
+player’s `PlayerId`. It is **stable for the whole game**: the entry does not change when
+the commander is cast, dies, is exiled, or returns to the command zone, which is the point,
+since the `command` pile (the only previous source of a commander’s name and colours)
+disappears the instant the commander leaves it. `color_identity` is an array of the closed
+colour letters `"W"`, `"U"`, `"B"`, `"R"`, `"G"` in that order; it is **omitted for a
+colourless commander**, which is a real, empty identity rather than a missing value, and
+`name` is omitted only for a card the server cannot resolve. Public information, computed
+by the same server-side CR 903.4 routine that validated the deck, so what a client renders
+can never disagree with what the format enforced. The list is omitted (defaults to `[]`) in
+a non-commander game and by an older server.
+
+Per-seat presentation state (issue #553) rides the seat records themselves rather than a
+parallel list. `OpponentView` gains `connected` and `ai`; `SelfView` gains `eliminated`,
+`connected`, and `ai`, so the **receiver’s own** elimination — losing while two or more
+players remain, CR 800.4a — has an authoritative source while the game continues (`result`
+arrives only at game over, and the bounded `log` window is not reconstructable, so neither
+may stand in for it). `connected` is the **one flag on the wire whose omitted value is
+`true`**: the server holds a disconnected seat open, so the flag rides the wire only as
+`false` and a client must test `=== false` rather than falsiness — an older server that
+never sends it means every seat is connected. `ai` carries the lobby’s `SeatView.ai` into
+the match so the marker is not lost at the hand-off; it is public presentation information
+and exposes nothing about the AI’s decisions or policy. Both default to
+connected/human when omitted. `Permanent` likewise gains `is_commander`, the server-computed
+marker that this object *is* somebody’s commander; it is omitted (defaults to `false`) for
+every other permanent, and a client MUST NOT infer it — a commander on the battlefield is an
+ordinary permanent, and “legendary creature” is neither necessary (a commander may be a
+planeswalker) nor sufficient (most legends are not commanders). `result` remains the sole
+authority for the game’s outcome; none of these fields lets a client conclude a loss.
 
 `player_names` maps a `PlayerId` to that player’s chosen display name (issue #294), so
 any in-game surface — the turn indicator, player tiles, zone-browser titles, the
@@ -202,7 +249,11 @@ A `Permanent` contains:
 - optional `blocking`, naming the attacker’s entity id;
 - optional marked `damage`;
 - optional `attached_to`, naming the host permanent’s entity id when this permanent
-  (e.g. an Aura, CR 303.4) is attached to another; and
+  (e.g. an Aura, CR 303.4) is attached to another;
+- optional `is_commander` (default `false`, issue #553), the server-computed marker that
+  this object **is** somebody’s commander (CR 903.3) — matched on the card instance, so it
+  survives every zone change and recast; a client must never infer it from a name, a zone,
+  or a type line; and
 - optional `counters`, each `{ "kind": string, "count": number }`.
 
 These fields describe server-computed state. They do not authorize interaction.
@@ -232,8 +283,26 @@ for an ability originating from a permanent.
   (CR 605): no targets, no stack, only mana production. Server-computed so a client may
   offer a lighter gesture — one-click tap-for-mana (ADR 0025) — for exactly these actions
   without ever classifying abilities itself. Omitted when `false`.
+- `destinations` (optional, issue #554) lists the server-authoritative surfaces this
+  action may be taken *to*, each `{ type, id, owner?, label? }` where `type` is
+  `"zone"`, `"entity"`, or `"player"` (free form — clients ignore kinds they do not
+  recognize) and `id` is a zone name, an entity id, or a player id. `owner` names whose
+  copy of a per-player zone this is and is omitted for a shared zone. **A client derives
+  its drop regions from this list alone and fails closed**: an action with no
+  `destinations` has no drop target at all. Drag remains optional input — every action
+  is also reachable by click, keyboard, and touch — so a client that ignores this field
+  loses nothing.
 - `token` binds the answer to the action’s exact current content. The client echoes it
-  verbatim and never derives or parses it.
+  verbatim and never derives or parses it. `submission` (below) is deliberately *not*
+  part of it: the token binds the action, the submission identifies the message.
+
+`label` is **contextual**, and choosing it is the server’s job (issue #554). A
+`pass_priority` is labelled `"Resolve"` when passing would resolve the top of the stack
+and `"Pass"` otherwise — the same action either way, with the same id and the same
+token, so only the presentation differs. The distinction is a rules judgment (CR 117.4
+plus CR 800.4a: an eliminated seat neither receives nor passes priority, so a round of
+passes is not a seat count), which is why the client renders the string verbatim rather
+than deciding the word itself.
 
 Current action categories include `pass_priority`, `play_land`, `cast_spell`,
 `activate_ability`, `mulligan_decision`, `discard`, `declare_attackers`,
@@ -278,6 +347,7 @@ Non-target choices use tagged `prompts`:
 | `option` | `slot`, `prompt`, `options[{id,label,requires}]` | One option id |
 | `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `candidates` | Exactly `count` candidate ids |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
+| `number` | `slot`, `prompt`, `min`, `max` | The chosen number as a decimal string |
 
 `option` is used for choices such as keep or mulligan. An option's `requires` (issue #451)
 lists the action's other slots **that choice** owes an answer to, and is omitted when it owes
@@ -292,6 +362,20 @@ discarding or bottoming cards. `order` requests a permutation of its `items`; th
 creatures, so its controller chooses the combat-damage assignment order (CR 510.1, issue
 #346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
 with 0–1 blockers produces no ordering prompt.
+
+`number` (issue #554) requests a value in the inclusive range `min`..`max` — the value
+of X, how many counters to remove, one share of a divided effect. It is answered with
+the chosen number rendered as a **decimal string** in the slot’s `chosen` array (e.g.
+`["3"]`), sharing `TargetChoice` with every other slot kind so one atomic
+`choose_action` still answers a whole action and the content `token` still binds every
+slot (the bounds are folded into it, so an answer bound to a range the server no longer
+offers is rejected like any other stale binding). **The bounds are the server’s**,
+computed from available mana, the source’s text, and the game state; the client offers a
+control over exactly that range and computes no affordability of its own. Both `min` and
+`max` are always present — a zero `min` is not elided — so the range reads completely
+rather than by inference. A *divided* value is posed as one `number` slot per recipient,
+each with its own bounds, and the server validates the total on resolution; the client
+never enforces a sum.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. In a game with more than one
@@ -334,6 +418,45 @@ prompt kinds. The server regenerates the action, checks the content token, and v
 choice against the fresh legal set. Invalid input is a no-op followed by the current
 `GameView`, and that re-send sets `action_rejected: true` (above) so the receiver gets a
 brief, non-blaming notice rather than a silently unchanged screen.
+
+A message may also carry an opaque, client-generated `submission` correlation id (issue
+#554):
+
+```json
+{
+  "type": "choose_action",
+  "action_id": "a2",
+  "token": "t00000000deadbeef",
+  "submission": "s:17"
+}
+```
+
+The server echoes it verbatim in `action_ack`, starting with the view that answers this
+message — `{ "submission": "s:17", "accepted": true }` when the action was applied,
+`accepted: false` when it was rejected (the same event `action_rejected` flags, now tied
+to a specific submission). `accepted` is always present, so a client never reads an
+absence as a verdict; the *ack itself* is the optional part, and its presence is the
+signal that “this view answers my click”. Only that receiver's views ever carry it —
+every other seat's, and every spectator's, carry none.
+
+**The ack is matched, not counted.** It rides that receiver's views until its next
+submission supersedes it (a submission with no id supersedes it too, to `null`), and it
+is dropped when the seat reconnects. That is deliberate: a seat's view channel is
+latest-value, so a view pushed while an earlier one is still in flight replaces it, and
+an ack that answered exactly one view would be lost whenever an unrelated broadcast
+overtook it. A client therefore compares `submission` against the id it is still waiting
+on and ignores anything else — a repeat of an ack it has already consumed names nothing
+and does nothing.
+
+Correspondingly, **a view carrying no ack says nothing about a submission in flight.**
+An ordinary broadcast — another seat acting — is ack-less, so a client must not read one
+as an answer to its own click; that is the race the correlation exists to remove. The id
+identifies the **message**, not the action: it is never part of the content `token`, and
+resubmitting the same action with a new id is a new submission. It is optional — a client
+that omits it sends exactly the message it always sent and receives no ack — and, like
+`action_rejected`, purely advisory: the UI reconstructs fully without it, so a client
+releases a pending indicator on a transport discontinuity rather than waiting forever for
+an ack an older server will never send.
 
 ### `SetStops`
 
@@ -378,7 +501,7 @@ the game live with all hidden information redacted. Redaction is **structural**:
 simply has no receiver or decision fields, so a projection cannot leak a hand, a library’s
 contents, a mana pool, or a `valid_actions` list to a spectator. It reuses `GameView`’s public
 component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, `GameLogEntry`,
-`Phase`, `PlayerId`, `GameResult`, `CommanderDamage`).
+`Phase`, `PlayerId`, `GameResult`, `CommanderDamage`, `MatchFormat`, `CommanderIdentity`).
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -398,10 +521,15 @@ component types verbatim (`OpponentView`, `Permanent`, `StackItem`, `ZonePile`, 
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
 | `commander_damage` | `CommanderDamage[]` | Public per-commander combat-damage tally (CR 903.10a, issue #371); omitted when empty |
 | `commander_tax` | `CommanderTax[]` | Public per-commander tax owed (CR 903.8, issue #372); omitted when empty |
+| `format` | `MatchFormat?` | The match format signal (issue #553); omitted by an older server (read as "not Commander") |
+| `commander_identity` | `CommanderIdentity[]` | Public per-seat commander name and colour identity (issue #553); omitted when empty |
 
 A `SpectatorView` carries **no** `you`, `me`, `my_hand`, `mana_pool`, `valid_actions`,
 `action_deadline`, `stops`, `auto_passed`, or `action_rejected` — those fields do not exist on
-the type. A spectator reconstructs the whole public board from a single `SpectatorView` (the
+the type. The issue #553 presentation metadata it does carry is public by construction: the
+format is advertised in the lobby, a commander is announced before the game, and a seat’s
+connection/AI state is what every seated player already sees, so a spectator’s `players[]`
+entries carry the same `connected`/`ai` flags a seated `OpponentView` does. A spectator reconstructs the whole public board from a single `SpectatorView` (the
 complete-view principle), so it may join mid-game and resume after a reconnect with no history.
 The client distinguishes a `SpectatorView` from a seated `GameView` structurally: a
 `SpectatorView` has no `you` field, whereas a `GameView` always serializes one.
@@ -662,3 +790,9 @@ is public data only — it never carries a deck, a roster, or any game state.
 - `valid_commands` and `valid_actions` are the only sources of interactivity.
 - Clients display server-computed characteristics and never infer legal choices.
 - Unknown fields are ignored, and omitted optional fields receive documented defaults.
+- Drag and drop is optional input. Drop regions come only from `destinations`, and an
+  action naming none has no drop target; every action stays reachable by click,
+  keyboard, and touch.
+- A default is what the protocol documents, not what the type’s zero value happens to be:
+  an omitted `connected` means **connected**, an omitted `format` means **not Commander**,
+  an omitted `commander_identity`/`is_commander` means no commander presentation at all.

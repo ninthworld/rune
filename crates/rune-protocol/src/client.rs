@@ -29,6 +29,19 @@ pub struct ChooseAction {
     /// handshake); empty for an action with no requirements.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub targets: Vec<TargetChoice>,
+    /// An opaque, client-generated **correlation id** for this submission (issue
+    /// #554). The server echoes it verbatim in
+    /// [`ActionAck::submission`](crate::ActionAck) on the one view that answers this
+    /// message, so a pending indicator clears on *its own* answer rather than on
+    /// whichever broadcast happens to arrive next (another seat's action produces one
+    /// too). Never parsed, never interpreted, and never part of the content
+    /// [`token`](ValidAction::token) — it identifies the *message*, not the action,
+    /// so resubmitting the same action with a new id is a new submission.
+    ///
+    /// Optional and omitted when empty: a client that does not correlate sends
+    /// exactly the message it sent before, and the server simply issues no ack.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub submission: String,
 }
 
 /// The player's answer to one choice slot — a [`TargetRequirement`] **or** a
@@ -84,6 +97,7 @@ mod tests {
             action_id: "a2".into(),
             token: String::new(),
             targets: vec![],
+            ..Default::default()
         };
         assert_eq!(msg.action_id, "a2");
     }
@@ -96,6 +110,7 @@ mod tests {
             action_id: "a2".into(),
             token: String::new(),
             targets: vec![],
+            ..Default::default()
         });
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(
@@ -111,6 +126,7 @@ mod tests {
         // A real targeted answer: id + content-binding token + the atomically
         // submitted selection, keyed per requirement slot.
         let msg = ClientMessage::ChooseAction(ChooseAction {
+            submission: String::new(),
             action_id: "a3".into(),
             token: "h:9f2c".into(),
             targets: vec![TargetChoice {

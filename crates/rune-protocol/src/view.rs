@@ -5,15 +5,26 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CardView, CommanderDamage, CommanderTax, GameLogEntry, GameResult, OpponentView, Permanent,
-    Phase, PlayerId, SelfView, StackItem, ValidAction, ZonePile,
+    ActionAck, CardView, CommanderDamage, CommanderIdentity, CommanderTax, GameLogEntry,
+    GameResult, MatchFormat, OpponentView, Permanent, Phase, PlayerId, SelfView, StackItem,
+    ValidAction, ZonePile,
 };
 
 /// The personalized state the server sends after every change (docs/protocol.md).
 /// Hidden information is redacted server-side before this is built. A client must
 /// be able to fully reconstruct its UI from a single `GameView` — no client state
 /// is load-bearing across messages.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+///
+/// `Default` yields an **empty placeholder** view — no seat, no zones, the untap
+/// step — which is not a meaningful game state and is never sent. It exists for the
+/// same reason [`ValidAction`]'s does: every field is additive and optional except
+/// `phase`, so a caller building a view field-by-field (test fixtures, the CLI's and
+/// the AI's harnesses) should not have to restate a dozen empty collections, and
+/// adding the *next* additive field should not touch a dozen unrelated literals.
+/// The one literal that deliberately still enumerates every field is
+/// `game_view_round_trips_through_json` in the tests module — it is the exhaustive
+/// round-trip, so a new field must be considered there exactly once.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct GameView {
     /// The receiver's own seat entity id (the `p{N}` form used for players
     /// throughout the view). Lets a client identify itself directly instead of
@@ -130,6 +141,31 @@ pub struct GameView {
     /// on every other broadcast.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub action_rejected: bool,
+    /// The **acknowledgement** of the receiver's last submitted action (issue #554)
+    /// — see [`ActionAck`]. Carried from the view that answers a
+    /// [`ChooseAction`](crate::ChooseAction) bearing a
+    /// [`submission`](crate::ChooseAction::submission) correlation id, and on that
+    /// receiver's subsequent views until their next submission supersedes it. Only
+    /// that receiver's views ever carry it.
+    ///
+    /// **Matched, not counted.** A client compares [`ActionAck::submission`] against
+    /// the id it is still waiting on; a repeat of one it has already consumed names
+    /// nothing and does nothing. Riding more than one view is what makes the ack
+    /// survive a latest-value view channel, where a broadcast pushed while an earlier
+    /// view is still in flight replaces it — an ack answering exactly one view would
+    /// be lost to any unrelated broadcast that overtook it.
+    ///
+    /// Correspondingly, its **absence answers nothing**: an ordinary broadcast (another
+    /// seat acting) is ack-less, so a client must not read one as the answer to its own
+    /// click — that is precisely the race this field removes.
+    ///
+    /// It completes what [`Self::action_rejected`] could only half-say: that flag
+    /// reports *that* a submission was refused but never *which*, so a client could
+    /// not tell its own answer apart from a view caused by another seat. Transient
+    /// and advisory — the UI reconstructs fully without it. Omitted (defaults to
+    /// `None`) by an older server and for an uncorrelated submission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_ack: Option<ActionAck>,
     /// Public display names, keyed by [`PlayerId`] (issue #294): every player who has
     /// chosen a name maps to it, so any in-game surface — the turn indicator, player
     /// tiles, zone-browser titles, the game-over verdict — can label any player
@@ -159,702 +195,29 @@ pub struct GameView {
     /// for a non-commander game. Server-computed; never derived by the client.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commander_tax: Vec<CommanderTax>,
+    /// The **format** this match is played under (issue #553) — see [`MatchFormat`].
+    /// The authoritative signal that a game is Commander, independent of whether any
+    /// command zone, tax entry, or damage entry is currently populated: all three
+    /// are legitimately empty in ordinary Commander states, so no client can infer
+    /// the format from them. **Public information** (a room's format is advertised
+    /// in the lobby), so it is the same for every receiver and for spectators.
+    /// Room/session state, like [`Self::player_names`] — the room fills it in after
+    /// projection. Additive: omitted (and defaults to `None`, read as "unknown
+    /// format, not Commander") so an older server and an older client are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<MatchFormat>,
+    /// Each seat's **commander identity** (CR 903.3/903.4, issue #553): the
+    /// commander's display name and color identity, one entry per player who
+    /// designated one — see [`CommanderIdentity`]. Keyed to the designation, so it
+    /// is **stable for the whole game** and does not change when the commander is
+    /// cast, dies, is exiled, or returns to the command zone; the `command` pile,
+    /// the only previous source, disappears the moment the commander leaves it.
+    /// **Public information**, so every receiver and every spectator sees the same
+    /// list. Additive: omitted (and defaults to empty) for a non-commander game.
+    /// Server-computed; never derived by the client.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commander_identity: Vec<CommanderIdentity>,
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic)] // panics are the failure signal in tests
-mod tests {
-    use std::collections::BTreeMap;
-
-    use crate::*;
-
-    #[test]
-    fn issue_264_game_view_stops_and_auto_passed_round_trip_and_elide() {
-        // `stops` and `auto_passed` ride the view; both elide from the wire at their
-        // defaults (empty / false) and round-trip when present.
-        let mut view = GameView {
-            you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::Upkeep,
-            turn: 1,
-            active_player: "p0".into(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: Some("p0".into()),
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: vec![],
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-        };
-        // Defaults elide.
-        let json = serde_json::to_value(&view).unwrap();
-        assert!(json.get("stops").is_none());
-        assert!(json.get("auto_passed").is_none());
-
-        // Present values round-trip.
-        view.stops = vec![Phase::Upkeep, Phase::PostcombatMain];
-        view.auto_passed = true;
-        let json = serde_json::to_value(&view).unwrap();
-        assert_eq!(
-            json["stops"],
-            serde_json::json!(["upkeep", "postcombat_main"])
-        );
-        assert_eq!(json["auto_passed"], serde_json::json!(true));
-        let back: GameView = serde_json::from_value(json).unwrap();
-        assert_eq!(back, view);
-
-        // An older server that omits both still deserializes to the defaults.
-        let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
-        assert!(legacy.stops.is_empty());
-        assert!(!legacy.auto_passed);
-    }
-
-    #[test]
-    fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
-        // The multiplayer contract fields — a permanent's `attacking_player`, an
-        // opponent's `eliminated`, and the view's `seat_order` — round-trip and elide
-        // from the wire at their two-player defaults, so an older-shaped view renders
-        // exactly as today.
-        let card: CardView =
-            serde_json::from_str(r#"{"id":"perm_1","name":"Raider","type_line":"Creature — Orc"}"#)
-                .unwrap();
-        let attacker = Permanent {
-            id: "perm_1".into(),
-            controller: "p0".into(),
-            owner: "p0".into(),
-            card,
-            tapped: false,
-            attacking: true,
-            attacking_player: Some("p2".into()),
-            blocking: None,
-            damage: 0,
-            attached_to: None,
-            counters: vec![],
-        };
-        let json = serde_json::to_value(&attacker).unwrap();
-        assert_eq!(json["attacking_player"], serde_json::json!("p2"));
-        assert_eq!(serde_json::from_value::<Permanent>(json).unwrap(), attacker);
-
-        // A not-attacking permanent omits `attacking_player`.
-        let idle = Permanent {
-            attacking: false,
-            attacking_player: None,
-            ..attacker.clone()
-        };
-        assert!(serde_json::to_value(&idle)
-            .unwrap()
-            .get("attacking_player")
-            .is_none());
-
-        // `eliminated` rides the opponent and elides when false.
-        let out = OpponentView {
-            player_id: "p1".into(),
-            hand_size: 0,
-            life: 0,
-            library_size: 0,
-            graveyard_size: 0,
-            statuses: vec![],
-            eliminated: true,
-        };
-        assert_eq!(serde_json::to_value(&out).unwrap()["eliminated"], true);
-        let alive = OpponentView {
-            eliminated: false,
-            ..out.clone()
-        };
-        assert!(serde_json::to_value(&alive)
-            .unwrap()
-            .get("eliminated")
-            .is_none());
-
-        // An older opponent/permanent that omits the new fields deserializes to the
-        // two-player defaults.
-        let legacy_perm: Permanent = serde_json::from_str(
-            r#"{"id":"perm_1","controller":"p0","owner":"p0","card":{"id":"perm_1","name":"","type_line":""},"attacking":true}"#,
-        )
-        .unwrap();
-        assert!(legacy_perm.attacking_player.is_none());
-        let legacy_opp: OpponentView = serde_json::from_str(
-            r#"{"player_id":"p1","hand_size":0,"life":0,"library_size":0,"graveyard_size":0}"#,
-        )
-        .unwrap();
-        assert!(!legacy_opp.eliminated);
-    }
-
-    #[test]
-    fn game_view_round_trips_through_json() {
-        let view = GameView {
-            you: "p1".into(),
-            my_hand: vec![CardView {
-                id: "c1".into(),
-                name: "Llanowar Elves".into(),
-                type_line: "Creature — Elf Druid".into(),
-                mana_cost: Some("{G}".into()),
-                rules_text: "{T}: Add {G}.".into(),
-                functional_id: "llanowar_elves".into(),
-                power: Some("1".into()),
-                toughness: Some("1".into()),
-                keywords: vec![],
-            }],
-            me: SelfView {
-                life: 18,
-                library_size: 52,
-            },
-            opponents: vec![OpponentView {
-                player_id: "p2".into(),
-                hand_size: 7,
-                life: 20,
-                library_size: 53,
-                graveyard_size: 0,
-                statuses: vec!["monarch".into()],
-                eliminated: false,
-            }],
-            battlefield: vec![Permanent {
-                id: "perm_xyz".into(),
-                controller: "p1".into(),
-                owner: "p1".into(),
-                card: CardView {
-                    id: "perm_xyz".into(),
-                    name: "Grizzly Bears".into(),
-                    type_line: "Creature — Bear".into(),
-                    mana_cost: Some("{1}{G}".into()),
-                    rules_text: String::new(),
-                    functional_id: String::new(),
-                    power: Some("2".into()),
-                    toughness: Some("2".into()),
-                    keywords: vec!["flying".into()],
-                },
-                tapped: true,
-                attacking: false,
-                attacking_player: None,
-                blocking: None,
-                damage: 0,
-                attached_to: None,
-                counters: vec![Counter {
-                    kind: "+1/+1".into(),
-                    count: 2,
-                }],
-            }],
-            stack: vec![StackItem {
-                id: "s1".into(),
-                controller: "p2".into(),
-                description: "Lightning Bolt".into(),
-                source: None,
-            }],
-            graveyards: vec![ZonePile {
-                player_id: "p1".into(),
-                cards: vec![],
-            }],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::PrecombatMain,
-            turn: 3,
-            active_player: "p1".into(),
-            seat_order: Vec::new(),
-            mana_pool: vec!["{G}".into()],
-            priority_player: Some("p1".into()),
-            valid_actions: vec![ValidAction {
-                mana_ability: false,
-                id: "a2".into(),
-                kind: "activate_ability".into(),
-                label: "Tap for mana".into(),
-                subject: vec!["perm_xyz".into()],
-                requirements: vec![],
-                prompts: vec![],
-                token: "h:00ab".into(),
-            }],
-            action_deadline: Some(12.5),
-            result: None,
-            log: vec![GameLogEntry {
-                sequence: 41,
-                event: GameLogEvent::CardsDrawn {
-                    player: "p1".into(),
-                    count: 1,
-                },
-            }],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            // Commander combat damage (issue #371): a public per-commander tally.
-            commander_damage: vec![CommanderDamage {
-                commander: "p2".into(),
-                damaged: "p1".into(),
-                amount: 14,
-            }],
-            commander_tax: Vec::new(),
-        };
-
-        let json = serde_json::to_string(&view).unwrap();
-        let back: GameView = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, view);
-        // The receiver's own stats survive the round trip (issue #255).
-        assert_eq!(back.me.life, 18);
-        assert_eq!(back.me.library_size, 52);
-        // The commander-damage tally round-trips (issue #371).
-        assert_eq!(back.commander_damage[0].amount, 14);
-    }
-
-    #[test]
-    fn issue_372_command_zone_and_tax_round_trip_and_elide_when_empty() {
-        // The command zone (CR 903.6) rides the same public `ZonePile` shape as
-        // graveyards/exile, and the commander tax (CR 903.8) rides its own additive
-        // list; both are omitted from the wire for a non-commander game.
-        let tax = CommanderTax {
-            commander: "p1".into(),
-            casts: 2,
-            tax: 4,
-        };
-        let json = serde_json::to_value(&tax).unwrap();
-        assert_eq!(json["commander"], "p1");
-        assert_eq!(json["casts"], 2);
-        assert_eq!(json["tax"], 4);
-        let back: CommanderTax = serde_json::from_value(json).unwrap();
-        assert_eq!(back, tax);
-
-        // A minimal view carries neither the command zone nor the tax.
-        let view: GameView =
-            serde_json::from_str(r#"{"you":"p0","phase":"precombat_main"}"#).unwrap();
-        assert!(view.command.is_empty());
-        assert!(view.commander_tax.is_empty());
-        let round = serde_json::to_value(&view).unwrap();
-        assert!(round.get("command").is_none());
-        assert!(round.get("commander_tax").is_none());
-
-        // A zero tax elides `casts`/`tax` but the entry (its presence) still marks a
-        // commander in play.
-        let zero = serde_json::to_value(CommanderTax {
-            commander: "p0".into(),
-            casts: 0,
-            tax: 0,
-        })
-        .unwrap();
-        assert_eq!(zero, serde_json::json!({ "commander": "p0" }));
-    }
-
-    #[test]
-    fn issue_372_command_zone_pile_round_trips_with_its_commander() {
-        // A populated command zone (CR 903.6) carries a public `ZonePile` per player,
-        // exactly like graveyards/exile: its commander card round-trips verbatim under
-        // the `command` key. (The elide-when-empty case is covered above; this is the
-        // populated round-trip the field previously lacked.)
-        let mut view: GameView =
-            serde_json::from_str(r#"{"you":"p0","phase":"precombat_main"}"#).unwrap();
-        view.command = vec![ZonePile {
-            player_id: "p0".into(),
-            cards: vec![CardView {
-                id: "c9".into(),
-                name: "Jedit Ojanen".into(),
-                type_line: "Legendary Creature — Cat Warrior".into(),
-                mana_cost: Some("{4}{G}{G}".into()),
-                rules_text: String::new(),
-                functional_id: "jedit_ojanen".into(),
-                power: Some("5".into()),
-                toughness: Some("5".into()),
-                keywords: vec![],
-            }],
-        }];
-        let json = serde_json::to_value(&view).unwrap();
-        // The populated zone rides the wire under `command`, one pile per player.
-        assert_eq!(json["command"][0]["player_id"], "p0");
-        assert_eq!(
-            json["command"][0]["cards"][0]["functional_id"],
-            "jedit_ojanen"
-        );
-        let back: GameView = serde_json::from_value(json).unwrap();
-        assert_eq!(back.command, view.command);
-        assert_eq!(back, view);
-    }
-
-    #[test]
-    fn empty_game_view_round_trips() {
-        let view = GameView {
-            you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::Upkeep,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-        };
-        let json = serde_json::to_string(&view).unwrap();
-        let back: GameView = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, view);
-    }
-
-    #[test]
-    fn mana_pool_is_omitted_when_empty_and_round_trips_when_present() {
-        let mut view = GameView {
-            you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::PrecombatMain,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-        };
-        // Empty pool is elided from the wire.
-        let json = serde_json::to_value(&view).unwrap();
-        assert!(json.get("mana_pool").is_none());
-
-        // A non-empty pool round-trips as a list of pip strings.
-        view.mana_pool = vec!["{G}".into(), "{G}".into()];
-        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
-        assert_eq!(back.mana_pool, vec!["{G}".to_string(), "{G}".to_string()]);
-    }
-
-    #[test]
-    fn canonical_fixture_round_trips_and_matches_typed_fields() {
-        // Single-sourced cross-language contract fixture (issue #56): this exact
-        // JSON is also consumed by the web client's `wire.test.ts`. A field
-        // renamed, retyped, or removed in this crate without updating the fixture
-        // fails to deserialize (or mismatches an assertion) here — the same drift
-        // the same-PR discipline used to catch by convention alone.
-        let json = include_str!("../fixtures/gameview.json");
-        let view: GameView = serde_json::from_str(json).unwrap();
-
-        // Round-trips through serde JSON without loss.
-        let reencoded = serde_json::to_string(&view).unwrap();
-        let back: GameView = serde_json::from_str(&reencoded).unwrap();
-        assert_eq!(back, view);
-
-        // Load-bearing typed fields: a rename/retype in the structs breaks one of
-        // these (or the deserialize above) rather than passing silently.
-        assert_eq!(view.you, "p1");
-        assert_eq!(view.phase, Phase::PrecombatMain);
-        assert_eq!(view.turn, 3);
-        assert_eq!(view.active_player, "p1");
-        assert_eq!(view.mana_pool, vec!["{G}".to_string(), "{G}".to_string()]);
-        assert_eq!(view.priority_player.as_deref(), Some("p1"));
-        assert_eq!(view.action_deadline, Some(12.5));
-
-        // Populated hand: creature carries P/T, the land omits them.
-        assert_eq!(
-            view.my_hand
-                .iter()
-                .map(|c| c.id.as_str())
-                .collect::<Vec<_>>(),
-            ["c1", "c2", "c3"]
-        );
-        assert_eq!(view.my_hand[0].power.as_deref(), Some("1"));
-        assert_eq!(view.my_hand[1].power, None);
-
-        // Opponent view redacts hidden zones to counts and carries statuses.
-        assert_eq!(view.opponents[0].hand_size, 7);
-        assert_eq!(view.opponents[0].statuses, vec!["monarch".to_string()]);
-
-        // Battlefield: a tapped permanent with a `+1/+1` counter and a
-        // planeswalker with a `loyalty` counter — exercising `Counter {kind, count}`.
-        let bear = &view.battlefield[0];
-        assert!(bear.tapped);
-        assert_eq!(
-            bear.counters,
-            vec![Counter {
-                kind: "+1/+1".into(),
-                count: 2,
-            }]
-        );
-        assert_eq!(view.battlefield[1].counters[0].kind, "loyalty");
-        assert_eq!(view.battlefield[1].counters[0].count, 5);
-        assert!(!view.battlefield[1].tapped);
-
-        // Stack: an ability carries its `source`; a spell does not.
-        assert_eq!(view.stack[0].source, None);
-        assert_eq!(view.stack[1].source.as_deref(), Some("perm_bear"));
-
-        // Public piles round-trip populated.
-        assert_eq!(view.graveyards[0].cards[0].id, "g1");
-        assert_eq!(view.exile[0].cards[0].id, "x1");
-
-        // Every valid-action kind emitted today is represented, in order.
-        assert_eq!(
-            view.valid_actions
-                .iter()
-                .map(|a| a.kind.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "pass_priority",
-                "play_land",
-                "cast_spell",
-                "activate_ability"
-            ]
-        );
-        // `pass_priority` is subject-less; the ability action names its permanent.
-        assert!(view.valid_actions[0].subject.is_empty());
-        assert_eq!(view.valid_actions[3].subject, vec!["perm_bear".to_string()]);
-    }
-
-    #[test]
-    fn unknown_fields_are_ignored() {
-        // Forward-compat invariant (docs/protocol.md): a newer server may add
-        // fields; older clients must still deserialize the message.
-        let json = r#"{ "phase": "draw", "some_future_field": 42 }"#;
-        let view: GameView = serde_json::from_str(json).unwrap();
-        assert_eq!(view.phase, Phase::Draw);
-        assert!(view.my_hand.is_empty());
-    }
-
-    #[test]
-    fn you_defaults_to_empty_when_absent() {
-        // Backward-compat: a payload from an older server omits `you`; it must
-        // still deserialize, defaulting the seat id to an empty string rather
-        // than failing the whole message.
-        let json = r#"{ "phase": "draw" }"#;
-        let view: GameView = serde_json::from_str(json).unwrap();
-        assert_eq!(view.you, "");
-    }
-
-    #[test]
-    fn game_view_result_is_omitted_while_live_and_round_trips_when_over() {
-        // Empty-optional convention: `result` is absent from the wire while the
-        // game is live, and round-trips (winner/losers/reason) once it is over.
-        let mut view = GameView {
-            you: "p0".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::End,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-        };
-        // Live game: the field elides entirely.
-        let json = serde_json::to_value(&view).unwrap();
-        assert!(json.get("result").is_none());
-
-        // Game over: winner p0, loser p1, decked. Round-trips losslessly.
-        view.result = Some(GameResult {
-            winner: Some("p0".into()),
-            losers: vec!["p1".into()],
-            reason: GameOverReason::Decked,
-        });
-        let json = serde_json::to_value(&view).unwrap();
-        assert_eq!(
-            json.get("result").unwrap(),
-            &serde_json::json!({
-                "winner": "p0",
-                "losers": ["p1"],
-                "reason": "decked"
-            })
-        );
-        let back: GameView = serde_json::from_value(json).unwrap();
-        assert_eq!(back, view);
-
-        // A draw omits the winner but still round-trips.
-        view.result = Some(GameResult {
-            winner: None,
-            losers: vec!["p0".into(), "p1".into()],
-            reason: GameOverReason::LifeZero,
-        });
-        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
-        assert_eq!(back, view);
-        assert!(back.result.unwrap().winner.is_none());
-    }
-
-    #[test]
-    fn game_view_serializes_you_on_the_wire() {
-        let view = GameView {
-            you: "p1".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::Upkeep,
-            turn: 0,
-            active_player: String::new(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-        };
-        let json = serde_json::to_value(&view).unwrap();
-        // The receiver's own seat id is always present on the wire (like `phase`),
-        // not elided the way empty collections are.
-        assert_eq!(json.get("you"), Some(&serde_json::json!("p1")));
-        let back: GameView = serde_json::from_value(json).unwrap();
-        assert_eq!(back.you, "p1");
-    }
-
-    #[test]
-    fn game_view_player_names_round_trip_and_elide_when_empty() {
-        // Issue #294: the per-player name map lets any in-game surface label a player;
-        // it round-trips as a JSON object and elides from the wire when empty. An older
-        // server that omits it deserializes to an empty map (backward compatibility).
-        let mut view = GameView {
-            you: "p1".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::Upkeep,
-            turn: 1,
-            active_player: "p1".into(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-        };
-        // Empty map elides from the wire.
-        assert!(serde_json::to_value(&view)
-            .unwrap()
-            .get("player_names")
-            .is_none());
-
-        // Populated: names keyed by player id survive the round trip.
-        view.player_names.insert("p1".into(), "Alice".into());
-        view.player_names.insert("p2".into(), "Bob".into());
-        let json = serde_json::to_value(&view).unwrap();
-        assert_eq!(
-            json.get("player_names"),
-            Some(&serde_json::json!({ "p1": "Alice", "p2": "Bob" }))
-        );
-        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
-        assert_eq!(back, view);
-
-        // A payload from an older server that omits the field defaults to an empty map.
-        let legacy: GameView = serde_json::from_str(r#"{"you":"p1","phase":"upkeep"}"#).unwrap();
-        assert!(legacy.player_names.is_empty());
-    }
-
-    #[test]
-    fn issue_265_action_rejected_flag_round_trips_and_elides_when_false() {
-        // The rejected-action feedback flag is a transient, per-receiver advisory
-        // (like `auto_passed`): it appears on the wire only on the one view answering a
-        // rejection, and an older server that never sends it deserializes to `false`.
-        let mut view = GameView {
-            you: "p1".into(),
-            my_hand: vec![],
-            me: SelfView::default(),
-            opponents: vec![],
-            battlefield: vec![],
-            stack: vec![],
-            graveyards: vec![],
-            exile: vec![],
-            command: vec![],
-            phase: Phase::Upkeep,
-            turn: 1,
-            active_player: "p1".into(),
-            seat_order: Vec::new(),
-            mana_pool: vec![],
-            priority_player: None,
-            valid_actions: vec![],
-            action_deadline: None,
-            result: None,
-            log: vec![],
-            stops: Vec::new(),
-            auto_passed: false,
-            action_rejected: false,
-            player_names: BTreeMap::new(),
-            commander_damage: Vec::new(),
-            commander_tax: Vec::new(),
-        };
-        // Not rejected: the field elides from the wire (the common case).
-        assert!(serde_json::to_value(&view)
-            .unwrap()
-            .get("action_rejected")
-            .is_none());
-
-        // Rejected: the flag serializes and survives the round trip.
-        view.action_rejected = true;
-        let json = serde_json::to_value(&view).unwrap();
-        assert_eq!(json.get("action_rejected"), Some(&serde_json::json!(true)));
-        let back: GameView = serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
-        assert_eq!(back, view);
-        assert!(back.action_rejected);
-
-        // A payload from an older server that omits the field defaults to `false`.
-        let legacy: GameView = serde_json::from_str(r#"{"you":"p1","phase":"upkeep"}"#).unwrap();
-        assert!(!legacy.action_rejected);
-    }
-}
+mod tests;

@@ -184,6 +184,54 @@ pub(crate) fn commander_tax_view(state: &GameState) -> Vec<CommanderTaxView> {
         .collect()
 }
 
+/// Project each designated commander's **identity** (CR 903.3/903.4, issue #553)
+/// onto the wire [`CommanderIdentityView`]: its display name and its color identity
+/// in WUBRG order.
+///
+/// One entry per player that has a commander designation, named by that player's
+/// `p{N}` id — the same designation key [`commander_tax_view`] uses — so the entry
+/// is **stable for the whole game** and unaffected by where the commander currently
+/// is. That is the whole point: the `command` pile, previously the only source of a
+/// commander's name and colors, vanishes the moment the commander is cast.
+///
+/// The color identity comes from [`crate::format::color_identity`], the same
+/// structured-data computation that validated the deck (ADR 0013 §4), so what a
+/// client renders can never disagree with what the format enforced. **Public
+/// information** — a commander is announced before the game — so seated and
+/// spectator views carry it verbatim.
+pub(crate) fn commander_identity_view(
+    state: &GameState,
+    db: &CardDatabase,
+) -> Vec<CommanderIdentityView> {
+    state
+        .players
+        .iter()
+        .enumerate()
+        .filter_map(|(seat, player)| {
+            player.commander.map(|commander| {
+                let identity = crate::format::color_identity(db, commander.card);
+                CommanderIdentityView {
+                    commander: player_id(PlayerId(seat)),
+                    name: card_name(commander.card, db),
+                    // Canonical WUBRG order, so two projections of the same identity
+                    // are byte-identical and a client never has to sort.
+                    color_identity: [
+                        (Color::White, ColorView::White),
+                        (Color::Blue, ColorView::Blue),
+                        (Color::Black, ColorView::Black),
+                        (Color::Red, ColorView::Red),
+                        (Color::Green, ColorView::Green),
+                    ]
+                    .into_iter()
+                    .filter(|(engine, _)| identity.contains(engine))
+                    .map(|(_, wire)| wire)
+                    .collect(),
+                }
+            })
+        })
+        .collect()
+}
+
 /// Project the engine's terminal [`GameResult`] onto the wire [`GameResultView`],
 /// naming each seat by its `p{N}` id (CR 104.2a). Pure translation, no game logic.
 pub(crate) fn result_view(result: GameResult) -> GameResultView {

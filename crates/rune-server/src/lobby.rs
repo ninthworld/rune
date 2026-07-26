@@ -88,9 +88,9 @@ use rune_engine::{
     CardDatabase, CardId, CatalogError, FunctionalId, GameSetup, GameState, PlayerSetup,
 };
 use rune_protocol::{
-    AddAi, CatalogView, CreateRoom, JoinRoom, LobbyCommand, LobbyView, PlayerId, Ready, RemoveAi,
-    RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken, SetName,
-    SpectateRoom, SubmitDeck,
+    AddAi, CatalogView, CreateRoom, JoinRoom, LobbyCommand, LobbyView, MatchFormat, PlayerId,
+    Ready, RemoveAi, RoomConfig, RoomId, RoomState, RoomSummary, RoomView, SeatView, SessionToken,
+    SetName, SpectateRoom, SubmitDeck,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{watch, RwLock};

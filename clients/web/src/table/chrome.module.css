@@ -2935,6 +2935,45 @@ button.summaryTile:focus-visible {
   gap: var(--rune-space-4);
 }
 
+/* The numeric prompt's control row (issue #554): steppers flanking an exact-entry
+ * field, with a slider beneath. Steppers keep the 44px touch minimum. */
+.numberPromptRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--rune-space-3);
+}
+.numberPromptStep {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: var(--rune-radius-sm);
+  border: 1px solid var(--rune-border);
+  background: var(--rune-raised-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-body-lg);
+  cursor: pointer;
+}
+.numberPromptStep:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.numberPromptField {
+  min-height: 44px;
+  width: 5.5rem;
+  text-align: center;
+  border-radius: var(--rune-radius-sm);
+  border: 1px solid var(--rune-border);
+  background: var(--rune-panel-bg);
+  color: var(--rune-text);
+  font-size: var(--rune-type-body-lg);
+  font-variant-numeric: tabular-nums;
+}
+.numberPromptSlider {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--rune-targeting);
+}
+
 /* Condensed zone piles inside an opponent panel's edge column: the pile stack
  * must fit the panel height, so faces shrink and the zone names drop (the pile's
  * aria-label still names the zone); every pile keeps its ≥44px touch target. */

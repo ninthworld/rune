@@ -1,0 +1,112 @@
+{
+  "you": "p0",
+  "me": {
+    "life": 20,
+    "library_size": 51
+  },
+  "opponents": [
+    {
+      "player_id": "p1",
+      "hand_size": 6,
+      "life": 18,
+      "library_size": 52,
+      "graveyard_size": 1
+    }
+  ],
+  "my_hand": [
+    {
+      "id": "c_forest",
+      "name": "Forest",
+      "type_line": "Basic Land — Forest",
+      "functional_id": "forest"
+    },
+    {
+      "id": "c_fireball",
+      "name": "Emberfall Surge",
+      "type_line": "Sorcery",
+      "mana_cost": "{X}{R}",
+      "rules_text": "Emberfall Surge deals X damage to any target.",
+      "functional_id": "emberfall_surge"
+    }
+  ],
+  "battlefield": [
+    {
+      "id": "perm_elves",
+      "controller": "p0",
+      "owner": "p0",
+      "card": {
+        "id": "perm_elves",
+        "name": "Llanowar Elves",
+        "type_line": "Creature — Elf Druid",
+        "mana_cost": "{G}",
+        "power": "1",
+        "toughness": "1",
+        "rules_text": "{T}: Add {G}.",
+        "functional_id": "llanowar_elves"
+      }
+    }
+  ],
+  "stack": [
+    {
+      "id": "s1",
+      "controller": "p1",
+      "description": "Quickfire Bolt"
+    }
+  ],
+  "phase": "precombat_main",
+  "turn": 4,
+  "active_player": "p0",
+  "seat_order": ["p0", "p1"],
+  "priority_player": "p0",
+  "valid_actions": [
+    {
+      "id": "a0",
+      "type": "pass_priority",
+      "label": "Resolve"
+    },
+    {
+      "id": "a1",
+      "type": "play_land",
+      "label": "Play Forest",
+      "subject": ["c_forest"],
+      "destinations": [{ "type": "zone", "id": "battlefield", "label": "Battlefield" }],
+      "token": "t0000000000000a1"
+    },
+    {
+      "id": "a2",
+      "type": "cast_spell",
+      "label": "Cast Emberfall Surge",
+      "subject": ["c_fireball"],
+      "requirements": [
+        {
+          "slot": "t0",
+          "prompt": "Target creature or player",
+          "candidates": ["perm_elves", "p1"]
+        }
+      ],
+      "prompts": [
+        {
+          "kind": "number",
+          "slot": "x",
+          "prompt": "Choose a value for X",
+          "min": 0,
+          "max": 3
+        }
+      ],
+      "destinations": [{ "type": "zone", "id": "stack", "label": "Stack" }],
+      "token": "t0000000000000a2"
+    },
+    {
+      "id": "a3",
+      "type": "activate_ability",
+      "label": "{T}: Add {G}.",
+      "subject": ["perm_elves"],
+      "mana_ability": true,
+      "token": "t0000000000000a3"
+    }
+  ],
+  "action_ack": {
+    "submission": "s:17",
+    "accepted": true
+  }
+}

@@ -263,6 +263,7 @@ mod tests {
         );
 
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: declare.id.clone(),
             token: declare.token.clone(),
             targets: vec![TargetChoice {
@@ -285,6 +286,7 @@ mod tests {
         // Declaring no attackers stays legal: the token-bound answer with an empty
         // selection resolves to an empty declaration (optional multi-select).
         let none = ChooseAction {
+            submission: String::new(),
             action_id: declare.id.clone(),
             token: declare.token.clone(),
             targets: Vec::new(),
@@ -341,6 +343,7 @@ mod tests {
         );
 
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: declare.id.clone(),
             token: declare.token.clone(),
             targets: vec![TargetChoice {
@@ -390,6 +393,7 @@ mod tests {
         );
 
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: activate.id.clone(),
             token: activate.token.clone(),
             targets: vec![TargetChoice {
@@ -410,6 +414,7 @@ mod tests {
 
         // A target outside the advertised candidates (the Tapper itself) is rejected.
         let illegal = ChooseAction {
+            submission: String::new(),
             action_id: activate.id.clone(),
             token: activate.token.clone(),
             targets: vec![TargetChoice {
@@ -513,6 +518,7 @@ mod tests {
         assert_eq!(items.len(), 2, "both blockers are orderable");
 
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: order.id.clone(),
             token: order.token.clone(),
             targets: vec![TargetChoice {
@@ -572,6 +578,7 @@ mod tests {
 
         // A returned declaration pairing the attacker with seat 2 binds that defender.
         let choose = ChooseAction {
+            submission: String::new(),
             action_id: declare.id.clone(),
             token: declare.token.clone(),
             targets: vec![

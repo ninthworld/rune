@@ -170,4 +170,11 @@ export const SAMPLE_GAME_VIEW: GameView = {
   commander_damage: [],
   // No commander tax in the sample frame; normalization defaults it to `[]` (issue #372).
   commander_tax: [],
+  // No format signal in the sample frame: normalization leaves it `undefined`, which
+  // reads as "unknown format, not Commander" (issue #553).
+  format: undefined,
+  // No commander designations either; normalization defaults the list to `[]` (#553).
+  commander_identity: [],
+  // The sample frame answers no submission, so it carries no ack (issue #554).
+  action_ack: undefined,
 };

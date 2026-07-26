@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{EntityId, PlayerId};
+use crate::{ActionDestination, EntityId, PlayerId};
 
 /// One entry of [`GameView::valid_actions`]. The client renders these; it never
 /// invents its own. `subject` names the entities this action belongs to so the
@@ -62,6 +62,20 @@ pub struct ValidAction {
     /// Omitted from the wire when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prompts: Vec<Prompt>,
+    /// The server-authoritative **destinations** this action may be taken to (issue
+    /// #554) — see [`ActionDestination`]. The complete set of drop regions a
+    /// direct-manipulation gesture may offer for this action, and the *only* source
+    /// of them: a client derives its drop targets from this list alone and **fails
+    /// closed**, offering no drop target at all for an action that names none.
+    ///
+    /// Deliberately separate from [`subject`](Self::subject), which names what the
+    /// action belongs *to* (the card it renders on); this names where it goes.
+    /// Omitted from the wire when empty, which is the common case — most actions
+    /// (passing, conceding, a mana ability) are a click, not a drag, and a client
+    /// that ignores this field loses nothing, since drag is optional input and every
+    /// action stays reachable by click, keyboard, and touch.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub destinations: Vec<ActionDestination>,
     /// Content-binding token: a server-issued value bound to this action's exact
     /// content (kind + subject + requirements + prompts). The client echoes it verbatim in
     /// [`ChooseAction::token`]; the server recomputes it from the freshly
@@ -125,6 +139,8 @@ pub struct PromptOption {
 ///   discard-to-max, mulligan bottoming, future tutors).
 /// - [`Prompt::Order`] — arrange N items into an order (ordering simultaneous
 ///   triggers, scry).
+/// - [`Prompt::Number`] — choose a number in a server-stated range (the value of
+///   X, how much of a divided effect goes where).
 ///
 /// Every shape shares the same discipline as a target requirement: the server
 /// enumerates the only legal choices, the client renders them and derives nothing,
@@ -181,6 +197,34 @@ pub enum Prompt {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         items: Vec<EntityId>,
     },
+    /// Choose a **number** within the server-stated inclusive range
+    /// [`min`](Prompt::Number::min)..=[`max`](Prompt::Number::max) — the value of X
+    /// in a cost, how many counters to remove, how much of a divided effect goes to
+    /// one recipient (issue #554).
+    ///
+    /// The slot is answered with the chosen number rendered as a decimal string, as
+    /// the single entry of [`TargetChoice::chosen`] (e.g. `["3"]`). It shares
+    /// [`TargetChoice`] with every other slot kind rather than adding a parallel
+    /// numeric answer channel, so one atomic [`ChooseAction`] still answers a whole
+    /// action and the content [`token`](ValidAction::token) still binds every slot.
+    ///
+    /// **The bounds are the server's**, computed from available mana, the source's
+    /// text, and the game state; the client offers a control over exactly this range
+    /// and computes no affordability of its own. A *divided* value is posed as one
+    /// `number` slot per recipient, each with its own bounds, and the server
+    /// validates the total on resolution — the client never enforces a sum.
+    Number {
+        /// Stable slot id the client echoes back as [`TargetChoice::slot`].
+        slot: String,
+        /// Human-readable prompt describing what the number means, e.g. `"Choose a
+        /// value for X"`.
+        prompt: String,
+        /// The smallest legal value, inclusive. Often `0` (X may be zero); always
+        /// serialized, so the range reads completely rather than by inference.
+        min: u32,
+        /// The largest legal value, inclusive. Always serialized.
+        max: u32,
+    },
 }
 
 #[cfg(test)]
@@ -198,6 +242,7 @@ mod tests {
             subject: vec![],
             requirements: vec![],
             prompts: vec![],
+            destinations: vec![],
             token: String::new(),
         };
         let json = serde_json::to_value(&pass).unwrap();
@@ -219,6 +264,7 @@ mod tests {
             subject: vec!["perm_1".into()],
             requirements: vec![],
             prompts: vec![],
+            destinations: vec![],
             token: "h:1".into(),
         };
         let json = serde_json::to_value(&tap).unwrap();
@@ -250,6 +296,7 @@ mod tests {
                 candidates: vec!["perm_bear".into(), "p1".into(), "p2".into()],
             }],
             prompts: vec![],
+            destinations: vec![],
             token: "h:9f2c".into(),
         };
         let json = serde_json::to_value(&bolt).unwrap();
@@ -373,6 +420,131 @@ mod tests {
     }
 
     #[test]
+    fn issue_554_number_prompt_round_trips_and_tags_its_kind() {
+        // `number` (X, a divided value): a slot carrying the server's inclusive
+        // bounds, answered with the chosen value as a decimal string in the same
+        // `TargetChoice` shape every other slot kind uses.
+        let prompt = Prompt::Number {
+            slot: "x".into(),
+            prompt: "Choose a value for X".into(),
+            min: 0,
+            max: 4,
+        };
+        let json = serde_json::to_value(&prompt).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "kind": "number",
+                "slot": "x",
+                "prompt": "Choose a value for X",
+                "min": 0,
+                "max": 4
+            })
+        );
+        assert_eq!(serde_json::from_value::<Prompt>(json).unwrap(), prompt);
+
+        // Both bounds always ride the wire — a zero `min` is not elided, so the range
+        // reads completely rather than by inference.
+        let one_only = serde_json::to_value(Prompt::Number {
+            slot: "n".into(),
+            prompt: "How many?".into(),
+            min: 1,
+            max: 1,
+        })
+        .unwrap();
+        assert_eq!(one_only["min"], 1);
+        assert_eq!(one_only["max"], 1);
+
+        // The answer is the numeral as a string, in the shared slot-answer shape.
+        let answer = TargetChoice {
+            slot: "x".into(),
+            chosen: vec!["3".into()],
+        };
+        assert_eq!(
+            serde_json::to_value(&answer).unwrap(),
+            serde_json::json!({ "slot": "x", "chosen": ["3"] })
+        );
+    }
+
+    #[test]
+    fn issue_554_destinations_ride_the_action_and_elide_when_it_names_none() {
+        // A cast names the stack; the client derives its drop region from this alone.
+        let cast = ValidAction {
+            id: "a3".into(),
+            kind: "cast_spell".into(),
+            label: "Cast Lightning Bolt".into(),
+            subject: vec!["c3".into()],
+            destinations: vec![ActionDestination {
+                kind: "zone".into(),
+                id: "stack".into(),
+                owner: String::new(),
+                label: "Stack".into(),
+            }],
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&cast).unwrap();
+        assert_eq!(
+            json["destinations"],
+            serde_json::json!([{ "type": "zone", "id": "stack", "label": "Stack" }])
+        );
+        assert_eq!(serde_json::from_value::<ValidAction>(json).unwrap(), cast);
+
+        // An action with nowhere to go elides the field entirely, so a client has no
+        // drop target at all for it — the fail-closed default.
+        let pass = ValidAction {
+            id: "a1".into(),
+            kind: "pass_priority".into(),
+            label: "Pass".into(),
+            ..Default::default()
+        };
+        assert!(serde_json::to_value(&pass)
+            .unwrap()
+            .get("destinations")
+            .is_none());
+
+        // A payload from a server that predates the field decodes to no destinations,
+        // which reads the same way: no drop target.
+        let legacy: ValidAction =
+            serde_json::from_str(r#"{ "id": "a1", "type": "pass_priority", "label": "Pass" }"#)
+                .unwrap();
+        assert!(legacy.destinations.is_empty());
+    }
+
+    #[test]
+    fn issue_554_submission_correlates_an_answer_with_its_acknowledgement() {
+        // The client puts an opaque id on the message...
+        let msg = ChooseAction {
+            action_id: "a2".into(),
+            submission: "s:17".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&msg).unwrap(),
+            serde_json::json!({ "action_id": "a2", "submission": "s:17" })
+        );
+
+        // ...and the server echoes it back verbatim, with its verdict.
+        let ack = ActionAck {
+            submission: "s:17".into(),
+            accepted: true,
+        };
+        assert_eq!(ack.submission, msg.submission);
+
+        // A client that does not correlate sends exactly the message it always sent,
+        // and an older client's message still decodes (to no correlation id).
+        let plain = ChooseAction {
+            action_id: "a2".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_value(&plain).unwrap(),
+            serde_json::json!({ "action_id": "a2" })
+        );
+        let legacy: ChooseAction = serde_json::from_str(r#"{"action_id":"a2"}"#).unwrap();
+        assert!(legacy.submission.is_empty());
+    }
+
+    #[test]
     fn valid_action_carries_prompts_and_is_answered_by_target_choice() {
         // A prompt-bearing action rides on `valid_actions` exactly like a targeted
         // one: it carries its prompt slots and a content-binding token, and the client
@@ -410,6 +582,7 @@ mod tests {
                     candidates: vec!["card_1".into(), "card_2".into()],
                 },
             ],
+            destinations: vec![],
             token: "t0123456789abcdef".into(),
         };
         let json = serde_json::to_value(&action).unwrap();
@@ -425,6 +598,7 @@ mod tests {
 
         // The answer keys each slot with a `TargetChoice` (option id + selected ids).
         let answer = ChooseAction {
+            submission: String::new(),
             action_id: "a0".into(),
             token: "t0123456789abcdef".into(),
             targets: vec![
