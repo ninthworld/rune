@@ -86,10 +86,7 @@
    * optional on a surface that publishes no frame at all (the inspect
    * popover), so each carries its inert default. */
   border: 0 solid transparent;
-  border-image-source: var(--plate-art-seam, none);
-  border-image-slice: var(--plate-art-seam-slice, 0);
-  border-image-width: var(--plate-seam-band, 0px);
-  border-image-repeat: stretch;
+  border-image: var(--plate-art-seam, none);
   z-index: 0;
 }
 

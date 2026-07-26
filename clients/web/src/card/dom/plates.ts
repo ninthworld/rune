@@ -52,62 +52,65 @@ const STATUS_STRIP = 'statusStrip';
 const PT_PLATE = 'ptPlate';
 const IDENTITY_WEAVE = 'identityWeave';
 
-/** A plate's `src` as a CSS `url()`, or `none` when the key is not shipped. */
-function source(key: string): string {
-  const plate = PRODUCTION_FRAME_PLATES[key];
-  return plate === undefined ? 'none' : `url(${plate.src})`;
-}
-
-/** A plate's nine-slice inset as a unitless `border-image-slice` value. */
-function slice(key: string): string {
-  return `${PRODUCTION_FRAME_PLATES[key]?.slice ?? 0}`;
-}
-
 /** A plate's band as a fraction of the card width `W`. */
 export function bandRatio(key: string): number {
   return PRODUCTION_FRAME_PLATES[key]?.band ?? 0;
 }
 
 /**
- * The tier-independent half: which plate each surface draws and how it is
- * sliced. Frozen once, exactly like `theme.ts`'s `MATERIAL` — the frame's
- * material is the same for every card at every identity.
+ * One plate as a complete `border-image` shorthand:
+ * `<source> <slice> [fill] / <width> [/ <outset>] stretch`.
+ *
+ * The band is written as `calc(var(--face-w) * ratio)` rather than resolved to
+ * px here, which is the whole reason this can be a **constant**. `--face-w` is
+ * already published per tier, so one frozen string serves every tier and the
+ * browser does the arithmetic — and the face's style attribute, which the plane
+ * reconciler rewrites on every view, grows by one property per surface instead
+ * of a source, a slice, and a band.
+ *
+ * That mattered more than it looks: publishing them separately added sixteen
+ * custom properties to every card and cost ~29% of the reconnect rebuild
+ * budget on a 120-permanent board, which CI caught at the boundary.
+ *
+ * A key that did not ship resolves to `none`, a valid `border-image` that draws
+ * nothing — an inert declaration rather than an invalid one that would drop the
+ * whole rule.
  */
-export const PLATE_MATERIAL: Readonly<Record<string, string>> = Object.freeze({
-  '--plate-frame-edge': source(FRAME_EDGE),
-  '--plate-frame-edge-slice': slice(FRAME_EDGE),
-  '--plate-art-seam': source(ART_SEAM),
-  '--plate-art-seam-slice': slice(ART_SEAM),
-  '--plate-header': source(HEADER_FIELD),
-  '--plate-info': source(INFO_STRIP),
-  '--plate-status': source(STATUS_STRIP),
-  '--plate-surface-slice': slice(HEADER_FIELD),
-  '--plate-pt': source(PT_PLATE),
-  '--plate-pt-slice': slice(PT_PLATE),
-  '--plate-identity': source(IDENTITY_WEAVE),
-});
-
-/** Round a resolved length to 2dp — enough for CSS, stable for snapshots. */
-function px(value: number): string {
-  return `${Math.round(value * 100) / 100}px`;
+function borderImage(key: string, { fill = false, outset = '' } = {}): string {
+  const plate = PRODUCTION_FRAME_PLATES[key];
+  if (plate === undefined) return 'none';
+  const band = `calc(var(--face-w) * ${plate.band})`;
+  const tail = outset === '' ? band : `${band} / ${outset}`;
+  return `url(${plate.src}) ${plate.slice}${fill ? ' fill' : ''} / ${tail} stretch`;
 }
 
 /**
- * The tier-dependent half: every plate's drawn band, resolved against this
- * tier's card width.
- *
- * `--plate-edge-band` is `RUNE_FRAME.ruleInset + RUNE_FRAME.rule` by
- * construction, so the frame-edge plate spans from the card's outer boundary to
- * the inner lip of the gold hairline and the card body takes over with no seam.
- * The remaining bands are the plates' own authored ratios.
+ * The identity material as a complete background **layer**, tile size included,
+ * for the same reason: one constant instead of an image plus a size.
  */
-export function plateGeometryVars(w: number): Record<string, string> {
-  const identity = PRODUCTION_FRAME_PLATES[IDENTITY_WEAVE];
-  return {
-    '--plate-edge-band': px(bandRatio(FRAME_EDGE) * w),
-    '--plate-seam-band': px(bandRatio(ART_SEAM) * w),
-    '--plate-surface-band': px(bandRatio(HEADER_FIELD) * w),
-    '--plate-pt-band': px(bandRatio(PT_PLATE) * w),
-    '--plate-identity-size': px((identity?.tile ?? 0.5) * w),
-  };
+function backgroundLayer(key: string): string {
+  const plate = PRODUCTION_FRAME_PLATES[key];
+  if (plate === undefined) return 'none';
+  const size = `calc(var(--face-w) * ${plate.tile ?? 0.5})`;
+  return `url(${plate.src}) 0 0 / ${size} ${size} repeat`;
 }
+
+/**
+ * Which plate each surface draws, complete. Frozen once, exactly like
+ * `theme.ts`'s `MATERIAL` — the frame's material is the same for every card at
+ * every identity, and nothing here varies by tier.
+ *
+ * The frame edge is the one entry with an outset: it is pushed back out to the
+ * card's own boundary by exactly the hairline inset, so its band —
+ * `ruleInset + rule` by construction — spans from the card edge to the inner
+ * lip of the hairline and the card body takes over with no seam.
+ */
+export const PLATE_MATERIAL: Readonly<Record<string, string>> = Object.freeze({
+  '--plate-frame-edge': borderImage(FRAME_EDGE, { outset: 'var(--rule-inset)' }),
+  '--plate-art-seam': borderImage(ART_SEAM),
+  '--plate-header': borderImage(HEADER_FIELD, { fill: true }),
+  '--plate-info': borderImage(INFO_STRIP, { fill: true }),
+  '--plate-status': borderImage(STATUS_STRIP, { fill: true }),
+  '--plate-pt': borderImage(PT_PLATE, { fill: true }),
+  '--plate-identity': backgroundLayer(IDENTITY_WEAVE),
+});

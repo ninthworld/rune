@@ -552,15 +552,187 @@ export function authoringScale(spec) {
  *
  * So the plates ship as PNG from the encoder below — in-process, no external
  * tool, no probing — and `framePlates.test.js` re-encodes every plate and
- * compares it byte-for-byte against the file in the tree. Regeneration is now a
+ * compares it byte-for-byte against the file in the tree. Regeneration is a
  * checked no-op rather than a promise. (ADR 0031 prefers WebP for raster and
  * allows PNG "where a consumer requires it"; the consumer here is the ledger's
- * own reproducibility claim. The whole set is still ~60 KB.)
+ * own reproducibility claim.)
  *
- * The one input this cannot pin is zlib itself. That is exactly why the
- * byte-equality test exists: a zlib whose output differs fails CI loudly
- * instead of silently rewriting seven committed assets.
+ * **Including the compressor.** The first attempt at this used
+ * `zlib.deflateSync` with every parameter pinned, and left the zlib build
+ * itself as a documented residual risk. CI then produced different bytes for
+ * the one RGBA plate on the first run — the residual risk is real, and a
+ * content hash that depends on the machine's zlib is not a content hash. So
+ * DEFLATE is implemented here too: fixed Huffman codes (RFC 1951 §3.2.6) over
+ * a greedy LZ77 with a bounded, fully specified match search. It gives up
+ * perhaps a fifth of zlib's ratio on these images and buys the only property
+ * that matters for a committed asset — the same input produces the same bytes,
+ * on every machine, forever.
  */
+
+/* ── A deterministic DEFLATE (RFC 1951, fixed Huffman) ────────────────────── */
+
+/** LSB-first bit sink, as DEFLATE streams are written. */
+class BitWriter {
+  constructor() {
+    this.bytes = [];
+    this.bit = 0;
+    this.acc = 0;
+  }
+
+  /** Write `count` bits of `value`, least-significant bit first. */
+  write(value, count) {
+    for (let i = 0; i < count; i += 1) {
+      this.acc |= ((value >> i) & 1) << this.bit;
+      this.bit += 1;
+      if (this.bit === 8) {
+        this.bytes.push(this.acc);
+        this.acc = 0;
+        this.bit = 0;
+      }
+    }
+  }
+
+  /** Write `count` bits of `value`, most-significant bit first (Huffman codes). */
+  writeCode(value, count) {
+    for (let i = count - 1; i >= 0; i -= 1) {
+      this.acc |= ((value >> i) & 1) << this.bit;
+      this.bit += 1;
+      if (this.bit === 8) {
+        this.bytes.push(this.acc);
+        this.acc = 0;
+        this.bit = 0;
+      }
+    }
+  }
+
+  finish() {
+    if (this.bit > 0) this.bytes.push(this.acc);
+    return Buffer.from(this.bytes);
+  }
+}
+
+/** The fixed literal/length code for a symbol (RFC 1951 §3.2.6). */
+function fixedLiteral(writer, symbol) {
+  if (symbol < 144) writer.writeCode(0x30 + symbol, 8);
+  else if (symbol < 256) writer.writeCode(0x190 + symbol - 144, 9);
+  else if (symbol < 280) writer.writeCode(symbol - 256, 7);
+  else writer.writeCode(0xc0 + symbol - 280, 8);
+}
+
+// Length codes 257..285 and distance codes 0..29, as the RFC tables define them.
+const LENGTH_BASE = [
+  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+  163, 195, 227, 258,
+];
+const LENGTH_EXTRA = [
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+const DIST_BASE = [
+  1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049,
+  3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const DIST_EXTRA = [
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+];
+
+function codeFor(bases, value) {
+  let index = bases.length - 1;
+  while (bases[index] > value) index -= 1;
+  return index;
+}
+
+function adler32(buffer) {
+  let a = 1;
+  let b = 0;
+  for (const byte of buffer) {
+    a = (a + byte) % 65521;
+    b = (b + a) % 65521;
+  }
+  return ((b << 16) | a) >>> 0;
+}
+
+/** How far back the match search looks, and how many candidates it tries. Both
+ * are part of the output, so they are constants of this format, not tuning. */
+const WINDOW = 32768;
+const MAX_MATCH = 258;
+const MIN_MATCH = 3;
+const MAX_CHAIN = 128;
+
+/**
+ * Compress to a zlib stream with fixed Huffman codes and greedy LZ77 matching.
+ *
+ * Deliberately simple: one pass, greedy (never lazy) matching, a bounded chain
+ * walk, and no dynamic code tables. Every decision is in this function, so the
+ * output is a pure function of the input — which is the entire point. A zlib
+ * would compress these plates roughly 20% smaller and would not have that
+ * property on someone else's machine.
+ */
+export function deflateFixed(raw) {
+  const writer = new BitWriter();
+  writer.write(1, 1); // BFINAL
+  writer.write(1, 2); // BTYPE = 01, fixed Huffman
+
+  // head[hash] = most recent position with this 3-byte prefix; prev[pos] = the
+  // one before it. A plain hash chain, walked at most MAX_CHAIN deep.
+  const head = new Int32Array(1 << 15).fill(-1);
+  const prev = new Int32Array(raw.length).fill(-1);
+  const hashAt = (i) => ((raw[i] << 10) ^ (raw[i + 1] << 5) ^ raw[i + 2]) & 0x7fff;
+
+  let position = 0;
+  while (position < raw.length) {
+    let bestLength = 0;
+    let bestDistance = 0;
+    if (position + MIN_MATCH <= raw.length) {
+      const key = hashAt(position);
+      let candidate = head[key];
+      let tries = 0;
+      const limit = Math.min(MAX_MATCH, raw.length - position);
+      while (candidate >= 0 && tries < MAX_CHAIN && position - candidate <= WINDOW) {
+        let length = 0;
+        while (length < limit && raw[candidate + length] === raw[position + length]) length += 1;
+        if (length > bestLength) {
+          bestLength = length;
+          bestDistance = position - candidate;
+          if (length === limit) break;
+        }
+        candidate = prev[candidate];
+        tries += 1;
+      }
+    }
+
+    if (bestLength >= MIN_MATCH) {
+      const lengthCode = codeFor(LENGTH_BASE, bestLength);
+      fixedLiteral(writer, 257 + lengthCode);
+      writer.write(bestLength - LENGTH_BASE[lengthCode], LENGTH_EXTRA[lengthCode]);
+      const distanceCode = codeFor(DIST_BASE, bestDistance);
+      writer.writeCode(distanceCode, 5);
+      writer.write(bestDistance - DIST_BASE[distanceCode], DIST_EXTRA[distanceCode]);
+    } else {
+      fixedLiteral(writer, raw[position]);
+      bestLength = 1;
+    }
+
+    // Index every position the emitted run covers, so later matches can reach
+    // back into it — this is what keeps the ratio respectable despite greed.
+    for (let i = 0; i < bestLength; i += 1) {
+      const at = position + i;
+      if (at + MIN_MATCH > raw.length) break;
+      const key = hashAt(at);
+      prev[at] = head[key];
+      head[key] = at;
+    }
+    position += bestLength;
+  }
+
+  fixedLiteral(writer, 256); // end of block
+  const body = writer.finish();
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(adler32(raw), 0);
+  // zlib header: deflate, 32 K window, no preset dictionary, (0x78 << 8 | 0x01) % 31 === 0.
+  return Buffer.concat([Buffer.from([0x78, 0x01]), body, checksum]);
+}
+
+/* ── PNG chunks ───────────────────────────────────────────────────────────── */
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256);
@@ -637,11 +809,8 @@ function paeth(a, b, c) {
   return pb <= pc ? b : c;
 }
 
-/**
- * Encode 8-bit RGBA as PNG. `deflate` is the injected `zlib.deflateSync`, so
- * this module stays free of Node imports and the CLI owns the one binding.
- */
-export function encodePng(width, height, rgba, deflate) {
+/** Encode 8-bit RGBA as PNG, compressing with {@link deflateFixed}. */
+export function encodePng(width, height, rgba) {
   const grey = isGreyscale(rgba);
   const bpp = grey ? 2 : 4;
   const stride = width * bpp;
@@ -674,9 +843,7 @@ export function encodePng(width, height, rgba, deflate) {
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', header),
-    // Every deflate parameter is pinned, so the only remaining variable is the
-    // zlib build — which the byte-equality test turns into a CI failure.
-    chunk('IDAT', deflate(raw, { level: 9, memLevel: 9, windowBits: 15, strategy: 0 })),
+    chunk('IDAT', deflateFixed(raw)),
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }

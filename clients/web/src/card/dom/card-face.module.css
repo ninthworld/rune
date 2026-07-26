@@ -106,11 +106,7 @@
   border-right-color: var(--rune-gold-shade);
   border-bottom-color: var(--rune-gold-shade);
   border-radius: calc(var(--face-radius) - var(--rule-inset));
-  border-image-source: var(--plate-frame-edge);
-  border-image-slice: var(--plate-frame-edge-slice);
-  border-image-width: var(--plate-edge-band);
-  border-image-outset: var(--rule-inset);
-  border-image-repeat: stretch;
+  border-image: var(--plate-frame-edge);
   pointer-events: none;
   z-index: 0;
 }
@@ -244,18 +240,14 @@
   width: calc(100% - var(--rule-inset) * 2);
   height: var(--band-art-h);
   border-radius: var(--plate-radius);
-  background-color: color-mix(
-    in srgb,
-    var(--face-accent) calc(var(--face-mono-alpha) * 100%),
-    var(--face-body)
-  );
   /* The identity material (§3.12): the procedural field is tinted THROUGH a
    * woven light map rather than painted flat, so a colour identity carries a
    * surface with a light source. One grayscale tile serves all eight
    * identities — the alternative, an asset per colour, is what would put the
    * most budget-sensitive set in the project over its ceiling. */
-  background-image: var(--plate-identity);
-  background-size: var(--plate-identity-size) var(--plate-identity-size);
+  background:
+    var(--plate-identity),
+    color-mix(in srgb, var(--face-accent) calc(var(--face-mono-alpha) * 100%), var(--face-body));
   background-blend-mode: overlay;
   /* Color identity as an edge accent, never a body fill (§3.4), plus the inner
    * bevel from the single key light (§3.6). */
@@ -268,10 +260,7 @@
    * the same with or without it, so a missing plate falls back to the inset
    * shadow above and crops nothing differently. */
   border: 0 solid transparent;
-  border-image-source: var(--plate-art-seam);
-  border-image-slice: var(--plate-art-seam-slice);
-  border-image-width: var(--plate-seam-band);
-  border-image-repeat: stretch;
+  border-image: var(--plate-art-seam);
   overflow: hidden;
   z-index: 0;
 }
@@ -329,10 +318,7 @@
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
-  border-image-source: var(--plate-header);
-  border-image-slice: var(--plate-surface-slice) fill;
-  border-image-width: var(--plate-surface-band);
-  border-image-repeat: stretch;
+  border-image: var(--plate-header);
   color: var(--plate-ink);
   font-size: var(--face-name-size);
   font-weight: 600;
@@ -358,12 +344,10 @@
   top: var(--band-title-top);
   height: var(--band-title-h);
   border-radius: calc(var(--plate-radius) / 1.5);
-  background-color: var(--face-accent);
   /* The same identity material as the art window (§3.12): the strip is the
    * surface most at risk of reading as a flat colour block, so it is the one
    * that most needs a material under the accent. */
-  background-image: var(--plate-identity);
-  background-size: var(--plate-identity-size) var(--plate-identity-size);
+  background: var(--plate-identity), var(--face-accent);
   background-blend-mode: overlay;
   box-shadow: 0 0 0 var(--rule-w) var(--rune-gold-shade);
   z-index: 1;
@@ -381,10 +365,7 @@
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
-  border-image-source: var(--plate-info);
-  border-image-slice: var(--plate-surface-slice) fill;
-  border-image-width: var(--plate-surface-band);
-  border-image-repeat: stretch;
+  border-image: var(--plate-info);
   color: var(--plate-ink);
   font-size: var(--face-type-size);
   line-height: var(--band-type-h);
@@ -408,10 +389,7 @@
   border-radius: var(--plate-radius);
   background: var(--plate);
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
-  border-image-source: var(--plate-info);
-  border-image-slice: var(--plate-surface-slice) fill;
-  border-image-width: var(--plate-surface-band);
-  border-image-repeat: stretch;
+  border-image: var(--plate-info);
   color: var(--plate-ink);
   font-size: var(--face-rules-size);
   line-height: var(--face-line);
@@ -437,10 +415,7 @@
   background: var(--status-band);
   /* The status channel is cut a shade deeper than the parchment strip (§3.12)
    * so the glyph plates and the P/T plate read as objects lying IN it. */
-  border-image-source: var(--plate-status);
-  border-image-slice: var(--plate-surface-slice) fill;
-  border-image-width: var(--plate-surface-band);
-  border-image-repeat: stretch;
+  border-image: var(--plate-status);
   z-index: 1;
 }
 
@@ -548,10 +523,7 @@
   box-shadow: 0 0 0 var(--rule-w) var(--plate-rim);
   /* Its own plate, with its own tighter radius and a stronger bevel (§3.12) —
    * the P/T is a distinct object fixed to the card, not a printed field. */
-  border-image-source: var(--plate-pt);
-  border-image-slice: var(--plate-pt-slice) fill;
-  border-image-width: var(--plate-pt-band);
-  border-image-repeat: stretch;
+  border-image: var(--plate-pt);
   color: var(--plate-ink);
   font-size: var(--face-pt-size);
   font-weight: 700;

@@ -311,7 +311,7 @@
   "cardFrames": {
     "plates": {
       "frameEdge": {
-        "src": "/assets/frames/frame-edge.f7bd1ac1.png",
+        "src": "/assets/frames/frame-edge.22d16d0b.png",
         "width": 128,
         "height": 128,
         "slice": 30,
@@ -320,7 +320,7 @@
         "load": "first-match"
       },
       "artSeam": {
-        "src": "/assets/frames/art-seam.c327a587.png",
+        "src": "/assets/frames/art-seam.297a103b.png",
         "width": 72,
         "height": 72,
         "slice": 24,
@@ -329,7 +329,7 @@
         "load": "first-match"
       },
       "headerField": {
-        "src": "/assets/frames/header-field.0b96f798.png",
+        "src": "/assets/frames/header-field.918c585e.png",
         "width": 96,
         "height": 48,
         "slice": 20,
@@ -338,7 +338,7 @@
         "load": "first-match"
       },
       "infoStrip": {
-        "src": "/assets/frames/info-strip.e72516b3.png",
+        "src": "/assets/frames/info-strip.54bec507.png",
         "width": 96,
         "height": 48,
         "slice": 20,
@@ -347,7 +347,7 @@
         "load": "first-match"
       },
       "statusStrip": {
-        "src": "/assets/frames/status-strip.d42690bb.png",
+        "src": "/assets/frames/status-strip.b678ba50.png",
         "width": 96,
         "height": 48,
         "slice": 20,
@@ -356,7 +356,7 @@
         "load": "first-match"
       },
       "ptPlate": {
-        "src": "/assets/frames/pt-plate.826fac11.png",
+        "src": "/assets/frames/pt-plate.9e45e937.png",
         "width": 64,
         "height": 48,
         "slice": 20,
@@ -365,7 +365,7 @@
         "load": "first-match"
       },
       "identityWeave": {
-        "src": "/assets/frames/identity-weave.02d3af56.png",
+        "src": "/assets/frames/identity-weave.69b91265.png",
         "width": 64,
         "height": 64,
         "slice": 0,

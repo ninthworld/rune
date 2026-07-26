@@ -632,7 +632,7 @@
       "promptEssence": "Dark-skinned young woman with large symmetric braided side buns, copper headband, and plum mantle."
     },
     {
-      "path": "clients/web/public/assets/frames/frame-edge.f7bd1ac1.png",
+      "path": "clients/web/public/assets/frames/frame-edge.22d16d0b.png",
       "title": "Rune frame — layered edge and inner border",
       "category": "card-frame",
       "provenanceClass": 1,
@@ -642,7 +642,7 @@
       "promptEssence": "The card's slate edge as a plate: outer contour, lit top/left bevel, the thicker bottom paper edge, and the engraved gold hairline on its measured inset."
     },
     {
-      "path": "clients/web/public/assets/frames/art-seam.c327a587.png",
+      "path": "clients/web/public/assets/frames/art-seam.297a103b.png",
       "title": "Rune frame — art window surround",
       "category": "card-frame",
       "provenanceClass": 1,
@@ -652,7 +652,7 @@
       "promptEssence": "The seam between the art window and the frame: a recessed lip, shadowed on the light side and catching light on the far side, so the window sits in the card rather than on it."
     },
     {
-      "path": "clients/web/public/assets/frames/header-field.0b96f798.png",
+      "path": "clients/web/public/assets/frames/header-field.918c585e.png",
       "title": "Rune frame — name/cost header field",
       "category": "card-frame",
       "provenanceClass": 1,
@@ -662,7 +662,7 @@
       "promptEssence": "A raised printed field for the title band: lit top rim, shaded lower rim, and a fine paper grain across the surface the name and cost sit in."
     },
     {
-      "path": "clients/web/public/assets/frames/info-strip.e72516b3.png",
+      "path": "clients/web/public/assets/frames/info-strip.54bec507.png",
       "title": "Rune frame — lower information strip",
       "category": "card-frame",
       "provenanceClass": 1,
@@ -672,7 +672,7 @@
       "promptEssence": "A recessed printed strip for the type line and rules area: shadowed upper rim, lit lower rim, paper grain — a surface the text sits in rather than on."
     },
     {
-      "path": "clients/web/public/assets/frames/status-strip.d42690bb.png",
+      "path": "clients/web/public/assets/frames/status-strip.b678ba50.png",
       "title": "Rune frame — status band surface",
       "category": "card-frame",
       "provenanceClass": 1,
@@ -682,7 +682,7 @@
       "promptEssence": "A recessed slate channel for the battlefield permanent's status band, cut a shade deeper than the parchment strip so the glyph and P/T plates read as objects lying in it."
     },
     {
-      "path": "clients/web/public/assets/frames/pt-plate.826fac11.png",
+      "path": "clients/web/public/assets/frames/pt-plate.9e45e937.png",
       "title": "Rune frame — P/T plate",
       "category": "card-frame",
       "provenanceClass": 1,
@@ -692,7 +692,7 @@
       "promptEssence": "The power/toughness plate as a distinct object: a small, strongly bevelled tile with a tight radius and a contact shadow, so it reads as fixed to the card rather than printed on it."
     },
     {
-      "path": "clients/web/public/assets/frames/identity-weave.02d3af56.png",
+      "path": "clients/web/public/assets/frames/identity-weave.69b91265.png",
       "title": "Rune frame — colour-identity material",
       "category": "card-frame",
       "provenanceClass": 1,

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deflateSync } from 'node:zlib';
+import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
   authoringScale,
@@ -73,11 +73,36 @@ describe('card-frame plate synthesis (issue #570)', () => {
     // else's machine.
     for (const spec of PLATE_SPECS) {
       const { width, height, rgba } = renderPlate(spec);
-      const bytes = encodePng(width, height, rgba, deflateSync);
+      const bytes = encodePng(width, height, rgba);
       const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
       const file = plateFilename(spec, hash);
       expect(plates[spec.key].src, spec.id).toBe(`/assets/frames/${file}`);
       expect(bytes.equals(readFileSync(resolve(framesDir, file))), spec.id).toBe(true);
+    }
+  });
+
+  it('emits a DEFLATE stream a standard inflater accepts', () => {
+    // The compressor is this repository's own (fixed Huffman over greedy LZ77),
+    // because a content hash that depends on the machine's zlib is not a
+    // content hash — CI proved that the hard way. Writing the compressor means
+    // owning its correctness, so every committed plate is inflated back with
+    // Node's zlib and checked against the exact scanline layout PNG requires.
+    for (const spec of PLATE_SPECS) {
+      const committed = readFileSync(resolve(framesDir, basename(plates[spec.key].src)));
+      const idat = [];
+      for (let at = 8; at < committed.length - 8;) {
+        const length = committed.readUInt32BE(at);
+        const type = committed.toString('ascii', at + 4, at + 8);
+        if (type === 'IDAT') idat.push(committed.subarray(at + 8, at + 8 + length));
+        at += 12 + length;
+      }
+      const raw = inflateSync(Buffer.concat(idat));
+      const samples = spec.key === 'frameEdge' ? 4 : 2;
+      expect(raw.length, spec.id).toBe((spec.width * samples + 1) * spec.height);
+      // Every scanline opens with one of the five PNG filter types.
+      for (let y = 0; y < spec.height; y += 1) {
+        expect(raw[y * (spec.width * samples + 1)], `${spec.id} row ${y}`).toBeLessThan(5);
+      }
     }
   });
 

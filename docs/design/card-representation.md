@@ -306,9 +306,21 @@ client imposes:
    verified no-op and any drift fails CI instead of silently rewriting seven
    assets. That check is why the plates ship as PNG from an in-process encoder
    rather than WebP through an external converter whose version would decide
-   the bytes; ADR 0031 allows PNG "where a consumer requires it", and the
-   consumer here is the ledger's own reproducibility claim. The whole set is ~62 KB — the frame is on every card, so it
-   is the most budget-sensitive set in the project.
+   the bytes — and why DEFLATE is implemented in the generator rather than taken
+   from `zlib`: CI produced different bytes for the one RGBA plate on the first
+   run, and a content hash that depends on the machine's zlib is not a content
+   hash. ADR 0031 allows PNG "where a consumer requires it"; the consumer here
+   is the ledger's own reproducibility claim, and the price is about a fifth of
+   zlib's ratio. The whole set is ~78 KB — the frame is on every card, so it is
+   the most budget-sensitive set in the project.
+
+The material reaches the face as **one custom property per surface**, each
+already carrying its slice and its band (the band as a `calc()` on the
+`--face-w` the tier publishes anyway). That is a budget decision, not a style
+one: the face's style attribute is what the plane reconciler rewrites on every
+view, and publishing source, slice, and band separately cost ~29% of the
+reconnect rebuild budget on a 120-permanent board. Collapsed, the set costs
+about half that, and it is the only ongoing cost the plates impose.
 
 Card backs (§13) need nothing further: the production raster skins shipped with
 #555 and already carry the same silhouette, radius, and edge treatment.

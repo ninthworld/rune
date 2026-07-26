@@ -133,7 +133,7 @@ ceilings.
 
 The **card-frame plates** (issue #570, `card-representation.md` §3.12) are the
 one set that can never be deferred: the frame is on every card, so a lazily
-loaded frame is a frameless first match. They are budgeted accordingly — ~62 KB
+loaded frame is a frameless first match. They are budgeted accordingly — ~78 KB
 for the whole set, which is what the two decisions in §3.12 buy. Carrying no
 body colour means one set instead of one per theme; being nine-sliced on a
 ratio of `W` means one set instead of one per tier.

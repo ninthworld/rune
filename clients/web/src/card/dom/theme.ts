@@ -46,7 +46,7 @@ import {
   TIER,
 } from '../../tokens';
 import type { CardDisplayData } from '../cardFactory';
-import { PLATE_MATERIAL, plateGeometryVars } from './plates';
+import { PLATE_MATERIAL } from './plates';
 
 /**
  * The size tiers the DOM card face renders (card-representation §8.1). Four
@@ -447,11 +447,6 @@ function faceGeometryVars(tier: CardFaceTier, kind: CardSurfaceKind): Record<str
     '--ring-w': px(RUNE_FRAME.selectRing * m.w),
     '--ring-glow-w': px(RUNE_FRAME.selectGlow * m.w),
     '--target-ring-w': px(RUNE_FRAME.targetRing * m.w),
-
-    // ── Frame-plate bands (§3.12, issue #570) ─────────────────────────────
-    // The nine-slice band each plate draws, resolved from its authored ratio
-    // of W — one asset per surface for every tier and every silhouette.
-    ...plateGeometryVars(m.w),
   };
   if (m.bands.status.h > 0) {
     vars['--band-status-top'] = px(m.bands.status.top);

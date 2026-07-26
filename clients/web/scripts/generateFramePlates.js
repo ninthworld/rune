@@ -32,7 +32,6 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deflateSync } from 'node:zlib';
 import prettier from 'prettier';
 import { encodePng, PLATE_SPECS, plateFilename, renderPlate } from './framePlates.js';
 
@@ -103,7 +102,7 @@ async function main() {
 
   for (const spec of PLATE_SPECS) {
     const { width, height, rgba } = renderPlate(spec);
-    const bytes = encodePng(width, height, rgba, deflateSync);
+    const bytes = encodePng(width, height, rgba);
     const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
     const file = plateFilename(spec, hash);
     writeFileSync(resolve(outputDir, file), bytes);
