@@ -6,7 +6,7 @@
 
 ## Context
 Games must start from shuffled decks (CR 103.3), and the engine's hard rules
-(`crates/rune-engine/AGENTS.md`, ADR 0002) forbid I/O, wall-clock time, threads,
+(`crates/sage-engine/AGENTS.md`, ADR 0002) forbid I/O, wall-clock time, threads,
 and "randomness without an injected seed". `GameState` already reserves an
 `rng_seed` field (CR 103.3) for exactly this. The shuffle must therefore be a
 pure function of `(seed, decklists)`: the same inputs reproduce the same library
@@ -19,7 +19,7 @@ self-contained, so the trade is between a dependency plus its transitive tree an
 a few lines of well-known, auditable code.
 
 ## Decision
-The engine implements its own randomness in `crates/rune-engine/src/rng.rs`: a
+The engine implements its own randomness in `crates/sage-engine/src/rng.rs`: a
 **SplitMix64** generator (one `u64` of state) plus an unbiased Fisher–Yates
 `shuffle`, with bounded draws using rejection sampling to avoid modulo bias.
 **No PRNG crate is added.**

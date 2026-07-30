@@ -1,6 +1,6 @@
-# Contributing to RUNE
+# Contributing to SAGE
 
-RUNE is solo-maintained. Keep changes focused, tested, and consistent with the architectural
+SAGE is solo-maintained. Keep changes focused, tested, and consistent with the architectural
 rules in [`AGENTS.md`](AGENTS.md) and the standards in
 [`docs/coding-standards.md`](docs/coding-standards.md).
 

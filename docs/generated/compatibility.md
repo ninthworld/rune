@@ -1,15 +1,15 @@
 <!-- @generated — do not edit by hand.
-     Regenerate with `make compat` (or `cargo run -p rune-engine --bin gen-compat`).
+     Regenerate with `make compat` (or `cargo run -p sage-engine --bin gen-compat`).
      `cargo test` fails if this file drifts from the catalog or the exclusion list.
-     Source: crates/rune-engine/data/catalog/ + crates/rune-engine/data/exclusions.json (issue #258). -->
+     Source: crates/sage-engine/data/catalog/ + crates/sage-engine/data/exclusions.json (issue #258). -->
 
 # Card compatibility report
 
-RUNE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
+SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
 ## Supported cards (61)
 
-Every functional definition in `crates/rune-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).
+Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).
 
 | Functional ID | Name | Implementation |
 | --- | --- | --- |
@@ -77,7 +77,7 @@ Every functional definition in `crates/rune-engine/data/catalog/`, in interned o
 
 ## Excluded (4)
 
-Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/rune-engine/data/exclusions.json`.
+Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |

@@ -1,0 +1,71 @@
+{
+  "$comment": "SINGLE SOURCE OF TRUTH for the bundled starter decks, shared by the Rust and web sides and owned by neither. Consumed by the web client (to populate the lobby) and by the engine's agent-vs-agent wire test (crates/sage-cli/tests/agent_game.rs reads this file verbatim and plays every deck to a deterministic completion through the real server). It lived under clients/web/src/ until the SAGE restart, where deleting the client also deleted data the Rust tests needed; it sits at the repository root now so either side can be removed without breaking the other. Cards are referenced by authored functional_id only (ADR 0018 3) - this file encodes no rules, costs, or legality; the server validates every submitted deck against its catalog. Cards are functional definitions sourced from Core Set 2019 (M19); the repository ships no Oracle text, art, or branding (docs/brief.md, ADR 0026). Format: 40-card minimum, at most four copies of any non-basic card, basic lands exempt. Every non-land card is castable from its deck's own land base.",
+  "decks": [
+    {
+      "id": "ember-onslaught",
+      "name": "Ember Onslaught",
+      "summary": "Mono-red aggression: fast creatures backed by direct-damage burn.",
+      "entries": [
+        { "identity": "onakke_ogre", "name": "Onakke Ogre", "count": 4 },
+        { "identity": "viashino_pyromancer", "name": "Viashino Pyromancer", "count": 4 },
+        { "identity": "fire_elemental", "name": "Fire Elemental", "count": 3 },
+        { "identity": "volcanic_dragon", "name": "Volcanic Dragon", "count": 2 },
+        { "identity": "shock", "name": "Shock", "count": 4 },
+        { "identity": "lightning_strike", "name": "Lightning Strike", "count": 4 },
+        { "identity": "electrify", "name": "Electrify", "count": 2 },
+        { "identity": "mountain", "name": "Mountain", "count": 17 }
+      ]
+    },
+    {
+      "id": "verdant-coalition",
+      "name": "Verdant Coalition",
+      "summary": "Green-white midrange: mana elves into sturdy creatures, lifegain, and pump.",
+      "entries": [
+        { "identity": "llanowar_elves", "name": "Llanowar Elves", "count": 4 },
+        { "identity": "druid_of_the_cowl", "name": "Druid of the Cowl", "count": 2 },
+        { "identity": "giant_spider", "name": "Giant Spider", "count": 3 },
+        { "identity": "rustwing_falcon", "name": "Rustwing Falcon", "count": 2 },
+        { "identity": "serra_angel", "name": "Serra Angel", "count": 2 },
+        { "identity": "colossal_dreadmaw", "name": "Colossal Dreadmaw", "count": 2 },
+        { "identity": "gigantosaurus", "name": "Gigantosaurus", "count": 1 },
+        { "identity": "trusty_packbeast", "name": "Trusty Packbeast", "count": 2 },
+        { "identity": "titanic_growth", "name": "Titanic Growth", "count": 2 },
+        { "identity": "revitalize", "name": "Revitalize", "count": 2 },
+        { "identity": "forest", "name": "Forest", "count": 8 },
+        { "identity": "plains", "name": "Plains", "count": 6 },
+        { "identity": "tranquil_expanse", "name": "Tranquil Expanse", "count": 4 }
+      ]
+    },
+    {
+      "id": "skyborne-adepts",
+      "name": "Skyborne Adepts",
+      "summary": "Mono-blue tempo: evasive flyers and card draw behind hard counters.",
+      "entries": [
+        { "identity": "snapping_drake", "name": "Snapping Drake", "count": 4 },
+        { "identity": "air_elemental", "name": "Air Elemental", "count": 3 },
+        { "identity": "skyscanner", "name": "Skyscanner", "count": 3 },
+        { "identity": "tolarian_scholar", "name": "Tolarian Scholar", "count": 2 },
+        { "identity": "divination", "name": "Divination", "count": 4 },
+        { "identity": "cancel", "name": "Cancel", "count": 4 },
+        { "identity": "island", "name": "Island", "count": 20 }
+      ]
+    },
+    {
+      "id": "green-command",
+      "name": "Verdant Sovereign",
+      "summary": "Mono-green commander: Jedit Ojanen leads a singleton stomp of ramp and fatties.",
+      "commander": "jedit_ojanen",
+      "entries": [
+        { "identity": "jedit_ojanen", "name": "Jedit Ojanen", "count": 1 },
+        { "identity": "llanowar_elves", "name": "Llanowar Elves", "count": 1 },
+        { "identity": "druid_of_the_cowl", "name": "Druid of the Cowl", "count": 1 },
+        { "identity": "giant_spider", "name": "Giant Spider", "count": 1 },
+        { "identity": "colossal_dreadmaw", "name": "Colossal Dreadmaw", "count": 1 },
+        { "identity": "gigantosaurus", "name": "Gigantosaurus", "count": 1 },
+        { "identity": "titanic_growth", "name": "Titanic Growth", "count": 1 },
+        { "identity": "skyscanner", "name": "Skyscanner", "count": 1 },
+        { "identity": "forest", "name": "Forest", "count": 92 }
+      ]
+    }
+  ]
+}

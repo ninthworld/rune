@@ -1,5 +1,0 @@
-dist
-node_modules
-
-# Markdown docs are prose-formatted by hand, not Prettier.
-*.md

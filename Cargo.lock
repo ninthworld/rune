@@ -297,20 +297,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
-name = "rune-cli"
+name = "sage-cli"
 version = "0.0.1"
 dependencies = [
  "futures-util",
- "rune-engine",
- "rune-protocol",
- "rune-server",
+ "sage-engine",
+ "sage-protocol",
+ "sage-server",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
 ]
 
 [[package]]
-name = "rune-engine"
+name = "sage-engine"
 version = "0.0.1"
 dependencies = [
  "serde",
@@ -318,7 +318,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rune-protocol"
+name = "sage-protocol"
 version = "0.0.1"
 dependencies = [
  "serde",
@@ -326,13 +326,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "rune-server"
+name = "sage-server"
 version = "0.0.1"
 dependencies = [
  "futures-util",
  "getrandom",
- "rune-engine",
- "rune-protocol",
+ "sage-engine",
+ "sage-protocol",
  "serde_json",
  "tokio",
  "tokio-tungstenite",

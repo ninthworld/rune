@@ -8,11 +8,11 @@
 
 ADR 0013 split card data into an **oracle card** (printing-independent rules) and
 a **printing** (bibliographic record referencing an oracle card), and that split
-is implemented and shipped: `crates/rune-engine/data/oracle.json` holds 32
+is implemented and shipped: `crates/sage-engine/data/oracle.json` holds 32
 fixture `CardData` entries keyed by an integer `CardId`/`OracleId`, and
-`crates/rune-engine/data/sets/{FIX,FIX2}.json` hold `Printing` records that
+`crates/sage-engine/data/sets/{FIX,FIX2}.json` hold `Printing` records that
 reference those ids — proven by `adding_a_reprint_changes_no_logic` in
-`crates/rune-engine/src/card.rs`. ADR 0013's own words already flagged this as
+`crates/sage-engine/src/card.rs`. ADR 0013's own words already flagged this as
 an M1-scoped model whose file layout was tuned for "a ~100–150-card invented
 starter set" (M3), not the catalog scale the project ultimately needs (the
 brief's `docs/brief.md` "Shared: Card Data" section, and roadmap M6's "expanded
@@ -35,7 +35,7 @@ card pool"). Three things in the shipped M3 model don't scale past that:
   prose (e.g. `"When Verdant Scout enters the battlefield, draw a card."`) kept
   in sync **by hand** with the accompanying `Ability`/`Effect` IR that actually
   drives behavior, and that string is projected verbatim onto
-  `CardView.oracle_text` (`crates/rune-server/src/view.rs`) for display. Nothing
+  `CardView.oracle_text` (`crates/sage-server/src/view.rs`) for display. Nothing
   enforces the two stay consistent, and the field name and `docs/brief.md`'s
   Legal Considerations ("Card oracle text is a grey zone — tolerated by WotC for
   free fan projects") both frame this as bundling real Oracle text — which is
@@ -52,7 +52,7 @@ client remains a dumb renderer; exact Oracle text/image sync is explicitly
 server and engine never fetch, store, or require.
 
 The hard rules constrain the design exactly as they did for ADR 0013
-(`AGENTS.md`, `crates/rune-engine/AGENTS.md`, ADR 0002, ADR 0006, ADR 0007):
+(`AGENTS.md`, `crates/sage-engine/AGENTS.md`, ADR 0002, ADR 0006, ADR 0007):
 
 - **Zero I/O in the engine at runtime.** Card data is embedded at compile time;
   serde is sanctioned only for parsing embedded snapshots (ADR 0006).
@@ -105,10 +105,10 @@ or the fallback formatter reads):
   already uses).
 - Behavior: `keywords`, `abilities` (the `Ability`/`Cost`/`TriggerCondition` IR,
   ADR 0007), `spell_effects` (`Effect`/`TargetSpec`), `aura` (`AuraGrant`) —
-  all exactly the shapes `crates/rune-engine/src/ability.rs` and `card.rs`
+  all exactly the shapes `crates/sage-engine/src/ability.rs` and `card.rs`
   already define; this ADR does not change the IR, only what surrounds it.
 - Escape hatch: an explicit `scripted: bool` flag (default `false`). `true`
-  means this card's behavior is (also) defined in `crates/rune-engine/src/scripted.rs`
+  means this card's behavior is (also) defined in `crates/sage-engine/src/scripted.rs`
   under this `functional_id`'s interned `CardId` — see §5 validation.
 - Provenance, not prose: `source_revision` (see §10).
 
@@ -160,7 +160,7 @@ otherwise) reference a card by `functional_id: String` instead of the current
 unresolvable reference is a build-time validation error (§5), not a runtime
 `None`.
 
-**The four identities, and the mapping among them.** `crates/rune-engine/src/id.rs`
+**The four identities, and the mapping among them.** `crates/sage-engine/src/id.rs`
 today documents `CardId` as identifying "a card definition (a specific
 printing/oracle entry)" and aliases `OracleId = CardId` on the grounds that "the
 integer `CardId` *is* the oracle id." That is the conflation #191 asks this ADR
@@ -190,9 +190,9 @@ distinct layers, and only two of them are authored by a human:
   share one `CardId` and hold distinct `CardInstanceId`s. `PermanentId` is
   narrower again — reborn on each battlefield entry, which is how the engine has
   zone-change identity without zone-change counters
-  (`crates/rune-engine/AGENTS.md`).
+  (`crates/sage-engine/AGENTS.md`).
 - **Instance → wire** is the protocol's `EntityId` (a `String`), minted in
-  `rune-server`'s `view.rs` from an instance, permanent, or seat id (`card_5`,
+  `sage-server`'s `view.rs` from an instance, permanent, or seat id (`card_5`,
   `perm_7`, `p0`). It is per-game and opaque, and it never carries catalog
   identity: §8's `CardView.functional_id` is a separate field precisely so that
   a presentation lookup and a game-object reference cannot be mistaken for each
@@ -218,7 +218,7 @@ above, not an assumption this one licenses.
 
 Replacing the single `oracle.json` array:
 
-- **`crates/rune-engine/data/catalog/<functional_id>.json`** — one file per
+- **`crates/sage-engine/data/catalog/<functional_id>.json`** — one file per
   distinct card, holding exactly one functional-definition object (§2). This is
   preferred over the alternatives surveyed:
   - *Monolithic JSON* (today's `oracle.json`): every addition diffs the same
@@ -237,12 +237,12 @@ Replacing the single `oracle.json` array:
   - **One file per `FunctionalId`** gives the smallest possible review/merge
     surface: one new card is one new file, touching zero existing lines. This
     is the "review/concurrency boundary" #191 asks this ADR to establish.
-- **`crates/rune-engine/data/sets/<SET>.json`** — unchanged in role (one file
+- **`crates/sage-engine/data/sets/<SET>.json`** — unchanged in role (one file
   per set of printing records, ADR 0013 §2), field-updated per §3.
 - **Catalog manifest, generated, not hand-maintained.** The hand-written
   `SET_MANIFEST` `const` array in `card.rs` does not scale to hundreds of
   catalog files and dozens of sets. A **build script**
-  (`crates/rune-engine/build.rs`) walks `data/catalog/*.json` and
+  (`crates/sage-engine/build.rs`) walks `data/catalog/*.json` and
   `data/sets/*.json` at compile time, and:
   1. Parses and validates every file (§5).
   2. Sorts `FunctionalId`s deterministically (byte order) and assigns interned
@@ -259,8 +259,8 @@ Replacing the single `oracle.json` array:
     incremental-build tracking covers it — adding, removing, or editing a
     catalog/set file triggers exactly one manifest regeneration, nothing else.
   - **Build-script I/O is explicitly acceptable here and does not weaken "zero
-    I/O in the engine."** That hard rule is about the compiled `rune-engine`
-    binary's runtime behavior (`crates/rune-engine/AGENTS.md`: "no dependencies
+    I/O in the engine."** That hard rule is about the compiled `sage-engine`
+    binary's runtime behavior (`crates/sage-engine/AGENTS.md`: "no dependencies
     on tokio, networking, timers... without an injected seed" — a *runtime*
     services rule). `build.rs` executes once per `cargo build`, on the
     machine building the crate, never in the shipped/running engine; its only
@@ -333,10 +333,10 @@ already-verified numbers:
 
 ### 7. Fallback presentation: server-generated, deterministic, structurally complete
 
-The formatter lives in **`rune-server`**, not the engine — generating display
-prose is presentation, and keeping it out of `rune-engine` is what makes "the
+The formatter lives in **`sage-server`**, not the engine — generating display
+prose is presentation, and keeping it out of `sage-engine` is what makes "the
 engine never parses or depends on display prose" true by construction rather
-than by discipline. A new module (e.g. `crates/rune-server/src/rules_text.rs`)
+than by discipline. A new module (e.g. `crates/sage-server/src/rules_text.rs`)
 exposes a pure function `rules_text(&CardData, scripted: Option<&'static str>) -> String`:
 
 - **Deterministic and pure.** Same functional definition in, same string out —
@@ -365,7 +365,7 @@ exposes a pure function `rules_text(&CardData, scripted: Option<&'static str>) -
 
 ### 8. Protocol projection
 
-This ADR **decides** the shape; implementing it in `rune-protocol`/`view.rs`/
+This ADR **decides** the shape; implementing it in `sage-protocol`/`view.rs`/
 `docs/protocol.md`/the web client is the follow-up work in §12 (out of scope
 for this ADR's own diff, per issue #191's boundaries).
 
@@ -382,7 +382,7 @@ for this ADR's own diff, per issue #191's boundaries).
   look up exact text/art by stable identity, without the server or protocol
   needing to know that cache exists.
 - **Internal IR never crosses the boundary.** `Ability`/`Effect`/`TargetSpec`
-  and the rest of `rune-engine`'s ability vocabulary stay engine-internal;
+  and the rest of `sage-engine`'s ability vocabulary stay engine-internal;
   `rules_text` and the existing display fields (`type_line`, `mana_cost`,
   `power`/`toughness`, `keywords`) remain the only derived-for-display surface,
   preserving "the web client never interprets the engine's internal
@@ -501,8 +501,8 @@ PR-sized, in dependency order — each closes against this ADR:
 | A | `FunctionalId`, `schema_version`, and the tightened functional-definition schema (deny-unknown-fields, `oracle_text` removed) on the existing single-file loader; correct the `CardId`/`OracleId` doc comments in `id.rs` to match §3's four-layer model | engine | — |
 | B | `build.rs`: walk `data/catalog/` + `data/sets/`, validate (§5), intern `CardId`s, generate the embed manifest | engine | A |
 | C | Migrate the 32 fixtures into `data/catalog/<functional_id>.json`; migrate `FIX`/`FIX2` printings to `functional_id` references; delete `SET_MANIFEST` | engine | B |
-| D | `rules_text` formatter in `rune-server` with exhaustive-match coverage of the IR, plus `scripted_rules_text` seam and its bidirectional validation | server | C |
-| E | Protocol: `CardView.oracle_text` → `rules_text`, add `functional_id`; update `docs/protocol.md`, `rune-protocol`, `view.rs`, and the web client's field usage | protocol, server, client | D |
+| D | `rules_text` formatter in `sage-server` with exhaustive-match coverage of the IR, plus `scripted_rules_text` seam and its bidirectional validation | server | C |
+| E | Protocol: `CardView.oracle_text` → `rules_text`, add `functional_id`; update `docs/protocol.md`, `sage-protocol`, `view.rs`, and the web client's field usage | protocol, server, client | D |
 | F | `source_revision` field (schema-only; no ingestion) plus authoring docs for maintainers | engine, docs | A |
 | G | Startup-parse benchmark/test at catalog scale (§6 target) | engine | C |
 

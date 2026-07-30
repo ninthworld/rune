@@ -1,13 +1,13 @@
 # Card compatibility report
 
-RUNE claims support for **only the verified slice of cards in its catalog, never a full
+SAGE claims support for **only the verified slice of cards in its catalog, never a full
 set**. [`docs/generated/compatibility.md`](generated/compatibility.md) is the checkable
 artifact behind that claim (issue #258): a deterministic report naming every supported
 card and every mechanic deliberately left out of scope.
 
 ## What it contains
 
-- **Supported** — every functional definition in `crates/rune-engine/data/catalog/`,
+- **Supported** — every functional definition in `crates/sage-engine/data/catalog/`,
   with its `functional_id`, name, and whether it is a plain data definition or uses the
   `scripted` code escape hatch (ADR 0018 §2). Listed in interned order
   (`FunctionalId`s sorted by byte value), so the ordering is identical on every machine.
@@ -20,11 +20,11 @@ the exclusions data).
 
 ## How it stays honest
 
-The report is **generated, never hand-edited**. `crates/rune-engine/src/compat.rs`
+The report is **generated, never hand-edited**. `crates/sage-engine/src/compat.rs`
 renders it as a pure function of the catalog + the exclusion list; the running engine
 does no I/O (the exclusion list is baked in with `include_str!`, the ADR 0006 pattern).
 
-A `cargo test` freshness gate (`crates/rune-engine/tests/compat.rs`) regenerates the
+A `cargo test` freshness gate (`crates/sage-engine/tests/compat.rs`) regenerates the
 report in memory and fails if the committed copy has drifted. Because it runs under
 `cargo test --workspace`, it is part of `make check` and CI — the committed report can
 never go stale the way the old hand-maintained coverage ledger did (#252). Generating
@@ -36,7 +36,7 @@ supported and excluded is a hard error, not a self-contradicting report.
 After adding or removing a catalog card, or editing the exclusion list:
 
 ```sh
-make compat        # == cargo run -q -p rune-engine --bin gen-compat
+make compat        # == cargo run -q -p sage-engine --bin gen-compat
 ```
 
 Then commit the regenerated `docs/generated/compatibility.md`. If you forget, `make
@@ -44,7 +44,7 @@ check` fails with a pointer back to `make compat`.
 
 ## Add an exclusion
 
-Edit [`crates/rune-engine/data/exclusions.json`](../crates/rune-engine/data/exclusions.json)
+Edit [`crates/sage-engine/data/exclusions.json`](../crates/sage-engine/data/exclusions.json)
 — an array of `{ "name": ..., "blocker": ... }` objects:
 
 ```json

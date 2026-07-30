@@ -26,7 +26,7 @@ that decision, scoped narrowly.
 The bundled catalog draws its **functional card data** — card *names* and their mechanical
 characteristics (types, subtypes, mana cost, colors, power/toughness, and IR-modeled
 abilities) — from a single real Magic set, **Core Set 2019 (M19)**, rather than from invented
-names. The starter decks ([`clients/web/src/starter-decks.json`](../../clients/web/src/starter-decks.json))
+names. The starter decks ([`data/starter-decks.json`](../../data/starter-decks.json))
 are built from that catalog.
 
 This changes **only** which names and numbers the functional definitions carry. Every existing
@@ -34,7 +34,7 @@ presentation prohibition stays in force and is unchanged:
 
 - **No Oracle text or flavor text.** Definitions still have no rules-prose field; the closed
   `deny_unknown_fields` schema still rejects one. Player-facing rules text is still *generated*
-  from the ability IR by `crates/rune-server/src/rules_text.rs`, so it is the engine's own
+  from the ability IR by `crates/sage-server/src/rules_text.rs`, so it is the engine's own
   phrasing, never a card's copied Oracle wording.
 - **No art, frames, symbols, or branding.** Printing records still carry only
   `functional_id` / `collector_number` / `rarity`; the opt-in, device-only art pipeline of
@@ -44,7 +44,7 @@ presentation prohibition stays in force and is unchanged:
 - **No monetization, no implied affiliation.**
 
 A card is chosen for the catalog only if its function is expressible in the existing ability
-IR (`crates/rune-engine/src/ability.rs`) and rendered by the exhaustive text generator. IR
+IR (`crates/sage-engine/src/ability.rs`) and rendered by the exhaustive text generator. IR
 shapes that no clean M19 card uses (P/T Auras, `enters_with_counters`, a bare dies-draw
 trigger, first strike, deathtouch, `lose_life`, colorless mana) remain valid vocabulary and
 keep full coverage through **inline `from_json` test scaffolds** (test-only definitions named

@@ -7,7 +7,7 @@
 ## Context
 
 Every priority pass is manual today. The engine offers `pass_priority` as an
-ordinary [`Action`](../../crates/rune-engine/src/actions.rs) and nothing anywhere
+ordinary [`Action`](../../crates/sage-engine/src/actions.rs) and nothing anywhere
 auto-passes, holds, or stops — a spell-less turn still costs a seat a click at
 every step it is handed priority. `docs/design/ui-requirements.md` ("Stack,
 priority, and timers") calls priority automation the single biggest lever on game
@@ -19,10 +19,10 @@ pace and fixes two hard constraints on where it may live:
   computes no legality (AGENTS.md), so it cannot even auto-fire a solitary pass.
   Automation is engine/server side, behind a server contract.
 - **The engine does no I/O and holds no policy.** ADR 0002 keeps
-  `rune-engine` a pure function over immutable `GameState` — no loops driven by
+  `sage-engine` a pure function over immutable `GameState` — no loops driven by
   wall-clock, no rooms, no per-connection configuration. A *loop* that keeps
   auto-passing, and the *preferences* that gate it, are room-layer concerns, the
-  same way the decision timer (issue #263, [`TimerPolicy`](../../crates/rune-server/src/room.rs))
+  same way the decision timer (issue #263, [`TimerPolicy`](../../crates/sage-server/src/room.rs))
   and player display names (issue #294) live in the room, not the engine.
 
 Per-player **stop preferences** are input like any other: they reach the server
@@ -44,7 +44,7 @@ answers the one rules question ("does this seat have a meaningful action?"), and
 ### Engine — the "no meaningful action" hint
 
 - **A single pure predicate,
-  [`priority_has_no_meaningful_action`](../../crates/rune-engine/src/automation.rs).**
+  [`priority_has_no_meaningful_action`](../../crates/sage-engine/src/automation.rs).**
   It returns `true` exactly when the current priority holder's *entire*
   `valid_actions` set is drawn from {`PassPriority`, `Concede`, a mana ability}.
   Casting a spell, activating a non-mana ability, and every forced turn-based
@@ -65,7 +65,7 @@ answers the one rules question ("does this seat have a meaningful action?"), and
 
 ### Server — the auto-pass loop and stop preferences
 
-- **A room policy, [`AutoPassPolicy`](../../crates/rune-server/src/room.rs), off by
+- **A room policy, [`AutoPassPolicy`](../../crates/sage-server/src/room.rs), off by
   default.** Mirroring `TimerPolicy`, `Off` reproduces exactly the pre-automation
   behavior (every existing flow and test is unchanged); the server binary enables
   `On` for real games. Determinism holds with it on or off.
@@ -96,7 +96,7 @@ answers the one rules question ("does this seat have a meaningful action?"), and
 ### Protocol — preferences up, an indicator down
 
 - **`set_stops` (client → server):** a new in-game
-  [`ClientMessage`](../../crates/rune-protocol/src/lib.rs) variant carrying the
+  [`ClientMessage`](../../crates/sage-protocol/src/lib.rs) variant carrying the
   seat's stop `Phase`s. Server-authoritative and reconnect-durable (stored on the
   room); an unparseable message is ignored and the current view re-sent, the
   non-fatal pattern.
@@ -144,7 +144,7 @@ that reasons about whether a *possible* response is *worth* making.
   declare-attackers step for a player who controls no legal attacker at all — an
   empty prompt with exactly one possible answer. The split stands; the engine gains
   a second pure predicate beside the first,
-  [`forced_declaration_without_choice`](../../crates/rune-engine/src/automation.rs),
+  [`forced_declaration_without_choice`](../../crates/sage-engine/src/automation.rs),
   which returns the empty `DeclareAttackers`/`DeclareBlockers` **only** when it can
   prove no non-empty declaration is legal (CR 508.1a / 509.1a, evasion included).
   The room's settle loop applies it as the ordinary engine action it is, behind the
@@ -165,7 +165,7 @@ that reasons about whether a *possible* response is *worth* making.
   they still lost the turn. Two changes follow, neither of which touches the engine.
 
   **A default, not a rule.** The room gains a third policy beside `TimerPolicy` and
-  `AutoPassPolicy` — [`StopPolicy`](../../crates/rune-server/src/room/policy.rs),
+  `AutoPassPolicy` — [`StopPolicy`](../../crates/sage-server/src/room/policy.rs),
   **off by default**, turned on by the lobby for real games — which *seeds* a seat
   that has never sent `set_stops`. A human seat is seeded with its own main phases;
   an AI seat (the room's existing `ai_seats` knowledge) is seeded with nothing, so

@@ -1,12 +1,34 @@
 # ADR 0011: End-to-end browser test strategy for the web client
 
-- Status: accepted (suite paused — see note)
+- Status: accepted (reinstated — see note)
 - Date: 2026-07-11
 - Issue: #102
 
-> **Note (paused):** the browser E2E suite, its `E2E` CI job, and the `make e2e` targets
-> were removed to keep the inner loop fast while the in-game UI is still in flux. This ADR
-> is retained as the blueprint for reinstating them later; the strategy below is unchanged.
+> **Note (2026-07-30, SAGE restart): the pause is lifted and E2E is a required gate again.**
+> The suite was removed three times (#251, reverted reinstatements in #292 and #538) on the
+> grounds that the in-game UI was in flux. The maintainer has reversed that decision: a
+> browser suite is necessary even this early, because the seams this project is actually made
+> of — socket, protocol, view reconstruction, reconnect — produce integration bugs no jsdom
+> test can see.
+>
+> The reversal comes with the three concrete problems that made the suite painful, which the
+> Stage 3 client must be designed against rather than rediscover:
+>
+> 1. **CI duration.** Every PR waited on the browser job. Mitigation: one thin smoke path as
+>    the required gate, deeper flows behind a non-blocking job; the Stage 3 client is a single
+>    layout with no WebGL, so there is no scene graph to warm up.
+> 2. **Agent iteration time.** Waiting on browser runs dominated the edit loop. Mitigation:
+>    the suite must be runnable against a prebuilt `dist/` without a full reinstall, and must
+>    not be a prerequisite for engine-only work — the engine gate stays independent.
+> 3. **Version mismatching.** Playwright's browser download versus the installed Chromium.
+>    Mitigation: pin `@playwright/test` and consume a preinstalled browser via
+>    `PLAYWRIGHT_BROWSERS_PATH` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, and launch with an
+>    explicit `executablePath` when the pinned version disagrees with the image. Never run
+>    `playwright install` in CI or in an agent session.
+>
+> The strategy below is unchanged and is the blueprint. It predates the SAGE restart, so its
+> references to the Pixi canvas and `sceneReconciler.ts` describe the deleted client; the
+> testing *approach* carries forward, the specific surfaces do not.
 
 ## Context
 
@@ -59,7 +81,7 @@ architecture:
 - **`make check` is the CI contract.** `docs/coding-standards.md` states it plainly:
   "`make check` … is exactly what CI runs — if it isn't green, it isn't done." A
   browser suite that needs a downloaded Chromium, a Vite server, and (for smoke
-  tests) the `rune-server` binary is heavier and flakier than the fast unit gate.
+  tests) the `sage-server` binary is heavier and flakier than the fast unit gate.
   Where it sits relative to `make check` is itself a decision with a governance
   consequence, not a detail.
 
@@ -94,8 +116,8 @@ tier:
    client echoes back). This tier is deterministic and fast: no engine, no game, no
    room lifecycle — just "given this exact `GameView`, the browser paints this." It
    is where the bulk of rendering, targeting-mode, and DOM/canvas assertions live.
-2. **The real `rune-server` binary — for a small number of smoke tests.** A handful
-   of tests launch the actual `rune-server` and connect the real client to it, to
+2. **The real `sage-server` binary — for a small number of smoke tests.** A handful
+   of tests launch the actual `sage-server` and connect the real client to it, to
    prove the true end-to-end path (build → browser → socket → server) works against
    the real protocol implementation, not just a mock that could drift from it. These
    are the M1 exit-criterion tests (connection screen → … → first GameView on the
@@ -140,7 +162,7 @@ determined by the `TableScene` data structure the client already computes, the
 - Fixtures are **reused, not reinvented.** The mock WS server replays the existing
   `GameView` fixtures in **`clients/web/src/game-view.fixture.ts`**
   (`SAMPLE_GAME_VIEW_JSON`, `TARGETING_GAME_VIEW_JSON`, …), which already mirror the
-  Rust round-trip fixture in `crates/rune-protocol`. One fixture set backs unit
+  Rust round-trip fixture in `crates/sage-protocol`. One fixture set backs unit
   tests, mock-WS e2e tests, and (by construction) matches what the real server
   emits, so the three tiers cannot silently disagree about the wire shape. New e2e
   scenarios add fixtures to that module rather than defining parallel ones.
@@ -149,7 +171,7 @@ determined by the `TableScene` data structure the client already computes, the
 
 The browser suite runs as its **own `make e2e` target and its own CI job (`E2E`)**,
 **not** inside `make check` and not inside the existing `Engine`/`Client` jobs. It
-needs a browser, a built-and-served client, and (for smoke tests) the `rune-server`
+needs a browser, a built-and-served client, and (for smoke tests) the `sage-server`
 binary; folding that into the fast `make check` gate would make the everyday
 inner-loop check slow and browser-dependent, and would couple the pure unit gate to
 a heavier, flakier runtime.
@@ -172,7 +194,7 @@ different trigger cadence if flake or runtime warrants, without weakening
   canvas-assertion approach mid-implementation. Reusing `game-view.fixture.ts`
   across unit, mock-WS, and smoke tiers keeps one source of truth for the wire shape,
   so the tiers can't drift. The mock tier gives fast, deterministic rendering
-  coverage; the `rune-server` smoke tier proves the real path and guards against
+  coverage; the `sage-server` smoke tier proves the real path and guards against
   mock-vs-reality drift.
 - **Harder / given up.** A new, heavier test runtime enters the repo: a browser, a
   Vite preview server, the server binary, and Playwright's toolchain and flake

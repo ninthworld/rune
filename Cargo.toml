@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/rune-engine",
-    "crates/rune-protocol",
-    "crates/rune-server",
-    "crates/rune-cli",
+    "crates/sage-engine",
+    "crates/sage-protocol",
+    "crates/sage-server",
+    "crates/sage-cli",
 ]
 
 [workspace.package]

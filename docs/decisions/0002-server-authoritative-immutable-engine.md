@@ -11,7 +11,7 @@ and expose authority to clients. See `docs/brief.md` for the full rationale.
 
 ## Decision
 
-All rules live in `rune-engine`. `apply_action(&GameState, &Action, &CardDatabase) ->
+All rules live in `sage-engine`. `apply_action(&GameState, &Action, &CardDatabase) ->
 GameState` returns a new state. Clients receive personalized `GameView` values and may submit
 only an issued `action_id` plus server-enumerated choices. The engine performs no runtime I/O;
 the server owns networking, rooms, policy, and time.

@@ -1,4 +1,4 @@
-# RUNE coding standards
+# SAGE coding standards
 
 These standards apply to all code. The architectural rules in [`AGENTS.md`](../AGENTS.md)
 take precedence. `make check` runs the fast Engine and Client checks; `make verify` adds
@@ -36,7 +36,8 @@ with `[lints] workspace = true`.
 
 ## TypeScript / web client
 
-Enforced by `make client-check`. See [`clients/web/AGENTS.md`](../clients/web/AGENTS.md).
+Enforced by `make client-check`, which returns with the rebuilt client in Stage 3 of the
+SAGE restart along with `clients/web/AGENTS.md`. The rules below carry forward to it.
 
 - **Formatting.** Use Prettier with no local overrides.
 - **Linting.** ESLint with `typescript-eslint` and `react-hooks` rules; no
@@ -73,7 +74,7 @@ Keep files small enough that a reader can hold one in their head. Target well un
 - **Cite the Comprehensive Rules.** Engine implementations cite `CR NNN.Nx` in the
   relevant doc comment, and their tests use the same rule number in names such as
   `cr_605_3_…`. Record partial support in a nearby `// NOTE:` comment. List the living
-  coverage with `rg 'cr_\d' crates/rune-engine/src`.
+  coverage with `rg 'cr_\d' crates/sage-engine/src`.
 - **No secrets, no vendored non-MIT code**, no `target/`, no `node_modules/`.
 
 ## Verification
