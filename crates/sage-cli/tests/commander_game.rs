@@ -73,7 +73,7 @@ fn aggressor_deck(db: &CardDatabase) -> Vec<CardId> {
 
 /// The victim's deck: its own Jedit commander, a wall of Gigantosaurus blockers, and
 /// Forests to cast them. This is an **engine fixture**, not a server-validated list
-/// (deck legality is a server concern, ADR 0013 §4; `GameState::new` checks only that
+/// (deck legality is a server concern; `GameState::new` checks only that
 /// ids resolve): the extra blocker copies make "draw and cast a blocker, then block the
 /// commander once" reliable across seeds without pinning the shuffle to a single draw.
 fn victim_deck(db: &CardDatabase) -> Vec<CardId> {
@@ -136,7 +136,7 @@ fn is_main_phase(phase: Phase) -> bool {
     matches!(phase, Phase::PrecombatMain | Phase::PostcombatMain)
 }
 
-/// The first offered mana ability (a one-gesture tap-for-mana, ADR 0025).
+/// The first offered mana ability (a one-gesture tap-for-mana).
 fn mana_ability(actions: &[ValidAction]) -> Option<&ValidAction> {
     actions.iter().find(|action| action.mana_ability)
 }

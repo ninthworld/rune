@@ -12,7 +12,7 @@
 //! [`crate::rng`].
 //!
 //! Out of scope here: deck-legality checks (deck size, singleton/limit rules) and
-//! the set/printing model (ADR 0013). Unknown card ids are the one input error
+//! the set/printing model. Unknown card ids are the one input error
 //! this constructor rejects.
 
 use std::fmt;
@@ -47,7 +47,7 @@ pub struct PlayerSetup {
     /// 903.6) and the *rest* of the deck is shuffled into the library. Which
     /// physical instance becomes the commander is chosen here by setup — the first
     /// decklist entry matching this card. Deck legality (singleton, color
-    /// identity) is not checked; that stays server-side (ADR 0013 §4).
+    /// identity) is not checked; that stays server-side.
     pub commander: Option<CardId>,
 }
 

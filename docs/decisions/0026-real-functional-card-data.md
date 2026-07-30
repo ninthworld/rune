@@ -6,8 +6,7 @@
 
 ## Context
 
-Since [ADR 0013](0013-card-identity-and-set-model.md) and
-[ADR 0018](0018-scalable-functional-card-definitions.md) the bundled catalog has shipped an
+Since [ADR 0018](0018-scalable-functional-card-definitions.md) the bundled catalog has shipped an
 *invented* starter set: functional stand-in cards with made-up names (Thornback Boar,
 Quickfire Bolt, …). The invented names were a conservative choice, not a requirement of the
 data model — the schema stores only functional data (name, types, mana cost, power/toughness,
@@ -53,9 +52,9 @@ keep full coverage through **inline `from_json` test scaffolds** (test-only defi
 ## Consequences
 
 - The shipped catalog and decks read as recognizable Magic, which is the point.
-- The invented-starter-set language in [ADR 0013 §5](0013-card-identity-and-set-model.md) and
-  the "invented" framing in [ADR 0018](0018-scalable-functional-card-definitions.md) /
-  [ADR 0024](0024-user-side-card-art.md) is superseded by this ADR for the bundled catalog.
+- The "invented" framing in [ADR 0018](0018-scalable-functional-card-definitions.md) and
+  [ADR 0024](0024-user-side-card-art.md) does not apply to the bundled catalog; this ADR
+  governs it.
 - `docs/brief.md` "Legal constraints" is clarified: card *names and functional
   characteristics* may match real cards; *presentation assets* (Oracle/flavor text, art,
   frames, branding) remain prohibited.

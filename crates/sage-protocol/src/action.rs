@@ -38,7 +38,7 @@ pub struct ValidAction {
     /// nothing, does not use the stack, and only produces mana. Server-computed
     /// so a client may offer a lighter gesture — one-click tap-for-mana — for
     /// exactly these actions without ever classifying abilities itself
-    /// (ADR 0025). Omitted from the wire when `false`.
+    ///. Omitted from the wire when `false`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mana_ability: bool,
     /// Ordered choice steps this action requires before it can be taken — one per
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn cr_605_mana_ability_flag_round_trips_and_defaults_off() {
-        // ADR 0025: `mana_ability` rides the wire only when true; a legacy
+        // `mana_ability` rides the wire only when true; a legacy
         // payload without the key deserializes to `false`.
         let tap = ValidAction {
             mana_ability: true,

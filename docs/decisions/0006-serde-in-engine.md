@@ -17,7 +17,7 @@ it into typed Rust:
 1. **serde + serde_json.** Derive `Deserialize` on the card type; parse a
    compile-time-embedded (`include_str!`) JSON string. serde/serde_json are
    already in the workspace lockfile (`sage-protocol` depends on serde) and are
-   MIT/Apache-2.0, so they add no new license surface (`deny.toml`, ADR-0005).
+   MIT/Apache-2.0, so they add no new license surface (`deny.toml`).
 2. **A hand-rolled parser.** Keeps `[dependencies]` empty, but is more code to
    own and brittle to JSON edge cases — a poor trade for a format that will only
    get richer.
@@ -38,7 +38,7 @@ deserializing bundled, compile-time-embedded data snapshots.
 - This is the *only* sanctioned use today. Any dependency that introduces I/O,
   async, timers, threads, wall-clock time, or unseeded randomness remains
   forbidden and would need its own ADR.
-- New dependencies must remain MIT-compatible per ADR-0005 and pass `deny.toml`.
+- New dependencies must remain MIT-compatible and pass `deny.toml`.
 
 ## Consequences
 - **Easier:** card data is typed and validated by `#[derive(Deserialize)]`; the

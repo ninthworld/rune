@@ -46,7 +46,7 @@ pub enum RoomInput {
         /// The seat whose connection dropped.
         seat: Seat,
     },
-    /// A **spectator** connection attached (ADR 0022, issue #351): a non-seated
+    /// A **spectator** connection attached (issue #351): a non-seated
     /// observer. `outbox` is where the room pushes redacted [`SpectatorView`]s; the
     /// room immediately sends the current one so a mid-game spectator reconstructs the
     /// whole public board from a single message. A spectator owns no seat and is not

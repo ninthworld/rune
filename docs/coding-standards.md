@@ -36,12 +36,12 @@ with `[lints] workspace = true`.
 
 ## TypeScript / web client
 
-Enforced by `make client-check`, which returns with the rebuilt client in Stage 3 of the
-SAGE restart along with `clients/web/AGENTS.md`. The rules below carry forward to it.
+These rules apply to the web client when it lands, enforced by a `make client-check` target
+that arrives with it.
 
 - **Formatting.** Use Prettier with no local overrides.
-- **Linting.** ESLint with `typescript-eslint` and `react-hooks` rules; no
-  disables without an inline justification comment.
+- **Linting.** ESLint with `typescript-eslint` rules; no disables without an inline
+  justification comment.
 - **`strict` TypeScript.** No implicit `any`; prefer precise protocol types.
 - **No game logic.** The client renders `GameView` and echoes an `action_id`.
   It never computes legality, cost, or effect (`AGENTS.md` hard rule).

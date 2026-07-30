@@ -28,8 +28,8 @@ Only the repository **Admin** role may bypass (`bypass_actors`).
 If a status check is ever renamed in `.github/workflows/`, update the matching
 `context` here and re-import.
 
-> **Re-import needed (SAGE restart).** The `Client` context was removed here because the
-> web client — and its CI job — were deleted in Stage 1. GitHub still holds the previously
-> imported ruleset, so until this file is re-imported (steps above), every pull request
-> waits forever on a `Client` check that no workflow reports. Stage 3 restores the client
-> and adds a browser-e2e context; both go back in this list and get re-imported then.
+> **Re-import after editing.** GitHub holds whatever was last imported, so a change to this
+> file has no effect until it is re-imported (steps above). A required context named here
+> that no workflow reports will block every pull request forever. The web client adds a
+> `Client` context and a browser-e2e context when it lands; both go in this list and get
+> re-imported then.

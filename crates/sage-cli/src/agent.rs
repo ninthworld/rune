@@ -252,7 +252,7 @@ where
 
 /// Run the full unattended flow over an already-connected socket: drive the lobby
 /// from `plan` (create/join a room, submit a deck, ready), then play the game with
-/// `agent` once the ready gate passes (ADR 0012, issue #115).
+/// `agent` once the ready gate passes (issue #115).
 ///
 /// The lobby phase sends only commands the server offered and holds no game logic;
 /// the instant the game is constructed the server pushes the first `GameView` on the

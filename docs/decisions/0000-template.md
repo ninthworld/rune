@@ -1,8 +1,13 @@
 # ADR NNNN: Title
 
-- Status: proposed | accepted | superseded by ADR-XXXX
+- Status: accepted
 - Date: YYYY-MM-DD
 - Issue: #N
+
+<!-- Every ADR here is accepted and binding. Write one only after the decision has
+     survived contact with working code. When a decision stops being true, rewrite
+     this file or delete it — never leave it standing as history. -->
+
 
 ## Context
 

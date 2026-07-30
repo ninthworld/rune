@@ -21,7 +21,7 @@
 //! [`Player::commander`](crate::Player::commander).
 //!
 //! Deck legality — singleton, color identity, the 40-life commander *format* — is
-//! **not** modeled here; it stays server-side (ADR 0013 §4). The engine only sees
+//! **not** modeled here; it stays server-side. The engine only sees
 //! which card was designated, as setup data.
 
 use crate::id::{CardId, CardInstanceId};

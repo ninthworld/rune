@@ -251,7 +251,7 @@ mod tests {
         let json = serde_json::to_value(ability_view).unwrap();
         assert!(json.get("targets").is_none());
 
-        // The spectator sees exactly the same public stack (ADR 0022): an object on
+        // The spectator sees exactly the same public stack: an object on
         // the stack is public, so nothing is redacted and nothing extra is added.
         let spectated = spectator_view(&state, &db);
         assert_eq!(spectated.stack, view.stack);
@@ -476,7 +476,7 @@ mod tests {
             "the prose is identical — the kind is the only channel that separates them",
         );
 
-        // The stack is public (ADR 0022), so the opponent's and a spectator's copies
+        // The stack is public, so the opponent's and a spectator's copies
         // are the same entries, finer kind included. Nothing here is personalized.
         let theirs = personalized_view(&state, &db, PlayerId(1));
         assert_eq!(theirs.stack, mine.stack);

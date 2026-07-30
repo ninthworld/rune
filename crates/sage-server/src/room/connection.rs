@@ -111,7 +111,7 @@ pub async fn serve_connection<S, F>(
     let _ = write.close().await;
 }
 
-/// Bridge a live WebSocket connection to a room as a **spectator** (ADR 0022, issue
+/// Bridge a live WebSocket connection to a room as a **spectator** (issue
 /// #351): a non-seated observer that receives redacted [`SpectatorView`]s and sends
 /// **nothing** back. It is the read-only counterpart of [`serve_connection`] — it joins
 /// via [`RoomInput::JoinSpectator`], serializes each pushed `SpectatorView` to JSON and

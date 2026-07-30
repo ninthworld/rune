@@ -195,7 +195,7 @@ pub(crate) fn commander_tax_view(state: &GameState) -> Vec<CommanderTaxView> {
 /// commander's name and colors, vanishes the moment the commander is cast.
 ///
 /// The color identity comes from [`crate::format::color_identity`], the same
-/// structured-data computation that validated the deck (ADR 0013 §4), so what a
+/// structured-data computation that validated the deck, so what a
 /// client renders can never disagree with what the format enforced. **Public
 /// information** — a commander is announced before the game — so seated and
 /// spectator views carry it verbatim.

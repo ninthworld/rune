@@ -1,7 +1,7 @@
 //! End-to-end integration test for the layer-1 lobby: real WebSocket clients
 //! connect to the running server and drive the explicit-room protocol — create a
 //! room with a config, share its id, join by id, and reconnect to a held seat by
-//! session token — over the wire (ADR 0012, issues #110 and #113). No game is
+//! session token — over the wire (issues #110 and #113). No game is
 //! constructed: the connections stay in the pre-game phase, exchanging
 //! `LobbyView`/`LobbyCommand`, until the ready gate (issue #112).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

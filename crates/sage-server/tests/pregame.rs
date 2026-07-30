@@ -1,4 +1,4 @@
-//! Integration test for the pre-game gate (ADR 0012, issue #112) over the
+//! Integration test for the pre-game gate (issue #112) over the
 //! in-memory duplex transport: two WebSocket peers drive the lobby end to end —
 //! create a room, join by id, submit decks, and ready up — and, when the last seat
 //! readies, the server constructs the game from the submitted decks and hands both

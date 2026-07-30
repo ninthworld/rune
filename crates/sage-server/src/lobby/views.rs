@@ -63,7 +63,7 @@ fn build_directory(registry: &Registry) -> Vec<RoomSummary> {
                 room_id: room_id.clone(),
                 config: room.config.clone(),
                 filled: u8::try_from(filled).unwrap_or(u8::MAX),
-                // The room's spectator count (ADR 0022, issue #351): observers, not
+                // The room's spectator count (issue #351): observers, not
                 // seats — a count only, never a spectator identity.
                 spectators: u8::try_from(room.spectators.len()).unwrap_or(u8::MAX),
                 state,

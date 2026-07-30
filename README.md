@@ -9,9 +9,8 @@ state-based server-authoritative engine, reachable without an install — and *t
 beautiful. The first milestone is the vertical slice of that: two people click a link and play
 a real game in a browser.
 
-> **Status: mid-restart.** The previous web client was deleted and is being rebuilt from a
-> single clear direction. The engine, server, protocol, and terminal client carry forward. See
-> the [project brief](docs/brief.md) for what changed and why.
+> **Status: no web client yet.** The engine, server, protocol, and terminal client work today;
+> the browser client is the current milestone. Until it exists, `sage-cli` is how you play.
 
 The engine plays deterministic games of two to four players to a single winner: casting,
 targeting, the stack, combat with per-attacker targets and player-chosen damage assignment,
@@ -54,8 +53,7 @@ See the [project brief](docs/brief.md) for scope and the
 | `crates/sage-protocol` | Shared Rust wire types |
 | `crates/sage-server` | WebSocket lobby, rooms, and view projection |
 | `crates/sage-cli` | Interactive terminal and deterministic-agent client |
-| `docs` | Brief, protocol, card schema, coding standards, and live ADRs |
-| `docs/archive` | Superseded designs and decisions — history, not guidance |
+| `docs` | Brief, protocol, card schema, coding standards, and ADRs |
 
 ## Set up and verify
 
@@ -66,7 +64,7 @@ make verify
 ```
 
 `make check` is the fast engine gate. `make verify` adds dependency-policy checks and matches
-the required pre-merge CI surface. Client and browser-e2e gates return with the rebuilt client.
+the required pre-merge CI surface. Client and browser-e2e gates land with the web client.
 
 ## Run locally
 
@@ -90,7 +88,7 @@ cargo run -p sage-cli -- --agent
 ```
 
 The CLI accepts `--addr`, `--agent`, and `--agent-timeout`; corresponding environment fallbacks
-are documented by `--help`. Until the web client is rebuilt, the CLI is the way to play.
+are documented by `--help`. Until the web client exists, the CLI is the way to play.
 
 ## Documentation
 

@@ -4,10 +4,9 @@ SAGE uses JSON over one WebSocket connection. Before a game starts, the connecti
 exchanges complete lobby views and lobby commands. Once the room constructs a game, the
 same connection exchanges personalized game views and chosen actions.
 
-The Rust types in `crates/sage-protocol/src/lib.rs` are the wire authority. The TypeScript
-mirror in `clients/web/src/protocol.ts` and this document must change with them. (The mirror
-is absent until Stage 3 of the SAGE restart rebuilds the web client; the Rust authority and
-this document remain in force.)
+The Rust types in `crates/sage-protocol/src/lib.rs` are the wire authority; this document and
+the TypeScript mirror must change with them in the same PR. The mirror does not exist yet — it
+arrives with the web client — so today the contract is the Rust types plus this document.
 
 ## Message lifecycle
 
@@ -405,8 +404,8 @@ Three rules govern these fields:
   action such as passing priority.
 - `mana_ability` (optional, default `false`) marks the activation of a mana ability
   (CR 605): no targets, no stack, only mana production. Server-computed so a client may
-  offer a lighter gesture — one-click tap-for-mana (ADR 0025) — for exactly these actions
-  without ever classifying abilities itself. Omitted when `false`.
+  offer a lighter gesture — one-click tap-for-mana — for exactly these actions without ever
+  classifying abilities itself. Omitted when `false`.
 - `destinations` (optional, issue #554) lists the server-authoritative surfaces this
   action may be taken *to*, each `{ type, id, owner?, label? }` where `type` is
   `"zone"`, `"entity"`, or `"player"` (free form — clients ignore kinds they do not
@@ -629,7 +628,7 @@ Further submitted actions are rejected and the final view is re-sent.
 
 ### `SpectatorView`
 
-A connection that joined with `spectate_room` (ADR 0022, issue #351) receives a
+A connection that joined with `spectate_room` (issue #351) receives a
 `SpectatorView` instead of a `GameView` on every change — a **non-seated observer** watching
 the game live with all hidden information redacted. Redaction is **structural**: the type
 simply has no receiver or decision fields, so a projection cannot leak a hand, a library’s
@@ -752,7 +751,7 @@ browser through the field it already had rather than through a second, divergent
 listed room is public by definition, so its `visibility` is always the elided default.
 The directory never exposes rosters, deck lists, or game state. A `gathering` room is joinable
 while it has an open seat. An `in_progress` room is not seat-joinable, but it **can be
-spectated** (`spectate_room`, ADR 0022 / issue #351): observers do not consume seats, so
+spectated** (`spectate_room`, issue #351): observers do not consume seats, so
 `spectators` is independent of `filled`, and only a count is advertised — never a spectator’s
 identity. Empty and finished rooms leave the directory. The server re-sends affected lobby
 views whenever the directory changes (including a spectator count change). A missing
@@ -839,7 +838,7 @@ the ready gate; the AI plays its own seat once the game starts. `remove_ai` empt
 Both are pre-game only and rejected once the game has started. This works for any seat count — a room
 may mix human and AI seats, e.g. one human against three AI in a free-for-all.
 
-`spectate_room` joins a room as a **spectator** (ADR 0022, issue #351): a non-seated observer
+`spectate_room` joins a room as a **spectator** (issue #351): a non-seated observer
 that watches the game live with all hidden information redacted. Unlike `join_room` it does not
 consume a seat, so it succeeds on a room whose seats are full — but the room’s game must already
 be running (spectating a `gathering` room is rejected with the lobby’s non-fatal error, since

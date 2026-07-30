@@ -31,9 +31,8 @@ memory. The room already holds exactly this shape of non-engine, per-seat,
 reconnect-surviving state (`player_names`), and reconnect re-sends full state, so
 a preference stored on the room is durable by construction.
 
-This is the *basic* tier (M4). The M6 automation suite — auto-yield, hold
-priority, "full control" — and any timer interaction beyond not conflicting are
-out of scope.
+This is the *basic* tier. A richer automation suite — auto-yield, hold priority,
+"full control" — and any timer interaction beyond not conflicting are out of scope.
 
 ## Decision
 

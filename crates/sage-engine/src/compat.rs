@@ -1,9 +1,10 @@
 //! The deterministic card-compatibility report (issue #258).
 //!
-//! M3's exit criterion asks for "a deterministic compatibility report naming every
-//! supported and excluded card". This module is the single source of truth for that
-//! artifact: [`render_report`] turns the interned catalog plus a curated exclusion
-//! list into the Markdown committed at `docs/generated/compatibility.md`. The binary
+//! The project claims support for a verified slice of cards, never a full set, and this
+//! module is the checkable artifact behind that claim — a deterministic report naming
+//! every supported and excluded card. [`render_report`] turns the interned catalog
+//! plus a curated exclusion list into the Markdown committed at
+//! `docs/generated/compatibility.md`. The binary
 //! `src/bin/gen-compat.rs` writes it; a `#[test]` in `tests/compat.rs` regenerates it
 //! in memory and fails if the committed copy has drifted, so the report can never go
 //! stale the way the hand-maintained coverage ledger did (#252).

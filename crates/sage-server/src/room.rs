@@ -122,7 +122,7 @@ pub struct Room {
     /// The **format** this room's game is played under (issue #553), or `None` when
     /// the room was constructed without one (unit tests, and any older path). Room
     /// state by definition: the format registry lives in the server, the engine holds
-    /// no format policy at all (ADR 0013 §4). Projected into every seat's
+    /// no format policy at all. Projected into every seat's
     /// [`GameView::format`] and every spectator's, so a client can render
     /// Commander-specific presentation without inferring it from zone contents.
     format: Option<MatchFormat>,
@@ -163,7 +163,7 @@ pub struct Room {
     /// it is delivered exactly once and a later resync never re-fires it. Transient
     /// and display-only, like [`Self::auto_passed_seats`]; the game never reads it.
     pending_acks: Vec<Option<ActionAck>>,
-    /// The connected **spectators** (ADR 0022, issue #351): each a latest-value sender
+    /// The connected **spectators** (issue #351): each a latest-value sender
     /// the room pushes a redacted [`SpectatorView`] to on every broadcast. Spectators
     /// own no seat and are not held open across disconnects — a sender whose receiver
     /// has been dropped is pruned on the next broadcast. Empty by default, so a room

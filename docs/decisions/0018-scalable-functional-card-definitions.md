@@ -6,17 +6,16 @@
 
 ## Context
 
-ADR 0013 split card data into an **oracle card** (printing-independent rules) and
-a **printing** (bibliographic record referencing an oracle card), and that split
-is implemented and shipped: `crates/sage-engine/data/oracle.json` holds 32
-fixture `CardData` entries keyed by an integer `CardId`/`OracleId`, and
-`crates/sage-engine/data/sets/{FIX,FIX2}.json` hold `Printing` records that
-reference those ids — proven by `adding_a_reprint_changes_no_logic` in
-`crates/sage-engine/src/card.rs`. ADR 0013's own words already flagged this as
-an M1-scoped model whose file layout was tuned for "a ~100–150-card invented
-starter set" (M3), not the catalog scale the project ultimately needs (the
-brief's `docs/brief.md` "Shared: Card Data" section, and roadmap M6's "expanded
-card pool"). Three things in the shipped M3 model don't scale past that:
+Card data splits into a **functional definition** (printing-independent rules) and
+a **printing** (a bibliographic record referencing one). That split is right and this
+ADR keeps it: rules live exactly once, so adding a reprint changes no logic — proven by
+`adding_a_reprint_changes_no_logic` in `crates/sage-engine/src/card.rs`.
+
+What this ADR replaces is the *scale mechanics* around it. The first implementation put
+32 entries in a single `crates/sage-engine/data/oracle.json` array keyed by an integer
+`OracleId`, with printings in `data/sets/` referencing those integers. That is fine at 32
+cards and two sets and breaks down well before the catalog size this project targets.
+Three things in particular don't scale:
 
 - **One growing array, one hand-maintained manifest.** `oracle.json` is a single
   JSON array every new card is appended to, and `SET_MANIFEST` in `card.rs` is a
@@ -51,8 +50,8 @@ client remains a dumb renderer; exact Oracle text/image sync is explicitly
 **deferred** to a future, client-only, optional-enrichment feature that the
 server and engine never fetch, store, or require.
 
-The hard rules constrain the design exactly as they did for ADR 0013
-(`AGENTS.md`, `crates/sage-engine/AGENTS.md`, ADR 0002, ADR 0006, ADR 0007):
+The hard rules constrain the design (`AGENTS.md`, `crates/sage-engine/AGENTS.md`,
+ADR 0002, ADR 0006, ADR 0007):
 
 - **Zero I/O in the engine at runtime.** Card data is embedded at compile time;
   serde is sanctioned only for parsing embedded snapshots (ADR 0006).
@@ -73,13 +72,11 @@ PR-sized follow-up work that implements it.
 
 ## Decision
 
-### 1. The oracle-vs-printing split stands; this ADR replaces its scale mechanics
+### 1. The functional-vs-printing split stands; this ADR defines its scale mechanics
 
-ADR 0013 §1 (oracle card vs printing, rules live only on the oracle card, a
-reprint is one printing record and zero logic changes) is **kept unchanged**.
-What this ADR replaces is ADR 0013 §2 (file layout) and the identity/text
-framing in §1/§6 — see §11 "Migration and governance" for the explicit
-supersession.
+The split itself is **unchanged**: rules live only on the functional definition, and a
+reprint is one printing record and zero logic changes. What this ADR settles is the file
+layout, the identity model, and the text framing that surround it.
 
 ### 2. Functional schema and versioning
 
@@ -113,8 +110,8 @@ or the fallback formatter reads):
 - Provenance, not prose: `source_revision` (see §10).
 
 **Excluded fields**, structurally rejected via `#[serde(deny_unknown_fields)]`
-(the same mechanism `PrintingEntry` already uses to reject `image_uris`/`artist`
-in ADR 0013 §6): exact Oracle text, flavor text, image URLs or asset paths,
+(the same mechanism `PrintingEntry` uses to reject `image_uris`/`artist`): exact
+Oracle text, flavor text, image URLs or asset paths,
 official symbols/frames/watermarks, artist credit, and any other upstream
 presentation asset. **`oracle_text` is removed from the committed field set
 entirely** — no field on a functional definition holds authored or exact rules
@@ -149,13 +146,12 @@ not the interned integer, specifically so that remains true. If a future
 feature needs cross-build `CardId` stability (e.g. persisted game state), that
 is a new ADR, not an implicit assumption of this one.
 
-An oracle record may additionally carry an external `scryfall_oracle_id` (a
-UUID string, optional) exactly as ADR 0013 §6 already allowed — unchanged, and
-still just a data field the engine never keys logic on.
+A functional record may additionally carry an external `scryfall_oracle_id` (a
+UUID string, optional) — just a data field the engine never keys logic on.
 
-**Printing records** (`data/sets/<SET>.json`, ADR 0013 §1, unchanged shape
-otherwise) reference a card by `functional_id: String` instead of the current
-`oracle_id: u64`. The loader resolves that string to the build's interned
+**Printing records** (`data/sets/<SET>.json`) reference a card by
+`functional_id: String` rather than an `oracle_id: u64`. The loader resolves that
+string to the build's interned
 `CardId` the same way it resolves a `FunctionalId` file to its entry; an
 unresolvable reference is a build-time validation error (§5), not a runtime
 `None`.
@@ -181,9 +177,9 @@ distinct layers, and only two of them are authored by a human:
   to* the authored `FunctionalId` rather than the authored identity itself. The
   `id.rs` doc comments quoted above say otherwise and are corrected in follow-up
   A (§12).
-- **Functional → printing** is one-to-many, and is ADR 0013's split, preserved:
-  a printing record names a `functional_id` and carries no rules, so every
-  reprint resolves to the same functional definition. `PrintingKey` remains the
+- **Functional → printing** is one-to-many: a printing record names a
+  `functional_id` and carries no rules, so every reprint resolves to the same
+  functional definition. `PrintingKey` remains the
   printing's identity; it is not an engine id and never enters `GameState`.
 - **Handle → instance** is one-to-many *within a game*. `CardInstance { id:
   CardInstanceId, card: CardId }` is exactly this pairing: two Forests in hand
@@ -200,8 +196,8 @@ distinct layers, and only two of them are authored by a human:
 
 **Game state holds no printing identity, and this ADR does not add one.**
 `GameState` stores `CardId`, so the engine cannot tell which printing a copy was
-opened from — deliberate under ADR 0013, since reprints are rules-identical and
-nothing in the rules may depend on the answer. Worth stating plainly, because it
+opened from — deliberate, since reprints are rules-identical and nothing in the
+rules may depend on the answer. Worth stating plainly, because it
 bounds §9: a future client-local cache can be keyed on `functional_id`, but not
 on a printing, because the server does not know the printing either. Per-printing
 art would require deck construction to carry the printing into the game as
@@ -225,8 +221,8 @@ Replacing the single `oracle.json` array:
     file; review size and merge-conflict risk both grow with catalog size.
   - *Set-sized files*: better than monolithic, but two authors adding different
     cards to the same expansion still collide on the same file, and a reprint
-    (by design, ADR 0013) touches no oracle data at all — so sizing oracle
-    files by set conflates two axes that don't share a growth rate.
+    (by design) touches no functional data at all — so sizing functional files
+    by set conflates two axes that don't share a growth rate.
   - *Rust definitions*: contradicts "normal cards are data, not one Rust source
     file per card" (issue #191's first agreed principle) and ADR 0007's
     data/hatch split.
@@ -237,8 +233,8 @@ Replacing the single `oracle.json` array:
   - **One file per `FunctionalId`** gives the smallest possible review/merge
     surface: one new card is one new file, touching zero existing lines. This
     is the "review/concurrency boundary" #191 asks this ADR to establish.
-- **`crates/sage-engine/data/sets/<SET>.json`** — unchanged in role (one file
-  per set of printing records, ADR 0013 §2), field-updated per §3.
+- **`crates/sage-engine/data/sets/<SET>.json`** — one file per set of printing
+  records, with the fields defined in §3.
 - **Catalog manifest, generated, not hand-maintained.** The hand-written
   `SET_MANIFEST` `const` array in `card.rs` does not scale to hundreds of
   catalog files and dozens of sets. A **build script**
@@ -318,7 +314,7 @@ already-verified numbers:
 
 - **Checkout.** Thousands of small JSON files is a well-trodden git shape
   (comparable to a monorepo's per-component config files); no special tooling
-  is required at the catalog sizes this project targets (roadmap M6's
+  is required at the catalog sizes this project targets (an
   "expanded card pool," not a full ~30,000-card Magic catalog).
 - **Incremental build.** `build.rs`'s own work is O(files) string
   concatenation plus JSON validation — sub-second for thousands of small files
@@ -444,20 +440,17 @@ A functional definition may carry `source_revision`, an optional object:
 - **`CardId` stays the same Rust type**, reinterpreted as build-interned rather
   than hand-assigned (§3) — no downstream code that pattern-matches or stores
   `CardId` needs to change.
-- **ADR 0013 is partially superseded, not rewritten.** Its §1 core claim
-  (oracle vs. printing, rules live once) stands. This ADR supersedes ADR 0013
-  §2 (file layout: monolithic `oracle.json` + hand-written `SET_MANIFEST`) and
-  the identity/text framing in §1/§6 (sequential-integer-as-source-of-truth,
-  and `oracle_text` as a bundled Scryfall-shaped field). ADR 0013's own text is
-  left as the historical record of the M3 decision; its status line is updated
-  to point here (see the accompanying edit to that file in this PR).
+- **The functional-vs-printing split survives intact** — rules live once, a reprint
+  is a bibliographic record. What this ADR replaces is the monolithic `oracle.json`
+  plus hand-written `SET_MANIFEST` layout, sequential-integer identity as the source
+  of truth, and `oracle_text` as a bundled Scryfall-shaped field.
 - **`docs/brief.md` is a preserved vision document** (its own header: "Where it
   conflicts with shipped reality, the source of truth wins... Sections that
   have since diverged carry an inline **Shipped:** note"). This ADR adds
   `Shipped:` notes to two sections rather than rewriting them: the Legal
   Considerations bullet asserting Oracle text is "a grey zone — tolerated," and
   the Shared: Card Data section's `oracle_text` field / "Bundled JSON snapshot"
-  framing — both now point at this ADR's decision that RUNE bundles **no**
+  framing — both now point at this ADR's decision that SAGE bundles **no**
   exact Oracle text, only structured functional data and generated fallback
   text, with exact-text sync deferred to the optional client-only feature in
   §9. (See the accompanying edit to that file in this PR.)

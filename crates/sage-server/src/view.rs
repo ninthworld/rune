@@ -258,7 +258,7 @@ pub(crate) fn personalized_view(
     }
 }
 
-/// Project the game state onto a **spectator** view (ADR 0022, issue #351): the
+/// Project the game state onto a **spectator** view (issue #351): the
 /// public intersection only, for a non-seated observer. Unlike [`personalized_view`]
 /// there is **no viewer** — nothing indexes a seat's hand, mana pool, or actions, so
 /// the projection *cannot* reach any hidden information. Redaction is structural: the
@@ -698,7 +698,7 @@ mod tests {
         // A 3-seat game with cards in every hand, a battlefield permanent, and one
         // eliminated seat. The spectator projection must show every seat as public
         // counts, expose no hand contents or decision surface, and — structurally —
-        // carry no receiver fields at all (ADR 0022, issue #351).
+        // carry no receiver fields at all (issue #351).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_multiplayer(3);
         state.step = Step::PrecombatMain;

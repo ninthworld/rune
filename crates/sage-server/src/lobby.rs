@@ -1,5 +1,5 @@
 //! Layer 1 lobby — session identity, the explicit-room registry, the pre-game
-//! `LobbyView`/`LobbyCommand` routing (ADR 0012, issue #110), the deck-submission and
+//! `LobbyView`/`LobbyCommand` routing (issue #110), the deck-submission and
 //! ready gate that constructs the game and hands each seat off to the in-game contract
 //! (issue #112), and reconnect-to-a-held-seat by session token (issue #113).
 //!
@@ -13,7 +13,7 @@
 //! game — once constructed — owns the one game).
 //!
 //! # Explicit rooms — create with config, join from the directory or by id
-//! There is deliberately **no auto-seating** and no matchmaking (ADR 0012). A
+//! There is deliberately **no auto-seating** and no matchmaking. A
 //! connection either *creates* a room with a [`RoomConfig`] (a seat count in
 //! `2..=8`) — receiving a shareable [`RoomId`] — or *joins* an existing room. Joining
 //! a full or unknown room is a typed [`LobbyError`]; the connection's current
@@ -38,7 +38,7 @@
 //! server-generated seed, spawns the [`Room`], and pushes each seat a game hand-off;
 //! nothing game-related is sent before that moment. This retires the previous
 //! "auto-seat into a game that is already live with one player and empty decks"
-//! behavior (ADR 0012).
+//! behavior.
 //!
 //! # Holding seats for reconnect, and reclaiming rooms
 //! A **seated** session is held open across a dropped connection: a disconnect
@@ -120,7 +120,7 @@ pub(crate) use registry::*;
 pub(crate) use views::*;
 
 /// Inclusive range of seats a room may be configured with. The lobby and room
-/// plumbing support 2–8 seats even while the engine remains two-player (ADR 0012):
+/// plumbing support 2–8 seats even while the engine remains two-player:
 /// a config the engine cannot yet build a game for is caught later, at the ready
 /// gate (issue #112), not here.
 const SEAT_RANGE: std::ops::RangeInclusive<u8> = 2..=8;
@@ -133,7 +133,7 @@ const MAX_NAME_LEN: usize = 32;
 
 /// What the lobby pushes to one connection: either a fresh full [`LobbyView`] to
 /// render, or — the instant the ready gate passes — the hand-off that switches the
-/// connection to the in-game contract (ADR 0012).
+/// connection to the in-game contract.
 ///
 /// Not a protocol type: it never touches the wire. The connection task
 /// ([`serve_lobby_connection`]) serializes a [`View`](LobbySignal::View) to JSON and
@@ -153,7 +153,7 @@ pub(crate) enum LobbySignal {
         /// Handle to the running room task that now owns the one game.
         room: RoomHandle,
     },
-    /// This connection joined as a **spectator** (ADR 0022, issue #351): it should
+    /// This connection joined as a **spectator** (issue #351): it should
     /// switch to the read-only spectator bridge driven by `room`, receiving redacted
     /// [`SpectatorView`]s and sending nothing. Like [`Start`](LobbySignal::Start) it is
     /// a terminal hand-off — no `LobbyView` is pushed to a spectating session afterward.
@@ -190,15 +190,15 @@ struct Inner {
     /// against. The ready gate resolves each submitted [`CardIdentity`] against it
     /// ([`Lobby::submit_deck`]) and constructs the game from the accepted decks
     /// ([`Lobby::start_game`]). The lobby owns the database every room draws from
-    /// (ADR 0012).
+    ///.
     ///
     /// [`CardIdentity`]: sage_protocol::CardIdentity
     db: CardDatabase,
-    /// The server's format registry (ADR 0013 §4): each room's `game_setup` id is a
+    /// The server's format registry: each room's `game_setup` id is a
     /// key into this, yielding the engine [`GameSetup`] the room starts with plus the
     /// deck-legality rules [`Lobby::submit_deck`] validates a decklist against. A
     /// `CreateRoom` naming an unknown id is rejected before a room opens. Deck
-    /// legality is *server* policy, never an engine rule (ADR 0013 §4).
+    /// legality is *server* policy, never an engine rule.
     formats: FormatRegistry,
     /// The cap on concurrently hosted rooms.
     max_rooms: usize,
@@ -209,7 +209,7 @@ struct Inner {
     /// suite (issue #145). Sourced from [`Config::rng_seed`](crate::Config::rng_seed).
     seed_override: Option<u64>,
     /// A fixed starting life total to build every game from, when set, overriding
-    /// the room format's default (ADR 0013 §4). `None` for normal play. A low value
+    /// the room format's default. `None` for normal play. A low value
     /// makes the e2e game reach its lethal `LifeZero` in a few turns (issue #145).
     /// Sourced from [`Config::starting_life`](crate::Config::starting_life).
     life_override: Option<i32>,
@@ -270,7 +270,7 @@ struct Session {
 /// One room: a config, a per-seat occupancy roster, and each seat's pre-game gate
 /// state. It holds **no** engine game while pre-game; once the ready gate passes,
 /// [`game`](RoomEntry::game) holds the running room task and the seats have switched
-/// to the in-game contract (ADR 0012, issue #112).
+/// to the in-game contract (issue #112).
 struct RoomEntry {
     /// The room's configuration, echoed in every [`RoomView`].
     config: RoomConfig,
@@ -291,7 +291,7 @@ struct RoomEntry {
     /// still pre-game. A started room is never reaped as "empty" and rejects further
     /// lobby commands — its seats speak `GameView`s now.
     game: Option<RoomHandle>,
-    /// The sessions currently **spectating** this room (ADR 0022, issue #351). A
+    /// The sessions currently **spectating** this room (issue #351). A
     /// spectator does not occupy a seat, so this is separate from
     /// [`seats`](RoomEntry::seats): the directory advertises `spectators.len()` as the
     /// room's spectator count, independent of seat occupancy. Spectating only starts
@@ -332,7 +332,7 @@ struct SeatGate {
 }
 
 /// Why a [`LobbyCommand`] was rejected. On any of these the connection's current
-/// [`LobbyView`] is re-sent unchanged (ADR 0012); the typed value lets the server
+/// [`LobbyView`] is re-sent unchanged; the typed value lets the server
 /// (and tests) distinguish, e.g., a full room from an unknown one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LobbyError {
@@ -374,7 +374,7 @@ pub(crate) enum LobbyError {
     UnknownRoom,
     /// `join_room` on a room whose every seat is occupied.
     RoomFull,
-    /// `spectate_room` on a room whose game has not started yet (ADR 0022, issue
+    /// `spectate_room` on a room whose game has not started yet (issue
     /// #351): there is no live board to watch until the ready gate passes. The client
     /// may retry once the room shows [`RoomState::InProgress`] in the directory.
     RoomNotStarted,
@@ -386,7 +386,7 @@ pub(crate) enum LobbyError {
     /// known card in the database. Carries the offending identity; the seat stays
     /// undecked (its previous deck, if any, is untouched).
     UnknownCard(String),
-    /// `submit_deck` whose decklist is illegal for the room's format (ADR 0013 §4):
+    /// `submit_deck` whose decklist is illegal for the room's format:
     /// too few or too many cards, or too many copies of a non-basic card. Carries a
     /// [`DeckError`] naming the violation; the seat keeps whatever deck it had. The
     /// structured reason is delivered to the rejecting seat alone as a
@@ -491,8 +491,7 @@ impl std::error::Error for LobbyError {}
 
 impl Lobby {
     /// The default cap on concurrently hosted rooms. Kept modest and explicit for
-    /// this milestone; real capacity planning is a later concern (`docs/brief.md`
-    /// targets tens of thousands of games per node).
+    /// now; real capacity planning is a later concern.
     pub const DEFAULT_MAX_ROOMS: usize = 1024;
 
     /// Create an empty lobby that builds every room's game from `db` and hosts at
@@ -794,7 +793,7 @@ impl Lobby {
     /// Edit Table press do nothing at all. Each reports only what the sender itself sent
     /// — a seat count, a format id, its own table name, its own room's occupancy — so
     /// there is nothing to leak. Every other rejection returns `None`; the client still
-    /// infers a generic retry hint from the unchanged re-sent view (ADR 0012).
+    /// infers a generic retry hint from the unchanged re-sent view.
     pub(crate) fn deck_rejection(
         &self,
         error: &LobbyError,

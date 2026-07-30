@@ -5,7 +5,7 @@
 //! WebSocket client connections, logs their lifecycle, and shuts down gracefully.
 //! An accepted connection lands in the [`lobby`] module's **pre-game phase**: it is
 //! issued a session token and a [`sage_protocol::LobbyView`], and it creates or
-//! joins a room by id with [`sage_protocol::LobbyCommand`]s (ADR 0012). No engine
+//! joins a room by id with [`sage_protocol::LobbyCommand`]s. No engine
 //! game is constructed and no `GameView` is sent until the ready gate passes
 //! (issue #112).
 //!
@@ -81,7 +81,7 @@ pub struct Config {
     /// Overridable via `--rng-seed <u64>` or [`RNG_SEED_ENV_VAR`].
     pub rng_seed: Option<u64>,
     /// A fixed starting life total to build **every** game from, when set,
-    /// overriding the room format's default (ADR 0013 §4). Like [`Config::rng_seed`]
+    /// overriding the room format's default. Like [`Config::rng_seed`]
     /// this is a server/operator concern, not a client-settable field: it exists so
     /// the end-to-end suite (issue #145) can run a *short*, deterministic game —
     /// a low life total means only a few combat turns are needed to reach the lethal

@@ -13,7 +13,7 @@
 //! it to that build's [`CardId`], which is what every rules read then goes
 //! through. The printing identity never enters [`crate::GameState`] — reprints are
 //! rules-identical, so the engine cannot tell which one a copy was opened from
-//! (ADR 0013 §1).
+//!.
 
 use std::fmt;
 
@@ -95,7 +95,7 @@ impl std::error::Error for FunctionalIdError {}
 pub struct CardId(pub u64);
 
 /// Documentary alias for a [`CardId`] read as "the functional definition a
-/// printing resolves to" (ADR 0013 §1).
+/// printing resolves to".
 ///
 /// Printings carry no rules; each names a [`FunctionalId`] that the loader
 /// resolves to this build's interned handle, and every rules read then goes

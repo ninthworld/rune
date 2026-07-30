@@ -34,7 +34,7 @@ pub(crate) fn db() -> CardDatabase {
 /// old invented combat fixtures had, so the damage/life arithmetic the combat
 /// tests assert stays unchanged. First strike, deathtouch, trample, lifelink and
 /// a bare "when this dies, draw" have no clean M19 representative, so the combat
-/// and dies-trigger tests build their own definitions (ADR 0025).
+/// and dies-trigger tests build their own definitions.
 pub(crate) fn combat_db() -> CardDatabase {
     let json = r#"[
         {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
@@ -399,7 +399,7 @@ pub(crate) fn split_combat_at_declare_blockers() -> (
 }
 
 /// Big vanilla commanders whose exact power sets how hard each hit lands, so the
-/// commander-damage arithmetic is unambiguous (ADR 0025/0026 — no clean M19 body).
+/// commander-damage arithmetic is unambiguous (no clean M19 body, ADR 0026).
 pub(crate) fn commander_db() -> CardDatabase {
     let json = r#"[
         {"schema_version":1,"functional_id":"test_general","name":"Test General",

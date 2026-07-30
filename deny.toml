@@ -1,4 +1,4 @@
-# cargo-deny configuration for RUNE.
+# cargo-deny configuration for SAGE.
 # See docs/decisions/0005-license.md — the project is MIT (inbound=outbound),
 # so vendored/third-party code must be MIT-compatible. Copyleft licenses
 # (GPL/LGPL/AGPL/MPL) are intentionally NOT allowed.

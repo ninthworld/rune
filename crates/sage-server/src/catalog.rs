@@ -8,7 +8,7 @@
 //! projection an in-game `CardView` uses, so a catalog entry and the in-game card of the
 //! same identity can never disagree (ADR 0018 §7). The formats are projected from the
 //! server's [`FormatRegistry`], the same registry the pre-game deck gate validates a
-//! submitted deck against (ADR 0013 §4).
+//! submitted deck against.
 //!
 //! The projection carries **public data only**: a card's characteristics and a format's
 //! deck rules. It never reads a deck, a roster, a session, or any game state — there is
@@ -45,7 +45,7 @@ fn catalog_card(data: &CardData) -> CatalogCard {
 ///
 /// The internal `usize::MAX` "no copy limit" sentinel is advertised **honestly** as
 /// `None` rather than a meaningless huge number, so a permissive format reads as
-/// permissive (ADR 0013 §4); the deck-size upper bound is likewise `None` when unbounded.
+/// permissive; the deck-size upper bound is likewise `None` when unbounded.
 fn catalog_format(game_setup: &str, format: &Format) -> CatalogFormat {
     let rules = &format.deck_rules;
     CatalogFormat {

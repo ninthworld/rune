@@ -263,7 +263,7 @@ where
 
 /// Run the full interactive flow over an already-connected socket: the lobby
 /// (create/join a room, submit a deck, ready) rendered as numbered menus, then the
-/// in-game loop once the server constructs the game (ADR 0012).
+/// in-game loop once the server constructs the game.
 ///
 /// A single `LobbyView` reconstructs the whole pre-game display; the client renders
 /// exactly the `valid_commands` the server offered and computes no legality. The

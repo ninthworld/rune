@@ -327,7 +327,7 @@ fn killing_an_enchanted_creature_logs_only_the_creature_death_not_the_aura() {
     // The orphaned-Aura state-based action (CR 704.5m) moves the Aura to the
     // graveyard when its host dies, but that is a zone change, not a death: only the
     // creature produces `permanent_died`. P/T Auras have no clean M19 card, so this
-    // builds its own catalog (ADR 0025).
+    // builds its own catalog.
     let json = r#"[
         {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
          "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],

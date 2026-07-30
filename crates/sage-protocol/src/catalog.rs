@@ -48,7 +48,7 @@ pub struct CatalogCard {
 }
 
 /// One advertised format's public deck rules and seat range, as listed in a
-/// [`CatalogView`] (issue #367, ADR 0013 §4). It exposes exactly the server-side
+/// [`CatalogView`] (issue #367). It exposes exactly the server-side
 /// deck-legality policy a [`SubmitDeck`] is validated against so a client can build a
 /// legal deck ahead of time; a **permissive** format advertises its permissiveness
 /// honestly, as `None` upper bounds rather than a sentinel number.

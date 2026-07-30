@@ -1,4 +1,4 @@
-//! End-to-end test for the CLI **lobby flow** (ADR 0012, issue #115).
+//! End-to-end test for the CLI **lobby flow** (issue #115).
 //!
 //! Two CLI clients drive the whole pre-game protocol against the real layer-1
 //! [`sage_server::Lobby`] over the in-memory duplex transport — the same in-process

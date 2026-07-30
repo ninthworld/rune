@@ -21,7 +21,7 @@ pub(super) struct SetSnapshot {
     pub json: &'static str,
 }
 
-/// A purely bibliographic printing record (ADR 0013 §1).
+/// A purely bibliographic printing record.
 ///
 /// A printing is a specific appearance of a card in a set: the functional
 /// definition it prints, a collector number, and a rarity. It carries **no** name,
@@ -29,7 +29,7 @@ pub(super) struct SetSnapshot {
 /// [`OracleId`] against the [`CardDatabase`] — and **no** art, frame, artist, or
 /// branding. That prohibition is structural: the deserializer rejects unknown
 /// fields, so an `image_uris`-style field fails to parse rather than being
-/// silently ignored (ADR 0013 §6, `docs/brief.md` Legal Considerations).
+/// silently ignored (`docs/brief.md` Legal Considerations).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Printing {
     /// The card this record prints, as the handle it interned to. All rules read
@@ -47,7 +47,7 @@ pub struct Printing {
 ///
 /// `deny_unknown_fields` is what makes the art/branding prohibition structural —
 /// any field beyond these three (e.g. `image_uris`, `artist`, `frame`) is a parse
-/// error (ADR 0013 §1, §6).
+/// error (§6).
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PrintingEntry {
@@ -70,7 +70,7 @@ struct PrintingKey {
 }
 
 /// An immutable database of printing records, keyed by set code + collector
-/// number, each referencing an [`OracleId`] (ADR 0013 §2).
+/// number, each referencing an [`OracleId`].
 ///
 /// The parallel of [`CardDatabase`] for bibliographic data. It holds **no** rules
 /// logic: a printing resolves to characteristics only by looking its
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn printing_rejects_art_and_branding_fields() {
         // An image_uris-style field must fail to parse: the art/branding
-        // prohibition is structural via deny_unknown_fields (ADR 0013 §6).
+        // prohibition is structural via deny_unknown_fields.
         let cards = CardDatabase::bundled().unwrap();
         let json = r#"[{"functional_id":"onakke_ogre","collector_number":"1","rarity":"common","image_uris":{"small":"x"}}]"#;
         assert!(PrintingDatabase::from_json("TST", json, &cards).is_err());

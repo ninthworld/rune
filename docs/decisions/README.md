@@ -1,12 +1,11 @@
 # Architectural decisions
 
-These ADRs are **live and binding**. Superseded ones live in
-[`../archive/decisions/`](../archive/decisions/) — history, not guidance.
+Every ADR in this directory is **live and binding**. Nothing here is superseded, and there is
+no archive: a decision that stops being true is rewritten or deleted, never left standing as
+history for someone to mistake for guidance.
 
-> **Naming:** the project was renamed RUNE → SAGE on 2026-07-30. ADRs dated before then say
-> "RUNE" in their prose. They are dated records of what was decided, and are left as written;
-> crate paths inside them were updated to `sage-*` so links resolve. The current name and scope
-> live in [`../brief.md`](../brief.md).
+Numbers are allocation order and are not contiguous. A gap means a decision was retired; it
+carries no other meaning, and nothing points back at one.
 
 | ADR | Decision |
 | --- | --- |
@@ -25,5 +24,5 @@ These ADRs are **live and binding**. Superseded ones live in
 
 New ADRs copy [`0000-template.md`](0000-template.md).
 
-**Write an ADR after a decision survives contact with working code, not before.** Design
-documents written ahead of implementation are what produced the archive.
+**Write an ADR after a decision survives contact with working code, not before.** A design
+document written ahead of the code it describes is speculation with a version number.

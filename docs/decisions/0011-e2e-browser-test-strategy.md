@@ -1,221 +1,116 @@
 # ADR 0011: End-to-end browser test strategy for the web client
 
-- Status: accepted (reinstated — see note)
+- Status: accepted
 - Date: 2026-07-11
 - Issue: #102
 
-> **Note (2026-07-30, SAGE restart): the pause is lifted and E2E is a required gate again.**
-> The suite was removed three times (#251, reverted reinstatements in #292 and #538) on the
-> grounds that the in-game UI was in flux. The maintainer has reversed that decision: a
-> browser suite is necessary even this early, because the seams this project is actually made
-> of — socket, protocol, view reconstruction, reconnect — produce integration bugs no jsdom
-> test can see.
->
-> The reversal comes with the three concrete problems that made the suite painful, which the
-> Stage 3 client must be designed against rather than rediscover:
->
-> 1. **CI duration.** Every PR waited on the browser job. Mitigation: one thin smoke path as
->    the required gate, deeper flows behind a non-blocking job; the Stage 3 client is a single
->    layout with no WebGL, so there is no scene graph to warm up.
-> 2. **Agent iteration time.** Waiting on browser runs dominated the edit loop. Mitigation:
->    the suite must be runnable against a prebuilt `dist/` without a full reinstall, and must
->    not be a prerequisite for engine-only work — the engine gate stays independent.
-> 3. **Version mismatching.** Playwright's browser download versus the installed Chromium.
->    Mitigation: pin `@playwright/test` and consume a preinstalled browser via
->    `PLAYWRIGHT_BROWSERS_PATH` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, and launch with an
->    explicit `executablePath` when the pinned version disagrees with the image. Never run
->    `playwright install` in CI or in an agent session.
->
-> The strategy below is unchanged and is the blueprint. It predates the SAGE restart, so its
-> references to the Pixi canvas and `sceneReconciler.ts` describe the deleted client; the
-> testing *approach* carries forward, the specific surfaces do not.
-
 ## Context
 
-The web client is the least-tested layer of RUNE, and structurally the hardest to
-test. Vitest + React Testing Library run in CI (the `Client` job / `make check`),
-but they exercise only the pure, headless pieces: the `GameView` store, the
-`buildTableScene` mapping (`clients/web/src/table/scene.ts`), and DOM components.
-The **Pixi canvas — the surface that actually draws the battlefield, hand, and
-stack cards (ADR 0003) — is entirely untested.** It needs a WebGL context, so
-under jsdom it no-ops: `SceneReconciler` (`clients/web/src/table/sceneReconciler.ts`)
-builds and mutates a Pixi display tree that no headless test can render or inspect.
-Nothing verifies that a real build, served in a real browser, connects to a socket
-and paints the correct cards.
+The client is the least-tested layer of SAGE and structurally the hardest to test.
+Component-level tests under a headless DOM exercise only the pure pieces — the `GameView`
+store, view-model mapping, individual components. They cannot see the seams this project is
+actually made of: a real build, served over HTTP, opening a real WebSocket, receiving real
+`GameView` frames, and surviving a reconnect. Those seams are where the integration bugs are,
+because that is where three independently-correct layers meet.
 
-The roadmap makes this urgent, not academic. M1's outcome ("take a seat") has as a
-hard exit criterion "a Playwright e2e test drives real Chromium from connection
-screen → … → first GameView rendered on the battlefield, and runs in CI," and the
-M1 feature table lists **this ADR (#102) as the unblocker for the Playwright
-harness (#104)** and the connection screen (#103). The roadmap's own baseline notes
-the gap: the store's `connect()` is never called by production code, so the app
-shows "Waiting for game state…" forever, and "there is no browser/e2e harness and
-the Pixi canvas no-ops headless, so canvas rendering is untested." M1 is a
-client/server/protocol-heavy milestone whose whole point is the seams between those
-three; the bugs it will produce are integration bugs a unit test cannot see. This
-is the moment to settle *how* we test the real client in a real browser, before the
-harness and the connection/lobby UI land on top of an undecided approach.
+A browser suite is the only thing that covers them, and the cost of keeping one is the whole
+problem: a browser gate that is slow, flaky, or awkward to run gets removed, and then the
+coverage is gone exactly when the client is changing fastest. So the strategy has to be
+designed for *survivability*, not just coverage.
 
-The forces that constrain the decision are the project's hard rules and existing
-architecture:
+Three specific costs have to be engineered against:
 
-- **The DOM/canvas split makes the canvas a pure visual surface (ADR 0003).** The
-  Pixi layer "stays a pure performance surface"; it holds no logic and reads no
-  state the scene does not hand it. Everything a user *reads or clicks that is not
-  a card* is React DOM floating above the canvas. This is what makes canvas testing
-  tractable: the DOM half is assertable with ordinary selectors, and the canvas
-  half is a deterministic function of scene data we already compute in pure code.
-- **The scene is already pure and headless by design.** `buildTableScene` is a pure
-  `GameView → TableScene` function, explicitly written to be "unit-testable without
-  a WebGL context," and `SceneReconciler` guarantees that after applying any scene
-  "the tree is identical to what a freshly constructed reconciler would produce from
-  that scene alone." The rendered result is therefore fully determined by the
-  `TableScene` value — a plain data structure (bands, hand, per-card `rect`, `data`,
-  `tier`, `targetable`) with no WebGL in it. Asserting on that value asserts on what
-  the canvas draws, without reading pixels.
-- **The whole UI must rebuild from one `GameView` + pending prompt** (`AGENTS.md`,
-  `clients/web/AGENTS.md`). Client state is never load-bearing across messages, so a
-  browser test can drive the client purely by feeding it `GameView` frames over a
-  socket and asserting the resulting DOM + scene — no privileged test seam into
-  client logic is needed beyond reading the derived scene.
-- **`make check` is the CI contract.** `docs/coding-standards.md` states it plainly:
-  "`make check` … is exactly what CI runs — if it isn't green, it isn't done." A
-  browser suite that needs a downloaded Chromium, a Vite server, and (for smoke
-  tests) the `sage-server` binary is heavier and flakier than the fast unit gate.
-  Where it sits relative to `make check` is itself a decision with a governance
-  consequence, not a detail.
+1. **CI duration.** A browser job every PR waits on is a tax on every change, including
+   changes that cannot possibly break the client.
+2. **Iteration time.** If the only way to see a result is a full install-build-serve-run
+   cycle, the edit loop is dominated by waiting, and the suite stops being run locally at all.
+3. **Playwright/Chromium version mismatch.** Playwright wants to download a browser matched to
+   its version; the environment already has one. Left alone, this fails in CI or silently
+   tests a different browser than the image provides.
+
+The project's own rules also constrain the design. The client holds **zero game logic** and
+the entire UI is reconstructable from **one `GameView` plus a pending prompt**, so client
+state is never load-bearing across messages. That means a browser test can drive the client
+entirely by feeding it view frames over a socket and asserting on what it renders — no
+privileged test seam into client internals is required.
 
 ## Decision
 
-RUNE adopts a single browser-level end-to-end test strategy for the web client.
-The rules below are what the codebase and CI will follow; the harness itself is out
-of scope for this ADR (it lands in #104) — this decision is what #104 builds to.
+SAGE keeps one browser-level end-to-end suite, designed to be cheap enough to stay.
 
 ### Runner: Playwright driving the preinstalled Chromium
 
-E2E tests are written with **Playwright**, driving the **Chromium that is already
-installed in the toolchain**. Playwright is the current standard for browser
-automation, gives real WebGL (so the Pixi canvas genuinely renders), has
-first-class screenshot/visual-comparison support, auto-waiting that suppresses a
-large class of timing flakes, and a trace viewer for debugging CI failures. We pin
-Chromium and do not test a browser matrix: the client targets evergreen browsers
-and the value here is integration coverage, not cross-browser compatibility. Using
-the preinstalled Chromium avoids a per-run browser download in CI.
+Tests are written with **Playwright**, driving the **Chromium already installed in the
+image**. Playwright is the standard for browser automation, has auto-waiting that suppresses
+a large class of timing flakes, and ships a trace viewer for debugging CI failures. One
+pinned browser, no matrix: the value here is integration coverage, not cross-browser
+compatibility.
 
-### What runs under test: Vite preview + two socket backends
+**Never run `playwright install`** — not in CI, not in an agent session. Consume the
+preinstalled browser via `PLAYWRIGHT_BROWSERS_PATH` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`,
+and pin an explicit `executablePath` when the pinned `@playwright/test` disagrees with the
+image. This is the mitigation for cost 3 and is not optional.
 
-Tests run against the **real production client**: `vite build` followed by
-`vite preview` (not the dev server), so the artifact under test is the same bundle
-CI ships. The client is driven entirely through its WebSocket — consistent with the
-"rebuild from one `GameView`" invariant — against **two** backends chosen per test
-tier:
+### What runs under test: the production build, two socket backends
 
-1. **A mock WebSocket server replaying fixture `GameView`s — the default, for fast
-   tests.** A tiny in-process WS server accepts the client's connection and pushes
-   canned `GameView` frames (and, for input tests, validates the `ChooseAction` the
-   client echoes back). This tier is deterministic and fast: no engine, no game, no
-   room lifecycle — just "given this exact `GameView`, the browser paints this." It
-   is where the bulk of rendering, targeting-mode, and DOM/canvas assertions live.
-2. **The real `sage-server` binary — for a small number of smoke tests.** A handful
-   of tests launch the actual `sage-server` and connect the real client to it, to
-   prove the true end-to-end path (build → browser → socket → server) works against
-   the real protocol implementation, not just a mock that could drift from it. These
-   are the M1 exit-criterion tests (connection screen → … → first GameView on the
-   battlefield). They are slower and are kept few and coarse.
+Tests run against the **real production build** — a built bundle served statically, not a dev
+server — so the artifact under test is the one that ships. The client is driven entirely
+through its WebSocket, consistent with the "rebuild from one `GameView`" invariant, against
+two backends chosen per tier:
 
-The mock tier catches rendering regressions cheaply; the smoke tier catches
-mock-vs-reality drift. Neither tier puts game logic in the test: fixtures and the
-real server are the only sources of `GameView`s.
+1. **A mock WebSocket server replaying fixture views — the default.** A tiny in-process server
+   accepts the client's connection and pushes canned `GameView` frames, and for input tests
+   validates the `ChooseAction` the client echoes back. Deterministic and fast: no engine, no
+   game, no room lifecycle — just "given this exact view, the browser renders this." Most
+   rendering and interaction assertions live here.
+2. **The real `sage-server` binary — for a few smoke tests.** A small number of tests launch
+   the actual server and connect the real client to it, proving the true path (build →
+   browser → socket → server) works against the real protocol implementation rather than a
+   mock that can drift from it.
 
-### Canvas assertion strategy: expose the pure `TableScene`, plus optional baselines
+The mock tier catches rendering regressions cheaply; the smoke tier catches mock-vs-reality
+drift. Neither tier puts game logic in the test: fixtures and the real server are the only
+sources of `GameView`s.
 
-Because the canvas is a pure visual surface (ADR 0003) whose output is fully
-determined by the `TableScene` data structure the client already computes, the
-**primary** canvas assertion is on that data, not on pixels:
+### Fixtures are shared, not reinvented
 
-- **Expose the pure scene on a test-only `window` hook.** In test/preview builds
-  only, the client publishes the current `TableScene` (the value produced by
-  `buildTableScene` and consumed by `SceneReconciler`) on a namespaced `window` hook
-  (e.g. `window.__RUNE_TEST__.scene`). A Playwright test reads it via `page.evaluate`
-  and asserts on structured facts — "Grizzly Bears is in the local band at this
-  `rect`, tapped, with two +1/+1 counters," "in targeting mode exactly these entity
-  ids are `targetable` and the rest are dimmed." This gives precise, stable,
-  human-readable canvas coverage with no image diffing. The hook exposes **derived
-  render data only** and is strictly read-only and test-build-gated: it is not a
-  control channel and adds no logic to production code paths, so it does not violate
-  "zero game logic in the client" (the scene is already computed; the hook only reads
-  it) nor the "rebuild from one `GameView`" invariant.
-- **Optional screenshot baselines for the pixels themselves.** For a *small*,
-  deliberately chosen set of representative frames, we additionally keep Playwright
-  screenshot baselines (`toHaveScreenshot`) to catch regressions the scene data
-  cannot describe — actual draw output, z-order, colors from `tokens.ts`, targeting
-  rings. These are **opt-in and secondary**: pixel baselines are inherently brittle
-  across renderer/font/GPU differences, so they are used sparingly, pinned to the
-  same Chromium, and never the sole assertion for a behavior that scene-data
-  assertions can express. The scene hook is the workhorse; baselines are a backstop.
+The mock server replays the same `GameView` fixtures the client's unit tests use, and those
+mirror the round-trip fixture in `crates/sage-protocol`. One fixture set backs unit tests,
+mock e2e, and — by construction — what the real server emits, so the tiers cannot silently
+disagree about the wire shape. New scenarios add to that set rather than defining a parallel
+one.
 
-### Directory layout and fixture strategy
+### CI placement: one blocking smoke path, deeper flows non-blocking
 
-- E2E tests, their Playwright config, the mock WS server, and screenshot baselines
-  live under **`clients/web/e2e/`**, separate from the co-located Vitest unit tests.
-  This keeps the two suites — and their very different runtimes — cleanly divided.
-- Fixtures are **reused, not reinvented.** The mock WS server replays the existing
-  `GameView` fixtures in **`clients/web/src/game-view.fixture.ts`**
-  (`SAMPLE_GAME_VIEW_JSON`, `TARGETING_GAME_VIEW_JSON`, …), which already mirror the
-  Rust round-trip fixture in `crates/sage-protocol`. One fixture set backs unit
-  tests, mock-WS e2e tests, and (by construction) matches what the real server
-  emits, so the three tiers cannot silently disagree about the wire shape. New e2e
-  scenarios add fixtures to that module rather than defining parallel ones.
+The browser suite runs as its **own `make e2e` target and its own CI job**, not inside
+`make check`.
 
-### CI placement: a separate `E2E` job / `make e2e`, outside `make check`
+- **One thin smoke path is the required gate**: load the built client, reach a first rendered
+  `GameView`, take an action. It is the blocking check, and it is kept small enough that its
+  runtime is not an argument for deleting it.
+- **Deeper flows run in a non-blocking job** — full lobby, reconnect, multi-client — so
+  breadth never gates a merge on browser flake.
+- **The engine gate stays independent.** `make check` must remain green-able without a
+  browser, so engine-only work never waits on one (cost 2).
+- The suite must be runnable against an already-built bundle without a full reinstall, for the
+  same reason.
 
-The browser suite runs as its **own `make e2e` target and its own CI job (`E2E`)**,
-**not** inside `make check` and not inside the existing `Engine`/`Client` jobs. It
-needs a browser, a built-and-served client, and (for smoke tests) the `sage-server`
-binary; folding that into the fast `make check` gate would make the everyday
-inner-loop check slow and browser-dependent, and would couple the pure unit gate to
-a heavier, flakier runtime.
-
-**This is a deliberate change to the "`make check` = CI" equation** that
-`docs/coding-standards.md` states, and it is called out for human sign-off in the
-Consequences below. After this ADR, "CI" is `make check` (`Engine` + `Client`)
-**plus** a separate `E2E` job; `make check` alone is no longer the complete CI
-surface. The `E2E` job is a required check for the M1 exit criterion but is
-configured and governed separately from the unit gate (e.g. it may run on a
-different trigger cadence if flake or runtime warrants, without weakening
-`make check`).
+Consequently "CI" is `make check` plus a separate browser job; a green `make check` alone is
+not the complete pre-merge surface. `docs/coding-standards.md`, `AGENTS.md`, and the required
+status checks say so explicitly when the job lands.
 
 ## Consequences
 
-- **Easier.** The canvas becomes testable for the first time: the DOM/canvas split
-  (ADR 0003) plus the already-pure scene pipeline means we assert on real rendered
-  structure without decoding pixels. M1's Playwright exit criterion (#104) has a
-  decided foundation to build on instead of re-litigating runner, backend, and
-  canvas-assertion approach mid-implementation. Reusing `game-view.fixture.ts`
-  across unit, mock-WS, and smoke tiers keeps one source of truth for the wire shape,
-  so the tiers can't drift. The mock tier gives fast, deterministic rendering
-  coverage; the `sage-server` smoke tier proves the real path and guards against
-  mock-vs-reality drift.
-- **Harder / given up.** A new, heavier test runtime enters the repo: a browser, a
-  Vite preview server, the server binary, and Playwright's toolchain and flake
-  surface. The client gains a **test-only `window` hook**, which must stay strictly
-  read-only, namespaced, and gated to test/preview builds so it never becomes a
-  logic path or ships in production. Optional screenshot baselines carry maintenance
-  cost (re-baselining on legitimate visual changes, pinned Chromium) and are
-  therefore kept few. Installing Playwright/Chromium and writing the tests are
-  explicitly **out of scope** here (#104).
-- **Governance — needs human sign-off.** Pulling e2e out of `make check` **breaks the
-  "`make check` = CI" invariant** that `docs/coding-standards.md` and `AGENTS.md`
-  lean on ("`make check` — everything CI runs"). After this ADR the full CI surface
-  is `make check` **plus** the separate `E2E` job, and a green `make check` no longer
-  means "everything CI runs" passed. Because that invariant is load-bearing for how
-  agents reason about "done," this placement decision is **flagged for explicit human
-  sign-off** as part of accepting this ADR, and the wording in
-  `docs/coding-standards.md` / `AGENTS.md` describing `make check` as the complete CI
-  surface should be reconciled when the `E2E` job and `make e2e` target actually land
-  (#104), not in this docs-only change.
-- **Deferred.** The Playwright harness, config, mock WS server implementation, the
-  `make e2e` target, the `E2E` CI job, and the connection-screen wiring that lets a
-  browser reach a first `GameView` are all follow-up work (#103, #104 and later M1
-  items). Multi-client and full-lobby e2e flows (roadmap M1/M2) build on this same
-  strategy once the single-client harness exists.
+- **Easier.** The paths that actually break — socket, protocol, view reconstruction,
+  reconnect — get covered for the first time, against the real bundle. Sharing one fixture set
+  across unit, mock, and smoke tiers keeps a single source of truth for the wire shape. The
+  mock tier gives fast deterministic coverage; the smoke tier proves the real path.
+- **Harder / given up.** A heavier test runtime enters the repo: a browser, a static server,
+  the server binary, and Playwright's toolchain and flake surface. Two-tier CI placement is
+  more configuration than one job. Pixel-level assertions are deliberately not part of this
+  decision — screenshot baselines are brittle across renderer, font, and GPU differences, and
+  if they are ever added they are a sparing backstop, never the sole assertion for a behavior
+  that a structural assertion can express.
+- **Bounded by design.** The blocking gate is one path on purpose. Breadth lives in the
+  non-blocking job, and the trade is deliberate: a suite that always runs and covers one thing
+  well is worth more than a thorough one that gets deleted.

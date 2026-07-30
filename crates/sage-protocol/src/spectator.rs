@@ -1,4 +1,4 @@
-//! The redacted [`SpectatorView`] a non-seated observer receives (ADR 0022).
+//! The redacted [`SpectatorView`] a non-seated observer receives.
 
 use std::collections::BTreeMap;
 
@@ -9,7 +9,7 @@ use crate::{
     OpponentView, Permanent, Phase, PlayerId, StackItem, ZonePile,
 };
 
-/// The state a **spectator** connection receives (ADR 0022, issue #351): a
+/// The state a **spectator** connection receives (issue #351): a
 /// non-seated observer watching a live game with all hidden information redacted
 /// **by construction**. It shares [`GameView`]'s public component types verbatim —
 /// [`OpponentView`], [`Permanent`], [`StackItem`], [`ZonePile`], [`GameLogEntry`],
@@ -18,7 +18,7 @@ use crate::{
 /// or per-seat prompt, because those fields simply do not exist on the type. A
 /// projection therefore *cannot* leak a hand, a library's contents, or a decision
 /// surface to a spectator — the worst case is a missing public fact, never a leaked
-/// private one (ADR 0022 §Consequences).
+/// private one.
 ///
 /// Every seat appears as the public [`OpponentView`] shape (life, hand *size*, library
 /// *size*, graveyard *size*, public statuses, and the eliminated flag); there is no

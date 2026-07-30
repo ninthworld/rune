@@ -867,7 +867,7 @@ mod tests {
         // toughness to 0, and the pipeline's state-based-actions loop puts the host
         // into the graveyard (CR 704.5f) and its now-orphaned Aura with it (CR
         // 704.5m) — both gone in the same fixed point, the modifier vanishing with the
-        // Aura. P/T Auras have no clean M19 card, so this is inline (ADR 0025).
+        // Aura. P/T Auras have no clean M19 card, so this is inline.
         use crate::ability::Target;
         use crate::characteristics::characteristics;
         let json = r#"[
@@ -1191,7 +1191,7 @@ mod tests {
         // A {G} enchantment whose enters-the-battlefield trigger gains its controller
         // 4 life — an ETB trigger on a *non-creature* permanent, and GainLife as an
         // ability effect rather than a spell effect. No M19 card carries this, so it
-        // is exercised inline (ADR 0025).
+        // is exercised inline.
         let json = r#"[{"schema_version":1,"functional_id":"test_blessing","name":"Test Blessing",
             "types":["enchantment"],"subtypes":[],"mana_cost":"{G}","colors":["green"],
             "abilities":[{"type":"triggered","event":"self_enters_battlefield",
@@ -1229,7 +1229,7 @@ mod tests {
     fn issue_256_mana_rock_taps_for_colorless_mana() {
         // A {1} mana rock — {T}: Add {C}. Its ability is a mana ability, so it
         // resolves immediately without using the stack (CR 605.3). The colorless-mana
-        // verb has no M19 representative, so it is exercised inline (ADR 0025).
+        // verb has no M19 representative, so it is exercised inline.
         let json = r#"[{"schema_version":1,"functional_id":"test_lodestone","name":"Test Lodestone",
             "types":["artifact"],"mana_cost":"{1}","colors":[],
             "abilities":[{"type":"activated","cost":[{"kind":"tap"}],
@@ -1323,7 +1323,7 @@ mod tests {
         // A -1/-1 counter folds into computed toughness (CR 613.7c). A 3/2 with 1
         // marked damage is not lethal (1 < 2); after a -1/-1 counter it is a 2/1
         // and 1 damage is lethal (1 ≥ 1), so the SBA destroys it. The -1/-1 counter
-        // spell has no M19 representative, so both cards are inline (ADR 0025).
+        // spell has no M19 representative, so both cards are inline.
         let json = r#"[
             {"schema_version":1,"functional_id":"test_boar","name":"Test Boar",
              "types":["creature"],"subtypes":["Boar"],"mana_cost":"{2}{G}","colors":["green"],

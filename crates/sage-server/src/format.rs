@@ -1,7 +1,7 @@
-//! The server-side format registry and deck-legality policy (ADR 0013 §4).
+//! The server-side format registry and deck-legality policy.
 //!
-//! ADR 0013 §4 splits game configuration into two layers so the pure engine holds
-//! **no format policy and no I/O**:
+//! Game configuration splits into two layers so the pure engine holds **no format
+//! policy and no I/O**:
 //!
 //! - the engine's [`GameSetup`] is a pure value type carrying only the
 //!   rules-affecting parameters a game needs to run (player count, starting life,
@@ -13,8 +13,8 @@
 //! **Deck legality is validated here, server-side — never by the engine.** It is
 //! matchmaking/format policy, not a rule of an in-progress game, and keeping it out
 //! of the engine preserves the engine's purity and its freedom from format churn
-//! (ADR 0013 §4; the engine's `setup.rs` deliberately scoped deck legality out of
-//! issue #109). The one engine input this module borrows is the *structured*
+//! (the engine's `setup.rs` deliberately scoped deck legality out of issue #109).
+//! The one engine input this module borrows is the *structured*
 //! [`Supertype::Basic`] flag on a card, read through the [`CardDatabase`] — the
 //! basic-land **policy** (that basics are exempt from the copy limit) lives here,
 //! only the datum lives in the engine.
@@ -30,11 +30,11 @@ use sage_protocol::GameSetupId;
 /// The life total each player begins a **commander** game with (CR 903.7): 40.
 /// This is engine *setup data* the server drives, not a rule the engine knows —
 /// it flows through [`GameSetup::starting_life`] like any other format's life
-/// total, so the engine stays free of format policy (ADR 0013 §4).
+/// total, so the engine stays free of format policy.
 pub(crate) const COMMANDER_STARTING_LIFE: i32 = 40;
 
 /// The deck-legality rules of a format: the server policy a submitted decklist is
-/// validated against in the pre-game gate (ADR 0013 §4). None of this is an engine
+/// validated against in the pre-game gate. None of this is an engine
 /// rule — it is format/matchmaking policy the engine never sees.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DeckRules {
@@ -64,7 +64,7 @@ pub(crate) struct DeckRules {
 }
 
 /// A registered format: the engine [`GameSetup`] parameters a room starts its game
-/// with, plus the [`DeckRules`] its decklists are validated against (ADR 0013 §4).
+/// with, plus the [`DeckRules`] its decklists are validated against.
 ///
 /// This is the value the server's format registry maps a `game_setup` identifier
 /// to. The engine-setup half is pure game configuration (starting life, hand size);
@@ -88,7 +88,7 @@ pub(crate) struct Format {
 impl Format {
     /// The seeded starter format: a 40-card minimum, at most four copies of any
     /// non-basic card, basic lands exempt, with the engine's default starting life
-    /// and hand size (ADR 0013 §4, "starter-1v1").
+    /// and hand size ("starter-1v1").
     fn starter() -> Self {
         Self {
             starting_life: sage_engine::DEFAULT_STARTING_LIFE,
@@ -110,13 +110,13 @@ impl Format {
     /// deck (exactly 100 cards, at most one copy of any non-basic, basics exempt),
     /// a required commander that must be a legendary creature (CR 903.3/903.5a),
     /// color-identity containment (CR 903.4), 40 starting life (CR 903.7), seating
-    /// 2–4. Deck legality is server policy (ADR 0013 §4); the engine only receives
+    /// 2–4. Deck legality is server policy; the engine only receives
     /// the designated commander in setup and the 40-life `GameSetup`.
     fn commander() -> Self {
         Self {
             // CR 903.7: each player begins with 40 life. The engine is told the
             // starting life through `GameSetup`; 40 is setup data, not a rule the
-            // engine knows about (ADR 0013 §4).
+            // engine knows about.
             starting_life: COMMANDER_STARTING_LIFE,
             starting_hand_size: sage_engine::DEFAULT_STARTING_HAND_SIZE,
             // A commander game seats 2–4 (multiplayer or a duel); partner,
@@ -146,7 +146,7 @@ impl Format {
             starting_life: sage_engine::DEFAULT_STARTING_LIFE,
             starting_hand_size: sage_engine::DEFAULT_STARTING_HAND_SIZE,
             // The permissive catch-all keeps the lobby's full 2–8 seat plumbing range
-            // (ADR 0012); named formats like the free-for-all narrow it.
+            //; named formats like the free-for-all narrow it.
             seats: 2..=8,
             deck_rules: DeckRules {
                 min_size: 0,
@@ -190,7 +190,7 @@ impl Format {
     /// four copies of a card appear four times), already resolved against the card
     /// database by the caller; `commander` is the seat's designated commander (CR
     /// 903.3), or `None` if it designated none. Validation is server policy only
-    /// (ADR 0013 §4): it checks deck size; the per-oracle copy limit (basics exempt
+    ///: it checks deck size; the per-oracle copy limit (basics exempt
     /// when [`DeckRules::basic_land_exempt`] is set); and, for a commander format
     /// ([`DeckRules::require_commander`]), that the designation is one of the deck's
     /// cards and a **legendary creature** (CR 903.5a) and — when
@@ -333,7 +333,7 @@ fn is_legendary_creature(db: &CardDatabase, card: CardId) -> bool {
     })
 }
 
-/// Why a submitted decklist is illegal for a format (ADR 0013 §4). Distinct from
+/// Why a submitted decklist is illegal for a format. Distinct from
 /// an *unknown card*, which the lobby rejects before legality is even considered.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum DeckError {
@@ -483,7 +483,7 @@ impl std::error::Error for DeckError {}
 /// Whether `card` is a basic land — carries the engine's structured
 /// [`Supertype::Basic`] — read through `db`. The basic-land *policy* (exemption
 /// from the copy limit) lives in [`Format::validate_deck`]; only this datum is the
-/// engine's (ADR 0013 §4). An unknown id is treated as non-basic; the lobby has
+/// engine's. An unknown id is treated as non-basic; the lobby has
 /// already rejected unknown ids before legality is checked.
 fn is_basic(db: &CardDatabase, card: CardId) -> bool {
     db.card(card)
@@ -491,7 +491,7 @@ fn is_basic(db: &CardDatabase, card: CardId) -> bool {
 }
 
 /// The server's registry mapping each `game_setup` [`GameSetupId`] to its
-/// [`Format`] (ADR 0013 §4). A `CreateRoom` naming an id absent from the registry
+/// [`Format`]. A `CreateRoom` naming an id absent from the registry
 /// is rejected before a room is opened; a room's submitted decks are validated
 /// against the [`DeckRules`] of the format its id resolves to.
 #[derive(Clone, Debug)]
@@ -505,7 +505,7 @@ impl FormatRegistry {
     /// `RoomConfig` examples (`docs/protocol.md`).
     const DEFAULT_ID: &'static str = "standard_2p";
 
-    /// The identifier of the seeded starter format (ADR 0013 §4).
+    /// The identifier of the seeded starter format.
     const STARTER_ID: &'static str = "starter-1v1";
 
     /// The identifier of the free-for-all format (issue #349): 3–4 seats.
@@ -525,20 +525,20 @@ impl FormatRegistry {
         // The competitive starter format enforces deck legality (size + copy limits).
         formats.insert(Self::STARTER_ID.to_string(), Format::starter());
         // Permissive two-player catch-all formats: the CLI's/protocol's `standard_2p`
-        // default and the web client's `1v1` (LobbyScreen). No deck rules (ADR 0012).
+        // default and the web client's `1v1` (LobbyScreen). No deck rules.
         for id in [Self::DEFAULT_ID, "1v1"] {
             formats.insert(id.to_string(), Format::open());
         }
         // Permissive free-for-all formats seating 3–4 players (issue #349): the web
         // client's `ffa-4` and the named `standard_ffa`. These start real multiplayer
         // games on the engine's multiplayer rules; an id absent here is still rejected
-        // by `create_room` (ADR 0013 §4).
+        // by `create_room`.
         for id in [Self::FFA_ID, "ffa-4"] {
             formats.insert(id.to_string(), Format::open_ffa());
         }
         // The commander format (issue #372): 100-card singleton with color-identity
         // containment, a required legendary-creature commander, 40 starting life, and
-        // 2–4 seats. Deck legality is enforced entirely here (ADR 0013 §4).
+        // 2–4 seats. Deck legality is enforced entirely here.
         formats.insert(Self::COMMANDER_ID.to_string(), Format::commander());
         Self { formats }
     }

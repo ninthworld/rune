@@ -6,7 +6,7 @@
 
 ## Context
 
-Targeting is absent from every layer of RUNE at once. No `Effect`, `Action`, or
+Targeting is absent from every layer of SAGE at once. No `Effect`, `Action`, or
 `StackObject` carries a target (`ability.rs:60-74`, `lib.rs:38-54`, `stack.rs`);
 `valid_actions` never advertises one; the wire protocol has only a placeholder
 `requirements` note (`docs/protocol.md:44-47`); and the client has no way to pick
@@ -62,7 +62,7 @@ instance identity (#51) is therefore a hard prerequisite and is treated as one.
 
 ## Decision
 
-RUNE gets a single targeting model that runs the length of the stack: the engine
+SAGE gets a single targeting model that runs the length of the stack: the engine
 owns target specs, legal-set enumeration, and resolution-time re-checking; the
 protocol carries a content-bound multi-step action; the client renders the choice
 as data and never computes legality.
@@ -141,9 +141,8 @@ as data and never computes legality.
   purely from the requirement steps in the prompt/`GameView` (`docs/brief.md`
   "Targeting Mode"): it highlights exactly the candidate entity ids the server
   listed and dims everything else, computing no legality of its own. Target picking
-  is select-then-confirm on the target entity, consistent with ADR 0004's
-  subject-owned routing — the same interaction model as every other action, so a
-  target is just another entity the player selects. The assembled selection is
+  is select-then-confirm on the target entity — the same interaction model as every
+  other action, so a target is just another entity the player selects. The assembled selection is
   submitted atomically with its content-binding token. The entire targeting UI is
   reconstructable from one `GameView` + pending prompt, so no client state is
   load-bearing across messages.

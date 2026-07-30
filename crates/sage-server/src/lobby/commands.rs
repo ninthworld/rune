@@ -13,15 +13,15 @@ use super::*;
 
 impl Lobby {
     /// Handle `submit_deck`: resolve every card identity against the database, then
-    /// validate the whole decklist against the room's **format** (ADR 0013 §4) and,
+    /// validate the whole decklist against the room's **format** and,
     /// on success, store the seat's deck (leaving it decked) and re-notify the room.
     ///
     /// Validation is authoritative and all-or-nothing, in two stages: first the first
     /// identity that does not resolve rejects the whole command with
-    /// [`LobbyError::UnknownCard`] ("unknown ids → typed error, seat stays undecked",
-    /// ADR 0012); then the resolved deck is checked against the format's deck-legality
+    /// [`LobbyError::UnknownCard`] — unknown ids give a typed error and the seat stays
+    /// undecked; then the resolved deck is checked against the format's deck-legality
     /// rules — size and per-card copy limit — and an illegal deck is rejected with a
-    /// structured [`LobbyError::IllegalDeck`] naming the violation (ADR 0013 §4). On
+    /// structured [`LobbyError::IllegalDeck`] naming the violation. On
     /// any rejection the seat keeps whatever deck it had (it stays undecked if it had
     /// none). Re-submitting a legal deck clears that seat's ready flag, so a changed
     /// deck must be re-readied. Deck legality is *server* policy, never an engine rule.
@@ -59,8 +59,8 @@ impl Lobby {
             None => None,
         };
         // Validate the resolved deck (and any commander) against the room's format
-        // before storing it, so an illegal deck never seats a broken game (ADR 0013
-        // §4). The format is guaranteed present: `create_room` rejected any unknown
+        // before storing it, so an illegal deck never seats a broken game. The
+        // format is guaranteed present: `create_room` rejected any unknown
         // `game_setup` id.
         if let Some(format) = self.inner.formats.get(&room.config.game_setup) {
             format
@@ -171,7 +171,7 @@ impl Lobby {
     /// un-readying (`ready == false`) is always allowed for a seated player before the
     /// game starts. When the last seat readies and every seat is filled, decked, and
     /// ready, [`start_game`](Lobby::start_game) builds the `GameState` and switches the
-    /// room to the game phase (ADR 0012).
+    /// room to the game phase.
     pub(crate) fn ready(
         &self,
         registry: &mut Registry,
@@ -204,8 +204,8 @@ impl Lobby {
     /// Construct the game and hand off, but only if the room is fully gated: every
     /// seat occupied, decked, and ready. Otherwise a no-op — the room stays pre-game.
     ///
-    /// On the gate passing, builds the room format's engine [`GameSetup`] (ADR 0013
-    /// §4) from the seats' submitted decks in seat order with a server-generated seed,
+    /// On the gate passing, builds the room format's engine [`GameSetup`] from the
+    /// seats' submitted decks in seat order with a server-generated seed,
     /// spawns a [`Room`] around
     /// [`GameState::new`], stores its handle on the [`RoomEntry`], and pushes each
     /// seated session a [`LobbySignal::Start`] carrying its seat and the room handle.
@@ -250,7 +250,7 @@ impl Lobby {
         // Seed the shuffle: a pinned override (deterministic games for the e2e
         // suite, ADR 0014 / issue #145) if configured, else a fresh per-game seed.
         let seed = self.inner.seed_override.unwrap_or_else(generate_seed);
-        // The format supplies the engine `GameSetup` parameters (ADR 0013 §4); it is
+        // The format supplies the engine `GameSetup` parameters; it is
         // guaranteed present (create_room rejected any unknown id), but fall back to
         // engine defaults rather than panicking if it is somehow absent.
         let mut setup: GameSetup = match self.inner.formats.get(&room.config.game_setup) {
@@ -412,7 +412,7 @@ pub(crate) fn join_room(
     Ok(())
 }
 
-/// Handle `spectate_room` (ADR 0022, issue #351): attach the sender as a spectator of
+/// Handle `spectate_room` (issue #351): attach the sender as a spectator of
 /// an **in-progress** room without consuming a seat. Unlike [`join_room`] this succeeds
 /// on a room whose seats are full, but the room's game must already be running — there
 /// is no board to watch until the ready gate passes ([`LobbyError::RoomNotStarted`]).
@@ -1150,7 +1150,7 @@ mod tests {
 
     #[tokio::test]
     async fn submit_deck_under_the_minimum_size_is_rejected_and_seat_stays_undecked() {
-        // The seeded format requires 40 cards (ADR 0013 §4); a ten-card deck of known
+        // The seeded format requires 40 cards; a ten-card deck of known
         // ids is rejected as illegal, and the seat is left undecked.
         let lobby = lobby(4);
         let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
@@ -1175,7 +1175,7 @@ mod tests {
     #[tokio::test]
     async fn submit_deck_over_the_copy_limit_for_a_non_basic_is_rejected() {
         // Five copies of a non-basic (id 1) in an otherwise legal 40-card deck exceed
-        // the four-copy limit (ADR 0013 §4); the deck is rejected and stays out.
+        // the four-copy limit; the deck is rejected and stays out.
         let lobby = lobby(4);
         let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
 
@@ -1214,7 +1214,7 @@ mod tests {
     #[tokio::test]
     async fn submit_deck_accepts_a_legal_deck_with_many_basics() {
         // The shared `decklist()` holds twenty basic Forests, far over the
-        // four-copy limit, yet basics are exempt (ADR 0013 §4): the deck is accepted.
+        // four-copy limit, yet basics are exempt: the deck is accepted.
         let lobby = lobby(4);
         let (alice, _bob, _room) = seated_pair_in(&lobby, "starter-1v1").await;
 

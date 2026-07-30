@@ -2,8 +2,7 @@
 
 SAGE cards are versioned functional definitions: structured, printing-independent data the
 engine executes. The model is defined by [ADR 0018](decisions/0018-scalable-functional-card-definitions.md),
-with the card/printing split retained from
-[ADR 0013](decisions/0013-card-identity-and-set-model.md).
+including the split between a functional definition and the printings that reference it.
 
 The Rust authorities are `CardData` and `Printing` in
 `crates/sage-engine/src/card.rs`; validators live in `src/catalog.rs`.

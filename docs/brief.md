@@ -9,9 +9,8 @@ layer exists to make it generic.
 
 **The long-term goal is XMage in the browser** — comparable rules and card coverage, on a pure
 state-based server-authoritative engine, reachable without an install. **Then** make it
-beautiful. That order is deliberate and was arrived at the hard way: the previous attempt
-pursued coverage, multiplayer, every screen size, and Arena-grade presentation simultaneously,
-and finished none of them.
+beautiful. That order is strict. Coverage, multiplayer, every screen size, and Arena-grade
+presentation pursued at once is four unfinished things; one of them finished is a product.
 
 **The first milestone is the vertical slice of that goal: two people click a link and play a
 real game of Magic in a browser.** No install, no JVM, no version mismatch, no "did you get it
@@ -21,12 +20,13 @@ cannot fix and we can.
 ## How we work
 
 **Every change ends in a state the maintainer can sit down and play. Playing is the merge
-criterion.** The previous attempt measured feature presence, marked milestones complete, and
-was never fun; every proxy said yes. Designs are cheap and disposable. ADRs are written *after*
-a decision survives contact with working code, not before. This is what makes it structurally
-impossible to build a second UI before the first one is good enough to play on.
+criterion.** Feature presence is not a proxy for it: a checklist can be complete while the game
+is unplayable, and only one of those two facts matters. Designs are cheap and disposable. ADRs
+are written *after* a decision survives contact with working code, not before. Together these
+make it structurally impossible to build a second UI before the first one is good enough to
+play on.
 
-Corollary: no roadmap document. Milestone prose is what let "complete" drift from "good."
+Corollary: no roadmap document. Milestone prose is how "complete" drifts loose from "good."
 
 ## Architecture
 
@@ -71,11 +71,11 @@ change together.
 
 ### Clients
 
-The web client is being rebuilt (SAGE restart, Stage 3): one layout — desktop landscape, mouse
-and keyboard — two players, plain DOM/CSS, no WebGL. Its two jobs are to make a legal game
-playable and to **make a settle legible**: when the server auto-passes you through several
-steps, you must be able to tell what happened. That second job is the actual product hypothesis
-and the thing XMage does badly.
+The web client is the current milestone: one layout — desktop landscape, mouse and keyboard —
+two players, plain DOM/CSS, no WebGL. Its two jobs are to make a legal game playable and to
+**make a settle legible**: when the server auto-passes you through several steps, you must be
+able to tell what happened. That second job is the actual product hypothesis and the thing
+XMage does badly.
 
 `crates/sage-cli` is the terminal client. It proves the protocol is independent of the web UI,
 and it is the playtest surface whenever the web client is unavailable.

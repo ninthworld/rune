@@ -24,8 +24,8 @@ ships imageless and users may point it at an image source themselves.
 
 Two other forces:
 
-- The protocol already carries `CardView.functional_id`, reserved (ADR 0013/0018
-  §9) for exactly this: a stable presentation identity a *client-local* cache can
+- The protocol already carries `CardView.functional_id`, reserved (ADR 0018 §9)
+  for exactly this: a stable presentation identity a *client-local* cache can
   enrich without any wire change.
 - The embedded catalog ships functional stand-in cards with invented names
   ("Emberfang Jackal"), so an external image source cannot be queried by card
@@ -38,11 +38,11 @@ Card illustrations are a **client-local presentation concern with pluggable,
 player-selected sources**, keyed by `functional_id`. Three sources exist, chosen
 in a settings surface and stored as a device preference:
 
-1. **Procedural** (default): the vector frame with the monogram placeholder —
-   exactly the pre-art client. Nothing downloads; offline play is unaffected.
-2. **Bundled**: original, project-owned illustrations (the RUNE-generated set)
-   shipped with the client under `clients/web/public/card-art/` and gated by a
-   manifest. Only art the project may redistribute is ever added here.
+1. **Procedural** (default): the vector frame with the monogram placeholder.
+   Nothing downloads; offline play is unaffected.
+2. **Bundled**: original, project-owned illustrations shipped with the client
+   and gated by a manifest. Only art the project may redistribute is ever added
+   here.
 3. **Scryfall** (opt-in): the player's browser fetches real card images
    directly from Scryfall after an explicit consent step, rate-limited per
    Scryfall's guidelines, and caches them in IndexedDB **on the player's device
@@ -51,10 +51,10 @@ in a settings surface and stored as a device preference:
 The Scryfall source has two player-selected **presentation styles**:
 
 - **Window** (default): only the bare illustration (`art_crop`) is downloaded
-  and rendered inside RUNE's own procedural frame — RUNE keeps drawing the
+  and rendered inside SAGE's own procedural frame — SAGE keeps drawing the
   name band, pips, type line, and keyword strip.
 - **Full card**: the entire official card image (`normal`) becomes the face,
-  frame and all, at every full-face tier. RUNE's printed text is suppressed
+  frame and all, at every full-face tier. SAGE's printed text is suppressed
   (it is on the image), but the server-computed overlays — effective P/T,
   counters, combat bars, selection/targeting rings, the playable affordance,
   tap — always render on top: the image is presentation, the overlays remain
@@ -84,11 +84,10 @@ Rules the codebase follows:
 - Server-computed characteristics are never hidden behind a printed image: in
   full-card mode the effective values still overlay the face, so a buffed 4/4
   never reads as its printed 2/2.
-- While the catalog ships functional stand-ins, a client-side mapping
-  (`clients/web/src/card/art/artMap.json`) pairs each `functional_id` with a
-  real card whose illustration fits its color and flavor; resolution falls back
-  to the card's own name, so the map shrinks away once the catalog migrates to
-  real cards (tracked on the roadmap as its own batch).
+- Where a catalog entry is a functional stand-in rather than a real card name, a
+  client-side mapping pairs its `functional_id` with a real card whose
+  illustration fits its color and flavor; resolution falls back to the card's own
+  name, so the map shrinks away as the catalog uses real card names.
 
 ## Consequences
 
