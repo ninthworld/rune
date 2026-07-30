@@ -31,9 +31,19 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
 ## Layout
 
 - `src/protocol.ts` — the wire mirror. Schemas plus the types inferred from them, one
-  declaration each.
-- `src/protocol.test.ts` — parity against `crates/sage-protocol/fixtures/`, the same files the
-  Rust tests pin.
+  declaration each. `src/protocol.test.ts` checks it against
+  `crates/sage-protocol/fixtures/`, the same files the Rust tests pin.
+- `src/frame.ts` — classifies an untagged server frame. Server frames carry no envelope, so
+  the discriminators are structural and order-sensitive; the rules are the protocol's.
+- `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
+  default lives here, so no component invents its own reading of a missing field.
+- `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
+  advertised, never rules reasoning.
+- `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered.
+- `src/ui/` — the screens. Grey-box on purpose: structure and legibility, no visual design.
+
+Keep logic out of components. Anything worth a test belongs in one of the modules above, which
+are pure and need neither React nor a browser.
 
 ## Commands
 
