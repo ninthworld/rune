@@ -1,6 +1,6 @@
 //! Test-only: naming cards by authored identity instead of interned handle.
 //!
-//! A [`CardId`] is interned by `build.rs` from the catalog's sort order (ADR 0018 §3),
+//! A [`CardId`] is interned by `build.rs` from the catalog's sort order (ADR 0008 §3),
 //! so it is not a stable *name* for a card — adding one card renumbers its neighbours.
 //! A test that hard-coded `CardId(1)` would therefore start silently asserting against a
 //! different card the next time someone authors a definition earlier in the alphabet.

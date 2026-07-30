@@ -169,7 +169,7 @@ impl Room {
         view.stops = stops.any_turn;
         view.own_turn_stops = stops.own_turn;
         // Where the last settle acted for this seat, and the boolean summary of that
-        // list ADR 0020 shipped first — derived from it rather than tracked beside it,
+        // list ADR 0010 shipped first — derived from it rather than tracked beside it,
         // so the two can never disagree.
         view.auto_passed_steps = self
             .auto_passed_steps

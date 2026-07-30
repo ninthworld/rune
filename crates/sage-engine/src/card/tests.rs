@@ -10,7 +10,7 @@ use crate::id::{CardId, FunctionalId};
 /// The number of functional definitions in `data/catalog/`.
 pub(crate) const CATALOG_SIZE: usize = 61;
 
-/// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0018 §3).
+/// Every handle the bundled catalog interned: `CardId(0..n)` (ADR 0008 §3).
 pub(crate) fn every_id() -> impl Iterator<Item = CardId> {
     (0..CATALOG_SIZE as u64).map(CardId)
 }
@@ -19,7 +19,7 @@ pub(crate) fn every_id() -> impl Iterator<Item = CardId> {
 ///
 /// Tests name cards by `functional_id` rather than by handle because the handle is
 /// interned at build time and shifts whenever the catalog changes — hard-coding one
-/// would make an unrelated new card break this file (ADR 0018 §3).
+/// would make an unrelated new card break this file (ADR 0008 §3).
 pub(crate) fn id_of(db: &CardDatabase, slug: &str) -> CardId {
     let functional_id = FunctionalId::try_from(slug.to_string()).unwrap();
     db.card_id(&functional_id)
@@ -36,7 +36,7 @@ fn catalog_parsing_meets_its_startup_budget_at_catalog_scale() {
     use std::fmt::Write as _;
     use std::time::{Duration, Instant};
 
-    // ADR 0018 §6: `CardDatabase::bundled()` must parse a 10,000-card catalog well
+    // ADR 0008 §6: `CardDatabase::bundled()` must parse a 10,000-card catalog well
     // under 200ms on CI hardware. The bundled catalog is a few dozen cards, far too
     // small to measure that, so the budget is exercised against a synthetic catalog of the
     // size the target actually names.
@@ -98,7 +98,7 @@ fn issue_256_no_bundled_card_is_a_functionless_shell() {
     use crate::card_type::CardType;
 
     // A castable *spell* that resolves doing nothing renders as blank generated
-    // rules text (ADR 0018 §7) — the exact failure mode issue #256 fixed. This guard
+    // rules text (ADR 0008 §7) — the exact failure mode issue #256 fixed. This guard
     // keeps every bundled card meaningful and fails on any future functionless one:
     //
     // - a land must have an ability (its mana ability);

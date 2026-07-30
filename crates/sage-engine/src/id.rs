@@ -1,6 +1,6 @@
 //! Lightweight identity newtypes.
 //!
-//! Four layers of identity, only two of them authored by a human (ADR 0018 §3):
+//! Four layers of identity, only two of them authored by a human (ADR 0008 §3):
 //!
 //! | Layer | Type | Assigned by | Stable for |
 //! |---|---|---|---|
@@ -19,7 +19,7 @@ use std::fmt;
 
 use serde::Deserialize;
 
-/// The authored, stable identity of one functional card definition (ADR 0018 §3).
+/// The authored, stable identity of one functional card definition (ADR 0008 §3).
 ///
 /// A lowercase `snake_case` slug (e.g. `onakke_ogre`), assigned once by
 /// whoever writes the card and never reused or renumbered. This — not the
@@ -84,7 +84,7 @@ impl std::error::Error for FunctionalIdError {}
 ///
 /// Interned by the catalog loader, never hand-written into a data file: it is a
 /// *handle to* the authored [`FunctionalId`], not the authored identity itself.
-/// It is therefore stable for the life of a build (matching ADR 0002's in-memory,
+/// It is therefore stable for the life of a build (matching ADR 0001's in-memory,
 /// never-persisted `GameState`) and nothing outside that build may assume a given
 /// card keeps the same integer.
 ///
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn an_ill_formed_slug_is_rejected() {
-        // ADR 0018 §3: lowercase snake_case, starting with a letter. Anything else
+        // ADR 0008 §3: lowercase snake_case, starting with a letter. Anything else
         // is not an identity a card file may claim.
         for slug in [
             "",

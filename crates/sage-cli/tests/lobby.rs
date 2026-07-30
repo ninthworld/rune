@@ -27,7 +27,7 @@ use tokio_tungstenite::WebSocketStream;
 
 /// The six bundled cards these decks are built from: three red creatures and two burn
 /// spells, plus a Mountain to cast them with. Named by authored `functional_id`
-/// (ADR 0018 §3) — a `CardId` is interned from the catalog's sort order, so an integer
+/// (ADR 0008 §3) — a `CardId` is interned from the catalog's sort order, so an integer
 /// deck would silently become a different (and, with no land in it, unplayable) deck the
 /// next time a card is added.
 const STARTER_CARDS: [&str; 6] = [

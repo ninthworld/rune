@@ -11,12 +11,12 @@
 //!
 //! **This does not weaken "zero I/O in the engine."** Rendering is a pure function of
 //! its inputs — no clock, no randomness, no filesystem. The exclusion list is baked in
-//! at compile time with `include_str!` (the ADR 0006 pattern the catalog already
+//! at compile time with `include_str!` (the ADR 0002 pattern the catalog already
 //! uses), not read at runtime; only the *generator* binary and the *test* touch the
 //! filesystem, and neither ships in the running engine.
 //!
 //! Legal posture: the report and the exclusions data carry **names and blockers only**
-//! — never Oracle text, flavor text, or official branding (ADR 0018's schema posture
+//! — never Oracle text, flavor text, or official branding (ADR 0008's schema posture
 //! extends here). [`Exclusion`] uses `deny_unknown_fields`, so a stray `text` field is
 //! a parse error, not a leak.
 
@@ -155,7 +155,7 @@ pub fn render_report(db: &CardDatabase, exclusions: &[Exclusion]) -> Result<Stri
     out.push_str(
         "Every functional definition in `crates/sage-engine/data/catalog/`, in interned \
          order. \"Implementation\" is whether the card's behavior lives in its data \
-         definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).\n\n",
+         definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).\n\n",
     );
     out.push_str("| Functional ID | Name | Implementation |\n");
     out.push_str("| --- | --- | --- |\n");

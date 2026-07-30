@@ -1,7 +1,7 @@
 # Card schema
 
 SAGE cards are versioned functional definitions: structured, printing-independent data the
-engine executes. The model is defined by [ADR 0018](decisions/0018-scalable-functional-card-definitions.md),
+engine executes. The model is defined by [ADR 0008](decisions/0008-functional-card-definitions.md),
 including the split between a functional definition and the printings that reference it.
 
 The Rust authorities are `CardData` and `Printing` in
@@ -20,7 +20,7 @@ running engine performs no filesystem I/O.
 ## Functional definition
 
 The bundled catalog's functional definitions are sourced from a real set (Core Set 2019);
-see [ADR 0026](decisions/0026-real-functional-card-data.md). Only functional data is stored —
+see [ADR 0009](decisions/0009-real-functional-card-data.md). Only functional data is stored —
 no Oracle text, flavor, art, or branding.
 
 ```json

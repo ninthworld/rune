@@ -192,7 +192,7 @@ server may pass priority or submit an empty combat declaration; it does not conc
 player.
 
 `stops`, `own_turn_stops`, `auto_passed`, and `auto_passed_steps` carry basic priority
-automation and its pacing contract (issues #264 and #455, ADR 0020). `stops` is the
+automation and its pacing contract (issues #264 and #455, ADR 0010). `stops` is the
 receiver’s own set of steps at which they want to receive priority even when the engine
 reports they have no meaningful action — the per-phase opt-in that keeps automation from
 skipping past a step they care about. It is set with the `set_stops` message (below),
@@ -255,7 +255,7 @@ The list names only positions where *this receiver* was acted for; a step where 
 seat was passed is that seat's entry. `auto_passed` is exactly `auto_passed_steps` being
 non-empty. Both are advisory, transient, and display-only, and both are omitted at their
 empty defaults — the authoritative record of what happened during a settle remains `log`
-(ADR 0021), which carries the events themselves so a resolved spell, a death, or a turn
+(ADR 0007), which carries the events themselves so a resolved spell, a death, or a turn
 change is recoverable even when the receiver never held priority over it.
 
 A settle also resolves a forced combat declaration that has **no legal non-empty answer**
@@ -296,7 +296,7 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
 the underlying card definition and is not a legal-action handle. Clients treat both as
 opaque strings. The web client uses `functional_id` as the key of its client-local card-art
-cache (ADR 0024) — a pure presentation enrichment; the wire contract is unchanged and a
+cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
 
 `OpponentView` contains `player_id`, `hand_size`, `life`, `library_size`,
@@ -341,7 +341,7 @@ A `StackItem` describes one object on the stack:
 
 A `StackTarget` is an internally tagged object — the target’s kind is **stated by the
 server**, so a client never classifies a target by testing which collection its id appears
-in (that classification is rules interpretation, ADR 0002):
+in (that classification is rules interpretation, ADR 0001):
 
 | `kind` | Payload | Names |
 | --- | --- | --- |
@@ -379,7 +379,7 @@ Three rules govern these fields:
     rules interpretation the field exists to prevent.
 
   A client must never reconstruct activated-vs-triggered from `description` prose or from
-  when the entry appeared: that is rules interpretation, which ADR 0002 puts on the
+  when the entry appeared: that is rules interpretation, which ADR 0001 puts on the
   server. There is deliberately **no** mode/X/additional-cost summary and **no zone
   target kind**: the engine has no modal spells, no `X` costs, and no zone targets, so
   carrying either would be a field no projection could ever fill.
@@ -584,7 +584,7 @@ an ack an older server will never send.
 ### `SetStops`
 
 The second in-game client message sets the receiver’s priority-stop preferences (issue #264,
-ADR 0020): the steps at which they want priority even when they have no meaningful action, so
+ADR 0010): the steps at which they want priority even when they have no meaningful action, so
 basic auto-pass does not skip them there.
 
 ```json

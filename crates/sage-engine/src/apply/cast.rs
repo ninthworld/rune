@@ -345,7 +345,7 @@ pub(crate) fn apply_targeted_effect(
         // (CR 613.7), so a second pump this turn stacks after the first. The
         // modifier folds into computed P/T on demand — nothing is written onto the
         // permanent — so removing it at cleanup reverts the value with nothing to
-        // invalidate (ADR 0010). The caller has re-checked the target is still a
+        // invalidate (ADR 0005). The caller has re-checked the target is still a
         // creature (CR 608.2b); a permanent that has since left is skipped.
         Effect::Pump {
             power, toughness, ..
@@ -370,7 +370,7 @@ pub(crate) fn apply_targeted_effect(
         // `UntilEndOfTurn` duration the cleanup step removes (CR 613.1f). The grant
         // folds into the target's computed keyword set on demand — nothing is written
         // onto the permanent — so removing it at cleanup reverts the value with
-        // nothing to invalidate (ADR 0010). A duplicate grant is redundant, not
+        // nothing to invalidate (ADR 0005). A duplicate grant is redundant, not
         // additive. The caller has re-checked the target is still a creature
         // (CR 608.2b); a permanent that has since left is skipped.
         Effect::GrantKeyword { keyword, .. } => {

@@ -3,13 +3,13 @@
 //!
 //! A permanent's current power/toughness, types, and abilities are **not** what
 //! is printed on its card — counters, anthems, pump spells, and type-changing
-//! effects alter them continuously. Per ADR 0010 the engine never stores these:
+//! effects alter them continuously. Per ADR 0005 the engine never stores these:
 //! [`characteristics`] recomputes them fresh on every call from the raw state
 //! plus the printed [`CardData`](crate::CardData) seed, caching nothing
 //! (consistent with the `GameState` "no cached derivations" invariant in
 //! `state.rs`).
 //!
-//! This module is **slice 3 of 3** (ADR 0010 §3): it seeds current
+//! This module is **slice 3 of 3** (ADR 0005 §3): it seeds current
 //! characteristics from printed values, folds `+1/+1` and `-1/-1` counters into
 //! power/toughness at CR 613 **layer 7c**, and then applies simple static P/T
 //! modifications (anthem-style "+X/+Y" effects) at that same layer **after**
@@ -32,7 +32,7 @@ use crate::state::{
 /// mana cost, power/toughness, and abilities are *right now*, after the layer
 /// system. It is a snapshot produced on demand, not a field on
 /// [`GameState`](crate::GameState); recomputing it every query is what keeps the
-/// engine pure and undo/replay/resync free (ADR 0010).
+/// engine pure and undo/replay/resync free (ADR 0005).
 ///
 /// Its power/toughness are the printed values with any `+1/+1` / `-1/-1`
 /// counters folded in and then any applicable static `+X/+Y` modifiers applied
@@ -71,13 +71,13 @@ pub struct Characteristics {
 /// Compute the *current* [`Characteristics`] of the permanent identified by
 /// `permanent`, reading its printed [`CardData`](crate::CardData) as the seed.
 ///
-/// This is the one pure read path mandated by ADR 0010: it runs fresh on every
+/// This is the one pure read path mandated by ADR 0005: it runs fresh on every
 /// call and caches nothing. In this slice the result is the printed values with
 /// the permanent's `+1/+1` / `-1/-1` counters folded into power/toughness at CR
 /// 613 layer 7c, then any static `+X/+Y` modifiers in force applied at that same
 /// layer after the counters, in timestamp order. It takes `&CardDatabase` for
 /// the same reason
-/// [`apply_action`](crate::apply_action) does (ADR 0007): the printed seed lives
+/// [`apply_action`](crate::apply_action) does (ADR 0003): the printed seed lives
 /// in the database, which is kept out of [`GameState`](crate::GameState) to
 /// preserve that type's `Eq`/purity.
 ///
@@ -103,7 +103,7 @@ pub fn characteristics(
     // by the same signed amount. They only apply to a permanent that has P/T; a
     // permanent with no printed power/toughness (`None`) stays `None`.
     let counter_delta = pt_counter_delta(perm);
-    // CR 613 layer 7c (after counters, ADR 0010 §3): static `+X/+Y` modifiers in
+    // CR 613 layer 7c (after counters, ADR 0005 §3): static `+X/+Y` modifiers in
     // force apply in timestamp order. `is_creature` gates anthem-style selectors;
     // current type equals printed type until the type layers (1–6) land.
     let is_creature = card.types.contains(&CardType::Creature);
@@ -133,7 +133,7 @@ pub fn characteristics(
 /// duplicates collapsed so a redundant grant is idempotent (CR 702, "having a
 /// keyword ability twice is the same as having it once").
 ///
-/// Two sources feed the grants, mirroring [`ordered_pt_modifiers`] (ADR 0010 §4):
+/// Two sources feed the grants, mirroring [`ordered_pt_modifiers`] (ADR 0005 §4):
 /// the stored [`GameState::static_effects`] carrying [`Modification::GrantKeyword`]
 /// (anthems and until-end-of-turn pumps) and, synthesized fresh, each Aura attached
 /// to `perm` whose [`AuraGrant`](crate::AuraGrant) lists keywords (CR 303.4 /
@@ -163,7 +163,7 @@ fn current_keywords(
     }
     // CR 303.4 / 613.1f: each Aura attached to `perm` grants its listed keywords
     // while attached. Derived from the attachment, never stored, so it vanishes the
-    // instant the Aura leaves (ADR 0010).
+    // instant the Aura leaves (ADR 0005).
     for aura in &state.battlefield {
         if aura.attached_to == Some(perm.id) {
             if let Some(grant) = db.card(aura.card).and_then(|c| c.aura.as_ref()) {
@@ -180,7 +180,7 @@ fn current_keywords(
 /// (CR 702) — its printed keywords unioned with any granted at CR 613 layer 6
 /// (CR 613.1f). This is the single read path combat, evasion, and combat-damage use,
 /// so a granted keyword is indistinguishable from a printed one. Reads fresh through
-/// [`characteristics`], caching nothing (ADR 0010); a permanent not on the
+/// [`characteristics`], caching nothing (ADR 0005); a permanent not on the
 /// battlefield has no keywords.
 #[must_use]
 pub(crate) fn permanent_has_keyword(
@@ -210,7 +210,7 @@ fn pt_counter_delta(perm: &Permanent) -> i32 {
 
 /// The net layer-7c power/toughness shift on `perm` from continuous static
 /// effects (anthems, pumps), applied **after** counters in timestamp order
-/// (CR 613.7, ADR 0010 §3–§4). Returns `(power_delta, toughness_delta)`.
+/// (CR 613.7, ADR 0005 §3–§4). Returns `(power_delta, toughness_delta)`.
 ///
 /// These modifiers are additive, so their sum is order-independent
 /// arithmetically; the engine still folds them in ascending timestamp order so
@@ -247,7 +247,7 @@ fn static_pt_delta(
 /// (ascending [`StaticEffect::timestamp`], i.e. source object id).
 ///
 /// Two sources feed this one list, folded through the same timestamp-ordered path
-/// (ADR 0010 §4): the stored [`GameState::static_effects`] (anthems and pumps) and,
+/// (ADR 0005 §4): the stored [`GameState::static_effects`] (anthems and pumps) and,
 /// synthesized fresh, each Aura currently attached to `perm` (CR 303.4 / 613.7c) —
 /// see [`aura_pt_effect`]. The Aura contributions are **derived, never stored**: an
 /// Aura's P/T grant follows its attachment, so it appears here exactly while the
@@ -285,7 +285,7 @@ fn ordered_pt_modifiers(
 /// contributes to its host (CR 303.4 / 613.7c), or `None` if `aura` is not an
 /// attached Aura (no host, or its card carries no [`AuraGrant`](crate::AuraGrant)).
 ///
-/// Synthesized on demand rather than stored (ADR 0010): its `source` is the Aura's
+/// Synthesized on demand rather than stored (ADR 0005): its `source` is the Aura's
 /// own object id — a strictly increasing, replayable timestamp (CR 613.7) — and it
 /// is keyed to the specific host permanent, so it folds in exactly like a pump
 /// keyed to that permanent, and disappears when the Aura leaves.
@@ -590,7 +590,7 @@ mod tests {
     fn single_static_modifier_stacks_on_printed_pt_and_counters() {
         // Onakke Ogre is a printed 4/2. One +1/+1 counter and one static
         // +2/+2 anthem controlled by its controller compute 4+1+2 / 2+1+2 = 7/5,
-        // exercising "printed + counters + modifier" together (ADR 0010 §3).
+        // exercising "printed + counters + modifier" together (ADR 0005 §3).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
         let boar = place(&mut state, fixture("onakke_ogre"));
@@ -724,7 +724,7 @@ mod tests {
 
     #[test]
     fn issue_374_aura_grant_vanishes_when_the_aura_leaves() {
-        // The grant is derived from the attachment (ADR 0010): detach the Aura and
+        // The grant is derived from the attachment (ADR 0005): detach the Aura and
         // the host's computed keyword set reverts with nothing to prune.
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();

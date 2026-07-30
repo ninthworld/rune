@@ -52,7 +52,7 @@ pub(crate) const NON_BASICS: [&str; 5] = [
     "walking_corpse",
 ];
 
-/// A card as `SubmitDeck` carries it: its authored `functional_id` (ADR 0018 §3).
+/// A card as `SubmitDeck` carries it: its authored `functional_id` (ADR 0008 §3).
 pub(crate) fn wire_id(slug: &str) -> String {
     slug.to_string()
 }

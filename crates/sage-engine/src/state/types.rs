@@ -193,7 +193,7 @@ pub enum GameEvent {
 /// A kind of counter that can sit on a [`Permanent`].
 ///
 /// Only the power/toughness counters the layer system folds into computed
-/// characteristics today are modeled (ADR 0010 slice 2, CR 613.7c). Other kinds
+/// characteristics today are modeled (ADR 0005 slice 2, CR 613.7c). Other kinds
 /// (loyalty, charge, …) are deferred until an effect needs them, at which point
 /// a variant is added here. Used as a [`BTreeMap`] key in
 /// [`Permanent::counters`], so ordering is derived and replay-stable.
@@ -270,7 +270,7 @@ pub struct Permanent {
     /// Counters on this permanent, keyed by [`CounterKind`] and mapped to how
     /// many of that kind are present.
     ///
-    /// This is **raw stored state, not a derivation** (ADR 0010 §1): nothing
+    /// This is **raw stored state, not a derivation** (ADR 0005 §1): nothing
     /// else in [`GameState`](crate::GameState) determines a permanent's counters, so the
     /// "no cached derivations" invariant does not apply to it. Current
     /// power/toughness *is* derived and folds these in on demand via
@@ -283,7 +283,7 @@ pub struct Permanent {
     /// ability chose (CR 303.4d) and stays attached until it leaves the
     /// battlefield or its host does.
     ///
-    /// **Raw stored state, not a derivation** (ADR 0010 §1): the attachment is a
+    /// **Raw stored state, not a derivation** (ADR 0005 §1): the attachment is a
     /// per-object fact nothing else in [`GameState`](crate::GameState) determines, like
     /// [`Self::counters`]. The Aura's continuous power/toughness contribution to
     /// its host *is* derived from this attachment on demand via
@@ -304,9 +304,9 @@ impl Permanent {
     }
 }
 
-/// A continuous static effect currently in force (ADR 0010 slice 3, §4).
+/// A continuous static effect currently in force (ADR 0005 slice 3, §4).
 ///
-/// This is **raw stored input, not a derivation** (ADR 0010 §1): the source
+/// This is **raw stored input, not a derivation** (ADR 0005 §1): the source
 /// ability or permanent puts the effect here and its removal takes it away.
 /// Nothing else in [`GameState`](crate::GameState) determines it, so the "no cached derivations"
 /// invariant does not apply to it — the same way [`Permanent::counters`] are
@@ -326,7 +326,7 @@ pub struct StaticEffect {
     /// object's id. It is minted from the monotonic [`GameState::next_object_id`](crate::GameState::next_object_id),
     /// so it is strictly increasing and replay-stable, and it doubles as this
     /// effect's **timestamp**: within a layer, effects apply in ascending
-    /// `source` order (CR 613.7, ADR 0010 §4). No wall-clock and no ambient
+    /// `source` order (CR 613.7, ADR 0005 §4). No wall-clock and no ambient
     /// counter is involved. Because it derives from the source object's id,
     /// removing that source (and this entry with it) reverts the computed value.
     pub source: u64,
@@ -348,7 +348,7 @@ pub struct StaticEffect {
 
 impl StaticEffect {
     /// This effect's timestamp for intra-layer ordering: its [`source`] object
-    /// id (ADR 0010 §4 — the id assigned when the effect was created). Exposed as
+    /// id (ADR 0005 §4 — the id assigned when the effect was created). Exposed as
     /// a named accessor so ordering code reads by intent rather than by field.
     ///
     /// [`source`]: Self::source
@@ -406,7 +406,7 @@ pub enum EffectAffects {
 pub enum Modification {
     /// CR 613 **layer 7c**: add the given signed amounts to power and toughness
     /// (a negative amount subtracts). Applied after counters, in timestamp order
-    /// (ADR 0010 §3–§4).
+    /// (ADR 0005 §3–§4).
     PowerToughness {
         /// Amount added to power.
         power: i32,
@@ -429,7 +429,7 @@ pub enum Modification {
 /// One running total of cumulative **combat** damage a commander has dealt a
 /// player over the game (CR 903.10a).
 ///
-/// **Raw stored history, not a derivation** (ADR 0010 §1): "how much combat
+/// **Raw stored history, not a derivation** (ADR 0005 §1): "how much combat
 /// damage has this commander dealt this player *so far*" is a fact a bare
 /// snapshot cannot recover — the same reasoning as [`Permanent::damage`] — so it
 /// is stored, in [`GameState::commander_damage`](crate::GameState::commander_damage).

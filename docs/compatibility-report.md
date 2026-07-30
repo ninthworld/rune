@@ -9,20 +9,20 @@ card and every mechanic deliberately left out of scope.
 
 - **Supported** — every functional definition in `crates/sage-engine/data/catalog/`,
   with its `functional_id`, name, and whether it is a plain data definition or uses the
-  `scripted` code escape hatch (ADR 0018 §2). Listed in interned order
+  `scripted` code escape hatch (ADR 0008 §2). Listed in interned order
   (`FunctionalId`s sorted by byte value), so the ordering is identical on every machine.
 - **Excluded** — a curated list of cards and mechanics that were considered and are out
   of scope, each with the single blocker that keeps it out.
 
 Both sections carry **names and blockers only** — never Oracle text, flavor text, or
-official branding (the schema's legal posture, ADR 0018, extends to this report and to
+official branding (the schema's legal posture, ADR 0008, extends to this report and to
 the exclusions data).
 
 ## How it stays honest
 
 The report is **generated, never hand-edited**. `crates/sage-engine/src/compat.rs`
 renders it as a pure function of the catalog + the exclusion list; the running engine
-does no I/O (the exclusion list is baked in with `include_str!`, the ADR 0006 pattern).
+does no I/O (the exclusion list is baked in with `include_str!`, the ADR 0002 pattern).
 
 A `cargo test` freshness gate (`crates/sage-engine/tests/compat.rs`) regenerates the
 report in memory and fails if the committed copy has drifted. Because it runs under

@@ -140,7 +140,7 @@ async fn action_from_a_seat_without_priority_is_rejected() {
     task.await.unwrap();
 }
 
-// ----- Basic priority automation (issue #264, ADR 0020) -----
+// ----- Basic priority automation (issue #264, ADR 0010) -----
 
 #[tokio::test]
 async fn issue_264_automation_off_by_default_elides_stops_and_indicator() {

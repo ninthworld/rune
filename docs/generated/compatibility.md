@@ -9,7 +9,7 @@ SAGE supports only the verified slice of cards in its catalog, never a full set.
 
 ## Supported cards (61)
 
-Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).
+Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
 | Functional ID | Name | Implementation |
 | --- | --- | --- |

@@ -10,7 +10,7 @@ use crate::{EntityId, Phase};
 /// requirement slots. The server validates the id, verifies the token against the
 /// action it currently offers, and checks each chosen target against that slot's
 /// freshly computed legal set; anything else is rejected and the current
-/// `GameView` is re-sent (docs/decisions/0009-targeting-model.md §Protocol).
+/// `GameView` is re-sent (docs/decisions/0004-targeting-model.md §Protocol).
 ///
 /// `Default` yields the minimal no-choice answer (empty token and targets), so a
 /// caller answering a plain action can set only `action_id`.
@@ -61,7 +61,7 @@ pub struct TargetChoice {
 }
 
 /// Set (or replace) this connection's **priority-stop preferences** (issue #264,
-/// ADR 0020): the steps at which the seat wants priority even when it has no
+/// ADR 0010): the steps at which the seat wants priority even when it has no
 /// meaningful action, so basic auto-pass does not skip it there. Server-authoritative
 /// and reconnect-durable — the room stores the set per seat (like a display name) and
 /// reflects it back in [`GameView::stops`]/[`GameView::own_turn_stops`]. An

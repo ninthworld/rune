@@ -17,7 +17,7 @@ use super::*;
 /// *draw* the object without interpreting the sentence: its [`StackItemKind`], its
 /// ordered [`StackTarget`] list, and the card face to render. `description` stays
 /// authoritative for text — the targets are additive geometry, never a substitute a
-/// client must parse prose to recover (ADR 0002).
+/// client must parse prose to recover (ADR 0001).
 pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatabase) -> StackItem {
     // The targets recorded on announcement (CR 601.2c), projected verbatim and in
     // order: the engine never rewrites the list, so an entry keeps naming a target
@@ -125,7 +125,7 @@ mod tests {
     use crate::view::test_support::put_permanent;
     use sage_engine::Effect;
 
-    /// A two-target damage spell, which no bundled M19 card provides (ADR 0026:
+    /// A two-target damage spell, which no bundled M19 card provides (ADR 0009:
     /// exercise an unrepresented shape from an inline catalog rather than bending a
     /// real card). Its two `deal_damage` effects consume two targets in order.
     fn twin_bolt_db() -> CardDatabase {

@@ -52,7 +52,7 @@ pub struct Printing {
 #[serde(deny_unknown_fields)]
 struct PrintingEntry {
     /// The functional definition this printing prints, by its authored identity —
-    /// the identity that survives a rebuild, unlike the interned handle (ADR 0018 §3).
+    /// the identity that survives a rebuild, unlike the interned handle (ADR 0008 §3).
     functional_id: crate::id::FunctionalId,
     /// The collector number within its set.
     collector_number: String,
@@ -127,7 +127,7 @@ impl PrintingDatabase {
     ) -> Result<(), CatalogError> {
         let entries: Vec<PrintingEntry> = serde_json::from_str(json)?;
         // Printings are keyed by (set, collector number), so a repeat would silently
-        // shadow the earlier record instead of failing (ADR 0018 §5).
+        // shadow the earlier record instead of failing (ADR 0008 §5).
         check_printings(
             set_code,
             entries.iter().map(|e| e.collector_number.as_str()),
@@ -225,7 +225,7 @@ mod tests {
         let oracle_b = cards.card(reprint.oracle).unwrap();
         assert_eq!(oracle_a, oracle_b);
 
-        // The abilities IR (ADR 0007) is identical between printings...
+        // The abilities IR (ADR 0003) is identical between printings...
         assert_eq!(
             crate::card::abilities_of(&cards, first.oracle),
             crate::card::abilities_of(&cards, reprint.oracle),
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn printing_referencing_an_absent_card_fails_the_load() {
-        // ADR 0018 §3: a printing names a card by its authored identity, and an
+        // ADR 0008 §3: a printing names a card by its authored identity, and an
         // unresolvable reference is a load-time error — never a database that
         // resolves to None mid-game.
         let cards = CardDatabase::bundled().unwrap();

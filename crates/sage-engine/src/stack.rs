@@ -67,7 +67,7 @@ pub enum StackObjectKind {
 /// Storing it here is what lets the server *state* the finer kind on the wire
 /// instead of guessing. A client may never reconstruct this from `description`
 /// prose or from when the object appeared: that is rules interpretation, which
-/// ADR 0002 puts on the server.
+/// ADR 0001 puts on the server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AbilityOrigin {
     /// A player activated it, paying its costs (CR 602.2).

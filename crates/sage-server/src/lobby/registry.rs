@@ -99,7 +99,7 @@ pub(crate) fn seat_of(
 /// Resolve a wire [`CardIdentity`] to an engine [`CardId`], or `None` if it does not
 /// name a card in `db`.
 ///
-/// A decklist names cards by their authored `functional_id` (ADR 0018 §3) — the stable
+/// A decklist names cards by their authored `functional_id` (ADR 0008 §3) — the stable
 /// identity vocabulary. It cannot name them by `CardId`:
 /// that handle is interned by `build.rs` from the catalog's sort order, so authoring one
 /// new card renumbers its neighbours, and a decklist written against an integer would

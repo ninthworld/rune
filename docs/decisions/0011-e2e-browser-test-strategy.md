@@ -1,8 +1,7 @@
 # ADR 0011: End-to-end browser test strategy for the web client
 
 - Status: accepted
-- Date: 2026-07-11
-- Issue: #102
+- Date: 2026-07-30
 
 ## Context
 

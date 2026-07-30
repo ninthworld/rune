@@ -399,7 +399,7 @@ pub(crate) fn split_combat_at_declare_blockers() -> (
 }
 
 /// Big vanilla commanders whose exact power sets how hard each hit lands, so the
-/// commander-damage arithmetic is unambiguous (no clean M19 body, ADR 0026).
+/// commander-damage arithmetic is unambiguous (no clean M19 body, ADR 0009).
 pub(crate) fn commander_db() -> CardDatabase {
     let json = r#"[
         {"schema_version":1,"functional_id":"test_general","name":"Test General",

@@ -248,7 +248,7 @@ impl Lobby {
             })
             .collect();
         // Seed the shuffle: a pinned override (deterministic games for the e2e
-        // suite, ADR 0014 / issue #145) if configured, else a fresh per-game seed.
+        // suite, ADR 0006 / issue #145) if configured, else a fresh per-game seed.
         let seed = self.inner.seed_override.unwrap_or_else(generate_seed);
         // The format supplies the engine `GameSetup` parameters; it is
         // guaranteed present (create_room rejected any unknown id), but fall back to
@@ -981,7 +981,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_pinned_seed_reproduces_the_same_opening_hand() {
-        // Same override → identical shuffle (ADR 0014), so the opening hand matches.
+        // Same override → identical shuffle (ADR 0006), so the opening hand matches.
         let first = opening_hand_names_for_seed(Some(0xC0FF_EE00_1234_5678)).await;
         let again = opening_hand_names_for_seed(Some(0xC0FF_EE00_1234_5678)).await;
         assert!(!first.is_empty(), "the opening hand is non-empty");

@@ -8,11 +8,11 @@ use super::error::CatalogError;
 use crate::id::{CardId, FunctionalId};
 use crate::scripted::is_scripted;
 
-/// One functional definition embedded at compile time (ADR 0018 §4).
+/// One functional definition embedded at compile time (ADR 0008 §4).
 ///
 /// The build script pairs each `data/catalog/<functional_id>.json` with the [`CardId`]
 /// it interned for it, so the handle is assigned by the catalog rather than written
-/// into the card file by hand (ADR 0018 §3).
+/// into the card file by hand (ADR 0008 §3).
 pub(super) struct CatalogEntry {
     /// The handle this definition interned to in *this build* — its index in
     /// [`CATALOG`], which is sorted by [`FunctionalId`] byte value.
@@ -38,7 +38,7 @@ pub struct CardDatabase {
 }
 
 impl CardDatabase {
-    /// Load the database from the compile-time-embedded catalog (ADR 0018 §4).
+    /// Load the database from the compile-time-embedded catalog (ADR 0008 §4).
     ///
     /// Reads the manifest `build.rs` generated: one entry per
     /// `data/catalog/<functional_id>.json`, already interned in sorted
@@ -49,7 +49,7 @@ impl CardDatabase {
     /// Returns a [`CatalogError`] if an embedded definition does not parse or does not
     /// validate. `build.rs` ran the same schema checks at compile time, so the only
     /// failure this can still surface is the one it cannot see: a `scripted` flag that
-    /// disagrees with [`crate::scripted`] (ADR 0018 §5). It is returned rather than
+    /// disagrees with [`crate::scripted`] (ADR 0008 §5). It is returned rather than
     /// panicked on because the engine forbids panicking APIs.
     pub fn bundled() -> Result<Self, CatalogError> {
         let mut db = Self::default();
@@ -65,7 +65,7 @@ impl CardDatabase {
     ///
     /// The in-memory counterpart of [`Self::bundled`], for tests and any caller holding
     /// a snapshot rather than the bundled catalog. It applies the *same* interning rule
-    /// — sort by [`FunctionalId`] byte value, assign `CardId(0..n)` (ADR 0018 §3) — so a
+    /// — sort by [`FunctionalId`] byte value, assign `CardId(0..n)` (ADR 0008 §3) — so a
     /// snapshot and a build agree on handles, and no caller hand-writes one.
     ///
     /// # Errors
@@ -80,7 +80,7 @@ impl CardDatabase {
         }
 
         // The one interning rule, shared with `build.rs`: sorted authored identity in,
-        // `CardId(0..n)` out. Nothing hand-assigns a handle (ADR 0018 §3).
+        // `CardId(0..n)` out. Nothing hand-assigns a handle (ADR 0008 §3).
         cards.sort_by(|a, b| a.functional_id.cmp(&b.functional_id));
 
         let mut db = Self::default();
@@ -98,7 +98,7 @@ impl CardDatabase {
     fn insert(&mut self, id: CardId, data: CardData) -> Result<(), CatalogError> {
         // The escape hatch is declared in data and implemented in code; the two tiers
         // must agree in both directions, or a card silently loses its behavior (and its
-        // generated rules text) or silently gains behavior nobody declared (ADR 0018 §5).
+        // generated rules text) or silently gains behavior nobody declared (ADR 0008 §5).
         // Keyed on the authored identity, so the check does not depend on how this build
         // happened to intern the handle.
         match (data.scripted, is_scripted(&data.functional_id)) {
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn handles_are_interned_in_sorted_functional_id_order() {
-        // ADR 0018 §3: `build.rs` sorts every `FunctionalId` by byte value and assigns
+        // ADR 0008 §3: `build.rs` sorts every `FunctionalId` by byte value and assigns
         // CardId(0..n) in that order. This is the whole contract between the build
         // script and the loader, so it is asserted directly rather than assumed.
         let db = CardDatabase::bundled().unwrap();
@@ -213,7 +213,7 @@ mod tests {
 
     #[test]
     fn every_fixture_carries_a_unique_functional_id_matching_its_name() {
-        // ADR 0018 §3: each definition's authored identity is a lowercase snake_case
+        // ADR 0008 §3: each definition's authored identity is a lowercase snake_case
         // slug of its name, unique across the catalog, and resolves back to the
         // handle the engine interned it under.
         let db = CardDatabase::bundled().unwrap();
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn every_definition_lives_in_a_file_named_for_its_identity() {
-        // ADR 0018 §4: one card per file, the file name *is* the identity. `build.rs`
+        // ADR 0008 §4: one card per file, the file name *is* the identity. `build.rs`
         // enforces this over `data/`; asserting it here means a stale or mis-generated
         // manifest cannot slip through `cargo test` either.
         let db = CardDatabase::bundled().unwrap();
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn scripted_is_an_explicit_flag_defaulting_to_false() {
-        // ADR 0018 §2: the escape hatch is declared on the card, not inferred. No
+        // ADR 0008 §2: the escape hatch is declared on the card, not inferred. No
         // bundled card is scripted today, and every bundled card is therefore fully
         // describable from its IR alone.
         let db = CardDatabase::bundled().unwrap();
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn the_scripted_flag_and_the_code_arm_must_agree_in_both_directions() {
-        // ADR 0018 §5: the data tier and the code tier cannot silently disagree about
+        // ADR 0008 §5: the data tier and the code tier cannot silently disagree about
         // which cards are scripted. This is the one catalog rule `build.rs` cannot check
         // — the code tier is compiled Rust, which does not exist when it runs — so the
         // loader owns it, and these are the tests that hold it up.
@@ -312,7 +312,7 @@ mod tests {
         );
 
         // Declared on both sides, it loads, and its hand-authored text is available for
-        // the server to present in place of generated text (ADR 0018 §7).
+        // the server to present in place of generated text (ADR 0008 §7).
         let db = CardDatabase::from_json(&scripted_fixture(scripted_card, true)).unwrap();
         let card = crate::card::tests::card_named(&db, scripted_card);
         assert!(card.scripted);

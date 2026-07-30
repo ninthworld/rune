@@ -9,9 +9,9 @@ use crate::id::CardId;
 
 // The generated catalog manifest: `pub(crate) const CATALOG: &[CatalogEntry]` and
 // `pub(crate) const SET_MANIFEST: &[SetSnapshot]`, both `include_str!`-embedding the files under
-// `data/` (ADR 0018 §4). `build.rs` writes it; nothing here is hand-maintained, so
+// `data/` (ADR 0008 §4). `build.rs` writes it; nothing here is hand-maintained, so
 // adding a card edits zero existing lines. The engine still does zero runtime I/O:
-// this is the same compile-time embedding ADR 0006 sanctioned, with the build script
+// this is the same compile-time embedding ADR 0002 sanctioned, with the build script
 // — not a human — authoring the `include_str!` list.
 include!(concat!(env!("OUT_DIR"), "/catalog_manifest.rs"));
 
@@ -35,7 +35,7 @@ pub(super) fn parse_definition(
 /// 2. `serde_json::from_value` — the type system. `deny_unknown_fields` rejects a
 ///    presentation asset, and every targeting [`Effect`](crate::ability::Effect) declares its [`TargetSpec`](crate::ability::TargetSpec) as
 ///    a required field, so an effect that needs a target and lacks one fails *here*, as
-///    a parse error. That is why no validator restates it (ADR 0018 §5).
+///    a parse error. That is why no validator restates it (ADR 0008 §5).
 ///
 /// [`CardData`] is the direct deserialization target rather than a field of a wrapper,
 /// because serde does not enforce `deny_unknown_fields` through a `flatten`ed field.

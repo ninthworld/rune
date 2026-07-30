@@ -4,7 +4,7 @@ use super::*;
 
 /// The content-binding token for an action, hashed from the exact content the
 /// client is answering: its `kind`, `subject`, `requirements` (target slots), and
-/// `prompts` (the option/select-from-zone/order slots, issue #156). ADR 0009
+/// `prompts` (the option/select-from-zone/order slots, issue #156). ADR 0004
 /// §Protocol specifies a hash/echo of the content — not a random nonce — so the
 /// server stays stateless: it never stores a per-id secret, it recomputes the token
 /// from the freshly regenerated action. Two actions with different content therefore
@@ -87,7 +87,7 @@ fn hash_prompt(prompt: &Prompt, hasher: &mut impl std::hash::Hasher) {
         }
         // A numeric slot (issue #554): its bounds are part of the action's content, so
         // an answer bound to a *wider* range the server no longer offers is rejected
-        // like any other stale binding (ADR 0009).
+        // like any other stale binding (ADR 0004).
         Prompt::Number {
             slot,
             prompt,
@@ -167,7 +167,7 @@ mod tests {
         );
     }
 
-    /// Content binding (ADR 0009) covers the new prompt shapes too: a token captured
+    /// Content binding (ADR 0004) covers the new prompt shapes too: a token captured
     /// for a `select_from_zone` discard while the hand is one shape is rejected once
     /// the hand — and so the prompt's candidates — has changed, exactly as it is for a
     /// targeted action. A stale prompt answer can never rebind.

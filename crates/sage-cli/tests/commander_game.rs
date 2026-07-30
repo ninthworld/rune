@@ -55,7 +55,7 @@ const VICTIM: usize = 1;
 /// the command zone (CR 903.9a) and recast it at the `{2}` tax.
 const BLOCKER_NAME: &str = "Gigantosaurus";
 
-/// Resolve `slug` (an authored `functional_id`, ADR 0018 §3) to its catalog [`CardId`].
+/// Resolve `slug` (an authored `functional_id`, ADR 0008 §3) to its catalog [`CardId`].
 fn card(db: &CardDatabase, slug: &str) -> CardId {
     let id = FunctionalId::try_from(slug.to_string()).expect("a well-formed identity");
     db.card_id(&id).expect("a bundled card")

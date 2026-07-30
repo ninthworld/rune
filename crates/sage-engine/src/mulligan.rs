@@ -249,7 +249,7 @@ mod tests {
     /// A 40-card decklist cycling through six bundled cards.
     ///
     /// Named by authored identity, not by handle: a `CardId` is interned from the
-    /// catalog's sort order (ADR 0018 §3), so `CardId(1)` means a different card the
+    /// catalog's sort order (ADR 0008 §3), so `CardId(1)` means a different card the
     /// moment one is authored ahead of it.
     fn sample_decklist() -> Vec<CardId> {
         const CARDS: [&str; 6] = [

@@ -371,7 +371,7 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
 /// - the returned [`token`](ChooseAction::token) is present but does not match the
 ///   token the server currently issues for that id — a stale/redirected id whose
 ///   action content has changed hashes to a different token, so it can never rebind
-///   to a *different* action (ADR 0009 §Protocol, content binding);
+///   to a *different* action (ADR 0004 §Protocol, content binding);
 /// - the token is absent (`""`) yet the offered action carries `requirements` and so
 ///   *requires* binding — a bound action must be answered with its token, never on
 ///   the legacy positional path;
@@ -383,7 +383,7 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
 /// multi-selects — an empty selection legally declares no attackers/blockers. An
 /// empty token is still accepted for a plain, requirement-less action (a
 /// requirement-less combat declaration included), so the token-less positional path
-/// keeps working for sequential actions (ADR 0009 §Context).
+/// keeps working for sequential actions (ADR 0004 §Context).
 pub(crate) fn resolve_action(
     state: &GameState,
     db: &CardDatabase,

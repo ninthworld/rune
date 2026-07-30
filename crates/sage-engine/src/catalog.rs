@@ -6,7 +6,7 @@
 //! `std` and `serde_json`, and never names a `crate::` path: `build.rs` is compiled
 //! *before* the engine exists, so it cannot borrow the engine's types.
 //!
-//! Compiling one file in both places is what makes ADR 0018 §5's promise —
+//! Compiling one file in both places is what makes ADR 0008 §5's promise —
 //! "the same validators run under `#[cfg(test)]`" — literally true rather than
 //! aspirational. A rule stated here is enforced when the catalog is assembled
 //! (`build.rs`, so a bad card file fails `cargo build`), again when a snapshot is
@@ -28,11 +28,11 @@
 //!   definition's `scripted` flag agrees with `crates/sage-engine/src/scripted.rs`.
 //!   That answer lives in compiled Rust, which does not exist yet when `build.rs`
 //!   runs, so [`CardDatabase::from_json`](crate::CardDatabase::from_json) owns it (in
-//!   both directions — ADR 0018 §5).
+//!   both directions — ADR 0008 §5).
 
 use std::fmt;
 
-/// The functional-definition schema version this engine understands (ADR 0018 §2).
+/// The functional-definition schema version this engine understands (ADR 0008 §2).
 ///
 /// Re-exported as `sage_engine::SCHEMA_VERSION`. A definition declaring any other
 /// version is a hard error ([`Violation::UnsupportedSchemaVersion`]), never a silent
@@ -47,7 +47,7 @@ const AURA_SUBTYPE: &str = "Aura";
 /// The card type that requires printed power and toughness.
 const CREATURE_TYPE: &str = "creature";
 
-/// A catalog file that does not satisfy the authored schema (ADR 0018 §5).
+/// A catalog file that does not satisfy the authored schema (ADR 0008 §5).
 ///
 /// Returned by [`validate_definition`] and [`check_printings`]. `build.rs` turns one
 /// of these into a build failure; the loader turns it into a
@@ -56,7 +56,7 @@ const CREATURE_TYPE: &str = "creature";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Violation {
     /// A definition file holds something other than a single JSON object — most
-    /// likely the old monolithic array, which ADR 0018 §4 replaced with one file per
+    /// likely the old monolithic array, which ADR 0008 §4 replaced with one file per
     /// card.
     NotAnObject,
     /// A required field is missing, or holds the wrong JSON type.
@@ -80,7 +80,7 @@ pub enum Violation {
         slug: String,
     },
     /// A definition's `functional_id` does not match the file it is stored in. The
-    /// file name *is* the identity (ADR 0018 §4), so the two may not disagree.
+    /// file name *is* the identity (ADR 0008 §4), so the two may not disagree.
     FileNameMismatch {
         /// The identity the file declares.
         functional_id: String,
@@ -88,7 +88,7 @@ pub enum Violation {
         file_stem: String,
     },
     /// A `Creature` carries no printed power/toughness, or a non-creature carries
-    /// them (ADR 0018 §5).
+    /// them (ADR 0008 §5).
     PowerToughnessMismatch {
         /// The definition at fault.
         functional_id: String,
@@ -192,7 +192,7 @@ pub(crate) fn is_well_formed_slug(slug: &str) -> bool {
 ///
 /// `file_stem` is the name of the file the definition came from, without its `.json`
 /// extension — `Some` when validating the sharded catalog (where the file name *is*
-/// the identity, ADR 0018 §4), and `None` when validating a snapshot that has no file
+/// the identity, ADR 0008 §4), and `None` when validating a snapshot that has no file
 /// behind it, such as a test fixture or an in-memory array.
 ///
 /// # Errors
@@ -251,7 +251,7 @@ pub(crate) fn validate_definition(
             field: "types",
         })?;
 
-    // A Creature carries printed power and toughness; nothing else may (ADR 0018 §5).
+    // A Creature carries printed power and toughness; nothing else may (ADR 0008 §5).
     // Checked as a pair: half a P/T is as wrong as none at all on a creature.
     let is_creature = types.iter().any(|t| t.as_str() == Some(CREATURE_TYPE));
     let has_power = object.contains_key("power");

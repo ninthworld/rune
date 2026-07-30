@@ -25,7 +25,7 @@ async fn main() -> ExitCode {
 
     // The lobby owns the room registry and the card database every room is built
     // from. A snapshot that fails to parse means we cannot host games at all. A
-    // pinned `--rng-seed` (ADR 0014) and/or `--starting-life` make every game
+    // pinned `--rng-seed` (ADR 0006) and/or `--starting-life` make every game
     // reproducible and short for the deterministic e2e suite; normal play leaves
     // both unset.
     if let Some(seed) = config.rng_seed {

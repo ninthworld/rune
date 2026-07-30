@@ -303,7 +303,7 @@ where
 /// The in-game loop over a split socket: render each `GameView`, and — when the view
 /// offers actions — prompt for a menu number, fill any target `requirements`, and
 /// send the matching action id, its content-binding `token`, and the chosen
-/// `targets` (ADR 0009). `first_view` lets the lobby hand off the very first game
+/// `targets` (ADR 0004). `first_view` lets the lobby hand off the very first game
 /// frame it already read; `None` starts by reading one.
 pub(crate) async fn game_loop<S, R, W>(
     write: &mut WsWrite<S>,
@@ -367,7 +367,7 @@ where
 
         // 4. Echo the chosen action id, its content-binding token (verbatim), and the
         //    atomically chosen targets; the server verifies the token against the
-        //    action it currently offers and checks each target (ADR 0009).
+        //    action it currently offers and checks each target (ADR 0004).
         let choose = ClientMessage::ChooseAction(ChooseAction {
             action_id,
             token,
@@ -421,7 +421,7 @@ where
 }
 
 /// Walk a chosen action's `requirements` and then its `prompts` as one prompt queue,
-/// returning one [`TargetChoice`] per slot (ADR 0009, issue #156). Target slots are
+/// returning one [`TargetChoice`] per slot (ADR 0004, issue #156). Target slots are
 /// filled from their advertised `candidates`; the option / select-from-zone / order
 /// prompt slots are answered minimally (see [`prompt_choice`]). Returns `Ok(None)` if
 /// stdin hits EOF mid-selection. An action with neither returns an empty selection
@@ -639,7 +639,7 @@ pub fn select_action<'a>(view: &'a GameView, input: &str) -> Option<&'a str> {
 /// Map an operator's raw menu entry to the offered [`ValidAction`] itself, or `None`
 /// if it is not a number naming a listed action. Like [`select_action`] but returns
 /// the whole action so the caller can read its content-binding `token` and target
-/// `requirements` (ADR 0009). Performs **no** game logic — it only indexes.
+/// `requirements` (ADR 0004). Performs **no** game logic — it only indexes.
 #[must_use]
 pub fn selected_action<'a>(view: &'a GameView, input: &str) -> Option<&'a ValidAction> {
     let choice: usize = input.trim().parse().ok()?;
@@ -650,7 +650,7 @@ pub fn selected_action<'a>(view: &'a GameView, input: &str) -> Option<&'a ValidA
 /// Map an operator's raw menu entry to one of a requirement slot's candidate entity
 /// ids, or `None` if it is not a number naming a listed candidate. The menu is
 /// 1-based, exactly like [`select_action`]; the client only indexes into the
-/// candidates the server already advertised for this slot (ADR 0009 §Client).
+/// candidates the server already advertised for this slot (ADR 0004 §Client).
 #[must_use]
 pub fn select_target<'a>(req: &'a TargetRequirement, input: &str) -> Option<&'a str> {
     let choice: usize = input.trim().parse().ok()?;

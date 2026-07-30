@@ -12,13 +12,13 @@ use super::definition::{Action, TargetRequirement};
 /// [`TargetRequirement`] per target slot the action must fill, each carrying the
 /// legal candidate set for that slot. Empty for an action that targets nothing.
 ///
-/// # Combinatorial guard (ADR 0009 §Enumeration)
+/// # Combinatorial guard (ADR 0004 §Enumeration)
 ///
 /// This builds one candidate **set per slot**: its cost is the *sum* of the
 /// per-slot candidate counts — O(N) for a single slot over N candidates. It
 /// never forms the *cartesian product* of the slots (which would be O(Nᵏ) for k
 /// slots of N candidates each), so advertising a targeted action stays linear in
-/// board size per slot. This is exactly the "core complexity" ADR 0002 flagged:
+/// board size per slot. This is exactly the "core complexity" ADR 0001 flagged:
 /// legal-set enumeration must be per-slot, not per-combination. A caller
 /// assembles a concrete selection by picking one candidate from each slot; the
 /// engine validates that assembled selection in [`crate::apply_action`] without ever

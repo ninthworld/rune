@@ -264,7 +264,7 @@ mod tests {
 
     /// An inline catalog of P/T Auras and their hosts. P/T-only Auras have no clean
     /// M19 representative, so the Aura state-based-action tests build their own
-    /// definitions (ADR 0026): `test_aegis` (+2/+2), `test_curse` (-2/-2), a 3/2
+    /// definitions (ADR 0009): `test_aegis` (+2/+2), `test_curse` (-2/-2), a 3/2
     /// `test_boar`, and a 1/1 `test_scout`.
     fn aura_db() -> CardDatabase {
         let json = r#"[
@@ -463,7 +463,7 @@ mod tests {
     // ----- Aura state-based actions (issue #152) -----
     //
     // Backed by `aura_db()`: test_aegis (+2/+2 Aura), test_curse (-2/-2 Aura), a 3/2
-    // test_boar, and a 1/1 test_scout — P/T Auras have no clean M19 card (ADR 0026).
+    // test_boar, and a 1/1 test_scout — P/T Auras have no clean M19 card (ADR 0009).
 
     /// Place an Aura of `card` attached to `host` under player 0's control, and
     /// return its fresh id.

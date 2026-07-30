@@ -18,7 +18,7 @@ pub const CATALOG_VERSION: u32 = 1;
 /// because a catalog entry names a card by identity, not a specific instance.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CatalogCard {
-    /// The card's stable functional identity (ADR 0018 §3) — the same handle a
+    /// The card's stable functional identity (ADR 0008 §3) — the same handle a
     /// [`SubmitDeck`] decklist uses ([`CardIdentity`]). Always present.
     pub functional_id: CardIdentity,
     /// Display name.
@@ -30,7 +30,7 @@ pub struct CatalogCard {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mana_cost: Option<String>,
     /// The card's rules text, **generated** by the server from its ability IR — byte-for-byte
-    /// what an in-game [`CardView::rules_text`] shows (ADR 0018 §7). Empty (and omitted from
+    /// what an in-game [`CardView::rules_text`] shows (ADR 0008 §7). Empty (and omitted from
     /// the wire) for a vanilla card with no rules.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub rules_text: String,

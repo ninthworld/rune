@@ -70,7 +70,7 @@ pub struct SpectatorView {
     /// The terminal outcome once the game is over; omitted while it is live.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<GameResult>,
-    /// The bounded, sequence-numbered window of **public** game history (ADR 0021's
+    /// The bounded, sequence-numbered window of **public** game history (ADR 0007's
     /// per-viewer redaction gives a spectator the public log for free).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub log: Vec<GameLogEntry>,

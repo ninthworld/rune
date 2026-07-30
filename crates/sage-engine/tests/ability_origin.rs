@@ -20,7 +20,7 @@ use sage_engine::{
     PlayerId, StackObjectKind, Step, Target,
 };
 
-/// An inline catalog (ADR 0026: an unrepresented shape comes from its own catalog
+/// An inline catalog (ADR 0009: an unrepresented shape comes from its own catalog
 /// rather than from a bent M19 card) with a "Sparker" artifact whose activated
 /// ability is `{T}: deal 2 damage to any target`, and a 2/2 "Lurker" whose only
 /// ability triggers on its own death. Two damage kills the Lurker, so one
@@ -40,7 +40,7 @@ fn origin_db() -> CardDatabase {
     CardDatabase::from_json(json).unwrap()
 }
 
-/// The [`CardId`] of `functional_id` in `db` — never written down (ADR 0018 §3).
+/// The [`CardId`] of `functional_id` in `db` — never written down (ADR 0008 §3).
 fn cid(db: &CardDatabase, functional_id: &str) -> CardId {
     db.card_id(&functional_id.to_string().try_into().unwrap())
         .unwrap()

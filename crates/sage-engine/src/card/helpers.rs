@@ -104,7 +104,7 @@ mod tests {
         // alongside its two mana abilities. The `enters_with_counters` self-replacement
         // (CR 614.12) has no clean representative in the real M19 catalog, so it is
         // exercised through an inline definition — the sanctioned pattern for an IR
-        // shape the shipped set does not use (ADR 0026).
+        // shape the shipped set does not use (ADR 0009).
         use crate::card_type::CardType;
         use crate::state::CounterKind;
         let db = CardDatabase::bundled().unwrap();
@@ -205,7 +205,7 @@ mod tests {
         );
 
         // Effects the real M19 catalog does not use — a +1/+1 ETB counter, life loss,
-        // and a -1/-1 counter — are exercised inline (ADR 0026).
+        // and a -1/-1 counter — are exercised inline (ADR 0009).
         let json = r#"[
             {"schema_version":1,"functional_id":"test_sprite","name":"Test Sprite",
              "types":["creature"],"subtypes":["Faerie"],"mana_cost":"{1}{G}","colors":["green"],
@@ -309,7 +309,7 @@ mod tests {
         assert!(crate::ability::is_mana_ability(&elves.abilities[0]));
 
         // The colorless-mana verb ({T}: Add {C}) has no clean M19 representative,
-        // so a mana rock is exercised inline (ADR 0026).
+        // so a mana rock is exercised inline (ADR 0009).
         let json = r#"[{"schema_version":1,"functional_id":"test_lodestone","name":"Test Lodestone",
             "types":["artifact"],"mana_cost":"{1}","colors":[],
             "abilities":[{"type":"activated","cost":[{"kind":"tap"}],

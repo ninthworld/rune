@@ -7,7 +7,7 @@
 //!
 //! [`SplitMix64`] is that generator — a well-known 64-bit mixing function with a
 //! single `u64` of state, small enough to inline and justify without adding a
-//! dependency (see `docs/decisions/0014-deterministic-seeded-shuffle.md`). Its
+//! dependency (see `docs/decisions/0006-deterministic-seeded-shuffle.md`). Its
 //! state is exactly the shape of the reserved seed slot, so a game can advance
 //! the seed by running the generator and storing its state back.
 

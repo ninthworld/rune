@@ -21,7 +21,7 @@
 //! can offer them without hardcoding the set.
 //!
 //! # No wall-clock randomness (determinism)
-//! The engine's only randomness is an injected seed (ADR 0014); the AI keeps that
+//! The engine's only randomness is an injected seed (ADR 0006); the AI keeps that
 //! property. [`RandomPolicy`] draws from a seeded [`SplitMix64`] stream, so an AI seat
 //! built from a pinned game seed replays identically — the same reproducibility the
 //! end-to-end suite relies on (issue #145). No `rand`/wall-clock dependency is added.
@@ -134,7 +134,7 @@ pub fn ai_options() -> Vec<sage_protocol::AiOption> {
 
 /// A tiny deterministic PRNG ([SplitMix64]) — enough entropy to pick among a handful of
 /// offered actions, with no `rand`/wall-clock dependency so the engine's seed-only
-/// randomness contract (ADR 0014) is preserved for AI too.
+/// randomness contract (ADR 0006) is preserved for AI too.
 ///
 /// [SplitMix64]: https://prng.di.unimi.it/splitmix64.c
 struct SplitMix64 {
@@ -478,7 +478,7 @@ mod tests {
             view.valid_actions.iter().any(|a| a.id == choose.action_id),
             "the chosen id is one the view offered",
         );
-        // The content-binding token is echoed verbatim (ADR 0009).
+        // The content-binding token is echoed verbatim (ADR 0004).
         let offered = view
             .valid_actions
             .iter()

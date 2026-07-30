@@ -209,7 +209,7 @@ fn build_discard(state: &GameState, id: String) -> Projected {
 /// the mulligan [`Action::Keep`] bottoming ([`bottom_requirement`]), the combat
 /// [`Action::DeclareAttackers`]/[`Action::DeclareBlockers`] declarations
 /// ([`attacker_candidates`]/[`blocker_candidates`]), and ability targets
-/// ([`target_requirements`], ADR 0009 deferral #73). The token binds those
+/// ([`target_requirements`], ADR 0004 deferral #73). The token binds those
 /// requirements automatically (see [`content_token`]), and [`resolve_action`] maps
 /// a returned selection back onto the concrete engine action. An action with
 /// nothing to choose projects empty `requirements` and stays a plain action.
@@ -240,7 +240,7 @@ fn valid_action_view(
         // A cast's target requirements (CR 601.2c) come from the same per-slot
         // enumeration abilities use ([`target_requirements`]); an untargeted spell
         // projects none. Wiring the returned selection back into a targeted cast is
-        // a later server slice (ADR 0009 §Client / #73) — the engine already
+        // a later server slice (ADR 0004 §Client / #73) — the engine already
         // records and re-checks the targets.
         Action::CastSpell { card, .. } => (
             "cast_spell".to_string(),
@@ -254,7 +254,7 @@ fn valid_action_view(
             vec![card_entity_id(card.id)],
             Vec::new(),
         ),
-        // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0018
+        // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0008
         // text generation), so a permanent offering several activations renders
         // *distinguishable* dock buttons — a generic "Activate ability" collapses
         // them into identical choices the player cannot tell apart.
@@ -467,7 +467,7 @@ mod tests {
         // (plus the always-available concede) — the keep/mulligan enumeration is gone.
         assert!(
             view.valid_actions.iter().all(|a| !a.token.is_empty()),
-            "every action carries a content-binding token (ADR 0009)",
+            "every action carries a content-binding token (ADR 0004)",
         );
         assert!(view.valid_actions.iter().all(|a| a.kind != "keep"));
         assert!(view.valid_actions.iter().all(|a| a.kind != "mulligan"));

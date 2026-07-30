@@ -70,7 +70,7 @@ pub struct Config {
     /// hostname (e.g. `localhost:9000`) or an IP literal both work.
     pub addr: String,
     /// A fixed engine shuffle seed to build **every** game from, when set. The
-    /// engine's only randomness is this seed (ADR 0014), and per that ADR the seed
+    /// engine's only randomness is this seed (ADR 0006), and per that ADR the seed
     /// is *server-side* state that is never projected to a client — so pinning it
     /// is a server/operator concern, deliberately **not** a client-settable
     /// `RoomConfig`/protocol field (which would let a player predict their own

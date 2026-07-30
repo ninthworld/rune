@@ -7,7 +7,7 @@
 //! closures on the immutable state and its `Clone`/`Eq` semantics are preserved.
 //!
 //! **Keyed by [`FunctionalId`], not [`CardId`](crate::CardId).** A `CardId` is interned
-//! by `build.rs` as an index into the sorted catalog (ADR 0018 §3), so it shifts the
+//! by `build.rs` as an index into the sorted catalog (ADR 0008 §3), so it shifts the
 //! moment a card is added ahead of it alphabetically. A code arm written against an
 //! integer handle would rot silently — adding an unrelated card would hand one card's
 //! bespoke behavior to another. The authored identity is the only card identity stable
@@ -15,12 +15,12 @@
 //! loader check the `scripted` flag without knowing anything about interning.
 //!
 //! Scripted behavior is opaque Rust, so the server's fallback-text formatter cannot
-//! derive a card's rules text from it the way it does for the data IR (ADR 0018 §7).
+//! derive a card's rules text from it the way it does for the data IR (ADR 0008 §7).
 //! A scripted card therefore supplies that text here, next to the behavior it
 //! describes, via [`scripted_rules_text`] — and the catalog loader enforces that the
 //! two authoring tiers agree in both directions: a definition declaring
 //! `scripted: true` must have a code arm, and a card with a code arm must declare it
-//! (`crate::card::CardDatabase::from_json`, ADR 0018 §5).
+//! (`crate::card::CardDatabase::from_json`, ADR 0008 §5).
 //!
 //! This is the one catalog rule `build.rs` cannot enforce, because the answer lives in
 //! compiled Rust that does not exist yet when the build script runs. The loader owns it
@@ -30,7 +30,7 @@
 //! The table is empty today: every bundled card is fully data-expressed. The seam
 //! exists so a future card whose behavior the closed [`Effect`](crate::ability::Effect)
 //! vocabulary can't capture has a home without weakening the engine's purity.
-//! See `docs/decisions/0007-card-effect-ir-hybrid.md`.
+//! See `docs/decisions/0003-card-effect-ir-hybrid.md`.
 
 use crate::ability::Ability;
 use crate::id::FunctionalId;
@@ -54,7 +54,7 @@ pub(crate) fn scripted_abilities(card: &FunctionalId) -> Vec<Ability> {
 }
 
 /// The hand-authored rules text of a scripted card, or `None` if the card has no
-/// code arm (ADR 0018 §7).
+/// code arm (ADR 0008 §7).
 ///
 /// The parallel seam to [`scripted_abilities`]: the server generates a card's rules
 /// text from its ability IR, which cannot describe behavior written in Rust, so a
@@ -79,7 +79,7 @@ pub fn scripted_rules_text(card: &FunctionalId) -> Option<&'static str> {
 /// rules text, or both.
 ///
 /// This is the predicate the catalog loader validates a definition's `scripted` flag
-/// against, in both directions (ADR 0018 §5), so the data tier and the code tier
+/// against, in both directions (ADR 0008 §5), so the data tier and the code tier
 /// cannot silently disagree about which cards are scripted.
 #[must_use]
 pub(crate) fn is_scripted(card: &FunctionalId) -> bool {

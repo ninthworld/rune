@@ -297,7 +297,7 @@ where
 
 /// The in-game agent loop over a split socket: receive a `GameView`, and — when it
 /// offers actions — ask `agent` to choose, then send the chosen action id, its
-/// content-binding `token` (echoed verbatim), and any targets (ADR 0009).
+/// content-binding `token` (echoed verbatim), and any targets (ADR 0004).
 /// `first_view` lets the lobby hand off the first game frame it already read.
 pub(crate) async fn agent_game_loop<S, W, A>(
     write: &mut WsWrite<S>,
@@ -381,7 +381,7 @@ where
 }
 
 /// Build the [`ChooseAction`] to send for a chosen action id: echo the offered
-/// action's content-binding `token` verbatim (ADR 0009) and fill every one of its
+/// action's content-binding `token` verbatim (ADR 0004) and fill every one of its
 /// target `requirements` and [`Prompt`] slots via [`fill_answers`] (issue #159), so
 /// the mulligan, cleanup discard, combat declarations, and ability targets are all
 /// answered rather than passed over. If a **mandatory** slot cannot be filled (an

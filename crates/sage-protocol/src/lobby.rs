@@ -25,11 +25,11 @@ pub type RoomId = String;
 pub type GameSetupId = String;
 
 /// Opaque card-identity handle used in a submitted [`SubmitDeck`] decklist. The
-/// identity-vs-printing model is owned by ADR 0018 — these are card *identities*,
+/// identity-vs-printing model is owned by ADR 0008 — these are card *identities*,
 /// never printings or images. The server validates each against its card
 /// database; the client never parses them.
 ///
-/// Concretely, an identity is a card's authored `functional_id` (ADR 0018 §3): a
+/// Concretely, an identity is a card's authored `functional_id` (ADR 0008 §3): a
 /// lowercase `snake_case` slug such as `llanowar_elves`. That is the only card identity
 /// stable across builds — the engine's `CardId` is interned from the catalog's sort
 /// order, so it shifts whenever a card is authored ahead of it. Clients still treat this

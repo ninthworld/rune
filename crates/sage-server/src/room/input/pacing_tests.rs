@@ -2,7 +2,7 @@
 //! policy, the own-turn half of a seat's stop preference, and the per-seat record of
 //! where a settle acted on that seat's behalf.
 //!
-//! A sibling of [`super::tests`] rather than more of it: that module is ADR 0020's
+//! A sibling of [`super::tests`] rather than more of it: that module is ADR 0010's
 //! automation coverage (does the settle move at all, and does it ever move past a
 //! real decision), and this one is the opposite question — where the settle must
 //! *stop*, and what it owes the player about the ground it covered. Splitting them
@@ -78,7 +78,7 @@ async fn issue_455_a_human_seat_stops_at_its_own_main_phase_by_default() {
 #[tokio::test]
 async fn issue_455_the_same_board_without_the_policy_still_fast_forwards() {
     // The control. Identical board, identical automation, no default-stop policy:
-    // exactly ADR 0020's behaviour, so `StopPolicy::None` is a true no-op and every
+    // exactly ADR 0010's behaviour, so `StopPolicy::None` is a true no-op and every
     // room that never opts in is unchanged.
     let (view, handle, task) = paced_resting_view(spell_less_state(), StopPolicy::None, 0).await;
     assert!(
@@ -139,7 +139,7 @@ async fn issue_455_an_own_turn_stop_does_not_fire_on_an_opponents_turn() {
     assert_eq!(
         (any.turn, any.phase),
         (1, Phase::PrecombatMain),
-        "the any-turn stop is ADR 0020's original escape hatch and still fires on an \
+        "the any-turn stop is ADR 0010's original escape hatch and still fires on an \
          opponent's turn"
     );
     assert!(
@@ -181,7 +181,7 @@ async fn issue_455_ai_seats_are_never_seeded_so_throughput_is_unchanged() {
 #[tokio::test]
 async fn issue_455_a_seat_can_clear_the_default_stops_and_they_stay_cleared() {
     // The default is a starting value, not a rule. One `set_stops` with both lists
-    // empty replaces it, the settle resumes ADR 0020's pacing, and the cleared
+    // empty replaces it, the settle resumes ADR 0010's pacing, and the cleared
     // preference survives reconnect — the room never re-seeds a seat that has spoken.
     let mut state = spell_less_state();
     state.step = Step::Upkeep;
@@ -268,7 +268,7 @@ async fn issue_455_a_custom_stop_set_replaces_the_seed_on_both_halves() {
 #[tokio::test]
 async fn issue_455_auto_passed_steps_name_where_the_settle_skipped_the_seat() {
     // The pacing contract's second half: the settle reports *where* it acted, not
-    // just that it did. ADR 0020 shipped one boolean for a whole settle, which is
+    // just that it did. ADR 0010 shipped one boolean for a whole settle, which is
     // exactly enough to say "you were skipped" and not enough to say what you
     // missed. Seat 0 is idle from its untap step; the list names the steps it was
     // carried through, and stops short of the one it comes to rest at.

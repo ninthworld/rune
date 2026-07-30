@@ -1,5 +1,5 @@
 //! Fallback rules text: the words a player reads, **generated** from a card's
-//! functional definition (ADR 0018 §7).
+//! functional definition (ADR 0008 §7).
 //!
 //! Nothing in the repository stores a card's rules prose. What a client displays is
 //! composed here, from the same `Ability`/`Effect` IR the engine executes — so the
@@ -8,7 +8,7 @@
 //!
 //! This lives in `sage-server`, not the engine, because generating display prose is
 //! presentation: keeping it here is what makes "the engine never depends on display
-//! text" true by construction (ADR 0018 §7). It is pure — same definition in, same
+//! text" true by construction (ADR 0008 §7). It is pure — same definition in, same
 //! string out, no locale, no randomness.
 //!
 //! **Coverage is compiler-enforced.** Every `match` over the IR is exhaustive with no
@@ -31,7 +31,7 @@ use sage_engine::{
 /// `scripted` is the card's hand-authored text from `sage_engine::scripted_rules_text`,
 /// present exactly when the definition declares `scripted: true` — behavior written in
 /// Rust is opaque to this formatter, so a scripted card states in words what its code
-/// does (ADR 0018 §7). The engine's catalog loader enforces that pairing in both
+/// does (ADR 0008 §7). The engine's catalog loader enforces that pairing in both
 /// directions, so a scripted card can never reach this function with no text to show.
 ///
 /// Clauses are emitted in a fixed order — keywords, abilities, spell effects, the Aura
@@ -133,7 +133,7 @@ fn clauses(source: &str, effects: &[Effect]) -> String {
 /// alone as a sentence ([`finish`]) or be embedded after a trigger or a cost.
 ///
 /// Exhaustive by design: a new [`Effect`] variant must be given words here or the
-/// workspace does not build (ADR 0018 §7).
+/// workspace does not build (ADR 0008 §7).
 fn effect_clause(source: &str, effect: &Effect) -> String {
     match effect {
         Effect::AddMana { color, amount } => format!("add {}", pips(*color, *amount)),
@@ -355,7 +355,7 @@ mod tests {
              Viashino Pyromancer deals 2 damage to target player."
         );
         // The dies trigger and the ETB-put-counter trigger have no clean M19 card, so
-        // they are exercised inline (ADR 0026).
+        // they are exercised inline (ADR 0009).
         let inline = CardDatabase::from_json(
             r#"[
                 {"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn spells_generate_non_empty_text() {
-        // Every card that does something renders real rules text from its IR (ADR 0018 §7).
+        // Every card that does something renders real rules text from its IR (ADR 0008 §7).
         let db = bundled();
         assert_eq!(
             text_of(&db, "lightning_strike"),
@@ -435,7 +435,7 @@ mod tests {
             assert!(!text_of(&db, card).is_empty(), "{card} generated no text");
         }
         // A mana rock: colorless mana reads as {C}, the colorless counterpart of {G}.
-        // No M19 card produces {C}, so it is exercised inline (ADR 0026).
+        // No M19 card produces {C}, so it is exercised inline (ADR 0009).
         let inline = CardDatabase::from_json(
             r#"[{"schema_version":1,"functional_id":"test_lodestone","name":"Test Lodestone",
                 "types":["artifact"],"mana_cost":"{1}","colors":[],
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn an_aura_states_its_restriction_and_its_grant() {
-        // P/T Auras have no clean M19 card, so they are exercised inline (ADR 0026).
+        // P/T Auras have no clean M19 card, so they are exercised inline (ADR 0009).
         let db = CardDatabase::from_json(
             r#"[
                 {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",
@@ -571,7 +571,7 @@ mod tests {
     #[test]
     fn a_scripted_card_shows_its_hand_authored_text() {
         // Behavior written in Rust is opaque to the formatter, so a scripted card
-        // supplies its own words (ADR 0018 §7) — and they are what a player sees.
+        // supplies its own words (ADR 0008 §7) — and they are what a player sees.
         let db = bundled();
         let ogre = db
             .card_id(&FunctionalId::try_from("onakke_ogre".to_string()).unwrap())

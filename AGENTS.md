@@ -17,7 +17,7 @@ playtest surface until a browser client exists.
   read card files at compile time.
 - **Automation policy lives in the server, never the engine.** The engine may expose pure
   rules *predicates*; the loop, the preferences, and the pacing decisions are the server's
-  (ADR 0020). Baking a UX judgment into the rules layer is how the engine becomes
+  (ADR 0010). Baking a UX judgment into the rules layer is how the engine becomes
   unsustainable — this is the seam most worth protecting.
 - **Protocol changes are contract changes.** Update `docs/protocol.md`, `sage-protocol`, and
   the TypeScript mirror in the same PR.
@@ -39,7 +39,7 @@ playtest surface until a browser client exists.
   design document written ahead of the code it describes is speculation with a version number.
 - **The project ships no card images, no official frames, symbols, watermarks, or WotC
   branding, no exact Oracle text, and no monetization path.** The one exception is the
-  player-side, opt-in art pipeline of ADR 0024: the player's own browser may fetch card images
+  player-side, opt-in art pipeline of ADR 0012: the player's own browser may fetch card images
   from a third-party source — the illustration alone inside SAGE's frame, or the whole card
   image — cached device-local only, never committed, bundled, served, proxied, or
   redistributed.

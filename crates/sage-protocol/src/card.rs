@@ -20,13 +20,13 @@ pub struct CardView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mana_cost: Option<String>,
     /// The card's rules text, **generated** by the server from the card's ability IR
-    /// (ADR 0018 §7) — never a stored or upstream string, and never exact Oracle text.
+    /// (ADR 0008 §7) — never a stored or upstream string, and never exact Oracle text.
     /// Written to be semantically complete for play; matching official wording is not
     /// a goal. Empty (and omitted from the wire) for a card with no rules.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub rules_text: String,
     /// The card's stable **presentation identity**: the `functional_id` of the card
-    /// definition this object is a copy of (ADR 0018 §3, §8).
+    /// definition this object is a copy of (ADR 0008 §3, §8).
     ///
     /// Unlike [`CardView::id`], which is a per-game entity handle, this is the same
     /// string for every copy of a card in every game, and it survives a server rebuild.
@@ -258,7 +258,7 @@ pub struct Counter {
 ///   unrecognized value as *unclassified* and fall back to
 ///   [`StackItem::description`] — never coerce it into a known variant, and never
 ///   invent the activated/triggered distinction from prose or timing. That
-///   reconstruction is rules interpretation, which ADR 0002 puts on the server.
+///   reconstruction is rules interpretation, which ADR 0001 puts on the server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StackItemKind {
@@ -284,7 +284,7 @@ pub enum StackItemKind {
 ///
 /// The variant states what kind of thing is targeted, so a client never classifies a
 /// target by testing which collection its id appears in — that classification is
-/// rules interpretation and belongs to the server (ADR 0002). Serialized internally
+/// rules interpretation and belongs to the server (ADR 0001). Serialized internally
 /// tagged as `{"kind": "...", ...}`; the id field is named per variant so a `player`
 /// carries a [`PlayerId`] (the same id `controller`, `seat_order`, and
 /// `player_names` are keyed by) while every other variant carries an [`EntityId`].

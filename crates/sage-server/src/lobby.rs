@@ -205,7 +205,7 @@ struct Inner {
     /// A fixed engine shuffle seed to build every game from, when set. `None` for
     /// normal play, where [`start_game`](Lobby::start_game) generates a distinct
     /// per-game seed. The seed is server-side state that never reaches a client
-    /// (ADR 0014); pinning it makes a whole game reproducible for the end-to-end
+    /// (ADR 0006); pinning it makes a whole game reproducible for the end-to-end
     /// suite (issue #145). Sourced from [`Config::rng_seed`](crate::Config::rng_seed).
     seed_override: Option<u64>,
     /// A fixed starting life total to build every game from, when set, overriding
@@ -504,7 +504,7 @@ impl Lobby {
     }
 
     /// Create an empty lobby, optionally pinning the engine shuffle `seed_override`
-    /// (ADR 0014) and/or a fixed `life_override` starting life every game is built
+    /// (ADR 0006) and/or a fixed `life_override` starting life every game is built
     /// from (issue #145). Both `None` behaves exactly like [`Lobby::new`]. These are
     /// server/operator concerns (neither reaches a client): a pinned seed makes a
     /// game reproducible, and a low starting life makes it short enough to script
