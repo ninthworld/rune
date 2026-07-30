@@ -41,6 +41,20 @@ jobs:
       - name: Test
         run: make engine-test
 
-  # The Client job (lint, typecheck, unit tests, build) and the browser e2e job
-  # land with the web client. E2E is a required gate — see ADR 0011 and the root
-  # AGENTS.md.
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+      # Through the Make target so CI and a local `make client-check` run the
+      # identical command list; the Makefile is the single source of truth.
+      - name: Check (format, lint, types, tests, build)
+        run: make client-check
+
+  # The browser e2e job lands with the first playable surface. It is a required
+  # gate — one thin smoke path blocking, deeper flows non-blocking (ADR 0011).

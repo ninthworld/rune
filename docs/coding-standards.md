@@ -1,8 +1,8 @@
 # SAGE coding standards
 
 These standards apply to all code. The architectural rules in [`AGENTS.md`](../AGENTS.md)
-take precedence. `make check` runs the fast Engine and Client checks; `make verify` adds
-the required dependency-policy checks and is the pre-merge gate.
+take precedence. `make check` is the fast engine gate; `make verify` adds the client gate and
+the required dependency-policy checks, and is the pre-merge gate.
 
 ## Baseline
 
@@ -36,8 +36,7 @@ with `[lints] workspace = true`.
 
 ## TypeScript / web client
 
-These rules apply to the web client when it lands, enforced by a `make client-check` target
-that arrives with it.
+Enforced by `make client-check`, which runs the same commands as the `Client` CI job.
 
 - **Formatting.** Use Prettier with no local overrides.
 - **Linting.** ESLint with `typescript-eslint` rules; no disables without an inline
@@ -80,8 +79,9 @@ Keep files small enough that a reader can hold one in their head. Target well un
 ## Verification
 
 ```
-make check    # fast gate — run constantly while working
-make verify   # full pre-merge gate — check + cargo-deny, before opening a PR
+make check         # fast engine gate — run constantly while working
+make client-check  # the Client CI job: format, lint, types, tests, build
+make verify        # full pre-merge gate — all of the above, before opening a PR
 ```
 
 Before review, ensure `make verify` passes, documentation matches behavior, and the diff

@@ -1,0 +1,108 @@
+{
+  "players": [
+    {
+      "player_id": "p0",
+      "hand_size": 5,
+      "life": 18,
+      "library_size": 33,
+      "graveyard_size": 2
+    },
+    {
+      "player_id": "p1",
+      "hand_size": 6,
+      "life": 20,
+      "library_size": 31,
+      "graveyard_size": 1,
+      "connected": false
+    }
+  ],
+  "battlefield": [
+    {
+      "id": "perm_4",
+      "controller": "p0",
+      "owner": "p0",
+      "card": {
+        "id": "card_11",
+        "name": "Llanowar Elves",
+        "type_line": "Creature — Elf Druid",
+        "mana_cost": "{G}",
+        "rules_text": "{T}: Add {G}.",
+        "functional_id": "llanowar_elves",
+        "power": "1",
+        "toughness": "1"
+      },
+      "tapped": true
+    },
+    {
+      "id": "perm_7",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "card_19",
+        "name": "Serra Angel",
+        "type_line": "Creature — Angel",
+        "mana_cost": "{3}{W}{W}",
+        "functional_id": "serra_angel",
+        "power": "4",
+        "toughness": "4",
+        "keywords": ["flying", "vigilance"]
+      },
+      "damage": 2,
+      "counters": [{ "kind": "plus_one_plus_one", "count": 1 }]
+    }
+  ],
+  "stack": [
+    {
+      "id": "stack_2",
+      "controller": "p0",
+      "description": "Lightning Strike",
+      "source": "card_23",
+      "kind": "spell",
+      "targets": [{ "kind": "permanent", "id": "perm_7" }]
+    }
+  ],
+  "graveyards": [
+    {
+      "player_id": "p0",
+      "cards": [
+        {
+          "id": "card_30",
+          "name": "Mountain",
+          "type_line": "Basic Land — Mountain",
+          "functional_id": "mountain"
+        }
+      ]
+    }
+  ],
+  "phase": "precombat_main",
+  "turn": 5,
+  "active_player": "p0",
+  "seat_order": ["p0", "p1"],
+  "priority_player": "p0",
+  "log": [
+    {
+      "sequence": 41,
+      "event": {
+        "type": "step_changed",
+        "turn": 5,
+        "active_player": "p0",
+        "phase": "precombat_main"
+      }
+    },
+    {
+      "sequence": 42,
+      "event": {
+        "type": "spell_cast",
+        "player": "p0",
+        "card": { "id": "card_23", "name": "Lightning Strike" }
+      }
+    }
+  ],
+  "player_names": {
+    "p0": "Ari",
+    "p1": "Sam"
+  },
+  "format": {
+    "id": "starter-1v1"
+  }
+}

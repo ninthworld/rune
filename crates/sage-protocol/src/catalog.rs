@@ -286,4 +286,54 @@ mod tests {
         let parsed: CatalogView = serde_json::from_value(legacy).unwrap();
         assert!(parsed.ai_opponents.is_empty());
     }
+
+    #[test]
+    fn canonical_catalog_fixture_round_trips_and_matches_typed_fields() {
+        // Cross-language contract fixture, paired with the web client's `protocol.test.ts`.
+        let json = include_str!("../fixtures/catalogview.json");
+        let view: CatalogView = serde_json::from_str(json).unwrap();
+
+        let reencoded = serde_json::to_string(&view).unwrap();
+        let back: CatalogView = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(back, view);
+
+        assert_eq!(view.catalog_version, CATALOG_VERSION);
+        assert_eq!(view.cards.len(), 3);
+
+        let elves = &view.cards[0];
+        assert_eq!(elves.functional_id, "llanowar_elves");
+        assert_eq!(elves.mana_cost.as_deref(), Some("{G}"));
+        assert_eq!(elves.power.as_deref(), Some("1"));
+
+        let angel = &view.cards[1];
+        assert_eq!(
+            angel.keywords,
+            vec!["flying".to_string(), "vigilance".to_string()]
+        );
+        // A card with no generated text elides the field rather than sending an empty string.
+        assert!(angel.rules_text.is_empty());
+
+        // A land carries neither power nor toughness.
+        let forest = &view.cards[2];
+        assert!(forest.power.is_none());
+        assert!(forest.toughness.is_none());
+
+        assert_eq!(view.formats.len(), 2);
+        let starter = &view.formats[0];
+        assert_eq!(starter.min_deck_size, 40);
+        assert_eq!(starter.max_copies, Some(4));
+        assert!(starter.basic_land_exempt);
+        // Elided flags read back false: the starter format is not Commander.
+        assert!(!starter.requires_commander);
+        assert!(!starter.enforce_color_identity);
+        assert!(starter.max_deck_size.is_none());
+
+        let commander = &view.formats[1];
+        assert!(commander.requires_commander);
+        assert!(commander.enforce_color_identity);
+        assert_eq!(commander.max_seats, 4);
+
+        assert_eq!(view.ai_opponents.len(), 1);
+        assert_eq!(view.ai_opponents[0].id, "random");
+    }
 }

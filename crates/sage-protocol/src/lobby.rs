@@ -1123,4 +1123,46 @@ mod tests {
         let json = serde_json::to_value(&view).unwrap();
         assert!(json.get("name").is_none());
     }
+
+    #[test]
+    fn canonical_lobby_fixture_round_trips_and_matches_typed_fields() {
+        // Cross-language contract fixture: this exact JSON is also parsed by the web client's
+        // `protocol.test.ts`, which additionally asserts nothing in it is dropped. A field
+        // renamed, retyped, or removed here fails on this side; a field added here and not
+        // mirrored fails on that side.
+        let json = include_str!("../fixtures/lobbyview.json");
+        let view: LobbyView = serde_json::from_str(json).unwrap();
+
+        let reencoded = serde_json::to_string(&view).unwrap();
+        let back: LobbyView = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(back, view);
+
+        assert_eq!(view.session, "s_7f3a9c21");
+        assert_eq!(view.you, "p0");
+        assert_eq!(view.name.as_deref(), Some("Ari"));
+
+        let room = view.room.as_ref().unwrap();
+        assert_eq!(room.room_id, "r_204");
+        assert_eq!(room.config.seats, 2);
+        assert_eq!(room.config.game_setup, "starter-1v1");
+        // Non-default visibility must survive: the field is elided only when public.
+        assert_eq!(room.config.visibility, RoomVisibility::Private);
+        assert_eq!(room.seats.len(), 2);
+        assert_eq!(room.seats[0].occupied_by.as_deref(), Some("p0"));
+        assert!(room.seats[0].ready);
+        assert_eq!(room.seats[1].ai.as_deref(), Some("random"));
+        // An AI seat is decked but never "ready" — readiness is a human signal.
+        assert!(!room.seats[1].ready);
+
+        assert_eq!(view.directory.len(), 2);
+        assert_eq!(view.directory[0].state, RoomState::Gathering);
+        // Elided when zero, so the gathering room parses back to no spectators.
+        assert_eq!(view.directory[0].spectators, 0);
+        assert_eq!(view.directory[1].state, RoomState::InProgress);
+        assert_eq!(view.directory[1].spectators, 5);
+        // A public room elides `visibility`; it must read back as the default.
+        assert_eq!(view.directory[0].config.visibility, RoomVisibility::Public);
+
+        assert!(view.valid_commands.iter().any(|c| c == "submit_deck"));
+    }
 }

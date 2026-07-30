@@ -250,4 +250,59 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&view).unwrap()).unwrap();
         assert_eq!(back, view);
     }
+
+    #[test]
+    fn canonical_spectator_fixture_round_trips_and_matches_typed_fields() {
+        // Cross-language contract fixture, paired with the web client's `protocol.test.ts`.
+        let json = include_str!("../fixtures/spectatorview.json");
+        let view: SpectatorView = serde_json::from_str(json).unwrap();
+
+        let reencoded = serde_json::to_string(&view).unwrap();
+        let back: SpectatorView = serde_json::from_str(&reencoded).unwrap();
+        assert_eq!(back, view);
+
+        assert_eq!(view.players.len(), 2);
+        // Absent `connected` means connected; the flag rides the wire only when false.
+        assert!(view.players[0].connected);
+        assert!(!view.players[1].connected);
+
+        assert_eq!(view.phase, Phase::PrecombatMain);
+        assert_eq!(view.turn, 5);
+        assert_eq!(view.active_player, "p0");
+        assert_eq!(view.seat_order, vec!["p0".to_string(), "p1".to_string()]);
+        assert_eq!(view.priority_player.as_deref(), Some("p0"));
+
+        assert_eq!(view.battlefield.len(), 2);
+        assert!(view.battlefield[0].tapped);
+        assert_eq!(view.battlefield[1].damage, 2);
+        assert_eq!(view.battlefield[1].counters.len(), 1);
+
+        assert_eq!(view.stack.len(), 1);
+        assert_eq!(view.stack[0].kind, Some(StackItemKind::Spell));
+        assert_eq!(
+            view.stack[0].targets,
+            vec![StackTarget::Permanent {
+                id: "perm_7".to_string()
+            }]
+        );
+
+        assert_eq!(view.log.len(), 2);
+        assert_eq!(view.log[0].sequence, 41);
+
+        let names: BTreeMap<PlayerId, String> = [
+            ("p0".to_string(), "Ari".to_string()),
+            ("p1".to_string(), "Sam".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(view.player_names, names);
+
+        assert_eq!(
+            view.format.as_ref().map(|f| f.id.as_str()),
+            Some("starter-1v1")
+        );
+        // The spectator type has no receiver fields at all, so a redacted projection cannot
+        // leak one: `result` is simply absent on a live game.
+        assert!(view.result.is_none());
+    }
 }

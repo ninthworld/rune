@@ -1,0 +1,53 @@
+{
+  "session": "s_7f3a9c21",
+  "you": "p0",
+  "name": "Ari",
+  "room": {
+    "room_id": "r_204",
+    "config": {
+      "seats": 2,
+      "game_setup": "starter-1v1",
+      "name": "Kitchen table",
+      "visibility": "private"
+    },
+    "seats": [
+      {
+        "seat": 0,
+        "occupied_by": "p0",
+        "name": "Ari",
+        "decked": true,
+        "ready": true
+      },
+      {
+        "seat": 1,
+        "occupied_by": "p1",
+        "name": "Practice bot",
+        "decked": true,
+        "ai": "random"
+      }
+    ]
+  },
+  "directory": [
+    {
+      "room_id": "r_198",
+      "config": {
+        "seats": 4,
+        "game_setup": "commander"
+      },
+      "filled": 3,
+      "state": "gathering"
+    },
+    {
+      "room_id": "r_201",
+      "config": {
+        "seats": 2,
+        "game_setup": "starter-1v1",
+        "name": "Ranked practice"
+      },
+      "filled": 2,
+      "spectators": 5,
+      "state": "in_progress"
+    }
+  ],
+  "valid_commands": ["submit_deck", "ready", "update_room", "add_ai", "remove_ai", "leave"]
+}
