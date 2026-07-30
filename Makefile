@@ -5,9 +5,8 @@
 # there is a single command whose coverage matches CI. `make check` remains the
 # fast inner loop.
 #
-# Client and e2e targets are absent while the web client is being rebuilt
-# (SAGE restart, Stage 3). They return with the new client — including the
-# browser e2e suite, which is now a required gate rather than an excluded one.
+# Client and e2e targets are absent until the web client exists. They land with
+# it — including the browser e2e suite, which is a required gate (ADR 0011).
 verify: check deny ## Full pre-merge verification: Engine + cargo-deny (mirrors every required GitHub check)
 
 check: engine-lint engine-test ## Fast inner-loop gate: everything the Engine CI job runs (cargo-deny is separate — see `verify`)

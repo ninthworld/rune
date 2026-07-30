@@ -4,10 +4,9 @@ SAGE is a server-authoritative Magic: The Gathering implementation with a pure R
 a web client. Read [`docs/brief.md`](docs/brief.md) for the product and architecture, and
 [`docs/coding-standards.md`](docs/coding-standards.md) before changing code.
 
-**The project is mid-restart.** The previous web client (78k LOC, three stacked UI
-architectures) was deleted; `clients/` is empty until Stage 3. The engine, server, protocol,
-and CLI carry forward. See `docs/archive/` for superseded design work — it is history, not
-guidance, and nothing in it authorizes work.
+**The web client is not built yet.** `clients/` is empty and building it is the current
+milestone. The engine, server, protocol, and CLI are working; `crates/sage-cli` is the
+playtest surface until a browser client exists.
 
 ## Hard rules
 
@@ -18,29 +17,29 @@ guidance, and nothing in it authorizes work.
   read card files at compile time.
 - **Automation policy lives in the server, never the engine.** The engine may expose pure
   rules *predicates*; the loop, the preferences, and the pacing decisions are the server's
-  (ADR 0020). Baking a UX judgment into the rules layer is how the engine becomes
+  (ADR 0010). Baking a UX judgment into the rules layer is how the engine becomes
   unsustainable — this is the seam most worth protecting.
 - **Protocol changes are contract changes.** Update `docs/protocol.md`, `sage-protocol`, and
   the TypeScript mirror in the same PR.
 - **The entire client UI must be reconstructable from one `GameView` + pending prompt.** No
   client state is load-bearing across messages.
-- **The browser e2e suite is a required gate.** It was removed three times (#251, #292, #538)
-  and that decision is **reversed** — the seams this project is made of produce integration
-  bugs jsdom cannot see. Design against the three problems that made it painful before
-  (ADR 0011): keep one thin smoke path as the blocking gate with deeper flows non-blocking,
-  keep the engine gate independent of it, and **never run `playwright install`** — consume the
-  preinstalled browser via `PLAYWRIGHT_BROWSERS_PATH` with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`,
-  pinning `executablePath` if the pinned package disagrees with the image.
+- **The browser e2e suite is a required gate.** The seams this project is made of — socket,
+  protocol, view reconstruction, reconnect — produce integration bugs a headless DOM cannot
+  see. Keep it cheap enough to stay (ADR 0011): one thin smoke path as the blocking gate with
+  deeper flows non-blocking, the engine gate independent of it, and **never run
+  `playwright install`** — consume the preinstalled browser via `PLAYWRIGHT_BROWSERS_PATH`
+  with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, pinning `executablePath` if the pinned package
+  disagrees with the image.
 - **E2E proves it works; the maintainer judges whether it is good.** Automated coverage cannot
   answer "is this fun to play." When a change can only be assessed by a person playing it, say
   plainly what you could not verify and leave that judgment to them.
 - **Every change ends in a playable state.** Playing is the merge criterion. Do not build the
   second version of something before the first is good enough to play on.
-- **ADRs are written after a decision survives contact with working code**, not before. Design
-  documents written ahead of implementation are what produced the archive.
+- **ADRs are written after a decision survives contact with working code**, not before. A
+  design document written ahead of the code it describes is speculation with a version number.
 - **The project ships no card images, no official frames, symbols, watermarks, or WotC
   branding, no exact Oracle text, and no monetization path.** The one exception is the
-  player-side, opt-in art pipeline of ADR 0024: the player's own browser may fetch card images
+  player-side, opt-in art pipeline of ADR 0012: the player's own browser may fetch card images
   from a third-party source — the illustration alone inside SAGE's frame, or the whole card
   image — cached device-local only, never committed, bundled, served, proxied, or
   redistributed.
@@ -55,10 +54,10 @@ guidance, and nothing in it authorizes work.
 - `crates/sage-engine/` — pure rules engine; has its own `AGENTS.md`.
 - `crates/sage-protocol/` — shared wire types.
 - `crates/sage-server/` — WebSocket lobby and game rooms.
-- `crates/sage-cli/` — terminal and deterministic-agent client; the playtest surface while the
-  web client is being rebuilt.
-- `docs/` — current brief, protocol, card schema, coding standards, and live ADRs.
-- `docs/archive/` — superseded designs and decisions. Reference only. Never cite as authority.
+- `crates/sage-cli/` — terminal and deterministic-agent client; the playtest surface until the
+  web client exists.
+- `docs/` — brief, protocol, card schema, coding standards, and ADRs. Everything in `docs/` is
+  current and binding; there is no superseded material to sift.
 
 ## Commands
 
@@ -70,7 +69,7 @@ guidance, and nothing in it authorizes work.
 - `make deny` — dependency policy and advisory checks.
 - `scripts/bootstrap.sh` — verify local prerequisites.
 
-Client and e2e targets return in Stage 3 with the rebuilt client.
+Client and e2e targets land with the web client.
 
 ## Workflow
 

@@ -20,7 +20,7 @@ impl Lobby {
     /// exactly the same tables.
     ///
     /// Checks, in order: the seat count is inside [`SEAT_RANGE`]; the `game_setup` id
-    /// names a registered format (ADR 0013 §4), so no room ever holds a setup the
+    /// names a registered format, so no room ever holds a setup the
     /// server cannot build a game from or validate decks against; the seat count is one
     /// that format itself allows (issue #349); and the optional table name (issue #546)
     /// is valid under the same bounds a display name gets. Returns the config with its
@@ -266,7 +266,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_room_with_an_unknown_game_setup_is_rejected() {
-        // The `game_setup` id must key into the format registry (ADR 0013 §4); an
+        // The `game_setup` id must key into the format registry; an
         // unknown id is refused and no room is opened.
         let lobby = lobby(4);
         let mut client = Client::connect(&lobby).await;

@@ -25,7 +25,7 @@ use super::utilities::{cost_payable, is_castable_spell, is_land, tap_cost_is_sum
 /// A targeted ability is advertised **once**, in its requirement form (empty
 /// [`Action::ActivateAbility::targets`]); its per-slot legal candidate sets are
 /// obtained separately via [`crate::target_requirements`]. The generator therefore
-/// never pre-expands one action per target combination (ADR 0009 §Enumeration).
+/// never pre-expands one action per target combination (ADR 0004 §Enumeration).
 #[must_use]
 pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
     if state.priority_holder().is_none() {

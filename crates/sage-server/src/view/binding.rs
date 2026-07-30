@@ -3,7 +3,7 @@
 use super::*;
 
 /// Whether a returned target selection exactly fills an action's requirement
-/// slots from their advertised legal candidates (ADR 0009 §Enumeration).
+/// slots from their advertised legal candidates (ADR 0004 §Enumeration).
 ///
 /// The check is against the *freshly recomputed* candidate sets, not the ones the
 /// client saw: there must be exactly one [`TargetChoice`] per [`TargetRequirement`]

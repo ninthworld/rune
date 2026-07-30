@@ -112,7 +112,7 @@ pub struct GameView {
     pub log: Vec<GameLogEntry>,
     /// The receiver's own current **priority-stop preferences** (issue #264): the
     /// steps at which they want to receive priority even when the engine reports
-    /// they have no meaningful action, so basic auto-pass (ADR 0020) does not skip
+    /// they have no meaningful action, so basic auto-pass (ADR 0010) does not skip
     /// them there. Carried on the view so the per-phase stops UI is reconstructable
     /// from a single message and survives reconnect (the preferences live on the
     /// room, like `player_names`, not in client memory). Per-viewer, not secret;
@@ -129,7 +129,7 @@ pub struct GameView {
     /// This is the half that carries the human default: a seat the room considers
     /// human is seeded with its own main phases, so a turn never fast-forwards past
     /// the point where its owner would act, while the eleven other steps — and the
-    /// whole of every opponent's turn — keep the ADR 0020 pacing. Set with
+    /// whole of every opponent's turn — keep the ADR 0010 pacing. Set with
     /// `set_stops` alongside [`Self::stops`], stored on the room, and reflected here
     /// so the stops UI is reconstructable from a single message and survives
     /// reconnect. Omitted from the wire when empty; a client treats a missing field
@@ -137,7 +137,7 @@ pub struct GameView {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub own_turn_stops: Vec<Phase>,
     /// Whether reaching this state **auto-passed** priority on the receiver's behalf
-    /// (issue #264, ADR 0020): set on the broadcast that follows a settle in which
+    /// (issue #264, ADR 0010): set on the broadcast that follows a settle in which
     /// the room passed priority for this seat, so the client can show a display-only
     /// "passed for you" indicator. Advisory and transient — the UI reconstructs
     /// fully without it, and a reconnect re-send need not preserve it. Omitted from
@@ -152,7 +152,7 @@ pub struct GameView {
     /// [`Self::auto_passed`] says a settle skipped you; this says where. That is the
     /// difference between "you were passed" and "you were passed at upkeep, draw and
     /// beginning of combat on turn 4", and it is the whole reason the field exists:
-    /// ADR 0020's settle loop can advance a dozen steps between two broadcasts, and a
+    /// ADR 0010's settle loop can advance a dozen steps between two broadcasts, and a
     /// client that only knows *that* it happened cannot tell a player what they did
     /// not get to see.
     ///
@@ -172,7 +172,7 @@ pub struct GameView {
     /// Advisory, transient, and display-only, exactly like [`Self::auto_passed`]:
     /// the UI reconstructs fully without it, `valid_actions` is unaffected, and a
     /// reconnect re-send need not preserve it. The authoritative record of *what
-    /// happened* during a settle remains [`Self::log`] (ADR 0021), which carries the
+    /// happened* during a settle remains [`Self::log`] (ADR 0007), which carries the
     /// events themselves. Omitted from the wire when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub auto_passed_steps: Vec<AutoPassedStep>,
@@ -282,7 +282,7 @@ pub struct GameView {
 /// The **active player** is deliberately *not* carried. This is an indicator that
 /// refines [`GameView::auto_passed`], not a second game log: the authoritative record
 /// of whose turn it was, and of everything that happened during it, is the
-/// `step_changed` entry in [`GameView::log`] (ADR 0021), which already carries turn,
+/// `step_changed` entry in [`GameView::log`] (ADR 0007), which already carries turn,
 /// active player, and phase together.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AutoPassedStep {

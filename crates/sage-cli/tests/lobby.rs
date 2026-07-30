@@ -1,4 +1,4 @@
-//! End-to-end test for the CLI **lobby flow** (ADR 0012, issue #115).
+//! End-to-end test for the CLI **lobby flow** (issue #115).
 //!
 //! Two CLI clients drive the whole pre-game protocol against the real layer-1
 //! [`sage_server::Lobby`] over the in-memory duplex transport — the same in-process
@@ -27,7 +27,7 @@ use tokio_tungstenite::WebSocketStream;
 
 /// The six bundled cards these decks are built from: three red creatures and two burn
 /// spells, plus a Mountain to cast them with. Named by authored `functional_id`
-/// (ADR 0018 §3) — a `CardId` is interned from the catalog's sort order, so an integer
+/// (ADR 0008 §3) — a `CardId` is interned from the catalog's sort order, so an integer
 /// deck would silently become a different (and, with no land in it, unplayable) deck the
 /// next time a card is added.
 const STARTER_CARDS: [&str; 6] = [

@@ -107,7 +107,7 @@ impl Room {
         }
     }
 
-    /// Attach a spectator (ADR 0022, issue #351) and bring it current with a single
+    /// Attach a spectator (issue #351) and bring it current with a single
     /// redacted [`SpectatorView`] — the whole public board, so a mid-game spectator
     /// reconstructs its UI with no history. A spectator owns no seat and never mutates
     /// the game; a dead spectator sender is pruned lazily on the next broadcast.
@@ -169,7 +169,7 @@ impl Room {
         view.stops = stops.any_turn;
         view.own_turn_stops = stops.own_turn;
         // Where the last settle acted for this seat, and the boolean summary of that
-        // list ADR 0020 shipped first — derived from it rather than tracked beside it,
+        // list ADR 0010 shipped first — derived from it rather than tracked beside it,
         // so the two can never disagree.
         view.auto_passed_steps = self
             .auto_passed_steps
@@ -224,7 +224,7 @@ impl Room {
 
     /// Send every connected seat its own personalized view, and every spectator the
     /// current redacted view. Seated traffic is exactly as before; the spectator
-    /// fan-out is a no-op when there are no spectators (ADR 0022, issue #351).
+    /// fan-out is a no-op when there are no spectators (issue #351).
     pub(super) fn broadcast(&mut self) {
         for seat in 0..self.seats.len() {
             let connected = self.seats.get(seat).map(Option::is_some).unwrap_or(false);

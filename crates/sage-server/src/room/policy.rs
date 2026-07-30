@@ -1,7 +1,7 @@
 //! Room-layer policy for decision timers and priority automation (issues #263,
 //! #264), plus the conservative default action a timeout takes.
 //!
-//! The engine is pure and both timer- and automation-free (ADR 0002); these
+//! The engine is pure and both timer- and automation-free (ADR 0001); these
 //! policies and the [`timeout_default_action`] helper live in the room layer, which
 //! already owns tokio time and the settle loop. Pure code motion out of the room
 //! module root (issue #427) — no behavior change.
@@ -15,7 +15,7 @@ use sage_protocol::Phase;
 
 /// A room's decision-timer policy (issue #263).
 ///
-/// The engine is pure and timer-free (ADR 0002); deadline policy and enforcement
+/// The engine is pure and timer-free (ADR 0001); deadline policy and enforcement
 /// live here in the room layer, which already owns tokio time. Timers are **off by
 /// default** — an off policy reproduces exactly the pre-timer behavior, so existing
 /// flows and tests are unchanged — and, when on, apply only to in-game decisions;
@@ -103,7 +103,7 @@ pub(super) fn timeout_default_action(state: &GameState, db: &CardDatabase) -> Op
     None
 }
 
-/// A room's basic priority-automation policy (issue #264, ADR 0020).
+/// A room's basic priority-automation policy (issue #264, ADR 0010).
 ///
 /// Like [`TimerPolicy`], automation is a room-layer concern layered over the pure,
 /// automation-free engine: the engine only *reports* (via
@@ -135,7 +135,7 @@ pub enum AutoPassPolicy {
 /// the two the settle loop must not carry them past — CR 505.5b makes a main phase
 /// the only place a land drop, a sorcery, or a creature can be played, which is
 /// precisely the decision a fast-forward would take away. Every other step keeps
-/// ADR 0020's pacing: a seat with a real instant-speed play is non-idle and is
+/// ADR 0010's pacing: a seat with a real instant-speed play is non-idle and is
 /// never auto-passed anywhere, and a seat with nothing to do sails through the
 /// other ten steps as before.
 pub(super) const DEFAULT_HUMAN_OWN_TURN_STOPS: [Phase; 2] =
@@ -144,7 +144,7 @@ pub(super) const DEFAULT_HUMAN_OWN_TURN_STOPS: [Phase; 2] =
 /// A room's **default-stop** policy (issue #455): the stop preferences a seat that
 /// has never sent `set_stops` starts with.
 ///
-/// ADR 0020 chose an empty default deliberately, on the grounds that automation only
+/// ADR 0010 chose an empty default deliberately, on the grounds that automation only
 /// ever passes a seat whose *sole* meaningful move is a pass — so an empty default
 /// never skips a real decision. Issue #455 is the playtest evidence that the
 /// argument, while true about decisions, is false about **comprehension**: a human
@@ -157,11 +157,11 @@ pub(super) const DEFAULT_HUMAN_OWN_TURN_STOPS: [Phase; 2] =
 /// construction (and every AI-only or headless game that never opts in) is
 /// bit-for-bit unchanged — and the lobby turns it on for real games. It is only a
 /// starting value: the first `set_stops` a seat sends replaces it wholesale, so a
-/// player who wants ADR 0020's original pacing back clears it in one message and the
+/// player who wants ADR 0010's original pacing back clears it in one message and the
 /// room never re-seeds it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum StopPolicy {
-    /// Every seat starts with no stops at all — ADR 0020's original default, and the
+    /// Every seat starts with no stops at all — ADR 0010's original default, and the
     /// behavior before default stops existed.
     #[default]
     None,
@@ -197,7 +197,7 @@ impl StopPolicy {
 /// hatch for wanting to act at an opponent's end step. `own_turn` is issue #455's
 /// narrower claim — "hand me priority here **while the turn is mine**", which is
 /// what a main-phase stop has to mean: stopping a human in every opponent main
-/// phase would reintroduce exactly the per-step click ADR 0020 removed, for a window
+/// phase would reintroduce exactly the per-step click ADR 0010 removed, for a window
 /// in which they have nothing to do that they could not already do at instant speed.
 ///
 /// A step in both stops on every turn: `any_turn` is the wider claim and subsumes

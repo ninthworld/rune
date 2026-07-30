@@ -11,7 +11,7 @@ use crate::PlayerId;
 /// it verbatim on a later [`Hello`] (after a refresh or dropped socket) to prove
 /// it is the same connection and be reunited with a held-open seat. Opaque — the
 /// client never parses it. This is an *identity* handle, not authentication of a
-/// human (ADR 0012, Out of scope).
+/// human — authentication is out of scope.
 pub type SessionToken = String;
 
 /// Opaque room identifier, issued by the server on [`CreateRoom`] and shared
@@ -20,16 +20,16 @@ pub type RoomId = String;
 
 /// Opaque game-setup identifier carried in a [`RoomConfig`]. It names which setup
 /// (players, starting life, hand size, …) the room builds its game from. The
-/// catalogue of setups and their internal shape are owned by ADR 0013; this crate
-/// treats the id as an opaque value the server validates.
+/// catalogue of setups and their internal shape are the server's; this crate treats
+/// the id as an opaque value the server validates.
 pub type GameSetupId = String;
 
 /// Opaque card-identity handle used in a submitted [`SubmitDeck`] decklist. The
-/// identity-vs-printing model is owned by ADR 0013 — these are card *identities*,
+/// identity-vs-printing model is owned by ADR 0008 — these are card *identities*,
 /// never printings or images. The server validates each against its card
 /// database; the client never parses them.
 ///
-/// Concretely, an identity is a card's authored `functional_id` (ADR 0018 §3): a
+/// Concretely, an identity is a card's authored `functional_id` (ADR 0008 §3): a
 /// lowercase `snake_case` slug such as `llanowar_elves`. That is the only card identity
 /// stable across builds — the engine's `CardId` is interned from the catalog's sort
 /// order, so it shifts whenever a card is authored ahead of it. Clients still treat this
@@ -75,7 +75,7 @@ impl RoomVisibility {
 pub struct RoomConfig {
     /// Number of seats in the room. Validated server-side into the inclusive
     /// range `2..=8`; the lobby supports 2–8 seats even while the engine remains
-    /// two-player (ADR 0012).
+    /// two-player.
     pub seats: u8,
     /// Which game setup the room will build its game from (opaque; see
     /// [`GameSetupId`]).
@@ -157,7 +157,7 @@ pub enum RoomState {
     Gathering,
     /// The room's game has started. Its seats are no longer joinable, but it can be
     /// **spectated**: an observer joins with [`SpectateRoom`] and watches live with
-    /// full redaction (ADR 0022, issue #351). The directory advertises its spectator
+    /// full redaction (issue #351). The directory advertises its spectator
     /// count in [`RoomSummary::spectators`].
     InProgress,
 }
@@ -182,7 +182,7 @@ pub struct RoomSummary {
     /// [`RoomConfig::seats`]; a [`RoomState::Gathering`] room with `filled` below that
     /// total has an open seat to join.
     pub filled: u8,
-    /// How many **spectators** are currently watching the room (ADR 0022, issue #351).
+    /// How many **spectators** are currently watching the room (issue #351).
     /// Spectators do not consume seats, so this is independent of [`Self::filled`]; a
     /// room may be spectated at any state, including [`RoomState::InProgress`]. Only a
     /// count is advertised — never a spectator's identity (no social layer in M5).
@@ -241,7 +241,7 @@ pub struct LobbyView {
 
 /// A structured, human-readable explanation of why a lobby command was rejected
 /// (issue #395). It is pushed to the **rejecting connection only**, following the
-/// lobby's non-fatal error pattern (ADR 0012): the seat's [`LobbyView`] is otherwise
+/// lobby's non-fatal error pattern: the seat's [`LobbyView`] is otherwise
 /// unchanged, so this is ephemeral feedback the client shows and never load-bearing
 /// state.
 ///
@@ -333,7 +333,7 @@ pub struct JoinRoom {
     pub room_id: RoomId,
 }
 
-/// Join an existing room as a **spectator** (ADR 0022, issue #351): a non-seated
+/// Join an existing room as a **spectator** (issue #351): a non-seated
 /// observer watching the game live with all hidden information redacted. Unlike
 /// [`JoinRoom`], a spectator does **not** consume a seat, so it may join a room whose
 /// seats are full — including a room whose game is already **in progress**
@@ -454,7 +454,7 @@ pub enum LobbyCommand {
     Ready(Ready),
     /// Set or change this connection's public display name (issue #294).
     SetName(SetName),
-    /// Join an existing room as a spectator (ADR 0022, issue #351) — no seat consumed.
+    /// Join an existing room as a spectator (issue #351) — no seat consumed.
     SpectateRoom(SpectateRoom),
     /// Request the public card catalog and per-format deck rules (issue #367). The
     /// server answers with a one-shot [`CatalogView`] and changes no lobby state, so a

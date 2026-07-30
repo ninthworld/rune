@@ -1,4 +1,4 @@
-//! Priority-automation support (issue #264, ADR 0020): the engine-side judgment of
+//! Priority-automation support (issue #264, ADR 0010): the engine-side judgment of
 //! whether the current priority holder has any *meaningful* action beyond passing.
 //!
 //! This is the one rules question the client is forbidden to answer
@@ -7,7 +7,7 @@
 //! `pass_priority` is safe depends on the seat's [`valid_actions`], the stack, and
 //! timing — engine knowledge. The engine stays pure: it exposes the *predicate*
 //! only; the *loop* that keeps auto-passing and the per-seat stop preferences that
-//! gate it live in the room layer (ADR 0002 keeps loops, policy, and I/O out of the
+//! gate it live in the room layer (ADR 0001 keeps loops, policy, and I/O out of the
 //! engine).
 
 use crate::ability::{is_mana_ability, Ability, Effect};
@@ -41,7 +41,7 @@ use crate::CardDatabase;
 /// predicate short-circuits to `false` there — a seat is never auto-passed out of a
 /// choice it owes. Returns `false` when no one holds priority or the game is over.
 /// Because a `true` result requires `PassPriority` to be on offer, the predicate can
-/// only fire where passing is a move the seat is already entitled to take (ADR 0020).
+/// only fire where passing is a move the seat is already entitled to take (ADR 0010).
 /// Pure over `state` and `db` (it works on a clone), so it is deterministic.
 #[must_use]
 pub fn priority_has_no_meaningful_action(state: &GameState, db: &CardDatabase) -> bool {
@@ -96,7 +96,7 @@ pub fn priority_has_no_meaningful_action(state: &GameState, db: &CardDatabase) -
 ///
 /// Like [`priority_has_no_meaningful_action`], this is the *predicate* only — the
 /// loop that acts on it, and the policy that gates it, live in the room layer
-/// (ADR 0002, ADR 0020).
+/// (ADR 0001, ADR 0010).
 #[must_use]
 pub fn forced_declaration_without_choice(state: &GameState, db: &CardDatabase) -> Option<Action> {
     if state.priority_holder().is_none() || state.is_over() {
@@ -321,7 +321,7 @@ mod tests {
         // The potential-mana case: an untapped Forest and a creature in hand the seat
         // cannot yet afford (empty pool). The engine offers no cast until mana floats,
         // but tapping the Forest would pay for it — so the seat is NOT idle and must
-        // never be auto-passed past its own play (ADR 0020, the acceptance criterion).
+        // never be auto-passed past its own play (ADR 0010, the acceptance criterion).
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         place(&mut state, fixture("forest"), PlayerId(0));
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn issue_537_a_seat_that_floated_mana_and_cast_nothing_is_idle_after_the_step_ends() {
-        // The ADR 0020 stall behind issue #537. A seat taps its land, casts nothing,
+        // The ADR 0010 stall behind issue #537. A seat taps its land, casts nothing,
         // and the step ends. Before CR 500.4 was implemented the floating mana
         // persisted forever, so `valid_actions` kept offering the mana-dependent
         // `CastSpell` and this predicate kept reporting the seat non-idle — the room
@@ -355,7 +355,7 @@ mod tests {
         state.players[0].hand = vec![heal];
 
         // Untapped land plus an affordable-after-tapping spell: still non-idle. The
-        // fix must not break the `float_potential_mana` hypothetical (ADR 0020).
+        // fix must not break the `float_potential_mana` hypothetical (ADR 0010).
         assert!(
             !priority_has_no_meaningful_action(&state, &db),
             "a spell castable once the seat taps its land is a meaningful action"
@@ -394,7 +394,7 @@ mod tests {
         assert!(
             priority_has_no_meaningful_action(&after, &db),
             "with its land tapped and its pool emptied the seat has nothing but a \
-             pass — it must auto-pass rather than stall (ADR 0020)"
+             pass — it must auto-pass rather than stall (ADR 0010)"
         );
     }
 

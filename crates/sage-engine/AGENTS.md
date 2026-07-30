@@ -20,7 +20,7 @@
   assets (the schema rejects them structurally), and code-defined behavior only via the
   declared `scripted` escape hatch.
 - **Never write a `CardId` down.** `build.rs` assembles `data/catalog/` + `data/sets/`
-  at compile time and interns `CardId(0..n)` from the sorted `FunctionalId`s (ADR 0018
+  at compile time and interns `CardId(0..n)` from the sorted `FunctionalId`s (ADR 0008
   §3), so authoring one card renumbers its neighbours. Name a card by its
   `functional_id` and resolve the handle (`CardDatabase::card_id`) — in decklists, in
   `scripted.rs`, and in tests (`crate::fixtures::fixture`).
@@ -28,7 +28,7 @@
   Shared validators live in `src/catalog.rs` so build-time and load-time checks agree.
 - **Automation policy belongs to the server, not here.** The engine may expose pure rules
   *predicates* (`automation.rs`); the loop, the per-seat preferences, and the pacing
-  decisions live in the room layer (ADR 0020). This seam is the reason the engine stays
+  decisions live in the room layer (ADR 0010). This seam is the reason the engine stays
   sustainable — do not move policy across it.
 
 ## The IR is the constraint

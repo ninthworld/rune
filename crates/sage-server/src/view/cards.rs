@@ -107,11 +107,11 @@ fn keyword_str(keyword: Keyword) -> &'static str {
 /// wire names for display.
 ///
 /// The card's rules text is **generated** here from its ability IR
-/// ([`crate::rules_text`], ADR 0018 §7) rather than read from a stored string — the
+/// ([`crate::rules_text`], ADR 0008 §7) rather than read from a stored string — the
 /// catalog holds no prose — and its authored `functional_id` rides along as the stable
-/// presentation identity (ADR 0018 §8). A scripted card's hand-authored text comes from
+/// presentation identity (ADR 0008 §8). A scripted card's hand-authored text comes from
 /// the engine's escape hatch — keyed, like the catalog itself, on the card's authored
-/// `functional_id` rather than its build-interned handle (ADR 0018 §3), and guaranteed
+/// `functional_id` rather than its build-interned handle (ADR 0008 §3), and guaranteed
 /// by the loader to exist whenever the definition declares `scripted: true`.
 pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
     CardView {
@@ -200,7 +200,7 @@ mod tests {
     /// layer-7c grant (CR 303.4 / 613.7c, issue #152) rather than the printed value.
     #[test]
     fn issue_152_aura_boosted_host_projects_current_pt() {
-        // P/T Auras have no clean M19 card, so this is exercised inline (ADR 0026):
+        // P/T Auras have no clean M19 card, so this is exercised inline (ADR 0009):
         // a 1/1 host enchanted with a +2/+2 Aura.
         let json = r#"[
             {"schema_version":1,"functional_id":"test_scout","name":"Test Scout",
@@ -454,7 +454,7 @@ mod tests {
     fn issue_333_aura_attachment_projects_into_the_view() {
         use std::collections::BTreeMap;
 
-        // P/T Auras have no clean M19 card, so this is exercised inline (ADR 0026).
+        // P/T Auras have no clean M19 card, so this is exercised inline (ADR 0009).
         let json = r#"[
             {"schema_version":1,"functional_id":"test_scout","name":"Test Scout",
              "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
@@ -647,13 +647,13 @@ mod tests {
         assert!(bystander_view.card.keywords.is_empty());
     }
 
-    /// The ability-target `requirements` projection (ADR 0009 deferral #73, folded
+    /// The ability-target `requirements` projection (ADR 0004 deferral #73, folded
     /// into issue #140): a `{T}: Tap target creature` activation advertises its one
     /// target slot with the legal creature candidates, and a returned target
     /// resolves to an `ActivateAbility` carrying exactly that chosen target.
     #[test]
     fn issue_194_cards_project_generated_rules_text_and_their_stable_identity() {
-        // ADR 0018 §7-§8: the catalog stores no prose, so what the player reads is
+        // ADR 0008 §7-§8: the catalog stores no prose, so what the player reads is
         // composed from the card's IR at projection time — and rides the same view as
         // the card's authored identity, which a future client-local cache could key on.
         let db = CardDatabase::bundled().unwrap();

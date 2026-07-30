@@ -37,7 +37,7 @@ use tokio::sync::watch;
 /// The six bundled cards these decks are built from: three red creatures and two burn
 /// spells, plus a Mountain to cast them with — every card castable off Mountains so the
 /// deterministic agent plays the deck to completion. Named by authored `functional_id`
-/// (ADR 0018 §3) — a `CardId` is interned from the catalog's sort order, so an integer
+/// (ADR 0008 §3) — a `CardId` is interned from the catalog's sort order, so an integer
 /// deck would silently become a different (and, with no land in it, unplayable) deck the
 /// next time a card is added.
 const STARTER_CARDS: [&str; 6] = [
@@ -424,10 +424,9 @@ struct StarterDeck {
 /// than re-listing the cards in Rust — is what keeps the client's decks and this wire
 /// test's decks from silently drifting apart (issue #257).
 ///
-/// The file lived under `clients/web/src/` until the SAGE restart, which made deleting
-/// the client delete game data the Rust tests depended on. It is shared data owned by
-/// neither side, so it now sits at the repository root where either can be removed
-/// without taking the other down.
+/// The file is shared game data owned by neither the Rust nor the client side, so it
+/// sits at the repository root: either side can be removed without taking the other
+/// down with it.
 fn bundled_decklists() -> Vec<StarterDeck> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/starter-decks.json");
     let text = std::fs::read_to_string(path)
@@ -548,7 +547,7 @@ fn every_bundled_decklist_is_legal_and_castable_from_its_own_mana_base() {
 
 #[tokio::test]
 async fn bundled_decklists_play_to_a_deterministic_completion() {
-    // The M3 exit-criterion proof: the *actual bundled decklists* (the same file the
+    // The proof that ships: the *actual bundled decklists* (the same file the
     // client submits) play full games through the real layer-2 room and wire protocol
     // to a decisive winner. Round-robin so every deck is exercised and every pairing
     // interacts — including the archetype clashes (aggro vs midrange vs tempo).

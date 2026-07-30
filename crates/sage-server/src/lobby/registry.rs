@@ -99,8 +99,8 @@ pub(crate) fn seat_of(
 /// Resolve a wire [`CardIdentity`] to an engine [`CardId`], or `None` if it does not
 /// name a card in `db`.
 ///
-/// A decklist names cards by their authored `functional_id` (ADR 0018 §3) — the identity
-/// vocabulary ADR 0013 deferred and ADR 0018 settled. It cannot name them by `CardId`:
+/// A decklist names cards by their authored `functional_id` (ADR 0008 §3) — the stable
+/// identity vocabulary. It cannot name them by `CardId`:
 /// that handle is interned by `build.rs` from the catalog's sort order, so authoring one
 /// new card renumbers its neighbours, and a decklist written against an integer would
 /// silently come to mean different cards. The `functional_id` is the only card identity
@@ -115,7 +115,7 @@ pub(crate) fn resolve_card(db: &CardDatabase, identity: &str) -> Option<CardId> 
     db.card_id(&functional_id)
 }
 
-/// A server-generated shuffle seed for a starting game (ADR 0012). The engine is
+/// A server-generated shuffle seed for a starting game. The engine is
 /// pure and takes its only randomness from this seed; the *server* is where the
 /// entropy is sourced. Mixes the wall clock with a process-lifetime counter so two
 /// games constructed in the same instant still get distinct seeds.

@@ -42,5 +42,5 @@ jobs:
         run: make engine-test
 
   # The Client job (lint, typecheck, unit tests, build) and the browser e2e job
-  # return in Stage 3 of the SAGE restart, alongside the rebuilt web client.
-  # E2E is a required gate this time — see ADR 0011 and the root AGENTS.md.
+  # land with the web client. E2E is a required gate — see ADR 0011 and the root
+  # AGENTS.md.

@@ -7,7 +7,7 @@
 //! generator. The seed is injected through the constructors, so a game replays
 //! identically from the same starting state. [`GameState::new`] consumes it to
 //! shuffle opening libraries (CR 103.3) with a tiny inline generator (SplitMix64,
-//! see [`crate::rng`] and `docs/decisions/0014-deterministic-seeded-shuffle.md`)
+//! see [`crate::rng`] and `docs/decisions/0006-deterministic-seeded-shuffle.md`)
 //! and stores the advanced generator state back into the slot, so later draws
 //! continue the same stream. Concentrating every draw here is what makes the
 //! `crates/sage-engine/AGENTS.md` rule "no randomness without an injected seed"
@@ -64,7 +64,7 @@ pub struct GameState {
     /// The stack of spells and abilities, bottom first (the last element is the
     /// top and resolves first). Mana abilities never appear here.
     pub stack: Vec<StackObject>,
-    /// Continuous static effects currently in force (ADR 0010 slice 3). This is
+    /// Continuous static effects currently in force (ADR 0005 slice 3). This is
     /// **raw stored input, not a derivation**: the source ability/permanent puts
     /// each effect here and its removal takes it away. A permanent's *current*
     /// characteristics fold the applicable ones in on demand via
@@ -115,7 +115,7 @@ pub struct GameState {
     /// Permanents dealt combat damage this combat by a source with deathtouch
     /// (CR 702.2b), pending the CR 704.5h state-based action that destroys them.
     ///
-    /// **Raw stored input, not a derivation** (ADR 0010 §1): the combat-damage
+    /// **Raw stored input, not a derivation** (ADR 0005 §1): the combat-damage
     /// step records a struck creature here (see `apply.rs :: deal_combat_damage`)
     /// because "was dealt damage by a deathtouch source" is history a bare
     /// snapshot cannot recover — the same reasoning as [`Permanent::damage`] and
@@ -127,7 +127,7 @@ pub struct GameState {
     /// game (CR 903.10a), one entry per `(commander designation, damaged player)`
     /// pair that has taken any — see [`CommanderDamage`].
     ///
-    /// **Raw stored history, not a derivation** (ADR 0010 §1): unlike marked
+    /// **Raw stored history, not a derivation** (ADR 0005 §1): unlike marked
     /// [`Permanent::damage`] (which clears at cleanup) this total is *never*
     /// reset — it accumulates for the whole game and outlives the commander's zone
     /// changes because it is keyed to the designation, not to any battlefield

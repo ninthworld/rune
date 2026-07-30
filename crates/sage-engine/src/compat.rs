@@ -1,21 +1,22 @@
 //! The deterministic card-compatibility report (issue #258).
 //!
-//! M3's exit criterion asks for "a deterministic compatibility report naming every
-//! supported and excluded card". This module is the single source of truth for that
-//! artifact: [`render_report`] turns the interned catalog plus a curated exclusion
-//! list into the Markdown committed at `docs/generated/compatibility.md`. The binary
+//! The project claims support for a verified slice of cards, never a full set, and this
+//! module is the checkable artifact behind that claim — a deterministic report naming
+//! every supported and excluded card. [`render_report`] turns the interned catalog
+//! plus a curated exclusion list into the Markdown committed at
+//! `docs/generated/compatibility.md`. The binary
 //! `src/bin/gen-compat.rs` writes it; a `#[test]` in `tests/compat.rs` regenerates it
 //! in memory and fails if the committed copy has drifted, so the report can never go
 //! stale the way the hand-maintained coverage ledger did (#252).
 //!
 //! **This does not weaken "zero I/O in the engine."** Rendering is a pure function of
 //! its inputs — no clock, no randomness, no filesystem. The exclusion list is baked in
-//! at compile time with `include_str!` (the ADR 0006 pattern the catalog already
+//! at compile time with `include_str!` (the ADR 0002 pattern the catalog already
 //! uses), not read at runtime; only the *generator* binary and the *test* touch the
 //! filesystem, and neither ships in the running engine.
 //!
 //! Legal posture: the report and the exclusions data carry **names and blockers only**
-//! — never Oracle text, flavor text, or official branding (ADR 0018's schema posture
+//! — never Oracle text, flavor text, or official branding (ADR 0008's schema posture
 //! extends here). [`Exclusion`] uses `deny_unknown_fields`, so a stray `text` field is
 //! a parse error, not a leak.
 
@@ -154,7 +155,7 @@ pub fn render_report(db: &CardDatabase, exclusions: &[Exclusion]) -> Result<Stri
     out.push_str(
         "Every functional definition in `crates/sage-engine/data/catalog/`, in interned \
          order. \"Implementation\" is whether the card's behavior lives in its data \
-         definition or (also) in the `scripted` code escape hatch (ADR 0018 §2).\n\n",
+         definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).\n\n",
     );
     out.push_str("| Functional ID | Name | Implementation |\n");
     out.push_str("| --- | --- | --- |\n");

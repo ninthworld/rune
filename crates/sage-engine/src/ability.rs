@@ -8,7 +8,7 @@
 //! pull-based, no-observer rule (`crates/sage-engine/AGENTS.md`).
 //!
 //! Cards the closed IR cannot express fall back to the code table in
-//! [`crate::scripted`]; see `docs/decisions/0007-card-effect-ir-hybrid.md`.
+//! [`crate::scripted`]; see `docs/decisions/0003-card-effect-ir-hybrid.md`.
 
 use serde::Deserialize;
 
@@ -306,7 +306,7 @@ impl Effect {
 /// engine turns a spec into the concrete legal set on demand (enumeration is
 /// issue #71) and re-checks a chosen [`Target`] against it on resolution.
 ///
-/// A closed, plain-data enum (no closures — ADR 0007) deserialized from a bare
+/// A closed, plain-data enum (no closures — ADR 0003) deserialized from a bare
 /// string tag, e.g. `{"kind": "tap", "target": "any_creature"}`. It grows by
 /// adding variants (any permanent of a type, an object in a named zone, …).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]

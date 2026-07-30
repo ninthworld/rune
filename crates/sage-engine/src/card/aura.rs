@@ -17,7 +17,7 @@ use crate::ability::TargetSpec;
 /// The modification is stored as raw signed printed data; the *contribution* to a
 /// host's current characteristics is derived on demand from the attachment via
 /// [`characteristics`](crate::characteristics::characteristics), never stored
-/// (ADR 0010). Enchant-creature Auras that grant power/toughness (CR 613.7c) and/or
+/// (ADR 0005). Enchant-creature Auras that grant power/toughness (CR 613.7c) and/or
 /// keyword abilities (CR 613.1f, layer 6) are modeled here; enchant-player/land and
 /// Aura movement are out of scope.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -56,7 +56,7 @@ mod tests {
     fn issue_152_aura_fixtures_carry_their_enchant_and_pt_grant() {
         // CR 303.4: an Aura is an Enchantment — Aura card carrying an enchant-creature
         // restriction and a static P/T grant. P/T-only Auras have no clean M19
-        // representative, so they are exercised inline (ADR 0026): one buffs (+2/+2),
+        // representative, so they are exercised inline (ADR 0009): one buffs (+2/+2),
         // one shrinks (-2/-2); both surface their enchant slot via cast_target_specs.
         let json = r#"[
             {"schema_version":1,"functional_id":"test_aegis","name":"Test Aegis",

@@ -1,29 +1,29 @@
 # Architectural decisions
 
-These ADRs are **live and binding**. Superseded ones live in
-[`../archive/decisions/`](../archive/decisions/) — history, not guidance.
+Every ADR in this directory is **live and binding**. Nothing here is superseded, and there is
+no archive: a decision that stops being true is rewritten or deleted, never left standing as
+history for someone to mistake for guidance.
 
-> **Naming:** the project was renamed RUNE → SAGE on 2026-07-30. ADRs dated before then say
-> "RUNE" in their prose. They are dated records of what was decided, and are left as written;
-> crate paths inside them were updated to `sage-*` so links resolve. The current name and scope
-> live in [`../brief.md`](../brief.md).
+They are numbered in dependency order — foundations first, then the rules mechanics built on
+them, then card data, the server, and the client. An ADR cites only ADRs before it, so reading
+them in order never requires a forward reference.
 
 | ADR | Decision |
 | --- | --- |
-| [0002](0002-server-authoritative-immutable-engine.md) | Server-authoritative, immutable engine |
-| [0006](0006-serde-in-engine.md) | serde permitted in the engine for embedded data only |
-| [0007](0007-card-effect-ir-hybrid.md) | Card effects as a data IR plus a code escape hatch |
-| [0009](0009-targeting-model.md) | Targeting model |
-| [0010](0010-computed-characteristics-and-layers.md) | Computed characteristics and the CR 613 layer system |
-| [0011](0011-e2e-browser-test-strategy.md) | Browser e2e strategy — **reinstated as a required gate** |
-| [0014](0014-deterministic-seeded-shuffle.md) | Deterministic seeded shuffle |
-| [0018](0018-scalable-functional-card-definitions.md) | Functional card definitions and stable `FunctionalId` |
-| [0020](0020-priority-automation.md) | Priority automation — engine predicate, server policy |
-| [0021](0021-game-log-history.md) | Structured game log in `GameState` |
-| [0024](0024-user-side-card-art.md) | Player-side, opt-in, device-local card art |
-| [0026](0026-real-functional-card-data.md) | Real functional card data (no Oracle text or art) |
+| [0001](0001-server-authoritative-immutable-engine.md) | Server-authoritative rules; immutable engine state |
+| [0002](0002-serde-in-engine.md) | serde in the engine, for compile-time-embedded data only |
+| [0003](0003-card-effect-ir-hybrid.md) | Card behavior as a declarative IR with a code escape hatch |
+| [0004](0004-targeting-model.md) | End-to-end targeting model |
+| [0005](0005-computed-characteristics-and-layers.md) | Computed characteristics and the CR 613 layer system |
+| [0006](0006-deterministic-seeded-shuffle.md) | Deterministic seeded shuffle |
+| [0007](0007-game-log-history.md) | Structured game-log history in `GameState` |
+| [0008](0008-functional-card-definitions.md) | Functional card definitions and stable `FunctionalId` |
+| [0009](0009-real-functional-card-data.md) | Real functional card data from a single set |
+| [0010](0010-priority-automation.md) | Priority automation — engine predicate, server policy |
+| [0011](0011-e2e-browser-test-strategy.md) | Browser end-to-end test strategy |
+| [0012](0012-user-side-card-art.md) | Player-side, opt-in, device-local card art |
 
-New ADRs copy [`0000-template.md`](0000-template.md).
+New ADRs copy [`0000-template.md`](0000-template.md) and take the next free number.
 
-**Write an ADR after a decision survives contact with working code, not before.** Design
-documents written ahead of implementation are what produced the archive.
+**Write an ADR after a decision survives contact with working code, not before.** A design
+document written ahead of the code it describes is speculation with a version number.

@@ -1,4 +1,4 @@
-//! Integration test for the pre-game gate (ADR 0012, issue #112) over the
+//! Integration test for the pre-game gate (issue #112) over the
 //! in-memory duplex transport: two WebSocket peers drive the lobby end to end —
 //! create a room, join by id, submit decks, and ready up — and, when the last seat
 //! readies, the server constructs the game from the submitted decks and hands both
@@ -317,7 +317,7 @@ fn config(seats: u8) -> RoomConfig {
 }
 
 /// The six bundled cards these decks are built from: five green creatures and a Forest
-/// to cast them with. A decklist names cards by authored `functional_id` (ADR 0018 §3),
+/// to cast them with. A decklist names cards by authored `functional_id` (ADR 0008 §3),
 /// never by `CardId` — that handle is interned from the catalog's sort order, so an
 /// integer deck would come to mean different cards as soon as one is added.
 const STARTER_CARDS: [&str; 6] = [

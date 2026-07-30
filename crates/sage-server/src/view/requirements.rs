@@ -157,7 +157,7 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
         .collect()
 }
 
-/// The ability-target requirement slots (ADR 0009 §Enumeration, deferral #73): the
+/// The ability-target requirement slots (ADR 0004 §Enumeration, deferral #73): the
 /// engine's per-slot [`target_requirements`] candidate sets projected one slot each
 /// (`t0`, `t1`, …), reusing the same content-binding machinery as the mulligan and
 /// combat multi-selects. Empty for a non-targeting ability.
@@ -178,7 +178,7 @@ pub(crate) fn ability_requirements(
 }
 
 /// The dock label for one ability activation: the ability's own generated rules
-/// sentence (`ability_text`, ADR 0018), resolved through the same
+/// sentence (`ability_text`, ADR 0008), resolved through the same
 /// [`abilities_of`] index the engine action names — so the words a player clicks
 /// are exactly the words the card prints, and two abilities on one permanent
 /// never share a label. Falls back to the old generic label if the permanent or
@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn multi_ability_activations_carry_distinguishable_rules_sentence_labels() {
         // A permanent with two activated abilities offers two actions; each must be
-        // labeled with its OWN generated rules sentence (ADR 0018), not a shared
+        // labeled with its OWN generated rules sentence (ADR 0008), not a shared
         // generic "Activate ability" — otherwise the dock renders identical buttons
         // the player cannot tell apart.
         let json = r#"[

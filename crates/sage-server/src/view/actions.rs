@@ -197,7 +197,7 @@ fn build_discard(state: &GameState, id: String) -> Projected {
 
 /// Project one engine [`Action`] onto its wire [`ValidAction`], attaching the
 /// subject entity so the client can render the action on the card/permanent it
-/// belongs to (ADR 0004), the ordered target `requirements` it must fill, and the
+/// belongs to, the ordered target `requirements` it must fill, and the
 /// content-binding `token` (see [`content_token`]) the client echoes back.
 ///
 /// Every subject/candidate names a *specific* game object by its per-instance id
@@ -209,7 +209,7 @@ fn build_discard(state: &GameState, id: String) -> Projected {
 /// the mulligan [`Action::Keep`] bottoming ([`bottom_requirement`]), the combat
 /// [`Action::DeclareAttackers`]/[`Action::DeclareBlockers`] declarations
 /// ([`attacker_candidates`]/[`blocker_candidates`]), and ability targets
-/// ([`target_requirements`], ADR 0009 deferral #73). The token binds those
+/// ([`target_requirements`], ADR 0004 deferral #73). The token binds those
 /// requirements automatically (see [`content_token`]), and [`resolve_action`] maps
 /// a returned selection back onto the concrete engine action. An action with
 /// nothing to choose projects empty `requirements` and stays a plain action.
@@ -240,7 +240,7 @@ fn valid_action_view(
         // A cast's target requirements (CR 601.2c) come from the same per-slot
         // enumeration abilities use ([`target_requirements`]); an untargeted spell
         // projects none. Wiring the returned selection back into a targeted cast is
-        // a later server slice (ADR 0009 §Client / #73) — the engine already
+        // a later server slice (ADR 0004 §Client / #73) — the engine already
         // records and re-checks the targets.
         Action::CastSpell { card, .. } => (
             "cast_spell".to_string(),
@@ -254,7 +254,7 @@ fn valid_action_view(
             vec![card_entity_id(card.id)],
             Vec::new(),
         ),
-        // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0018
+        // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0008
         // text generation), so a permanent offering several activations renders
         // *distinguishable* dock buttons — a generic "Activate ability" collapses
         // them into identical choices the player cannot tell apart.
@@ -267,7 +267,7 @@ fn valid_action_view(
             ability_requirements(state, db, action),
         ),
         // Pre-game London mulligan decisions (CR 103.5). Subject-less, so the
-        // client renders them in the action bar (ADR 0004). A `Mulligan` has no
+        // client renders them in the action bar. A `Mulligan` has no
         // sub-choice; a `Keep` carries the bottoming select-from-zone slot
         // (candidates = the deciding seat's hand card entity ids, count = mulligans
         // taken) when one is owed, and nothing for a first-hand keep.
@@ -326,7 +326,7 @@ fn valid_action_view(
             Vec::new(),
         ),
         // Concede (CR 104.3a): a subject-less action always offered to the acting
-        // seat, rendered in the action bar (ADR 0004).
+        // seat, rendered in the action bar.
         Action::Concede => (
             "concede".to_string(),
             "Concede".to_string(),
@@ -343,7 +343,7 @@ fn valid_action_view(
         Action::Keep { .. } => keep_prompts(state, action),
         _ => Vec::new(),
     };
-    // One-gesture mana (ADR 0025): mark the activation of a mana ability
+    // One-gesture mana: mark the activation of a mana ability
     // (CR 605.1a) so a client may offer a lighter gesture for exactly these
     // actions. Computed by the engine's classifier — clients never inspect
     // abilities themselves.
@@ -467,7 +467,7 @@ mod tests {
         // (plus the always-available concede) — the keep/mulligan enumeration is gone.
         assert!(
             view.valid_actions.iter().all(|a| !a.token.is_empty()),
-            "every action carries a content-binding token (ADR 0009)",
+            "every action carries a content-binding token (ADR 0004)",
         );
         assert!(view.valid_actions.iter().all(|a| a.kind != "keep"));
         assert!(view.valid_actions.iter().all(|a| a.kind != "mulligan"));
@@ -770,7 +770,7 @@ mod tests {
 
     #[test]
     fn cr_605_mana_ability_activation_carries_the_wire_flag() {
-        // ADR 0025: the projection flags exactly the mana-ability activation
+        // The projection flags exactly the mana-ability activation
         // (CR 605.1a — all effects add mana, no stack, no targets) so a client
         // can offer the one-gesture tap-for-mana; the targeted tap ability of
         // the same permanent stays unflagged, as does every other action kind.

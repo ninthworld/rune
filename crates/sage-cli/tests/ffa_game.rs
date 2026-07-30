@@ -36,7 +36,7 @@ use tokio::sync::watch;
 /// The six bundled cards the free-for-all decks are built from: three red creatures and
 /// two burn spells, plus a Mountain to cast them with — the same mono-red starter list
 /// the two-player full-game and CLI lobby tests use. Named by authored `functional_id`
-/// (ADR 0018 §3) so the deck stays stable as the catalog grows.
+/// (ADR 0008 §3) so the deck stays stable as the catalog grows.
 const STARTER_CARDS: [&str; 6] = [
     "onakke_ogre",
     "fire_elemental",

@@ -1,4 +1,4 @@
-//! Client-side **lobby flow** for the SAGE CLI (ADR 0012, issue #115).
+//! Client-side **lobby flow** for the SAGE CLI (issue #115).
 //!
 //! Before a game exists the connection speaks the pre-game pair: the server pushes
 //! a full [`LobbyView`] on every change and the client sends a [`LobbyCommand`] to
@@ -32,12 +32,12 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::{write_flush, write_str, ConfigError, SessionError, WsRead, WsWrite};
 
 /// Default seat count for a room created with `--create` but no `--seats`. The
-/// engine is two-player, so two seats is the natural default (ADR 0012).
+/// engine is two-player, so two seats is the natural default.
 const DEFAULT_SEATS: u8 = 2;
 
-/// Default game-setup id when `--game-setup` is not given. The catalogue of setups
-/// is owned by ADR 0013; the server treats the id as opaque and validates it, so the
-/// CLI only needs a sensible placeholder here.
+/// Default game-setup id when `--game-setup` is not given. The catalogue of setups is
+/// the server's; it treats the id as opaque and validates it, so the CLI only needs a
+/// sensible placeholder here.
 const DEFAULT_GAME_SETUP: &str = "standard_2p";
 
 /// What an `--agent`-mode connection should do about a room: create one with a
@@ -214,7 +214,7 @@ impl LobbyConfig {
 
 /// Split a `--deck`/menu decklist string into card identities: comma-separated,
 /// trimmed, with empty entries dropped. Purely mechanical — the server validates the
-/// identities authoritatively (ADR 0012).
+/// identities authoritatively.
 #[must_use]
 pub(crate) fn parse_deck(raw: &str) -> Vec<String> {
     raw.split(',')

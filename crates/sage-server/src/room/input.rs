@@ -1,7 +1,7 @@
 //! Client-message routing and priority automation: applying a chosen action or
 //! rejecting it, recording stop preferences, and the settle loop that auto-passes
 //! idle priority and resolves choiceless forced declarations (issues #264 and #453,
-//! ADR 0020). These are additional `impl Room` blocks over the struct defined in the
+//! ADR 0010). These are additional `impl Room` blocks over the struct defined in the
 //! module root; the tests live in [`tests`].
 
 use sage_engine::{
@@ -90,7 +90,7 @@ impl Room {
         });
     }
 
-    /// Record a seat's priority-stop preferences (issues #264 and #455, ADR 0020) and
+    /// Record a seat's priority-stop preferences (issues #264 and #455, ADR 0010) and
     /// reflect them back. The preferences are held on the room, like the display name,
     /// so they survive reconnect; a stops change can make the current priority holder
     /// newly eligible to auto-pass (they cleared a stop), so a settle runs, and the
@@ -129,7 +129,7 @@ impl Room {
 
     /// Settle the game past every decision that isn't one: auto-pass the priority
     /// holder while it is idle, and auto-submit a forced combat declaration that has
-    /// no legal non-empty answer (issues #264 and #453, ADR 0020). Returns whether
+    /// no legal non-empty answer (issues #264 and #453, ADR 0010). Returns whether
     /// anything was applied.
     ///
     /// A no-op unless [`AutoPassPolicy::On`]. Each iteration applies an ordinary
@@ -221,7 +221,7 @@ impl Room {
     /// The own-turn half of the preference is answered against the **active player**,
     /// not the priority holder: "my main phase" means the main phase of the turn I
     /// own, which is the only reading under which the human default (#455) both fixes
-    /// the lost turn and leaves every opponent turn at ADR 0020's pacing.
+    /// the lost turn and leaves every opponent turn at ADR 0010's pacing.
     fn stops_here(&self, seat: Seat) -> bool {
         let here = phase_of(self.state.step);
         let own_turn = self.state.active_player.0 == seat;

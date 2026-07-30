@@ -55,7 +55,7 @@ pub(crate) fn pass_would_resolve_top_of_stack(state: &GameState) -> bool {
 /// stack (CR 601.2a / CR 602.2a), and a CR 903.9a commander return names the owner's
 /// command zone. Everything else — passing, conceding, the combat declarations, the
 /// pre-game decisions, and a **mana ability**, which never uses the stack (CR 605.1a)
-/// and is a one-click gesture under ADR 0025 — names none, so a client fails closed
+/// and is a one-click gesture — names none, so a client fails closed
 /// and offers no drop target rather than inventing one.
 pub(crate) fn action_destinations(
     state: &GameState,
@@ -71,7 +71,7 @@ pub(crate) fn action_destinations(
     match action {
         Action::PlayLand { .. } => vec![zone("battlefield", String::new(), "Battlefield")],
         // A mana ability produces mana without using the stack, so there is nowhere
-        // to drop it; the lighter one-click gesture (ADR 0025) is the whole input.
+        // to drop it; the lighter one-click gesture is the whole input.
         Action::ActivateAbility { .. } if mana_ability => Vec::new(),
         Action::CastSpell { .. } | Action::ActivateAbility { .. } => {
             vec![zone("stack", String::new(), "Stack")]

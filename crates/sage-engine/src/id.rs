@@ -1,6 +1,6 @@
 //! Lightweight identity newtypes.
 //!
-//! Four layers of identity, only two of them authored by a human (ADR 0018 §3):
+//! Four layers of identity, only two of them authored by a human (ADR 0008 §3):
 //!
 //! | Layer | Type | Assigned by | Stable for |
 //! |---|---|---|---|
@@ -13,13 +13,13 @@
 //! it to that build's [`CardId`], which is what every rules read then goes
 //! through. The printing identity never enters [`crate::GameState`] — reprints are
 //! rules-identical, so the engine cannot tell which one a copy was opened from
-//! (ADR 0013 §1).
+//!.
 
 use std::fmt;
 
 use serde::Deserialize;
 
-/// The authored, stable identity of one functional card definition (ADR 0018 §3).
+/// The authored, stable identity of one functional card definition (ADR 0008 §3).
 ///
 /// A lowercase `snake_case` slug (e.g. `onakke_ogre`), assigned once by
 /// whoever writes the card and never reused or renumbered. This — not the
@@ -84,7 +84,7 @@ impl std::error::Error for FunctionalIdError {}
 ///
 /// Interned by the catalog loader, never hand-written into a data file: it is a
 /// *handle to* the authored [`FunctionalId`], not the authored identity itself.
-/// It is therefore stable for the life of a build (matching ADR 0002's in-memory,
+/// It is therefore stable for the life of a build (matching ADR 0001's in-memory,
 /// never-persisted `GameState`) and nothing outside that build may assume a given
 /// card keeps the same integer.
 ///
@@ -95,7 +95,7 @@ impl std::error::Error for FunctionalIdError {}
 pub struct CardId(pub u64);
 
 /// Documentary alias for a [`CardId`] read as "the functional definition a
-/// printing resolves to" (ADR 0013 §1).
+/// printing resolves to".
 ///
 /// Printings carry no rules; each names a [`FunctionalId`] that the loader
 /// resolves to this build's interned handle, and every rules read then goes
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn an_ill_formed_slug_is_rejected() {
-        // ADR 0018 §3: lowercase snake_case, starting with a letter. Anything else
+        // ADR 0008 §3: lowercase snake_case, starting with a letter. Anything else
         // is not an identity a card file may claim.
         for slug in [
             "",

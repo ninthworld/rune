@@ -258,7 +258,7 @@ pub(crate) fn personalized_view(
     }
 }
 
-/// Project the game state onto a **spectator** view (ADR 0022, issue #351): the
+/// Project the game state onto a **spectator** view (issue #351): the
 /// public intersection only, for a non-seated observer. Unlike [`personalized_view`]
 /// there is **no viewer** — nothing indexes a seat's hand, mana pool, or actions, so
 /// the projection *cannot* reach any hidden information. Redaction is structural: the
@@ -371,7 +371,7 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
 /// - the returned [`token`](ChooseAction::token) is present but does not match the
 ///   token the server currently issues for that id — a stale/redirected id whose
 ///   action content has changed hashes to a different token, so it can never rebind
-///   to a *different* action (ADR 0009 §Protocol, content binding);
+///   to a *different* action (ADR 0004 §Protocol, content binding);
 /// - the token is absent (`""`) yet the offered action carries `requirements` and so
 ///   *requires* binding — a bound action must be answered with its token, never on
 ///   the legacy positional path;
@@ -383,7 +383,7 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
 /// multi-selects — an empty selection legally declares no attackers/blockers. An
 /// empty token is still accepted for a plain, requirement-less action (a
 /// requirement-less combat declaration included), so the token-less positional path
-/// keeps working for sequential actions (ADR 0009 §Context).
+/// keeps working for sequential actions (ADR 0004 §Context).
 pub(crate) fn resolve_action(
     state: &GameState,
     db: &CardDatabase,
@@ -698,7 +698,7 @@ mod tests {
         // A 3-seat game with cards in every hand, a battlefield permanent, and one
         // eliminated seat. The spectator projection must show every seat as public
         // counts, expose no hand contents or decision surface, and — structurally —
-        // carry no receiver fields at all (ADR 0022, issue #351).
+        // carry no receiver fields at all (issue #351).
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_multiplayer(3);
         state.step = Step::PrecombatMain;

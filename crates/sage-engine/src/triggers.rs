@@ -138,7 +138,7 @@ mod tests {
 
     /// An inline catalog with a dies-draw creature. No clean M19 card carries a bare
     /// "when this dies, draw a card", so the dies-trigger tests build their own
-    /// definition (ADR 0026).
+    /// definition (ADR 0009).
     fn lurker_db() -> CardDatabase {
         let json = r#"[{"schema_version":1,"functional_id":"test_lurker","name":"Test Lurker",
             "types":["creature"],"subtypes":["Horror"],"mana_cost":"{1}{B}","colors":["black"],

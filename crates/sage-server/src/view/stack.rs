@@ -17,7 +17,7 @@ use super::*;
 /// *draw* the object without interpreting the sentence: its [`StackItemKind`], its
 /// ordered [`StackTarget`] list, and the card face to render. `description` stays
 /// authoritative for text — the targets are additive geometry, never a substitute a
-/// client must parse prose to recover (ADR 0002).
+/// client must parse prose to recover (ADR 0001).
 pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatabase) -> StackItem {
     // The targets recorded on announcement (CR 601.2c), projected verbatim and in
     // order: the engine never rewrites the list, so an entry keeps naming a target
@@ -125,7 +125,7 @@ mod tests {
     use crate::view::test_support::put_permanent;
     use sage_engine::Effect;
 
-    /// A two-target damage spell, which no bundled M19 card provides (ADR 0026:
+    /// A two-target damage spell, which no bundled M19 card provides (ADR 0009:
     /// exercise an unrepresented shape from an inline catalog rather than bending a
     /// real card). Its two `deal_damage` effects consume two targets in order.
     fn twin_bolt_db() -> CardDatabase {
@@ -251,7 +251,7 @@ mod tests {
         let json = serde_json::to_value(ability_view).unwrap();
         assert!(json.get("targets").is_none());
 
-        // The spectator sees exactly the same public stack (ADR 0022): an object on
+        // The spectator sees exactly the same public stack: an object on
         // the stack is public, so nothing is redacted and nothing extra is added.
         let spectated = spectator_view(&state, &db);
         assert_eq!(spectated.stack, view.stack);
@@ -476,7 +476,7 @@ mod tests {
             "the prose is identical — the kind is the only channel that separates them",
         );
 
-        // The stack is public (ADR 0022), so the opponent's and a spectator's copies
+        // The stack is public, so the opponent's and a spectator's copies
         // are the same entries, finer kind included. Nothing here is personalized.
         let theirs = personalized_view(&state, &db, PlayerId(1));
         assert_eq!(theirs.stack, mine.stack);

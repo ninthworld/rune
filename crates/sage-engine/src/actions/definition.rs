@@ -26,7 +26,7 @@ pub enum Action {
         /// ability's effects declare (see [`crate::Effect::target_spec`]), in that
         /// order. Empty for an ability that targets nothing.
         ///
-        /// This is the **parameterized targeted representation** (ADR 0009
+        /// This is the **parameterized targeted representation** (ADR 0004
         /// §Enumeration): a single [`Action`] value *carries* the player's target
         /// selection, rather than the generator pre-expanding one variant per
         /// legal target combination. [`crate::valid_actions`] advertises the action once
@@ -254,7 +254,7 @@ impl Action {
 /// the slot together with the *set* of [`Target`]s currently legal for it.
 ///
 /// This is the unit [`crate::target_requirements`] advertises per slot — the "target
-/// requirement plus the set of legal targets" of ADR 0009 §Enumeration. The
+/// requirement plus the set of legal targets" of ADR 0004 §Enumeration. The
 /// candidate set is O(N) in that slot's candidate count; see the combinatorial
 /// guard on [`crate::target_requirements`].
 #[derive(Clone, Debug, PartialEq, Eq)]

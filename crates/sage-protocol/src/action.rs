@@ -1,5 +1,5 @@
 //! The interactivity contract: the [`ValidAction`]s the server offers and the
-//! target/choice [`Prompt`]s they pose (docs/decisions/0009-targeting-model.md).
+//! target/choice [`Prompt`]s they pose (docs/decisions/0004-targeting-model.md).
 
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,7 @@ use crate::{ActionDestination, EntityId, PlayerId};
 /// walks as a prompt queue, and/or a [`prompts`](ValidAction::prompts) list of the
 /// non-target choice shapes ([`Prompt`]), plus a content-binding
 /// [`token`](ValidAction::token) the client echoes verbatim in [`ChooseAction`].
-/// Both are decided in docs/decisions/0009-targeting-model.md (§Protocol).
+/// Both are decided in docs/decisions/0004-targeting-model.md (§Protocol).
 ///
 /// `Default` yields an empty, unbound action (no subject, no requirements, empty
 /// token); it exists so callers that build an action field-by-field need not
@@ -38,7 +38,7 @@ pub struct ValidAction {
     /// nothing, does not use the stack, and only produces mana. Server-computed
     /// so a client may offer a lighter gesture — one-click tap-for-mana — for
     /// exactly these actions without ever classifying abilities itself
-    /// (ADR 0025). Omitted from the wire when `false`.
+    ///. Omitted from the wire when `false`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mana_ability: bool,
     /// Ordered choice steps this action requires before it can be taken — one per
@@ -58,7 +58,7 @@ pub struct ValidAction {
     /// multi-message handshake. A slot's answer is one [`TargetChoice`] whose
     /// `chosen` carries the picked ids (an option id, the selected zone ids, or the
     /// full ordering). Both `requirements` and `prompts` are bound by the same
-    /// content-binding [`token`](ValidAction::token) (reject-stale, ADR 0009).
+    /// content-binding [`token`](ValidAction::token) (reject-stale, ADR 0004).
     /// Omitted from the wire when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prompts: Vec<Prompt>,
@@ -90,7 +90,7 @@ pub struct ValidAction {
 /// One choice step of a multi-step [`ValidAction`]: a single target slot the
 /// player must fill, listing exactly the legal candidates the server computed.
 /// The client renders the prompt, highlights the candidates, and computes no
-/// legality of its own (docs/decisions/0009-targeting-model.md §Client).
+/// legality of its own (docs/decisions/0004-targeting-model.md §Client).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetRequirement {
     /// Stable slot id the client echoes back as [`TargetChoice::slot`] to key its
@@ -100,7 +100,7 @@ pub struct TargetRequirement {
     pub prompt: String,
     /// The legal candidate entity ids for this slot — the **only** choices the
     /// client may offer. Enumerated O(N) per slot, never the cartesian product of
-    /// combinations across slots (docs/decisions/0009-targeting-model.md
+    /// combinations across slots (docs/decisions/0004-targeting-model.md
     /// §Enumeration).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<EntityId>,
@@ -130,7 +130,7 @@ pub struct PromptOption {
 
 /// A non-target choice slot a [`ValidAction`] may pose, a **generalization of the
 /// [`TargetRequirement`] slot pattern** (slot + prompt + candidates, bound by the
-/// action's content [`token`](ValidAction::token), ADR 0009) to three further
+/// action's content [`token`](ValidAction::token), ADR 0004) to three further
 /// shapes the engine already needs to pose:
 ///
 /// - [`Prompt::Option`] — pick exactly one of N named choices (also the clean
@@ -147,7 +147,7 @@ pub struct PromptOption {
 /// and the answer is one [`TargetChoice`] keyed by `slot` and submitted
 /// **atomically** in a single [`ChooseAction`]. The action's content-binding
 /// `token` folds in every prompt, so a stale/redirected answer whose prompt content
-/// has changed is rejected (ADR 0009 stale-view protection). The `kind` tag
+/// has changed is rejected (ADR 0004 stale-view protection). The `kind` tag
 /// discriminates the shape on the wire (`{"kind":"option", ...}`); clients tolerate
 /// an unknown future `kind`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn cr_605_mana_ability_flag_round_trips_and_defaults_off() {
-        // ADR 0025: `mana_ability` rides the wire only when true; a legacy
+        // `mana_ability` rides the wire only when true; a legacy
         // payload without the key deserializes to `false`.
         let tap = ValidAction {
             mana_ability: true,

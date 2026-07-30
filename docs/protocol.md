@@ -4,10 +4,9 @@ SAGE uses JSON over one WebSocket connection. Before a game starts, the connecti
 exchanges complete lobby views and lobby commands. Once the room constructs a game, the
 same connection exchanges personalized game views and chosen actions.
 
-The Rust types in `crates/sage-protocol/src/lib.rs` are the wire authority. The TypeScript
-mirror in `clients/web/src/protocol.ts` and this document must change with them. (The mirror
-is absent until Stage 3 of the SAGE restart rebuilds the web client; the Rust authority and
-this document remain in force.)
+The Rust types in `crates/sage-protocol/src/lib.rs` are the wire authority; this document and
+the TypeScript mirror must change with them in the same PR. The mirror does not exist yet — it
+arrives with the web client — so today the contract is the Rust types plus this document.
 
 ## Message lifecycle
 
@@ -193,7 +192,7 @@ server may pass priority or submit an empty combat declaration; it does not conc
 player.
 
 `stops`, `own_turn_stops`, `auto_passed`, and `auto_passed_steps` carry basic priority
-automation and its pacing contract (issues #264 and #455, ADR 0020). `stops` is the
+automation and its pacing contract (issues #264 and #455, ADR 0010). `stops` is the
 receiver’s own set of steps at which they want to receive priority even when the engine
 reports they have no meaningful action — the per-phase opt-in that keeps automation from
 skipping past a step they care about. It is set with the `set_stops` message (below),
@@ -256,7 +255,7 @@ The list names only positions where *this receiver* was acted for; a step where 
 seat was passed is that seat's entry. `auto_passed` is exactly `auto_passed_steps` being
 non-empty. Both are advisory, transient, and display-only, and both are omitted at their
 empty defaults — the authoritative record of what happened during a settle remains `log`
-(ADR 0021), which carries the events themselves so a resolved spell, a death, or a turn
+(ADR 0007), which carries the events themselves so a resolved spell, a death, or a turn
 change is recoverable even when the receiver never held priority over it.
 
 A settle also resolves a forced combat declaration that has **no legal non-empty answer**
@@ -297,7 +296,7 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
 the underlying card definition and is not a legal-action handle. Clients treat both as
 opaque strings. The web client uses `functional_id` as the key of its client-local card-art
-cache (ADR 0024) — a pure presentation enrichment; the wire contract is unchanged and a
+cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
 
 `OpponentView` contains `player_id`, `hand_size`, `life`, `library_size`,
@@ -342,7 +341,7 @@ A `StackItem` describes one object on the stack:
 
 A `StackTarget` is an internally tagged object — the target’s kind is **stated by the
 server**, so a client never classifies a target by testing which collection its id appears
-in (that classification is rules interpretation, ADR 0002):
+in (that classification is rules interpretation, ADR 0001):
 
 | `kind` | Payload | Names |
 | --- | --- | --- |
@@ -380,7 +379,7 @@ Three rules govern these fields:
     rules interpretation the field exists to prevent.
 
   A client must never reconstruct activated-vs-triggered from `description` prose or from
-  when the entry appeared: that is rules interpretation, which ADR 0002 puts on the
+  when the entry appeared: that is rules interpretation, which ADR 0001 puts on the
   server. There is deliberately **no** mode/X/additional-cost summary and **no zone
   target kind**: the engine has no modal spells, no `X` costs, and no zone targets, so
   carrying either would be a field no projection could ever fill.
@@ -405,8 +404,8 @@ Three rules govern these fields:
   action such as passing priority.
 - `mana_ability` (optional, default `false`) marks the activation of a mana ability
   (CR 605): no targets, no stack, only mana production. Server-computed so a client may
-  offer a lighter gesture — one-click tap-for-mana (ADR 0025) — for exactly these actions
-  without ever classifying abilities itself. Omitted when `false`.
+  offer a lighter gesture — one-click tap-for-mana — for exactly these actions without ever
+  classifying abilities itself. Omitted when `false`.
 - `destinations` (optional, issue #554) lists the server-authoritative surfaces this
   action may be taken *to*, each `{ type, id, owner?, label? }` where `type` is
   `"zone"`, `"entity"`, or `"player"` (free form — clients ignore kinds they do not
@@ -585,7 +584,7 @@ an ack an older server will never send.
 ### `SetStops`
 
 The second in-game client message sets the receiver’s priority-stop preferences (issue #264,
-ADR 0020): the steps at which they want priority even when they have no meaningful action, so
+ADR 0010): the steps at which they want priority even when they have no meaningful action, so
 basic auto-pass does not skip them there.
 
 ```json
@@ -629,7 +628,7 @@ Further submitted actions are rejected and the final view is re-sent.
 
 ### `SpectatorView`
 
-A connection that joined with `spectate_room` (ADR 0022, issue #351) receives a
+A connection that joined with `spectate_room` (issue #351) receives a
 `SpectatorView` instead of a `GameView` on every change — a **non-seated observer** watching
 the game live with all hidden information redacted. Redaction is **structural**: the type
 simply has no receiver or decision fields, so a projection cannot leak a hand, a library’s
@@ -752,7 +751,7 @@ browser through the field it already had rather than through a second, divergent
 listed room is public by definition, so its `visibility` is always the elided default.
 The directory never exposes rosters, deck lists, or game state. A `gathering` room is joinable
 while it has an open seat. An `in_progress` room is not seat-joinable, but it **can be
-spectated** (`spectate_room`, ADR 0022 / issue #351): observers do not consume seats, so
+spectated** (`spectate_room`, issue #351): observers do not consume seats, so
 `spectators` is independent of `filled`, and only a count is advertised — never a spectator’s
 identity. Empty and finished rooms leave the directory. The server re-sends affected lobby
 views whenever the directory changes (including a spectator count change). A missing
@@ -839,7 +838,7 @@ the ready gate; the AI plays its own seat once the game starts. `remove_ai` empt
 Both are pre-game only and rejected once the game has started. This works for any seat count — a room
 may mix human and AI seats, e.g. one human against three AI in a free-for-all.
 
-`spectate_room` joins a room as a **spectator** (ADR 0022, issue #351): a non-seated observer
+`spectate_room` joins a room as a **spectator** (issue #351): a non-seated observer
 that watches the game live with all hidden information redacted. Unlike `join_room` it does not
 consume a seat, so it succeeds on a room whose seats are full — but the room’s game must already
 be running (spectating a `gathering` room is rejected with the lobby’s non-fatal error, since

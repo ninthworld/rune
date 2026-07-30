@@ -21,7 +21,7 @@ use super::utilities::{all_unique, tap_cost_is_summoning_sick};
 /// current `state`. This is the gate [`crate::apply_action`] runs before it
 /// applies anything.
 ///
-/// Two independent checks, mirroring ADR 0009 §Enumeration:
+/// Two independent checks, mirroring ADR 0004 §Enumeration:
 /// 1. **Base legality.** The action, with its targets cleared to the requirement
 ///    form, must be one [`valid_actions`] currently offers.
 /// 2. **Target legality.** The carried targets must exactly fill the action's

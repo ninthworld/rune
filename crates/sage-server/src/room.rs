@@ -122,14 +122,14 @@ pub struct Room {
     /// The **format** this room's game is played under (issue #553), or `None` when
     /// the room was constructed without one (unit tests, and any older path). Room
     /// state by definition: the format registry lives in the server, the engine holds
-    /// no format policy at all (ADR 0013 §4). Projected into every seat's
+    /// no format policy at all. Projected into every seat's
     /// [`GameView::format`] and every spectator's, so a client can render
     /// Commander-specific presentation without inferring it from zone contents.
     format: Option<MatchFormat>,
     /// The basic priority-automation policy (issue #264). [`AutoPassPolicy::Off`] by
     /// default, so automation is opt-in and existing behavior is unchanged.
     auto_pass: AutoPassPolicy,
-    /// Each seat's priority-stop preferences in seat order (issue #264, ADR 0020):
+    /// Each seat's priority-stop preferences in seat order (issue #264, ADR 0010):
     /// the steps at which that seat wants priority even when the engine reports no
     /// meaningful action — or no *choice* in a declaration it owes (issue #453) — so
     /// automation does not settle past it there. Set over the protocol
@@ -146,7 +146,7 @@ pub struct Room {
     stops: Vec<Option<SeatStops>>,
     /// The **default-stop** policy (issue #455) that seeds a seat which has never
     /// sent `set_stops`. [`StopPolicy::None`] by default, so every existing room —
-    /// and every headless or AI-only game — starts exactly where ADR 0020 left it.
+    /// and every headless or AI-only game — starts exactly where ADR 0010 left it.
     stop_policy: StopPolicy,
     /// The turn-and-step positions the room acted at on each seat's behalf during the
     /// most recent settle (issues #264 and #455), in the order it acted: a transient,
@@ -163,7 +163,7 @@ pub struct Room {
     /// it is delivered exactly once and a later resync never re-fires it. Transient
     /// and display-only, like [`Self::auto_passed_seats`]; the game never reads it.
     pending_acks: Vec<Option<ActionAck>>,
-    /// The connected **spectators** (ADR 0022, issue #351): each a latest-value sender
+    /// The connected **spectators** (issue #351): each a latest-value sender
     /// the room pushes a redacted [`SpectatorView`] to on every broadcast. Spectators
     /// own no seat and are not held open across disconnects — a sender whose receiver
     /// has been dropped is pruned on the next broadcast. Empty by default, so a room
@@ -215,7 +215,7 @@ impl Room {
 
     /// Set this room's **default-stop** policy (issue #455). Chainable on
     /// [`Room::new`]; the default is [`StopPolicy::None`], which reproduces exactly
-    /// ADR 0020's "stop nowhere" starting preference. The policy only seeds a seat
+    /// ADR 0010's "stop nowhere" starting preference. The policy only seeds a seat
     /// that has never sent `set_stops`; the first one it sends replaces the seed.
     #[must_use]
     pub fn with_stop_policy(mut self, policy: StopPolicy) -> Self {

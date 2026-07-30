@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-/// A card's rarity in a given printing (ADR 0013 §1).
+/// A card's rarity in a given printing.
 ///
 /// A purely bibliographic property of the printing, not a rule the engine reasons
 /// about. Serialized lowercase to mirror Scryfall's data shape.

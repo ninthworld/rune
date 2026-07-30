@@ -267,7 +267,7 @@ pub(crate) mod tests {
 
     /// A first-strike attacker and a plain blocker/attacker, as an inline catalog —
     /// first strike and deathtouch have no clean M19 representative, so the combat
-    /// tests that need those keywords build their own definitions (ADR 0026).
+    /// tests that need those keywords build their own definitions (ADR 0009).
     pub(crate) fn keyword_db() -> CardDatabase {
         let json = r#"[
             {"schema_version":1,"functional_id":"test_duelist","name":"Test Duelist",

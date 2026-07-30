@@ -12,7 +12,7 @@
 //! [`crate::rng`].
 //!
 //! Out of scope here: deck-legality checks (deck size, singleton/limit rules) and
-//! the set/printing model (ADR 0013). Unknown card ids are the one input error
+//! the set/printing model. Unknown card ids are the one input error
 //! this constructor rejects.
 
 use std::fmt;
@@ -47,7 +47,7 @@ pub struct PlayerSetup {
     /// 903.6) and the *rest* of the deck is shuffled into the library. Which
     /// physical instance becomes the commander is chosen here by setup — the first
     /// decklist entry matching this card. Deck legality (singleton, color
-    /// identity) is not checked; that stays server-side (ADR 0013 §4).
+    /// identity) is not checked; that stays server-side.
     pub commander: Option<CardId>,
 }
 
@@ -315,7 +315,7 @@ mod tests {
     /// A 40-card decklist cycling through six bundled cards.
     ///
     /// Named by authored identity, not by handle: a `CardId` is interned from the
-    /// catalog's sort order (ADR 0018 §3), so `CardId(1)` means a different card the
+    /// catalog's sort order (ADR 0008 §3), so `CardId(1)` means a different card the
     /// moment one is authored ahead of it.
     fn sample_decklist() -> Vec<CardId> {
         const CARDS: [&str; 6] = [

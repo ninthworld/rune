@@ -598,7 +598,7 @@ mod tests {
     // ----- Auras: enchant, attachment, and fizzle (issue #152) -----
     //
     // P/T Auras have no clean M19 representative, so these tests build an inline
-    // catalog (ADR 0026): `test_aegis` ({1}{G} Aura, "+2/+2, enchant creature") and a
+    // catalog (ADR 0009): `test_aegis` ({1}{G} Aura, "+2/+2, enchant creature") and a
     // 1/1 `test_scout` host, named by authored identity rather than interned handle.
     fn aura_db() -> CardDatabase {
         let json = r#"[
@@ -724,7 +724,7 @@ mod tests {
         // counters as part of *entering* — so it is a 2/2 by the time the SBA loop
         // runs and is never put into the graveyard for 0 toughness. No clean M19 card
         // enters with a fixed number of counters, so `test_hatchling` (an inline 0/0
-        // that enters with two +1/+1 counters, {1}{G}) exercises it (ADR 0026).
+        // that enters with two +1/+1 counters, {1}{G}) exercises it (ADR 0009).
         use crate::characteristics::characteristics;
         use crate::state::CounterKind;
         let json = r#"[{"schema_version":1,"functional_id":"test_hatchling","name":"Test Hatchling",

@@ -42,7 +42,7 @@ mod test_support;
 pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> GameState {
     // 1. Validate against the actions actually on offer, including — for a
     //    targeted action — its chosen targets against freshly computed legal sets
-    //    (ADR 0009 §Enumeration). An illegal action is a no-op: the input is
+    //    (ADR 0004 §Enumeration). An illegal action is a no-op: the input is
     //    returned unchanged rather than erroring.
     if !action_is_legal(state, action, db) {
         return state.clone();

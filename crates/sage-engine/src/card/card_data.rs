@@ -10,7 +10,7 @@ use crate::id::FunctionalId;
 use crate::mana::Color;
 
 /// One functional definition: the static, printing-independent rules object for a
-/// card (ADR 0018 §2).
+/// card (ADR 0008 §2).
 ///
 /// This is the immutable data the engine reasons about. It holds no zone, no
 /// battlefield identity, and no per-game state — those live on
@@ -20,7 +20,7 @@ use crate::mana::Color;
 /// `deny_unknown_fields` is what keeps the schema *functional*: an upstream
 /// presentation asset — `flavor_text`, `image_uris`, `artist`, a frame or watermark
 /// — is a parse error rather than a silently ignored field, so no such data can
-/// enter the catalog by accident (ADR 0018 §2, `docs/brief.md` Legal
+/// enter the catalog by accident (ADR 0008 §2, `docs/brief.md` Legal
 /// Considerations). It is also why this type, not a wrapper, is the direct
 /// deserialization target: serde does not enforce `deny_unknown_fields` through a
 /// `flatten`ed field.
@@ -28,9 +28,9 @@ use crate::mana::Color;
 #[serde(deny_unknown_fields)]
 pub struct CardData {
     /// The schema version this definition is authored against; must be
-    /// [`SCHEMA_VERSION`](super::super::SCHEMA_VERSION) (ADR 0018 §2).
+    /// [`SCHEMA_VERSION`](super::super::SCHEMA_VERSION) (ADR 0008 §2).
     pub schema_version: u32,
-    /// This definition's authored, stable identity (ADR 0018 §3) — what printings
+    /// This definition's authored, stable identity (ADR 0008 §3) — what printings
     /// and decklists reference, and what survives a rebuild, unlike the [`CardId`](crate::id::CardId)
     /// it is interned to.
     pub functional_id: FunctionalId,
@@ -53,7 +53,7 @@ pub struct CardData {
     /// The card's colors (CR 105.2); empty for a colorless card.
     ///
     /// Authored explicitly rather than re-derived by parsing [`Self::mana_cost`]'s
-    /// pips (ADR 0018 §2) — the same "structured, never parsed back" discipline
+    /// pips (ADR 0008 §2) — the same "structured, never parsed back" discipline
     /// [`CardData::type_line`] uses. A colorless-cost-but-colored card is therefore
     /// representable without the cost string having to imply it.
     #[serde(default)]
@@ -93,7 +93,7 @@ pub struct CardData {
     #[serde(default)]
     pub keywords: Vec<Keyword>,
     /// Whether this card's behavior is (also) defined in code rather than data
-    /// (ADR 0018 §2; the escape hatch of ADR 0007).
+    /// (ADR 0008 §2; the escape hatch of ADR 0003).
     ///
     /// `true` means [`crate::scripted`] carries an arm for this definition's
     /// interned [`CardId`](crate::id::CardId). Authored explicitly so the two tiers are declared, not
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn colors_are_authored_not_derived_from_the_cost() {
-        // ADR 0018 §2: colors are an explicit field. For the current fixtures they
+        // ADR 0008 §2: colors are an explicit field. For the current fixtures they
         // agree with the pips of their cost (this test is that authoring check), but
         // nothing derives them at runtime — so a card whose colors do not follow from
         // its cost is representable.

@@ -5,7 +5,7 @@ use std::fmt;
 use crate::catalog::Violation;
 use crate::id::FunctionalId;
 
-/// Everything that can go wrong loading the catalog or a set (ADR 0018 §2, §5).
+/// Everything that can go wrong loading the catalog or a set (ADR 0008 §2, §5).
 ///
 /// Every variant is a *load-time* failure: a malformed or inconsistent catalog
 /// never half-loads into a database the engine would then query and find `None` in
@@ -19,11 +19,11 @@ pub enum CatalogError {
     /// unrepresentable rather than merely invalid.
     Json(serde_json::Error),
     /// A definition breaks one of the authored-schema rules in [`crate::Violation`] —
-    /// the same checks `build.rs` runs over `data/` at compile time (ADR 0018 §5), run
+    /// the same checks `build.rs` runs over `data/` at compile time (ADR 0008 §5), run
     /// here over whatever snapshot was handed to the loader.
     Schema(Violation),
     /// Two definitions claim the same [`FunctionalId`]; an authored identity is
-    /// never reused (ADR 0018 §3).
+    /// never reused (ADR 0008 §3).
     DuplicateFunctionalId {
         /// The identity claimed twice.
         functional_id: FunctionalId,
@@ -35,14 +35,14 @@ pub enum CatalogError {
     },
     /// A definition declares `scripted: true` but [`crate::scripted`] holds no arm for
     /// it — so its behavior would be missing and no rules text could be generated for
-    /// it (ADR 0018 §5, §7).
+    /// it (ADR 0008 §5, §7).
     ScriptedWithoutCode {
         /// The definition that declared the escape hatch.
         functional_id: FunctionalId,
     },
     /// [`crate::scripted`] holds an arm for a card whose definition does not declare
     /// `scripted: true` — the other direction of the same rule: the data tier and the
-    /// code tier may not disagree about which cards are scripted (ADR 0018 §5).
+    /// code tier may not disagree about which cards are scripted (ADR 0008 §5).
     UndeclaredScriptedCard {
         /// The definition with a code arm it does not admit to.
         functional_id: FunctionalId,
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn no_definition_carries_a_hand_written_handle() {
-        // ADR 0018 §3: `CardId`s are interned, never authored. The `id` field the old
+        // ADR 0008 §3: `CardId`s are interned, never authored. The `id` field the old
         // monolithic `oracle.json` carried is now an unknown field, so a definition that
         // tries to pin its own handle fails to parse rather than being quietly honored.
         let json = r#"[{"schema_version":1,"id":7,"functional_id":"test_boar","name":"Test Boar",
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn definition_rejects_presentation_assets() {
-        // ADR 0018 §2: the functional schema is closed. Upstream presentation data
+        // ADR 0008 §2: the functional schema is closed. Upstream presentation data
         // is structurally rejected, so it cannot enter the catalog by accident.
         for field in [
             r#""flavor_text":"A boar with a bad temper.""#,
@@ -177,9 +177,9 @@ mod tests {
 
     #[test]
     fn unrecognized_schema_version_fails_loudly() {
-        // ADR 0018 §2: an unknown version is a hard error naming the offender, not a
+        // ADR 0008 §2: an unknown version is a hard error naming the offender, not a
         // silent skip that would leave the card missing from a running game. The check
-        // is the same code `build.rs` runs over `data/` (ADR 0018 §5).
+        // is the same code `build.rs` runs over `data/` (ADR 0008 §5).
         let json = r#"[{"schema_version":99,"functional_id":"test_boar","name":"Test Boar",
                         "types":["creature"],"mana_cost":"{G}","colors":["green"],
                         "power":1,"toughness":1}]"#;
