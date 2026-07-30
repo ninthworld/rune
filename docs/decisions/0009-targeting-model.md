@@ -69,7 +69,7 @@ as data and never computes legality.
 
 ### Engine
 
-- **A `Target` vocabulary lives in the effect IR** (`crates/rune-engine/src/ability.rs`),
+- **A `Target` vocabulary lives in the effect IR** (`crates/sage-engine/src/ability.rs`),
   in two parts, both plain `Clone`/`Eq`/`Deserialize` data (no closures — ADR 0007):
   - A **target spec** declaring what an effect *may* target: a small closed enum of
     predicates (e.g. any creature, any permanent, any player, an instance in a
@@ -130,7 +130,7 @@ as data and never computes legality.
   positional-`a{index}` rebinding hole (`view.rs:178-184`, `view.rs:321-334`) before
   the first non-sequential decision can exploit it.
 - Protocol edits are a contract change (`AGENTS.md`): the concrete field shapes land
-  with `rune-protocol` and `docs/protocol.md` together, in the protocol follow-up
+  with `sage-protocol` and `docs/protocol.md` together, in the protocol follow-up
   issue. This ADR fixes the model; it ships **no protocol type or wire change
   itself**, and deliberately leaves `docs/protocol.md` unmodified beyond its
   existing `requirements` note so nothing here can read as an implemented contract.
@@ -195,7 +195,7 @@ Each is one-PR sized and cites this ADR:
 - **#71 — engine:** enumerate legal targets in `valid_actions` via a parameterized
   action, without combinatorial blowup.
 - **#72 — protocol:** multi-step targeted-action shape (`requirements`) + content-
-  binding token; `rune-protocol` + `docs/protocol.md`.
+  binding token; `sage-protocol` + `docs/protocol.md`.
 - **#73 — server:** emit target requirements + token in the view (`view.rs`) and
   resolve the returned choice; depends on #51.
 - **#74 — client:** targeting-mode UX driven entirely by `GameView`/prompt data.

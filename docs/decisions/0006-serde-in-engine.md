@@ -5,7 +5,7 @@
 - Issue: #25
 
 ## Context
-`rune-engine` has shipped with an empty `[dependencies]` table on purpose: the
+`sage-engine` has shipped with an empty `[dependencies]` table on purpose: the
 crate must stay free of I/O and runtime dependencies (crate `AGENTS.md`), and
 adding any dependency requires an ADR. The card database (issue #25) needs to
 resolve a `CardId` to immutable card characteristics (name, type line, mana
@@ -16,7 +16,7 @@ it into typed Rust:
 
 1. **serde + serde_json.** Derive `Deserialize` on the card type; parse a
    compile-time-embedded (`include_str!`) JSON string. serde/serde_json are
-   already in the workspace lockfile (`rune-protocol` depends on serde) and are
+   already in the workspace lockfile (`sage-protocol` depends on serde) and are
    MIT/Apache-2.0, so they add no new license surface (`deny.toml`, ADR-0005).
 2. **A hand-rolled parser.** Keeps `[dependencies]` empty, but is more code to
    own and brittle to JSON edge cases — a poor trade for a format that will only

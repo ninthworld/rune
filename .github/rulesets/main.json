@@ -44,9 +44,6 @@
             "context": "Engine"
           },
           {
-            "context": "Client"
-          },
-          {
             "context": "cargo-deny"
           }
         ]

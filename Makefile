@@ -1,12 +1,16 @@
-.PHONY: verify check engine-test engine-lint engine-fmt compat client-check client-lint client-install client-audit deny setup
+.PHONY: verify check engine-test engine-lint engine-fmt compat deny setup
 
 # The complete local pre-merge gate: everything required before a PR merges into
-# `main`. Composes the existing targets 1:1 with the required GitHub checks —
-# `check` (Engine + Client) and `deny` (cargo-deny) — so there is a single command whose
-# coverage matches CI. `make check` remains the fast inner loop.
-verify: check deny ## Full pre-merge verification: Engine + Client + cargo-deny (mirrors every required GitHub check)
+# `main`. Composes the existing targets 1:1 with the required GitHub checks, so
+# there is a single command whose coverage matches CI. `make check` remains the
+# fast inner loop.
+#
+# Client and e2e targets are absent while the web client is being rebuilt
+# (SAGE restart, Stage 3). They return with the new client — including the
+# browser e2e suite, which is now a required gate rather than an excluded one.
+verify: check deny ## Full pre-merge verification: Engine + cargo-deny (mirrors every required GitHub check)
 
-check: engine-lint engine-test client-check client-audit ## Fast inner-loop gate: everything the Engine + Client CI jobs run (cargo-deny is separate — see `verify`)
+check: engine-lint engine-test ## Fast inner-loop gate: everything the Engine CI job runs (cargo-deny is separate — see `verify`)
 
 engine-lint:
 	cargo fmt --all -- --check
@@ -18,27 +22,10 @@ engine-fmt:
 # Regenerate the deterministic card-compatibility report (issue #258) from the
 # catalog + data/exclusions.json. Commit the result; `make check` fails if it drifts.
 compat:
-	cargo run -q -p rune-engine --bin gen-compat
+	cargo run -q -p sage-engine --bin gen-compat
 
 engine-test:
 	cargo test --workspace
-
-client-install:
-	cd clients/web && npm ci
-
-client-lint: client-install
-	cd clients/web && npm run lint
-
-# `npm run budget` measures the production `dist/` the preceding `npm run build`
-# just produced — never dev-server output — against the load ceilings in
-# docs/design/presentation-budgets.md, and fails the gate on a regression (#510).
-client-check: client-install
-	cd clients/web && npm run lint && npm run typecheck && npm run test && npm run assets && npm run build && npm run budget
-
-# Fail the build on new high+ (high/critical) npm advisories in the client tree.
-# Threshold and escape hatch (package.json "overrides") documented in clients/web/AGENTS.md.
-client-audit: client-install
-	cd clients/web && npm audit --audit-level=high
 
 # Supply-chain gate (the `cargo-deny` CI job). Same subcommand + checks the
 # deny.yml workflow runs, kept here so the command lives in exactly one place.

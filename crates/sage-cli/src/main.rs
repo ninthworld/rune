@@ -1,0 +1,106 @@
+//! SAGE CLI client (dev sequence steps 3–4, `docs/brief.md`).
+//!
+//! Connects to a running `sage-server` over WebSocket and drives one of two
+//! session loops over the same two-message protocol:
+//!
+//! - **Interactive** (default): renders each personalized
+//!   [`GameView`](sage_protocol::GameView) as a numbered list of `valid_actions`,
+//!   reads a choice from stdin, and sends the matching `ChooseAction`.
+//! - **Agent** (`--agent`): hands the view to an [`Agent`](sage_cli::Agent) and
+//!   sends the id it picks, with a deadline and a safe fallback (pass priority) so
+//!   a slow or broken model never stalls the game — proving AI opponents work.
+//!
+//! All the logic lives in the [`sage_cli`] library so it can be unit-tested and
+//! driven over any transport; this binary only wires it to real stdin/stdout,
+//! stderr, and the network.
+//!
+//! ## Usage
+//! ```text
+//! sage-cli [--addr <host:port | ws://…>] [--agent] [--agent-timeout <seconds>]
+//! ```
+//! The server address is taken from `--addr`/`-a`, else `SAGE_SERVER_ADDR`, else
+//! the default `127.0.0.1:9000`. In agent mode the decision deadline comes from
+//! `--agent-timeout`, else `SAGE_AGENT_TIMEOUT` (seconds), else 5s. The built-in
+//! agent is deterministic and needs no network or secrets; see the crate docs for
+//! wiring a real model provider.
+
+use std::process::ExitCode;
+
+use sage_cli::{
+    connect, run_agent_lobby_session, run_lobby_session, AgentConfig, CliConfig, LobbyConfig,
+    RuleBasedAgent, SessionError,
+};
+use tokio::io::BufReader;
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let config = match CliConfig::from_env_and_args() {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("sage-cli: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let agent = match AgentConfig::from_env_and_args() {
+        Ok(agent) => agent,
+        Err(error) => {
+            eprintln!("sage-cli: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let lobby = match LobbyConfig::from_args() {
+        Ok(lobby) => lobby,
+        Err(error) => {
+            eprintln!("sage-cli: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let result = if agent.enabled {
+        run_agent(&config, &agent, &lobby).await
+    } else {
+        run_interactive(&config).await
+    };
+
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("sage-cli: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Connect and drive the interactive flow — the lobby menus (create/join a room,
+/// submit a deck, ready) then the game loop — over real stdin/stdout, until the
+/// server closes or stdin reaches EOF.
+async fn run_interactive(config: &CliConfig) -> Result<(), SessionError> {
+    eprintln!("sage-cli: connecting to {} ...", config.ws_url());
+    let ws = connect(config).await?;
+    eprintln!("sage-cli: connected. Entering the lobby.");
+    let input = BufReader::new(tokio::io::stdin());
+    let output = tokio::io::stdout();
+    run_lobby_session(ws, input, output).await
+}
+
+/// Connect and drive the non-interactive agent flow: the lobby is driven from the
+/// `--agent`-mode flags (`--create`/`--room`, `--deck`, auto-ready) and the game is
+/// played by the built-in pass agent. Each decision is logged to stderr, until the
+/// server closes the connection.
+async fn run_agent(
+    config: &CliConfig,
+    agent: &AgentConfig,
+    lobby: &LobbyConfig,
+) -> Result<(), SessionError> {
+    eprintln!(
+        "sage-cli: connecting to {} (agent mode) ...",
+        config.ws_url()
+    );
+    let ws = connect(config).await?;
+    eprintln!(
+        "sage-cli: connected. Driving the lobby, then playing with the built-in rule-based agent (deadline {:?}).",
+        agent.deadline
+    );
+    let log = tokio::io::stderr();
+    run_agent_lobby_session(ws, &RuleBasedAgent, agent.deadline, log, lobby).await
+}

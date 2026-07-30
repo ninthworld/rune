@@ -1,18 +1,18 @@
 # Card schema
 
-RUNE cards are versioned functional definitions: structured, printing-independent data the
+SAGE cards are versioned functional definitions: structured, printing-independent data the
 engine executes. The model is defined by [ADR 0018](decisions/0018-scalable-functional-card-definitions.md),
 with the card/printing split retained from
 [ADR 0013](decisions/0013-card-identity-and-set-model.md).
 
 The Rust authorities are `CardData` and `Printing` in
-`crates/rune-engine/src/card.rs`; validators live in `src/catalog.rs`.
+`crates/sage-engine/src/card.rs`; validators live in `src/catalog.rs`.
 
 ## File layout
 
-- `crates/rune-engine/data/catalog/<functional_id>.json` contains one functional
+- `crates/sage-engine/data/catalog/<functional_id>.json` contains one functional
   definition. The file stem must equal its `functional_id`.
-- `crates/rune-engine/data/sets/<SET>.json` contains that set’s printing records. A
+- `crates/sage-engine/data/sets/<SET>.json` contains that set’s printing records. A
   printing refers to a functional definition and carries no rules.
 
 `build.rs` discovers, validates, sorts, and embeds both directories at compile time. The
@@ -50,7 +50,7 @@ no Oracle text, flavor, art, or branding.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `schema_version` | yes | Must equal `rune_engine::SCHEMA_VERSION`, currently `1` |
+| `schema_version` | yes | Must equal `sage_engine::SCHEMA_VERSION`, currently `1` |
 | `functional_id` | yes | Stable lowercase `snake_case` identity; must match the file name |
 | `name` | yes | Display name |
 | `types` | yes | One or more card types such as `creature`, `land`, or `instant` |
@@ -84,7 +84,7 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
   additive. Keyword *removal* and conditional grants are out of scope.
 
 The full `abilities`, `spell_effects`, target, cost, and Aura shapes are the enums in
-`crates/rune-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce
+`crates/sage-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce
 the IR in a second documentation schema that can drift.
 
 ## Closed schema and generated text
@@ -93,7 +93,7 @@ the IR in a second documentation schema that can drift.
 flavor text, image paths or URLs, official symbols or frames, artist credit, watermarks,
 or arbitrary presentation fields. Unknown fields fail parsing.
 
-Definitions contain no rules-prose field. `crates/rune-server/src/rules_text.rs` generates
+Definitions contain no rules-prose field. `crates/sage-server/src/rules_text.rs` generates
 `CardView.rules_text` from the same structured behavior the engine executes. Formatter
 matches are exhaustive, so adding an IR variant without display support fails compilation.
 

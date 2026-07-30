@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# One-time prerequisite check for RUNE contributors (human or agent).
+# One-time prerequisite check for SAGE contributors (human or agent).
 #
 # Covers both local gates:
 #   - `make check`  (fast inner loop): Rust toolchain + Node 20+

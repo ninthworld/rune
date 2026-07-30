@@ -41,17 +41,6 @@ jobs:
       - name: Test
         run: make engine-test
 
-  client:
-    name: Client
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: clients/web/package-lock.json
-      # `make client-audit client-check` runs `npm ci` once (shared prerequisite),
-      # then audit, lint, typecheck, test, and build — identical to the local gate.
-      - name: Check (audit + lint + typecheck + test + build)
-        run: make client-audit client-check
+  # The Client job (lint, typecheck, unit tests, build) and the browser e2e job
+  # return in Stage 3 of the SAGE restart, alongside the rebuilt web client.
+  # E2E is a required gate this time — see ADR 0011 and the root AGENTS.md.

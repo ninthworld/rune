@@ -1,207 +1,129 @@
-# RUNE project brief
+# SAGE project brief
 
-RUNE is an open-source, server-authoritative Magic: The Gathering implementation. Its
-purpose is to provide one deterministic rules engine that can support multiple clients:
-web, terminal, automated agents, and future desktop or offline shells.
+SAGE — **S**erver **A**uthoritative **G**ame **E**ngine — is an open-source implementation of
+Magic: The Gathering built on one deterministic Rust rules engine. The name describes a
+property, not an ambition: SAGE hosts Magic, not card games in general, and no abstraction
+layer exists to make it generic.
 
-This document defines the product boundaries and architecture. Current wire shapes live
-in [`protocol.md`](protocol.md), card authoring lives in
-[`card-schema.md`](card-schema.md), and architectural rationale lives in
-[`decisions/`](decisions/).
+## What we are building, in order
 
-## Product principles
+**The long-term goal is XMage in the browser** — comparable rules and card coverage, on a pure
+state-based server-authoritative engine, reachable without an install. **Then** make it
+beautiful. That order is deliberate and was arrived at the hard way: the previous attempt
+pursued coverage, multiplayer, every screen size, and Arena-grade presentation simultaneously,
+and finished none of them.
 
-- **One rules authority.** The Rust engine decides legality, costs, effects, state-based
-  actions, and outcomes.
-- **Replaceable clients.** A client renders a personalized view and returns an action the
-  server already offered. Web-specific behavior cannot become a rules dependency.
-- **Deterministic state.** Game transitions are pure and reproducible from state, actions,
-  card data, and an injected random seed.
-- **Complete views.** A client can reconstruct the lobby or game UI from the latest server
-  view without retaining authoritative state across messages.
-- **Structured cards.** Card behavior is authored as validated data and executed by the
-  engine. Display rules text is generated from that behavior.
-- **Accessible presentation without official assets.** Cards are rendered from
-  server-supplied data, procedurally by default; presentation quality is a product goal
-  under the 2.5D direction ([ADR 0029](decisions/0029-2-5d-presentation-direction.md)),
-  but never at the cost of accessibility or official-asset constraints.
+**The first milestone is the vertical slice of that goal: two people click a link and play a
+real game of Magic in a browser.** No install, no JVM, no version mismatch, no "did you get it
+set up yet." That friction — not beauty, not mobile, not card count — is the thing XMage
+cannot fix and we can.
+
+## How we work
+
+**Every change ends in a state the maintainer can sit down and play. Playing is the merge
+criterion.** The previous attempt measured feature presence, marked milestones complete, and
+was never fun; every proxy said yes. Designs are cheap and disposable. ADRs are written *after*
+a decision survives contact with working code, not before. This is what makes it structurally
+impossible to build a second UI before the first one is good enough to play on.
+
+Corollary: no roadmap document. Milestone prose is what let "complete" drift from "good."
 
 ## Architecture
 
 ### Rules engine
 
-`crates/rune-engine` is a pure, single-game state machine. It owns:
+`crates/sage-engine` is a pure, single-game state machine, and the project's most valuable
+asset. It owns zones, turns, priority, the stack, combat, legal-action generation, card
+effects, triggers, replacement effects, computed characteristics, state-based actions,
+deterministic randomness, and the embedded card catalog.
 
-- zones, turns, priority, the stack, combat, and game results;
-- legal-action generation and action validation;
-- card effects, triggers, replacement effects, and computed characteristics;
-- state-based actions and deterministic random operations; and
-- the embedded functional card catalog.
+It performs **no runtime I/O** — no sockets, rooms, clocks, threads, or ambient randomness.
+Runtime dependencies are `serde`/`serde_json`, for parsing compile-time-embedded card data
+only ([ADR 0006](decisions/0006-serde-in-engine.md)); anything further needs an ADR. `build.rs`
+reads card files at compile time and embeds the result.
 
-The engine performs no runtime I/O. It does not know about sockets, rooms, reconnects,
-accounts, or wall-clock timers. Its public operations receive all required inputs and
-return values or errors. `build.rs` may read card files while compiling; the resulting
-catalog is embedded in the binary.
-
-`GameState` stores facts that cannot be derived, such as zone contents, counters, marked
-damage, object identities, and the deterministic random stream. Current characteristics
-are computed from state and card data rather than cached. Each battlefield entry receives
-a fresh `PermanentId`, which provides zone-change identity.
+Triggers are collected by diffing before/after states — never listeners. Characteristics are
+computed fresh through the CR 613 layer system, never cached
+([ADR 0010](decisions/0010-computed-characteristics-and-layers.md)). Each battlefield entry
+mints a fresh `PermanentId`, which is how zone-change identity works.
 
 ### Server
 
-`crates/rune-server` wraps the engine with network and session concerns:
+`crates/sage-server` wraps the engine with network and session concerns: WebSocket connections,
+opaque session tokens and reconnect, rooms and seats, deck validation, per-viewer view
+projection with hidden-information redaction, and **all automation policy**.
 
-- WebSocket connections and JSON serialization;
-- opaque session tokens and reconnect handling;
-- room creation, joining, seats, submitted decks, and the ready gate;
-- format and deck-validation policy;
-- one task per active room;
-- personalized view projection and hidden-information redaction;
-- optional decision timers and conservative timeout actions; and
-- server-driven AI opponents a host can seat (ADR 0028).
-
-The lobby supports room configurations with 2–8 seats. A bundled free-for-all format
-(`standard_ffa`) seats 3–4 players and starts real multiplayer games on the engine's
-multiplayer rules (per-attacker attack targets, multi-defender blocking, and elimination),
-and a `commander` format seats 2–4 players with singleton and color-identity deck
-validation, 40 starting life, and the engine's command-zone mechanics; the two-player
-formats remain the default. Room creation validates each format's seat range, and the
-lobby serves the card catalog and each format's deck rules for clients to display. A host
-may also fill any open seat with a **server-driven AI opponent** (ADR 0028): the AI plays
-its seat through the same protocol path a human does — never a rules authority in the
-engine, never a client-side bot — so a room may seat any mix of humans and AI at any
-supported player count. The first AI kind plays a simple random-legal policy, behind a
-seam built for stronger opponents later.
+The engine/server seam is load-bearing and correct
+([ADR 0020](decisions/0020-priority-automation.md)): the engine answers pure rules questions
+("does this seat have a meaningful action?") and holds no policy; the server owns the settle
+loop, per-seat stop preferences, and reconnect durability. Keep it that way. Baking a UX
+judgment into the rules layer is how the engine becomes unsustainable.
 
 ### Protocol
 
-A connection has two phases:
+Before a game the server sends complete `LobbyView` values and receives `LobbyCommand`s; during
+a game it sends personalized `GameView` values and receives a `ChooseAction` naming an
+`action_id` the server already issued. `valid_commands`/`valid_actions` are the only sources of
+interactivity.
 
-1. Before a game, the server sends complete `LobbyView` values and the client sends tagged
-   `LobbyCommand` values.
-2. During a game, the server sends personalized `GameView` values and the client returns a
-   `ChooseAction` containing an issued action id, its content token, and any requested
-   choices.
-
-`valid_commands` and `valid_actions` are the only sources of interactivity. The server
-enumerates legal candidates for targets and other prompts; the client displays those
-candidates and returns the selection atomically. Invalid or stale input is rejected and a
-fresh authoritative view is sent.
-
-The Rust types in `rune-protocol`, their TypeScript mirror, and
-[`protocol.md`](protocol.md) form one contract and change together.
+`sage-protocol`, the TypeScript mirror, and [`protocol.md`](protocol.md) are one contract and
+change together.
 
 ### Clients
 
-The web client in `clients/web` uses React DOM for controls, information surfaces, cards,
-and the 2.5D scene plane; Pixi is a passive effects overlay (ADR 0030). The legacy
-Pixi-table composition remains a gated parity path during the Phase 2 migration. Every
-layer renders the same normalized `GameView` and shares visual tokens. The client may
-hold ephemeral UI state—selection, an open inspector, or a reconnect token—but never
-authoritative game state or computed legality.
+The web client is being rebuilt (SAGE restart, Stage 3): one layout — desktop landscape, mouse
+and keyboard — two players, plain DOM/CSS, no WebGL. Its two jobs are to make a legal game
+playable and to **make a settle legible**: when the server auto-passes you through several
+steps, you must be able to tell what happened. That second job is the actual product hypothesis
+and the thing XMage does badly.
 
-The terminal client in `crates/rune-cli` proves that the protocol is independent of the
-web UI. It can prompt a human from the issued action list or let a deterministic agent
-choose from the same list.
+`crates/sage-cli` is the terminal client. It proves the protocol is independent of the web UI,
+and it is the playtest surface whenever the web client is unavailable.
 
 ## Card model
 
-Each card has one functional definition under
-`crates/rune-engine/data/catalog/<functional_id>.json`. A stable `FunctionalId` names that
-definition across builds. The build script interns compact `CardId` handles for engine use;
-those numeric handles are not persisted or authored.
+One functional definition per card under `crates/sage-engine/data/catalog/<functional_id>.json`,
+identified by a stable `FunctionalId`; `build.rs` interns compact `CardId` handles that are
+never authored or persisted ([ADR 0018](decisions/0018-scalable-functional-card-definitions.md)).
+Printings under `data/sets/` carry bibliography only — reprinting changes no behavior.
 
-Printing records under `data/sets/` refer to functional definitions and contain only set
-bibliography. Reprinting a card does not duplicate or change its behavior.
+Card behavior is **data**: structured characteristics, abilities, effects, and keywords, with a
+declared `scripted` code escape hatch for the exceptional
+([ADR 0007](decisions/0007-card-effect-ir-hybrid.md)). Player-facing rules text is generated by
+the server from that same data, so display cannot diverge from behavior.
 
-The schema rejects presentation assets and prose. Card behavior is expressed through
-structured characteristics, abilities, effects, keywords, and a declared code escape hatch
-for exceptional behavior. The server generates readable rules text from the same structures,
-so display text cannot silently diverge from executable behavior.
-
-## Current scope
-
-RUNE currently supports deterministic games of two to four players built around creature
-combat, with spectators. The implemented slice includes the full turn loop, priority, casting
-and mana payment, targets, the stack, per-attacker attack targets, multi-defender blocking,
-combat damage with player-chosen assignment order, common combat keywords including double
-strike, continuous keyword-granting effects, counters, auras, triggers, initial replacement
-effects, mulligans, concessions, loss by life or decking, and mid-game elimination in
-multiplayer games. On the format side, the lobby serves the card catalog and each format's
-deck rules over the wire, players build and submit decks in a client deck builder with
-device-local saved lists (ADR 0027), and a commander format enforces singleton construction
-and color identity over the engine's command-zone, tax, and commander-damage mechanics.
-
-The project intentionally grows by verified rule slices rather than claiming broad card or
-format compatibility. Tests and the generated, CI-checked compatibility report
-([`generated/compatibility.md`](generated/compatibility.md)) are the evidence for support.
-See the [roadmap](roadmap.md) for remaining work.
-
-## Future direction
-
-Planned growth proceeds in this order:
-
-1. Make two-player games clear, accessible, and resilient in the web client.
-2. Expand rules and card compatibility with generated evidence for each supported card.
-3. Add free-for-all multiplayer and spectators.
-4. Add deck construction and saved deck lists against server-owned format legality.
-5. Add format-specific rules, including Commander and team formats, on the multiplayer
-   foundation.
-6. Reuse the same engine and protocol in desktop, offline, or additional client shells.
-
-Alongside this sequence, the client presentation is pivoting from its original
-graphics-light direction to a **polished 2.5D presentation** — illustrated, tactile,
-animated, with depth from perspective, layering, shadows, and motion — tracked as a
-roadmap milestone ([ADR 0029](decisions/0029-2-5d-presentation-direction.md), issue
-#464). The pivot changes presentation only: engine determinism, server authority,
-accessibility, and the legal constraints below are unchanged.
-
-These are directions, not promises about a particular framework, hosting topology, capacity,
-or release date. Architecture changes require an ADR.
+**The IR's expressive vocabulary is the binding constraint on coverage, not authoring
+throughput.** It currently cannot express static abilities, non-self triggers, activation costs
+beyond `{T}`, or target restrictions — so a lord, an anthem, or a cost reducer is not writable
+at all. Growing that vocabulary is the primary engine workstream, and progress on it is
+measured, not asserted (see [`compatibility-report.md`](compatibility-report.md)).
 
 ## Legal constraints
 
-RUNE follows a deliberately conservative fan-project policy:
+SAGE distributes no card images, no official frames, symbols, watermarks, or Wizards of the
+Coast branding, no exact Oracle text or flavor text, no implication of affiliation, and no
+monetization path. Cards render procedurally from structured data; rules text is
+server-generated. The functional schema rejects presentation fields structurally.
 
-- no card images or other official artwork;
-- no official card frames, symbols, watermarks, or Wizards of the Coast branding;
-- no exact Oracle text, flavor text, or presentation assets in the repository;
-- no implication of affiliation with or endorsement by Wizards of the Coast; and
-- no monetization.
+A card's *functional data* — name and mechanical characteristics — may match a real card; the
+bundled catalog draws from Core Set 2019
+([ADR 0026](decisions/0026-real-functional-card-data.md)).
 
-Cards are procedural renders of structured data, and player-facing rules text is generated
-by the server. The functional schema rejects prohibited presentation fields.
+These constraints govern **what the project distributes**. A player may separately opt in, on
+their own device, to their browser fetching card images from a third-party source (currently
+Scryfall) — either just the illustration inside SAGE's own frame, or the entire card image.
+Those images are cached device-local only and are never uploaded, proxied, served, bundled,
+committed, or redistributed by the project
+([ADR 0024](decisions/0024-user-side-card-art.md)). Bundled art, if any, is original and
+project-owned.
 
-The prohibitions above cover **presentation assets**. A card's *functional data* — its name and
-mechanical characteristics (types, mana cost, power/toughness, and the ability IR) — may match a
-real card and be sourced from a real set; the bundled catalog draws its functional definitions
-from Core Set 2019 ([ADR 0026](decisions/0026-real-functional-card-data.md)). No Oracle text,
-flavor text, art, frames, symbols, or branding is shipped: rules text stays server-generated and
-printings stay bibliographic.
+Weakening any of the above requires explicit legal review and an ADR.
 
-These constraints govern **what the project distributes** — the repository, the built
-client, and the server. A player may additionally opt in, on their own device, to having
-their browser fetch card images directly from a third-party source (currently Scryfall);
-those images are cached only on that device and are never uploaded, proxied, served, or
-redistributed by the project ([ADR 0024](decisions/0024-user-side-card-art.md)). By
-default only the bare illustration renders inside RUNE's own procedural frame; the player
-may instead choose to display the entire card image, again on their device only. Bundled
-art is limited to original, project-owned illustrations.
+## Exclusions
 
-Any further weakening of these constraints requires an explicit legal review and
-architectural decision; it is not authorized by existing plans or ADRs.
-
-The code is available under the MIT License. That license does not change the project’s
-distribution policy above.
-
-## Product exclusions
-
-- Collection ownership and marketplace features
-- Official card presentation or branding
+- Collection ownership, trading, and marketplace features
 - Client-side rules evaluation
-- A *requirement* for fully modeled 3D environments or characters (the client targets a
-  2.5D presentation — [ADR 0029](decisions/0029-2-5d-presentation-direction.md); the
-  earlier blanket exclusion of an effects-capable presentation is superseded)
+- Official card presentation or branding in the project's own distribution
 - Monetization
-- Ante, subgames, and novelty mechanics in the current roadmap
+- Game-agnostic abstraction — SAGE hosts Magic
+- Ante, subgames, and novelty mechanics until explicitly added by decision

@@ -22,7 +22,7 @@ inputs:
 - `Permanent` stores only `id / card / controller / tapped` (`state.rs:24-34`).
   It has no power/toughness and no counters.
 - The protocol has already settled the *wire* shape: `PermanentView.counters` is
-  a `Vec<Counter>` (`{ kind, count }`) in `rune-protocol`, and the server
+  a `Vec<Counter>` (`{ kind, count }`) in `sage-protocol`, and the server
   serializes it as always-empty (`view.rs:275`, "counters: Vec::new()"). The
   engine representation that would fill it is undecided.
 - Rules code reads printed `CardData` directly for type and P/T questions —
@@ -36,7 +36,7 @@ This is the #2 structural gap flagged by the 2026-07-11 sustainability review
 retrofitting it afterward. This ADR fixes the seam; it ships no code (issue #52
 is docs-only). Implementation is filed as the follow-ups listed below.
 
-The hard rules constrain the design (`AGENTS.md`, `crates/rune-engine/AGENTS.md`,
+The hard rules constrain the design (`AGENTS.md`, `crates/sage-engine/AGENTS.md`,
 ADR 0002, ADR 0007):
 
 - The engine is pure; `GameState` is a `Clone`/`Eq` value type with **no cached

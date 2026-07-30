@@ -1,11 +1,13 @@
-# RUNE protocol
+# SAGE protocol
 
-RUNE uses JSON over one WebSocket connection. Before a game starts, the connection
+SAGE uses JSON over one WebSocket connection. Before a game starts, the connection
 exchanges complete lobby views and lobby commands. Once the room constructs a game, the
 same connection exchanges personalized game views and chosen actions.
 
-The Rust types in `crates/rune-protocol/src/lib.rs` are the wire authority. The TypeScript
-mirror in `clients/web/src/protocol.ts` and this document must change with them.
+The Rust types in `crates/sage-protocol/src/lib.rs` are the wire authority. The TypeScript
+mirror in `clients/web/src/protocol.ts` and this document must change with them. (The mirror
+is absent until Stage 3 of the SAGE restart rebuilds the web client; the Rust authority and
+this document remain in force.)
 
 ## Message lifecycle
 

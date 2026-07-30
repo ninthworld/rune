@@ -12,7 +12,7 @@ downstream feature (the stack, mana, combat, the layer system) needs a way for a
 specific card to say "when this enters, draw a card" or "{T}: add {G}".
 
 The hard architectural rules constrain the solution (`docs/brief.md`,
-`crates/rune-engine/AGENTS.md`):
+`crates/sage-engine/AGENTS.md`):
 
 - The engine is pure and immutable; `GameState` is a `Clone`/`Eq` value type.
 - **No listeners or observers.** Triggered abilities are found by a pure diff of
@@ -40,7 +40,7 @@ The realistic options for the behavior side:
 Card behavior is a **closed, declarative IR carried on `CardData` as data**, with
 a **`CardId`-keyed pure code escape hatch** for the rest.
 
-- The IR lives in `crates/rune-engine/src/ability.rs`: `Ability`
+- The IR lives in `crates/sage-engine/src/ability.rs`: `Ability`
   (`Activated`/`Triggered`), `Cost`, `Effect`, `TriggerCondition`. All are
   `Deserialize` data enums, so ordinary cards are authored as JSON in
   `data/cards.json` (the direct analog of xMage's `.txt`) via the serde path
@@ -55,7 +55,7 @@ a **`CardId`-keyed pure code escape hatch** for the rest.
 - Fresh object identity comes from a **monotonic `GameState::next_object_id`**
   counter (`mint_id`), preserving "a fresh `PermanentId` on every battlefield
   entry" without reuse.
-- The **escape hatch** is `crates/rune-engine/src/scripted.rs`:
+- The **escape hatch** is `crates/sage-engine/src/scripted.rs`:
   `scripted_abilities(CardId) -> Vec<Ability>`, unioned with the data-driven
   abilities by `card::abilities_of`. It stores nothing in state — behavior is
   re-derived from the `CardId` on demand, the same discipline as the layer
