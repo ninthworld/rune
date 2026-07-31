@@ -313,11 +313,73 @@ impl GameState {
         }
     }
 
+    /// Deal `amount` damage to the permanent `id` (CR 120.3) — the single
+    /// damage-to-a-permanent seam, which decides *what damage does to this object*
+    /// before anything is recorded.
+    ///
+    /// Two outcomes, and the permanent's type picks between them:
+    ///
+    /// - a **planeswalker** has that much loyalty removed (CR 120.3c) — the damage is
+    ///   not marked, and the CR 704.5i state-based action reads the counters that are
+    ///   left rather than any toughness;
+    /// - everything else has the damage **marked** on it (CR 120.3d) for the
+    ///   lethal-damage state-based action to compare against toughness (CR 704.5g).
+    ///
+    /// Every source of damage to a permanent routes through here — combat
+    /// (`apply.rs :: apply_combat_batch`), a targeted burn effect, and a class-wide one
+    /// — so "damage to a planeswalker takes loyalty" is one fact rather than three that
+    /// could be implemented two-thirds of the way. Both branches record the same
+    /// [`GameEvent::DamageDealt`], so a client reports a hit on a planeswalker exactly
+    /// as it reports one on a creature. Returns whether a permanent with that id was
+    /// present (so a combat caller can then apply a deathtouch flag).
+    ///
+    /// The **redirection rule is gone** from current rules: damage aimed at a player is
+    /// dealt to that player, never moved to a planeswalker they control, so nothing
+    /// here looks at where damage was pointed.
+    pub(crate) fn deal_damage_to_permanent(
+        &mut self,
+        id: PermanentId,
+        amount: u32,
+        db: &CardDatabase,
+    ) -> bool {
+        let is_planeswalker = self
+            .battlefield
+            .iter()
+            .find(|p| p.id == id)
+            .and_then(|p| p.printed.face(db))
+            .is_some_and(|face| face.has_type(CardType::Planeswalker));
+        if !is_planeswalker {
+            return self.mark_damage_on_permanent(id, amount);
+        }
+        let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
+            return false;
+        };
+        // CR 120.3c: that much loyalty is removed. Saturating, so overkill damage
+        // leaves it at zero rather than wrapping — zero is what CR 704.5i reads.
+        let counter = perm
+            .counters
+            .entry(super::CounterKind::Loyalty)
+            .or_insert(0);
+        *counter = counter.saturating_sub(amount);
+        let logged = LoggedPermanent::of(perm);
+        if amount > 0 {
+            self.record_event(GameEvent::DamageDealt {
+                target: DamageTarget::Permanent(logged),
+                amount,
+            });
+        }
+        true
+    }
+
     /// Mark `amount` damage on the permanent `id` (CR 120.3d) and record a
     /// [`GameEvent::DamageDealt`] when `amount` is nonzero. Returns whether a
-    /// permanent with that id was present (so a combat caller can then apply a
-    /// deathtouch flag). Marked damage feeds the lethal-damage SBA (CR 704.5g).
-    pub(crate) fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> bool {
+    /// permanent with that id was present. Marked damage feeds the lethal-damage SBA
+    /// (CR 704.5g).
+    ///
+    /// The marking half of [`Self::deal_damage_to_permanent`], which is what callers
+    /// use: damage decides between marking and removing loyalty, and only that seam
+    /// makes the decision.
+    fn mark_damage_on_permanent(&mut self, id: PermanentId, amount: u32) -> bool {
         let Some(perm) = self.battlefield.iter_mut().find(|p| p.id == id) else {
             return false;
         };
@@ -393,10 +455,16 @@ impl GameState {
             changed = true;
         }
         // Take the departed player out of combat: any surviving attacker declared
-        // against them is removed from combat (CR 508 no longer has a defender), so
-        // it deals no combat damage to a player.
+        // against them — or against a planeswalker of theirs, which has just left the
+        // game with them — is removed from combat (CR 508 no longer has a defender), so
+        // it deals no combat damage anywhere.
         for perm in &mut self.battlefield {
-            if perm.attacking == Some(seat) {
+            let gone = match perm.attacking {
+                Some(crate::combat::AttackTarget::Player(player)) => player == seat,
+                Some(crate::combat::AttackTarget::Planeswalker(id)) => departing.contains(&id),
+                None => false,
+            };
+            if gone {
                 perm.attacking = None;
                 changed = true;
             }

@@ -58,6 +58,7 @@ no Oracle text, flavor, art, or branding.
 | `mana_cost` | yes | Curly-brace notation; empty when the card has no mana cost |
 | `colors` | no | Explicit card colors; empty means colorless |
 | `power`, `toughness` | conditional | Both required for creatures and forbidden for non-creatures |
+| `loyalty` | conditional | Required for planeswalkers and forbidden for everything else |
 | `keywords` | no | Supported keyword abilities |
 | `restrictions` | no | Printed combat restrictions; creatures only |
 | `abilities` | no | Activated, triggered, or replacement-style ability IR |
@@ -208,12 +209,58 @@ non-combat damage are out of scope.
 
 ### Activation costs
 
-`cost` entries are `{"kind":"tap"}` (the `{T}` symbol) and
-`{"kind":"mana","mana":"{1}{R}"}`, written in the same curly-brace notation a card's
-`mana_cost` uses. Mana is paid from the activating player's pool through the same seam a
-cast uses, and the whole cost is paid all or nothing — a failed mana payment never leaves
-the source tapped. CR 302.6 still forbids a summoning-sick creature paying `{T}`,
-including for a mana ability.
+`cost` entries are `{"kind":"tap"}` (the `{T}` symbol),
+`{"kind":"mana","mana":"{1}{R}"}` — written in the same curly-brace notation a card's
+`mana_cost` uses — and `{"kind":"loyalty","amount":-2}` (below). Mana is paid from the
+activating player's pool through the same seam a cast uses, and the whole cost is paid all
+or nothing — a failed mana payment never leaves the source tapped. CR 302.6 still forbids
+a summoning-sick creature paying `{T}`, including for a mana ability.
+
+### Planeswalkers and loyalty (CR 306, CR 606)
+
+A planeswalker authors `loyalty` — its printed starting loyalty, the number in its corner:
+
+```json
+{
+  "schema_version": 1,
+  "functional_id": "test_warden",
+  "name": "Test Warden",
+  "supertypes": ["legendary"],
+  "types": ["planeswalker"],
+  "subtypes": ["Warden"],
+  "mana_cost": "{2}{W}{W}",
+  "colors": ["white"],
+  "loyalty": 4,
+  "abilities": [
+    { "type": "activated", "cost": [{ "kind": "loyalty", "amount": 1 }],
+      "effects": [{ "kind": "gain_life", "player_ref": "controller", "amount": 2 }] },
+    { "type": "activated", "cost": [{ "kind": "loyalty", "amount": -2 }],
+      "effects": [{ "kind": "deal_damage", "target": "any_target", "amount": 2 }] }
+  ]
+}
+```
+
+`loyalty` is a *characteristic*, not a running total. The permanent enters the
+battlefield with that many **loyalty counters** (CR 306.5b) — applied at the same
+battlefield-entry seam `enters_tapped` and `enters_with_counters` use, so a planeswalker
+is never briefly on the battlefield at zero — and everything afterwards reads the
+counters: the ability cost spends them, damage removes them (CR 120.3c, rather than being
+marked), and a planeswalker with none is put into its owner's graveyard (CR 704.5i).
+
+An ability whose cost includes `{"kind":"loyalty"}` is a **loyalty ability** and carries
+two timing rules no other activated ability has (CR 606.3): it may be activated only at
+sorcery speed on its controller's own turn, and only once per turn per permanent. A
+negative amount is payable only out of loyalty the permanent actually has, so a `-7` is
+simply not offered at 4. All three restrictions are enforced twice — once when the action
+is offered and again, independently, when it is applied — so a forged action cannot slip
+past them.
+
+A planeswalker is **not a creature**: it has no power or toughness, it cannot attack or
+block, and the toughness-based state-based actions never touch it. It *can* be attacked
+(CR 508.1a): an attack names a player or a planeswalker, the planeswalker's controller
+declares blockers for attackers attacking it, and combat damage that gets through removes
+loyalty. Emblems and planeswalker-specific static abilities are not modeled; see
+`data/exclusions.json`.
 
 ### Effects on the ability's own source
 
@@ -496,6 +543,7 @@ The build and loader reject:
 - unsupported schema versions;
 - malformed, duplicate, or file-mismatched functional ids;
 - missing types or invalid creature power/toughness;
+- a planeswalker with no `loyalty`, or a `loyalty` on anything else;
 - an Aura grant on a non-Aura;
 - printed `restrictions` on a card that is not a creature;
 - unresolved printing references or duplicate collector numbers; and

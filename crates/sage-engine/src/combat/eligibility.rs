@@ -1,21 +1,68 @@
 use crate::card::{CombatRestriction, Keyword};
+use crate::card_type::CardType;
 use crate::id::{PermanentId, PlayerId};
 use crate::state::GameState;
 use crate::CardDatabase;
 
 use super::helpers::{permanent_has_restriction, summoning_sickness_restricts};
 
+/// **What** an attacker was declared to attack (CR 508.1a): a defending player, or a
+/// planeswalker one of them controls.
+///
+/// The one type that carries the CR 508.1a generalization the rest of combat is written
+/// against. Before planeswalkers were modeled an attack named a bare
+/// [`PlayerId`](crate::PlayerId), and every downstream rule — blocker eligibility,
+/// damage routing, the multi-defender declaration order — read that id as *both* "what
+/// is being attacked" and "who declares blockers against it". Those are different
+/// questions the instant a planeswalker can be attacked: the thing attacked is the
+/// planeswalker, and the player who blocks for it is its controller. Splitting them is
+/// what [`attacking_defender_of`] (the player) and [`attack_target_of`] (the thing) now
+/// answer separately.
+///
+/// Plain `Copy`/`Eq` data, so a [`Permanent`](crate::Permanent) and an
+/// [`Attack`](crate::Attack) both stay values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AttackTarget {
+    /// A defending player (CR 508.1a) — every attack before planeswalkers, and still
+    /// the overwhelming majority.
+    Player(PlayerId),
+    /// A **planeswalker** an opponent controls. The player who declares blockers
+    /// against this attacker is that planeswalker's controller, and the attacker's
+    /// combat damage removes loyalty rather than costing life (CR 120.3c).
+    Planeswalker(PermanentId),
+}
+
+impl AttackTarget {
+    /// The **defending player** this target belongs to (CR 508.1a): the player
+    /// themselves, or the controller of the attacked planeswalker.
+    ///
+    /// `None` when the attacked planeswalker is no longer on the battlefield — the
+    /// state an attacker is left in when its planeswalker dies mid-combat, and exactly
+    /// the state that stops it dealing damage anywhere.
+    #[must_use]
+    pub fn defending_player(self, state: &GameState) -> Option<PlayerId> {
+        match self {
+            Self::Player(player) => Some(player),
+            Self::Planeswalker(id) => state
+                .battlefield
+                .iter()
+                .find(|p| p.id == id)
+                .map(|p| p.controller),
+        }
+    }
+}
+
 /// The players an attacker may legally be declared to attack (CR 508.1a): every
 /// opponent still in the game — a seat other than the active (attacking) player
 /// that has not lost. In seat order, so the enumeration is deterministic.
 ///
-/// In a two-player game this is exactly the sole opponent, so the only legal
-/// assignment for every attacker is that one player and combat plays as it always
-/// has. With more seats each attacker chooses among these candidates (issue #341).
-/// A player may never attack themselves or an eliminated player, so neither is a
-/// candidate.
+/// The **player half** of [`defender_candidates`], and the frame of reference the
+/// planeswalker half is drawn from: only a planeswalker one of *these* players controls
+/// may be attacked. Kept separate because several callers want the seats and not the
+/// objects — who declares blockers, whether there is a single defending player, whether
+/// an attack is possible at all.
 #[must_use]
-pub fn defender_candidates(state: &GameState) -> Vec<PlayerId> {
+pub fn defending_player_candidates(state: &GameState) -> Vec<PlayerId> {
     state
         .players
         .iter()
@@ -23,6 +70,40 @@ pub fn defender_candidates(state: &GameState) -> Vec<PlayerId> {
         .filter(|(seat, player)| PlayerId(*seat) != state.active_player && !player.has_lost)
         .map(|(seat, _)| PlayerId(seat))
         .collect()
+}
+
+/// Everything an attacker may legally be declared to attack (CR 508.1a): every opponent
+/// still in the game, followed by every planeswalker those opponents control, in seat
+/// order then battlefield order so the enumeration is deterministic.
+///
+/// In a two-player game with no planeswalkers this is exactly the sole opponent, so the
+/// only legal assignment for every attacker is that one and combat plays as it always
+/// has. A second candidate appears the moment an opponent has a planeswalker — which is
+/// why the server's per-attacker defender slot is keyed on *this* list's length rather
+/// than on the number of opponents (issue #608): a two-player game with a planeswalker
+/// on the other side is a real choice.
+///
+/// A player may never attack themselves, an eliminated player, or their own
+/// planeswalker, so none of those is a candidate.
+#[must_use]
+pub fn defender_candidates(state: &GameState, db: &CardDatabase) -> Vec<AttackTarget> {
+    let players = defending_player_candidates(state);
+    let mut candidates: Vec<AttackTarget> =
+        players.iter().copied().map(AttackTarget::Player).collect();
+    candidates.extend(
+        state
+            .battlefield
+            .iter()
+            .filter(|perm| {
+                players.contains(&perm.controller)
+                    && perm
+                        .printed
+                        .face(db)
+                        .is_some_and(|face| face.has_type(CardType::Planeswalker))
+            })
+            .map(|perm| AttackTarget::Planeswalker(perm.id)),
+    );
+    candidates
 }
 
 /// The single defending player of a two-player combat: the one opponent still in
@@ -35,7 +116,7 @@ pub fn defender_candidates(state: &GameState) -> Vec<PlayerId> {
 /// builds on the per-attacker targets.
 #[must_use]
 pub fn defending_player(state: &GameState) -> Option<PlayerId> {
-    let candidates = defender_candidates(state);
+    let candidates = defending_player_candidates(state);
     match candidates.as_slice() {
         [only] => Some(*only),
         _ => None,
@@ -139,16 +220,29 @@ pub fn declared_attackers(state: &GameState) -> Vec<PermanentId> {
         .collect()
 }
 
-/// Whom the permanent `attacker` is attacking this combat (CR 508.1a), or `None`
-/// if it is not on the battlefield or is not an attacker. This is the defending
-/// player its combat damage routes to and the player whose creatures may block it.
+/// **What** the permanent `attacker` is attacking this combat (CR 508.1a) — a player or
+/// a planeswalker — or `None` if it is not on the battlefield or is not an attacker.
+/// This is where its combat damage goes.
 #[must_use]
-pub fn attacking_defender_of(state: &GameState, attacker: PermanentId) -> Option<PlayerId> {
+pub fn attack_target_of(state: &GameState, attacker: PermanentId) -> Option<AttackTarget> {
     state
         .battlefield
         .iter()
         .find(|p| p.id == attacker)
         .and_then(|p| p.attacking)
+}
+
+/// The **defending player** the permanent `attacker` is attacking this combat
+/// (CR 508.1a): the attacked player, or the controller of the attacked planeswalker.
+/// This is the player whose creatures may block it.
+///
+/// `None` if `attacker` is not attacking — and also once the planeswalker it was
+/// attacking has left the battlefield, since there is then no seat that answers for it.
+/// That second case is why the blocker and damage paths can stay written against a
+/// defending *player* without either of them re-deriving the rule.
+#[must_use]
+pub fn attacking_defender_of(state: &GameState, attacker: PermanentId) -> Option<PlayerId> {
+    attack_target_of(state, attacker).and_then(|target| target.defending_player(state))
 }
 
 #[cfg(test)]
@@ -279,21 +373,31 @@ mod tests {
         let mut state = GameState::new_multiplayer(3);
         state.active_player = PlayerId(0);
         assert_eq!(
-            defender_candidates(&state),
-            vec![PlayerId(1), PlayerId(2)],
+            defender_candidates(&state, &db()),
+            vec![
+                AttackTarget::Player(PlayerId(1)),
+                AttackTarget::Player(PlayerId(2))
+            ],
             "both opponents of the active player are candidates"
         );
-        // A two-player game has exactly one defender candidate — the sole opponent —
-        // so `defending_player` resolves and combat plays as it always has.
+        // A two-player game with no planeswalker has exactly one defender candidate —
+        // the sole opponent — so `defending_player` resolves and combat plays as it
+        // always has.
         let two = GameState::new_two_player();
-        assert_eq!(defender_candidates(&two), vec![PlayerId(1)]);
+        assert_eq!(
+            defender_candidates(&two, &db()),
+            vec![AttackTarget::Player(PlayerId(1))]
+        );
         assert_eq!(defending_player(&two), Some(PlayerId(1)));
         // With more than one opponent there is no single defender.
         assert_eq!(defending_player(&state), None);
 
         // An eliminated opponent drops out of the candidate set.
         state.players[1].has_lost = true;
-        assert_eq!(defender_candidates(&state), vec![PlayerId(2)]);
+        assert_eq!(
+            defender_candidates(&state, &db()),
+            vec![AttackTarget::Player(PlayerId(2))]
+        );
     }
 
     #[test]

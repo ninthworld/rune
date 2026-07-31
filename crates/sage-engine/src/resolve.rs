@@ -150,13 +150,15 @@ pub(crate) fn target_is_legal(
         (TargetSpec::AnyLand, Target::Permanent(id)) => {
             permanent_matches(state, id, |p| has_type(p, CardType::Land, db))
         }
-        // "Any target" (CR 115.4): legal against a player still in the game or a
-        // creature still on the battlefield — the union of the AnyPlayer and
-        // AnyCreature checks above (printed types are authoritative here too).
+        // "Any target" (CR 115.4): legal against a player still in the game, a creature
+        // still on the battlefield, or a **planeswalker** still on the battlefield —
+        // the union of the AnyPlayer and AnyCreature checks above plus the planeswalker
+        // arm issue #608 restored (printed types are authoritative here too). Battles
+        // are still unmodeled and so still absent.
         (TargetSpec::AnyTarget, Target::Player(player)) => player_in_game(state, player),
-        (TargetSpec::AnyTarget, Target::Permanent(id)) => {
-            permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
-        }
+        (TargetSpec::AnyTarget, Target::Permanent(id)) => permanent_matches(state, id, |p| {
+            has_type(p, CardType::Creature, db) || has_type(p, CardType::Planeswalker, db)
+        }),
         // A spell target is legal while that exact spell is still on the stack
         // (CR 701.5): once it has resolved (or been countered) it is gone, so a
         // counterspell aimed at it fizzles (CR 608.2b). An ability on the stack is

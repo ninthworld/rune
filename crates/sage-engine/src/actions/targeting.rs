@@ -148,9 +148,9 @@ pub(crate) fn legal_targets_for_spec(
         | TargetSpec::AnyEnchantment
         | TargetSpec::AnyArtifactOrEnchantment
         | TargetSpec::AnyLand => permanents,
-        // "Any target" (CR 115.4): players and battlefield permanents together;
-        // the `target_is_legal` filter below keeps only creatures and in-game
-        // players, so a non-creature permanent never survives it.
+        // "Any target" (CR 115.4): players and battlefield permanents together; the
+        // `target_is_legal` filter below keeps only creatures, planeswalkers, and
+        // in-game players, so an artifact or a land never survives it.
         TargetSpec::AnyTarget => players.into_iter().chain(permanents).collect(),
         // Only spells on the stack are candidates — abilities are not spells, and
         // mana abilities never use the stack (CR 605.3), so neither can be a

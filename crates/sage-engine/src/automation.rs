@@ -106,7 +106,7 @@ pub fn forced_declaration_without_choice(state: &GameState, db: &CardDatabase) -
     if actions
         .iter()
         .any(|a| matches!(a, Action::DeclareAttackers { .. }))
-        && (attacker_candidates(state, db).is_empty() || defender_candidates(state).is_empty())
+        && (attacker_candidates(state, db).is_empty() || defender_candidates(state, db).is_empty())
     {
         return Some(Action::DeclareAttackers {
             attackers: Vec::new(),
@@ -504,7 +504,7 @@ mod tests {
             .iter_mut()
             .find(|p| p.id == attacker)
             .unwrap()
-            .attacking = Some(PlayerId(1));
+            .attacking = Some(crate::combat::AttackTarget::Player(PlayerId(1)));
         place(&mut state, fixture("walking_corpse"), PlayerId(1));
         assert_eq!(forced_declaration_without_choice(&state, &db), None);
     }

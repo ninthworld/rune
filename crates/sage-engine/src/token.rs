@@ -278,6 +278,18 @@ impl<'a> PrintedFace<'a> {
         }
     }
 
+    /// The printed **starting loyalty**, for a planeswalker; `None` otherwise
+    /// (CR 306.5b). Always `None` for a token: the effect IR creates no planeswalker
+    /// token, so [`TokenData`] has no field for one — the same reason
+    /// [`Self::supertypes`] is always empty.
+    #[must_use]
+    pub fn loyalty(&self) -> Option<u32> {
+        match self {
+            Self::Card(card) => card.loyalty,
+            Self::Token(_) => None,
+        }
+    }
+
     /// The printed combat restrictions (CR 506.3, CR 509.1b) — likewise the seed for
     /// the computed set.
     #[must_use]

@@ -143,7 +143,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (34)
+## Excluded (36)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -164,6 +164,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return cards from a graveyard | no graveyard-to-hand or graveyard-to-battlefield effect |
 | Effects that untap, or that stop a permanent untapping | no untap effect and no skipped-untap flag |
+| Emblems | no zoneless, controller-scoped continuous object |
 | Equipment | no equip action or attachment outside the Aura model |
 | Fight, and other effects taking two targets | each effect fills exactly one target slot |
 | Gaining control of a permanent | no control-change layer |
@@ -176,10 +177,11 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
 | Optional effects that choose a target | an optional effect's contents may not target; one effect declares at most one target slot |
-| Planeswalkers | no loyalty counter system or loyalty abilities |
+| Planeswalker-specific static abilities | static abilities scope to creatures, not to a planeswalker's controller |
 | Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour or a count; there is no protection layer |
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Selectors that filter by power or toughness | no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
+| The legend-rule choice among duplicates | CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice |
 | Tokens created attacking, or as copies of another permanent | a created token enters untapped or tapped and out of combat; there is no copiable-values model |
 | Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype and controller only |

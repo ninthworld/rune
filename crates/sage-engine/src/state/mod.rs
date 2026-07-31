@@ -104,6 +104,17 @@ pub struct GameState {
     /// battlefield order. Raw stored state, set by the order-damage decision and
     /// cleared each turn with the other combat declarations.
     pub damage_orders: Vec<(crate::id::PermanentId, Vec<crate::id::PermanentId>)>,
+    /// The planeswalkers that have already had a loyalty ability activated this turn
+    /// (CR 606.3), in activation order.
+    ///
+    /// **Raw stored history, not a derivation** (ADR 0005 §1): "has a loyalty ability
+    /// of this permanent been activated this turn" is a fact a bare snapshot cannot
+    /// recover — spending loyalty leaves the same board a planeswalker that spent none
+    /// would have — so, like [`Permanent::damage`] and [`Self::damage_orders`], it is
+    /// recorded rather than computed. Keyed by [`PermanentId`](crate::PermanentId), so
+    /// a planeswalker that leaves and returns is a new object with a fresh allowance,
+    /// which is exactly what CR 606.3 says. Cleared when the next turn begins.
+    pub loyalty_activations: Vec<crate::id::PermanentId>,
     /// The attacked players who have already declared blockers this combat, in the
     /// order they declared (issue #344). When attackers are split across several
     /// defenders each attacked player gets their own declare-blockers decision,

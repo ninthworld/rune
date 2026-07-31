@@ -76,7 +76,7 @@ pub(crate) fn apply_activate_ability(
         .iter()
         .filter_map(|c| match c {
             Cost::Mana { mana } => Some(parse_mana_cost(mana)),
-            Cost::Tap => None,
+            Cost::Tap | Cost::Loyalty { .. } => None,
         })
         .collect();
     if !mana_due.is_empty() {
@@ -97,6 +97,29 @@ pub(crate) fn apply_activate_ability(
             Cost::Tap => {
                 if let Some(p) = state.battlefield.iter_mut().find(|p| p.id == permanent) {
                     p.tapped = true;
+                }
+            }
+            // CR 606.1: paying a loyalty cost puts that many loyalty counters on the
+            // source, or removes them for a negative amount. Only ever reached for a
+            // cost `action_is_legal` has already found payable (CR 606.3), so the
+            // removal can never take the permanent below zero — but it saturates
+            // anyway, since a cost that could underflow is a bug, not a death.
+            Cost::Loyalty { amount } => {
+                if let Some(p) = state.battlefield.iter_mut().find(|p| p.id == permanent) {
+                    let counter = p
+                        .counters
+                        .entry(crate::state::CounterKind::Loyalty)
+                        .or_insert(0);
+                    *counter = match u32::try_from(*amount) {
+                        Ok(gained) => counter.saturating_add(gained),
+                        Err(_) => counter.saturating_sub(amount.unsigned_abs()),
+                    };
+                }
+                // CR 606.3: this permanent has now used its one loyalty activation for
+                // the turn. Recorded whatever the ability does next, so an ability that
+                // fizzles on resolution still spent the allowance.
+                if !state.loyalty_activations.contains(&permanent) {
+                    state.loyalty_activations.push(permanent);
                 }
             }
             // Already settled against the pool above.
@@ -331,7 +354,7 @@ pub(crate) fn apply_effect(
             }
             DamageSubject::Permanents(affects) => {
                 for id in permanents_in(state, *affects, controller, db) {
-                    state.mark_damage_on_permanent(id, *amount);
+                    state.deal_damage_to_permanent(id, *amount, db);
                 }
             }
         },
@@ -607,7 +630,7 @@ pub(crate) fn apply_targeted_effect(
         // applied by [`apply_effect`] over the class it names.
         Effect::DealDamage { amount, .. } => match target {
             Target::Permanent(id) => {
-                state.mark_damage_on_permanent(id, *amount);
+                state.deal_damage_to_permanent(id, *amount, db);
             }
             Target::Player(seat) => {
                 state.deal_damage_to_player(seat, *amount);

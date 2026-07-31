@@ -60,6 +60,17 @@ A token's *death* is therefore observed from the recorded `PermanentDied` event 
 from a graveyard it never reaches. `TokenData` has no `functional_id` field at all, which
 is why a token cannot reach the compatibility report.
 
+**A planeswalker's loyalty is counters, and an attack names a target** (ADR 0016).
+`CounterKind::Loyalty` is what a planeswalker enters with (CR 306.5b, applied at the
+battlefield-entry seam), what `Cost::Loyalty` spends, what damage removes
+(CR 120.3c — `deal_damage_to_permanent` is the one seam that decides marking versus
+loyalty), and what CR 704.5i reads at zero. `is_loyalty_ability` carries the two CR 606.3
+timing rules, gated in the offer *and* re-derived in `apply_action`. `Attack.defender` and
+`Permanent.attacking` are an `AttackTarget` — a player or a planeswalker — so
+"what is attacked" (`attack_target_of`) and "who declares blockers" (`attacking_defender_of`,
+which resolves a planeswalker's controller) are separate questions. Emblems are the next
+hole and are not a variation on any of this.
+
 `Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
 filtered to a subtype, optionally excluding the source). It is **derived, never stored**:
 `characteristics` reads it off the battlefield on every call, so the effect begins and ends

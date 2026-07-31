@@ -10,7 +10,7 @@
  * what they missed.
  */
 import type { ClientMessage, GameLogEvent, GameView } from './../protocol'
-import { controlledBy, list, playerLabel, powerToughness, seatSummary } from './../normalize'
+import { cardStats, controlledBy, list, playerLabel, seatSummary } from './../normalize'
 import { ActionPanel } from './ActionPanel'
 
 const PHASE_LABELS: Record<string, string> = {
@@ -154,9 +154,12 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
                 {controlledBy(view, seat).map((permanent) => (
                   <li key={permanent.id}>
                     {permanent.card.name}
-                    {powerToughness(permanent.card) && <> {powerToughness(permanent.card)}</>}
+                    {cardStats(permanent.card) && <> {cardStats(permanent.card)}</>}
                     {permanent.tapped && ' · tapped'}
-                    {permanent.attacking && ' · attacking'}
+                    {permanent.attacking &&
+                      (permanent.attacking_planeswalker !== undefined
+                        ? ` · attacking ${labelFor(permanent.attacking_planeswalker)}`
+                        : ' · attacking')}
                     {permanent.blocking && ` · blocking ${labelFor(permanent.blocking)}`}
                     {permanent.damage !== undefined && permanent.damage > 0 && (
                       <> · {permanent.damage} damage</>
@@ -188,7 +191,7 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
               <li key={card.id}>
                 {card.name} — {card.type_line}
                 {card.mana_cost && <> {card.mana_cost}</>}
-                {powerToughness(card) && <> {powerToughness(card)}</>}
+                {cardStats(card) && <> {cardStats(card)}</>}
               </li>
             ))}
           </ul>
@@ -205,7 +208,7 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
               <li key={card.id}>
                 {card.name} — {card.type_line}
                 {card.mana_cost && <> {card.mana_cost}</>}
-                {powerToughness(card) && <> {powerToughness(card)}</>}
+                {cardStats(card) && <> {cardStats(card)}</>}
                 {card.rules_text && <> — {card.rules_text}</>}
               </li>
             ))}

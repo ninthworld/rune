@@ -334,7 +334,7 @@ fn wall_of_mist_cannot_be_declared_as_an_attacker() {
         &Action::DeclareAttackers {
             attackers: vec![Attack {
                 attacker: wall,
-                defender: PlayerId(1),
+                defender: sage_engine::AttackTarget::Player(PlayerId(1)),
             }],
         },
         &db,
@@ -359,7 +359,7 @@ fn attack_with(state: &GameState, db: &CardDatabase, attacker: PermanentId) -> G
         &Action::DeclareAttackers {
             attackers: vec![Attack {
                 attacker,
-                defender: PlayerId(1),
+                defender: sage_engine::AttackTarget::Player(PlayerId(1)),
             }],
         },
         db,
@@ -680,7 +680,7 @@ fn luminous_bonds_stops_its_host_attacking_and_blocking_until_it_leaves() {
             &Action::DeclareAttackers {
                 attackers: vec![Attack {
                     attacker,
-                    defender: PlayerId(0),
+                    defender: sage_engine::AttackTarget::Player(PlayerId(0)),
                 }],
             },
             &db,

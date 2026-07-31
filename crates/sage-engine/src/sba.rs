@@ -148,7 +148,11 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             .filter(|perm| {
                 has_zero_toughness(perm, state, db)
                     || has_lethal_damage(perm, state, db)
-                    || struck.contains(&perm.id)
+                    // CR 704.5h destroys a *creature* dealt deathtouch damage. The
+                    // creature test used to be implied by the other two arms reading
+                    // toughness; a planeswalker can now be dealt combat damage
+                    // (CR 120.3c) by a deathtouch source, so it is stated.
+                    || (struck.contains(&perm.id) && is_creature(perm, db))
             })
             .map(|perm| perm.id)
             .collect();
@@ -159,6 +163,54 @@ pub(crate) fn run_state_based_actions(state: &mut GameState, db: &CardDatabase) 
             // `permanent_died` — every id in `doomed` is a creature (the checks read
             // toughness or a combat strike), so each is a genuine death.
             if state.destroy_permanent(id, db) {
+                changed = true;
+            }
+        }
+        // CR 704.5i: a planeswalker with zero loyalty is put into its owner's
+        // graveyard. Judged after the deaths above so a planeswalker whose last loyalty
+        // went to combat damage in this same pass leaves in the same fixed point.
+        // Not a *death* (CR 700.4 — only a creature dies), so like the orphaned-Aura
+        // action below it uses the bare zone move and logs no `permanent_died`.
+        let spent: Vec<PermanentId> = state
+            .battlefield
+            .iter()
+            .filter(|perm| is_planeswalker_at_zero_loyalty(perm, db))
+            .map(|perm| perm.id)
+            .collect();
+        for id in spent {
+            if state.move_permanent_to_graveyard(id).is_some() {
+                changed = true;
+            }
+        }
+        // CR 704.5j, the **legend rule**: if a player controls two or more legendary
+        // permanents with the same name, they put all but one into their graveyard.
+        // See [`legend_rule_losers`] for the one place this engine substitutes a
+        // deterministic policy for a player choice, and why.
+        //
+        // Routed through the creature-death seam because a legendary *creature* put
+        // into a graveyard from the battlefield really does die (CR 700.4) and owes its
+        // dies triggers (CR 603.6c) — while a legendary planeswalker or artifact taking
+        // the same path does not, which is exactly the distinction that seam already
+        // draws.
+        for id in legend_rule_losers(state, db) {
+            if state.destroy_permanent(id, db) {
+                changed = true;
+            }
+        }
+        // CR 506.4 / 800.4a: an attacker whose attack target is no longer there — a
+        // planeswalker that just died, or one an eliminated player controlled — is
+        // removed from combat, so it neither deals damage nor reads as attacking. The
+        // player case is handled at the elimination seam; this is the planeswalker one,
+        // and it runs after the deaths above so it sees the board they left.
+        for index in 0..state.battlefield.len() {
+            let stale = match state.battlefield[index].attacking {
+                Some(crate::combat::AttackTarget::Planeswalker(pw)) => {
+                    !state.battlefield.iter().any(|p| p.id == pw)
+                }
+                Some(crate::combat::AttackTarget::Player(_)) | None => false,
+            };
+            if stale {
+                state.battlefield[index].attacking = None;
                 changed = true;
             }
         }
@@ -226,6 +278,74 @@ fn has_lethal_damage(perm: &Permanent, state: &GameState, db: &CardDatabase) -> 
 /// never qualifies.
 fn has_zero_toughness(perm: &Permanent, state: &GameState, db: &CardDatabase) -> bool {
     matches!(characteristics(state, perm.id, db).toughness, Some(t) if t <= 0)
+}
+
+/// Whether `perm` is a creature, by its printed types — the guard CR 704.5h needs now
+/// that a non-creature permanent can be dealt combat damage.
+fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
+    perm.printed
+        .face(db)
+        .is_some_and(|face| face.has_type(crate::card_type::CardType::Creature))
+}
+
+/// Whether `perm` is a planeswalker with no loyalty counters left (CR 704.5i).
+///
+/// Reads the counters rather than the printed loyalty: printed loyalty is what the
+/// permanent *entered* with (CR 306.5b) and never changes, while the counters are what
+/// it has now, after every loyalty ability, every point of damage, and every
+/// `-1/-1`-style removal. `false` for every non-planeswalker, which never has loyalty
+/// counters to run out of.
+fn is_planeswalker_at_zero_loyalty(perm: &Permanent, db: &CardDatabase) -> bool {
+    perm.printed
+        .face(db)
+        .is_some_and(|face| face.has_type(crate::card_type::CardType::Planeswalker))
+        && perm.counter_count(crate::state::CounterKind::Loyalty) == 0
+}
+
+/// The permanents the **legend rule** (CR 704.5j) removes: for each player controlling
+/// two or more legendary permanents with the same name, all of them but one.
+///
+/// The rule the planeswalker uniqueness rule became (CR 704.5k was folded into this one
+/// in 2017), so it is written here for legendary permanents generally rather than for
+/// planeswalkers specially — a rule stated once cannot be right for one type and absent
+/// for another.
+///
+/// **The one deliberate substitution.** CR 704.5j lets the controller *choose* which
+/// copy survives; this engine keeps the one that entered most recently (the greatest
+/// [`PermanentId`], which is minted monotonically on entry) and bins the rest. That is
+/// a deterministic policy standing in for a player choice, which is a real
+/// simplification and is recorded as such in `data/exclusions.json` — a choice belongs
+/// in the [`PendingChoice`](crate::PendingChoice) queue, and putting it there is its own
+/// change. Keeping the newest is the reading that makes the common case (casting a
+/// second copy of your legend to reset it) behave as a player expects, and no legendary
+/// permanent in the bundled catalog can be duplicated under one controller today.
+///
+/// Names are compared on the printed face, so a token — which has no supertypes — is
+/// never legendary and never a candidate.
+fn legend_rule_losers(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> {
+    let legendary: Vec<(PlayerId, &str, PermanentId)> = state
+        .battlefield
+        .iter()
+        .filter_map(|perm| {
+            let face = perm.printed.face(db)?;
+            face.supertypes()
+                .contains(&crate::card_type::Supertype::Legendary)
+                .then_some((perm.controller, face.name(), perm.id))
+        })
+        .collect();
+    legendary
+        .iter()
+        .filter(|(controller, name, id)| {
+            // A copy is a loser exactly when some other copy under the same controller,
+            // with the same name, entered later — so the single survivor is the newest.
+            legendary
+                .iter()
+                .any(|(other_controller, other_name, other_id)| {
+                    other_controller == controller && other_name == name && other_id.0 > id.0
+                })
+        })
+        .map(|(_, _, id)| *id)
+        .collect()
 }
 
 /// Whether `perm` is an Aura that is now illegally attached and so must go to its
@@ -711,7 +831,7 @@ mod tests {
         // Seat 0's attacker is attacking seat 1, who is about to be eliminated.
         let attacker = place(&mut state, fixture("onakke_ogre"), PlayerId(0), 0);
         if let Some(a) = state.battlefield.iter_mut().find(|p| p.id == attacker) {
-            a.attacking = Some(PlayerId(1));
+            a.attacking = Some(crate::combat::AttackTarget::Player(PlayerId(1)));
         }
         state.players[1].life = 0;
 

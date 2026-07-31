@@ -70,7 +70,8 @@
         "type_line": "Legendary Planeswalker — Nissa",
         "mana_cost": "{3}{G}{G}",
         "rules_text": "Whenever you tap a Forest for mana, add an additional {G}.",
-        "functional_id": "nissa_who_shakes_the_world"
+        "functional_id": "nissa_who_shakes_the_world",
+        "loyalty": "5"
       },
       "counters": [
         {

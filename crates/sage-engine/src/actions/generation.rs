@@ -1,6 +1,6 @@
 //! Action generation — enumeration of legal actions from game state.
 
-use crate::ability::{is_mana_ability, Ability};
+use crate::ability::{is_loyalty_ability, is_mana_ability, Ability};
 use crate::card_type::CardType;
 use crate::choice::ChoiceQuestion;
 use crate::commander::commander_tax_cost;
@@ -12,7 +12,9 @@ use crate::CardDatabase;
 
 use super::definition::Action;
 use super::targeting::legal_targets_for_spec;
-use super::utilities::{cost_payable, is_castable_spell, is_land, tap_cost_is_summoning_sick};
+use super::utilities::{
+    cost_payable, is_castable_spell, is_land, loyalty_timing_allows, tap_cost_is_summoning_sick,
+};
 
 /// Enumerate the actions legal for the player who currently holds priority.
 ///
@@ -336,6 +338,13 @@ fn offer_activations(
             }
             if let Ability::Activated { cost, .. } = ability {
                 if tap_cost_is_summoning_sick(state, perm, cost, db) {
+                    continue;
+                }
+                // CR 606.3: a loyalty ability is sorcery-speed and once per turn per
+                // permanent. Both are timing facts about *this* activation rather than
+                // about its cost, so they gate the offer beside the summoning-sickness
+                // check rather than inside `cost_payable`.
+                if is_loyalty_ability(ability) && !loyalty_timing_allows(state, perm) {
                     continue;
                 }
                 if cost_payable(state, cost, perm) {

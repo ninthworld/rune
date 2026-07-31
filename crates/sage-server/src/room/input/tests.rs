@@ -421,7 +421,11 @@ fn combat_state(step: Step, priority: usize) -> GameState {
 
 /// Put an untapped Walking Corpse (a vanilla 2/2) on the battlefield under
 /// `controller`, attacking `attacking` if given.
-fn creature(state: &mut GameState, controller: usize, attacking: Option<PlayerId>) {
+fn creature(
+    state: &mut GameState,
+    controller: usize,
+    attacking: Option<sage_engine::AttackTarget>,
+) {
     let card = fixture("walking_corpse");
     let inst = state.new_instance(card);
     let id = sage_engine::PermanentId(state.mint_id());
@@ -523,7 +527,11 @@ async fn issue_453_a_player_with_a_legal_blocker_still_gets_the_forced_prompt() 
     // and an untapped creature to block with is a real choice.
     let mut state = combat_state(Step::DeclareBlockers, 1);
     state.attackers_declared = true;
-    creature(&mut state, 0, Some(PlayerId(1)));
+    creature(
+        &mut state,
+        0,
+        Some(sage_engine::AttackTarget::Player(PlayerId(1))),
+    );
     creature(&mut state, 1, None);
     let (view, handle, task) = resting_view(state, AutoPassPolicy::On, 1).await;
     assert_eq!(view.phase, Phase::DeclareBlockers);

@@ -315,6 +315,7 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 | `mana_cost` | `string?` | Pip notation such as `"{1}{G}"` |
 | `rules_text` | `string?` | Server-generated rules text, never stored Oracle text |
 | `power`, `toughness` | `string?` | Computed creature values |
+| `loyalty` | `string?` | Printed **starting** loyalty (planeswalkers only, CR 306.5b) |
 | `keywords` | `string[]?` | Lowercase keyword names |
 | `token` | `boolean?` | The object is a **token** (CR 111) rather than a card; omitted (and `false`) for every card |
 
@@ -323,6 +324,13 @@ the underlying card definition and is not a legal-action handle. Clients treat b
 opaque strings. The web client uses `functional_id` as the key of its client-local card-art
 cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
+
+`loyalty` is what a planeswalker card *enters the battlefield with* — the number printed
+in its corner — and never changes. It is **not** how much loyalty a planeswalker on the
+battlefield has: that is its `loyalty` entry in `Permanent.counters`, which its abilities
+spend and damage removes. Render this one on a card in hand, on the stack, or in a
+graveyard; render the counter on the battlefield. Showing this one on a battlefield
+planeswalker would report `4` for a planeswalker already down to `1`.
 
 A **token** is a permanent the game created, with no card behind it (issue #605). It
 projects as an ordinary `CardView` — name, type line, computed power/toughness, keywords,
@@ -347,10 +355,15 @@ A `Permanent` contains:
 
 - `id`, `controller`, `owner`, and a computed `card`;
 - optional `tapped` and `attacking` booleans;
-- optional `attacking_player`, naming the defending player's entity id this attacker
-  attacks (CR 508.1a, issue #341/#345) — the multiplayer generalization of `attacking`,
-  omitted when not attacking; a two-player client may ignore it (the sole opponent is the
-  only defender);
+- optional `attacking_player`, naming the **defending player** for this attack
+  (CR 508.1a, issue #341/#345) — the seat that answers for it, which when a planeswalker
+  is being attacked is that planeswalker's *controller*. Omitted when not attacking;
+- optional `attacking_planeswalker`, naming the **planeswalker** this attacker is
+  attacking (CR 508.1a, issue #608), when it is attacking one rather than a player.
+  Omitted otherwise. The pair is deliberate: one names what is attacked, the other names
+  who answers for it, and a client draws its arrow at whichever it wants without deriving
+  the relationship. A two-player client with no planeswalkers on the board may ignore
+  both;
 - optional `blocking`, naming the attacker’s entity id;
 - optional marked `damage`;
 - optional `attached_to`, naming the host permanent’s entity id when this permanent
@@ -359,7 +372,10 @@ A `Permanent` contains:
   this object **is** somebody’s commander (CR 903.3) — matched on the card instance, so it
   survives every zone change and recast; a client must never infer it from a name, a zone,
   or a type line; and
-- optional `counters`, each `{ "kind": string, "count": number }`.
+- optional `counters`, each `{ "kind": string, "count": number }` — the kinds today are
+  `"+1/+1"`, `"-1/-1"`, and `"loyalty"`. A planeswalker's `loyalty` counter is its
+  **current** loyalty, the number every rule reads: its abilities spend it, damage removes
+  it (CR 120.3c), and it is put into its owner's graveyard at zero (CR 704.5i).
 
 These fields describe server-computed state. They do not authorize interaction.
 
@@ -593,15 +609,25 @@ distinguish it from a card selection:
   empty.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
-attack; blocker slots list eligible blockers for each attacker. In a game with more than one
-opponent (issue #345), `declare_attackers` additionally offers one **defender slot per
-attacker candidate** — a slot whose candidates are the defending players that attacker may be
-declared to attack (CR 508.1a); the client answers a defender for each attacker it declares,
-and the slot is correlated to its attacker the same way blocker slots are. A two-player game
-offers no defender slots (the sole opponent is the only defender), so the wire and the client
-flow are unchanged. `declare_blockers` requirements are scoped to the player who currently
-owes the declaration (issue #344): with attacks split across defenders, each attacked player
-sees only the attackers attacking them.
+attack; blocker slots list eligible blockers for each attacker. When there is more than one
+thing to attack (issue #345, widened by #608), `declare_attackers` additionally offers one
+**defender slot per attacker candidate** — a slot whose candidates are everything that
+attacker may be declared to attack (CR 508.1a); the client answers one for each attacker it
+declares, and the slot is correlated to its attacker the same way blocker slots are.
+
+Those candidates are **player ids and permanent ids in one list**: an attack may name an
+opponent or a **planeswalker** they control. The two are told apart by which collection the
+id appears in — a `p…` seat id in `seat_order`, a `perm_…` id on the battlefield — and a
+client need not classify them at all to answer, since it echoes back an id the server
+offered. A game in which there is only one thing to attack — two players, no planeswalker on
+the far side — offers **no** defender slots at all, so the wire and the client flow are
+exactly as before. The gate is the number of *targets*, not the number of opponents: a
+two-player game becomes a real choice the moment an opponent resolves a planeswalker.
+
+`declare_blockers` requirements are scoped to the player who currently owes the declaration
+(issue #344): with attacks split across defenders, each attacked player sees only the
+attackers attacking them — including attackers aimed at a planeswalker they control, since
+they are the defending player for those too.
 
 A blocker slot carries its attacker's restrictions in two different places, according to what
 kind of restriction it is (issue #606). A **pairwise** one — flying, "can't be blocked",
@@ -1050,6 +1076,7 @@ in-game `CardView`, named by identity rather than a per-game entity id:
 | `rules_text` | `string?` | Server-generated rules text, identical to the in-game `CardView`; omitted when empty |
 | `power` | `string?` | Power (creatures only) |
 | `toughness` | `string?` | Toughness (creatures only) |
+| `loyalty` | `string?` | Printed starting loyalty (planeswalkers only) |
 | `keywords` | `string[]?` | Keyword abilities as lowercase wire names; omitted when empty |
 
 Each `CatalogFormat` exposes exactly the server-side deck-legality policy a `submit_deck` is

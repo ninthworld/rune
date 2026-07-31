@@ -1,7 +1,7 @@
 //! Action types and core methods: the closed set of legal player choices.
 
 use crate::ability::Target;
-use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
+use crate::id::{CardInstance, CardInstanceId, PermanentId};
 
 /// An action a player may take. The engine generates the legal set with
 /// [`crate::valid_actions`] and validates a chosen action against it in
@@ -210,19 +210,20 @@ pub enum Action {
 }
 
 /// One attacker→defender assignment of a [`Action::DeclareAttackers`] declaration
-/// (CR 508.1a): the `attacker` is declared to attack the defending player
-/// `defender`.
+/// (CR 508.1a): the `attacker` is declared to attack `defender`, a player or a
+/// planeswalker.
 ///
-/// In a two-player game every attack's `defender` is the sole opponent, so the
-/// declaration is choice-free; with more seats each attacker records which
-/// opponent it attacks, which is what blocker eligibility and combat damage follow
-/// (issue #341). Plain `Copy`/`Eq` data, mirroring [`Block`].
+/// In a two-player game with no planeswalker to attack, every attack's `defender` is
+/// the sole opponent and the declaration is choice-free; otherwise each attacker
+/// records what it attacks, which is what blocker eligibility and combat damage follow
+/// (issues #341 and #608). Plain `Copy`/`Eq` data, mirroring [`Block`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attack {
     /// The creature declared as an attacker (an [`crate::attacker_candidates`] member).
     pub attacker: PermanentId,
-    /// The defending player it attacks (a [`crate::defender_candidates`] member).
-    pub defender: PlayerId,
+    /// What it attacks — a player or a planeswalker they control (a
+    /// [`crate::defender_candidates`] member).
+    pub defender: crate::combat::AttackTarget,
 }
 
 /// One attacker's combat-damage assignment order (CR 510.1, issue #346): the

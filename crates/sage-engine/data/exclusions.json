@@ -1,7 +1,15 @@
 [
   {
-    "name": "Planeswalkers",
-    "blocker": "no loyalty counter system or loyalty abilities"
+    "name": "Emblems",
+    "blocker": "no zoneless, controller-scoped continuous object"
+  },
+  {
+    "name": "Planeswalker-specific static abilities",
+    "blocker": "static abilities scope to creatures, not to a planeswalker's controller"
+  },
+  {
+    "name": "The legend-rule choice among duplicates",
+    "blocker": "CR 704.5j applies, but which copy survives is a deterministic policy (the newest) rather than the controller's choice"
   },
   {
     "name": "Auras that enchant a player or land, or move between hosts",

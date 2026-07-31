@@ -36,9 +36,9 @@ use crate::id::CardId;
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Exclusion {
-    /// The excluded card or mechanic, e.g. `"Planeswalkers"`.
+    /// The excluded card or mechanic, e.g. `"Emblems"`.
     pub name: String,
-    /// The named blocker, e.g. `"no loyalty counter system or loyalty abilities"`.
+    /// The named blocker, e.g. `"no zoneless, controller-scoped continuous object"`.
     pub blocker: String,
 }
 

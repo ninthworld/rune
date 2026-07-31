@@ -904,3 +904,33 @@ fn issue_605_a_token_creation_reads_as_the_card_prints_it() {
         "When Doomed Dissenter dies, you create a 2/2 black Zombie creature token."
     );
 }
+
+#[test]
+fn issue_608_a_loyalty_ability_reads_as_the_signed_number_the_card_prints() {
+    // CR 606.1: a loyalty cost is written as the number in the ability's symbol — `+1`,
+    // `0`, `−2` — with the typographic minus a card uses rather than a hyphen. No
+    // planeswalker is authorable in the bundled set (every M19 one needs an emblem), so
+    // the shape is exercised inline, as ADR 0009 prescribes.
+    let inline = CardDatabase::from_json(
+        r#"[
+            {"schema_version":1,"functional_id":"test_warden","name":"Test Warden",
+             "supertypes":["legendary"],"types":["planeswalker"],"subtypes":["Warden"],
+             "mana_cost":"{2}{W}{W}","colors":["white"],"loyalty":4,
+             "abilities":[
+               {"type":"activated","cost":[{"kind":"loyalty","amount":1}],
+                "effects":[{"kind":"gain_life","player_ref":"controller","amount":2}]},
+               {"type":"activated","cost":[{"kind":"loyalty","amount":0}],
+                "effects":[{"kind":"draw_card","count":1}]},
+               {"type":"activated","cost":[{"kind":"loyalty","amount":-2}],
+                "effects":[{"kind":"deal_damage","target":"any_target","amount":2}]}]}
+        ]"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        text_of(&inline, "test_warden"),
+        "+1: You gain 2 life.\n\
+         0: Draw a card.\n\
+         \u{2212}2: Test Warden deals 2 damage to any target."
+    );
+}

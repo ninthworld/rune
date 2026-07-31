@@ -83,6 +83,8 @@ impl GameState {
         self.blockers_declared = false;
         self.damage_orders.clear();
         self.blockers_declared_by.clear();
+        // CR 606.3: the one-loyalty-ability-per-turn allowance refreshes with the turn.
+        self.loyalty_activations.clear();
     }
 
     /// Empty every player's mana pool on this owned state (CR 500.4). Applies to

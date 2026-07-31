@@ -14,9 +14,9 @@ use sage_engine::{
     abilities_of_permanent, attacker_candidates, attackers_needing_damage_order,
     attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for, bottom_requirement,
     characteristics, choice_bounds, choice_candidates, confirm_is_payable, declared_attackers,
-    defender_candidates, defending_player, is_mana_ability, pending_blocker_declarer,
-    pending_player_choice, scripted_rules_text, target_requirements, valid_actions, AbilityOrigin,
-    Action, Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
+    defender_candidates, is_mana_ability, pending_blocker_declarer, pending_player_choice,
+    scripted_rules_text, target_requirements, valid_actions, AbilityOrigin, Action, Attack,
+    AttackTarget, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
     ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ConfirmRequest, CounterKind,
     DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedIdentity,
     LoggedPermanent, LossReason, PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject,
@@ -134,12 +134,18 @@ pub(crate) fn personalized_view(
             card: permanent_card_view(state, perm, db),
             tapped: perm.tapped,
             // Combat declaration state (CR 508/509): whether this permanent is
-            // attacking, whom it attacks (issue #341/#345), and which attacker it is
-            // blocking (as an entity id). `attacking` stays the boolean fact for
-            // back-compat; `attacking_player` names the defending player so a client
-            // can render split attacks — omitted when not attacking.
+            // attacking, what it attacks (issue #341/#345/#608), and which attacker it
+            // is blocking (as an entity id). `attacking` stays the boolean fact for
+            // back-compat; `attacking_player` names the defending player — the seat that
+            // answers for the attack, which for a planeswalker is its controller — and
+            // `attacking_planeswalker` names the planeswalker itself when there is one.
+            // Both are omitted when the permanent is not attacking.
             attacking: perm.attacking.is_some(),
-            attacking_player: perm.attacking.map(player_id),
+            attacking_player: perm
+                .attacking
+                .and_then(|target| target.defending_player(state))
+                .map(player_id),
+            attacking_planeswalker: attacking_planeswalker_of(perm),
             blocking: perm.blocking.map(permanent_entity_id),
             // Marked combat damage (CR 120.3 / 510), for lethal-damage display.
             damage: perm.damage,
@@ -272,6 +278,18 @@ pub(crate) fn personalized_view(
     }
 }
 
+/// The **planeswalker** a permanent is attacking, as its wire entity id (CR 508.1a,
+/// issue #608), or `None` when it is attacking a player or is not attacking at all.
+///
+/// Split out because both projections need it and both must answer it identically: a
+/// seated view and a spectator view render the same public board.
+fn attacking_planeswalker_of(perm: &sage_engine::Permanent) -> Option<String> {
+    match perm.attacking {
+        Some(AttackTarget::Planeswalker(id)) => Some(permanent_entity_id(id)),
+        Some(AttackTarget::Player(_)) | None => None,
+    }
+}
+
 /// Project the game state onto a **spectator** view (issue #351): the
 /// public intersection only, for a non-seated observer. Unlike [`personalized_view`]
 /// there is **no viewer** — nothing indexes a seat's hand, mana pool, or actions, so
@@ -316,7 +334,11 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             card: permanent_card_view(state, perm, db),
             tapped: perm.tapped,
             attacking: perm.attacking.is_some(),
-            attacking_player: perm.attacking.map(player_id),
+            attacking_player: perm
+                .attacking
+                .and_then(|target| target.defending_player(state))
+                .map(player_id),
+            attacking_planeswalker: attacking_planeswalker_of(perm),
             blocking: perm.blocking.map(permanent_entity_id),
             damage: perm.damage,
             attached_to: perm.attached_to.map(permanent_entity_id),
@@ -559,7 +581,7 @@ mod tests {
             .iter_mut()
             .find(|p| p.id == attacker)
             .unwrap()
-            .attacking = Some(PlayerId(2));
+            .attacking = Some(AttackTarget::Player(PlayerId(2)));
         state.players[1].has_lost = true;
 
         let view = personalized_view(&state, &db, PlayerId(0));

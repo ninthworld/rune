@@ -674,6 +674,14 @@ fn cost_symbol(cost: &Cost) -> String {
         // A mana cost is already written in the notation a player reads it in, so it
         // is passed through rather than re-rendered from a parse.
         Cost::Mana { mana } => mana.clone(),
+        // A loyalty cost is written as the signed number printed on the card
+        // (CR 606.1): `+1`, `0`, `−2`. The minus is the typographic minus sign the
+        // card uses, not a hyphen, so the symbol reads as a card rather than as code.
+        Cost::Loyalty { amount } => match amount {
+            0 => "0".to_string(),
+            n if *n > 0 => format!("+{n}"),
+            n => format!("\u{2212}{}", n.unsigned_abs()),
+        },
     }
 }
 
@@ -694,6 +702,7 @@ fn counters(kind: CounterKind, count: u32) -> String {
     let symbol = match kind {
         CounterKind::PlusOnePlusOne => "+1/+1",
         CounterKind::MinusOneMinusOne => "-1/-1",
+        CounterKind::Loyalty => "loyalty",
     };
     match count {
         1 => format!("a {symbol} counter"),

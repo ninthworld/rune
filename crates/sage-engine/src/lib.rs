@@ -41,9 +41,9 @@ mod triggers;
 mod zone;
 
 pub use ability::{
-    is_mana_ability, Ability, CardFilter, Chooser, Cost, DamageSubject, Effect, FoundDestination,
-    MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification,
-    Target, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    is_loyalty_ability, is_mana_ability, Ability, CardFilter, Chooser, Cost, DamageSubject, Effect,
+    FoundDestination, MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects,
+    StaticModification, Target, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     target_requirements, valid_actions, Action, Attack, Block, DamageOrder, TargetRequirement,
@@ -63,10 +63,11 @@ pub use choice::{
     SuspendedSpell,
 };
 pub use combat::{
-    attacked_players, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
-    blocked_by_at_most_one, blocker_can_block_attacker, blocker_candidates, blocker_candidates_for,
-    declared_attackers, defender_candidates, defending_player, pending_blocker_declarer,
-    pending_damage_order, permanent_has_menace, permanent_has_restriction, permanent_restrictions,
+    attack_target_of, attacked_players, attacker_candidates, attackers_needing_damage_order,
+    attacking_defender_of, blocked_by_at_most_one, blocker_can_block_attacker, blocker_candidates,
+    blocker_candidates_for, declared_attackers, defender_candidates, defending_player,
+    defending_player_candidates, pending_blocker_declarer, pending_damage_order,
+    permanent_has_menace, permanent_has_restriction, permanent_restrictions, AttackTarget,
 };
 pub use commander::{
     commander_tax_cost, CommanderState, COMMANDER_DAMAGE_LOSS_THRESHOLD, COMMANDER_TAX_PER_CAST,

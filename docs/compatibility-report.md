@@ -49,8 +49,8 @@ Edit [`crates/sage-engine/data/exclusions.json`](../crates/sage-engine/data/excl
 
 ```json
 {
-  "name": "Planeswalkers",
-  "blocker": "no loyalty counter system or loyalty abilities"
+  "name": "Emblems",
+  "blocker": "no zoneless, controller-scoped continuous object"
 }
 ```
 

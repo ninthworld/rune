@@ -47,6 +47,9 @@ const AURA_SUBTYPE: &str = "Aura";
 /// The card type that requires printed power and toughness.
 const CREATURE_TYPE: &str = "creature";
 
+/// The card type that requires a printed starting loyalty (CR 306.5b).
+const PLANESWALKER_TYPE: &str = "planeswalker";
+
 /// The card types a permanent may have (CR 110.1) — and therefore the only types a
 /// **token** may have, a token existing nowhere but the battlefield (CR 111.7).
 const PERMANENT_TYPES: [&str; 6] = [
@@ -105,6 +108,20 @@ pub enum Violation {
         functional_id: String,
         /// Whether the card is a creature — which is to say, which way it is wrong.
         creature: bool,
+    },
+    /// A `Planeswalker` carries no printed `loyalty`, or a non-planeswalker carries
+    /// one (CR 306.5b) — the planeswalker counterpart of
+    /// [`Self::PowerToughnessMismatch`].
+    ///
+    /// Wrong in both directions for the same reason that one is: a planeswalker with no
+    /// starting loyalty would enter the battlefield with no loyalty counters and be put
+    /// straight into its owner's graveyard by CR 704.5i, and a loyalty on anything else
+    /// is a number nothing would ever read.
+    LoyaltyMismatch {
+        /// The definition at fault.
+        functional_id: String,
+        /// Whether the card is a planeswalker — which is to say, which way it is wrong.
+        planeswalker: bool,
     },
     /// An `aura` grant appears on a card whose `subtypes` do not include `"Aura"`
     /// (CR 303.4).
@@ -201,6 +218,17 @@ impl fmt::Display for Violation {
             } => write!(
                 f,
                 "{functional_id} is not a Creature but carries power/toughness"
+            ),
+            Self::LoyaltyMismatch {
+                functional_id,
+                planeswalker: true,
+            } => write!(f, "{functional_id} is a Planeswalker with no loyalty"),
+            Self::LoyaltyMismatch {
+                functional_id,
+                planeswalker: false,
+            } => write!(
+                f,
+                "{functional_id} is not a Planeswalker but carries loyalty"
             ),
             Self::AuraOnNonAura { functional_id } => write!(
                 f,
@@ -339,6 +367,17 @@ pub(crate) fn validate_definition(
         return Err(Violation::PowerToughnessMismatch {
             functional_id,
             creature: is_creature,
+        });
+    }
+
+    // A Planeswalker carries a printed starting loyalty and nothing else does
+    // (CR 306.5b) — the same both-directions pairing the P/T check above makes, and for
+    // the same reason: a planeswalker with none would die to CR 704.5i on arrival.
+    let is_planeswalker = types.iter().any(|t| t.as_str() == Some(PLANESWALKER_TYPE));
+    if is_planeswalker != object.contains_key("loyalty") {
+        return Err(Violation::LoyaltyMismatch {
+            functional_id,
+            planeswalker: is_planeswalker,
         });
     }
 
@@ -640,6 +679,43 @@ mod tests {
                 functional_id: "test_card".to_string(),
                 creature: true,
             }
+        );
+    }
+
+    #[test]
+    fn issue_608_loyalty_is_required_on_a_planeswalker_and_forbidden_elsewhere() {
+        // CR 306.5b, and both directions of it. A planeswalker with no starting loyalty
+        // would enter with no counters and be put straight into its owner's graveyard
+        // by CR 704.5i; a loyalty on anything else is a number nothing would read.
+        let missing = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                          "supertypes": ["legendary"], "types": ["planeswalker"],
+                          "mana_cost": "{2}{W}{W}"}"#;
+        assert_eq!(
+            validate_definition(None, &serde_json::from_str(missing).unwrap()).unwrap_err(),
+            Violation::LoyaltyMismatch {
+                functional_id: "test_card".to_string(),
+                planeswalker: true,
+            }
+        );
+
+        let spurious = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                           "types": ["creature"], "mana_cost": "{G}",
+                           "power": 1, "toughness": 1, "loyalty": 3}"#;
+        assert_eq!(
+            validate_definition(None, &serde_json::from_str(spurious).unwrap()).unwrap_err(),
+            Violation::LoyaltyMismatch {
+                functional_id: "test_card".to_string(),
+                planeswalker: false,
+            }
+        );
+
+        // And the well-formed pair passes: a planeswalker with loyalty and no P/T.
+        let good = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "supertypes": ["legendary"], "types": ["planeswalker"],
+                       "mana_cost": "{2}{W}{W}", "loyalty": 4}"#;
+        assert_eq!(
+            validate_definition(None, &serde_json::from_str(good).unwrap()).unwrap(),
+            "test_card"
         );
     }
 

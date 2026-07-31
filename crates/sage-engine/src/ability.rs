@@ -182,6 +182,28 @@ pub enum Cost {
         /// the enum already reserves the `kind` tag for its own discriminant.
         mana: String,
     },
+    /// Change the source's **loyalty** by `amount` — the cost of a planeswalker's
+    /// loyalty ability (CR 606.1), written on the card as `+1`, `0`, or `−2` and
+    /// authored as `{"kind":"loyalty","amount":-2}`.
+    ///
+    /// The one cost in the IR that can be *positive*: paying `+1` adds a loyalty
+    /// counter rather than removing one, and CR 118 is comfortable with that because a
+    /// loyalty symbol is a cost by definition, not by direction. A negative amount is
+    /// payable only while the source has at least that many loyalty counters
+    /// (CR 606.3), which is what makes `−7` unofferable on a planeswalker at 4.
+    ///
+    /// Its presence is what makes an ability a **loyalty ability**
+    /// ([`is_loyalty_ability`]), and that carries two timing rules no other activated
+    /// ability has: sorcery speed, and once per turn per permanent (CR 606.3). Both are
+    /// enforced where every other activation gate is — the offer in
+    /// [`valid_actions`](crate::valid_actions) and the independent re-check in
+    /// [`apply_action`](crate::apply_action).
+    Loyalty {
+        /// The signed change to the source's loyalty counters. Positive adds, negative
+        /// removes, zero is the `0:` ability that costs nothing and is still an
+        /// activation for the once-per-turn rule.
+        amount: i32,
+    },
 }
 
 /// A single effect an ability (or spell) produces.
@@ -919,53 +941,94 @@ impl Effect {
 /// the legality predicate takes one: `any_creature_you_control` and
 /// `any_creature_an_opponent_controls` name different sets for different players,
 /// and the same authored card must mean "you" from either seat.
+///
+/// # Where each spec stands on planeswalkers
+///
+/// Now that a planeswalker is a real object (issue #608), every spec has to have an
+/// answer, and the compiler cannot ask for one: a spec that names a *type* excludes
+/// planeswalkers by saying nothing, which is indistinguishable from having forgotten
+/// them. So each variant states its position in its own doc comment below, and the
+/// three groups are:
+///
+/// - **Includes them by construction**: [`Self::AnyPermanent`] and
+///   [`Self::AnyNonlandPermanent`] name permanents, and a planeswalker is one — both
+///   already accepted one before this issue and still do.
+/// - **Includes them by rule**: [`Self::AnyTarget`], which is CR 115.4's "any target"
+///   and therefore *means* creature, player, or planeswalker.
+/// - **Excludes them**, deliberately and permanently: every creature-shaped spec, the
+///   artifact/enchantment/land specs, the player specs, and the two spell-on-stack
+///   specs. A planeswalker is not a creature, an artifact, an enchantment, a land, a
+///   player, or a spell, so each of these excludes it because of what it names — not
+///   because planeswalkers were unmodeled.
 pub enum TargetSpec {
-    /// Any player in the game.
+    /// Any player in the game. Never a planeswalker: a planeswalker is a permanent, and
+    /// the player who controls one is a separate object (CR 306.1).
     AnyPlayer,
     /// Any **opponent** of the object's controller still in the game — "target
-    /// opponent". The controller themselves is never a candidate.
+    /// opponent". The controller themselves is never a candidate, and neither is a
+    /// planeswalker, for [`Self::AnyPlayer`]'s reason.
     AnyOpponent,
-    /// Any permanent on the battlefield.
+    /// Any permanent on the battlefield — **including a planeswalker**, which has been
+    /// true since the day this variant existed and is now reachable rather than
+    /// theoretical.
     AnyPermanent,
-    /// Any permanent that is not a land — "target nonland permanent".
+    /// Any permanent that is not a land — "target nonland permanent". **Includes a
+    /// planeswalker**, which is a permanent and is not a land.
     AnyNonlandPermanent,
     /// Any creature on the battlefield (a permanent whose printed types include
-    /// [`crate::CardType::Creature`]).
+    /// [`crate::CardType::Creature`]). Never a planeswalker: the two types are
+    /// disjoint on every card the schema can express, and a spell that wants both says
+    /// [`Self::AnyTarget`].
     AnyCreature,
     /// Any creature the object's controller controls — "target creature you control".
+    /// Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureYouControl,
     /// Any creature controlled by an opponent of the object's controller — "target
-    /// creature an opponent controls".
+    /// creature an opponent controls". Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureAnOpponentControls,
     /// Any creature that currently has flying (CR 613.1f, so a granted flying counts
     /// exactly as a printed one) — the "target creature with flying" of an anti-air
-    /// removal spell.
+    /// removal spell. Never a planeswalker (see [`Self::AnyCreature`]).
     AnyCreatureWithFlying,
-    /// Any creature that is currently tapped — "target tapped creature".
+    /// Any creature that is currently tapped — "target tapped creature". Never a
+    /// planeswalker: a planeswalker can be tapped in principle, but this spec is a
+    /// creature spec first and the tapped-ness is a filter on it.
     AnyTappedCreature,
-    /// Any artifact on the battlefield.
+    /// Any artifact on the battlefield. Never a planeswalker — no printing in the
+    /// bundled catalog is both, and a card that wants either says so with its own spec.
     AnyArtifact,
-    /// Any enchantment on the battlefield.
+    /// Any enchantment on the battlefield. Never a planeswalker, for
+    /// [`Self::AnyArtifact`]'s reason.
     AnyEnchantment,
     /// Any artifact **or** enchantment — the single slot of a naturalize-style
-    /// spell, which is one target of either type rather than two slots.
+    /// spell, which is one target of either type rather than two slots. Never a
+    /// planeswalker.
     AnyArtifactOrEnchantment,
-    /// Any land on the battlefield.
+    /// Any land on the battlefield. Never a planeswalker: the types are disjoint.
     AnyLand,
     /// Any spell on the stack — a [`crate::StackObjectKind::Spell`] object (CR
     /// 701.5, "counter target spell"). Abilities on the stack are not spells and
     /// are never candidates; a mana ability never uses the stack at all (CR
-    /// 605.3), so it can never be countered.
+    /// 605.3), so it can never be countered. A planeswalker *spell* on the stack is a
+    /// candidate here — but a planeswalker *permanent* is not on the stack at all, so
+    /// nothing about planeswalkers is special-cased.
     SpellOnStack,
     /// Any **creature** spell on the stack — the narrower counterspell of
     /// `Essence Scatter`. A creature spell is a spell whose card's printed types
     /// include creature; the check is on the card on the stack, not on any
-    /// permanent, because it has not entered the battlefield yet.
+    /// permanent, because it has not entered the battlefield yet. A planeswalker spell
+    /// is not a creature spell.
     CreatureSpellOnStack,
-    /// Any target (CR 115.4): the modern "any target" of a burn spell — any
-    /// creature on the battlefield or any player still in the game. Planeswalkers
-    /// and battles are not modeled, so the legal set is exactly creatures plus
-    /// players.
+    /// Any target (CR 115.4): the modern "any target" of a burn spell — any creature on
+    /// the battlefield, any **planeswalker** on the battlefield, or any player still in
+    /// the game.
+    ///
+    /// The planeswalker arm is the point of issue #608's targeting half. Before it,
+    /// this variant documented its own gap in prose ("planeswalkers and battles are not
+    /// modeled, so the legal set is exactly creatures plus players"), and closing that
+    /// gap is what lets a burn spell kill a planeswalker — damage to which removes
+    /// loyalty (CR 120.3c) rather than being marked. Battles remain unmodeled and are
+    /// still absent from the set.
     AnyTarget,
 }
 
@@ -1215,6 +1278,26 @@ pub enum ObservedSpell {
     Enchantment,
     /// An instant **or** sorcery spell — one class, as a card writes it.
     InstantOrSorcery,
+}
+
+/// Whether an ability is a **loyalty ability** (CR 606.1): an activated ability whose
+/// cost includes a loyalty symbol ([`Cost::Loyalty`]).
+///
+/// The predicate the two timing rules of CR 606.3 hang off — sorcery speed, and one
+/// per planeswalker per turn. Derived from the cost, never stored and never a flag on
+/// the card, so an ability cannot claim to be one without paying like one.
+///
+/// A loyalty ability is never a mana ability: [`is_mana_ability`] looks at the
+/// *effects*, and adding mana is the one thing no printed loyalty ability's whole
+/// effect list is — but were one ever authored, the loyalty gates below would still
+/// apply to it, because they are keyed on this predicate rather than on "uses the
+/// stack".
+#[must_use]
+pub fn is_loyalty_ability(ability: &Ability) -> bool {
+    matches!(
+        ability,
+        Ability::Activated { cost, .. } if cost.iter().any(|c| matches!(c, Cost::Loyalty { .. }))
+    )
 }
 
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated

@@ -119,6 +119,14 @@ export const CardView = z.object({
   token: z.boolean().optional(),
   power: z.string().optional(),
   toughness: z.string().optional(),
+  /**
+   * Printed **starting** loyalty (CR 306.5b) — the number in a planeswalker's corner,
+   * what it enters the battlefield with. Absent on every other card. This is *not* how
+   * much loyalty a planeswalker on the battlefield has: that is its `loyalty` entry in
+   * `Permanent.counters`, and rendering this one on the board would show the printed
+   * number for a planeswalker that has already spent down.
+   */
+  loyalty: z.string().optional(),
   keywords: z.array(z.string()).optional(),
 })
 export type CardView = z.infer<typeof CardView>
@@ -160,7 +168,18 @@ export const Permanent = z.object({
   card: CardView,
   tapped: z.boolean().optional(),
   attacking: z.boolean().optional(),
+  /**
+   * The **defending player** this attacker is attacking — the seat that answers for the
+   * attack. When a planeswalker is being attacked this is its controller, not the
+   * planeswalker; `attacking_planeswalker` names the planeswalker itself.
+   */
   attacking_player: EntityId.optional(),
+  /**
+   * The **planeswalker** this attacker is attacking (CR 508.1a), when it is attacking
+   * one rather than a player. Absent otherwise. Server-stated: the client never works
+   * out what is being attacked from which collection an id turns up in.
+   */
+  attacking_planeswalker: EntityId.optional(),
   blocking: EntityId.optional(),
   damage: z.number().optional(),
   attached_to: EntityId.optional(),
@@ -455,6 +474,8 @@ export const CatalogCard = z.object({
   rules_text: z.string().optional(),
   power: z.string().optional(),
   toughness: z.string().optional(),
+  /** Printed starting loyalty (CR 306.5b); present only for planeswalkers. */
+  loyalty: z.string().optional(),
   keywords: z.array(z.string()).optional(),
 })
 export type CatalogCard = z.infer<typeof CatalogCard>

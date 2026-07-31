@@ -67,21 +67,27 @@ pub(crate) fn bind_attackers(
         return None;
     }
     let candidates = attacker_candidates(state, db);
-    let defenders = defender_candidates(state);
-    // The sole opponent, used as the default when the client sends no per-attacker
-    // defender — the two-player fast path (issue #345). `None` with several opponents.
-    let sole_defender = defending_player(state);
+    let defenders = defender_candidates(state, db);
+    // The only thing there is to attack, used as the default when the client sends no
+    // per-attacker choice — the two-player, no-planeswalker fast path (issue #345).
+    // `None` the moment there is more than one candidate, which is now also true of a
+    // two-player game in which an opponent controls a planeswalker (issue #608).
+    let sole_defender = match defenders.as_slice() {
+        [only] => Some(*only),
+        _ => None,
+    };
     let mut attackers = Vec::new();
     for id in chosen_for(targets, "attackers") {
         let attacker = permanent_in(&candidates, id)?;
-        // The per-attacker defender: the client's `defend_<id>` choice if present
-        // (multiplayer), else the sole opponent (two-player). With more than one
-        // opponent and no choice supplied, the declaration is rejected.
+        // The per-attacker target: the client's `defend_<id>` choice if present, else
+        // the only candidate. With more than one candidate and no choice supplied, the
+        // declaration is rejected. Resolved by recomputing each candidate's entity id
+        // over the *fresh* candidate list, so a stale or forged id binds to nothing.
         let defender = match chosen_for(targets, &defender_slot(attacker)).first() {
             Some(chosen) => defenders
                 .iter()
                 .copied()
-                .find(|&seat| player_id(seat) == *chosen)?,
+                .find(|&target| attack_target_entity_id(target) == *chosen)?,
             None => sole_defender?,
         };
         attackers.push(Attack { attacker, defender });

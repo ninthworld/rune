@@ -190,7 +190,7 @@ fn issue_605_a_token_attacks_blocks_takes_damage_and_dies() {
         &Action::DeclareAttackers {
             attackers: vec![Attack {
                 attacker: token,
-                defender: PlayerId(1),
+                defender: sage_engine::AttackTarget::Player(PlayerId(1)),
             }],
         },
         &db,

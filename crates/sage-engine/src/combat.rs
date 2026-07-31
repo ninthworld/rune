@@ -4,13 +4,16 @@
 //!
 //! Declarations (issue #117): who *may* attack (CR 508.1a), who *may* block
 //! (CR 509.1a), and which player owes the declaration in each declare step.
-//! Attack targets (issue #341): each attacker is declared to attack a chosen
-//! defending player — [`Permanent::attacking`] records *whom* (an
-//! `Option<PlayerId>`), not a bare boolean. In a two-player game the sole opponent
-//! is the only legal defender ([`defender_candidates`] returns exactly it), so
-//! combat plays as it always has; with more seats each attacker picks an opponent,
-//! blocker eligibility is scoped to attackers attacking that blocker's controller,
-//! and combat damage routes to each attacker's own defender. The multi-defender
+//! Attack targets (issue #341, widened by #608): each attacker is declared to attack a
+//! chosen player **or planeswalker** — [`Permanent::attacking`] records *what* (an
+//! `Option<AttackTarget>`), not a bare boolean and no longer a bare seat. In a
+//! two-player game with no planeswalker on the other side the sole opponent is the only
+//! legal target ([`defender_candidates`] returns exactly it), so combat plays as it
+//! always has; otherwise each attacker picks among the opponents and their
+//! planeswalkers, blocker eligibility is scoped to attackers attacking that blocker's
+//! controller ([`AttackTarget::defending_player`], which reads a planeswalker's
+//! controller), and combat damage routes to each attacker's own target — removing
+//! loyalty from a planeswalker rather than costing life (CR 120.3c). The multi-defender
 //! *declaration flow* (issue #344): when attackers are split across several
 //! defenders, each attacked player declares blockers for the attackers attacking
 //! them, in APNAP order ([`attacked_players`] / [`pending_blocker_declarer`]), and
@@ -40,8 +43,9 @@ pub use declaration::{
     pending_damage_order,
 };
 pub use eligibility::{
-    attacker_candidates, attacking_defender_of, blocker_candidates, blocker_candidates_for,
-    declared_attackers, defender_candidates, defending_player,
+    attack_target_of, attacker_candidates, attacking_defender_of, blocker_candidates,
+    blocker_candidates_for, declared_attackers, defender_candidates, defending_player,
+    defending_player_candidates, AttackTarget,
 };
 pub use helpers::{
     blocked_by_at_most_one, blocker_can_block_attacker, permanent_has_menace,

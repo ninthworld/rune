@@ -56,6 +56,17 @@ pub struct Characteristics {
     pub power: Option<i32>,
     /// Current toughness, for creatures; `None` for non-creatures.
     pub toughness: Option<i32>,
+    /// Printed **starting** loyalty, for planeswalkers; `None` otherwise (CR 306.5b).
+    ///
+    /// A planeswalker's loyalty *characteristic* is the number printed in its corner —
+    /// what it enters the battlefield with — and is **not** how much loyalty it has
+    /// right now. That is the count of its loyalty counters
+    /// ([`Permanent::counter_count`](crate::Permanent::counter_count) of
+    /// [`CounterKind::Loyalty`]), which every rule that spends, removes, or checks
+    /// loyalty reads. The distinction is the same one power/toughness make between the
+    /// printed seed and the computed value, except that nothing modifies this one: no
+    /// layer changes printed loyalty, so it is carried through unchanged.
+    pub loyalty: Option<u32>,
     /// The permanent's current ability set, unioning data-driven and scripted
     /// sources via [`abilities_of`].
     pub abilities: Vec<Ability>,
@@ -128,6 +139,9 @@ pub fn characteristics(
             t.saturating_add(counter_delta)
                 .saturating_add(static_toughness)
         }),
+        // Printed starting loyalty (CR 306.5b), carried through untouched: no layer
+        // modifies it, and *current* loyalty is the counter count, not this.
+        loyalty: face.loyalty(),
         abilities: abilities_of_permanent(db, perm),
         // CR 613 layer 6 (CR 613.1f): the printed keywords unioned with any granted
         // continuously. Seeded from the printed set so a granted keyword sits beside
