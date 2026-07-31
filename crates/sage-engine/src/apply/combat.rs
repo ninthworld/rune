@@ -580,7 +580,7 @@ mod tests {
         // vigilance; Walking Corpse is a plain control.
         let db = db();
         let mut state = at_declare_attackers();
-        let vigilant = place_permanent(&mut state, fixture("serra_angel"), PlayerId(0), false, 0);
+        let vigilant = place_permanent(&mut state, fixture("sun_sentinel"), PlayerId(0), false, 0);
         let plain = place_permanent(&mut state, fixture("walking_corpse"), PlayerId(0), false, 0);
 
         let after = apply_action(

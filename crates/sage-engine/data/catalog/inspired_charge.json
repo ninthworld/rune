@@ -5,7 +5,7 @@
   "types": [
     "instant"
   ],
-  "mana_cost": "{2}{W}",
+  "mana_cost": "{2}{W}{W}",
   "colors": [
     "white"
   ],

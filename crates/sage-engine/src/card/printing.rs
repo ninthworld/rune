@@ -187,10 +187,12 @@ mod tests {
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // M19 prints ninety-two cards; PM19 reprints one — ninety-three printings total.
-        assert_eq!(printings.len(), 93);
+        // M19 prints ninety-six of the catalog's cards at their real collector
+        // numbers; PM19 reprints one — ninety-seven printings total. The catalog's one
+        // non-M19 definition (the commander fixture, ADR 0009) has no printing here.
+        assert_eq!(printings.len(), 97);
         assert!(!printings.is_empty());
-        let ogre = printings.printing("M19", "15").unwrap();
+        let ogre = printings.printing("M19", "153").unwrap();
         // The record names onakke_ogre; the loader resolved that to its handle.
         assert_eq!(
             ogre.oracle,
@@ -205,13 +207,13 @@ mod tests {
 
     #[test]
     fn adding_a_reprint_changes_no_logic() {
-        // Skyscanner is printed in M19 (#19) and reprinted in PM19 (#1). The
+        // Skyscanner is printed in M19 (#245) and reprinted in PM19 (#1). The
         // two printings differ only bibliographically; everything the engine
         // reasons about is read through the shared OracleId, so it is identical.
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
 
-        let first = printings.printing("M19", "19").unwrap();
+        let first = printings.printing("M19", "245").unwrap();
         let reprint = printings.printing("PM19", "1").unwrap();
 
         // The printings are distinct bibliographic records...

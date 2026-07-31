@@ -74,8 +74,8 @@
           "count": 2
         },
         {
-          "identity": "serra_angel",
-          "name": "Serra Angel",
+          "identity": "serra_s_guardian",
+          "name": "Serra's Guardian",
           "count": 2
         },
         {
@@ -89,8 +89,8 @@
           "count": 1
         },
         {
-          "identity": "trusty_packbeast",
-          "name": "Trusty Packbeast",
+          "identity": "sun_sentinel",
+          "name": "Sun Sentinel",
           "count": 2
         },
         {
@@ -168,8 +168,8 @@
       "summary": "Mono-white aggression that pays for itself: cheap bodies, lifegain, and a mass pump to finish.",
       "entries": [
         {
-          "identity": "sanctuary_cat",
-          "name": "Sanctuary Cat",
+          "identity": "sun_sentinel",
+          "name": "Sun Sentinel",
           "count": 4
         },
         {
@@ -183,8 +183,8 @@
           "count": 3
         },
         {
-          "identity": "dwarven_priest",
-          "name": "Dwarven Priest",
+          "identity": "silverbeak_griffin",
+          "name": "Silverbeak Griffin",
           "count": 3
         },
         {
@@ -198,8 +198,8 @@
           "count": 2
         },
         {
-          "identity": "serra_angel",
-          "name": "Serra Angel",
+          "identity": "serra_s_guardian",
+          "name": "Serra's Guardian",
           "count": 1
         },
         {
@@ -247,7 +247,7 @@
         {
           "identity": "thornhide_wolves",
           "name": "Thornhide Wolves",
-          "count": 3
+          "count": 4
         },
         {
           "identity": "goblin_motivator",
@@ -255,14 +255,14 @@
           "count": 2
         },
         {
-          "identity": "ancient_brontodon",
-          "name": "Ancient Brontodon",
-          "count": 2
-        },
-        {
           "identity": "aggressive_mammoth",
           "name": "Aggressive Mammoth",
           "count": 2
+        },
+        {
+          "identity": "wall_of_vines",
+          "name": "Wall of Vines",
+          "count": 1
         },
         {
           "identity": "crash_through",
@@ -312,19 +312,39 @@
       "summary": "Blue-black attrition: wall up, counter what matters, bounce the rest, and win by draining and milling.",
       "entries": [
         {
+          "identity": "tattered_mummy",
+          "name": "Tattered Mummy",
+          "count": 2
+        },
+        {
+          "identity": "exclusion_mage",
+          "name": "Exclusion Mage",
+          "count": 2
+        },
+        {
+          "identity": "skymarch_bloodletter",
+          "name": "Skymarch Bloodletter",
+          "count": 2
+        },
+        {
+          "identity": "vampire_sovereign",
+          "name": "Vampire Sovereign",
+          "count": 2
+        },
+        {
           "identity": "wall_of_mist",
           "name": "Wall of Mist",
-          "count": 3
+          "count": 2
         },
         {
           "identity": "vampire_neonate",
           "name": "Vampire Neonate",
-          "count": 3
+          "count": 2
         },
         {
           "identity": "tolarian_scholar",
           "name": "Tolarian Scholar",
-          "count": 2
+          "count": 1
         },
         {
           "identity": "snapping_drake",
@@ -334,12 +354,12 @@
         {
           "identity": "millstone",
           "name": "Millstone",
-          "count": 2
+          "count": 1
         },
         {
-          "identity": "unsummon",
-          "name": "Unsummon",
-          "count": 3
+          "identity": "disperse",
+          "name": "Disperse",
+          "count": 2
         },
         {
           "identity": "essence_scatter",
@@ -349,17 +369,17 @@
         {
           "identity": "bone_to_ash",
           "name": "Bone to Ash",
-          "count": 2
+          "count": 1
         },
         {
           "identity": "sovereign_s_bite",
           "name": "Sovereign's Bite",
-          "count": 2
+          "count": 1
         },
         {
           "identity": "cancel",
           "name": "Cancel",
-          "count": 2
+          "count": 1
         },
         {
           "identity": "island",

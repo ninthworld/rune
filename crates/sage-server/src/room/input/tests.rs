@@ -701,6 +701,21 @@ async fn issue_537_a_seat_that_tapped_mana_and_cast_nothing_still_auto_passes() 
         counters: std::collections::BTreeMap::new(),
         attached_to: None,
     });
+    let second = sage_engine::PermanentId(state.mint_id());
+    let second_land = state.new_instance(fixture("plains"));
+    state.battlefield.push(sage_engine::Permanent {
+        id: second,
+        instance: second_land.id,
+        card: fixture("plains"),
+        controller: PlayerId(0),
+        tapped: false,
+        entered_turn: 0,
+        attacking: None,
+        blocking: None,
+        damage: 0,
+        counters: std::collections::BTreeMap::new(),
+        attached_to: None,
+    });
     let heal = state.new_instance(fixture("revitalize"));
     let spare_land = state.new_instance(fixture("plains"));
     state.players[0].hand = vec![heal, spare_land];
@@ -732,12 +747,28 @@ async fn issue_537_a_seat_that_tapped_mana_and_cast_nothing_still_auto_passes() 
         }),
     });
 
+    // Tap the second land too: Revitalize costs {1}{W}.
+    let after_first = wait_for_view(&mut rx0).await;
+    let tap_again = after_first
+        .valid_actions
+        .iter()
+        .find(|a| a.kind == "activate_ability")
+        .expect("the second untapped land's mana ability is offered");
+    handle.send(RoomInput::Message {
+        seat: 0,
+        message: ClientMessage::ChooseAction(ChooseAction {
+            action_id: tap_again.id.clone(),
+            token: tap_again.token.clone(),
+            ..Default::default()
+        }),
+    });
+
     // The mana is floating and the spell is now genuinely castable.
     let floated = wait_for_view(&mut rx0).await;
     assert_eq!(
         floated.mana_pool,
-        vec!["{W}".to_string()],
-        "tapping the Plains floated {{W}}"
+        vec!["{W}".to_string(), "{W}".to_string()],
+        "tapping both Plains floated {{W}}{{W}}"
     );
     let pass = floated
         .valid_actions

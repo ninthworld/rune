@@ -112,6 +112,23 @@ pub struct GameState {
     /// be set. Empty and unused in a two-player game (the sole defender declares
     /// once). Reset each turn.
     pub blockers_declared_by: Vec<PlayerId>,
+    /// The seat priority returns to once every triggered ability on the stack has
+    /// been given its targets (CR 603.3d), or `None` when nothing is owed.
+    ///
+    /// **Raw stored state, not a derivation.** A triggered ability's controller
+    /// chooses its targets *as it is put on the stack* — before any player receives
+    /// priority (CR 603.3b) — and that controller is frequently not the player whose
+    /// action produced the trigger: a creature killed by an opponent's removal spell
+    /// on the opponent's turn gives its own controller a dies trigger to aim. So the
+    /// engine hands priority to the chooser and must remember whose it was, and the
+    /// answer is not recoverable from a snapshot afterwards (the same reasoning as
+    /// [`Player::turn_began`](crate::player::Player::turn_began)).
+    ///
+    /// Set when the first pending trigger is put on the stack and consumed the moment
+    /// the last one has its targets, so it is `None` outside that window. Whether a
+    /// choice is *currently* owed stays derived — see
+    /// [`pending_trigger_target_choice`](crate::pending_trigger_target_choice).
+    pub trigger_target_priority: Option<PlayerId>,
     /// Permanents dealt combat damage this combat by a source with deathtouch
     /// (CR 702.2b), pending the CR 704.5h state-based action that destroys them.
     ///

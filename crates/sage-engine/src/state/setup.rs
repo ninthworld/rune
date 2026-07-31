@@ -42,6 +42,7 @@ impl GameState {
             blockers_declared: false,
             damage_orders: Vec::new(),
             blockers_declared_by: Vec::new(),
+            trigger_target_priority: None,
             deathtouch_struck: Vec::new(),
             commander_damage: Vec::new(),
             extra_turns: Vec::new(),

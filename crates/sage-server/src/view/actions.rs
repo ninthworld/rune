@@ -248,6 +248,16 @@ fn valid_action_view(
             vec![card_entity_id(card.id)],
             ability_requirements(state, db, action),
         ),
+        // A triggered ability the game put on the stack, waiting for its controller
+        // to aim it (CR 603.3d). Labeled with the ability's own sentence so the
+        // player is choosing for something they can read, and subject-bound to its
+        // source permanent so the board highlights what is asking.
+        Action::ChooseTriggerTargets { ability, .. } => (
+            "choose_targets".to_string(),
+            trigger_label(state, db, *ability),
+            trigger_subject(state, *ability),
+            ability_requirements(state, db, action),
+        ),
         Action::Discard { card } => (
             "discard".to_string(),
             format!("Discard {}", card_name(card.card, db)),

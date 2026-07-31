@@ -132,6 +132,25 @@ pub(crate) fn apply_activate_ability(
     }
 }
 
+/// Record the targets its controller chose for a triggered ability already on the
+/// stack (CR 603.3d).
+///
+/// The choice is the *only* thing this does: the ability stays exactly where it is
+/// and resolves later on the ordinary path, where its targets are re-checked like any
+/// other object's (CR 608.2b). Legality — that the chosen targets fill every slot and
+/// each is legal now — has already been established by
+/// [`crate::apply_action`]'s gate, so this writes rather than re-deciding. A stale
+/// stack id names nothing and is a no-op.
+pub(crate) fn apply_choose_trigger_targets(
+    state: &mut GameState,
+    ability: StackId,
+    targets: &[Target],
+) {
+    if let Some(object) = state.stack.iter_mut().find(|o| o.id == ability) {
+        object.targets = targets.to_vec();
+    }
+}
+
 /// Cast a spell of any castable type: pay its mana cost from the caster's pool,
 /// move the card from hand onto the stack, and reset the pass count (the caster
 /// keeps priority). Type-agnostic — the card's types decide only how it *resolves*
@@ -863,18 +882,19 @@ mod tests {
 
     #[test]
     fn issue_374_grant_keyword_spell_grants_the_keyword_until_end_of_turn_end_to_end() {
-        // Cast Jump (target creature gains flying until end of turn) on a ground
-        // Llanowar Elves: on resolution the creature computes with flying and one
-        // until-end-of-turn layer-6 grant is in force.
+        // Cast Mighty Leap (+2/+2 and gains flying until end of turn) on a ground
+        // Llanowar Elves: on resolution the creature computes with flying, and the
+        // layer-6 grant among its two until-end-of-turn effects is in force.
         use crate::characteristics::characteristics;
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let creature =
             place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
-        let jump = state.new_instance(fixture("jump"));
+        let jump = state.new_instance(fixture("mighty_leap"));
         state.players[0].hand = vec![jump];
-        state.players[0].mana_pool.add(Color::Blue, 1);
+        state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.add_colorless(1);
 
         // The Elves has no flying before the spell.
         assert!(!characteristics(&state, creature, &db)
@@ -885,7 +905,7 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: jump,
-                targets: vec![Target::Permanent(creature)],
+                targets: vec![Target::Permanent(creature), Target::Permanent(creature)],
             },
             &db,
         );
@@ -899,12 +919,13 @@ mod tests {
                 .contains(&Keyword::Flying),
             "the resolved spell granted flying (CR 613.1f)"
         );
-        assert_eq!(state.static_effects.len(), 1);
-        assert_eq!(
-            state.static_effects[0].duration,
-            Duration::UntilEndOfTurn,
-            "the grant is an until-end-of-turn effect"
-        );
+        // Two until-end-of-turn effects: the P/T pump (layer 7c) and the keyword
+        // grant (layer 6) the assertion above reads.
+        assert_eq!(state.static_effects.len(), 2);
+        assert!(state
+            .static_effects
+            .iter()
+            .all(|e| e.duration == Duration::UntilEndOfTurn));
         assert!(state.players[0].graveyard.iter().any(|c| c.id == jump.id));
     }
 
@@ -1524,11 +1545,12 @@ mod tests {
         let db = db();
         let mut state = main_phase_p0();
         state.players[0].life = 1;
-        let balm = state.new_instance(fixture("revitalize")); // Revitalize {W}: gain 3, draw 1
+        let balm = state.new_instance(fixture("revitalize")); // Revitalize {1}{W}: gain 3, draw 1
         state.players[0].hand = vec![balm];
         // Revitalize also draws, so seed a card to avoid decking out (CR 704.5c).
         state.players[0].library = vec![state.new_instance(fixture("forest"))];
         state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.add_colorless(1);
 
         let state = apply_action(
             &state,

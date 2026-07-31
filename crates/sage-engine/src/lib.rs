@@ -57,7 +57,7 @@ pub use characteristics::{characteristics, Characteristics};
 pub use combat::{
     attacked_players, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocker_candidates, blocker_candidates_for, declared_attackers, defender_candidates,
-    defending_player, pending_blocker_declarer, pending_damage_order,
+    defending_player, pending_blocker_declarer, pending_damage_order, permanent_has_menace,
 };
 pub use commander::{
     commander_tax_cost, CommanderState, COMMANDER_DAMAGE_LOSS_THRESHOLD, COMMANDER_TAX_PER_CAST,
@@ -79,5 +79,5 @@ pub use state::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry,
     GameResult, GameState, LoggedPermanent, Modification, Permanent, StaticEffect,
 };
-pub use triggers::{collect_triggers, Trigger};
+pub use triggers::{collect_triggers, pending_trigger_target_choice, Trigger};
 pub use zone::Zone;

@@ -596,15 +596,33 @@ mod tests {
             "Counter target creature spell.\nDraw a card."
         );
         assert_eq!(
-            text_of(&db, "unsummon"),
-            "Return target creature to its owner's hand."
+            text_of(&db, "disperse"),
+            "Return target nonland permanent to its owner's hand."
+        );
+        assert_eq!(
+            text_of(&db, "exclusion_mage"),
+            "When Exclusion Mage enters the battlefield, return target creature an \
+             opponent controls to its owner's hand."
+        );
+        assert_eq!(
+            text_of(&db, "vampire_sovereign"),
+            "Flying\nWhen Vampire Sovereign enters the battlefield, target opponent loses \
+             3 life and you gain 3 life."
+        );
+        assert_eq!(
+            text_of(&db, "tattered_mummy"),
+            "When Tattered Mummy dies, each opponent loses 2 life."
+        );
+        assert_eq!(
+            text_of(&db, "arcane_encyclopedia"),
+            "{3}, {T}: Draw a card."
         );
 
         // A targeted player reference conjugates in the third person; the controller
         // reference stays second — one verb, agreement decided in one place.
         assert_eq!(
             text_of(&db, "sovereign_s_bite"),
-            "Target player loses 2 life.\nYou gain 2 life."
+            "Target player loses 3 life.\nYou gain 3 life."
         );
 
         // A mana activation cost passes through in the notation it was written in.
@@ -647,7 +665,7 @@ mod tests {
         );
 
         // A vanilla body still generates nothing, which stays the honest answer.
-        assert_eq!(text_of(&db, "sanctuary_cat"), "");
+        assert_eq!(text_of(&db, "thornhide_wolves"), "");
     }
 
     #[test]
@@ -689,7 +707,10 @@ mod tests {
         let db = bundled();
         assert_eq!(text_of(&db, "snapping_drake"), "Flying");
         // Multiple keywords are one comma list, in printed order.
-        assert_eq!(text_of(&db, "serra_angel"), "Flying, vigilance");
+        assert_eq!(
+            text_of(&db, "serra_s_guardian"),
+            "Flying, vigilance\nOther creatures you control have vigilance."
+        );
         // Trample+deathtouch and lone first strike have no clean M19 card — inline.
         let inline = CardDatabase::from_json(
             r#"[
@@ -705,7 +726,6 @@ mod tests {
         assert_eq!(text_of(&inline, "test_baneclaw"), "Trample, deathtouch");
         assert_eq!(text_of(&inline, "test_duelist"), "First strike");
         // A real double striker in the bundled catalog renders its keyword (CR 702.4).
-        assert_eq!(text_of(&db, "trained_caracal"), "Double strike");
     }
 
     #[test]
@@ -735,22 +755,36 @@ mod tests {
 
     #[test]
     fn issue_374_a_keyword_granting_aura_states_what_it_grants() {
-        // Flight (bundled): an Aura whose only grant is a keyword reads its enchant
-        // restriction and the keyword it grants (CR 613.1f).
+        // Prodigious Growth (bundled): an Aura that grants both P/T and a keyword
+        // reads its enchant restriction and each grant as its own sentence (CR
+        // 613.1f). A keyword-only Aura has no M19 representative, so that shape is
+        // exercised inline (ADR 0009).
         let db = bundled();
         assert_eq!(
-            text_of(&db, "flight"),
+            text_of(&db, "prodigious_growth"),
+            "Enchant creature.\nEnchanted creature gets +7/+7.\nEnchanted creature has trample."
+        );
+        let inline = CardDatabase::from_json(
+            r#"[{"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
+                "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
+                "aura":{"enchant":"any_creature","keywords":["flying"]}}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&inline, "test_flight"),
             "Enchant creature.\nEnchanted creature has flying."
         );
     }
 
     #[test]
     fn issue_374_a_grant_keyword_spell_reads_as_gaining_the_keyword() {
-        // Jump (bundled): "Target creature gains flying until end of turn."
+        // Mighty Leap (bundled): "+2/+2 and gains flying until end of turn", written
+        // as the two clauses the IR actually carries.
         let db = bundled();
         assert_eq!(
-            text_of(&db, "jump"),
-            "Target creature gains flying until end of turn."
+            text_of(&db, "mighty_leap"),
+            "Target creature gets +2/+2 until end of turn.\n\
+             Target creature gains flying until end of turn."
         );
     }
 

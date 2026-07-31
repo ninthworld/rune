@@ -3,7 +3,7 @@
   "functional_id": "sovereign_s_bite",
   "name": "Sovereign's Bite",
   "types": [
-    "instant"
+    "sorcery"
   ],
   "mana_cost": "{1}{B}",
   "colors": [
@@ -13,12 +13,12 @@
     {
       "kind": "lose_life",
       "player_ref": "target_player",
-      "amount": 2
+      "amount": 3
     },
     {
       "kind": "gain_life",
       "player_ref": "controller",
-      "amount": 2
+      "amount": 3
     }
   ]
 }

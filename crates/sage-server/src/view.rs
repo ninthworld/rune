@@ -430,7 +430,9 @@ pub(crate) fn resolve_action(
             }
             Action::DeclareBlockers { .. } => bind_blockers(state, db, &choice.targets),
             Action::OrderCombatDamage { .. } => bind_order_combat_damage(state, &choice.targets),
-            Action::ActivateAbility { .. } | Action::CastSpell { .. } => {
+            Action::ActivateAbility { .. }
+            | Action::CastSpell { .. }
+            | Action::ChooseTriggerTargets { .. } => {
                 if !targets_fill_requirements(&choice.targets, &offered.requirements) {
                     return None;
                 }

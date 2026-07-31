@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "wall_of_vines",
+  "name": "Wall of Vines",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Plant",
+    "Wall"
+  ],
+  "mana_cost": "{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 0,
+  "toughness": 3,
+  "keywords": [
+    "defender",
+    "reach"
+  ]
+}

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (94)
+## Supported cards (97)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -16,8 +16,8 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `aegis_of_the_heavens` | Aegis of the Heavens | functional definition |
 | `aggressive_mammoth` | Aggressive Mammoth | functional definition |
 | `air_elemental` | Air Elemental | functional definition |
-| `ancient_brontodon` | Ancient Brontodon | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
+| `arcane_encyclopedia` | Arcane Encyclopedia | functional definition |
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
@@ -30,14 +30,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `daggerback_basilisk` | Daggerback Basilisk | functional definition |
 | `daybreak_chaplain` | Daybreak Chaplain | functional definition |
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
+| `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
 | `druid_of_the_cowl` | Druid of the Cowl | functional definition |
-| `dwarven_priest` | Dwarven Priest | functional definition |
 | `electrify` | Electrify | functional definition |
 | `essence_scatter` | Essence Scatter | functional definition |
+| `exclusion_mage` | Exclusion Mage | functional definition |
 | `field_creeper` | Field Creeper | functional definition |
 | `fire_elemental` | Fire Elemental | functional definition |
-| `flight` | Flight | functional definition |
 | `forest` | Forest | functional definition |
 | `forsaken_sanctuary` | Forsaken Sanctuary | functional definition |
 | `foul_orchard` | Foul Orchard | functional definition |
@@ -50,11 +50,11 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `highland_game` | Highland Game | functional definition |
 | `highland_lake` | Highland Lake | functional definition |
 | `hostile_minotaur` | Hostile Minotaur | functional definition |
+| `infectious_horror` | Infectious Horror | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
 | `invoke_the_divine` | Invoke the Divine | functional definition |
 | `island` | Island | functional definition |
 | `jedit_ojanen` | Jedit Ojanen | functional definition |
-| `jump` | Jump | functional definition |
 | `knight_of_the_tusk` | Knight of the Tusk | functional definition |
 | `knight_s_pledge` | Knight's Pledge | functional definition |
 | `lava_axe` | Lava Axe | functional definition |
@@ -78,10 +78,11 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
-| `sanctuary_cat` | Sanctuary Cat | functional definition |
-| `serra_angel` | Serra Angel | functional definition |
+| `serra_s_guardian` | Serra's Guardian | functional definition |
 | `shock` | Shock | functional definition |
+| `silverbeak_griffin` | Silverbeak Griffin | functional definition |
 | `skeleton_archer` | Skeleton Archer | functional definition |
+| `skymarch_bloodletter` | Skymarch Bloodletter | functional definition |
 | `skyscanner` | Skyscanner | functional definition |
 | `smelt` | Smelt | functional definition |
 | `snapping_drake` | Snapping Drake | functional definition |
@@ -89,26 +90,28 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `stone_quarry` | Stone Quarry | functional definition |
 | `strangling_spores` | Strangling Spores | functional definition |
 | `submerged_boneyard` | Submerged Boneyard | functional definition |
+| `sun_sentinel` | Sun Sentinel | functional definition |
 | `sure_strike` | Sure Strike | functional definition |
 | `swamp` | Swamp | functional definition |
 | `take_vengeance` | Take Vengeance | functional definition |
+| `tattered_mummy` | Tattered Mummy | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
 | `timber_gorge` | Timber Gorge | functional definition |
 | `titanic_growth` | Titanic Growth | functional definition |
 | `tolarian_scholar` | Tolarian Scholar | functional definition |
-| `trained_caracal` | Trained Caracal | functional definition |
 | `tranquil_expanse` | Tranquil Expanse | functional definition |
-| `trusty_packbeast` | Trusty Packbeast | functional definition |
-| `unsummon` | Unsummon | functional definition |
+| `two_headed_zombie` | Two-Headed Zombie | functional definition |
 | `vampire_neonate` | Vampire Neonate | functional definition |
+| `vampire_sovereign` | Vampire Sovereign | functional definition |
 | `viashino_pyromancer` | Viashino Pyromancer | functional definition |
 | `vigilant_baloth` | Vigilant Baloth | functional definition |
 | `volcanic_dragon` | Volcanic Dragon | functional definition |
 | `walking_corpse` | Walking Corpse | functional definition |
 | `wall_of_mist` | Wall of Mist | functional definition |
+| `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (30)
+## Excluded (29)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -143,4 +146,3 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
 | Token creation | no token object model; every permanent needs a catalog card |
-| Triggered abilities that choose targets | a trigger reaches the stack with no targets and nothing prompts its controller to choose |
