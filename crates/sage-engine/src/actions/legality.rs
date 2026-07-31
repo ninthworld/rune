@@ -38,14 +38,22 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return false;
     }
 
-    // 1a. A mulligan keep validates its bottoming selection (CR 103.5) rather than
+    // 1a. A mid-resolution choice answer validates its card selection against the
+    //     freshly recomputed candidate set and the choice's clamped bounds
+    //     ([`crate::choice::answer_is_legal`]) rather than the target-slot machinery:
+    //     it names cards in a hidden zone, not objects on the battlefield.
+    if let Action::AnswerChoice { chosen } = action {
+        return crate::choice::answer_is_legal(state, chosen, db);
+    }
+
+    // 1b. A mulligan keep validates its bottoming selection (CR 103.5) rather than
     //     the target-slot machinery: exactly one distinct hand card per mulligan
     //     taken (see [`crate::mulligan::keep_bottom_is_legal`]).
     if let Action::Keep { bottom } = action {
         return crate::mulligan::keep_bottom_is_legal(state, bottom);
     }
 
-    // 1b. Combat declarations carry a permanent multi-select rather than
+    // 1c. Combat declarations carry a permanent multi-select rather than
     //     ability targets: validate the selection against the freshly computed
     //     candidate sets (CR 508.1a / 509.1a), the same regenerate-and-check
     //     discipline the target path uses. An empty selection is always legal.
@@ -62,7 +70,7 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         _ => {}
     }
 
-    // 1c. Hardening (CR 302.6, issue #454): a `{T}`-cost ability of a summoning-sick
+    // 1d. Hardening (CR 302.6, issue #454): a `{T}`-cost ability of a summoning-sick
     //     creature is never activatable. Check 1 above already withholds the offer,
     //     so this is a second, independent gate that re-derives the restriction from
     //     current state — a stale or forged action id can never slip a sick creature's

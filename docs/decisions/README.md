@@ -22,6 +22,7 @@ them in order never requires a forward reference.
 | [0010](0010-priority-automation.md) | Priority automation — engine predicate, server policy |
 | [0011](0011-e2e-browser-test-strategy.md) | Browser end-to-end test strategy |
 | [0012](0012-user-side-card-art.md) | Player-side, opt-in, device-local card art |
+| [0013](0013-mid-resolution-player-choices.md) | How the engine poses a mid-resolution player choice |
 
 New ADRs copy [`0000-template.md`](0000-template.md) and take the next free number.
 

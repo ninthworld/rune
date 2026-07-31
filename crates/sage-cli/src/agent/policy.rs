@@ -170,9 +170,16 @@ fn mana_value_of(cost: &str) -> u32 {
         .sum()
 }
 
-/// The hand card `view` shows with entity id `id`, if the viewer holds it.
+/// The card `view` shows with entity id `id` from a zone only this viewer can see:
+/// their hand, or the cards a mid-resolution choice is currently revealing to them
+/// (issue #604). A select-from-zone slot over a *library* names ids that are in
+/// `revealed` and nowhere else, so without that fallback the agent would rank every
+/// candidate of a scry or a search as costing nothing.
 fn card_in_hand<'a>(view: &'a GameView, id: &str) -> Option<&'a CardView> {
-    view.my_hand.iter().find(|card| card.id == id)
+    view.my_hand
+        .iter()
+        .chain(view.revealed.iter())
+        .find(|card| card.id == id)
 }
 
 /// Whether a card is a creature, by its (server-computed) type line.
@@ -365,6 +372,7 @@ mod tests {
                     zone: "hand".into(),
                     owner: "p0".into(),
                     count: 1,
+                    min: None,
                     candidates: vec!["card_forest".into(), "card_1".into(), "card_5".into()],
                 }],
                 ..action("a0", "discard", vec![])
@@ -557,6 +565,7 @@ mod tests {
                 zone: "hand".into(),
                 owner: "p0".into(),
                 count: 1,
+                min: None,
                 candidates: vec!["card_1".into(), "card_2".into()],
             }],
             ..action("a0", "discard", vec![])

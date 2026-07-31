@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "functional_id": "elvish_clancaller",
+  "name": "Elvish Clancaller",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Druid"
+  ],
+  "mana_cost": "{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "subtype": "Elf",
+        "except_this": true
+      },
+      "modification": {
+        "kind": "power_toughness",
+        "power": 1,
+        "toughness": 1
+      }
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}{G}{G}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "search_library",
+          "take": 1,
+          "filter": {
+            "kind": "same_name_as_source"
+          },
+          "destination": "battlefield"
+        }
+      ]
+    }
+  ]
+}

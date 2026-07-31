@@ -11,6 +11,7 @@ import { useState } from 'react'
 import type { ClientMessage, Prompt, ValidAction } from './../protocol'
 import {
   advertisedCount,
+  advertisedMinimum,
   buildChooseAction,
   isSubmittable,
   requiredSlots,
@@ -166,6 +167,7 @@ function PromptField({
   onChange(draft: Draft): void
 }) {
   const limit = advertisedCount(prompt)
+  const floor = advertisedMinimum(prompt)
   const chosen = draft[prompt.slot] ?? []
 
   if (prompt.kind === 'number') {
@@ -219,11 +221,22 @@ function PromptField({
       ? (prompt.options ?? []).map((option) => ({ id: option.id, label: option.label }))
       : (prompt.candidates ?? []).map((id) => ({ id, label: labelFor(id) }))
 
+  // A slot the server said may be under-filled shows the whole range, so a player can
+  // see that picking fewer — or none — is an answer rather than an unfinished one.
+  const tally =
+    limit === null
+      ? ''
+      : floor !== null && floor !== limit
+        ? ` (${chosen.length} of ${floor}–${limit})`
+        : limit > 1
+          ? ` (${chosen.length}/${limit})`
+          : ''
+
   return (
     <fieldset>
       <legend>
         {prompt.prompt}
-        {limit !== null && limit > 1 ? ` (${chosen.length}/${limit})` : ''}
+        {tally}
       </legend>
       {options.map((option) => (
         <Choice

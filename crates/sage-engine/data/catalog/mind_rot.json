@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "functional_id": "mind_rot",
+  "name": "Mind Rot",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "discard",
+      "player_ref": "target_player",
+      "count": 2
+    }
+  ]
+}

@@ -103,6 +103,22 @@ pub enum GameLogEvent {
         /// Number of cards put into the graveyard.
         count: u32,
     },
+    /// A player discarded cards from their hand (CR 701.8). Card identities are
+    /// intentionally absent — a hand is hidden, and the cards show up on their own in
+    /// the public graveyard. The count is what actually moved.
+    CardsDiscarded {
+        /// The player who discarded.
+        player: PlayerId,
+        /// Number of cards put into the graveyard.
+        count: u32,
+    },
+    /// A player searched their library and shuffled it (CR 701.19). That the search
+    /// happened is public; what they looked at and what they found are not, and are
+    /// deliberately absent.
+    LibrarySearched {
+        /// The player who searched.
+        player: PlayerId,
+    },
     /// A creature died; it may no longer be present on the battlefield.
     PermanentDied {
         /// The permanent that died.

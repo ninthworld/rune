@@ -13,12 +13,13 @@
 use sage_engine::{
     abilities_of, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocker_can_block_attacker, blocker_candidates_for, bottom_requirement, characteristics,
-    declared_attackers, defender_candidates, defending_player, is_mana_ability,
-    pending_blocker_declarer, scripted_rules_text, target_requirements, valid_actions,
-    AbilityOrigin, Action, Attack, Block, CardData, CardDatabase, CardId, CardInstance,
-    CardInstanceId, Color, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult,
-    GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player, PlayerId, StackId,
-    StackObject, StackObjectKind, Step, Target, TargetSpec,
+    choice_bounds, choice_candidates, declared_attackers, defender_candidates, defending_player,
+    is_mana_ability, pending_blocker_declarer, pending_player_choice, scripted_rules_text,
+    target_requirements, valid_actions, AbilityOrigin, Action, Attack, Block, CardData,
+    CardDatabase, CardId, CardInstance, CardInstanceId, ChoiceOutcome, ChoiceRequest, ChoiceZone,
+    Color, CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
+    LoggedPermanent, LossReason, PermanentId, Player, PlayerId, StackId, StackObject,
+    StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{ability_text, effects_description, rules_text};
@@ -34,6 +35,7 @@ use sage_protocol::{
 mod actions;
 mod binding;
 mod cards;
+mod choice;
 mod destinations;
 mod ids;
 mod log;
@@ -46,6 +48,7 @@ mod test_support;
 pub(crate) use actions::*;
 pub(crate) use binding::*;
 pub(crate) use cards::*;
+pub(crate) use choice::*;
 pub(crate) use destinations::*;
 pub(crate) use ids::*;
 pub(crate) use log::*;
@@ -83,6 +86,12 @@ pub(crate) fn personalized_view(
                 .collect()
         })
         .unwrap_or_default();
+
+    // The one channel that carries cards from a hidden zone, and only ever to the seat
+    // being asked about them (issue #604). Everything else in this projection reads a
+    // public zone or the viewer's own; this reads a library or another seat's hand, so
+    // the `chooser == viewer` gate below is the whole of the hidden-information rule.
+    let revealed = revealed_to(state, db, viewer);
 
     let opponents = state
         .players
@@ -194,6 +203,7 @@ pub(crate) fn personalized_view(
     GameView {
         you: player_id(viewer),
         my_hand,
+        revealed,
         me,
         opponents,
         battlefield,
@@ -439,6 +449,9 @@ pub(crate) fn resolve_action(
                 }
                 bind_ability_targets(state, db, &action, &choice.targets)
             }
+            // A mid-resolution choice answer (issue #604) is an ordered card selection
+            // over its own prompt slot, not a target fill, and may legally be empty.
+            Action::AnswerChoice { .. } => bind_player_choice(state, db, &offered, &choice.targets),
             _ => {
                 if !targets_fill_requirements(&choice.targets, &offered.requirements) {
                     return None;

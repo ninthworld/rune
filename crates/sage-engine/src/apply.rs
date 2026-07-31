@@ -17,12 +17,14 @@ use crate::triggers::collect_triggers;
 use crate::CardDatabase;
 
 mod cast;
+mod choice;
 mod combat;
 mod commander;
 mod mulligan;
 mod turn;
 
 pub(crate) use cast::*;
+pub(crate) use choice::*;
 pub(crate) use combat::*;
 pub(crate) use commander::*;
 pub(crate) use mulligan::*;
@@ -67,6 +69,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         Action::ChooseTriggerTargets { ability, targets } => {
             apply_choose_trigger_targets(&mut next, *ability, targets);
         }
+        Action::AnswerChoice { chosen } => apply_answer_choice(&mut next, chosen, db),
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
@@ -130,24 +133,36 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
         });
     }
 
-    // 6. CR 603.3b/603.3d: a triggered ability is put on the stack, and its
-    //    controller chooses its targets, *before any player receives priority*. So
-    //    while one is owed, priority belongs to the chooser rather than to whoever
-    //    would otherwise hold it — and returns to them once the last choice is made.
-    //    That original holder is remembered because it is frequently not the chooser:
-    //    a creature killed by an opponent's removal spell on the opponent's turn gives
-    //    its own controller a trigger to aim, while the opponent retains priority.
-    match crate::pending_trigger_target_choice(&next) {
-        Some(pending) => {
-            if next.trigger_target_priority.is_none() {
-                next.trigger_target_priority = Some(next.priority);
+    // 6. Hand priority to whoever the game is currently waiting on, and give it back
+    //    when it is waiting on no one.
+    //
+    //    Two kinds of choice interrupt priority, and they are checked in the order they
+    //    must be answered. A **mid-resolution player choice** comes first: an object is
+    //    part-way through resolving and nothing else — not even aiming a trigger that
+    //    resolution produced — may happen until the question is answered. Then a
+    //    **triggered ability owed targets** (CR 603.3b/603.3d): it is put on the stack,
+    //    and its controller chooses its targets, before any player receives priority.
+    //
+    //    The interrupted holder is remembered in one slot because the chooser is
+    //    frequently not them and only one seat can hold priority: a creature killed by
+    //    an opponent's removal spell gives its own controller a trigger to aim while the
+    //    opponent retains priority, and a Mind Rot resolving on its caster's turn asks
+    //    the other seat to discard.
+    let chooser = crate::pending_player_choice(&next)
+        .map(|pending| pending.chooser)
+        .or_else(|| {
+            crate::pending_trigger_target_choice(&next)
+                .and_then(|id| crate::triggers::controller_of_stack_object(&next, id))
+        });
+    match chooser {
+        Some(chooser) => {
+            if next.interrupted_priority.is_none() {
+                next.interrupted_priority = Some(next.priority);
             }
-            if let Some(chooser) = crate::triggers::controller_of_stack_object(&next, pending) {
-                next.priority = chooser;
-            }
+            next.priority = chooser;
         }
         None => {
-            if let Some(restored) = next.trigger_target_priority.take() {
+            if let Some(restored) = next.interrupted_priority.take() {
                 next.priority = restored;
             }
         }

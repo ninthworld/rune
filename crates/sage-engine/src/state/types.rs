@@ -159,6 +159,27 @@ pub enum GameEvent {
         /// Number of cards that actually moved to the graveyard.
         count: u32,
     },
+    /// A player discarded cards from their hand (CR 701.8). Card identities are
+    /// deliberately absent for the same reason [`Self::CardsDrawn`]'s are — a hand is
+    /// hidden, and the cards become visible on their own once they are in the public
+    /// graveyard. The count is what actually moved, so a player asked to discard more
+    /// than they hold logs what they had.
+    CardsDiscarded {
+        /// The player who discarded.
+        player: PlayerId,
+        /// Number of cards that actually moved to the graveyard.
+        count: u32,
+    },
+    /// A player searched their library and shuffled it (CR 701.19). Neither what they
+    /// looked at nor what they found is recorded: a library is hidden from every other
+    /// seat, and naming the found card here would leak it to all of them before it
+    /// arrives anywhere public. That the search *happened* is public information —
+    /// everyone at the table sees the deck picked up — and the shuffle is why a failed
+    /// search is not a free look.
+    LibrarySearched {
+        /// The player who searched.
+        player: PlayerId,
+    },
     /// A creature left the battlefield for a graveyard (CR 700.4 — a creature
     /// "dies"). Only creatures produce this; an Aura or other permanent moving to a
     /// graveyard is a zone change, not a death.

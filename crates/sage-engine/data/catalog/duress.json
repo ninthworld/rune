@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "duress",
+  "name": "Duress",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "discard",
+      "player_ref": "target_opponent",
+      "count": 1,
+      "chosen_by": "controller",
+      "filter": {
+        "kind": "noncreature_nonland"
+      }
+    }
+  ]
+}

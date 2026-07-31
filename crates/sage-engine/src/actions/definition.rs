@@ -1,7 +1,7 @@
 //! Action types and core methods: the closed set of legal player choices.
 
 use crate::ability::Target;
-use crate::id::{CardInstance, PermanentId, PlayerId};
+use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 
 /// An action a player may take. The engine generates the legal set with
 /// [`crate::valid_actions`] and validates a chosen action against it in
@@ -53,6 +53,30 @@ pub enum Action {
         /// One target per slot the ability's effects declare, in that order; the same
         /// parameterized representation [`Self::ActivateAbility`] uses.
         targets: Vec<Target>,
+    },
+    /// Answer the **mid-resolution player choice** the game is currently waiting on
+    /// (CR 701.8 discard, CR 701.17 scry, CR 701.19 search — see
+    /// [`crate::pending_player_choice`]).
+    ///
+    /// An effect that asks a player to choose cards suspends its object's resolution
+    /// and queues the question; this action is the answer, and nothing else can happen
+    /// until it arrives. Offered to the choice's *chooser* — who may be neither the
+    /// priority holder nor the resolving object's controller, since "target player
+    /// discards two cards" asks the targeted seat — and to no one else, so while a
+    /// choice is owed [`crate::valid_actions`] offers this and nothing else to that
+    /// seat and an empty list to every other.
+    ///
+    /// A choice with no legal answer is never queued at all (it is applied outright
+    /// with an empty selection), so like [`Self::ChooseTriggerTargets`] this action is
+    /// only ever offered when it can be answered.
+    AnswerChoice {
+        /// The cards chosen, in the order they were chosen — which is load-bearing for
+        /// a scry, where it is the order they are put on the bottom in. Each names a
+        /// card in the choice's freshly recomputed candidate set
+        /// ([`crate::choice_candidates`]); the selection size must fall within that
+        /// choice's clamped bounds ([`crate::choice_bounds`]). An empty selection is
+        /// legal whenever the minimum is zero — declining to scry, or failing to find.
+        chosen: Vec<CardInstanceId>,
     },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
@@ -217,9 +241,11 @@ impl Action {
             Action::ActivateAbility { targets, .. }
             | Action::CastSpell { targets, .. }
             | Action::ChooseTriggerTargets { targets, .. } => targets,
-            // `Keep::bottom` is a mulligan sub-choice, not a target selection; it
-            // is validated through the mulligan path, never this one.
+            // `Keep::bottom` is a mulligan sub-choice and `AnswerChoice::chosen` a
+            // mid-resolution one; both name cards in a hidden zone rather than
+            // targets, and are validated through their own paths, never this one.
             Action::PassPriority
+            | Action::AnswerChoice { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -261,8 +287,11 @@ impl Action {
                 targets: Vec::new(),
             },
             // The mulligan keep's bottom selection is cleared the same way, so its
-            // requirement form matches what [`valid_actions`] advertises.
+            // requirement form matches what [`valid_actions`] advertises — as is a
+            // mid-resolution choice's, which is likewise advertised empty and filled
+            // in by the answer.
             Action::Keep { .. } => Action::Keep { bottom: Vec::new() },
+            Action::AnswerChoice { .. } => Action::AnswerChoice { chosen: Vec::new() },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

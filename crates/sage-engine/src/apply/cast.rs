@@ -273,11 +273,11 @@ pub(crate) fn apply_effect(
             }
         }
         // CR 119.3: the referenced player gains life. A non-targeting reference names
-        // its seats outright ([`subjects_of`]); a targeting one is routed through
+        // its seats outright ([`non_targeting_subjects`]); a targeting one is routed through
         // [`apply_targeted_effect`] instead and is a no-op here.
         Effect::GainLife { player_ref, amount } => {
             let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
-            for seat in subjects_of(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
                 state.change_life(seat, delta);
             }
         }
@@ -285,7 +285,7 @@ pub(crate) fn apply_effect(
         // the zero-life state-based action (CR 704.5a) in the SBA loop.
         Effect::LoseLife { player_ref, amount } => {
             let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
-            for seat in subjects_of(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
                 state.change_life(seat, -delta);
             }
         }
@@ -293,7 +293,7 @@ pub(crate) fn apply_effect(
         // library into their graveyard. Not a draw — an empty library simply moves
         // fewer cards and never trips the CR 704.5c decking loss.
         Effect::Mill { player_ref, count } => {
-            for seat in subjects_of(state, *player_ref, controller) {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
                 state.mill(seat, u32::from(*count));
             }
         }
@@ -308,7 +308,7 @@ pub(crate) fn apply_effect(
         Effect::DealDamage { subject, amount } => match subject {
             DamageSubject::Target(_) => {}
             DamageSubject::Players(player_ref) => {
-                for seat in subjects_of(state, *player_ref, controller) {
+                for seat in non_targeting_subjects(state, *player_ref, controller) {
                     state.deal_damage_to_player(seat, *amount);
                 }
             }
@@ -403,6 +403,15 @@ pub(crate) fn apply_effect(
                 }
             }
         }
+        // An effect that poses a mid-resolution player choice never reaches either
+        // apply function: the resolve loop intercepts it, queues the choice, and
+        // suspends ([`crate::choice::choices_for_effect`]). Reaching here would mean
+        // the interception was missed, so both arms are deliberately empty rather
+        // than silently doing half the effect.
+        Effect::Discard { .. }
+        | Effect::Scry { .. }
+        | Effect::LookAtTop { .. }
+        | Effect::SearchLibrary { .. } => {}
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
         Effect::Tap { .. }
@@ -447,7 +456,7 @@ fn apply_mass_modification(
 /// The permanents a [`MassAffects`] class names, in battlefield order, for an object
 /// controlled by `controller`.
 ///
-/// The permanent-side counterpart of [`subjects_of`], and the one place a class is
+/// The permanent-side counterpart of [`non_targeting_subjects`], and the one place a class is
 /// turned into a concrete set: a mass modification and a mass damage effect must agree
 /// on what "each creature" means, and the set is enumerated **at the moment of
 /// resolution** (CR 611.2c) so a permanent that arrived after announcement is included
@@ -473,7 +482,7 @@ fn permanents_in(
                     MassAffects::EachCreature => true,
                     // A seat that has lost is no longer an opponent (CR 102.1); its
                     // permanents are on their way off the battlefield in the same SBA
-                    // loop, and this is the same exclusion `subjects_of` makes.
+                    // loop, and this is the same exclusion `non_targeting_subjects` makes.
                     MassAffects::CreaturesYourOpponentsControl => {
                         p.controller != controller
                             && state
@@ -505,7 +514,11 @@ fn permanents_in(
 /// Empty for a targeting reference: those carry a chosen [`Target`] instead and are
 /// applied through [`apply_targeted_effect`], so returning nothing here is what keeps
 /// a targeted drain from *also* silently hitting everyone.
-fn subjects_of(state: &GameState, player_ref: PlayerRef, controller: PlayerId) -> Vec<PlayerId> {
+pub(crate) fn non_targeting_subjects(
+    state: &GameState,
+    player_ref: PlayerRef,
+    controller: PlayerId,
+) -> Vec<PlayerId> {
     match player_ref {
         PlayerRef::Controller => vec![controller],
         // Every opponent still in the game (CR 102.1) — in a game of three or more
@@ -691,7 +704,7 @@ pub(crate) fn apply_targeted_effect(
             }
         }
         // A **targeted** player reference (CR 115.1): the chosen player is the
-        // subject, in place of the seats `subjects_of` would have named. The
+        // subject, in place of the seats `non_targeting_subjects` would have named. The
         // non-targeting refs never reach here — they are applied in `apply_effect`.
         Effect::GainLife { amount, .. } => {
             if let Target::Player(seat) = target {
@@ -708,6 +721,12 @@ pub(crate) fn apply_targeted_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // A choice-posing effect is intercepted by the resolve loop before either
+        // apply function sees it (see [`apply_effect`]).
+        Effect::Discard { .. }
+        | Effect::Scry { .. }
+        | Effect::LookAtTop { .. }
+        | Effect::SearchLibrary { .. } => {}
         // Implicit-subject and class-scoped effects do not target; they never reach
         // here, and are applied by [`apply_effect`].
         Effect::AddMana { .. }

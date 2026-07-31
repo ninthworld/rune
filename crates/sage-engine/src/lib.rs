@@ -18,6 +18,7 @@ mod card;
 mod card_type;
 mod catalog;
 mod characteristics;
+mod choice;
 mod combat;
 mod commander;
 pub mod compat;
@@ -39,9 +40,9 @@ mod triggers;
 mod zone;
 
 pub use ability::{
-    is_mana_ability, Ability, Cost, DamageSubject, Effect, MassAffects, ObservedPermanent,
-    ObservedSpell, PlayerRef, StaticAffects, StaticModification, Target, TargetSpec,
-    TriggerCondition, TriggerStep, TurnScope,
+    is_mana_ability, Ability, CardFilter, Chooser, Cost, DamageSubject, Effect, FoundDestination,
+    MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification,
+    Target, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 pub use actions::{
     target_requirements, valid_actions, Action, Attack, Block, DamageOrder, TargetRequirement,
@@ -55,6 +56,10 @@ pub use card::{
 pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
+pub use choice::{
+    choice_bounds, choice_candidates, pending_player_choice, ChoiceOutcome, ChoiceRequest,
+    ChoiceZone, PendingChoice, Resume, SuspendedSpell,
+};
 pub use combat::{
     attacked_players, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocked_by_at_most_one, blocker_can_block_attacker, blocker_candidates, blocker_candidates_for,

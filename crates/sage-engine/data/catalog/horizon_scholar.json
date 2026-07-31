@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "functional_id": "horizon_scholar",
+  "name": "Horizon Scholar",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Sphinx"
+  ],
+  "mana_cost": "{5}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "scry",
+          "count": 2
+        }
+      ]
+    }
+  ]
+}

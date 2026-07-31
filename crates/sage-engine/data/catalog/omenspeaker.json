@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "functional_id": "omenspeaker",
+  "name": "Omenspeaker",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Wizard"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 1,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "scry",
+          "count": 2
+        }
+      ]
+    }
+  ]
+}

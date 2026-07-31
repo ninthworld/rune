@@ -112,23 +112,42 @@ pub struct GameState {
     /// be set. Empty and unused in a two-player game (the sole defender declares
     /// once). Reset each turn.
     pub blockers_declared_by: Vec<PlayerId>,
-    /// The seat priority returns to once every triggered ability on the stack has
-    /// been given its targets (CR 603.3d), or `None` when nothing is owed.
+    /// The seat priority returns to once every choice the game is currently waiting on
+    /// has been answered, or `None` when it is waiting on none.
     ///
-    /// **Raw stored state, not a derivation.** A triggered ability's controller
-    /// chooses its targets *as it is put on the stack* — before any player receives
-    /// priority (CR 603.3b) — and that controller is frequently not the player whose
-    /// action produced the trigger: a creature killed by an opponent's removal spell
-    /// on the opponent's turn gives its own controller a dies trigger to aim. So the
-    /// engine hands priority to the chooser and must remember whose it was, and the
-    /// answer is not recoverable from a snapshot afterwards (the same reasoning as
+    /// Two kinds of choice interrupt priority this way, and they share one slot because
+    /// they can be owed at the same moment and only one seat can hold priority: aiming
+    /// a triggered ability already on the stack (CR 603.3d,
+    /// [`pending_trigger_target_choice`](crate::pending_trigger_target_choice)) and
+    /// answering a mid-resolution player choice (CR 701.8/701.17/701.19,
+    /// [`pending_player_choice`](crate::pending_player_choice)).
+    ///
+    /// **Raw stored state, not a derivation.** The chooser is frequently not the player
+    /// whose action produced the choice — a creature killed by an opponent's removal
+    /// spell gives its own controller a dies trigger to aim, and a Mind Rot resolving on
+    /// its caster's turn asks the other seat to discard. So the engine hands priority to
+    /// the chooser and must remember whose it was, and the answer is not recoverable
+    /// from a snapshot afterwards (the same reasoning as
     /// [`Player::turn_began`](crate::player::Player::turn_began)).
     ///
-    /// Set when the first pending trigger is put on the stack and consumed the moment
-    /// the last one has its targets, so it is `None` outside that window. Whether a
-    /// choice is *currently* owed stays derived — see
-    /// [`pending_trigger_target_choice`](crate::pending_trigger_target_choice).
-    pub trigger_target_priority: Option<PlayerId>,
+    /// Set when the first such choice appears and consumed the moment the last one is
+    /// answered, so it is `None` outside that window. Whether a choice is *currently*
+    /// owed stays derived, from the stack and from [`Self::pending_choices`].
+    pub interrupted_priority: Option<PlayerId>,
+    /// Mid-resolution player choices the game is waiting on, in the order they were
+    /// posed and answered from the front (CR 701.8 discard, CR 701.17 scry,
+    /// CR 701.19 search — see [`crate::PendingChoice`]).
+    ///
+    /// **Raw queued state, exactly as [`Self::stack`] is**, and for the same reason: a
+    /// suspended resolution's remainder is not recoverable from a snapshot. Whether a
+    /// choice is owed *right now* stays derived from this queue
+    /// ([`pending_player_choice`](crate::pending_player_choice)), and so do the cards
+    /// each one offers ([`choice_candidates`](crate::choice_candidates)) — there is no
+    /// flag and no snapshotted candidate list that could drift from the zones.
+    ///
+    /// Empty in every state that is not mid-resolution, so a game that never resolves a
+    /// choice-posing effect is byte-for-byte unchanged.
+    pub pending_choices: Vec<crate::choice::PendingChoice>,
     /// Permanents dealt combat damage this combat by a source with deathtouch
     /// (CR 702.2b), pending the CR 704.5h state-based action that destroys them.
     ///

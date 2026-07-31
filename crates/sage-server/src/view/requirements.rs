@@ -71,6 +71,8 @@ pub(crate) fn keep_prompts(state: &GameState, action: &Action) -> Vec<Prompt> {
             zone: "hand".to_string(),
             owner: player_id(state.priority),
             count: count(req.count),
+            // A bottoming is exact: put down precisely as many as you mulliganed.
+            min: None,
             candidates: req.candidates.into_iter().map(target_entity_id).collect(),
         }],
         None => Vec::new(),

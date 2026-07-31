@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "functional_id": "psychic_symbiont",
+  "name": "Psychic Symbiont",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Nightmare",
+    "Horror"
+  ],
+  "mana_cost": "{4}{U}{B}",
+  "colors": [
+    "blue",
+    "black"
+  ],
+  "power": 3,
+  "toughness": 3,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "discard",
+          "player_ref": "target_opponent",
+          "count": 1
+        },
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -57,6 +57,17 @@ with its source's presence and nothing enters `GameState::static_effects`. Exten
 `StaticAffects` when a card needs a scope it cannot name; a cost reducer still needs a
 `Modification` variant that no layer implements yet.
 
+**A mid-resolution player choice is queued state, never a flag** (ADR 0013). An effect that
+asks a player to choose cards (discard, scry, look at the top N, search) pushes a
+`PendingChoice` onto `GameState::pending_choices` and *suspends* the resolution, carrying the
+rest of it — remaining effects, remaining targets, and the spell's final zone — in the
+choice's `Resume`. Whether a choice is owed is derived (`pending_player_choice`), and so are
+the cards it offers (`choice_candidates`); nothing snapshots a candidate list. A choice whose
+clamped maximum is zero is applied outright instead of posed, which is the whole of the
+never-stall guarantee. Priority goes to the chooser and returns via the one
+`interrupted_priority` slot shared with trigger aiming — a third interrupting choice must
+join that check rather than add a second slot.
+
 The catalog was selected as cards this vocabulary can say, so the empty `scripted.rs` table
 is not evidence of expressiveness. Growing the vocabulary is the primary engine workstream;
 each new primitive is one enum variant plus every exhaustive match that consumes it, across

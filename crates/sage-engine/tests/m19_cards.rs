@@ -1034,10 +1034,7 @@ fn a_trigger_is_aimed_by_its_own_controller_not_by_the_priority_holder() {
         state.priority, before_priority,
         "priority returns to the seat it was headed for once the choice is made"
     );
-    assert!(
-        state.trigger_target_priority.is_none(),
-        "and nothing is owed"
-    );
+    assert!(state.interrupted_priority.is_none(), "and nothing is owed");
 
     let state = apply_action(&state, &Action::PassPriority, &db);
     let state = apply_action(&state, &Action::PassPriority, &db);

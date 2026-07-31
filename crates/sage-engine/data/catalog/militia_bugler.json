@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "functional_id": "militia_bugler",
+  "name": "Militia Bugler",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Soldier"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "look_at_top",
+          "count": 4,
+          "take": 1,
+          "filter": {
+            "kind": "creature",
+            "max_power": 2
+          },
+          "destination": "hand"
+        }
+      ]
+    }
+  ]
+}
