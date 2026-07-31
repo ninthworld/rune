@@ -7,6 +7,7 @@
 use crate::ability::{Ability, TriggerCondition};
 use crate::card::abilities_of;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
+use crate::stack::{StackId, StackObjectKind};
 use crate::state::{GameState, Permanent};
 use crate::{CardDatabase, Effect};
 
@@ -64,6 +65,43 @@ pub fn collect_triggers(before: &GameState, after: &GameState, db: &CardDatabase
         collect_from(perm, before, after, db, &mut triggers);
     }
     triggers
+}
+
+/// The topmost triggered ability on the stack that is still owed targets
+/// (CR 603.3d), or `None` when nothing is owed.
+///
+/// **Derived, never stored.** A triggered ability reaches the stack with no targets
+/// (its controller has not chosen yet), so "owes targets" is exactly *declares more
+/// target slots than it carries* — a fact about the object, readable at any time,
+/// with no flag to set or clear. Spells and activated abilities are never in this
+/// state: both choose their targets as part of the action that put them there
+/// (CR 601.2c), so they always arrive full.
+///
+/// Topmost first, because triggers are chosen for in the order they will be answered
+/// and the last one put on the stack is the first a player sees.
+#[must_use]
+pub fn pending_trigger_target_choice(state: &GameState) -> Option<StackId> {
+    state
+        .stack
+        .iter()
+        .rev()
+        .find(|object| match &object.kind {
+            StackObjectKind::Ability { effects, .. } => {
+                effects.iter().filter_map(Effect::target_spec).count() > object.targets.len()
+            }
+            StackObjectKind::Spell { .. } => false,
+        })
+        .map(|object| object.id)
+}
+
+/// The controller of the stack object `id` — the player who chooses its targets.
+#[must_use]
+pub(crate) fn controller_of_stack_object(state: &GameState, id: StackId) -> Option<PlayerId> {
+    state
+        .stack
+        .iter()
+        .find(|o| o.id == id)
+        .map(|o| o.controller)
 }
 
 /// Push a [`Trigger`] for every triggered ability of `perm` whose condition holds

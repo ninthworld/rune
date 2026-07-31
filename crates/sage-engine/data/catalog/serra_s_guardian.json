@@ -1,21 +1,22 @@
 {
   "schema_version": 1,
-  "functional_id": "aggressive_mammoth",
-  "name": "Aggressive Mammoth",
+  "functional_id": "serra_s_guardian",
+  "name": "Serra's Guardian",
   "types": [
     "creature"
   ],
   "subtypes": [
-    "Elephant"
+    "Angel"
   ],
-  "mana_cost": "{3}{G}{G}{G}",
+  "mana_cost": "{4}{W}{W}",
   "colors": [
-    "green"
+    "white"
   ],
-  "power": 8,
-  "toughness": 8,
+  "power": 5,
+  "toughness": 5,
   "keywords": [
-    "trample"
+    "flying",
+    "vigilance"
   ],
   "abilities": [
     {
@@ -26,7 +27,7 @@
       },
       "modification": {
         "kind": "grant_keyword",
-        "keyword": "trample"
+        "keyword": "vigilance"
       }
     }
   ]

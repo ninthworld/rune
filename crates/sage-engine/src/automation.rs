@@ -345,12 +345,13 @@ mod tests {
         // `CastSpell` and this predicate kept reporting the seat non-idle — the room
         // never auto-passed it and every seat that had ever tapped a land stalled.
         //
-        // Revitalize is a {W} instant with no targets, so its castability turns on
+        // Revitalize is a {1}{W} instant with no targets, so its castability turns on
         // the pool alone and not on timing or a legal target.
         let db = db();
         let mut state = GameState::new_two_player();
         state.step = Step::PrecombatMain;
         let plains = place(&mut state, fixture("plains"), PlayerId(0));
+        let second = place(&mut state, fixture("plains"), PlayerId(0));
         let heal = state.new_instance(fixture("revitalize"));
         state.players[0].hand = vec![heal];
 
@@ -361,7 +362,7 @@ mod tests {
             "a spell castable once the seat taps its land is a meaningful action"
         );
 
-        // The seat taps for {W} and then declines to cast.
+        // The seat taps both lands for {W}{W} and then declines to cast.
         let state = crate::apply_action(
             &state,
             &Action::ActivateAbility {
@@ -371,9 +372,18 @@ mod tests {
             },
             &db,
         );
+        let state = crate::apply_action(
+            &state,
+            &Action::ActivateAbility {
+                permanent: second,
+                index: 0,
+                targets: Vec::new(),
+            },
+            &db,
+        );
         assert_eq!(
-            state.players[0].mana_pool.white, 1,
-            "the pool is floating {{W}}"
+            state.players[0].mana_pool.white, 2,
+            "the pool is floating {{W}}{{W}}"
         );
         assert!(
             !priority_has_no_meaningful_action(&state, &db),

@@ -191,6 +191,13 @@ pub(crate) fn bind_ability_targets(
             card: *card,
             targets: chosen,
         }),
+        // Aiming a trigger (CR 603.3d) binds through the same per-slot candidate
+        // path as a cast or an activation — the engine offers one target slot per
+        // effect either way, so there is nothing trigger-specific about the mapping.
+        Action::ChooseTriggerTargets { ability, .. } => Some(Action::ChooseTriggerTargets {
+            ability: *ability,
+            targets: chosen,
+        }),
         _ => None,
     }
 }

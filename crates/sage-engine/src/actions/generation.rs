@@ -74,6 +74,28 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         }
     }
 
+    // Aiming a triggered ability (CR 603.3d) is a choice made *as it is put on the
+    // stack* — before any player receives priority (CR 603.3b) — so while one is owed
+    // the game does not proceed: its controller's only action is the choice itself
+    // (no pass, no spells, no responses), and no other player acts. The same shape as
+    // the cleanup discard and the combat declarations below. `apply_action` has
+    // already handed priority to the chooser, so the priority test here is the whole
+    // routing; the ability is advertised once in its empty requirement form and its
+    // per-slot candidates come from [`crate::target_requirements`].
+    if let Some(ability) = crate::pending_trigger_target_choice(state) {
+        let chooser = crate::triggers::controller_of_stack_object(state, ability);
+        return if Some(priority) == chooser {
+            let mut actions = vec![Action::ChooseTriggerTargets {
+                ability,
+                targets: Vec::new(),
+            }];
+            offer_concede(&mut actions);
+            actions
+        } else {
+            Vec::new()
+        };
+    }
+
     // Cleanup step: no player receives priority (CR 514.3). The only choice is
     // the active player discarding down to the maximum hand size (CR 514.1),
     // offered as a select-from-zone choice — one [`Action::Discard`] per card in

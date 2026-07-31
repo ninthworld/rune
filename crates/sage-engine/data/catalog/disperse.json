@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "functional_id": "unsummon",
-  "name": "Unsummon",
+  "functional_id": "disperse",
+  "name": "Disperse",
   "types": [
     "instant"
   ],
-  "mana_cost": "{U}",
+  "mana_cost": "{1}{U}",
   "colors": [
     "blue"
   ],
   "spell_effects": [
     {
       "kind": "return_to_hand",
-      "target": "any_creature"
+      "target": "any_nonland_permanent"
     }
   ]
 }

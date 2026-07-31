@@ -581,19 +581,29 @@ mod tests {
     }
 
     /// A keyword granted by continuous effect (issue #374) projects onto the
-    /// permanent's card view exactly like a printed one: an Onakke Ogre (no printed
-    /// keyword) enchanted with Flight (an Aura granting flying) shows `flying` on the
-    /// wire, and a second, unenchanted Ogre shows none.
+    /// permanent's card view exactly like a printed one: a plain body (no printed
+    /// keyword) enchanted with an Aura granting flying shows `flying` on the wire,
+    /// and a second, unenchanted body shows none.
     #[test]
     fn issue_374_granted_keyword_projects_onto_the_card_view() {
-        let db = CardDatabase::bundled().unwrap();
+        let db = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
+                 "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
+                 "aura":{"enchant":"any_creature","keywords":["flying"]}},
+                {"schema_version":1,"functional_id":"test_ogre","name":"Test Ogre",
+                 "types":["creature"],"subtypes":["Ogre"],"mana_cost":"{2}{R}","colors":["red"],
+                 "power":4,"toughness":2}
+            ]"#,
+        )
+        .unwrap();
         let mut state = GameState::new_two_player();
 
         let host = PermanentId(state.mint_id());
         state.battlefield.push(sage_engine::Permanent {
             id: host,
             instance: CardInstanceId(0),
-            card: fixture("onakke_ogre"),
+            card: id_in(&db, "test_ogre"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -607,7 +617,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: bystander,
             instance: CardInstanceId(1),
-            card: fixture("onakke_ogre"),
+            card: id_in(&db, "test_ogre"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -617,12 +627,14 @@ mod tests {
             counters: std::collections::BTreeMap::new(),
             attached_to: None,
         });
-        // Flight, an Aura granting flying, attached to the host.
+        // A keyword-only Aura granting flying, attached to the host. M19 prints no
+        // such Aura (Prodigious Growth grants trample alongside +7/+7), so the shape
+        // is exercised by an inline definition rather than a shipped card (ADR 0009).
         let aura = PermanentId(state.mint_id());
         state.battlefield.push(sage_engine::Permanent {
             id: aura,
             instance: CardInstanceId(2),
-            card: fixture("flight"),
+            card: id_in(&db, "test_flight"),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,

@@ -35,6 +35,25 @@ pub enum Action {
         /// is validated slot-by-slot in [`crate::apply_action`].
         targets: Vec<Target>,
     },
+    /// Choose the targets of a **triggered ability already on the stack** (CR 603.3d).
+    ///
+    /// A trigger is put on the stack by the game, not by a player, so its controller
+    /// has had no opportunity to aim it: it arrives with no targets and this action is
+    /// the choosing. Until it is answered the game does not proceed — the ability goes
+    /// on the stack before any player receives priority (CR 603.3b) — so while one is
+    /// owed, [`crate::valid_actions`] offers this and nothing else, to the trigger's
+    /// controller rather than to whoever last held priority.
+    ///
+    /// A trigger with *no* legal choice for one of its slots is never put on the stack
+    /// at all (CR 603.3c), so this action is only ever offered when it can be answered.
+    ChooseTriggerTargets {
+        /// The stack object being aimed — a triggered ability owed targets, as
+        /// reported by [`crate::pending_trigger_target_choice`].
+        ability: crate::stack::StackId,
+        /// One target per slot the ability's effects declare, in that order; the same
+        /// parameterized representation [`Self::ActivateAbility`] uses.
+        targets: Vec<Target>,
+    },
     /// Cast a spell from hand, paying its mana cost from the caster's pool.
     CastSpell {
         /// The specific card in the caster's hand to cast. Names the physical
@@ -195,7 +214,9 @@ impl Action {
     /// action that carries none.
     pub(super) fn targets(&self) -> &[Target] {
         match self {
-            Action::ActivateAbility { targets, .. } | Action::CastSpell { targets, .. } => targets,
+            Action::ActivateAbility { targets, .. }
+            | Action::CastSpell { targets, .. }
+            | Action::ChooseTriggerTargets { targets, .. } => targets,
             // `Keep::bottom` is a mulligan sub-choice, not a target selection; it
             // is validated through the mulligan path, never this one.
             Action::PassPriority
@@ -233,6 +254,10 @@ impl Action {
             // `valid_actions` advertises (CR 601.2c targets are filled in later).
             Action::CastSpell { card, .. } => Action::CastSpell {
                 card: *card,
+                targets: Vec::new(),
+            },
+            Action::ChooseTriggerTargets { ability, .. } => Action::ChooseTriggerTargets {
+                ability: *ability,
                 targets: Vec::new(),
             },
             // The mulligan keep's bottom selection is cleared the same way, so its

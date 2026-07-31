@@ -148,13 +148,30 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
         .into_iter()
         .map(|attacker| TargetRequirement {
             slot: blocker_slot(attacker),
-            prompt: format!(
-                "Choose blockers for {}",
-                permanent_card_name(state, attacker, db)
-            ),
+            prompt: blocker_prompt(state, attacker, db),
             candidates: candidates.clone(),
         })
         .collect()
+}
+
+/// The prompt for one attacker's blocker slot, naming any restriction on *how many*
+/// blockers the declaration may assign to it.
+///
+/// Menace (CR 702.110b) is a constraint on the whole selection rather than on any one
+/// blocker, so the engine can only reject it once the declaration is assembled — which
+/// would otherwise reach the player as a submit that silently does nothing. Saying it
+/// in the prompt is the fix that keeps the rule where it belongs: the *server* asks the
+/// rules authority ([`sage_engine::permanent_has_menace`]) and puts the answer in words, and the
+/// client still computes no legality of its own (`AGENTS.md`, zero game logic in the
+/// client).
+fn blocker_prompt(state: &GameState, attacker: PermanentId, db: &CardDatabase) -> String {
+    let name = permanent_card_name(state, attacker, db);
+    if sage_engine::permanent_has_menace(state, attacker, db) {
+        // "or none": menace restricts how a creature is blocked, never whether it is.
+        format!("Choose blockers for {name} (menace — two or more, or none)")
+    } else {
+        format!("Choose blockers for {name}")
+    }
 }
 
 /// The ability-target requirement slots (ADR 0004 §Enumeration, deferral #73): the
@@ -203,6 +220,47 @@ pub(crate) fn ability_label(
         .unwrap_or_else(|| "Activate ability".to_string())
 }
 
+/// The label for aiming a triggered ability: the ability's own sentence, drawn from
+/// the effects it carries on the stack ([`effects_description`]) — the same words the
+/// stack entry shows, so the prompt and the stack cannot describe it differently.
+pub(crate) fn trigger_label(state: &GameState, db: &CardDatabase, ability: StackId) -> String {
+    state
+        .stack
+        .iter()
+        .find(|o| o.id == ability)
+        .and_then(|o| match &o.kind {
+            StackObjectKind::Ability {
+                source, effects, ..
+            } => Some(effects_description(
+                &state
+                    .battlefield
+                    .iter()
+                    .find(|p| p.id == *source)
+                    .map_or_else(
+                        || "This ability's source".to_string(),
+                        |p| card_name(p.card, db),
+                    ),
+                effects,
+            )),
+            StackObjectKind::Spell { .. } => None,
+        })
+        .unwrap_or_else(|| "Choose targets".to_string())
+}
+
+/// The subject a trigger-aiming action binds to: the permanent whose ability is
+/// asking, so the board highlights the source rather than nothing.
+pub(crate) fn trigger_subject(state: &GameState, ability: StackId) -> Vec<String> {
+    state
+        .stack
+        .iter()
+        .find(|o| o.id == ability)
+        .and_then(|o| match &o.kind {
+            StackObjectKind::Ability { source, .. } => Some(vec![permanent_entity_id(*source)]),
+            StackObjectKind::Spell { .. } => None,
+        })
+        .unwrap_or_default()
+}
+
 /// The display name of the permanent `id` on the battlefield, for a human prompt,
 /// or a stable placeholder if it is not found.
 fn permanent_card_name(state: &GameState, id: PermanentId, db: &CardDatabase) -> String {
@@ -212,6 +270,85 @@ fn permanent_card_name(state: &GameState, id: PermanentId, db: &CardDatabase) ->
         .find(|perm| perm.id == id)
         .map(|perm| card_name(perm.card, db))
         .unwrap_or_else(|| "the attacker".to_string())
+}
+
+#[cfg(test)]
+mod menace_prompt_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+    use crate::test_support::fixture;
+    use sage_engine::{Attack, PlayerId, Step};
+
+    /// The blocker slot of a menacing attacker says so, so a player is told the
+    /// two-or-more rule *before* submitting rather than by a declaration the engine
+    /// silently refuses (CR 702.110b).
+    #[test]
+    fn a_menacing_attackers_blocker_slot_names_its_restriction() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        state.step = Step::DeclareAttackers;
+        state.priority = PlayerId(0);
+        let brute = crate::view::test_support::put_permanent(
+            &mut state,
+            fixture("boggart_brute"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let plain = crate::view::test_support::put_permanent(
+            &mut state,
+            fixture("onakke_ogre"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        crate::view::test_support::put_permanent(
+            &mut state,
+            fixture("sun_sentinel"),
+            PlayerId(1),
+            false,
+            false,
+        );
+
+        let state = sage_engine::apply_action(
+            &state,
+            &sage_engine::Action::DeclareAttackers {
+                attackers: vec![
+                    Attack {
+                        attacker: brute,
+                        defender: PlayerId(1),
+                    },
+                    Attack {
+                        attacker: plain,
+                        defender: PlayerId(1),
+                    },
+                ],
+            },
+            &db,
+        );
+        let mut state = state;
+        while state.step != Step::DeclareBlockers {
+            state = sage_engine::apply_action(&state, &sage_engine::Action::PassPriority, &db);
+        }
+
+        let prompts: Vec<String> = blocker_requirements(&state, &db)
+            .into_iter()
+            .map(|r| r.prompt)
+            .collect();
+        assert!(
+            prompts
+                .iter()
+                .any(|p| p.contains("Boggart Brute") && p.contains("menace")),
+            "the menacing attacker's slot states the restriction: {prompts:?}"
+        );
+        assert!(
+            prompts
+                .iter()
+                .any(|p| p == "Choose blockers for Onakke Ogre"),
+            "an ordinary attacker's slot is unchanged: {prompts:?}"
+        );
+    }
 }
 
 #[cfg(test)]

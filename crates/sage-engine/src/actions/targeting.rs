@@ -29,10 +29,10 @@ pub fn target_requirements(
     db: &CardDatabase,
     action: &Action,
 ) -> Vec<TargetRequirement> {
-    // Every spec is resolved relative to the player who would take this action —
-    // the priority holder, by definition (CR 117.1). That is what makes
-    // "target creature you control" enumerate *their* creatures.
-    let controller = state.priority;
+    // Every spec is resolved relative to the player who would take this action
+    // ([`acting_player`]). That is what makes "target creature you control"
+    // enumerate *their* creatures.
+    let controller = acting_player(state, action);
     action_target_specs(state, db, action)
         .into_iter()
         .map(|spec| TargetRequirement {
@@ -73,7 +73,38 @@ pub(crate) fn action_target_specs(
             .card(card.card)
             .map(crate::card::CardData::cast_target_specs)
             .unwrap_or_default(),
+        // A trigger's slots are the target specs of the effects it carries on the
+        // stack — read from the object itself, since a triggered ability's effects
+        // were copied there when it triggered and are what will resolve.
+        Action::ChooseTriggerTargets { ability, .. } => state
+            .stack
+            .iter()
+            .find(|o| o.id == *ability)
+            .map(|o| match &o.kind {
+                crate::stack::StackObjectKind::Ability { effects, .. } => {
+                    effects.iter().filter_map(Effect::target_spec).collect()
+                }
+                crate::stack::StackObjectKind::Spell { .. } => Vec::new(),
+            })
+            .unwrap_or_default(),
         _ => Vec::new(),
+    }
+}
+
+/// The player whose seat `action` is taken from, and therefore the frame of
+/// reference every possessive [`TargetSpec`] is evaluated in.
+///
+/// Ordinarily this is the priority holder — the player taking the action, by
+/// definition (CR 117.1). The exception is aiming a triggered ability: the *trigger's
+/// controller* chooses, and while one is owed the engine has already handed them
+/// priority, so the two agree. Reading it off the stack object anyway keeps the
+/// answer true of the action rather than of the moment.
+pub(crate) fn acting_player(state: &GameState, action: &Action) -> PlayerId {
+    match action {
+        Action::ChooseTriggerTargets { ability, .. } => {
+            crate::triggers::controller_of_stack_object(state, *ability).unwrap_or(state.priority)
+        }
+        _ => state.priority,
     }
 }
 

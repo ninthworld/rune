@@ -16,10 +16,6 @@
     "blocker": "no replacement-effect layer in the rules engine"
   },
   {
-    "name": "Triggered abilities that choose targets",
-    "blocker": "a trigger reaches the stack with no targets and nothing prompts its controller to choose"
-  },
-  {
     "name": "Token creation",
     "blocker": "no token object model; every permanent needs a catalog card"
   },

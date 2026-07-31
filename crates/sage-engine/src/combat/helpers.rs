@@ -128,7 +128,7 @@ pub(crate) fn blocker_can_block_attacker(
 /// Read through the computed keywords (CR 613.1f), so a granted menace restricts
 /// exactly as a printed one does. `false` for an id no longer on the battlefield.
 #[must_use]
-pub(crate) fn permanent_has_menace(state: &GameState, id: PermanentId, db: &CardDatabase) -> bool {
+pub fn permanent_has_menace(state: &GameState, id: PermanentId, db: &CardDatabase) -> bool {
     crate::characteristics::permanent_has_keyword(state, id, Keyword::Menace, db)
 }
 

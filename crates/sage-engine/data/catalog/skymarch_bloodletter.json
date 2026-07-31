@@ -1,35 +1,31 @@
 {
   "schema_version": 1,
-  "functional_id": "vampire_neonate",
-  "name": "Vampire Neonate",
+  "functional_id": "skymarch_bloodletter",
+  "name": "Skymarch Bloodletter",
   "types": [
     "creature"
   ],
   "subtypes": [
-    "Vampire"
+    "Vampire",
+    "Soldier"
   ],
-  "mana_cost": "{B}",
+  "mana_cost": "{2}{B}",
   "colors": [
     "black"
   ],
-  "power": 0,
-  "toughness": 3,
+  "power": 2,
+  "toughness": 2,
+  "keywords": [
+    "flying"
+  ],
   "abilities": [
     {
-      "type": "activated",
-      "cost": [
-        {
-          "kind": "mana",
-          "mana": "{2}"
-        },
-        {
-          "kind": "tap"
-        }
-      ],
+      "type": "triggered",
+      "event": "self_enters_battlefield",
       "effects": [
         {
           "kind": "lose_life",
-          "player_ref": "each_opponent",
+          "player_ref": "target_opponent",
           "amount": 1
         },
         {

@@ -795,16 +795,35 @@ mod tests {
         aura.attached_to = Some(host);
     }
 
+    /// An inline catalog for the keyword-granting Aura tests. M19 prints no Aura that
+    /// grants flying (its keyword-granting Aura, Prodigious Growth, grants trample
+    /// alongside +7/+7), so this shape is exercised by a `test_*` definition rather
+    /// than by a shipped card — ADR 0009's rule for an IR shape the set does not
+    /// cleanly represent.
+    fn flight_db() -> CardDatabase {
+        CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
+                 "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
+                 "aura":{"enchant":"any_creature","keywords":["flying"]}},
+                {"schema_version":1,"functional_id":"test_ogre","name":"Test Ogre",
+                 "types":["creature"],"subtypes":["Ogre"],"mana_cost":"{2}{R}","colors":["red"],
+                 "power":4,"toughness":2}
+            ]"#,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn issue_374_aura_grants_flying_folds_into_computed_keywords_cr_613_1f() {
         // CR 613.1f: an Aura granting flying puts flying into the host's computed
         // keyword set, indistinguishable from a printed keyword. A bystander creature
         // with no Aura has none.
-        let db = CardDatabase::bundled().unwrap();
+        let db = flight_db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, fixture("onakke_ogre"));
-        let bystander = place(&mut state, fixture("onakke_ogre"));
-        let aura = place(&mut state, fixture("flight"));
+        let host = place(&mut state, crate::fixtures::id_in(&db, "test_ogre"));
+        let bystander = place(&mut state, crate::fixtures::id_in(&db, "test_ogre"));
+        let aura = place(&mut state, crate::fixtures::id_in(&db, "test_flight"));
         attach(&mut state, aura, host);
 
         assert!(characteristics(&state, host, &db)
@@ -819,10 +838,10 @@ mod tests {
     fn issue_374_aura_grant_vanishes_when_the_aura_leaves() {
         // The grant is derived from the attachment (ADR 0005): detach the Aura and
         // the host's computed keyword set reverts with nothing to prune.
-        let db = CardDatabase::bundled().unwrap();
+        let db = flight_db();
         let mut state = GameState::new_two_player();
-        let host = place(&mut state, fixture("onakke_ogre"));
-        let aura = place(&mut state, fixture("flight"));
+        let host = place(&mut state, crate::fixtures::id_in(&db, "test_ogre"));
+        let aura = place(&mut state, crate::fixtures::id_in(&db, "test_flight"));
         attach(&mut state, aura, host);
         assert!(characteristics(&state, host, &db)
             .keywords

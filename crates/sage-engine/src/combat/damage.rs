@@ -650,27 +650,35 @@ pub(crate) mod tests {
         // CR 613.1f + 702.9c: an Aura granting flying makes its host a flier, so a
         // ground creature cannot block it — exactly as a printed flier. The grant
         // disappears when the Aura leaves.
-        let db = db(); // bundled catalog, which includes the `flight` Aura
         let mut state = GameState::new_two_player();
-        let host = creature_card(
-            &mut state,
-            fixture("walking_corpse"),
-            crate::id::PlayerId(0),
-            0,
-        ); // ground
-        let ground = creature_card(
-            &mut state,
-            fixture("walking_corpse"),
-            crate::id::PlayerId(1),
-            0,
-        );
+        // M19 prints no Aura granting flying, so the shape is exercised inline
+        // (ADR 0009): a `{U}` Aura whose only grant is flying, over a ground body.
+        let db = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_flight","name":"Test Flight",
+                 "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{U}","colors":["blue"],
+                 "aura":{"enchant":"any_creature","keywords":["flying"]}},
+                {"schema_version":1,"functional_id":"test_corpse","name":"Test Corpse",
+                 "types":["creature"],"subtypes":["Zombie"],"mana_cost":"{1}{B}","colors":["black"],
+                 "power":2,"toughness":2}
+            ]"#,
+        )
+        .unwrap();
+        let corpse = crate::fixtures::id_in(&db, "test_corpse");
+        let host = creature_card(&mut state, corpse, crate::id::PlayerId(0), 0); // ground
+        let ground = creature_card(&mut state, corpse, crate::id::PlayerId(1), 0);
         // Baseline: a ground creature can block a ground attacker.
         assert!(crate::combat::blocker_can_block_attacker(
             &state, host, ground, &db
         ));
 
-        // Attach Flight (Aura granting flying) to the host.
-        let aura = creature_card(&mut state, fixture("flight"), crate::id::PlayerId(0), 0);
+        // Attach the flying-granting Aura to the host.
+        let aura = creature_card(
+            &mut state,
+            crate::fixtures::id_in(&db, "test_flight"),
+            crate::id::PlayerId(0),
+            0,
+        );
         state
             .battlefield
             .iter_mut()

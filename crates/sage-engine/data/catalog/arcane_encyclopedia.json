@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "functional_id": "arcane_encyclopedia",
+  "name": "Arcane Encyclopedia",
+  "types": [
+    "artifact"
+  ],
+  "subtypes": [
+    "Book"
+  ],
+  "mana_cost": "{3}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

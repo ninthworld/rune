@@ -8,6 +8,7 @@
 //! battlefield-entry seam ([`crate::card::apply_enters_replacements`]). Pure over
 //! an immutable [`crate::GameState`].
 
+use crate::ability::Effect;
 use crate::actions::{action_is_legal, Action};
 use crate::sba::run_state_based_actions;
 use crate::stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
@@ -63,6 +64,9 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             apply_activate_ability(&mut next, *permanent, *index, targets, db);
         }
         Action::CastSpell { card, targets } => apply_cast_spell(&mut next, *card, targets, db),
+        Action::ChooseTriggerTargets { ability, targets } => {
+            apply_choose_trigger_targets(&mut next, *ability, targets);
+        }
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),
@@ -92,6 +96,21 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
     //    observe the post-replacement state (the entered permanent already carries
     //    its "as enters" tapped state / counters, CR 614.12).
     for trigger in collect_triggers(state, &next, db) {
+        // CR 603.3c: a triggered ability that requires targets and has no legal
+        // choice for one of its slots is removed from the stack — so it never goes on
+        // in the first place here. Checked against the *controller's* legal sets,
+        // since a possessive spec means different things from different seats.
+        let specs: Vec<_> = trigger
+            .effects
+            .iter()
+            .filter_map(Effect::target_spec)
+            .collect();
+        let unanswerable = specs.iter().any(|&spec| {
+            crate::actions::legal_targets_for_spec(spec, &next, trigger.controller, db).is_empty()
+        });
+        if unanswerable {
+            continue;
+        }
         let id = next.mint_id();
         next.stack.push(StackObject {
             id: StackId(id),
@@ -104,9 +123,34 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
                 origin: AbilityOrigin::Triggered,
                 effects: trigger.effects,
             },
-            // Target choosing on announcement is issue #71; triggers carry none.
+            // A trigger arrives **unaimed** (CR 603.3d): the game put it here, so its
+            // controller has had no chance to choose. When it declares target slots,
+            // step 6 hands them priority to fill them before anyone else acts.
             targets: Vec::new(),
         });
+    }
+
+    // 6. CR 603.3b/603.3d: a triggered ability is put on the stack, and its
+    //    controller chooses its targets, *before any player receives priority*. So
+    //    while one is owed, priority belongs to the chooser rather than to whoever
+    //    would otherwise hold it — and returns to them once the last choice is made.
+    //    That original holder is remembered because it is frequently not the chooser:
+    //    a creature killed by an opponent's removal spell on the opponent's turn gives
+    //    its own controller a trigger to aim, while the opponent retains priority.
+    match crate::pending_trigger_target_choice(&next) {
+        Some(pending) => {
+            if next.trigger_target_priority.is_none() {
+                next.trigger_target_priority = Some(next.priority);
+            }
+            if let Some(chooser) = crate::triggers::controller_of_stack_object(&next, pending) {
+                next.priority = chooser;
+            }
+        }
+        None => {
+            if let Some(restored) = next.trigger_target_priority.take() {
+                next.priority = restored;
+            }
+        }
     }
 
     // The terminal-result event closes the sequence. Every fact that could end the

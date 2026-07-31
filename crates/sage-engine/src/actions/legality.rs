@@ -83,12 +83,13 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
     //    are one and the same — we test membership directly, without building the
     //    set (and certainly without the cartesian product).
     let specs = action_target_specs(state, db, action);
+    let actor = super::targeting::acting_player(state, action);
     let chosen = action.targets();
     chosen.len() == specs.len()
         && specs
             .iter()
             .zip(chosen)
-            .all(|(&spec, &target)| target_is_legal(spec, target, state, state.priority, db))
+            .all(|(&spec, &target)| target_is_legal(spec, target, state, actor, db))
 }
 
 /// Whether activating ability `index` of `permanent` clears the CR 302.6

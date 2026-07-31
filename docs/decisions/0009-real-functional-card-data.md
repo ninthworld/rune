@@ -39,10 +39,25 @@ prohibition stays in force:
 - **No monetization, and no implied affiliation.**
 
 A card enters the catalog only if its function is expressible in the existing ability IR and
-rendered by the exhaustive text generator. IR shapes that no clean M19 card exercises — P/T
-Auras, `enters_with_counters`, a bare dies-draw trigger, first strike, deathtouch,
-`lose_life`, colorless mana — remain valid vocabulary and keep full test coverage through
-inline `test_*` definitions built in tests, not through shipped cards.
+rendered by the exhaustive text generator, **and its characteristics match the printing**:
+name, mana cost, colors, types, supertypes, subtypes, and power/toughness are copied, not
+recalled. A card whose real function the IR cannot say does not enter the catalog in a
+weakened form — a definition that is *nearly* the card is worse than no card, because a
+player cannot tell which one they are holding.
+
+IR shapes that no clean M19 card exercises — P/T Auras, keyword-only Auras,
+`enters_with_counters`, a bare dies-draw trigger, first strike, double strike, `lose_life`,
+colorless mana — remain valid vocabulary and keep full test coverage through inline `test_*`
+definitions built in tests, not through shipped cards.
+
+### One documented exception
+
+`jedit_ojanen` is **not** an M19 card. The commander flow (CR 903) needs a legendary
+creature, and every legendary creature M19 prints — Goreclaw, Lena, Isareth, Sai, Lathliss,
+and the Elder Dragon cycle — turns on a mechanic the IR cannot express, so the set offers no
+legal substitute. It is carried as the commander fixture only, has no printing record in
+`data/sets/M19.json`, and is the single card in the catalog outside the set. It goes the
+moment either an expressible M19 legend exists or the single-set boundary widens.
 
 ## Consequences
 

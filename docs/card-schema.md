@@ -174,9 +174,11 @@ scope cannot disagree.
 diffing the state before and after an action, never by a listener. Every condition is about
 the ability's **own source**; a trigger watching another object is not yet expressible.
 
-A triggered ability reaches the stack with **no targets**, and nothing prompts its
-controller to choose any, so a trigger whose effect targets fizzles on resolution. Author
-triggers with non-targeting effects until that gap closes.
+A triggered ability reaches the stack **unaimed** and its controller is then asked to
+choose its targets (CR 603.3d), so a trigger whose effect targets works exactly as a
+spell's does — including the resolution-time re-check that fizzles it if its target has
+gone (CR 608.2b). A trigger with no legal choice for one of its slots is never put on the
+stack at all (CR 603.3c), so authoring one costs nothing when the board cannot answer it.
 
 The full `abilities`, `spell_effects`, target, cost, and Aura shapes are the enums in
 `crates/sage-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce

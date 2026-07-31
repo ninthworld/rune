@@ -436,7 +436,7 @@ passes is not a seat count), which is why the client renders the string verbatim
 than deciding the word itself.
 
 Current action categories include `pass_priority`, `play_land`, `cast_spell`,
-`activate_ability`, `mulligan_decision`, `discard`, `declare_attackers`,
+`activate_ability`, `choose_targets`, `mulligan_decision`, `discard`, `declare_attackers`,
 `declare_blockers`, `order_combat_damage`, and `concede`. Clients must tolerate unknown
 categories.
 
@@ -508,6 +508,17 @@ rather than by inference. A *divided* value is posed as one `number` slot per re
 each with its own bounds, and the server validates the total on resolution; the client
 never enforces a sum.
 
+`choose_targets` aims a **triggered ability already on the stack** (CR 603.3d). A trigger
+is put there by the game rather than by a player, so it arrives unaimed and its controller
+is asked to fill one target slot per targeting effect — the same per-slot `requirements`
+a cast or an activation carries, bound by the same token. While one is owed the server
+offers that seat nothing else (and no other seat anything at all): the ability goes on the
+stack before any player receives priority (CR 603.3b), so play does not continue around it.
+The seat asked is the trigger's *controller*, which is frequently not whoever last acted —
+a creature killed by an opponent's removal spell gives its own controller the choice.
+A trigger with no legal choice for a slot never reaches the stack at all (CR 603.3c), so a
+`choose_targets` is always answerable.
+
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. In a game with more than one
 opponent (issue #345), `declare_attackers` additionally offers one **defender slot per
@@ -517,7 +528,11 @@ and the slot is correlated to its attacker the same way blocker slots are. A two
 offers no defender slots (the sole opponent is the only defender), so the wire and the client
 flow are unchanged. `declare_blockers` requirements are scoped to the player who currently
 owes the declaration (issue #344): with attacks split across defenders, each attacked player
-sees only the attackers attacking them. Empty selections are legal for these optional
+sees only the attackers attacking them. A blocker slot's `prompt` also states any restriction
+on *how many* blockers that attacker may be assigned — menace's two-or-more (CR 702.110b) is
+a fact about the whole selection, so the engine can only reject it once assembled, and the
+server says so in words rather than letting a submit silently do nothing. The client still
+computes no legality: it renders the prompt it was given. Empty selections are legal for these optional
 declarations. The server validates cardinality and action-specific rules.
 
 ### `ChooseAction`

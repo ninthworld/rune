@@ -6,7 +6,8 @@
     "creature"
   ],
   "subtypes": [
-    "Goblin"
+    "Goblin",
+    "Warrior"
   ],
   "mana_cost": "{R}",
   "colors": [

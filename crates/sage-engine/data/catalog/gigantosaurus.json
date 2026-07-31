@@ -8,7 +8,7 @@
   "subtypes": [
     "Dinosaur"
   ],
-  "mana_cost": "{G}{G}{G}{G}",
+  "mana_cost": "{G}{G}{G}{G}{G}",
   "colors": [
     "green"
   ],

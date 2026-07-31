@@ -1,21 +1,21 @@
 {
   "schema_version": 1,
-  "functional_id": "serra_angel",
-  "name": "Serra Angel",
+  "functional_id": "sun_sentinel",
+  "name": "Sun Sentinel",
   "types": [
     "creature"
   ],
   "subtypes": [
-    "Angel"
+    "Human",
+    "Soldier"
   ],
-  "mana_cost": "{3}{W}{W}",
+  "mana_cost": "{1}{W}",
   "colors": [
     "white"
   ],
-  "power": 4,
-  "toughness": 4,
+  "power": 2,
+  "toughness": 2,
   "keywords": [
-    "flying",
     "vigilance"
   ]
 }

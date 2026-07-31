@@ -1,19 +1,18 @@
 {
   "schema_version": 1,
-  "functional_id": "boggart_brute",
-  "name": "Boggart Brute",
+  "functional_id": "two_headed_zombie",
+  "name": "Two-Headed Zombie",
   "types": [
     "creature"
   ],
   "subtypes": [
-    "Goblin",
-    "Warrior"
+    "Zombie"
   ],
-  "mana_cost": "{2}{R}",
+  "mana_cost": "{3}{B}",
   "colors": [
-    "red"
+    "black"
   ],
-  "power": 3,
+  "power": 4,
   "toughness": 2,
   "keywords": [
     "menace"

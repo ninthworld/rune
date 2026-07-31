@@ -1,25 +1,33 @@
 {
   "schema_version": 1,
-  "functional_id": "dwarven_priest",
-  "name": "Dwarven Priest",
+  "functional_id": "vampire_sovereign",
+  "name": "Vampire Sovereign",
   "types": [
     "creature"
   ],
   "subtypes": [
-    "Dwarf",
-    "Cleric"
+    "Vampire",
+    "Noble"
   ],
-  "mana_cost": "{2}{W}",
+  "mana_cost": "{3}{B}{B}",
   "colors": [
-    "white"
+    "black"
   ],
-  "power": 2,
-  "toughness": 3,
+  "power": 3,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
   "abilities": [
     {
       "type": "triggered",
       "event": "self_enters_battlefield",
       "effects": [
+        {
+          "kind": "lose_life",
+          "player_ref": "target_opponent",
+          "amount": 3
+        },
         {
           "kind": "gain_life",
           "player_ref": "controller",
