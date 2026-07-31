@@ -72,8 +72,8 @@
     "blocker": "no prevention shield or damage-replacement layer"
   },
   {
-    "name": "Abilities that trigger on a phase or step",
-    "blocker": "no upkeep, draw-step, end-step, or beginning-of-combat trigger condition"
+    "name": "Indestructible",
+    "blocker": "no indestructible keyword; destroy and lethal damage have no exception"
   },
   {
     "name": "Effects that count permanents, cards, or other game values",
@@ -109,6 +109,30 @@
   },
   {
     "name": "Abilities that trigger on drawing a card",
-    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, and casting"
+    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries"
+  },
+  {
+    "name": "Abilities that trigger on another permanent attacking",
+    "blocker": "the attack trigger condition observes only its own source"
+  },
+  {
+    "name": "Abilities that trigger on an ability being activated",
+    "blocker": "no trigger condition observes an activation"
+  },
+  {
+    "name": "Optional effects a player may decline on resolution",
+    "blocker": "no yes-or-no or optional-cost choice is posed while an ability resolves"
+  },
+  {
+    "name": "Selectors that filter by power or toughness",
+    "blocker": "no numeric power or toughness threshold in any target, trigger, or mass-effect selector"
+  },
+  {
+    "name": "Trigger selectors that filter by a keyword",
+    "blocker": "observed-permanent selectors filter by subtype and controller only"
+  },
+  {
+    "name": "Combat damage assigned by a value other than power",
+    "blocker": "every attacker and blocker assigns damage equal to its current power"
   }
 ]

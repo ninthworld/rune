@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn issue_149_effect_ir_wave_fixtures_carry_their_verbs() {
-        use crate::ability::{PlayerRef, TargetSpec};
+        use crate::ability::{DamageSubject, PlayerRef, TargetSpec};
         use crate::state::CounterKind;
         let db = CardDatabase::bundled().unwrap();
 
@@ -177,7 +177,7 @@ mod tests {
         assert_eq!(
             shock.spell_effects,
             vec![Effect::DealDamage {
-                target: TargetSpec::AnyTarget,
+                subject: DamageSubject::Target(TargetSpec::AnyTarget),
                 amount: 2
             }]
         );
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(
             crate::card::tests::card_named(&db, "electrify").spell_effects,
             vec![Effect::DealDamage {
-                target: TargetSpec::AnyCreature,
+                subject: DamageSubject::Target(TargetSpec::AnyCreature),
                 amount: 4
             }]
         );
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn bundled_spells_carry_their_functions() {
-        use crate::ability::Cost;
+        use crate::ability::{Cost, DamageSubject};
         use crate::card_type::CardType;
         use crate::mana::Color;
 
@@ -268,7 +268,7 @@ mod tests {
         assert_eq!(
             strike.spell_effects,
             vec![Effect::DealDamage {
-                target: crate::ability::TargetSpec::AnyTarget,
+                subject: DamageSubject::Target(crate::ability::TargetSpec::AnyTarget),
                 amount: 3,
             }]
         );
@@ -293,7 +293,7 @@ mod tests {
             vec![Ability::Triggered {
                 event: TriggerCondition::SelfEntersBattlefield,
                 effects: vec![Effect::DealDamage {
-                    target: crate::ability::TargetSpec::AnyPlayer,
+                    subject: DamageSubject::Target(crate::ability::TargetSpec::AnyPlayer),
                     amount: 2,
                 }],
             }]

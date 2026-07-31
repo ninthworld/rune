@@ -237,18 +237,21 @@ pub enum Effect {
         /// What this effect is allowed to target (a spell on the stack).
         target: TargetSpec,
     },
-    /// Deal `amount` damage to the single target this effect names (CR 120.3).
+    /// Deal `amount` damage to what [`DamageSubject`] names (CR 120.3).
     ///
-    /// The subject is an explicit target (like [`Effect::Tap`]), chosen at cast
-    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). Damage to a creature
-    /// is *marked* on it (CR 120.3d) for the lethal-damage state-based action to
-    /// read (CR 704.5g); damage to a player is *lost life* (CR 120.3a), feeding
-    /// the zero-life state-based action (CR 704.5a). Damage prevention/replacement
-    /// and deathtouch are not modeled.
+    /// The subject decides on its own whether a target is chosen: a
+    /// [`DamageSubject::Target`] fills a slot at announcement (CR 601.2c) and is
+    /// re-checked on resolution (CR 608.2b), while a class of players or of
+    /// permanents chooses nothing and can never fizzle. Either way this is
+    /// *damage*, not life loss: damage to a creature is *marked* on it (CR 120.3d)
+    /// for the lethal-damage state-based action to read (CR 704.5g), and damage to
+    /// a player is *lost life* (CR 120.3a), feeding the zero-life state-based
+    /// action (CR 704.5a). Damage prevention/replacement and deathtouch are not
+    /// modeled.
     DealDamage {
-        /// What this effect is allowed to target (a creature, a player, or — for
-        /// a burn spell — [`TargetSpec::AnyTarget`]).
-        target: TargetSpec,
+        /// Who or what takes the damage — one chosen target, or a class.
+        #[serde(flatten)]
+        subject: DamageSubject,
         /// How much damage is dealt.
         amount: u32,
     },
@@ -525,17 +528,20 @@ impl PlayerRef {
 /// ability and carries an `except_this` that a one-shot spell has no "this" for. A
 /// closed enum deserialized from a bare `snake_case` tag, e.g.
 /// `{"kind":"pump_all","affects":"creatures_you_control","power":2,"toughness":1}`.
-/// It grows by adding variants (attacking creatures, creatures your opponents
-/// control, …) as cards need them.
+/// It grows by adding variants (attacking creatures, tapped creatures, …) as cards
+/// need them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MassAffects {
     /// Every creature the effect's controller controls at the moment it resolves.
     CreaturesYouControl,
-    /// Every creature controlled by an opponent of the effect's controller who is still
-    /// in the game, at the moment it resolves — the symmetric sweeper's scope. In a game
-    /// of three or more this really is every opponent's board, which is why it is not
-    /// spelled "the opponent's creatures".
+    /// Every creature on the battlefield at the moment the effect resolves,
+    /// whoever controls it — the symmetric class a sweeper names.
+    EachCreature,
+    /// Every creature controlled by an opponent of the effect's controller, at the
+    /// moment it resolves. The mirror of [`Self::CreaturesYouControl`], and the
+    /// reason both are relative to the controller rather than to a seat: one
+    /// authored card must mean "you" from either side of the table.
     CreaturesYourOpponentsControl,
     /// Every creature on the battlefield that does not currently have flying, whoever
     /// controls it — the scope of an effect that clears the ground.
@@ -545,6 +551,62 @@ pub enum MassAffects {
     /// still evaluated once, on resolution (CR 611.2c), like every other mass effect: a
     /// creature that loses flying later in the turn does not retroactively join it.
     CreaturesWithoutFlying,
+}
+
+/// **Who or what** an [`Effect::DealDamage`] deals its damage to (CR 120.3).
+///
+/// The same design [`PlayerRef`] states for life change: the *subject* declares
+/// whether a target is chosen (CR 115.1), so one damage verb covers both "deals 2
+/// damage to any target", which fills a slot at announcement and fizzles when that
+/// slot empties, and "deals 2 damage to each opponent", which chooses nothing and
+/// can never fizzle. The class forms lock their affected set in **on resolution**,
+/// exactly as [`Effect::PumpAll`] does.
+///
+/// Authored in serde's **externally tagged** form, flattened into the effect, so the
+/// key a card writes is the vocabulary it already uses elsewhere — `target` for a
+/// target spec, `player_ref` for a class of players, `affects` for a class of
+/// permanents:
+///
+/// ```json
+/// {"kind": "deal_damage", "target": "any_target", "amount": 2}
+/// {"kind": "deal_damage", "player_ref": "each_opponent", "amount": 2}
+/// {"kind": "deal_damage", "affects": "each_creature", "amount": 1}
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageSubject {
+    /// One **chosen target** (CR 115.1): a creature, a player, or — for a burn
+    /// spell — [`TargetSpec::AnyTarget`].
+    Target(TargetSpec),
+    /// A class of **players**, named by the same reference life change and mill
+    /// take. A non-targeting reference (`controller`, `each_opponent`) chooses
+    /// nothing; a targeting one behaves exactly as the equivalent
+    /// [`Self::Target`] does, because the reference answers the targeting question
+    /// in one place for every effect that takes one.
+    #[serde(rename = "player_ref")]
+    Players(PlayerRef),
+    /// A class of **permanents**, named by the same selector mass pump takes. Never
+    /// a target, and so never a fizzle.
+    #[serde(rename = "affects")]
+    Permanents(MassAffects),
+}
+
+impl DamageSubject {
+    /// The [`TargetSpec`] this subject chooses a target for, or `None` when it names
+    /// a class without targeting (CR 115.1).
+    ///
+    /// Exhaustive, so a new subject must declare which side of the targeting line it
+    /// falls on; [`Effect::target_spec`] defers to this, which is what keeps the
+    /// class form out of the slot-filling and fizzle paths without either of them
+    /// naming damage specially.
+    #[must_use]
+    pub fn target_spec(self) -> Option<TargetSpec> {
+        match self {
+            DamageSubject::Target(spec) => Some(spec),
+            DamageSubject::Players(player_ref) => player_ref.target_spec(),
+            DamageSubject::Permanents(_) => None,
+        }
+    }
 }
 
 impl Effect {
@@ -561,7 +623,6 @@ impl Effect {
         match self {
             Effect::Tap { target }
             | Effect::CounterSpell { target }
-            | Effect::DealDamage { target, .. }
             | Effect::Destroy { target }
             | Effect::Exile { target }
             | Effect::PutCounters { target, .. }
@@ -575,6 +636,9 @@ impl Effect {
             Effect::GainLife { player_ref, .. }
             | Effect::LoseLife { player_ref, .. }
             | Effect::Mill { player_ref, .. } => player_ref.target_spec(),
+            // Damage asks its subject the same question: "any target" fills a slot,
+            // "each opponent" and "each creature" fill none (CR 115.1).
+            Effect::DealDamage { subject, .. } => subject.target_spec(),
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
             | Effect::DrawCard { .. }
@@ -763,6 +827,77 @@ pub enum TriggerCondition {
     /// was not before — so it fires once per declaration, from the one place
     /// attackers are declared, and never from a creature that merely became tapped.
     SelfAttacks,
+    /// The turn structure **began a step** this transition (CR 603.6a) — the
+    /// "at the beginning of your upkeep" / "at the beginning of each end step" shape.
+    /// The first condition here that is about the turn rather than about an object.
+    ///
+    /// Read from the [`crate::GameEvent::StepChanged`] entries the transition
+    /// recorded, not by comparing `before.step` to `after.step`, and the distinction
+    /// is load-bearing twice over. A snapshot comparison would **miss** steps: one
+    /// pass of priority can walk through several steps at once (end → cleanup → untap
+    /// → upkeep), and only the last of them would be visible in `after`. It would also
+    /// **misfire**: a step recurs every turn, so `after.step == Upkeep` is true of a
+    /// great many transitions that crossed no boundary at all. Each crossing records
+    /// exactly one event, so counting events is exactly once per crossing — the turn
+    /// number never has to enter the comparison because the event *is* the crossing.
+    ///
+    /// The source must still be on the battlefield after the transition; a permanent
+    /// that is gone is not there to trigger.
+    BeginningOfStep {
+        /// Which step's beginning this watches.
+        step: TriggerStep,
+        /// Whose turn that step has to belong to.
+        whose_turn: TurnScope,
+    },
+}
+
+/// Which step a [`TriggerCondition::BeginningOfStep`] watches the beginning of.
+///
+/// Deliberately **not** every [`crate::phase::Step`]: this names the four steps printed
+/// cards actually trigger at, all four of which grant priority (CR 117.1). That matters
+/// — a trigger owed at a step the turn-structure walk passes straight through
+/// (untap, CR 502.5; cleanup, CR 514.3) would reach the stack only after the walk had
+/// already left the step behind. Keeping those out of the vocabulary means the
+/// condition cannot express a trigger the pipeline would answer in the wrong step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerStep {
+    /// The upkeep step (CR 503) — "at the beginning of your upkeep".
+    Upkeep,
+    /// The draw step (CR 504) — "at the beginning of your draw step".
+    Draw,
+    /// The beginning of combat step (CR 507) — "at the beginning of combat on your turn".
+    BeginCombat,
+    /// The end step (CR 513) — "at the beginning of each end step".
+    EndStep,
+}
+
+impl TriggerStep {
+    /// The turn-structure [`Step`](crate::phase::Step) this names.
+    #[must_use]
+    pub fn step(self) -> crate::phase::Step {
+        match self {
+            Self::Upkeep => crate::phase::Step::Upkeep,
+            Self::Draw => crate::phase::Step::Draw,
+            Self::BeginCombat => crate::phase::Step::BeginCombat,
+            Self::EndStep => crate::phase::Step::End,
+        }
+    }
+}
+
+/// Whose turn a [`TriggerCondition::BeginningOfStep`] has to be for it to fire.
+///
+/// This distinction is most of what a step trigger *means*: "at the beginning of your
+/// upkeep" happens once every other turn and "at the beginning of each upkeep" happens
+/// every turn, and the two are otherwise the same ability. Scoped relative to the
+/// source's controller, exactly as [`ObservedPermanent`] and [`StaticAffects`] are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnScope {
+    /// Only on the source controller's own turn — the "your" of "your upkeep".
+    Yours,
+    /// On every player's turn — the "each" of "each upkeep".
+    Each,
 }
 
 /// Which permanents a **watching** [`TriggerCondition`] observes.
@@ -923,6 +1058,64 @@ mod tests {
     }
 
     #[test]
+    fn issue_607_step_trigger_round_trips_with_its_step_and_scope() {
+        // A step condition carries two values, so it authors as the wrapped form the
+        // selector-carrying conditions use rather than as a bare tag.
+        let json = r#"{"type":"triggered",
+            "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"yours"}},
+            "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ability,
+            Ability::Triggered {
+                event: TriggerCondition::BeginningOfStep {
+                    step: TriggerStep::Upkeep,
+                    whose_turn: TurnScope::Yours,
+                },
+                effects: vec![Effect::GainLife {
+                    player_ref: PlayerRef::Controller,
+                    amount: 1
+                }],
+            }
+        );
+        assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_607_each_trigger_step_maps_to_its_turn_structure_step() {
+        // The vocabulary names four steps and each names exactly one real step. Every
+        // one of them grants priority, which is the property that keeps a step trigger
+        // answerable in the step it belongs to.
+        use crate::phase::Step;
+        for (authored, step) in [
+            (TriggerStep::Upkeep, Step::Upkeep),
+            (TriggerStep::Draw, Step::Draw),
+            (TriggerStep::BeginCombat, Step::BeginCombat),
+            (TriggerStep::EndStep, Step::End),
+        ] {
+            assert_eq!(authored.step(), step);
+        }
+    }
+
+    #[test]
+    fn issue_607_a_step_outside_the_vocabulary_is_a_parse_error() {
+        // The closed set is the guard: `cleanup` and `untap` grant no priority, so a
+        // trigger owed there could not be answered in its own step. Authoring one must
+        // fail loudly rather than parse into a variant nothing implements.
+        for step in ["cleanup", "untap", "postcombat_main"] {
+            let json = format!(
+                r#"{{"type":"triggered",
+                    "event":{{"beginning_of_step":{{"step":"{step}","whose_turn":"each"}}}},
+                    "effects":[{{"kind":"draw_card","count":1}}]}}"#
+            );
+            assert!(
+                serde_json::from_str::<Ability>(&json).is_err(),
+                "`{step}` is not in the step-trigger vocabulary"
+            );
+        }
+    }
+
+    #[test]
     fn issue_155_enters_tapped_replacement_round_trips() {
         // The "enters tapped" self-replacement (CR 614.1c) authors as the bare
         // `enters_tapped` type tag and is not a mana ability.
@@ -1041,7 +1234,7 @@ mod tests {
         assert_eq!(
             effect,
             Effect::DealDamage {
-                target: TargetSpec::AnyTarget,
+                subject: DamageSubject::Target(TargetSpec::AnyTarget),
                 amount: 2,
             }
         );
@@ -1051,6 +1244,47 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<TargetSpec>(r#""any_target""#).unwrap(),
             TargetSpec::AnyTarget
+        );
+    }
+
+    #[test]
+    fn issue_611_deal_damage_round_trips_with_a_class_of_players_or_permanents() {
+        // The subject is flattened into the effect, so each shape is authored with the
+        // key the rest of the vocabulary already uses — and every existing burn card,
+        // written with `target`, keeps parsing byte-for-byte as it did (above).
+        let players: Effect = serde_json::from_str(
+            r#"{"kind":"deal_damage","player_ref":"each_opponent","amount":2}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            players,
+            Effect::DealDamage {
+                subject: DamageSubject::Players(PlayerRef::EachOpponent),
+                amount: 2,
+            }
+        );
+        let permanents: Effect =
+            serde_json::from_str(r#"{"kind":"deal_damage","affects":"each_creature","amount":1}"#)
+                .unwrap();
+        assert_eq!(
+            permanents,
+            Effect::DealDamage {
+                subject: DamageSubject::Permanents(MassAffects::EachCreature),
+                amount: 1,
+            }
+        );
+        // Neither class fills a target slot (CR 115.1), so neither can fizzle.
+        assert_eq!(players.target_spec(), None);
+        assert_eq!(permanents.target_spec(), None);
+        // The subject answers the targeting question in one place, so a *targeting*
+        // player reference reports the slot it fills just as `lose_life` does.
+        assert_eq!(
+            DamageSubject::Players(PlayerRef::TargetOpponent).target_spec(),
+            Some(TargetSpec::AnyOpponent)
+        );
+        assert_eq!(
+            serde_json::from_str::<MassAffects>(r#""creatures_your_opponents_control""#).unwrap(),
+            MassAffects::CreaturesYourOpponentsControl
         );
     }
 

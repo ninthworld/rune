@@ -34,10 +34,13 @@
 ## The IR is the constraint
 
 Catalog coverage is limited by what the ability IR can *express*, not by authoring
-throughput. Today `Cost` has one variant (`Tap`), `TriggerCondition` two (both about the
-source itself), `PlayerRef` one (`Controller`), and `TargetSpec` five unrestricted variants.
-So an activation cost that is not a bare `{T}`, a trigger watching anything but its own
-source, and an effect aimed at a player other than the controller are all still unwritable.
+throughput. Today `Cost` says tapping and mana and nothing else, so an activation cost
+paid by sacrificing or discarding is unwritable. `TriggerCondition` observes zone changes,
+attack declaration, life gain, casting, and step boundaries — but nothing may be *attached*
+to a trigger or an effect, so an intervening-if clause ("at the beginning of your upkeep,
+**if** you control a creature with power 4 or greater") is unwritable, and that one gap
+blocks more real cards than any other. Effect amounts are fixed numbers, never counted
+from the board. Read `data/exclusions.json` for the maintained list.
 
 Combat restrictions are a second layer-6 vocabulary beside `Keyword` (`CombatRestriction`):
 they are not keyword abilities, some carry a parameter, and each is enforced in exactly one

@@ -180,6 +180,32 @@ A non-targeting reference can never fizzle and, in a game of three or more, real
 name every opponent. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
+### Damage (CR 120.3)
+
+`deal_damage` names **who or what takes the damage** with exactly one of three keys, and
+that key decides whether a target is chosen:
+
+```json
+{ "kind": "deal_damage", "target": "any_target",      "amount": 2 }
+{ "kind": "deal_damage", "player_ref": "each_opponent", "amount": 2 }
+{ "kind": "deal_damage", "affects": "each_creature",  "amount": 2 }
+```
+
+- `target` is a target spec: one slot, chosen on announcement, re-checked on resolution,
+  fizzling if the choice is gone.
+- `player_ref` is the same reference `gain_life` and `mill` take, with the same rule —
+  `each_opponent` chooses nothing and hits every opponent, `target_player` fills a slot.
+- `affects` is the same class `pump_all` takes, and never targets.
+
+Both class forms enumerate their subjects **on resolution** (CR 611.2c), so a creature
+that arrived after the spell was cast is included and one that has died is not.
+
+Damage is not life loss. Damage to a creature is *marked* on it and drives the
+lethal-damage state-based action (CR 704.5g); damage to a player is life loss
+(CR 120.3a). A card that says "loses life" is authored with `lose_life`, and one that
+says "deals damage" cannot be approximated by it. Damage prevention and deathtouch on
+non-combat damage are out of scope.
+
 ### Activation costs
 
 `cost` entries are `{"kind":"tap"}` (the `{T}` symbol) and
@@ -205,9 +231,11 @@ target, so they choose nothing and never fizzle:
 { "kind": "pump_all", "affects": "creatures_you_control", "power": 2, "toughness": 1 }
 ```
 
-`affects` is `creatures_you_control`, `creatures_your_opponents_control` (every opponent
-still in the game, not "the opponent"), or `creatures_without_flying` (read through the
-computed keywords, so a granted flying excludes a creature exactly as a printed one does).
+The classes are `creatures_you_control`, `each_creature`,
+`creatures_your_opponents_control`, and `creatures_without_flying`. The first three are read
+relative to the effect's controller so one authored card means "you" from either seat; the
+last reads flying through the computed keywords, so a *granted* flying excludes a creature
+exactly as a printed one does. `deal_damage` takes the same set.
 
 The affected set is locked in on resolution (CR 611.2c) — a creature that arrives later in
 the turn is untouched. That is the whole difference between one of these and an
@@ -254,10 +282,27 @@ carries a selector wraps it:
 `creatures_you_control` or `any_creature`, with an optional `subtype` and an `except_this`
 that means "another". `you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
 
+`beginning_of_step` is about the turn rather than about an object:
+
+```json
+{ "type": "triggered",
+  "event": { "beginning_of_step": { "step": "upkeep", "whose_turn": "yours" } },
+  "effects": [{ "kind": "gain_life", "player_ref": "controller", "amount": 1 }] }
+```
+
+`step` is `upkeep`, `draw`, `begin_combat`, or `end_step` — the four steps printed cards
+trigger at, and deliberately not every step of the turn: all four grant priority, so a
+trigger owed at one is answered in the step it belongs to. `whose_turn` is `yours` (only
+the controller's own turn) or `each` (every turn), and that choice is most of what such an
+ability means: "each upkeep" fires twice as often as "your upkeep" and is otherwise the
+same card.
+
 Every condition is observed by diffing the state before and after an action, never by a
-listener. A condition about an **event** rather than a board position (life gain, casting)
-is read from the events that transition recorded, because gaining and losing the same life
-leaves every total unchanged and still triggered.
+listener. A condition about an **event** rather than a board position (life gain, casting,
+a step beginning) is read from the events that transition recorded, because gaining and
+losing the same life leaves every total unchanged and still triggered — and because one
+pass of priority can walk through several steps at once, so comparing the step before with
+the step after would miss every crossing but the last.
 
 A watching condition reports **how many times** it was met, not whether: two creatures
 dying at once trigger a death-watcher twice. A watching ability must still be on the

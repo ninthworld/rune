@@ -22,9 +22,9 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, Color, CombatRestriction, Cost, CounterKind, Effect, Keyword,
-    MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification,
-    TargetSpec, TriggerCondition,
+    Ability, AuraGrant, CardData, Color, CombatRestriction, Cost, CounterKind, DamageSubject,
+    Effect, Keyword, MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects,
+    StaticModification, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 
 /// Generate the rules text of one card.
@@ -113,6 +113,11 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 TriggerCondition::YouCastSpell(spell) => {
                     format!("Whenever you cast {}", observed_spell_noun(*spell))
                 }
+                // A step trigger's subject is the step, not the source — "at the
+                // beginning of your upkeep", never "when this …".
+                TriggerCondition::BeginningOfStep { step, whose_turn } => {
+                    format!("At the beginning of {}", step_phrase(*step, *whose_turn))
+                }
             };
             finish(&format!("{trigger}, {}", clauses(source, effects)))
         }
@@ -155,6 +160,28 @@ fn observed_subject(observes: &ObservedPermanent) -> String {
             format!("{article} {noun} you control")
         }
         ObservedPermanent::AnyCreature { .. } => format!("{article} {noun}"),
+    }
+}
+
+/// The step a step trigger watches, as the noun phrase that follows "at the beginning
+/// of" — "your upkeep", "each end step", "combat on your turn".
+///
+/// The scope is folded into the phrase rather than prefixed, because English does not
+/// put it in one place: an upkeep takes a possessive determiner ("your upkeep") and the
+/// combat step takes a trailing qualifier ("combat on your turn"), and "each combat"
+/// drops the qualifier entirely. Composed from the same two values the engine matches
+/// on, so the sentence and the step actually watched cannot disagree.
+fn step_phrase(step: TriggerStep, whose_turn: TurnScope) -> String {
+    let noun = match step {
+        TriggerStep::Upkeep => "upkeep",
+        TriggerStep::Draw => "draw step",
+        TriggerStep::BeginCombat => "combat",
+        TriggerStep::EndStep => "end step",
+    };
+    match (step, whose_turn) {
+        (TriggerStep::BeginCombat, TurnScope::Yours) => "combat on your turn".to_string(),
+        (_, TurnScope::Yours) => format!("your {noun}"),
+        (_, TurnScope::Each) => format!("each {noun}"),
     }
 }
 
@@ -299,8 +326,11 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::Tap { target } => format!("tap {}", target_noun(*target)),
         Effect::CounterSpell { target } => format!("counter {}", target_noun(*target)),
         // A damage source is named, so a player can tell what dealt it (CR 120.3).
-        Effect::DealDamage { target, amount } => {
-            format!("{source} deals {amount} damage to {}", target_noun(*target))
+        Effect::DealDamage { subject, amount } => {
+            format!(
+                "{source} deals {amount} damage to {}",
+                damage_recipient(*subject)
+            )
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
         Effect::Exile { target } => format!("exile {}", target_noun(*target)),
@@ -392,8 +422,48 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
 fn mass_subject(affects: MassAffects) -> &'static str {
     match affects {
         MassAffects::CreaturesYouControl => "creatures you control",
+        MassAffects::EachCreature => "creatures",
         MassAffects::CreaturesYourOpponentsControl => "creatures your opponents control",
         MassAffects::CreaturesWithoutFlying => "creatures without flying",
+    }
+}
+
+/// The same class as the **object** of a sentence — what damage is dealt *to*.
+///
+/// Separate from [`mass_subject`] because English is: a class is a bare plural when it
+/// acts ("creatures you control get +2/+1") and a distributive "each" when it is acted
+/// on ("deals 2 damage to each creature you control"). One function per position keeps
+/// both exhaustive, so a new [`MassAffects`] variant must be given words for each.
+fn mass_recipient(affects: MassAffects) -> &'static str {
+    match affects {
+        MassAffects::CreaturesYouControl => "each creature you control",
+        MassAffects::EachCreature => "each creature",
+        MassAffects::CreaturesYourOpponentsControl => "each creature your opponents control",
+        MassAffects::CreaturesWithoutFlying => "each creature without flying",
+    }
+}
+
+/// Who or what damage is dealt to (CR 120.3), as a noun phrase.
+///
+/// The three subjects read as one sentence shape — "deals 2 damage to *any target*",
+/// "…to *each opponent*", "…to *each creature*" — so a player reads a class-damage
+/// effect the same way they read a targeted one, minus the word "target".
+fn damage_recipient(subject: DamageSubject) -> &'static str {
+    match subject {
+        DamageSubject::Target(spec) => target_noun(spec),
+        DamageSubject::Players(player_ref) => player_noun(player_ref),
+        DamageSubject::Permanents(affects) => mass_recipient(affects),
+    }
+}
+
+/// A [`PlayerRef`] as a bare noun phrase, for an effect that acts *on* the player
+/// rather than conjugating a verb after them ([`conjugate`] covers that position).
+fn player_noun(player_ref: PlayerRef) -> &'static str {
+    match player_ref {
+        PlayerRef::Controller => "you",
+        PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::TargetPlayer => "target player",
+        PlayerRef::TargetOpponent => "target opponent",
     }
 }
 
@@ -821,6 +891,60 @@ mod tests {
     }
 
     #[test]
+    fn issue_611_damage_dealt_to_a_class_reads_as_a_sentence() {
+        // Damage to a class drops the word "target" and nothing else: the sentence a
+        // player acts on is the same shape as the targeted one, so the two forms can
+        // never be told apart by how carefully they were worded.
+        let db = bundled();
+        assert_eq!(
+            text_of(&db, "guttersnipe"),
+            "Whenever you cast an instant or sorcery spell, \
+             Guttersnipe deals 2 damage to each opponent."
+        );
+        // The targeted shape every existing burn card uses is unchanged.
+        assert_eq!(text_of(&db, "shock"), "Shock deals 2 damage to any target.");
+
+        // No bundled card names a class of *permanents* yet, so the sweeper wordings
+        // are asserted from an inline catalog rather than by inventing a card for the
+        // formatter's benefit (ADR 0009).
+        let inline = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_pyroclasm","name":"Test Pyroclasm",
+                 "types":["sorcery"],"mana_cost":"{1}{R}","colors":["red"],
+                 "spell_effects":[{"kind":"deal_damage","affects":"each_creature","amount":2}]},
+                {"schema_version":1,"functional_id":"test_slagstorm","name":"Test Slagstorm",
+                 "types":["sorcery"],"mana_cost":"{2}{R}","colors":["red"],
+                 "spell_effects":[{"kind":"deal_damage","affects":"creatures_your_opponents_control","amount":3}]},
+                {"schema_version":1,"functional_id":"test_recoil","name":"Test Recoil",
+                 "types":["sorcery"],"mana_cost":"{R}","colors":["red"],
+                 "spell_effects":[{"kind":"deal_damage","player_ref":"controller","amount":1}]},
+                {"schema_version":1,"functional_id":"test_rally","name":"Test Rally",
+                 "types":["sorcery"],"mana_cost":"{1}{G}","colors":["green"],
+                 "spell_effects":[{"kind":"pump_all","affects":"each_creature","power":1,"toughness":1}]}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&inline, "test_pyroclasm"),
+            "Test Pyroclasm deals 2 damage to each creature."
+        );
+        assert_eq!(
+            text_of(&inline, "test_slagstorm"),
+            "Test Slagstorm deals 3 damage to each creature your opponents control."
+        );
+        assert_eq!(
+            text_of(&inline, "test_recoil"),
+            "Test Recoil deals 1 damage to you."
+        );
+        // The same class as the *subject* of a sentence is a bare plural, which is why
+        // the two positions are worded by two functions.
+        assert_eq!(
+            text_of(&inline, "test_rally"),
+            "Creatures get +1/+1 until end of turn."
+        );
+    }
+
+    #[test]
     fn spells_generate_non_empty_text() {
         // Every card that does something renders real rules text from its IR (ADR 0008 §7).
         let db = bundled();
@@ -937,6 +1061,64 @@ mod tests {
             text_of(&db, "mighty_leap"),
             "Target creature gets +2/+2 until end of turn.\n\
              Target creature gains flying until end of turn."
+        );
+    }
+
+    #[test]
+    fn issue_607_a_step_trigger_names_the_step_and_whose_turn_it_is() {
+        // A step trigger's subject is the step, not the source, and the scope is what
+        // the sentence has to get right: "your upkeep" and "each upkeep" are different
+        // cards. Combat is the irregular one — English puts the scope after the noun
+        // ("combat on your turn"), which is why the phrase is composed rather than
+        // prefixed. No bundled card carries a bare step trigger (every printed one also
+        // wants an intervening-if or a sacrifice cost), so these are inline.
+        let db = CardDatabase::from_json(
+            r#"[{"schema_version":1,"functional_id":"test_vigil","name":"Test Vigil",
+                "types":["enchantment"],"mana_cost":"{1}{W}","colors":["white"],
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"yours"}},
+                    "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}]},
+               {"schema_version":1,"functional_id":"test_fount","name":"Test Fount",
+                "types":["artifact"],"mana_cost":"{1}",
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"each"}},
+                    "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}]},
+               {"schema_version":1,"functional_id":"test_rally","name":"Test Rally",
+                "types":["enchantment"],"mana_cost":"{2}{R}","colors":["red"],
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"begin_combat","whose_turn":"yours"}},
+                    "effects":[{"kind":"draw_card","count":1}]}]},
+               {"schema_version":1,"functional_id":"test_dusk","name":"Test Dusk",
+                "types":["enchantment"],"mana_cost":"{2}{B}","colors":["black"],
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"end_step","whose_turn":"each"}},
+                    "effects":[{"kind":"lose_life","player_ref":"each_opponent","amount":1}]}]},
+               {"schema_version":1,"functional_id":"test_ledger","name":"Test Ledger",
+                "types":["artifact"],"mana_cost":"{2}",
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"draw","whose_turn":"yours"}},
+                    "effects":[{"kind":"draw_card","count":1}]}]}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&db, "test_vigil"),
+            "At the beginning of your upkeep, you gain 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "test_fount"),
+            "At the beginning of each upkeep, you gain 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "test_rally"),
+            "At the beginning of combat on your turn, draw a card."
+        );
+        assert_eq!(
+            text_of(&db, "test_dusk"),
+            "At the beginning of each end step, each opponent loses 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "test_ledger"),
+            "At the beginning of your draw step, draw a card."
         );
     }
 

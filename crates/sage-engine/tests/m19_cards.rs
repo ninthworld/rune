@@ -12,8 +12,8 @@ use sage_engine::{
     apply_action, attacker_candidates, blocker_candidates_for, characteristics,
     pending_trigger_target_choice, permanent_restrictions, target_requirements, valid_actions,
     Action, Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardType, Color,
-    CombatRestriction, FunctionalId, GameEvent, GameState, Keyword, Permanent, PermanentId,
-    PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
+    CombatRestriction, DamageTarget, FunctionalId, GameEvent, GameState, Keyword, Permanent,
+    PermanentId, PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
 };
 
 // ----- fixtures -------------------------------------------------------------
@@ -1348,6 +1348,100 @@ fn satyr_enchanter_and_aven_wind_mage_watch_what_their_controller_casts() {
             .iter()
             .any(|c| c.id == library_card.id),
         "the enchantment cast drew a card"
+    );
+}
+
+// ----- damage dealt to a class (issue #611) ----------------------------------
+
+#[test]
+fn guttersnipe_burns_each_opponent_when_its_controller_casts_an_instant() {
+    // The whole card, through the real pipeline: the cast trigger from #609 aimed at
+    // nothing, resolving into damage that names a class instead of a target. It is
+    // *damage*, not life loss, so it is recorded as such — Guttersnipe's own two
+    // damage land on top of Shock's, and the trigger never had a slot to fizzle.
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "guttersnipe", PlayerId(0));
+
+    let shock = to_hand(&mut state, &db, "shock", PlayerId(0));
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: shock,
+            targets: vec![Target::Player(PlayerId(1))],
+        },
+        &db,
+    );
+    // The trigger is on the stack above the spell, and chose no target: a class is
+    // not a target (CR 115.1), so nothing was asked of its controller.
+    assert!(
+        pending_trigger_target_choice(&after).is_none(),
+        "the trigger fills no target slot, so no choice is pending"
+    );
+    assert_eq!(after.stack.len(), 2, "the trigger sits above the spell");
+
+    // Trigger resolves, then Shock.
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert_eq!(
+        after.players[1].life, 18,
+        "Guttersnipe dealt two to each opponent"
+    );
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert_eq!(after.players[1].life, 16, "then Shock dealt its own two");
+    assert_eq!(
+        after.players[0].life, 20,
+        "its controller is not one of their own opponents"
+    );
+    assert!(
+        after.log.iter().any(|entry| matches!(
+            entry.event,
+            GameEvent::DamageDealt {
+                target: DamageTarget::Player(PlayerId(1)),
+                amount: 2,
+            }
+        )),
+        "it is recorded as damage — the event life loss would never produce"
+    );
+}
+
+#[test]
+fn guttersnipe_ignores_a_creature_spell_and_its_opponents_instants() {
+    // The condition is `you_cast_spell` with an instant-or-sorcery selector: a
+    // creature spell is not it, and neither is an opponent's instant.
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "guttersnipe", PlayerId(0));
+
+    let creature = to_hand(&mut state, &db, "sun_sentinel", PlayerId(0));
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: creature,
+            targets: Vec::new(),
+        },
+        &db,
+    );
+    assert_eq!(after.stack.len(), 1, "a creature spell triggers nothing");
+
+    // The opponent's own instant is not "you cast".
+    let mut theirs = main_phase(&db);
+    place(&mut theirs, &db, "guttersnipe", PlayerId(0));
+    theirs.priority = PlayerId(1);
+    let shock = to_hand(&mut theirs, &db, "shock", PlayerId(1));
+    let after = apply_action(
+        &theirs,
+        &Action::CastSpell {
+            card: shock,
+            targets: vec![Target::Player(PlayerId(0))],
+        },
+        &db,
+    );
+    assert_eq!(
+        after.stack.len(),
+        1,
+        "an opponent casting an instant is not its controller casting one"
     );
 }
 
