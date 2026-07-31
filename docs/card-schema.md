@@ -221,10 +221,27 @@ carries a selector wraps it:
 `creatures_you_control` or `any_creature`, with an optional `subtype` and an `except_this`
 that means "another". `you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
 
+`beginning_of_step` is about the turn rather than about an object:
+
+```json
+{ "type": "triggered",
+  "event": { "beginning_of_step": { "step": "upkeep", "whose_turn": "yours" } },
+  "effects": [{ "kind": "gain_life", "player_ref": "controller", "amount": 1 }] }
+```
+
+`step` is `upkeep`, `draw`, `begin_combat`, or `end_step` — the four steps printed cards
+trigger at, and deliberately not every step of the turn: all four grant priority, so a
+trigger owed at one is answered in the step it belongs to. `whose_turn` is `yours` (only
+the controller's own turn) or `each` (every turn), and that choice is most of what such an
+ability means: "each upkeep" fires twice as often as "your upkeep" and is otherwise the
+same card.
+
 Every condition is observed by diffing the state before and after an action, never by a
-listener. A condition about an **event** rather than a board position (life gain, casting)
-is read from the events that transition recorded, because gaining and losing the same life
-leaves every total unchanged and still triggered.
+listener. A condition about an **event** rather than a board position (life gain, casting,
+a step beginning) is read from the events that transition recorded, because gaining and
+losing the same life leaves every total unchanged and still triggered — and because one
+pass of priority can walk through several steps at once, so comparing the step before with
+the step after would miss every crossing but the last.
 
 A watching condition reports **how many times** it was met, not whether: two creatures
 dying at once trigger a death-watcher twice. A watching ability must still be on the
