@@ -124,10 +124,6 @@
     "blocker": "no yes-or-no or optional-cost choice is posed while an ability resolves"
   },
   {
-    "name": "Damage dealt to each member of a class rather than to a target",
-    "blocker": "damage names one target slot; only life change and mass pump take a non-targeted class"
-  },
-  {
     "name": "Selectors that filter by power or toughness",
     "blocker": "no numeric power or toughness threshold in any target, trigger, or mass-effect selector"
   },

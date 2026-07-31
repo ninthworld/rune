@@ -117,7 +117,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (35)
+## Excluded (34)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -133,7 +133,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Conditional effects and intervening-if clauses | no condition attached to an effect or a trigger |
 | Cost reduction and cost increase effects | no cost-modification layer |
 | Costs paid by sacrificing or discarding | activation costs model only tapping and mana |
-| Damage dealt to each member of a class rather than to a target | damage names one target slot; only life change and mass pump take a non-targeted class |
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
 | Effects that count permanents, cards, or other game values | effect amounts are fixed numbers, never derived from game state |
