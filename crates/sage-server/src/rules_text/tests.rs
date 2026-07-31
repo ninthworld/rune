@@ -873,3 +873,34 @@ fn issue_610_the_optional_question_is_composed_from_the_effects_it_offers() {
         "Pay {W} to gain 3 life?"
     );
 }
+
+#[test]
+fn issue_605_a_token_creation_reads_as_the_card_prints_it() {
+    let db = bundled();
+
+    // The plain case: count, P/T, colour, subtype, card type, "token".
+    assert_eq!(
+        text_of(&db, "goblin_instigator"),
+        "When Goblin Instigator enters the battlefield, you create a 1/1 red Goblin \
+         creature token."
+    );
+    // A colourless token names no colour, and its keywords ride a "with" clause.
+    assert_eq!(
+        text_of(&db, "aviation_pioneer"),
+        "When Aviation Pioneer enters the battlefield, you create a 1/1 Thopter \
+         artifact creature token with flying."
+    );
+    // A plural count, and a token creation sitting beside other effects in one
+    // sentence — the spell says all three things it does, in order.
+    assert_eq!(
+        text_of(&db, "heroic_reinforcements"),
+        "You create two 1/1 white Soldier creature tokens.\n\
+         Creatures you control get +1/+1 until end of turn.\n\
+         Creatures you control gain haste until end of turn."
+    );
+    // A death trigger creating one.
+    assert_eq!(
+        text_of(&db, "doomed_dissenter"),
+        "When Doomed Dissenter dies, you create a 2/2 black Zombie creature token."
+    );
+}

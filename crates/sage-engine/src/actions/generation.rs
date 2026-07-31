@@ -327,7 +327,10 @@ fn offer_activations(
         if perm.controller != seat {
             continue;
         }
-        for (index, ability) in crate::card::abilities_of(db, perm.card).iter().enumerate() {
+        for (index, ability) in crate::card::abilities_of_permanent(db, perm)
+            .iter()
+            .enumerate()
+        {
             if mana_only == ManaOnly::Yes && !is_mana_ability(ability) {
                 continue;
             }
@@ -388,7 +391,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
-            card,
+            printed: card.into(),
             controller,
             tapped: false,
             entered_turn,

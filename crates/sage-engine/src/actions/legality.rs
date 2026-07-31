@@ -1,7 +1,7 @@
 //! Action legality validation — checking that actions conform to game rules.
 
 use crate::ability::Ability;
-use crate::card::abilities_of;
+use crate::card::abilities_of_permanent;
 use crate::combat::{
     attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
     blocker_can_block_attacker, blocker_candidates_for, declared_attackers, defender_candidates,
@@ -128,7 +128,7 @@ fn activation_clears_summoning_sickness(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return false;
     };
-    match abilities_of(db, perm.card).get(index) {
+    match abilities_of_permanent(db, perm).get(index) {
         Some(Ability::Activated { cost, .. }) => !tap_cost_is_summoning_sick(state, perm, cost, db),
         _ => true,
     }
@@ -295,7 +295,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
-            card,
+            printed: card.into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn,
@@ -330,7 +330,7 @@ mod tests {
             state.battlefield.push(Permanent {
                 id,
                 instance: inst.id,
-                card,
+                printed: card.into(),
                 controller: seat,
                 tapped: false,
                 entered_turn: 0,

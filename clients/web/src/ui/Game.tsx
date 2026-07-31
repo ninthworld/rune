@@ -167,6 +167,7 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
                         · {counter.count}× {counter.kind}
                       </span>
                     ))}
+                    {permanent.card.token && ' · token'}
                     {permanent.is_commander && ' · commander'}
                   </li>
                 ))}

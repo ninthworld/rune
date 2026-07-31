@@ -250,6 +250,7 @@ fn game_view_round_trips_through_json() {
             mana_cost: Some("{G}".into()),
             rules_text: "{T}: Add {G}.".into(),
             functional_id: "llanowar_elves".into(),
+            token: false,
             power: Some("1".into()),
             toughness: Some("1".into()),
             keywords: vec![],
@@ -283,6 +284,7 @@ fn game_view_round_trips_through_json() {
                 mana_cost: Some("{1}{G}".into()),
                 rules_text: String::new(),
                 functional_id: String::new(),
+                token: false,
                 power: Some("2".into()),
                 toughness: Some("2".into()),
                 keywords: vec!["flying".into()],
@@ -430,6 +432,7 @@ fn issue_372_command_zone_pile_round_trips_with_its_commander() {
             mana_cost: Some("{4}{G}{G}".into()),
             rules_text: String::new(),
             functional_id: "jedit_ojanen".into(),
+            token: false,
             power: Some("5".into()),
             toughness: Some("5".into()),
             keywords: vec![],
@@ -530,6 +533,17 @@ fn canonical_fixture_round_trips_and_matches_typed_fields() {
     assert_eq!(view.battlefield[1].counters[0].kind, "loyalty");
     assert_eq!(view.battlefield[1].counters[0].count, 5);
     assert!(!view.battlefield[1].tapped);
+
+    // A **token** (CR 111, issue #605): a full permanent with computed
+    // characteristics and no card identity behind it. `token` is what says so — an
+    // empty `functional_id` alone would be indistinguishable from a card the server
+    // could not resolve.
+    let thopter = &view.battlefield[2].card;
+    assert!(thopter.token);
+    assert!(thopter.functional_id.is_empty());
+    assert!(thopter.mana_cost.is_none());
+    assert_eq!(thopter.power.as_deref(), Some("1"));
+    assert_eq!(thopter.keywords, vec!["flying".to_string()]);
 
     // Stack: an ability carries its `source`; a spell does not.
     assert_eq!(view.stack[0].source, None);
@@ -997,6 +1011,7 @@ fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them()
         mana_cost: None,
         rules_text: String::new(),
         functional_id: "forest".into(),
+        token: false,
         power: None,
         toughness: None,
         keywords: Vec::new(),

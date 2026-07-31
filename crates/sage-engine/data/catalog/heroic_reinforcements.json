@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "functional_id": "heroic_reinforcements",
+  "name": "Heroic Reinforcements",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{R}{W}",
+  "colors": [
+    "white",
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "create_token",
+      "count": 2,
+      "token": {
+        "name": "Soldier",
+        "types": [
+          "creature"
+        ],
+        "subtypes": [
+          "Soldier"
+        ],
+        "colors": [
+          "white"
+        ],
+        "power": 1,
+        "toughness": 1
+      }
+    },
+    {
+      "kind": "pump_all",
+      "affects": "creatures_you_control",
+      "power": 1,
+      "toughness": 1
+    },
+    {
+      "kind": "grant_keyword_all",
+      "affects": "creatures_you_control",
+      "keyword": "haste"
+    }
+  ]
+}

@@ -174,7 +174,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
-            card: fixture("walking_corpse"),
+            printed: fixture("walking_corpse").into(),
             controller,
             tapped,
             entered_turn,

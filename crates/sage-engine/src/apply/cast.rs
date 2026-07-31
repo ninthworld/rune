@@ -2,7 +2,7 @@ use super::*;
 use crate::ability::{
     is_mana_ability, Ability, Cost, DamageSubject, Effect, MassAffects, PlayerRef, Target,
 };
-use crate::card::{abilities_of, apply_enters_replacements};
+use crate::card::{abilities_of_permanent, apply_enters_replacements};
 use crate::commander::commander_tax_cost;
 use crate::id::{CardInstance, PermanentId, PlayerId};
 use crate::mana::parse_mana_cost;
@@ -28,7 +28,7 @@ pub(crate) fn apply_play_land(state: &mut GameState, card: CardInstance, db: &Ca
     let mut permanent = Permanent {
         id: PermanentId(id),
         instance: card.id,
-        card: card.card,
+        printed: card.card.into(),
         controller,
         tapped: false,
         entered_turn,
@@ -61,8 +61,7 @@ pub(crate) fn apply_activate_ability(
         return;
     };
     let controller = perm.controller;
-    let card = perm.card;
-    let Some(ability) = abilities_of(db, card).get(index).cloned() else {
+    let Some(ability) = abilities_of_permanent(db, perm).get(index).cloned() else {
         return;
     };
     let Ability::Activated { cost, effects } = &ability else {
@@ -297,6 +296,24 @@ pub(crate) fn apply_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // CR 111.1: the referenced player creates `count` tokens, each with the
+        // characteristics the effect describes. Tokens enter one at a time through the
+        // one effect→battlefield seam, so each is a separate object with its own
+        // `PermanentId` — two tokens created together are two permanents, and the diff
+        // collector sees two entries. A targeting reference names its creator instead
+        // and is applied through [`apply_targeted_effect`], so it is a no-op here.
+        Effect::CreateToken {
+            token,
+            count,
+            player_ref,
+            tapped,
+        } => {
+            for seat in non_targeting_subjects(state, *player_ref, controller) {
+                for _ in 0..*count {
+                    state.create_token(token.clone(), seat, *tapped, db);
+                }
+            }
+        }
         // CR 120.3 damage dealt to a **class** rather than to a target: no slot was
         // filled, so there is nothing to re-check and nothing to fizzle. The class is
         // enumerated **here, on resolution** (CR 611.2c, the rule `apply_mass_modification`
@@ -470,8 +487,9 @@ fn permanents_in(
     db: &CardDatabase,
 ) -> Vec<PermanentId> {
     let is_creature = |perm: &Permanent| {
-        db.card(perm.card)
-            .is_some_and(|c| c.has_type(crate::card_type::CardType::Creature))
+        perm.printed
+            .face(db)
+            .is_some_and(|face| face.has_type(crate::card_type::CardType::Creature))
     };
     state
         .battlefield
@@ -722,6 +740,21 @@ pub(crate) fn apply_targeted_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // "Target player creates …" (CR 111.1): the token is created under the chosen
+        // seat's control, which is the whole reason the creator is a reference rather
+        // than an assumption about the ability's controller.
+        Effect::CreateToken {
+            token,
+            count,
+            tapped,
+            ..
+        } => {
+            if let Target::Player(seat) = target {
+                for _ in 0..*count {
+                    state.create_token(token.clone(), seat, *tapped, db);
+                }
+            }
+        }
         // A choice-posing effect is intercepted by the resolve loop before either
         // apply function sees it (see [`apply_effect`]).
         Effect::Discard { .. }
@@ -759,7 +792,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id: PermanentId(id),
             instance: inst.id,
-            card: fixture("forest"),
+            printed: fixture("forest").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -792,7 +825,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id: PermanentId(id),
             instance: inst.id,
-            card: fixture("forest"),
+            printed: fixture("forest").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -883,7 +916,7 @@ mod tests {
         assert!(state
             .battlefield
             .iter()
-            .any(|p| p.card == fixture("skyscanner")));
+            .any(|p| p.printed.card() == Some(fixture("skyscanner"))));
         assert_eq!(state.stack.len(), 1);
 
         // Pass twice more: the ETB ability resolves and player 0 draws.
@@ -1258,7 +1291,7 @@ mod tests {
             !state
                 .battlefield
                 .iter()
-                .any(|p| p.card == id_in(&db, "test_curse")),
+                .any(|p| p.printed.card() == Some(id_in(&db, "test_curse"))),
             "the Aura follows its dead host to the graveyard (CR 704.5m)"
         );
         assert!(
@@ -1344,7 +1377,7 @@ mod tests {
             state
                 .battlefield
                 .iter()
-                .all(|p| p.card != fixture("onakke_ogre")),
+                .all(|p| p.printed.card() != Some(fixture("onakke_ogre"))),
             "the countered creature never entered the battlefield (CR 701.5a)"
         );
         assert!(
@@ -1396,7 +1429,7 @@ mod tests {
             state
                 .battlefield
                 .iter()
-                .any(|p| p.card == fixture("onakke_ogre")),
+                .any(|p| p.printed.card() == Some(fixture("onakke_ogre"))),
             "the creature spell resolved onto the battlefield"
         );
 
@@ -1408,7 +1441,7 @@ mod tests {
             state
                 .battlefield
                 .iter()
-                .any(|p| p.card == fixture("onakke_ogre")),
+                .any(|p| p.printed.card() == Some(fixture("onakke_ogre"))),
             "the creature survives — nothing was countered"
         );
         assert!(
@@ -1759,7 +1792,7 @@ mod tests {
         assert!(state
             .battlefield
             .iter()
-            .any(|p| p.card == id_in(&db, "test_blessing")));
+            .any(|p| p.printed.card() == Some(id_in(&db, "test_blessing"))));
         assert_eq!(state.stack.len(), 1, "its ETB trigger is on the stack");
 
         // Pass twice more: the trigger resolves and the controller gains 4 life.
@@ -2112,7 +2145,8 @@ mod tests {
             state
                 .battlefield
                 .iter()
-                .any(|p| p.card == fixture("knight_s_pledge") && p.attached_to == Some(host)),
+                .any(|p| p.printed.card() == Some(fixture("knight_s_pledge"))
+                    && p.attached_to == Some(host)),
             "the Aura entered attached to its host (CR 303.4d)"
         );
     }
@@ -2288,7 +2322,7 @@ mod tests {
         assert!(state
             .battlefield
             .iter()
-            .any(|p| p.card == fixture("rhox_oracle")));
+            .any(|p| p.printed.card() == Some(fixture("rhox_oracle"))));
         assert_eq!(state.stack.len(), 1, "its ETB trigger is on the stack");
 
         // Pass twice more: the trigger resolves and player 0 draws.

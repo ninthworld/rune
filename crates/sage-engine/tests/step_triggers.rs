@@ -87,7 +87,7 @@ fn place(
     state.battlefield.push(Permanent {
         id,
         instance: instance.id,
-        card,
+        printed: card.into(),
         controller,
         tapped: false,
         entered_turn: 0,

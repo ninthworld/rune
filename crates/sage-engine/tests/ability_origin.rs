@@ -53,7 +53,7 @@ fn place(state: &mut GameState, card: CardId) -> PermanentId {
     state.battlefield.push(Permanent {
         id,
         instance: instance.id,
-        card,
+        printed: card.into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,

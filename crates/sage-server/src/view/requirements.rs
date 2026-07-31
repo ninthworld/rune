@@ -250,8 +250,8 @@ pub(crate) fn ability_label(
         .iter()
         .find(|perm| perm.id == permanent)
         .and_then(|perm| {
-            let name = card_name(perm.card, db);
-            abilities_of(db, perm.card)
+            let name = permanent_name(perm, db);
+            abilities_of_permanent(db, perm)
                 .get(index)
                 .map(|ability| ability_text(&name, ability))
         })
@@ -276,7 +276,7 @@ pub(crate) fn trigger_label(state: &GameState, db: &CardDatabase, ability: Stack
                     .find(|p| p.id == *source)
                     .map_or_else(
                         || "This ability's source".to_string(),
-                        |p| card_name(p.card, db),
+                        |p| permanent_name(p, db),
                     ),
                 effects,
             )),
@@ -306,7 +306,7 @@ fn permanent_card_name(state: &GameState, id: PermanentId, db: &CardDatabase) ->
         .battlefield
         .iter()
         .find(|perm| perm.id == id)
-        .map(|perm| card_name(perm.card, db))
+        .map(|perm| permanent_name(perm, db))
         .unwrap_or_else(|| "the attacker".to_string())
 }
 

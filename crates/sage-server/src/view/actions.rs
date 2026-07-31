@@ -382,7 +382,11 @@ fn valid_action_view(
             .battlefield
             .iter()
             .find(|perm| perm.id == *permanent)
-            .and_then(|perm| abilities_of(db, perm.card).get(*index).map(is_mana_ability))
+            .and_then(|perm| {
+                abilities_of_permanent(db, perm)
+                    .get(*index)
+                    .map(is_mana_ability)
+            })
             .unwrap_or(false),
         _ => false,
     };

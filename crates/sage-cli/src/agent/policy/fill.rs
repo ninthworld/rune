@@ -316,6 +316,7 @@ mod tests {
                 mana_cost: None,
                 rules_text: String::new(),
                 functional_id: String::new(),
+                token: false,
                 power: Some(power.to_string()),
                 toughness: Some(toughness.to_string()),
                 keywords: vec![],

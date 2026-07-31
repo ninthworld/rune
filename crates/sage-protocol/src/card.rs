@@ -36,6 +36,18 @@ pub struct CardView {
     /// Empty only for a card the server cannot resolve (a defensive placeholder).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub functional_id: String,
+    /// Whether this object is a **token** (CR 111) rather than a card — a permanent
+    /// the game created, with no card behind it.
+    ///
+    /// The client needs this told to it, not inferred. An absent
+    /// [`functional_id`](CardView::functional_id) is the *symptom* a token shares with
+    /// a card the server could not resolve, and the two want opposite treatment: a
+    /// token is a real object rendered normally and simply has no card identity to
+    /// cache or to look presentation up by, while an unresolvable card is a fault.
+    /// Additive: omitted (and defaults to `false`) so every existing view is unchanged
+    /// on the wire.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub token: bool,
     /// Displayed power (a string so `*` and other non-numeric values round-trip).
     /// Present only for creatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -452,6 +464,7 @@ mod tests {
                 mana_cost: Some("{1}{G}".into()),
                 rules_text: String::new(),
                 functional_id: String::new(),
+                token: false,
                 power: Some("2".into()),
                 toughness: Some("2".into()),
                 keywords: vec![],
@@ -531,6 +544,7 @@ mod tests {
                 mana_cost: Some("{1}{G}".into()),
                 rules_text: "Enchant creature".into(),
                 functional_id: String::new(),
+                token: false,
                 power: None,
                 toughness: None,
                 keywords: vec![],
@@ -577,6 +591,7 @@ mod tests {
             mana_cost: Some("{3}{U}".into()),
             rules_text: "Flying".into(),
             functional_id: "snapping_drake".into(),
+            token: false,
             power: Some("3".into()),
             toughness: Some("2".into()),
             keywords: vec!["flying".into()],
@@ -729,6 +744,7 @@ mod tests {
                 mana_cost: Some("{1}{R}".into()),
                 rules_text: "Twin Bolt deals 1 damage to each of two targets.".into(),
                 functional_id: "twin_bolt".into(),
+                token: false,
                 power: None,
                 toughness: None,
                 keywords: vec![],

@@ -18,7 +18,7 @@
 //! callers never change as they are filled in.
 
 use crate::ability::{Ability, StaticAffects};
-use crate::card::{abilities_of, CardDatabase, CombatRestriction, Keyword};
+use crate::card::{abilities_of_permanent, CardDatabase, CombatRestriction, Keyword};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;
 use crate::state::{
@@ -104,7 +104,7 @@ pub fn characteristics(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return Characteristics::default();
     };
-    let Some(card) = db.card(perm.card) else {
+    let Some(face) = perm.printed.face(db) else {
         return Characteristics::default();
     };
     // CR 613 layer 7c: `+1/+1` and `-1/-1` counters adjust power and toughness
@@ -114,27 +114,33 @@ pub fn characteristics(
     // CR 613 layer 7c (after counters, ADR 0005 §3): static `+X/+Y` modifiers in
     // force apply in timestamp order. `is_creature` gates anthem-style selectors;
     // current type equals printed type until the type layers (1–6) land.
-    let is_creature = card.types.contains(&CardType::Creature);
+    let is_creature = face.has_type(CardType::Creature);
     let (static_power, static_toughness) = static_pt_delta(state, perm, is_creature, db);
     Characteristics {
-        supertypes: card.supertypes.clone(),
-        types: card.types.clone(),
-        subtypes: card.subtypes.clone(),
-        mana_cost: card.mana_cost.clone(),
-        power: card
-            .power
+        supertypes: face.supertypes().to_vec(),
+        types: face.types().to_vec(),
+        subtypes: face.subtypes().to_vec(),
+        mana_cost: face.mana_cost().to_string(),
+        power: face
+            .power()
             .map(|p| p.saturating_add(counter_delta).saturating_add(static_power)),
-        toughness: card.toughness.map(|t| {
+        toughness: face.toughness().map(|t| {
             t.saturating_add(counter_delta)
                 .saturating_add(static_toughness)
         }),
-        abilities: abilities_of(db, perm.card),
+        abilities: abilities_of_permanent(db, perm),
         // CR 613 layer 6 (CR 613.1f): the printed keywords unioned with any granted
         // continuously. Seeded from the printed set so a granted keyword sits beside
         // the printed ones and is read the same way everywhere.
-        keywords: current_keywords(state, perm, is_creature, card.keywords.clone(), db),
+        keywords: current_keywords(state, perm, is_creature, face.keywords().to_vec(), db),
         // CR 613 layer 6 as well: the non-keyworded half of the same layer.
-        restrictions: current_restrictions(state, perm, is_creature, card.restrictions.clone(), db),
+        restrictions: current_restrictions(
+            state,
+            perm,
+            is_creature,
+            face.restrictions().to_vec(),
+            db,
+        ),
     }
 }
 
@@ -235,7 +241,7 @@ fn layer_six_modifications(
         if aura.attached_to != Some(perm.id) {
             continue;
         }
-        if let Some(grant) = db.card(aura.card).and_then(|c| c.aura.as_ref()) {
+        if let Some(grant) = aura.printed.face(db).and_then(|face| face.aura()) {
             modifications.extend(
                 grant
                     .keywords
@@ -414,7 +420,7 @@ fn static_ability_effects(
 ) -> Vec<StaticEffect> {
     let mut effects = Vec::new();
     for source in &state.battlefield {
-        for ability in abilities_of(db, source.card) {
+        for ability in abilities_of_permanent(db, source) {
             let Ability::Static {
                 affects,
                 modification,
@@ -467,9 +473,10 @@ fn static_affects_match(
             }
             match subtype {
                 None => true,
-                Some(wanted) => db
-                    .card(perm.card)
-                    .is_some_and(|card| card.subtypes.iter().any(|has| has == wanted)),
+                Some(wanted) => perm
+                    .printed
+                    .face(db)
+                    .is_some_and(|face| face.has_subtype(wanted)),
             }
         }
     }
@@ -485,7 +492,7 @@ fn static_affects_match(
 /// keyed to that permanent, and disappears when the Aura leaves.
 fn aura_pt_effect(aura: &Permanent, db: &CardDatabase) -> Option<StaticEffect> {
     let host = aura.attached_to?;
-    let grant = db.card(aura.card)?.aura.as_ref()?;
+    let grant = aura.printed.face(db)?.aura()?;
     Some(StaticEffect {
         source: aura.id.0,
         affects: EffectAffects::SpecificPermanent(host),
@@ -527,7 +534,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id,
             instance: CardInstanceId(0),
-            card,
+            printed: card.into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -748,7 +755,10 @@ mod tests {
         assert_eq!(ch.power, None);
         assert_eq!(ch.toughness, None);
         assert_eq!(ch.mana_cost, "");
-        assert_eq!(ch.abilities, abilities_of(&db, fixture("forest")));
+        assert_eq!(
+            ch.abilities,
+            crate::card::abilities_of(&db, fixture("forest"))
+        );
         assert_eq!(ch.abilities.len(), 1);
         assert!(is_mana_ability(&ch.abilities[0]));
     }

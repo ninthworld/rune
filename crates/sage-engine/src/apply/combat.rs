@@ -6,7 +6,7 @@ use crate::combat::{
     pending_blocker_declarer, CombatDamage, DamageStep,
 };
 use crate::id::{CardId, PermanentId};
-use crate::state::LoggedPermanent;
+use crate::state::{LoggedIdentity, LoggedPermanent};
 
 /// Combat-damage step turn-based action: deal all combat damage (CR 510).
 ///
@@ -157,20 +157,20 @@ pub(crate) fn apply_declare_attackers(
     state.consecutive_passes = 0;
 }
 
-/// Pair a battlefield permanent's id with its current card identity for a log
+/// Pair a battlefield permanent's id with the identity that names it in a log
 /// event, so the name is projectable later even once the permanent has left the
-/// battlefield. A missing permanent falls back to a default [`CardId`] — the
-/// callers pass ids validated to be on the battlefield, so this is defensive only.
+/// battlefield — including a token, which by then has ceased to exist (CR 111.7) and
+/// whose name is therefore the only thing left to record. A missing permanent falls
+/// back to a default [`CardId`] — the callers pass ids validated to be on the
+/// battlefield, so this is defensive only.
 fn logged_permanent(state: &GameState, id: PermanentId) -> LoggedPermanent {
-    let card = state
-        .battlefield
-        .iter()
-        .find(|p| p.id == id)
-        .map_or_else(CardId::default, |p| p.card);
-    LoggedPermanent {
-        permanent: id,
-        card,
-    }
+    state.battlefield.iter().find(|p| p.id == id).map_or_else(
+        || LoggedPermanent {
+            permanent: id,
+            identity: LoggedIdentity::Card(CardId::default()),
+        },
+        LoggedPermanent::of,
+    )
 }
 
 /// Declare one attacked player's blockers (CR 509.1): record each blocker's

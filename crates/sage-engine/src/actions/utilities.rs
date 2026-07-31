@@ -1,7 +1,7 @@
 //! Utility helpers for action validation and generation.
 
 use crate::ability::{is_mana_ability, Ability, Cost, Effect};
-use crate::card::abilities_of;
+use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
 use crate::id::{CardId, PermanentId, PlayerId};
 use crate::mana::ManaPool;
@@ -80,7 +80,7 @@ pub(crate) fn potential_mana_pool(
         if perm.controller != player || perm.tapped {
             continue;
         }
-        for ability in abilities_of(db, perm.card) {
+        for ability in abilities_of_permanent(db, perm) {
             if !is_mana_ability(&ability) {
                 continue;
             }

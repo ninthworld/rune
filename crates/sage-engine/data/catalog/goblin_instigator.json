@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "functional_id": "goblin_instigator",
+  "name": "Goblin Instigator",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Goblin",
+    "Rogue"
+  ],
+  "mana_cost": "{1}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Goblin",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Goblin"
+            ],
+            "colors": [
+              "red"
+            ],
+            "power": 1,
+            "toughness": 1
+          }
+        }
+      ]
+    }
+  ]
+}

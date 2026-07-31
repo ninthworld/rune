@@ -36,6 +36,7 @@ mod scripted;
 mod setup;
 mod stack;
 mod state;
+mod token;
 mod triggers;
 mod zone;
 
@@ -50,8 +51,8 @@ pub use actions::{
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
-    abilities_of, AuraGrant, CardData, CardDatabase, CatalogError, CombatRestriction, Keyword,
-    Printing, PrintingDatabase, Rarity, SCHEMA_VERSION,
+    abilities_of, abilities_of_permanent, AuraGrant, CardData, CardDatabase, CatalogError,
+    CombatRestriction, Keyword, Printing, PrintingDatabase, Rarity, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
@@ -85,7 +86,8 @@ pub use setup::{
 pub use stack::{AbilityOrigin, StackId, StackObject, StackObjectKind};
 pub use state::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry,
-    GameResult, GameState, LoggedPermanent, Modification, Permanent, StaticEffect,
+    GameResult, GameState, LoggedIdentity, LoggedPermanent, Modification, Permanent, StaticEffect,
 };
+pub use token::{Printed, PrintedFace, TokenData};
 pub use triggers::{collect_triggers, pending_trigger_target_choice, Trigger};
 pub use zone::Zone;

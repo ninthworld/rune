@@ -24,8 +24,8 @@
 use sage_engine::{
     Ability, AuraGrant, CardData, CardFilter, Chooser, Color, CombatRestriction, Cost, CounterKind,
     DamageSubject, Effect, FoundDestination, Keyword, MassAffects, ObservedPermanent,
-    ObservedSpell, PlayerRef, StaticAffects, StaticModification, TargetSpec, TriggerCondition,
-    TriggerStep, TurnScope,
+    ObservedSpell, PlayerRef, StaticAffects, StaticModification, TargetSpec, TokenData,
+    TriggerCondition, TriggerStep, TurnScope,
 };
 
 /// Generate the rules text of one card.
@@ -73,6 +73,37 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
 
     if let Some(text) = scripted {
         lines.push(text.to_string());
+    }
+
+    lines.join("\n")
+}
+
+/// Generate the rules text of a **token** (CR 111.3), from the characteristics the
+/// effect that created it gave it.
+///
+/// The token counterpart of [`rules_text`], sharing its clause builders and its clause
+/// order so a token's words are composed exactly as a card's are. It is shorter for
+/// structural reasons rather than by choice: a token has no spell ability to describe,
+/// no Aura grant, and no scripted tier to fall back on (all three are keyed to things
+/// a token has not got), so only the keyword line, the restriction sentences, and the
+/// abilities remain.
+#[must_use]
+pub(crate) fn token_rules_text(token: &TokenData) -> String {
+    let source = token.name.as_str();
+    let mut lines: Vec<String> = Vec::new();
+
+    if !token.keywords.is_empty() {
+        let words: Vec<&str> = token.keywords.iter().map(|&kw| keyword_word(kw)).collect();
+        lines.push(sentence_case(&words.join(", ")));
+    }
+    for &restriction in &token.restrictions {
+        lines.push(finish(&format!(
+            "{source} {}",
+            restriction_predicate(restriction)
+        )));
+    }
+    for ability in &token.abilities {
+        lines.push(ability_text(source, ability));
     }
 
     lines.join("\n")
@@ -435,6 +466,23 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
                 ),
             }
         }
+        // A token is described the way a card prints it: how many, tapped or not, then
+        // the token's own characteristics as a noun phrase ("two 1/1 white Soldier
+        // creature tokens"). Composed from the same `TokenData` the engine creates the
+        // object from, so the sentence and the object cannot disagree.
+        Effect::CreateToken {
+            token,
+            count,
+            player_ref,
+            tapped,
+        } => {
+            let tapped = if *tapped { "tapped " } else { "" };
+            format!(
+                "{} {tapped}{}",
+                conjugate(*player_ref, "create"),
+                token_noun(token, u32::from(*count))
+            )
+        }
         Effect::Scry { count } => format!("scry {}", number(u32::from(*count))),
         Effect::LookAtTop {
             count,
@@ -756,6 +804,54 @@ fn restriction_predicate(restriction: CombatRestriction) -> String {
         CombatRestriction::CantBeBlockedByMoreThanOne => {
             "can't be blocked by more than one creature".to_string()
         }
+    }
+}
+
+/// A token as the noun phrase a card prints it as: `"a 1/1 red Goblin creature
+/// token"`, `"two 1/1 white Soldier creature tokens with lifelink"`.
+///
+/// Assembled in the order a real card states it — count, power/toughness, colors,
+/// subtypes, card types, the word "token", then any keywords — from the same
+/// [`TokenData`] the engine builds the object from. A token with abilities beyond
+/// keywords says so without reciting them: the object's own rules text
+/// ([`token_rules_text`]) is what a player reads once it is on the battlefield, and
+/// repeating it inside the creating card's sentence would be a second place for the
+/// same words to drift.
+fn token_noun(token: &TokenData, count: u32) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let (Some(power), Some(toughness)) = (token.power, token.toughness) {
+        parts.push(format!("{power}/{toughness}"));
+    }
+    parts.extend(token.colors.iter().map(|color| color.word().to_string()));
+    parts.extend(token.subtypes.iter().cloned());
+    parts.extend(token.types.iter().map(|t| t.display().to_lowercase()));
+    parts.push(if count == 1 { "token" } else { "tokens" }.to_string());
+    let mut noun = format!(
+        "{} {}",
+        if count == 1 {
+            "a".to_string()
+        } else {
+            number(count)
+        },
+        parts.join(" ")
+    );
+    if !token.keywords.is_empty() {
+        let words: Vec<&str> = token.keywords.iter().map(|&kw| keyword_word(kw)).collect();
+        noun.push_str(&format!(" with {}", list_words(&words)));
+    }
+    if !token.abilities.is_empty() {
+        noun.push_str(" with an ability");
+    }
+    noun
+}
+
+/// A short list of words as English reads it: `"a"`, `"a and b"`, `"a, b, and c"`.
+fn list_words(words: &[&str]) -> String {
+    match words {
+        [] => String::new(),
+        [one] => (*one).to_string(),
+        [first, second] => format!("{first} and {second}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
     }
 }
 

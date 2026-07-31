@@ -24,6 +24,21 @@ pub fn abilities_of(db: &CardDatabase, card: CardId) -> Vec<crate::ability::Abil
     abilities
 }
 
+/// All abilities of a **permanent**, whether it is a card or a token.
+///
+/// The permanent-side counterpart of [`abilities_of`], and the accessor every path
+/// that reads a battlefield object's abilities goes through. A card permanent defers
+/// to [`abilities_of`], so its data tier and its code tier are still unioned; a token
+/// has only what the effect that created it wrote down, because the code tier is keyed
+/// on an authored `functional_id` and a token has none (CR 111).
+#[must_use]
+pub fn abilities_of_permanent(db: &CardDatabase, perm: &Permanent) -> Vec<crate::ability::Ability> {
+    match &perm.printed {
+        crate::token::Printed::Card(card) => abilities_of(db, *card),
+        crate::token::Printed::Token(token) => token.abilities.clone(),
+    }
+}
+
 /// The effects a spell of printed card `card` produces on resolution
 /// ([`super::CardData::spell_effects`]), or an empty list for an unknown id or a card
 /// with no spell ability.
@@ -58,7 +73,7 @@ pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
 /// Both authoring tiers are honored via [`abilities_of`]; non-replacement
 /// abilities are ignored.
 pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent) {
-    for ability in abilities_of(db, perm.card) {
+    for ability in abilities_of_permanent(db, perm) {
         match ability {
             crate::ability::Ability::EntersTapped => perm.tapped = true,
             crate::ability::Ability::EntersWithCounters { counter, count } => {

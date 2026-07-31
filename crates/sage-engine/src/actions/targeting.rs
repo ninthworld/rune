@@ -63,7 +63,7 @@ pub(crate) fn action_target_specs(
             let Some(perm) = state.battlefield.iter().find(|p| p.id == *permanent) else {
                 return Vec::new();
             };
-            let abilities = crate::card::abilities_of(db, perm.card);
+            let abilities = crate::card::abilities_of_permanent(db, perm);
             let Some(Ability::Activated { effects, .. }) = abilities.get(*index) else {
                 return Vec::new();
             };

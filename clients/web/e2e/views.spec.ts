@@ -56,6 +56,13 @@ test.describe('the board, from one view', () => {
     await expect(stack.getByRole('listitem').first()).toContainText('Lightning Bolt')
 
     await expect(page.getByRole('region', { name: 'Battlefield' })).toContainText('Grizzly Bears')
+
+    // A token (CR 111) is a permanent with no card behind it: it renders from the view's
+    // characteristics like anything else, and is marked as a token so a player can tell.
+    const battlefield = page.getByRole('region', { name: 'Battlefield' })
+    await expect(battlefield.getByRole('listitem').filter({ hasText: 'Thopter' })).toContainText(
+      '· token',
+    )
   })
 
   test('offers exactly the actions the server listed', async ({ page }) => {

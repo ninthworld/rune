@@ -135,14 +135,22 @@ fn log_card(instance: CardInstanceId, card: CardId, db: &CardDatabase) -> LogEnt
     }
 }
 
-/// Name a logged permanent from the **card identity recorded in the event**, not the
+/// Name a logged permanent from the **identity recorded in the event**, not the
 /// current battlefield — so the entry stays stable once the permanent has left play.
+///
+/// A card is named from the database, as everything else in the log is. A token has no
+/// card to look up and, by the time anyone reads this, has ceased to exist (CR 111.7),
+/// so the event carries the name it had and this uses it — the one place a display
+/// name reaches the server from the engine rather than from the catalog.
 fn log_permanent(logged: &LoggedPermanent, db: &CardDatabase) -> LogEntity {
     LogEntity {
         id: permanent_entity_id(logged.permanent),
-        name: db
-            .card(logged.card)
-            .map_or_else(|| "Unknown permanent".into(), |card| card.name.clone()),
+        name: match &logged.identity {
+            LoggedIdentity::Card(card) => db
+                .card(*card)
+                .map_or_else(|| "Unknown permanent".into(), |data| data.name.clone()),
+            LoggedIdentity::Token(name) => name.clone(),
+        },
     }
 }
 
@@ -300,7 +308,7 @@ mod tests {
         // recorded in the event, not the current battlefield — so the entry stays
         // stable after the creature has died and is no longer on the battlefield. A
         // re-resolving projection would show "Unknown permanent" here.
-        use sage_engine::{GameEvent, GameLogEntry, LoggedPermanent};
+        use sage_engine::{GameEvent, GameLogEntry, LoggedIdentity, LoggedPermanent};
         let db = CardDatabase::bundled().unwrap();
         let mut state = GameState::new_two_player();
         let boar_card = fixture("onakke_ogre");
@@ -313,7 +321,7 @@ mod tests {
                 player: PlayerId(0),
                 attackers: vec![LoggedPermanent {
                     permanent: attacker,
-                    card: boar_card,
+                    identity: LoggedIdentity::Card(boar_card),
                 }],
             },
         });

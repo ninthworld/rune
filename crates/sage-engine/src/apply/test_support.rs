@@ -121,7 +121,7 @@ pub(crate) fn place_permanent(
     state.battlefield.push(Permanent {
         id: PermanentId(id),
         instance: inst.id,
-        card,
+        printed: card.into(),
         controller,
         tapped,
         entered_turn: 0,
@@ -432,7 +432,7 @@ pub(crate) fn place_commander_permanent(
     state.battlefield.push(Permanent {
         id,
         instance,
-        card,
+        printed: card.into(),
         controller,
         tapped: false,
         entered_turn: 0,

@@ -428,7 +428,7 @@ fn creature(state: &mut GameState, controller: usize, attacking: Option<PlayerId
     state.battlefield.push(sage_engine::Permanent {
         id,
         instance: inst.id,
-        card,
+        printed: card.into(),
         controller: PlayerId(controller),
         tapped: false,
         entered_turn: 0,
@@ -691,7 +691,7 @@ async fn issue_537_a_seat_that_tapped_mana_and_cast_nothing_still_auto_passes() 
     state.battlefield.push(sage_engine::Permanent {
         id: plains,
         instance: land.id,
-        card: fixture("plains"),
+        printed: fixture("plains").into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,
@@ -706,7 +706,7 @@ async fn issue_537_a_seat_that_tapped_mana_and_cast_nothing_still_auto_passes() 
     state.battlefield.push(sage_engine::Permanent {
         id: second,
         instance: second_land.id,
-        card: fixture("plains"),
+        printed: fixture("plains").into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,

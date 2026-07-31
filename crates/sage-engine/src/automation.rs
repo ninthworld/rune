@@ -12,7 +12,7 @@
 
 use crate::ability::is_mana_ability;
 use crate::actions::{potential_mana_pool, valid_actions, Action};
-use crate::card::abilities_of;
+use crate::card::abilities_of_permanent;
 use crate::combat::{
     attacker_candidates, attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for,
     declared_attackers, defender_candidates, pending_blocker_declarer,
@@ -186,7 +186,7 @@ fn is_mana_ability_action(
     let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
         return false;
     };
-    abilities_of(db, perm.card)
+    abilities_of_permanent(db, perm)
         .get(index)
         .is_some_and(is_mana_ability)
 }
@@ -213,7 +213,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id: PermanentId(id),
             instance: inst.id,
-            card,
+            printed: card.into(),
             controller,
             tapped: false,
             entered_turn: 0,

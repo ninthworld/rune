@@ -309,6 +309,49 @@ Two orderings are deliberately **not** modeled and are listed in the exclusions:
 cards a scry keeps on top stay in their printed order, and the cards a `look_at_top`
 bottoms go there at random rather than in an order the player picks.
 
+### Creating tokens (CR 111)
+
+`create_token` puts a permanent onto the battlefield that is **not a card**. The token's
+whole printed face is authored inline, because the effect that creates it *is* its face
+(CR 111.3):
+
+```json
+{ "kind": "create_token",
+  "token": { "name": "Thopter", "types": ["artifact", "creature"],
+             "subtypes": ["Thopter"], "colors": [], "power": 1, "toughness": 1,
+             "keywords": ["flying"] } }
+{ "kind": "create_token", "count": 2, "tapped": true,
+  "token": { "name": "Zombie", "types": ["creature"], "subtypes": ["Zombie"],
+             "colors": ["black"], "power": 2, "toughness": 2 } }
+```
+
+- `count` is how many are created (default `1`). Each is a **separate object** with its
+  own battlefield identity, so an "enters the battlefield" watcher sees two entries for
+  two tokens.
+- `tapped` (default `false`) is the entry state the creating effect dictates.
+- `player_ref` names **who creates them**, and therefore who controls them, exactly as it
+  names whose library a `mill` empties: `controller` (the default), `each_opponent`, or a
+  targeting `target_player` / `target_opponent`.
+
+A `token` block takes `name`, `types`, and optionally `subtypes`, `colors`, `power`,
+`toughness`, `keywords`, `restrictions`, and `abilities` — the same vocabulary a card
+uses for each. What it **cannot** take is as deliberate: no `functional_id` (a token is
+not a card, is not decklist-legal, and never appears in the compatibility report), no
+`mana_cost`, no `spell_effects`, no `aura`, and no `scripted`. Those fields do not exist
+on the type, so writing one is a parse error rather than a rule to remember. The
+validator additionally rejects a token that is not a permanent (it could exist in no
+zone) and one whose power/toughness disagrees with being a creature.
+
+A token is an ordinary permanent while it is on the battlefield — it attacks, blocks, is
+targeted, takes damage, bears counters, and dies. It differs in one place: **the instant
+it would leave the battlefield it ceases to exist** (CR 111.7). A token that dies reaches
+no graveyard (though the death is real and a dies trigger still sees it, CR 603.6c), a
+bounced token never arrives in a hand, and an exiled token is not in exile. See
+`docs/decisions/0015-tokens.md`.
+
+Creating a token **already attacking**, and creating one as a *copy* of another
+permanent, are out of scope and listed in the exclusions.
+
 ### Effects a player may decline
 
 `may` wraps other effects in a yes-or-no its controller answers mid-resolution (issue

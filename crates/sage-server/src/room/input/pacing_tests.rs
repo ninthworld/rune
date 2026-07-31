@@ -416,7 +416,7 @@ async fn issue_455_a_resolved_removal_spell_and_its_death_reach_the_skipped_seat
     state.battlefield.push(sage_engine::Permanent {
         id: elves,
         instance: elves_inst.id,
-        card: elves_card,
+        printed: elves_card.into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,
