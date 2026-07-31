@@ -64,8 +64,13 @@ pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent)
             crate::ability::Ability::EntersWithCounters { counter, count } => {
                 *perm.counters.entry(counter).or_insert(0) += count;
             }
+            // A static ability changes nothing about *entering*: it is a continuous
+            // effect read while computing characteristics, so it is already in force
+            // the instant the permanent is on the battlefield, with nothing to apply
+            // here (`characteristics::static_ability_effects`).
             crate::ability::Ability::Activated { .. }
-            | crate::ability::Ability::Triggered { .. } => {}
+            | crate::ability::Ability::Triggered { .. }
+            | crate::ability::Ability::Static { .. } => {}
         }
     }
 }

@@ -22,8 +22,8 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, PlayerRef, TargetSpec,
-    TriggerCondition,
+    Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, PlayerRef,
+    StaticAffects, StaticModification, TargetSpec, TriggerCondition,
 };
 
 /// Generate the rules text of one card.
@@ -96,6 +96,90 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             "{source} enters the battlefield with {} on it.",
             counters(*counter, *count)
         ),
+        // A static ability reads as a standing statement about other objects, with no
+        // trigger word and no cost — "Other Elves you control get +1/+1." The subject
+        // is the affected class, not the source, which is why `source` goes unused here.
+        Ability::Static {
+            affects,
+            modification,
+        } => sentence_case(&format!(
+            "{} {}.",
+            static_subject(affects),
+            static_verb(modification)
+        )),
+    }
+}
+
+/// The subject of a static ability's sentence: the class of permanents it affects.
+///
+/// Composed from the selector rather than authored, so the printed text and the
+/// permanents actually modified cannot disagree — the same reason rules text is
+/// generated at all (ADR 0008 §6).
+fn static_subject(affects: &StaticAffects) -> String {
+    match affects {
+        StaticAffects::CreaturesYouControl {
+            subtype,
+            except_this,
+        } => {
+            // "Other" is what distinguishes a lord from an anthem, and it is a fact
+            // about the selector, so it is read off the selector.
+            let other = if *except_this { "other " } else { "" };
+            match subtype {
+                Some(kind) => format!("{other}{} you control", plural(kind)),
+                None => format!("{other}creatures you control"),
+            }
+        }
+    }
+}
+
+/// The plural of a creature-type noun, for a sentence that speaks about a class of
+/// permanents ("other **Elves** you control").
+///
+/// Subtypes are open-ended strings, so this cannot be a closed table — but naive `+s`
+/// is wrong for a lot of Magic's vocabulary (Elf, Dwarf, Wolf), and printing "Elfs"
+/// makes the card look broken. The irregulars are listed, then the ordinary English
+/// suffix rules, then `+s`. A subtype this gets wrong is fixed by adding a line, and
+/// is a cosmetic error rather than a rules one: nothing about which permanents are
+/// affected reads this.
+fn plural(subtype: &str) -> String {
+    // Unchanged in the plural.
+    const INVARIANT: [&str; 4] = ["Djinn", "Efreet", "Fish", "Sheep"];
+    if INVARIANT.iter().any(|word| word == &subtype) {
+        return subtype.to_string();
+    }
+    match subtype {
+        "Ox" => return "Oxen".to_string(),
+        "Mouse" => return "Mice".to_string(),
+        "Goose" => return "Geese".to_string(),
+        "Fungus" => return "Fungi".to_string(),
+        _ => {}
+    }
+    // Elf → Elves, Dwarf → Dwarves, Wolf → Wolves.
+    if let Some(stem) = subtype.strip_suffix('f') {
+        return format!("{stem}ves");
+    }
+    // Sphinx → Sphinxes, Leech → Leeches.
+    if ["s", "x", "z", "ch", "sh"]
+        .iter()
+        .any(|suffix| subtype.ends_with(suffix))
+    {
+        return format!("{subtype}es");
+    }
+    format!("{subtype}s")
+}
+
+/// The predicate of a static ability's sentence — what the affected permanents get.
+fn static_verb(modification: &StaticModification) -> String {
+    match modification {
+        StaticModification::PowerToughness { power, toughness } => {
+            format!("get {power:+}/{toughness:+}")
+        }
+        // "have", not "gain": a static ability is continuously true, where a spell's
+        // grant is an event. The distinction is the whole difference between an anthem
+        // and a pump.
+        StaticModification::GrantKeyword { keyword } => {
+            format!("have {}", keyword_word(*keyword))
+        }
     }
 }
 
@@ -667,5 +751,83 @@ mod tests {
         };
         assert_eq!(effects_description(&data.name, effects), "Add {G}.");
         assert_eq!(effects_description(&data.name, &[]), "Ability");
+    }
+
+    /// A card whose only rules are a static ability, built inline: the wording has to
+    /// be asserted from the IR shape, and the catalog carries whichever shapes real
+    /// cards happen to use.
+    fn static_text(affects: &str, modification: &str) -> String {
+        let json = format!(
+            r#"[{{"schema_version":1,"functional_id":"test_lord","name":"Test Lord",
+                "types":["creature"],"subtypes":["Elf"],"mana_cost":"{{G}}","colors":["green"],
+                "power":1,"toughness":1,
+                "abilities":[{{"type":"static","affects":{affects},"modification":{modification}}}]}}]"#
+        );
+        let db = CardDatabase::from_json(&json).unwrap();
+        text_of(&db, "test_lord")
+    }
+
+    #[test]
+    fn an_anthem_states_what_it_modifies_and_by_how_much() {
+        assert_eq!(
+            static_text(
+                r#"{"scope":"creatures_you_control"}"#,
+                r#"{"kind":"power_toughness","power":1,"toughness":1}"#
+            ),
+            "Creatures you control get +1/+1."
+        );
+    }
+
+    #[test]
+    fn a_lord_says_other_and_names_its_subtype() {
+        // "Other" and the subtype both come off the selector, so the sentence cannot
+        // claim a scope different from the one the engine applies.
+        assert_eq!(
+            static_text(
+                r#"{"scope":"creatures_you_control","subtype":"Elf","except_this":true}"#,
+                r#"{"kind":"power_toughness","power":1,"toughness":1}"#
+            ),
+            "Other Elves you control get +1/+1."
+        );
+    }
+
+    #[test]
+    fn a_shrinking_static_ability_reads_as_negative() {
+        assert_eq!(
+            static_text(
+                r#"{"scope":"creatures_you_control"}"#,
+                r#"{"kind":"power_toughness","power":-1,"toughness":-1}"#
+            ),
+            "Creatures you control get -1/-1."
+        );
+    }
+
+    #[test]
+    fn a_static_keyword_grant_says_have_not_gains() {
+        // A static ability is continuously true; a spell's grant is an event. "Gains"
+        // would describe the wrong thing happening.
+        assert_eq!(
+            static_text(
+                r#"{"scope":"creatures_you_control"}"#,
+                r#"{"kind":"grant_keyword","keyword":"vigilance"}"#
+            ),
+            "Creatures you control have vigilance."
+        );
+    }
+
+    #[test]
+    fn irregular_subtype_plurals_read_as_english() {
+        // Naive `+s` prints "Elfs", which makes a card look broken. The scope a lord
+        // actually applies is unaffected by this — it is the sentence that has to be
+        // right, and a wrong plural is the kind of thing nobody notices until a player
+        // reads the card.
+        assert_eq!(plural("Elf"), "Elves");
+        assert_eq!(plural("Dwarf"), "Dwarves");
+        assert_eq!(plural("Sphinx"), "Sphinxes");
+        assert_eq!(plural("Ox"), "Oxen");
+        assert_eq!(plural("Djinn"), "Djinn");
+        // The ordinary case still just takes an s.
+        assert_eq!(plural("Goblin"), "Goblins");
+        assert_eq!(plural("Knight"), "Knights");
     }
 }

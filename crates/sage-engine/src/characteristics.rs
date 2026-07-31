@@ -17,7 +17,7 @@
 //! ability-adding) remain deferred behind this same function signature, so
 //! callers never change as they are filled in.
 
-use crate::ability::Ability;
+use crate::ability::{Ability, StaticAffects};
 use crate::card::{abilities_of, CardDatabase, Keyword};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;
@@ -161,6 +161,14 @@ fn current_keywords(
             }
         }
     }
+    // CR 604.3 / 613.1f: keywords granted by a printed static ability ("Creatures you
+    // control have vigilance"). Layer 6 grants are timestamp-independent, so these need
+    // no ordering — a grant either adds the keyword or finds it already there.
+    for effect in static_ability_effects(state, perm, is_creature, db) {
+        if let Modification::GrantKeyword(keyword) = effect.modification {
+            add(keyword);
+        }
+    }
     // CR 303.4 / 613.1f: each Aura attached to `perm` grants its listed keywords
     // while attached. Derived from the attachment, never stored, so it vanishes the
     // instant the Aura leaves (ADR 0005).
@@ -277,8 +285,93 @@ fn ordered_pt_modifiers(
             }
         }
     }
+    // CR 604.3 / 613.7c: every printed static ability in force, from its source's
+    // battlefield presence alone.
+    effects.extend(static_ability_effects(state, perm, is_creature, db));
     effects.sort_by_key(StaticEffect::timestamp);
     effects
+}
+
+/// Every continuous effect a **printed static ability** (CR 604.3) currently
+/// contributes to `perm` — the anthem and lord shape.
+///
+/// Synthesized from the battlefield on every call, never stored (ADR 0005 §1). A
+/// static ability functions exactly while its source is on the battlefield, and that
+/// is a fact about the current state, so pushing an entry into
+/// [`GameState::static_effects`] on entry and pruning it on departure would be
+/// bookkeeping that can desync. Deriving it cannot: the source is either on the
+/// battlefield when this runs, or it is not.
+///
+/// Each contribution is keyed to `perm` by [`EffectAffects::SpecificPermanent`] and
+/// timestamped by its **source's** object id (CR 613.7), so it folds through the
+/// existing ordering path unchanged — an older anthem applies before a newer one.
+fn static_ability_effects(
+    state: &GameState,
+    perm: &Permanent,
+    is_creature: bool,
+    db: &CardDatabase,
+) -> Vec<StaticEffect> {
+    let mut effects = Vec::new();
+    for source in &state.battlefield {
+        for ability in abilities_of(db, source.card) {
+            let Ability::Static {
+                affects,
+                modification,
+            } = ability
+            else {
+                continue;
+            };
+            if !static_affects_match(&affects, source, perm, is_creature, db) {
+                continue;
+            }
+            effects.push(StaticEffect {
+                source: source.id.0,
+                affects: EffectAffects::SpecificPermanent(perm.id),
+                modification: modification.to_modification(),
+                duration: Duration::WhileOnBattlefield,
+            });
+        }
+    }
+    effects
+}
+
+/// Whether a printed static ability on `source` applies to `perm`.
+///
+/// The subtype test reads `perm`'s **printed** subtypes. That is correct today and
+/// also the only non-recursive option: the type-changing layers (1–5) are not
+/// implemented, so printed subtypes are current subtypes, and asking for `perm`'s
+/// computed subtypes from inside the computation of `perm`'s characteristics would
+/// not terminate. When those layers land, this is the call site that must start
+/// reading a computed value — through a seam that cannot recurse.
+fn static_affects_match(
+    affects: &StaticAffects,
+    source: &Permanent,
+    perm: &Permanent,
+    is_creature: bool,
+    db: &CardDatabase,
+) -> bool {
+    match affects {
+        StaticAffects::CreaturesYouControl {
+            subtype,
+            except_this,
+        } => {
+            if !is_creature || perm.controller != source.controller {
+                return false;
+            }
+            // "Other …" excludes the source itself. `PermanentId` is minted fresh on
+            // every battlefield entry, so this compares the specific object, not the
+            // card — two copies of one lord do pump each other.
+            if *except_this && perm.id == source.id {
+                return false;
+            }
+            match subtype {
+                None => true,
+                Some(wanted) => db
+                    .card(perm.card)
+                    .is_some_and(|card| card.subtypes.iter().any(|has| has == wanted)),
+            }
+        }
+    }
 }
 
 /// The layer-7c power/toughness [`StaticEffect`] a single attached Aura `aura`
@@ -322,7 +415,7 @@ mod tests {
 
     use super::*;
     use crate::ability::is_mana_ability;
-    use crate::fixtures::fixture;
+    use crate::fixtures::{fixture, id_in};
     use crate::id::{CardId, CardInstanceId, PlayerId};
     use crate::state::{Duration, Permanent};
     use std::collections::BTreeMap;
@@ -836,5 +929,182 @@ mod tests {
         let second = characteristics(&state, boar, &db);
         assert_eq!(first, second);
         assert_eq!(state, before);
+    }
+
+    // ---------------------------------------------------------------------
+    // Printed static abilities (CR 604.3): anthems and lords
+    // ---------------------------------------------------------------------
+
+    /// A catalog with an anthem, a subtype lord, a keyword granter, and two
+    /// creatures — one Elf, one not — to point them at.
+    fn lords_db() -> CardDatabase {
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_anthem","name":"Test Anthem",
+             "types":["enchantment"],"subtypes":[],"mana_cost":"{1}{W}","colors":["white"],
+             "abilities":[{"type":"static",
+               "affects":{"scope":"creatures_you_control"},
+               "modification":{"kind":"power_toughness","power":1,"toughness":1}}]},
+            {"schema_version":1,"functional_id":"test_elf_lord","name":"Test Elf Lord",
+             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
+             "power":1,"toughness":1,
+             "abilities":[{"type":"static",
+               "affects":{"scope":"creatures_you_control","subtype":"Elf","except_this":true},
+               "modification":{"kind":"power_toughness","power":1,"toughness":1}}]},
+            {"schema_version":1,"functional_id":"test_banner","name":"Test Banner",
+             "types":["enchantment"],"subtypes":[],"mana_cost":"{2}{W}","colors":["white"],
+             "abilities":[{"type":"static",
+               "affects":{"scope":"creatures_you_control"},
+               "modification":{"kind":"grant_keyword","keyword":"vigilance"}}]},
+            {"schema_version":1,"functional_id":"test_elf","name":"Test Elf",
+             "types":["creature"],"subtypes":["Elf"],"mana_cost":"{G}","colors":["green"],
+             "power":2,"toughness":2},
+            {"schema_version":1,"functional_id":"test_bear","name":"Test Bear",
+             "types":["creature"],"subtypes":["Bear"],"mana_cost":"{1}{G}","colors":["green"],
+             "power":2,"toughness":2}
+        ]"#;
+        CardDatabase::from_json(json).unwrap()
+    }
+
+    /// Place a permanent for `card` controlled by `controller`.
+    fn place_for(state: &mut GameState, card: CardId, controller: PlayerId) -> PermanentId {
+        let id = place(state, card);
+        state
+            .battlefield
+            .iter_mut()
+            .find(|p| p.id == id)
+            .unwrap()
+            .controller = controller;
+        id
+    }
+
+    #[test]
+    fn cr_604_3_an_anthem_pumps_its_controllers_creatures() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let bear = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(0));
+        place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+
+        assert_eq!(characteristics(&state, bear, &db).power, Some(3));
+        assert_eq!(characteristics(&state, bear, &db).toughness, Some(3));
+    }
+
+    #[test]
+    fn cr_604_3_an_anthem_leaves_an_opponents_creatures_alone() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let theirs = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(1));
+        place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+
+        // "Creatures you control" is the controller of the *source*, not of the
+        // permanent being measured.
+        assert_eq!(characteristics(&state, theirs, &db).power, Some(2));
+    }
+
+    #[test]
+    fn cr_604_3_an_anthem_does_not_give_a_noncreature_power() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let anthem = place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+
+        // Layer 7c only adjusts an existing power/toughness; an enchantment has none
+        // and must not acquire one by being adjacent to an anthem.
+        assert_eq!(characteristics(&state, anthem, &db).power, None);
+        assert_eq!(characteristics(&state, anthem, &db).toughness, None);
+    }
+
+    #[test]
+    fn cr_604_3_a_lord_pumps_only_its_named_subtype() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let elf = place_for(&mut state, id_in(&db, "test_elf"), PlayerId(0));
+        let bear = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(0));
+        place_for(&mut state, id_in(&db, "test_elf_lord"), PlayerId(0));
+
+        assert_eq!(characteristics(&state, elf, &db).power, Some(3));
+        // The Bear is a creature its controller controls, but it is not an Elf.
+        assert_eq!(characteristics(&state, bear, &db).power, Some(2));
+    }
+
+    #[test]
+    fn cr_604_3_a_lord_does_not_pump_itself() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let lord = place_for(&mut state, id_in(&db, "test_elf_lord"), PlayerId(0));
+
+        // "*Other* Elves you control" — the source is excluded, so a lone lord is
+        // exactly its printed size.
+        assert_eq!(characteristics(&state, lord, &db).power, Some(1));
+    }
+
+    #[test]
+    fn cr_604_3_two_lords_pump_each_other() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let first = place_for(&mut state, id_in(&db, "test_elf_lord"), PlayerId(0));
+        let second = place_for(&mut state, id_in(&db, "test_elf_lord"), PlayerId(0));
+
+        // "Other" excludes the specific object, not the card: each is "other" to the
+        // other one, so both are 2/2. Comparing by card would leave both at 1/1.
+        assert_eq!(characteristics(&state, first, &db).power, Some(2));
+        assert_eq!(characteristics(&state, second, &db).power, Some(2));
+    }
+
+    #[test]
+    fn cr_604_3_anthems_stack() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let bear = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(0));
+        place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+        place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+
+        assert_eq!(characteristics(&state, bear, &db).power, Some(4));
+    }
+
+    #[test]
+    fn cr_613_1f_a_static_ability_grants_a_keyword() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let bear = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(0));
+        place_for(&mut state, id_in(&db, "test_banner"), PlayerId(0));
+
+        assert!(characteristics(&state, bear, &db)
+            .keywords
+            .contains(&Keyword::Vigilance));
+    }
+
+    #[test]
+    fn cr_604_3_the_effect_ends_the_instant_its_source_leaves() {
+        // The load-bearing property of deriving rather than storing: nothing was
+        // pushed when the anthem entered, so nothing has to be pruned when it goes.
+        // A stored effect that outlived its source would leave a permanently buffed
+        // board, and would only be caught by whatever pruning pass someone remembered
+        // to write.
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let bear = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(0));
+        let anthem = place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+        assert_eq!(characteristics(&state, bear, &db).power, Some(3));
+
+        state.battlefield.retain(|p| p.id != anthem);
+
+        assert_eq!(characteristics(&state, bear, &db).power, Some(2));
+        assert!(
+            state.static_effects.is_empty(),
+            "a printed static ability must never enter stored state"
+        );
+    }
+
+    #[test]
+    fn cr_613_7c_an_anthem_folds_together_with_counters_and_a_pump() {
+        let db = lords_db();
+        let mut state = GameState::new_two_player();
+        let bear = place_for(&mut state, id_in(&db, "test_bear"), PlayerId(0));
+        place_for(&mut state, id_in(&db, "test_anthem"), PlayerId(0));
+        set_counters(&mut state, bear, CounterKind::PlusOnePlusOne, 2);
+        add_pump(&mut state, 9_000, bear, 3, 0);
+
+        // 2/2 printed, +2/+2 in counters, +1/+1 from the anthem, +3/+0 from the pump.
+        assert_eq!(characteristics(&state, bear, &db).power, Some(8));
+        assert_eq!(characteristics(&state, bear, &db).toughness, Some(5));
     }
 }

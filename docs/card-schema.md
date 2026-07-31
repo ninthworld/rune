@@ -82,6 +82,31 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
   grant expires in the cleanup step (CR 514.2). Duplicate grants are redundant, not
   additive. Keyword *removal* and conditional grants are out of scope.
 
+### Static abilities (continuous, CR 604.3)
+
+A printed static ability applies continuously for as long as its source is on the
+battlefield, with nothing ever put on the stack — an anthem or a lord:
+
+```json
+{
+  "type": "static",
+  "affects": { "scope": "creatures_you_control", "subtype": "Elf", "except_this": true },
+  "modification": { "kind": "power_toughness", "power": 1, "toughness": 1 }
+}
+```
+
+- `subtype` restricts the class ("other **Elves** you control"); omit it for every
+  creature its controller controls.
+- `except_this` excludes the source itself — the "other" in a lord's wording. It compares
+  the *permanent*, not the card, so two copies of one lord do pump each other.
+- `modification` is either `power_toughness` (layer 7c, folded after counters in timestamp
+  order) or `grant_keyword` (layer 6, idempotent).
+
+The effect is **derived from the battlefield on every read, never stored**: it starts and
+stops with its source, so a static ability cannot outlive the permanent that printed it.
+Rules text is composed from the same selector the engine applies, so the sentence and the
+scope cannot disagree.
+
 The full `abilities`, `spell_effects`, target, cost, and Aura shapes are the enums in
 `crates/sage-engine/src/ability.rs`. Those Rust types are authoritative; do not reproduce
 the IR in a second documentation schema that can drift.

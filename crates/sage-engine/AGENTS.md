@@ -35,15 +35,22 @@
 
 Catalog coverage is limited by what the ability IR can *express*, not by authoring
 throughput. Today `Cost` has one variant (`Tap`), `TriggerCondition` two (both about the
-source itself), `PlayerRef` one (`Controller`), and `TargetSpec` five unrestricted variants;
-there is **no static-ability variant at all**, so every `Modification` fed to the layer
-system comes from a spell effect, combat, or action generation — never from a card's printed
-static ability. A lord, an anthem, or a cost reducer is therefore not writable.
+source itself), `PlayerRef` one (`Controller`), and `TargetSpec` five unrestricted variants.
+So an activation cost that is not a bare `{T}`, a trigger watching anything but its own
+source, and an effect aimed at a player other than the controller are all still unwritable.
 
-The bundled 61 cards were selected as cards this vocabulary can say, so the empty
-`scripted.rs` table is not evidence of expressiveness. Growing the vocabulary is the primary
-engine workstream; each new primitive is one enum variant plus every exhaustive match that
-consumes it, across the resolver and the server's rules-text formatter.
+`Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
+filtered to a subtype, optionally excluding the source). It is **derived, never stored**:
+`characteristics` reads it off the battlefield on every call, so the effect begins and ends
+with its source's presence and nothing enters `GameState::static_effects`. Extend
+`StaticAffects` when a card needs a scope it cannot name; a cost reducer still needs a
+`Modification` variant that no layer implements yet.
+
+The catalog was selected as cards this vocabulary can say, so the empty `scripted.rs` table
+is not evidence of expressiveness. Growing the vocabulary is the primary engine workstream;
+each new primitive is one enum variant plus every exhaustive match that consumes it, across
+the resolver and the server's rules-text formatter — both are wildcard-free, so the compiler
+names every site.
 
 ## Commands
 
