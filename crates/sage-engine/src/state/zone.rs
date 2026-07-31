@@ -88,6 +88,64 @@ impl GameState {
         Some(perm)
     }
 
+    /// Move the permanent `id` from the battlefield to its owner's **hand** — the
+    /// single leaves-battlefield → hand seam the bounce verb ([`crate::Effect::ReturnToHand`])
+    /// routes through, mirroring [`Self::move_permanent_to_graveyard`] and
+    /// [`Self::move_permanent_to_exile`] (CR 400.7).
+    ///
+    /// Identity semantics are exactly those seams': the physical
+    /// [`CardInstance`](crate::id::CardInstance) carries over unchanged while the battlefield
+    /// [`PermanentId`] is dropped, so recasting the card produces a brand-new object with a
+    /// freshly minted id. Ownership apart from control is not tracked yet, so the controller
+    /// stands in as the owner (the same shim the other two seams use).
+    ///
+    /// A return to hand is **not** a death (CR 700.4): the card does not reach a graveyard,
+    /// so the diff-based collector sees no "dies" event for it and no commander return is
+    /// flagged (CR 903.9a covers a graveyard or exile, not the hand). Returns the permanent
+    /// that moved, or `None` when no permanent with that id was on the battlefield. A bare
+    /// zone move that records no log event of its own.
+    pub(crate) fn return_permanent_to_hand(&mut self, id: PermanentId) -> Option<Permanent> {
+        let pos = self.battlefield.iter().position(|p| p.id == id)?;
+        let perm = self.battlefield.remove(pos);
+        if let Some(owner) = self.players.get_mut(perm.controller.0) {
+            owner.hand.push(crate::id::CardInstance {
+                id: perm.instance,
+                card: perm.card,
+            });
+        }
+        Some(perm)
+    }
+
+    /// Put the top `count` cards of `player`'s library into their graveyard
+    /// (CR 701.13, "mill"), and record a [`GameEvent::CardsMilled`] for however many
+    /// actually moved.
+    ///
+    /// Milling is **not** drawing: a player asked to mill more cards than their library
+    /// holds simply mills what is there, and never sets the attempted-draw-from-empty flag
+    /// the CR 704.5c decking loss reads. Routing every mill through this one seam is what
+    /// keeps that distinction from being re-derived (and got wrong) per effect. Returns the
+    /// number of cards moved.
+    pub(crate) fn mill(&mut self, player: PlayerId, count: u32) -> u32 {
+        let mut milled = 0;
+        for _ in 0..count {
+            let Some(p) = self.players.get_mut(player.0) else {
+                break;
+            };
+            let Some(card) = p.library.pop() else {
+                break;
+            };
+            p.graveyard.push(card);
+            milled += 1;
+        }
+        if milled > 0 {
+            self.record_event(GameEvent::CardsMilled {
+                player,
+                count: milled,
+            });
+        }
+        milled
+    }
+
     /// Move `id` to its owner's graveyard and, if it was a **creature**, record a
     /// [`GameEvent::PermanentDied`] (CR 700.4 — only a creature "dies").
     ///

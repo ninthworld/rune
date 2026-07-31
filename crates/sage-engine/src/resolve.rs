@@ -7,59 +7,133 @@
 
 use crate::ability::{Effect, Target, TargetSpec};
 use crate::apply::{apply_effect, apply_targeted_effect};
-use crate::card::{apply_enters_replacements, spell_effects_of, CardData};
+use crate::card::{apply_enters_replacements, spell_effects_of, CardData, Keyword};
 use crate::card_type::CardType;
-use crate::id::PermanentId;
+use crate::characteristics::permanent_has_keyword;
+use crate::id::{PermanentId, PlayerId};
 #[cfg(test)]
 use crate::stack::AbilityOrigin;
 use crate::stack::{StackObject, StackObjectKind};
 use crate::state::{GameEvent, GameState, Permanent};
 use crate::CardDatabase;
 
+/// Whether the player in seat `player` is still in the game — the shared condition
+/// under every player-shaped [`TargetSpec`] (CR 115.1: a player who has left is not
+/// a legal target).
+fn player_in_game(state: &GameState, player: PlayerId) -> bool {
+    state.players.get(player.0).is_some_and(|p| !p.has_lost)
+}
+
+/// Whether the permanent `id` is on the battlefield and satisfies `predicate` —
+/// the one battlefield lookup every permanent-shaped [`TargetSpec`] arm below
+/// shares, so "the object still exists" is checked in exactly one place and a
+/// stale id can never survive by way of a spec that forgot to look.
+fn permanent_matches(
+    state: &GameState,
+    id: PermanentId,
+    predicate: impl Fn(&Permanent) -> bool,
+) -> bool {
+    state.battlefield.iter().any(|p| p.id == id && predicate(p))
+}
+
+/// Whether the permanent `perm` has printed card type `card_type`. Type-changing
+/// continuous effects are unmodeled, so printed types are authoritative here — the
+/// same assumption `crate::combat` makes.
+fn has_type(perm: &Permanent, card_type: CardType, db: &CardDatabase) -> bool {
+    db.card(perm.card).is_some_and(|c| c.has_type(card_type))
+}
+
 /// Whether `target` is a legal choice for `spec` against the *current* `state`
-/// (CR 115). A pure predicate: it derives legality on demand and never mutates,
-/// consistent with the engine's pull-based, no-observer rule.
+/// (CR 115), for an object controlled by `controller`.
 ///
-/// This is the check the resolve path re-runs on each stored target (CR 608.2b);
-/// enumerating the full legal set from a spec is issue #71's job and can build on
-/// this same predicate.
+/// A pure predicate: it derives legality on demand and never mutates, consistent
+/// with the engine's pull-based, no-observer rule.
+///
+/// `controller` is what makes a possessive spec mean anything — "target creature
+/// **you** control" is a different set from each seat, and an authored card carries
+/// one spec for both. Every caller supplies the controller of the object choosing
+/// the target: the resolve path from the [`StackObject`], the action-legality and
+/// enumeration paths from the priority holder (who is, by definition, the player
+/// taking the action).
+///
+/// This is the check the resolve path re-runs on each stored target (CR 608.2b),
+/// and the one [`crate::target_requirements`] filters its candidate universe by, so
+/// "offered" and "legal on resolution" are one predicate rather than two that can
+/// drift.
 #[must_use]
 pub(crate) fn target_is_legal(
     spec: TargetSpec,
     target: Target,
     state: &GameState,
+    controller: PlayerId,
     db: &CardDatabase,
 ) -> bool {
     match (spec, target) {
         // A player is a legal target while they are still in the game.
-        (TargetSpec::AnyPlayer, Target::Player(player)) => {
-            state.players.get(player.0).is_some_and(|p| !p.has_lost)
+        (TargetSpec::AnyPlayer, Target::Player(player)) => player_in_game(state, player),
+        // "Target opponent" excludes the controller's own seat (CR 102.1), which for
+        // a life-loss effect is the difference between a drain and a way to lose.
+        (TargetSpec::AnyOpponent, Target::Player(player)) => {
+            player != controller && player_in_game(state, player)
         }
         // A permanent target is legal while that exact battlefield object exists.
-        (TargetSpec::AnyPermanent, Target::Permanent(id)) => {
-            state.battlefield.iter().any(|p| p.id == id)
+        (TargetSpec::AnyPermanent, Target::Permanent(id)) => permanent_matches(state, id, |_| true),
+        (TargetSpec::AnyNonlandPermanent, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| !has_type(p, CardType::Land, db))
         }
         // A creature target additionally requires the permanent's printed types
         // to include Creature (the layer system's type-changing effects are
         // future work, so printed types are authoritative here).
-        (TargetSpec::AnyCreature, Target::Permanent(id)) => state.battlefield.iter().any(|p| {
-            p.id == id
-                && db
-                    .card(p.card)
-                    .is_some_and(|c| c.has_type(CardType::Creature))
-        }),
+        (TargetSpec::AnyCreature, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
+        }
+        (TargetSpec::AnyCreatureYouControl, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.controller == controller && has_type(p, CardType::Creature, db)
+            })
+        }
+        (TargetSpec::AnyCreatureAnOpponentControls, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.controller != controller
+                    && player_in_game(state, p.controller)
+                    && has_type(p, CardType::Creature, db)
+            })
+        }
+        // Flying is read through the computed characteristics (CR 613.1f), so a
+        // creature that was *granted* flying is as legal a target as a printed flyer
+        // — and loses legality the instant the grant does.
+        (TargetSpec::AnyCreatureWithFlying, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
+                && permanent_has_keyword(state, id, Keyword::Flying, db)
+        }
+        (TargetSpec::AnyTappedCreature, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                p.tapped && has_type(p, CardType::Creature, db)
+            })
+        }
+        (TargetSpec::AnyArtifact, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| has_type(p, CardType::Artifact, db))
+        }
+        (TargetSpec::AnyEnchantment, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| has_type(p, CardType::Enchantment, db))
+        }
+        // One slot that accepts either type, not two slots (CR 601.2c): a
+        // naturalize-style spell names a single target.
+        (TargetSpec::AnyArtifactOrEnchantment, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| {
+                has_type(p, CardType::Artifact, db) || has_type(p, CardType::Enchantment, db)
+            })
+        }
+        (TargetSpec::AnyLand, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| has_type(p, CardType::Land, db))
+        }
         // "Any target" (CR 115.4): legal against a player still in the game or a
         // creature still on the battlefield — the union of the AnyPlayer and
         // AnyCreature checks above (printed types are authoritative here too).
-        (TargetSpec::AnyTarget, Target::Player(player)) => {
-            state.players.get(player.0).is_some_and(|p| !p.has_lost)
+        (TargetSpec::AnyTarget, Target::Player(player)) => player_in_game(state, player),
+        (TargetSpec::AnyTarget, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| has_type(p, CardType::Creature, db))
         }
-        (TargetSpec::AnyTarget, Target::Permanent(id)) => state.battlefield.iter().any(|p| {
-            p.id == id
-                && db
-                    .card(p.card)
-                    .is_some_and(|c| c.has_type(CardType::Creature))
-        }),
         // A spell target is legal while that exact spell is still on the stack
         // (CR 701.5): once it has resolved (or been countered) it is gone, so a
         // counterspell aimed at it fizzles (CR 608.2b). An ability on the stack is
@@ -68,6 +142,17 @@ pub(crate) fn target_is_legal(
             .stack
             .iter()
             .any(|o| o.id == id && matches!(o.kind, StackObjectKind::Spell { .. })),
+        // A *creature* spell is one whose card has the creature type while it is
+        // still on the stack — read off the card, since no permanent exists yet.
+        (TargetSpec::CreatureSpellOnStack, Target::Spell(id)) => state.stack.iter().any(|o| {
+            o.id == id
+                && match o.kind {
+                    StackObjectKind::Spell { card } => db
+                        .card(card.card)
+                        .is_some_and(|c| c.has_type(CardType::Creature)),
+                    StackObjectKind::Ability { .. } => false,
+                }
+        }),
         // Any other spec/value pairing names the wrong kind of object and is
         // never legal.
         _ => false,
@@ -109,7 +194,7 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
         && specs
             .iter()
             .zip(&object.targets)
-            .all(|(&spec, &target)| !target_is_legal(spec, target, state, db))
+            .all(|(&spec, &target)| !target_is_legal(spec, target, state, object.controller, db))
     {
         if let StackObjectKind::Spell { card } = object.kind {
             if let Some(player) = state.players.get_mut(object.controller.0) {
@@ -206,12 +291,12 @@ fn apply_effects_with_targets(
         match effect.target_spec() {
             Some(spec) => {
                 if let Some(&target) = targets.next() {
-                    if target_is_legal(spec, target, state, db) {
+                    if target_is_legal(spec, target, state, controller, db) {
                         apply_targeted_effect(state, effect, target, controller, db);
                     }
                 }
             }
-            None => apply_effect(state, effect, controller),
+            None => apply_effect(state, effect, controller, db),
         }
     }
 }
@@ -428,12 +513,14 @@ mod tests {
             TargetSpec::AnyCreature,
             target,
             &state,
+            PlayerId(0),
             &db
         ));
         assert!(target_is_legal(
             TargetSpec::AnyPermanent,
             target,
             &state,
+            PlayerId(0),
             &db
         ));
         // …a player is a legal AnyPlayer target, but not an AnyCreature one.
@@ -441,12 +528,14 @@ mod tests {
             TargetSpec::AnyPlayer,
             Target::Player(PlayerId(1)),
             &state,
+            PlayerId(0),
             &db
         ));
         assert!(!target_is_legal(
             TargetSpec::AnyCreature,
             Target::Player(PlayerId(1)),
             &state,
+            PlayerId(0),
             &db
         ));
 
@@ -456,6 +545,7 @@ mod tests {
             TargetSpec::AnyCreature,
             target,
             &state,
+            PlayerId(0),
             &db
         ));
     }
@@ -492,10 +582,17 @@ mod tests {
             TargetSpec::SpellOnStack,
             Target::Spell(sid),
             &state,
+            PlayerId(0),
             &db
         ));
         assert!(
-            !target_is_legal(TargetSpec::SpellOnStack, Target::Spell(aid), &state, &db),
+            !target_is_legal(
+                TargetSpec::SpellOnStack,
+                Target::Spell(aid),
+                &state,
+                PlayerId(0),
+                &db
+            ),
             "an ability on the stack is not a spell"
         );
 
@@ -505,6 +602,7 @@ mod tests {
             TargetSpec::SpellOnStack,
             Target::Spell(sid),
             &state,
+            PlayerId(0),
             &db
         ));
     }
@@ -520,12 +618,14 @@ mod tests {
             TargetSpec::AnyTarget,
             Target::Permanent(creature),
             &state,
+            PlayerId(0),
             &db
         ));
         assert!(target_is_legal(
             TargetSpec::AnyTarget,
             Target::Player(PlayerId(0)),
             &state,
+            PlayerId(0),
             &db
         ));
 
@@ -549,6 +649,7 @@ mod tests {
             TargetSpec::AnyTarget,
             Target::Permanent(forest),
             &state,
+            PlayerId(0),
             &db
         ));
 
@@ -558,6 +659,7 @@ mod tests {
             TargetSpec::AnyTarget,
             Target::Player(PlayerId(1)),
             &state,
+            PlayerId(0),
             &db
         ));
     }
@@ -593,6 +695,177 @@ mod tests {
 
         let perm = state.battlefield.iter().find(|p| p.id == creature).unwrap();
         assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 1);
+    }
+
+    #[test]
+    fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
+        // "Target creature you control" is authored once and read from whichever seat
+        // is choosing, so the same spec must name player 0's creatures for player 0
+        // and player 1's for player 1. Getting this wrong would let a card aimed at
+        // "a creature you control" hit an opponent's board.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let mine = creature_on_battlefield(&mut state);
+        let theirs = creature_on_battlefield(&mut state);
+        state
+            .battlefield
+            .iter_mut()
+            .filter(|p| p.id == theirs)
+            .for_each(|p| p.controller = PlayerId(1));
+
+        for (spec, from_zero, from_one) in [
+            (TargetSpec::AnyCreatureYouControl, mine, theirs),
+            (TargetSpec::AnyCreatureAnOpponentControls, theirs, mine),
+        ] {
+            assert!(target_is_legal(
+                spec,
+                Target::Permanent(from_zero),
+                &state,
+                PlayerId(0),
+                &db
+            ));
+            assert!(!target_is_legal(
+                spec,
+                Target::Permanent(from_one),
+                &state,
+                PlayerId(0),
+                &db
+            ));
+            // The mirror image holds from the other seat.
+            assert!(target_is_legal(
+                spec,
+                Target::Permanent(from_one),
+                &state,
+                PlayerId(1),
+                &db
+            ));
+        }
+
+        // "Target opponent" likewise excludes the chooser's own seat.
+        assert!(target_is_legal(
+            TargetSpec::AnyOpponent,
+            Target::Player(PlayerId(1)),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        assert!(!target_is_legal(
+            TargetSpec::AnyOpponent,
+            Target::Player(PlayerId(0)),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        // An opponent who has left the game is no longer a legal target either.
+        state.players[1].has_lost = true;
+        assert!(!target_is_legal(
+            TargetSpec::AnyOpponent,
+            Target::Player(PlayerId(1)),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        assert!(!target_is_legal(
+            TargetSpec::AnyCreatureAnOpponentControls,
+            Target::Permanent(theirs),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+    }
+
+    #[test]
+    fn type_scoped_target_specs_admit_exactly_their_own_class() {
+        // Each spec is checked against a permanent of every class it might be confused
+        // with, so an arm that reads the wrong type is caught by the *rejection* rather
+        // than only by the acceptance.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let creature = creature_on_battlefield(&mut state); // llanowar_elves
+        let land = place(&mut state, "forest");
+        let artifact = place(&mut state, "millstone");
+
+        let cases = [
+            (TargetSpec::AnyCreature, creature),
+            (TargetSpec::AnyLand, land),
+            (TargetSpec::AnyArtifact, artifact),
+            (TargetSpec::AnyArtifactOrEnchantment, artifact),
+            (TargetSpec::AnyNonlandPermanent, creature),
+        ];
+        for (spec, legal) in cases {
+            assert!(
+                target_is_legal(spec, Target::Permanent(legal), &state, PlayerId(0), &db),
+                "{spec:?} accepts its own class"
+            );
+        }
+        for (spec, illegal) in [
+            (TargetSpec::AnyCreature, land),
+            (TargetSpec::AnyLand, creature),
+            (TargetSpec::AnyArtifact, creature),
+            (TargetSpec::AnyArtifactOrEnchantment, land),
+            (TargetSpec::AnyNonlandPermanent, land),
+            (TargetSpec::AnyEnchantment, artifact),
+        ] {
+            assert!(
+                !target_is_legal(spec, Target::Permanent(illegal), &state, PlayerId(0), &db),
+                "{spec:?} rejects the wrong class"
+            );
+        }
+
+        // A tapped-creature target tracks the tap state, not a printed characteristic.
+        assert!(!target_is_legal(
+            TargetSpec::AnyTappedCreature,
+            Target::Permanent(creature),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        state
+            .battlefield
+            .iter_mut()
+            .filter(|p| p.id == creature)
+            .for_each(|p| p.tapped = true);
+        assert!(target_is_legal(
+            TargetSpec::AnyTappedCreature,
+            Target::Permanent(creature),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        // A tapped *land* is still not a creature.
+        state
+            .battlefield
+            .iter_mut()
+            .filter(|p| p.id == land)
+            .for_each(|p| p.tapped = true);
+        assert!(!target_is_legal(
+            TargetSpec::AnyTappedCreature,
+            Target::Permanent(land),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+    }
+
+    /// Put a permanent of the bundled card `slug` onto the battlefield under player 0.
+    fn place(state: &mut GameState, slug: &str) -> PermanentId {
+        let card = fixture(slug);
+        let inst = state.new_instance(card);
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(Permanent {
+            id,
+            instance: inst.id,
+            card,
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+            attached_to: None,
+        });
+        id
     }
 
     // ----- Auras: enchant, attachment, and fizzle (issue #152) -----

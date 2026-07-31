@@ -293,5 +293,170 @@
     "functional_id": "field_creeper",
     "collector_number": "59",
     "rarity": "common"
+  },
+  {
+    "functional_id": "cinder_barrens",
+    "collector_number": "60",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "forsaken_sanctuary",
+    "collector_number": "61",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "foul_orchard",
+    "collector_number": "62",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "highland_lake",
+    "collector_number": "63",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "meandering_river",
+    "collector_number": "64",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "stone_quarry",
+    "collector_number": "65",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "submerged_boneyard",
+    "collector_number": "66",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "timber_gorge",
+    "collector_number": "67",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "woodland_stream",
+    "collector_number": "68",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "sanctuary_cat",
+    "collector_number": "69",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "ancient_brontodon",
+    "collector_number": "70",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "thornhide_wolves",
+    "collector_number": "71",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "daggerback_basilisk",
+    "collector_number": "72",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "wall_of_mist",
+    "collector_number": "73",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "boggart_brute",
+    "collector_number": "74",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "dwarven_priest",
+    "collector_number": "75",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "herald_of_faith",
+    "collector_number": "76",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "vampire_neonate",
+    "collector_number": "77",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "goblin_motivator",
+    "collector_number": "78",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "aggressive_mammoth",
+    "collector_number": "79",
+    "rarity": "rare"
+  },
+  {
+    "functional_id": "angel_of_the_dawn",
+    "collector_number": "80",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "millstone",
+    "collector_number": "81",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "unsummon",
+    "collector_number": "82",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "essence_scatter",
+    "collector_number": "83",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "bone_to_ash",
+    "collector_number": "84",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "naturalize",
+    "collector_number": "85",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "plummet",
+    "collector_number": "86",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "smelt",
+    "collector_number": "87",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "take_vengeance",
+    "collector_number": "88",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "sovereign_s_bite",
+    "collector_number": "89",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "invoke_the_divine",
+    "collector_number": "90",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "inspired_charge",
+    "collector_number": "91",
+    "rarity": "common"
+  },
+  {
+    "functional_id": "crash_through",
+    "collector_number": "92",
+    "rarity": "common"
   }
 ]

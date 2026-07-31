@@ -1,0 +1,1043 @@
+//! Behaviour of the M19 cards added on top of the widened ability IR.
+//!
+//! Every test here drives the **real** [`apply_action`] pipeline over the bundled
+//! catalog and asserts on the resulting [`GameState`]: a card is "supported" only if
+//! playing it does what the card says, so a definition that parses is not evidence of
+//! anything. Cards are named by their authored `functional_id` and resolved through
+//! [`CardDatabase::card_id`] — a `CardId` is interned at build time and shifts
+//! whenever the catalog changes (ADR 0008 §3).
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use sage_engine::{
+    apply_action, attacker_candidates, characteristics, valid_actions, Action, Attack, Block,
+    CardData, CardDatabase, CardId, CardInstance, CardType, Color, FunctionalId, GameEvent,
+    GameState, Keyword, Permanent, PermanentId, PlayerId, StackId, StackObject, StackObjectKind,
+    Step, Target,
+};
+
+// ----- fixtures -------------------------------------------------------------
+
+fn db() -> CardDatabase {
+    CardDatabase::bundled().expect("bundled cards")
+}
+
+/// The interned handle for an authored identity.
+fn cid(db: &CardDatabase, slug: &str) -> CardId {
+    let id = FunctionalId::try_from(slug.to_string()).expect("a well-formed identity");
+    db.card_id(&id).expect("a bundled card")
+}
+
+/// The bundled definition authored under `slug`.
+fn card<'a>(db: &'a CardDatabase, slug: &str) -> &'a CardData {
+    db.card(cid(db, slug)).expect("a bundled card")
+}
+
+/// A two-player game parked at player 0's precombat main with an empty stack, both
+/// players' pools stocked so payability never decides a test that is about an effect.
+fn main_phase(db: &CardDatabase) -> GameState {
+    let _ = db;
+    let mut state = GameState::new_two_player();
+    state.step = Step::PrecombatMain;
+    state.priority = PlayerId(0);
+    state.consecutive_passes = 0;
+    for player in &mut state.players {
+        for color in [
+            Color::White,
+            Color::Blue,
+            Color::Black,
+            Color::Red,
+            Color::Green,
+        ] {
+            player.mana_pool.add(color, 10);
+        }
+        player.mana_pool.add_colorless(10);
+    }
+    state
+}
+
+/// Put a permanent of `slug` onto the battlefield under `controller`, untapped and
+/// free of summoning sickness, and return its battlefield identity.
+fn place(
+    state: &mut GameState,
+    db: &CardDatabase,
+    slug: &str,
+    controller: PlayerId,
+) -> PermanentId {
+    let card = cid(db, slug);
+    let instance = state.new_instance(card).id;
+    let id = PermanentId(state.mint_id());
+    state.battlefield.push(Permanent {
+        id,
+        instance,
+        card,
+        controller,
+        ..Default::default()
+    });
+    id
+}
+
+/// Put `slug` into `seat`'s hand and return the instance.
+fn to_hand(state: &mut GameState, db: &CardDatabase, slug: &str, seat: PlayerId) -> CardInstance {
+    let instance = state.new_instance(cid(db, slug));
+    state.players[seat.0].hand.push(instance);
+    instance
+}
+
+/// Cast `slug` from player 0's hand with `targets` and let it resolve (both players
+/// pass). Goes through the ordinary cast gate, so a spell that `valid_actions` would
+/// not currently offer fails here rather than silently doing nothing.
+fn cast(state: &GameState, db: &CardDatabase, slug: &str, targets: Vec<Target>) -> GameState {
+    let mut state = state.clone();
+    let instance = to_hand(&mut state, db, slug, PlayerId(0));
+    let action = Action::CastSpell {
+        card: instance,
+        targets,
+    };
+    assert!(
+        valid_actions(&state, db).contains(&Action::CastSpell {
+            card: instance,
+            targets: Vec::new(),
+        }),
+        "{slug} was not offered as a castable spell"
+    );
+    let state = apply_action(&state, &action, db);
+    assert!(
+        state.stack.iter().any(|o| matches!(
+            o.kind,
+            StackObjectKind::Spell { card } if card.id == instance.id
+        )),
+        "{slug} did not reach the stack — the cast was rejected"
+    );
+    let state = apply_action(&state, &Action::PassPriority, db);
+    apply_action(&state, &Action::PassPriority, db)
+}
+
+/// Activate ability `index` of `permanent` with `targets` and let it resolve.
+fn activate(
+    state: &GameState,
+    db: &CardDatabase,
+    permanent: PermanentId,
+    index: usize,
+    targets: Vec<Target>,
+) -> GameState {
+    let action = Action::ActivateAbility {
+        permanent,
+        index,
+        targets,
+    };
+    let after = apply_action(state, &action, db);
+    assert_ne!(
+        &after, state,
+        "the activation was rejected — apply_action was a no-op"
+    );
+    let after = apply_action(&after, &Action::PassPriority, db);
+    apply_action(&after, &Action::PassPriority, db)
+}
+
+/// Advance the game by one action on behalf of whoever holds priority: pass when
+/// passing is offered, and otherwise submit the first non-concede action there is (the
+/// empty combat declaration during a declare step). Lets a test walk a turn forward
+/// without caring which step owes what.
+fn advance(state: &GameState, db: &CardDatabase) -> GameState {
+    let offered = valid_actions(state, db);
+    let chosen = if offered.contains(&Action::PassPriority) {
+        Action::PassPriority
+    } else {
+        offered
+            .into_iter()
+            .find(|a| a != &Action::Concede)
+            .expect("some action is always available")
+    };
+    let after = apply_action(state, &chosen, db);
+    assert_ne!(&after, state, "the pipeline stalled on {chosen:?}");
+    after
+}
+
+/// Whether the permanent `id` is still on the battlefield.
+fn on_battlefield(state: &GameState, id: PermanentId) -> bool {
+    state.battlefield.iter().any(|p| p.id == id)
+}
+
+// ----- the ten "gain lands": enter tapped, tap for either of two colours --------
+
+/// Every M19 dual land in the catalog enters tapped and offers exactly the two
+/// single-colour mana abilities its cycle names. Asserted over the data because the
+/// cycle's whole content is its two colours, and over the pipeline below because
+/// "enters tapped" is a rules behaviour rather than a field.
+#[test]
+fn every_dual_land_enters_tapped_and_taps_for_its_two_colours() {
+    let db = db();
+    let cycle = [
+        ("cinder_barrens", Color::Black, Color::Red),
+        ("forsaken_sanctuary", Color::White, Color::Black),
+        ("foul_orchard", Color::Black, Color::Green),
+        ("highland_lake", Color::Blue, Color::Red),
+        ("meandering_river", Color::White, Color::Blue),
+        ("stone_quarry", Color::Red, Color::White),
+        ("submerged_boneyard", Color::Blue, Color::Black),
+        ("timber_gorge", Color::Red, Color::Green),
+        ("tranquil_expanse", Color::Green, Color::White),
+        ("woodland_stream", Color::Green, Color::Blue),
+    ];
+    for (slug, first, second) in cycle {
+        let data = card(&db, slug);
+        assert!(data.has_type(CardType::Land), "{slug} is a land");
+        assert!(
+            data.mana_cost.is_empty(),
+            "{slug} is played, not cast, so it has no mana cost"
+        );
+
+        // Played from hand, it is on the battlefield and tapped — the CR 614.1c
+        // self-replacement, applied at the entry seam, so there is no untapped
+        // window in which it could have been tapped for mana this turn.
+        let mut state = main_phase(&db);
+        state.players[0].mana_pool = Default::default();
+        let land = to_hand(&mut state, &db, slug, PlayerId(0));
+        let state = apply_action(&state, &Action::PlayLand { card: land }, &db);
+        let perm = state
+            .battlefield
+            .iter()
+            .find(|p| p.instance == land.id)
+            .unwrap_or_else(|| panic!("{slug} did not enter the battlefield"));
+        assert!(perm.tapped, "{slug} enters the battlefield tapped");
+        assert_eq!(
+            state.players[0].mana_pool.total(),
+            0,
+            "{slug} produced no mana on the turn it entered"
+        );
+
+        // Untapped on a later turn it offers both halves of its cycle, one colour each.
+        let mut ready = state.clone();
+        let id = perm.id;
+        ready.battlefield.iter_mut().for_each(|p| p.tapped = false);
+        for (index, color) in [(1usize, first), (2usize, second)] {
+            let after = apply_action(
+                &ready,
+                &Action::ActivateAbility {
+                    permanent: id,
+                    index,
+                    targets: Vec::new(),
+                },
+                &db,
+            );
+            assert_eq!(
+                pool_of(&after, PlayerId(0), color),
+                1,
+                "{slug} ability {index} adds one {color:?}"
+            );
+            assert!(
+                after.stack.is_empty(),
+                "a mana ability never uses the stack (CR 605.3)"
+            );
+        }
+    }
+}
+
+/// The amount of `color` in `seat`'s pool.
+fn pool_of(state: &GameState, seat: PlayerId, color: Color) -> u8 {
+    let pool = &state.players[seat.0].mana_pool;
+    match color {
+        Color::White => pool.white,
+        Color::Blue => pool.blue,
+        Color::Black => pool.black,
+        Color::Red => pool.red,
+        Color::Green => pool.green,
+    }
+}
+
+// ----- bodies: vanilla and keyword creatures ---------------------------------
+
+/// The plain bodies added with this batch carry exactly the characteristics they are
+/// printed with. A vanilla creature has no IR to test, so its data *is* its behaviour
+/// — but a wrong power or a missing keyword is a rules bug, so it is pinned here
+/// rather than left to the compatibility report's name-only listing.
+#[test]
+fn new_bodies_carry_their_printed_characteristics() {
+    let db = db();
+    let bodies = [
+        ("sanctuary_cat", "{W}", 1, 2, &[][..]),
+        ("ancient_brontodon", "{6}{G}{G}", 9, 9, &[]),
+        ("thornhide_wolves", "{4}{G}", 4, 5, &[]),
+        (
+            "daggerback_basilisk",
+            "{2}{G}",
+            2,
+            1,
+            &[Keyword::Deathtouch],
+        ),
+        ("wall_of_mist", "{1}{U}", 0, 5, &[Keyword::Defender]),
+        ("boggart_brute", "{2}{R}", 3, 2, &[Keyword::Menace]),
+        ("aggressive_mammoth", "{4}{G}{G}", 8, 8, &[Keyword::Trample]),
+        ("angel_of_the_dawn", "{4}{W}", 3, 3, &[Keyword::Flying]),
+        ("herald_of_faith", "{3}{W}{W}", 4, 4, &[Keyword::Flying]),
+    ];
+    for (slug, cost, power, toughness, keywords) in bodies {
+        let data = card(&db, slug);
+        assert!(data.has_type(CardType::Creature), "{slug} is a creature");
+        assert_eq!(data.mana_cost, cost, "{slug} mana cost");
+        assert_eq!(data.power, Some(power), "{slug} power");
+        assert_eq!(data.toughness, Some(toughness), "{slug} toughness");
+        for &keyword in keywords {
+            assert!(data.has_keyword(keyword), "{slug} has {keyword:?}");
+        }
+    }
+}
+
+// ----- defender (CR 702.3b) --------------------------------------------------
+
+#[test]
+fn wall_of_mist_cannot_be_declared_as_an_attacker() {
+    // CR 702.3b: defender removes a creature from the attacker candidate set
+    // outright, independently of tapped-ness and summoning sickness. A creature
+    // beside it with the same body but no defender stays eligible, so the exclusion
+    // is the keyword's doing and not the fixture's.
+    let db = db();
+    let mut state = main_phase(&db);
+    state.step = Step::DeclareAttackers;
+    let wall = place(&mut state, &db, "wall_of_mist", PlayerId(0));
+    let cat = place(&mut state, &db, "sanctuary_cat", PlayerId(0));
+
+    let candidates = attacker_candidates(&state, &db);
+    assert!(
+        !candidates.contains(&wall),
+        "a creature with defender can't attack"
+    );
+    assert!(candidates.contains(&cat), "its neighbour still can");
+
+    // And the declaration itself is refused, not merely unadvertised.
+    let after = apply_action(
+        &state,
+        &Action::DeclareAttackers {
+            attackers: vec![Attack {
+                attacker: wall,
+                defender: PlayerId(1),
+            }],
+        },
+        &db,
+    );
+    assert_eq!(
+        after, state,
+        "declaring a defender as an attacker is a no-op"
+    );
+}
+
+// ----- menace (CR 702.110b) --------------------------------------------------
+
+/// Declare `attacker` as an attacker on player 1 and walk the pipeline to the
+/// declare-blockers step, where player 1 owes the declaration.
+fn attack_with(state: &GameState, db: &CardDatabase, attacker: PermanentId) -> GameState {
+    let mut state = state.clone();
+    state.step = Step::DeclareAttackers;
+    state.priority = PlayerId(0);
+    state.consecutive_passes = 0;
+    let state = apply_action(
+        &state,
+        &Action::DeclareAttackers {
+            attackers: vec![Attack {
+                attacker,
+                defender: PlayerId(1),
+            }],
+        },
+        db,
+    );
+    let mut state = state;
+    while state.step != Step::DeclareBlockers {
+        state = advance(&state, db);
+    }
+    state
+}
+
+#[test]
+fn boggart_brute_can_be_blocked_only_by_two_or_more_creatures() {
+    // CR 702.110b: menace is a restriction on the *declaration*, not on any one
+    // blocker — so a lone blocker that is otherwise perfectly legal makes the whole
+    // selection illegal, and the same blocker becomes legal the moment a second
+    // joins it.
+    let db = db();
+    let mut state = main_phase(&db);
+    let brute = place(&mut state, &db, "boggart_brute", PlayerId(0));
+    let first = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    let second = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+
+    let state = attack_with(&state, &db, brute);
+    assert_eq!(state.priority, PlayerId(1), "the defender declares blocks");
+
+    let lone = Action::DeclareBlockers {
+        blocks: vec![Block {
+            blocker: first,
+            attacker: brute,
+        }],
+    };
+    assert_eq!(
+        apply_action(&state, &lone, &db),
+        state,
+        "one blocker alone cannot block a menacing attacker"
+    );
+
+    let pair = Action::DeclareBlockers {
+        blocks: vec![
+            Block {
+                blocker: first,
+                attacker: brute,
+            },
+            Block {
+                blocker: second,
+                attacker: brute,
+            },
+        ],
+    };
+    let after = apply_action(&state, &pair, &db);
+    assert_ne!(
+        after, state,
+        "two blockers together are a legal declaration"
+    );
+    assert_eq!(
+        after
+            .battlefield
+            .iter()
+            .filter(|p| p.blocking == Some(brute))
+            .count(),
+        2
+    );
+
+    // Declaring no blockers stays legal: menace restricts *how* a creature is
+    // blocked, never whether it must be.
+    let none = Action::DeclareBlockers { blocks: Vec::new() };
+    assert_ne!(apply_action(&state, &none, &db), state);
+}
+
+// ----- triggered abilities ---------------------------------------------------
+
+#[test]
+fn dwarven_priest_gains_three_life_as_it_enters() {
+    let db = db();
+    let state = main_phase(&db);
+    let before = state.players[0].life;
+    let after = cast(&state, &db, "dwarven_priest", Vec::new());
+    // The creature resolved; its ETB trigger is on the stack and resolves next.
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert_eq!(after.players[0].life, before + 3);
+}
+
+#[test]
+fn herald_of_faith_gains_two_life_each_time_it_attacks() {
+    // CR 603.6d: the attacks trigger fires from the declaration itself, observed by
+    // diff on the one field that declaration writes — so it fires once per
+    // declaration, and not again while the creature merely remains attacking.
+    let db = db();
+    let mut state = main_phase(&db);
+    let herald = place(&mut state, &db, "herald_of_faith", PlayerId(0));
+    let before = state.players[0].life;
+
+    let state = attack_with(&state, &db, herald);
+    // Walk to the point the trigger has resolved.
+    let mut state = state;
+    while state
+        .stack
+        .iter()
+        .any(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source == herald))
+    {
+        state = advance(&state, &db);
+    }
+    assert_eq!(
+        state.players[0].life,
+        before + 2,
+        "one attack declaration, one trigger"
+    );
+    assert!(
+        !state.stack.iter().any(|o| matches!(
+            o.kind,
+            StackObjectKind::Ability { source, .. } if source == herald
+        )),
+        "the trigger resolved rather than re-triggering"
+    );
+}
+
+#[test]
+fn angel_of_the_dawn_pumps_the_board_it_finds_and_no_one_who_arrives_later() {
+    // CR 611.2c: a one-shot mass modification locks its affected set in on
+    // resolution. That is the whole difference between this trigger and an anthem,
+    // and it is the thing a class-scoped implementation would get wrong.
+    let db = db();
+    let mut state = main_phase(&db);
+    let veteran = place(&mut state, &db, "sanctuary_cat", PlayerId(0));
+    let theirs = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+
+    let state = cast(&state, &db, "angel_of_the_dawn", Vec::new());
+    let state = apply_action(&state, &Action::PassPriority, &db);
+    let state = apply_action(&state, &Action::PassPriority, &db);
+
+    let pumped = characteristics(&state, veteran, &db);
+    assert_eq!(pumped.power, Some(2), "printed 1 + the Angel's +1");
+    assert_eq!(pumped.toughness, Some(3));
+    assert!(
+        pumped.keywords.contains(&Keyword::Vigilance),
+        "and gains vigilance until end of turn"
+    );
+
+    let opponents = characteristics(&state, theirs, &db);
+    assert_eq!(
+        opponents.power,
+        Some(1),
+        "an opponent's creature is untouched"
+    );
+
+    // A creature that arrives after the trigger resolved missed it.
+    let mut later = state.clone();
+    let latecomer = place(&mut later, &db, "sanctuary_cat", PlayerId(0));
+    assert_eq!(
+        characteristics(&later, latecomer, &db).power,
+        Some(1),
+        "the affected set was fixed on resolution, not re-derived"
+    );
+}
+
+// ----- static abilities ------------------------------------------------------
+
+#[test]
+fn aggressive_mammoth_grants_trample_to_its_other_creatures_only() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let mammoth = place(&mut state, &db, "aggressive_mammoth", PlayerId(0));
+    let ally = place(&mut state, &db, "sanctuary_cat", PlayerId(0));
+    let enemy = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+
+    assert!(characteristics(&state, ally, &db)
+        .keywords
+        .contains(&Keyword::Trample));
+    assert!(
+        !characteristics(&state, enemy, &db)
+            .keywords
+            .contains(&Keyword::Trample),
+        "the grant is scoped to creatures its controller controls"
+    );
+    assert!(
+        characteristics(&state, mammoth, &db)
+            .keywords
+            .contains(&Keyword::Trample),
+        "the Mammoth's own trample is printed, not granted"
+    );
+
+    // Derived, never stored: the grant ends the instant its source leaves.
+    let mut gone = state.clone();
+    gone.battlefield.retain(|p| p.id != mammoth);
+    assert!(!characteristics(&gone, ally, &db)
+        .keywords
+        .contains(&Keyword::Trample));
+}
+
+// ----- activated abilities that cost mana ------------------------------------
+
+#[test]
+fn vampire_neonate_drains_each_opponent_for_two_generic_and_a_tap() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let neonate = place(&mut state, &db, "vampire_neonate", PlayerId(0));
+    let before_pool = state.players[0].mana_pool.total();
+
+    let after = activate(&state, &db, neonate, 0, Vec::new());
+    assert_eq!(after.players[1].life, 19, "each opponent loses 1 life");
+    assert_eq!(after.players[0].life, 21, "and its controller gains 1");
+    assert_eq!(
+        after.players[0].mana_pool.total(),
+        before_pool - 2,
+        "{{2}} was charged from the pool"
+    );
+    assert!(
+        after
+            .battlefield
+            .iter()
+            .any(|p| p.id == neonate && p.tapped),
+        "and the {{T}} half of the cost was paid too"
+    );
+}
+
+#[test]
+fn vampire_neonate_is_not_offered_without_the_mana_to_pay_for_it() {
+    // The offer and the charge are decided by the same `ManaPool::can_pay` over the
+    // same cost string, so an ability that cannot be paid for is never advertised —
+    // and is refused if submitted anyway.
+    let db = db();
+    let mut state = main_phase(&db);
+    state.players[0].mana_pool = Default::default();
+    let neonate = place(&mut state, &db, "vampire_neonate", PlayerId(0));
+
+    let action = Action::ActivateAbility {
+        permanent: neonate,
+        index: 0,
+        targets: Vec::new(),
+    };
+    assert!(!valid_actions(&state, &db).contains(&action));
+    assert_eq!(apply_action(&state, &action, &db), state);
+
+    // One mana short is still short; the second makes it payable.
+    let mut one = state.clone();
+    one.players[0].mana_pool.add_colorless(1);
+    assert!(!valid_actions(&one, &db).contains(&action));
+    let mut two = one.clone();
+    two.players[0].mana_pool.add_colorless(1);
+    assert!(valid_actions(&two, &db).contains(&action));
+}
+
+#[test]
+fn millstone_mills_the_targeted_player_without_decking_them() {
+    // CR 701.13: milling is not drawing. A library too short to cover the mill moves
+    // what it has and never sets the empty-library flag the CR 704.5c loss reads —
+    // the difference between a slow clock and an instant win.
+    let db = db();
+    let mut state = main_phase(&db);
+    let millstone = place(&mut state, &db, "millstone", PlayerId(0));
+    for _ in 0..3 {
+        let card = state.new_instance(cid(&db, "sanctuary_cat"));
+        state.players[1].library.push(card);
+    }
+
+    let after = activate(&state, &db, millstone, 0, vec![Target::Player(PlayerId(1))]);
+    assert_eq!(after.players[1].library.len(), 1);
+    assert_eq!(after.players[1].graveyard.len(), 2);
+    assert!(after.log.iter().any(|entry| matches!(
+        entry.event,
+        GameEvent::CardsMilled {
+            player: PlayerId(1),
+            count: 2
+        }
+    )));
+
+    // One card left, asked for two: it mills one, logs one, and does not lose.
+    let mut untapped = after.clone();
+    untapped
+        .battlefield
+        .iter_mut()
+        .for_each(|p| p.tapped = false);
+    let drained = activate(
+        &untapped,
+        &db,
+        millstone,
+        0,
+        vec![Target::Player(PlayerId(1))],
+    );
+    assert!(drained.players[1].library.is_empty());
+    assert!(
+        !drained.players[1].has_lost,
+        "an over-long mill is not a draw from an empty library"
+    );
+}
+
+#[test]
+fn goblin_motivator_grants_haste_to_the_creature_it_targets() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let motivator = place(&mut state, &db, "goblin_motivator", PlayerId(0));
+    // A creature that entered this turn, and so is summoning sick (CR 302.6).
+    let card = cid(&db, "sanctuary_cat");
+    let instance = state.new_instance(card).id;
+    let sick = PermanentId(state.mint_id());
+    state.battlefield.push(Permanent {
+        id: sick,
+        instance,
+        card,
+        controller: PlayerId(0),
+        entered_turn: state.turn,
+        ..Default::default()
+    });
+    let mut sick_combat = state.clone();
+    sick_combat.step = Step::DeclareAttackers;
+    assert!(!attacker_candidates(&sick_combat, &db).contains(&sick));
+
+    let after = activate(&state, &db, motivator, 0, vec![Target::Permanent(sick)]);
+    assert!(characteristics(&after, sick, &db)
+        .keywords
+        .contains(&Keyword::Haste));
+    let mut hasty_combat = after.clone();
+    hasty_combat.step = Step::DeclareAttackers;
+    assert!(
+        attacker_candidates(&hasty_combat, &db).contains(&sick),
+        "granted haste lifts the CR 302.6 restriction exactly as printed haste does"
+    );
+}
+
+// ----- spells: removal with a narrowed target class --------------------------
+
+#[test]
+fn plummet_destroys_only_creatures_that_currently_have_flying() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let ground = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    let flyer = place(&mut state, &db, "rustwing_falcon", PlayerId(1));
+
+    // The ground creature is not in the legal set, so the spell can't be aimed at it.
+    let mut attempt = state.clone();
+    let bad = to_hand(&mut attempt, &db, "plummet", PlayerId(0));
+    assert_eq!(
+        apply_action(
+            &attempt,
+            &Action::CastSpell {
+                card: bad,
+                targets: vec![Target::Permanent(ground)],
+            },
+            &db,
+        ),
+        attempt,
+        "a creature without flying is not a legal Plummet target"
+    );
+
+    let after = cast(&state, &db, "plummet", vec![Target::Permanent(flyer)]);
+    assert!(!on_battlefield(&after, flyer), "the flyer is destroyed");
+    assert!(on_battlefield(&after, ground));
+}
+
+#[test]
+fn plummet_can_be_aimed_at_a_creature_that_was_granted_flying() {
+    // CR 613.1f: a granted keyword is indistinguishable from a printed one, so the
+    // target class is read through the computed characteristics rather than the
+    // printed keyword list.
+    let db = db();
+    let mut state = main_phase(&db);
+    let ground = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    // Jump grants flying until end of turn.
+    let state = cast(&state, &db, "jump", vec![Target::Permanent(ground)]);
+    assert!(characteristics(&state, ground, &db)
+        .keywords
+        .contains(&Keyword::Flying));
+
+    let after = cast(&state, &db, "plummet", vec![Target::Permanent(ground)]);
+    assert!(!on_battlefield(&after, ground));
+}
+
+#[test]
+fn take_vengeance_destroys_only_a_tapped_creature() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let untapped = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    let tapped = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    state
+        .battlefield
+        .iter_mut()
+        .filter(|p| p.id == tapped)
+        .for_each(|p| p.tapped = true);
+
+    let mut attempt = state.clone();
+    let bad = to_hand(&mut attempt, &db, "take_vengeance", PlayerId(0));
+    assert_eq!(
+        apply_action(
+            &attempt,
+            &Action::CastSpell {
+                card: bad,
+                targets: vec![Target::Permanent(untapped)],
+            },
+            &db,
+        ),
+        attempt
+    );
+
+    let after = cast(
+        &state,
+        &db,
+        "take_vengeance",
+        vec![Target::Permanent(tapped)],
+    );
+    assert!(!on_battlefield(&after, tapped));
+    assert!(on_battlefield(&after, untapped));
+}
+
+#[test]
+fn naturalize_and_invoke_the_divine_take_an_artifact_or_an_enchantment() {
+    // One slot that accepts either type (CR 601.2c), not two slots — and never a
+    // creature.
+    let db = db();
+    let mut state = main_phase(&db);
+    let artifact = place(&mut state, &db, "millstone", PlayerId(1));
+    let creature = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    // Oakenform is an Aura, so it must be attached: an Aura attached to nothing is
+    // put into its owner's graveyard by the CR 704.5n state-based action.
+    let enchantment = place(&mut state, &db, "oakenform", PlayerId(1));
+    state
+        .battlefield
+        .iter_mut()
+        .filter(|p| p.id == enchantment)
+        .for_each(|p| p.attached_to = Some(creature));
+
+    let mut attempt = state.clone();
+    let bad = to_hand(&mut attempt, &db, "naturalize", PlayerId(0));
+    assert_eq!(
+        apply_action(
+            &attempt,
+            &Action::CastSpell {
+                card: bad,
+                targets: vec![Target::Permanent(creature)],
+            },
+            &db,
+        ),
+        attempt,
+        "a creature is not an artifact or enchantment"
+    );
+
+    let after = cast(&state, &db, "naturalize", vec![Target::Permanent(artifact)]);
+    assert!(!on_battlefield(&after, artifact));
+
+    // Invoke the Divine destroys the same class and gains its caster four life.
+    let life = state.players[0].life;
+    let after = cast(
+        &state,
+        &db,
+        "invoke_the_divine",
+        vec![Target::Permanent(enchantment)],
+    );
+    assert!(!on_battlefield(&after, enchantment));
+    assert_eq!(after.players[0].life, life + 4);
+}
+
+#[test]
+fn smelt_destroys_an_artifact_and_nothing_else() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let artifact = place(&mut state, &db, "millstone", PlayerId(1));
+    let creature = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+
+    let mut attempt = state.clone();
+    let bad = to_hand(&mut attempt, &db, "smelt", PlayerId(0));
+    assert_eq!(
+        apply_action(
+            &attempt,
+            &Action::CastSpell {
+                card: bad,
+                targets: vec![Target::Permanent(creature)],
+            },
+            &db,
+        ),
+        attempt
+    );
+
+    let after = cast(&state, &db, "smelt", vec![Target::Permanent(artifact)]);
+    assert!(!on_battlefield(&after, artifact));
+}
+
+// ----- spells: bounce, drain, counterspells, mass pumps -----------------------
+
+#[test]
+fn unsummon_returns_a_creature_to_its_owners_hand_without_it_dying() {
+    // CR 400.7: a bounce is not a death. The card reaches the hand, no
+    // `permanent_died` is logged, and the battlefield identity is dropped — so a
+    // recast is a brand-new object.
+    let db = db();
+    let mut state = main_phase(&db);
+    let target = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    let instance = state
+        .battlefield
+        .iter()
+        .find(|p| p.id == target)
+        .unwrap()
+        .instance;
+
+    let after = cast(&state, &db, "unsummon", vec![Target::Permanent(target)]);
+    assert!(!on_battlefield(&after, target));
+    assert!(
+        after.players[1].hand.iter().any(|c| c.id == instance),
+        "the card is in its owner's hand"
+    );
+    assert!(after.players[1].graveyard.is_empty());
+    assert!(
+        !after
+            .log
+            .iter()
+            .any(|entry| matches!(entry.event, GameEvent::PermanentDied { .. })),
+        "returning a creature to hand is not a death (CR 700.4)"
+    );
+}
+
+#[test]
+fn sovereigns_bite_drains_the_player_it_targets() {
+    let db = db();
+    let state = main_phase(&db);
+    let after = cast(
+        &state,
+        &db,
+        "sovereign_s_bite",
+        vec![Target::Player(PlayerId(1))],
+    );
+    assert_eq!(after.players[1].life, 18, "target player loses 2 life");
+    assert_eq!(after.players[0].life, 22, "and you gain 2");
+}
+
+#[test]
+fn essence_scatter_counters_a_creature_spell_but_not_an_instant() {
+    let db = db();
+    let mut state = main_phase(&db);
+
+    // A creature spell on the stack, controlled by the opponent.
+    let creature = to_hand(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    let creature_spell = StackId(state.mint_id());
+    state.stack.push(StackObject {
+        id: creature_spell,
+        controller: PlayerId(1),
+        kind: StackObjectKind::Spell { card: creature },
+        targets: Vec::new(),
+    });
+    // …and a noncreature spell beside it.
+    let burn = to_hand(&mut state, &db, "shock", PlayerId(1));
+    let burn_spell = StackId(state.mint_id());
+    state.stack.push(StackObject {
+        id: burn_spell,
+        controller: PlayerId(1),
+        kind: StackObjectKind::Spell { card: burn },
+        targets: vec![Target::Player(PlayerId(0))],
+    });
+
+    let mut attempt = state.clone();
+    let bad = to_hand(&mut attempt, &db, "essence_scatter", PlayerId(0));
+    assert_eq!(
+        apply_action(
+            &attempt,
+            &Action::CastSpell {
+                card: bad,
+                targets: vec![Target::Spell(burn_spell)],
+            },
+            &db,
+        ),
+        attempt,
+        "an instant is not a creature spell"
+    );
+
+    let mut good = state.clone();
+    let scatter = to_hand(&mut good, &db, "essence_scatter", PlayerId(0));
+    let after = apply_action(
+        &good,
+        &Action::CastSpell {
+            card: scatter,
+            targets: vec![Target::Spell(creature_spell)],
+        },
+        &db,
+    );
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert!(
+        !after.stack.iter().any(|o| o.id == creature_spell),
+        "the creature spell was countered"
+    );
+    assert!(
+        after.players[1]
+            .graveyard
+            .iter()
+            .any(|c| c.id == creature.id),
+        "and its card went to the graveyard"
+    );
+    assert!(!after.battlefield.iter().any(|p| p.instance == creature.id));
+}
+
+#[test]
+fn bone_to_ash_counters_a_creature_spell_and_replaces_itself() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let library_card = state.new_instance(cid(&db, "sanctuary_cat"));
+    state.players[0].library.push(library_card);
+    let creature = to_hand(&mut state, &db, "sanctuary_cat", PlayerId(1));
+    let spell = StackId(state.mint_id());
+    state.stack.push(StackObject {
+        id: spell,
+        controller: PlayerId(1),
+        kind: StackObjectKind::Spell { card: creature },
+        targets: Vec::new(),
+    });
+
+    let bone = to_hand(&mut state, &db, "bone_to_ash", PlayerId(0));
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: bone,
+            targets: vec![Target::Spell(spell)],
+        },
+        &db,
+    );
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert!(!after.stack.iter().any(|o| o.id == spell));
+    assert!(
+        after.players[0]
+            .hand
+            .iter()
+            .any(|c| c.id == library_card.id),
+        "and its controller drew a card"
+    );
+}
+
+#[test]
+fn inspired_charge_pumps_only_your_creatures_and_wears_off_at_cleanup() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let mine = place(&mut state, &db, "sanctuary_cat", PlayerId(0));
+    let theirs = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+
+    let after = cast(&state, &db, "inspired_charge", Vec::new());
+    let pumped = characteristics(&after, mine, &db);
+    assert_eq!(pumped.power, Some(3), "printed 1 + 2");
+    assert_eq!(pumped.toughness, Some(3), "printed 2 + 1");
+    assert_eq!(
+        characteristics(&after, theirs, &db).power,
+        Some(1),
+        "an opponent's creature is untouched"
+    );
+
+    // CR 514.2: the modifier is removed in the cleanup step.
+    let mut turn = after;
+    while turn.turn == 1 {
+        turn = advance(&turn, &db);
+    }
+    assert_eq!(
+        characteristics(&turn, mine, &db).power,
+        Some(1),
+        "the pump ended with the turn"
+    );
+}
+
+#[test]
+fn crash_through_grants_trample_to_your_board_and_draws() {
+    let db = db();
+    let mut state = main_phase(&db);
+    let library_card = state.new_instance(cid(&db, "sanctuary_cat"));
+    state.players[0].library.push(library_card);
+    let mine = place(&mut state, &db, "sanctuary_cat", PlayerId(0));
+    let theirs = place(&mut state, &db, "sanctuary_cat", PlayerId(1));
+
+    let after = cast(&state, &db, "crash_through", Vec::new());
+    assert!(characteristics(&after, mine, &db)
+        .keywords
+        .contains(&Keyword::Trample));
+    assert!(!characteristics(&after, theirs, &db)
+        .keywords
+        .contains(&Keyword::Trample));
+    assert!(after.players[0]
+        .hand
+        .iter()
+        .any(|c| c.id == library_card.id));
+}
+
+#[test]
+fn daggerback_basilisk_kills_what_it_blocks() {
+    // Deathtouch on a new body, proved through the combat-damage path rather than the
+    // keyword list: any nonzero damage it deals is lethal (CR 702.2b).
+    let db = db();
+    let mut state = main_phase(&db);
+    let attacker = place(&mut state, &db, "ancient_brontodon", PlayerId(0));
+    let basilisk = place(&mut state, &db, "daggerback_basilisk", PlayerId(1));
+
+    let state = attack_with(&state, &db, attacker);
+    let state = apply_action(
+        &state,
+        &Action::DeclareBlockers {
+            blocks: vec![Block {
+                blocker: basilisk,
+                attacker,
+            }],
+        },
+        &db,
+    );
+    let mut state = state;
+    while on_battlefield(&state, attacker) && state.step != Step::End {
+        state = advance(&state, &db);
+    }
+    assert!(
+        !on_battlefield(&state, attacker),
+        "a 9/9 blocked by a deathtouch 2/1 dies"
+    );
+}

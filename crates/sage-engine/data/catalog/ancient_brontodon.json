@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "ancient_brontodon",
+  "name": "Ancient Brontodon",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Dinosaur"
+  ],
+  "mana_cost": "{6}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 9,
+  "toughness": 9
+}

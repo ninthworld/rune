@@ -22,8 +22,8 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, PlayerRef,
-    StaticAffects, StaticModification, TargetSpec, TriggerCondition,
+    Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, MassAffects,
+    PlayerRef, StaticAffects, StaticModification, TargetSpec, TriggerCondition,
 };
 
 /// Generate the rules text of one card.
@@ -73,7 +73,7 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
 pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
     match ability {
         Ability::Activated { cost, effects } => {
-            let costs: Vec<&str> = cost.iter().map(|c| cost_symbol(c)).collect();
+            let costs: Vec<String> = cost.iter().map(cost_symbol).collect();
             format!(
                 "{}: {}",
                 costs.join(", "),
@@ -86,6 +86,7 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                     format!("When {source} enters the battlefield")
                 }
                 TriggerCondition::SelfDies => format!("When {source} dies"),
+                TriggerCondition::SelfAttacks => format!("Whenever {source} attacks"),
             };
             finish(&format!("{trigger}, {}", clauses(source, effects)))
         }
@@ -262,6 +263,37 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             target_noun(*target),
             keyword_word(*keyword)
         ),
+        Effect::PumpAll {
+            affects,
+            power,
+            toughness,
+        } => format!(
+            "{} get {power:+}/{toughness:+} until end of turn",
+            mass_subject(*affects)
+        ),
+        Effect::GrantKeywordAll { affects, keyword } => format!(
+            "{} gain {} until end of turn",
+            mass_subject(*affects),
+            keyword_word(*keyword)
+        ),
+        Effect::ReturnToHand { target } => {
+            format!("return {} to its owner's hand", target_noun(*target))
+        }
+        Effect::Mill { player_ref, count } => match count {
+            1 => conjugate(*player_ref, "mill") + " a card",
+            n => format!(
+                "{} {} cards",
+                conjugate(*player_ref, "mill"),
+                number(u32::from(*n))
+            ),
+        },
+    }
+}
+
+/// The class a mass, non-targeting effect names, as the subject of its sentence.
+fn mass_subject(affects: MassAffects) -> &'static str {
+    match affects {
+        MassAffects::CreaturesYouControl => "creatures you control",
     }
 }
 
@@ -279,9 +311,12 @@ pub(crate) fn effects_description(source: &str, effects: &[Effect]) -> String {
 }
 
 /// The cost symbol paid to activate an ability.
-fn cost_symbol(cost: &Cost) -> &'static str {
+fn cost_symbol(cost: &Cost) -> String {
     match cost {
-        Cost::Tap => "{T}",
+        Cost::Tap => "{T}".to_string(),
+        // A mana cost is already written in the notation a player reads it in, so it
+        // is passed through rather than re-rendered from a parse.
+        Cost::Mana { mana } => mana.clone(),
     }
 }
 
@@ -313,9 +348,20 @@ fn counters(kind: CounterKind, count: u32) -> String {
 fn target_noun(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "target player",
+        TargetSpec::AnyOpponent => "target opponent",
         TargetSpec::AnyPermanent => "target permanent",
+        TargetSpec::AnyNonlandPermanent => "target nonland permanent",
         TargetSpec::AnyCreature => "target creature",
+        TargetSpec::AnyCreatureYouControl => "target creature you control",
+        TargetSpec::AnyCreatureAnOpponentControls => "target creature an opponent controls",
+        TargetSpec::AnyCreatureWithFlying => "target creature with flying",
+        TargetSpec::AnyTappedCreature => "target tapped creature",
+        TargetSpec::AnyArtifact => "target artifact",
+        TargetSpec::AnyEnchantment => "target enchantment",
+        TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment",
+        TargetSpec::AnyLand => "target land",
         TargetSpec::SpellOnStack => "target spell",
+        TargetSpec::CreatureSpellOnStack => "target creature spell",
         // CR 115.4: "any target" is the phrase itself, not a class of object.
         TargetSpec::AnyTarget => "any target",
     }
@@ -326,9 +372,20 @@ fn target_noun(spec: TargetSpec) -> &'static str {
 fn object_noun(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "player",
+        TargetSpec::AnyOpponent => "opponent",
         TargetSpec::AnyPermanent => "permanent",
+        TargetSpec::AnyNonlandPermanent => "nonland permanent",
         TargetSpec::AnyCreature => "creature",
+        TargetSpec::AnyCreatureYouControl => "creature you control",
+        TargetSpec::AnyCreatureAnOpponentControls => "creature an opponent controls",
+        TargetSpec::AnyCreatureWithFlying => "creature with flying",
+        TargetSpec::AnyTappedCreature => "tapped creature",
+        TargetSpec::AnyArtifact => "artifact",
+        TargetSpec::AnyEnchantment => "enchantment",
+        TargetSpec::AnyArtifactOrEnchantment => "artifact or enchantment",
+        TargetSpec::AnyLand => "land",
         TargetSpec::SpellOnStack => "spell",
+        TargetSpec::CreatureSpellOnStack => "creature spell",
         TargetSpec::AnyTarget => "any target",
     }
 }
@@ -343,6 +400,12 @@ fn conjugate(player_ref: PlayerRef, verb: &str) -> String {
     match player_ref {
         // Second person takes the bare verb.
         PlayerRef::Controller => format!("you {verb}"),
+        // Every third-person subject here is grammatically singular ("each opponent
+        // loses", not "lose"), and every verb this is called with is regular, so the
+        // agreement is one suffix rather than a table.
+        PlayerRef::EachOpponent => format!("each opponent {verb}s"),
+        PlayerRef::TargetPlayer => format!("target player {verb}s"),
+        PlayerRef::TargetOpponent => format!("target opponent {verb}s"),
     }
 }
 
@@ -353,6 +416,8 @@ fn keyword_word(keyword: Keyword) -> &'static str {
         Keyword::Reach => "reach",
         Keyword::Vigilance => "vigilance",
         Keyword::Haste => "haste",
+        Keyword::Defender => "defender",
+        Keyword::Menace => "menace",
         Keyword::FirstStrike => "first strike",
         Keyword::Trample => "trample",
         Keyword::Deathtouch => "deathtouch",
@@ -494,6 +559,95 @@ mod tests {
             text_of(&inline, "test_wither"),
             "Put a -1/-1 counter on target creature."
         );
+    }
+
+    #[test]
+    fn the_widened_ir_reads_as_sentences_on_the_cards_that_use_it() {
+        // Every construct added with the M19 batch is rendered from a real bundled
+        // card, not a toy struct: a formatter arm that reads wrong is a card that reads
+        // wrong, and the exhaustive matches only prove that *some* words exist.
+        let db = bundled();
+
+        // Narrowed target classes name themselves rather than falling back to a
+        // generic noun, so a player can tell what the spell may legally be aimed at.
+        assert_eq!(
+            text_of(&db, "plummet"),
+            "Destroy target creature with flying."
+        );
+        assert_eq!(
+            text_of(&db, "take_vengeance"),
+            "Destroy target tapped creature."
+        );
+        assert_eq!(text_of(&db, "smelt"), "Destroy target artifact.");
+        assert_eq!(
+            text_of(&db, "naturalize"),
+            "Destroy target artifact or enchantment."
+        );
+        assert_eq!(
+            text_of(&db, "invoke_the_divine"),
+            "Destroy target artifact or enchantment.\nYou gain 4 life."
+        );
+        assert_eq!(
+            text_of(&db, "essence_scatter"),
+            "Counter target creature spell."
+        );
+        assert_eq!(
+            text_of(&db, "bone_to_ash"),
+            "Counter target creature spell.\nDraw a card."
+        );
+        assert_eq!(
+            text_of(&db, "unsummon"),
+            "Return target creature to its owner's hand."
+        );
+
+        // A targeted player reference conjugates in the third person; the controller
+        // reference stays second — one verb, agreement decided in one place.
+        assert_eq!(
+            text_of(&db, "sovereign_s_bite"),
+            "Target player loses 2 life.\nYou gain 2 life."
+        );
+
+        // A mana activation cost passes through in the notation it was written in.
+        assert_eq!(
+            text_of(&db, "millstone"),
+            "{2}, {T}: Target player mills two cards."
+        );
+        assert_eq!(
+            text_of(&db, "vampire_neonate"),
+            "{2}, {T}: Each opponent loses 1 life and you gain 1 life."
+        );
+
+        // Mass modifications name their class as the subject.
+        assert_eq!(
+            text_of(&db, "inspired_charge"),
+            "Creatures you control get +2/+1 until end of turn."
+        );
+        assert_eq!(
+            text_of(&db, "crash_through"),
+            "Creatures you control gain trample until end of turn.\nDraw a card."
+        );
+        assert_eq!(
+            text_of(&db, "angel_of_the_dawn"),
+            "Flying\nWhen Angel of the Dawn enters the battlefield, creatures you control get \
+             +1/+1 until end of turn and creatures you control gain vigilance until end of turn."
+        );
+
+        // The attacks trigger, and the two new keywords.
+        assert_eq!(
+            text_of(&db, "herald_of_faith"),
+            "Flying\nWhenever Herald of Faith attacks, you gain 2 life."
+        );
+        assert_eq!(text_of(&db, "wall_of_mist"), "Defender");
+        assert_eq!(text_of(&db, "boggart_brute"), "Menace");
+
+        // A static keyword grant reads as a standing statement, not an event.
+        assert_eq!(
+            text_of(&db, "aggressive_mammoth"),
+            "Trample\nOther creatures you control have trample."
+        );
+
+        // A vanilla body still generates nothing, which stays the honest answer.
+        assert_eq!(text_of(&db, "sanctuary_cat"), "");
     }
 
     #[test]

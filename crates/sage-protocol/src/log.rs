@@ -94,6 +94,15 @@ pub enum GameLogEvent {
         /// Number of cards drawn.
         count: u32,
     },
+    /// A player milled cards — put them from the top of their library into their
+    /// graveyard (CR 701.13). Not a draw: it never causes a decking loss, and the
+    /// count is what actually moved.
+    CardsMilled {
+        /// The player who milled.
+        player: PlayerId,
+        /// Number of cards put into the graveyard.
+        count: u32,
+    },
     /// A creature died; it may no longer be present on the battlefield.
     PermanentDied {
         /// The permanent that died.

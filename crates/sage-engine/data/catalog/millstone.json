@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "functional_id": "millstone",
+  "name": "Millstone",
+  "types": [
+    "artifact"
+  ],
+  "mana_cost": "{2}",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{2}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "mill",
+          "player_ref": "target_player",
+          "count": 2
+        }
+      ]
+    }
+  ]
+}

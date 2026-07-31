@@ -66,6 +66,10 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
                     player: player_id(*player),
                     count: *count,
                 },
+                GameEvent::CardsMilled { player, count } => GameLogEvent::CardsMilled {
+                    player: player_id(*player),
+                    count: *count,
+                },
                 GameEvent::PermanentDied { permanent } => GameLogEvent::PermanentDied {
                     permanent: log_permanent(permanent, db),
                 },

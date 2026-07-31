@@ -88,7 +88,7 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         && specs
             .iter()
             .zip(chosen)
-            .all(|(&spec, &target)| target_is_legal(spec, target, state, db))
+            .all(|(&spec, &target)| target_is_legal(spec, target, state, state.priority, db))
 }
 
 /// Whether activating ability `index` of `permanent` clears the CR 302.6
@@ -172,6 +172,35 @@ fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Blo
                 && attacking_defender_of(state, b.attacker) == Some(declarer)
                 && blocker_can_block_attacker(state, b.attacker, b.blocker, db)
         })
+        // CR 702.110b (menace) is the one restriction here that is a fact about the
+        // *selection* rather than about any one pair: a lone blocker is illegal
+        // precisely because it is alone, so it can only be judged once the whole
+        // declaration is in hand.
+        && menace_is_satisfied(state, blocks, db)
+}
+
+/// Whether every menace attacker named in `blocks` is blocked by **two or more**
+/// creatures (CR 702.110b): a creature with menace can't be blocked except by two or
+/// more creatures, so exactly one blocker assigned to it makes the whole declaration
+/// illegal. Zero is fine — menace restricts *how* a creature is blocked, never
+/// whether it must be.
+///
+/// Menace is read through the computed keywords (CR 613.1f), so a granted menace
+/// restricts exactly as a printed one does. Only attackers this declaration actually
+/// names are checked; blockers already assigned to an attacker attacking a *different*
+/// player cannot exist, since an attacker attacks one player and only that player
+/// declares against it.
+fn menace_is_satisfied(state: &GameState, blocks: &[Block], db: &CardDatabase) -> bool {
+    blocks.iter().all(|block| {
+        if !crate::combat::permanent_has_menace(state, block.attacker, db) {
+            return true;
+        }
+        blocks
+            .iter()
+            .filter(|b| b.attacker == block.attacker)
+            .count()
+            >= 2
+    })
 }
 
 /// Whether a combat-damage assignment order selection is legal (CR 510.1, issue

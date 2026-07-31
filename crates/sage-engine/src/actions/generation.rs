@@ -184,7 +184,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 let castable = data
                     .cast_target_specs()
                     .into_iter()
-                    .all(|spec| !legal_targets_for_spec(spec, state, db).is_empty());
+                    .all(|spec| !legal_targets_for_spec(spec, state, priority, db).is_empty());
                 if castable {
                     actions.push(Action::CastSpell {
                         card,
@@ -215,7 +215,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                     let castable = data
                         .cast_target_specs()
                         .into_iter()
-                        .all(|spec| !legal_targets_for_spec(spec, state, db).is_empty());
+                        .all(|spec| !legal_targets_for_spec(spec, state, priority, db).is_empty());
                     if castable {
                         actions.push(Action::CastSpell {
                             card,
@@ -247,7 +247,7 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
                 if tap_cost_is_summoning_sick(state, perm, cost, db) {
                     continue;
                 }
-                if cost_payable(cost, perm) {
+                if cost_payable(state, cost, perm) {
                     actions.push(Action::ActivateAbility {
                         permanent: perm.id,
                         index,

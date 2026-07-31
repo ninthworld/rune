@@ -241,7 +241,16 @@ fn aura_is_illegally_attached(perm: &Permanent, state: &GameState, db: &CardData
     };
     match perm.attached_to {
         None => true,
-        Some(host) => !target_is_legal(grant.enchant, Target::Permanent(host), state, db),
+        // The Aura's own controller is the frame of reference for a possessive
+        // enchant restriction ("enchant creature you control"), exactly as it was
+        // when the Aura chose that host at cast (CR 601.2c).
+        Some(host) => !target_is_legal(
+            grant.enchant,
+            Target::Permanent(host),
+            state,
+            perm.controller,
+            db,
+        ),
     }
 }
 

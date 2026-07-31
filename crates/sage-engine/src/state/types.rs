@@ -147,6 +147,18 @@ pub enum GameEvent {
         /// Number of cards drawn.
         count: u32,
     },
+    /// A player put cards from the top of their library into their graveyard
+    /// (CR 701.13, "mill"). Distinct from [`Self::CardsDrawn`] because milling is not
+    /// drawing: it never trips the CR 704.5c decking loss, and a player asked to mill
+    /// past an empty library simply mills fewer. The count is what actually moved.
+    /// Card identities are recorded no more than a draw's are — a graveyard is public,
+    /// so the cards themselves are already visible in the view.
+    CardsMilled {
+        /// The player who milled.
+        player: PlayerId,
+        /// Number of cards that actually moved to the graveyard.
+        count: u32,
+    },
     /// A creature left the battlefield for a graveyard (CR 700.4 — a creature
     /// "dies"). Only creatures produce this; an Aura or other permanent moving to a
     /// graveyard is a zone change, not a death.

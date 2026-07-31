@@ -685,7 +685,7 @@ fn issue_148_counterspell_cannot_target_an_ability_on_the_stack_cr_605_3() {
     state.players[0].mana_pool.colorless = 1;
 
     // The ability is not a candidate, so the slot is empty and no cast is offered.
-    assert!(legal_targets_for_spec(TargetSpec::SpellOnStack, &state, &db).is_empty());
+    assert!(legal_targets_for_spec(TargetSpec::SpellOnStack, &state, PlayerId(0), &db).is_empty());
     assert!(!valid_actions(&state, &db)
         .iter()
         .any(|a| matches!(a, Action::CastSpell { .. })));

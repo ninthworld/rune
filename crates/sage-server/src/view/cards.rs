@@ -93,6 +93,8 @@ fn keyword_str(keyword: Keyword) -> &'static str {
         Keyword::Reach => "reach",
         Keyword::Vigilance => "vigilance",
         Keyword::Haste => "haste",
+        Keyword::Defender => "defender",
+        Keyword::Menace => "menace",
         Keyword::FirstStrike => "first_strike",
         Keyword::Trample => "trample",
         Keyword::Deathtouch => "deathtouch",

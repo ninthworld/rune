@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "daggerback_basilisk",
+  "name": "Daggerback Basilisk",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Basilisk"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 2,
+  "toughness": 1,
+  "keywords": [
+    "deathtouch"
+  ]
+}

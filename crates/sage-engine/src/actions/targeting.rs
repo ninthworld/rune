@@ -29,11 +29,15 @@ pub fn target_requirements(
     db: &CardDatabase,
     action: &Action,
 ) -> Vec<TargetRequirement> {
+    // Every spec is resolved relative to the player who would take this action —
+    // the priority holder, by definition (CR 117.1). That is what makes
+    // "target creature you control" enumerate *their* creatures.
+    let controller = state.priority;
     action_target_specs(state, db, action)
         .into_iter()
         .map(|spec| TargetRequirement {
             spec,
-            candidates: legal_targets_for_spec(spec, state, db),
+            candidates: legal_targets_for_spec(spec, state, controller, db),
         })
         .collect()
 }
@@ -84,33 +88,43 @@ pub(crate) fn action_target_specs(
 pub(crate) fn legal_targets_for_spec(
     spec: TargetSpec,
     state: &GameState,
+    controller: PlayerId,
     db: &CardDatabase,
 ) -> Vec<Target> {
+    // The candidate *universe* is the coarse zone a spec draws from; the fine
+    // restrictions (type, controller, tapped-ness, in-game-ness) are all applied by
+    // the `target_is_legal` filter below. Only the zone is decided here, so no
+    // restriction is ever written twice — and one written only here would be a
+    // restriction the resolution-time re-check does not enforce.
+    let players: Vec<Target> = (0..state.players.len())
+        .map(|seat| Target::Player(PlayerId(seat)))
+        .collect();
+    let permanents: Vec<Target> = state
+        .battlefield
+        .iter()
+        .map(|perm| Target::Permanent(perm.id))
+        .collect();
     let universe: Vec<Target> = match spec {
-        TargetSpec::AnyPlayer => (0..state.players.len())
-            .map(|seat| Target::Player(PlayerId(seat)))
-            .collect(),
-        TargetSpec::AnyPermanent | TargetSpec::AnyCreature => state
-            .battlefield
-            .iter()
-            .map(|perm| Target::Permanent(perm.id))
-            .collect(),
+        TargetSpec::AnyPlayer | TargetSpec::AnyOpponent => players,
+        TargetSpec::AnyPermanent
+        | TargetSpec::AnyNonlandPermanent
+        | TargetSpec::AnyCreature
+        | TargetSpec::AnyCreatureYouControl
+        | TargetSpec::AnyCreatureAnOpponentControls
+        | TargetSpec::AnyCreatureWithFlying
+        | TargetSpec::AnyTappedCreature
+        | TargetSpec::AnyArtifact
+        | TargetSpec::AnyEnchantment
+        | TargetSpec::AnyArtifactOrEnchantment
+        | TargetSpec::AnyLand => permanents,
         // "Any target" (CR 115.4): players and battlefield permanents together;
         // the `target_is_legal` filter below keeps only creatures and in-game
         // players, so a non-creature permanent never survives it.
-        TargetSpec::AnyTarget => (0..state.players.len())
-            .map(|seat| Target::Player(PlayerId(seat)))
-            .chain(
-                state
-                    .battlefield
-                    .iter()
-                    .map(|perm| Target::Permanent(perm.id)),
-            )
-            .collect(),
+        TargetSpec::AnyTarget => players.into_iter().chain(permanents).collect(),
         // Only spells on the stack are candidates — abilities are not spells, and
         // mana abilities never use the stack (CR 605.3), so neither can be a
         // "counter target spell" candidate.
-        TargetSpec::SpellOnStack => state
+        TargetSpec::SpellOnStack | TargetSpec::CreatureSpellOnStack => state
             .stack
             .iter()
             .filter(|o| matches!(o.kind, crate::stack::StackObjectKind::Spell { .. }))
@@ -119,6 +133,6 @@ pub(crate) fn legal_targets_for_spec(
     };
     universe
         .into_iter()
-        .filter(|&target| target_is_legal(spec, target, state, db))
+        .filter(|&target| target_is_legal(spec, target, state, controller, db))
         .collect()
 }
