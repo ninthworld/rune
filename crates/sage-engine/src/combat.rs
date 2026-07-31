@@ -43,5 +43,8 @@ pub use eligibility::{
     attacker_candidates, attacking_defender_of, blocker_candidates, blocker_candidates_for,
     declared_attackers, defender_candidates, defending_player,
 };
-pub use helpers::permanent_has_menace;
-pub(crate) use helpers::{blocker_can_block_attacker, has_keyword, summoning_sickness_restricts};
+pub use helpers::{
+    blocked_by_at_most_one, blocker_can_block_attacker, permanent_has_menace,
+    permanent_has_restriction, permanent_restrictions,
+};
+pub(crate) use helpers::{has_keyword, summoning_sickness_restricts};

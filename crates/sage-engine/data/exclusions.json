@@ -5,7 +5,7 @@
   },
   {
     "name": "Auras that enchant a player or land, or move between hosts",
-    "blocker": "only P/T- and keyword-granting enchant-creature Auras are modeled"
+    "blocker": "only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled"
   },
   {
     "name": "Multi-face cards (transform, modal double-faced)",
@@ -60,12 +60,12 @@
     "blocker": "no control-change layer"
   },
   {
-    "name": "Evasion other than flying, reach, and menace",
-    "blocker": "no unblockable, protection, or colour- and count-restricted blocking"
+    "name": "Protection, and evasion that names a subtype or a land type",
+    "blocker": "a blocking restriction names a colour or a count; there is no protection layer"
   },
   {
-    "name": "Attack and block requirements and restrictions",
-    "blocker": "only defender restricts declaration; must-attack and cannot-block are unmodeled"
+    "name": "Attack and block requirements, and blocking an additional creature",
+    "blocker": "a declaration can be restricted but never required, and a blocker blocks one attacker"
   },
   {
     "name": "Damage prevention",

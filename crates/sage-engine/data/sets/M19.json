@@ -55,6 +55,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "luminous_bonds",
+    "collector_number": "25",
+    "rarity": "common"
+  },
+  {
     "functional_id": "mighty_leap",
     "collector_number": "28",
     "rarity": "common"
@@ -78,6 +83,11 @@
     "functional_id": "take_vengeance",
     "collector_number": "40",
     "rarity": "common"
+  },
+  {
+    "functional_id": "aether_tunnel",
+    "collector_number": "43",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "aven_wind_mage",
@@ -113,6 +123,11 @@
     "functional_id": "exclusion_mage",
     "collector_number": "55",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "frilled_sea_serpent",
+    "collector_number": "56",
+    "rarity": "common"
   },
   {
     "functional_id": "snapping_drake",
@@ -162,6 +177,11 @@
   {
     "functional_id": "murder",
     "collector_number": "110",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "plague_mare",
+    "collector_number": "114",
     "rarity": "uncommon"
   },
   {
@@ -260,6 +280,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "siegebreaker_giant",
+    "collector_number": "157",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "smelt",
     "collector_number": "158",
     "rarity": "common"
@@ -270,6 +295,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "tectonic_rift",
+    "collector_number": "162",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "viashino_pyromancer",
     "collector_number": "166",
     "rarity": "common"
@@ -278,6 +308,11 @@
     "functional_id": "volcanic_dragon",
     "collector_number": "167",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "bristling_boar",
+    "collector_number": "170",
+    "rarity": "common"
   },
   {
     "functional_id": "centaur_courser",
@@ -365,6 +400,11 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "vine_mare",
+    "collector_number": "207",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "wall_of_vines",
     "collector_number": "210",
     "rarity": "common"
@@ -398,6 +438,11 @@
     "functional_id": "skyscanner",
     "collector_number": "245",
     "rarity": "common"
+  },
+  {
+    "functional_id": "suspicious_bookcase",
+    "collector_number": "246",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "cinder_barrens",

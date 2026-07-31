@@ -12,7 +12,7 @@
 
 use serde::Deserialize;
 
-use crate::card::Keyword;
+use crate::card::{CombatRestriction, Keyword};
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
 use crate::stack::StackId;
@@ -391,6 +391,44 @@ pub enum Effect {
         /// The keyword ability granted until end of turn.
         keyword: Keyword,
     },
+    /// Impose a [`CombatRestriction`] on the single creature this effect targets
+    /// **until end of turn** — the restriction counterpart of [`Effect::GrantKeyword`]
+    /// (e.g. `Target creature can't be blocked this turn.`). On resolution it adds a
+    /// CR 613 **layer-6** [`Modification::GrantRestriction`](crate::Modification::GrantRestriction)
+    /// keyed to that one permanent, with an `UntilEndOfTurn` duration the cleanup step
+    /// removes (CR 514.2).
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). The restriction folds into
+    /// the target's computed restrictions on demand and binds exactly as a printed one
+    /// does; a duplicate imposition is redundant, not additive.
+    Restrict {
+        /// What this effect is allowed to target (a creature).
+        target: TargetSpec,
+        /// The restriction imposed until end of turn.
+        restriction: CombatRestriction,
+    },
+    /// Impose a [`CombatRestriction`] on **this ability's own source** until end of turn
+    /// — the self-referential counterpart of [`Effect::Restrict`] (`this creature can't
+    /// be blocked this turn`), and the restriction counterpart of [`Effect::PumpSelf`].
+    ///
+    /// The subject is implicit: the source is not a *target* (CR 115.1), so this chooses
+    /// nothing, fills no slot, and can never fizzle. A source that has left the
+    /// battlefield is not there to restrict, and the effect does nothing.
+    RestrictSelf {
+        /// The restriction imposed on the source until end of turn.
+        restriction: CombatRestriction,
+    },
+    /// Impose a [`CombatRestriction`] on **every permanent in a named class** until end
+    /// of turn — the mass counterpart of [`Effect::Restrict`] (e.g. `Creatures without
+    /// flying can't block this turn.`). Chooses no target, and locks its affected set in
+    /// on resolution exactly as [`Effect::PumpAll`] does (CR 611.2c).
+    RestrictAll {
+        /// The class of permanents restricted.
+        affects: MassAffects,
+        /// The restriction imposed until end of turn.
+        restriction: CombatRestriction,
+    },
     /// Give **this ability's own source** `+power`/`+toughness` until end of turn —
     /// the self-referential counterpart of [`Effect::Pump`] (`this creature gets +1/+1
     /// until end of turn`).
@@ -494,6 +532,19 @@ impl PlayerRef {
 pub enum MassAffects {
     /// Every creature the effect's controller controls at the moment it resolves.
     CreaturesYouControl,
+    /// Every creature controlled by an opponent of the effect's controller who is still
+    /// in the game, at the moment it resolves — the symmetric sweeper's scope. In a game
+    /// of three or more this really is every opponent's board, which is why it is not
+    /// spelled "the opponent's creatures".
+    CreaturesYourOpponentsControl,
+    /// Every creature on the battlefield that does not currently have flying, whoever
+    /// controls it — the scope of an effect that clears the ground.
+    ///
+    /// Flying is read through the computed keywords (CR 613.1f), so a creature that was
+    /// *granted* flying is outside the class exactly as a printed flyer is. The class is
+    /// still evaluated once, on resolution (CR 611.2c), like every other mass effect: a
+    /// creature that loses flying later in the turn does not retroactively join it.
+    CreaturesWithoutFlying,
 }
 
 impl Effect {
@@ -516,6 +567,7 @@ impl Effect {
             | Effect::PutCounters { target, .. }
             | Effect::Pump { target, .. }
             | Effect::GrantKeyword { target, .. }
+            | Effect::Restrict { target, .. }
             | Effect::ReturnToHand { target } => Some(*target),
             // A player-subject effect targets exactly when its reference does
             // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
@@ -530,7 +582,9 @@ impl Effect {
             // ability's own source.
             | Effect::PumpAll { .. }
             | Effect::GrantKeywordAll { .. }
+            | Effect::RestrictAll { .. }
             | Effect::PumpSelf { .. }
+            | Effect::RestrictSelf { .. }
             | Effect::PutCountersOnSelf { .. } => None,
         }
     }

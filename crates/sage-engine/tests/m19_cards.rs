@@ -9,10 +9,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use sage_engine::{
-    apply_action, attacker_candidates, characteristics, pending_trigger_target_choice,
-    target_requirements, valid_actions, Action, Attack, Block, CardData, CardDatabase, CardId,
-    CardInstance, CardType, Color, FunctionalId, GameEvent, GameState, Keyword, Permanent,
-    PermanentId, PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
+    apply_action, attacker_candidates, blocker_candidates_for, characteristics,
+    pending_trigger_target_choice, permanent_restrictions, target_requirements, valid_actions,
+    Action, Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardType, Color,
+    CombatRestriction, FunctionalId, GameEvent, GameState, Keyword, Permanent, PermanentId,
+    PlayerId, StackId, StackObject, StackObjectKind, Step, Target,
 };
 
 // ----- fixtures -------------------------------------------------------------
@@ -427,6 +428,416 @@ fn boggart_brute_can_be_blocked_only_by_two_or_more_creatures() {
     // blocked, never whether it must be.
     let none = Action::DeclareBlockers { blocks: Vec::new() };
     assert_ne!(apply_action(&state, &none, &db), state);
+}
+
+// ----- evasion and blocking restrictions (issue #606) -------------------------
+
+/// Whether the block assigning `blocker` to `attacker` is accepted by the pipeline —
+/// submitted as a real declaration, so an illegal one is a no-op rather than an error.
+fn block_is_legal(
+    state: &GameState,
+    db: &CardDatabase,
+    blocker: PermanentId,
+    attacker: PermanentId,
+) -> bool {
+    let action = Action::DeclareBlockers {
+        blocks: vec![Block { blocker, attacker }],
+    };
+    &apply_action(state, &action, db) != state
+}
+
+/// Cast `slug` from `seat`'s hand with `targets` and let it resolve. The counterpart of
+/// [`cast`] for a spell an *opponent* casts, which is what a targeting restriction has
+/// to be tested from.
+fn cast_by(
+    state: &GameState,
+    db: &CardDatabase,
+    slug: &str,
+    seat: PlayerId,
+    targets: Vec<Target>,
+) -> GameState {
+    let mut state = state.clone();
+    state.priority = seat;
+    state.consecutive_passes = 0;
+    let instance = to_hand(&mut state, db, slug, seat);
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: instance,
+            targets,
+        },
+        db,
+    );
+    let after = apply_action(&after, &Action::PassPriority, db);
+    apply_action(&after, &Action::PassPriority, db)
+}
+
+#[test]
+fn bristling_boar_can_be_blocked_by_one_creature_but_never_two() {
+    // CR 509.1b, the mirror of menace: a ceiling on the block rather than a floor. One
+    // blocker is fine, none is fine, and the *second* blocker is what makes the whole
+    // selection illegal — judgeable only over the assembled declaration.
+    let db = db();
+    let mut state = main_phase(&db);
+    let boar = place(&mut state, &db, "bristling_boar", PlayerId(0));
+    let first = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+    let second = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+    let state = attack_with(&state, &db, boar);
+
+    assert!(
+        block_is_legal(&state, &db, first, boar),
+        "a single blocker is legal"
+    );
+    assert_ne!(
+        apply_action(&state, &Action::DeclareBlockers { blocks: Vec::new() }, &db),
+        state,
+        "declaring no blockers is legal — the ceiling restricts how, not whether"
+    );
+
+    let pair = Action::DeclareBlockers {
+        blocks: vec![
+            Block {
+                blocker: first,
+                attacker: boar,
+            },
+            Block {
+                blocker: second,
+                attacker: boar,
+            },
+        ],
+    };
+    assert_eq!(
+        apply_action(&state, &pair, &db),
+        state,
+        "a second blocker makes the declaration illegal"
+    );
+}
+
+#[test]
+fn vine_mare_cannot_be_blocked_by_black_creatures_but_green_ones_may() {
+    // CR 509.1b: a colour-restricted evasion is a *pairwise* fact, so it removes only
+    // the creatures of that colour — the unaffected neighbour still blocks.
+    let db = db();
+    let mut state = main_phase(&db);
+    let mare = place(&mut state, &db, "vine_mare", PlayerId(0));
+    let black = place(&mut state, &db, "walking_corpse", PlayerId(1));
+    let green = place(&mut state, &db, "centaur_courser", PlayerId(1));
+    let state = attack_with(&state, &db, mare);
+
+    assert!(
+        !block_is_legal(&state, &db, black, mare),
+        "a black creature cannot block Vine Mare"
+    );
+    assert!(
+        block_is_legal(&state, &db, green, mare),
+        "a green creature is unaffected"
+    );
+}
+
+#[test]
+fn vine_mare_is_hexproof_from_opponents_and_not_from_its_controller() {
+    // CR 702.11b: hexproof is controller-relative. The same removal spell is illegal
+    // from the opponent and legal from the creature's own controller, and the
+    // enumerated candidate set agrees with the legality check rather than restating it.
+    let db = db();
+    let mut state = main_phase(&db);
+    let mare = place(&mut state, &db, "vine_mare", PlayerId(0));
+    let plain = place(&mut state, &db, "centaur_courser", PlayerId(0));
+
+    // The opponent's Murder cannot be aimed at it, and it is not offered as a choice.
+    let opponent_kill = cast_by(
+        &state,
+        &db,
+        "murder",
+        PlayerId(1),
+        vec![Target::Permanent(mare)],
+    );
+    assert!(
+        on_battlefield(&opponent_kill, mare),
+        "an opponent cannot target a hexproof creature"
+    );
+    let mut offering = state.clone();
+    offering.priority = PlayerId(1);
+    let instance = to_hand(&mut offering, &db, "murder", PlayerId(1));
+    let candidates = target_requirements(
+        &offering,
+        &db,
+        &Action::CastSpell {
+            card: instance,
+            targets: Vec::new(),
+        },
+    );
+    assert_eq!(candidates.len(), 1, "Murder fills one target slot");
+    assert!(
+        !candidates[0].candidates.contains(&Target::Permanent(mare)),
+        "a hexproof creature is not offered to an opponent"
+    );
+    assert!(
+        candidates[0].candidates.contains(&Target::Permanent(plain)),
+        "the unaffected neighbour still is"
+    );
+
+    // Its own controller may target it freely.
+    let own_kill = cast_by(
+        &state,
+        &db,
+        "murder",
+        PlayerId(0),
+        vec![Target::Permanent(mare)],
+    );
+    assert!(
+        !on_battlefield(&own_kill, mare),
+        "hexproof never stops the controller"
+    );
+}
+
+#[test]
+fn plague_mare_shrinks_only_its_opponents_creatures_and_dodges_white_blockers() {
+    // Two independent halves of one card: the opponents-wide mass scope (which must
+    // spare the controller's own board) and the colour-restricted evasion.
+    let db = db();
+    let mut state = main_phase(&db);
+    let ours = place(&mut state, &db, "centaur_courser", PlayerId(0));
+    let theirs = place(&mut state, &db, "centaur_courser", PlayerId(1));
+    let white = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+
+    // Cast it as a creature spell so the enters trigger runs through the real seam.
+    let state = cast(&state, &db, "plague_mare", Vec::new());
+    let state = apply_action(&state, &Action::PassPriority, &db);
+    let state = apply_action(&state, &Action::PassPriority, &db);
+    let mare = state
+        .battlefield
+        .iter()
+        .find(|p| p.card == cid(&db, "plague_mare"))
+        .expect("Plague Mare entered the battlefield")
+        .id;
+    // It entered this turn, so CR 302.6 would keep it out of combat; the evasion half
+    // of the card is about the block, not about when it may attack.
+    let mut state = state;
+    state
+        .battlefield
+        .iter_mut()
+        .filter(|p| p.id == mare)
+        .for_each(|p| p.entered_turn = 0);
+
+    assert_eq!(
+        characteristics(&state, theirs, &db).power,
+        Some(2),
+        "an opponent's 3/3 is now a 2/2"
+    );
+    assert_eq!(
+        characteristics(&state, ours, &db).power,
+        Some(3),
+        "the controller's own creature is untouched"
+    );
+
+    let state = attack_with(&state, &db, mare);
+    assert!(
+        !block_is_legal(&state, &db, white, mare),
+        "a white creature cannot block Plague Mare"
+    );
+    assert!(
+        block_is_legal(&state, &db, theirs, mare),
+        "a green creature is unaffected"
+    );
+}
+
+#[test]
+fn luminous_bonds_stops_its_host_attacking_and_blocking_until_it_leaves() {
+    // The Aura carries a *restriction* rather than a P/T or keyword grant, and it is
+    // derived from the attachment: destroying the Aura frees the creature with nothing
+    // to unwind.
+    let db = db();
+    let mut state = main_phase(&db);
+    let bound = place(&mut state, &db, "centaur_courser", PlayerId(0));
+    let free = place(&mut state, &db, "centaur_courser", PlayerId(0));
+
+    let state = cast(
+        &state,
+        &db,
+        "luminous_bonds",
+        vec![Target::Permanent(bound)],
+    );
+    let candidates = attacker_candidates(&state, &db);
+    assert!(
+        !candidates.contains(&bound),
+        "the enchanted creature can't attack"
+    );
+    assert!(candidates.contains(&free), "its neighbour still can");
+
+    // The same host can't block either. Player 1 attacks into it.
+    let mut defending = state.clone();
+    defending.active_player = PlayerId(1);
+    defending.players[0].turn_began = defending.turn;
+    let attacker = place(&mut defending, &db, "onakke_ogre", PlayerId(1));
+    let defending = {
+        let mut s = defending;
+        s.step = Step::DeclareAttackers;
+        s.priority = PlayerId(1);
+        s.consecutive_passes = 0;
+        let s = apply_action(
+            &s,
+            &Action::DeclareAttackers {
+                attackers: vec![Attack {
+                    attacker,
+                    defender: PlayerId(0),
+                }],
+            },
+            &db,
+        );
+        let mut s = s;
+        while s.step != Step::DeclareBlockers {
+            s = advance(&s, &db);
+        }
+        s
+    };
+    let blockers = blocker_candidates_for(&defending, PlayerId(0), &db);
+    assert!(
+        !blockers.contains(&bound),
+        "the enchanted creature can't block"
+    );
+    assert!(blockers.contains(&free), "its neighbour still can");
+    assert!(!block_is_legal(&defending, &db, bound, attacker));
+
+    // Destroying the Aura ends the restriction immediately (CR 613.1f, ADR 0005).
+    let aura = state
+        .battlefield
+        .iter()
+        .find(|p| p.card == cid(&db, "luminous_bonds"))
+        .expect("the Aura is attached")
+        .id;
+    let freed = cast(&state, &db, "naturalize", vec![Target::Permanent(aura)]);
+    assert!(!on_battlefield(&freed, aura));
+    assert!(attacker_candidates(&freed, &db).contains(&bound));
+}
+
+#[test]
+fn aether_tunnel_makes_its_host_unblockable_and_bigger() {
+    // One Aura carrying a P/T grant (layer 7c) and a restriction (layer 6) at once —
+    // the two halves are independent and both apply.
+    let db = db();
+    let mut state = main_phase(&db);
+    let host = place(&mut state, &db, "centaur_courser", PlayerId(0));
+    let ground = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+
+    let state = cast(&state, &db, "aether_tunnel", vec![Target::Permanent(host)]);
+    assert_eq!(characteristics(&state, host, &db).power, Some(4), "+1/+0");
+    assert_eq!(characteristics(&state, host, &db).toughness, Some(3));
+
+    let state = attack_with(&state, &db, host);
+    assert!(
+        !block_is_legal(&state, &db, ground, host),
+        "nothing may block an unblockable attacker"
+    );
+}
+
+#[test]
+fn frilled_sea_serpent_buys_unblockability_for_the_turn_only() {
+    // A granted restriction behaves exactly as a printed one — and, being an
+    // until-end-of-turn effect, is gone by the next combat (CR 514.2).
+    let db = db();
+    let mut state = main_phase(&db);
+    let serpent = place(&mut state, &db, "frilled_sea_serpent", PlayerId(0));
+    let blocker = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+
+    let blocked = attack_with(&state, &db, serpent);
+    assert!(
+        block_is_legal(&blocked, &db, blocker, serpent),
+        "before the activation it blocks normally"
+    );
+
+    let activated = activate(&state, &db, serpent, 0, Vec::new());
+    let evasive = attack_with(&activated, &db, serpent);
+    assert!(
+        !block_is_legal(&evasive, &db, blocker, serpent),
+        "the granted restriction binds exactly as a printed one"
+    );
+
+    // CR 514.2: the cleanup step ends it, so the restriction is gone with the turn.
+    assert!(permanent_restrictions(&activated, serpent, &db)
+        .contains(&CombatRestriction::CantBeBlocked));
+    let mut later = activated;
+    while later.turn == 1 {
+        later = advance(&later, &db);
+    }
+    assert!(
+        permanent_restrictions(&later, serpent, &db).is_empty(),
+        "the grant wore off at cleanup"
+    );
+}
+
+#[test]
+fn siegebreaker_giant_stops_one_blocker_and_leaves_the_rest() {
+    // The other direction of the same layer: a restriction aimed at the *blocker*
+    // rather than at the attacker.
+    let db = db();
+    let mut state = main_phase(&db);
+    let giant = place(&mut state, &db, "siegebreaker_giant", PlayerId(0));
+    let silenced = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+    let other = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+
+    let state = activate(&state, &db, giant, 0, vec![Target::Permanent(silenced)]);
+    let state = attack_with(&state, &db, giant);
+    assert!(
+        !blocker_candidates_for(&state, PlayerId(1), &db).contains(&silenced),
+        "a creature that can't block is not a blocker candidate"
+    );
+    assert!(!block_is_legal(&state, &db, silenced, giant));
+    assert!(
+        block_is_legal(&state, &db, other, giant),
+        "its neighbour is unaffected"
+    );
+}
+
+#[test]
+fn suspicious_bookcase_makes_one_creature_unblockable_for_the_turn() {
+    // A `{3}, {T}` activation aimed at another creature — the targeted form of the
+    // same imposition Frilled Sea Serpent applies to itself.
+    let db = db();
+    let mut state = main_phase(&db);
+    let bookcase = place(&mut state, &db, "suspicious_bookcase", PlayerId(0));
+    let sneak = place(&mut state, &db, "centaur_courser", PlayerId(0));
+    let blocker = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+
+    let state = activate(&state, &db, bookcase, 0, vec![Target::Permanent(sneak)]);
+    assert!(
+        state
+            .battlefield
+            .iter()
+            .any(|p| p.id == bookcase && p.tapped),
+        "the tap in the cost was paid"
+    );
+    let state = attack_with(&state, &db, sneak);
+    assert!(!block_is_legal(&state, &db, blocker, sneak));
+}
+
+#[test]
+fn tectonic_rift_destroys_a_land_and_grounds_every_non_flying_blocker() {
+    // Two effects in one spell, one of which names a class rather than a target: the
+    // class is enumerated on resolution (CR 611.2c) and excludes flyers by their
+    // *computed* keywords.
+    let db = db();
+    let mut state = main_phase(&db);
+    let attacker = place(&mut state, &db, "onakke_ogre", PlayerId(0));
+    let land = place(&mut state, &db, "forest", PlayerId(1));
+    let ground = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+    let flyer = place(&mut state, &db, "silverbeak_griffin", PlayerId(1));
+
+    let state = cast(&state, &db, "tectonic_rift", vec![Target::Permanent(land)]);
+    assert!(
+        !on_battlefield(&state, land),
+        "the target land is destroyed"
+    );
+
+    let state = attack_with(&state, &db, attacker);
+    assert!(
+        !block_is_legal(&state, &db, ground, attacker),
+        "a creature without flying can't block this turn"
+    );
+    assert!(
+        block_is_legal(&state, &db, flyer, attacker),
+        "a flyer is outside the class"
+    );
 }
 
 // ----- triggered abilities ---------------------------------------------------

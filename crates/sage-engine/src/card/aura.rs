@@ -3,6 +3,7 @@
 use serde::Deserialize;
 
 use super::keyword::Keyword;
+use super::restriction::CombatRestriction;
 use crate::ability::TargetSpec;
 
 /// The enchant ability and static power/toughness grant of an Aura (CR 303.4).
@@ -17,9 +18,9 @@ use crate::ability::TargetSpec;
 /// The modification is stored as raw signed printed data; the *contribution* to a
 /// host's current characteristics is derived on demand from the attachment via
 /// [`characteristics`](crate::characteristics::characteristics), never stored
-/// (ADR 0005). Enchant-creature Auras that grant power/toughness (CR 613.7c) and/or
-/// keyword abilities (CR 613.1f, layer 6) are modeled here; enchant-player/land and
-/// Aura movement are out of scope.
+/// (ADR 0005). Enchant-creature Auras that grant power/toughness (CR 613.7c), keyword
+/// abilities, and/or combat restrictions (CR 613.1f, layer 6) are modeled here;
+/// enchant-player/land and Aura movement are out of scope.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct AuraGrant {
     /// The enchant restriction (CR 303.4a): what this Aura may be attached to,
@@ -43,6 +44,16 @@ pub struct AuraGrant {
     /// vanishes the instant the Aura leaves. Redundant grants are idempotent.
     #[serde(default)]
     pub keywords: Vec<Keyword>,
+    /// The combat restrictions this Aura imposes on the enchanted object at CR 613
+    /// layer 6 (CR 613.1f) — the "can neither attack nor block" of a pacifism effect.
+    /// Empty for an Aura that only pumps or only grants keywords.
+    ///
+    /// Folded into the host's computed restrictions exactly as [`Self::keywords`] are
+    /// folded into its keywords, and derived from the attachment rather than stored, so
+    /// the restriction ends the instant the Aura leaves — which is the whole way a
+    /// pacified creature is freed by destroying the Aura.
+    #[serde(default)]
+    pub restrictions: Vec<CombatRestriction>,
 }
 
 #[cfg(test)]
@@ -78,6 +89,7 @@ mod tests {
                 power: 2,
                 toughness: 2,
                 keywords: vec![],
+                restrictions: vec![],
             })
         );
         // An Aura chooses its enchant target as it is cast (CR 601.2c): one slot.
@@ -92,6 +104,7 @@ mod tests {
                 power: -2,
                 toughness: -2,
                 keywords: vec![],
+                restrictions: vec![],
             })
         );
 

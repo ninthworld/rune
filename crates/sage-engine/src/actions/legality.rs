@@ -143,9 +143,9 @@ pub(crate) fn attackers_selection_is_legal(
 /// attacker is currently attacking ([`declared_attackers`]) *and attacking that
 /// player* (CR 509.1a — a player blocks only attackers attacking them), no creature
 /// is declared as a blocker more than once, and each blocker can legally block the
-/// attacker it is assigned to given evasion keywords — a flyer can be blocked only
-/// by flying or reach (CR 702.9c, 702.17b, via [`blocker_can_block_attacker`]). An
-/// empty selection is legal (declaring no blockers).
+/// attacker it is assigned to given the pairwise evasion rules (CR 702.9c, 702.17b,
+/// CR 509.1b, via [`blocker_can_block_attacker`]). An empty selection is legal
+/// (declaring no blockers).
 ///
 /// Scoping to the current declarer is what makes the multi-defender flow (issue
 /// #344) safe: each attacked player's declaration is validated against exactly
@@ -173,36 +173,49 @@ fn blocks_selection_is_legal(state: &GameState, db: &CardDatabase, blocks: &[Blo
                 && attacking_defender_of(state, b.attacker) == Some(declarer)
                 && blocker_can_block_attacker(state, b.attacker, b.blocker, db)
         })
-        // CR 702.110b (menace) is the one restriction here that is a fact about the
+        // The block-count restrictions are the ones that are facts about the
         // *selection* rather than about any one pair: a lone blocker is illegal
-        // precisely because it is alone, so it can only be judged once the whole
-        // declaration is in hand.
-        && menace_is_satisfied(state, blocks, db)
+        // precisely because it is alone, a second one precisely because it is not,
+        // so both can only be judged once the whole declaration is in hand.
+        && block_counts_are_legal(state, blocks, db)
 }
 
-/// Whether every menace attacker named in `blocks` is blocked by **two or more**
-/// creatures (CR 702.110b): a creature with menace can't be blocked except by two or
-/// more creatures, so exactly one blocker assigned to it makes the whole declaration
-/// illegal. Zero is fine — menace restricts *how* a creature is blocked, never
-/// whether it must be.
+/// Whether every attacker named in `blocks` is blocked by a legal *number* of
+/// creatures — the two restrictions that constrain the count rather than the pairing:
 ///
-/// Menace is read through the computed keywords (CR 613.1f), so a granted menace
+/// - **menace** (CR 702.110b): a creature with menace can't be blocked except by two or
+///   more creatures, so exactly one blocker assigned to it makes the whole declaration
+///   illegal — a floor;
+/// - **[`blocked_by_at_most_one`]** (CR 509.1b): a creature that can't be blocked by
+///   more than one creature makes a second blocker illegal — the mirroring ceiling.
+///
+/// Zero blockers is fine for both: each restricts *how* a creature is blocked, never
+/// whether it must be. A creature carrying both is simply unblockable, and this says so
+/// without a special case — no count satisfies a floor of two and a ceiling of one.
+///
+/// Both are read through the computed characteristics (CR 613.1f), so a granted one
 /// restricts exactly as a printed one does. Only attackers this declaration actually
-/// names are checked; blockers already assigned to an attacker attacking a *different*
-/// player cannot exist, since an attacker attacks one player and only that player
-/// declares against it.
-fn menace_is_satisfied(state: &GameState, blocks: &[Block], db: &CardDatabase) -> bool {
+/// names are counted; a blocker assigned to an attacker attacking a *different* player
+/// cannot exist, since an attacker attacks one player and only that player declares
+/// against it.
+fn block_counts_are_legal(state: &GameState, blocks: &[Block], db: &CardDatabase) -> bool {
     blocks.iter().all(|block| {
-        if !crate::combat::permanent_has_menace(state, block.attacker, db) {
-            return true;
-        }
-        blocks
+        let assigned = blocks
             .iter()
             .filter(|b| b.attacker == block.attacker)
-            .count()
-            >= 2
+            .count();
+        let floor_met = !crate::combat::permanent_has_menace(state, block.attacker, db)
+            || assigned >= MENACE_MINIMUM_BLOCKERS;
+        let ceiling_met =
+            !crate::combat::blocked_by_at_most_one(state, block.attacker, db) || assigned <= 1;
+        floor_met && ceiling_met
     })
 }
+
+/// The number of blockers menace demands (CR 702.110b, "except by two or more
+/// creatures"). Named so the floor and the ceiling in [`block_counts_are_legal`] read
+/// as the pair of bounds they are.
+const MENACE_MINIMUM_BLOCKERS: usize = 2;
 
 /// Whether a combat-damage assignment order selection is legal (CR 510.1, issue
 /// #346): it names exactly the attackers that owe an order
@@ -241,6 +254,7 @@ fn damage_orders_are_legal(state: &GameState, orders: &[DamageOrder]) -> bool {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::panic)]
 
+    use super::super::definition::Attack;
     use super::*;
     use crate::apply_action;
     use crate::fixtures::fixture;
@@ -280,6 +294,117 @@ mod tests {
             targets: Vec::new(),
         };
         (state, db, action)
+    }
+
+    /// A two-player combat parked at declare-blockers with `attacker` attacking alone
+    /// and the defender controlling two Sun Sentinels; returns the state and the two
+    /// candidate blockers.
+    fn ceiling_combat(
+        db: &CardDatabase,
+        attacker: &str,
+    ) -> (GameState, PermanentId, [PermanentId; 2]) {
+        let mut state = GameState::new_two_player();
+        state.step = Step::DeclareAttackers;
+        state.priority = PlayerId(0);
+        let place = |state: &mut GameState, slug: &str, seat: PlayerId| {
+            let card = fixture(slug);
+            let inst = state.new_instance(card);
+            let id = PermanentId(state.mint_id());
+            state.battlefield.push(Permanent {
+                id,
+                instance: inst.id,
+                card,
+                controller: seat,
+                tapped: false,
+                entered_turn: 0,
+                attacking: None,
+                blocking: None,
+                damage: 0,
+                counters: Default::default(),
+                attached_to: None,
+            });
+            id
+        };
+        let atk = place(&mut state, attacker, PlayerId(0));
+        let first = place(&mut state, "sun_sentinel", PlayerId(1));
+        let second = place(&mut state, "sun_sentinel", PlayerId(1));
+        let mut state = apply_action(
+            &state,
+            &Action::DeclareAttackers {
+                attackers: vec![Attack {
+                    attacker: atk,
+                    defender: PlayerId(1),
+                }],
+            },
+            db,
+        );
+        while state.step != Step::DeclareBlockers {
+            state = apply_action(&state, &Action::PassPriority, db);
+        }
+        (state, atk, [first, second])
+    }
+
+    #[test]
+    fn issue_606_a_block_count_ceiling_is_judged_over_the_whole_selection() {
+        // CR 509.1b: like menace, the ceiling cannot be judged from a pair. Each
+        // blocker alone is legal; it is the *pair together* that is not, which is only
+        // visible once the declaration is assembled.
+        let db = CardDatabase::bundled().unwrap();
+        let (state, boar, [first, second]) = ceiling_combat(&db, "bristling_boar");
+        let block = |blockers: &[PermanentId]| Action::DeclareBlockers {
+            blocks: blockers
+                .iter()
+                .map(|&blocker| Block {
+                    blocker,
+                    attacker: boar,
+                })
+                .collect(),
+        };
+
+        assert!(action_is_legal(&state, &block(&[]), &db), "none is legal");
+        assert!(action_is_legal(&state, &block(&[first]), &db));
+        assert!(action_is_legal(&state, &block(&[second]), &db));
+        assert!(
+            !action_is_legal(&state, &block(&[first, second]), &db),
+            "a second blocker breaks the ceiling"
+        );
+    }
+
+    #[test]
+    fn issue_606_a_floor_and_a_ceiling_together_leave_no_legal_block() {
+        // A creature with menace *and* the ceiling is simply unblockable, and the two
+        // bounds say so without a special case: no count satisfies both.
+        let db = CardDatabase::bundled().unwrap();
+        let (mut state, boar, [first, second]) = ceiling_combat(&db, "bristling_boar");
+        let stamp = state.mint_id();
+        state.static_effects.push(crate::state::StaticEffect {
+            source: stamp,
+            affects: crate::state::EffectAffects::SpecificPermanent(boar),
+            modification: crate::state::Modification::GrantKeyword(crate::card::Keyword::Menace),
+            duration: crate::state::Duration::UntilEndOfTurn,
+        });
+        let block = |blockers: &[PermanentId]| Action::DeclareBlockers {
+            blocks: blockers
+                .iter()
+                .map(|&blocker| Block {
+                    blocker,
+                    attacker: boar,
+                })
+                .collect(),
+        };
+
+        assert!(
+            action_is_legal(&state, &block(&[]), &db),
+            "declaring no blockers is still legal"
+        );
+        assert!(
+            !action_is_legal(&state, &block(&[first]), &db),
+            "menace's floor"
+        );
+        assert!(
+            !action_is_legal(&state, &block(&[first, second]), &db),
+            "the ceiling"
+        );
     }
 
     #[test]

@@ -59,18 +59,24 @@ no Oracle text, flavor, art, or branding.
 | `colors` | no | Explicit card colors; empty means colorless |
 | `power`, `toughness` | conditional | Both required for creatures and forbidden for non-creatures |
 | `keywords` | no | Supported keyword abilities |
+| `restrictions` | no | Printed combat restrictions; creatures only |
 | `abilities` | no | Activated, triggered, or replacement-style ability IR |
 | `spell_effects` | no | Resolution effects for instants and sorceries |
-| `aura` | no | Aura enchant restriction and static power/toughness and/or keyword grant |
+| `aura` | no | Aura enchant restriction and static power/toughness, keyword, and/or combat-restriction grant |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
 Current keyword values are `flying`, `reach`, `vigilance`, `haste`, `defender`, `menace`,
-`first_strike`, `trample`, `deathtouch`, `lifelink`, and `double_strike`.
+`first_strike`, `trample`, `deathtouch`, `lifelink`, `double_strike`, and `hexproof`.
 
 `defender` (CR 702.3b) removes a creature from the attacker candidate set; `menace`
 (CR 702.110b) is checked over the whole declare-blockers selection, since a lone blocker
 is illegal precisely because it is alone. Both are read through the computed keywords, so
 a granted one restricts exactly as a printed one does.
+
+`hexproof` (CR 702.11b) is not a combat rule at all: it is enforced in `target_is_legal`,
+the one predicate both the announcement gate and the CR 608.2b resolution re-check run.
+It is controller-relative — an opponent may not target the creature, and its own
+controller may.
 
 ### Granting keywords (continuous, CR 613.1f)
 
@@ -86,6 +92,59 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
   e.g. `{"kind": "grant_keyword", "target": "any_creature", "keyword": "trample"}`. The
   grant expires in the cleanup step (CR 514.2). Duplicate grants are redundant, not
   additive. Keyword *removal* and conditional grants are out of scope.
+
+### Combat restrictions (CR 506.3, CR 509.1b)
+
+Restrictions on attacking and blocking that are **not** keyword abilities live in
+`restrictions` rather than `keywords`: no card prints them as a keyword, and some carry a
+parameter. A unit restriction is its bare name and a parameterized one wraps its payload:
+
+```json
+"restrictions": ["cant_be_blocked_by_more_than_one", {"cant_be_blocked_by": "black"}]
+```
+
+| Restriction | Meaning | Enforced in |
+| --- | --- | --- |
+| `cant_attack` | can't be declared as an attacker | the attacker candidate set |
+| `cant_block` | can't be declared as a blocker | the blocker candidate set |
+| `cant_be_blocked` | no creature may block it | the pairwise block check |
+| `cant_be_blocked_by` | no creature of the named colour may block it | the pairwise block check |
+| `cant_be_blocked_by_more_than_one` | at most one blocker may be assigned to it | the whole-selection block check |
+
+Printed restrictions belong only on creatures; the loader rejects them elsewhere. They are
+read through the computed characteristics at CR 613 layer 6, exactly as keywords are, so a
+restriction an Aura or a spell imposes binds identically to a printed one and ends with the
+effect that imposed it.
+
+Two of these are facts about the **whole** declaration rather than about one
+attacker/blocker pair — `cant_be_blocked_by_more_than_one` and menace — so the engine can
+only judge them once the declaration is assembled. Both are therefore stated in the
+blocker slot's `prompt` (`docs/protocol.md`) rather than left to a submit that silently
+does nothing.
+
+The colour test reads the blocker's **printed** colours: CR 613 layer 5 (colour-changing
+effects) is not implemented, so printed colour is current colour, the same way printed
+types stand in for current types elsewhere in the engine.
+
+Attack and block *requirements* ("attacks each combat if able") are not modeled: a
+declaration can be restricted but never required.
+
+### Imposing restrictions (continuous, CR 613.1f)
+
+The three restriction verbs mirror the keyword-granting ones exactly, and all impose
+**until end of turn**:
+
+- `{"kind": "restrict", "target": "any_creature", "restriction": "cant_block"}` — one
+  chosen target;
+- `{"kind": "restrict_self", "restriction": "cant_be_blocked"}` — the ability's own
+  source, which is not a target and never fizzles;
+- `{"kind": "restrict_all", "affects": "creatures_without_flying", "restriction": "cant_block"}`
+  — a class, whose members are locked in on resolution (CR 611.2c).
+
+An **Aura** imposes for as long as it is attached, via `aura.restrictions`, e.g.
+`"aura": {"enchant": "any_creature", "restrictions": ["cant_attack", "cant_block"]}`. The
+`power`/`toughness`, `keywords`, and `restrictions` grants are independent; any
+combination may be present.
 
 ### Targets (CR 115.1)
 
@@ -145,6 +204,10 @@ target, so they choose nothing and never fizzle:
 ```json
 { "kind": "pump_all", "affects": "creatures_you_control", "power": 2, "toughness": 1 }
 ```
+
+`affects` is `creatures_you_control`, `creatures_your_opponents_control` (every opponent
+still in the game, not "the opponent"), or `creatures_without_flying` (read through the
+computed keywords, so a granted flying excludes a creature exactly as a printed one does).
 
 The affected set is locked in on resolution (CR 611.2c) — a creature that arrives later in
 the turn is untouched. That is the whole difference between one of these and an
@@ -272,6 +335,7 @@ The build and loader reject:
 - malformed, duplicate, or file-mismatched functional ids;
 - missing types or invalid creature power/toughness;
 - an Aura grant on a non-Aura;
+- printed `restrictions` on a card that is not a creature;
 - unresolved printing references or duplicate collector numbers; and
 - disagreement between a scripted definition and `src/scripted.rs`.
 

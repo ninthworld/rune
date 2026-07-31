@@ -101,6 +101,14 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// A printed `restrictions` list appears on a card that is not a creature. Every
+    /// combat restriction is about attacking or blocking (CR 506.3, CR 509.1b), so on
+    /// a non-creature it could only ever be inert — which makes it an authoring
+    /// mistake worth failing on rather than a harmless field.
+    RestrictionsOnNonCreature {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// Two printings in one set claim the same collector number, so one would shadow
     /// the other.
     DuplicatePrinting {
@@ -158,6 +166,11 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} carries an `aura` grant but is not an Aura \
                  (its subtypes do not include `{AURA_SUBTYPE}`)"
+            ),
+            Self::RestrictionsOnNonCreature { functional_id } => write!(
+                f,
+                "{functional_id} carries printed `restrictions` but is not a creature; \
+                 a combat restriction can only restrict attacking or blocking"
             ),
             Self::DuplicatePrinting {
                 set_code,
@@ -261,6 +274,13 @@ pub(crate) fn validate_definition(
             functional_id,
             creature: is_creature,
         });
+    }
+
+    // A printed combat restriction only ever restricts attacking or blocking, so it
+    // belongs only on a creature. An Aura *grants* restrictions to its host through
+    // `aura.restrictions` instead, which is why this looks only at the printed list.
+    if object.contains_key("restrictions") && !is_creature {
+        return Err(Violation::RestrictionsOnNonCreature { functional_id });
     }
 
     // An `aura` grant is the Aura ability (CR 303.4), so it belongs only on an Aura.
@@ -439,6 +459,29 @@ mod tests {
                 functional_id: "test_card".to_string()
             }
         );
+    }
+
+    #[test]
+    fn issue_606_printed_restrictions_on_a_non_creature_are_rejected() {
+        // A combat restriction restricts attacking or blocking, so on a non-creature it
+        // could only ever be inert. An Aura imposes restrictions through `aura` instead.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["enchantment"], "mana_cost": "{1}",
+                       "restrictions": ["cant_block"]}"#;
+        assert_eq!(
+            validate_definition(None, &serde_json::from_str(json).unwrap()).unwrap_err(),
+            Violation::RestrictionsOnNonCreature {
+                functional_id: "test_card".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn issue_606_printed_restrictions_on_a_creature_are_accepted() {
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["creature"], "mana_cost": "{1}", "power": 1, "toughness": 1,
+                       "restrictions": ["cant_be_blocked_by_more_than_one"]}"#;
+        assert!(validate_definition(None, &serde_json::from_str(json).unwrap()).is_ok());
     }
 
     #[test]

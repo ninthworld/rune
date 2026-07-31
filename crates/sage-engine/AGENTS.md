@@ -39,6 +39,14 @@ source itself), `PlayerRef` one (`Controller`), and `TargetSpec` five unrestrict
 So an activation cost that is not a bare `{T}`, a trigger watching anything but its own
 source, and an effect aimed at a player other than the controller are all still unwritable.
 
+Combat restrictions are a second layer-6 vocabulary beside `Keyword` (`CombatRestriction`):
+they are not keyword abilities, some carry a parameter, and each is enforced in exactly one
+place — the attacker candidate set, the blocker candidate set, the pairwise block check, or
+the whole-selection block check. A restriction that can only be judged over the assembled
+declaration must also be stated in the blocker slot's prompt, or it reaches the player as a
+submit that silently does nothing. Attack and block *requirements* ("attacks each combat if
+able") are still unmodeled, and a blocker still blocks exactly one attacker.
+
 `Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
 filtered to a subtype, optionally excluding the source). It is **derived, never stored**:
 `characteristics` reads it off the battlefield on every call, so the effect begins and ends

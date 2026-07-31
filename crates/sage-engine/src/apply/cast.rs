@@ -325,6 +325,18 @@ pub(crate) fn apply_effect(
                 db,
             );
         }
+        Effect::RestrictAll {
+            affects,
+            restriction,
+        } => {
+            apply_mass_modification(
+                state,
+                *affects,
+                controller,
+                Modification::GrantRestriction(*restriction),
+                db,
+            );
+        }
         // Self-referential effects: the subject is the ability's own source, which is
         // not a target (CR 115.1) and so was never chosen. A source that has left the
         // battlefield is not there to modify, and the effect simply does nothing —
@@ -340,6 +352,22 @@ pub(crate) fn apply_effect(
                             power: *power,
                             toughness: *toughness,
                         },
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                }
+            }
+        }
+        // The same implicit subject, at CR 613 layer 6 instead of 7c: the source
+        // restricts *itself* until end of turn ("this creature can't be blocked this
+        // turn"), with nothing targeted and nothing to fizzle.
+        Effect::RestrictSelf { restriction } => {
+            if let Some(id) = source {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let stamp = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source: stamp,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::GrantRestriction(*restriction),
                         duration: Duration::UntilEndOfTurn,
                     });
                 }
@@ -362,7 +390,8 @@ pub(crate) fn apply_effect(
         | Effect::ReturnToHand { .. }
         | Effect::PutCounters { .. }
         | Effect::Pump { .. }
-        | Effect::GrantKeyword { .. } => {}
+        | Effect::GrantKeyword { .. }
+        | Effect::Restrict { .. } => {}
     }
 }
 
@@ -382,15 +411,42 @@ fn apply_mass_modification(
     modification: Modification,
     db: &CardDatabase,
 ) {
+    let is_creature = |p: &crate::state::Permanent| {
+        db.card(p.card)
+            .is_some_and(|c| c.has_type(crate::card_type::CardType::Creature))
+    };
     let affected: Vec<crate::id::PermanentId> = match affects {
         MassAffects::CreaturesYouControl => state
             .battlefield
             .iter()
+            .filter(|p| p.controller == controller && is_creature(p))
+            .map(|p| p.id)
+            .collect(),
+        // Every opponent still in the game (CR 102.1) — the same seat set
+        // [`subjects_of`] names for `each_opponent`, so a symmetric sweeper and a
+        // symmetric drain agree on who "your opponents" are.
+        MassAffects::CreaturesYourOpponentsControl => {
+            let opponents = subjects_of(state, PlayerRef::EachOpponent, controller);
+            state
+                .battlefield
+                .iter()
+                .filter(|p| opponents.contains(&p.controller) && is_creature(p))
+                .map(|p| p.id)
+                .collect()
+        }
+        // Flying is read through the computed keywords (CR 613.1f), so a creature
+        // granted flying is outside the class exactly as a printed flyer is.
+        MassAffects::CreaturesWithoutFlying => state
+            .battlefield
+            .iter()
             .filter(|p| {
-                p.controller == controller
-                    && db
-                        .card(p.card)
-                        .is_some_and(|c| c.has_type(crate::card_type::CardType::Creature))
+                is_creature(p)
+                    && !crate::characteristics::permanent_has_keyword(
+                        state,
+                        p.id,
+                        crate::card::Keyword::Flying,
+                        db,
+                    )
             })
             .map(|p| p.id)
             .collect(),
@@ -567,6 +623,25 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
+        // Impose a combat restriction on the targeted creature until end of turn
+        // (CR 514.2): a CR 613 layer-6 imposition keyed to that one permanent, the
+        // exact counterpart of the keyword grant above. It folds into the target's
+        // computed restrictions on demand — nothing is written onto the permanent —
+        // so cleanup reverts it with nothing to invalidate (ADR 0005), and a
+        // duplicate imposition is redundant rather than additive.
+        Effect::Restrict { restriction, .. } => {
+            if let Target::Permanent(id) = target {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let source = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::GrantRestriction(*restriction),
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                }
+            }
+        }
         // Return the targeted permanent to its owner's hand (CR 400.7): the bounce
         // verb, moving it through the one battlefield→hand seam
         // ([`GameState::return_permanent_to_hand`]) — the hand counterpart of the
@@ -602,7 +677,9 @@ pub(crate) fn apply_targeted_effect(
         | Effect::DrawCard { .. }
         | Effect::PumpAll { .. }
         | Effect::GrantKeywordAll { .. }
+        | Effect::RestrictAll { .. }
         | Effect::PumpSelf { .. }
+        | Effect::RestrictSelf { .. }
         | Effect::PutCountersOnSelf { .. } => {}
     }
 }

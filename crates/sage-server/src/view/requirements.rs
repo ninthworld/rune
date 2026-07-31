@@ -126,11 +126,19 @@ pub(crate) fn attacker_requirements(
 /// The blocker-declaration requirement slots (CR 509.1a) for the player who owes
 /// the current declaration ([`pending_blocker_declarer`]): one slot per attacker
 /// *attacking that player*, each listing the eligible blockers they control
-/// ([`blocker_candidates_for`]). Empty when there is nothing for this declarer to
+/// ([`blocker_candidates_for`]) **that may legally block that attacker**
+/// ([`blocker_can_block_attacker`]). Empty when there is nothing for this declarer to
 /// block or no creature to block with, so declaring no blockers stays a plain,
 /// choice-free action. In a two-player game the sole opponent is the declarer and
 /// every attacker attacks them, so this is unchanged; with attackers split across
 /// several defenders (issue #344) each declarer sees only their own sub-combat.
+///
+/// The per-attacker filter is what makes the pairwise evasion rules visible instead of
+/// merely enforced: an attacker that can't be blocked at all gets **no slot**, and one
+/// that can't be blocked by black creatures lists only the rest. The engine still
+/// decides — the server asks [`blocker_can_block_attacker`] per pair and does no rules
+/// reasoning of its own — and the declaration is re-validated on submit, so this is a
+/// projection of legality rather than a second copy of it.
 pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<TargetRequirement> {
     let Some(declarer) = pending_blocker_declarer(state) else {
         return Vec::new();
@@ -143,13 +151,25 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
     if attackers.is_empty() || blockers.is_empty() {
         return Vec::new();
     }
-    let candidates: Vec<String> = blockers.into_iter().map(permanent_entity_id).collect();
     attackers
         .into_iter()
-        .map(|attacker| TargetRequirement {
-            slot: blocker_slot(attacker),
-            prompt: blocker_prompt(state, attacker, db),
-            candidates: candidates.clone(),
+        .filter_map(|attacker| {
+            let candidates: Vec<String> = blockers
+                .iter()
+                .copied()
+                .filter(|&blocker| blocker_can_block_attacker(state, attacker, blocker, db))
+                .map(permanent_entity_id)
+                .collect();
+            // An attacker nothing may block is not a choice; offering an empty slot
+            // would ask the player a question with no answer.
+            if candidates.is_empty() {
+                return None;
+            }
+            Some(TargetRequirement {
+                slot: blocker_slot(attacker),
+                prompt: blocker_prompt(state, attacker, db),
+                candidates,
+            })
         })
         .collect()
 }
@@ -157,20 +177,36 @@ pub(crate) fn blocker_requirements(state: &GameState, db: &CardDatabase) -> Vec<
 /// The prompt for one attacker's blocker slot, naming any restriction on *how many*
 /// blockers the declaration may assign to it.
 ///
-/// Menace (CR 702.110b) is a constraint on the whole selection rather than on any one
-/// blocker, so the engine can only reject it once the declaration is assembled — which
-/// would otherwise reach the player as a submit that silently does nothing. Saying it
-/// in the prompt is the fix that keeps the rule where it belongs: the *server* asks the
-/// rules authority ([`sage_engine::permanent_has_menace`]) and puts the answer in words, and the
-/// client still computes no legality of its own (`AGENTS.md`, zero game logic in the
-/// client).
+/// The block-count restrictions — menace's floor of two (CR 702.110b) and the "no more
+/// than one creature" ceiling (CR 509.1b) — are constraints on the whole selection
+/// rather than on any one blocker, so the engine can only reject them once the
+/// declaration is assembled, which would otherwise reach the player as a submit that
+/// silently does nothing. Saying so in the prompt is the fix that keeps the rule where
+/// it belongs: the *server* asks the rules authority
+/// ([`sage_engine::permanent_has_menace`], [`sage_engine::blocked_by_at_most_one`]) and
+/// puts the answer in words, and the client still computes no legality of its own
+/// (`AGENTS.md`, zero game logic in the client).
+///
+/// The pairwise restrictions need no words here: they are already visible as the slot's
+/// candidate list.
 fn blocker_prompt(state: &GameState, attacker: PermanentId, db: &CardDatabase) -> String {
     let name = permanent_card_name(state, attacker, db);
-    if sage_engine::permanent_has_menace(state, attacker, db) {
-        // "or none": menace restricts how a creature is blocked, never whether it is.
-        format!("Choose blockers for {name} (menace — two or more, or none)")
-    } else {
-        format!("Choose blockers for {name}")
+    // Both bounds at once is possible in principle and unsatisfiable in practice, so it
+    // is stated as what it is rather than as two rules a player has to combine.
+    let note = match (
+        sage_engine::permanent_has_menace(state, attacker, db),
+        sage_engine::blocked_by_at_most_one(state, attacker, db),
+    ) {
+        (true, true) => Some("no legal block — two or more, but no more than one"),
+        // "or none": a count restriction governs how a creature is blocked, never
+        // whether it is.
+        (true, false) => Some("menace — two or more, or none"),
+        (false, true) => Some("no more than one blocker"),
+        (false, false) => None,
+    };
+    match note {
+        Some(note) => format!("Choose blockers for {name} ({note})"),
+        None => format!("Choose blockers for {name}"),
     }
 }
 
@@ -348,6 +384,108 @@ mod menace_prompt_tests {
                 .any(|p| p == "Choose blockers for Onakke Ogre"),
             "an ordinary attacker's slot is unchanged: {prompts:?}"
         );
+    }
+
+    /// The mirroring ceiling gets the same treatment as menace's floor: a restriction
+    /// the engine can only judge over the assembled selection is stated in words rather
+    /// than left to a submit that silently does nothing (CR 509.1b, issue #606).
+    #[test]
+    fn issue_606_a_block_count_ceiling_is_named_in_the_slot_prompt() {
+        let db = CardDatabase::bundled().unwrap();
+        let (state, _) = combat_with(&db, "bristling_boar", "sun_sentinel");
+        let prompts: Vec<String> = blocker_requirements(&state, &db)
+            .into_iter()
+            .map(|r| r.prompt)
+            .collect();
+        assert!(
+            prompts
+                .iter()
+                .any(|p| p.contains("Bristling Boar") && p.contains("no more than one blocker")),
+            "the ceiling is stated before the player submits: {prompts:?}"
+        );
+    }
+
+    /// A pairwise restriction needs no words: it is already visible as the slot's
+    /// candidate list, and an attacker nothing may block gets no slot at all — asking
+    /// a question with no answer is worse than not asking (issue #606).
+    #[test]
+    fn issue_606_pairwise_evasion_is_projected_as_candidates_not_as_prose() {
+        let db = CardDatabase::bundled().unwrap();
+
+        // Vine Mare can't be blocked by black creatures: the black candidate drops out
+        // of its slot while the green one stays.
+        let (state, defenders) =
+            combat_with_blockers(&db, "vine_mare", &["walking_corpse", "centaur_courser"]);
+        let slots = blocker_requirements(&state, &db);
+        assert_eq!(slots.len(), 1, "one attacker, one slot");
+        assert!(
+            !slots[0]
+                .candidates
+                .contains(&permanent_entity_id(defenders[0])),
+            "the black creature is not offered"
+        );
+        assert!(
+            slots[0]
+                .candidates
+                .contains(&permanent_entity_id(defenders[1])),
+            "the green one is"
+        );
+        assert_eq!(
+            slots[0].prompt, "Choose blockers for Vine Mare",
+            "a pairwise restriction adds no prose"
+        );
+    }
+
+    /// A two-player combat parked at declare-blockers: `attacker` attacks alone and the
+    /// defender controls one creature of each named card. Returns the state and the
+    /// defender's permanents in the order they were named.
+    fn combat_with_blockers(
+        db: &CardDatabase,
+        attacker: &str,
+        blockers: &[&str],
+    ) -> (GameState, Vec<PermanentId>) {
+        let mut state = GameState::new_two_player();
+        state.step = Step::DeclareAttackers;
+        state.priority = PlayerId(0);
+        let atk = crate::view::test_support::put_permanent(
+            &mut state,
+            fixture(attacker),
+            PlayerId(0),
+            false,
+            false,
+        );
+        let defenders: Vec<PermanentId> = blockers
+            .iter()
+            .map(|slug| {
+                crate::view::test_support::put_permanent(
+                    &mut state,
+                    fixture(slug),
+                    PlayerId(1),
+                    false,
+                    false,
+                )
+            })
+            .collect();
+        let mut state = sage_engine::apply_action(
+            &state,
+            &sage_engine::Action::DeclareAttackers {
+                attackers: vec![Attack {
+                    attacker: atk,
+                    defender: PlayerId(1),
+                }],
+            },
+            db,
+        );
+        while state.step != Step::DeclareBlockers {
+            state = sage_engine::apply_action(&state, &sage_engine::Action::PassPriority, db);
+        }
+        (state, defenders)
+    }
+
+    /// [`combat_with_blockers`] for the common one-blocker case.
+    fn combat_with(db: &CardDatabase, attacker: &str, blocker: &str) -> (GameState, PermanentId) {
+        let (state, defenders) = combat_with_blockers(db, attacker, &[blocker]);
+        (state, defenders[0])
     }
 }
 

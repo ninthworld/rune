@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "functional_id": "siegebreaker_giant",
+  "name": "Siegebreaker Giant",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Giant",
+    "Warrior"
+  ],
+  "mana_cost": "{3}{R}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 6,
+  "toughness": 3,
+  "keywords": [
+    "trample"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}{R}"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "restrict",
+          "target": "any_creature",
+          "restriction": "cant_block"
+        }
+      ]
+    }
+  ]
+}

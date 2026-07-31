@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "tectonic_rift",
+  "name": "Tectonic Rift",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "destroy",
+      "target": "any_land"
+    },
+    {
+      "kind": "restrict_all",
+      "affects": "creatures_without_flying",
+      "restriction": "cant_block"
+    }
+  ]
+}

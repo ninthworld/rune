@@ -60,6 +60,13 @@ fn has_type(perm: &Permanent, card_type: CardType, db: &CardDatabase) -> bool {
 /// and the one [`crate::target_requirements`] filters its candidate universe by, so
 /// "offered" and "legal on resolution" are one predicate rather than two that can
 /// drift.
+///
+/// **Hexproof** (CR 702.11) is checked here, once, ahead of the spec match: it is a
+/// property of the *object being aimed at* rather than of any one spec, so gating it
+/// per spec would mean re-stating it in a dozen arms and forgetting it in the next one
+/// added. Because it is controller-relative — "can't be the target of spells or
+/// abilities your **opponents** control" — the `controller` this already takes is
+/// exactly the frame it needs.
 #[must_use]
 pub(crate) fn target_is_legal(
     spec: TargetSpec,
@@ -68,6 +75,19 @@ pub(crate) fn target_is_legal(
     controller: PlayerId,
     db: &CardDatabase,
 ) -> bool {
+    // CR 702.11b: a hexproof permanent is off limits to its controller's opponents and
+    // to nobody else. Checked before the spec so every present and future permanent
+    // spec inherits it.
+    if let Target::Permanent(id) = target {
+        if permanent_has_keyword(state, id, Keyword::Hexproof, db)
+            && state
+                .battlefield
+                .iter()
+                .any(|p| p.id == id && p.controller != controller)
+        {
+            return false;
+        }
+    }
     match (spec, target) {
         // A player is a legal target while they are still in the game.
         (TargetSpec::AnyPlayer, Target::Player(player)) => player_in_game(state, player),

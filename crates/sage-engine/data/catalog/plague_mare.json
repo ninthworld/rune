@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "functional_id": "plague_mare",
+  "name": "Plague Mare",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Nightmare",
+    "Horse"
+  ],
+  "mana_cost": "{1}{B}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "restrictions": [
+    {
+      "cant_be_blocked_by": "white"
+    }
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "pump_all",
+          "affects": "creatures_your_opponents_control",
+          "power": -1,
+          "toughness": -1
+        }
+      ]
+    }
+  ]
+}
