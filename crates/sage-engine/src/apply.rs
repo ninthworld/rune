@@ -70,6 +70,7 @@ pub fn apply_action(state: &GameState, action: &Action, db: &CardDatabase) -> Ga
             apply_choose_trigger_targets(&mut next, *ability, targets);
         }
         Action::AnswerChoice { chosen } => apply_answer_choice(&mut next, chosen, db),
+        Action::AnswerConfirm { accept } => apply_answer_confirm(&mut next, *accept, db),
         Action::Discard { card } => apply_discard(&mut next, *card, db),
         Action::Mulligan => apply_mulligan(&mut next),
         Action::Keep { bottom } => apply_keep(&mut next, bottom),

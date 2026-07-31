@@ -68,6 +68,18 @@ never-stall guarantee. Priority goes to the chooser and returns via the one
 `interrupted_priority` slot shared with trigger aiming — a third interrupting choice must
 join that check rather than add a second slot.
 
+A choice asks one of two **questions** (`ChoiceQuestion`, ADR 0014): pick cards, or answer
+a `you may` yes-or-no. Everything around them is single — one queue, one chooser, one
+`Resume` — and only the answer branches, so a new question shape is a variant plus its own
+`Action`, never a second queue. An accepted optional effect is *spliced onto the front of
+the remainder*, not applied on the spot; declining is the same path with nothing spliced,
+which is why "a decline leaves the game as if the effect were absent" needs no proof. An
+optional **cost** is mana, charged from the chooser's pool, and is the one place mana
+moves outside the cast path: while such a question is owed its chooser may activate mana
+abilities (CR 605.3a) and nothing else. Whether it is *posed* is judged against the mana
+the board could still make (`potential_mana_pool`, shared with the idle-seat predicate);
+whether accepting is *legal* is judged against the pool as it stands.
+
 The catalog was selected as cards this vocabulary can say, so the empty `scripted.rs` table
 is not evidence of expressiveness. Growing the vocabulary is the primary engine workstream;
 each new primitive is one enum variant plus every exhaustive match that consumes it, across

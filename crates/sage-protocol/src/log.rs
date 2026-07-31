@@ -119,6 +119,21 @@ pub enum GameLogEvent {
         /// The player who searched.
         player: PlayerId,
     },
+    /// A player took an optional effect they were offered ("you may …"), paying its
+    /// cost if it had one. What was offered is not carried — the offering ability's
+    /// text is public and already says so.
+    OptionalApplied {
+        /// The player who accepted.
+        player: PlayerId,
+    },
+    /// A player declined an optional effect, or was never asked because its cost was
+    /// beyond anything they could pay. The two are one public fact — the effect was
+    /// offered and did not happen — and telling them apart would report on a hidden
+    /// mana pool.
+    OptionalDeclined {
+        /// The player who declined.
+        player: PlayerId,
+    },
     /// A creature died; it may no longer be present on the battlefield.
     PermanentDied {
         /// The permanent that died.

@@ -309,6 +309,37 @@ Two orderings are deliberately **not** modeled and are listed in the exclusions:
 cards a scry keeps on top stay in their printed order, and the cards a `look_at_top`
 bottoms go there at random rather than in an order the player picks.
 
+### Effects a player may decline
+
+`may` wraps other effects in a yes-or-no its controller answers mid-resolution (issue
+#610). It rides the same queue, routing, and never-stall rules as the card choices above
+— see `docs/decisions/0014-optional-effects.md`.
+
+```json
+{ "kind": "may", "effects": [{ "kind": "draw_card", "count": 1 }] }
+{ "kind": "may", "cost": "{1}",
+  "effects": [{ "kind": "draw_card", "count": 1 }] }
+```
+
+- The first reads "you may draw a card"; the second, "you may pay {1}. If you do, draw a
+  card". Rules text is composed from the wrapped effects, so the printed sentence and the
+  question the player is asked are the same words.
+- **The controller answers**, whoever else the surrounding ability names and whoever holds
+  priority. A trigger that goes on the stack during an opponent's turn still asks its own
+  controller.
+- `cost` is a mana cost in the same `{...}` notation an activation cost uses, paid from
+  the controller's pool. While the question is owed they may activate **mana abilities**
+  and nothing else (CR 605.3a), so a cost is payable if the board could still make the
+  mana. A cost no amount of tapping could pay is never asked at all — it is declined, and
+  recorded as declined.
+- **Declining is not a fizzle.** The wrapped effects are skipped; every other effect of
+  the same ability, and the spell's own trip to its final zone (CR 608.3), happen exactly
+  as if the `may` were not there.
+- **The wrapped effects may not target.** One effect declares at most one target slot, so
+  a wrapper cannot speak for what it wraps; the catalog validator rejects it at build
+  time rather than letting the card silently do nothing. Choosing an optional cost at
+  *announcement* (kicker) is a different mechanism and is still excluded.
+
 ### Trigger conditions
 
 Conditions about the ability's **own source** are authored as bare strings:

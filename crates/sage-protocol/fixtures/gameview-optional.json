@@ -1,0 +1,45 @@
+{
+  "you": "p0",
+  "my_hand": [
+    { "id": "card_10", "name": "Forest", "type_line": "Basic Land — Forest" }
+  ],
+  "opponents": [
+    { "player_id": "p1", "hand_size": 5, "life": 20, "library_size": 30, "graveyard_size": 1 }
+  ],
+  "phase": "precombat_main",
+  "turn": 3,
+  "active_player": "p0",
+  "priority_player": "p0",
+  "valid_actions": [
+    {
+      "id": "a0",
+      "type": "player_choice",
+      "label": "Pay {1} to draw a card?",
+      "token": "t00000000c0ffee02",
+      "prompts": [
+        {
+          "kind": "option",
+          "slot": "choice",
+          "prompt": "Pay {1} to draw a card?",
+          "options": [
+            { "id": "accept", "label": "Pay {1}" },
+            { "id": "decline", "label": "Decline" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "a1",
+      "type": "activate_ability",
+      "label": "{T}: Add {G}.",
+      "subject": ["perm_4"],
+      "mana_ability": true,
+      "token": "t00000000c0ffee03"
+    },
+    { "id": "a2", "type": "concede", "label": "Concede", "token": "t0000000000c0ffee" }
+  ],
+  "log": [
+    { "sequence": 11, "event": { "type": "optional_applied", "player": "p0" } },
+    { "sequence": 12, "event": { "type": "optional_declined", "player": "p1" } }
+  ]
+}

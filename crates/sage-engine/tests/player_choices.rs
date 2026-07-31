@@ -10,10 +10,16 @@
 
 use sage_engine::{
     apply_action, characteristics, choice_bounds, choice_candidates, pending_player_choice, Action,
-    CardDatabase, CardId, CardInstance, CardInstanceId, ChoiceOutcome, ChoiceZone, Color,
-    FunctionalId, GameEvent, GameState, Permanent, PermanentId, PlayerId, StackObjectKind, Step,
-    Target,
+    CardDatabase, CardId, CardInstance, CardInstanceId, ChoiceOutcome, ChoiceRequest, ChoiceZone,
+    Color, FunctionalId, GameEvent, GameState, PendingChoice, Permanent, PermanentId, PlayerId,
+    StackObjectKind, Step, Target,
 };
+
+/// The card-selection request of a pending choice. Every choice in this file is one —
+/// the yes-or-no shape has its own test file (`optional_effects.rs`).
+fn cards_of(pending: &PendingChoice) -> &ChoiceRequest {
+    pending.question.cards().expect("a card selection")
+}
 
 // ----- fixtures -------------------------------------------------------------
 
@@ -149,7 +155,7 @@ fn settle(state: &GameState, db: &CardDatabase) -> GameState {
 /// computed candidate list), in that order.
 fn answer(state: &GameState, db: &CardDatabase, picks: &[usize]) -> GameState {
     let pending = pending_player_choice(state).expect("a choice is owed");
-    let candidates = choice_candidates(state, &pending.request, db);
+    let candidates = choice_candidates(state, cards_of(pending), db);
     let chosen: Vec<CardInstanceId> = picks.iter().map(|&i| candidates[i].id).collect();
     let after = apply_action(state, &Action::AnswerChoice { chosen }, db);
     assert_ne!(after, *state, "the answer was rejected as illegal");
@@ -189,9 +195,9 @@ fn issue_604_a_choice_suspends_the_game_and_only_its_chooser_may_act() {
 
     let pending = pending_player_choice(&state).expect("Mind Rot asked its target to discard");
     assert_eq!(pending.chooser, PlayerId(1), "the targeted seat chooses");
-    assert_eq!(pending.request.subject, PlayerId(1));
-    assert_eq!(pending.request.outcome, ChoiceOutcome::Discard);
-    assert_eq!(pending.request.zone, ChoiceZone::Hand);
+    assert_eq!(cards_of(pending).subject, PlayerId(1));
+    assert_eq!(cards_of(pending).outcome, ChoiceOutcome::Discard);
+    assert_eq!(cards_of(pending).zone, ChoiceZone::Hand);
 
     // Priority is with the chooser, not the caster, and is remembered for the return.
     assert_eq!(state.priority, PlayerId(1));
@@ -212,8 +218,8 @@ fn issue_604_a_choice_suspends_the_game_and_only_its_chooser_may_act() {
     assert!(sage_engine::valid_actions(&elsewhere, &db).is_empty());
 
     // Two cards, exactly — the clamped bounds say so, and an answer of one is rejected.
-    assert_eq!(choice_bounds(&state, &pending.request, &db), (2, 2));
-    let candidates = choice_candidates(&state, &pending.request, &db);
+    assert_eq!(choice_bounds(&state, cards_of(pending), &db), (2, 2));
+    let candidates = choice_candidates(&state, cards_of(pending), &db);
     let short = apply_action(
         &state,
         &Action::AnswerChoice {
@@ -254,7 +260,7 @@ fn issue_604_the_chooser_can_be_someone_other_than_the_zones_owner() {
     let pending = pending_player_choice(&state).expect("Duress asked its caster to choose");
     assert_eq!(pending.chooser, PlayerId(0), "the caster chooses");
     assert_eq!(
-        pending.request.subject,
+        cards_of(pending).subject,
         PlayerId(1),
         "from the target's hand"
     );
@@ -264,7 +270,7 @@ fn issue_604_the_chooser_can_be_someone_other_than_the_zones_owner() {
         "the caster already had priority"
     );
 
-    let offered: Vec<String> = choice_candidates(&state, &pending.request, &db)
+    let offered: Vec<String> = choice_candidates(&state, cards_of(pending), &db)
         .into_iter()
         .map(|inst| db.card(inst.card).unwrap().name.clone())
         .collect();
@@ -375,7 +381,7 @@ fn issue_604_a_choice_can_come_after_earlier_effects_have_already_happened() {
     let state = cast(&state, &db, "sift", Vec::new());
 
     let pending = pending_player_choice(&state).expect("Sift discards after its draws");
-    let candidates: Vec<String> = choice_candidates(&state, &pending.request, &db)
+    let candidates: Vec<String> = choice_candidates(&state, cards_of(pending), &db)
         .into_iter()
         .map(|inst| db.card(inst.card).unwrap().name.clone())
         .collect();
@@ -449,13 +455,13 @@ fn issue_604_scry_puts_the_chosen_cards_on_the_bottom_in_the_chosen_order() {
     let state = settle(&cast(&state, &db, "omenspeaker", Vec::new()), &db);
 
     let pending = pending_player_choice(&state).expect("the ETB scry");
-    assert_eq!(pending.request.outcome, ChoiceOutcome::BottomChosen);
+    assert_eq!(cards_of(pending).outcome, ChoiceOutcome::BottomChosen);
     assert_eq!(
-        choice_bounds(&state, &pending.request, &db),
+        choice_bounds(&state, cards_of(pending), &db),
         (0, 2),
         "any number of the two, including none"
     );
-    let looked_at: Vec<String> = choice_candidates(&state, &pending.request, &db)
+    let looked_at: Vec<String> = choice_candidates(&state, cards_of(pending), &db)
         .into_iter()
         .map(|inst| db.card(inst.card).unwrap().name.clone())
         .collect();
@@ -502,8 +508,8 @@ fn issue_604_a_look_takes_what_the_filter_admits_and_bottoms_the_rest() {
     let state = settle(&cast(&state, &db, "militia_bugler", Vec::new()), &db);
 
     let pending = pending_player_choice(&state).expect("the ETB look");
-    assert_eq!(choice_bounds(&state, &pending.request, &db), (0, 1));
-    let takeable: Vec<String> = choice_candidates(&state, &pending.request, &db)
+    assert_eq!(choice_bounds(&state, cards_of(pending), &db), (0, 1));
+    let takeable: Vec<String> = choice_candidates(&state, cards_of(pending), &db)
         .into_iter()
         .map(|inst| db.card(inst.card).unwrap().name.clone())
         .collect();
@@ -563,7 +569,7 @@ fn issue_604_a_look_can_put_its_take_onto_the_battlefield_tapped() {
     let state = settle(&cast(&state, &db, "elvish_rejuvenator", Vec::new()), &db);
 
     let pending = pending_player_choice(&state).expect("the ETB look");
-    let lands: Vec<String> = choice_candidates(&state, &pending.request, &db)
+    let lands: Vec<String> = choice_candidates(&state, cards_of(pending), &db)
         .into_iter()
         .map(|inst| db.card(inst.card).unwrap().name.clone())
         .collect();
@@ -616,8 +622,8 @@ fn issue_604_a_search_finds_by_name_puts_it_onto_the_battlefield_and_shuffles() 
     let state = settle(&state, &db);
 
     let pending = pending_player_choice(&state).expect("the search");
-    assert_eq!(pending.request.zone, ChoiceZone::Library);
-    let found: Vec<String> = choice_candidates(&state, &pending.request, &db)
+    assert_eq!(cards_of(pending).zone, ChoiceZone::Library);
+    let found: Vec<String> = choice_candidates(&state, cards_of(pending), &db)
         .into_iter()
         .map(|inst| db.card(inst.card).unwrap().name.clone())
         .collect();
@@ -740,7 +746,7 @@ fn issue_604_an_answer_naming_a_card_outside_the_candidate_set_is_rejected() {
     );
     let repeated = choice_candidates(
         &two_deep,
-        &pending_player_choice(&two_deep).unwrap().request,
+        cards_of(pending_player_choice(&two_deep).unwrap()),
         &db,
     )[0]
     .id;
@@ -767,7 +773,7 @@ fn issue_604_a_short_hand_discards_what_it_has() {
     let state = cast(&state, &db, "mind_rot", vec![Target::Player(PlayerId(1))]);
 
     let pending = pending_player_choice(&state).expect("one card is still a choice");
-    assert_eq!(choice_bounds(&state, &pending.request, &db), (1, 1));
+    assert_eq!(choice_bounds(&state, cards_of(pending), &db), (1, 1));
     let after = answer(&state, &db, &[0]);
     assert!(after.players[1].hand.is_empty());
     assert_eq!(after.players[1].graveyard.len(), 1);

@@ -180,6 +180,27 @@ pub enum GameEvent {
         /// The player who searched.
         player: PlayerId,
     },
+    /// A player took an optional effect they were offered (`you may …`, CR 608.2),
+    /// paying its cost if it had one.
+    ///
+    /// Recorded because the alternative is a silent one: an optional effect that
+    /// happens looks exactly like a mandatory one, and an optional effect that does not
+    /// looks exactly like a bug. What was offered is not recorded — the ability's text
+    /// is public and says so — only that the question was answered, and how.
+    OptionalApplied {
+        /// The player who accepted (the offering ability's controller).
+        player: PlayerId,
+    },
+    /// A player declined an optional effect (`you may …`, CR 608.2), or was never
+    /// asked because its cost was beyond anything they could pay.
+    ///
+    /// The two cases share an event on purpose: from every other seat they are the same
+    /// public fact — the effect was offered and did not happen — and distinguishing them
+    /// would report on a pool the rest of the table cannot see.
+    OptionalDeclined {
+        /// The player who declined (the offering ability's controller).
+        player: PlayerId,
+    },
     /// A creature left the battlefield for a graveyard (CR 700.4 — a creature
     /// "dies"). Only creatures produce this; an Aura or other permanent moving to a
     /// graveyard is a zone change, not a death.

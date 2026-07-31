@@ -112,8 +112,12 @@
     "blocker": "no trigger condition observes an activation"
   },
   {
-    "name": "Optional effects a player may decline on resolution",
-    "blocker": "no yes-or-no or optional-cost choice is posed while an ability resolves"
+    "name": "Optional costs paid with anything but mana",
+    "blocker": "an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable"
+  },
+  {
+    "name": "Optional effects that choose a target",
+    "blocker": "an optional effect's contents may not target; one effect declares at most one target slot"
   },
   {
     "name": "Selectors that filter by power or toughness",

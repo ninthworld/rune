@@ -411,7 +411,8 @@ pub(crate) fn apply_effect(
         Effect::Discard { .. }
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
-        | Effect::SearchLibrary { .. } => {}
+        | Effect::SearchLibrary { .. }
+        | Effect::May { .. } => {}
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
         Effect::Tap { .. }
@@ -726,7 +727,8 @@ pub(crate) fn apply_targeted_effect(
         Effect::Discard { .. }
         | Effect::Scry { .. }
         | Effect::LookAtTop { .. }
-        | Effect::SearchLibrary { .. } => {}
+        | Effect::SearchLibrary { .. }
+        | Effect::May { .. } => {}
         // Implicit-subject and class-scoped effects do not target; they never reach
         // here, and are applied by [`apply_effect`].
         Effect::AddMana { .. }

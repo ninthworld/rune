@@ -137,7 +137,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (33)
+## Excluded (34)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -168,7 +168,8 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Maximum hand size modification | the cleanup discard uses a fixed hand size |
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
-| Optional effects a player may decline on resolution | no yes-or-no or optional-cost choice is posed while an ability resolves |
+| Optional costs paid with anything but mana | an optional effect's cost is a mana payment; sacrificing, discarding, or exiling to pay is unwritable |
+| Optional effects that choose a target | an optional effect's contents may not target; one effect declares at most one target slot |
 | Planeswalkers | no loyalty counter system or loyalty abilities |
 | Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour or a count; there is no protection layer |
 | Replacement effects | no replacement-effect layer in the rules engine |

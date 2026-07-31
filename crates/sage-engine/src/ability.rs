@@ -547,6 +547,44 @@ pub enum Effect {
         #[serde(default)]
         destination: FoundDestination,
     },
+    /// **You may** apply `effects`, and — when `cost` is present — only if you pay it:
+    /// `you may draw a card`, and `you may pay {1}. If you do, draw a card`.
+    ///
+    /// The first effect in the IR whose mid-resolution question is a *decision* rather
+    /// than a selection (CR 608.2). It suspends resolution and asks the ability's
+    /// **controller** — never the priority holder, and never a player the effect merely
+    /// names — through the same [`PendingChoice`](crate::PendingChoice) queue a discard
+    /// or a search goes through.
+    ///
+    /// Declining is not a fizzle: it skips these effects and nothing else, so an
+    /// optional effect sitting between two mandatory ones leaves both of them intact.
+    /// A cost the controller could not pay under any tapping is never posed at all —
+    /// it is declined outright — and either way the log records that the question was
+    /// asked and answered, so a declined effect never reads as one that was silently
+    /// dropped.
+    ///
+    /// **The nested effects may not target.** One [`Effect`] declares at most one
+    /// target slot ([`Effect::target_spec`]), and a wrapper cannot honestly declare the
+    /// slots of everything inside it; the catalog validator rejects a `may` whose
+    /// effects would choose a target ([`Violation::TargetInsideOptional`](crate::Violation)),
+    /// so this is an authoring error rather than a card that silently does nothing.
+    May {
+        /// The mana cost the controller pays to apply the effects, in the same
+        /// `{...}` notation an activation cost is written in. Absent for a plain
+        /// `you may …`, which asks only for a yes.
+        ///
+        /// Paid from the controller's mana pool through the one
+        /// [`ManaPool::pay`](crate::ManaPool::pay) seam a cast and an activation use,
+        /// so the three can never disagree about what a cost string means. A player
+        /// asked to pay here may still activate mana abilities to do it (CR 605.3a),
+        /// which is the one thing that stays legal while a choice is owed.
+        #[serde(default)]
+        cost: Option<String>,
+        /// What happens on acceptance, applied in order and in the surrounding
+        /// object's frame — the same controller and the same source permanent the
+        /// enclosing effects resolve in.
+        effects: Vec<Effect>,
+    },
 }
 
 /// Who picks the cards for an [`Effect::Discard`] — the discarding player, or the
@@ -796,6 +834,11 @@ impl Effect {
             | Effect::Scry { .. }
             | Effect::LookAtTop { .. }
             | Effect::SearchLibrary { .. }
+            // An optional effect declares no slot of its own, and its nested effects
+            // may not declare one either: one effect fills at most one slot, so a
+            // wrapper could not honestly speak for what it wraps. The catalog
+            // validator enforces it at authoring time.
+            | Effect::May { .. }
             // A class of permanents is not a target (CR 115.1), and neither is the
             // ability's own source.
             | Effect::PumpAll { .. }

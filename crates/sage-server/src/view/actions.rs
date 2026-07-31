@@ -270,7 +270,10 @@ fn valid_action_view(
         // pick itself rides as a `select_from_zone` prompt (built below) rather than a
         // target requirement: it names cards in a hidden zone, which is a different
         // thing from an object on the battlefield, and it carries a count.
-        Action::AnswerChoice { .. } => (
+        // Both shapes of mid-resolution choice ride the same action kind: from the
+        // client's side they are one thing — the question the game is waiting on — and
+        // the prompt below says which shape it is.
+        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } => (
             "player_choice".to_string(),
             player_choice_label(state, db),
             Vec::new(),
@@ -363,7 +366,9 @@ fn valid_action_view(
     let prompts: Vec<Prompt> = match action {
         Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
         Action::Keep { .. } => keep_prompts(state, action),
-        Action::AnswerChoice { .. } => player_choice_prompts(state, db),
+        Action::AnswerChoice { .. } | Action::AnswerConfirm { .. } => {
+            player_choice_prompts(state, db)
+        }
         _ => Vec::new(),
     };
     // One-gesture mana: mark the activation of a mana ability

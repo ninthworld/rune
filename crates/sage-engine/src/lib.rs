@@ -57,8 +57,9 @@ pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
 pub use choice::{
-    choice_bounds, choice_candidates, pending_player_choice, ChoiceOutcome, ChoiceRequest,
-    ChoiceZone, PendingChoice, Resume, SuspendedSpell,
+    choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,
+    ChoiceQuestion, ChoiceRequest, ChoiceZone, ConfirmRequest, PendingChoice, Resume,
+    SuspendedSpell,
 };
 pub use combat::{
     attacked_players, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
