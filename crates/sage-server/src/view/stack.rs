@@ -123,7 +123,7 @@ mod tests {
     use super::*;
     use crate::test_support::{fixture, id_in};
     use crate::view::test_support::put_permanent;
-    use sage_engine::Effect;
+    use sage_engine::{DamageSubject, Effect, TargetSpec};
 
     /// A two-target damage spell, which no bundled M19 card provides (ADR 0009:
     /// exercise an unrepresented shape from an inline catalog rather than bending a
@@ -331,7 +331,7 @@ mod tests {
                 source: ghost,
                 origin: AbilityOrigin::Triggered,
                 effects: vec![Effect::DealDamage {
-                    target: TargetSpec::AnyTarget,
+                    subject: DamageSubject::Target(TargetSpec::AnyTarget),
                     amount: 1,
                 }],
             },

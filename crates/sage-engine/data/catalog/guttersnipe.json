@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "functional_id": "guttersnipe",
+  "name": "Guttersnipe",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Goblin",
+    "Shaman"
+  ],
+  "mana_cost": "{2}{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "you_cast_spell": "instant_or_sorcery"
+      },
+      "effects": [
+        {
+          "kind": "deal_damage",
+          "player_ref": "each_opponent",
+          "amount": 2
+        }
+      ]
+    }
+  ]
+}

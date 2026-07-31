@@ -22,9 +22,9 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, MassAffects,
-    ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification, TargetSpec,
-    TriggerCondition,
+    Ability, AuraGrant, CardData, Color, Cost, CounterKind, DamageSubject, Effect, Keyword,
+    MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification,
+    TargetSpec, TriggerCondition,
 };
 
 /// Generate the rules text of one card.
@@ -275,8 +275,11 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
         Effect::Tap { target } => format!("tap {}", target_noun(*target)),
         Effect::CounterSpell { target } => format!("counter {}", target_noun(*target)),
         // A damage source is named, so a player can tell what dealt it (CR 120.3).
-        Effect::DealDamage { target, amount } => {
-            format!("{source} deals {amount} damage to {}", target_noun(*target))
+        Effect::DealDamage { subject, amount } => {
+            format!(
+                "{source} deals {amount} damage to {}",
+                damage_recipient(*subject)
+            )
         }
         Effect::Destroy { target } => format!("destroy {}", target_noun(*target)),
         Effect::Exile { target } => format!("exile {}", target_noun(*target)),
@@ -347,6 +350,46 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
 fn mass_subject(affects: MassAffects) -> &'static str {
     match affects {
         MassAffects::CreaturesYouControl => "creatures you control",
+        MassAffects::EachCreature => "creatures",
+        MassAffects::CreaturesYourOpponentsControl => "creatures your opponents control",
+    }
+}
+
+/// The same class as the **object** of a sentence — what damage is dealt *to*.
+///
+/// Separate from [`mass_subject`] because English is: a class is a bare plural when it
+/// acts ("creatures you control get +2/+1") and a distributive "each" when it is acted
+/// on ("deals 2 damage to each creature you control"). One function per position keeps
+/// both exhaustive, so a new [`MassAffects`] variant must be given words for each.
+fn mass_recipient(affects: MassAffects) -> &'static str {
+    match affects {
+        MassAffects::CreaturesYouControl => "each creature you control",
+        MassAffects::EachCreature => "each creature",
+        MassAffects::CreaturesYourOpponentsControl => "each creature your opponents control",
+    }
+}
+
+/// Who or what damage is dealt to (CR 120.3), as a noun phrase.
+///
+/// The three subjects read as one sentence shape — "deals 2 damage to *any target*",
+/// "…to *each opponent*", "…to *each creature*" — so a player reads a class-damage
+/// effect the same way they read a targeted one, minus the word "target".
+fn damage_recipient(subject: DamageSubject) -> &'static str {
+    match subject {
+        DamageSubject::Target(spec) => target_noun(spec),
+        DamageSubject::Players(player_ref) => player_noun(player_ref),
+        DamageSubject::Permanents(affects) => mass_recipient(affects),
+    }
+}
+
+/// A [`PlayerRef`] as a bare noun phrase, for an effect that acts *on* the player
+/// rather than conjugating a verb after them ([`conjugate`] covers that position).
+fn player_noun(player_ref: PlayerRef) -> &'static str {
+    match player_ref {
+        PlayerRef::Controller => "you",
+        PlayerRef::EachOpponent => "each opponent",
+        PlayerRef::TargetPlayer => "target player",
+        PlayerRef::TargetOpponent => "target opponent",
     }
 }
 
@@ -747,6 +790,60 @@ mod tests {
 
         // A vanilla body still generates nothing, which stays the honest answer.
         assert_eq!(text_of(&db, "thornhide_wolves"), "");
+    }
+
+    #[test]
+    fn issue_611_damage_dealt_to_a_class_reads_as_a_sentence() {
+        // Damage to a class drops the word "target" and nothing else: the sentence a
+        // player acts on is the same shape as the targeted one, so the two forms can
+        // never be told apart by how carefully they were worded.
+        let db = bundled();
+        assert_eq!(
+            text_of(&db, "guttersnipe"),
+            "Whenever you cast an instant or sorcery spell, \
+             Guttersnipe deals 2 damage to each opponent."
+        );
+        // The targeted shape every existing burn card uses is unchanged.
+        assert_eq!(text_of(&db, "shock"), "Shock deals 2 damage to any target.");
+
+        // No bundled card names a class of *permanents* yet, so the sweeper wordings
+        // are asserted from an inline catalog rather than by inventing a card for the
+        // formatter's benefit (ADR 0009).
+        let inline = CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_pyroclasm","name":"Test Pyroclasm",
+                 "types":["sorcery"],"mana_cost":"{1}{R}","colors":["red"],
+                 "spell_effects":[{"kind":"deal_damage","affects":"each_creature","amount":2}]},
+                {"schema_version":1,"functional_id":"test_slagstorm","name":"Test Slagstorm",
+                 "types":["sorcery"],"mana_cost":"{2}{R}","colors":["red"],
+                 "spell_effects":[{"kind":"deal_damage","affects":"creatures_your_opponents_control","amount":3}]},
+                {"schema_version":1,"functional_id":"test_recoil","name":"Test Recoil",
+                 "types":["sorcery"],"mana_cost":"{R}","colors":["red"],
+                 "spell_effects":[{"kind":"deal_damage","player_ref":"controller","amount":1}]},
+                {"schema_version":1,"functional_id":"test_rally","name":"Test Rally",
+                 "types":["sorcery"],"mana_cost":"{1}{G}","colors":["green"],
+                 "spell_effects":[{"kind":"pump_all","affects":"each_creature","power":1,"toughness":1}]}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&inline, "test_pyroclasm"),
+            "Test Pyroclasm deals 2 damage to each creature."
+        );
+        assert_eq!(
+            text_of(&inline, "test_slagstorm"),
+            "Test Slagstorm deals 3 damage to each creature your opponents control."
+        );
+        assert_eq!(
+            text_of(&inline, "test_recoil"),
+            "Test Recoil deals 1 damage to you."
+        );
+        // The same class as the *subject* of a sentence is a bare plural, which is why
+        // the two positions are worded by two functions.
+        assert_eq!(
+            text_of(&inline, "test_rally"),
+            "Creatures get +1/+1 until end of turn."
+        );
     }
 
     #[test]
