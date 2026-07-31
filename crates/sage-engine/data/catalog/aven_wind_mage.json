@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "functional_id": "aven_wind_mage",
+  "name": "Aven Wind Mage",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Bird",
+    "Wizard"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "you_cast_spell": "instant_or_sorcery"
+      },
+      "effects": [
+        {
+          "kind": "pump_self",
+          "power": 1,
+          "toughness": 1
+        }
+      ]
+    }
+  ]
+}

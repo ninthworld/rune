@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "functional_id": "epicure_of_blood",
+  "name": "Epicure of Blood",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Vampire"
+  ],
+  "mana_cost": "{4}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "you_gain_life",
+      "effects": [
+        {
+          "kind": "lose_life",
+          "player_ref": "each_opponent",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

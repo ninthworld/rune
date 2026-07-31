@@ -707,6 +707,239 @@ fn infectious_horror_drains_on_every_attack_without_choosing_anything() {
     assert_eq!(state.players[1].life, 18);
 }
 
+// ----- triggers that watch another object (issue #603) ------------------------
+
+#[test]
+fn ajanis_welcome_gains_life_once_per_creature_that_enters() {
+    // The condition counts rather than answers: two creatures entering in one
+    // transition is two life-gain triggers, not one (CR 603.2). A single-fire
+    // implementation passes the one-creature case and silently halves this one.
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "ajani_s_welcome", PlayerId(0));
+    let before = state.players[0].life;
+
+    let after = cast(&state, &db, "sun_sentinel", Vec::new());
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert_eq!(
+        after.players[0].life,
+        before + 1,
+        "one creature, one trigger"
+    );
+
+    // Two creatures entering in the same transition.
+    let mut twice = main_phase(&db);
+    place(&mut twice, &db, "ajani_s_welcome", PlayerId(0));
+    let first = cid(&db, "sun_sentinel");
+    let second = cid(&db, "silverbeak_griffin");
+    for card in [first, second] {
+        let instance = twice.new_instance(card).id;
+        let id = PermanentId(twice.mint_id());
+        twice.battlefield.push(Permanent {
+            id,
+            instance,
+            card,
+            controller: PlayerId(0),
+            ..Default::default()
+        });
+    }
+    let triggers = sage_engine::collect_triggers(&main_phase_with_welcome(&db), &twice, &db);
+    assert_eq!(triggers.len(), 2, "two entries, two triggers");
+}
+
+/// The same board as `twice` above minus the two creatures — the "before" snapshot
+/// the collector diffs against.
+fn main_phase_with_welcome(db: &CardDatabase) -> GameState {
+    let mut state = main_phase(db);
+    place(&mut state, db, "ajani_s_welcome", PlayerId(0));
+    state
+}
+
+#[test]
+fn ajanis_welcome_ignores_creatures_an_opponent_controls() {
+    // "A creature *you control*" is evaluated relative to the watching ability's
+    // controller, the same frame of reference a possessive target spec uses.
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "ajani_s_welcome", PlayerId(0));
+    let before = state.players[0].life;
+
+    let mut after = state.clone();
+    let card = cid(&db, "sun_sentinel");
+    let instance = after.new_instance(card).id;
+    let id = PermanentId(after.mint_id());
+    after.battlefield.push(Permanent {
+        id,
+        instance,
+        card,
+        controller: PlayerId(1),
+        ..Default::default()
+    });
+    assert!(
+        sage_engine::collect_triggers(&state, &after, &db).is_empty(),
+        "an opponent's creature entering is not watched"
+    );
+    assert_eq!(after.players[0].life, before);
+}
+
+#[test]
+fn poison_tip_archer_drains_once_per_other_creature_that_dies() {
+    // "Another creature" excludes the source, and a death-watcher still observes a
+    // creature that died alongside it — the one case where the source need not have
+    // survived the transition.
+    let db = db();
+    let mut state = main_phase(&db);
+    let archer = place(&mut state, &db, "poison_tip_archer", PlayerId(0));
+    let a = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+    let b = place(&mut state, &db, "sun_sentinel", PlayerId(1));
+
+    // Both opposing creatures die in one transition.
+    let mut after = state.clone();
+    after.battlefield.retain(|p| p.id != a && p.id != b);
+    for id in [a, b] {
+        let _ = id;
+        let inst = after.new_instance(cid(&db, "sun_sentinel"));
+        after.players[1].graveyard.push(inst);
+    }
+    // Match the instances the battlefield actually carried, so `died` recognises them.
+    after.players[1].graveyard.clear();
+    for perm in state.battlefield.iter().filter(|p| p.id == a || p.id == b) {
+        after.players[1].graveyard.push(sage_engine::CardInstance {
+            id: perm.instance,
+            card: perm.card,
+        });
+    }
+    let triggers = sage_engine::collect_triggers(&state, &after, &db);
+    assert_eq!(triggers.len(), 2, "two deaths, two triggers");
+    assert!(triggers.iter().all(|t| t.source == archer));
+
+    // The Archer dying alone triggers nothing: `except_this` excludes it.
+    let mut alone = state.clone();
+    let archer_perm = state
+        .battlefield
+        .iter()
+        .find(|p| p.id == archer)
+        .expect("the archer is on the battlefield")
+        .clone();
+    alone.battlefield.retain(|p| p.id != archer);
+    alone.players[0].graveyard.push(sage_engine::CardInstance {
+        id: archer_perm.instance,
+        card: archer_perm.card,
+    });
+    assert!(
+        sage_engine::collect_triggers(&state, &alone, &db).is_empty(),
+        "a creature that watches *another* creature dying does not watch itself"
+    );
+}
+
+#[test]
+fn epicure_of_blood_drains_on_a_life_gain_event_not_on_a_net_change() {
+    // The condition is about the event, not the totals: it is read from what the
+    // transition recorded, so a gain that is later cancelled out still triggered.
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "epicure_of_blood", PlayerId(0));
+    // Revitalize draws as well as gains, so the library must not be empty — an
+    // empty-library draw loses the game before the trigger could resolve.
+    let library_card = state.new_instance(cid(&db, "sun_sentinel"));
+    state.players[0].library.push(library_card);
+    let before = state.players[1].life;
+
+    let after = cast(&state, &db, "revitalize", Vec::new());
+    // The gain resolved; the Epicure's trigger is on the stack behind it.
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert_eq!(after.players[0].life, 23, "Revitalize gained three");
+    assert_eq!(after.players[1].life, before - 1, "each opponent lost one");
+}
+
+#[test]
+fn ajanis_pridemate_grows_on_its_controllers_life_gain_only() {
+    // A self-referential effect: the counter goes on the ability's own source, which
+    // is not a target and was never chosen.
+    let db = db();
+    let mut state = main_phase(&db);
+    let pridemate = place(&mut state, &db, "ajani_s_pridemate", PlayerId(0));
+    let library_card = state.new_instance(cid(&db, "sun_sentinel"));
+    state.players[0].library.push(library_card);
+    // A second copy under the opponent: "you gain life" is scoped to each ability's
+    // own controller, so player 0's life gain must leave this one untouched.
+    let theirs = place(&mut state, &db, "ajani_s_pridemate", PlayerId(1));
+
+    let after = cast(&state, &db, "revitalize", Vec::new());
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+
+    let ch = characteristics(&after, pridemate, &db);
+    assert_eq!(ch.power, Some(3), "printed 2 plus a +1/+1 counter");
+    assert_eq!(ch.toughness, Some(3));
+    assert_eq!(
+        characteristics(&after, theirs, &db).power,
+        Some(2),
+        "an opponent gaining life is not *you* gaining life"
+    );
+}
+
+#[test]
+fn satyr_enchanter_and_aven_wind_mage_watch_what_their_controller_casts() {
+    // A cast trigger fires as the spell goes on the stack, before it resolves, and
+    // only for the spell class the card names.
+    let db = db();
+    let mut state = main_phase(&db);
+    place(&mut state, &db, "satyr_enchanter", PlayerId(0));
+    let mage = place(&mut state, &db, "aven_wind_mage", PlayerId(0));
+    let library_card = state.new_instance(cid(&db, "sun_sentinel"));
+    state.players[0].library.push(library_card);
+
+    // An instant: the Wind Mage grows, the Enchanter does not draw.
+    let instance = to_hand(&mut state, &db, "shock", PlayerId(0));
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: instance,
+            targets: vec![Target::Player(PlayerId(1))],
+        },
+        &db,
+    );
+    assert_eq!(
+        after
+            .stack
+            .iter()
+            .filter(|o| matches!(o.kind, StackObjectKind::Ability { source, .. } if source == mage))
+            .count(),
+        1,
+        "the instant cast triggered the Wind Mage exactly once"
+    );
+    assert!(
+        after.players[0]
+            .hand
+            .iter()
+            .all(|c| c.id != library_card.id),
+        "an instant is not an enchantment spell, so nothing was drawn"
+    );
+
+    // An enchantment: the Enchanter draws.
+    let enchantment = to_hand(&mut state, &db, "ajani_s_welcome", PlayerId(0));
+    let after = apply_action(
+        &state,
+        &Action::CastSpell {
+            card: enchantment,
+            targets: Vec::new(),
+        },
+        &db,
+    );
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    let after = apply_action(&after, &Action::PassPriority, &db);
+    assert!(
+        after.players[0]
+            .hand
+            .iter()
+            .any(|c| c.id == library_card.id),
+        "the enchantment cast drew a card"
+    );
+}
+
 // ----- static abilities ------------------------------------------------------
 
 #[test]

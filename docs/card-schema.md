@@ -130,6 +130,13 @@ cast uses, and the whole cost is paid all or nothing — a failed mana payment n
 the source tapped. CR 302.6 still forbids a summoning-sick creature paying `{T}`,
 including for a mana ability.
 
+### Effects on the ability's own source
+
+`pump_self` and `put_counters_on_self` act on the permanent whose ability is resolving.
+The source is not a *target* (CR 115.1), so these choose nothing, fill no slot, and never
+fizzle; a source that has left the battlefield is simply not there to modify. They are
+meaningless on a spell, which has no source permanent.
+
 ### Mass, non-targeting modifications
 
 `pump_all` and `grant_keyword_all` modify a **class** until end of turn rather than a
@@ -170,9 +177,29 @@ scope cannot disagree.
 
 ### Trigger conditions
 
-`event` is `self_enters_battlefield`, `self_dies`, or `self_attacks` — each observed by
-diffing the state before and after an action, never by a listener. Every condition is about
-the ability's **own source**; a trigger watching another object is not yet expressible.
+Conditions about the ability's **own source** are authored as bare strings:
+`self_enters_battlefield`, `self_dies`, `self_attacks`, `you_gain_life`. A condition that
+carries a selector wraps it:
+
+```json
+{ "type": "triggered",
+  "event": { "permanent_dies": { "scope": "any_creature", "except_this": true } },
+  "effects": [{ "kind": "lose_life", "player_ref": "each_opponent", "amount": 1 }] }
+```
+
+`permanent_enters` and `permanent_dies` take an observed-permanent selector — `scope` is
+`creatures_you_control` or `any_creature`, with an optional `subtype` and an `except_this`
+that means "another". `you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
+
+Every condition is observed by diffing the state before and after an action, never by a
+listener. A condition about an **event** rather than a board position (life gain, casting)
+is read from the events that transition recorded, because gaining and losing the same life
+leaves every total unchanged and still triggered.
+
+A watching condition reports **how many times** it was met, not whether: two creatures
+dying at once trigger a death-watcher twice. A watching ability must still be on the
+battlefield afterwards, except a death-watcher, which observes a creature that died
+alongside it.
 
 A triggered ability reaches the stack **unaimed** and its controller is then asked to
 choose its targets (CR 603.3d), so a trigger whose effect targets works exactly as a

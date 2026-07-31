@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "functional_id": "ajani_s_welcome",
+  "name": "Ajani's Welcome",
+  "types": [
+    "enchantment"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_enters": {
+          "scope": "creatures_you_control"
+        }
+      },
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

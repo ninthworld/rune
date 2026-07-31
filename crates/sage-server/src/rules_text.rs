@@ -23,7 +23,8 @@
 
 use sage_engine::{
     Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, MassAffects,
-    PlayerRef, StaticAffects, StaticModification, TargetSpec, TriggerCondition,
+    ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification, TargetSpec,
+    TriggerCondition,
 };
 
 /// Generate the rules text of one card.
@@ -87,6 +88,21 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 }
                 TriggerCondition::SelfDies => format!("When {source} dies"),
                 TriggerCondition::SelfAttacks => format!("Whenever {source} attacks"),
+                // A watching condition's subject is the class it observes, not the
+                // source — "whenever another creature dies", not "whenever this does".
+                TriggerCondition::PermanentEnters(observes) => {
+                    format!(
+                        "Whenever {} enters the battlefield",
+                        observed_subject(observes)
+                    )
+                }
+                TriggerCondition::PermanentDies(observes) => {
+                    format!("Whenever {} dies", observed_subject(observes))
+                }
+                TriggerCondition::YouGainLife => "Whenever you gain life".to_string(),
+                TriggerCondition::YouCastSpell(spell) => {
+                    format!("Whenever you cast {}", observed_spell_noun(*spell))
+                }
             };
             finish(&format!("{trigger}, {}", clauses(source, effects)))
         }
@@ -108,6 +124,35 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
             static_subject(affects),
             static_verb(modification)
         )),
+    }
+}
+
+/// The subject of a watching trigger's sentence: the class of permanents it observes,
+/// as an indefinite noun phrase ("another creature", "a creature you control").
+///
+/// Composed from the selector rather than authored, the same reason
+/// [`static_subject`] is: the sentence and the events actually noticed cannot disagree
+/// if only one of them exists.
+fn observed_subject(observes: &ObservedPermanent) -> String {
+    let article = if observes.excludes_source() {
+        "another"
+    } else {
+        "a"
+    };
+    let noun = observes.subtype().unwrap_or("creature");
+    match observes {
+        ObservedPermanent::CreaturesYouControl { .. } => {
+            format!("{article} {noun} you control")
+        }
+        ObservedPermanent::AnyCreature { .. } => format!("{article} {noun}"),
+    }
+}
+
+/// The class of spell a cast-watching trigger notices, as a noun phrase.
+fn observed_spell_noun(spell: ObservedSpell) -> &'static str {
+    match spell {
+        ObservedSpell::Enchantment => "an enchantment spell",
+        ObservedSpell::InstantOrSorcery => "an instant or sorcery spell",
     }
 }
 
@@ -276,6 +321,14 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             mass_subject(*affects),
             keyword_word(*keyword)
         ),
+        // A self-referential effect names the source by name, so the sentence reads
+        // the way the card does rather than as an anonymous "this".
+        Effect::PumpSelf { power, toughness } => {
+            format!("{source} gets {power:+}/{toughness:+} until end of turn")
+        }
+        Effect::PutCountersOnSelf { counter, count } => {
+            format!("put {} on {source}", counters(*counter, *count))
+        }
         Effect::ReturnToHand { target } => {
             format!("return {} to its owner's hand", target_noun(*target))
         }
@@ -662,6 +715,34 @@ mod tests {
         assert_eq!(
             text_of(&db, "aggressive_mammoth"),
             "Trample\nOther creatures you control have trample."
+        );
+
+        // Watching triggers name the class they observe as the sentence's subject.
+        assert_eq!(
+            text_of(&db, "ajani_s_welcome"),
+            "Whenever a creature you control enters the battlefield, you gain 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "poison_tip_archer"),
+            "Reach, deathtouch\nWhenever another creature dies, each opponent loses 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "epicure_of_blood"),
+            "Whenever you gain life, each opponent loses 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "satyr_enchanter"),
+            "Whenever you cast an enchantment spell, draw a card."
+        );
+        // A self-referential effect names its source rather than saying "this".
+        assert_eq!(
+            text_of(&db, "ajani_s_pridemate"),
+            "Whenever you gain life, put a +1/+1 counter on Ajani's Pridemate."
+        );
+        assert_eq!(
+            text_of(&db, "aven_wind_mage"),
+            "Flying\nWhenever you cast an instant or sorcery spell, Aven Wind Mage gets \
+             +1/+1 until end of turn."
         );
 
         // A vanilla body still generates nothing, which stays the honest answer.

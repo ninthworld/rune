@@ -391,6 +391,31 @@ pub enum Effect {
         /// The keyword ability granted until end of turn.
         keyword: Keyword,
     },
+    /// Give **this ability's own source** `+power`/`+toughness` until end of turn —
+    /// the self-referential counterpart of [`Effect::Pump`] (`this creature gets +1/+1
+    /// until end of turn`).
+    ///
+    /// The subject is implicit, like [`Effect::DrawCard`]'s controller: the source is
+    /// not a *target* (CR 115.1), so this chooses nothing, fills no slot, and can
+    /// never fizzle. A source that has left the battlefield by the time the ability
+    /// resolves is simply not there to modify, and the effect does nothing.
+    PumpSelf {
+        /// The signed amount added to the source's power until end of turn.
+        power: i32,
+        /// The signed amount added to the source's toughness until end of turn.
+        toughness: i32,
+    },
+    /// Put `count` counters of `counter` on **this ability's own source** (CR 122) —
+    /// the self-referential counterpart of [`Effect::PutCounters`] (`put a +1/+1
+    /// counter on this creature`). Like [`Effect::PumpSelf`] the subject is implicit
+    /// and no target is chosen.
+    PutCountersOnSelf {
+        /// The kind of counter to place. Named `counter` on the wire because the
+        /// effect enum already reserves the `kind` tag for its own discriminant.
+        counter: CounterKind,
+        /// How many counters of that kind to place.
+        count: u32,
+    },
     /// The referenced player puts the top `count` cards of their library into their
     /// graveyard (CR 701.13, "mill"). Milling an empty library simply moves fewer
     /// cards — it is not a draw, so it never triggers the CR 704.5c decking loss.
@@ -501,9 +526,12 @@ impl Effect {
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
             | Effect::DrawCard { .. }
-            // A class of permanents is not a target (CR 115.1).
+            // A class of permanents is not a target (CR 115.1), and neither is the
+            // ability's own source.
             | Effect::PumpAll { .. }
-            | Effect::GrantKeywordAll { .. } => None,
+            | Effect::GrantKeywordAll { .. }
+            | Effect::PumpSelf { .. }
+            | Effect::PutCountersOnSelf { .. } => None,
         }
     }
 }
@@ -604,8 +632,15 @@ pub enum Target {
 
 /// The condition under which a [`Ability::Triggered`] triggers.
 ///
-/// Each variant is evaluated by [`condition_met`] as a pure predicate over the
-/// states before and after an action — never via an event listener.
+/// Each variant is evaluated by [`fire_count`](crate::triggers) as a pure function of
+/// the states before and after an action — never via an event listener.
+///
+/// Authored in serde's **externally tagged** form rather than the internal `kind` tag
+/// the effect vocabulary uses, because the three original conditions are authored as
+/// bare strings (`"event": "self_dies"`) and changing that would be a breaking schema
+/// migration for every existing card to buy nothing. A condition that carries a
+/// selector wraps it instead:
+/// `"event": {"permanent_dies": {"scope": "any_creature", "except_this": true}}`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TriggerCondition {
@@ -621,12 +656,129 @@ pub enum TriggerCondition {
     /// through the one leaves-battlefield seam
     /// ([`crate::GameState::move_permanent_to_graveyard`]).
     SelfDies,
+    /// A permanent matching `observes` **entered the battlefield** this transition
+    /// (CR 603.6b) — the first condition here that watches something other than its
+    /// own source, e.g. `Whenever a creature you control enters, …`.
+    ///
+    /// Observed by the same before/after diff the self conditions use: the permanents
+    /// present after and absent before. It fires **once per matching permanent**, so
+    /// two creatures entering at once trigger it twice.
+    ///
+    /// The source must still be on the battlefield after the transition — an ability
+    /// that left cannot watch the board it is no longer on.
+    PermanentEnters(
+        /// Which permanents entering satisfy this condition.
+        ObservedPermanent,
+    ),
+    /// A permanent matching `observes` **died** this transition (CR 700.4), e.g.
+    /// `Whenever another creature dies, …`. The counterpart of [`Self::SelfDies`] for
+    /// an ability watching the rest of the board, and observed the same way: it left
+    /// the battlefield for a graveyard.
+    ///
+    /// Fires **once per matching death**, so a board wipe triggers it many times.
+    /// Unlike [`Self::PermanentEnters`], the source need *not* have survived: two
+    /// creatures dying simultaneously is one death this ability observes and one it
+    /// is, and `except_this` is what keeps the two apart.
+    PermanentDies(
+        /// Which permanents dying satisfy this condition.
+        ObservedPermanent,
+    ),
+    /// The source's controller **gained life** this transition (CR 118.3), e.g.
+    /// `Whenever you gain life, …`.
+    ///
+    /// Read from the events this transition recorded rather than by comparing life
+    /// totals, because the trigger is about the *event*, not the net: gaining three
+    /// and losing three is a life gain that triggers, and a comparison of totals
+    /// would see nothing happen. Life lost is not a gain, and damage is never one
+    /// (damage to a player is recorded as damage, not as a life change), so neither
+    /// fires this. Fires once per life-gain event.
+    YouGainLife,
+    /// The source's controller **cast a spell** matching `spell` this transition
+    /// (CR 601), e.g. `Whenever you cast an enchantment spell, …`.
+    ///
+    /// Read from the recorded cast events, so it fires as the spell goes on the
+    /// stack — before it resolves, and whether or not it ever does. Fires once per
+    /// matching cast.
+    YouCastSpell(
+        /// Which spells satisfy this condition.
+        ObservedSpell,
+    ),
     /// The source permanent was **declared as an attacker** this transition (CR
     /// 508.1, the "attacks" event of CR 603.6d). Observed by diff like every other
     /// condition here — its [`crate::state::Permanent::attacking`] is set after and
     /// was not before — so it fires once per declaration, from the one place
     /// attackers are declared, and never from a creature that merely became tapped.
     SelfAttacks,
+}
+
+/// Which permanents a **watching** [`TriggerCondition`] observes.
+///
+/// The observer's counterpart to [`StaticAffects`], and deliberately the same shape: a
+/// closed selector naming a *class*, evaluated against each candidate relative to the
+/// watching ability's own source. Kept separate from `StaticAffects` because the two
+/// answer different questions — one selects permanents to *modify* continuously, this
+/// one selects events to *notice* — and collapsing them would make a future variant
+/// meaningful for one and nonsense for the other.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum ObservedPermanent {
+    /// Creatures controlled by the watching ability's controller — "a creature you
+    /// control".
+    CreaturesYouControl {
+        /// Restrict to creatures whose subtypes include this one ("whenever a
+        /// **Dragon** you control enters"). Absent means every creature.
+        #[serde(default)]
+        subtype: Option<String>,
+        /// Exclude the watching ability's own source — the "another" of "whenever
+        /// another creature you control enters". Compares the *permanent*, so two
+        /// copies of one card do notice each other.
+        #[serde(default)]
+        except_this: bool,
+    },
+    /// Any creature on the battlefield, whoever controls it — "a creature", and with
+    /// `except_this`, "another creature".
+    AnyCreature {
+        /// Restrict to creatures whose subtypes include this one.
+        #[serde(default)]
+        subtype: Option<String>,
+        /// Exclude the watching ability's own source.
+        #[serde(default)]
+        except_this: bool,
+    },
+}
+
+impl ObservedPermanent {
+    /// Whether `except_this` is set — whether the source excludes itself.
+    #[must_use]
+    pub fn excludes_source(&self) -> bool {
+        match self {
+            ObservedPermanent::CreaturesYouControl { except_this, .. }
+            | ObservedPermanent::AnyCreature { except_this, .. } => *except_this,
+        }
+    }
+
+    /// The subtype this selector restricts to, if any.
+    #[must_use]
+    pub fn subtype(&self) -> Option<&str> {
+        match self {
+            ObservedPermanent::CreaturesYouControl { subtype, .. }
+            | ObservedPermanent::AnyCreature { subtype, .. } => subtype.as_deref(),
+        }
+    }
+}
+
+/// Which spells a [`TriggerCondition::YouCastSpell`] notices.
+///
+/// A closed set deserialized from a bare `snake_case` tag. Deliberately named by the
+/// classes real cards ask about rather than by card type, because "instant or sorcery"
+/// is one class to a card and two types to the engine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedSpell {
+    /// An enchantment spell.
+    Enchantment,
+    /// An instant **or** sorcery spell — one class, as a card writes it.
+    InstantOrSorcery,
 }
 
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated

@@ -5,6 +5,16 @@
     "rarity": "uncommon"
   },
   {
+    "functional_id": "ajani_s_pridemate",
+    "collector_number": "5",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "ajani_s_welcome",
+    "collector_number": "6",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "angel_of_the_dawn",
     "collector_number": "7",
     "rarity": "common"
@@ -70,6 +80,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "aven_wind_mage",
+    "collector_number": "45",
+    "rarity": "common"
+  },
+  {
     "functional_id": "bone_to_ash",
     "collector_number": "47",
     "rarity": "uncommon"
@@ -128,6 +143,11 @@
     "functional_id": "diregraf_ghoul",
     "collector_number": "92",
     "rarity": "uncommon"
+  },
+  {
+    "functional_id": "epicure_of_blood",
+    "collector_number": "95",
+    "rarity": "common"
   },
   {
     "functional_id": "infectious_horror",
@@ -348,6 +368,16 @@
     "functional_id": "wall_of_vines",
     "collector_number": "210",
     "rarity": "common"
+  },
+  {
+    "functional_id": "poison_tip_archer",
+    "collector_number": "220",
+    "rarity": "uncommon"
+  },
+  {
+    "functional_id": "satyr_enchanter",
+    "collector_number": "223",
+    "rarity": "uncommon"
   },
   {
     "functional_id": "arcane_encyclopedia",

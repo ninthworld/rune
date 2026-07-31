@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "functional_id": "poison_tip_archer",
+  "name": "Poison-Tip Archer",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Archer"
+  ],
+  "mana_cost": "{2}{B}{G}",
+  "colors": [
+    "black",
+    "green"
+  ],
+  "power": 2,
+  "toughness": 3,
+  "keywords": [
+    "reach",
+    "deathtouch"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "permanent_dies": {
+          "scope": "any_creature",
+          "except_this": true
+        }
+      },
+      "effects": [
+        {
+          "kind": "lose_life",
+          "player_ref": "each_opponent",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}
