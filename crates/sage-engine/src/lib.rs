@@ -39,7 +39,8 @@ mod triggers;
 mod zone;
 
 pub use ability::{
-    is_mana_ability, Ability, Cost, Effect, PlayerRef, Target, TargetSpec, TriggerCondition,
+    is_mana_ability, Ability, Cost, Effect, PlayerRef, StaticAffects, StaticModification, Target,
+    TargetSpec, TriggerCondition,
 };
 pub use actions::{
     target_requirements, valid_actions, Action, Attack, Block, DamageOrder, TargetRequirement,
