@@ -230,6 +230,11 @@
     "rarity": "common"
   },
   {
+    "functional_id": "guttersnipe",
+    "collector_number": "145",
+    "rarity": "uncommon"
+  },
+  {
     "functional_id": "havoc_devils",
     "collector_number": "146",
     "rarity": "common"

@@ -1,5 +1,7 @@
 use super::*;
-use crate::ability::{is_mana_ability, Ability, Cost, Effect, MassAffects, PlayerRef, Target};
+use crate::ability::{
+    is_mana_ability, Ability, Cost, DamageSubject, Effect, MassAffects, PlayerRef, Target,
+};
 use crate::card::{abilities_of, apply_enters_replacements};
 use crate::commander::commander_tax_cost;
 use crate::id::{CardInstance, PermanentId, PlayerId};
@@ -295,6 +297,27 @@ pub(crate) fn apply_effect(
                 state.mill(seat, u32::from(*count));
             }
         }
+        // CR 120.3 damage dealt to a **class** rather than to a target: no slot was
+        // filled, so there is nothing to re-check and nothing to fizzle. The class is
+        // enumerated **here, on resolution** (CR 611.2c, the rule `apply_mass_modification`
+        // already follows) — a creature that arrived after the spell was cast is
+        // included and one that has died is not. What is dealt is damage either way:
+        // marked on each creature for the lethal-damage SBA (CR 704.5g), lost life for
+        // each player (CR 120.3a). A targeting subject named a target instead and is
+        // applied through [`apply_targeted_effect`], so it is a no-op here.
+        Effect::DealDamage { subject, amount } => match subject {
+            DamageSubject::Target(_) => {}
+            DamageSubject::Players(player_ref) => {
+                for seat in subjects_of(state, *player_ref, controller) {
+                    state.deal_damage_to_player(seat, *amount);
+                }
+            }
+            DamageSubject::Permanents(affects) => {
+                for id in permanents_in(state, *affects, controller, db) {
+                    state.mark_damage_on_permanent(id, *amount);
+                }
+            }
+        },
         // A mass, non-targeting until-end-of-turn modification (CR 611.2c): the
         // affected class is enumerated **once, here**, and one modifier is keyed to
         // each permanent found. Freezing the set is the point — an anthem is
@@ -356,7 +379,6 @@ pub(crate) fn apply_effect(
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
         Effect::Tap { .. }
         | Effect::CounterSpell { .. }
-        | Effect::DealDamage { .. }
         | Effect::Destroy { .. }
         | Effect::Exile { .. }
         | Effect::ReturnToHand { .. }
@@ -382,20 +404,7 @@ fn apply_mass_modification(
     modification: Modification,
     db: &CardDatabase,
 ) {
-    let affected: Vec<crate::id::PermanentId> = match affects {
-        MassAffects::CreaturesYouControl => state
-            .battlefield
-            .iter()
-            .filter(|p| {
-                p.controller == controller
-                    && db
-                        .card(p.card)
-                        .is_some_and(|c| c.has_type(crate::card_type::CardType::Creature))
-            })
-            .map(|p| p.id)
-            .collect(),
-    };
-    for id in affected {
+    for id in permanents_in(state, affects, controller, db) {
         let source = state.mint_id();
         state.static_effects.push(StaticEffect {
             source,
@@ -404,6 +413,49 @@ fn apply_mass_modification(
             duration: Duration::UntilEndOfTurn,
         });
     }
+}
+
+/// The permanents a [`MassAffects`] class names, in battlefield order, for an object
+/// controlled by `controller`.
+///
+/// The permanent-side counterpart of [`subjects_of`], and the one place a class is
+/// turned into a concrete set: a mass modification and a mass damage effect must agree
+/// on what "each creature" means, and the set is enumerated **at the moment of
+/// resolution** (CR 611.2c) so a permanent that arrived after announcement is included
+/// and one that has left is not. Every class is read relative to `controller`, which is
+/// what lets one authored card mean "you" from either seat.
+fn permanents_in(
+    state: &GameState,
+    affects: MassAffects,
+    controller: PlayerId,
+    db: &CardDatabase,
+) -> Vec<PermanentId> {
+    let is_creature = |perm: &Permanent| {
+        db.card(perm.card)
+            .is_some_and(|c| c.has_type(crate::card_type::CardType::Creature))
+    };
+    state
+        .battlefield
+        .iter()
+        .filter(|p| {
+            is_creature(p)
+                && match affects {
+                    MassAffects::CreaturesYouControl => p.controller == controller,
+                    MassAffects::EachCreature => true,
+                    // A seat that has lost is no longer an opponent (CR 102.1); its
+                    // permanents are on their way off the battlefield in the same SBA
+                    // loop, and this is the same exclusion `subjects_of` makes.
+                    MassAffects::CreaturesYourOpponentsControl => {
+                        p.controller != controller
+                            && state
+                                .players
+                                .get(p.controller.0)
+                                .is_some_and(|player| !player.has_lost)
+                    }
+                }
+        })
+        .map(|p| p.id)
+        .collect()
 }
 
 /// The seats a **non-targeting** [`PlayerRef`] names, in seat order, for an object
@@ -478,7 +530,9 @@ pub(crate) fn apply_targeted_effect(
         // Deal damage to the chosen target (CR 120.3): to a creature it is marked
         // (CR 120.3d) for the lethal-damage SBA (CR 704.5g); to a player it is
         // life loss (CR 120.3a) feeding the zero-life SBA (CR 704.5a). Both seams
-        // record the damage (including nonlethal) as a `DamageDealt` event.
+        // record the damage (including nonlethal) as a `DamageDealt` event. A
+        // class-subject damage effect chose no target and never reaches here — it is
+        // applied by [`apply_effect`] over the class it names.
         Effect::DealDamage { amount, .. } => match target {
             Target::Permanent(id) => {
                 state.mark_damage_on_permanent(id, *amount);
@@ -1368,6 +1422,199 @@ mod tests {
 
         assert_eq!(state.players[1].life, 0);
         assert!(state.players[1].has_lost);
+    }
+
+    // ----- damage dealt to a class rather than to a target (issue #611) ---------
+
+    /// Push a player-0 ability that deals `amount` damage to `subject`, one full
+    /// priority round from resolving. The class forms choose nothing, so no target
+    /// list is ever threaded through. The source is a land, so it is never itself a
+    /// member of a creature class and cannot quietly change what a test observes.
+    fn push_class_damage(state: &mut GameState, subject: DamageSubject, amount: u32) {
+        let source = place_permanent(state, fixture("forest"), PlayerId(0), false, 0);
+        push_ability(
+            state,
+            source,
+            vec![Effect::DealDamage { subject, amount }],
+            Vec::new(),
+        );
+    }
+
+    #[test]
+    fn issue_611_damage_to_each_opponent_hits_every_seat_not_one() {
+        // "Each opponent" is the reason this is not a target: in a game of three it
+        // must hit *both* other seats. A single-target implementation passes the
+        // two-player case and silently halves this one.
+        let db = db();
+        let mut state = GameState::new_multiplayer(3);
+        state.step = Step::PrecombatMain;
+        push_class_damage(
+            &mut state,
+            DamageSubject::Players(PlayerRef::EachOpponent),
+            2,
+        );
+
+        // Three seats, so three passes before the top of the stack resolves.
+        for _ in 0..3 {
+            state = apply_action(&state, &Action::PassPriority, &db);
+        }
+
+        assert!(state.stack.is_empty(), "the ability resolved");
+        assert_eq!(
+            state.players[0].life, 20,
+            "the controller is not an opponent"
+        );
+        assert_eq!(state.players[1].life, 18);
+        assert_eq!(state.players[2].life, 18, "the second opponent too");
+    }
+
+    #[test]
+    fn issue_611_class_damage_resolves_where_a_targeted_form_would_fizzle() {
+        // The same 2 damage, authored two ways, over a board that lost the creature
+        // between announcement and resolution: the targeted form has no legal target
+        // left and is removed without effect (CR 608.2b), while the class form chose
+        // nothing, so there is nothing to re-check and nothing to fizzle.
+        let db = db();
+        let mut state = main_phase_p0();
+        let doomed = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let source = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(0), false, 0);
+        push_ability(
+            &mut state,
+            source,
+            vec![Effect::DealDamage {
+                subject: DamageSubject::Target(TargetSpec::AnyCreature),
+                amount: 2,
+            }],
+            vec![Target::Permanent(doomed)],
+        );
+        push_ability(
+            &mut state,
+            source,
+            vec![Effect::DealDamage {
+                subject: DamageSubject::Players(PlayerRef::EachOpponent),
+                amount: 2,
+            }],
+            Vec::new(),
+        );
+        // The chosen creature leaves before either ability resolves.
+        state.battlefield.retain(|p| p.id != doomed);
+
+        // Top of the stack (the class form) first, then the targeted one.
+        let state = pass_full_round(&state, &db);
+        assert_eq!(
+            state.players[1].life, 18,
+            "the class form dealt its damage with no target to lose"
+        );
+        let state = pass_full_round(&state, &db);
+        assert!(state.stack.is_empty(), "both abilities left the stack");
+        assert_eq!(
+            state.players[1].life, 18,
+            "the targeted form fizzled — its only target was gone (CR 608.2b)"
+        );
+    }
+
+    #[test]
+    fn issue_611_class_damage_to_creatures_is_marked_and_drives_the_lethal_sba() {
+        // Damage dealt through the class form is *damage*, not life loss: it is marked
+        // on each creature (CR 120.3d) and the CR 704.5g state-based action destroys
+        // the one it is lethal to, exactly as a targeted burn spell does.
+        let db = db();
+        let mut state = main_phase_p0();
+        // Onakke Ogre is a 4/2 — 2 damage is lethal. Pelakka Wurm is a 7/7 and lives
+        // with 2 marked.
+        let ogre = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let wurm = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(0), false, 0);
+        push_class_damage(
+            &mut state,
+            DamageSubject::Permanents(MassAffects::EachCreature),
+            2,
+        );
+
+        let state = pass_full_round(&state, &db);
+
+        assert!(
+            !alive(&state, ogre),
+            "2 damage is lethal to a 4/2 (CR 704.5g)"
+        );
+        assert_eq!(
+            state.players[1].graveyard.len(),
+            1,
+            "it went to its owner's graveyard, the same path a burn spell uses"
+        );
+        assert_eq!(
+            find_perm(&state, wurm).damage,
+            2,
+            "the survivor carries marked damage, not lost life"
+        );
+    }
+
+    #[test]
+    fn issue_611_a_one_sided_sweeper_spares_the_creatures_you_control() {
+        // The class is read relative to the ability's controller, so one authored
+        // card means "your opponents" from either seat.
+        let db = db();
+        let mut state = main_phase_p0();
+        let theirs = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(1), false, 0);
+        let yours = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(0), false, 0);
+        push_class_damage(
+            &mut state,
+            DamageSubject::Permanents(MassAffects::CreaturesYourOpponentsControl),
+            3,
+        );
+
+        let state = pass_full_round(&state, &db);
+
+        assert_eq!(find_perm(&state, theirs).damage, 3);
+        assert_eq!(find_perm(&state, yours).damage, 0, "your own are spared");
+    }
+
+    #[test]
+    fn issue_611_the_class_is_enumerated_on_resolution_not_on_announcement() {
+        // CR 611.2c: the class is turned into a set when the ability resolves, so a
+        // creature that arrived while it waited on the stack is in it — the rule
+        // `PumpAll` already follows, reused here rather than re-derived. Announcement
+        // chose nothing, so there is no earlier moment it could have been fixed at.
+        let db = db();
+        let mut state = main_phase_p0();
+        push_class_damage(
+            &mut state,
+            DamageSubject::Permanents(MassAffects::EachCreature),
+            1,
+        );
+        let late = place_permanent(&mut state, fixture("pelakka_wurm"), PlayerId(1), false, 0);
+
+        let state = pass_full_round(&state, &db);
+
+        assert_eq!(
+            find_perm(&state, late).damage,
+            1,
+            "a creature that arrived after announcement is included"
+        );
+    }
+
+    #[test]
+    fn issue_611_the_targeted_damage_form_is_unchanged() {
+        // The shape every existing burn card is authored in still fills exactly one
+        // slot and still reports its spec, so nothing about announcement changed.
+        assert_eq!(
+            Effect::DealDamage {
+                subject: DamageSubject::Target(TargetSpec::AnyTarget),
+                amount: 2,
+            }
+            .target_spec(),
+            Some(TargetSpec::AnyTarget),
+        );
+        for subject in [
+            DamageSubject::Players(PlayerRef::EachOpponent),
+            DamageSubject::Players(PlayerRef::Controller),
+            DamageSubject::Permanents(MassAffects::EachCreature),
+        ] {
+            assert_eq!(
+                Effect::DealDamage { subject, amount: 2 }.target_spec(),
+                None,
+                "a class fills no target slot (CR 115.1)",
+            );
+        }
     }
 
     #[test]

@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (103)
+## Supported cards (104)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -49,6 +49,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
 | `greenwood_sentinel` | Greenwood Sentinel | functional definition |
+| `guttersnipe` | Guttersnipe | functional definition |
 | `havoc_devils` | Havoc Devils | functional definition |
 | `herald_of_faith` | Herald of Faith | functional definition |
 | `highland_game` | Highland Game | functional definition |

@@ -237,18 +237,21 @@ pub enum Effect {
         /// What this effect is allowed to target (a spell on the stack).
         target: TargetSpec,
     },
-    /// Deal `amount` damage to the single target this effect names (CR 120.3).
+    /// Deal `amount` damage to what [`DamageSubject`] names (CR 120.3).
     ///
-    /// The subject is an explicit target (like [`Effect::Tap`]), chosen at cast
-    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). Damage to a creature
-    /// is *marked* on it (CR 120.3d) for the lethal-damage state-based action to
-    /// read (CR 704.5g); damage to a player is *lost life* (CR 120.3a), feeding
-    /// the zero-life state-based action (CR 704.5a). Damage prevention/replacement
-    /// and deathtouch are not modeled.
+    /// The subject decides on its own whether a target is chosen: a
+    /// [`DamageSubject::Target`] fills a slot at announcement (CR 601.2c) and is
+    /// re-checked on resolution (CR 608.2b), while a class of players or of
+    /// permanents chooses nothing and can never fizzle. Either way this is
+    /// *damage*, not life loss: damage to a creature is *marked* on it (CR 120.3d)
+    /// for the lethal-damage state-based action to read (CR 704.5g), and damage to
+    /// a player is *lost life* (CR 120.3a), feeding the zero-life state-based
+    /// action (CR 704.5a). Damage prevention/replacement and deathtouch are not
+    /// modeled.
     DealDamage {
-        /// What this effect is allowed to target (a creature, a player, or — for
-        /// a burn spell — [`TargetSpec::AnyTarget`]).
-        target: TargetSpec,
+        /// Who or what takes the damage — one chosen target, or a class.
+        #[serde(flatten)]
+        subject: DamageSubject,
         /// How much damage is dealt.
         amount: u32,
     },
@@ -487,13 +490,77 @@ impl PlayerRef {
 /// ability and carries an `except_this` that a one-shot spell has no "this" for. A
 /// closed enum deserialized from a bare `snake_case` tag, e.g.
 /// `{"kind":"pump_all","affects":"creatures_you_control","power":2,"toughness":1}`.
-/// It grows by adding variants (attacking creatures, creatures your opponents
-/// control, …) as cards need them.
+/// It grows by adding variants (attacking creatures, tapped creatures, …) as cards
+/// need them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MassAffects {
     /// Every creature the effect's controller controls at the moment it resolves.
     CreaturesYouControl,
+    /// Every creature on the battlefield at the moment the effect resolves,
+    /// whoever controls it — the symmetric class a sweeper names.
+    EachCreature,
+    /// Every creature controlled by an opponent of the effect's controller, at the
+    /// moment it resolves. The mirror of [`Self::CreaturesYouControl`], and the
+    /// reason both are relative to the controller rather than to a seat: one
+    /// authored card must mean "you" from either side of the table.
+    CreaturesYourOpponentsControl,
+}
+
+/// **Who or what** an [`Effect::DealDamage`] deals its damage to (CR 120.3).
+///
+/// The same design [`PlayerRef`] states for life change: the *subject* declares
+/// whether a target is chosen (CR 115.1), so one damage verb covers both "deals 2
+/// damage to any target", which fills a slot at announcement and fizzles when that
+/// slot empties, and "deals 2 damage to each opponent", which chooses nothing and
+/// can never fizzle. The class forms lock their affected set in **on resolution**,
+/// exactly as [`Effect::PumpAll`] does.
+///
+/// Authored in serde's **externally tagged** form, flattened into the effect, so the
+/// key a card writes is the vocabulary it already uses elsewhere — `target` for a
+/// target spec, `player_ref` for a class of players, `affects` for a class of
+/// permanents:
+///
+/// ```json
+/// {"kind": "deal_damage", "target": "any_target", "amount": 2}
+/// {"kind": "deal_damage", "player_ref": "each_opponent", "amount": 2}
+/// {"kind": "deal_damage", "affects": "each_creature", "amount": 1}
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DamageSubject {
+    /// One **chosen target** (CR 115.1): a creature, a player, or — for a burn
+    /// spell — [`TargetSpec::AnyTarget`].
+    Target(TargetSpec),
+    /// A class of **players**, named by the same reference life change and mill
+    /// take. A non-targeting reference (`controller`, `each_opponent`) chooses
+    /// nothing; a targeting one behaves exactly as the equivalent
+    /// [`Self::Target`] does, because the reference answers the targeting question
+    /// in one place for every effect that takes one.
+    #[serde(rename = "player_ref")]
+    Players(PlayerRef),
+    /// A class of **permanents**, named by the same selector mass pump takes. Never
+    /// a target, and so never a fizzle.
+    #[serde(rename = "affects")]
+    Permanents(MassAffects),
+}
+
+impl DamageSubject {
+    /// The [`TargetSpec`] this subject chooses a target for, or `None` when it names
+    /// a class without targeting (CR 115.1).
+    ///
+    /// Exhaustive, so a new subject must declare which side of the targeting line it
+    /// falls on; [`Effect::target_spec`] defers to this, which is what keeps the
+    /// class form out of the slot-filling and fizzle paths without either of them
+    /// naming damage specially.
+    #[must_use]
+    pub fn target_spec(self) -> Option<TargetSpec> {
+        match self {
+            DamageSubject::Target(spec) => Some(spec),
+            DamageSubject::Players(player_ref) => player_ref.target_spec(),
+            DamageSubject::Permanents(_) => None,
+        }
+    }
 }
 
 impl Effect {
@@ -510,7 +577,6 @@ impl Effect {
         match self {
             Effect::Tap { target }
             | Effect::CounterSpell { target }
-            | Effect::DealDamage { target, .. }
             | Effect::Destroy { target }
             | Effect::Exile { target }
             | Effect::PutCounters { target, .. }
@@ -523,6 +589,9 @@ impl Effect {
             Effect::GainLife { player_ref, .. }
             | Effect::LoseLife { player_ref, .. }
             | Effect::Mill { player_ref, .. } => player_ref.target_spec(),
+            // Damage asks its subject the same question: "any target" fills a slot,
+            // "each opponent" and "each creature" fill none (CR 115.1).
+            Effect::DealDamage { subject, .. } => subject.target_spec(),
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
             | Effect::DrawCard { .. }
@@ -987,7 +1056,7 @@ mod tests {
         assert_eq!(
             effect,
             Effect::DealDamage {
-                target: TargetSpec::AnyTarget,
+                subject: DamageSubject::Target(TargetSpec::AnyTarget),
                 amount: 2,
             }
         );
@@ -997,6 +1066,47 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<TargetSpec>(r#""any_target""#).unwrap(),
             TargetSpec::AnyTarget
+        );
+    }
+
+    #[test]
+    fn issue_611_deal_damage_round_trips_with_a_class_of_players_or_permanents() {
+        // The subject is flattened into the effect, so each shape is authored with the
+        // key the rest of the vocabulary already uses — and every existing burn card,
+        // written with `target`, keeps parsing byte-for-byte as it did (above).
+        let players: Effect = serde_json::from_str(
+            r#"{"kind":"deal_damage","player_ref":"each_opponent","amount":2}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            players,
+            Effect::DealDamage {
+                subject: DamageSubject::Players(PlayerRef::EachOpponent),
+                amount: 2,
+            }
+        );
+        let permanents: Effect =
+            serde_json::from_str(r#"{"kind":"deal_damage","affects":"each_creature","amount":1}"#)
+                .unwrap();
+        assert_eq!(
+            permanents,
+            Effect::DealDamage {
+                subject: DamageSubject::Permanents(MassAffects::EachCreature),
+                amount: 1,
+            }
+        );
+        // Neither class fills a target slot (CR 115.1), so neither can fizzle.
+        assert_eq!(players.target_spec(), None);
+        assert_eq!(permanents.target_spec(), None);
+        // The subject answers the targeting question in one place, so a *targeting*
+        // player reference reports the slot it fills just as `lose_life` does.
+        assert_eq!(
+            DamageSubject::Players(PlayerRef::TargetOpponent).target_spec(),
+            Some(TargetSpec::AnyOpponent)
+        );
+        assert_eq!(
+            serde_json::from_str::<MassAffects>(r#""creatures_your_opponents_control""#).unwrap(),
+            MassAffects::CreaturesYourOpponentsControl
         );
     }
 

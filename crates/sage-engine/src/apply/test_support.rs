@@ -8,7 +8,7 @@ use super::*;
 // import list plus a couple of interior `use` aliases; funneling them through this
 // shared support module lets each split-out `mod tests` pick them up with a single
 // glob (`use crate::apply::test_support::*`).
-pub(crate) use crate::ability::{Effect, Target};
+pub(crate) use crate::ability::{Effect, Target, TargetSpec};
 pub(crate) use crate::actions::{
     valid_actions, valid_actions as valid, Action, Attack, Block, DamageOrder,
 };
