@@ -41,6 +41,77 @@ jobs:
       - name: Test
         run: make engine-test
 
-  # The Client job (lint, typecheck, unit tests, build) and the browser e2e job
-  # land with the web client. E2E is a required gate — see ADR 0011 and the root
-  # AGENTS.md.
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+      # Through the Make target so CI and a local `make client-check` run the
+      # identical command list; the Makefile is the single source of truth.
+      - name: Check (format, lint, types, tests, build)
+        run: make client-check
+
+  # Both browser jobs run in the official Playwright container, whose browsers are
+  # preinstalled and match the driver by construction. That is how `playwright install` is
+  # never run (root AGENTS.md): the image is the source of the browser. This tag must move
+  # together with the exactly-pinned `@playwright/test` in clients/web/package.json — a
+  # caret range there would silently drift away from this image.
+  e2e-smoke:
+    name: E2E Smoke
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # The Playwright image ships browsers and node, not a build toolchain. This job needs
+      # `make` to invoke the gate and a C linker because it compiles the server — rustc shells
+      # out to `cc` to link, and the image has neither. `build-essential` carries both.
+      #
+      # Installing is preferred over calling the npm scripts directly: the Makefile is the one
+      # place a gate's command list lives, and duplicating it here is how CI drifts from what
+      # `make e2e-smoke` runs locally.
+      - name: Install the build toolchain the image omits
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential
+      # The smoke path drives the real server, so this job needs the Rust toolchain too.
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # Prebuilt so Playwright's wait on the port is a start, not a compile.
+      - name: Build the server
+        run: cargo build -p sage-server
+      - name: Smoke (build → browser → socket → server)
+        run: make e2e-smoke
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: e2e-smoke-trace
+          path: clients/web/test-results
+          retention-days: 7
+
+  # Breadth, deliberately NOT a required check: a merge must never wait on browser flake in
+  # a tier that mocks the socket anyway. It still reports pass/fail — non-blocking means
+  # "not named in the ruleset", not "failures are ignored".
+  e2e-views:
+    name: E2E Flows
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # This tier compiles nothing, so it needs `make` and nothing else.
+      - name: Install make
+        run: apt-get update && apt-get install -y --no-install-recommends make
+      - name: Fixture-driven rendering flows
+        run: make e2e-views
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: e2e-views-trace
+          path: clients/web/test-results
+          retention-days: 7

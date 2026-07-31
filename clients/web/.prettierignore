@@ -1,0 +1,6 @@
+dist
+node_modules
+coverage
+# Markdown here is hand-wrapped to match the rest of the repository's docs;
+# Prettier would reflow it into a different shape from every sibling file.
+*.md

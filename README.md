@@ -9,8 +9,9 @@ state-based server-authoritative engine, reachable without an install — and *t
 beautiful. The first milestone is the vertical slice of that: two people click a link and play
 a real game in a browser.
 
-> **Status: no web client yet.** The engine, server, protocol, and terminal client work today;
-> the browser client is the current milestone. Until it exists, `sage-cli` is how you play.
+> **Status: the browser client is playable and deliberately ugly.** A grey-box lobby and board
+> — structure and legibility only. Visual design comes after the game is good to play, not
+> before.
 
 The engine plays deterministic games of two to four players to a single winner: casting,
 targeting, the stack, combat with per-attacker targets and player-chosen damage assignment,
@@ -53,6 +54,7 @@ See the [project brief](docs/brief.md) for scope and the
 | `crates/sage-protocol` | Shared Rust wire types |
 | `crates/sage-server` | WebSocket lobby, rooms, and view projection |
 | `crates/sage-cli` | Interactive terminal and deterministic-agent client |
+| `clients/web` | Browser client and the TypeScript protocol mirror |
 | `docs` | Brief, protocol, card schema, coding standards, and ADRs |
 
 ## Set up and verify
@@ -63,8 +65,9 @@ make check
 make verify
 ```
 
-`make check` is the fast engine gate. `make verify` adds dependency-policy checks and matches
-the required pre-merge CI surface. Client and browser-e2e gates land with the web client.
+`make check` is the fast engine gate and needs no node toolchain. `make verify` adds the
+client gate, the blocking browser smoke path, and dependency-policy checks, matching the
+required pre-merge CI surface. `make e2e-views` runs the broader, non-blocking browser tier.
 
 ## Run locally
 
@@ -88,7 +91,15 @@ cargo run -p sage-cli -- --agent
 ```
 
 The CLI accepts `--addr`, `--agent`, and `--agent-timeout`; corresponding environment fallbacks
-are documented by `--help`. Until the web client exists, the CLI is the way to play.
+are documented by `--help`.
+
+For the browser client, with the server running:
+
+```sh
+cd clients/web && npm install && npm run dev
+```
+
+Create a table, submit a starter deck, seat an AI opponent, and ready up.
 
 ## Documentation
 

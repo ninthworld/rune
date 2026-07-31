@@ -4,9 +4,9 @@ SAGE is a server-authoritative Magic: The Gathering implementation with a pure R
 a web client. Read [`docs/brief.md`](docs/brief.md) for the product and architecture, and
 [`docs/coding-standards.md`](docs/coding-standards.md) before changing code.
 
-**The web client is not built yet.** `clients/` is empty and building it is the current
-milestone. The engine, server, protocol, and CLI are working; `crates/sage-cli` is the
-playtest surface until a browser client exists.
+**The web client is playable and deliberately ugly.** `clients/web` renders a grey-box lobby
+and board — structure and legibility only, no visual design, because none of it can be judged
+until the game plays well. Make it good before making it pretty.
 
 ## Hard rules
 
@@ -55,21 +55,23 @@ playtest surface until a browser client exists.
 - `crates/sage-protocol/` — shared wire types.
 - `crates/sage-server/` — WebSocket lobby and game rooms.
 - `crates/sage-cli/` — terminal and deterministic-agent client; the playtest surface until the
-  web client exists.
+  web client is playable.
+- `clients/web/` — the browser client; has its own `AGENTS.md`.
 - `docs/` — brief, protocol, card schema, coding standards, and ADRs. Everything in `docs/` is
   current and binding; there is no superseded material to sift.
 
 ## Commands
 
-- `make check` — fast gate: `engine-lint` + `engine-test`.
-- `make verify` — complete pre-merge gate: `make check` plus `cargo-deny`.
+- `make check` — fast engine gate: `engine-lint` + `engine-test`. Needs no node.
+- `make verify` — complete pre-merge gate: `check` + `client-check` + `e2e-smoke` + `deny`.
+- `make client-check` — everything the `Client` CI job runs.
+- `make e2e-smoke` — the blocking browser gate, against a real server.
+- `make e2e-views` — the broad, non-blocking browser tier. Needs no server and no Rust.
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make compat` — regenerate the card-compatibility report (fails `make check` on drift).
 - `make deny` — dependency policy and advisory checks.
 - `scripts/bootstrap.sh` — verify local prerequisites.
-
-Client and e2e targets land with the web client.
 
 ## Workflow
 

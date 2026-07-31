@@ -29,7 +29,14 @@ If a status check is ever renamed in `.github/workflows/`, update the matching
 `context` here and re-import.
 
 > **Re-import after editing.** GitHub holds whatever was last imported, so a change to this
-> file has no effect until it is re-imported (steps above). A required context named here
-> that no workflow reports will block every pull request forever. The web client adds a
-> `Client` context and a browser-e2e context when it lands; both go in this list and get
-> re-imported then.
+> file has no effect until it is re-imported (steps above). A required context named here that
+> no workflow reports will block every pull request forever.
+>
+> Keep this file safe to import against `main` at any commit: add a context here only once the
+> workflow reporting it is **already on `main`**, never in the same pull request that
+> introduces the job.
+>
+> Once the client and browser jobs are on `main`, the required list becomes `Engine`,
+> `cargo-deny`, `Client`, and `E2E Smoke`. **`E2E Flows` is deliberately excluded** — it is the
+> broad browser tier, and keeping it out is what stops a merge waiting on browser flake
+> (ADR 0011). It still runs and still reports; it just never blocks.

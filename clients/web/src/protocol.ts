@@ -1,0 +1,564 @@
+/**
+ * The TypeScript mirror of `crates/sage-protocol`.
+ *
+ * The Rust types are the wire authority; this file and `docs/protocol.md` change with them in
+ * the same PR (root `AGENTS.md`). Every shape here is defined once, as a schema, with the
+ * static type inferred from it — so there is no second declaration that can drift from the
+ * validator.
+ *
+ * Two rules govern how faithful this has to be, and they pull in opposite directions:
+ *
+ * 1. **Tolerate unknown fields.** A newer server may send fields this client does not know,
+ *    and the client must keep working. `z.object` strips unknown keys rather than failing,
+ *    which is exactly that tolerance.
+ * 2. **Declare every field the server actually sends.** Rule 1 makes drift silent: a field the
+ *    server sends and this file omits is discarded with no error. The parity test in
+ *    `protocol.test.ts` closes that hole by asserting a parsed fixture is byte-identical to the
+ *    fixture — anything stripped is a field this mirror is missing.
+ *
+ * Consequently **no schema here declares a default**. A `.default([])` would materialize a key
+ * the wire did not carry and break that equality check, and it would also lie about what the
+ * server said. Absent means absent; `normalize.ts` is where a UI turns absence into a default.
+ */
+import { z } from 'zod'
+
+/** Opaque player identity (server-assigned). */
+export const PlayerId = z.string()
+/** Opaque per-game entity id: a card, permanent, or stack object. */
+export const EntityId = z.string()
+
+export const SessionToken = z.string()
+export const RoomId = z.string()
+export const GameSetupId = z.string()
+export const CardIdentity = z.string()
+
+// ---------------------------------------------------------------------------
+// Presentation
+// ---------------------------------------------------------------------------
+
+/** A colour letter as it rides the wire — `Color` serializes to its single letter. */
+export const Color = z.enum(['W', 'U', 'B', 'R', 'G'])
+export type Color = z.infer<typeof Color>
+
+export const COLORS: readonly Color[] = ['W', 'U', 'B', 'R', 'G'] as const
+
+export const MatchFormat = z.object({
+  id: GameSetupId.optional(),
+  commander: z.boolean().optional(),
+})
+export type MatchFormat = z.infer<typeof MatchFormat>
+
+export const CommanderIdentity = z.object({
+  commander: PlayerId,
+  name: z.string().optional(),
+  color_identity: z.array(Color).optional(),
+})
+export type CommanderIdentity = z.infer<typeof CommanderIdentity>
+
+// ---------------------------------------------------------------------------
+// Result
+// ---------------------------------------------------------------------------
+
+export const GameOverReason = z.enum(['life_zero', 'decked', 'concede', 'commander_damage'])
+export type GameOverReason = z.infer<typeof GameOverReason>
+
+export const CommanderDamage = z.object({
+  commander: PlayerId,
+  damaged: PlayerId,
+  amount: z.number(),
+})
+export type CommanderDamage = z.infer<typeof CommanderDamage>
+
+export const CommanderTax = z.object({
+  commander: PlayerId,
+  casts: z.number().optional(),
+  tax: z.number().optional(),
+})
+export type CommanderTax = z.infer<typeof CommanderTax>
+
+export const GameResult = z.object({
+  winner: PlayerId.optional(),
+  losers: z.array(PlayerId).optional(),
+  reason: GameOverReason,
+})
+export type GameResult = z.infer<typeof GameResult>
+
+// ---------------------------------------------------------------------------
+// Cards, board, zones
+// ---------------------------------------------------------------------------
+
+export const Phase = z.enum([
+  'untap',
+  'upkeep',
+  'draw',
+  'precombat_main',
+  'begin_combat',
+  'declare_attackers',
+  'declare_blockers',
+  'combat_damage',
+  'end_combat',
+  'postcombat_main',
+  'end',
+  'cleanup',
+])
+export type Phase = z.infer<typeof Phase>
+
+export const CardView = z.object({
+  id: EntityId,
+  name: z.string(),
+  type_line: z.string(),
+  mana_cost: z.string().optional(),
+  rules_text: z.string().optional(),
+  functional_id: z.string().optional(),
+  power: z.string().optional(),
+  toughness: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
+})
+export type CardView = z.infer<typeof CardView>
+
+export const OpponentView = z.object({
+  player_id: PlayerId,
+  hand_size: z.number(),
+  life: z.number(),
+  library_size: z.number(),
+  graveyard_size: z.number(),
+  statuses: z.array(z.string()).optional(),
+  eliminated: z.boolean().optional(),
+  /** Absent means **connected** — the flag rides the wire only when `false`. */
+  connected: z.boolean().optional(),
+  ai: z.boolean().optional(),
+})
+export type OpponentView = z.infer<typeof OpponentView>
+
+export const SelfView = z.object({
+  life: z.number(),
+  library_size: z.number(),
+  eliminated: z.boolean().optional(),
+  /** Absent means **connected**, as on `OpponentView`. */
+  connected: z.boolean().optional(),
+  ai: z.boolean().optional(),
+})
+export type SelfView = z.infer<typeof SelfView>
+
+export const Counter = z.object({
+  kind: z.string(),
+  count: z.number(),
+})
+export type Counter = z.infer<typeof Counter>
+
+export const Permanent = z.object({
+  id: EntityId,
+  controller: PlayerId,
+  owner: PlayerId,
+  card: CardView,
+  tapped: z.boolean().optional(),
+  attacking: z.boolean().optional(),
+  attacking_player: EntityId.optional(),
+  blocking: EntityId.optional(),
+  damage: z.number().optional(),
+  attached_to: EntityId.optional(),
+  is_commander: z.boolean().optional(),
+  counters: z.array(Counter).optional(),
+})
+export type Permanent = z.infer<typeof Permanent>
+
+export const StackItemKind = z.enum(['spell', 'ability', 'activated', 'triggered'])
+export type StackItemKind = z.infer<typeof StackItemKind>
+
+export const StackTarget = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('player'), player: PlayerId }),
+  z.object({ kind: z.literal('permanent'), id: EntityId }),
+  z.object({ kind: z.literal('card'), id: EntityId }),
+  z.object({ kind: z.literal('stack'), id: EntityId }),
+])
+export type StackTarget = z.infer<typeof StackTarget>
+
+export const StackItem = z.object({
+  id: EntityId,
+  controller: PlayerId,
+  description: z.string(),
+  source: EntityId.optional(),
+  kind: StackItemKind.optional(),
+  targets: z.array(StackTarget).optional(),
+  card: CardView.optional(),
+})
+export type StackItem = z.infer<typeof StackItem>
+
+export const ZonePile = z.object({
+  player_id: PlayerId,
+  cards: z.array(CardView),
+})
+export type ZonePile = z.infer<typeof ZonePile>
+
+// ---------------------------------------------------------------------------
+// Actions, prompts, targeting
+// ---------------------------------------------------------------------------
+
+export const ActionDestination = z.object({
+  type: z.string(),
+  id: z.string(),
+  owner: PlayerId.optional(),
+  label: z.string().optional(),
+})
+export type ActionDestination = z.infer<typeof ActionDestination>
+
+export const ActionAck = z.object({
+  submission: z.string(),
+  accepted: z.boolean(),
+})
+export type ActionAck = z.infer<typeof ActionAck>
+
+export const TargetRequirement = z.object({
+  slot: z.string(),
+  prompt: z.string(),
+  candidates: z.array(EntityId).optional(),
+})
+export type TargetRequirement = z.infer<typeof TargetRequirement>
+
+export const PromptOption = z.object({
+  id: z.string(),
+  label: z.string(),
+  requires: z.array(z.string()).optional(),
+})
+export type PromptOption = z.infer<typeof PromptOption>
+
+export const Prompt = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('option'),
+    slot: z.string(),
+    prompt: z.string(),
+    options: z.array(PromptOption).optional(),
+  }),
+  z.object({
+    kind: z.literal('select_from_zone'),
+    slot: z.string(),
+    prompt: z.string(),
+    zone: z.string(),
+    owner: PlayerId,
+    count: z.number(),
+    candidates: z.array(EntityId).optional(),
+  }),
+  z.object({
+    kind: z.literal('order'),
+    slot: z.string(),
+    prompt: z.string(),
+    items: z.array(EntityId).optional(),
+  }),
+  z.object({
+    kind: z.literal('number'),
+    slot: z.string(),
+    prompt: z.string(),
+    min: z.number(),
+    max: z.number(),
+  }),
+])
+export type Prompt = z.infer<typeof Prompt>
+
+export const ValidAction = z.object({
+  id: z.string(),
+  type: z.string(),
+  label: z.string(),
+  subject: z.array(z.string()).optional(),
+  mana_ability: z.boolean().optional(),
+  requirements: z.array(TargetRequirement).optional(),
+  prompts: z.array(Prompt).optional(),
+  destinations: z.array(ActionDestination).optional(),
+  token: z.string().optional(),
+})
+export type ValidAction = z.infer<typeof ValidAction>
+
+// ---------------------------------------------------------------------------
+// Game log
+// ---------------------------------------------------------------------------
+
+export const LogEntity = z.object({
+  id: EntityId,
+  name: z.string(),
+})
+export type LogEntity = z.infer<typeof LogEntity>
+
+export const LogBlock = z.object({
+  blocker: LogEntity,
+  attacker: LogEntity,
+})
+export type LogBlock = z.infer<typeof LogBlock>
+
+export const LogDamageTarget = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('player'), player: PlayerId }),
+  z.object({ kind: z.literal('permanent'), permanent: LogEntity }),
+])
+export type LogDamageTarget = z.infer<typeof LogDamageTarget>
+
+export const GameLogEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('spell_cast'), player: PlayerId, card: LogEntity }),
+  z.object({ type: z.literal('spell_resolved'), player: PlayerId, card: LogEntity }),
+  z.object({ type: z.literal('spell_countered'), player: PlayerId, card: LogEntity }),
+  z.object({ type: z.literal('spell_fizzled'), player: PlayerId, card: LogEntity }),
+  z.object({
+    type: z.literal('attackers_declared'),
+    player: PlayerId,
+    attackers: z.array(LogEntity),
+  }),
+  z.object({ type: z.literal('blockers_declared'), player: PlayerId, blocks: z.array(LogBlock) }),
+  z.object({ type: z.literal('mulligan'), player: PlayerId }),
+  z.object({ type: z.literal('hand_kept'), player: PlayerId }),
+  z.object({ type: z.literal('life_changed'), player: PlayerId, amount: z.number() }),
+  z.object({ type: z.literal('damage_dealt'), target: LogDamageTarget, amount: z.number() }),
+  z.object({ type: z.literal('cards_drawn'), player: PlayerId, count: z.number() }),
+  z.object({ type: z.literal('permanent_died'), permanent: LogEntity }),
+  z.object({
+    type: z.literal('step_changed'),
+    turn: z.number(),
+    active_player: PlayerId,
+    phase: Phase,
+  }),
+  z.object({ type: z.literal('player_eliminated'), player: PlayerId, reason: GameOverReason }),
+  z.object({
+    type: z.literal('commander_returned_to_command_zone'),
+    player: PlayerId,
+    card: LogEntity,
+  }),
+  z.object({ type: z.literal('game_over'), result: GameResult }),
+])
+export type GameLogEvent = z.infer<typeof GameLogEvent>
+
+export const GameLogEntry = z.object({
+  sequence: z.number(),
+  event: GameLogEvent,
+})
+export type GameLogEntry = z.infer<typeof GameLogEntry>
+
+// ---------------------------------------------------------------------------
+// The in-game views
+// ---------------------------------------------------------------------------
+
+export const AutoPassedStep = z.object({
+  phase: Phase,
+  turn: z.number(),
+})
+export type AutoPassedStep = z.infer<typeof AutoPassedStep>
+
+export const GameView = z.object({
+  you: PlayerId.optional(),
+  my_hand: z.array(CardView).optional(),
+  me: SelfView.optional(),
+  opponents: z.array(OpponentView).optional(),
+  battlefield: z.array(Permanent).optional(),
+  stack: z.array(StackItem).optional(),
+  graveyards: z.array(ZonePile).optional(),
+  exile: z.array(ZonePile).optional(),
+  command: z.array(ZonePile).optional(),
+  phase: Phase,
+  turn: z.number().optional(),
+  active_player: PlayerId.optional(),
+  seat_order: z.array(PlayerId).optional(),
+  mana_pool: z.array(z.string()).optional(),
+  priority_player: PlayerId.optional(),
+  valid_actions: z.array(ValidAction).optional(),
+  action_deadline: z.number().optional(),
+  result: GameResult.optional(),
+  log: z.array(GameLogEntry).optional(),
+  stops: z.array(Phase).optional(),
+  own_turn_stops: z.array(Phase).optional(),
+  auto_passed: z.boolean().optional(),
+  auto_passed_steps: z.array(AutoPassedStep).optional(),
+  action_rejected: z.boolean().optional(),
+  action_ack: ActionAck.optional(),
+  player_names: z.record(PlayerId, z.string()).optional(),
+  commander_damage: z.array(CommanderDamage).optional(),
+  commander_tax: z.array(CommanderTax).optional(),
+  format: MatchFormat.optional(),
+  commander_identity: z.array(CommanderIdentity).optional(),
+})
+export type GameView = z.infer<typeof GameView>
+
+export const SpectatorView = z.object({
+  players: z.array(OpponentView).optional(),
+  battlefield: z.array(Permanent).optional(),
+  stack: z.array(StackItem).optional(),
+  graveyards: z.array(ZonePile).optional(),
+  exile: z.array(ZonePile).optional(),
+  command: z.array(ZonePile).optional(),
+  phase: Phase,
+  turn: z.number().optional(),
+  active_player: PlayerId.optional(),
+  seat_order: z.array(PlayerId).optional(),
+  priority_player: PlayerId.optional(),
+  result: GameResult.optional(),
+  log: z.array(GameLogEntry).optional(),
+  player_names: z.record(PlayerId, z.string()).optional(),
+  commander_damage: z.array(CommanderDamage).optional(),
+  commander_tax: z.array(CommanderTax).optional(),
+  format: MatchFormat.optional(),
+  commander_identity: z.array(CommanderIdentity).optional(),
+})
+export type SpectatorView = z.infer<typeof SpectatorView>
+
+// ---------------------------------------------------------------------------
+// Client → server, in game
+// ---------------------------------------------------------------------------
+
+export const TargetChoice = z.object({
+  slot: z.string(),
+  chosen: z.array(EntityId).optional(),
+})
+export type TargetChoice = z.infer<typeof TargetChoice>
+
+export const ChooseAction = z.object({
+  action_id: z.string(),
+  token: z.string().optional(),
+  targets: z.array(TargetChoice).optional(),
+  submission: z.string().optional(),
+})
+export type ChooseAction = z.infer<typeof ChooseAction>
+
+export const SetStops = z.object({
+  stops: z.array(Phase).optional(),
+  own_turn: z.array(Phase).optional(),
+})
+export type SetStops = z.infer<typeof SetStops>
+
+export const ClientMessage = z.discriminatedUnion('type', [
+  ChooseAction.extend({ type: z.literal('choose_action') }),
+  SetStops.extend({ type: z.literal('set_stops') }),
+])
+export type ClientMessage = z.infer<typeof ClientMessage>
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+export const CATALOG_VERSION = 1
+
+export const CatalogCard = z.object({
+  functional_id: CardIdentity,
+  name: z.string(),
+  type_line: z.string(),
+  mana_cost: z.string().optional(),
+  rules_text: z.string().optional(),
+  power: z.string().optional(),
+  toughness: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
+})
+export type CatalogCard = z.infer<typeof CatalogCard>
+
+export const CatalogFormat = z.object({
+  game_setup: GameSetupId,
+  min_deck_size: z.number(),
+  max_deck_size: z.number().optional(),
+  max_copies: z.number().optional(),
+  basic_land_exempt: z.boolean(),
+  requires_commander: z.boolean().optional(),
+  enforce_color_identity: z.boolean().optional(),
+  min_seats: z.number(),
+  max_seats: z.number(),
+})
+export type CatalogFormat = z.infer<typeof CatalogFormat>
+
+export const AiOption = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+})
+export type AiOption = z.infer<typeof AiOption>
+
+export const CatalogView = z.object({
+  catalog_version: z.number(),
+  cards: z.array(CatalogCard).optional(),
+  formats: z.array(CatalogFormat).optional(),
+  ai_opponents: z.array(AiOption).optional(),
+})
+export type CatalogView = z.infer<typeof CatalogView>
+
+// ---------------------------------------------------------------------------
+// Lobby
+// ---------------------------------------------------------------------------
+
+export const RoomVisibility = z.enum(['public', 'private'])
+export type RoomVisibility = z.infer<typeof RoomVisibility>
+
+export const RoomConfig = z.object({
+  seats: z.number(),
+  game_setup: GameSetupId,
+  name: z.string().optional(),
+  /** Absent means `public` — the field rides the wire only when private. */
+  visibility: RoomVisibility.optional(),
+})
+export type RoomConfig = z.infer<typeof RoomConfig>
+
+export const SeatView = z.object({
+  seat: z.number(),
+  occupied_by: PlayerId.optional(),
+  name: z.string().optional(),
+  decked: z.boolean().optional(),
+  ready: z.boolean().optional(),
+  ai: z.string().optional(),
+})
+export type SeatView = z.infer<typeof SeatView>
+
+export const RoomView = z.object({
+  room_id: RoomId,
+  config: RoomConfig,
+  seats: z.array(SeatView).optional(),
+})
+export type RoomView = z.infer<typeof RoomView>
+
+export const RoomState = z.enum(['gathering', 'in_progress'])
+export type RoomState = z.infer<typeof RoomState>
+
+export const RoomSummary = z.object({
+  room_id: RoomId,
+  config: RoomConfig,
+  filled: z.number(),
+  spectators: z.number().optional(),
+  state: RoomState,
+})
+export type RoomSummary = z.infer<typeof RoomSummary>
+
+export const LobbyView = z.object({
+  session: SessionToken.optional(),
+  you: PlayerId.optional(),
+  name: z.string().optional(),
+  room: RoomView.optional(),
+  directory: z.array(RoomSummary).optional(),
+  valid_commands: z.array(z.string()).optional(),
+})
+export type LobbyView = z.infer<typeof LobbyView>
+
+export const LobbyRejection = z.object({
+  code: z.string(),
+  reason: z.string(),
+  card: CardIdentity.optional(),
+})
+export type LobbyRejection = z.infer<typeof LobbyRejection>
+
+export const LobbyErrorFrame = z.object({
+  lobby_error: LobbyRejection,
+})
+export type LobbyErrorFrame = z.infer<typeof LobbyErrorFrame>
+
+export const LobbyCommand = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('hello'), token: SessionToken.optional() }),
+  z.object({ type: z.literal('create_room'), config: RoomConfig }),
+  z.object({ type: z.literal('update_room'), config: RoomConfig }),
+  z.object({ type: z.literal('join_room'), room_id: RoomId }),
+  z.object({
+    type: z.literal('submit_deck'),
+    cards: z.array(CardIdentity).optional(),
+    commander: CardIdentity.optional(),
+  }),
+  z.object({
+    type: z.literal('add_ai'),
+    seat: z.number(),
+    kind: z.string(),
+    cards: z.array(CardIdentity).optional(),
+    commander: CardIdentity.optional(),
+  }),
+  z.object({ type: z.literal('remove_ai'), seat: z.number() }),
+  z.object({ type: z.literal('ready'), ready: z.boolean() }),
+  z.object({ type: z.literal('set_name'), name: z.string() }),
+  z.object({ type: z.literal('spectate_room'), room_id: RoomId }),
+  z.object({ type: z.literal('request_catalog') }),
+  z.object({ type: z.literal('leave') }),
+])
+export type LobbyCommand = z.infer<typeof LobbyCommand>

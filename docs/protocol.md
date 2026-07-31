@@ -5,8 +5,12 @@ exchanges complete lobby views and lobby commands. Once the room constructs a ga
 same connection exchanges personalized game views and chosen actions.
 
 The Rust types in `crates/sage-protocol/src/lib.rs` are the wire authority; this document and
-the TypeScript mirror must change with them in the same PR. The mirror does not exist yet — it
-arrives with the web client — so today the contract is the Rust types plus this document.
+the TypeScript mirror in `clients/web/src/protocol.ts` must change with them in the same PR.
+
+Drift is caught rather than trusted: the fixtures under `crates/sage-protocol/fixtures/` are
+pinned by tests on both sides. Rust deserializes and round-trips them, and the client asserts a
+parsed fixture is identical to the fixture — so a field the server sends and the mirror omits
+fails the client suite instead of being silently dropped.
 
 ## Message lifecycle
 

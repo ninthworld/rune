@@ -1,0 +1,57 @@
+{
+  "catalog_version": 1,
+  "cards": [
+    {
+      "functional_id": "llanowar_elves",
+      "name": "Llanowar Elves",
+      "type_line": "Creature — Elf Druid",
+      "mana_cost": "{G}",
+      "rules_text": "{T}: Add {G}.",
+      "power": "1",
+      "toughness": "1"
+    },
+    {
+      "functional_id": "serra_angel",
+      "name": "Serra Angel",
+      "type_line": "Creature — Angel",
+      "mana_cost": "{3}{W}{W}",
+      "power": "4",
+      "toughness": "4",
+      "keywords": ["flying", "vigilance"]
+    },
+    {
+      "functional_id": "forest",
+      "name": "Forest",
+      "type_line": "Basic Land — Forest",
+      "rules_text": "{T}: Add {G}."
+    }
+  ],
+  "formats": [
+    {
+      "game_setup": "starter-1v1",
+      "min_deck_size": 40,
+      "max_copies": 4,
+      "basic_land_exempt": true,
+      "min_seats": 2,
+      "max_seats": 2
+    },
+    {
+      "game_setup": "commander",
+      "min_deck_size": 100,
+      "max_deck_size": 100,
+      "max_copies": 1,
+      "basic_land_exempt": true,
+      "requires_commander": true,
+      "enforce_color_identity": true,
+      "min_seats": 2,
+      "max_seats": 4
+    }
+  ],
+  "ai_opponents": [
+    {
+      "id": "random",
+      "name": "Practice bot",
+      "description": "Picks a legal action at random."
+    }
+  ]
+}

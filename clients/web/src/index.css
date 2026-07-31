@@ -1,0 +1,80 @@
+/* Grey box on purpose. Legibility and structure only — no visual design decisions are
+   being made here, because none of them can be judged until the game is playable. */
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem;
+}
+
+main {
+  max-width: 70rem;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.4rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin-block: 1.25rem 0.35rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  margin-block: 0.75rem 0.25rem;
+}
+
+section {
+  border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+}
+
+ul,
+ol {
+  margin-block: 0.25rem;
+  padding-inline-start: 1.5rem;
+}
+
+p {
+  margin-block: 0.35rem;
+}
+
+.notice {
+  border: 1px solid currentColor;
+  padding: 0.5rem 0.75rem;
+  margin-block: 0.75rem;
+}
+
+.actions {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.choices {
+  border: 1px solid currentColor;
+  padding: 0.75rem;
+  margin-block: 0.75rem;
+}
+
+.choice {
+  display: block;
+}
+
+.log {
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
