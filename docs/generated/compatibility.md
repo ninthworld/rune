@@ -118,16 +118,19 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (28)
+## Excluded (34)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |
 | Abilities that trigger on a phase or step | no upkeep, draw-step, end-step, or beginning-of-combat trigger condition |
+| Abilities that trigger on an ability being activated | no trigger condition observes an activation |
+| Abilities that trigger on another permanent attacking | the attack trigger condition observes only its own source |
 | Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, and casting |
 | Attack and block requirements and restrictions | only defender restricts declaration; must-attack and cannot-block are unmodeled |
 | Auras that enchant a player or land, or move between hosts | only P/T- and keyword-granting enchant-creature Auras are modeled |
+| Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
 | Conditional effects and intervening-if clauses | no condition attached to an effect or a trigger |
 | Cost reduction and cost increase effects | no cost-modification layer |
 | Costs paid by sacrificing or discarding | activation costs model only tapping and mana |
@@ -148,7 +151,10 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Maximum hand size modification | the cleanup discard uses a fixed hand size |
 | Modal spells that choose one | no mode choice on announcement |
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
+| Optional effects a player may decline on resolution | no yes-or-no or optional-cost choice is posed while an ability resolves |
 | Planeswalkers | no loyalty counter system or loyalty abilities |
 | Replacement effects | no replacement-effect layer in the rules engine |
+| Selectors that filter by power or toughness | no numeric power or toughness threshold in any target, trigger, or mass-effect selector |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
 | Token creation | no token object model; every permanent needs a catalog card |
+| Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype and controller only |
