@@ -236,7 +236,7 @@ fn has_zero_toughness(perm: &Permanent, state: &GameState, db: &CardDatabase) ->
 /// [`target_is_legal`] reports `false` for once the host has left the battlefield or
 /// stopped matching (e.g. a creature Aura on something no longer a creature).
 fn aura_is_illegally_attached(perm: &Permanent, state: &GameState, db: &CardDatabase) -> bool {
-    let Some(grant) = db.card(perm.card).and_then(|card| card.aura.as_ref()) else {
+    let Some(grant) = perm.printed.face(db).and_then(|face| face.aura()) else {
         return false;
     };
     match perm.attached_to {
@@ -306,7 +306,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
-            card,
+            printed: card.into(),
             controller,
             tapped: false,
             entered_turn: 0,

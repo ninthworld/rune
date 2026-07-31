@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "functional_id": "gallant_cavalry",
+  "name": "Gallant Cavalry",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Knight"
+  ],
+  "mana_cost": "{3}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "keywords": [
+    "vigilance"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Knight",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Knight"
+            ],
+            "colors": [
+              "white"
+            ],
+            "power": 2,
+            "toughness": 2,
+            "keywords": [
+              "vigilance"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

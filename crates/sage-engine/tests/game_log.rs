@@ -71,7 +71,7 @@ fn place(state: &mut GameState, db: &CardDatabase, slug: &str, damage: u32) -> P
     state.battlefield.push(Permanent {
         id,
         instance,
-        card,
+        printed: card.into(),
         controller: PlayerId(0),
         damage,
         ..Default::default()

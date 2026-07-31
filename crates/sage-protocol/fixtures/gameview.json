@@ -78,6 +78,22 @@
           "count": 5
         }
       ]
+    },
+    {
+      "id": "perm_thopter",
+      "controller": "p1",
+      "owner": "p1",
+      "card": {
+        "id": "perm_thopter",
+        "name": "Thopter",
+        "type_line": "Artifact Creature — Thopter",
+        "power": "1",
+        "toughness": "1",
+        "keywords": [
+          "flying"
+        ],
+        "token": true
+      }
     }
   ],
   "stack": [

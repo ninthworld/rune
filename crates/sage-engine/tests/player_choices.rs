@@ -106,7 +106,7 @@ fn place(
     state.battlefield.push(Permanent {
         id,
         instance,
-        card,
+        printed: card.into(),
         controller,
         ..Default::default()
     });
@@ -579,7 +579,7 @@ fn issue_604_a_look_can_put_its_take_onto_the_battlefield_tapped() {
     let island = after
         .battlefield
         .iter()
-        .find(|perm| perm.card == cid(&db, "island"))
+        .find(|perm| perm.printed.card() == Some(cid(&db, "island")))
         .expect("the chosen land entered the battlefield");
     assert!(island.tapped, "onto the battlefield tapped");
     assert_eq!(island.controller, PlayerId(0));
@@ -637,7 +637,9 @@ fn issue_604_a_search_finds_by_name_puts_it_onto_the_battlefield_and_shuffles() 
     let twin = after
         .battlefield
         .iter()
-        .find(|perm| perm.card == cid(&db, "elvish_clancaller") && perm.id != caller)
+        .find(|perm| {
+            perm.printed.card() == Some(cid(&db, "elvish_clancaller")) && perm.id != caller
+        })
         .expect("the found copy is on the battlefield");
     assert!(!twin.tapped);
     assert_eq!(after.players[0].library.len(), 4, "the found card left");

@@ -174,6 +174,7 @@ mod tests {
                     mana_cost: Some("{R}".into()),
                     rules_text: "Lightning Bolt deals 3 damage to any target.".into(),
                     functional_id: "lightning_bolt".into(),
+                    token: false,
                     power: None,
                     toughness: None,
                     keywords: vec![],

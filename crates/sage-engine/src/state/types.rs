@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::card::{CombatRestriction, Keyword};
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::LossReason;
+use crate::token::Printed;
 
 /// The terminal outcome of a game (CR 104.2a / CR 104.4a), derived on demand from
 /// player state — never stored on [`GameState`](crate::GameState), in keeping with the engine's
@@ -41,25 +42,61 @@ pub struct GameLogEntry {
     pub event: GameEvent,
 }
 
-/// A permanent as referenced by a log event, paired with the immutable card
-/// identity needed to name it during projection.
+/// A permanent as referenced by a log event, paired with the immutable identity
+/// needed to name it during projection.
 ///
 /// Combatant and death events carry this rather than a bare [`PermanentId`] so a
 /// snapshot's history stays stable: the server names the object from the recorded
-/// [`card`](Self::card) instead of re-resolving it against the *current*
+/// [`identity`](Self::identity) instead of re-resolving it against the *current*
 /// battlefield, which would degrade to "unknown" the instant the permanent leaves
 /// (dies, is bounced, …). A [`PermanentId`] is never reused, so the id is still a
 /// stable presentation handle a client may highlight.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LoggedPermanent {
     /// Battlefield identity at the moment the event was recorded.
     pub permanent: PermanentId,
-    /// The card the permanent represented, for public naming during projection.
-    pub card: CardId,
+    /// What the permanent was, for public naming during projection.
+    pub identity: LoggedIdentity,
+}
+
+impl LoggedPermanent {
+    /// Record `perm` as a log entity, capturing whatever names it (CR 111: a token
+    /// has no card, so its own name is what the log has to work with).
+    #[must_use]
+    pub(crate) fn of(perm: &Permanent) -> Self {
+        Self {
+            permanent: perm.id,
+            identity: match &perm.printed {
+                crate::token::Printed::Card(card) => LoggedIdentity::Card(*card),
+                crate::token::Printed::Token(token) => LoggedIdentity::Token(token.name.clone()),
+            },
+        }
+    }
+}
+
+/// How a [`LoggedPermanent`] is named when the log is projected.
+///
+/// A card is recorded as its [`CardId`] and named from the database, so the log never
+/// carries presentation text the server owns. A token has no card to look up (CR 111),
+/// and it has ceased to exist by the time anyone reads the entry — so its *name*, the
+/// only characteristic that survives it, is recorded instead. That is the whole
+/// difference, and it is why this is an enum rather than an `Option<CardId>` that
+/// would leave every token in the log called "unknown".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoggedIdentity {
+    /// The card the permanent represented; the server resolves the display name.
+    Card(CardId),
+    /// The name of the token the permanent was (CR 111.3 — a token's characteristics
+    /// come from the effect that made it, and nothing outlives it to look up).
+    Token(String),
 }
 
 /// What a [`GameEvent::DamageDealt`] was dealt to (CR 120.3).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// Clone but not `Copy`: a damaged permanent is named by its recorded
+/// [`LoggedPermanent`], which for a token carries the token's own name (CR 111) —
+/// the one characteristic that outlives it.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DamageTarget {
     /// Damage dealt to a player — life loss (CR 120.3a).
     Player(PlayerId),
@@ -269,15 +306,32 @@ pub enum CounterKind {
 /// from the [`CardId`] of the card it represents. It also links the
 /// [`CardInstanceId`] of the physical card it originated from, so identity is
 /// preserved when the permanent leaves the battlefield for another zone.
+///
+/// Not every permanent is a card: a token (CR 111) is a battlefield object whose
+/// characteristics come from the effect that created it, and [`Self::printed`] is
+/// where that difference lives.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Permanent {
     /// Battlefield identity, fresh on entry.
     pub id: PermanentId,
     /// The physical card this permanent originated from. Stable across the zone
     /// change that put it here, unlike [`Self::id`].
+    ///
+    /// A token is given one too, minted from the same monotonic counter: it is the
+    /// per-object handle the commander designation and the death diff are keyed on,
+    /// and keeping it non-optional means neither has to special-case a token. Because
+    /// a token never leaves the battlefield as a card (CR 111.7), that id can never
+    /// turn up in a hand, a graveyard, or exile.
     pub instance: CardInstanceId,
-    /// The card this permanent represents.
-    pub card: CardId,
+    /// Where this permanent's printed characteristics come from: the catalog card it
+    /// represents, or the token characteristics an effect gave it (CR 111).
+    ///
+    /// Read it through [`Printed::face`](crate::Printed::face), which answers both
+    /// kinds; [`Printed::card`](crate::Printed::card) is the one accessor that crosses
+    /// back to card identity, and its `None` for a token is what makes CR 111.7 —
+    /// "a token that leaves the battlefield ceases to exist" — a thing the compiler
+    /// asks about rather than a rule to remember.
+    pub printed: Printed,
     /// The player who currently controls it.
     pub controller: PlayerId,
     /// Whether the permanent is tapped.

@@ -25,7 +25,7 @@ mod zone;
 
 pub use types::{
     CommanderDamage, CounterKind, DamageTarget, Duration, EffectAffects, GameEvent, GameLogEntry,
-    GameResult, LoggedPermanent, Modification, Permanent, StaticEffect,
+    GameResult, LoggedIdentity, LoggedPermanent, Modification, Permanent, StaticEffect,
 };
 
 use crate::id::PlayerId;

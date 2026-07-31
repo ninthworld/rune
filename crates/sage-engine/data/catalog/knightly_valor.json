@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "functional_id": "knightly_valor",
+  "name": "Knightly Valor",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{4}{W}",
+  "colors": [
+    "white"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Knight",
+            "types": [
+              "creature"
+            ],
+            "subtypes": [
+              "Knight"
+            ],
+            "colors": [
+              "white"
+            ],
+            "power": 2,
+            "toughness": 2,
+            "keywords": [
+              "vigilance"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "aura": {
+    "enchant": "any_creature",
+    "power": 2,
+    "toughness": 2,
+    "keywords": [
+      "vigilance"
+    ]
+  }
+}

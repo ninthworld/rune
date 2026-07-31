@@ -5,7 +5,7 @@
 //! calls [`collect_triggers`] and puts each resulting [`Trigger`] on the stack.
 
 use crate::ability::{Ability, ObservedPermanent, ObservedSpell, TriggerCondition, TurnScope};
-use crate::card::abilities_of;
+use crate::card::abilities_of_permanent;
 use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::stack::{StackId, StackObjectKind};
@@ -115,7 +115,7 @@ fn collect_from(
     db: &CardDatabase,
     out: &mut Vec<Trigger>,
 ) {
-    for ability in abilities_of(db, perm.card) {
+    for ability in abilities_of_permanent(db, perm) {
         if let Ability::Triggered { event, effects } = ability {
             // A condition reports *how many times* it was met, not whether: an ability
             // watching the rest of the board sees one event per qualifying object, and
@@ -149,12 +149,33 @@ fn died<'a>(before: &'a GameState, after: &GameState) -> Vec<&'a Permanent> {
     before
         .battlefield
         .iter()
-        .filter(|p| {
-            !after.battlefield.iter().any(|q| q.id == p.id)
-                && in_graveyard(after, p.instance)
-                && !in_graveyard(before, p.instance)
-        })
+        .filter(|p| !after.battlefield.iter().any(|q| q.id == p.id) && death_of(p, before, after))
         .collect()
+}
+
+/// Whether the permanent `perm`, which has left the battlefield across this
+/// transition, left it by **dying** (CR 700.4) rather than by being bounced, exiled,
+/// or removed with its controller.
+///
+/// A card answers this from the board alone: its physical instance is in a graveyard
+/// now and was not before, which is what makes a leave to any other zone not a death.
+/// A **token** cannot answer it that way, because a token that dies reaches no
+/// graveyard to be found in (CR 111.7) — the death is real, the destination is not.
+/// Its evidence is the [`GameEvent::PermanentDied`] the one death seam
+/// ([`GameState::destroy_permanent`](crate::GameState::destroy_permanent)) records,
+/// read from the same event diff the life-gain and cast conditions already use
+/// (ADR 0007). So a dies trigger fires on a token exactly as it does on a card
+/// (CR 603.6c: the ability triggers on the way out, before the object ceases to
+/// exist), while a bounced or exiled token — which records no such event — fires
+/// nothing.
+fn death_of(perm: &Permanent, before: &GameState, after: &GameState) -> bool {
+    if perm.printed.is_token() {
+        return events_in(before, after).any(|event| {
+            matches!(event, GameEvent::PermanentDied { permanent }
+                if permanent.permanent == perm.id)
+        });
+    }
+    in_graveyard(after, perm.instance) && !in_graveyard(before, perm.instance)
 }
 
 /// The events recorded **by this transition** — the entries `after` has that `before`
@@ -190,14 +211,14 @@ fn observed_matches(
     if observes.excludes_source() && candidate.id == source.id {
         return false;
     }
-    let Some(card) = db.card(candidate.card) else {
+    let Some(face) = candidate.printed.face(db) else {
         return false;
     };
-    if !card.has_type(CardType::Creature) {
+    if !face.has_type(CardType::Creature) {
         return false;
     }
     if let Some(subtype) = observes.subtype() {
-        if !card.has_subtype(subtype) {
+        if !face.has_subtype(subtype) {
             return false;
         }
     }
@@ -250,7 +271,7 @@ fn fire_count(
         TriggerCondition::SelfDies => {
             let left = before.battlefield.iter().any(|p| p.id == perm.id)
                 && !after.battlefield.iter().any(|p| p.id == perm.id);
-            left && in_graveyard(after, perm.instance) && !in_graveyard(before, perm.instance)
+            left && death_of(perm, before, after)
         }
         // CR 508.1 / 603.6d: the permanent was declared as an attacker this
         // transition. Observed by diff on the one field the declaration writes —
@@ -385,7 +406,7 @@ mod tests {
         after.battlefield.push(Permanent {
             id: PermanentId(1),
             instance: CardInstanceId(1),
-            card: fixture("skyscanner"),
+            printed: fixture("skyscanner").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -411,7 +432,7 @@ mod tests {
         before.battlefield.push(Permanent {
             id,
             instance,
-            card: id_in(db, "test_lurker"),
+            printed: id_in(db, "test_lurker").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -512,7 +533,7 @@ mod tests {
         before.battlefield.push(Permanent {
             id: PermanentId(1),
             instance: CardInstanceId(1),
-            card: id_in(db, functional_id),
+            printed: id_in(db, functional_id).into(),
             controller,
             tapped: false,
             entered_turn: 0,
@@ -658,7 +679,7 @@ mod tests {
             before.battlefield.push(Permanent {
                 id: PermanentId(index as u64 + 1),
                 instance: CardInstanceId(index as u64 + 1),
-                card: id_in(&db, id),
+                printed: id_in(&db, id).into(),
                 controller: PlayerId(0),
                 tapped: false,
                 entered_turn: 0,

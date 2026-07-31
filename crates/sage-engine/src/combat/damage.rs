@@ -311,7 +311,7 @@ pub(crate) mod tests {
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
-            card,
+            printed: card.into(),
             controller,
             tapped: false,
             entered_turn,

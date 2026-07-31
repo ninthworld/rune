@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (123)
+## Supported cards (129)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -22,6 +22,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
 | `arcane_encyclopedia` | Arcane Encyclopedia | functional definition |
 | `aven_wind_mage` | Aven Wind Mage | functional definition |
+| `aviation_pioneer` | Aviation Pioneer | functional definition |
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
@@ -37,6 +38,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `diregraf_ghoul` | Diregraf Ghoul | functional definition |
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
+| `doomed_dissenter` | Doomed Dissenter | functional definition |
 | `druid_of_the_cowl` | Druid of the Cowl | functional definition |
 | `duress` | Duress | functional definition |
 | `electrify` | Electrify | functional definition |
@@ -51,13 +53,16 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `forsaken_sanctuary` | Forsaken Sanctuary | functional definition |
 | `foul_orchard` | Foul Orchard | functional definition |
 | `frilled_sea_serpent` | Frilled Sea Serpent | functional definition |
+| `gallant_cavalry` | Gallant Cavalry | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
+| `goblin_instigator` | Goblin Instigator | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
 | `greenwood_sentinel` | Greenwood Sentinel | functional definition |
 | `guttersnipe` | Guttersnipe | functional definition |
 | `havoc_devils` | Havoc Devils | functional definition |
 | `herald_of_faith` | Herald of Faith | functional definition |
+| `heroic_reinforcements` | Heroic Reinforcements | functional definition |
 | `highland_game` | Highland Game | functional definition |
 | `highland_lake` | Highland Lake | functional definition |
 | `horizon_scholar` | Horizon Scholar | functional definition |
@@ -69,6 +74,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `jedit_ojanen` | Jedit Ojanen | functional definition |
 | `knight_of_the_tusk` | Knight of the Tusk | functional definition |
 | `knight_s_pledge` | Knight's Pledge | functional definition |
+| `knightly_valor` | Knightly Valor | functional definition |
 | `lava_axe` | Lava Axe | functional definition |
 | `lich_s_caress` | Lich's Caress | functional definition |
 | `lightning_strike` | Lightning Strike | functional definition |
@@ -175,5 +181,5 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Selectors that filter by power or toughness | no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
-| Token creation | no token object model; every permanent needs a catalog card |
+| Tokens created attacking, or as copies of another permanent | a created token enters untapped or tapped and out of combat; there is no copiable-values model |
 | Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype and controller only |

@@ -50,6 +50,16 @@ declaration must also be stated in the blocker slot's prompt, or it reaches the 
 submit that silently does nothing. Attack and block *requirements* ("attacks each combat if
 able") are still unmodeled, and a blocker still blocks exactly one attacker.
 
+**Not every permanent is a card** (ADR 0015). `Permanent.printed` is a `Printed` — a
+catalog `CardId`, or the `TokenData` an effect gave a token (CR 111) — and every read of a
+permanent's printed face goes through `Printed::face(db)`, which answers both. The one
+accessor that crosses back to card identity, `Printed::card()`, returns `None` for a token,
+and that `None` is where CR 111.7 lives: a token leaving the battlefield has no
+`CardInstance` to put in the destination zone, so it is put nowhere and ceases to exist.
+A token's *death* is therefore observed from the recorded `PermanentDied` event rather than
+from a graveyard it never reaches. `TokenData` has no `functional_id` field at all, which
+is why a token cannot reach the compatibility report.
+
 `Ability::Static` exists and covers anthems and lords ("creatures you control", optionally
 filtered to a subtype, optionally excluding the source). It is **derived, never stored**:
 `characteristics` reads it off the battlefield on every call, so the effect begins and ends

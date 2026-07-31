@@ -110,6 +110,13 @@ export const CardView = z.object({
   mana_cost: z.string().optional(),
   rules_text: z.string().optional(),
   functional_id: z.string().optional(),
+  /**
+   * A token (CR 111): a permanent the game created, with no card behind it. Absent
+   * means a card — the flag rides the wire only when `true`. A token's
+   * `functional_id` is always empty, so anything keyed on card identity (a local
+   * cache, a presentation lookup) must skip it rather than treat it as unresolved.
+   */
+  token: z.boolean().optional(),
   power: z.string().optional(),
   toughness: z.string().optional(),
   keywords: z.array(z.string()).optional(),

@@ -49,8 +49,9 @@ pub(crate) fn turn_began_for(state: &GameState, player: PlayerId) -> u32 {
 /// here (as they are in [`crate::resolve::target_is_legal`]).
 #[must_use]
 pub(super) fn is_creature(perm: &Permanent, db: &CardDatabase) -> bool {
-    db.card(perm.card)
-        .is_some_and(|c| c.has_type(CardType::Creature))
+    perm.printed
+        .face(db)
+        .is_some_and(|face| face.has_type(CardType::Creature))
 }
 
 /// Whether the summoning-sickness restriction of CR 302.6 currently applies to
@@ -137,9 +138,10 @@ pub fn blocker_can_block_attacker(
     }
     // CR 509.1b: the attacker's own evasion restrictions, read through the computed
     // characteristics so a granted one restricts exactly as a printed one does.
-    let blocker_colors = db
-        .card(blk.card)
-        .map(|c| c.colors.clone())
+    let blocker_colors = blk
+        .printed
+        .face(db)
+        .map(|face| face.colors().to_vec())
         .unwrap_or_default();
     for restriction in permanent_restrictions(state, attacker, db) {
         match restriction {
@@ -384,7 +386,7 @@ mod tests {
         state.battlefield.push(Permanent {
             id,
             instance: inst.id,
-            card: fixture("walking_corpse"),
+            printed: fixture("walking_corpse").into(),
             controller,
             tapped,
             entered_turn,

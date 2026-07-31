@@ -59,7 +59,7 @@ fn resolving_a_creature_spell_puts_it_on_the_battlefield() {
     let perm = state
         .battlefield
         .iter()
-        .find(|p| p.card == fixture("llanowar_elves"))
+        .find(|p| p.printed.card() == Some(fixture("llanowar_elves")))
         .unwrap();
     assert_eq!(perm.instance, scout.id);
 }
@@ -101,7 +101,7 @@ fn creature_on_battlefield(state: &mut GameState) -> PermanentId {
     state.battlefield.push(Permanent {
         id: PermanentId(id),
         instance: inst.id,
-        card: fixture("llanowar_elves"),
+        printed: fixture("llanowar_elves").into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,
@@ -332,7 +332,7 @@ fn issue_149_any_target_is_legal_for_creatures_and_in_game_players() {
     state.battlefield.push(Permanent {
         id: forest,
         instance: inst.id,
-        card: fixture("forest"),
+        printed: fixture("forest").into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,
@@ -552,7 +552,7 @@ fn place(state: &mut GameState, slug: &str) -> PermanentId {
     state.battlefield.push(Permanent {
         id,
         instance: inst.id,
-        card,
+        printed: card.into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,
@@ -589,7 +589,7 @@ fn aura_host(state: &mut GameState, db: &CardDatabase) -> PermanentId {
     state.battlefield.push(Permanent {
         id,
         instance: inst.id,
-        card: id_in(db, "test_scout"),
+        printed: id_in(db, "test_scout").into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,
@@ -632,7 +632,7 @@ fn issue_152_aura_resolves_attached_to_its_target_and_boosts_it_cr_303_4d() {
     let aura_perm = state
         .battlefield
         .iter()
-        .find(|p| p.card == id_in(&db, "test_aegis"))
+        .find(|p| p.printed.card() == Some(id_in(&db, "test_aegis")))
         .unwrap();
     assert_eq!(
         aura_perm.attached_to,
@@ -677,7 +677,7 @@ fn issue_152_aura_fizzles_when_its_target_left_before_resolution_cr_608_2b() {
         !state
             .battlefield
             .iter()
-            .any(|p| p.card == id_in(&db, "test_aegis")),
+            .any(|p| p.printed.card() == Some(id_in(&db, "test_aegis"))),
         "a fizzled Aura never enters the battlefield (CR 608.2b)"
     );
     assert!(
@@ -726,7 +726,7 @@ fn issue_155_zero_zero_entering_with_two_counters_lives_cr_614_12() {
     let perm = state
         .battlefield
         .iter()
-        .find(|p| p.card == id_in(&db, "test_hatchling"))
+        .find(|p| p.printed.card() == Some(id_in(&db, "test_hatchling")))
         .unwrap(); // the 0/0 survives entry with two +1/+1 counters (CR 614.12/704.5f)
     assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 2);
     let ch = characteristics(&state, perm.id, &db);
@@ -770,7 +770,7 @@ fn issue_155_etb_trigger_observes_the_replaced_counters_state_cr_614_12() {
     let perm = state
         .battlefield
         .iter()
-        .find(|p| p.card == id_in(&db, "test_broodling"))
+        .find(|p| p.printed.card() == Some(id_in(&db, "test_broodling")))
         .unwrap(); // the creature entered the battlefield
     assert_eq!(
         perm.counter_count(CounterKind::PlusOnePlusOne),

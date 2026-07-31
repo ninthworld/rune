@@ -65,21 +65,49 @@ pub(crate) fn card_name(card: CardId, db: &CardDatabase) -> String {
         .unwrap_or_else(|| format!("Unknown card {}", card.0))
 }
 
+/// The display name of a battlefield permanent — the card's name, or the token's
+/// (CR 111.3: a token's name is whatever the effect that created it gave it).
+///
+/// Every prompt, label, and stack sentence that names a permanent goes through here
+/// rather than through [`card_name`], so a token is named by what it is instead of
+/// being reported as an unknown card.
+pub(crate) fn permanent_name(perm: &sage_engine::Permanent, db: &CardDatabase) -> String {
+    perm.printed.face(db).map_or_else(
+        || match perm.printed.card() {
+            Some(card) => format!("Unknown card {}", card.0),
+            None => "Token".to_string(),
+        },
+        |face| face.name().to_string(),
+    )
+}
+
 /// Build the full [`CardView`] for a card the viewer is entitled to see.
 pub(crate) fn card_view(entity_id: String, card: CardId, db: &CardDatabase) -> CardView {
     match db.card(card) {
         Some(data) => full_card_view(entity_id, data),
-        None => CardView {
-            id: entity_id,
-            name: format!("Unknown card {}", card.0),
-            type_line: String::new(),
-            mana_cost: None,
-            rules_text: String::new(),
-            functional_id: String::new(),
-            power: None,
-            toughness: None,
-            keywords: Vec::new(),
+        None => unknown_card_view(entity_id, Some(card)),
+    }
+}
+
+/// The defensive placeholder view for an object the server cannot resolve: a card
+/// handle absent from the database, or — with no handle at all — a token whose
+/// characteristics somehow did not come through. Carries no identity and no rules, so
+/// a client renders something legible rather than nothing.
+fn unknown_card_view(entity_id: String, card: Option<CardId>) -> CardView {
+    CardView {
+        id: entity_id,
+        name: match card {
+            Some(card) => format!("Unknown card {}", card.0),
+            None => "Token".to_string(),
         },
+        type_line: String::new(),
+        mana_cost: None,
+        rules_text: String::new(),
+        functional_id: String::new(),
+        token: card.is_none(),
+        power: None,
+        toughness: None,
+        keywords: Vec::new(),
     }
 }
 
@@ -124,6 +152,7 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
         mana_cost: (!data.mana_cost.is_empty()).then(|| data.mana_cost.clone()),
         rules_text: rules_text(data, scripted_rules_text(&data.functional_id)),
         functional_id: data.functional_id.to_string(),
+        token: false,
         power: data.power.map(|p| p.to_string()),
         toughness: data.toughness.map(|t| t.to_string()),
         keywords: data
@@ -131,6 +160,40 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
             .iter()
             .map(|&kw| keyword_str(kw).to_owned())
             .collect(),
+    }
+}
+
+/// Project a **permanent's printed face** onto the wire, whether it is a card or a
+/// token (CR 111).
+///
+/// A card defers to [`full_card_view`], so nothing about an ordinary permanent's
+/// projection changes. A token differs in exactly the two ways it differs in the
+/// engine: it carries **no `functional_id`** — there is no card identity behind it, so
+/// the field a client would cache or look art up by is empty, and `token` says why
+/// rather than leaving the client to infer it from an absence — and its rules text is
+/// generated from the abilities the creating effect gave it, through the same
+/// formatter a card's text comes from.
+fn face_card_view(entity_id: String, face: PrintedFace<'_>) -> CardView {
+    match face {
+        PrintedFace::Card(data) => full_card_view(entity_id, data),
+        PrintedFace::Token(token) => CardView {
+            id: entity_id,
+            name: token.name.clone(),
+            type_line: face.type_line(),
+            // CR 111.3: a token has no mana cost, so the field is elided entirely.
+            mana_cost: None,
+            rules_text: token_rules_text(token),
+            // A token is not a card and has no authored identity (ADR 0008 §3).
+            functional_id: String::new(),
+            token: true,
+            power: token.power.map(|p| p.to_string()),
+            toughness: token.toughness.map(|t| t.to_string()),
+            keywords: token
+                .keywords
+                .iter()
+                .map(|&kw| keyword_str(kw).to_owned())
+                .collect(),
+        },
     }
 }
 
@@ -148,7 +211,10 @@ pub(crate) fn permanent_card_view(
     perm: &sage_engine::Permanent,
     db: &CardDatabase,
 ) -> CardView {
-    let mut view = card_view(permanent_entity_id(perm.id), perm.card, db);
+    let mut view = match perm.printed.face(db) {
+        Some(face) => face_card_view(permanent_entity_id(perm.id), face),
+        None => unknown_card_view(permanent_entity_id(perm.id), perm.printed.card()),
+    };
     let current = characteristics(state, perm.id, db);
     view.power = current.power.map(|p| p.to_string());
     view.toughness = current.toughness.map(|t| t.to_string());
@@ -198,6 +264,63 @@ mod tests {
     use crate::test_support::{fixture, id_in};
     use crate::view::test_support::put_permanent;
 
+    /// A **token** projects onto the wire as a complete, playable object with no card
+    /// identity behind it (issue #605): its characteristics come from the token itself,
+    /// its `functional_id` is empty because there is no card to name, and `token: true`
+    /// says so outright rather than leaving a client to infer it from that absence.
+    #[test]
+    fn issue_605_a_token_projects_with_characteristics_and_no_card_identity() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(sage_engine::Permanent {
+            id,
+            instance: CardInstanceId(0),
+            printed: sage_engine::Printed::Token(Box::new(sage_engine::TokenData {
+                name: "Thopter".to_string(),
+                types: vec![
+                    sage_engine::CardType::Artifact,
+                    sage_engine::CardType::Creature,
+                ],
+                subtypes: vec!["Thopter".to_string()],
+                colors: Vec::new(),
+                power: Some(1),
+                toughness: Some(1),
+                keywords: vec![Keyword::Flying],
+                ..Default::default()
+            })),
+            controller: PlayerId(0),
+            ..Default::default()
+        });
+        // A +1/+1 counter, to prove the projection is the *computed* face and not a
+        // second, token-only read path.
+        state.battlefield[0]
+            .counters
+            .insert(sage_engine::CounterKind::PlusOnePlusOne, 1);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let permanent = view
+            .battlefield
+            .iter()
+            .find(|p| p.id == permanent_entity_id(id))
+            .expect("the token appears on the battlefield");
+        let card = &permanent.card;
+
+        assert_eq!(card.name, "Thopter");
+        assert_eq!(card.type_line, "Artifact Creature — Thopter");
+        assert_eq!(card.power.as_deref(), Some("2"), "1/1 plus a +1/+1 counter");
+        assert_eq!(card.toughness.as_deref(), Some("2"));
+        assert_eq!(card.keywords, vec!["flying".to_string()]);
+        assert_eq!(card.rules_text, "Flying");
+        assert!(card.token, "the client is told it is a token");
+        assert!(
+            card.functional_id.is_empty(),
+            "a token has no card identity to cache or look presentation up by"
+        );
+        assert!(card.mana_cost.is_none(), "a token has no mana cost");
+    }
+
     /// A battlefield permanent enchanted with an Aura projects its **current**
     /// (computed) power/toughness on the wire, so the host's P/T reflects the Aura's
     /// layer-7c grant (CR 303.4 / 613.7c, issue #152) rather than the printed value.
@@ -220,7 +343,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: host,
             instance: CardInstanceId(0),
-            card: id_in(&db, "test_scout"),
+            printed: id_in(&db, "test_scout").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -234,7 +357,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: aura,
             instance: CardInstanceId(1),
-            card: id_in(&db, "test_aegis"),
+            printed: id_in(&db, "test_aegis").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -274,7 +397,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: with_counters,
             instance: CardInstanceId(0),
-            card: fixture("forest"),
+            printed: fixture("forest").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -295,7 +418,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: without_counters,
             instance: CardInstanceId(1),
-            card: fixture("forest"),
+            printed: fixture("forest").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -365,7 +488,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: attacker,
             instance: CardInstanceId(0),
-            card: fixture("walking_corpse"),
+            printed: fixture("walking_corpse").into(),
             controller: PlayerId(0),
             tapped: true,
             entered_turn: 0,
@@ -379,7 +502,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: blocker,
             instance: CardInstanceId(1),
-            card: fixture("walking_corpse"),
+            printed: fixture("walking_corpse").into(),
             controller: PlayerId(1),
             tapped: false,
             entered_turn: 0,
@@ -423,7 +546,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: damaged,
             instance: CardInstanceId(0),
-            card: fixture("onakke_ogre"),
+            printed: fixture("onakke_ogre").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -475,7 +598,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: host,
             instance: CardInstanceId(0),
-            card: id_in(&db, "test_scout"),
+            printed: id_in(&db, "test_scout").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -537,7 +660,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: flyer,
             instance: CardInstanceId(0),
-            card: fixture("snapping_drake"),
+            printed: fixture("snapping_drake").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -551,7 +674,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: vanilla,
             instance: CardInstanceId(1),
-            card: fixture("onakke_ogre"),
+            printed: fixture("onakke_ogre").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -604,7 +727,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: host,
             instance: CardInstanceId(0),
-            card: id_in(&db, "test_ogre"),
+            printed: id_in(&db, "test_ogre").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -618,7 +741,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: bystander,
             instance: CardInstanceId(1),
-            card: id_in(&db, "test_ogre"),
+            printed: id_in(&db, "test_ogre").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -635,7 +758,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: aura,
             instance: CardInstanceId(2),
-            card: id_in(&db, "test_flight"),
+            printed: id_in(&db, "test_flight").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,

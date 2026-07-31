@@ -112,7 +112,7 @@ fn source_permanent(state: &GameState, source: PermanentId) -> Option<&sage_engi
 fn source_name(state: &GameState, source: PermanentId, db: &CardDatabase) -> String {
     source_permanent(state, source).map_or_else(
         || "This ability's source".to_string(),
-        |perm| card_name(perm.card, db),
+        |perm| permanent_name(perm, db),
     )
 }
 

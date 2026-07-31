@@ -399,7 +399,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: caller,
             instance: instance.id,
-            card: fixture("elvish_clancaller"),
+            printed: fixture("elvish_clancaller").into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,
@@ -551,7 +551,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: land,
             instance: instance.id,
-            card: card("test_wood"),
+            printed: card("test_wood").into(),
             controller: PlayerId(0),
             ..Default::default()
         });

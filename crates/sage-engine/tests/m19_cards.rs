@@ -70,7 +70,7 @@ fn place(
     state.battlefield.push(Permanent {
         id,
         instance,
-        card,
+        printed: card.into(),
         controller,
         ..Default::default()
     });
@@ -608,7 +608,7 @@ fn plague_mare_shrinks_only_its_opponents_creatures_and_dodges_white_blockers() 
     let mare = state
         .battlefield
         .iter()
-        .find(|p| p.card == cid(&db, "plague_mare"))
+        .find(|p| p.printed.card() == Some(cid(&db, "plague_mare")))
         .expect("Plague Mare entered the battlefield")
         .id;
     // It entered this turn, so CR 302.6 would keep it out of combat; the evasion half
@@ -703,7 +703,7 @@ fn luminous_bonds_stops_its_host_attacking_and_blocking_until_it_leaves() {
     let aura = state
         .battlefield
         .iter()
-        .find(|p| p.card == cid(&db, "luminous_bonds"))
+        .find(|p| p.printed.card() == Some(cid(&db, "luminous_bonds")))
         .expect("the Aura is attached")
         .id;
     let freed = cast(&state, &db, "naturalize", vec![Target::Permanent(aura)]);
@@ -1147,7 +1147,7 @@ fn ajanis_welcome_gains_life_once_per_creature_that_enters() {
         twice.battlefield.push(Permanent {
             id,
             instance,
-            card,
+            printed: card.into(),
             controller: PlayerId(0),
             ..Default::default()
         });
@@ -1180,7 +1180,7 @@ fn ajanis_welcome_ignores_creatures_an_opponent_controls() {
     after.battlefield.push(Permanent {
         id,
         instance,
-        card,
+        printed: card.into(),
         controller: PlayerId(1),
         ..Default::default()
     });
@@ -1215,7 +1215,7 @@ fn poison_tip_archer_drains_once_per_other_creature_that_dies() {
     for perm in state.battlefield.iter().filter(|p| p.id == a || p.id == b) {
         after.players[1].graveyard.push(sage_engine::CardInstance {
             id: perm.instance,
-            card: perm.card,
+            card: perm.printed.card().expect("a card permanent"),
         });
     }
     let triggers = sage_engine::collect_triggers(&state, &after, &db);
@@ -1233,7 +1233,7 @@ fn poison_tip_archer_drains_once_per_other_creature_that_dies() {
     alone.battlefield.retain(|p| p.id != archer);
     alone.players[0].graveyard.push(sage_engine::CardInstance {
         id: archer_perm.instance,
-        card: archer_perm.card,
+        card: archer_perm.printed.card().expect("a card permanent"),
     });
     assert!(
         sage_engine::collect_triggers(&state, &alone, &db).is_empty(),
@@ -1585,7 +1585,7 @@ fn goblin_motivator_grants_haste_to_the_creature_it_targets() {
     state.battlefield.push(Permanent {
         id: sick,
         instance,
-        card,
+        printed: card.into(),
         controller: PlayerId(0),
         entered_turn: state.turn,
         ..Default::default()

@@ -316,12 +316,24 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 | `rules_text` | `string?` | Server-generated rules text, never stored Oracle text |
 | `power`, `toughness` | `string?` | Computed creature values |
 | `keywords` | `string[]?` | Lowercase keyword names |
+| `token` | `boolean?` | The object is a **token** (CR 111) rather than a card; omitted (and `false`) for every card |
 
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
 the underlying card definition and is not a legal-action handle. Clients treat both as
 opaque strings. The web client uses `functional_id` as the key of its client-local card-art
 cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
+
+A **token** is a permanent the game created, with no card behind it (issue #605). It
+projects as an ordinary `CardView` — name, type line, computed power/toughness, keywords,
+and server-generated rules text all present — with two differences: `functional_id` is
+**empty**, because there is no card definition to name, and `token` is `true`. The flag is
+what a client should branch on: an empty `functional_id` alone is indistinguishable from a
+card the server could not resolve, and the two want opposite treatment — a token is a real
+object to render normally that simply has no identity to cache or look art up by, while an
+unresolvable card is a fault. A token also has no `mana_cost` (CR 111.3). Tokens appear
+only on the battlefield; a client will never see one in a hand, a graveyard, or exile,
+because a token that would leave the battlefield ceases to exist (CR 111.7).
 
 `OpponentView` contains `player_id`, `hand_size`, `life`, `library_size`,
 `graveyard_size`, optional display-only `statuses`, and an optional `eliminated` boolean —

@@ -47,6 +47,17 @@ const AURA_SUBTYPE: &str = "Aura";
 /// The card type that requires printed power and toughness.
 const CREATURE_TYPE: &str = "creature";
 
+/// The card types a permanent may have (CR 110.1) — and therefore the only types a
+/// **token** may have, a token existing nowhere but the battlefield (CR 111.7).
+const PERMANENT_TYPES: [&str; 6] = [
+    "land",
+    "creature",
+    "artifact",
+    "enchantment",
+    "planeswalker",
+    "battle",
+];
+
 /// A catalog file that does not satisfy the authored schema (ADR 0008 §5).
 ///
 /// Returned by [`validate_definition`] and [`check_printings`]. `build.rs` turns one
@@ -108,6 +119,25 @@ pub enum Violation {
     RestrictionsOnNonCreature {
         /// The definition at fault.
         functional_id: String,
+    },
+    /// A `create_token` effect describes a token that could not be a permanent: it
+    /// names no types at all, or names one no permanent has (an instant or a sorcery).
+    ///
+    /// The battlefield is the only zone a token may be in (CR 111.7), so a token that
+    /// is not a permanent could never exist — the card would author an object with
+    /// nowhere to go, which is worth failing the build over rather than creating.
+    TokenIsNotAPermanent {
+        /// The definition at fault.
+        functional_id: String,
+    },
+    /// A `create_token` effect describes a creature token with no power/toughness, or
+    /// a noncreature token that carries them — the token counterpart of
+    /// [`Self::PowerToughnessMismatch`], and wrong for the same reason.
+    TokenPowerToughnessMismatch {
+        /// The definition at fault.
+        functional_id: String,
+        /// Whether the token is a creature — which is to say, which way it is wrong.
+        creature: bool,
     },
     /// An optional effect (`{"kind":"may"}`) wraps an effect that chooses a target.
     ///
@@ -181,6 +211,27 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} carries printed `restrictions` but is not a creature; \
                  a combat restriction can only restrict attacking or blocking"
+            ),
+            Self::TokenIsNotAPermanent { functional_id } => write!(
+                f,
+                "{functional_id} creates a token that is not a permanent; \
+                 a token exists only on the battlefield, so its `types` must be \
+                 permanent types"
+            ),
+            Self::TokenPowerToughnessMismatch {
+                functional_id,
+                creature: true,
+            } => write!(
+                f,
+                "{functional_id} creates a Creature token with no power/toughness"
+            ),
+            Self::TokenPowerToughnessMismatch {
+                functional_id,
+                creature: false,
+            } => write!(
+                f,
+                "{functional_id} creates a token that is not a Creature \
+                 but carries power/toughness"
             ),
             Self::TargetInsideOptional { functional_id } => write!(
                 f,
@@ -305,6 +356,16 @@ pub(crate) fn validate_definition(
         return Err(Violation::TargetInsideOptional { functional_id });
     }
 
+    // Every token a definition creates must be an object that could exist: a permanent
+    // (CR 110.1/111.7), with power and toughness exactly when it is a creature. Walked
+    // to any depth, so a `create_token` nested inside a `may` is checked too.
+    for effect in every_effect(object) {
+        if effect.get("kind").and_then(serde_json::Value::as_str) != Some("create_token") {
+            continue;
+        }
+        validate_token(&functional_id, effect.get("token"))?;
+    }
+
     // An `aura` grant is the Aura ability (CR 303.4), so it belongs only on an Aura.
     if object.contains_key("aura") {
         let is_aura = object
@@ -317,6 +378,73 @@ pub(crate) fn validate_definition(
     }
 
     Ok(functional_id)
+}
+
+/// Validate the `token` block of a `create_token` effect, authored by `functional_id`.
+///
+/// The token analogue of the type and power/toughness rules [`validate_definition`]
+/// applies to a card, and deliberately the same two: an object that is not a permanent
+/// could not be on the battlefield, and a creature without printed power and toughness
+/// is not a creature anyone can play with. Everything else a token may not have — a
+/// `functional_id`, a mana cost, a `scripted` flag — is unrepresentable in
+/// [`TokenData`](crate::TokenData) rather than checked here, so it is a parse error
+/// instead of a validation one.
+fn validate_token(functional_id: &str, token: Option<&serde_json::Value>) -> Result<(), Violation> {
+    // A missing or malformed `token` is a parse error on the typed side; there is
+    // nothing to validate here.
+    let Some(token) = token.and_then(serde_json::Value::as_object) else {
+        return Ok(());
+    };
+    let types = token
+        .get("types")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let is_permanent = !types.is_empty()
+        && types.iter().all(|t| {
+            t.as_str()
+                .is_some_and(|name| PERMANENT_TYPES.contains(&name))
+        });
+    if !is_permanent {
+        return Err(Violation::TokenIsNotAPermanent {
+            functional_id: functional_id.to_string(),
+        });
+    }
+    let is_creature = types.iter().any(|t| t.as_str() == Some(CREATURE_TYPE));
+    let has_power = token.contains_key("power");
+    let has_toughness = token.contains_key("toughness");
+    if is_creature != (has_power && has_toughness) || has_power != has_toughness {
+        return Err(Violation::TokenPowerToughnessMismatch {
+            functional_id: functional_id.to_string(),
+            creature: is_creature,
+        });
+    }
+    Ok(())
+}
+
+/// Every effect a definition authors, at any nesting depth — the top-level lists
+/// [`authored_effects`] yields, plus everything nested inside them (the contents of a
+/// `may`).
+///
+/// Used by rules that are about an effect wherever it appears, rather than about the
+/// shape of the list it sits in.
+fn every_effect(object: &serde_json::Map<String, serde_json::Value>) -> Vec<&serde_json::Value> {
+    fn walk<'a>(effect: &'a serde_json::Value, out: &mut Vec<&'a serde_json::Value>) {
+        out.push(effect);
+        for nested in effect
+            .get("effects")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            walk(nested, out);
+        }
+    }
+    let mut out = Vec::new();
+    for effect in authored_effects(object) {
+        walk(effect, &mut out);
+    }
+    out
 }
 
 /// Every effect a definition authors at the top level of an ability or of its spell
@@ -513,6 +641,74 @@ mod tests {
                 creature: true,
             }
         );
+    }
+
+    #[test]
+    fn issue_605_a_token_that_could_not_be_a_permanent_is_rejected() {
+        // A token exists only on the battlefield (CR 111.7), so a token that is not a
+        // permanent could never exist — the card would author an object with nowhere
+        // to go.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["sorcery"], "mana_cost": "{G}",
+                       "spell_effects": [{"kind": "create_token",
+                         "token": {"name": "Idea", "types": ["instant"]}}]}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            validate_definition(None, &card).unwrap_err(),
+            Violation::TokenIsNotAPermanent {
+                functional_id: "test_card".to_string(),
+            }
+        );
+
+        // Naming no types at all is the same failure.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["sorcery"], "mana_cost": "{G}",
+                       "spell_effects": [{"kind": "create_token",
+                         "token": {"name": "Nothing", "types": []}}]}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert!(validate_definition(None, &card).is_err());
+    }
+
+    #[test]
+    fn issue_605_a_token_needs_power_and_toughness_exactly_when_it_is_a_creature() {
+        // The token counterpart of the card rule, and wrong for the same reason.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["sorcery"], "mana_cost": "{G}",
+                       "spell_effects": [{"kind": "create_token",
+                         "token": {"name": "Goblin", "types": ["creature"]}}]}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            validate_definition(None, &card).unwrap_err(),
+            Violation::TokenPowerToughnessMismatch {
+                functional_id: "test_card".to_string(),
+                creature: true,
+            }
+        );
+
+        // A noncreature token carrying power/toughness is the other direction.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["sorcery"], "mana_cost": "{G}",
+                       "spell_effects": [{"kind": "create_token",
+                         "token": {"name": "Treasure", "types": ["artifact"],
+                                   "power": 1, "toughness": 1}}]}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert!(validate_definition(None, &card).is_err());
+    }
+
+    #[test]
+    fn issue_605_a_token_nested_inside_an_optional_effect_is_still_validated() {
+        // The walk is to any depth: a `create_token` inside a `may` is checked too,
+        // so nesting is not a way around the rule.
+        let json = r#"{"schema_version": 1, "functional_id": "test_card", "name": "Test Card",
+                       "types": ["sorcery"], "mana_cost": "{G}",
+                       "spell_effects": [{"kind": "may", "effects": [
+                         {"kind": "create_token",
+                          "token": {"name": "Goblin", "types": ["creature"]}}]}]}"#;
+        let card = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            validate_definition(None, &card).unwrap_err(),
+            Violation::TokenPowerToughnessMismatch { .. }
+        ));
     }
 
     #[test]

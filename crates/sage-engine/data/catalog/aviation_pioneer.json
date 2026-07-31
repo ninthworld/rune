@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "functional_id": "aviation_pioneer",
+  "name": "Aviation Pioneer",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Human",
+    "Artificer"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 1,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "create_token",
+          "token": {
+            "name": "Thopter",
+            "types": [
+              "artifact",
+              "creature"
+            ],
+            "subtypes": [
+              "Thopter"
+            ],
+            "colors": [],
+            "power": 1,
+            "toughness": 1,
+            "keywords": [
+              "flying"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

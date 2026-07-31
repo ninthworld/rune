@@ -75,3 +75,27 @@ impl Supertype {
         }
     }
 }
+
+/// Render a display type line from structured types, e.g. `"Basic Land — Forest"` or
+/// `"Creature — Elf Scout"`. Supertypes and types are joined with spaces; subtypes, if
+/// any, follow an em dash.
+///
+/// The single source for the string, shared by [`crate::CardData::type_line`] and
+/// [`crate::PrintedFace::type_line`] so a token's type line is built exactly as a
+/// card's is. It is never parsed back into types.
+#[must_use]
+pub(crate) fn render_type_line(
+    supertypes: &[Supertype],
+    types: &[CardType],
+    subtypes: &[String],
+) -> String {
+    let mut head: Vec<&str> = Vec::new();
+    head.extend(supertypes.iter().map(|s| s.display()));
+    head.extend(types.iter().map(|t| t.display()));
+    let mut line = head.join(" ");
+    if !subtypes.is_empty() {
+        line.push_str(" — ");
+        line.push_str(&subtypes.join(" "));
+    }
+    line
+}

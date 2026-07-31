@@ -17,6 +17,13 @@ use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::mana::Color;
 use crate::stack::StackId;
 use crate::state::CounterKind;
+use crate::token::TokenData;
+
+/// The default `count` of an [`Effect::CreateToken`]: one token, the overwhelmingly
+/// common case ("create a 1/1 white Soldier creature token").
+fn one() -> u8 {
+    1
+}
 
 /// One ability of a card.
 ///
@@ -547,6 +554,40 @@ pub enum Effect {
         #[serde(default)]
         destination: FoundDestination,
     },
+    /// **Create** `count` tokens with the characteristics `token` describes (CR 111.1):
+    /// `create a 1/1 red Goblin creature token`, `create two 1/1 white Soldier creature
+    /// tokens`.
+    ///
+    /// The token is not a card and never was one — the effect *is* its printed face
+    /// (CR 111.3), authored inline here as a [`TokenData`] with no `functional_id`, so
+    /// a token can neither enter the compatibility report nor be named by a decklist.
+    /// It enters the battlefield through the same seam a resolving permanent spell
+    /// uses ([`GameState::create_token`](crate::GameState::create_token)), so it mints
+    /// a fresh [`PermanentId`], is summoning-sick like anything else that just arrived,
+    /// and is picked up by the diff-based trigger collector: an "enters the
+    /// battlefield" watcher sees it exactly as it sees a creature spell resolving.
+    ///
+    /// The subject is a [`PlayerRef`] naming **who creates them**, exactly as
+    /// [`Effect::Mill`]'s names whose library is milled — so `controller` (the
+    /// default, and what every card in the first batch says) chooses no target, while
+    /// `target_player` fills a slot and is re-checked on resolution (CR 608.2b). The
+    /// creator is not always the controller of the ability, which is why this is a
+    /// reference rather than an assumption.
+    CreateToken {
+        /// The characteristics of each token created (CR 111.3).
+        token: TokenData,
+        /// How many tokens are created. Defaults to one.
+        #[serde(default = "one")]
+        count: u8,
+        /// Who creates them, and therefore who controls them. Defaults to the
+        /// effect's controller ("you create …").
+        #[serde(default = "PlayerRef::controller")]
+        player_ref: PlayerRef,
+        /// Whether each token enters **tapped** (CR 111.1 — the creating effect may
+        /// say so). Defaults to `false`, an ordinary untapped entry.
+        #[serde(default)]
+        tapped: bool,
+    },
     /// **You may** apply `effects`, and — when `cost` is present — only if you pay it:
     /// `you may draw a card`, and `you may pay {1}. If you do, draw a card`.
     ///
@@ -687,6 +728,12 @@ pub enum PlayerRef {
 }
 
 impl PlayerRef {
+    /// The controller of the effect — the serde default for a reference that is
+    /// almost always "you" ([`Effect::CreateToken`]).
+    fn controller() -> Self {
+        Self::Controller
+    }
+
     /// The [`TargetSpec`] this reference chooses a target for, or `None` when it
     /// names its player without targeting (CR 115.1).
     ///
@@ -822,7 +869,10 @@ impl Effect {
             // A discard names its hand the same way, and for the same reason: "target
             // player discards two cards" fills a slot and can fizzle, "each opponent
             // discards a card" fills none and cannot.
-            | Effect::Discard { player_ref, .. } => player_ref.target_spec(),
+            | Effect::Discard { player_ref, .. }
+            // And a token creation names its creator the same way: "create a 2/4 white
+            // Ox token" is made by you, "target player creates …" fills a slot.
+            | Effect::CreateToken { player_ref, .. } => player_ref.target_spec(),
             // Damage asks its subject the same question: "any target" fills a slot,
             // "each opponent" and "each creature" fill none (CR 115.1).
             Effect::DealDamage { subject, .. } => subject.target_spec(),

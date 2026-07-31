@@ -115,7 +115,7 @@ fn cr_903_8_command_zone_cast_goes_on_the_stack_and_resolves_to_the_battlefield(
     let perm = state
         .battlefield
         .iter()
-        .find(|p| p.card == cid(&db, "test_general"))
+        .find(|p| p.printed.card() == Some(cid(&db, "test_general")))
         .unwrap();
     assert_eq!(perm.instance, commander.id, "keeps its physical identity");
 }
@@ -160,7 +160,7 @@ fn put_permanent_on_battlefield(state: &mut GameState, instance: CardInstance) -
     state.battlefield.push(Permanent {
         id,
         instance: instance.id,
-        card: instance.card,
+        printed: instance.card.into(),
         controller: PlayerId(0),
         entered_turn: 0,
         ..Permanent::default()

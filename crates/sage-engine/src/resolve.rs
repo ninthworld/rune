@@ -41,7 +41,9 @@ fn permanent_matches(
 /// continuous effects are unmodeled, so printed types are authoritative here — the
 /// same assumption `crate::combat` makes.
 fn has_type(perm: &Permanent, card_type: CardType, db: &CardDatabase) -> bool {
-    db.card(perm.card).is_some_and(|c| c.has_type(card_type))
+    perm.printed
+        .face(db)
+        .is_some_and(|face| face.has_type(card_type))
 }
 
 /// Whether `target` is a legal choice for `spec` against the *current* `state`
@@ -347,12 +349,14 @@ pub(crate) fn apply_effects_with_targets(
 ) -> bool {
     // The printed card a `same_name_as_source` filter compares against, resolved now
     // because the source permanent may be gone by the time the choice is answered.
+    // A token has no card to compare against, and no card in a library or hand can
+    // share an identity it has not got (CR 111), so it simply matches nothing.
     let source_card = source.and_then(|id| {
         state
             .battlefield
             .iter()
             .find(|perm| perm.id == id)
-            .map(|perm| perm.card)
+            .and_then(|perm| perm.printed.card())
     });
     let mut targets = stored.iter();
     for (index, effect) in effects.iter().enumerate() {

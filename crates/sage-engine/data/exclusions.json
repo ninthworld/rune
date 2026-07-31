@@ -16,10 +16,6 @@
     "blocker": "no replacement-effect layer in the rules engine"
   },
   {
-    "name": "Token creation",
-    "blocker": "no token object model; every permanent needs a catalog card"
-  },
-  {
     "name": "Effects that return cards from a graveyard",
     "blocker": "no graveyard-to-hand or graveyard-to-battlefield effect"
   },
@@ -134,5 +130,9 @@
   {
     "name": "Effects that let a player choose the order of cards put back on a library",
     "blocker": "a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random"
+  },
+  {
+    "name": "Tokens created attacking, or as copies of another permanent",
+    "blocker": "a created token enters untapped or tapped and out of combat; there is no copiable-values model"
   }
 ]

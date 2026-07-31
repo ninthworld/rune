@@ -40,7 +40,7 @@ fn put_on_battlefield(state: &mut GameState, card: CardId) -> PermanentId {
     state.battlefield.push(Permanent {
         id: PermanentId(id),
         instance: inst.id,
-        card,
+        printed: card.into(),
         controller: PlayerId(0),
         tapped: false,
         entered_turn: 0,
@@ -453,7 +453,11 @@ fn issue_147_artifact_and_enchantment_cast_at_sorcery_speed_and_enter_battlefiel
         let state = apply_action(&state, &Action::PassPriority, &db);
         assert!(state.stack.is_empty());
         // The permanent spell entered the battlefield (CR 608.3).
-        let perm = state.battlefield.iter().find(|p| p.card == card).unwrap();
+        let perm = state
+            .battlefield
+            .iter()
+            .find(|p| p.printed.card() == Some(card))
+            .unwrap();
         assert_eq!(perm.instance, inst.id, "keeps its instance identity");
     }
 }

@@ -1,11 +1,30 @@
 //! Zone mutation methods for permanents, life changes, and damage.
 
 use crate::card_type::CardType;
-use crate::id::{CardInstanceId, PermanentId, PlayerId};
+use crate::id::{CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::Player;
+use crate::token::{Printed, TokenData};
 use crate::CardDatabase;
 
 use super::{CommanderDamage, DamageTarget, GameEvent, GameState, LoggedPermanent, Permanent};
+
+/// The physical card a permanent leaving the battlefield puts into the zone it is
+/// headed for — or `None` for a **token**, which puts nothing anywhere because it
+/// ceases to exist the moment it would leave (CR 111.7).
+///
+/// The single expression of CR 111.7 in the engine. All three leave-the-battlefield
+/// seams below route through it, so "a token that dies reaches no graveyard", "a
+/// bounced token never arrives in a hand", and "an exiled token is not in exile" are
+/// one fact rather than three that could be implemented two-thirds of the way. CR
+/// 704.5d states the rule as a state-based action over a token in the wrong zone; the
+/// token never gets there, which is the same observable game and needs no phantom
+/// object to clean up.
+fn card_leaving(perm: &Permanent) -> Option<CardInstance> {
+    perm.printed.card().map(|card| CardInstance {
+        id: perm.instance,
+        card,
+    })
+}
 
 /// Flag the CR 903.9a return-to-command-zone decision on `owner` when the object that
 /// just left the battlefield is their commander.
@@ -49,11 +68,10 @@ impl GameState {
     pub(crate) fn move_permanent_to_graveyard(&mut self, id: PermanentId) -> Option<Permanent> {
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
-        if let Some(owner) = self.players.get_mut(perm.controller.0) {
-            owner.graveyard.push(crate::id::CardInstance {
-                id: perm.instance,
-                card: perm.card,
-            });
+        if let (Some(card), Some(owner)) =
+            (card_leaving(&perm), self.players.get_mut(perm.controller.0))
+        {
+            owner.graveyard.push(card);
             flag_commander_return(owner, perm.instance);
         }
         Some(perm)
@@ -78,11 +96,10 @@ impl GameState {
     pub(crate) fn move_permanent_to_exile(&mut self, id: PermanentId) -> Option<Permanent> {
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
-        if let Some(owner) = self.players.get_mut(perm.controller.0) {
-            owner.exile.push(crate::id::CardInstance {
-                id: perm.instance,
-                card: perm.card,
-            });
+        if let (Some(card), Some(owner)) =
+            (card_leaving(&perm), self.players.get_mut(perm.controller.0))
+        {
+            owner.exile.push(card);
             flag_commander_return(owner, perm.instance);
         }
         Some(perm)
@@ -107,11 +124,10 @@ impl GameState {
     pub(crate) fn return_permanent_to_hand(&mut self, id: PermanentId) -> Option<Permanent> {
         let pos = self.battlefield.iter().position(|p| p.id == id)?;
         let perm = self.battlefield.remove(pos);
-        if let Some(owner) = self.players.get_mut(perm.controller.0) {
-            owner.hand.push(crate::id::CardInstance {
-                id: perm.instance,
-                card: perm.card,
-            });
+        if let (Some(card), Some(owner)) =
+            (card_leaving(&perm), self.players.get_mut(perm.controller.0))
+        {
+            owner.hand.push(card);
         }
         Some(perm)
     }
@@ -144,7 +160,7 @@ impl GameState {
         let mut permanent = Permanent {
             id,
             instance: card.id,
-            card: card.card,
+            printed: Printed::Card(card.card),
             controller,
             tapped,
             entered_turn,
@@ -153,6 +169,52 @@ impl GameState {
             damage: 0,
             counters: Default::default(),
             attached_to,
+        };
+        crate::card::apply_enters_replacements(db, &mut permanent);
+        self.battlefield.push(permanent);
+        id
+    }
+
+    /// Create one token with the characteristics `token` under `controller` — the
+    /// single effect → battlefield seam for an object that is not a card (CR 111.1).
+    ///
+    /// The counterpart of [`Self::put_card_onto_battlefield`], and deliberately its
+    /// twin: the token mints a fresh [`PermanentId`], takes the current turn as its
+    /// [`entered_turn`](Permanent::entered_turn) so it is summoning-sick like anything
+    /// else that just arrived (CR 302.6), applies its own enters-the-battlefield
+    /// self-replacements, and is then simply pushed onto the battlefield — where the
+    /// diff-based trigger collector picks it up as an entry indistinguishable from a
+    /// creature spell resolving.
+    ///
+    /// It differs in exactly one place: there is no [`CardInstance`] to carry, because
+    /// there is no card. A per-object [`CardInstanceId`] is still minted so the
+    /// permanent's identity fields stay uniform, and — a token never leaving the
+    /// battlefield as a card (CR 111.7) — that id can never appear in another zone.
+    ///
+    /// `tapped` is the entry state the creating effect dictates ("create a tapped 2/2
+    /// Zombie token"). Returns the new permanent's id.
+    pub(crate) fn create_token(
+        &mut self,
+        token: TokenData,
+        controller: PlayerId,
+        tapped: bool,
+        db: &CardDatabase,
+    ) -> PermanentId {
+        let id = PermanentId(self.mint_id());
+        let instance = CardInstanceId(self.mint_id());
+        let entered_turn = self.turn;
+        let mut permanent = Permanent {
+            id,
+            instance,
+            printed: Printed::Token(Box::new(token)),
+            controller,
+            tapped,
+            entered_turn,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+            attached_to: None,
         };
         crate::card::apply_enters_replacements(db, &mut permanent);
         self.battlefield.push(permanent);
@@ -205,15 +267,13 @@ impl GameState {
         let Some(perm) = self.move_permanent_to_graveyard(id) else {
             return false;
         };
-        if db
-            .card(perm.card)
-            .is_some_and(|c| c.has_type(CardType::Creature))
+        if perm
+            .printed
+            .face(db)
+            .is_some_and(|face| face.has_type(CardType::Creature))
         {
             self.record_event(GameEvent::PermanentDied {
-                permanent: LoggedPermanent {
-                    permanent: perm.id,
-                    card: perm.card,
-                },
+                permanent: LoggedPermanent::of(&perm),
             });
         }
         true
@@ -262,13 +322,10 @@ impl GameState {
             return false;
         };
         perm.damage = perm.damage.saturating_add(amount);
-        let card = perm.card;
+        let logged = LoggedPermanent::of(perm);
         if amount > 0 {
             self.record_event(GameEvent::DamageDealt {
-                target: DamageTarget::Permanent(LoggedPermanent {
-                    permanent: id,
-                    card,
-                }),
+                target: DamageTarget::Permanent(logged),
                 amount,
             });
         }

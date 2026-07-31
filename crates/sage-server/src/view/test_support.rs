@@ -40,7 +40,7 @@ pub(crate) fn put_permanent(
     state.battlefield.push(sage_engine::Permanent {
         id,
         instance: CardInstanceId(0),
-        card,
+        printed: card.into(),
         controller,
         tapped,
         // Entered a previous turn, so it is free of summoning sickness in a

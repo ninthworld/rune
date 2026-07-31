@@ -11,18 +11,21 @@
 //! already depends on, and adds nothing to the wire contract in `sage-protocol`.
 
 use sage_engine::{
-    abilities_of, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
-    blocker_can_block_attacker, blocker_candidates_for, bottom_requirement, characteristics,
-    choice_bounds, choice_candidates, confirm_is_payable, declared_attackers, defender_candidates,
-    defending_player, is_mana_ability, pending_blocker_declarer, pending_player_choice,
-    scripted_rules_text, target_requirements, valid_actions, AbilityOrigin, Action, Attack, Block,
-    CardData, CardDatabase, CardId, CardInstance, CardInstanceId, ChoiceOutcome, ChoiceQuestion,
-    ChoiceRequest, ChoiceZone, Color, ConfirmRequest, CounterKind, DamageOrder, DamageTarget,
-    GameEvent, GameResult, GameState, Keyword, LoggedPermanent, LossReason, PermanentId, Player,
-    PlayerId, StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
+    abilities_of_permanent, attacker_candidates, attackers_needing_damage_order,
+    attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for, bottom_requirement,
+    characteristics, choice_bounds, choice_candidates, confirm_is_payable, declared_attackers,
+    defender_candidates, defending_player, is_mana_ability, pending_blocker_declarer,
+    pending_player_choice, scripted_rules_text, target_requirements, valid_actions, AbilityOrigin,
+    Action, Attack, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
+    ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ConfirmRequest, CounterKind,
+    DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedIdentity,
+    LoggedPermanent, LossReason, PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject,
+    StackObjectKind, Step, Target, TargetSpec,
 };
 
-use crate::rules_text::{ability_text, effects_description, optional_effect_question, rules_text};
+use crate::rules_text::{
+    ability_text, effects_description, optional_effect_question, rules_text, token_rules_text,
+};
 use sage_protocol::{
     ActionDestination, CardView, ChooseAction, Color as ColorView,
     CommanderDamage as CommanderDamageView, CommanderIdentity as CommanderIdentityView,
@@ -615,7 +618,7 @@ mod tests {
         state.battlefield.push(sage_engine::Permanent {
             id: perm,
             instance: commander.id,
-            card: commander_card,
+            printed: commander_card.into(),
             controller: PlayerId(0),
             tapped: false,
             entered_turn: 0,

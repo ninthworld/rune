@@ -90,7 +90,7 @@ fn place(
     state.battlefield.push(Permanent {
         id,
         instance,
-        card,
+        printed: card.into(),
         controller,
         ..Default::default()
     });

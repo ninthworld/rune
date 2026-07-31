@@ -34,7 +34,7 @@ pub use aura::AuraGrant;
 pub use card_data::CardData;
 pub use database::CardDatabase;
 pub use error::CatalogError;
-pub use helpers::abilities_of;
+pub use helpers::{abilities_of, abilities_of_permanent};
 pub use keyword::Keyword;
 pub use printing::{Printing, PrintingDatabase};
 pub use rarity::Rarity;

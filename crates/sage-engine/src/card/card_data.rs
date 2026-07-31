@@ -123,15 +123,7 @@ impl CardData {
     /// display string — it is never parsed back into types.
     #[must_use]
     pub fn type_line(&self) -> String {
-        let mut head: Vec<&str> = Vec::new();
-        head.extend(self.supertypes.iter().map(|s| s.display()));
-        head.extend(self.types.iter().map(|t| t.display()));
-        let mut line = head.join(" ");
-        if !self.subtypes.is_empty() {
-            line.push_str(" — ");
-            line.push_str(&self.subtypes.join(" "));
-        }
-        line
+        crate::card_type::render_type_line(&self.supertypes, &self.types, &self.subtypes)
     }
 
     /// Whether the card has printed card type `card_type`.
