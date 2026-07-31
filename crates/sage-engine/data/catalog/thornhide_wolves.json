@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "thornhide_wolves",
+  "name": "Thornhide Wolves",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Wolf"
+  ],
+  "mana_cost": "{4}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 4,
+  "toughness": 5
+}

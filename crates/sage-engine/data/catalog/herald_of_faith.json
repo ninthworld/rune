@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "functional_id": "herald_of_faith",
+  "name": "Herald of Faith",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Angel"
+  ],
+  "mana_cost": "{3}{W}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 4,
+  "toughness": 4,
+  "keywords": [
+    "flying"
+  ],
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_attacks",
+      "effects": [
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 2
+        }
+      ]
+    }
+  ]
+}

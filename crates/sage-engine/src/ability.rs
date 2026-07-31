@@ -920,6 +920,167 @@ mod tests {
     }
 
     #[test]
+    fn a_mana_activation_cost_round_trips_as_the_string_it_was_written_in() {
+        // The authored card keeps its `{...}` notation; parsing happens on demand, so
+        // the JSON a card is written in never has to mirror an internal cost shape.
+        let json = r#"{"type":"activated","cost":[{"kind":"mana","mana":"{1}{R}"},{"kind":"tap"}],"effects":[{"kind":"draw_card","count":1}]}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ability,
+            Ability::Activated {
+                cost: vec![
+                    Cost::Mana {
+                        mana: "{1}{R}".to_string()
+                    },
+                    Cost::Tap
+                ],
+                effects: vec![Effect::DrawCard { count: 1 }],
+            }
+        );
+        // CR 605.1a is about the *effects*, not the cost: a mana cost does not stop an
+        // ability being a mana ability, and a non-mana effect still does.
+        assert!(!is_mana_ability(&ability));
+        let rock: Ability = serde_json::from_str(
+            r#"{"type":"activated","cost":[{"kind":"mana","mana":"{1}"},{"kind":"tap"}],"effects":[{"kind":"add_colorless_mana","amount":1}]}"#,
+        )
+        .unwrap();
+        assert!(is_mana_ability(&rock));
+    }
+
+    #[test]
+    fn a_player_reference_decides_for_itself_whether_it_targets() {
+        // The fizzle rule follows from the reference, so every player-subject effect
+        // inherits one consistent answer instead of restating it.
+        assert_eq!(PlayerRef::Controller.target_spec(), None);
+        assert_eq!(PlayerRef::EachOpponent.target_spec(), None);
+        assert_eq!(
+            PlayerRef::TargetPlayer.target_spec(),
+            Some(TargetSpec::AnyPlayer)
+        );
+        assert_eq!(
+            PlayerRef::TargetOpponent.target_spec(),
+            Some(TargetSpec::AnyOpponent)
+        );
+
+        // …and the effects defer to it, rather than each hard-coding a slot.
+        let drain = Effect::LoseLife {
+            player_ref: PlayerRef::TargetOpponent,
+            amount: 2,
+        };
+        assert_eq!(drain.target_spec(), Some(TargetSpec::AnyOpponent));
+        let symmetric = Effect::LoseLife {
+            player_ref: PlayerRef::EachOpponent,
+            amount: 2,
+        };
+        assert_eq!(symmetric.target_spec(), None);
+        let mill = Effect::Mill {
+            player_ref: PlayerRef::TargetPlayer,
+            count: 2,
+        };
+        assert_eq!(mill.target_spec(), Some(TargetSpec::AnyPlayer));
+    }
+
+    #[test]
+    fn the_new_effect_verbs_round_trip_with_their_target_or_class() {
+        let bounce = r#"{"kind":"return_to_hand","target":"any_creature"}"#;
+        let bounce: Effect = serde_json::from_str(bounce).unwrap();
+        assert_eq!(
+            bounce,
+            Effect::ReturnToHand {
+                target: TargetSpec::AnyCreature
+            }
+        );
+        assert_eq!(bounce.target_spec(), Some(TargetSpec::AnyCreature));
+
+        let mill = r#"{"kind":"mill","player_ref":"each_opponent","count":2}"#;
+        assert_eq!(
+            serde_json::from_str::<Effect>(mill).unwrap(),
+            Effect::Mill {
+                player_ref: PlayerRef::EachOpponent,
+                count: 2,
+            }
+        );
+
+        // A mass modification names a class, which is not a target (CR 115.1).
+        let pump =
+            r#"{"kind":"pump_all","affects":"creatures_you_control","power":2,"toughness":1}"#;
+        let pump: Effect = serde_json::from_str(pump).unwrap();
+        assert_eq!(
+            pump,
+            Effect::PumpAll {
+                affects: MassAffects::CreaturesYouControl,
+                power: 2,
+                toughness: 1,
+            }
+        );
+        assert_eq!(pump.target_spec(), None);
+
+        let grant =
+            r#"{"kind":"grant_keyword_all","affects":"creatures_you_control","keyword":"trample"}"#;
+        let grant: Effect = serde_json::from_str(grant).unwrap();
+        assert_eq!(
+            grant,
+            Effect::GrantKeywordAll {
+                affects: MassAffects::CreaturesYouControl,
+                keyword: Keyword::Trample,
+            }
+        );
+        assert_eq!(grant.target_spec(), None);
+    }
+
+    #[test]
+    fn the_new_target_specs_deserialize_from_their_bare_string_tags() {
+        for (tag, spec) in [
+            ("any_opponent", TargetSpec::AnyOpponent),
+            ("any_nonland_permanent", TargetSpec::AnyNonlandPermanent),
+            (
+                "any_creature_you_control",
+                TargetSpec::AnyCreatureYouControl,
+            ),
+            (
+                "any_creature_an_opponent_controls",
+                TargetSpec::AnyCreatureAnOpponentControls,
+            ),
+            (
+                "any_creature_with_flying",
+                TargetSpec::AnyCreatureWithFlying,
+            ),
+            ("any_tapped_creature", TargetSpec::AnyTappedCreature),
+            ("any_artifact", TargetSpec::AnyArtifact),
+            ("any_enchantment", TargetSpec::AnyEnchantment),
+            (
+                "any_artifact_or_enchantment",
+                TargetSpec::AnyArtifactOrEnchantment,
+            ),
+            ("any_land", TargetSpec::AnyLand),
+            ("creature_spell_on_stack", TargetSpec::CreatureSpellOnStack),
+        ] {
+            let json = format!("\"{tag}\"");
+            assert_eq!(
+                serde_json::from_str::<TargetSpec>(&json).unwrap(),
+                spec,
+                "{tag}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_attacks_trigger_authors_its_condition_as_a_bare_tag() {
+        let json = r#"{"type":"triggered","event":"self_attacks","effects":[{"kind":"gain_life","player_ref":"controller","amount":2}]}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ability,
+            Ability::Triggered {
+                event: TriggerCondition::SelfAttacks,
+                effects: vec![Effect::GainLife {
+                    player_ref: PlayerRef::Controller,
+                    amount: 2
+                }],
+            }
+        );
+    }
+
+    #[test]
     fn issue_149_life_effects_round_trip_and_target_nothing() {
         let gain = r#"{"kind":"gain_life","player_ref":"controller","amount":3}"#;
         let gain: Effect = serde_json::from_str(gain).unwrap();

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "functional_id": "sanctuary_cat",
+  "name": "Sanctuary Cat",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Cat"
+  ],
+  "mana_cost": "{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 1,
+  "toughness": 2
+}

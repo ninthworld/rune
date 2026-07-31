@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "wall_of_mist",
+  "name": "Wall of Mist",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Wall"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "power": 0,
+  "toughness": 5,
+  "keywords": [
+    "defender"
+  ]
+}

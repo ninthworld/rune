@@ -14,5 +14,109 @@
   {
     "name": "Replacement effects",
     "blocker": "no replacement-effect layer in the rules engine"
+  },
+  {
+    "name": "Triggered abilities that choose targets",
+    "blocker": "a trigger reaches the stack with no targets and nothing prompts its controller to choose"
+  },
+  {
+    "name": "Token creation",
+    "blocker": "no token object model; every permanent needs a catalog card"
+  },
+  {
+    "name": "Effects that search, reveal, or reorder a library",
+    "blocker": "no library search, reveal, or scry choice"
+  },
+  {
+    "name": "Effects that make a player discard",
+    "blocker": "no prompt for a player to choose cards to discard"
+  },
+  {
+    "name": "Effects that return cards from a graveyard",
+    "blocker": "no graveyard-to-hand or graveyard-to-battlefield effect"
+  },
+  {
+    "name": "Modal spells that choose one",
+    "blocker": "no mode choice on announcement"
+  },
+  {
+    "name": "Spells with X in their cost",
+    "blocker": "mana costs are fixed strings with no X announcement"
+  },
+  {
+    "name": "Kicker and other optional additional costs",
+    "blocker": "no optional cost declared on announcement"
+  },
+  {
+    "name": "Costs paid by sacrificing or discarding",
+    "blocker": "activation costs model only tapping and mana"
+  },
+  {
+    "name": "Cost reduction and cost increase effects",
+    "blocker": "no cost-modification layer"
+  },
+  {
+    "name": "Equipment",
+    "blocker": "no equip action or attachment outside the Aura model"
+  },
+  {
+    "name": "Gaining control of a permanent",
+    "blocker": "no control-change layer"
+  },
+  {
+    "name": "Evasion other than flying, reach, and menace",
+    "blocker": "no unblockable, protection, or colour- and count-restricted blocking"
+  },
+  {
+    "name": "Attack and block requirements and restrictions",
+    "blocker": "only defender restricts declaration; must-attack and cannot-block are unmodeled"
+  },
+  {
+    "name": "Damage prevention",
+    "blocker": "no prevention shield or damage-replacement layer"
+  },
+  {
+    "name": "Abilities that trigger on another object",
+    "blocker": "trigger conditions observe only their own source"
+  },
+  {
+    "name": "Abilities that trigger on a phase or step",
+    "blocker": "no upkeep, draw-step, end-step, or beginning-of-combat trigger condition"
+  },
+  {
+    "name": "Abilities that trigger on casting, drawing, or gaining life",
+    "blocker": "trigger conditions observe only zone changes and attack declaration"
+  },
+  {
+    "name": "Effects that count permanents, cards, or other game values",
+    "blocker": "effect amounts are fixed numbers, never derived from game state"
+  },
+  {
+    "name": "Conditional effects and intervening-if clauses",
+    "blocker": "no condition attached to an effect or a trigger"
+  },
+  {
+    "name": "Mana of any colour, and mana filtering",
+    "blocker": "mana production names one fixed colour or colourless"
+  },
+  {
+    "name": "Effects that ask a player to name a colour, type, or card",
+    "blocker": "no player choice recorded on a permanent or spell"
+  },
+  {
+    "name": "Effects that untap, or that stop a permanent untapping",
+    "blocker": "no untap effect and no skipped-untap flag"
+  },
+  {
+    "name": "Fight, and other effects taking two targets",
+    "blocker": "each effect fills exactly one target slot"
+  },
+  {
+    "name": "Keyword removal and loses-all-abilities effects",
+    "blocker": "the ability-adding layer only adds abilities"
+  },
+  {
+    "name": "Maximum hand size modification",
+    "blocker": "the cleanup discard uses a fixed hand size"
   }
 ]

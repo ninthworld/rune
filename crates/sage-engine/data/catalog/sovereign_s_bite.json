@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "functional_id": "sovereign_s_bite",
+  "name": "Sovereign's Bite",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{B}",
+  "colors": [
+    "black"
+  ],
+  "spell_effects": [
+    {
+      "kind": "lose_life",
+      "player_ref": "target_player",
+      "amount": 2
+    },
+    {
+      "kind": "gain_life",
+      "player_ref": "controller",
+      "amount": 2
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "functional_id": "goblin_motivator",
+  "name": "Goblin Motivator",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Goblin"
+  ],
+  "mana_cost": "{R}",
+  "colors": [
+    "red"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "grant_keyword",
+          "target": "any_creature",
+          "keyword": "haste"
+        }
+      ]
+    }
+  ]
+}

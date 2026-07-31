@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "invoke_the_divine",
+  "name": "Invoke the Divine",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "destroy",
+      "target": "any_artifact_or_enchantment"
+    },
+    {
+      "kind": "gain_life",
+      "player_ref": "controller",
+      "amount": 4
+    }
+  ]
+}

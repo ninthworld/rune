@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "plummet",
+  "name": "Plummet",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{1}{G}",
+  "colors": [
+    "green"
+  ],
+  "spell_effects": [
+    {
+      "kind": "destroy",
+      "target": "any_creature_with_flying"
+    }
+  ]
+}

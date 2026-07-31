@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "bone_to_ash",
+  "name": "Bone to Ash",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{2}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "counter_spell",
+      "target": "creature_spell_on_stack"
+    },
+    {
+      "kind": "draw_card",
+      "count": 1
+    }
+  ]
+}

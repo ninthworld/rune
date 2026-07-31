@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "functional_id": "aggressive_mammoth",
+  "name": "Aggressive Mammoth",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elephant"
+  ],
+  "mana_cost": "{4}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 8,
+  "toughness": 8,
+  "keywords": [
+    "trample"
+  ],
+  "abilities": [
+    {
+      "type": "static",
+      "affects": {
+        "scope": "creatures_you_control",
+        "except_this": true
+      },
+      "modification": {
+        "kind": "grant_keyword",
+        "keyword": "trample"
+      }
+    }
+  ]
+}

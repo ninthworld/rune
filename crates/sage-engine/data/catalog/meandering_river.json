@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "functional_id": "meandering_river",
+  "name": "Meandering River",
+  "types": [
+    "land"
+  ],
+  "subtypes": [],
+  "mana_cost": "",
+  "colors": [],
+  "abilities": [
+    {
+      "type": "enters_tapped"
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana",
+          "color": "white",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "add_mana",
+          "color": "blue",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

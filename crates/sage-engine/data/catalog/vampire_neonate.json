@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "functional_id": "vampire_neonate",
+  "name": "Vampire Neonate",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Vampire"
+  ],
+  "mana_cost": "{1}{B}",
+  "colors": [
+    "black"
+  ],
+  "power": 0,
+  "toughness": 3,
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{2}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "lose_life",
+          "player_ref": "each_opponent",
+          "amount": 1
+        },
+        {
+          "kind": "gain_life",
+          "player_ref": "controller",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

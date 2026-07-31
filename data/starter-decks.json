@@ -6,14 +6,46 @@
       "name": "Ember Onslaught",
       "summary": "Mono-red aggression: fast creatures backed by direct-damage burn.",
       "entries": [
-        { "identity": "onakke_ogre", "name": "Onakke Ogre", "count": 4 },
-        { "identity": "viashino_pyromancer", "name": "Viashino Pyromancer", "count": 4 },
-        { "identity": "fire_elemental", "name": "Fire Elemental", "count": 3 },
-        { "identity": "volcanic_dragon", "name": "Volcanic Dragon", "count": 2 },
-        { "identity": "shock", "name": "Shock", "count": 4 },
-        { "identity": "lightning_strike", "name": "Lightning Strike", "count": 4 },
-        { "identity": "electrify", "name": "Electrify", "count": 2 },
-        { "identity": "mountain", "name": "Mountain", "count": 17 }
+        {
+          "identity": "onakke_ogre",
+          "name": "Onakke Ogre",
+          "count": 4
+        },
+        {
+          "identity": "viashino_pyromancer",
+          "name": "Viashino Pyromancer",
+          "count": 4
+        },
+        {
+          "identity": "fire_elemental",
+          "name": "Fire Elemental",
+          "count": 3
+        },
+        {
+          "identity": "volcanic_dragon",
+          "name": "Volcanic Dragon",
+          "count": 2
+        },
+        {
+          "identity": "shock",
+          "name": "Shock",
+          "count": 4
+        },
+        {
+          "identity": "lightning_strike",
+          "name": "Lightning Strike",
+          "count": 4
+        },
+        {
+          "identity": "electrify",
+          "name": "Electrify",
+          "count": 2
+        },
+        {
+          "identity": "mountain",
+          "name": "Mountain",
+          "count": 17
+        }
       ]
     },
     {
@@ -21,19 +53,71 @@
       "name": "Verdant Coalition",
       "summary": "Green-white midrange: mana elves into sturdy creatures, lifegain, and pump.",
       "entries": [
-        { "identity": "llanowar_elves", "name": "Llanowar Elves", "count": 4 },
-        { "identity": "druid_of_the_cowl", "name": "Druid of the Cowl", "count": 2 },
-        { "identity": "giant_spider", "name": "Giant Spider", "count": 3 },
-        { "identity": "rustwing_falcon", "name": "Rustwing Falcon", "count": 2 },
-        { "identity": "serra_angel", "name": "Serra Angel", "count": 2 },
-        { "identity": "colossal_dreadmaw", "name": "Colossal Dreadmaw", "count": 2 },
-        { "identity": "gigantosaurus", "name": "Gigantosaurus", "count": 1 },
-        { "identity": "trusty_packbeast", "name": "Trusty Packbeast", "count": 2 },
-        { "identity": "titanic_growth", "name": "Titanic Growth", "count": 2 },
-        { "identity": "revitalize", "name": "Revitalize", "count": 2 },
-        { "identity": "forest", "name": "Forest", "count": 8 },
-        { "identity": "plains", "name": "Plains", "count": 6 },
-        { "identity": "tranquil_expanse", "name": "Tranquil Expanse", "count": 4 }
+        {
+          "identity": "llanowar_elves",
+          "name": "Llanowar Elves",
+          "count": 4
+        },
+        {
+          "identity": "druid_of_the_cowl",
+          "name": "Druid of the Cowl",
+          "count": 2
+        },
+        {
+          "identity": "giant_spider",
+          "name": "Giant Spider",
+          "count": 3
+        },
+        {
+          "identity": "rustwing_falcon",
+          "name": "Rustwing Falcon",
+          "count": 2
+        },
+        {
+          "identity": "serra_angel",
+          "name": "Serra Angel",
+          "count": 2
+        },
+        {
+          "identity": "colossal_dreadmaw",
+          "name": "Colossal Dreadmaw",
+          "count": 2
+        },
+        {
+          "identity": "gigantosaurus",
+          "name": "Gigantosaurus",
+          "count": 1
+        },
+        {
+          "identity": "trusty_packbeast",
+          "name": "Trusty Packbeast",
+          "count": 2
+        },
+        {
+          "identity": "titanic_growth",
+          "name": "Titanic Growth",
+          "count": 2
+        },
+        {
+          "identity": "revitalize",
+          "name": "Revitalize",
+          "count": 2
+        },
+        {
+          "identity": "forest",
+          "name": "Forest",
+          "count": 8
+        },
+        {
+          "identity": "plains",
+          "name": "Plains",
+          "count": 6
+        },
+        {
+          "identity": "tranquil_expanse",
+          "name": "Tranquil Expanse",
+          "count": 4
+        }
       ]
     },
     {
@@ -41,13 +125,257 @@
       "name": "Skyborne Adepts",
       "summary": "Mono-blue tempo: evasive flyers and card draw behind hard counters.",
       "entries": [
-        { "identity": "snapping_drake", "name": "Snapping Drake", "count": 4 },
-        { "identity": "air_elemental", "name": "Air Elemental", "count": 3 },
-        { "identity": "skyscanner", "name": "Skyscanner", "count": 3 },
-        { "identity": "tolarian_scholar", "name": "Tolarian Scholar", "count": 2 },
-        { "identity": "divination", "name": "Divination", "count": 4 },
-        { "identity": "cancel", "name": "Cancel", "count": 4 },
-        { "identity": "island", "name": "Island", "count": 20 }
+        {
+          "identity": "snapping_drake",
+          "name": "Snapping Drake",
+          "count": 4
+        },
+        {
+          "identity": "air_elemental",
+          "name": "Air Elemental",
+          "count": 3
+        },
+        {
+          "identity": "skyscanner",
+          "name": "Skyscanner",
+          "count": 3
+        },
+        {
+          "identity": "tolarian_scholar",
+          "name": "Tolarian Scholar",
+          "count": 2
+        },
+        {
+          "identity": "divination",
+          "name": "Divination",
+          "count": 4
+        },
+        {
+          "identity": "cancel",
+          "name": "Cancel",
+          "count": 4
+        },
+        {
+          "identity": "island",
+          "name": "Island",
+          "count": 20
+        }
+      ]
+    },
+    {
+      "id": "dawnbringer-legion",
+      "name": "Dawnbringer Legion",
+      "summary": "Mono-white aggression that pays for itself: cheap bodies, lifegain, and a mass pump to finish.",
+      "entries": [
+        {
+          "identity": "sanctuary_cat",
+          "name": "Sanctuary Cat",
+          "count": 4
+        },
+        {
+          "identity": "oreskos_swiftclaw",
+          "name": "Oreskos Swiftclaw",
+          "count": 4
+        },
+        {
+          "identity": "daybreak_chaplain",
+          "name": "Daybreak Chaplain",
+          "count": 3
+        },
+        {
+          "identity": "dwarven_priest",
+          "name": "Dwarven Priest",
+          "count": 3
+        },
+        {
+          "identity": "herald_of_faith",
+          "name": "Herald of Faith",
+          "count": 2
+        },
+        {
+          "identity": "angel_of_the_dawn",
+          "name": "Angel of the Dawn",
+          "count": 2
+        },
+        {
+          "identity": "serra_angel",
+          "name": "Serra Angel",
+          "count": 1
+        },
+        {
+          "identity": "knight_s_pledge",
+          "name": "Knight's Pledge",
+          "count": 2
+        },
+        {
+          "identity": "inspired_charge",
+          "name": "Inspired Charge",
+          "count": 2
+        },
+        {
+          "identity": "take_vengeance",
+          "name": "Take Vengeance",
+          "count": 1
+        },
+        {
+          "identity": "plains",
+          "name": "Plains",
+          "count": 16
+        }
+      ]
+    },
+    {
+      "id": "thornclad-rampage",
+      "name": "Thornclad Rampage",
+      "summary": "Green-red stompy: deathtouch and menace up front, enormous bodies behind, trample for everyone.",
+      "entries": [
+        {
+          "identity": "daggerback_basilisk",
+          "name": "Daggerback Basilisk",
+          "count": 3
+        },
+        {
+          "identity": "boggart_brute",
+          "name": "Boggart Brute",
+          "count": 3
+        },
+        {
+          "identity": "centaur_courser",
+          "name": "Centaur Courser",
+          "count": 2
+        },
+        {
+          "identity": "thornhide_wolves",
+          "name": "Thornhide Wolves",
+          "count": 3
+        },
+        {
+          "identity": "goblin_motivator",
+          "name": "Goblin Motivator",
+          "count": 2
+        },
+        {
+          "identity": "ancient_brontodon",
+          "name": "Ancient Brontodon",
+          "count": 2
+        },
+        {
+          "identity": "aggressive_mammoth",
+          "name": "Aggressive Mammoth",
+          "count": 2
+        },
+        {
+          "identity": "crash_through",
+          "name": "Crash Through",
+          "count": 2
+        },
+        {
+          "identity": "plummet",
+          "name": "Plummet",
+          "count": 2
+        },
+        {
+          "identity": "naturalize",
+          "name": "Naturalize",
+          "count": 1
+        },
+        {
+          "identity": "smelt",
+          "name": "Smelt",
+          "count": 1
+        },
+        {
+          "identity": "sure_strike",
+          "name": "Sure Strike",
+          "count": 1
+        },
+        {
+          "identity": "forest",
+          "name": "Forest",
+          "count": 7
+        },
+        {
+          "identity": "mountain",
+          "name": "Mountain",
+          "count": 7
+        },
+        {
+          "identity": "timber_gorge",
+          "name": "Timber Gorge",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "id": "tidebound-ledger",
+      "name": "Tidebound Ledger",
+      "summary": "Blue-black attrition: wall up, counter what matters, bounce the rest, and win by draining and milling.",
+      "entries": [
+        {
+          "identity": "wall_of_mist",
+          "name": "Wall of Mist",
+          "count": 3
+        },
+        {
+          "identity": "vampire_neonate",
+          "name": "Vampire Neonate",
+          "count": 3
+        },
+        {
+          "identity": "tolarian_scholar",
+          "name": "Tolarian Scholar",
+          "count": 2
+        },
+        {
+          "identity": "snapping_drake",
+          "name": "Snapping Drake",
+          "count": 3
+        },
+        {
+          "identity": "millstone",
+          "name": "Millstone",
+          "count": 2
+        },
+        {
+          "identity": "unsummon",
+          "name": "Unsummon",
+          "count": 3
+        },
+        {
+          "identity": "essence_scatter",
+          "name": "Essence Scatter",
+          "count": 2
+        },
+        {
+          "identity": "bone_to_ash",
+          "name": "Bone to Ash",
+          "count": 2
+        },
+        {
+          "identity": "sovereign_s_bite",
+          "name": "Sovereign's Bite",
+          "count": 2
+        },
+        {
+          "identity": "cancel",
+          "name": "Cancel",
+          "count": 2
+        },
+        {
+          "identity": "island",
+          "name": "Island",
+          "count": 7
+        },
+        {
+          "identity": "swamp",
+          "name": "Swamp",
+          "count": 5
+        },
+        {
+          "identity": "submerged_boneyard",
+          "name": "Submerged Boneyard",
+          "count": 4
+        }
       ]
     },
     {
@@ -56,15 +384,51 @@
       "summary": "Mono-green commander: Jedit Ojanen leads a singleton stomp of ramp and fatties.",
       "commander": "jedit_ojanen",
       "entries": [
-        { "identity": "jedit_ojanen", "name": "Jedit Ojanen", "count": 1 },
-        { "identity": "llanowar_elves", "name": "Llanowar Elves", "count": 1 },
-        { "identity": "druid_of_the_cowl", "name": "Druid of the Cowl", "count": 1 },
-        { "identity": "giant_spider", "name": "Giant Spider", "count": 1 },
-        { "identity": "colossal_dreadmaw", "name": "Colossal Dreadmaw", "count": 1 },
-        { "identity": "gigantosaurus", "name": "Gigantosaurus", "count": 1 },
-        { "identity": "titanic_growth", "name": "Titanic Growth", "count": 1 },
-        { "identity": "skyscanner", "name": "Skyscanner", "count": 1 },
-        { "identity": "forest", "name": "Forest", "count": 92 }
+        {
+          "identity": "jedit_ojanen",
+          "name": "Jedit Ojanen",
+          "count": 1
+        },
+        {
+          "identity": "llanowar_elves",
+          "name": "Llanowar Elves",
+          "count": 1
+        },
+        {
+          "identity": "druid_of_the_cowl",
+          "name": "Druid of the Cowl",
+          "count": 1
+        },
+        {
+          "identity": "giant_spider",
+          "name": "Giant Spider",
+          "count": 1
+        },
+        {
+          "identity": "colossal_dreadmaw",
+          "name": "Colossal Dreadmaw",
+          "count": 1
+        },
+        {
+          "identity": "gigantosaurus",
+          "name": "Gigantosaurus",
+          "count": 1
+        },
+        {
+          "identity": "titanic_growth",
+          "name": "Titanic Growth",
+          "count": 1
+        },
+        {
+          "identity": "skyscanner",
+          "name": "Skyscanner",
+          "count": 1
+        },
+        {
+          "identity": "forest",
+          "name": "Forest",
+          "count": 92
+        }
       ]
     }
   ]

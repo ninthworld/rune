@@ -562,6 +562,95 @@ mod tests {
     }
 
     #[test]
+    fn the_widened_ir_reads_as_sentences_on_the_cards_that_use_it() {
+        // Every construct added with the M19 batch is rendered from a real bundled
+        // card, not a toy struct: a formatter arm that reads wrong is a card that reads
+        // wrong, and the exhaustive matches only prove that *some* words exist.
+        let db = bundled();
+
+        // Narrowed target classes name themselves rather than falling back to a
+        // generic noun, so a player can tell what the spell may legally be aimed at.
+        assert_eq!(
+            text_of(&db, "plummet"),
+            "Destroy target creature with flying."
+        );
+        assert_eq!(
+            text_of(&db, "take_vengeance"),
+            "Destroy target tapped creature."
+        );
+        assert_eq!(text_of(&db, "smelt"), "Destroy target artifact.");
+        assert_eq!(
+            text_of(&db, "naturalize"),
+            "Destroy target artifact or enchantment."
+        );
+        assert_eq!(
+            text_of(&db, "invoke_the_divine"),
+            "Destroy target artifact or enchantment.\nYou gain 4 life."
+        );
+        assert_eq!(
+            text_of(&db, "essence_scatter"),
+            "Counter target creature spell."
+        );
+        assert_eq!(
+            text_of(&db, "bone_to_ash"),
+            "Counter target creature spell.\nDraw a card."
+        );
+        assert_eq!(
+            text_of(&db, "unsummon"),
+            "Return target creature to its owner's hand."
+        );
+
+        // A targeted player reference conjugates in the third person; the controller
+        // reference stays second — one verb, agreement decided in one place.
+        assert_eq!(
+            text_of(&db, "sovereign_s_bite"),
+            "Target player loses 2 life.\nYou gain 2 life."
+        );
+
+        // A mana activation cost passes through in the notation it was written in.
+        assert_eq!(
+            text_of(&db, "millstone"),
+            "{2}, {T}: Target player mills two cards."
+        );
+        assert_eq!(
+            text_of(&db, "vampire_neonate"),
+            "{2}, {T}: Each opponent loses 1 life and you gain 1 life."
+        );
+
+        // Mass modifications name their class as the subject.
+        assert_eq!(
+            text_of(&db, "inspired_charge"),
+            "Creatures you control get +2/+1 until end of turn."
+        );
+        assert_eq!(
+            text_of(&db, "crash_through"),
+            "Creatures you control gain trample until end of turn.\nDraw a card."
+        );
+        assert_eq!(
+            text_of(&db, "angel_of_the_dawn"),
+            "Flying\nWhen Angel of the Dawn enters the battlefield, creatures you control get \
+             +1/+1 until end of turn and creatures you control gain vigilance until end of turn."
+        );
+
+        // The attacks trigger, and the two new keywords.
+        assert_eq!(
+            text_of(&db, "herald_of_faith"),
+            "Flying\nWhenever Herald of Faith attacks, you gain 2 life."
+        );
+        assert_eq!(text_of(&db, "wall_of_mist"), "Defender");
+        assert_eq!(text_of(&db, "boggart_brute"), "Menace");
+
+        // A static keyword grant reads as a standing statement, not an event.
+        assert_eq!(
+            text_of(&db, "aggressive_mammoth"),
+            "Trample\nOther creatures you control have trample."
+        );
+
+        // A vanilla body still generates nothing, which stays the honest answer.
+        assert_eq!(text_of(&db, "sanctuary_cat"), "");
+    }
+
+    #[test]
     fn spells_generate_non_empty_text() {
         // Every card that does something renders real rules text from its IR (ADR 0008 §7).
         let db = bundled();

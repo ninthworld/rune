@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "smelt",
+  "name": "Smelt",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "destroy",
+      "target": "any_artifact"
+    }
+  ]
+}

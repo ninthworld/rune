@@ -187,8 +187,8 @@ mod tests {
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // M19 prints fifty-nine cards; PM19 reprints one — sixty printings total.
-        assert_eq!(printings.len(), 60);
+        // M19 prints ninety-two cards; PM19 reprints one — ninety-three printings total.
+        assert_eq!(printings.len(), 93);
         assert!(!printings.is_empty());
         let ogre = printings.printing("M19", "15").unwrap();
         // The record names onakke_ogre; the loader resolved that to its handle.

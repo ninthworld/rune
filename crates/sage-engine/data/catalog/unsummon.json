@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "unsummon",
+  "name": "Unsummon",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "return_to_hand",
+      "target": "any_creature"
+    }
+  ]
+}

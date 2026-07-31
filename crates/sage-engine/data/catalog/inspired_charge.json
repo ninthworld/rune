@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "inspired_charge",
+  "name": "Inspired Charge",
+  "types": [
+    "instant"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "pump_all",
+      "affects": "creatures_you_control",
+      "power": 2,
+      "toughness": 1
+    }
+  ]
+}

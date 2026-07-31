@@ -697,6 +697,177 @@ mod tests {
         assert_eq!(perm.counter_count(CounterKind::PlusOnePlusOne), 1);
     }
 
+    #[test]
+    fn a_possessive_target_spec_means_a_different_set_from_each_seat() {
+        // "Target creature you control" is authored once and read from whichever seat
+        // is choosing, so the same spec must name player 0's creatures for player 0
+        // and player 1's for player 1. Getting this wrong would let a card aimed at
+        // "a creature you control" hit an opponent's board.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let mine = creature_on_battlefield(&mut state);
+        let theirs = creature_on_battlefield(&mut state);
+        state
+            .battlefield
+            .iter_mut()
+            .filter(|p| p.id == theirs)
+            .for_each(|p| p.controller = PlayerId(1));
+
+        for (spec, from_zero, from_one) in [
+            (TargetSpec::AnyCreatureYouControl, mine, theirs),
+            (TargetSpec::AnyCreatureAnOpponentControls, theirs, mine),
+        ] {
+            assert!(target_is_legal(
+                spec,
+                Target::Permanent(from_zero),
+                &state,
+                PlayerId(0),
+                &db
+            ));
+            assert!(!target_is_legal(
+                spec,
+                Target::Permanent(from_one),
+                &state,
+                PlayerId(0),
+                &db
+            ));
+            // The mirror image holds from the other seat.
+            assert!(target_is_legal(
+                spec,
+                Target::Permanent(from_one),
+                &state,
+                PlayerId(1),
+                &db
+            ));
+        }
+
+        // "Target opponent" likewise excludes the chooser's own seat.
+        assert!(target_is_legal(
+            TargetSpec::AnyOpponent,
+            Target::Player(PlayerId(1)),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        assert!(!target_is_legal(
+            TargetSpec::AnyOpponent,
+            Target::Player(PlayerId(0)),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        // An opponent who has left the game is no longer a legal target either.
+        state.players[1].has_lost = true;
+        assert!(!target_is_legal(
+            TargetSpec::AnyOpponent,
+            Target::Player(PlayerId(1)),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        assert!(!target_is_legal(
+            TargetSpec::AnyCreatureAnOpponentControls,
+            Target::Permanent(theirs),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+    }
+
+    #[test]
+    fn type_scoped_target_specs_admit_exactly_their_own_class() {
+        // Each spec is checked against a permanent of every class it might be confused
+        // with, so an arm that reads the wrong type is caught by the *rejection* rather
+        // than only by the acceptance.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let creature = creature_on_battlefield(&mut state); // llanowar_elves
+        let land = place(&mut state, "forest");
+        let artifact = place(&mut state, "millstone");
+
+        let cases = [
+            (TargetSpec::AnyCreature, creature),
+            (TargetSpec::AnyLand, land),
+            (TargetSpec::AnyArtifact, artifact),
+            (TargetSpec::AnyArtifactOrEnchantment, artifact),
+            (TargetSpec::AnyNonlandPermanent, creature),
+        ];
+        for (spec, legal) in cases {
+            assert!(
+                target_is_legal(spec, Target::Permanent(legal), &state, PlayerId(0), &db),
+                "{spec:?} accepts its own class"
+            );
+        }
+        for (spec, illegal) in [
+            (TargetSpec::AnyCreature, land),
+            (TargetSpec::AnyLand, creature),
+            (TargetSpec::AnyArtifact, creature),
+            (TargetSpec::AnyArtifactOrEnchantment, land),
+            (TargetSpec::AnyNonlandPermanent, land),
+            (TargetSpec::AnyEnchantment, artifact),
+        ] {
+            assert!(
+                !target_is_legal(spec, Target::Permanent(illegal), &state, PlayerId(0), &db),
+                "{spec:?} rejects the wrong class"
+            );
+        }
+
+        // A tapped-creature target tracks the tap state, not a printed characteristic.
+        assert!(!target_is_legal(
+            TargetSpec::AnyTappedCreature,
+            Target::Permanent(creature),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        state
+            .battlefield
+            .iter_mut()
+            .filter(|p| p.id == creature)
+            .for_each(|p| p.tapped = true);
+        assert!(target_is_legal(
+            TargetSpec::AnyTappedCreature,
+            Target::Permanent(creature),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+        // A tapped *land* is still not a creature.
+        state
+            .battlefield
+            .iter_mut()
+            .filter(|p| p.id == land)
+            .for_each(|p| p.tapped = true);
+        assert!(!target_is_legal(
+            TargetSpec::AnyTappedCreature,
+            Target::Permanent(land),
+            &state,
+            PlayerId(0),
+            &db
+        ));
+    }
+
+    /// Put a permanent of the bundled card `slug` onto the battlefield under player 0.
+    fn place(state: &mut GameState, slug: &str) -> PermanentId {
+        let card = fixture(slug);
+        let inst = state.new_instance(card);
+        let id = PermanentId(state.mint_id());
+        state.battlefield.push(Permanent {
+            id,
+            instance: inst.id,
+            card,
+            controller: PlayerId(0),
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+            attached_to: None,
+        });
+        id
+    }
+
     // ----- Auras: enchant, attachment, and fizzle (issue #152) -----
     //
     // P/T Auras have no clean M19 representative, so these tests build an inline

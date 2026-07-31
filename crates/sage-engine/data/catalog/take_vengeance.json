@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "functional_id": "take_vengeance",
+  "name": "Take Vengeance",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "spell_effects": [
+    {
+      "kind": "destroy",
+      "target": "any_tapped_creature"
+    }
+  ]
+}
