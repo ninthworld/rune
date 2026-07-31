@@ -4,11 +4,12 @@
 //! never via listeners or observers (crate `AGENTS.md`). [`crate::apply_action`]
 //! calls [`collect_triggers`] and puts each resulting [`Trigger`] on the stack.
 
-use crate::ability::{Ability, TriggerCondition};
+use crate::ability::{Ability, ObservedPermanent, ObservedSpell, TriggerCondition};
 use crate::card::abilities_of;
+use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
 use crate::stack::{StackId, StackObjectKind};
-use crate::state::{GameState, Permanent};
+use crate::state::{GameEvent, GameState, Permanent};
 use crate::{CardDatabase, Effect};
 
 /// A triggered ability that a state transition has caused to trigger.
@@ -116,26 +117,127 @@ fn collect_from(
 ) {
     for ability in abilities_of(db, perm.card) {
         if let Ability::Triggered { event, effects } = ability {
-            if condition_met(&event, perm, before, after) {
+            // A condition reports *how many times* it was met, not whether: an ability
+            // watching the rest of the board sees one event per qualifying object, and
+            // two creatures dying at once must trigger it twice (CR 603.2). The
+            // self-conditions can only ever answer 0 or 1.
+            for _ in 0..fire_count(&event, perm, before, after, db) {
                 out.push(Trigger {
                     source: perm.id,
                     controller: perm.controller,
-                    effects,
+                    effects: effects.clone(),
                 });
             }
         }
     }
 }
 
-/// Evaluate a trigger condition as a pure predicate over the before/after states,
-/// for the candidate permanent `perm` (its id and physical instance).
-fn condition_met(
+/// The permanents that entered the battlefield across the diff: present in `after`,
+/// absent from `before`.
+fn entered<'a>(before: &GameState, after: &'a GameState) -> impl Iterator<Item = &'a Permanent> {
+    let ids: Vec<PermanentId> = before.battlefield.iter().map(|p| p.id).collect();
+    after
+        .battlefield
+        .iter()
+        .filter(move |p| !ids.contains(&p.id))
+}
+
+/// The permanents that **died** across the diff — the [`TriggerCondition::SelfDies`]
+/// test applied to the whole board, so "died" means exactly the same thing whether an
+/// ability is watching itself or its neighbours.
+fn died<'a>(before: &'a GameState, after: &GameState) -> Vec<&'a Permanent> {
+    before
+        .battlefield
+        .iter()
+        .filter(|p| {
+            !after.battlefield.iter().any(|q| q.id == p.id)
+                && in_graveyard(after, p.instance)
+                && !in_graveyard(before, p.instance)
+        })
+        .collect()
+}
+
+/// The events recorded **by this transition** — the entries `after` has that `before`
+/// did not.
+///
+/// This is still a diff, over the one part of the state that records *what happened*
+/// rather than what is (ADR 0007). Some conditions are about events, not about board
+/// positions, and cannot be recovered from a snapshot comparison at all: gaining three
+/// life and losing three leaves every total unchanged, but a card that triggers on
+/// gaining life has triggered. Reading the recorded events is what makes those
+/// conditions expressible without adding a listener.
+///
+/// The log is a bounded window, so a transition recording more events than the window
+/// holds would lose its earliest ones. A single transition records a handful.
+fn events_in<'a>(before: &GameState, after: &'a GameState) -> impl Iterator<Item = &'a GameEvent> {
+    let from = before.next_log_sequence;
+    after
+        .log
+        .iter()
+        .filter(move |entry| entry.sequence >= from)
+        .map(|entry| &entry.event)
+}
+
+/// Whether `candidate` is one of the permanents `observes` watches, for an ability on
+/// `source`. Evaluated relative to the source, exactly as [`crate::StaticAffects`] is:
+/// "you" is the source's controller and "another" excludes the source itself.
+fn observed_matches(
+    observes: &ObservedPermanent,
+    candidate: &Permanent,
+    source: &Permanent,
+    db: &CardDatabase,
+) -> bool {
+    if observes.excludes_source() && candidate.id == source.id {
+        return false;
+    }
+    let Some(card) = db.card(candidate.card) else {
+        return false;
+    };
+    if !card.has_type(CardType::Creature) {
+        return false;
+    }
+    if let Some(subtype) = observes.subtype() {
+        if !card.has_subtype(subtype) {
+            return false;
+        }
+    }
+    match observes {
+        ObservedPermanent::CreaturesYouControl { .. } => candidate.controller == source.controller,
+        ObservedPermanent::AnyCreature { .. } => true,
+    }
+}
+
+/// Whether the spell `card` is one `observes` notices.
+fn observed_spell_matches(
+    observes: ObservedSpell,
+    card: crate::id::CardId,
+    db: &CardDatabase,
+) -> bool {
+    let Some(data) = db.card(card) else {
+        return false;
+    };
+    match observes {
+        ObservedSpell::Enchantment => data.has_type(CardType::Enchantment),
+        ObservedSpell::InstantOrSorcery => {
+            data.has_type(CardType::Instant) || data.has_type(CardType::Sorcery)
+        }
+    }
+}
+
+/// How many times `condition` was met across the transition, for an ability on `perm`.
+///
+/// A pure function of the two snapshots — never an event listener. The self-conditions
+/// answer 0 or 1 because they are about one object; a condition watching the board
+/// answers once per qualifying event, which is what makes a board wipe trigger a
+/// death-watcher once per creature rather than once.
+fn fire_count(
     condition: &TriggerCondition,
     perm: &Permanent,
     before: &GameState,
     after: &GameState,
-) -> bool {
-    match condition {
+    db: &CardDatabase,
+) -> usize {
+    usize::from(match condition {
         TriggerCondition::SelfEntersBattlefield => {
             after.battlefield.iter().any(|p| p.id == perm.id)
                 && !before.battlefield.iter().any(|p| p.id == perm.id)
@@ -166,7 +268,51 @@ fn condition_met(
                 .any(|p| p.id == perm.id && p.attacking.is_some());
             attacking_now && !attacking_before
         }
-    }
+        // The watching conditions count rather than answer, so each returns early.
+        TriggerCondition::PermanentEnters(observes) => {
+            // An ability that is no longer on the battlefield is not watching it. A
+            // death-watcher is the deliberate exception below: a creature that died
+            // alongside another still observed that death.
+            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+                return 0;
+            }
+            return entered(before, after)
+                .filter(|candidate| observed_matches(observes, candidate, perm, db))
+                .count();
+        }
+        TriggerCondition::PermanentDies(observes) => {
+            return died(before, after)
+                .into_iter()
+                .filter(|candidate| observed_matches(observes, candidate, perm, db))
+                .count();
+        }
+        TriggerCondition::YouGainLife => {
+            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+                return 0;
+            }
+            // A *gain*, not a net change: the recorded delta is signed, and only a
+            // positive one is life gained (CR 118.3). Damage to a player is recorded as
+            // damage rather than as a life change, so it never reaches here.
+            return events_in(before, after)
+                .filter(|event| {
+                    matches!(event, GameEvent::LifeChanged { player, amount }
+                        if *player == perm.controller && *amount > 0)
+                })
+                .count();
+        }
+        TriggerCondition::YouCastSpell(spell) => {
+            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+                return 0;
+            }
+            return events_in(before, after)
+                .filter(|event| {
+                    matches!(event, GameEvent::SpellCast { player, card }
+                        if *player == perm.controller
+                            && observed_spell_matches(*spell, card.card, db))
+                })
+                .count();
+        }
+    })
 }
 
 /// Whether the physical card `instance` is in any player's graveyard in `state`.

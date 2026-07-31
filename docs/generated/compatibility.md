@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (97)
+## Supported cards (103)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -16,8 +16,11 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `aegis_of_the_heavens` | Aegis of the Heavens | functional definition |
 | `aggressive_mammoth` | Aggressive Mammoth | functional definition |
 | `air_elemental` | Air Elemental | functional definition |
+| `ajani_s_pridemate` | Ajani's Pridemate | functional definition |
+| `ajani_s_welcome` | Ajani's Welcome | functional definition |
 | `angel_of_the_dawn` | Angel of the Dawn | functional definition |
 | `arcane_encyclopedia` | Arcane Encyclopedia | functional definition |
+| `aven_wind_mage` | Aven Wind Mage | functional definition |
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
@@ -34,6 +37,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `divination` | Divination | functional definition |
 | `druid_of_the_cowl` | Druid of the Cowl | functional definition |
 | `electrify` | Electrify | functional definition |
+| `epicure_of_blood` | Epicure of Blood | functional definition |
 | `essence_scatter` | Essence Scatter | functional definition |
 | `exclusion_mage` | Exclusion Mage | functional definition |
 | `field_creeper` | Field Creeper | functional definition |
@@ -74,10 +78,12 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
 | `plains` | Plains | functional definition |
 | `plummet` | Plummet | functional definition |
+| `poison_tip_archer` | Poison-Tip Archer | functional definition |
 | `prodigious_growth` | Prodigious Growth | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
+| `satyr_enchanter` | Satyr Enchanter | functional definition |
 | `serra_s_guardian` | Serra's Guardian | functional definition |
 | `shock` | Shock | functional definition |
 | `silverbeak_griffin` | Silverbeak Griffin | functional definition |
@@ -111,15 +117,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (29)
+## Excluded (28)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
 | Excluded | Blocker |
 | --- | --- |
 | Abilities that trigger on a phase or step | no upkeep, draw-step, end-step, or beginning-of-combat trigger condition |
-| Abilities that trigger on another object | trigger conditions observe only their own source |
-| Abilities that trigger on casting, drawing, or gaining life | trigger conditions observe only zone changes and attack declaration |
+| Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, and casting |
 | Attack and block requirements and restrictions | only defender restricts declaration; must-attack and cannot-block are unmodeled |
 | Auras that enchant a player or land, or move between hosts | only P/T- and keyword-granting enchant-creature Auras are modeled |
 | Conditional effects and intervening-if clauses | no condition attached to an effect or a trigger |

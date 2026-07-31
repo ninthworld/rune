@@ -106,7 +106,7 @@ pub(crate) fn apply_activate_ability(
     if is_mana_ability(&ability) {
         // Mana ability: resolve now, no stack object, priority unchanged.
         for effect in effects {
-            apply_effect(state, effect, controller, db);
+            apply_effect(state, effect, controller, Some(permanent), db);
         }
     } else {
         let id = state.mint_id();
@@ -232,6 +232,7 @@ pub(crate) fn apply_effect(
     state: &mut GameState,
     effect: &Effect,
     controller: PlayerId,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) {
     if state.players.get(controller.0).is_none() {
@@ -323,6 +324,33 @@ pub(crate) fn apply_effect(
                 Modification::GrantKeyword(*keyword),
                 db,
             );
+        }
+        // Self-referential effects: the subject is the ability's own source, which is
+        // not a target (CR 115.1) and so was never chosen. A source that has left the
+        // battlefield is not there to modify, and the effect simply does nothing —
+        // the same no-op a fizzled target produces, without the fizzle.
+        Effect::PumpSelf { power, toughness } => {
+            if let Some(id) = source {
+                if state.battlefield.iter().any(|p| p.id == id) {
+                    let stamp = state.mint_id();
+                    state.static_effects.push(StaticEffect {
+                        source: stamp,
+                        affects: EffectAffects::SpecificPermanent(id),
+                        modification: Modification::PowerToughness {
+                            power: *power,
+                            toughness: *toughness,
+                        },
+                        duration: Duration::UntilEndOfTurn,
+                    });
+                }
+            }
+        }
+        Effect::PutCountersOnSelf { counter, count } => {
+            if let Some(id) = source {
+                if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
+                    *perm.counters.entry(*counter).or_insert(0) += *count;
+                }
+            }
         }
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
@@ -573,7 +601,9 @@ pub(crate) fn apply_targeted_effect(
         | Effect::AddColorlessMana { .. }
         | Effect::DrawCard { .. }
         | Effect::PumpAll { .. }
-        | Effect::GrantKeywordAll { .. } => {}
+        | Effect::GrantKeywordAll { .. }
+        | Effect::PumpSelf { .. }
+        | Effect::PutCountersOnSelf { .. } => {}
     }
 }
 

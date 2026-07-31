@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "functional_id": "ajani_s_pridemate",
+  "name": "Ajani's Pridemate",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Cat",
+    "Soldier"
+  ],
+  "mana_cost": "{1}{W}",
+  "colors": [
+    "white"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "you_gain_life",
+      "effects": [
+        {
+          "kind": "put_counters_on_self",
+          "counter": "plus_one_plus_one",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -224,7 +224,20 @@ pub(crate) fn resolve_stack_object(state: &mut GameState, object: StackObject, d
     // stored target and applying it only while that target is still legal;
     // individually-illegal targets are skipped (CR 608.2c) while legal ones
     // resolve. Effects with an implicit subject apply unconditionally.
-    apply_effects_with_targets(state, &effects, &object.targets, object.controller, db);
+    // An ability carries the permanent it is on; a spell has no source permanent, so a
+    // self-referential effect on one would modify nothing.
+    let source = match &object.kind {
+        StackObjectKind::Ability { source, .. } => Some(*source),
+        StackObjectKind::Spell { .. } => None,
+    };
+    apply_effects_with_targets(
+        state,
+        &effects,
+        &object.targets,
+        object.controller,
+        source,
+        db,
+    );
 
     // A spell additionally leaves the stack for its final zone (CR 608.3). A
     // permanent spell enters the battlefield with a fresh id (its instance id
@@ -284,6 +297,7 @@ fn apply_effects_with_targets(
     effects: &[Effect],
     stored: &[Target],
     controller: crate::id::PlayerId,
+    source: Option<PermanentId>,
     db: &CardDatabase,
 ) {
     let mut targets = stored.iter();
@@ -296,7 +310,7 @@ fn apply_effects_with_targets(
                     }
                 }
             }
-            None => apply_effect(state, effect, controller, db),
+            None => apply_effect(state, effect, controller, source, db),
         }
     }
 }

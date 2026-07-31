@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "functional_id": "satyr_enchanter",
+  "name": "Satyr Enchanter",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Satyr",
+    "Druid"
+  ],
+  "mana_cost": "{1}{G}{W}",
+  "colors": [
+    "white",
+    "green"
+  ],
+  "power": 2,
+  "toughness": 2,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": {
+        "you_cast_spell": "enchantment"
+      },
+      "effects": [
+        {
+          "kind": "draw_card",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

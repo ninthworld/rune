@@ -72,16 +72,8 @@
     "blocker": "no prevention shield or damage-replacement layer"
   },
   {
-    "name": "Abilities that trigger on another object",
-    "blocker": "trigger conditions observe only their own source"
-  },
-  {
     "name": "Abilities that trigger on a phase or step",
     "blocker": "no upkeep, draw-step, end-step, or beginning-of-combat trigger condition"
-  },
-  {
-    "name": "Abilities that trigger on casting, drawing, or gaining life",
-    "blocker": "trigger conditions observe only zone changes and attack declaration"
   },
   {
     "name": "Effects that count permanents, cards, or other game values",
@@ -114,5 +106,9 @@
   {
     "name": "Maximum hand size modification",
     "blocker": "the cleanup discard uses a fixed hand size"
+  },
+  {
+    "name": "Abilities that trigger on drawing a card",
+    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, and casting"
   }
 ]
