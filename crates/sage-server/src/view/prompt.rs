@@ -121,9 +121,20 @@ pub(crate) fn target_entity_id(target: Target) -> String {
 pub(crate) fn target_spec_prompt(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "Choose target player",
+        TargetSpec::AnyOpponent => "Choose target opponent",
         TargetSpec::AnyPermanent => "Choose target permanent",
+        TargetSpec::AnyNonlandPermanent => "Choose target nonland permanent",
         TargetSpec::AnyCreature => "Choose target creature",
+        TargetSpec::AnyCreatureYouControl => "Choose target creature you control",
+        TargetSpec::AnyCreatureAnOpponentControls => "Choose target creature an opponent controls",
+        TargetSpec::AnyCreatureWithFlying => "Choose target creature with flying",
+        TargetSpec::AnyTappedCreature => "Choose target tapped creature",
+        TargetSpec::AnyArtifact => "Choose target artifact",
+        TargetSpec::AnyEnchantment => "Choose target enchantment",
+        TargetSpec::AnyArtifactOrEnchantment => "Choose target artifact or enchantment",
+        TargetSpec::AnyLand => "Choose target land",
         TargetSpec::SpellOnStack => "Choose target spell",
+        TargetSpec::CreatureSpellOnStack => "Choose target creature spell",
         TargetSpec::AnyTarget => "Choose any target",
     }
 }

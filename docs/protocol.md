@@ -150,7 +150,7 @@ clients render the carried entries and do not invent missing history. It is incl
 each complete `GameView`, which means reconnecting clients never need an accumulated
 local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
 `spell_fizzled`, `attackers_declared`, `blockers_declared`, `mulligan`, `hand_kept`,
-`life_changed`, `damage_dealt`, `cards_drawn`, `permanent_died`, `step_changed`,
+`life_changed`, `damage_dealt`, `cards_drawn`, `cards_milled`, `permanent_died`, `step_changed`,
 `player_eliminated`, `commander_returned_to_command_zone`, and `game_over`. Named
 `LogEntity` references have an opaque `id`
 and server-supplied
@@ -159,7 +159,11 @@ reference is fixed at the moment the event was recorded, so an entry naming a pe
 stays stable after that permanent leaves play (dies, is bounced) — the server does not
 re-resolve names against the current board.
 
-A `cards_drawn` event contains only player and count, never a hidden card identity.
+A `cards_drawn` event contains only player and count, never a hidden card identity. A
+`cards_milled` event carries the same two fields for cards put from the top of a library
+into its owner's graveyard (CR 701.13). It is deliberately *not* a `cards_drawn`: milling
+never causes the empty-library loss, and its `count` is what actually moved, so a player
+asked to mill past an empty library logs the smaller number.
 `damage_dealt` reports both lethal and nonlethal damage; its `target` is tagged by
 `kind` — `player` (with a `player` id) or `permanent` (with a `LogEntity`). Damage to a
 player is a `damage_dealt` event, not a `life_changed` one; `life_changed` carries only

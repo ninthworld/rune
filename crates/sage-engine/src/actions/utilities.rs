@@ -24,10 +24,24 @@ pub(crate) fn is_castable_spell(data: &crate::CardData) -> bool {
     !data.has_type(CardType::Land)
 }
 
-/// Whether every cost in `cost` is payable given the source `permanent`'s state.
-pub(crate) fn cost_payable(cost: &[Cost], permanent: &Permanent) -> bool {
+/// Whether every cost in `cost` is payable right now, given the source
+/// `permanent`'s state and its controller's mana pool.
+///
+/// Mana affordability is decided by the same [`ManaPool::can_pay`](crate::ManaPool::can_pay)
+/// the cast path uses over the same `{...}` notation, so an ability is offered
+/// exactly when [`crate::apply_action`] will succeed in charging for it — the
+/// offer and the charge can never disagree about a cost string.
+pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permanent) -> bool {
     cost.iter().all(|c| match c {
         Cost::Tap => !permanent.tapped,
+        Cost::Mana { mana } => state
+            .players
+            .get(permanent.controller.0)
+            .is_some_and(|player| {
+                player
+                    .mana_pool
+                    .can_pay(&crate::mana::parse_mana_cost(mana))
+            }),
     })
 }
 

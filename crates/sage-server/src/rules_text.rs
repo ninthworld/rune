@@ -22,8 +22,8 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, PlayerRef,
-    StaticAffects, StaticModification, TargetSpec, TriggerCondition,
+    Ability, AuraGrant, CardData, Color, Cost, CounterKind, Effect, Keyword, MassAffects,
+    PlayerRef, StaticAffects, StaticModification, TargetSpec, TriggerCondition,
 };
 
 /// Generate the rules text of one card.
@@ -73,7 +73,7 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
 pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
     match ability {
         Ability::Activated { cost, effects } => {
-            let costs: Vec<&str> = cost.iter().map(|c| cost_symbol(c)).collect();
+            let costs: Vec<String> = cost.iter().map(cost_symbol).collect();
             format!(
                 "{}: {}",
                 costs.join(", "),
@@ -86,6 +86,7 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                     format!("When {source} enters the battlefield")
                 }
                 TriggerCondition::SelfDies => format!("When {source} dies"),
+                TriggerCondition::SelfAttacks => format!("Whenever {source} attacks"),
             };
             finish(&format!("{trigger}, {}", clauses(source, effects)))
         }
@@ -262,6 +263,37 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             target_noun(*target),
             keyword_word(*keyword)
         ),
+        Effect::PumpAll {
+            affects,
+            power,
+            toughness,
+        } => format!(
+            "{} get {power:+}/{toughness:+} until end of turn",
+            mass_subject(*affects)
+        ),
+        Effect::GrantKeywordAll { affects, keyword } => format!(
+            "{} gain {} until end of turn",
+            mass_subject(*affects),
+            keyword_word(*keyword)
+        ),
+        Effect::ReturnToHand { target } => {
+            format!("return {} to its owner's hand", target_noun(*target))
+        }
+        Effect::Mill { player_ref, count } => match count {
+            1 => conjugate(*player_ref, "mill") + " a card",
+            n => format!(
+                "{} {} cards",
+                conjugate(*player_ref, "mill"),
+                number(u32::from(*n))
+            ),
+        },
+    }
+}
+
+/// The class a mass, non-targeting effect names, as the subject of its sentence.
+fn mass_subject(affects: MassAffects) -> &'static str {
+    match affects {
+        MassAffects::CreaturesYouControl => "creatures you control",
     }
 }
 
@@ -279,9 +311,12 @@ pub(crate) fn effects_description(source: &str, effects: &[Effect]) -> String {
 }
 
 /// The cost symbol paid to activate an ability.
-fn cost_symbol(cost: &Cost) -> &'static str {
+fn cost_symbol(cost: &Cost) -> String {
     match cost {
-        Cost::Tap => "{T}",
+        Cost::Tap => "{T}".to_string(),
+        // A mana cost is already written in the notation a player reads it in, so it
+        // is passed through rather than re-rendered from a parse.
+        Cost::Mana { mana } => mana.clone(),
     }
 }
 
@@ -313,9 +348,20 @@ fn counters(kind: CounterKind, count: u32) -> String {
 fn target_noun(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "target player",
+        TargetSpec::AnyOpponent => "target opponent",
         TargetSpec::AnyPermanent => "target permanent",
+        TargetSpec::AnyNonlandPermanent => "target nonland permanent",
         TargetSpec::AnyCreature => "target creature",
+        TargetSpec::AnyCreatureYouControl => "target creature you control",
+        TargetSpec::AnyCreatureAnOpponentControls => "target creature an opponent controls",
+        TargetSpec::AnyCreatureWithFlying => "target creature with flying",
+        TargetSpec::AnyTappedCreature => "target tapped creature",
+        TargetSpec::AnyArtifact => "target artifact",
+        TargetSpec::AnyEnchantment => "target enchantment",
+        TargetSpec::AnyArtifactOrEnchantment => "target artifact or enchantment",
+        TargetSpec::AnyLand => "target land",
         TargetSpec::SpellOnStack => "target spell",
+        TargetSpec::CreatureSpellOnStack => "target creature spell",
         // CR 115.4: "any target" is the phrase itself, not a class of object.
         TargetSpec::AnyTarget => "any target",
     }
@@ -326,9 +372,20 @@ fn target_noun(spec: TargetSpec) -> &'static str {
 fn object_noun(spec: TargetSpec) -> &'static str {
     match spec {
         TargetSpec::AnyPlayer => "player",
+        TargetSpec::AnyOpponent => "opponent",
         TargetSpec::AnyPermanent => "permanent",
+        TargetSpec::AnyNonlandPermanent => "nonland permanent",
         TargetSpec::AnyCreature => "creature",
+        TargetSpec::AnyCreatureYouControl => "creature you control",
+        TargetSpec::AnyCreatureAnOpponentControls => "creature an opponent controls",
+        TargetSpec::AnyCreatureWithFlying => "creature with flying",
+        TargetSpec::AnyTappedCreature => "tapped creature",
+        TargetSpec::AnyArtifact => "artifact",
+        TargetSpec::AnyEnchantment => "enchantment",
+        TargetSpec::AnyArtifactOrEnchantment => "artifact or enchantment",
+        TargetSpec::AnyLand => "land",
         TargetSpec::SpellOnStack => "spell",
+        TargetSpec::CreatureSpellOnStack => "creature spell",
         TargetSpec::AnyTarget => "any target",
     }
 }
@@ -343,6 +400,12 @@ fn conjugate(player_ref: PlayerRef, verb: &str) -> String {
     match player_ref {
         // Second person takes the bare verb.
         PlayerRef::Controller => format!("you {verb}"),
+        // Every third-person subject here is grammatically singular ("each opponent
+        // loses", not "lose"), and every verb this is called with is regular, so the
+        // agreement is one suffix rather than a table.
+        PlayerRef::EachOpponent => format!("each opponent {verb}s"),
+        PlayerRef::TargetPlayer => format!("target player {verb}s"),
+        PlayerRef::TargetOpponent => format!("target opponent {verb}s"),
     }
 }
 
@@ -353,6 +416,8 @@ fn keyword_word(keyword: Keyword) -> &'static str {
         Keyword::Reach => "reach",
         Keyword::Vigilance => "vigilance",
         Keyword::Haste => "haste",
+        Keyword::Defender => "defender",
+        Keyword::Menace => "menace",
         Keyword::FirstStrike => "first strike",
         Keyword::Trample => "trample",
         Keyword::Deathtouch => "deathtouch",

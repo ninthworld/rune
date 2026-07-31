@@ -8,9 +8,10 @@ use serde::Deserialize;
 /// This is the printed keyword representation the layer system seeds from; a
 /// permanent's *current* keywords are the printed [`super::CardData::keywords`] unioned
 /// with any granted by continuous effects at CR 613 layer 6 (see
-/// [`characteristics`](crate::characteristics::characteristics)). All nine variants are
+/// [`characteristics`](crate::characteristics::characteristics)). All eleven variants are
 /// enforced: [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
-/// [`Vigilance`](Keyword::Vigilance), and [`Haste`](Keyword::Haste) at
+/// [`Vigilance`](Keyword::Vigilance), [`Haste`](Keyword::Haste),
+/// [`Defender`](Keyword::Defender), and [`Menace`](Keyword::Menace) at
 /// combat-declaration time (keywords I), and
 /// [`FirstStrike`](Keyword::FirstStrike), [`Trample`](Keyword::Trample),
 /// [`Deathtouch`](Keyword::Deathtouch), [`Lifelink`](Keyword::Lifelink), and
@@ -27,6 +28,19 @@ pub enum Keyword {
     Vigilance,
     /// Haste (CR 702.10): ignores the summoning-sickness restriction on attacking.
     Haste,
+    /// Defender (CR 702.3): can't attack. A pure attack-declaration restriction —
+    /// it does not stop the creature blocking, being tapped for a cost, or dealing
+    /// combat damage, so it is enforced in exactly one place
+    /// ([`attacker_candidates`](crate::combat::attacker_candidates)).
+    Defender,
+    /// Menace (CR 702.110): can't be blocked except by two or more creatures.
+    ///
+    /// Unlike flying (CR 702.9c), this is a constraint on the *whole* block
+    /// declaration rather than on one blocker/attacker pair: a single legal blocker
+    /// is illegal precisely because it is alone. It is therefore checked over the
+    /// assembled selection in the declare-blockers legality gate, not by
+    /// [`blocker_can_block_attacker`](crate::combat::blocker_can_block_attacker).
+    Menace,
     /// First strike (CR 702.7): deals combat damage in a first combat-damage step.
     FirstStrike,
     /// Trample (CR 702.19): a blocked creature assigns excess combat damage to the
@@ -49,12 +63,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_nine_keyword_variants_deserialize_from_snake_case() {
+    fn all_eleven_keyword_variants_deserialize_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
-        // five combat-damage variants keywords II enforces (CR 702).
+        // five combat-damage variants keywords II enforces (CR 702) and the two
+        // declaration-time restrictions defender and menace.
         let json = r#"[{"schema_version":1,"functional_id":"every_keyword","name":"Every Keyword","types":["creature"],
             "mana_cost":"","power":1,"toughness":1,
-            "keywords":["flying","reach","vigilance","haste","first_strike",
+            "keywords":["flying","reach","vigilance","haste","defender","menace","first_strike",
                         "trample","deathtouch","lifelink","double_strike"]}]"#;
         let db = crate::card::CardDatabase::from_json(json).unwrap();
         let card = crate::card::tests::card_named(&db, "every_keyword");
@@ -63,6 +78,8 @@ mod tests {
             Keyword::Reach,
             Keyword::Vigilance,
             Keyword::Haste,
+            Keyword::Defender,
+            Keyword::Menace,
             Keyword::FirstStrike,
             Keyword::Trample,
             Keyword::Deathtouch,

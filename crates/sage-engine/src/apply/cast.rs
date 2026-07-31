@@ -1,5 +1,5 @@
 use super::*;
-use crate::ability::{is_mana_ability, Ability, Cost, Effect, PlayerRef, Target};
+use crate::ability::{is_mana_ability, Ability, Cost, Effect, MassAffects, PlayerRef, Target};
 use crate::card::{abilities_of, apply_enters_replacements};
 use crate::commander::commander_tax_cost;
 use crate::id::{CardInstance, PermanentId, PlayerId};
@@ -67,7 +67,30 @@ pub(crate) fn apply_activate_ability(
         return;
     };
 
-    // Pay the costs.
+    // Costs are paid **all or nothing** (CR 601.2h): the mana portion is settled
+    // against the pool first, and only once it has succeeded does anything else get
+    // charged. Tapping before discovering the mana could not be paid would leave the
+    // source tapped for an activation that never happened.
+    let mana_due: Vec<_> = cost
+        .iter()
+        .filter_map(|c| match c {
+            Cost::Mana { mana } => Some(parse_mana_cost(mana)),
+            Cost::Tap => None,
+        })
+        .collect();
+    if !mana_due.is_empty() {
+        let Some(player) = state.players.get_mut(controller.0) else {
+            return;
+        };
+        let mut pool = player.mana_pool.clone();
+        for due in &mana_due {
+            let Some(paid) = pool.pay(due) else {
+                return;
+            };
+            pool = paid;
+        }
+        player.mana_pool = pool;
+    }
     for c in cost {
         match c {
             Cost::Tap => {
@@ -75,13 +98,15 @@ pub(crate) fn apply_activate_ability(
                     p.tapped = true;
                 }
             }
+            // Already settled against the pool above.
+            Cost::Mana { .. } => {}
         }
     }
 
     if is_mana_ability(&ability) {
         // Mana ability: resolve now, no stack object, priority unchanged.
         for effect in effects {
-            apply_effect(state, effect, controller);
+            apply_effect(state, effect, controller, db);
         }
     } else {
         let id = state.mint_id();
@@ -184,7 +209,12 @@ pub(crate) fn apply_cast_spell(
 }
 
 /// Apply a single [`Effect`] to `state` on behalf of `controller`.
-pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: PlayerId) {
+pub(crate) fn apply_effect(
+    state: &mut GameState,
+    effect: &Effect,
+    controller: PlayerId,
+    db: &CardDatabase,
+) {
     if state.players.get(controller.0).is_none() {
         return;
     }
@@ -220,21 +250,60 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
                 });
             }
         }
-        // CR 119.3: the referenced player gains life. `Controller` is "you", the
-        // one player fetched above; other refs are added as effects need them.
-        Effect::GainLife {
-            player_ref: PlayerRef::Controller,
-            amount,
-        } => {
-            state.change_life(controller, i32::try_from(*amount).unwrap_or(i32::MAX));
+        // CR 119.3: the referenced player gains life. A non-targeting reference names
+        // its seats outright ([`subjects_of`]); a targeting one is routed through
+        // [`apply_targeted_effect`] instead and is a no-op here.
+        Effect::GainLife { player_ref, amount } => {
+            let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
+            for seat in subjects_of(state, *player_ref, controller) {
+                state.change_life(seat, delta);
+            }
         }
         // CR 119.3: the referenced player loses life; a drop to 0 or less feeds
         // the zero-life state-based action (CR 704.5a) in the SBA loop.
-        Effect::LoseLife {
-            player_ref: PlayerRef::Controller,
-            amount,
+        Effect::LoseLife { player_ref, amount } => {
+            let delta = i32::try_from(*amount).unwrap_or(i32::MAX);
+            for seat in subjects_of(state, *player_ref, controller) {
+                state.change_life(seat, -delta);
+            }
+        }
+        // CR 701.13: the referenced player puts the top `count` cards of their
+        // library into their graveyard. Not a draw — an empty library simply moves
+        // fewer cards and never trips the CR 704.5c decking loss.
+        Effect::Mill { player_ref, count } => {
+            for seat in subjects_of(state, *player_ref, controller) {
+                state.mill(seat, u32::from(*count));
+            }
+        }
+        // A mass, non-targeting until-end-of-turn modification (CR 611.2c): the
+        // affected class is enumerated **once, here**, and one modifier is keyed to
+        // each permanent found. Freezing the set is the point — an anthem is
+        // re-evaluated every read, a one-shot pump is not, so a creature that arrives
+        // later this turn must not pick the bonus up.
+        Effect::PumpAll {
+            affects,
+            power,
+            toughness,
         } => {
-            state.change_life(controller, -i32::try_from(*amount).unwrap_or(i32::MAX));
+            apply_mass_modification(
+                state,
+                *affects,
+                controller,
+                Modification::PowerToughness {
+                    power: *power,
+                    toughness: *toughness,
+                },
+                db,
+            );
+        }
+        Effect::GrantKeywordAll { affects, keyword } => {
+            apply_mass_modification(
+                state,
+                *affects,
+                controller,
+                Modification::GrantKeyword(*keyword),
+                db,
+            );
         }
         // A targeting effect: its subject is a chosen target, not the controller,
         // so it is applied via [`apply_targeted_effect`] and is a no-op here.
@@ -243,9 +312,74 @@ pub(crate) fn apply_effect(state: &mut GameState, effect: &Effect, controller: P
         | Effect::DealDamage { .. }
         | Effect::Destroy { .. }
         | Effect::Exile { .. }
+        | Effect::ReturnToHand { .. }
         | Effect::PutCounters { .. }
         | Effect::Pump { .. }
         | Effect::GrantKeyword { .. } => {}
+    }
+}
+
+/// Add `modification` to every permanent in `affects` until end of turn, on behalf of
+/// `controller` (CR 611.2c).
+///
+/// One [`StaticEffect`] is pushed **per affected permanent**, each keyed to that one
+/// [`crate::PermanentId`], rather than one class-scoped effect: a class selector is
+/// re-evaluated on every read, which is right for an anthem and wrong for a one-shot.
+/// Keying to the permanents present now is what locks the set in, and it reuses the
+/// exact pruning and cleanup the single-target pump already has, so nothing about
+/// duration or timestamp ordering is special-cased for the mass case.
+fn apply_mass_modification(
+    state: &mut GameState,
+    affects: MassAffects,
+    controller: PlayerId,
+    modification: Modification,
+    db: &CardDatabase,
+) {
+    let affected: Vec<crate::id::PermanentId> = match affects {
+        MassAffects::CreaturesYouControl => state
+            .battlefield
+            .iter()
+            .filter(|p| {
+                p.controller == controller
+                    && db
+                        .card(p.card)
+                        .is_some_and(|c| c.has_type(crate::card_type::CardType::Creature))
+            })
+            .map(|p| p.id)
+            .collect(),
+    };
+    for id in affected {
+        let source = state.mint_id();
+        state.static_effects.push(StaticEffect {
+            source,
+            affects: EffectAffects::SpecificPermanent(id),
+            modification,
+            duration: Duration::UntilEndOfTurn,
+        });
+    }
+}
+
+/// The seats a **non-targeting** [`PlayerRef`] names, in seat order, for an object
+/// controlled by `controller` (CR 115.1 — no target is chosen, so this list is
+/// derived fresh at resolution and never fizzles).
+///
+/// Empty for a targeting reference: those carry a chosen [`Target`] instead and are
+/// applied through [`apply_targeted_effect`], so returning nothing here is what keeps
+/// a targeted drain from *also* silently hitting everyone.
+fn subjects_of(state: &GameState, player_ref: PlayerRef, controller: PlayerId) -> Vec<PlayerId> {
+    match player_ref {
+        PlayerRef::Controller => vec![controller],
+        // Every opponent still in the game (CR 102.1) — in a game of three or more
+        // this really is all of them, which is the whole reason it is not spelled
+        // "the opponent".
+        PlayerRef::EachOpponent => state
+            .players
+            .iter()
+            .enumerate()
+            .filter(|(seat, player)| PlayerId(*seat) != controller && !player.has_lost)
+            .map(|(seat, _)| PlayerId(seat))
+            .collect(),
+        PlayerRef::TargetPlayer | PlayerRef::TargetOpponent => Vec::new(),
     }
 }
 
@@ -386,12 +520,41 @@ pub(crate) fn apply_targeted_effect(
                 }
             }
         }
-        // Implicit-subject effects do not target; they never reach here.
+        // Return the targeted permanent to its owner's hand (CR 400.7): the bounce
+        // verb, moving it through the one battlefield→hand seam
+        // ([`GameState::return_permanent_to_hand`]) — the hand counterpart of the
+        // graveyard path `Destroy` uses and the exile path `Exile` uses. It is not a
+        // death, so no dies trigger fires and nothing is logged as one.
+        Effect::ReturnToHand { .. } => {
+            if let Target::Permanent(id) = target {
+                state.return_permanent_to_hand(id);
+            }
+        }
+        // A **targeted** player reference (CR 115.1): the chosen player is the
+        // subject, in place of the seats `subjects_of` would have named. The
+        // non-targeting refs never reach here — they are applied in `apply_effect`.
+        Effect::GainLife { amount, .. } => {
+            if let Target::Player(seat) = target {
+                state.change_life(seat, i32::try_from(*amount).unwrap_or(i32::MAX));
+            }
+        }
+        Effect::LoseLife { amount, .. } => {
+            if let Target::Player(seat) = target {
+                state.change_life(seat, -i32::try_from(*amount).unwrap_or(i32::MAX));
+            }
+        }
+        Effect::Mill { count, .. } => {
+            if let Target::Player(seat) = target {
+                state.mill(seat, u32::from(*count));
+            }
+        }
+        // Implicit-subject and class-scoped effects do not target; they never reach
+        // here, and are applied by [`apply_effect`].
         Effect::AddMana { .. }
         | Effect::AddColorlessMana { .. }
         | Effect::DrawCard { .. }
-        | Effect::GainLife { .. }
-        | Effect::LoseLife { .. } => {}
+        | Effect::PumpAll { .. }
+        | Effect::GrantKeywordAll { .. } => {}
     }
 }
 

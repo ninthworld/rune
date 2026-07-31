@@ -1,3 +1,4 @@
+use crate::card::Keyword;
 use crate::id::{PermanentId, PlayerId};
 use crate::state::GameState;
 use crate::CardDatabase;
@@ -48,7 +49,8 @@ pub fn defending_player(state: &GameState) -> Option<PlayerId> {
 /// This is the multi-select candidate set for the declare-attackers action — one
 /// O(N) scan of the battlefield, never a product over selections. Haste (CR
 /// 702.10b) exempts a creature from the summoning-sickness restriction; defender
-/// and "can't attack" restrictions are not modeled yet.
+/// (CR 702.3b) removes a creature from the set outright. Other "can't attack"
+/// restrictions are not modeled yet.
 #[must_use]
 pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> {
     let active = state.active_player;
@@ -62,6 +64,11 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
                 // CR 302.6, with the CR 702.10b haste exemption: a hasty creature
                 // ignores the summoning-sickness attack restriction.
                 && !summoning_sickness_restricts(state, perm, db)
+                // CR 702.3b: a creature with defender can't attack. Read through the
+                // computed keywords (CR 613.1f), so a *granted* defender restricts
+                // exactly as a printed one does — and stops doing so the instant the
+                // grant ends.
+                && !super::helpers::has_keyword(state, perm, Keyword::Defender, db)
         })
         .map(|perm| perm.id)
         .collect()

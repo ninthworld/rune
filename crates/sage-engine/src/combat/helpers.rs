@@ -121,6 +121,17 @@ pub(crate) fn blocker_can_block_attacker(
     has_keyword(state, blk, Keyword::Flying, db) || has_keyword(state, blk, Keyword::Reach, db)
 }
 
+/// Whether the permanent `id` currently has **menace** (CR 702.110) — the
+/// per-attacker half of the block-declaration restriction, looked up by id so the
+/// legality gate can ask about an attacker it holds only an id for.
+///
+/// Read through the computed keywords (CR 613.1f), so a granted menace restricts
+/// exactly as a printed one does. `false` for an id no longer on the battlefield.
+#[must_use]
+pub(crate) fn permanent_has_menace(state: &GameState, id: PermanentId, db: &CardDatabase) -> bool {
+    crate::characteristics::permanent_has_keyword(state, id, Keyword::Menace, db)
+}
+
 /// Whether `perm` deals its combat damage in `step` (CR 510.5). In an ordinary
 /// combat ([`crate::combat::DamageStep::Only`]) every creature deals; when a
 /// first-strike step is present, a first-striker deals only in

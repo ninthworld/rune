@@ -251,6 +251,8 @@ function describe(event: GameLogEvent, playerName: (id: string) => string): stri
         : `${event.target.permanent.name} takes ${event.amount} damage`
     case 'cards_drawn':
       return `${playerName(event.player)} draws ${event.count}`
+    case 'cards_milled':
+      return `${playerName(event.player)} mills ${event.count}`
     case 'permanent_died':
       return `${event.permanent.name} dies`
     case 'step_changed':

@@ -162,6 +162,19 @@ impl StaticModification {
 pub enum Cost {
     /// Tap the source permanent (`{T}`). Payable only while it is untapped.
     Tap,
+    /// Pay mana (CR 118): the activation cost written in the same curly-brace
+    /// notation [`crate::CardData::mana_cost`] uses, e.g. `{"kind":"mana","mana":"{1}{R}"}`.
+    ///
+    /// Paid from the activating player's mana pool through the one
+    /// [`ManaPool::pay`](crate::ManaPool::pay) seam a spell's cost uses, so an
+    /// activation and a cast can never disagree about what a cost string means. The
+    /// cost is parsed on demand rather than stored pre-parsed: the authored card data
+    /// stays a string, exactly as a card is written.
+    Mana {
+        /// The mana cost in curly-brace notation. Named `mana` on the wire because
+        /// the enum already reserves the `kind` tag for its own discriminant.
+        mana: String,
+    },
 }
 
 /// A single effect an ability (or spell) produces.
@@ -337,20 +350,125 @@ pub enum Effect {
         /// The keyword ability granted until end of turn.
         keyword: Keyword,
     },
+    /// Return the single permanent this effect targets to its owner's **hand**
+    /// (CR 400.7 — the bounce verb, e.g. `Return target creature to its owner's
+    /// hand.`). It leaves the battlefield through the one battlefield→hand seam
+    /// ([`crate::GameState::return_permanent_to_hand`]), the hand counterpart of
+    /// [`Effect::Destroy`]'s graveyard path and [`Effect::Exile`]'s exile path.
+    ///
+    /// Like [`Effect::Tap`] the subject is an explicit target, chosen at cast
+    /// (CR 601.2c) and re-checked on resolution (CR 608.2b). The permanent's
+    /// [`crate::PermanentId`] is dropped and a later recast is a brand-new object, so
+    /// this is *not* a death and fires no dies trigger (CR 603.6c).
+    ReturnToHand {
+        /// What this effect is allowed to target (typically a creature).
+        target: TargetSpec,
+    },
+    /// Give **every permanent in a named class** `+power`/`+toughness` until end of
+    /// turn — the mass counterpart of [`Effect::Pump`] (e.g. `Creatures you control
+    /// get +2/+1 until end of turn.`). Chooses no target: a class is not a target
+    /// (CR 115.1), so this never fizzles.
+    ///
+    /// The affected set is **locked in on resolution** (CR 611.2c): the class is
+    /// enumerated once and one modifier is keyed to each permanent found, so a
+    /// creature that arrives later in the turn is untouched — which is the whole
+    /// difference between a one-shot pump and an anthem.
+    PumpAll {
+        /// The class of permanents modified.
+        affects: MassAffects,
+        /// The signed amount added to each affected permanent's power.
+        power: i32,
+        /// The signed amount added to each affected permanent's toughness.
+        toughness: i32,
+    },
+    /// Grant **every permanent in a named class** a keyword ability until end of turn
+    /// — the mass counterpart of [`Effect::GrantKeyword`] (e.g. `Creatures you
+    /// control gain trample until end of turn.`). Chooses no target, and locks its
+    /// affected set in on resolution exactly as [`Effect::PumpAll`] does.
+    GrantKeywordAll {
+        /// The class of permanents granted the keyword.
+        affects: MassAffects,
+        /// The keyword ability granted until end of turn.
+        keyword: Keyword,
+    },
+    /// The referenced player puts the top `count` cards of their library into their
+    /// graveyard (CR 701.13, "mill"). Milling an empty library simply moves fewer
+    /// cards — it is not a draw, so it never triggers the CR 704.5c decking loss.
+    ///
+    /// The subject is a [`PlayerRef`], which decides on its own whether a target is
+    /// chosen ([`PlayerRef::target_spec`]): `each_opponent` mills every opponent and
+    /// fizzles never, while `target_player` occupies a target slot.
+    Mill {
+        /// Which player mills.
+        player_ref: PlayerRef,
+        /// How many cards are put into that player's graveyard.
+        count: u8,
+    },
 }
 
-/// A **non-targeted player reference**: which player an implicit-subject effect
-/// (e.g. [`Effect::GainLife`]) acts on, without that player being a *target*
-/// (CR 115.1 — no target is chosen, so these effects never fizzle).
+/// **Which player** a player-subject effect (e.g. [`Effect::GainLife`]) acts on.
 ///
 /// A closed, plain-data enum deserialized from a bare `snake_case` tag, e.g.
-/// `{"kind": "gain_life", "player_ref": "controller", "amount": 3}`. It grows by
-/// adding variants (each opponent, target's controller, …) as effects need them.
+/// `{"kind": "gain_life", "player_ref": "controller", "amount": 3}`.
+///
+/// The reference itself declares whether a *target* is chosen (CR 115.1). That is
+/// what [`Self::target_spec`] answers, and it is the whole difference between "each
+/// opponent loses 2 life" — which chooses nothing and can never fizzle — and "target
+/// opponent loses 2 life", which occupies a target slot at announcement (CR 601.2c)
+/// and is re-checked on resolution (CR 608.2b). Keeping that fact on the *reference*
+/// rather than on each effect means a new life-, mill-, or draw-style effect gets both
+/// shapes for free and cannot get the fizzle rule wrong for one of them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlayerRef {
     /// The controller of the spell or ability producing the effect ("you").
+    /// Chooses no target.
     Controller,
+    /// Every opponent of the controller still in the game — the "each opponent" of a
+    /// symmetric drain (CR 102.1). Chooses no target, so it never fizzles and, in a
+    /// game of three or more, really does hit every opponent rather than one.
+    EachOpponent,
+    /// One **targeted** player (CR 115.1), any seat still in the game: "target player".
+    TargetPlayer,
+    /// One **targeted** opponent of the controller: "target opponent". Distinct from
+    /// [`Self::TargetPlayer`] because the legal set excludes the controller
+    /// themselves, which for a life-loss effect is the difference between a drain and
+    /// a way to lose the game.
+    TargetOpponent,
+}
+
+impl PlayerRef {
+    /// The [`TargetSpec`] this reference chooses a target for, or `None` when it
+    /// names its player without targeting (CR 115.1).
+    ///
+    /// Exhaustive, so a new variant must declare which side of the targeting line it
+    /// falls on; [`Effect::target_spec`] defers to this for every player-subject
+    /// effect, and the resolve path pairs the stored [`Target`] with the effect from
+    /// the same answer.
+    #[must_use]
+    pub fn target_spec(self) -> Option<TargetSpec> {
+        match self {
+            PlayerRef::Controller | PlayerRef::EachOpponent => None,
+            PlayerRef::TargetPlayer => Some(TargetSpec::AnyPlayer),
+            PlayerRef::TargetOpponent => Some(TargetSpec::AnyOpponent),
+        }
+    }
+}
+
+/// The class of permanents a **mass, non-targeting** effect ([`Effect::PumpAll`],
+/// [`Effect::GrantKeywordAll`]) applies to.
+///
+/// Deliberately separate from [`StaticAffects`], which selects for a *continuous*
+/// ability and carries an `except_this` that a one-shot spell has no "this" for. A
+/// closed enum deserialized from a bare `snake_case` tag, e.g.
+/// `{"kind":"pump_all","affects":"creatures_you_control","power":2,"toughness":1}`.
+/// It grows by adding variants (attacking creatures, creatures your opponents
+/// control, …) as cards need them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MassAffects {
+    /// Every creature the effect's controller controls at the moment it resolves.
+    CreaturesYouControl,
 }
 
 impl Effect {
@@ -372,12 +490,20 @@ impl Effect {
             | Effect::Exile { target }
             | Effect::PutCounters { target, .. }
             | Effect::Pump { target, .. }
-            | Effect::GrantKeyword { target, .. } => Some(*target),
+            | Effect::GrantKeyword { target, .. }
+            | Effect::ReturnToHand { target } => Some(*target),
+            // A player-subject effect targets exactly when its reference does
+            // (CR 115.1) — "target opponent loses 2 life" fills a slot, "each
+            // opponent loses 2 life" fills none. One answer, from the reference.
+            Effect::GainLife { player_ref, .. }
+            | Effect::LoseLife { player_ref, .. }
+            | Effect::Mill { player_ref, .. } => player_ref.target_spec(),
             Effect::AddMana { .. }
             | Effect::AddColorlessMana { .. }
             | Effect::DrawCard { .. }
-            | Effect::GainLife { .. }
-            | Effect::LoseLife { .. } => None,
+            // A class of permanents is not a target (CR 115.1).
+            | Effect::PumpAll { .. }
+            | Effect::GrantKeywordAll { .. } => None,
         }
     }
 }
@@ -396,19 +522,53 @@ impl Effect {
 /// adding variants (any permanent of a type, an object in a named zone, …).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
+/// Every spec is evaluated **relative to the object's controller**, which is why
+/// the legality predicate takes one: `any_creature_you_control` and
+/// `any_creature_an_opponent_controls` name different sets for different players,
+/// and the same authored card must mean "you" from either seat.
 pub enum TargetSpec {
     /// Any player in the game.
     AnyPlayer,
+    /// Any **opponent** of the object's controller still in the game — "target
+    /// opponent". The controller themselves is never a candidate.
+    AnyOpponent,
     /// Any permanent on the battlefield.
     AnyPermanent,
+    /// Any permanent that is not a land — "target nonland permanent".
+    AnyNonlandPermanent,
     /// Any creature on the battlefield (a permanent whose printed types include
     /// [`crate::CardType::Creature`]).
     AnyCreature,
+    /// Any creature the object's controller controls — "target creature you control".
+    AnyCreatureYouControl,
+    /// Any creature controlled by an opponent of the object's controller — "target
+    /// creature an opponent controls".
+    AnyCreatureAnOpponentControls,
+    /// Any creature that currently has flying (CR 613.1f, so a granted flying counts
+    /// exactly as a printed one) — the "target creature with flying" of an anti-air
+    /// removal spell.
+    AnyCreatureWithFlying,
+    /// Any creature that is currently tapped — "target tapped creature".
+    AnyTappedCreature,
+    /// Any artifact on the battlefield.
+    AnyArtifact,
+    /// Any enchantment on the battlefield.
+    AnyEnchantment,
+    /// Any artifact **or** enchantment — the single slot of a naturalize-style
+    /// spell, which is one target of either type rather than two slots.
+    AnyArtifactOrEnchantment,
+    /// Any land on the battlefield.
+    AnyLand,
     /// Any spell on the stack — a [`crate::StackObjectKind::Spell`] object (CR
     /// 701.5, "counter target spell"). Abilities on the stack are not spells and
     /// are never candidates; a mana ability never uses the stack at all (CR
     /// 605.3), so it can never be countered.
     SpellOnStack,
+    /// Any **creature** spell on the stack — the narrower counterspell of
+    /// `Essence Scatter`. A creature spell is a spell whose card's printed types
+    /// include creature; the check is on the card on the stack, not on any
+    /// permanent, because it has not entered the battlefield yet.
+    CreatureSpellOnStack,
     /// Any target (CR 115.4): the modern "any target" of a burn spell — any
     /// creature on the battlefield or any player still in the game. Planeswalkers
     /// and battles are not modeled, so the legal set is exactly creatures plus
@@ -461,6 +621,12 @@ pub enum TriggerCondition {
     /// through the one leaves-battlefield seam
     /// ([`crate::GameState::move_permanent_to_graveyard`]).
     SelfDies,
+    /// The source permanent was **declared as an attacker** this transition (CR
+    /// 508.1, the "attacks" event of CR 603.6d). Observed by diff like every other
+    /// condition here — its [`crate::state::Permanent::attacking`] is set after and
+    /// was not before — so it fires once per declaration, from the one place
+    /// attackers are declared, and never from a creature that merely became tapped.
+    SelfAttacks,
 }
 
 /// Whether an ability is a mana ability (CR 605.1a, simplified): an activated

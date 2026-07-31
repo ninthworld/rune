@@ -35,8 +35,9 @@ pub struct Trigger {
 /// ("dies") conditions are checked against the permanents that were in `before`
 /// but are gone from `after` — a dead permanent is no longer on the battlefield,
 /// so its ability must be read from the *before* snapshot (last-known information,
-/// CR 603.10a in spirit). A permanent that persists across the transition is only
-/// visited in the first pass and matches neither condition.
+/// CR 603.10a in spirit). A permanent that persists across the transition is visited
+/// only in the first pass, where it can still match a condition about something that
+/// happened *to it in place* — being declared as an attacker (CR 603.6d).
 ///
 /// **Ordering (simultaneous triggers).** Triggers are appended in the order their
 /// sources are iterated: `after.battlefield` order for enters, then
@@ -110,6 +111,22 @@ fn condition_met(
             let left = before.battlefield.iter().any(|p| p.id == perm.id)
                 && !after.battlefield.iter().any(|p| p.id == perm.id);
             left && in_graveyard(after, perm.instance) && !in_graveyard(before, perm.instance)
+        }
+        // CR 508.1 / 603.6d: the permanent was declared as an attacker this
+        // transition. Observed by diff on the one field the declaration writes —
+        // `attacking` is set after and was not before — so it fires once, from the
+        // declare-attackers action, and never from a creature that was merely tapped
+        // or that is still attacking from an earlier check.
+        TriggerCondition::SelfAttacks => {
+            let attacking_now = after
+                .battlefield
+                .iter()
+                .any(|p| p.id == perm.id && p.attacking.is_some());
+            let attacking_before = before
+                .battlefield
+                .iter()
+                .any(|p| p.id == perm.id && p.attacking.is_some());
+            attacking_now && !attacking_before
         }
     }
 }
