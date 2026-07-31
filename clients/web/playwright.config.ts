@@ -19,9 +19,15 @@ import { join } from 'node:path'
 
 import { defineConfig, devices } from '@playwright/test'
 
+// One host for the preview server, the page URL, and (via the page's own origin) the socket
+// address the client derives. They must not drift: `vite preview` binds `localhost` by
+// default, which in a container resolves to `::1` only, so a page navigating to the IPv4
+// literal gets ECONNREFUSED against a server that is genuinely up. Binding explicitly to the
+// same literal the tests navigate to removes the ambiguity in both directions.
+const HOST = '127.0.0.1'
 const PREVIEW_PORT = 4173
 const SERVER_PORT = 9000
-export const BASE_URL = `http://127.0.0.1:${PREVIEW_PORT}`
+export const BASE_URL = `http://${HOST}:${PREVIEW_PORT}`
 
 /**
  * The browser to drive, resolved from what the image already has.
@@ -72,7 +78,7 @@ export default defineConfig({
   webServer: [
     {
       // The production bundle, served statically — the same artifact CI ships.
-      command: `npm run preview -- --port ${PREVIEW_PORT} --strictPort`,
+      command: `npm run preview -- --host ${HOST} --port ${PREVIEW_PORT} --strictPort`,
       port: PREVIEW_PORT,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
