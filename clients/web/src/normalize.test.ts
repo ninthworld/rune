@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { isConnected, list, playerLabel, powerToughness, seatSummary } from './normalize'
+import { cardStats, isConnected, list, playerLabel, powerToughness, seatSummary } from './normalize'
 import { GameView } from './protocol'
 
 const FIXTURES = join(
@@ -51,6 +51,11 @@ describe('displayed characteristics', () => {
     expect(powerToughness({})).toBeUndefined()
     // A land has neither; a half-present pair is not a creature to display.
     expect(powerToughness({ power: '2' })).toBeUndefined()
+    // A planeswalker has no P/T, so the stat line falls back to its loyalty; a
+    // creature keeps its P/T and never shows a loyalty it has not got.
+    expect(cardStats({ loyalty: '4' })).toBe('loyalty 4')
+    expect(cardStats({ power: '2', toughness: '2' })).toBe('2/2')
+    expect(cardStats({})).toBeUndefined()
   })
 
   it('summarizes a seat without inventing anything', () => {

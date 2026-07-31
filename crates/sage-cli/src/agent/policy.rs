@@ -303,6 +303,7 @@ mod tests {
             token: false,
             power: None,
             toughness: None,
+            loyalty: None,
             keywords: vec![],
         }
     }
@@ -323,11 +324,13 @@ mod tests {
                 token: false,
                 power: Some(power.to_string()),
                 toughness: Some(toughness.to_string()),
+                loyalty: None,
                 keywords: vec![],
             },
             tapped: false,
             attacking: false,
             attacking_player: None,
+            attacking_planeswalker: None,
             blocking: None,
             damage: 0,
             attached_to: None,

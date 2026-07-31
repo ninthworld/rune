@@ -177,6 +177,7 @@ mod tests {
                     token: false,
                     power: None,
                     toughness: None,
+                    loyalty: None,
                     keywords: vec![],
                 }),
             }],

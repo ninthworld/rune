@@ -413,7 +413,7 @@ fn entering_combat_damage_is_logged_before_the_damage_and_death() {
     // An unblocked 4/2 attacker owned by player 0.
     let attacker = place(&mut state, &db, "onakke_ogre", 0);
     if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == attacker) {
-        perm.attacking = Some(PlayerId(1));
+        perm.attacking = Some(sage_engine::AttackTarget::Player(PlayerId(1)));
         perm.tapped = true;
     }
 

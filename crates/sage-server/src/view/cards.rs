@@ -107,6 +107,7 @@ fn unknown_card_view(entity_id: String, card: Option<CardId>) -> CardView {
         token: card.is_none(),
         power: None,
         toughness: None,
+        loyalty: None,
         keywords: Vec::new(),
     }
 }
@@ -155,6 +156,10 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
         token: false,
         power: data.power.map(|p| p.to_string()),
         toughness: data.toughness.map(|t| t.to_string()),
+        // CR 306.5b: the printed starting loyalty of a planeswalker, `None` for
+        // everything else. What a planeswalker on the battlefield has *now* is its
+        // `loyalty` counter, projected by `permanent_counters`.
+        loyalty: data.loyalty.map(|l| l.to_string()),
         keywords: data
             .keywords
             .iter()
@@ -188,6 +193,8 @@ fn face_card_view(entity_id: String, face: PrintedFace<'_>) -> CardView {
             token: true,
             power: token.power.map(|p| p.to_string()),
             toughness: token.toughness.map(|t| t.to_string()),
+            // The effect IR creates no planeswalker token, so a token never has one.
+            loyalty: None,
             keywords: token
                 .keywords
                 .iter()
@@ -492,7 +499,7 @@ mod tests {
             controller: PlayerId(0),
             tapped: true,
             entered_turn: 0,
-            attacking: Some(PlayerId(1)),
+            attacking: Some(AttackTarget::Player(PlayerId(1))),
             blocking: None,
             damage: 0,
             counters: std::collections::BTreeMap::new(),

@@ -283,11 +283,13 @@ pub enum GameEvent {
 
 /// A kind of counter that can sit on a [`Permanent`].
 ///
-/// Only the power/toughness counters the layer system folds into computed
-/// characteristics today are modeled (ADR 0005 slice 2, CR 613.7c). Other kinds
-/// (loyalty, charge, …) are deferred until an effect needs them, at which point
-/// a variant is added here. Used as a [`BTreeMap`] key in
-/// [`Permanent::counters`], so ordering is derived and replay-stable.
+/// Two power/toughness counters the layer system folds into computed characteristics
+/// (ADR 0005 slice 2, CR 613.7c), plus **loyalty** (CR 306.5b), which folds into
+/// nothing: it is read as a quantity in its own right, by the loyalty-ability cost, by
+/// damage (CR 120.3c), and by the CR 704.5i state-based action. Other kinds (charge,
+/// …) are deferred until an effect needs them, at which point a variant is added here.
+/// Used as a [`BTreeMap`] key in [`Permanent::counters`], so ordering is derived and
+/// replay-stable.
 ///
 /// Deserialized from a bare `snake_case` tag so the effect IR can name a counter
 /// kind as card data (e.g. `{"kind": "put_counters", "counter": "plus_one_plus_one"}`).
@@ -298,6 +300,16 @@ pub enum CounterKind {
     PlusOnePlusOne,
     /// A `-1/-1` counter: subtracts 1 from power and 1 from toughness.
     MinusOneMinusOne,
+    /// A **loyalty** counter (CR 306.5b): the resource a planeswalker enters with
+    /// (equal to its printed loyalty), spends and gains through its loyalty abilities
+    /// (CR 606.1), loses to damage (CR 120.3c), and dies at zero of (CR 704.5i).
+    ///
+    /// Deliberately the *same* mechanism as the P/T counters rather than a field on
+    /// [`Permanent`]: every rule that touches loyalty is a rule about counters, so a
+    /// dedicated field would need each of them restated. It folds into no
+    /// characteristic — a planeswalker has no power or toughness — which is why the
+    /// layer-7c delta ignores it.
+    Loyalty,
 }
 
 /// A permanent on the shared battlefield.
@@ -351,17 +363,19 @@ pub struct Permanent {
     /// Not a zone-change counter: a permanent re-entering the battlefield gets a
     /// fresh [`PermanentId`] and a fresh `entered_turn`; nothing counts entries.
     pub entered_turn: u32,
-    /// Whom this permanent is attacking, i.e. the defending player it was declared
-    /// to attack this combat (CR 508.1a — each attacker attacks a chosen defending
-    /// player), or `None` if it is not attacking. Raw stored state, set when
-    /// attackers are declared and cleared at the end-of-combat step (CR 511.3).
+    /// **What** this permanent is attacking — the player or planeswalker it was
+    /// declared to attack this combat (CR 508.1a), or `None` if it is not attacking.
+    /// Raw stored state, set when attackers are declared and cleared at the
+    /// end-of-combat step (CR 511.3).
     ///
-    /// This is the one field that carries combat's multiplayer generalization: a
-    /// two-player game's sole legal defender is the one opponent, but with more
-    /// seats each attacker records *which* opponent it attacks, and blocker
-    /// eligibility and combat damage follow that assignment (issue #341). `None`
-    /// for a permanent not in combat.
-    pub attacking: Option<PlayerId>,
+    /// This is the one field that carries combat's two generalizations. A two-player
+    /// game's sole legal defender is the one opponent, but with more seats each
+    /// attacker records *which* opponent it attacks (issue #341); and since issue #608
+    /// it may record a **planeswalker** instead, whose controller is then the defending
+    /// player for blocking purposes ([`AttackTarget::defending_player`]). Blocker
+    /// eligibility and combat damage both follow this assignment. `None` for a
+    /// permanent not in combat.
+    pub attacking: Option<crate::combat::AttackTarget>,
     /// The attacker this permanent is blocking, if it was declared as a blocker
     /// this combat (CR 509.1); `None` for a permanent that is not blocking.
     ///

@@ -202,7 +202,7 @@ pub(crate) fn atk1(ids: &[PermanentId]) -> Vec<Attack> {
     ids.iter()
         .map(|&attacker| Attack {
             attacker,
-            defender: PlayerId(1),
+            defender: crate::combat::AttackTarget::Player(PlayerId(1)),
         })
         .collect()
 }
@@ -390,7 +390,7 @@ pub(crate) fn split_combat_at_declare_blockers() -> (
             .iter_mut()
             .find(|p| p.id == id)
             .unwrap()
-            .attacking = Some(defender);
+            .attacking = Some(crate::combat::AttackTarget::Player(defender));
     }
     let blk1 = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
     let blk2 = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(2), false, 0);
@@ -436,7 +436,7 @@ pub(crate) fn place_commander_permanent(
         controller,
         tapped: false,
         entered_turn: 0,
-        attacking: Some(defender),
+        attacking: Some(crate::combat::AttackTarget::Player(defender)),
         blocking: None,
         damage: 0,
         counters: Default::default(),

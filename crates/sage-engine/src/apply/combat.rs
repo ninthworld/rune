@@ -29,15 +29,21 @@ pub(crate) fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
         apply_combat_batch(
             state,
             combat_damage(state, db, DamageStep::FirstStrike, &blocked),
+            db,
         );
         // CR 510.5: SBAs are checked between the two combat-damage steps.
         run_state_based_actions(state, db);
         apply_combat_batch(
             state,
             combat_damage(state, db, DamageStep::Regular, &blocked),
+            db,
         );
     } else {
-        apply_combat_batch(state, combat_damage(state, db, DamageStep::Only, &blocked));
+        apply_combat_batch(
+            state,
+            combat_damage(state, db, DamageStep::Only, &blocked),
+            db,
+        );
     }
 }
 
@@ -45,7 +51,11 @@ pub(crate) fn deal_combat_damage(state: &mut GameState, db: &CardDatabase) {
 /// changes and marked damage land together; a deathtouch mark records the
 /// recipient for the CR 704.5h state-based action, and lifelink life gain rides
 /// the same batch as the damage (CR 702.15e).
-pub(crate) fn apply_combat_batch(state: &mut GameState, batch: Vec<CombatDamage>) {
+pub(crate) fn apply_combat_batch(
+    state: &mut GameState,
+    batch: Vec<CombatDamage>,
+    db: &CardDatabase,
+) {
     for assignment in batch {
         match assignment {
             CombatDamage::ToPlayer {
@@ -70,8 +80,10 @@ pub(crate) fn apply_combat_batch(state: &mut GameState, batch: Vec<CombatDamage>
                 amount,
                 deathtouch,
             } => {
-                // Marks the damage and records the `DamageDealt` event in one seam.
-                let marked = state.mark_damage_on_permanent(permanent, amount);
+                // The one damage-to-a-permanent seam: it marks the damage on a
+                // creature and removes loyalty from a planeswalker (CR 120.3c/d),
+                // recording the `DamageDealt` event either way.
+                let marked = state.deal_damage_to_permanent(permanent, amount, db);
                 // CR 702.2b / 704.5h: any nonzero damage from a deathtouch source
                 // makes the recipient a candidate for destruction.
                 if marked
@@ -617,7 +629,7 @@ mod tests {
             .iter_mut()
             .find(|p| p.id == opp_attacker)
         {
-            p.attacking = Some(PlayerId(1));
+            p.attacking = Some(crate::combat::AttackTarget::Player(PlayerId(1)));
         }
         assert!(
             blocker_candidates(&defense, &db).contains(&vigilant),
@@ -1661,7 +1673,7 @@ mod tests {
             }],
             "the first-strike step spends all lethal on the first-ordered survivor"
         );
-        apply_combat_batch(&mut walk, first);
+        apply_combat_batch(&mut walk, first, &db);
         run_state_based_actions(&mut walk, &db); // CR 510.5: SBAs between the two steps
         assert!(!alive(&walk, o2), "o2 died in the first-strike step");
 
@@ -1690,7 +1702,7 @@ mod tests {
             )),
             "o1, last in the order, receives no attacker damage"
         );
-        apply_combat_batch(&mut walk, regular);
+        apply_combat_batch(&mut walk, regular, &db);
         run_state_based_actions(&mut walk, &db);
 
         assert!(
@@ -1804,7 +1816,7 @@ mod tests {
             ],
             "first-strike step: lethal to each blocker in order, then 1 tramples over"
         );
-        apply_combat_batch(&mut walk, first);
+        apply_combat_batch(&mut walk, first, &db);
         run_state_based_actions(&mut walk, &db);
         assert!(
             !alive(&walk, boar_a) && !alive(&walk, boar_b),

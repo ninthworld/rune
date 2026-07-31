@@ -73,6 +73,19 @@ pub(crate) fn spell_effects_of(db: &CardDatabase, card: CardId) -> Vec<Effect> {
 /// Both authoring tiers are honored via [`abilities_of`]; non-replacement
 /// abilities are ignored.
 pub(crate) fn apply_enters_replacements(db: &CardDatabase, perm: &mut Permanent) {
+    // CR 306.5b: a planeswalker enters the battlefield with a number of loyalty
+    // counters equal to its printed loyalty. This is not an authored ability — every
+    // planeswalker does it, from the printed number alone — so it is applied from the
+    // face rather than requiring each card to write an `enters_with_counters` out.
+    // It belongs *here*, at the replacement seam, for the same reason
+    // `enters_with_counters` does: a planeswalker that arrived at zero loyalty would be
+    // put into its owner's graveyard by CR 704.5i before anyone could act on it.
+    if let Some(loyalty) = perm.printed.face(db).and_then(|face| face.loyalty()) {
+        *perm
+            .counters
+            .entry(crate::state::CounterKind::Loyalty)
+            .or_insert(0) += loyalty;
+    }
     for ability in abilities_of_permanent(db, perm) {
         match ability {
             crate::ability::Ability::EntersTapped => perm.tapped = true,

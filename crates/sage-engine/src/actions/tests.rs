@@ -725,10 +725,10 @@ fn issue_341_attacker_may_target_any_opponent_but_never_self_or_eliminated() {
     state.active_player = PlayerId(0);
     let atk = put_on_battlefield(&mut state, fixture("walking_corpse"));
 
-    let attack = |defender| {
+    let attack = |defender: PlayerId| {
         [Attack {
             attacker: atk,
-            defender,
+            defender: crate::combat::AttackTarget::Player(defender),
         }]
     };
     // Legal against either living opponent.

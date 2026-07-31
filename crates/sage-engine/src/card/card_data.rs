@@ -65,6 +65,18 @@ pub struct CardData {
     /// Printed toughness, for creatures; `None` for non-creatures.
     #[serde(default)]
     pub toughness: Option<i32>,
+    /// Printed **starting loyalty**, for planeswalkers; `None` for every other card
+    /// (CR 306.5b).
+    ///
+    /// The planeswalker counterpart of [`Self::power`]/[`Self::toughness`], and
+    /// validated the same way: a planeswalker must carry one and nothing else may
+    /// ([`Violation::LoyaltyMismatch`](crate::Violation)). It is the number of loyalty
+    /// counters the permanent *enters with* — applied at the battlefield-entry seam as
+    /// a self-replacement (CR 614.1c, [`crate::card::apply_enters_replacements`]), so
+    /// a planeswalker is never on the battlefield at zero loyalty and immediately dead
+    /// to CR 704.5i. Current loyalty is the counter count, never this field.
+    #[serde(default)]
+    pub loyalty: Option<u32>,
     /// The card's abilities as declarative data. Empty for vanilla cards. Cards
     /// whose behavior the data IR cannot express instead register abilities in
     /// [`crate::scripted`]; use [`crate::card::abilities_of`] to read both sources together.

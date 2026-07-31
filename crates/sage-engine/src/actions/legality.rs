@@ -15,7 +15,9 @@ use crate::CardDatabase;
 use super::definition::{Action, Attack, Block, DamageOrder};
 use super::generation::valid_actions;
 use super::targeting::action_target_specs;
-use super::utilities::{all_unique, tap_cost_is_summoning_sick};
+use super::utilities::{
+    all_unique, loyalty_cost_is_payable, loyalty_timing_allows, tap_cost_is_summoning_sick,
+};
 
 /// Whether `action` — including any targets it carries — is legal against the
 /// current `state`. This is the gate [`crate::apply_action`] runs before it
@@ -91,6 +93,16 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         if !activation_clears_summoning_sickness(state, db, *permanent, *index) {
             return false;
         }
+        // 1e. Hardening (CR 606.3, issue #608): a loyalty ability is sorcery-speed,
+        //     once per turn per permanent, and payable only out of loyalty the source
+        //     actually has. Check 1 already withholds the offer; this re-derives all
+        //     three from current state so a stale or forged action id can never spend
+        //     loyalty a planeswalker has not got, nor take a second activation in one
+        //     turn, nor sneak one in at instant speed. The exact shape
+        //     `activation_clears_summoning_sickness` uses.
+        if !loyalty_activation_is_legal(state, db, *permanent, *index) {
+            return false;
+        }
     }
 
     // 2. The carried targets must fill every slot the action declares, each with
@@ -134,6 +146,40 @@ fn activation_clears_summoning_sickness(
     }
 }
 
+/// Whether activating ability `index` of `permanent` satisfies CR 606.3, the two
+/// timing rules and the one payment rule a **loyalty** ability has and no other
+/// activated ability does: sorcery speed on its controller's turn, at most one per
+/// permanent per turn ([`loyalty_timing_allows`]), and a negative cost no larger than
+/// the loyalty on the permanent ([`loyalty_cost_is_payable`]).
+///
+/// `false` for a permanent that is not on the battlefield — a stale id names no source
+/// to spend loyalty from. `true` for an index that is not a loyalty ability: there is
+/// no loyalty symbol to restrict, so this gate has nothing to say about it.
+fn loyalty_activation_is_legal(
+    state: &GameState,
+    db: &CardDatabase,
+    permanent: PermanentId,
+    index: usize,
+) -> bool {
+    let Some(perm) = state.battlefield.iter().find(|p| p.id == permanent) else {
+        return false;
+    };
+    let Some(ability) = abilities_of_permanent(db, perm).get(index).cloned() else {
+        return true;
+    };
+    if !crate::ability::is_loyalty_ability(&ability) {
+        return true;
+    }
+    let Ability::Activated { cost, .. } = &ability else {
+        return true;
+    };
+    loyalty_timing_allows(state, perm)
+        && cost.iter().all(|c| match c {
+            crate::ability::Cost::Loyalty { amount } => loyalty_cost_is_payable(perm, *amount),
+            _ => true,
+        })
+}
+
 /// Whether a declared attacker selection is legal (CR 508.1a): every named
 /// permanent is a current attacker candidate ([`attacker_candidates`]), no
 /// permanent is named twice, and every attacker's defender is a legal defender
@@ -146,7 +192,7 @@ pub(crate) fn attackers_selection_is_legal(
     attackers: &[Attack],
 ) -> bool {
     let candidates = attacker_candidates(state, db);
-    let defenders = defender_candidates(state);
+    let defenders = defender_candidates(state, db);
     let ids: Vec<PermanentId> = attackers.iter().map(|a| a.attacker).collect();
     all_unique(&ids)
         && attackers
@@ -350,7 +396,7 @@ mod tests {
             &Action::DeclareAttackers {
                 attackers: vec![Attack {
                     attacker: atk,
-                    defender: PlayerId(1),
+                    defender: crate::combat::AttackTarget::Player(PlayerId(1)),
                 }],
             },
             db,

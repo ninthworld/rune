@@ -41,6 +41,11 @@ pub struct CatalogCard {
     /// Displayed toughness; see [`CatalogCard::power`]. Present only for creatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toughness: Option<String>,
+    /// Displayed **printed starting loyalty** (CR 306.5b); see [`CatalogCard::power`].
+    /// Present only for planeswalkers. Additive: omitted for every other card, so an
+    /// existing catalog payload is unchanged on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loyalty: Option<String>,
     /// The card's keyword abilities as lowercase wire names (e.g. `"flying"`), the same
     /// projection [`CardView::keywords`] carries. Omitted from the wire when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -170,6 +175,7 @@ mod tests {
                     rules_text: "Flying, vigilance".into(),
                     power: Some("4".into()),
                     toughness: Some("4".into()),
+                    loyalty: None,
                     keywords: vec!["flying".into(), "vigilance".into()],
                 },
                 CatalogCard {
@@ -180,6 +186,7 @@ mod tests {
                     rules_text: "{T}: Add {G}.".into(),
                     power: None,
                     toughness: None,
+                    loyalty: None,
                     keywords: vec![],
                 },
             ],

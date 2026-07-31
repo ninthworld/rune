@@ -44,6 +44,24 @@ export function powerToughness(card: { power?: string; toughness?: string }): st
   return `${card.power}/${card.toughness}`
 }
 
+/**
+ * The stat a card face leads with: `2/2` for a creature, `loyalty 4` for a
+ * planeswalker, nothing for anything else.
+ *
+ * A planeswalker has no power or toughness, so `powerToughness` answers `undefined`
+ * for one and a card that shows only that would render Ajani with no numbers at all.
+ * The server states both fields; this only picks which one exists.
+ */
+export function cardStats(card: {
+  power?: string
+  toughness?: string
+  loyalty?: string
+}): string | undefined {
+  return (
+    powerToughness(card) ?? (card.loyalty !== undefined ? `loyalty ${card.loyalty}` : undefined)
+  )
+}
+
 /** A short, readable summary of one seat for the grey-box header. */
 export function seatSummary(seat: SelfView | OpponentView): string {
   const parts = [`${seat.life} life`, `${seat.library_size} library`]

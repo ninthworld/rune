@@ -30,11 +30,14 @@ pub(crate) enum CombatDamage {
         /// lose the "which commander dealt it" fact the 21-damage loss needs.
         source_commander: Option<PlayerId>,
     },
-    /// Combat damage a creature deals to another creature: an attacker to its
-    /// blockers, or a blocker to the attacker it blocks (CR 510.1c). Marked on
-    /// the permanent (CR 120.3).
+    /// Combat damage a creature deals to another **permanent**: an attacker to its
+    /// blockers, a blocker to the attacker it blocks (CR 510.1c), or an attacker to the
+    /// planeswalker it is attacking. What the damage *does* is decided at the one
+    /// damage seam it is applied through ([`GameState::deal_damage_to_permanent`]) —
+    /// marked on a creature (CR 120.3d), loyalty removed from a planeswalker
+    /// (CR 120.3c) — so this assignment stays a plain "this much, to that object".
     ToPermanent {
-        /// The permanent the damage is marked on.
+        /// The permanent the damage is dealt to.
         permanent: PermanentId,
         /// How much damage.
         amount: u32,
@@ -137,6 +140,42 @@ fn blockers_of(state: &GameState, attacker: PermanentId) -> Vec<PermanentId> {
     }
 }
 
+/// Record `amount` combat damage an attacker deals to whatever it is attacking
+/// (CR 508.1a): a player, or a planeswalker.
+///
+/// The one place the two attack targets diverge, and the divergence is small on purpose
+/// — a player takes it as life loss with the CR 903.10a commander tally attached, a
+/// planeswalker takes it as a permanent through the same assignment a blocker's damage
+/// uses. Lifelink rides either (CR 702.15e), which is why both arms go through the
+/// existing push helpers rather than pushing directly.
+///
+/// A planeswalker that has already left the battlefield produces no assignment: the
+/// `defending_player` lookup fails, and there is nothing to deal damage to.
+#[allow(clippy::too_many_arguments)]
+fn push_attack_target_damage(
+    out: &mut Vec<CombatDamage>,
+    state: &GameState,
+    target: super::AttackTarget,
+    amount: u32,
+    deathtouch: bool,
+    controller: PlayerId,
+    lifelink: bool,
+    source_commander: Option<PlayerId>,
+) {
+    match target {
+        super::AttackTarget::Player(player) => {
+            push_player_damage(out, player, amount, controller, lifelink, source_commander);
+        }
+        super::AttackTarget::Planeswalker(id) => {
+            // Only a planeswalker still on the battlefield takes anything; one that has
+            // died mid-combat leaves its attacker dealing damage nowhere (CR 506.4).
+            if state.battlefield.iter().any(|p| p.id == id) {
+                push_permanent_damage(out, id, amount, deathtouch, controller, lifelink);
+            }
+        }
+    }
+}
+
 /// Compute all combat damage for the combat-damage step `step` (CR 510.1): every
 /// attacking and blocking creature that deals in this step assigns its power as
 /// combat damage, gathered here so [`crate::apply_action`] can apply the whole
@@ -170,8 +209,10 @@ pub(crate) fn combat_damage(
 ) -> Vec<CombatDamage> {
     let mut out = Vec::new();
     for attacker in state.battlefield.iter().filter(|p| p.attacking.is_some()) {
-        // The player this attacker is attacking (CR 508.1a): its damage and any
-        // trample overflow route here, not to a single global defender.
+        // What this attacker is attacking (CR 508.1a): its damage and any trample
+        // overflow route here, not to a single global defender. A planeswalker that has
+        // since left the battlefield leaves nothing to route to, and the assignment is
+        // simply not made — an attacker with no target deals its damage nowhere.
         let defender = attacker.attacking;
         let blockers = blockers_of(state, attacker.id);
         // The attacker's own strike, if it deals in this step.
@@ -185,13 +226,15 @@ pub(crate) fn combat_damage(
             // toward the 21-combat-damage loss. `None` for an ordinary creature.
             let source_commander = state.commander_owner_of(attacker.instance);
             if !blocked.contains(&attacker.id) {
-                // Unblocked: the attacker's damage goes to the player it attacks.
+                // Unblocked: the attacker's damage goes to what it attacks.
                 if power > 0 {
-                    if let Some(player) = defender {
-                        push_player_damage(
+                    if let Some(target) = defender {
+                        push_attack_target_damage(
                             &mut out,
-                            player,
+                            state,
+                            target,
                             power,
+                            deathtouch,
                             controller,
                             lifelink,
                             source_commander,
@@ -214,15 +257,19 @@ pub(crate) fn combat_damage(
                         remaining -= assign;
                     }
                 }
-                // CR 702.19e: a trampler assigns its leftover to the defending
-                // player; without trample a blocked creature deals it nowhere. A
-                // trampling commander's overflow still counts toward CR 903.10a.
+                // CR 702.19e: a trampler assigns its leftover to whatever it is
+                // attacking — the defending player, or the planeswalker's loyalty;
+                // without trample a blocked creature deals it nowhere. A trampling
+                // commander's overflow still counts toward CR 903.10a, but only when it
+                // reaches a player: loyalty is not life.
                 if remaining > 0 && has_keyword(state, attacker, Keyword::Trample, db) {
-                    if let Some(player) = defender {
-                        push_player_damage(
+                    if let Some(target) = defender {
+                        push_attack_target_damage(
                             &mut out,
-                            player,
+                            state,
+                            target,
                             remaining,
+                            deathtouch,
                             controller,
                             lifelink,
                             source_commander,
@@ -345,7 +392,7 @@ pub(crate) mod tests {
     ) -> PermanentId {
         let id = creature_card(state, card, controller, 0);
         if let Some(perm) = state.battlefield.iter_mut().find(|p| p.id == id) {
-            perm.attacking = Some(defender);
+            perm.attacking = Some(crate::combat::AttackTarget::Player(defender));
         }
         id
     }

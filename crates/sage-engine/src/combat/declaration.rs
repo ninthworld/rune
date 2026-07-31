@@ -20,10 +20,14 @@ pub fn attacked_players(state: &GameState) -> Vec<PlayerId> {
     let mut ordered = Vec::new();
     for offset in 0..n {
         let seat = PlayerId((state.active_player.0 + offset) % n);
-        let is_attacked = state
-            .battlefield
-            .iter()
-            .any(|perm| perm.attacking == Some(seat));
+        // A seat is attacked when some attacker names *it* or a planeswalker it
+        // controls (CR 508.1a) — the defending player either way, which is who owes
+        // the declare-blockers decision.
+        let is_attacked = state.battlefield.iter().any(|perm| {
+            perm.attacking
+                .and_then(|target| target.defending_player(state))
+                == Some(seat)
+        });
         if is_attacked && !ordered.contains(&seat) {
             ordered.push(seat);
         }
@@ -161,7 +165,7 @@ pub(crate) mod tests {
             controller,
             tapped: false,
             entered_turn: 0,
-            attacking: Some(defender),
+            attacking: Some(crate::combat::AttackTarget::Player(defender)),
             blocking: None,
             damage: 0,
             counters: Default::default(),

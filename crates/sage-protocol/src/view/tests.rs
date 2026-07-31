@@ -179,6 +179,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         tapped: false,
         attacking: true,
         attacking_player: Some("p2".into()),
+        attacking_planeswalker: None,
         blocking: None,
         damage: 0,
         attached_to: None,
@@ -193,6 +194,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
     let idle = Permanent {
         attacking: false,
         attacking_player: None,
+        attacking_planeswalker: None,
         ..attacker.clone()
     };
     assert!(serde_json::to_value(&idle)
@@ -253,6 +255,7 @@ fn game_view_round_trips_through_json() {
             token: false,
             power: Some("1".into()),
             toughness: Some("1".into()),
+            loyalty: None,
             keywords: vec![],
         }],
         me: SelfView {
@@ -287,11 +290,13 @@ fn game_view_round_trips_through_json() {
                 token: false,
                 power: Some("2".into()),
                 toughness: Some("2".into()),
+                loyalty: None,
                 keywords: vec!["flying".into()],
             },
             tapped: true,
             attacking: false,
             attacking_player: None,
+            attacking_planeswalker: None,
             blocking: None,
             damage: 0,
             attached_to: None,
@@ -435,6 +440,7 @@ fn issue_372_command_zone_pile_round_trips_with_its_commander() {
             token: false,
             power: Some("5".into()),
             toughness: Some("5".into()),
+            loyalty: None,
             keywords: vec![],
         }],
     }];
@@ -533,6 +539,11 @@ fn canonical_fixture_round_trips_and_matches_typed_fields() {
     assert_eq!(view.battlefield[1].counters[0].kind, "loyalty");
     assert_eq!(view.battlefield[1].counters[0].count, 5);
     assert!(!view.battlefield[1].tapped);
+    // Printed starting loyalty (CR 306.5b) rides the card face, while *current*
+    // loyalty is the counter above. Both are present here, and they are different
+    // channels answering different questions — this fixture pins that apart.
+    assert_eq!(view.battlefield[1].card.loyalty.as_deref(), Some("5"));
+    assert_eq!(view.battlefield[0].card.loyalty, None);
 
     // A **token** (CR 111, issue #605): a full permanent with computed
     // characteristics and no card identity behind it. `token` is what says so — an
@@ -1014,6 +1025,7 @@ fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them()
         token: false,
         power: None,
         toughness: None,
+        loyalty: None,
         keywords: Vec::new(),
     }];
     let json = serde_json::to_value(&view).unwrap();

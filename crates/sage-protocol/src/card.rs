@@ -55,6 +55,18 @@ pub struct CardView {
     /// Displayed toughness; see [`CardView::power`]. Present only for creatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toughness: Option<String>,
+    /// Displayed **printed starting loyalty** (CR 306.5b), as a string for the same
+    /// reason [`CardView::power`] is one. Present only for planeswalkers.
+    ///
+    /// This is what the card enters the battlefield with, the number in its corner —
+    /// **not** how much loyalty a planeswalker on the battlefield has right now, which
+    /// is its `loyalty` entry in [`Permanent::counters`]. A client renders this on a
+    /// card in hand, on the stack, or in a graveyard, and renders the counter on the
+    /// battlefield; showing this one on a battlefield planeswalker would say "4" about
+    /// a planeswalker sitting at 1. Additive: omitted (and defaults to `None`) for
+    /// every non-planeswalker, so every existing view is unchanged on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loyalty: Option<String>,
     /// The card's keyword abilities as lowercase wire names (e.g. `"flying"`,
     /// `"first_strike"`), server-computed for display; the client renders badges
     /// and never derives them. Omitted from the wire when the card has none.
@@ -200,6 +212,19 @@ pub struct Permanent {
     /// another. Server-computed; never derived by the client.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attacking_player: Option<EntityId>,
+    /// The **planeswalker** this permanent is attacking (CR 508.1a), as that
+    /// planeswalker's entity id — the second thing an attack may name (issue #608).
+    /// `None`/omitted when the attacker is attacking a player instead, or is not
+    /// attacking at all.
+    ///
+    /// It rides *alongside* [`Self::attacking_player`] rather than replacing it, and
+    /// both are set when a planeswalker is attacked: this names what is being attacked,
+    /// while `attacking_player` names the seat that answers for it — its controller,
+    /// who declares blockers and whose sub-combat this belongs to. A client draws the
+    /// arrow at whichever one it wants to point at, and needs no rule to work out the
+    /// relationship between them. Server-computed; never derived by the client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attacking_planeswalker: Option<EntityId>,
     /// The permanent this one is blocking, if it was declared as a blocker this
     /// combat (CR 509): the attacker's entity id. `None`/omitted when it is not
     /// blocking. Several blockers may name the same attacker.
@@ -467,11 +492,13 @@ mod tests {
                 token: false,
                 power: Some("2".into()),
                 toughness: Some("2".into()),
+                loyalty: None,
                 keywords: vec![],
             },
             tapped: false,
             attacking: false,
             attacking_player: None,
+            attacking_planeswalker: None,
             blocking: None,
             damage: 0,
             attached_to: None,
@@ -489,6 +516,7 @@ mod tests {
         let attacker = Permanent {
             attacking: true,
             attacking_player: None,
+            attacking_planeswalker: None,
             ..base.clone()
         };
         let blocker = Permanent {
@@ -547,11 +575,13 @@ mod tests {
                 token: false,
                 power: None,
                 toughness: None,
+                loyalty: None,
                 keywords: vec![],
             },
             tapped: false,
             attacking: false,
             attacking_player: None,
+            attacking_planeswalker: None,
             blocking: None,
             damage: 0,
             attached_to: None,
@@ -594,6 +624,7 @@ mod tests {
             token: false,
             power: Some("3".into()),
             toughness: Some("2".into()),
+            loyalty: None,
             keywords: vec!["flying".into()],
         };
         let json = serde_json::to_value(&base).unwrap();
@@ -747,6 +778,7 @@ mod tests {
                 token: false,
                 power: None,
                 toughness: None,
+                loyalty: None,
                 keywords: vec![],
             }),
         };

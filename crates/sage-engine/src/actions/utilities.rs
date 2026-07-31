@@ -44,7 +44,52 @@ pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permane
                     .mana_pool
                     .can_pay(&crate::mana::parse_mana_cost(mana))
             }),
+        // CR 606.3: a loyalty cost that would remove more counters than the permanent
+        // has cannot be paid, so a `−7` ability is simply not offered on a planeswalker
+        // at 4. A `+N` or `0` cost is always payable — there is no upper bound on
+        // loyalty.
+        Cost::Loyalty { amount } => loyalty_cost_is_payable(permanent, *amount),
     })
+}
+
+/// Whether `permanent` currently has enough loyalty counters to pay a loyalty cost of
+/// `amount` (CR 606.3). Trivially true for a zero or positive amount; for a negative
+/// one the permanent must have at least that many counters.
+///
+/// The single expression of the rule, shared by the offer ([`cost_payable`]) and the
+/// independent apply-time gate ([`crate::actions::legality`]), so an ability is offered
+/// exactly when it can be paid for.
+pub(crate) fn loyalty_cost_is_payable(permanent: &Permanent, amount: i32) -> bool {
+    match u32::try_from(-i64::from(amount)) {
+        // A negative cost: it must not take the permanent below zero.
+        Ok(spent) => permanent.counter_count(crate::state::CounterKind::Loyalty) >= spent,
+        // A zero or positive cost costs no counters at all.
+        Err(_) => true,
+    }
+}
+
+/// Whether the CR 606.3 timing rules allow `permanent`'s controller to activate a
+/// **loyalty** ability right now: at sorcery speed on their own turn, and only if no
+/// loyalty ability of that same permanent has already been activated this turn.
+///
+/// Sorcery speed here is the same three conditions [`crate::valid_actions`] applies to
+/// a sorcery — the permanent's controller is the active player, the game is in a main
+/// phase, and the stack is empty — measured from the *controller* rather than from
+/// whoever holds priority, so an opponent holding priority in a main phase can never
+/// activate their own planeswalker's ability through a window that is not theirs.
+///
+/// `false` for a permanent that is not on the battlefield, since there is no source to
+/// activate. Non-loyalty abilities never consult this: an ordinary activated ability of
+/// a planeswalker (there are none in the catalog, but the IR permits one) is bound only
+/// by the ordinary gates.
+pub(crate) fn loyalty_timing_allows(state: &GameState, permanent: &Permanent) -> bool {
+    let sorcery_speed = permanent.controller == state.active_player
+        && matches!(
+            state.step,
+            crate::phase::Step::PrecombatMain | crate::phase::Step::PostcombatMain
+        )
+        && state.stack.is_empty();
+    sorcery_speed && !state.loyalty_activations.contains(&permanent.id)
 }
 
 /// `player`'s pool **plus every unit of mana their untapped permanents could still

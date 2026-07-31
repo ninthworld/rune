@@ -29,6 +29,22 @@ pub(crate) fn counter_kind_str(kind: CounterKind) -> &'static str {
     match kind {
         CounterKind::PlusOnePlusOne => "+1/+1",
         CounterKind::MinusOneMinusOne => "-1/-1",
+        CounterKind::Loyalty => "loyalty",
+    }
+}
+
+/// The opaque protocol id for whatever an attacker is attacking (CR 508.1a): a seat id
+/// for a player, a permanent id for a planeswalker.
+///
+/// The one place the two halves of an [`AttackTarget`] are flattened into a single wire
+/// string, so the `defend_<id>` requirement slot can list players and planeswalkers in
+/// one candidate list and [`bind_attackers`](super::bind_attackers) can resolve an
+/// answer back by recomputing this over the freshly computed candidates — never by
+/// parsing the id apart.
+pub(crate) fn attack_target_entity_id(target: AttackTarget) -> String {
+    match target {
+        AttackTarget::Player(seat) => player_id(seat),
+        AttackTarget::Planeswalker(id) => permanent_entity_id(id),
     }
 }
 
