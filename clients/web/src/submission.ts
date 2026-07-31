@@ -22,7 +22,7 @@ import type { ChooseAction, Prompt, ValidAction } from './protocol'
 /** Answers so far, keyed by slot. A `number` slot holds its value as a decimal string. */
 export type Draft = Readonly<Record<string, readonly string[]>>
 
-/** How many ids the server advertised for this prompt slot, or `null` when it sets no count. */
+/** The most ids the server will accept for this prompt slot, or `null` when it sets no count. */
 export function advertisedCount(prompt: Prompt): number | null {
   switch (prompt.kind) {
     case 'option':
@@ -35,6 +35,20 @@ export function advertisedCount(prompt: Prompt): number | null {
     case 'number':
       return 1
   }
+}
+
+/**
+ * The fewest ids the server will accept for this prompt slot.
+ *
+ * Only a `select_from_zone` can differ from its maximum, and only when the server says
+ * so: scrying any number of the cards looked at, taking up to one of them, or failing to
+ * find are all answers a player may legally under-fill. With no `min` published the slot
+ * is exact, which is what every prompt before this one was — so this is still bookkeeping
+ * over what the server advertised, never a rule the client worked out.
+ */
+export function advertisedMinimum(prompt: Prompt): number | null {
+  if (prompt.kind === 'select_from_zone') return prompt.min ?? prompt.count
+  return advertisedCount(prompt)
 }
 
 /**
@@ -76,14 +90,16 @@ export function requiredSlots(action: ValidAction, draft: Draft): ReadonlySet<st
   return required
 }
 
-/** Whether every owed prompt slot holds exactly the number of ids the server advertised. */
+/** Whether every owed prompt slot holds a number of ids inside the range the server advertised. */
 export function isSubmittable(action: ValidAction, draft: Draft): boolean {
   const required = requiredSlots(action, draft)
   for (const prompt of action.prompts ?? []) {
     if (!required.has(prompt.slot)) continue
-    const count = advertisedCount(prompt)
-    if (count === null) continue
-    if ((draft[prompt.slot]?.length ?? 0) !== count) return false
+    const max = advertisedCount(prompt)
+    if (max === null) continue
+    const min = advertisedMinimum(prompt) ?? max
+    const held = draft[prompt.slot]?.length ?? 0
+    if (held < min || held > max) return false
   }
   return true
 }

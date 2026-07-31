@@ -39,6 +39,10 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
   // permanents are named from the view's own contents rather than resolved by the client.
   const names = new Map<string, string>()
   for (const card of list(view.my_hand)) names.set(card.id, card.name)
+  // Cards from a hidden zone this seat is being shown right now (a search, a look at
+  // the top, an opponent's hand). Without these the choice prompt would ask about ids
+  // the client can put no name to.
+  for (const card of list(view.revealed)) names.set(card.id, card.name)
   for (const permanent of list(view.battlefield)) names.set(permanent.id, permanent.card.name)
   for (const item of list(view.stack)) names.set(item.id, item.description)
   for (const pile of [...list(view.graveyards), ...list(view.exile), ...list(view.command)]) {
@@ -172,6 +176,24 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
         ))}
       </section>
 
+      {list(view.revealed).length > 0 && (
+        <section aria-labelledby="revealed-heading">
+          <h2 id="revealed-heading">Shown to you</h2>
+          {/* Only this seat receives these; the server decides that, and sends them to
+              nobody else. Rendered beside the hand so the choice prompt below has
+              something legible to refer to. */}
+          <ul>
+            {list(view.revealed).map((card) => (
+              <li key={card.id}>
+                {card.name} — {card.type_line}
+                {card.mana_cost && <> {card.mana_cost}</>}
+                {powerToughness(card) && <> {powerToughness(card)}</>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section aria-labelledby="hand-heading">
         <h2 id="hand-heading">Your hand</h2>
         {list(view.my_hand).length === 0 ? (
@@ -253,6 +275,10 @@ function describe(event: GameLogEvent, playerName: (id: string) => string): stri
       return `${playerName(event.player)} draws ${event.count}`
     case 'cards_milled':
       return `${playerName(event.player)} mills ${event.count}`
+    case 'cards_discarded':
+      return `${playerName(event.player)} discards ${event.count}`
+    case 'library_searched':
+      return `${playerName(event.player)} searches their library and shuffles`
     case 'permanent_died':
       return `${event.permanent.name} dies`
     case 'step_changed':

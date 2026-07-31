@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "functional_id": "elvish_rejuvenator",
+  "name": "Elvish Rejuvenator",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elf",
+    "Druid"
+  ],
+  "mana_cost": "{2}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 1,
+  "toughness": 1,
+  "abilities": [
+    {
+      "type": "triggered",
+      "event": "self_enters_battlefield",
+      "effects": [
+        {
+          "kind": "look_at_top",
+          "count": 5,
+          "take": 1,
+          "filter": {
+            "kind": "land"
+          },
+          "destination": "battlefield_tapped"
+        }
+      ]
+    }
+  ]
+}

@@ -20,14 +20,6 @@
     "blocker": "no token object model; every permanent needs a catalog card"
   },
   {
-    "name": "Effects that search, reveal, or reorder a library",
-    "blocker": "no library search, reveal, or scry choice"
-  },
-  {
-    "name": "Effects that make a player discard",
-    "blocker": "no prompt for a player to choose cards to discard"
-  },
-  {
     "name": "Effects that return cards from a graveyard",
     "blocker": "no graveyard-to-hand or graveyard-to-battlefield effect"
   },
@@ -125,7 +117,7 @@
   },
   {
     "name": "Selectors that filter by power or toughness",
-    "blocker": "no numeric power or toughness threshold in any target, trigger, or mass-effect selector"
+    "blocker": "no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power"
   },
   {
     "name": "Trigger selectors that filter by a keyword",
@@ -134,5 +126,9 @@
   {
     "name": "Combat damage assigned by a value other than power",
     "blocker": "every attacker and blocker assigns damage equal to its current power"
+  },
+  {
+    "name": "Effects that let a player choose the order of cards put back on a library",
+    "blocker": "a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random"
   }
 ]

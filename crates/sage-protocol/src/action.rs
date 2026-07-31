@@ -164,9 +164,11 @@ pub enum Prompt {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         options: Vec<PromptOption>,
     },
-    /// Pick [`count`](Prompt::SelectFromZone::count) entity ids from a zone. The slot
-    /// is answered with the selected ids in [`TargetChoice::chosen`]; each must be one
-    /// of [`candidates`](Prompt::SelectFromZone::candidates).
+    /// Pick between [`min`](Prompt::SelectFromZone::min) and
+    /// [`count`](Prompt::SelectFromZone::count) entity ids from a zone. The slot is
+    /// answered with the selected ids in [`TargetChoice::chosen`]; each must be one of
+    /// [`candidates`](Prompt::SelectFromZone::candidates), and the answer's *order* is
+    /// preserved (it is the order a scry puts cards on the bottom in).
     SelectFromZone {
         /// Stable slot id the client echoes back as [`TargetChoice::slot`].
         slot: String,
@@ -177,8 +179,19 @@ pub enum Prompt {
         zone: String,
         /// The player who owns the zone (whose cards are being selected).
         owner: PlayerId,
-        /// Exactly how many ids must be chosen.
+        /// The **most** ids that may be chosen; with [`min`](Self::SelectFromZone::min)
+        /// absent, also exactly how many must be.
         count: u32,
+        /// The **fewest** ids that may be chosen, when that differs from `count`.
+        ///
+        /// Absent means the selection is exact — the shape every prompt before this had
+        /// and the one a bottoming or a cleanup discard still has. It is present for a
+        /// choice a player may legally answer with less than the maximum: scrying *any
+        /// number* of the cards looked at, taking *up to* one of them, or failing to
+        /// find on a search (CR 701.19c). Omitted from the wire when absent, so an
+        /// exact-count prompt serializes exactly as before.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min: Option<u32>,
         /// The legal candidate entity ids — the **only** ids the client may pick.
         /// Enumerated O(N) by the server; the client never derives or filters them.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -377,6 +390,7 @@ mod tests {
             zone: "hand".into(),
             owner: "p0".into(),
             count: 1,
+            min: None,
             candidates: vec!["card_1".into(), "card_2".into(), "card_3".into()],
         };
         let json = serde_json::to_value(&prompt).unwrap();
@@ -394,6 +408,49 @@ mod tests {
         );
         let back: Prompt = serde_json::from_value(json).unwrap();
         assert_eq!(back, prompt);
+    }
+
+    #[test]
+    fn issue_604_a_select_from_zone_states_a_lower_bound_only_when_it_has_one() {
+        // A choice a player may legally under-fill (scry any number, take up to one,
+        // fail to find) carries `min` alongside the maximum...
+        let scry = Prompt::SelectFromZone {
+            slot: "choice".into(),
+            prompt: "Choose up to 2 cards to put on the bottom of your library".into(),
+            zone: "library".into(),
+            owner: "p0".into(),
+            count: 2,
+            min: Some(0),
+            candidates: vec!["card_1".into(), "card_2".into()],
+        };
+        let json = serde_json::to_value(&scry).unwrap();
+        assert_eq!(json["min"], serde_json::json!(0));
+        assert_eq!(json["count"], serde_json::json!(2));
+        assert_eq!(serde_json::from_value::<Prompt>(json).unwrap(), scry);
+
+        // ...and an exact one elides it, so an existing bottoming or cleanup discard
+        // serializes byte-for-byte as it always did.
+        let exact = Prompt::SelectFromZone {
+            slot: "discard".into(),
+            prompt: "Choose a card to discard".into(),
+            zone: "hand".into(),
+            owner: "p0".into(),
+            count: 1,
+            min: None,
+            candidates: vec!["card_1".into()],
+        };
+        assert!(serde_json::to_value(&exact).unwrap().get("min").is_none());
+
+        // A payload from a server that predates the field reads as exact, not as
+        // "at least zero" — the safe direction, since it is the shape that was meant.
+        let legacy: Prompt = serde_json::from_str(
+            r#"{"kind":"select_from_zone","slot":"discard","prompt":"x","zone":"hand","owner":"p0","count":1}"#,
+        )
+        .unwrap();
+        let Prompt::SelectFromZone { min, count, .. } = legacy else {
+            panic!("a select_from_zone");
+        };
+        assert_eq!((min, count), (None, 1));
     }
 
     #[test]
@@ -579,6 +636,7 @@ mod tests {
                     zone: "hand".into(),
                     owner: "p0".into(),
                     count: 1,
+                    min: None,
                     candidates: vec!["card_1".into(), "card_2".into()],
                 },
             ],
@@ -639,6 +697,60 @@ mod tests {
         let action: ValidAction = serde_json::from_str(json).unwrap();
         assert!(action.requirements.is_empty());
         assert_eq!(action.token, "");
+    }
+
+    #[test]
+    fn issue_604_choice_contract_fixture_round_trips_and_matches_typed_fields() {
+        // Cross-language contract fixture: a mid-resolution scry. Its `player_choice`
+        // action carries one `select_from_zone` whose bounds are a *range*, the cards
+        // it asks about ride the receiver-only `revealed` channel, and the log carries
+        // the two count-only events this work adds. The web client's `protocol.test.ts`
+        // consumes these exact bytes.
+        let json = include_str!("../fixtures/gameview-choice.json");
+        let view: GameView = serde_json::from_str(json).unwrap();
+        let reencoded = serde_json::to_string(&view).unwrap();
+        assert_eq!(serde_json::from_str::<GameView>(&reencoded).unwrap(), view);
+
+        let choice = &view.valid_actions[0];
+        assert_eq!(choice.kind, "player_choice");
+        assert!(!choice.token.is_empty(), "a prompt action is token-bound");
+        let Prompt::SelectFromZone {
+            slot,
+            zone,
+            owner,
+            count,
+            min,
+            candidates,
+            ..
+        } = &choice.prompts[0]
+        else {
+            panic!("the choice is a select_from_zone");
+        };
+        assert_eq!(slot, "choice");
+        assert_eq!(zone, "library");
+        assert_eq!(owner, "p0");
+        assert_eq!((*count, *min), (2, Some(0)), "any number of the two");
+        assert_eq!(candidates, &["card_20".to_string(), "card_21".to_string()]);
+
+        // The cards the choice is about are shown to this receiver alone, by ids the
+        // prompt's candidates name — so a client can render what it is being asked.
+        assert_eq!(
+            view.revealed
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect::<Vec<_>>(),
+            candidates.iter().map(String::as_str).collect::<Vec<_>>(),
+        );
+
+        // Both new log events carry counts and seats, never card identities.
+        assert!(matches!(
+            view.log[0].event,
+            GameLogEvent::CardsDiscarded { count: 2, .. }
+        ));
+        assert!(matches!(
+            view.log[1].event,
+            GameLogEvent::LibrarySearched { .. }
+        ));
     }
 
     #[test]

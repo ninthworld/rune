@@ -29,7 +29,7 @@ pub(crate) fn targets_fill_requirements(
 /// The entity ids chosen for `slot` in a returned selection, or an empty slice if
 /// the client sent no answer for it (a legal "select nothing" for an optional
 /// multi-select like a combat declaration).
-fn chosen_for<'a>(targets: &'a [TargetChoice], slot: &str) -> &'a [String] {
+pub(super) fn chosen_for<'a>(targets: &'a [TargetChoice], slot: &str) -> &'a [String] {
     targets
         .iter()
         .find(|choice| choice.slot == slot)

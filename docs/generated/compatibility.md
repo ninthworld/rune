@@ -7,7 +7,7 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (113)
+## Supported cards (123)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
@@ -38,7 +38,10 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `disperse` | Disperse | functional definition |
 | `divination` | Divination | functional definition |
 | `druid_of_the_cowl` | Druid of the Cowl | functional definition |
+| `duress` | Duress | functional definition |
 | `electrify` | Electrify | functional definition |
+| `elvish_clancaller` | Elvish Clancaller | functional definition |
+| `elvish_rejuvenator` | Elvish Rejuvenator | functional definition |
 | `epicure_of_blood` | Epicure of Blood | functional definition |
 | `essence_scatter` | Essence Scatter | functional definition |
 | `exclusion_mage` | Exclusion Mage | functional definition |
@@ -57,6 +60,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `herald_of_faith` | Herald of Faith | functional definition |
 | `highland_game` | Highland Game | functional definition |
 | `highland_lake` | Highland Lake | functional definition |
+| `horizon_scholar` | Horizon Scholar | functional definition |
 | `hostile_minotaur` | Hostile Minotaur | functional definition |
 | `infectious_horror` | Infectious Horror | functional definition |
 | `inspired_charge` | Inspired Charge | functional definition |
@@ -73,11 +77,14 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `luminous_bonds` | Luminous Bonds | functional definition |
 | `meandering_river` | Meandering River | functional definition |
 | `mighty_leap` | Mighty Leap | functional definition |
+| `militia_bugler` | Militia Bugler | functional definition |
 | `millstone` | Millstone | functional definition |
+| `mind_rot` | Mind Rot | functional definition |
 | `mountain` | Mountain | functional definition |
 | `murder` | Murder | functional definition |
 | `naturalize` | Naturalize | functional definition |
 | `oakenform` | Oakenform | functional definition |
+| `omenspeaker` | Omenspeaker | functional definition |
 | `onakke_ogre` | Onakke Ogre | functional definition |
 | `oreskos_swiftclaw` | Oreskos Swiftclaw | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
@@ -86,6 +93,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `plummet` | Plummet | functional definition |
 | `poison_tip_archer` | Poison-Tip Archer | functional definition |
 | `prodigious_growth` | Prodigious Growth | functional definition |
+| `psychic_symbiont` | Psychic Symbiont | functional definition |
 | `revitalize` | Revitalize | functional definition |
 | `rhox_oracle` | Rhox Oracle | functional definition |
 | `rustwing_falcon` | Rustwing Falcon | functional definition |
@@ -93,6 +101,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `serra_s_guardian` | Serra's Guardian | functional definition |
 | `shock` | Shock | functional definition |
 | `siegebreaker_giant` | Siegebreaker Giant | functional definition |
+| `sift` | Sift | functional definition |
 | `silverbeak_griffin` | Silverbeak Griffin | functional definition |
 | `skeleton_archer` | Skeleton Archer | functional definition |
 | `skymarch_bloodletter` | Skymarch Bloodletter | functional definition |
@@ -114,6 +123,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `timber_gorge` | Timber Gorge | functional definition |
 | `titanic_growth` | Titanic Growth | functional definition |
 | `tolarian_scholar` | Tolarian Scholar | functional definition |
+| `tormenting_voice` | Tormenting Voice | functional definition |
 | `tranquil_expanse` | Tranquil Expanse | functional definition |
 | `two_headed_zombie` | Two-Headed Zombie | functional definition |
 | `vampire_neonate` | Vampire Neonate | functional definition |
@@ -127,7 +137,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `wall_of_vines` | Wall of Vines | functional definition |
 | `woodland_stream` | Woodland Stream | functional definition |
 
-## Excluded (34)
+## Excluded (33)
 
 Cards and mechanics considered and deliberately left out of scope, each with the blocker that keeps it out. Names and blockers only — no rules text. Curated by hand in `crates/sage-engine/data/exclusions.json`.
 
@@ -145,9 +155,8 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Damage prevention | no prevention shield or damage-replacement layer |
 | Effects that ask a player to name a colour, type, or card | no player choice recorded on a permanent or spell |
 | Effects that count permanents, cards, or other game values | effect amounts are fixed numbers, never derived from game state |
-| Effects that make a player discard | no prompt for a player to choose cards to discard |
+| Effects that let a player choose the order of cards put back on a library | a scry keeps its unchosen cards in their printed order and a look bottoms its rest at random |
 | Effects that return cards from a graveyard | no graveyard-to-hand or graveyard-to-battlefield effect |
-| Effects that search, reveal, or reorder a library | no library search, reveal, or scry choice |
 | Effects that untap, or that stop a permanent untapping | no untap effect and no skipped-untap flag |
 | Equipment | no equip action or attachment outside the Aura model |
 | Fight, and other effects taking two targets | each effect fills exactly one target slot |
@@ -163,7 +172,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Planeswalkers | no loyalty counter system or loyalty abilities |
 | Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour or a count; there is no protection layer |
 | Replacement effects | no replacement-effect layer in the rules engine |
-| Selectors that filter by power or toughness | no numeric power or toughness threshold in any target, trigger, or mass-effect selector |
+| Selectors that filter by power or toughness | no numeric power or toughness threshold in a target, trigger, or mass-effect selector; only a mid-resolution card choice may cap printed power |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |
 | Token creation | no token object model; every permanent needs a catalog card |
 | Trigger selectors that filter by a keyword | observed-permanent selectors filter by subtype and controller only |

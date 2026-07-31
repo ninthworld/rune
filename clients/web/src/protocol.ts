@@ -235,7 +235,10 @@ export const Prompt = z.discriminatedUnion('kind', [
     prompt: z.string(),
     zone: z.string(),
     owner: PlayerId,
+    /** The most ids that may be chosen — and, with `min` absent, exactly how many must be. */
     count: z.number(),
+    /** The fewest that may be chosen, when that differs from `count` (scry any number, fail to find). */
+    min: z.number().optional(),
     candidates: z.array(EntityId).optional(),
   }),
   z.object({
@@ -306,6 +309,8 @@ export const GameLogEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('damage_dealt'), target: LogDamageTarget, amount: z.number() }),
   z.object({ type: z.literal('cards_drawn'), player: PlayerId, count: z.number() }),
   z.object({ type: z.literal('cards_milled'), player: PlayerId, count: z.number() }),
+  z.object({ type: z.literal('cards_discarded'), player: PlayerId, count: z.number() }),
+  z.object({ type: z.literal('library_searched'), player: PlayerId }),
   z.object({ type: z.literal('permanent_died'), permanent: LogEntity }),
   z.object({
     type: z.literal('step_changed'),
@@ -342,6 +347,8 @@ export type AutoPassedStep = z.infer<typeof AutoPassedStep>
 export const GameView = z.object({
   you: PlayerId.optional(),
   my_hand: z.array(CardView).optional(),
+  /** Cards from a hidden zone this receiver alone is being shown, while a choice asks about them. */
+  revealed: z.array(CardView).optional(),
   me: SelfView.optional(),
   opponents: z.array(OpponentView).optional(),
   battlefield: z.array(Permanent).optional(),

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "sift",
+  "name": "Sift",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{3}{U}",
+  "colors": [
+    "blue"
+  ],
+  "spell_effects": [
+    {
+      "kind": "draw_card",
+      "count": 3
+    },
+    {
+      "kind": "discard",
+      "player_ref": "controller",
+      "count": 1
+    }
+  ]
+}

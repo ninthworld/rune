@@ -48,6 +48,24 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         return actions;
     }
 
+    // A mid-resolution player choice (CR 701.8 discard, 701.17 scry, 701.19 search)
+    // outranks everything below, including a trigger waiting to be aimed: an object is
+    // *part-way through resolving* and the game is frozen until its question is
+    // answered. Its chooser is frequently neither the priority holder nor the resolving
+    // object's controller — "target player discards two cards" asks the targeted seat —
+    // so `apply_action` has already handed them priority and the priority test here is
+    // the whole routing. Every other seat is offered nothing at all, which is what
+    // "no other seat may act meanwhile" means concretely.
+    if let Some(pending) = crate::pending_player_choice(state) {
+        return if priority == pending.chooser {
+            let mut actions = vec![Action::AnswerChoice { chosen: Vec::new() }];
+            offer_concede(&mut actions);
+            actions
+        } else {
+            Vec::new()
+        };
+    }
+
     // Commander return decision (CR 903.9a): when the priority holder's commander
     // is sitting in a graveyard or exile awaiting the choice, that decision is the
     // only thing they may take — offered like the cleanup discard and combat

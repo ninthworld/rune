@@ -266,6 +266,49 @@ stops with its source, so a static ability cannot outlive the permanent that pri
 Rules text is composed from the same selector the engine applies, so the sentence and the
 scope cannot disagree.
 
+### Effects that ask a player to choose cards
+
+Four effects stop mid-resolution and hand one named player a decision (issue #604). The
+game does not proceed until it is answered, and the answer is validated against the zone
+as it is *at that moment* — see `docs/decisions/0013-mid-resolution-player-choices.md`.
+
+| `kind` | Asks | Aftermath |
+| --- | --- | --- |
+| `discard` | `count` cards of `player_ref`'s hand | they go to that player's graveyard |
+| `scry` | any number of the top `count` cards | the chosen go to the bottom, in the chosen order |
+| `look_at_top` | up to `take` of the top `count` | the chosen go to `destination`, the rest to the bottom in a random order |
+| `search_library` | up to `take` cards of the library | the chosen go to `destination`, then the library is shuffled |
+
+```json
+{ "kind": "discard", "player_ref": "target_opponent", "count": 1,
+  "chosen_by": "controller", "filter": { "kind": "noncreature_nonland" } }
+```
+
+- `player_ref` decides whether a discard **targets**, exactly as it does for `mill` — so
+  both "target player discards two cards" and "each opponent discards a card" are
+  writable, and neither restates the fizzle rule. `scry`, `look_at_top`, and
+  `search_library` act on the controller's own library and never target.
+- `chosen_by` is `owner` (the default — the discarding player picks) or `controller` (the
+  spell's controller picks, the hand-attack shape). The chooser is also the only seat the
+  cards are shown to.
+- `filter` narrows which cards may be picked: `any` (the default), `land`,
+  `creature` with an optional `max_power`, `noncreature_nonland`, or
+  `same_name_as_source` ("a card named *this card*", matched on printed identity so two
+  copies of one printing find each other).
+- `destination` is `hand` (the default), `battlefield`, or `battlefield_tapped`. A card
+  entering the battlefield this way goes through the same seam a resolving permanent
+  spell uses, so its "enters tapped"/"enters with counters" replacements and its ETB
+  triggers all fire.
+
+A question with **no legal answer is never asked**: an empty hand, an empty library, or a
+look that turns up nothing matching applies the effect with an empty selection and
+resolves — including the aftermath, so a look that whiffs still bottoms what it looked at
+and a search that finds nothing still shuffles (CR 701.19c).
+
+Two orderings are deliberately **not** modeled and are listed in the exclusions: the
+cards a scry keeps on top stay in their printed order, and the cards a `look_at_top`
+bottoms go there at random rather than in an order the player picks.
+
 ### Trigger conditions
 
 Conditions about the ability's **own source** are authored as bare strings:

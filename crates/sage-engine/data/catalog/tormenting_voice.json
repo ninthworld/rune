@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "tormenting_voice",
+  "name": "Tormenting Voice",
+  "types": [
+    "sorcery"
+  ],
+  "mana_cost": "{1}{R}",
+  "colors": [
+    "red"
+  ],
+  "spell_effects": [
+    {
+      "kind": "discard",
+      "player_ref": "controller",
+      "count": 1
+    },
+    {
+      "kind": "draw_card",
+      "count": 2
+    }
+  ]
+}

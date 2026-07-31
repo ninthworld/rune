@@ -240,6 +240,9 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
 fn game_view_round_trips_through_json() {
     let view = GameView {
         you: "p1".into(),
+        // Cards from a hidden zone this seat alone is being shown (issue #604); empty
+        // in the ordinary case, so it elides from the wire.
+        revealed: Vec::new(),
         my_hand: vec![CardView {
             id: "c1".into(),
             name: "Llanowar Elves".into(),
@@ -965,4 +968,73 @@ fn issue_265_action_rejected_flag_round_trips_and_elides_when_false() {
     // A payload from an older server that omits the field defaults to `false`.
     let legacy: GameView = serde_json::from_str(r#"{"you":"p1","phase":"upkeep"}"#).unwrap();
     assert!(!legacy.action_rejected);
+}
+
+#[test]
+fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them() {
+    // The hidden-zone rendering channel: absent from the wire in every ordinary view,
+    // present only while a choice is asking this receiver about cards no one else may
+    // see, and structurally impossible on a spectator view.
+    let mut view = GameView {
+        you: "p0".into(),
+        phase: Phase::PrecombatMain,
+        turn: 3,
+        active_player: "p0".into(),
+        ..Default::default()
+    };
+    assert!(
+        serde_json::to_value(&view)
+            .unwrap()
+            .get("revealed")
+            .is_none(),
+        "nothing is being revealed, so the field elides",
+    );
+
+    view.revealed = vec![CardView {
+        id: "card_9".into(),
+        name: "Forest".into(),
+        type_line: "Basic Land — Forest".into(),
+        mana_cost: None,
+        rules_text: String::new(),
+        functional_id: "forest".into(),
+        power: None,
+        toughness: None,
+        keywords: Vec::new(),
+    }];
+    let json = serde_json::to_value(&view).unwrap();
+    assert_eq!(json["revealed"][0]["id"], serde_json::json!("card_9"));
+    let back: GameView = serde_json::from_value(json).unwrap();
+    assert_eq!(back, view);
+
+    // A spectator view has no such field at all — redaction by type, not by care.
+    assert!(
+        !std::any::type_name::<SpectatorView>().is_empty()
+            && serde_json::to_value(SpectatorView {
+                players: Vec::new(),
+                battlefield: Vec::new(),
+                stack: Vec::new(),
+                graveyards: Vec::new(),
+                exile: Vec::new(),
+                command: Vec::new(),
+                phase: Phase::Upkeep,
+                turn: 1,
+                active_player: "p0".into(),
+                seat_order: Vec::new(),
+                priority_player: None,
+                result: None,
+                log: Vec::new(),
+                player_names: std::collections::BTreeMap::new(),
+                commander_damage: Vec::new(),
+                commander_tax: Vec::new(),
+                format: None,
+                commander_identity: Vec::new(),
+            })
+            .unwrap()
+            .get("revealed")
+            .is_none(),
+    );
+
+    // A payload from a server that predates the field decodes to nothing revealed.
+    let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
+    assert!(legacy.revealed.is_empty());
 }

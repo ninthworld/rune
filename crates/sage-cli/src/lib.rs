@@ -511,18 +511,33 @@ where
             slot,
             prompt: text,
             count,
+            min,
             candidates,
             ..
         } => {
-            write_str(output, &render_candidates(text, candidates, *count)).await?;
+            // `count` is the maximum; `min` (absent means "exactly `count`") is the
+            // fewest the server will accept. Once the minimum is met a blank line stops
+            // early, which is how a player scries nothing or declines to take a card.
+            let floor = min.unwrap_or(*count);
+            write_str(output, &render_candidates(text, candidates, floor, *count)).await?;
             let mut chosen = Vec::with_capacity(*count as usize);
             for which in 1..=*count {
                 let id = loop {
-                    write_str(output, &nth_card_prompt(candidates.len(), which, *count)).await?;
+                    write_str(
+                        output,
+                        &nth_card_prompt(candidates.len(), which, *count, which > floor),
+                    )
+                    .await?;
                     output.flush().await.map_err(SessionError::Io)?;
                     line.clear();
                     if input.read_line(line).await.map_err(SessionError::Io)? == 0 {
                         return Ok(None);
+                    }
+                    if which > floor && line.trim().is_empty() {
+                        return Ok(Some(TargetChoice {
+                            slot: slot.clone(),
+                            chosen,
+                        }));
                     }
                     match candidate_at(candidates, line) {
                         Some(id) => break id.to_string(),
@@ -605,8 +620,13 @@ fn choice_prompt(count: usize) -> String {
 }
 
 /// Render a `select_from_zone` prompt's candidate ids as a numbered menu.
-fn render_candidates(text: &str, candidates: &[String], count: u32) -> String {
-    let mut out = format!("\n{text} (choose {count}):\n");
+fn render_candidates(text: &str, candidates: &[String], min: u32, count: u32) -> String {
+    let how_many = if min == count {
+        format!("choose {count}")
+    } else {
+        format!("choose {min}-{count}")
+    };
+    let mut out = format!("\n{text} ({how_many}):\n");
     for (index, candidate) in candidates.iter().enumerate() {
         out.push_str(&format!("  {}) {}\n", index + 1, candidate));
     }
@@ -620,8 +640,11 @@ fn candidate_at<'a>(candidates: &'a [String], input: &str) -> Option<&'a str> {
 }
 
 /// The prompt shown before reading the `which`-of-`total` card of a select-from-zone.
-fn nth_card_prompt(count: usize, which: u32, total: u32) -> String {
-    format!("Select card {which} of {total} [1-{count}] (Ctrl-D to quit): ")
+/// `optional` marks a pick past the server's stated minimum, where a blank line ends
+/// the selection instead of being a mistake.
+fn nth_card_prompt(count: usize, which: u32, total: u32, optional: bool) -> String {
+    let stop = if optional { ", blank to stop" } else { "" };
+    format!("Select card {which} of {total} [1-{count}]{stop} (Ctrl-D to quit): ")
 }
 
 /// Map an operator's raw menu entry to the offered `action_id`, or `None` if it

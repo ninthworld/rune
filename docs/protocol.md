@@ -40,6 +40,7 @@ redacted before serialization.
 | --- | --- | --- |
 | `you` | `PlayerId` | Receiver’s opaque player id |
 | `my_hand` | `CardView[]` | Receiver’s visible hand |
+| `revealed` | `CardView[]` | Cards from a **hidden zone this receiver alone is currently being shown** (issue #604) — the candidates of a mid-resolution choice they are answering. Omitted when empty, which is every view outside that window; never present on another seat’s view or on a `SpectatorView` |
 | `me` | `SelfView` | Receiver’s `life` and `library_size` |
 | `opponents` | `OpponentView[]` | Public opponent state and hidden-zone counts |
 | `battlefield` | `Permanent[]` | Public permanents and computed state |
@@ -150,7 +151,8 @@ clients render the carried entries and do not invent missing history. It is incl
 each complete `GameView`, which means reconnecting clients never need an accumulated
 local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
 `spell_fizzled`, `attackers_declared`, `blockers_declared`, `mulligan`, `hand_kept`,
-`life_changed`, `damage_dealt`, `cards_drawn`, `cards_milled`, `permanent_died`, `step_changed`,
+`life_changed`, `damage_dealt`, `cards_drawn`, `cards_milled`, `cards_discarded`,
+`library_searched`, `permanent_died`, `step_changed`,
 `player_eliminated`, `commander_returned_to_command_zone`, and `game_over`. Named
 `LogEntity` references have an opaque `id`
 and server-supplied
@@ -163,7 +165,13 @@ A `cards_drawn` event contains only player and count, never a hidden card identi
 `cards_milled` event carries the same two fields for cards put from the top of a library
 into its owner's graveyard (CR 701.13). It is deliberately *not* a `cards_drawn`: milling
 never causes the empty-library loss, and its `count` is what actually moved, so a player
-asked to mill past an empty library logs the smaller number.
+asked to mill past an empty library logs the smaller number. `cards_discarded` (CR 701.8)
+carries the same player-and-count pair, and for the same reason: a hand is hidden, and the
+cards become visible on their own once they are in the public graveyard.
+`library_searched` (CR 701.19) carries only the player who searched — neither what they
+looked at nor what they found, since a library is hidden from every other seat and naming
+the found card would leak it to all of them before it arrives anywhere public. That a
+search *happened* is public: everyone at the table sees the deck picked up.
 `damage_dealt` reports both lethal and nonlethal damage; its `target` is tagged by
 `kind` — `player` (with a `player` id) or `permanent` (with a `LogEntity`). Damage to a
 player is a `damage_dealt` event, not a `life_changed` one; `life_changed` carries only
@@ -476,7 +484,7 @@ Non-target choices use tagged `prompts`:
 | `kind` | Fields | Answer |
 | --- | --- | --- |
 | `option` | `slot`, `prompt`, `options[{id,label,requires}]` | One option id |
-| `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `candidates` | Exactly `count` candidate ids |
+| `select_from_zone` | `slot`, `prompt`, `zone`, `owner`, `count`, `min?`, `candidates` | Between `min` and `count` candidate ids, in the chosen order |
 | `order` | `slot`, `prompt`, `items` | A permutation of all item ids |
 | `number` | `slot`, `prompt`, `min`, `max` | The chosen number as a decimal string |
 
@@ -487,8 +495,17 @@ has mulliganed, a `select_from_zone` `bottom` slot over its hand, and only the *
 requires `bottom` — taking another hand bottoms nothing. A client enables a choice once every
 slot it requires holds exactly the advertised number of ids; the server enforces the same
 coupling on resolution, so `requires` changes no legality, it only keeps a client from
-offering an answer that must be rejected. `select_from_zone` supports choices such as
-discarding or bottoming cards. `order` requests a permutation of its `items`; the
+offering an answer that must be rejected.
+
+`select_from_zone` supports choices such as discarding, bottoming, scrying, or searching.
+Its `count` is the **maximum** number of ids a legal answer may name; `min` is the
+minimum, and is **omitted when it equals `count`** — which is every exact choice, and the
+only shape this prompt had before issue #604. It is present exactly when a player may
+legally under-fill the slot: scrying *any number* of the cards looked at, taking *up to*
+one of them, or failing to find on a search (CR 701.19c). A client that ignores `min`
+therefore behaves as it always did on exact prompts, and only over-constrains the new
+ones. The **order** of the returned ids is significant and is preserved by the server: it
+is the order a scry puts its cards on the bottom in. `order` requests a permutation of its `items`; the
 `order_combat_damage` action emits one `order` prompt per attacker blocked by two or more
 creatures, so its controller chooses the combat-damage assignment order (CR 510.1, issue
 #346) — lethal damage is then assigned to the blockers along the chosen order. An attacker
@@ -518,6 +535,23 @@ The seat asked is the trigger's *controller*, which is frequently not whoever la
 a creature killed by an opponent's removal spell gives its own controller the choice.
 A trigger with no legal choice for a slot never reaches the stack at all (CR 603.3c), so a
 `choose_targets` is always answerable.
+
+`player_choice` answers the **mid-resolution player choice** an effect has posed (issue
+#604): a discard, a scry, a look at the top N, or a library search. Unlike every prompt
+above it, this one interrupts an object that is *part-way through resolving* — the game
+does not proceed until it is answered, so while one is owed the server offers that seat
+this action and a concede, and every other seat nothing at all. The seat asked is the one
+the **effect names**, which is frequently neither the priority holder nor the resolving
+object's controller: "target player discards two cards" asks the targeted seat, while a
+coercive hand attack asks the *caster* to choose from the opponent's hand. Priority
+returns to whoever it was taken from once the choice is answered.
+
+The action carries one `select_from_zone` slot (`choice`) whose candidates and bounds are
+the engine's, already clamped to what the zone actually holds — so "discard two cards"
+against a one-card hand advertises `count: 1`, and a choice with no legal answer at all is
+never posed (the effect applies with an empty selection instead, and the game moves on).
+The cards the slot names are carried on the same view's `revealed` array, and on no other
+seat's, which is how a searching player sees their library without the table seeing it.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. In a game with more than one

@@ -35,6 +35,24 @@ pub struct GameView {
     /// Full card objects for the receiving player only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub my_hand: Vec<CardView>,
+    /// Cards from a **hidden zone that this receiver, and only this receiver, is
+    /// currently being shown** — the cards a mid-resolution choice is asking them to
+    /// pick from (issue #604).
+    ///
+    /// A player searching their library, looking at the top four, or reading an
+    /// opponent's hand needs to see cards that are in no public pile and in no seat's
+    /// `my_hand`. This is the one channel that carries them, and it is scoped as
+    /// narrowly as the rules are: it holds exactly the candidates of the choice this
+    /// seat is answering, it is absent from every other seat's view, and it is absent
+    /// from the [`SpectatorView`](crate::SpectatorView) type entirely. A leak here
+    /// would be a leaked deck, so the field exists *only* while a choice is owed and
+    /// empties the moment it is answered.
+    ///
+    /// Purely a rendering channel: the ids match the choice prompt's `candidates`, so
+    /// a client can show a picture of a card it is being asked about. It confers no
+    /// interactivity of its own and grants no knowledge the prompt did not already.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revealed: Vec<CardView>,
     /// The receiver's own public stats (life total, library size) — see [`SelfView`].
     /// `#[serde(default)]` so a payload from an older server that omits it still
     /// deserializes (to a zero placeholder).

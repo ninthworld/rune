@@ -65,6 +65,7 @@ fn hash_prompt(prompt: &Prompt, hasher: &mut impl std::hash::Hasher) {
             zone,
             owner,
             count,
+            min,
             candidates,
         } => {
             1u8.hash(hasher);
@@ -73,6 +74,10 @@ fn hash_prompt(prompt: &Prompt, hasher: &mut impl std::hash::Hasher) {
             zone.hash(hasher);
             owner.hash(hasher);
             count.hash(hasher);
+            // The lower bound is part of what the client is answering, so an answer
+            // bound to a laxer range the server no longer offers is rejected like any
+            // other stale binding (ADR 0004).
+            min.hash(hasher);
             candidates.hash(hasher);
         }
         Prompt::Order {

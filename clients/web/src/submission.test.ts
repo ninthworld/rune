@@ -3,9 +3,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { GameView, type ValidAction } from './protocol'
+import { GameView, type Prompt, type ValidAction } from './protocol'
 import {
   advertisedCount,
+  advertisedMinimum,
   buildChooseAction,
   isSubmittable,
   requiredSlots,
@@ -16,6 +17,23 @@ const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
   '../../../crates/sage-protocol/fixtures',
 )
+
+/** The real mid-resolution choice action from the contract fixture (issue #604). */
+function choiceAction(): ValidAction {
+  const view = GameView.parse(
+    JSON.parse(readFileSync(join(FIXTURES, 'gameview-choice.json'), 'utf8')),
+  )
+  const action = view.valid_actions?.find((a) => a.type === 'player_choice')
+  if (!action) throw new Error('fixture no longer carries a player_choice action')
+  return action
+}
+
+/** That choice action's one card-selection slot. */
+function choicePrompt(): Prompt {
+  const prompt = choiceAction().prompts?.[0]
+  if (!prompt) throw new Error('fixture no longer carries a choice prompt')
+  return prompt
+}
 
 /** The real mulligan action from the contract fixture, not a hand-made stand-in. */
 function mulliganAction(): ValidAction {
@@ -167,5 +185,45 @@ describe('toggling a selection', () => {
     let draft = toggleSelection({}, 'o0', 'perm_3', 3)
     draft = toggleSelection(draft, 'o0', 'perm_1', 3)
     expect(draft.o0).toEqual(['perm_3', 'perm_1'])
+  })
+})
+
+describe('a choice the server said may be under-filled', () => {
+  it('reads its range off the prompt rather than assuming the count is exact', () => {
+    const prompt = choicePrompt()
+    expect(advertisedCount(prompt)).toBe(2)
+    expect(advertisedMinimum(prompt)).toBe(0)
+  })
+
+  it('is submittable anywhere inside that range, including empty', () => {
+    const action = choiceAction()
+    // Picking none is a real answer here — declining to scry — and blocking it would be
+    // the client inventing a rule the server does not have.
+    expect(isSubmittable(action, {})).toBe(true)
+    expect(isSubmittable(action, { choice: ['card_20'] })).toBe(true)
+    expect(isSubmittable(action, { choice: ['card_20', 'card_21'] })).toBe(true)
+  })
+
+  it('sends the picks in the order they were made, and sends nothing when empty', () => {
+    const action = choiceAction()
+    // Order is load-bearing: it is the order the cards go to the bottom in.
+    expect(buildChooseAction(action, { choice: ['card_21', 'card_20'] }).targets).toEqual([
+      { slot: 'choice', chosen: ['card_21', 'card_20'] },
+    ])
+    expect(buildChooseAction(action, {}).targets).toBeUndefined()
+  })
+
+  it('stops accumulating at the advertised maximum', () => {
+    const limit = advertisedCount(choicePrompt())
+    const full = { choice: ['card_20', 'card_21'] }
+    expect(toggleSelection(full, 'choice', 'card_22', limit)).toEqual(full)
+  })
+})
+
+describe('a select_from_zone with no published minimum', () => {
+  it('is treated as exact, the shape every prompt before this one had', () => {
+    const bottoming = mulliganAction().prompts?.find((p) => p.kind === 'select_from_zone')
+    if (!bottoming) throw new Error('fixture no longer carries a bottoming slot')
+    expect(advertisedMinimum(bottoming)).toBe(advertisedCount(bottoming))
   })
 })

@@ -70,6 +70,15 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
                     player: player_id(*player),
                     count: *count,
                 },
+                // Counts only, both of them: a discarded card's identity and a searched
+                // library's contents are hidden, and the log is public.
+                GameEvent::CardsDiscarded { player, count } => GameLogEvent::CardsDiscarded {
+                    player: player_id(*player),
+                    count: *count,
+                },
+                GameEvent::LibrarySearched { player } => GameLogEvent::LibrarySearched {
+                    player: player_id(*player),
+                },
                 GameEvent::PermanentDied { permanent } => GameLogEvent::PermanentDied {
                     permanent: log_permanent(permanent, db),
                 },

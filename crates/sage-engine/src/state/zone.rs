@@ -116,6 +116,49 @@ impl GameState {
         Some(perm)
     }
 
+    /// Put the physical card `card` onto the battlefield under `controller` — the
+    /// single card → battlefield seam.
+    ///
+    /// A permanent spell resolving (CR 608.3) and a card found by a library search or a
+    /// look-at-the-top both route through here, so a permanent that arrives by either
+    /// road is indistinguishable afterwards: it mints a fresh [`PermanentId`] (the
+    /// physical [`CardInstance`](crate::id::CardInstance) carries over unchanged), applies
+    /// its own CR 614.1c/614.12 enters-the-battlefield self-replacements *as* it enters
+    /// — before any state-based action or ETB trigger observes it — and is picked up by
+    /// the diff-based trigger collector like anything else.
+    ///
+    /// `tapped` is the entry state the *effect* dictates ("onto the battlefield
+    /// tapped"); a card's own "enters tapped" replacement is applied on top and can only
+    /// add to it. `attached_to` is the host an entering Aura was cast at (CR 303.4d),
+    /// `None` for everything else. Returns the new permanent's id.
+    pub(crate) fn put_card_onto_battlefield(
+        &mut self,
+        card: crate::id::CardInstance,
+        controller: PlayerId,
+        tapped: bool,
+        attached_to: Option<PermanentId>,
+        db: &CardDatabase,
+    ) -> PermanentId {
+        let id = PermanentId(self.mint_id());
+        let entered_turn = self.turn;
+        let mut permanent = Permanent {
+            id,
+            instance: card.id,
+            card: card.card,
+            controller,
+            tapped,
+            entered_turn,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+            attached_to,
+        };
+        crate::card::apply_enters_replacements(db, &mut permanent);
+        self.battlefield.push(permanent);
+        id
+    }
+
     /// Put the top `count` cards of `player`'s library into their graveyard
     /// (CR 701.13, "mill"), and record a [`GameEvent::CardsMilled`] for however many
     /// actually moved.

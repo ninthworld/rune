@@ -173,6 +173,8 @@ fn build_discard(state: &GameState, id: String) -> Projected {
         zone: "hand".to_string(),
         owner: player_id(seat),
         count: 1,
+        // Exactly one per turn-based check, re-offered while still over the limit.
+        min: None,
         candidates,
     }];
     let token = content_token(&kind, &subject, &requirements, &prompts);
@@ -264,6 +266,16 @@ fn valid_action_view(
             vec![card_entity_id(card.id)],
             Vec::new(),
         ),
+        // The mid-resolution player choice the game is waiting on (issue #604). The
+        // pick itself rides as a `select_from_zone` prompt (built below) rather than a
+        // target requirement: it names cards in a hidden zone, which is a different
+        // thing from an object on the battlefield, and it carries a count.
+        Action::AnswerChoice { .. } => (
+            "player_choice".to_string(),
+            player_choice_label(state, db),
+            Vec::new(),
+            Vec::new(),
+        ),
         // Labeled with the ability's own rules sentence ("{T}: Add {G}.", ADR 0008
         // text generation), so a permanent offering several activations renders
         // *distinguishable* dock buttons — a generic "Activate ability" collapses
@@ -351,6 +363,7 @@ fn valid_action_view(
     let prompts: Vec<Prompt> = match action {
         Action::OrderCombatDamage { .. } => damage_order_prompts(state, db),
         Action::Keep { .. } => keep_prompts(state, action),
+        Action::AnswerChoice { .. } => player_choice_prompts(state, db),
         _ => Vec::new(),
     };
     // One-gesture mana: mark the activation of a mana ability
