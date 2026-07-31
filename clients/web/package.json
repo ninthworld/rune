@@ -10,7 +10,10 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
     "format:check": "prettier --check .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "SAGE_E2E_SERVER=1 playwright test",
+    "e2e:smoke": "SAGE_E2E_SERVER=1 playwright test --project=smoke",
+    "e2e:views": "playwright test --project=views"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -19,6 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.62.1",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

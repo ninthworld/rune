@@ -56,5 +56,50 @@ jobs:
       - name: Check (format, lint, types, tests, build)
         run: make client-check
 
-  # The browser e2e job lands with the first playable surface. It is a required
-  # gate — one thin smoke path blocking, deeper flows non-blocking (ADR 0011).
+  # Both browser jobs run in the official Playwright container, whose browsers are
+  # preinstalled and match the driver by construction. That is how `playwright install` is
+  # never run (root AGENTS.md): the image is the source of the browser. This tag must move
+  # together with the exactly-pinned `@playwright/test` in clients/web/package.json — a
+  # caret range there would silently drift away from this image.
+  e2e-smoke:
+    name: E2E Smoke
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # The smoke path drives the real server, so this job needs the Rust toolchain too.
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # Prebuilt so Playwright's wait on the port is a start, not a compile.
+      - name: Build the server
+        run: cargo build -p sage-server
+      - name: Smoke (build → browser → socket → server)
+        run: make e2e-smoke
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: e2e-smoke-trace
+          path: clients/web/test-results
+          retention-days: 7
+
+  # Breadth, deliberately NOT a required check: a merge must never wait on browser flake in
+  # a tier that mocks the socket anyway. It still reports pass/fail — non-blocking means
+  # "not named in the ruleset", not "failures are ignored".
+  e2e-views:
+    name: E2E Flows
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Fixture-driven rendering flows
+        run: make e2e-views
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: e2e-views-trace
+          path: clients/web/test-results
+          retention-days: 7

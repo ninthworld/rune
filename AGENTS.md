@@ -4,9 +4,9 @@ SAGE is a server-authoritative Magic: The Gathering implementation with a pure R
 a web client. Read [`docs/brief.md`](docs/brief.md) for the product and architecture, and
 [`docs/coding-standards.md`](docs/coding-standards.md) before changing code.
 
-**The web client is being built.** `clients/web` holds the protocol mirror and its toolchain;
-there is no playable surface there yet, so `crates/sage-cli` is still the playtest surface.
-The engine, server, protocol, and CLI are working.
+**The web client is playable and deliberately ugly.** `clients/web` renders a grey-box lobby
+and board — structure and legibility only, no visual design, because none of it can be judged
+until the game plays well. Make it good before making it pretty.
 
 ## Hard rules
 
@@ -63,15 +63,15 @@ The engine, server, protocol, and CLI are working.
 ## Commands
 
 - `make check` — fast engine gate: `engine-lint` + `engine-test`. Needs no node.
-- `make verify` — complete pre-merge gate: `make check` plus `client-check` and `cargo-deny`.
+- `make verify` — complete pre-merge gate: `check` + `client-check` + `e2e-smoke` + `deny`.
 - `make client-check` — everything the `Client` CI job runs.
+- `make e2e-smoke` — the blocking browser gate, against a real server.
+- `make e2e-views` — the broad, non-blocking browser tier. Needs no server and no Rust.
 - `make engine-test` — `cargo test --workspace`
 - `make engine-lint` — `cargo fmt --check` + `cargo clippy -- -D warnings`
 - `make compat` — regenerate the card-compatibility report (fails `make check` on drift).
 - `make deny` — dependency policy and advisory checks.
 - `scripts/bootstrap.sh` — verify local prerequisites.
-
-The browser e2e target lands with the first playable surface.
 
 ## Workflow
 

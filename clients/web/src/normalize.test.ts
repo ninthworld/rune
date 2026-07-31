@@ -3,14 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import {
-  hasPriority,
-  isConnected,
-  list,
-  playerLabel,
-  powerToughness,
-  seatSummary,
-} from './normalize'
+import { isConnected, list, playerLabel, powerToughness, seatSummary } from './normalize'
 import { GameView } from './protocol'
 
 const FIXTURES = join(
@@ -49,17 +42,6 @@ describe('naming', () => {
 
   it('falls back to the opaque id when the server named nobody', () => {
     expect(playerLabel({ phase: 'untap' }, 'p7')).toBe('p7')
-  })
-})
-
-describe('priority', () => {
-  it('is held only when the priority player is the receiver', () => {
-    const v = view('gameview.json')
-    expect(hasPriority(v)).toBe(v.priority_player === v.you)
-  })
-
-  it('is not held when nobody has it', () => {
-    expect(hasPriority({ phase: 'cleanup', you: 'p0' })).toBe(false)
   })
 })
 

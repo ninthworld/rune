@@ -38,13 +38,23 @@ export interface Connection {
 const defaultFactory: SocketFactory = (url) => new WebSocket(url) as unknown as SocketLike
 
 /**
- * The address of the server this client talks to.
+ * The address of the server this client talks to, in precedence order:
  *
- * Defaults to the dev server's own host so a built client served from the same origin needs no
- * configuration, and falls back to the server's default local address when running from a file
- * or a different port during development.
+ * 1. a `?server=` query parameter — point a built client at another host without rebuilding;
+ * 2. `VITE_SAGE_SERVER`, baked in at build time;
+ * 3. the page's own host on the server's default port, so a client served from the same origin
+ *    needs no configuration at all;
+ * 4. the server's default local address, for a page opened from a file.
+ *
+ * The query parameter is ordinary configuration, not a test backdoor: it selects an address and
+ * grants no capability the socket does not already have. It is what lets one built bundle be
+ * pointed at a local server, a staging one, or a stub.
  */
 export function defaultServerUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.search) {
+    const override = new URLSearchParams(window.location.search).get('server')
+    if (override) return override
+  }
   const configured = import.meta.env?.VITE_SAGE_SERVER
   if (typeof configured === 'string' && configured.length > 0) return configured
   if (typeof window !== 'undefined' && window.location?.protocol?.startsWith('http')) {
@@ -62,8 +72,22 @@ export function connect(
   const socket = factory(url)
   handlers.onStatus('connecting')
 
-  socket.onopen = () => handlers.onStatus('open')
-  socket.onclose = () => handlers.onStatus('closed')
+  // A real `WebSocket` throws if you send while it is still CONNECTING, and the first message
+  // of every session — `hello` — is sent the moment the connection is created, before any open
+  // event can have fired. Queue until open, then flush in order.
+  let open = false
+  const pending: string[] = []
+
+  socket.onopen = () => {
+    open = true
+    for (const message of pending) socket.send(message)
+    pending.length = 0
+    handlers.onStatus('open')
+  }
+  socket.onclose = () => {
+    open = false
+    handlers.onStatus('closed')
+  }
   socket.onerror = () => handlers.onStatus('error')
   socket.onmessage = (event) => {
     // Only text frames carry protocol messages; anything else is ignored, as the CLI does.
@@ -72,7 +96,11 @@ export function connect(
   }
 
   return {
-    send: (message) => socket.send(JSON.stringify(message)),
+    send: (message) => {
+      const json = JSON.stringify(message)
+      if (open) socket.send(json)
+      else pending.push(json)
+    },
     close: () => socket.close(),
   }
 }

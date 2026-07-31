@@ -10,14 +10,7 @@
  * what they missed.
  */
 import type { ClientMessage, GameLogEvent, GameView } from './../protocol'
-import {
-  controlledBy,
-  hasPriority,
-  list,
-  playerLabel,
-  powerToughness,
-  seatSummary,
-} from './../normalize'
+import { controlledBy, list, playerLabel, powerToughness, seatSummary } from './../normalize'
 import { ActionPanel } from './ActionPanel'
 
 const PHASE_LABELS: Record<string, string> = {
@@ -75,7 +68,7 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
       )}
 
       {list(view.auto_passed_steps).length > 0 && (
-        <section className="notice" role="status" aria-labelledby="settle-heading">
+        <section className="notice" aria-labelledby="settle-heading">
           <h2 id="settle-heading">Passed for you</h2>
           {/* A path, not a set: a genuinely revisited position appears twice, and each entry
               carries its own turn because an extra combat or cleanup phase revisits a step
@@ -197,12 +190,14 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
         )}
       </section>
 
-      {hasPriority(view) || list(view.valid_actions).length > 0 ? (
+      {list(view.valid_actions).length > 0 ? (
         <ActionPanel actions={list(view.valid_actions)} labelFor={labelFor} send={send} />
       ) : (
         <section aria-labelledby="waiting-heading">
           <h2 id="waiting-heading">Actions</h2>
-          <p>Waiting for the other seat.</p>
+          {/* A finished game is not a game that is waiting: nobody is coming, and saying
+              otherwise leaves a player watching a screen that will never change. */}
+          <p>{view.result ? 'Nothing to do — the game is over.' : 'Waiting for the other seat.'}</p>
         </section>
       )}
 

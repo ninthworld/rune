@@ -41,6 +41,9 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   advertised, never rules reasoning.
 - `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered.
 - `src/ui/` — the screens. Grey-box on purpose: structure and legibility, no visual design.
+- `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
+- `e2e/views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
+  intercepted socket, no server involved.
 
 Keep logic out of components. Anything worth a test belongs in one of the modules above, which
 are pure and need neither React nor a browser.
@@ -51,8 +54,14 @@ Run from the repository root:
 
 - `make client-check` — everything the `Client` CI job runs: format, lint, types, tests, build.
 
+- `make e2e-smoke` — the blocking browser gate, against a real `sage-server`.
+- `make e2e-views` — the broad, non-blocking browser tier. Needs no server and no Rust.
+
 Or from this directory: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`,
-`npm run dev`.
+`npm run dev`, `npm run e2e`.
+
+When a browser test fails, `npx playwright show-trace test-results/<dir>/trace.zip` replays it.
+CI uploads the same traces as artifacts on failure.
 
 `make check` is engine-only and does not run any of this — an engine change must not need node
 installed. `make verify` runs both.

@@ -34,5 +34,9 @@ If a status check is ever renamed in `.github/workflows/`, update the matching
 >
 > Keep this file safe to import against `main` at any commit: add a context here only once the
 > workflow reporting it is **already on `main`**, never in the same pull request that
-> introduces the job. The `Client` job and the browser-e2e job each join this list in a
-> follow-up to the change that adds them.
+> introduces the job.
+>
+> Once the client and browser jobs are on `main`, the required list becomes `Engine`,
+> `cargo-deny`, `Client`, and `E2E Smoke`. **`E2E Flows` is deliberately excluded** — it is the
+> broad browser tier, and keeping it out is what stops a merge waiting on browser flake
+> (ADR 0011). It still runs and still reports; it just never blocks.

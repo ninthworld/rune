@@ -68,8 +68,29 @@ describe('frames', () => {
 })
 
 describe('sending', () => {
+  it('holds a message sent before the socket opens, then flushes it', () => {
+    // Every session's first message is `hello`, sent the moment the connection is created —
+    // before any open event can have fired. A real WebSocket throws on a send while CONNECTING,
+    // which took down the whole app: the throw escaped the effect and React never mounted.
+    const { socket, sent, connection } = harness()
+    connection.send({ type: 'hello' })
+    expect(sent).toEqual([])
+
+    socket.onopen?.({})
+    expect(sent).toEqual(['{"type":"hello"}'])
+  })
+
+  it('flushes queued messages in order', () => {
+    const { socket, sent, connection } = harness()
+    connection.send({ type: 'hello' })
+    connection.send({ type: 'ready', ready: true })
+    socket.onopen?.({})
+    expect(sent.map((s) => JSON.parse(s).type)).toEqual(['hello', 'ready'])
+  })
+
   it('serializes a command to JSON', () => {
-    const { connection, sent } = harness()
+    const { socket, connection, sent } = harness()
+    socket.onopen?.({})
     connection.send({ type: 'hello' })
     expect(sent).toEqual(['{"type":"hello"}'])
   })
@@ -77,7 +98,8 @@ describe('sending', () => {
   it('sends an in-game message on the same socket', () => {
     // The server switches this socket from the lobby contract to the in-game one without
     // reconnecting, so both message kinds go the same way.
-    const { connection, sent } = harness()
+    const { socket, connection, sent } = harness()
+    socket.onopen?.({})
     connection.send({ type: 'choose_action', action_id: 'a0', token: 'tok' })
     expect(JSON.parse(sent[0] ?? '{}')).toEqual({
       type: 'choose_action',

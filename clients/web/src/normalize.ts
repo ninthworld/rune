@@ -28,10 +28,6 @@ export function playerLabel(view: GameView, id: string): string {
   return name ? `${name} (${id})` : id
 }
 
-/** Whether the receiver currently holds priority and may act. */
-export const hasPriority = (view: GameView): boolean =>
-  view.priority_player !== undefined && view.priority_player === view.you
-
 /** Permanents a given seat controls, in the order the server listed them. */
 export const controlledBy = (view: GameView, player: string) =>
   list(view.battlefield).filter((permanent) => permanent.controller === player)
