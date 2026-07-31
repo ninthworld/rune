@@ -68,6 +68,15 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # The Playwright image ships browsers and node, not a build toolchain. This job needs
+      # `make` to invoke the gate and a C linker because it compiles the server — rustc shells
+      # out to `cc` to link, and the image has neither. `build-essential` carries both.
+      #
+      # Installing is preferred over calling the npm scripts directly: the Makefile is the one
+      # place a gate's command list lives, and duplicating it here is how CI drifts from what
+      # `make e2e-smoke` runs locally.
+      - name: Install the build toolchain the image omits
+        run: apt-get update && apt-get install -y --no-install-recommends build-essential
       # The smoke path drives the real server, so this job needs the Rust toolchain too.
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
@@ -95,6 +104,9 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # This tier compiles nothing, so it needs `make` and nothing else.
+      - name: Install make
+        run: apt-get update && apt-get install -y --no-install-recommends make
       - name: Fixture-driven rendering flows
         run: make e2e-views
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
