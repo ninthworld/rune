@@ -44,6 +44,12 @@
             "context": "Engine"
           },
           {
+            "context": "Client"
+          },
+          {
+            "context": "E2E Smoke"
+          },
+          {
             "context": "cargo-deny"
           }
         ]

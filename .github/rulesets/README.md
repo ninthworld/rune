@@ -18,8 +18,8 @@ What it enforces:
 - All changes arrive through a pull request (solo-maintained: **0 required approvals**,
   so the maintainer can merge their own PRs; stale approvals are still dismissed on push).
 - Review conversations resolved before merge.
-- Required status checks `Engine` and `cargo-deny`, with **strict**
-  (branch-up-to-date) enforcement.
+- Required status checks `Engine`, `Client`, `E2E Smoke`, and `cargo-deny`, with **strict**
+  (branch-up-to-date) enforcement. `E2E Flows` is deliberately **not** required — see below.
 - Linear history; squash is the only allowed merge method.
 - No force pushes and no deletion of `main`.
 
@@ -36,7 +36,7 @@ If a status check is ever renamed in `.github/workflows/`, update the matching
 > workflow reporting it is **already on `main`**, never in the same pull request that
 > introduces the job.
 >
-> Once the client and browser jobs are on `main`, the required list becomes `Engine`,
-> `cargo-deny`, `Client`, and `E2E Smoke`. **`E2E Flows` is deliberately excluded** — it is the
-> broad browser tier, and keeping it out is what stops a merge waiting on browser flake
-> (ADR 0011). It still runs and still reports; it just never blocks.
+> **`E2E Flows` is deliberately excluded** from the required list. It is the broad browser
+> tier, and keeping it out is what stops a merge waiting on browser flake (ADR 0011). It still
+> runs and still reports; it just never blocks. Requiring it would recreate the pressure that
+> got the browser suite deleted three times.
