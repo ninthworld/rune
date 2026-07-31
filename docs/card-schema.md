@@ -121,6 +121,32 @@ A non-targeting reference can never fizzle and, in a game of three or more, real
 name every opponent. `gain_life`, `lose_life`, and `mill` all take a reference, so both
 shapes exist for each without any of them restating the fizzle rule.
 
+### Damage (CR 120.3)
+
+`deal_damage` names **who or what takes the damage** with exactly one of three keys, and
+that key decides whether a target is chosen:
+
+```json
+{ "kind": "deal_damage", "target": "any_target",      "amount": 2 }
+{ "kind": "deal_damage", "player_ref": "each_opponent", "amount": 2 }
+{ "kind": "deal_damage", "affects": "each_creature",  "amount": 2 }
+```
+
+- `target` is a target spec: one slot, chosen on announcement, re-checked on resolution,
+  fizzling if the choice is gone.
+- `player_ref` is the same reference `gain_life` and `mill` take, with the same rule —
+  `each_opponent` chooses nothing and hits every opponent, `target_player` fills a slot.
+- `affects` is the same class `pump_all` takes, and never targets.
+
+Both class forms enumerate their subjects **on resolution** (CR 611.2c), so a creature
+that arrived after the spell was cast is included and one that has died is not.
+
+Damage is not life loss. Damage to a creature is *marked* on it and drives the
+lethal-damage state-based action (CR 704.5g); damage to a player is life loss
+(CR 120.3a). A card that says "loses life" is authored with `lose_life`, and one that
+says "deals damage" cannot be approximated by it. Damage prevention and deathtouch on
+non-combat damage are out of scope.
+
 ### Activation costs
 
 `cost` entries are `{"kind":"tap"}` (the `{T}` symbol) and
@@ -145,6 +171,10 @@ target, so they choose nothing and never fizzle:
 ```json
 { "kind": "pump_all", "affects": "creatures_you_control", "power": 2, "toughness": 1 }
 ```
+
+The classes are `creatures_you_control`, `each_creature`, and
+`creatures_your_opponents_control`, each read relative to the effect's controller so one
+authored card means "you" from either seat. `deal_damage` takes the same set.
 
 The affected set is locked in on resolution (CR 611.2c) — a creature that arrives later in
 the turn is untouched. That is the whole difference between one of these and an

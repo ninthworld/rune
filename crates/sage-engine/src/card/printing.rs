@@ -187,10 +187,10 @@ mod tests {
     fn bundled_printings_load_from_the_set_manifest() {
         let cards = CardDatabase::bundled().unwrap();
         let printings = PrintingDatabase::bundled(&cards).unwrap();
-        // M19 prints one hundred and two of the catalog's cards at their real
-        // collector numbers; PM19 reprints one — 103 printings total. The catalog's one
+        // M19 prints one hundred and three of the catalog's cards at their real
+        // collector numbers; PM19 reprints one — 104 printings total. The catalog's one
         // non-M19 definition (the commander fixture, ADR 0009) has no printing here.
-        assert_eq!(printings.len(), 103);
+        assert_eq!(printings.len(), 104);
         assert!(!printings.is_empty());
         let ogre = printings.printing("M19", "153").unwrap();
         // The record names onakke_ogre; the loader resolved that to its handle.
