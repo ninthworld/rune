@@ -152,7 +152,8 @@ each complete `GameView`, which means reconnecting clients never need an accumul
 local log. Event names are `spell_cast`, `spell_resolved`, `spell_countered`,
 `spell_fizzled`, `attackers_declared`, `blockers_declared`, `mulligan`, `hand_kept`,
 `life_changed`, `damage_dealt`, `cards_drawn`, `cards_milled`, `cards_discarded`,
-`library_searched`, `permanent_died`, `step_changed`,
+`library_searched`, `optional_applied`, `optional_declined`, `permanent_died`,
+`step_changed`,
 `player_eliminated`, `commander_returned_to_command_zone`, and `game_over`. Named
 `LogEntity` references have an opaque `id`
 and server-supplied
@@ -172,6 +173,13 @@ cards become visible on their own once they are in the public graveyard.
 looked at nor what they found, since a library is hidden from every other seat and naming
 the found card would leak it to all of them before it arrives anywhere public. That a
 search *happened* is public: everyone at the table sees the deck picked up.
+`optional_applied` and `optional_declined` (issue #610) each carry only the player who
+answered an optional effect's yes-or-no. What was offered is not repeated — the offering
+ability's text is already public — and the two events do not distinguish a declined offer
+from one that was never posed because its cost was unpayable, since telling those apart
+would report on a mana pool the rest of the table cannot see. They are recorded at all
+because the alternative is silence: an optional effect that happens reads exactly like a
+mandatory one, and an optional effect that does not reads exactly like a bug.
 `damage_dealt` reports both lethal and nonlethal damage; its `target` is tagged by
 `kind` — `player` (with a `player` id) or `permanent` (with a `LogEntity`). Damage to a
 player is a `damage_dealt` event, not a `life_changed` one; `life_changed` carries only
@@ -552,6 +560,25 @@ against a one-card hand advertises `count: 1`, and a choice with no legal answer
 never posed (the effect applies with an empty selection instead, and the game moves on).
 The cards the slot names are carried on the same view's `revealed` array, and on no other
 seat's, which is how a searching player sees their library without the table seeing it.
+
+The same `player_choice` action also carries the **yes-or-no of an optional effect**
+(issue #610) — "you may draw a card", "you may pay `{1}`. If you do, draw a card". That
+question adds no wire shape: it rides the `option` prompt on the same `choice` slot, with
+an `accept` and a `decline` choice, and it is answered the same atomic way. Three things
+distinguish it from a card selection:
+
+- The seat asked is the offering ability's **controller**, not a seat the effect names.
+- `accept` is listed **only while the server would accept it** — an optional cost the
+  chooser cannot currently pay leaves `decline` as the only option. Declining is always
+  offered, so an unpayable cost can never stall the game, and a cost no amount of tapping
+  could pay is never posed at all.
+- While such a question is owed, the chooser is additionally offered their **mana
+  abilities** (CR 605.3a: a player asked to pay during resolution may make mana), marked
+  as usual with `mana_ability`. Activating one answers nothing — the question stays owed —
+  but `accept` appears once the pool can pay. No other action, and no other seat, becomes
+  legal.
+- Nothing is revealed: a yes-or-no is about an effect, not a zone, so `revealed` stays
+  empty.
 
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. In a game with more than one

@@ -109,6 +109,16 @@ pub enum Violation {
         /// The definition at fault.
         functional_id: String,
     },
+    /// An optional effect (`{"kind":"may"}`) wraps an effect that chooses a target.
+    ///
+    /// One effect declares at most one target slot, so a wrapper cannot declare the
+    /// slots of what it wraps: the target would never be chosen at announcement
+    /// (CR 601.2c) and the nested effect would silently do nothing on acceptance. That
+    /// is a card that looks authored and is not, which is worth failing the build over.
+    TargetInsideOptional {
+        /// The definition at fault.
+        functional_id: String,
+    },
     /// Two printings in one set claim the same collector number, so one would shadow
     /// the other.
     DuplicatePrinting {
@@ -171,6 +181,11 @@ impl fmt::Display for Violation {
                 f,
                 "{functional_id} carries printed `restrictions` but is not a creature; \
                  a combat restriction can only restrict attacking or blocking"
+            ),
+            Self::TargetInsideOptional { functional_id } => write!(
+                f,
+                "{functional_id} has a `may` effect wrapping an effect that targets; \
+                 an optional effect's contents may not choose a target"
             ),
             Self::DuplicatePrinting {
                 set_code,
@@ -283,6 +298,13 @@ pub(crate) fn validate_definition(
         return Err(Violation::RestrictionsOnNonCreature { functional_id });
     }
 
+    // An optional effect may not wrap a targeting one (see
+    // [`Violation::TargetInsideOptional`]). Checked over every effect list a definition
+    // carries, at any nesting depth, so a `may` inside a `may` is covered too.
+    if authored_effects(object).any(optional_wraps_a_target) {
+        return Err(Violation::TargetInsideOptional { functional_id });
+    }
+
     // An `aura` grant is the Aura ability (CR 303.4), so it belongs only on an Aura.
     if object.contains_key("aura") {
         let is_aura = object
@@ -295,6 +317,74 @@ pub(crate) fn validate_definition(
     }
 
     Ok(functional_id)
+}
+
+/// Every effect a definition authors at the top level of an ability or of its spell
+/// effects, in file order.
+///
+/// Shallow on purpose: the nested contents of an effect are the business of whatever
+/// walks *that* effect ([`optional_wraps_a_target`] recurses into its own).
+fn authored_effects(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> impl Iterator<Item = &serde_json::Value> {
+    let abilities = object
+        .get("abilities")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|ability| ability.get("effects"))
+        .filter_map(serde_json::Value::as_array)
+        .flatten();
+    let spell = object
+        .get("spell_effects")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter();
+    abilities.chain(spell)
+}
+
+/// Whether `effect` is a `may` (or contains one) whose optional contents would choose a
+/// target.
+///
+/// Recursive because a `may` may wrap a `may`, and the rule is about the whole subtree
+/// under the outermost one: anything targeting *anywhere* inside an optional effect is
+/// a slot no announcement ever fills.
+fn optional_wraps_a_target(effect: &serde_json::Value) -> bool {
+    let Some(kind) = effect.get("kind").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let nested = effect
+        .get("effects")
+        .and_then(serde_json::Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if kind == "may" {
+        return nested.iter().any(effect_chooses_a_target);
+    }
+    nested.iter().any(optional_wraps_a_target)
+}
+
+/// Whether `effect`, or anything nested inside it, chooses a target (CR 115.1).
+///
+/// Two authored spellings say "target", and both count: a `target` spec on the effect
+/// itself, and a `player_ref` naming a targeted seat. Kept here rather than in the typed
+/// IR because `build.rs` validates JSON before the IR exists (ADR 0008 §5).
+fn effect_chooses_a_target(effect: &serde_json::Value) -> bool {
+    if effect.get("target").is_some() {
+        return true;
+    }
+    if matches!(
+        effect.get("player_ref").and_then(serde_json::Value::as_str),
+        Some("target_player" | "target_opponent")
+    ) {
+        return true;
+    }
+    effect
+        .get("effects")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|nested| nested.iter().any(effect_chooses_a_target))
 }
 
 /// Reject two printings in one set claiming the same collector number.
@@ -474,6 +564,45 @@ mod tests {
                 functional_id: "test_card".to_string()
             }
         );
+    }
+
+    #[test]
+    fn issue_610_a_may_wrapping_a_targeting_effect_is_rejected() {
+        // A wrapper cannot declare the target slot of what it wraps, so the target
+        // would never be chosen and the effect would silently do nothing. Both authored
+        // spellings of "target" are caught, in an ability and in a spell effect alike,
+        // and nesting does not hide either.
+        let spec = r#", "abilities": [{"type": "activated", "cost": [],
+            "effects": [{"kind": "may", "effects": [{"kind": "tap", "target": "any_creature"}]}]}]"#;
+        assert_eq!(
+            validate_definition(None, &definition(spec)),
+            Err(Violation::TargetInsideOptional {
+                functional_id: "test_card".to_string(),
+            }),
+        );
+
+        let player_ref = r#", "abilities": [{"type": "activated", "cost": [],
+            "effects": [{"kind": "may", "cost": "{1}",
+                         "effects": [{"kind": "may",
+                                      "effects": [{"kind": "mill", "player_ref": "target_player",
+                                                   "count": 2}]}]}]}]"#;
+        assert!(validate_definition(None, &definition(player_ref)).is_err());
+
+        let nested_in_a_spell = r#", "spell_effects": [{"kind": "may",
+            "effects": [{"kind": "deal_damage", "target": "any_target", "amount": 2}]}]"#;
+        assert!(validate_definition(None, &definition(nested_in_a_spell)).is_err());
+    }
+
+    #[test]
+    fn issue_610_targets_outside_an_optional_effect_are_untouched() {
+        // The rule is about what a `may` *wraps*, not about the card: a targeting
+        // effect beside an optional one is ordinary and stays authorable, and so does a
+        // non-targeting effect inside the optional one.
+        let json = r#", "spell_effects": [{"kind": "deal_damage", "target": "any_target",
+                                            "amount": 2},
+                                          {"kind": "may", "cost": "{1}",
+                                           "effects": [{"kind": "draw_card", "count": 1}]}]"#;
+        assert!(validate_definition(None, &definition(json)).is_ok());
     }
 
     #[test]

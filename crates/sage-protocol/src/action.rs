@@ -754,6 +754,56 @@ mod tests {
     }
 
     #[test]
+    fn issue_610_optional_effect_contract_fixture_round_trips_and_matches_typed_fields() {
+        // Cross-language contract fixture: the yes-or-no of an optional effect. It adds
+        // no wire shape — the question rides the `option` prompt the mulligan decision
+        // already uses — so what this pins is the *composition*: a `player_choice`
+        // carrying an option slot, the mana ability offered beside it (CR 605.3a), and
+        // the two seat-only log events. The web client's `protocol.test.ts` consumes
+        // these exact bytes.
+        let json = include_str!("../fixtures/gameview-optional.json");
+        let view: GameView = serde_json::from_str(json).unwrap();
+        let reencoded = serde_json::to_string(&view).unwrap();
+        assert_eq!(serde_json::from_str::<GameView>(&reencoded).unwrap(), view);
+
+        let choice = &view.valid_actions[0];
+        assert_eq!(choice.kind, "player_choice");
+        assert!(!choice.token.is_empty(), "a prompt action is token-bound");
+        let Prompt::Option {
+            slot,
+            prompt,
+            options,
+        } = &choice.prompts[0]
+        else {
+            panic!("the yes-or-no is an option prompt");
+        };
+        assert_eq!(slot, "choice");
+        assert_eq!(prompt, "Pay {1} to draw a card?");
+        assert_eq!(
+            options.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
+            ["accept", "decline"],
+        );
+        // Neither choice owes another slot: a yes-or-no is self-contained.
+        assert!(options.iter().all(|option| option.requires.is_empty()));
+
+        // The seat is asked to pay, so the mana it could pay with is on offer too.
+        assert!(view.valid_actions[1].mana_ability);
+
+        // Both new log events name a seat and nothing else — never what was offered,
+        // and never the pool that could or could not afford it.
+        assert!(matches!(
+            view.log[0].event,
+            GameLogEvent::OptionalApplied { .. }
+        ));
+        assert!(matches!(
+            view.log[1].event,
+            GameLogEvent::OptionalDeclined { .. }
+        ));
+        // A yes-or-no shows nobody any cards: there is no revealed channel on this view.
+        assert!(view.revealed.is_empty());
+    }
+
+    #[test]
     fn prompts_contract_fixture_round_trips_and_matches_typed_fields() {
         // Cross-language contract fixture (issue #56/#156): a pre-game mulligan frame
         // whose `mulligan_decision` action carries an `option` prompt (keep/mulligan)

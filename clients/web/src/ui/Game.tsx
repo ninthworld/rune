@@ -279,6 +279,10 @@ function describe(event: GameLogEvent, playerName: (id: string) => string): stri
       return `${playerName(event.player)} discards ${event.count}`
     case 'library_searched':
       return `${playerName(event.player)} searches their library and shuffles`
+    case 'optional_applied':
+      return `${playerName(event.player)} takes an optional effect`
+    case 'optional_declined':
+      return `${playerName(event.player)} declines an optional effect`
     case 'permanent_died':
       return `${event.permanent.name} dies`
     case 'step_changed':

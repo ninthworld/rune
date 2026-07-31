@@ -808,3 +808,68 @@ fn issue_604_the_choice_effects_say_what_they_ask_and_what_follows() {
          to one card with this card's name, put it onto the battlefield, then shuffle."
     );
 }
+
+#[test]
+fn issue_610_an_optional_effect_reads_as_the_card_prints_it() {
+    // Both forms, and the sentence around them. No bundled card uses this effect yet —
+    // the three that will each need one more primitive besides — so the shapes are
+    // exercised inline (ADR 0009).
+    let db = CardDatabase::from_json(
+        r#"[
+            {"schema_version":1,"functional_id":"test_seer","name":"Test Seer",
+             "types":["creature"],"mana_cost":"{2}{U}","power":2,"toughness":2,
+             "abilities":[{"type":"triggered","event":"self_attacks",
+               "effects":[{"kind":"may","effects":[{"kind":"draw_card","count":1}]}]}]},
+            {"schema_version":1,"functional_id":"test_mentor","name":"Test Mentor",
+             "types":["creature"],"mana_cost":"{2}{W}","power":2,"toughness":2,
+             "abilities":[{"type":"triggered","event":"self_enters_battlefield",
+               "effects":[{"kind":"may","cost":"{1}",
+                           "effects":[{"kind":"draw_card","count":1}]},
+                          {"kind":"gain_life","player_ref":"controller","amount":2}]}]},
+            {"schema_version":1,"functional_id":"test_almsgiver","name":"Test Almsgiver",
+             "types":["sorcery"],"mana_cost":"{W}",
+             "spell_effects":[{"kind":"may",
+                               "effects":[{"kind":"gain_life","player_ref":"controller",
+                                           "amount":3}]}]}
+        ]"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        text_of(&db, "test_seer"),
+        "Whenever Test Seer attacks, you may draw a card."
+    );
+    // The costed form is two sentences even mid-clause, because that is how every card
+    // with one writes it — and the mandatory effect after it is still joined with "and",
+    // so a reader can tell what the payment does and does not buy.
+    assert_eq!(
+        text_of(&db, "test_mentor"),
+        "When Test Mentor enters the battlefield, you may pay {1}. \
+         If you do, draw a card and you gain 2 life."
+    );
+    // A clause whose subject is already "you" is not doubled: "you may gain 3 life",
+    // never "you may you gain 3 life".
+    assert_eq!(text_of(&db, "test_almsgiver"), "You may gain 3 life.");
+}
+
+#[test]
+fn issue_610_the_optional_question_is_composed_from_the_effects_it_offers() {
+    // The words on the button a player answers with come from the same vocabulary as
+    // the printed sentence, so the offer and the card can never describe it differently.
+    let draw = vec![Effect::DrawCard { count: 1 }];
+    assert_eq!(optional_effect_question(None, &draw), "Draw a card?");
+    assert_eq!(
+        optional_effect_question(Some("{1}"), &draw),
+        "Pay {1} to draw a card?"
+    );
+
+    let gain = vec![Effect::GainLife {
+        player_ref: PlayerRef::Controller,
+        amount: 3,
+    }];
+    assert_eq!(optional_effect_question(None, &gain), "You gain 3 life?");
+    assert_eq!(
+        optional_effect_question(Some("{W}"), &gain),
+        "Pay {W} to gain 3 life?"
+    );
+}

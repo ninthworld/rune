@@ -23,6 +23,7 @@ them in order never requires a forward reference.
 | [0011](0011-e2e-browser-test-strategy.md) | Browser end-to-end test strategy |
 | [0012](0012-user-side-card-art.md) | Player-side, opt-in, device-local card art |
 | [0013](0013-mid-resolution-player-choices.md) | How the engine poses a mid-resolution player choice |
+| [0014](0014-optional-effects.md) | Optional effects, and paying for one mid-resolution |
 
 New ADRs copy [`0000-template.md`](0000-template.md) and take the next free number.
 

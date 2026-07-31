@@ -458,7 +458,44 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             if *take == 1 { "it" } else { "them" },
             destination_phrase(*destination),
         ),
+        // An optional effect reads as the card prints it. The costed form is two
+        // sentences even inside a larger clause — "you may pay {1}. If you do, draw a
+        // card" — because that is how the condition is written on every card that has
+        // one, and running it together with "and" would read as though both halves
+        // happened.
+        Effect::May { cost, effects } => {
+            let what = clauses(source, effects);
+            match cost {
+                Some(cost) => format!("you may pay {cost}. If you do, {what}"),
+                None => format!("you may {}", without_you(&what)),
+            }
+        }
     }
+}
+
+/// The question an optional effect puts to its controller, as the words on the button
+/// they answer it with — "Draw a card?", "Pay {1} to draw a card?".
+///
+/// Composed from the effects themselves rather than authored per card, exactly as the
+/// card's own rules text is: one vocabulary, so the prompt and the printed sentence can
+/// never describe the same offer two different ways. The source is written as "this"
+/// because the question is asked mid-resolution, when the object that asked it may
+/// already have left the battlefield.
+#[must_use]
+pub(crate) fn optional_effect_question(cost: Option<&str>, effects: &[Effect]) -> String {
+    let what = clauses("this", effects);
+    match cost {
+        Some(cost) => format!("Pay {cost} to {}?", without_you(&what)),
+        None => format!("{}?", sentence_case(&what)),
+    }
+}
+
+/// A clause with a leading "you " stripped, for a position whose subject is already
+/// stated — "you may **draw a card**", "Pay {1} to **gain 3 life**". A clause with a
+/// third-person subject ("target player discards a card") is returned unchanged, and
+/// never reaches these positions anyway: an optional effect's contents may not target.
+fn without_you(clause: &str) -> &str {
+    clause.strip_prefix("you ").unwrap_or(clause)
 }
 
 /// `count` cards of the class `filter` names, as a noun phrase — "a card", "two cards",

@@ -8,7 +8,7 @@
 //! [`Agent`](super::Agent) trait the session runtime drives. Split out of the session
 //! runtime by size (docs/coding-standards.md, File size); this is pure code motion.
 
-use sage_protocol::{CardView, GameView, Permanent, ValidAction};
+use sage_protocol::{CardView, GameView, Permanent, Prompt, ValidAction};
 
 use super::{Agent, AgentError, PASS_PRIORITY_KIND};
 
@@ -67,6 +67,20 @@ pub fn choose_action(view: &GameView) -> Option<&ValidAction> {
     if let Some(decision) = first_of_kind(actions, "mulligan_decision") {
         return Some(decision);
     }
+    // A mid-resolution question (issues #604/#610): an object is part-way through
+    // resolving and the game is frozen until this is answered, so it comes before any
+    // development. The one thing worth doing first is floating mana — a seat asked to
+    // pay for an optional effect is also offered its mana abilities (CR 605.3a), and
+    // without tapping, an affordable cost would be declined for lack of a tapped land
+    // rather than for lack of mana.
+    if let Some(choice) = first_of_kind(actions, "player_choice") {
+        if choice_needs_mana(choice) {
+            if let Some(mana) = actions.iter().find(|a| is_mana_source(view, a)) {
+                return Some(mana);
+            }
+        }
+        return Some(choice);
+    }
     // Cleanup discard-to-max (CR 514.1): shed the costliest card.
     if let Some(discard) = first_of_kind(actions, "discard") {
         return Some(discard);
@@ -111,6 +125,21 @@ pub fn choose_action(view: &GameView) -> Option<&ValidAction> {
         .iter()
         .find(|a| a.kind != "concede")
         .or_else(|| actions.first())
+}
+
+/// Whether a mid-resolution question is a yes-or-no the seat currently has no way to
+/// say yes to — an optional cost with the acceptance withheld because the pool cannot
+/// pay it yet.
+///
+/// A preference, not a rule: the server decides which options exist, and this only reads
+/// whether the accepting one is among them, exactly as the mulligan preference reads for
+/// a `keep`. Every other prompt shape (a discard, a scry, a search) answers `false` and
+/// is taken straight away.
+fn choice_needs_mana(action: &ValidAction) -> bool {
+    action.prompts.iter().any(|prompt| match prompt {
+        Prompt::Option { options, .. } => !options.iter().any(|option| option.id == "accept"),
+        _ => false,
+    })
 }
 
 /// The first offered action of `kind`, or `None`.

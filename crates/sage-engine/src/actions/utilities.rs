@@ -1,8 +1,10 @@
 //! Utility helpers for action validation and generation.
 
-use crate::ability::Cost;
+use crate::ability::{is_mana_ability, Ability, Cost, Effect};
+use crate::card::abilities_of;
 use crate::card_type::CardType;
-use crate::id::{CardId, PermanentId};
+use crate::id::{CardId, PermanentId, PlayerId};
+use crate::mana::ManaPool;
 use crate::state::{GameState, Permanent};
 use crate::CardDatabase;
 
@@ -43,6 +45,58 @@ pub(crate) fn cost_payable(state: &GameState, cost: &[Cost], permanent: &Permane
                     .can_pay(&crate::mana::parse_mana_cost(mana))
             }),
     })
+}
+
+/// `player`'s pool **plus every unit of mana their untapped permanents could still
+/// produce** (CR 605.1) — the mana they have if they tap out.
+///
+/// A deliberate *over*-estimate: it sums the output of every mana ability of every
+/// untapped source, ignoring that one permanent can only be tapped for one of them, and
+/// credits a summoning-sick creature's mana ability (CR 302.6) that
+/// [`valid_actions`](crate::valid_actions) would not offer this turn. Both errors point
+/// the same way — toward crediting mana the seat may not actually be able to make — and
+/// both callers want that direction:
+///
+/// - [`priority_has_no_meaningful_action`](crate::priority_has_no_meaningful_action)
+///   uses it to decide a seat is idle, and an over-estimate only ever keeps a seat
+///   *non*-idle, so nobody is auto-passed past a play they had;
+/// - the optional-cost gate ([`crate::confirm_is_payable`]) uses it to decide whether to
+///   pose a payment at all, and an over-estimate only ever *offers* a choice that turns
+///   out unpayable — which the chooser declines — instead of silently taking one away.
+///
+/// One estimate rather than two, so the two can never disagree about what a board could
+/// pay for.
+pub(crate) fn potential_mana_pool(
+    state: &GameState,
+    player: PlayerId,
+    db: &CardDatabase,
+) -> ManaPool {
+    let mut pool = state
+        .players
+        .get(player.0)
+        .map(|p| p.mana_pool.clone())
+        .unwrap_or_default();
+    for perm in &state.battlefield {
+        if perm.controller != player || perm.tapped {
+            continue;
+        }
+        for ability in abilities_of(db, perm.card) {
+            if !is_mana_ability(&ability) {
+                continue;
+            }
+            let Ability::Activated { effects, .. } = ability else {
+                continue;
+            };
+            for effect in &effects {
+                match effect {
+                    Effect::AddMana { color, amount } => pool.add(*color, *amount),
+                    Effect::AddColorlessMana { amount } => pool.add_colorless(*amount),
+                    _ => {}
+                }
+            }
+        }
+    }
+    pool
 }
 
 /// Whether `cost` contains the tap symbol `{T}` (CR 118.3f) — the cost component

@@ -1,7 +1,8 @@
 //! Action generation — enumeration of legal actions from game state.
 
-use crate::ability::Ability;
+use crate::ability::{is_mana_ability, Ability};
 use crate::card_type::CardType;
+use crate::choice::ChoiceQuestion;
 use crate::commander::commander_tax_cost;
 use crate::mana::parse_mana_cost;
 use crate::phase::Step;
@@ -48,17 +49,32 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         return actions;
     }
 
-    // A mid-resolution player choice (CR 701.8 discard, 701.17 scry, 701.19 search)
-    // outranks everything below, including a trigger waiting to be aimed: an object is
-    // *part-way through resolving* and the game is frozen until its question is
-    // answered. Its chooser is frequently neither the priority holder nor the resolving
-    // object's controller — "target player discards two cards" asks the targeted seat —
-    // so `apply_action` has already handed them priority and the priority test here is
-    // the whole routing. Every other seat is offered nothing at all, which is what
-    // "no other seat may act meanwhile" means concretely.
+    // A mid-resolution player choice (CR 701.8 discard, 701.17 scry, 701.19 search, and
+    // the CR 608.2 "you may") outranks everything below, including a trigger waiting to
+    // be aimed: an object is *part-way through resolving* and the game is frozen until
+    // its question is answered. Its chooser is frequently neither the priority holder
+    // nor the resolving object's controller — "target player discards two cards" asks
+    // the targeted seat — so `apply_action` has already handed them priority and the
+    // priority test here is the whole routing. Every other seat is offered nothing at
+    // all, which is what "no other seat may act meanwhile" means concretely.
     if let Some(pending) = crate::pending_player_choice(state) {
         return if priority == pending.chooser {
-            let mut actions = vec![Action::AnswerChoice { chosen: Vec::new() }];
+            let mut actions = match &pending.question {
+                ChoiceQuestion::Cards(_) => vec![Action::AnswerChoice { chosen: Vec::new() }],
+                ChoiceQuestion::Confirm(_) => vec![Action::AnswerConfirm { accept: false }],
+            };
+            // CR 605.3a: a player asked to pay a cost while something resolves may
+            // activate mana abilities to pay it — the one thing the freeze lets
+            // through, and only because a mana ability uses no stack and hands nobody
+            // priority. Anything else would let the game move under a question that is
+            // still owed.
+            if pending
+                .question
+                .confirm()
+                .is_some_and(|request| request.cost.is_some())
+            {
+                offer_activations(state, db, priority, ManaOnly::Yes, &mut actions);
+            }
             offer_concede(&mut actions);
             actions
         } else {
@@ -267,22 +283,54 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
         }
     }
 
-    // Activate abilities of permanents the priority holder controls. A targeting
-    // ability is offered once with no targets filled in — the requirement form —
-    // never once per legal target (see [`crate::target_requirements`] for the O(N)-per-
-    // slot candidate enumeration and the combinatorial guard).
-    //
-    // CR 302.6: a creature that has not been under its controller's control since
-    // their most recent turn began can't have an ability with `{T}` in its cost
-    // activated. CR 605.3a makes no exception for mana abilities, so a freshly cast
-    // Llanowar Elves offers nothing until its controller's next turn; haste
-    // (CR 702.10b) lifts the restriction. Non-creature permanents are never sick, so
-    // a land played this turn still taps for mana.
+    // Activate abilities of permanents the priority holder controls.
+    offer_activations(state, db, priority, ManaOnly::No, &mut actions);
+
+    offer_concede(&mut actions);
+    actions
+}
+
+/// Whether an activation offer is restricted to mana abilities — the difference between
+/// holding priority (anything goes) and being asked to pay for something mid-resolution,
+/// where CR 605.3a lets a player make mana and nothing else.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ManaOnly {
+    /// Every activated ability whose cost is payable.
+    No,
+    /// Only mana abilities (CR 605.1a) — they use no stack and grant no priority, so
+    /// they are the only activations that can happen while the game is frozen on a
+    /// question.
+    Yes,
+}
+
+/// Append every activated ability of `seat`'s permanents whose cost is payable right
+/// now, filtered by `mana_only`.
+///
+/// A targeting ability is offered once with no targets filled in — the requirement form
+/// — never once per legal target (see [`crate::target_requirements`] for the
+/// O(N)-per-slot candidate enumeration and the combinatorial guard).
+///
+/// CR 302.6: a creature that has not been under its controller's control since their
+/// most recent turn began can't have an ability with `{T}` in its cost activated.
+/// CR 605.3a makes no exception for mana abilities, so a freshly cast Llanowar Elves
+/// offers nothing until its controller's next turn; haste (CR 702.10b) lifts the
+/// restriction. Non-creature permanents are never sick, so a land played this turn still
+/// taps for mana.
+fn offer_activations(
+    state: &GameState,
+    db: &CardDatabase,
+    seat: crate::id::PlayerId,
+    mana_only: ManaOnly,
+    actions: &mut Vec<Action>,
+) {
     for perm in &state.battlefield {
-        if perm.controller != priority {
+        if perm.controller != seat {
             continue;
         }
         for (index, ability) in crate::card::abilities_of(db, perm.card).iter().enumerate() {
+            if mana_only == ManaOnly::Yes && !is_mana_ability(ability) {
+                continue;
+            }
             if let Ability::Activated { cost, .. } = ability {
                 if tap_cost_is_summoning_sick(state, perm, cost, db) {
                     continue;
@@ -297,9 +345,6 @@ pub fn valid_actions(state: &GameState, db: &CardDatabase) -> Vec<Action> {
             }
         }
     }
-
-    offer_concede(&mut actions);
-    actions
 }
 
 /// Append the always-available concede action (CR 104.3a) to `actions`. Called at

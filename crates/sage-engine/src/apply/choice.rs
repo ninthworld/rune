@@ -1,7 +1,9 @@
 //! Answering the mid-resolution player choice the game is waiting on.
 
 use super::*;
-use crate::choice::{apply_choice_outcome, pending_player_choice};
+use crate::choice::{
+    apply_choice_outcome, pending_player_choice, take_confirmed_effects, ChoiceQuestion,
+};
 use crate::id::CardInstanceId;
 use crate::resolve::resume_after_choice;
 
@@ -28,12 +30,54 @@ pub(crate) fn apply_answer_choice(
     chosen: &[CardInstanceId],
     db: &CardDatabase,
 ) {
-    if pending_player_choice(state).is_none() {
+    let Some(ChoiceQuestion::Cards(_)) = pending_player_choice(state).map(|p| &p.question) else {
         return;
-    }
+    };
     let answered = state.pending_choices.remove(0);
-    apply_choice_outcome(state, &answered.request, chosen, db);
+    let ChoiceQuestion::Cards(request) = &answered.question else {
+        return;
+    };
+    apply_choice_outcome(state, request, chosen, db);
     if let Some(resume) = answered.resume {
+        resume_after_choice(state, resume, db);
+    }
+}
+
+/// Answer the pending **yes-or-no** with `accept`, then let the suspended resolution
+/// continue (CR 608.2 — see [`crate::Effect::May`]).
+///
+/// The same three steps [`apply_answer_choice`] takes, with one difference that is the
+/// whole design: an accepted effect is not applied *here*. It is spliced onto the front
+/// of the suspended remainder and resumed through the ordinary effect walk, so
+///
+/// - the optional effects and the effects that followed them run in one pass, in
+///   printed order;
+/// - an accepted effect that poses a *further* choice suspends exactly as any other
+///   effect would, with no second mechanism;
+/// - declining is the same code path with nothing spliced, which is what makes "a
+///   decline leaves the game as if the effect were absent" true by construction rather
+///   than by matching two branches carefully.
+///
+/// Paying happens in [`take_confirmed_effects`], atomically with the acceptance.
+/// Legality — including whether the cost is payable at all — has already been
+/// established by [`crate::apply_action`]'s gate. An answer with no yes-or-no pending is
+/// a no-op.
+pub(crate) fn apply_answer_confirm(state: &mut GameState, accept: bool, db: &CardDatabase) {
+    let Some(ChoiceQuestion::Confirm(_)) = pending_player_choice(state).map(|p| &p.question) else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::Confirm(request) = &answered.question else {
+        return;
+    };
+    let taken = take_confirmed_effects(state, answered.chooser, request, accept);
+    // A confirmation is the only choice its effect poses, so it always carries the
+    // remainder; without one there is nothing left to resolve and nothing to splice on.
+    if let Some(mut resume) = answered.resume {
+        if let Some(mut effects) = taken {
+            effects.append(&mut resume.effects);
+            resume.effects = effects;
+        }
         resume_after_choice(state, resume, db);
     }
 }

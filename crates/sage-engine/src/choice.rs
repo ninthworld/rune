@@ -1,10 +1,11 @@
-//! Mid-resolution player choices: "choose N cards from this set".
+//! Mid-resolution player choices: "choose N cards from this set", and "do you want
+//! this to happen?".
 //!
 //! Every effect before this one resolved without asking anyone anything. A discard, a
-//! scry, a look-at-the-top, and a library search all stop in the middle of resolution
-//! and hand one named player a decision, and the game must not proceed until they make
-//! it. This module is that mechanism, built to the shape the trigger-target choice of
-//! issue #602 established:
+//! scry, a look-at-the-top, a library search, and an optional `you may …` all stop in
+//! the middle of resolution and hand one named player a decision, and the game must not
+//! proceed until they make it. This module is that mechanism, built to the shape the
+//! trigger-target choice of issue #602 established:
 //!
 //! - **The pending choice is derived, never flagged.** A [`PendingChoice`] is queued
 //!   state exactly as a [`StackObject`](crate::StackObject) is queued state; whether a
@@ -21,7 +22,9 @@
 //!   ([`crate::apply_action`]).
 //! - **A choice with no legal answer is never posed.** It is applied immediately with
 //!   an empty selection instead, so an empty hand, an empty library, or a look that
-//!   turns up nothing matching resolves rather than stalling every seat.
+//!   turns up nothing matching resolves rather than stalling every seat. An optional
+//!   cost no amount of tapping could pay is the same rule wearing different clothes:
+//!   it is declined outright ([`ChoiceQuestion::Confirm`]).
 //!
 //! ## Hidden information
 //!
@@ -52,16 +55,76 @@ pub struct PendingChoice {
     /// the *controller* choose from the *opponent's* hand. This seat, and no other, may
     /// be shown the cards ([`choice_candidates`]).
     pub chooser: PlayerId,
-    /// What is being chosen.
-    pub request: ChoiceRequest,
+    /// What is being asked.
+    pub question: ChoiceQuestion,
     /// The remainder of the suspended object's resolution, carried on the **last**
     /// choice a single effect posed so the rest of the card happens exactly once. A
     /// choice that is not the last of its effect carries `None`.
     pub resume: Option<Resume>,
 }
 
-/// The question one [`PendingChoice`] asks: which cards, from where, how many, and what
-/// becomes of them.
+/// What one [`PendingChoice`] asks — the two shapes of question the engine can pose in
+/// the middle of a resolution.
+///
+/// One enum rather than two queues, because everything *around* the question is the
+/// same for both: the queue, the routing to a chooser, the priority hand-off through
+/// the shared [`interrupted_priority`](crate::GameState::interrupted_priority) slot, and
+/// the rule that a question with no legal answer is never posed at all. Only the answer
+/// differs, so only the answer's shape lives here.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChoiceQuestion {
+    /// Choose cards from a zone — a discard, a scry, a look, a search
+    /// ([`ChoiceRequest`]). Answered with [`Action::AnswerChoice`](crate::Action).
+    Cards(ChoiceRequest),
+    /// Yes or no, optionally gated on paying a cost — the `you may …` of
+    /// [`Effect::May`] ([`ConfirmRequest`]). Answered with
+    /// [`Action::AnswerConfirm`](crate::Action).
+    Confirm(ConfirmRequest),
+}
+
+impl ChoiceQuestion {
+    /// The card-selection request this question asks, or `None` when it is a
+    /// yes-or-no. Lets a caller that only handles the selection shape — the candidate
+    /// projection, the revealed-cards channel — say so once rather than matching twice.
+    #[must_use]
+    pub fn cards(&self) -> Option<&ChoiceRequest> {
+        match self {
+            ChoiceQuestion::Cards(request) => Some(request),
+            ChoiceQuestion::Confirm(_) => None,
+        }
+    }
+
+    /// The yes-or-no request this question asks, or `None` when it is a card selection.
+    #[must_use]
+    pub fn confirm(&self) -> Option<&ConfirmRequest> {
+        match self {
+            ChoiceQuestion::Confirm(request) => Some(request),
+            ChoiceQuestion::Cards(_) => None,
+        }
+    }
+}
+
+/// The question an optional effect asks: *do you want this, and will you pay for it?*
+///
+/// Carries what happens on a **yes** and nothing about what happens on a no, because a
+/// no is the absence of an event: the effects here are simply not applied, and the rest
+/// of the resolution — which rides on [`PendingChoice::resume`], not here — is
+/// untouched either way.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConfirmRequest {
+    /// The mana cost accepting charges, in `{...}` notation, or `None` for a free
+    /// `you may`. Paid from the chooser's pool at the moment they accept, through the
+    /// same [`ManaPool::pay`](crate::ManaPool::pay) seam a cast uses.
+    pub cost: Option<String>,
+    /// The effects applied on acceptance, in order. They are spliced onto the front of
+    /// the suspended remainder rather than applied here, so accepting resumes down
+    /// exactly one code path and an accepted effect that poses a *further* choice
+    /// suspends again without any special case.
+    pub effects: Vec<Effect>,
+}
+
+/// A card-selection question ([`ChoiceQuestion::Cards`]): which cards, from where, how
+/// many, and what becomes of them.
 ///
 /// Deliberately free of any *answer* and of any snapshotted candidate list — it names a
 /// zone and a class, and [`choice_candidates`] evaluates that against current state, in
@@ -234,15 +297,17 @@ pub(crate) fn answer_is_legal(
     chosen: &[CardInstanceId],
     db: &CardDatabase,
 ) -> bool {
-    let Some(pending) = pending_player_choice(state) else {
+    // A yes-or-no is not answered with cards, so a card selection aimed at one is not
+    // a wrong answer to it — it is an answer to a question nobody asked.
+    let Some(request) = pending_player_choice(state).and_then(|p| p.question.cards()) else {
         return false;
     };
-    let (min, max) = choice_bounds(state, &pending.request, db);
+    let (min, max) = choice_bounds(state, request, db);
     let count = u32::try_from(chosen.len()).unwrap_or(u32::MAX);
     if count < min || count > max {
         return false;
     }
-    let candidates = choice_candidates(state, &pending.request, db);
+    let candidates = choice_candidates(state, request, db);
     // No card may be named twice: a hand of one card is not two discards.
     let distinct = chosen
         .iter()
@@ -252,6 +317,65 @@ pub(crate) fn answer_is_legal(
         && chosen
             .iter()
             .all(|id| candidates.iter().any(|inst| inst.id == *id))
+}
+
+/// Whether the pending yes-or-no can currently be answered **yes**: it is a
+/// [`ChoiceQuestion::Confirm`], and its cost (if it has one) is payable from the
+/// chooser's mana pool as it stands right now.
+///
+/// The counterpart of [`choice_bounds`] for a confirmation — the fact a projection needs
+/// in order to offer "yes" only when the engine would accept it, and the fact
+/// [`crate::apply_action`]'s gate re-derives before charging anyone. `false` when no
+/// choice is owed or the owed one is a card selection.
+///
+/// Read against the pool *now*, deliberately: a chooser owed a payment may still tap
+/// lands (CR 605.3a), so this flips from `false` to `true` as they float mana, and the
+/// offer follows.
+#[must_use]
+pub fn confirm_is_payable(state: &GameState) -> bool {
+    let Some(pending) = pending_player_choice(state) else {
+        return false;
+    };
+    let Some(request) = pending.question.confirm() else {
+        return false;
+    };
+    cost_is_payable_from_pool(state, pending.chooser, request.cost.as_deref())
+}
+
+/// Whether `player`'s pool covers `cost` as it stands. `true` for a free choice
+/// (`None`), and for a seat that has left the game there is no pool and so no payment.
+fn cost_is_payable_from_pool(state: &GameState, player: PlayerId, cost: Option<&str>) -> bool {
+    let Some(cost) = cost else {
+        return true;
+    };
+    state
+        .players
+        .get(player.0)
+        .is_some_and(|p| p.mana_pool.can_pay(&crate::mana::parse_mana_cost(cost)))
+}
+
+/// Whether `player` could pay `cost` if they tapped everything they have — their pool
+/// plus every point of mana their untapped sources could still add.
+///
+/// This, not the current pool, is what decides whether an optional cost is *posed*: a
+/// player with an empty pool and two untapped Forests can pay `{1}`, and auto-declining
+/// them would take away a decision the rules give them. The estimate is the same
+/// deliberate over-estimate [`crate::priority_has_no_meaningful_action`] makes — every
+/// mana ability of every untapped source, as though one permanent could be tapped for
+/// all of them — and errs in the same safe direction: it can only ever *offer* a choice
+/// that turns out unpayable, which the chooser simply declines, never withhold one they
+/// could have taken.
+fn cost_could_be_paid(
+    state: &GameState,
+    player: PlayerId,
+    cost: Option<&str>,
+    db: &CardDatabase,
+) -> bool {
+    let Some(cost) = cost else {
+        return true;
+    };
+    crate::actions::potential_mana_pool(state, player, db)
+        .can_pay(&crate::mana::parse_mana_cost(cost))
 }
 
 /// Whether the printed card `card` satisfies `filter`.
@@ -288,29 +412,42 @@ fn card_matches(
     }
 }
 
-/// Pose `choices`, or apply the ones that have no legal answer outright.
+/// Pose `choices`, or settle the ones that have no legal answer outright.
 ///
 /// Returns whether anything was actually queued — i.e. whether the caller must suspend.
-/// A choice whose clamped maximum is zero is not a decision at all, so it is applied
-/// immediately with an empty selection (which still shuffles a searched library and
-/// still bottoms a looked-at pile) and the caller carries on. This is the whole of the
-/// "a choice with no legal answer resolves without stalling" guarantee, in one place
-/// rather than per effect.
+/// A question that is not a decision is answered here instead of being asked, which is
+/// the whole of the "a choice with no legal answer resolves without stalling" guarantee,
+/// in one place rather than per effect:
+///
+/// - a card selection whose clamped maximum is zero is applied with an empty selection
+///   (which still shuffles a searched library and still bottoms a looked-at pile);
+/// - an optional cost no amount of tapping could pay is declined, and *recorded* as
+///   declined, so the log never quietly omits a decision the player was entitled to.
 pub(crate) fn pose_choices(
     state: &mut GameState,
-    choices: Vec<(PlayerId, ChoiceRequest)>,
+    choices: Vec<(PlayerId, ChoiceQuestion)>,
     db: &CardDatabase,
 ) -> bool {
     let mut queued = false;
-    for (chooser, request) in choices {
-        let (_, max) = choice_bounds(state, &request, db);
-        if max == 0 {
-            apply_choice_outcome(state, &request, &[], db);
-            continue;
+    for (chooser, question) in choices {
+        match &question {
+            ChoiceQuestion::Cards(request) => {
+                let (_, max) = choice_bounds(state, request, db);
+                if max == 0 {
+                    apply_choice_outcome(state, request, &[], db);
+                    continue;
+                }
+            }
+            ChoiceQuestion::Confirm(request) => {
+                if !cost_could_be_paid(state, chooser, request.cost.as_deref(), db) {
+                    state.record_event(GameEvent::OptionalDeclined { player: chooser });
+                    continue;
+                }
+            }
         }
         state.pending_choices.push(PendingChoice {
             chooser,
-            request,
+            question,
             resume: None,
         });
         queued = true;
@@ -526,7 +663,7 @@ pub(crate) fn choices_for_effect(
     controller: PlayerId,
     source_card: Option<CardId>,
     target: Option<Target>,
-) -> Option<Vec<(PlayerId, ChoiceRequest)>> {
+) -> Option<Vec<(PlayerId, ChoiceQuestion)>> {
     match effect {
         Effect::Discard {
             player_ref,
@@ -549,7 +686,7 @@ pub(crate) fn choices_for_effect(
                         };
                         (
                             chooser,
-                            ChoiceRequest {
+                            ChoiceQuestion::Cards(ChoiceRequest {
                                 subject,
                                 zone: ChoiceZone::Hand,
                                 filter: filter.clone(),
@@ -557,7 +694,7 @@ pub(crate) fn choices_for_effect(
                                 min: u32::from(*count),
                                 max: u32::from(*count),
                                 outcome: ChoiceOutcome::Discard,
-                            },
+                            }),
                         )
                     })
                     .collect(),
@@ -565,7 +702,7 @@ pub(crate) fn choices_for_effect(
         }
         Effect::Scry { count } => Some(vec![(
             controller,
-            ChoiceRequest {
+            ChoiceQuestion::Cards(ChoiceRequest {
                 subject: controller,
                 zone: ChoiceZone::LibraryTop(*count),
                 filter: CardFilter::Any,
@@ -574,7 +711,7 @@ pub(crate) fn choices_for_effect(
                 min: 0,
                 max: u32::from(*count),
                 outcome: ChoiceOutcome::BottomChosen,
-            },
+            }),
         )]),
         Effect::LookAtTop {
             count,
@@ -583,7 +720,7 @@ pub(crate) fn choices_for_effect(
             destination,
         } => Some(vec![(
             controller,
-            ChoiceRequest {
+            ChoiceQuestion::Cards(ChoiceRequest {
                 subject: controller,
                 zone: ChoiceZone::LibraryTop(*count),
                 filter: filter.clone(),
@@ -592,7 +729,7 @@ pub(crate) fn choices_for_effect(
                 min: 0,
                 max: u32::from(*take),
                 outcome: ChoiceOutcome::TakeAndBottomRest(*destination),
-            },
+            }),
         )]),
         Effect::SearchLibrary {
             take,
@@ -600,7 +737,7 @@ pub(crate) fn choices_for_effect(
             destination,
         } => Some(vec![(
             controller,
-            ChoiceRequest {
+            ChoiceQuestion::Cards(ChoiceRequest {
                 subject: controller,
                 zone: ChoiceZone::Library,
                 filter: filter.clone(),
@@ -609,8 +746,51 @@ pub(crate) fn choices_for_effect(
                 min: 0,
                 max: u32::from(*take),
                 outcome: ChoiceOutcome::TakeAndShuffle(*destination),
-            },
+            }),
+        )]),
+        // The one question the *controller* always answers, whoever else the ability
+        // names: an optional effect is theirs to take or leave (CR 608.2).
+        Effect::May { cost, effects } => Some(vec![(
+            controller,
+            ChoiceQuestion::Confirm(ConfirmRequest {
+                cost: cost.clone(),
+                effects: effects.clone(),
+            }),
         )]),
         _ => None,
     }
+}
+
+/// Answer the pending yes-or-no: hand the accepted effects back to be spliced onto the
+/// front of the suspended remainder, or `None` for a decline.
+///
+/// Charging for the acceptance happens here too, because the charge and the answer are
+/// one act — a `yes` that could not pay would be a `no` that had already moved cards.
+/// The caller has established payability ([`confirm_is_payable`]); an unpayable cost
+/// reaching here is treated as a decline rather than granting a free effect.
+pub(crate) fn take_confirmed_effects(
+    state: &mut GameState,
+    chooser: PlayerId,
+    request: &ConfirmRequest,
+    accept: bool,
+) -> Option<Vec<Effect>> {
+    if !accept {
+        state.record_event(GameEvent::OptionalDeclined { player: chooser });
+        return None;
+    }
+    if let Some(cost) = &request.cost {
+        let paid = state
+            .players
+            .get(chooser.0)
+            .and_then(|player| player.mana_pool.pay(&crate::mana::parse_mana_cost(cost)));
+        match (paid, state.players.get_mut(chooser.0)) {
+            (Some(pool), Some(player)) => player.mana_pool = pool,
+            _ => {
+                state.record_event(GameEvent::OptionalDeclined { player: chooser });
+                return None;
+            }
+        }
+    }
+    state.record_event(GameEvent::OptionalApplied { player: chooser });
+    Some(request.effects.clone())
 }

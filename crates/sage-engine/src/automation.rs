@@ -10,8 +10,8 @@
 //! gate it live in the room layer (ADR 0001 keeps loops, policy, and I/O out of the
 //! engine).
 
-use crate::ability::{is_mana_ability, Ability, Effect};
-use crate::actions::{valid_actions, Action};
+use crate::ability::is_mana_ability;
+use crate::actions::{potential_mana_pool, valid_actions, Action};
 use crate::card::abilities_of;
 use crate::combat::{
     attacker_candidates, attacking_defender_of, blocker_can_block_attacker, blocker_candidates_for,
@@ -147,42 +147,18 @@ fn a_legal_block_exists(state: &GameState, db: &CardDatabase) -> bool {
         })
 }
 
-/// Add to the priority seat's mana pool every unit of mana its untapped permanents
-/// could produce via their mana abilities (CR 605.1). A deliberate *over*-estimate —
-/// it sums the output of every mana ability of every untapped source, ignoring that
-/// a source can only be tapped for one of them — because over-estimating mana can
-/// only make more spells look castable, which makes the seat look *less* idle: the
-/// safe direction (never auto-pass a seat that might have had a play).
+/// Give the priority seat the mana it would have if it tapped out
+/// ([`potential_mana_pool`], CR 605.1), so a "castable once I tap" spell counts as a
+/// real action.
 ///
-/// The over-estimate deliberately includes a summoning-sick creature's mana ability
-/// (CR 302.6, issue #454), which [`valid_actions`] will not offer this turn. That
-/// stays correct for the same reason: crediting mana the seat cannot actually make
-/// only ever keeps it non-idle, and a seat kept non-idle is never auto-passed past a
-/// play. Filtering it out would be a strictly *less* conservative estimate.
+/// The estimate is deliberately generous, and shared with the optional-cost gate so
+/// there is exactly one answer in the engine to "what could this board pay for" — see
+/// [`potential_mana_pool`] for why erring high is the safe direction for both.
 fn float_potential_mana(state: &mut GameState, db: &CardDatabase) {
     let seat = state.priority;
-    let mut produced: Vec<Effect> = Vec::new();
-    for perm in &state.battlefield {
-        if perm.controller != seat || perm.tapped {
-            continue;
-        }
-        for ability in abilities_of(db, perm.card) {
-            if is_mana_ability(&ability) {
-                if let Ability::Activated { effects, .. } = ability {
-                    produced.extend(effects);
-                }
-            }
-        }
-    }
-    let Some(player) = state.players.get_mut(seat.0) else {
-        return;
-    };
-    for effect in &produced {
-        match effect {
-            Effect::AddMana { color, amount } => player.mana_pool.add(*color, *amount),
-            Effect::AddColorlessMana { amount } => player.mana_pool.add_colorless(*amount),
-            _ => {}
-        }
+    let pool = potential_mana_pool(state, seat, db);
+    if let Some(player) = state.players.get_mut(seat.0) {
+        player.mana_pool = pool;
     }
 }
 

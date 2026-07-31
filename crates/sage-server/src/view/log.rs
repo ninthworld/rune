@@ -79,6 +79,14 @@ pub(crate) fn log_entries(state: &GameState, db: &CardDatabase) -> Vec<GameLogEn
                 GameEvent::LibrarySearched { player } => GameLogEvent::LibrarySearched {
                     player: player_id(*player),
                 },
+                // An answered "you may": that the question was asked and how it was
+                // answered is public; the pool that could or could not pay for it is not.
+                GameEvent::OptionalApplied { player } => GameLogEvent::OptionalApplied {
+                    player: player_id(*player),
+                },
+                GameEvent::OptionalDeclined { player } => GameLogEvent::OptionalDeclined {
+                    player: player_id(*player),
+                },
                 GameEvent::PermanentDied { permanent } => GameLogEvent::PermanentDied {
                     permanent: log_permanent(permanent, db),
                 },

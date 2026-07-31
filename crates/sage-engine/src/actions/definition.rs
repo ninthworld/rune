@@ -54,6 +54,24 @@ pub enum Action {
         /// parameterized representation [`Self::ActivateAbility`] uses.
         targets: Vec<Target>,
     },
+    /// Answer the **mid-resolution yes-or-no** the game is currently waiting on: an
+    /// optional effect's `you may …` (CR 608.2 — see [`crate::Effect::May`]).
+    ///
+    /// The confirmation counterpart of [`Self::AnswerChoice`], routed the same way and
+    /// with the same exclusivity — while it is owed, its chooser is offered this and
+    /// (when the effect asks for mana) their mana abilities, and every other seat is
+    /// offered nothing. The chooser is the offering ability's **controller**, who is
+    /// frequently not the priority holder: a creature entering on an opponent's turn
+    /// asks its own controller whether to take the trigger's optional effect.
+    ///
+    /// `accept: true` is legal only while the cost is payable from that seat's pool
+    /// right now; declining is always legal, which is why an unpayable cost can never
+    /// stall the game. A cost no amount of tapping could pay is never posed at all.
+    AnswerConfirm {
+        /// Whether to apply the optional effect. `false` skips it and resumes the rest
+        /// of the object's resolution untouched — declining is not a fizzle.
+        accept: bool,
+    },
     /// Answer the **mid-resolution player choice** the game is currently waiting on
     /// (CR 701.8 discard, CR 701.17 scry, CR 701.19 search — see
     /// [`crate::pending_player_choice`]).
@@ -246,6 +264,7 @@ impl Action {
             // targets, and are validated through their own paths, never this one.
             Action::PassPriority
             | Action::AnswerChoice { .. }
+            | Action::AnswerConfirm { .. }
             | Action::PlayLand { .. }
             | Action::Discard { .. }
             | Action::Mulligan
@@ -292,6 +311,10 @@ impl Action {
             // in by the answer.
             Action::Keep { .. } => Action::Keep { bottom: Vec::new() },
             Action::AnswerChoice { .. } => Action::AnswerChoice { chosen: Vec::new() },
+            // A yes-or-no is advertised as the bare question; the answer rides in the
+            // submitted action, so its requirement form is the declining default —
+            // never a second offer per possible reply.
+            Action::AnswerConfirm { .. } => Action::AnswerConfirm { accept: false },
             // The requirement form of a combat declaration is the empty selection —
             // exactly what `valid_actions` advertises during the declare window.
             Action::DeclareAttackers { .. } => Action::DeclareAttackers {

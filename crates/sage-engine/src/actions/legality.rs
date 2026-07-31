@@ -46,6 +46,15 @@ pub(crate) fn action_is_legal(state: &GameState, action: &Action, db: &CardDatab
         return crate::choice::answer_is_legal(state, chosen, db);
     }
 
+    // 1a-bis. A yes-or-no answer is validated against the *pool as it stands*: accepting
+    //     an optional cost is legal only while the chooser can actually pay it, which is
+    //     the same predicate the offer is built from ([`crate::confirm_is_payable`]), so
+    //     the offer and the charge can never disagree. Declining needs nothing and is
+    //     always legal — the reason an unpayable cost never stalls the game.
+    if let Action::AnswerConfirm { accept } = action {
+        return !accept || crate::confirm_is_payable(state);
+    }
+
     // 1b. A mulligan keep validates its bottoming selection (CR 103.5) rather than
     //     the target-slot machinery: exactly one distinct hand card per mulligan
     //     taken (see [`crate::mulligan::keep_bottom_is_legal`]).
