@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::card::Keyword;
+use crate::card::{CombatRestriction, Keyword};
 use crate::id::{CardId, CardInstance, CardInstanceId, PermanentId, PlayerId};
 use crate::player::LossReason;
 
@@ -436,6 +436,15 @@ pub enum Modification {
     /// 6 is timestamp-independent for a pure grant, so unlike layer-7c modifiers
     /// these need not be folded in order.
     GrantKeyword(Keyword),
+    /// CR 613 **layer 6** (CR 613.1f): impose a combat restriction on the affected
+    /// permanent — an Aura's "can neither attack nor block", or a spell's "target
+    /// creature can't be blocked this turn". The exact counterpart of
+    /// [`Self::GrantKeyword`] for the restriction vocabulary that is not keyworded
+    /// ([`CombatRestriction`](crate::CombatRestriction)): idempotent, timestamp-
+    /// independent, and folded into the permanent's computed restrictions by
+    /// [`characteristics`](crate::characteristics::characteristics), so a granted
+    /// restriction binds exactly as a printed one does.
+    GrantRestriction(CombatRestriction),
 }
 
 /// One running total of cumulative **combat** damage a commander has dealt a

@@ -37,6 +37,20 @@ impl Color {
             Self::Green => "{G}",
         }
     }
+
+    /// This color as the adjective a rules sentence uses, e.g. `"black"` in "can't be
+    /// blocked by black creatures". The prose counterpart of [`Self::pip`], which
+    /// writes the same color as a cost symbol.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::White => "white",
+            Self::Blue => "blue",
+            Self::Black => "black",
+            Self::Red => "red",
+            Self::Green => "green",
+        }
+    }
 }
 
 /// A quantity of mana held per color, plus colorless.

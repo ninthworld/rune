@@ -7,13 +7,14 @@
 
 SAGE supports only the verified slice of cards in its catalog, never a full set. This report is generated from the catalog and the curated exclusion list — the checkable artifact behind that claim (issue #258).
 
-## Supported cards (104)
+## Supported cards (113)
 
 Every functional definition in `crates/sage-engine/data/catalog/`, in interned order. "Implementation" is whether the card's behavior lives in its data definition or (also) in the `scripted` code escape hatch (ADR 0008 §2).
 
 | Functional ID | Name | Implementation |
 | --- | --- | --- |
 | `aegis_of_the_heavens` | Aegis of the Heavens | functional definition |
+| `aether_tunnel` | Aether Tunnel | functional definition |
 | `aggressive_mammoth` | Aggressive Mammoth | functional definition |
 | `air_elemental` | Air Elemental | functional definition |
 | `ajani_s_pridemate` | Ajani's Pridemate | functional definition |
@@ -24,6 +25,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `boggart_brute` | Boggart Brute | functional definition |
 | `bogstomper` | Bogstomper | functional definition |
 | `bone_to_ash` | Bone to Ash | functional definition |
+| `bristling_boar` | Bristling Boar | functional definition |
 | `cancel` | Cancel | functional definition |
 | `centaur_courser` | Centaur Courser | functional definition |
 | `child_of_night` | Child of Night | functional definition |
@@ -45,6 +47,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `forest` | Forest | functional definition |
 | `forsaken_sanctuary` | Forsaken Sanctuary | functional definition |
 | `foul_orchard` | Foul Orchard | functional definition |
+| `frilled_sea_serpent` | Frilled Sea Serpent | functional definition |
 | `giant_spider` | Giant Spider | functional definition |
 | `gigantosaurus` | Gigantosaurus | functional definition |
 | `goblin_motivator` | Goblin Motivator | functional definition |
@@ -67,6 +70,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `lightning_strike` | Lightning Strike | functional definition |
 | `llanowar_elves` | Llanowar Elves | functional definition |
 | `loxodon_line_breaker` | Loxodon Line Breaker | functional definition |
+| `luminous_bonds` | Luminous Bonds | functional definition |
 | `meandering_river` | Meandering River | functional definition |
 | `mighty_leap` | Mighty Leap | functional definition |
 | `millstone` | Millstone | functional definition |
@@ -77,6 +81,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `onakke_ogre` | Onakke Ogre | functional definition |
 | `oreskos_swiftclaw` | Oreskos Swiftclaw | functional definition |
 | `pelakka_wurm` | Pelakka Wurm | functional definition |
+| `plague_mare` | Plague Mare | functional definition |
 | `plains` | Plains | functional definition |
 | `plummet` | Plummet | functional definition |
 | `poison_tip_archer` | Poison-Tip Archer | functional definition |
@@ -87,6 +92,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `satyr_enchanter` | Satyr Enchanter | functional definition |
 | `serra_s_guardian` | Serra's Guardian | functional definition |
 | `shock` | Shock | functional definition |
+| `siegebreaker_giant` | Siegebreaker Giant | functional definition |
 | `silverbeak_griffin` | Silverbeak Griffin | functional definition |
 | `skeleton_archer` | Skeleton Archer | functional definition |
 | `skymarch_bloodletter` | Skymarch Bloodletter | functional definition |
@@ -99,9 +105,11 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `submerged_boneyard` | Submerged Boneyard | functional definition |
 | `sun_sentinel` | Sun Sentinel | functional definition |
 | `sure_strike` | Sure Strike | functional definition |
+| `suspicious_bookcase` | Suspicious Bookcase | functional definition |
 | `swamp` | Swamp | functional definition |
 | `take_vengeance` | Take Vengeance | functional definition |
 | `tattered_mummy` | Tattered Mummy | functional definition |
+| `tectonic_rift` | Tectonic Rift | functional definition |
 | `thornhide_wolves` | Thornhide Wolves | functional definition |
 | `timber_gorge` | Timber Gorge | functional definition |
 | `titanic_growth` | Titanic Growth | functional definition |
@@ -112,6 +120,7 @@ Every functional definition in `crates/sage-engine/data/catalog/`, in interned o
 | `vampire_sovereign` | Vampire Sovereign | functional definition |
 | `viashino_pyromancer` | Viashino Pyromancer | functional definition |
 | `vigilant_baloth` | Vigilant Baloth | functional definition |
+| `vine_mare` | Vine Mare | functional definition |
 | `volcanic_dragon` | Volcanic Dragon | functional definition |
 | `walking_corpse` | Walking Corpse | functional definition |
 | `wall_of_mist` | Wall of Mist | functional definition |
@@ -127,8 +136,8 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Abilities that trigger on an ability being activated | no trigger condition observes an activation |
 | Abilities that trigger on another permanent attacking | the attack trigger condition observes only its own source |
 | Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries |
-| Attack and block requirements and restrictions | only defender restricts declaration; must-attack and cannot-block are unmodeled |
-| Auras that enchant a player or land, or move between hosts | only P/T- and keyword-granting enchant-creature Auras are modeled |
+| Attack and block requirements, and blocking an additional creature | a declaration can be restricted but never required, and a blocker blocks one attacker |
+| Auras that enchant a player or land, or move between hosts | only enchant-creature Auras granting P/T, keywords, or combat restrictions are modeled |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
 | Conditional effects and intervening-if clauses | no condition attached to an effect or a trigger |
 | Cost reduction and cost increase effects | no cost-modification layer |
@@ -141,7 +150,6 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Effects that search, reveal, or reorder a library | no library search, reveal, or scry choice |
 | Effects that untap, or that stop a permanent untapping | no untap effect and no skipped-untap flag |
 | Equipment | no equip action or attachment outside the Aura model |
-| Evasion other than flying, reach, and menace | no unblockable, protection, or colour- and count-restricted blocking |
 | Fight, and other effects taking two targets | each effect fills exactly one target slot |
 | Gaining control of a permanent | no control-change layer |
 | Indestructible | no indestructible keyword; destroy and lethal damage have no exception |
@@ -153,6 +161,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Multi-face cards (transform, modal double-faced) | the card model has a single face |
 | Optional effects a player may decline on resolution | no yes-or-no or optional-cost choice is posed while an ability resolves |
 | Planeswalkers | no loyalty counter system or loyalty abilities |
+| Protection, and evasion that names a subtype or a land type | a blocking restriction names a colour or a count; there is no protection layer |
 | Replacement effects | no replacement-effect layer in the rules engine |
 | Selectors that filter by power or toughness | no numeric power or toughness threshold in any target, trigger, or mass-effect selector |
 | Spells with X in their cost | mana costs are fixed strings with no X announcement |

@@ -25,6 +25,7 @@ mod helpers;
 mod keyword;
 mod printing;
 mod rarity;
+mod restriction;
 #[cfg(test)]
 mod tests;
 
@@ -37,6 +38,7 @@ pub use helpers::abilities_of;
 pub use keyword::Keyword;
 pub use printing::{Printing, PrintingDatabase};
 pub use rarity::Rarity;
+pub use restriction::CombatRestriction;
 
 // Re-export for internal use: spell_effects_of and apply_enters_replacements are crate-visible only
 pub(crate) use helpers::{apply_enters_replacements, spell_effects_of};

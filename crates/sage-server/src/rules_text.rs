@@ -22,9 +22,9 @@
 //! Legal Considerations).
 
 use sage_engine::{
-    Ability, AuraGrant, CardData, Color, Cost, CounterKind, DamageSubject, Effect, Keyword,
-    MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification,
-    TargetSpec, TriggerCondition, TriggerStep, TurnScope,
+    Ability, AuraGrant, CardData, Color, CombatRestriction, Cost, CounterKind, DamageSubject,
+    Effect, Keyword, MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects,
+    StaticModification, TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 
 /// Generate the rules text of one card.
@@ -46,6 +46,16 @@ pub(crate) fn rules_text(data: &CardData, scripted: Option<&str>) -> String {
     if !data.keywords.is_empty() {
         let words: Vec<&str> = data.keywords.iter().map(|&kw| keyword_word(kw)).collect();
         lines.push(sentence_case(&words.join(", ")));
+    }
+
+    // A printed combat restriction is not a keyword, so it gets its own sentence about
+    // the card rather than a word in the keyword line: "Bristling Boar can't be blocked
+    // by more than one creature."
+    for &restriction in &data.restrictions {
+        lines.push(finish(&format!(
+            "{source} {}",
+            restriction_predicate(restriction)
+        )));
     }
 
     for ability in &data.abilities {
@@ -277,6 +287,20 @@ fn aura_text(aura: &AuraGrant) -> Vec<String> {
             words.join(", ")
         ));
     }
+    if !aura.restrictions.is_empty() {
+        // Restrictions are predicates rather than nouns, so they are joined into one
+        // sentence about the host — "enchanted creature can't attack and can't block".
+        let clauses: Vec<String> = aura
+            .restrictions
+            .iter()
+            .map(|&r| restriction_predicate(r))
+            .collect();
+        lines.push(finish(&format!(
+            "enchanted {} {}",
+            object_noun(aura.enchant),
+            clauses.join(" and ")
+        )));
+    }
     lines
 }
 
@@ -351,10 +375,31 @@ fn effect_clause(source: &str, effect: &Effect) -> String {
             mass_subject(*affects),
             keyword_word(*keyword)
         ),
+        // A restriction is already a predicate ("can't be blocked"), so it needs no
+        // verb of its own — only the subject and the duration around it.
+        Effect::Restrict {
+            target,
+            restriction,
+        } => format!(
+            "{} {} this turn",
+            target_noun(*target),
+            restriction_predicate(*restriction)
+        ),
+        Effect::RestrictAll {
+            affects,
+            restriction,
+        } => format!(
+            "{} {} this turn",
+            mass_subject(*affects),
+            restriction_predicate(*restriction)
+        ),
         // A self-referential effect names the source by name, so the sentence reads
         // the way the card does rather than as an anonymous "this".
         Effect::PumpSelf { power, toughness } => {
             format!("{source} gets {power:+}/{toughness:+} until end of turn")
+        }
+        Effect::RestrictSelf { restriction } => {
+            format!("{source} {} this turn", restriction_predicate(*restriction))
         }
         Effect::PutCountersOnSelf { counter, count } => {
             format!("put {} on {source}", counters(*counter, *count))
@@ -379,6 +424,7 @@ fn mass_subject(affects: MassAffects) -> &'static str {
         MassAffects::CreaturesYouControl => "creatures you control",
         MassAffects::EachCreature => "creatures",
         MassAffects::CreaturesYourOpponentsControl => "creatures your opponents control",
+        MassAffects::CreaturesWithoutFlying => "creatures without flying",
     }
 }
 
@@ -393,6 +439,7 @@ fn mass_recipient(affects: MassAffects) -> &'static str {
         MassAffects::CreaturesYouControl => "each creature you control",
         MassAffects::EachCreature => "each creature",
         MassAffects::CreaturesYourOpponentsControl => "each creature your opponents control",
+        MassAffects::CreaturesWithoutFlying => "each creature without flying",
     }
 }
 
@@ -546,6 +593,30 @@ fn keyword_word(keyword: Keyword) -> &'static str {
         Keyword::Deathtouch => "deathtouch",
         Keyword::Lifelink => "lifelink",
         Keyword::DoubleStrike => "double strike",
+        Keyword::Hexproof => "hexproof",
+    }
+}
+
+/// A combat restriction as the **predicate** of a sentence — the words that follow a
+/// subject, with no subject, verb agreement, or duration of their own.
+///
+/// Predicates rather than sentences because the same restriction has to read correctly
+/// after four different subjects: a card's own name (`Bristling Boar can't be blocked
+/// by more than one creature.`), an Aura's host (`Enchanted creature can't block.`), a
+/// chosen target (`Target creature can't be blocked this turn.`), and a class
+/// (`Creatures without flying can't block this turn.`). "Can't" is invariant across
+/// singular and plural subjects, so one string serves all four.
+fn restriction_predicate(restriction: CombatRestriction) -> String {
+    match restriction {
+        CombatRestriction::CantAttack => "can't attack".to_string(),
+        CombatRestriction::CantBlock => "can't block".to_string(),
+        CombatRestriction::CantBeBlocked => "can't be blocked".to_string(),
+        CombatRestriction::CantBeBlockedBy(color) => {
+            format!("can't be blocked by {} creatures", color.word())
+        }
+        CombatRestriction::CantBeBlockedByMoreThanOne => {
+            "can't be blocked by more than one creature".to_string()
+        }
     }
 }
 
@@ -1070,12 +1141,14 @@ mod tests {
     #[test]
     fn every_bundled_card_with_rules_generates_text_for_them() {
         // The completeness claim, checked against the whole catalog: a card that has
-        // any keyword, ability, spell effect, or Aura grant must produce text — the
-        // formatter never silently emits nothing for a card that does something.
+        // any keyword, combat restriction, ability, spell effect, or Aura grant must
+        // produce text — the formatter never silently emits nothing for a card that
+        // does something.
         let db = bundled();
         for id in (0..db.len() as u64).map(CardId) {
             let card = db.card(id).unwrap();
             let has_rules = !card.keywords.is_empty()
+                || !card.restrictions.is_empty()
                 || !card.abilities.is_empty()
                 || !card.spell_effects.is_empty()
                 || card.aura.is_some();
@@ -1088,6 +1161,58 @@ mod tests {
                 if has_rules { "its" } else { "no" }
             );
         }
+    }
+
+    #[test]
+    fn issue_606_evasion_and_restriction_cards_generate_their_rules_text() {
+        // The restriction vocabulary reads as sentences on the shipped cards that use
+        // it, in each of the four subject positions a restriction can appear in: the
+        // card's own name, an Aura's host, a chosen target, and a class.
+        let db = bundled();
+
+        // A printed restriction is a sentence about the card, not a keyword word.
+        assert_eq!(
+            text_of(&db, "bristling_boar"),
+            "Bristling Boar can't be blocked by more than one creature."
+        );
+        // Beside a printed keyword, in the fixed keywords-then-restrictions order.
+        assert_eq!(
+            text_of(&db, "vine_mare"),
+            "Hexproof\nVine Mare can't be blocked by black creatures."
+        );
+
+        // An Aura's restrictions become one sentence about the enchanted object.
+        assert_eq!(
+            text_of(&db, "luminous_bonds"),
+            "Enchant creature.\nEnchanted creature can't attack and can't block."
+        );
+        assert_eq!(
+            text_of(&db, "aether_tunnel"),
+            "Enchant creature.\nEnchanted creature gets +1/+0.\nEnchanted creature can't be blocked."
+        );
+
+        // A targeted, a self-referential, and a class-scoped imposition, each carrying
+        // its until-end-of-turn duration.
+        assert_eq!(
+            text_of(&db, "suspicious_bookcase"),
+            "Defender\n{3}, {T}: Target creature can't be blocked this turn."
+        );
+        assert_eq!(
+            text_of(&db, "frilled_sea_serpent"),
+            "{5}{U}{U}: Frilled Sea Serpent can't be blocked this turn."
+        );
+        assert_eq!(
+            text_of(&db, "tectonic_rift"),
+            "Destroy target land.\nCreatures without flying can't block this turn."
+        );
+
+        // The opponents-wide mass scope, on the card that introduced it.
+        assert_eq!(
+            text_of(&db, "plague_mare"),
+            "Plague Mare can't be blocked by white creatures.\n\
+             When Plague Mare enters the battlefield, creatures your opponents control \
+             get -1/-1 until end of turn."
+        );
     }
 
     #[test]

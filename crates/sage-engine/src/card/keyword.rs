@@ -8,15 +8,20 @@ use serde::Deserialize;
 /// This is the printed keyword representation the layer system seeds from; a
 /// permanent's *current* keywords are the printed [`super::CardData::keywords`] unioned
 /// with any granted by continuous effects at CR 613 layer 6 (see
-/// [`characteristics`](crate::characteristics::characteristics)). All eleven variants are
+/// [`characteristics`](crate::characteristics::characteristics)). All twelve variants are
 /// enforced: [`Flying`](Keyword::Flying), [`Reach`](Keyword::Reach),
 /// [`Vigilance`](Keyword::Vigilance), [`Haste`](Keyword::Haste),
 /// [`Defender`](Keyword::Defender), and [`Menace`](Keyword::Menace) at
-/// combat-declaration time (keywords I), and
+/// combat-declaration time (keywords I),
 /// [`FirstStrike`](Keyword::FirstStrike), [`Trample`](Keyword::Trample),
 /// [`Deathtouch`](Keyword::Deathtouch), [`Lifelink`](Keyword::Lifelink), and
 /// [`DoubleStrike`](Keyword::DoubleStrike) at combat-damage time (keywords II — see
-/// [`crate::combat::combat_damage`]).
+/// [`crate::combat::combat_damage`]), and [`Hexproof`](Keyword::Hexproof) at
+/// targeting time, which is not a combat gate at all.
+///
+/// Restrictions that are **not** keyword abilities — "can't be blocked", "can't be
+/// blocked by black creatures" — live in [`CombatRestriction`](super::CombatRestriction)
+/// and are read through the same computed characteristics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Keyword {
@@ -54,6 +59,17 @@ pub enum Keyword {
     /// Double strike (CR 702.4): deals combat damage in *both* the first-strike and
     /// the regular combat-damage step.
     DoubleStrike,
+    /// Hexproof (CR 702.11): this permanent can't be the target of spells or abilities
+    /// its controller's **opponents** control.
+    ///
+    /// Alone among the keywords here it is not a combat gate: it is a targeting
+    /// restriction, so it is enforced in
+    /// [`target_is_legal`](crate::resolve::target_is_legal) — the one predicate both
+    /// the announcement gate and the CR 608.2b resolution re-check run — rather than
+    /// anywhere in combat. It is controller-relative: a hexproof creature's *own*
+    /// controller may target it freely, which is what makes a pump spell on one's own
+    /// hexproof creature legal.
+    Hexproof,
 }
 
 #[cfg(test)]
@@ -63,14 +79,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn all_eleven_keyword_variants_deserialize_from_snake_case() {
+    fn all_twelve_keyword_variants_deserialize_from_snake_case() {
         // The closed keyword set round-trips from its wire names, including the
-        // five combat-damage variants keywords II enforces (CR 702) and the two
-        // declaration-time restrictions defender and menace.
+        // five combat-damage variants keywords II enforces (CR 702), the two
+        // declaration-time restrictions defender and menace, and hexproof, which
+        // gates targeting rather than combat.
         let json = r#"[{"schema_version":1,"functional_id":"every_keyword","name":"Every Keyword","types":["creature"],
             "mana_cost":"","power":1,"toughness":1,
             "keywords":["flying","reach","vigilance","haste","defender","menace","first_strike",
-                        "trample","deathtouch","lifelink","double_strike"]}]"#;
+                        "trample","deathtouch","lifelink","double_strike","hexproof"]}]"#;
         let db = crate::card::CardDatabase::from_json(json).unwrap();
         let card = crate::card::tests::card_named(&db, "every_keyword");
         for kw in [
@@ -85,6 +102,7 @@ mod tests {
             Keyword::Deathtouch,
             Keyword::Lifelink,
             Keyword::DoubleStrike,
+            Keyword::Hexproof,
         ] {
             assert!(card.has_keyword(kw), "expected keyword {kw:?}");
         }

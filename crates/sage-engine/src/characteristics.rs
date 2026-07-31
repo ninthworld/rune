@@ -18,7 +18,7 @@
 //! callers never change as they are filled in.
 
 use crate::ability::{Ability, StaticAffects};
-use crate::card::{abilities_of, CardDatabase, Keyword};
+use crate::card::{abilities_of, CardDatabase, CombatRestriction, Keyword};
 use crate::card_type::{CardType, Supertype};
 use crate::id::PermanentId;
 use crate::state::{
@@ -66,6 +66,14 @@ pub struct Characteristics {
     /// indistinguishable from a printed one, and duplicates are collapsed (a keyword
     /// granted twice, or granted atop a printed one, appears once).
     pub keywords: Vec<Keyword>,
+    /// The permanent's *current* combat restrictions (CR 506.3, CR 509.1b): its printed
+    /// [`CardData::restrictions`](crate::CardData::restrictions) unioned with any imposed by
+    /// continuous effects at CR 613 **layer 6** (CR 613.1f) — an attached Aura's
+    /// "can neither attack nor block", an until-end-of-turn "can't be blocked".
+    /// Collapsed the same way [`Self::keywords`] are, so a restriction imposed twice
+    /// binds once, and read through the same single path so a granted restriction is
+    /// indistinguishable from a printed one.
+    pub restrictions: Vec<CombatRestriction>,
 }
 
 /// Compute the *current* [`Characteristics`] of the permanent identified by
@@ -125,6 +133,8 @@ pub fn characteristics(
         // continuously. Seeded from the printed set so a granted keyword sits beside
         // the printed ones and is read the same way everywhere.
         keywords: current_keywords(state, perm, is_creature, card.keywords.clone(), db),
+        // CR 613 layer 6 as well: the non-keyworded half of the same layer.
+        restrictions: current_restrictions(state, perm, is_creature, card.restrictions.clone(), db),
     }
 }
 
@@ -148,40 +158,101 @@ fn current_keywords(
     db: &CardDatabase,
 ) -> Vec<Keyword> {
     let mut keywords = printed;
-    let mut add = |keyword: Keyword| {
-        if !keywords.contains(&keyword) {
-            keywords.push(keyword);
-        }
-    };
-    // Stored continuous grants (anthems, pumps) that apply to this permanent.
-    for effect in &state.static_effects {
-        if let Modification::GrantKeyword(keyword) = effect.modification {
-            if affects(effect, perm, is_creature) {
-                add(keyword);
-            }
-        }
-    }
-    // CR 604.3 / 613.1f: keywords granted by a printed static ability ("Creatures you
-    // control have vigilance"). Layer 6 grants are timestamp-independent, so these need
-    // no ordering — a grant either adds the keyword or finds it already there.
-    for effect in static_ability_effects(state, perm, is_creature, db) {
-        if let Modification::GrantKeyword(keyword) = effect.modification {
-            add(keyword);
-        }
-    }
-    // CR 303.4 / 613.1f: each Aura attached to `perm` grants its listed keywords
-    // while attached. Derived from the attachment, never stored, so it vanishes the
-    // instant the Aura leaves (ADR 0005).
-    for aura in &state.battlefield {
-        if aura.attached_to == Some(perm.id) {
-            if let Some(grant) = db.card(aura.card).and_then(|c| c.aura.as_ref()) {
-                for &keyword in &grant.keywords {
-                    add(keyword);
-                }
+    for modification in layer_six_modifications(state, perm, is_creature, db) {
+        if let Modification::GrantKeyword(keyword) = modification {
+            if !keywords.contains(&keyword) {
+                keywords.push(keyword);
             }
         }
     }
     keywords
+}
+
+/// The permanent's *current* combat restrictions at CR 613 **layer 6** (CR 613.1f):
+/// `printed` plus every restriction imposed on `perm` by a continuous effect, with
+/// duplicates collapsed so a redundant imposition is idempotent.
+///
+/// The exact counterpart of [`current_keywords`], reading the same
+/// [`layer_six_modifications`] list — one traversal of the battlefield answers both
+/// halves of the layer, so a source that grants a keyword *and* imposes a restriction
+/// (an Aura may do both) can never be honoured for one and missed for the other.
+fn current_restrictions(
+    state: &GameState,
+    perm: &Permanent,
+    is_creature: bool,
+    printed: Vec<CombatRestriction>,
+    db: &CardDatabase,
+) -> Vec<CombatRestriction> {
+    let mut restrictions = printed;
+    for modification in layer_six_modifications(state, perm, is_creature, db) {
+        if let Modification::GrantRestriction(restriction) = modification {
+            if !restrictions.contains(&restriction) {
+                restrictions.push(restriction);
+            }
+        }
+    }
+    restrictions
+}
+
+/// Every CR 613 **layer 6** [`Modification`] a continuous effect currently applies to
+/// `perm` — the ability-adding layer (CR 613.1f), in no particular order.
+///
+/// Three sources feed it, mirroring [`ordered_pt_modifiers`] (ADR 0005 §4): the stored
+/// [`GameState::static_effects`] (until-end-of-turn grants and impositions), each
+/// printed static ability in force ([`static_ability_effects`], the anthem and lord
+/// shape), and — synthesized fresh — each Aura attached to `perm`, whose
+/// [`AuraGrant`](crate::AuraGrant) keywords and restrictions are read off the
+/// attachment (CR 303.4 / 613.1f) and so vanish the instant the Aura leaves (ADR 0005).
+///
+/// Layer 6 is timestamp-independent for a pure grant, so no ordering is imposed:
+/// a grant either adds something or finds it already there. Layer-7c P/T modifications
+/// that happen to reach the same permanent are not returned.
+fn layer_six_modifications(
+    state: &GameState,
+    perm: &Permanent,
+    is_creature: bool,
+    db: &CardDatabase,
+) -> Vec<Modification> {
+    let mut modifications = Vec::new();
+    // Stored continuous effects (until-end-of-turn grants) that apply to this permanent.
+    modifications.extend(
+        state
+            .static_effects
+            .iter()
+            .filter(|effect| affects(effect, perm, is_creature))
+            .map(|effect| effect.modification),
+    );
+    // CR 604.3 / 613.1f: a printed static ability in force ("Creatures you control have
+    // vigilance"), derived from its source's battlefield presence alone.
+    modifications.extend(
+        static_ability_effects(state, perm, is_creature, db)
+            .into_iter()
+            .map(|effect| effect.modification),
+    );
+    // CR 303.4 / 613.1f: each Aura attached to `perm` grants its listed keywords and
+    // imposes its listed restrictions while attached.
+    for aura in &state.battlefield {
+        if aura.attached_to != Some(perm.id) {
+            continue;
+        }
+        if let Some(grant) = db.card(aura.card).and_then(|c| c.aura.as_ref()) {
+            modifications.extend(
+                grant
+                    .keywords
+                    .iter()
+                    .copied()
+                    .map(Modification::GrantKeyword),
+            );
+            modifications.extend(
+                grant
+                    .restrictions
+                    .iter()
+                    .copied()
+                    .map(Modification::GrantRestriction),
+            );
+        }
+    }
+    modifications
 }
 
 /// Whether the permanent identified by `permanent` currently has keyword `keyword`
@@ -200,6 +271,36 @@ pub(crate) fn permanent_has_keyword(
     characteristics(state, permanent, db)
         .keywords
         .contains(&keyword)
+}
+
+/// The permanent identified by `permanent`'s *current* combat restrictions (CR 506.3,
+/// CR 509.1b) — its printed set unioned with any imposed at CR 613 layer 6.
+///
+/// The restriction counterpart of [`permanent_has_keyword`], and the single read path
+/// every declaration gate uses. It returns the whole list rather than answering one
+/// membership question because a parameterized restriction
+/// ([`CombatRestriction::CantBeBlockedBy`]) is asked "which colour?", not "is this exact
+/// value present?". Empty for a permanent that is not on the battlefield.
+#[must_use]
+pub(crate) fn permanent_restrictions(
+    state: &GameState,
+    permanent: PermanentId,
+    db: &CardDatabase,
+) -> Vec<CombatRestriction> {
+    characteristics(state, permanent, db).restrictions
+}
+
+/// Whether the permanent identified by `permanent` currently has the exact combat
+/// restriction `restriction`. The convenience over [`permanent_restrictions`] for the
+/// unit-shaped restrictions, which *are* answered by a membership test.
+#[must_use]
+pub(crate) fn permanent_has_restriction(
+    state: &GameState,
+    permanent: PermanentId,
+    restriction: CombatRestriction,
+    db: &CardDatabase,
+) -> bool {
+    permanent_restrictions(state, permanent, db).contains(&restriction)
 }
 
 /// The net power/toughness shift from `perm`'s `+1/+1` and `-1/-1` counters at
@@ -812,6 +913,105 @@ mod tests {
             ]"#,
         )
         .unwrap()
+    }
+
+    /// An inline catalog for the restriction half of layer 6: a creature with a
+    /// printed restriction and an Aura that imposes two more.
+    fn restriction_db() -> CardDatabase {
+        CardDatabase::from_json(
+            r#"[
+                {"schema_version":1,"functional_id":"test_bonds","name":"Test Bonds",
+                 "types":["enchantment"],"subtypes":["Aura"],"mana_cost":"{2}{W}","colors":["white"],
+                 "aura":{"enchant":"any_creature","restrictions":["cant_attack","cant_block"]}},
+                {"schema_version":1,"functional_id":"test_evader","name":"Test Evader",
+                 "types":["creature"],"subtypes":["Horse"],"mana_cost":"{2}{G}","colors":["green"],
+                 "power":3,"toughness":3,"restrictions":[{"cant_be_blocked_by":"black"}]}
+            ]"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn issue_606_printed_aura_and_stored_restrictions_fold_into_one_computed_set() {
+        // CR 613.1f, the non-keyworded half of layer 6: the printed restriction, an
+        // Aura's impositions, and a stored until-end-of-turn one all arrive in the same
+        // computed list, and a bystander gets none of them.
+        let db = restriction_db();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, crate::fixtures::id_in(&db, "test_evader"));
+        let bystander = place(&mut state, crate::fixtures::id_in(&db, "test_evader"));
+        let aura = place(&mut state, crate::fixtures::id_in(&db, "test_bonds"));
+        attach(&mut state, aura, host);
+        state.static_effects.push(StaticEffect {
+            source: 900,
+            affects: EffectAffects::SpecificPermanent(host),
+            modification: Modification::GrantRestriction(CombatRestriction::CantBeBlocked),
+            duration: Duration::UntilEndOfTurn,
+        });
+
+        let mut computed = characteristics(&state, host, &db).restrictions;
+        computed.sort_by_key(|r| format!("{r:?}"));
+        assert_eq!(
+            computed,
+            vec![
+                CombatRestriction::CantAttack,
+                CombatRestriction::CantBeBlocked,
+                CombatRestriction::CantBeBlockedBy(crate::mana::Color::Black),
+                CombatRestriction::CantBlock,
+            ]
+        );
+        assert_eq!(
+            characteristics(&state, bystander, &db).restrictions,
+            vec![CombatRestriction::CantBeBlockedBy(
+                crate::mana::Color::Black
+            )],
+            "a bystander keeps only what it prints"
+        );
+    }
+
+    #[test]
+    fn issue_606_a_restriction_imposed_twice_is_imposed_once() {
+        // The idempotence keywords already have: a restriction granted on top of a
+        // printed one, or granted twice, appears once — so nothing downstream can count
+        // impositions instead of testing for one.
+        let db = restriction_db();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, crate::fixtures::id_in(&db, "test_evader"));
+        for source in [901, 902] {
+            state.static_effects.push(StaticEffect {
+                source,
+                affects: EffectAffects::SpecificPermanent(host),
+                modification: Modification::GrantRestriction(CombatRestriction::CantBeBlockedBy(
+                    crate::mana::Color::Black,
+                )),
+                duration: Duration::UntilEndOfTurn,
+            });
+        }
+        assert_eq!(
+            characteristics(&state, host, &db).restrictions,
+            vec![CombatRestriction::CantBeBlockedBy(
+                crate::mana::Color::Black
+            )]
+        );
+    }
+
+    #[test]
+    fn issue_606_an_auras_restriction_vanishes_when_it_leaves() {
+        // Derived from the attachment, never stored (ADR 0005): destroying the Aura is
+        // the whole mechanism by which a pacified creature is freed.
+        let db = restriction_db();
+        let mut state = GameState::new_two_player();
+        let host = place(&mut state, crate::fixtures::id_in(&db, "test_evader"));
+        let aura = place(&mut state, crate::fixtures::id_in(&db, "test_bonds"));
+        attach(&mut state, aura, host);
+        assert!(characteristics(&state, host, &db)
+            .restrictions
+            .contains(&CombatRestriction::CantAttack));
+
+        state.battlefield.retain(|p| p.id != aura);
+        assert!(!characteristics(&state, host, &db)
+            .restrictions
+            .contains(&CombatRestriction::CantAttack));
     }
 
     #[test]

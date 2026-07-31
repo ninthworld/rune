@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "functional_id": "bristling_boar",
+  "name": "Bristling Boar",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Boar"
+  ],
+  "mana_cost": "{3}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 4,
+  "toughness": 3,
+  "restrictions": [
+    "cant_be_blocked_by_more_than_one"
+  ]
+}

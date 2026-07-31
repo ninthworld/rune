@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "functional_id": "suspicious_bookcase",
+  "name": "Suspicious Bookcase",
+  "types": [
+    "artifact",
+    "creature"
+  ],
+  "subtypes": [
+    "Wall"
+  ],
+  "mana_cost": "{2}",
+  "colors": [],
+  "power": 0,
+  "toughness": 4,
+  "keywords": [
+    "defender"
+  ],
+  "abilities": [
+    {
+      "type": "activated",
+      "cost": [
+        {
+          "kind": "mana",
+          "mana": "{3}"
+        },
+        {
+          "kind": "tap"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "restrict",
+          "target": "any_creature",
+          "restriction": "cant_be_blocked"
+        }
+      ]
+    }
+  ]
+}

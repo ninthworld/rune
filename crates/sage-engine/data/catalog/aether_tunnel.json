@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "functional_id": "aether_tunnel",
+  "name": "Aether Tunnel",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{1}{U}",
+  "colors": [
+    "blue"
+  ],
+  "aura": {
+    "enchant": "any_creature",
+    "power": 1,
+    "toughness": 0,
+    "restrictions": [
+      "cant_be_blocked"
+    ]
+  }
+}

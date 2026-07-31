@@ -1,4 +1,4 @@
-use crate::card::Keyword;
+use crate::card::{CombatRestriction, Keyword};
 use crate::card_type::CardType;
 use crate::characteristics::{characteristics, permanent_has_keyword};
 use crate::id::{PermanentId, PlayerId};
@@ -91,34 +91,110 @@ pub(crate) fn has_keyword(
 }
 
 /// Whether the creature `blocker` may legally be assigned to block `attacker`
-/// given evasion keywords (CR 509.1b): a creature with flying can be blocked only
-/// by creatures with flying or reach (CR 702.9c, CR 702.17b). Any creature can
-/// block a non-flying attacker.
+/// given the **pairwise** evasion rules (CR 509.1b) — every restriction that can be
+/// judged from one attacker/blocker pair alone:
+///
+/// - flying: only a creature with flying or reach may block it (CR 702.9c, 702.17b);
+/// - [`CombatRestriction::CantBeBlocked`]: nothing may block it;
+/// - [`CombatRestriction::CantBeBlockedBy`]: no creature of the named colour may;
+/// - [`CombatRestriction::CantBlock`] on the *blocker*, which is a fact about the
+///   blocker rather than the pair but is enforced here too, so a creature restricted
+///   after blocker candidates were computed still cannot slip through.
+///
+/// Restrictions on *how many* creatures may block ([`permanent_has_menace`],
+/// [`blocked_by_at_most_one`]) are deliberately **not** here: they cannot be judged
+/// from a pair, only from the assembled selection, and live in the declare-blockers
+/// legality gate.
 ///
 /// Both ids are looked up on the battlefield; a missing permanent (a stale id)
-/// yields `false`, so the caller rejects the assignment. This is a per-pair
-/// predicate the block-legality check applies on top of the candidate-set
-/// membership tests, so partial blocks of mixed flying/ground attackers stay
-/// expressible — evasion is enforced in legality, not by hiding candidates.
+/// yields `false`, so the caller rejects the assignment. Applying this per pair rather
+/// than by trimming the candidate set is what keeps partial blocks of mixed attackers
+/// expressible — a ground creature may block the ground attacker in the same
+/// declaration a flyer blocks the flyer.
 #[must_use]
-pub(crate) fn blocker_can_block_attacker(
+pub fn blocker_can_block_attacker(
     state: &GameState,
     attacker: PermanentId,
     blocker: PermanentId,
     db: &CardDatabase,
 ) -> bool {
-    let Some(atk) = state.battlefield.iter().find(|p| p.id == attacker) else {
+    if state.battlefield.iter().all(|p| p.id != attacker) {
         return false;
-    };
-    // A non-flying attacker imposes no evasion constraint.
-    if !has_keyword(state, atk, Keyword::Flying, db) {
-        return true;
     }
     let Some(blk) = state.battlefield.iter().find(|p| p.id == blocker) else {
         return false;
     };
+    // CR 506.3c: a creature that can't block blocks nothing, whatever it is aimed at.
+    if permanent_has_restriction(state, blocker, CombatRestriction::CantBlock, db) {
+        return false;
+    }
     // CR 702.9c / 702.17b: only flying or reach may block a flyer.
-    has_keyword(state, blk, Keyword::Flying, db) || has_keyword(state, blk, Keyword::Reach, db)
+    if permanent_has_keyword(state, attacker, Keyword::Flying, db)
+        && !has_keyword(state, blk, Keyword::Flying, db)
+        && !has_keyword(state, blk, Keyword::Reach, db)
+    {
+        return false;
+    }
+    // CR 509.1b: the attacker's own evasion restrictions, read through the computed
+    // characteristics so a granted one restricts exactly as a printed one does.
+    let blocker_colors = db
+        .card(blk.card)
+        .map(|c| c.colors.clone())
+        .unwrap_or_default();
+    for restriction in permanent_restrictions(state, attacker, db) {
+        match restriction {
+            CombatRestriction::CantBeBlocked => return false,
+            CombatRestriction::CantBeBlockedBy(color) if blocker_colors.contains(&color) => {
+                return false
+            }
+            // Not pairwise facts, or not about being blocked at all.
+            CombatRestriction::CantBeBlockedBy(_)
+            | CombatRestriction::CantAttack
+            | CombatRestriction::CantBlock
+            | CombatRestriction::CantBeBlockedByMoreThanOne => {}
+        }
+    }
+    true
+}
+
+/// Whether the permanent `id` currently has the exact combat restriction
+/// `restriction`, looked up by id so a legality gate holding only an id can ask.
+///
+/// Read through the computed restrictions (CR 613.1f), so an Aura's or a spell's
+/// imposition binds exactly as a printed one does. `false` for an id no longer on the
+/// battlefield.
+#[must_use]
+pub fn permanent_has_restriction(
+    state: &GameState,
+    id: PermanentId,
+    restriction: CombatRestriction,
+    db: &CardDatabase,
+) -> bool {
+    crate::characteristics::permanent_has_restriction(state, id, restriction, db)
+}
+
+/// The permanent `id`'s current combat restrictions (CR 506.3, CR 509.1b), printed and
+/// granted together. The list form of [`permanent_has_restriction`], for the gates that
+/// must inspect a restriction's payload rather than test for one exact value.
+#[must_use]
+pub fn permanent_restrictions(
+    state: &GameState,
+    id: PermanentId,
+    db: &CardDatabase,
+) -> Vec<CombatRestriction> {
+    crate::characteristics::permanent_restrictions(state, id, db)
+}
+
+/// Whether the permanent `id` can't be blocked by more than one creature
+/// (CR 509.1b) — the per-attacker half of the block-count *ceiling*, and the exact
+/// mirror of [`permanent_has_menace`]'s floor.
+///
+/// Like menace this is a fact the declare-blockers gate can only judge over the
+/// assembled selection, which is why it is exposed by id beside menace rather than
+/// folded into [`blocker_can_block_attacker`].
+#[must_use]
+pub fn blocked_by_at_most_one(state: &GameState, id: PermanentId, db: &CardDatabase) -> bool {
+    permanent_has_restriction(state, id, CombatRestriction::CantBeBlockedByMoreThanOne, db)
 }
 
 /// Whether the permanent `id` currently has **menace** (CR 702.110) — the
@@ -290,7 +366,6 @@ mod tests {
     }
 
     /// The bundled card database, for tests that need oracle data.
-    #[allow(dead_code)]
     fn db() -> CardDatabase {
         CardDatabase::bundled().unwrap()
     }
@@ -422,6 +497,144 @@ mod tests {
         state = state.advance_to_next_turn();
         assert_eq!((state.turn, state.active_player), (5, PlayerId(1)));
         assert!(!is_sick(&state));
+    }
+
+    /// Grant `restriction` to `id` until end of turn, the way a spell or an activated
+    /// ability does — so a test can assert a *granted* restriction behaves as a printed
+    /// one without going through a card that happens to grant it.
+    fn grant(state: &mut GameState, id: PermanentId, restriction: CombatRestriction) {
+        let source = state.mint_id();
+        state.static_effects.push(crate::state::StaticEffect {
+            source,
+            affects: crate::state::EffectAffects::SpecificPermanent(id),
+            modification: crate::state::Modification::GrantRestriction(restriction),
+            duration: crate::state::Duration::UntilEndOfTurn,
+        });
+    }
+
+    #[test]
+    fn issue_606_an_unblockable_attacker_refuses_every_blocker_printed_or_granted() {
+        // CR 509.1b: "can't be blocked" is a pairwise fact, so it is enforced here and
+        // it removes *every* blocker — while an ordinary attacker beside it is
+        // untouched, which is what makes this a per-pair check rather than a filter on
+        // the candidate set.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let evasive = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("centaur_courser"),
+            PlayerId(0),
+            0,
+        );
+        let ordinary = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("centaur_courser"),
+            PlayerId(0),
+            0,
+        );
+        let blocker = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("sun_sentinel"),
+            PlayerId(1),
+            0,
+        );
+
+        assert!(blocker_can_block_attacker(&state, evasive, blocker, &db));
+        grant(&mut state, evasive, CombatRestriction::CantBeBlocked);
+        assert!(
+            !blocker_can_block_attacker(&state, evasive, blocker, &db),
+            "a granted restriction binds exactly as a printed one"
+        );
+        assert!(
+            blocker_can_block_attacker(&state, ordinary, blocker, &db),
+            "the unaffected neighbour is still blockable"
+        );
+    }
+
+    #[test]
+    fn issue_606_a_colour_restriction_removes_only_that_colour() {
+        // Vine Mare's printed restriction, at the seam it lives in: the black creature
+        // is refused and the green one beside it is not.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let mare = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("vine_mare"),
+            PlayerId(0),
+            0,
+        );
+        let black = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("walking_corpse"),
+            PlayerId(1),
+            0,
+        );
+        let green = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("centaur_courser"),
+            PlayerId(1),
+            0,
+        );
+
+        assert!(!blocker_can_block_attacker(&state, mare, black, &db));
+        assert!(blocker_can_block_attacker(&state, mare, green, &db));
+    }
+
+    #[test]
+    fn issue_606_a_creature_that_cant_block_is_refused_against_every_attacker() {
+        // CR 506.3c is a fact about the blocker, not the pair, so it is enforced here
+        // as well as in the candidate set — the two gates cannot disagree.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let attacker = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("centaur_courser"),
+            PlayerId(0),
+            0,
+        );
+        let silenced = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("sun_sentinel"),
+            PlayerId(1),
+            0,
+        );
+        let other = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("sun_sentinel"),
+            PlayerId(1),
+            0,
+        );
+
+        grant(&mut state, silenced, CombatRestriction::CantBlock);
+        assert!(!blocker_can_block_attacker(&state, attacker, silenced, &db));
+        assert!(blocker_can_block_attacker(&state, attacker, other, &db));
+    }
+
+    #[test]
+    fn issue_606_the_block_count_ceiling_is_not_a_pairwise_fact() {
+        // The ceiling is deliberately *absent* from this predicate: a single blocker
+        // against a Bristling Boar is a perfectly legal pair, and only the assembled
+        // selection can say whether a second one is too.
+        let db = db();
+        let mut state = GameState::new_two_player();
+        let boar = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("bristling_boar"),
+            PlayerId(0),
+            0,
+        );
+        let blocker = super::super::damage::tests::creature_card(
+            &mut state,
+            fixture("sun_sentinel"),
+            PlayerId(1),
+            0,
+        );
+
+        assert!(blocked_by_at_most_one(&state, boar, &db));
+        assert!(
+            blocker_can_block_attacker(&state, boar, blocker, &db),
+            "the count restriction is judged over the declaration, not the pair"
+        );
     }
 
     #[test]

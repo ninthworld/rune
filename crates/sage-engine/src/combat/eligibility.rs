@@ -1,9 +1,9 @@
-use crate::card::Keyword;
+use crate::card::{CombatRestriction, Keyword};
 use crate::id::{PermanentId, PlayerId};
 use crate::state::GameState;
 use crate::CardDatabase;
 
-use super::helpers::summoning_sickness_restricts;
+use super::helpers::{permanent_has_restriction, summoning_sickness_restricts};
 
 /// The players an attacker may legally be declared to attack (CR 508.1a): every
 /// opponent still in the game — a seat other than the active (attacking) player
@@ -49,8 +49,12 @@ pub fn defending_player(state: &GameState) -> Option<PlayerId> {
 /// This is the multi-select candidate set for the declare-attackers action — one
 /// O(N) scan of the battlefield, never a product over selections. Haste (CR
 /// 702.10b) exempts a creature from the summoning-sickness restriction; defender
-/// (CR 702.3b) removes a creature from the set outright. Other "can't attack"
-/// restrictions are not modeled yet.
+/// (CR 702.3b) and a [`CombatRestriction::CantAttack`] imposition (CR 506.3a) each
+/// remove a creature from the set outright.
+///
+/// Attack *requirements* — "attacks each combat if able" — are a constraint from the
+/// other direction and are not modeled: nothing here can force a creature into the
+/// declaration.
 #[must_use]
 pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<PermanentId> {
     let active = state.active_player;
@@ -69,19 +73,28 @@ pub fn attacker_candidates(state: &GameState, db: &CardDatabase) -> Vec<Permanen
                 // exactly as a printed one does — and stops doing so the instant the
                 // grant ends.
                 && !super::helpers::has_keyword(state, perm, Keyword::Defender, db)
+                // CR 506.3a: the same prohibition without the keyword, as an Aura or a
+                // spell imposes it. Read through the same computed characteristics.
+                && !permanent_has_restriction(state, perm.id, CombatRestriction::CantAttack, db)
         })
         .map(|perm| perm.id)
         .collect()
 }
 
 /// The permanents `defender` may legally declare as blockers right now
-/// (CR 509.1a): untapped creatures they control (a tapped creature can't block).
-/// In stable battlefield order.
+/// (CR 509.1a): untapped creatures they control (a tapped creature can't block) that
+/// are not under a [`CombatRestriction::CantBlock`] imposition (CR 506.3c). In stable
+/// battlefield order.
 ///
 /// This is the per-defender blocker candidate set: a player may block only with
 /// their own creatures, and (enforced in the declaration's legality check, not
 /// here) only against attackers attacking *them* (issue #341). The multi-defender
 /// declaration flow (#344) calls this once per attacked player.
+///
+/// "Can't block" is a fact about the creature rather than about a pairing, so unlike
+/// the evasion rules it belongs in the candidate set — a creature that can't block has
+/// no attacker it could be assigned to. [`blocker_can_block_attacker`](super::blocker_can_block_attacker)
+/// re-derives it anyway, so the two gates cannot disagree.
 #[must_use]
 pub fn blocker_candidates_for(
     state: &GameState,
@@ -92,7 +105,10 @@ pub fn blocker_candidates_for(
         .battlefield
         .iter()
         .filter(|perm| {
-            perm.controller == defender && super::helpers::is_creature(perm, db) && !perm.tapped
+            perm.controller == defender
+                && super::helpers::is_creature(perm, db)
+                && !perm.tapped
+                && !permanent_has_restriction(state, perm.id, CombatRestriction::CantBlock, db)
         })
         .map(|perm| perm.id)
         .collect()
@@ -140,6 +156,7 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+    use crate::card::CombatRestriction;
     use crate::fixtures::fixture;
     use crate::state::Permanent;
 
@@ -200,6 +217,52 @@ mod tests {
         let _attackers_creature = creature(&mut state, PlayerId(0), false, 1);
 
         assert_eq!(blocker_candidates(&state, &db()), vec![eligible]);
+    }
+
+    /// Impose `restriction` on `id` until end of turn, the way an Aura or a spell
+    /// does, so a test can assert the *granted* form behaves as a printed one.
+    fn impose(state: &mut GameState, id: PermanentId, restriction: CombatRestriction) {
+        let source = state.mint_id();
+        state.static_effects.push(crate::state::StaticEffect {
+            source,
+            affects: crate::state::EffectAffects::SpecificPermanent(id),
+            modification: crate::state::Modification::GrantRestriction(restriction),
+            duration: crate::state::Duration::UntilEndOfTurn,
+        });
+    }
+
+    #[test]
+    fn issue_606_a_creature_that_cant_attack_leaves_the_attacker_candidates() {
+        // CR 506.3a, enforced in exactly one place — the same place defender is. The
+        // neighbour that shares every other characteristic stays a candidate, so this
+        // is the restriction talking and not the fixture.
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        let bound = creature(&mut state, PlayerId(0), false, 1);
+        let free = creature(&mut state, PlayerId(0), false, 1);
+
+        assert_eq!(attacker_candidates(&state, &db()), vec![bound, free]);
+        impose(&mut state, bound, CombatRestriction::CantAttack);
+        assert_eq!(
+            attacker_candidates(&state, &db()),
+            vec![free],
+            "the restricted creature is no longer offered"
+        );
+    }
+
+    #[test]
+    fn issue_606_a_creature_that_cant_block_leaves_the_blocker_candidates() {
+        // CR 506.3c, the blocking counterpart. Unlike the evasion rules this *is* a
+        // candidate-set fact: a creature that can't block has no attacker it could be
+        // assigned to.
+        let mut state = GameState::new_two_player();
+        state.turn = 2;
+        let silenced = creature(&mut state, PlayerId(1), false, 1);
+        let free = creature(&mut state, PlayerId(1), false, 1);
+
+        assert_eq!(blocker_candidates(&state, &db()), vec![silenced, free]);
+        impose(&mut state, silenced, CombatRestriction::CantBlock);
+        assert_eq!(blocker_candidates(&state, &db()), vec![free]);
     }
 
     #[test]

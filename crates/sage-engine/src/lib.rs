@@ -49,16 +49,17 @@ pub use actions::{
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
-    abilities_of, AuraGrant, CardData, CardDatabase, CatalogError, Keyword, Printing,
-    PrintingDatabase, Rarity, SCHEMA_VERSION,
+    abilities_of, AuraGrant, CardData, CardDatabase, CatalogError, CombatRestriction, Keyword,
+    Printing, PrintingDatabase, Rarity, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
 pub use combat::{
     attacked_players, attacker_candidates, attackers_needing_damage_order, attacking_defender_of,
-    blocker_candidates, blocker_candidates_for, declared_attackers, defender_candidates,
-    defending_player, pending_blocker_declarer, pending_damage_order, permanent_has_menace,
+    blocked_by_at_most_one, blocker_can_block_attacker, blocker_candidates, blocker_candidates_for,
+    declared_attackers, defender_candidates, defending_player, pending_blocker_declarer,
+    pending_damage_order, permanent_has_menace, permanent_has_restriction, permanent_restrictions,
 };
 pub use commander::{
     commander_tax_cost, CommanderState, COMMANDER_DAMAGE_LOSS_THRESHOLD, COMMANDER_TAX_PER_CAST,

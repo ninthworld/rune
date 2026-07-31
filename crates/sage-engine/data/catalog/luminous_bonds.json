@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "functional_id": "luminous_bonds",
+  "name": "Luminous Bonds",
+  "types": [
+    "enchantment"
+  ],
+  "subtypes": [
+    "Aura"
+  ],
+  "mana_cost": "{2}{W}",
+  "colors": [
+    "white"
+  ],
+  "aura": {
+    "enchant": "any_creature",
+    "restrictions": [
+      "cant_attack",
+      "cant_block"
+    ]
+  }
+}

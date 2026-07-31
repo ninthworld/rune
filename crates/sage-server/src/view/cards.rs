@@ -100,6 +100,7 @@ fn keyword_str(keyword: Keyword) -> &'static str {
         Keyword::Deathtouch => "deathtouch",
         Keyword::Lifelink => "lifelink",
         Keyword::DoubleStrike => "double_strike",
+        Keyword::Hexproof => "hexproof",
     }
 }
 

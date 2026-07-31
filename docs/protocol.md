@@ -528,11 +528,18 @@ and the slot is correlated to its attacker the same way blocker slots are. A two
 offers no defender slots (the sole opponent is the only defender), so the wire and the client
 flow are unchanged. `declare_blockers` requirements are scoped to the player who currently
 owes the declaration (issue #344): with attacks split across defenders, each attacked player
-sees only the attackers attacking them. A blocker slot's `prompt` also states any restriction
-on *how many* blockers that attacker may be assigned — menace's two-or-more (CR 702.110b) is
-a fact about the whole selection, so the engine can only reject it once assembled, and the
-server says so in words rather than letting a submit silently do nothing. The client still
-computes no legality: it renders the prompt it was given. Empty selections are legal for these optional
+sees only the attackers attacking them.
+
+A blocker slot carries its attacker's restrictions in two different places, according to what
+kind of restriction it is (issue #606). A **pairwise** one — flying, "can't be blocked",
+"can't be blocked by black creatures" — is a fact about one attacker/blocker pair, so it is
+projected as the slot's `candidates`: only creatures that may legally block *that* attacker
+are listed, and an attacker nothing may block gets no slot at all. A **whole-selection** one
+constrains *how many* blockers may be assigned — menace's two-or-more (CR 702.110b) and the
+"no more than one" ceiling (CR 509.1b) — and the engine can only reject it once the
+declaration is assembled, so the slot's `prompt` states it in words rather than letting a
+submit silently do nothing. Either way the server asks the engine and the client still
+computes no legality: it renders the candidates and the prompt it was given. Empty selections are legal for these optional
 declarations. The server validates cardinality and action-specific rules.
 
 ### `ChooseAction`

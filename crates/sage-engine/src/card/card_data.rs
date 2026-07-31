@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use super::aura::AuraGrant;
 use super::keyword::Keyword;
+use super::restriction::CombatRestriction;
 use crate::ability::{Ability, Effect, TargetSpec};
 use crate::card_type::{CardType, Supertype};
 use crate::id::FunctionalId;
@@ -92,6 +93,18 @@ pub struct CardData {
     /// and summoning-sickness code consults.
     #[serde(default)]
     pub keywords: Vec<Keyword>,
+    /// The card's printed **combat restrictions** (CR 506.3, CR 509.1b) — "can't be
+    /// blocked by black creatures", "can't be blocked by more than one creature". Empty
+    /// for a card with none, which is nearly all of them.
+    ///
+    /// Kept apart from [`Self::keywords`] because these are not keyword abilities: no
+    /// card prints them as a keyword and some carry a parameter. Like keywords they are
+    /// only the *printed* seed; a permanent's current restrictions fold these together
+    /// with any granted continuously (CR 613.1f, layer 6) via
+    /// [`characteristics`](crate::characteristics::characteristics), which is what the
+    /// combat-declaration gates read.
+    #[serde(default)]
+    pub restrictions: Vec<CombatRestriction>,
     /// Whether this card's behavior is (also) defined in code rather than data
     /// (ADR 0008 §2; the escape hatch of ADR 0003).
     ///

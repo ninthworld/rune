@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "functional_id": "vine_mare",
+  "name": "Vine Mare",
+  "types": [
+    "creature"
+  ],
+  "subtypes": [
+    "Elemental",
+    "Horse"
+  ],
+  "mana_cost": "{2}{G}{G}",
+  "colors": [
+    "green"
+  ],
+  "power": 5,
+  "toughness": 3,
+  "keywords": [
+    "hexproof"
+  ],
+  "restrictions": [
+    {
+      "cant_be_blocked_by": "black"
+    }
+  ]
+}
