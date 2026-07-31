@@ -72,8 +72,8 @@
     "blocker": "no prevention shield or damage-replacement layer"
   },
   {
-    "name": "Abilities that trigger on a phase or step",
-    "blocker": "no upkeep, draw-step, end-step, or beginning-of-combat trigger condition"
+    "name": "Indestructible",
+    "blocker": "no indestructible keyword; destroy and lethal damage have no exception"
   },
   {
     "name": "Effects that count permanents, cards, or other game values",
@@ -109,7 +109,7 @@
   },
   {
     "name": "Abilities that trigger on drawing a card",
-    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, and casting"
+    "blocker": "trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries"
   },
   {
     "name": "Abilities that trigger on another permanent attacking",

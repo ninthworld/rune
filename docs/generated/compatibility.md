@@ -124,10 +124,9 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 
 | Excluded | Blocker |
 | --- | --- |
-| Abilities that trigger on a phase or step | no upkeep, draw-step, end-step, or beginning-of-combat trigger condition |
 | Abilities that trigger on an ability being activated | no trigger condition observes an activation |
 | Abilities that trigger on another permanent attacking | the attack trigger condition observes only its own source |
-| Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, and casting |
+| Abilities that trigger on drawing a card | trigger conditions observe zone changes, attack declaration, life gain, casting, and step boundaries |
 | Attack and block requirements and restrictions | only defender restricts declaration; must-attack and cannot-block are unmodeled |
 | Auras that enchant a player or land, or move between hosts | only P/T- and keyword-granting enchant-creature Auras are modeled |
 | Combat damage assigned by a value other than power | every attacker and blocker assigns damage equal to its current power |
@@ -145,6 +144,7 @@ Cards and mechanics considered and deliberately left out of scope, each with the
 | Evasion other than flying, reach, and menace | no unblockable, protection, or colour- and count-restricted blocking |
 | Fight, and other effects taking two targets | each effect fills exactly one target slot |
 | Gaining control of a permanent | no control-change layer |
+| Indestructible | no indestructible keyword; destroy and lethal damage have no exception |
 | Keyword removal and loses-all-abilities effects | the ability-adding layer only adds abilities |
 | Kicker and other optional additional costs | no optional cost declared on announcement |
 | Mana of any colour, and mana filtering | mana production names one fixed colour or colourless |

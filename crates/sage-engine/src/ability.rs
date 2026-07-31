@@ -778,6 +778,77 @@ pub enum TriggerCondition {
     /// was not before — so it fires once per declaration, from the one place
     /// attackers are declared, and never from a creature that merely became tapped.
     SelfAttacks,
+    /// The turn structure **began a step** this transition (CR 603.6a) — the
+    /// "at the beginning of your upkeep" / "at the beginning of each end step" shape.
+    /// The first condition here that is about the turn rather than about an object.
+    ///
+    /// Read from the [`crate::GameEvent::StepChanged`] entries the transition
+    /// recorded, not by comparing `before.step` to `after.step`, and the distinction
+    /// is load-bearing twice over. A snapshot comparison would **miss** steps: one
+    /// pass of priority can walk through several steps at once (end → cleanup → untap
+    /// → upkeep), and only the last of them would be visible in `after`. It would also
+    /// **misfire**: a step recurs every turn, so `after.step == Upkeep` is true of a
+    /// great many transitions that crossed no boundary at all. Each crossing records
+    /// exactly one event, so counting events is exactly once per crossing — the turn
+    /// number never has to enter the comparison because the event *is* the crossing.
+    ///
+    /// The source must still be on the battlefield after the transition; a permanent
+    /// that is gone is not there to trigger.
+    BeginningOfStep {
+        /// Which step's beginning this watches.
+        step: TriggerStep,
+        /// Whose turn that step has to belong to.
+        whose_turn: TurnScope,
+    },
+}
+
+/// Which step a [`TriggerCondition::BeginningOfStep`] watches the beginning of.
+///
+/// Deliberately **not** every [`crate::phase::Step`]: this names the four steps printed
+/// cards actually trigger at, all four of which grant priority (CR 117.1). That matters
+/// — a trigger owed at a step the turn-structure walk passes straight through
+/// (untap, CR 502.5; cleanup, CR 514.3) would reach the stack only after the walk had
+/// already left the step behind. Keeping those out of the vocabulary means the
+/// condition cannot express a trigger the pipeline would answer in the wrong step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerStep {
+    /// The upkeep step (CR 503) — "at the beginning of your upkeep".
+    Upkeep,
+    /// The draw step (CR 504) — "at the beginning of your draw step".
+    Draw,
+    /// The beginning of combat step (CR 507) — "at the beginning of combat on your turn".
+    BeginCombat,
+    /// The end step (CR 513) — "at the beginning of each end step".
+    EndStep,
+}
+
+impl TriggerStep {
+    /// The turn-structure [`Step`](crate::phase::Step) this names.
+    #[must_use]
+    pub fn step(self) -> crate::phase::Step {
+        match self {
+            Self::Upkeep => crate::phase::Step::Upkeep,
+            Self::Draw => crate::phase::Step::Draw,
+            Self::BeginCombat => crate::phase::Step::BeginCombat,
+            Self::EndStep => crate::phase::Step::End,
+        }
+    }
+}
+
+/// Whose turn a [`TriggerCondition::BeginningOfStep`] has to be for it to fire.
+///
+/// This distinction is most of what a step trigger *means*: "at the beginning of your
+/// upkeep" happens once every other turn and "at the beginning of each upkeep" happens
+/// every turn, and the two are otherwise the same ability. Scoped relative to the
+/// source's controller, exactly as [`ObservedPermanent`] and [`StaticAffects`] are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnScope {
+    /// Only on the source controller's own turn — the "your" of "your upkeep".
+    Yours,
+    /// On every player's turn — the "each" of "each upkeep".
+    Each,
 }
 
 /// Which permanents a **watching** [`TriggerCondition`] observes.
@@ -935,6 +1006,64 @@ mod tests {
             }
         );
         assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_607_step_trigger_round_trips_with_its_step_and_scope() {
+        // A step condition carries two values, so it authors as the wrapped form the
+        // selector-carrying conditions use rather than as a bare tag.
+        let json = r#"{"type":"triggered",
+            "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"yours"}},
+            "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}"#;
+        let ability: Ability = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            ability,
+            Ability::Triggered {
+                event: TriggerCondition::BeginningOfStep {
+                    step: TriggerStep::Upkeep,
+                    whose_turn: TurnScope::Yours,
+                },
+                effects: vec![Effect::GainLife {
+                    player_ref: PlayerRef::Controller,
+                    amount: 1
+                }],
+            }
+        );
+        assert!(!is_mana_ability(&ability));
+    }
+
+    #[test]
+    fn issue_607_each_trigger_step_maps_to_its_turn_structure_step() {
+        // The vocabulary names four steps and each names exactly one real step. Every
+        // one of them grants priority, which is the property that keeps a step trigger
+        // answerable in the step it belongs to.
+        use crate::phase::Step;
+        for (authored, step) in [
+            (TriggerStep::Upkeep, Step::Upkeep),
+            (TriggerStep::Draw, Step::Draw),
+            (TriggerStep::BeginCombat, Step::BeginCombat),
+            (TriggerStep::EndStep, Step::End),
+        ] {
+            assert_eq!(authored.step(), step);
+        }
+    }
+
+    #[test]
+    fn issue_607_a_step_outside_the_vocabulary_is_a_parse_error() {
+        // The closed set is the guard: `cleanup` and `untap` grant no priority, so a
+        // trigger owed there could not be answered in its own step. Authoring one must
+        // fail loudly rather than parse into a variant nothing implements.
+        for step in ["cleanup", "untap", "postcombat_main"] {
+            let json = format!(
+                r#"{{"type":"triggered",
+                    "event":{{"beginning_of_step":{{"step":"{step}","whose_turn":"each"}}}},
+                    "effects":[{{"kind":"draw_card","count":1}}]}}"#
+            );
+            assert!(
+                serde_json::from_str::<Ability>(&json).is_err(),
+                "`{step}` is not in the step-trigger vocabulary"
+            );
+        }
     }
 
     #[test]

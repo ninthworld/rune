@@ -4,7 +4,7 @@
 //! never via listeners or observers (crate `AGENTS.md`). [`crate::apply_action`]
 //! calls [`collect_triggers`] and puts each resulting [`Trigger`] on the stack.
 
-use crate::ability::{Ability, ObservedPermanent, ObservedSpell, TriggerCondition};
+use crate::ability::{Ability, ObservedPermanent, ObservedSpell, TriggerCondition, TurnScope};
 use crate::card::abilities_of;
 use crate::card_type::CardType;
 use crate::id::{CardInstanceId, PermanentId, PlayerId};
@@ -300,6 +300,28 @@ fn fire_count(
                 })
                 .count();
         }
+        // CR 603.6a: the ability triggers as the step begins. Counted over the
+        // `StepChanged` entries this transition recorded rather than by comparing
+        // `before.step` with `after.step` — one pass of priority can walk through
+        // several steps at once, and a step recurs every turn, so the snapshot
+        // comparison both misses crossings and fires on transitions that crossed
+        // nothing. One event per crossing makes this exactly once per crossing.
+        TriggerCondition::BeginningOfStep { step, whose_turn } => {
+            if !after.battlefield.iter().any(|p| p.id == perm.id) {
+                return 0;
+            }
+            let watched = step.step();
+            return events_in(before, after)
+                .filter(|event| {
+                    matches!(event, GameEvent::StepChanged { step, active_player, .. }
+                    if *step == watched
+                        && match whose_turn {
+                            TurnScope::Yours => *active_player == perm.controller,
+                            TurnScope::Each => true,
+                        })
+                })
+                .count();
+        }
         TriggerCondition::YouCastSpell(spell) => {
             if !after.battlefield.iter().any(|p| p.id == perm.id) {
                 return 0;
@@ -438,5 +460,262 @@ mod tests {
             collect_triggers(&before, &after, &db).is_empty(),
             "a leave to a non-graveyard zone must not fire SelfDies"
         );
+    }
+
+    // ----- CR 603.6a: triggers at the beginning of a step (issue #607) -----
+
+    /// An inline catalog of step-triggered permanents, one per scope/step pairing the
+    /// vocabulary can express. No M19 card carries a bare step trigger with nothing
+    /// attached to it, so these tests build their own definitions (ADR 0009).
+    ///
+    /// The life amounts are deliberately distinct (1/2/4/8) so a single life total
+    /// says exactly which of them fired, and how often.
+    fn step_db() -> CardDatabase {
+        let json = r#"[
+            {"schema_version":1,"functional_id":"test_your_upkeep","name":"Test Your Upkeep",
+             "types":["enchantment"],"mana_cost":"{1}{W}","colors":["white"],
+             "abilities":[{"type":"triggered",
+                "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"yours"}},
+                "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}]},
+            {"schema_version":1,"functional_id":"test_each_upkeep","name":"Test Each Upkeep",
+             "types":["artifact"],"mana_cost":"{1}",
+             "abilities":[{"type":"triggered",
+                "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"each"}},
+                "effects":[{"kind":"gain_life","player_ref":"controller","amount":2}]}]},
+            {"schema_version":1,"functional_id":"test_each_end_step","name":"Test Each End Step",
+             "types":["enchantment"],"mana_cost":"{2}{B}","colors":["black"],
+             "abilities":[{"type":"triggered",
+                "event":{"beginning_of_step":{"step":"end_step","whose_turn":"each"}},
+                "effects":[{"kind":"gain_life","player_ref":"controller","amount":4}]}]},
+            {"schema_version":1,"functional_id":"test_your_combat","name":"Test Your Combat",
+             "types":["creature"],"subtypes":["Dwarf"],"mana_cost":"{3}{W}","colors":["white"],
+             "power":3,"toughness":3,
+             "abilities":[{"type":"triggered",
+                "event":{"beginning_of_step":{"step":"begin_combat","whose_turn":"yours"}},
+                "effects":[{"kind":"gain_life","player_ref":"controller","amount":8}]}]}
+        ]"#;
+        CardDatabase::from_json(json).unwrap()
+    }
+
+    /// A two-player state with `functional_id` on the battlefield under `controller`,
+    /// plus the `after` snapshot in which the turn structure has entered `step` on
+    /// `active_player`'s turn `turn` — the recorded crossing the condition reads.
+    fn crossing(
+        db: &CardDatabase,
+        functional_id: &str,
+        controller: PlayerId,
+        turn: u32,
+        active_player: PlayerId,
+        step: crate::phase::Step,
+    ) -> (GameState, GameState) {
+        let mut before = GameState::new_two_player();
+        before.battlefield.push(Permanent {
+            id: PermanentId(1),
+            instance: CardInstanceId(1),
+            card: id_in(db, functional_id),
+            controller,
+            tapped: false,
+            entered_turn: 0,
+            attacking: None,
+            blocking: None,
+            damage: 0,
+            counters: Default::default(),
+            attached_to: None,
+        });
+        let mut after = before.clone();
+        after.turn = turn;
+        after.active_player = active_player;
+        after.step = step;
+        after.record_event(GameEvent::StepChanged {
+            turn,
+            active_player,
+            step,
+        });
+        (before, after)
+    }
+
+    #[test]
+    fn issue_607_your_upkeep_fires_once_on_its_controllers_upkeep() {
+        // CR 603.6a with a "your" scope: seat 0's own upkeep, and exactly one trigger
+        // for the one crossing.
+        let db = step_db();
+        let (before, after) = crossing(
+            &db,
+            "test_your_upkeep",
+            PlayerId(0),
+            1,
+            PlayerId(0),
+            crate::phase::Step::Upkeep,
+        );
+        let triggers = collect_triggers(&before, &after, &db);
+        assert_eq!(triggers.len(), 1);
+        assert_eq!(triggers[0].controller, PlayerId(0));
+        assert_eq!(
+            triggers[0].effects,
+            vec![Effect::GainLife {
+                player_ref: crate::ability::PlayerRef::Controller,
+                amount: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn issue_607_your_upkeep_does_not_fire_on_an_opponents_upkeep() {
+        // The whole point of the scope: seat 0's ability is silent on seat 1's turn.
+        let db = step_db();
+        let (before, after) = crossing(
+            &db,
+            "test_your_upkeep",
+            PlayerId(0),
+            2,
+            PlayerId(1),
+            crate::phase::Step::Upkeep,
+        );
+        assert!(collect_triggers(&before, &after, &db).is_empty());
+    }
+
+    #[test]
+    fn issue_607_each_upkeep_fires_on_every_players_upkeep() {
+        // The "each" scope ignores whose turn it is: seat 0's artifact triggers on
+        // seat 1's upkeep just as it does on its own.
+        let db = step_db();
+        for active in [PlayerId(0), PlayerId(1)] {
+            let (before, after) = crossing(
+                &db,
+                "test_each_upkeep",
+                PlayerId(0),
+                2,
+                active,
+                crate::phase::Step::Upkeep,
+            );
+            let triggers = collect_triggers(&before, &after, &db);
+            assert_eq!(
+                triggers.len(),
+                1,
+                "an each-upkeep trigger fires on seat {}'s turn",
+                active.0
+            );
+            assert_eq!(triggers[0].controller, PlayerId(0));
+        }
+    }
+
+    #[test]
+    fn issue_607_a_step_trigger_ignores_a_crossing_into_another_step() {
+        // A condition names one step. Every other crossing is not its boundary, and a
+        // transition that crossed no boundary at all fires nothing either.
+        let db = step_db();
+        for step in [
+            crate::phase::Step::Draw,
+            crate::phase::Step::BeginCombat,
+            crate::phase::Step::End,
+        ] {
+            let (before, after) =
+                crossing(&db, "test_your_upkeep", PlayerId(0), 1, PlayerId(0), step);
+            assert!(
+                collect_triggers(&before, &after, &db).is_empty(),
+                "an upkeep trigger must not fire on a crossing into {step:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn issue_607_a_transition_that_crosses_no_boundary_fires_nothing() {
+        // The once-per-crossing property from the other side, and the reason the
+        // condition reads recorded events rather than comparing `before.step` with
+        // `after.step`: here the state *is* in the upkeep step both before and after,
+        // and no crossing happened, so nothing triggers. A snapshot comparison that
+        // looked only at `after.step` would fire on every such transition.
+        let db = step_db();
+        let (before, _) = crossing(
+            &db,
+            "test_your_upkeep",
+            PlayerId(0),
+            1,
+            PlayerId(0),
+            crate::phase::Step::Upkeep,
+        );
+        let mut before = before;
+        before.step = crate::phase::Step::Upkeep;
+        let mut after = before.clone();
+        after.players[0].life -= 1; // some unrelated thing happened during upkeep
+        assert!(collect_triggers(&before, &after, &db).is_empty());
+    }
+
+    #[test]
+    fn issue_607_one_transition_crossing_several_steps_fires_each_of_them() {
+        // One pass of priority can walk through several steps at once (end → cleanup
+        // → untap → upkeep), and each crossing is recorded. A watcher of the end step
+        // and a watcher of the upkeep both fire from that single transition — which a
+        // comparison of `before.step` with `after.step` could never see, because only
+        // the last step survives into `after`.
+        let db = step_db();
+        let mut before = GameState::new_two_player();
+        before.step = crate::phase::Step::End;
+        for (index, id) in ["test_each_end_step", "test_each_upkeep"]
+            .into_iter()
+            .enumerate()
+        {
+            before.battlefield.push(Permanent {
+                id: PermanentId(index as u64 + 1),
+                instance: CardInstanceId(index as u64 + 1),
+                card: id_in(&db, id),
+                controller: PlayerId(0),
+                tapped: false,
+                entered_turn: 0,
+                attacking: None,
+                blocking: None,
+                damage: 0,
+                counters: Default::default(),
+                attached_to: None,
+            });
+        }
+        let mut after = before.clone();
+        for (turn, active, step) in [
+            (1, PlayerId(0), crate::phase::Step::End),
+            (1, PlayerId(0), crate::phase::Step::Cleanup),
+            (2, PlayerId(1), crate::phase::Step::Untap),
+            (2, PlayerId(1), crate::phase::Step::Upkeep),
+        ] {
+            after.record_event(GameEvent::StepChanged {
+                turn,
+                active_player: active,
+                step,
+            });
+        }
+        after.turn = 2;
+        after.active_player = PlayerId(1);
+        after.step = crate::phase::Step::Upkeep;
+
+        let triggers = collect_triggers(&before, &after, &db);
+        assert_eq!(triggers.len(), 2, "both crossings were observed");
+        let amounts: Vec<Effect> = triggers.iter().flat_map(|t| t.effects.clone()).collect();
+        assert!(amounts.contains(&Effect::GainLife {
+            player_ref: crate::ability::PlayerRef::Controller,
+            amount: 4
+        }));
+        assert!(amounts.contains(&Effect::GainLife {
+            player_ref: crate::ability::PlayerRef::Controller,
+            amount: 2
+        }));
+    }
+
+    #[test]
+    fn issue_607_a_source_that_is_gone_does_not_trigger() {
+        // An ability that is no longer on the battlefield is not there to trigger,
+        // the same rule the other watching conditions follow.
+        let db = step_db();
+        let (before, after) = crossing(
+            &db,
+            "test_your_combat",
+            PlayerId(0),
+            2,
+            PlayerId(0),
+            crate::phase::Step::BeginCombat,
+        );
+        assert_eq!(collect_triggers(&before, &after, &db).len(), 1);
+
+        let mut gone = after;
+        gone.battlefield.clear();
+        assert!(collect_triggers(&before, &gone, &db).is_empty());
     }
 }

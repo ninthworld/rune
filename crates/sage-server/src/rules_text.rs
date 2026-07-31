@@ -24,7 +24,7 @@
 use sage_engine::{
     Ability, AuraGrant, CardData, Color, Cost, CounterKind, DamageSubject, Effect, Keyword,
     MassAffects, ObservedPermanent, ObservedSpell, PlayerRef, StaticAffects, StaticModification,
-    TargetSpec, TriggerCondition,
+    TargetSpec, TriggerCondition, TriggerStep, TurnScope,
 };
 
 /// Generate the rules text of one card.
@@ -103,6 +103,11 @@ pub(crate) fn ability_text(source: &str, ability: &Ability) -> String {
                 TriggerCondition::YouCastSpell(spell) => {
                     format!("Whenever you cast {}", observed_spell_noun(*spell))
                 }
+                // A step trigger's subject is the step, not the source — "at the
+                // beginning of your upkeep", never "when this …".
+                TriggerCondition::BeginningOfStep { step, whose_turn } => {
+                    format!("At the beginning of {}", step_phrase(*step, *whose_turn))
+                }
             };
             finish(&format!("{trigger}, {}", clauses(source, effects)))
         }
@@ -145,6 +150,28 @@ fn observed_subject(observes: &ObservedPermanent) -> String {
             format!("{article} {noun} you control")
         }
         ObservedPermanent::AnyCreature { .. } => format!("{article} {noun}"),
+    }
+}
+
+/// The step a step trigger watches, as the noun phrase that follows "at the beginning
+/// of" — "your upkeep", "each end step", "combat on your turn".
+///
+/// The scope is folded into the phrase rather than prefixed, because English does not
+/// put it in one place: an upkeep takes a possessive determiner ("your upkeep") and the
+/// combat step takes a trailing qualifier ("combat on your turn"), and "each combat"
+/// drops the qualifier entirely. Composed from the same two values the engine matches
+/// on, so the sentence and the step actually watched cannot disagree.
+fn step_phrase(step: TriggerStep, whose_turn: TurnScope) -> String {
+    let noun = match step {
+        TriggerStep::Upkeep => "upkeep",
+        TriggerStep::Draw => "draw step",
+        TriggerStep::BeginCombat => "combat",
+        TriggerStep::EndStep => "end step",
+    };
+    match (step, whose_turn) {
+        (TriggerStep::BeginCombat, TurnScope::Yours) => "combat on your turn".to_string(),
+        (_, TurnScope::Yours) => format!("your {noun}"),
+        (_, TurnScope::Each) => format!("each {noun}"),
     }
 }
 
@@ -963,6 +990,64 @@ mod tests {
             text_of(&db, "mighty_leap"),
             "Target creature gets +2/+2 until end of turn.\n\
              Target creature gains flying until end of turn."
+        );
+    }
+
+    #[test]
+    fn issue_607_a_step_trigger_names_the_step_and_whose_turn_it_is() {
+        // A step trigger's subject is the step, not the source, and the scope is what
+        // the sentence has to get right: "your upkeep" and "each upkeep" are different
+        // cards. Combat is the irregular one — English puts the scope after the noun
+        // ("combat on your turn"), which is why the phrase is composed rather than
+        // prefixed. No bundled card carries a bare step trigger (every printed one also
+        // wants an intervening-if or a sacrifice cost), so these are inline.
+        let db = CardDatabase::from_json(
+            r#"[{"schema_version":1,"functional_id":"test_vigil","name":"Test Vigil",
+                "types":["enchantment"],"mana_cost":"{1}{W}","colors":["white"],
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"yours"}},
+                    "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}]},
+               {"schema_version":1,"functional_id":"test_fount","name":"Test Fount",
+                "types":["artifact"],"mana_cost":"{1}",
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"upkeep","whose_turn":"each"}},
+                    "effects":[{"kind":"gain_life","player_ref":"controller","amount":1}]}]},
+               {"schema_version":1,"functional_id":"test_rally","name":"Test Rally",
+                "types":["enchantment"],"mana_cost":"{2}{R}","colors":["red"],
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"begin_combat","whose_turn":"yours"}},
+                    "effects":[{"kind":"draw_card","count":1}]}]},
+               {"schema_version":1,"functional_id":"test_dusk","name":"Test Dusk",
+                "types":["enchantment"],"mana_cost":"{2}{B}","colors":["black"],
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"end_step","whose_turn":"each"}},
+                    "effects":[{"kind":"lose_life","player_ref":"each_opponent","amount":1}]}]},
+               {"schema_version":1,"functional_id":"test_ledger","name":"Test Ledger",
+                "types":["artifact"],"mana_cost":"{2}",
+                "abilities":[{"type":"triggered",
+                    "event":{"beginning_of_step":{"step":"draw","whose_turn":"yours"}},
+                    "effects":[{"kind":"draw_card","count":1}]}]}]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            text_of(&db, "test_vigil"),
+            "At the beginning of your upkeep, you gain 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "test_fount"),
+            "At the beginning of each upkeep, you gain 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "test_rally"),
+            "At the beginning of combat on your turn, draw a card."
+        );
+        assert_eq!(
+            text_of(&db, "test_dusk"),
+            "At the beginning of each end step, each opponent loses 1 life."
+        );
+        assert_eq!(
+            text_of(&db, "test_ledger"),
+            "At the beginning of your draw step, draw a card."
         );
     }
 
