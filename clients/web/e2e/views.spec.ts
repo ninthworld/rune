@@ -807,7 +807,7 @@ test.describe('the pre-game screen', () => {
     ])
     await page.goto('/')
 
-    await expect(page.getByRole('button', { name: /Create a two-seat table/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create a table' })).toBeVisible()
     // `set_name` was not offered, so the control must not appear.
     await expect(page.getByRole('button', { name: 'Set name' })).toHaveCount(0)
   })
@@ -827,7 +827,7 @@ test.describe('the pre-game screen', () => {
     await page.goto('/')
 
     await expect(page.getByRole('alert')).toContainText('Onakke Ogre appears 5 times')
-    await expect(page.getByRole('button', { name: /Create a two-seat table/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create a table' })).toBeVisible()
   })
 })
 
@@ -840,6 +840,6 @@ test.describe('a message this client cannot read', () => {
     await page.goto('/')
 
     await expect(page.getByRole('status')).toContainText('could not be read')
-    await expect(page.getByRole('button', { name: /Create a two-seat table/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Create a table' })).toBeVisible()
   })
 })

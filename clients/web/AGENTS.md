@@ -39,10 +39,10 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the discriminators are structural and order-sensitive; the rules are the protocol's.
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
-- `src/card-face.ts` — reduces the four card-shaped projections (`CardView`, `Permanent`,
-  `StackItem`, `Emblem`) to one `CardFace`. Every surface renders that and nothing else, so the
-  hand, the board, and the stack cannot disagree about the same object. Add a card-presentation
-  rule here, not in a component.
+- `src/card-face.ts` — reduces the five card-shaped projections (`CardView`, `Permanent`,
+  `StackItem`, `Emblem`, `CatalogCard`) to one `CardFace`. Every surface renders that and nothing
+  else, so the hand, the board, the stack, and the deck builder cannot disagree about the same
+  object. Add a card-presentation rule here, not in a component.
 - `src/table.ts` — joins the seats. Life and library arrive as `me` for you and `opponents[]`
   for everyone else, the piles as three arrays keyed by player, commander state as three more;
   they become one `Seat[]` here so no panel rebuilds that join or gets its absences wrong.
@@ -60,6 +60,17 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   mark a step in it.
 - `src/game-log.ts` — the wording for one log event, and the class of thing it is so a column of
   sentences can be scanned. Events carry data, never prose.
+- `src/lobby.ts` — the pre-game joins: the directory as rows, and the seats of the table you are
+  at. A row's button exists because `valid_commands` currently offers `join_room` or
+  `spectate_room`; occupancy only chooses **which** advertised command it leads with. A seat's
+  status is the stated flags restated, and what a table is waiting on is which of them is still
+  false — the gate that starts a game is the server's.
+- `src/deck.ts` — a deck under construction, and the catalog it is built from. The wire wants a
+  flat list with duplicates repeated; a person wants counted entries, so the draft holds counts
+  and expands at submission. **It computes no legality**: the rules strip quotes the numbers the
+  format published, the size note is arithmetic on a count, and nothing reads a `type_line` to
+  decide what a card *is* — which is why the copy limit is displayed and never enforced and the
+  commander picker offers the deck's own cards. The verdict is the server's `LobbyRejection`.
 - `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
   advertised, never rules reasoning.
 - `src/interaction.ts` — what one click *means*: which objects own an action, which slot a click
@@ -93,6 +104,17 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   row of steps, and that row is also where stops are set — a preference divorced from the strip
   it applies to is one nobody edits. The end of a match is the one panel that layers over the
   board, and the one action asked twice before it is sent.
+  `src/ui/lobby/` holds the pre-game surfaces — table directory, table form, seat roster, deck
+  panel, deck builder — with `Lobby.tsx` composing them the same way. Which of the two pre-game
+  screens is on is the server's answer, not a client-held phase: a `LobbyView` with a `room` is a
+  table you are at, one without it is the directory. One form serves creating *and* editing a
+  table, because `create_room` and `update_room` both carry a whole `RoomConfig`; every choice in
+  it — the formats, that format's seat range, the AI kinds — comes from the `CatalogView`, which
+  is requested per socket and is the reason nothing here hardcodes a `game_setup` id. The builder
+  draws catalog cards through the same `Card` the table does. Submit is offered whenever
+  `submit_deck` is advertised and is never gated on the client's own arithmetic.
+- `src/index.css`, `src/styles/` — the grey box, split along the surfaces it dresses: the page
+  itself, then `cards.css`, `game.css`, `lobby.css`. Imports come first, as the cascade requires.
 - `e2e/smoke.spec.ts` — the blocking gate: one path against the real server.
 - `e2e/*views.spec.ts` — the non-blocking tier: committed fixtures replayed over an
   intercepted socket, no server involved. More than one file, sharing `e2e/frames.ts`; the

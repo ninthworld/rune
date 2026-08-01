@@ -27,17 +27,24 @@ test('a fresh page to a played action, a reload, and a conceded game', async ({ 
   await expect(page.getByRole('heading', { name: 'SAGE' })).toBeVisible()
   await expect(page.getByText(/^You are /)).toBeVisible()
 
-  // 2. A table.
-  await page.getByRole('button', { name: /Create a two-seat table/ }).click()
-  await expect(page.getByRole('region', { name: /^r/ })).toBeVisible()
+  // 2. A table, created from the server's own catalog. The format list is not in this build:
+  //    it arrives in the `CatalogView` answering the `request_catalog` this screen sends, so
+  //    the select being populated at all is a second real round trip on the lobby contract.
+  await page.getByRole('button', { name: 'Create a table' }).click()
+  await expect(page.getByLabel('Format')).toBeVisible()
+  await page.getByRole('button', { name: 'Create the table' }).click()
+  await expect(page.getByRole('region', { name: 'Table', exact: true })).toBeVisible()
 
   // 3. A deck, an opponent, and a ready signal — each gated on `valid_commands`, so each
-  //    button appearing at all is the server saying the step is available now.
+  //    control appearing at all is the server saying the step is available now.
+  await page.getByLabel('Starter deck').selectOption({ index: 1 })
   await page.getByRole('button', { name: /^Submit deck/ }).click()
-  await expect(page.getByText(/· decked/).first()).toBeVisible()
+  await expect(page.getByText('Deck submitted').first()).toBeVisible()
 
-  await page.getByRole('button', { name: /Seat an AI opponent/ }).click()
-  await expect(page.getByText(/· AI \(/)).toBeVisible()
+  // The AI kinds are the catalog's too, so this click is only possible because the catalog
+  // arrived — and the deck it seats the bot with is validated exactly like a human's.
+  await page.getByRole('button', { name: 'Seat an AI opponent' }).click()
+  await expect(page.getByText('AI', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Ready' }).click()
 
