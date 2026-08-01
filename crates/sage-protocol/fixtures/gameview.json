@@ -53,6 +53,7 @@
         "functional_id": "grizzly_bears"
       },
       "tapped": true,
+      "damage": 1,
       "counters": [
         {
           "kind": "+1/+1",

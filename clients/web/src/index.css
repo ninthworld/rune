@@ -78,3 +78,268 @@ input,
 select {
   font: inherit;
 }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Cards.
+
+   Still grey box: one procedural frame, no colour identity, no art, no theme. What is being
+   decided here is *anatomy* — where the name, cost, type, text, and stat sit, and that they sit
+   in the same places at every size — because that is what the layout work after this one
+   builds on. Which is also why the art window (ADR 0012) is reserved and empty rather than
+   absent: nothing below it moves if a player ever fills it. */
+.cards {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.cards--compact,
+.cards--stack,
+.cards--emblems {
+  flex-direction: column;
+}
+
+.cards > li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cards__aside {
+  margin: 0;
+  font-size: 0.7rem;
+  opacity: 0.75;
+  max-width: 14rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: start;
+  padding: 0.35rem;
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  color: inherit;
+  font: inherit;
+  line-height: 1.25;
+}
+
+button.card {
+  cursor: pointer;
+}
+
+button.card:hover {
+  border-color: currentColor;
+}
+
+.card__band {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+/* The name is the one field that must never win a fight for space: it truncates, and the full
+   string is on the element and in the inspector. */
+.card__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__cost {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__art {
+  display: block;
+  aspect-ratio: 4 / 3;
+  border: 1px dashed color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 0.2rem;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    color-mix(in srgb, currentColor 7%, transparent) 6px 12px
+  );
+}
+
+.card__type {
+  font-size: 0.68rem;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__rules {
+  font-size: 0.7rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.card__keywords {
+  font-size: 0.68rem;
+  font-style: italic;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  margin-block-start: auto;
+}
+
+.badge {
+  font-size: 0.62rem;
+  padding: 0.05rem 0.25rem;
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  border-radius: 0.6rem;
+  white-space: nowrap;
+}
+
+.badge--counter,
+.badge--damage {
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+/* The stat sits last and hard right, so a player scanning a row of permanents finds every
+   power/toughness and every loyalty in the same place. */
+.card__stat {
+  margin-inline-start: auto;
+  font-weight: 700;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.card__stat--loyalty::before {
+  content: '◈';
+  margin-inline-end: 0.15rem;
+  font-weight: 400;
+}
+
+/* Sizes. One frame, five budgets. */
+.card--hand {
+  width: 10.5rem;
+  min-height: 13rem;
+}
+
+.card--battlefield {
+  width: 8.5rem;
+  min-height: 9rem;
+}
+
+.card--stack,
+.card--compact {
+  width: 14rem;
+}
+
+.card--compact {
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.card--compact .card__band {
+  flex: 1 1 auto;
+}
+
+.card--inspect {
+  width: 22rem;
+  padding: 0.6rem;
+}
+
+.card--inspect .card__name {
+  white-space: normal;
+}
+
+.card--inspect .card__type,
+.card--inspect .card__keywords {
+  white-space: normal;
+}
+
+/* Nothing is clamped in the inspector — being the place the rest of it lives is the whole
+   reason the other variants are allowed to truncate. */
+.card--inspect .card__rules {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  font-size: 0.8rem;
+}
+
+/* Tapped is drawn as a tilt plus a badge rather than the full 90° turn: rotating a tile in
+   place needs a slot that reserves the rotated footprint, and slot geometry belongs to the
+   tabletop layout rather than to the card. */
+.card--tapped {
+  transform: rotate(6deg);
+  opacity: 0.85;
+}
+
+/* Interaction states. Presentation only — the caller assigns these from what the server
+   advertised, and each is distinguishable without relying on colour alone. */
+.card--selected {
+  outline: 3px solid currentColor;
+  outline-offset: 1px;
+}
+
+.card--candidate {
+  outline: 2px dashed currentColor;
+  outline-offset: 1px;
+}
+
+.card--pending {
+  outline: 2px dotted currentColor;
+  outline-offset: 1px;
+  opacity: 0.8;
+}
+
+.card--disabled {
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.inspector-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: color-mix(in srgb, currentColor 35%, transparent);
+}
+
+.inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: Canvas;
+}
