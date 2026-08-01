@@ -8,10 +8,16 @@
  * What it proves that nothing else can: that the real wire contract, the real view projection,
  * and this client's reconstruction of them actually agree. Unit tests check the mirror against
  * fixtures; fixtures are only ever what we believed the server sends.
+ *
+ * It runs the match to its end rather than stopping at the first action, because the seams at
+ * the end are the same kind of seam as the one at the start and no fixture can stand in for
+ * them: a **reload** must land back in the game the server is still running (which is a
+ * server-side hand-off, not a client trick), and a **concession** must actually end it. Both are
+ * a handful of clicks on a game that is already up, so the gate stays one path.
  */
 import { expect, test } from '@playwright/test'
 
-test('two clicks from a fresh page to a played action', async ({ page }) => {
+test('a fresh page to a played action, a reload, and a conceded game', async ({ page }) => {
   const failures: string[] = []
   page.on('pageerror', (error) => failures.push(String(error)))
 
@@ -83,6 +89,33 @@ test('two clicks from a fresh page to a played action', async ({ page }) => {
   // And the correlation closed. The client holds its click as pending until the server echoes
   // the id back in `action_ack`, so a dock still saying "waiting" after a completed round trip
   // means the two ends disagree about correlation — which only a real server can prove.
-  await expect(page.getByText('waiting for the server')).toHaveCount(0)
+  await expect(actions).not.toContainText('waiting for the server')
+
+  // 6. Reload. The seat is held open, the game keeps running, and the token in this tab's
+  //    session storage is what proves the returning connection owns it. The server has to hand
+  //    that connection back to its room — a lobby view would leave a player stranded outside
+  //    their own match — and the whole match comes back from one view.
+  await page.reload()
+  await expect(page.getByRole('heading', { name: /^Turn \d+ — / })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('life')
+  await expect(page.getByRole('list', { name: 'Turn steps' }).getByRole('button')).toHaveCount(12)
+
+  // 7. Concede, which is the one action that ends a match on demand. It is asked twice, so the
+  //    first click sends nothing; the second one ends the game.
+  const concede = page.getByRole('list', { name: 'Global actions' }).getByText('Concede')
+  await expect(concede).toBeVisible({ timeout: 20_000 })
+  await concede.click()
+  await page.getByRole('button', { name: /^Yes, concede/ }).click()
+
+  // 8. The result, from the server's own `GameView.result`.
+  const result = page.getByRole('region', { name: 'Game over' })
+  await expect(result).toBeVisible({ timeout: 20_000 })
+  await expect(result).toContainText('By a concession.')
+
+  // 9. And the way out: leaving gives up the token that holds the seat, so the next connection
+  //    is a new session and lands in the lobby.
+  await result.getByRole('button', { name: 'Back to the lobby' }).click()
+  await expect(page.getByText(/^You are /)).toBeVisible({ timeout: 20_000 })
+
   expect(failures, 'the page threw while playing').toEqual([])
 })

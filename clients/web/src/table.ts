@@ -19,24 +19,6 @@ import type { GameView } from './protocol'
 import { cardFace, type CardFace } from './card-face'
 import { isConnected, list, playerLabel } from './normalize'
 
-const PHASE_LABELS: Record<string, string> = {
-  untap: 'Untap',
-  upkeep: 'Upkeep',
-  draw: 'Draw',
-  precombat_main: 'Precombat main',
-  begin_combat: 'Begin combat',
-  declare_attackers: 'Declare attackers',
-  declare_blockers: 'Declare blockers',
-  combat_damage: 'Combat damage',
-  end_combat: 'End combat',
-  postcombat_main: 'Postcombat main',
-  end: 'End',
-  cleanup: 'Cleanup',
-}
-
-/** An unknown classifier is rendered generically rather than guessed at (`docs/protocol.md`). */
-export const phaseLabel = (phase: string): string => PHASE_LABELS[phase] ?? phase
-
 /** One public pile in front of a seat. The library is a count, so it is not one of these. */
 export interface SeatPile {
   zone: 'graveyard' | 'exile' | 'command'

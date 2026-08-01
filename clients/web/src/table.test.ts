@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { GameView } from './protocol'
-import { phaseLabel, seats } from './table'
+import { seats } from './table'
 
 const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -121,16 +121,5 @@ describe('seating the table', () => {
     expect(you.commanderName).toBeUndefined()
     expect(you.commanderTax).toBeUndefined()
     expect(you.commanderDamage).toEqual([])
-  })
-})
-
-describe('naming a step', () => {
-  it('spells out the steps this build knows', () => {
-    expect(phaseLabel('precombat_main')).toBe('Precombat main')
-    expect(phaseLabel('declare_blockers')).toBe('Declare blockers')
-  })
-
-  it('renders an unknown classifier as sent rather than guessing at it', () => {
-    expect(phaseLabel('interstitial')).toBe('interstitial')
   })
 })

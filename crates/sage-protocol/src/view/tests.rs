@@ -1240,3 +1240,57 @@ fn issue_604_revealed_cards_ride_the_view_only_while_something_is_showing_them()
     let legacy: GameView = serde_json::from_str(r#"{"you":"p0","phase":"upkeep"}"#).unwrap();
     assert!(legacy.revealed.is_empty());
 }
+
+#[test]
+fn issue_628_turn_flow_fixture_round_trips_with_its_stops_and_settle_path() {
+    // The cross-language contract fixture for turn flow: the two stop lists as the server
+    // reflects them, a settle path that **crosses a turn boundary**, and a decision clock.
+    //
+    // Consumed verbatim by the web client's mirror-parity suite and by its browser tier, so a
+    // field renamed here and not there fails on one side or the other rather than drifting.
+    let json = include_str!("../../fixtures/gameview-turn.json");
+    let view: GameView = serde_json::from_str(json).unwrap();
+
+    let reencoded = serde_json::to_string(&view).unwrap();
+    let back: GameView = serde_json::from_str(&reencoded).unwrap();
+    assert_eq!(back, view);
+
+    // A step is never on both lists: `stops` is the wider claim and wins outright.
+    assert_eq!(view.stops, vec![Phase::End]);
+    assert_eq!(
+        view.own_turn_stops,
+        vec![Phase::PrecombatMain, Phase::PostcombatMain]
+    );
+    assert!(view.stops.iter().all(|p| !view.own_turn_stops.contains(p)));
+
+    // The path is ordered and each entry carries its own turn, because it crosses one: a
+    // consumer that inferred the turn from a repeated phase would put turn 3's end step in
+    // turn 4. `auto_passed` is exactly the path being non-empty.
+    assert!(view.auto_passed);
+    let path: Vec<(u32, Phase)> = view
+        .auto_passed_steps
+        .iter()
+        .map(|step| (step.turn, step.phase))
+        .collect();
+    assert_eq!(
+        path,
+        vec![(3, Phase::End), (3, Phase::Cleanup), (4, Phase::Untap),]
+    );
+    assert_eq!(view.turn, 4, "the strip's own turn is the later one");
+
+    // The clock rides only the deciding seat's view, and the concede that ends a match is an
+    // ordinary subject-less action — nothing about either is special-cased on the wire.
+    assert_eq!(view.action_deadline, Some(24.0));
+    let Some(concede) = view
+        .valid_actions
+        .iter()
+        .find(|action| action.kind == "concede")
+    else {
+        panic!("the acting seat is always offered a concession")
+    };
+    assert!(concede.subject.is_empty());
+
+    // A disconnected seat is a flag on the seat, not an absence of it: the board still shows
+    // them, their totals, and their piles.
+    assert!(!view.opponents[0].connected);
+}

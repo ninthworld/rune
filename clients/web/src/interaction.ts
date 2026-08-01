@@ -51,6 +51,8 @@ export interface Interaction {
   readonly pending?: Pending
   /** The label of the last submission the server refused, so the notice can name it. */
   readonly rejected?: string
+  /** An action asked for a second, explicit click before it is sent. */
+  readonly confirming?: string
 }
 
 /** Nothing selected, nothing drafted, nothing in flight. */
@@ -84,6 +86,20 @@ export function globalActions(actions: readonly ValidAction[]): readonly ValidAc
 /** Whether taking this action asks the player anything first. */
 export function needsChoices(action: ValidAction): boolean {
   return (action.requirements?.length ?? 0) > 0 || (action.prompts?.length ?? 0) > 0
+}
+
+/**
+ * Whether one click is too few for this action.
+ *
+ * Conceding ends the game for the player who does it (CR 104.3a) and nothing in the game undoes
+ * it, so it is the one action where a misclick is unrecoverable — a button that ends a match must
+ * be asked twice. The judgment is made on the server's own `type`, which is "a free-form category
+ * used for presentation and input routing" (`docs/protocol.md`), so this stays a presentation
+ * decision about a stated classifier rather than the client deciding what an action does. A
+ * `type` this build does not know simply does not qualify, which fails towards the ordinary path.
+ */
+export function needsConfirmation(action: ValidAction): boolean {
+  return action.type === 'concede'
 }
 
 export type SlotKind = 'target' | 'zone' | 'order' | 'option' | 'number'
@@ -320,6 +336,27 @@ export function answer(
   ids: readonly string[],
 ): Interaction {
   return { ...interaction, draft: { ...interaction.draft, [slot]: [...ids] } }
+}
+
+/**
+ * Ask before sending. Nothing is in flight and nothing is drafted — this is a question.
+ *
+ * Every other transition returns an interaction without `confirming`, so any click elsewhere —
+ * another object, another action, a cancel — is a "no". Only clicking the same action again is a
+ * "yes", which is what makes the second click deliberate rather than merely another click.
+ */
+export function ask(interaction: Interaction, action: ValidAction): Interaction {
+  return {
+    draft: {},
+    selected: interaction.selected,
+    pending: interaction.pending,
+    confirming: action.id,
+  }
+}
+
+/** Take back the question. */
+export function unask(interaction: Interaction): Interaction {
+  return { draft: {}, selected: interaction.selected, pending: interaction.pending }
 }
 
 /** Back out of a draft, keeping the subject selected. Nothing was sent, so nothing is undone. */

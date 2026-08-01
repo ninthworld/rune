@@ -482,7 +482,8 @@ test.describe('declaring combat', () => {
     const { sent } = await serveFrames(page, [COMBAT])
     await page.goto('/')
 
-    await page.getByRole('button', { name: 'Declare attackers' }).click()
+    // Exact: the turn strip also carries a step by this name, and it is a different control.
+    await page.getByRole('button', { name: 'Declare attackers', exact: true }).click()
     const choices = page.getByRole('region', { name: 'Choices' })
     const yourBoard = page.getByRole('region', { name: 'Your battlefield' })
     const theirBoard = page.getByRole('region', { name: 'p1 battlefield' })
@@ -520,7 +521,8 @@ test.describe('declaring combat', () => {
     const { sent } = await serveFrames(page, [COMBAT])
     await page.goto('/')
 
-    await page.getByRole('button', { name: 'Declare attackers' }).click()
+    // Exact: the turn strip also carries a step by this name, and it is a different control.
+    await page.getByRole('button', { name: 'Declare attackers', exact: true }).click()
     await page.getByRole('button', { name: 'Confirm' }).click()
 
     await expect.poll(() => submissions(sent)).toHaveLength(1)
@@ -789,12 +791,12 @@ test.describe('making a settle legible', () => {
 
     const settle = page.getByRole('region', { name: 'Passed for you' })
     await expect(settle).toBeVisible()
-    const steps = settle.getByRole('listitem')
-    await expect(steps).toHaveCount(4)
-    await expect(steps.nth(0)).toHaveText('Turn 3 — Begin combat')
-    // The repeat is preserved rather than collapsed.
-    await expect(steps.nth(2)).toHaveText('Turn 3 — Begin combat')
-    await expect(steps.nth(3)).toHaveText('Turn 4 — Upkeep')
+    // One entry per turn the path crossed, and inside it the steps in the order the settle
+    // acted — the repeat preserved rather than collapsed.
+    const runs = settle.getByRole('listitem')
+    await expect(runs).toHaveCount(2)
+    await expect(runs.nth(0)).toHaveText('Turn 3 — Begin combat → Declare attackers → Begin combat')
+    await expect(runs.nth(1)).toHaveText('Turn 4 — Upkeep')
   })
 })
 

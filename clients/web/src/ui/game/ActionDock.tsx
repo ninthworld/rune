@@ -17,6 +17,10 @@
  * a card inside a collapsed pile, or an id in no rendered zone at all. Until contextual coverage
  * is *proven* rather than assumed, the flat list stays, and nothing becomes unreachable because
  * a surface did not happen to draw it (#626).
+ *
+ * One action is asked twice. Conceding ends the match and nothing in the game undoes it, so it
+ * takes over the dock with a question rather than firing on the click that reached it — and any
+ * other click is a "no", because every other transition drops the question (`interaction.ts`).
  */
 import type { GameResult, ValidAction } from './../../protocol'
 import {
@@ -26,6 +30,7 @@ import {
   focus,
   globalActions,
   release,
+  unask,
   type Interaction,
 } from './../../interaction'
 import { ActionDraft } from './ActionDraft'
@@ -58,6 +63,9 @@ export function ActionDock({
   const owned = selected === undefined ? [] : actionsFor(actions, selected)
   const globals = globalActions(actions)
   const blocked = interaction.pending !== undefined
+  // Still offered? An action awaiting confirmation can be withdrawn by the next view like any
+  // other, and asking about one the server no longer lists would be asking about nothing.
+  const asking = actions.find((action) => action.id === interaction.confirming)
 
   const button = (action: ValidAction) => (
     <li key={action.id}>
@@ -94,6 +102,22 @@ export function ActionDock({
           // A finished game is not a game that is waiting: nobody is coming, and saying
           // otherwise leaves a player watching a screen that will never change.
           <p>{result ? 'Nothing to do — the game is over.' : 'Waiting for the other seat.'}</p>
+        ) : asking ? (
+          // The whole dock, so the question cannot be answered by clicking past it. Nothing has
+          // been sent and nothing is drafted — this is one button asked twice.
+          <div className="dock__confirm" role="group" aria-label="Confirm">
+            <p>
+              <strong>{asking.label}?</strong> This ends the game for you, and nothing undoes it.
+            </p>
+            <p>
+              <button type="button" onClick={() => take(asking)} disabled={blocked}>
+                Yes, {asking.label.toLowerCase()}
+              </button>{' '}
+              <button type="button" onClick={() => update(unask(interaction))}>
+                Keep playing
+              </button>
+            </p>
+          </div>
         ) : current.action ? (
           <ActionDraft
             action={current.action}

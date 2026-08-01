@@ -19,8 +19,8 @@
  */
 import type { GameLogEntry, AutoPassedStep } from './../../protocol'
 import type { CardFace } from './../../card-face'
-import { describe } from './../../game-log'
-import { phaseLabel } from './../../table'
+import { describe, kindOf } from './../../game-log'
+import { passedRuns } from './../../turn'
 import type { Surface } from './surface'
 import { ZonePanel } from './ZonePanel'
 
@@ -72,14 +72,22 @@ export function SidePanel({
       {settled.length > 0 && (
         <section className="side__block notice" aria-labelledby="settle-heading">
           <h2 id="settle-heading">Passed for you</h2>
+          {/* Why, not just where. A player who watches a whole turn go by between two frames
+              and is shown a bare list of steps learns that something happened to them; the
+              sentence is what turns that into something they can act on, and the control it
+              points at is one row up in the header. */}
+          <p className="side__note">
+            The server had nothing to ask you at these steps, so it acted for you. Set a stop on the
+            turn strip to be asked there next time.
+          </p>
           {/* A path, not a set: a genuinely revisited position appears twice, and each entry
               carries its own turn because an extra combat or cleanup phase revisits a step
               within one turn. Collapsing either would assert game structure the server did
               not state. */}
           <ol>
-            {settled.map((step, index) => (
-              <li key={`${step.turn}-${step.phase}-${index}`}>
-                Turn {step.turn} — {phaseLabel(step.phase)}
+            {passedRuns(settled).map((run, index) => (
+              <li key={`${run.turn}-${index}`}>
+                Turn {run.turn} — {run.steps.map((step) => step.label).join(' → ')}
               </li>
             ))}
           </ol>
@@ -92,9 +100,13 @@ export function SidePanel({
           <p>Nothing yet.</p>
         ) : (
           <ol className="log">
-            {/* Newest last, as the server ordered it; the window is bounded server-side. */}
+            {/* Newest last, as the server ordered it; the window is bounded server-side. The
+                class is the entry's kind, so a step change divides the column into turns and a
+                death or a result carries weight — reading, not meaning. */}
             {log.map((entry) => (
-              <li key={entry.sequence}>{describe(entry.event, label)}</li>
+              <li key={entry.sequence} className={`log__entry log__entry--${kindOf(entry.event)}`}>
+                {describe(entry.event, label)}
+              </li>
             ))}
           </ol>
         )}

@@ -24,29 +24,56 @@ const FIXTURES = join(
 export const fixture = (name: string): Record<string, unknown> =>
   JSON.parse(readFileSync(join(FIXTURES, name), 'utf8'))
 
+/** The half of a `WebSocketRoute` these helpers use, so a caller needs no Playwright type. */
+interface Socket {
+  send(message: string): void
+  close(options?: { code?: number; reason?: string }): void
+}
+
 /**
- * Serve `frames` to the client instead of a server, and record what it sends back.
+ * Serve one round of frames per socket the client opens, and record what it sends back.
  *
  * The client opens its socket and says `hello`; everything after that is whatever this hands
  * it. Interception happens in the page, so no port is bound and the two tiers never collide.
+ *
+ * More than one round exists because the client **reconnects**: closing a socket makes it open
+ * another, and what the server says on that second socket is the whole substance of resuming.
+ * A round past the end of the list repeats the last one, so a page that reconnects twice is not
+ * a test that has to enumerate it.
  */
-export async function serveFrames(page: Page, frames: readonly unknown[]) {
+export async function serveSockets(page: Page, rounds: readonly (readonly unknown[])[]) {
   // The route handler runs in Node, so what the client sends is captured directly.
   const sent: string[] = []
-  let socket: { send(message: string): void } | undefined
+  const sockets: Socket[] = []
   await page.routeWebSocket(/.*/, (ws) => {
-    socket = ws
+    const frames = rounds[Math.min(sockets.length, rounds.length - 1)] ?? []
+    sockets.push(ws)
     ws.onMessage((message) => sent.push(String(message)))
     for (const frame of frames) ws.send(JSON.stringify(frame))
   })
-  // `push` sends a frame *after* the page has acted, which is the only way to test what a
-  // client does with the server's answer to its own click.
-  return { sent, push: (frame: unknown) => socket?.send(JSON.stringify(frame)) }
+  return {
+    sent,
+    sockets,
+    // `push` sends a frame *after* the page has acted, which is the only way to test what a
+    // client does with the server's answer to its own click.
+    push: (frame: unknown) => sockets.at(-1)?.send(JSON.stringify(frame)),
+    /** Drop the live socket, as a network does. The client is expected to open another. */
+    drop: () => sockets.at(-1)?.close({ code: 1006 }),
+  }
 }
+
+/** The single-socket case, which is most of them. */
+export async function serveFrames(page: Page, frames: readonly unknown[]) {
+  return serveSockets(page, [frames])
+}
+
+/** Every message of one `type` the page has sent, oldest first. */
+export const messages = (sent: readonly string[], type: string): Record<string, unknown>[] =>
+  sent.map((raw) => JSON.parse(raw)).filter((message) => message.type === type)
 
 /** Every `choose_action` the page has sent, oldest first. */
 export const submissions = (sent: readonly string[]): Record<string, unknown>[] =>
-  sent.map((raw) => JSON.parse(raw)).filter((message) => message.type === 'choose_action')
+  messages(sent, 'choose_action')
 
 /**
  * The page itself does not scroll, in either axis.

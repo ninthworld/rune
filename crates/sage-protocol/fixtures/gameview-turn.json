@@ -1,0 +1,93 @@
+{
+  "you": "p0",
+  "me": {
+    "life": 17,
+    "library_size": 48
+  },
+  "opponents": [
+    {
+      "player_id": "p1",
+      "hand_size": 5,
+      "life": 20,
+      "library_size": 50,
+      "graveyard_size": 2,
+      "connected": false
+    }
+  ],
+  "phase": "upkeep",
+  "turn": 4,
+  "active_player": "p0",
+  "seat_order": ["p0", "p1"],
+  "priority_player": "p0",
+  "mana_pool": ["G", "G"],
+  "valid_actions": [
+    {
+      "id": "a1",
+      "type": "pass_priority",
+      "label": "Pass",
+      "token": "t0000000000000001"
+    },
+    {
+      "id": "a2",
+      "type": "concede",
+      "label": "Concede",
+      "token": "t0000000000000002"
+    }
+  ],
+  "action_deadline": 24.0,
+  "stops": ["end"],
+  "own_turn_stops": ["precombat_main", "postcombat_main"],
+  "auto_passed": true,
+  "auto_passed_steps": [
+    { "phase": "end", "turn": 3 },
+    { "phase": "cleanup", "turn": 3 },
+    { "phase": "untap", "turn": 4 }
+  ],
+  "log": [
+    {
+      "sequence": 41,
+      "event": {
+        "type": "step_changed",
+        "turn": 3,
+        "active_player": "p1",
+        "phase": "postcombat_main"
+      }
+    },
+    {
+      "sequence": 42,
+      "event": {
+        "type": "spell_cast",
+        "player": "p1",
+        "card": { "id": "c9", "name": "Shock" }
+      }
+    },
+    {
+      "sequence": 43,
+      "event": {
+        "type": "damage_dealt",
+        "target": { "kind": "player", "player": "p0" },
+        "amount": 2
+      }
+    },
+    {
+      "sequence": 44,
+      "event": {
+        "type": "permanent_died",
+        "permanent": { "id": "perm_scout", "name": "Verdant Scout" }
+      }
+    },
+    {
+      "sequence": 45,
+      "event": {
+        "type": "step_changed",
+        "turn": 4,
+        "active_player": "p0",
+        "phase": "upkeep"
+      }
+    }
+  ],
+  "player_names": {
+    "p0": "Alice",
+    "p1": "Bob"
+  }
+}

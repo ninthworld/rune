@@ -855,6 +855,20 @@ The client distinguishes a `SpectatorView` from a seated `GameView` structurally
 The client stores `session` per browser tab and echoes it on a later `hello`. It is an
 identity/reconnect handle, not a user account or human authentication credential.
 
+**A `hello` that reclaims a seat whose game is still running is answered with the game, not
+with a `LobbyView`** (issue #628). The reconnecting connection is put back on the in-game
+contract exactly as the ready gate puts it there — it joins the room and is brought current
+with one complete `GameView` — because a held-open seat belongs to a match in progress and a
+lobby view would say nothing about it. A reclaimed session that is *not* seated in a live game
+(pre-game, or a game whose room has finished) is answered with its lobby view as before.
+
+Two consequences for a client. First, a reconnect may deliver **no** `LobbyView` at all, so a
+client must not wait for one before considering itself resumed. Second, a fresh connection is
+issued its own session and its own `LobbyView` before its `hello` is read, and that frame
+carries a *different* `session` — a client that overwrites its stored token with every
+`LobbyView` it sees will discard the token that owns its seat. The token to keep is the one
+that reached the game.
+
 `RoomView` contains an opaque `room_id`, a `config`, and the ordered seat roster. The room
 config contains `seats`, an opaque `game_setup` id, an optional table `name`, and a
 `visibility` (issue #546). The lobby validates a 2–8 seat range,
