@@ -32,18 +32,13 @@ const ORDER: readonly StopPreset[] = ['everywhere', 'mains', 'nowhere']
 export function PacePresets({
   current,
   onPreset,
-  onHelp,
-  onArt,
 }: {
   /** The preset the server's effective lists currently match, if they match one. */
   current?: StopPreset
   onPreset(preset: StopPreset): void
-  onHelp(): void
-  onArt(): void
 }) {
   return (
     <div className="pace" role="group" aria-label="Pace">
-      <span className="pace__label">Stops</span>
       {ORDER.map((preset) => (
         <button
           key={preset}
@@ -56,14 +51,6 @@ export function PacePresets({
           {SHORT[preset]} <kbd>{KEYS[preset]}</kbd>
         </button>
       ))}
-      <button type="button" className="pace__keys" onClick={onHelp}>
-        Keys <kbd>?</kbd>
-      </button>
-      {/* Beside the keys because both are settings about *this device* rather than about the
-          game, and the header is the one region on the table that is never about a card. */}
-      <button type="button" className="pace__keys" onClick={onArt}>
-        Art
-      </button>
     </div>
   )
 }

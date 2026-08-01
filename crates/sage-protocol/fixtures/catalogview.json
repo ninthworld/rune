@@ -5,6 +5,7 @@
       "functional_id": "llanowar_elves",
       "name": "Llanowar Elves",
       "type_line": "Creature — Elf Druid",
+      "card_types": ["creature"],
       "mana_cost": "{G}",
       "rules_text": "{T}: Add {G}.",
       "power": "1",
@@ -14,6 +15,7 @@
       "functional_id": "serra_angel",
       "name": "Serra Angel",
       "type_line": "Creature — Angel",
+      "card_types": ["creature"],
       "mana_cost": "{3}{W}{W}",
       "power": "4",
       "toughness": "4",
@@ -23,6 +25,7 @@
       "functional_id": "forest",
       "name": "Forest",
       "type_line": "Basic Land — Forest",
+      "card_types": ["land"],
       "rules_text": "{T}: Add {G}."
     }
   ],

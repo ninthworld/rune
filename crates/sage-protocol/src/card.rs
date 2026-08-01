@@ -72,6 +72,26 @@ pub struct CardView {
     /// and never derives them. Omitted from the wire when the card has none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keywords: Vec<String>,
+    /// The card's types (CR 300), as the structured set
+    /// [`type_line`](CardView::type_line) is rendered from.
+    ///
+    /// The type line is a *sentence* — `"Artifact Creature — Thopter"` — and a client
+    /// that needed to know a permanent is a creature could only get there by parsing
+    /// it. Parsing is exactly the derivation the client is not allowed to make: it
+    /// fails on the cards where the answer matters (an animated land, a permanent
+    /// whose types an effect changed) and it makes every consumer re-implement a
+    /// grammar. So the set the server already holds is stated, and the sentence stays
+    /// what it always was — the thing to *print*.
+    ///
+    /// Both are projected from the same source, so they can never disagree. Subtypes
+    /// are deliberately not here: they are an open set of thousands, they belong to
+    /// the sentence, and nothing presentational keys off them.
+    ///
+    /// Additive: omitted (and defaults to empty) for a card the server could not
+    /// resolve, so every existing view is unchanged on the wire and an empty list is
+    /// "not stated" rather than "no types".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub card_types: Vec<CardType>,
 }
 
 /// What the receiving player is allowed to know about an opponent: hidden zones
@@ -436,6 +456,33 @@ pub struct ZonePile {
     pub cards: Vec<CardView>,
 }
 
+/// A card type (CR 300), as [`CardView::card_types`] states it.
+///
+/// A closed set, mirroring the engine's own — which is why it is an enum here and
+/// subtypes are not. The wire names are lowercase (`"creature"`, `"planeswalker"`).
+/// A consumer that meets a variant it does not know should render the card rather
+/// than drop it; the type line still says what the card is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CardType {
+    /// Land.
+    Land,
+    /// Creature.
+    Creature,
+    /// Artifact.
+    Artifact,
+    /// Enchantment.
+    Enchantment,
+    /// Instant.
+    Instant,
+    /// Sorcery.
+    Sorcery,
+    /// Planeswalker.
+    Planeswalker,
+    /// Battle.
+    Battle,
+}
+
 /// The current turn step. The full sequence lives in the engine's phase FSM
 /// (backlog); the protocol carries the current step for overview/focus rendering.
 ///
@@ -519,6 +566,7 @@ mod tests {
                 toughness: Some("2".into()),
                 loyalty: None,
                 keywords: vec![],
+                card_types: Vec::new(),
             },
             tapped: false,
             attacking: false,
@@ -602,6 +650,7 @@ mod tests {
                 toughness: None,
                 loyalty: None,
                 keywords: vec![],
+                card_types: Vec::new(),
             },
             tapped: false,
             attacking: false,
@@ -651,6 +700,7 @@ mod tests {
             toughness: Some("2".into()),
             loyalty: None,
             keywords: vec!["flying".into()],
+            card_types: Vec::new(),
         };
         let json = serde_json::to_value(&base).unwrap();
         assert_eq!(json.get("keywords"), Some(&serde_json::json!(["flying"])));
@@ -659,6 +709,7 @@ mod tests {
         // A card with no keywords omits the field entirely.
         let vanilla = CardView {
             keywords: vec![],
+            card_types: Vec::new(),
             ..base.clone()
         };
         let vanilla_json = serde_json::to_value(&vanilla).unwrap();
@@ -805,6 +856,7 @@ mod tests {
                 toughness: None,
                 loyalty: None,
                 keywords: vec![],
+                card_types: Vec::new(),
             }),
         };
         let json = serde_json::to_string(&item).unwrap();

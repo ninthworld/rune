@@ -50,6 +50,13 @@ pub struct CatalogCard {
     /// projection [`CardView::keywords`] carries. Omitted from the wire when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keywords: Vec<String>,
+    /// The card's types (CR 300), the same projection [`CardView::card_types`] carries.
+    ///
+    /// A catalog entry and an in-game card describe the *same printed card*, so every
+    /// presentational field is the same on both or a builder and a hand end up disagreeing
+    /// about a card neither is allowed to have an opinion on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub card_types: Vec<crate::CardType>,
 }
 
 /// One advertised format's public deck rules and seat range, as listed in a
@@ -177,6 +184,7 @@ mod tests {
                     toughness: Some("4".into()),
                     loyalty: None,
                     keywords: vec!["flying".into(), "vigilance".into()],
+                    card_types: Vec::new(),
                 },
                 CatalogCard {
                     functional_id: "forest".into(),
@@ -188,6 +196,7 @@ mod tests {
                     toughness: None,
                     loyalty: None,
                     keywords: vec![],
+                    card_types: Vec::new(),
                 },
             ],
             formats: vec![CatalogFormat {

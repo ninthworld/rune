@@ -45,8 +45,8 @@ mod view;
 
 pub use action::{Prompt, PromptOption, TargetRequirement, ValidAction};
 pub use card::{
-    CardView, Counter, Emblem, OpponentView, Permanent, Phase, SelfView, StackItem, StackItemKind,
-    StackTarget, ZonePile,
+    CardType, CardView, Counter, Emblem, OpponentView, Permanent, Phase, SelfView, StackItem,
+    StackItemKind, StackTarget, ZonePile,
 };
 pub use catalog::{AiOption, CatalogCard, CatalogFormat, CatalogView, CATALOG_VERSION};
 pub use client::{ChooseAction, ClientMessage, SetStops, TargetChoice};

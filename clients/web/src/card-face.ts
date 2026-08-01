@@ -23,7 +23,15 @@
  *   art key of ADR 0012 is withheld rather than passed along as an empty string that a cache
  *   would treat as a card it failed to resolve.
  */
-import type { CardView, CatalogCard, Counter, Emblem, Permanent, StackItem } from './protocol'
+import type {
+  CardType,
+  CardView,
+  CatalogCard,
+  Counter,
+  Emblem,
+  Permanent,
+  StackItem,
+} from './protocol'
 import { list, powerToughness } from './normalize'
 
 /**
@@ -82,6 +90,14 @@ export interface CardFace {
   tapped: boolean
   /** `functional_id` — the ADR 0012 art key. Absent for anything with no card identity. */
   artKey?: string
+  /**
+   * The card's types, as the server stated them (`board.ts`).
+   *
+   * Carried on the face so a surface that arranges cards never has to reach past it to the
+   * view. Empty means the server stated none — which is a fact about the projection, not a
+   * claim that the object has no types, and every surface treats it that way.
+   */
+  cardTypes: readonly CardType[]
 }
 
 /** Display wording for the stack kinds the server states (`docs/protocol.md`). */
@@ -131,6 +147,7 @@ function printedFace(id: string, card: Printed): CardFace {
     counters: [],
     markers: [],
     tapped: false,
+    cardTypes: [],
   }
 }
 
@@ -140,6 +157,7 @@ export function cardFace(card: CardView): CardFace {
     ...printedFace(card.id, card),
     markers: card.token ? ['Token'] : [],
     artKey: card.token ? undefined : card.functional_id || undefined,
+    cardTypes: list(card.card_types),
   }
 }
 
@@ -153,7 +171,11 @@ export function cardFace(card: CardView): CardFace {
  * counters, no tap state, no markers, because none of that is true of a card nobody has drawn.
  */
 export function catalogFace(card: CatalogCard): CardFace {
-  return { ...printedFace(card.functional_id, card), artKey: card.functional_id || undefined }
+  return {
+    ...printedFace(card.functional_id, card),
+    artKey: card.functional_id || undefined,
+    cardTypes: list(card.card_types),
+  }
 }
 
 /** A face for a permanent on the battlefield, with everything the board state adds to it. */
@@ -206,6 +228,7 @@ export function stackFace(item: StackItem): CardFace {
       counters: [],
       markers: kind,
       tapped: false,
+      cardTypes: [],
     }
   }
   const base = cardFace(item.card)
@@ -229,6 +252,7 @@ export function emblemFace(emblem: Emblem): CardFace {
     counters: [],
     markers: ['Emblem'],
     tapped: false,
+    cardTypes: [],
   }
 }
 

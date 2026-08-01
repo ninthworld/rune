@@ -23,10 +23,26 @@
   align-items: flex-start;
 }
 
+/* The three column layouts. `align-items` on a column flex container is the *horizontal* axis,
+   and the row layouts above want `flex-start` there so a card sizes to its own content. A column
+   wants the opposite: stretch to the track, so a fluid card fills the narrow rail it is in
+   instead of sizing to its longest line and being clipped by it. */
 .cards--compact,
 .cards--stack,
 .cards--emblems {
   flex-direction: column;
+  align-items: stretch;
+}
+
+/* A flex item's automatic minimum size is content-based, so a card with a long line pushes its
+   own row wider than the column it is in and is then clipped by the region that column belongs
+   to. These three layouts are narrow rails by design, so their items are told outright that the
+   track is the limit. */
+.cards--compact > li,
+.cards--stack > li,
+.cards--emblems > li {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .cards > li {
@@ -37,9 +53,9 @@
 
 .cards__aside {
   margin: 0;
-  font-size: 0.7rem;
-  opacity: 0.75;
-  max-width: 14rem;
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  max-width: 100%;
 }
 
 /* ---------------------------------------------------------------------------
@@ -321,9 +337,14 @@ button.card:hover {
   font-size: 0.56rem;
 }
 
+/* Fluid, not fixed. Both of these live in narrow columns — the stack beside the board, a pile
+   in the side rail — and a fixed width wider than its column is a card whose own text is
+   clipped by the region it was put in. */
 .card--stack,
 .card--compact {
-  width: 14rem;
+  width: 100%;
+  max-width: 14rem;
+  min-width: 0;
 }
 
 .card--compact {

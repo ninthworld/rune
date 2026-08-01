@@ -53,8 +53,10 @@ export function PlayerPanel({
 }) {
   const state = surface.stateOf(seat.id)
   const link = surface.linkOf(seat.id)
-  const stats = [
-    seat.life !== undefined && `${seat.life} life`,
+  // Life is lifted out of the list it used to be a substring of. It is the number a player
+  // watches more than any other, and `9 life · Library (28) · Hand (4)` gave it exactly as much
+  // weight as the size of a graveyard. Everything else stays a list, because everything else is.
+  const marks = [
     ...seat.statuses,
     seat.eliminated && 'eliminated',
     !seat.connected && 'disconnected',
@@ -104,7 +106,16 @@ export function PlayerPanel({
         </button>
       </p>
 
-      <p className="seat__stats">{stats.join(' · ')}</p>
+      {seat.life !== undefined && (
+        <p className="seat__life">
+          {/* The unit is said once, to a screen reader, because a bare number read out is not a
+              life total — and drawing the word beside a figure this size would halve it. */}
+          <span className="seat__life-value">{seat.life}</span>
+          <span className="visually-hidden"> life</span>
+        </p>
+      )}
+
+      {marks.length > 0 && <p className="seat__marks">{marks.join(' · ')}</p>}
 
       <p className="seat__zones">
         {zones.map(({ key, label, count, zone }) =>

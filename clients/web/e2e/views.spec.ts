@@ -1042,3 +1042,54 @@ test.describe('the keyboard, and what the frame draws', () => {
       .toBe(true)
   })
 })
+
+test.describe('a battlefield with rows', () => {
+  /** The board fixture, with a land added — no committed board has one to group. */
+  const withLand = () => {
+    const base = fixture('gameview.json')
+    const battlefield = [
+      ...(base.battlefield as Record<string, unknown>[]),
+      {
+        id: 'perm_forest',
+        controller: 'p1',
+        owner: 'p1',
+        card: {
+          id: 'c_forest_perm',
+          name: 'Forest',
+          type_line: 'Basic Land — Forest',
+          card_types: ['land'],
+          functional_id: 'forest',
+        },
+      },
+    ]
+    return { ...base, battlefield }
+  }
+
+  test('separates lands from creatures, from the types the server stated', async ({ page }) => {
+    await serveFrames(page, [withLand()])
+    await page.goto('/')
+
+    // Named rows, not one wrapping list. The client parsed no type line to get here: the row
+    // comes from `card_types`, which the server projects beside the sentence it renders.
+    const field = page.getByRole('region', { name: 'Your battlefield' })
+    await expect(field.getByRole('list', { name: 'Creatures' })).toContainText('Grizzly Bears')
+    await expect(field.getByRole('list', { name: 'Lands' })).toContainText('Forest')
+
+    // And each permanent is in exactly one of them.
+    await expect(field.getByRole('list', { name: 'Lands' })).not.toContainText('Grizzly Bears')
+  })
+
+  test('draws creatures nearest the middle of the table, on both halves', async ({ page }) => {
+    // So the two sets of creatures face each other across the dividing line and combat reads as
+    // one band rather than two lists that happen to be stacked.
+    await serveFrames(page, [withLand()])
+    await page.goto('/')
+
+    const field = page.getByRole('region', { name: 'Your battlefield' })
+    const creatures = await field.getByRole('list', { name: 'Creatures' }).boundingBox()
+    const lands = await field.getByRole('list', { name: 'Lands' }).boundingBox()
+
+    // Your half is below the divider, so your creatures are the row nearer the top of it.
+    expect(creatures && lands ? creatures.y < lands.y : false).toBe(true)
+  })
+})

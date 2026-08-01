@@ -27,6 +27,7 @@
       "id": "h1",
       "name": "Lightning Strike",
       "type_line": "Instant",
+      "card_types": ["instant"],
       "mana_cost": "{1}{R}",
       "rules_text": "Lightning Strike deals 3 damage to any target.",
       "functional_id": "lightning_strike"
@@ -41,6 +42,7 @@
         "id": "perm_serra",
         "name": "Serra Angel",
         "type_line": "Creature — Angel",
+        "card_types": ["creature"],
         "mana_cost": "{3}{W}{W}",
         "power": "6",
         "toughness": "5",
@@ -59,6 +61,7 @@
         "id": "perm_ogre",
         "name": "Onakke Ogre",
         "type_line": "Creature — Ogre Warrior",
+        "card_types": ["creature"],
         "mana_cost": "{3}{R}",
         "power": "4",
         "toughness": "2",
@@ -77,6 +80,7 @@
         "id": "perm_thopter",
         "name": "Thopter",
         "type_line": "Artifact Creature — Thopter",
+        "card_types": ["artifact", "creature"],
         "power": "1",
         "toughness": "1",
         "keywords": ["flying"],
@@ -94,6 +98,7 @@
         "id": "perm_gravedigger",
         "name": "Gravedigger",
         "type_line": "Creature — Zombie",
+        "card_types": ["creature"],
         "mana_cost": "{3}{B}",
         "power": "2",
         "toughness": "2",
@@ -109,6 +114,7 @@
         "id": "perm_axe",
         "name": "Marauder's Axe",
         "type_line": "Artifact — Equipment",
+        "card_types": ["artifact"],
         "mana_cost": "{3}",
         "rules_text": "Equipped creature gets +2/+1. Equip {2}",
         "functional_id": "marauders_axe"
@@ -123,6 +129,7 @@
         "id": "perm_pacifism",
         "name": "Pacifism",
         "type_line": "Enchantment — Aura",
+        "card_types": ["enchantment"],
         "mana_cost": "{1}{W}",
         "rules_text": "Enchant creature. Enchanted creature can't attack or block.",
         "functional_id": "pacifism"
@@ -137,6 +144,7 @@
         "id": "perm_mountain",
         "name": "Mountain",
         "type_line": "Basic Land — Mountain",
+        "card_types": ["land"],
         "functional_id": "mountain"
       },
       "tapped": true
@@ -149,6 +157,7 @@
         "id": "perm_vivien",
         "name": "Vivien Reid",
         "type_line": "Legendary Planeswalker — Vivien",
+        "card_types": ["planeswalker"],
         "mana_cost": "{3}{G}{G}",
         "loyalty": "5",
         "functional_id": "vivien_reid"
@@ -163,6 +172,7 @@
         "id": "perm_dreadmaw",
         "name": "Colossal Dreadmaw",
         "type_line": "Creature — Dinosaur",
+        "card_types": ["creature"],
         "mana_cost": "{4}{G}{G}",
         "power": "6",
         "toughness": "6",
@@ -180,6 +190,7 @@
         "id": "perm_elemental",
         "name": "Air Elemental",
         "type_line": "Creature — Elemental",
+        "card_types": ["creature"],
         "mana_cost": "{3}{U}{U}",
         "power": "4",
         "toughness": "4",
@@ -196,6 +207,7 @@
         "id": "perm_zombie",
         "name": "Zombie",
         "type_line": "Creature — Zombie",
+        "card_types": ["creature"],
         "power": "2",
         "toughness": "2",
         "token": true
@@ -210,6 +222,7 @@
         "id": "perm_gearsmith",
         "name": "Gearsmith Guardian",
         "type_line": "Artifact Creature — Construct",
+        "card_types": ["artifact", "creature"],
         "mana_cost": "{5}",
         "power": "4",
         "toughness": "4",
@@ -237,6 +250,7 @@
         "id": "card_verdict",
         "name": "Divine Verdict",
         "type_line": "Instant",
+        "card_types": ["instant"],
         "mana_cost": "{3}{W}",
         "rules_text": "Destroy target attacking or blocking creature.",
         "functional_id": "divine_verdict"
@@ -252,6 +266,7 @@
         "id": "card_cancel",
         "name": "Cancel",
         "type_line": "Instant",
+        "card_types": ["instant"],
         "mana_cost": "{1}{U}{U}",
         "rules_text": "Counter target spell.",
         "functional_id": "cancel"
@@ -275,6 +290,7 @@
         "id": "card_shock",
         "name": "Shock",
         "type_line": "Instant",
+        "card_types": ["instant"],
         "mana_cost": "{R}",
         "rules_text": "Shock deals 2 damage to any target.",
         "functional_id": "shock"
@@ -297,6 +313,7 @@
         "id": "card_strike",
         "name": "Lightning Strike",
         "type_line": "Instant",
+        "card_types": ["instant"],
         "mana_cost": "{1}{R}",
         "rules_text": "Lightning Strike deals 3 damage to any target.",
         "functional_id": "lightning_strike"
@@ -322,6 +339,7 @@
           "id": "g1",
           "name": "Shock",
           "type_line": "Instant",
+          "card_types": ["instant"],
           "mana_cost": "{R}",
           "functional_id": "shock"
         },
@@ -329,6 +347,7 @@
           "id": "g2",
           "name": "Llanowar Elves",
           "type_line": "Creature — Elf Druid",
+          "card_types": ["creature"],
           "mana_cost": "{G}",
           "power": "1",
           "toughness": "1",
@@ -338,12 +357,14 @@
           "id": "g3",
           "name": "Mountain",
           "type_line": "Basic Land — Mountain",
+          "card_types": ["land"],
           "functional_id": "mountain"
         },
         {
           "id": "g4",
           "name": "Onakke Ogre",
           "type_line": "Creature — Ogre Warrior",
+          "card_types": ["creature"],
           "mana_cost": "{3}{R}",
           "power": "4",
           "toughness": "2",
@@ -353,6 +374,7 @@
           "id": "g5",
           "name": "Divination",
           "type_line": "Sorcery",
+          "card_types": ["sorcery"],
           "mana_cost": "{2}{U}",
           "functional_id": "divination"
         },
@@ -360,12 +382,14 @@
           "id": "g6",
           "name": "Forest",
           "type_line": "Basic Land — Forest",
+          "card_types": ["land"],
           "functional_id": "forest"
         },
         {
           "id": "g7",
           "name": "Gearsmith Guardian",
           "type_line": "Artifact Creature — Construct",
+          "card_types": ["artifact", "creature"],
           "mana_cost": "{5}",
           "power": "4",
           "toughness": "4",
@@ -375,6 +399,7 @@
           "id": "g8",
           "name": "Cancel",
           "type_line": "Instant",
+          "card_types": ["instant"],
           "mana_cost": "{1}{U}{U}",
           "functional_id": "cancel"
         },
@@ -382,6 +407,7 @@
           "id": "g9",
           "name": "Pacifism",
           "type_line": "Enchantment — Aura",
+          "card_types": ["enchantment"],
           "mana_cost": "{1}{W}",
           "functional_id": "pacifism"
         },
@@ -389,6 +415,7 @@
           "id": "g10",
           "name": "Air Elemental",
           "type_line": "Creature — Elemental",
+          "card_types": ["creature"],
           "mana_cost": "{3}{U}{U}",
           "power": "4",
           "toughness": "4",
@@ -405,6 +432,7 @@
           "id": "x1",
           "name": "Colossal Dreadmaw",
           "type_line": "Creature — Dinosaur",
+          "card_types": ["creature"],
           "mana_cost": "{4}{G}{G}",
           "power": "6",
           "toughness": "6",
@@ -414,6 +442,7 @@
           "id": "x2",
           "name": "Divine Verdict",
           "type_line": "Instant",
+          "card_types": ["instant"],
           "mana_cost": "{3}{W}",
           "functional_id": "divine_verdict"
         }

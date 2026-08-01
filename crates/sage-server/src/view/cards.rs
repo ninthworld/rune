@@ -109,6 +109,29 @@ fn unknown_card_view(entity_id: String, card: Option<CardId>) -> CardView {
         toughness: None,
         loyalty: None,
         keywords: Vec::new(),
+        // Nothing is known about this object, so nothing is claimed about its types.
+        // Empty is "not stated", which is the honest answer for a defensive placeholder.
+        card_types: Vec::new(),
+    }
+}
+
+/// The wire [`CardType`] for an engine [`sage_engine::CardType`].
+///
+/// Two closed sets that mean the same thing, mapped exhaustively rather than shared:
+/// `sage-protocol` depends on serde and nothing else, which is what lets a client
+/// build against the contract without building the engine. The cost is this function,
+/// and the benefit is that adding an engine type will not compile until someone has
+/// decided what it is called on the wire.
+fn card_type(card_type: sage_engine::CardType) -> CardType {
+    match card_type {
+        sage_engine::CardType::Land => CardType::Land,
+        sage_engine::CardType::Creature => CardType::Creature,
+        sage_engine::CardType::Artifact => CardType::Artifact,
+        sage_engine::CardType::Enchantment => CardType::Enchantment,
+        sage_engine::CardType::Instant => CardType::Instant,
+        sage_engine::CardType::Sorcery => CardType::Sorcery,
+        sage_engine::CardType::Planeswalker => CardType::Planeswalker,
+        sage_engine::CardType::Battle => CardType::Battle,
     }
 }
 
@@ -166,6 +189,9 @@ pub(crate) fn full_card_view(entity_id: String, data: &CardData) -> CardView {
             .iter()
             .map(|&kw| keyword_str(kw).to_owned())
             .collect(),
+        // The same `types` `type_line()` above is rendered from, so the sentence and
+        // the set are one projection and cannot drift apart.
+        card_types: data.types.iter().map(|&t| card_type(t)).collect(),
     }
 }
 
@@ -201,6 +227,9 @@ fn face_card_view(entity_id: String, face: PrintedFace<'_>) -> CardView {
                 .iter()
                 .map(|&kw| keyword_str(kw).to_owned())
                 .collect(),
+            // A token has types like anything else; having no card behind it (CR 111)
+            // says nothing about what it is on the battlefield.
+            card_types: token.types.iter().map(|&t| card_type(t)).collect(),
         },
     }
 }
@@ -327,6 +356,50 @@ mod tests {
             "a token has no card identity to cache or look presentation up by"
         );
         assert!(card.mana_cost.is_none(), "a token has no mana cost");
+        // A token has types like anything else: having no card behind it says nothing
+        // about what it is on the battlefield.
+        assert_eq!(
+            card.card_types,
+            vec![CardType::Artifact, CardType::Creature]
+        );
+    }
+
+    /// The type **line** and the type **set** are one projection, so a client never has
+    /// to parse the sentence to learn what a permanent is (issue #641).
+    ///
+    /// Asserted together on purpose: the two fields come from the same `types`, and the
+    /// failure this guards against is one of them being sourced from somewhere else
+    /// later and quietly disagreeing with the other on the same card.
+    #[test]
+    fn issue_641_card_types_are_stated_beside_the_type_line_they_render() {
+        let db = CardDatabase::bundled().unwrap();
+        let mut state = GameState::new_two_player();
+        put_permanent(
+            &mut state,
+            id_in(&db, "llanowar_elves"),
+            PlayerId(0),
+            false,
+            false,
+        );
+        put_permanent(&mut state, id_in(&db, "forest"), PlayerId(0), false, false);
+
+        let view = personalized_view(&state, &db, PlayerId(0));
+        let of = |name: &str| {
+            view.battlefield
+                .iter()
+                .find(|p| p.card.name == name)
+                .unwrap_or_else(|| panic!("{name} is on the battlefield"))
+                .card
+                .clone()
+        };
+
+        let elves = of("Llanowar Elves");
+        assert_eq!(elves.card_types, vec![CardType::Creature]);
+        assert!(elves.type_line.starts_with("Creature"));
+
+        let forest = of("Forest");
+        assert_eq!(forest.card_types, vec![CardType::Land]);
+        assert!(forest.type_line.contains("Land"));
     }
 
     /// A battlefield permanent enchanted with an Aura projects its **current**

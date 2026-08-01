@@ -103,6 +103,23 @@ export const Phase = z.enum([
 ])
 export type Phase = z.infer<typeof Phase>
 
+/**
+ * A card type (CR 300). A closed set, mirroring the engine's own — which is why
+ * subtypes are not here: they are thousands, they belong to the printed sentence, and
+ * nothing presentational keys off them.
+ */
+export const CardType = z.enum([
+  'land',
+  'creature',
+  'artifact',
+  'enchantment',
+  'instant',
+  'sorcery',
+  'planeswalker',
+  'battle',
+])
+export type CardType = z.infer<typeof CardType>
+
 export const CardView = z.object({
   id: EntityId,
   name: z.string(),
@@ -128,6 +145,15 @@ export const CardView = z.object({
    */
   loyalty: z.string().optional(),
   keywords: z.array(z.string()).optional(),
+  /**
+   * The card's types (CR 300), as the structured set `type_line` is rendered from.
+   *
+   * Stated so no surface has to parse the sentence. `type_line` is what to *print*;
+   * this is what to group, arrange, and lay out by. Both come from one projection
+   * server-side, so they cannot disagree — and an absent list is "not stated", never
+   * "no types", which is why a permanent without one still renders.
+   */
+  card_types: z.array(CardType).optional(),
 })
 export type CardView = z.infer<typeof CardView>
 
@@ -506,6 +532,11 @@ export const CatalogCard = z.object({
   /** Printed starting loyalty (CR 306.5b); present only for planeswalkers. */
   loyalty: z.string().optional(),
   keywords: z.array(z.string()).optional(),
+  /**
+   * The same types an in-game `CardView` states. A catalog entry and a card in hand describe
+   * one printed card, so a builder and a table cannot end up with different faces for it.
+   */
+  card_types: z.array(CardType).optional(),
 })
 export type CatalogCard = z.infer<typeof CatalogCard>
 

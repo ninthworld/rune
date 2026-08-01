@@ -14,18 +14,9 @@
  */
 import { useEffect, useState } from 'react'
 
-import type { GameView, Phase } from './../../protocol'
-import {
-  matchStatus,
-  phaseLabel,
-  statusLine,
-  steps,
-  type StopPreset,
-  type StopScope,
-} from './../../turn'
+import type { GameView } from './../../protocol'
+import { matchStatus, phaseLabel, statusLine } from './../../turn'
 import type { ConnectionStatus } from './../../socket'
-import { PacePresets } from './PacePresets'
-import { TurnStrip } from './TurnStrip'
 
 export function MatchHeader({
   view,
@@ -33,11 +24,7 @@ export function MatchHeader({
   sent,
   eliminated,
   connection,
-  onStop,
-  preset,
-  onPreset,
-  onHelp,
-  onArt,
+  onSettings,
 }: {
   view: GameView
   label(id: string): string
@@ -46,12 +33,7 @@ export function MatchHeader({
   /** Whether the seat this client is playing is out of the game (CR 104.3). */
   eliminated: boolean
   connection: ConnectionStatus
-  onStop(phase: Phase, scope: StopScope): void
-  /** Which whole-preference pace the server's effective lists match, if any. */
-  preset?: StopPreset
-  onPreset(preset: StopPreset): void
-  onHelp(): void
-  onArt(): void
+  onSettings(): void
 }) {
   const status = matchStatus(view, sent)
   const remaining = useDeadline(view)
@@ -86,13 +68,17 @@ export function MatchHeader({
             </span>
           )}
         </p>
-      </div>
-
-      {/* The same preference at two grains, on the same row it applies to: a step at a time on
-          the strip, and the whole of it as a pace beside it. */}
-      <div className="match__pacing">
-        <TurnStrip steps={steps(view)} onStop={onStop} />
-        <PacePresets current={preset} onPreset={onPreset} onHelp={onHelp} onArt={onArt} />
+        {/* One control, at the far edge, for everything that is about this device rather than
+            about the board. A header that carried each of them separately is the header a
+            player stopped reading. */}
+        <button
+          type="button"
+          className="match__settings"
+          aria-label="Settings"
+          onClick={onSettings}
+        >
+          <span aria-hidden="true">⚙</span>
+        </button>
       </div>
 
       {connection !== 'open' && (
