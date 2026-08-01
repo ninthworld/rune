@@ -28,9 +28,17 @@ export function playerLabel(view: GameView, id: string): string {
   return name ? `${name} (${id})` : id
 }
 
-/** Permanents a given seat controls, in the order the server listed them. */
-export const controlledBy = (view: GameView, player: string) =>
-  list(view.battlefield).filter((permanent) => permanent.controller === player)
+/**
+ * The objects a given seat controls, in the order the server listed them.
+ *
+ * Takes the list rather than the view because more than one thing on screen is grouped by
+ * controller — permanents, emblems, and whatever a caller has already paired with its rendered
+ * face — and all of them should group the same way.
+ */
+export const controlledBy = <T extends { controller: string }>(
+  items: readonly T[],
+  player: string,
+): readonly T[] => items.filter((item) => item.controller === player)
 
 /**
  * A card's power/toughness as displayed, or `undefined` for a non-creature.
@@ -42,24 +50,6 @@ export const controlledBy = (view: GameView, player: string) =>
 export function powerToughness(card: { power?: string; toughness?: string }): string | undefined {
   if (card.power === undefined || card.toughness === undefined) return undefined
   return `${card.power}/${card.toughness}`
-}
-
-/**
- * The stat a card face leads with: `2/2` for a creature, `loyalty 4` for a
- * planeswalker, nothing for anything else.
- *
- * A planeswalker has no power or toughness, so `powerToughness` answers `undefined`
- * for one and a card that shows only that would render Ajani with no numbers at all.
- * The server states both fields; this only picks which one exists.
- */
-export function cardStats(card: {
-  power?: string
-  toughness?: string
-  loyalty?: string
-}): string | undefined {
-  return (
-    powerToughness(card) ?? (card.loyalty !== undefined ? `loyalty ${card.loyalty}` : undefined)
-  )
 }
 
 /** A short, readable summary of one seat for the grey-box header. */

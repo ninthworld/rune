@@ -39,6 +39,10 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the discriminators are structural and order-sensitive; the rules are the protocol's.
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
+- `src/card-face.ts` — reduces the four card-shaped projections (`CardView`, `Permanent`,
+  `StackItem`, `Emblem`) to one `CardFace`. Every surface renders that and nothing else, so the
+  hand, the board, and the stack cannot disagree about the same object. Add a card-presentation
+  rule here, not in a component.
 - `src/submission.ts` — composes one `choose_action`. Bookkeeping over slots the server
   advertised, never rules reasoning.
 - `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered.

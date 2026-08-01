@@ -46,10 +46,11 @@ test.describe('the board, from one view', () => {
 
     await expect(page.getByRole('heading', { name: /Turn 3 — Precombat main/ })).toBeVisible()
 
-    // Cards are named from the view; nothing is looked up client-side.
+    // Cards are named from the view; nothing is looked up client-side. Addressed as tiles
+    // rather than as loose text, because a card's own name also appears inside its rules text.
     const hand = page.getByRole('region', { name: 'Your hand' })
-    await expect(hand.getByText('Llanowar Elves')).toBeVisible()
-    await expect(hand.getByText('Lightning Bolt')).toBeVisible()
+    await expect(hand.getByRole('button', { name: /^Llanowar Elves/ })).toBeVisible()
+    await expect(hand.getByRole('button', { name: /^Lightning Bolt/ })).toBeVisible()
 
     // Bottom-first on the wire, and rendered in that order.
     const stack = page.getByRole('region', { name: 'Stack' })
@@ -61,8 +62,112 @@ test.describe('the board, from one view', () => {
     // characteristics like anything else, and is marked as a token so a player can tell.
     const battlefield = page.getByRole('region', { name: 'Battlefield' })
     await expect(battlefield.getByRole('listitem').filter({ hasText: 'Thopter' })).toContainText(
-      '· token',
+      'Token',
     )
+  })
+
+  test('draws counters, marked damage, and tap state as separate facts', async ({ page }) => {
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    const bear = page
+      .getByRole('region', { name: 'Battlefield' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Grizzly Bears' })
+
+    // Three different things about one permanent, and each has to be readable on its own:
+    // power/toughness arrives already computed, damage is marked separately, and the counter
+    // is neither of them.
+    await expect(bear).toContainText('2/2')
+    await expect(bear).toContainText('1 damage')
+    await expect(bear).toContainText('2× +1/+1')
+    await expect(bear).toContainText('Tapped')
+  })
+
+  test('shows a planeswalker the loyalty it has, not the loyalty it was printed with', async ({
+    page,
+  }) => {
+    // The fixture's Nissa is printed 5 and currently 5, which cannot tell the two apart — so
+    // spend her down. The board must follow the counter; the printed number is a different
+    // question and must not appear in its place.
+    const base = fixture('gameview.json')
+    const battlefield = (base.battlefield as Record<string, unknown>[]).map((permanent) =>
+      permanent.id === 'perm_nissa'
+        ? { ...permanent, counters: [{ kind: 'loyalty', count: 2 }] }
+        : permanent,
+    )
+    await serveFrames(page, [{ ...base, battlefield }])
+    await page.goto('/')
+
+    const nissa = page
+      .getByRole('region', { name: 'Battlefield' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Nissa' })
+
+    await expect(nissa).toContainText('2')
+    await expect(nissa).not.toContainText('5')
+  })
+
+  test('marks the objects the server named, and only those', async ({ page }) => {
+    // `Play Forest` names `c2` and `Cast Lightning Bolt` names `c3`; nothing names the Elves.
+    // The client is reading what the server pointed at, not working out what is playable —
+    // which is why an object it did not name must stay unmarked.
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    const hand = page.getByRole('region', { name: 'Your hand' })
+    await expect(hand.getByRole('button', { name: /^Forest/ })).toHaveClass(/card--candidate/)
+    await expect(hand.getByRole('button', { name: /^Lightning Bolt/ })).toHaveClass(
+      /card--candidate/,
+    )
+    await expect(hand.getByRole('button', { name: /^Llanowar Elves/ })).not.toHaveClass(
+      /card--candidate/,
+    )
+
+    // The board too: `Tap for mana` names the bear, and nothing names the token.
+    const battlefield = page.getByRole('region', { name: 'Battlefield' })
+    await expect(battlefield.getByRole('button', { name: /^Grizzly Bears/ })).toHaveClass(
+      /card--candidate/,
+    )
+    await expect(battlefield.getByRole('button', { name: /^Thopter/ })).not.toHaveClass(
+      /card--candidate/,
+    )
+  })
+
+  test('opens a card inspector from the hand without submitting anything', async ({ page }) => {
+    const { sent } = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    await page.getByRole('region', { name: 'Your hand' }).getByRole('button').first().click()
+
+    // Everything the hand tile clamps or drops is here, in full.
+    const inspector = page.getByRole('dialog')
+    await expect(inspector).toContainText('Llanowar Elves')
+    await expect(inspector).toContainText('{T}: Add {G}.')
+
+    // Inspecting is not a game action. Asserted against what was *sent* rather than a message
+    // count, because the client's own `hello` races the click and would count as traffic.
+    expect(sent.map((s) => JSON.parse(s)).filter((m) => m.type === 'choose_action')).toEqual([])
+
+    await page.keyboard.press('Escape')
+    await expect(inspector).toHaveCount(0)
+  })
+
+  test('inspects a permanent the player cannot act on', async ({ page }) => {
+    // Reading an object matters most when it cannot be acted on, so inspection is offered on
+    // every surface rather than only where an action happens to exist.
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    await page
+      .getByRole('region', { name: 'Battlefield' })
+      .getByRole('button')
+      .filter({ hasText: 'Thopter' })
+      .click()
+
+    await expect(page.getByRole('dialog')).toContainText('Artifact Creature — Thopter')
+    await page.getByRole('button', { name: 'Close' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
   test('renders an emblem beside the board, with its abilities', async ({ page }) => {

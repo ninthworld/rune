@@ -595,6 +595,10 @@ fn canonical_fixture_round_trips_and_matches_typed_fields() {
             count: 2,
         }]
     );
+    // Marked damage (CR 120.3) is its own channel, separate from both counters and the
+    // computed toughness above it — a client that folded it into either would show a
+    // creature's remaining toughness as a number the server never sent.
+    assert_eq!(bear.damage, 1);
     assert_eq!(view.battlefield[1].counters[0].kind, "loyalty");
     assert_eq!(view.battlefield[1].counters[0].count, 5);
     assert!(!view.battlefield[1].tapped);

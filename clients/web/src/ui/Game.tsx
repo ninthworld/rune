@@ -9,9 +9,21 @@
  * whole turn; without saying where it acted, a player watches the game move and cannot tell
  * what they missed.
  */
+import { useState } from 'react'
+
 import type { ClientMessage, GameLogEvent, GameView } from './../protocol'
-import { cardStats, controlledBy, list, playerLabel, seatSummary } from './../normalize'
+import { controlledBy, list, playerLabel, seatSummary } from './../normalize'
+import {
+  cardFace,
+  emblemFace,
+  permanentFace,
+  stackFace,
+  type CardFace,
+  type CardFaceState,
+} from './../card-face'
 import { ActionPanel } from './ActionPanel'
+import { Card } from './Card'
+import { CardInspector } from './CardInspector'
 
 const PHASE_LABELS: Record<string, string> = {
   untap: 'Untap',
@@ -34,6 +46,51 @@ const phaseLabel = (phase: string): string => PHASE_LABELS[phase] ?? phase
 export function Game({ view, send }: { view: GameView; send(message: ClientMessage): void }) {
   const you = view.you ?? ''
   const label = (id: string) => playerLabel(view, id)
+
+  // The inspector remembers an **id**, never a face. Faces are rebuilt from whatever view
+  // arrived last, so an open inspector shows the object as it is now — and an object that has
+  // left the view closes it rather than pinning a card that no longer exists. Nothing here is
+  // load-bearing across messages: a refresh reproduces the board, minus an open panel.
+  const [inspecting, setInspecting] = useState<string | undefined>(undefined)
+
+  // One face per card-shaped object on screen, built once and shared by every surface, so the
+  // hand, the board, and the inspector cannot disagree about the same object.
+  const handFaces = list(view.my_hand).map(cardFace)
+  const revealedFaces = list(view.revealed).map(cardFace)
+  // Paired with their source object where the surface renders something the face does not
+  // carry — a controller, a target list, a combat relationship.
+  const stackEntries = list(view.stack).map((item) => ({ item, face: stackFace(item) }))
+  const emblemEntries = list(view.emblems).map((emblem) => ({ emblem, face: emblemFace(emblem) }))
+  const permanentEntries = list(view.battlefield).map((permanent) => ({
+    permanent,
+    face: permanentFace(permanent),
+    controller: permanent.controller,
+  }))
+  const faces = new Map<string, CardFace>()
+  for (const face of [
+    ...handFaces,
+    ...revealedFaces,
+    ...stackEntries.map((entry) => entry.face),
+    ...emblemEntries.map((entry) => entry.face),
+    ...permanentEntries.map((entry) => entry.face),
+  ]) {
+    faces.set(face.id, face)
+  }
+  const inspected = inspecting === undefined ? undefined : faces.get(inspecting)
+  const inspect = (face: CardFace) => setInspecting(face.id)
+
+  // Every object the server named in an offered action or one of its target slots. This is a
+  // reading of `valid_actions`, not a judgement about it: the client marks what the server
+  // pointed at and works out nothing about why. Acting on one of these is the next surface's
+  // job (#626); showing which objects are in play at all is this one's.
+  const named = new Set<string>()
+  for (const action of list(view.valid_actions)) {
+    for (const id of list(action.subject)) named.add(id)
+    for (const requirement of list(action.requirements)) {
+      for (const id of list(requirement.candidates)) named.add(id)
+    }
+  }
+  const stateOf = (face: CardFace): CardFaceState => (named.has(face.id) ? 'candidate' : 'idle')
 
   // Names for entity ids the action panel offers. The server labels players; cards and
   // permanents are named from the view's own contents rather than resolved by the client.
@@ -121,20 +178,29 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
           <p>Empty.</p>
         ) : (
           // Bottom first on the wire; the top of the stack resolves first, so it reads last.
-          <ol>
-            {list(view.stack).map((item) => (
+          <ol className="cards cards--stack">
+            {stackEntries.map(({ item, face }) => (
               <li key={item.id}>
-                {item.description} — {label(item.controller)}
-                {item.kind && <> ({item.kind})</>}
-                {list(item.targets).length > 0 && (
-                  <>
-                    {' '}
-                    →{' '}
-                    {list(item.targets)
-                      .map((t) => ('id' in t ? labelFor(t.id) : label(t.player)))
-                      .join(', ')}
-                  </>
-                )}
+                <Card face={face} variant="stack" state={stateOf(face)} onInspect={inspect} />
+                <p className="cards__aside">
+                  {/* The server composes a description for the stack object itself, which is
+                      not always the card's name — "Counterspell targeting Twin Bolt" says
+                      something the face does not. Kept only when it adds something: for many
+                      spells it is just the name, or verbatim the rules text already above. */}
+                  {item.description !== face.name && item.description !== face.rulesText && (
+                    <>{item.description} — </>
+                  )}
+                  {label(item.controller)}
+                  {list(item.targets).length > 0 && (
+                    <>
+                      {' '}
+                      →{' '}
+                      {list(item.targets)
+                        .map((t) => ('id' in t ? labelFor(t.id) : label(t.player)))
+                        .join(', ')}
+                    </>
+                  )}
+                </p>
               </li>
             ))}
           </ol>
@@ -147,31 +213,31 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
         {(list(view.seat_order).length > 0 ? list(view.seat_order) : [you]).map((seat) => (
           <div key={seat}>
             <h3>{label(seat)}</h3>
-            {controlledBy(view, seat).length === 0 ? (
+            {controlledBy(permanentEntries, seat).length === 0 ? (
               <p>No permanents.</p>
             ) : (
-              <ul>
-                {controlledBy(view, seat).map((permanent) => (
+              <ul className="cards cards--battlefield">
+                {controlledBy(permanentEntries, seat).map(({ permanent, face }) => (
                   <li key={permanent.id}>
-                    {permanent.card.name}
-                    {cardStats(permanent.card) && <> {cardStats(permanent.card)}</>}
-                    {permanent.tapped && ' · tapped'}
-                    {permanent.attacking &&
-                      (permanent.attacking_planeswalker !== undefined
-                        ? ` · attacking ${labelFor(permanent.attacking_planeswalker)}`
-                        : ' · attacking')}
-                    {permanent.blocking && ` · blocking ${labelFor(permanent.blocking)}`}
-                    {permanent.damage !== undefined && permanent.damage > 0 && (
-                      <> · {permanent.damage} damage</>
+                    <Card
+                      face={face}
+                      variant="battlefield"
+                      state={stateOf(face)}
+                      onInspect={inspect}
+                    />
+                    {/* Combat and attachment are relationships *between* objects rather than
+                        facts about one, so they stay beside the face as text until the table
+                        can draw them. */}
+                    {(permanent.attacking || permanent.blocking || permanent.attached_to) && (
+                      <p className="cards__aside">
+                        {permanent.attacking &&
+                          (permanent.attacking_planeswalker !== undefined
+                            ? `attacking ${labelFor(permanent.attacking_planeswalker)}`
+                            : 'attacking')}
+                        {permanent.blocking && ` blocking ${labelFor(permanent.blocking)}`}
+                        {permanent.attached_to && ` attached to ${labelFor(permanent.attached_to)}`}
+                      </p>
                     )}
-                    {list(permanent.counters).map((counter) => (
-                      <span key={counter.kind}>
-                        {' '}
-                        · {counter.count}× {counter.kind}
-                      </span>
-                    ))}
-                    {permanent.card.token && ' · token'}
-                    {permanent.is_commander && ' · commander'}
                   </li>
                 ))}
               </ul>
@@ -186,11 +252,14 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
           {/* An emblem (CR 114) is in no zone and is never removed, so it sits beside the
               battlefield rather than in it. Its abilities arrive as server-composed
               sentences; the client renders them and computes nothing. */}
-          <ul>
-            {list(view.emblems).map((emblem) => (
+          <ul className="cards cards--emblems">
+            {emblemEntries.map(({ emblem, face }) => (
               <li key={emblem.id}>
-                {label(emblem.controller)}
-                {list(emblem.abilities).length > 0 && <> — {list(emblem.abilities).join(' ')}</>}
+                {/* An emblem has no cost, no type line, and no printed face, so there is no
+                    smaller variant to clamp it into — it renders at full size or it renders
+                    a truncated sentence nobody can act on. */}
+                <Card face={face} variant="inspect" onInspect={inspect} />
+                <p className="cards__aside">{label(emblem.controller)}</p>
               </li>
             ))}
           </ul>
@@ -203,12 +272,10 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
           {/* Only this seat receives these; the server decides that, and sends them to
               nobody else. Rendered beside the hand so the choice prompt below has
               something legible to refer to. */}
-          <ul>
-            {list(view.revealed).map((card) => (
-              <li key={card.id}>
-                {card.name} — {card.type_line}
-                {card.mana_cost && <> {card.mana_cost}</>}
-                {cardStats(card) && <> {cardStats(card)}</>}
+          <ul className="cards cards--compact">
+            {revealedFaces.map((face) => (
+              <li key={face.id}>
+                <Card face={face} variant="compact" state={stateOf(face)} onInspect={inspect} />
               </li>
             ))}
           </ul>
@@ -220,13 +287,10 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
         {list(view.my_hand).length === 0 ? (
           <p>Empty.</p>
         ) : (
-          <ul>
-            {list(view.my_hand).map((card) => (
-              <li key={card.id}>
-                {card.name} — {card.type_line}
-                {card.mana_cost && <> {card.mana_cost}</>}
-                {cardStats(card) && <> {cardStats(card)}</>}
-                {card.rules_text && <> — {card.rules_text}</>}
+          <ul className="cards cards--hand">
+            {handFaces.map((face) => (
+              <li key={face.id}>
+                <Card face={face} variant="hand" state={stateOf(face)} onInspect={inspect} />
               </li>
             ))}
           </ul>
@@ -257,6 +321,11 @@ export function Game({ view, send }: { view: GameView; send(message: ClientMessa
           </ol>
         )}
       </section>
+
+      {/* Last in the tree so it layers over the board without any surface below it needing to
+          know it exists. `inspected` is looked up in this frame's faces, so an object that has
+          left the view simply stops resolving and the panel closes itself. */}
+      {inspected && <CardInspector face={inspected} onClose={() => setInspecting(undefined)} />}
     </div>
   )
 }
