@@ -63,6 +63,7 @@ redacted before serialization.
 | `own_turn_stops` | `Phase[]` | The same preference for steps that stop **only while the receiver is the active player** (issue #455); omitted when empty |
 | `auto_passed` | `boolean` | Whether reaching this state auto-passed the receiver; omitted when `false` |
 | `auto_passed_steps` | `AutoPassedStep[]` | The ordered path of turn-and-step positions the settle acted at on the receiver’s behalf (issue #455); omitted when empty |
+| `auto_passed_from` | `number?` | The `log` sequence the receiver’s unattended stretch began at (issue #644); present exactly when `auto_passed_steps` is non-empty |
 | `action_rejected` | `boolean` | Whether this view answers a rejected in-game action by the receiver; omitted when `false` |
 | `action_ack` | `ActionAck?` | Acknowledgement of the receiver's last correlated submission (issue #554); rides that receiver's views from the one answering it until its next submission supersedes it, omitted for every other seat and by an older server |
 | `player_names` | `{ [PlayerId]: string }` | Public display names by player id; omitted when empty |
@@ -272,6 +273,22 @@ keep every occurrence in order, and report a boundary where one actually fell. N
 consequence for any per-step UI keyed to the *current* turn (the client's phase plaque, for
 one): only entries whose `turn` matches `GameView.turn` may mark a step there, since a
 cross-turn path also carries the previous turn's positions.
+
+`auto_passed_from` is the other half of the same signal, and it is the half a player
+actually reads. `auto_passed_steps` says *where* the room acted and never *what happened
+there* — a spell that was cast, resolved, and killed a creature inside one settle is three
+log events and zero steps anybody would recognise, so a client that shows only the path
+leaves its player to work out a dead creature after the fact. The events are already in
+`log`; what the log cannot say on its own is which of them this receiver missed, since that
+depends on when they were last sent anything, and only the room knows that.
+
+So the room states it: every `log` entry whose `sequence` is **at or after**
+`auto_passed_from` happened while this receiver was not being asked. The mark begins at the
+**action that triggered the settle**, not at the settle's first pass — an opponent's spell
+is logged by their own action, and a report starting after it would omit the very event
+being explained. Present exactly when `auto_passed_steps` is non-empty, and advisory and
+display-only like the rest of the group: a client whose log window no longer reaches the
+sequence simply shows the path, as before.
 
 The **active player** is deliberately not carried: this field refines an indicator, it is
 not a second game log. Whose turn it was lives in the `step_changed` entries of `log`.

@@ -202,6 +202,30 @@ pub struct GameView {
     /// events themselves. Omitted from the wire when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub auto_passed_steps: Vec<AutoPassedStep>,
+    /// Where in [`Self::log`] the receiver's unattended stretch **began** — the
+    /// `sequence` of the first entry recorded since the last view they were sent.
+    /// Every entry at or after it is something that happened while they were not
+    /// being asked (issue #644).
+    ///
+    /// [`Self::auto_passed_steps`] says *where* the room acted and never *what
+    /// happened there*, which is the half a player actually needs: a spell that was
+    /// cast, resolved, and killed a creature inside one settle is three log events and
+    /// zero steps a player would recognise. The log already carries those events; what
+    /// it cannot say on its own is which of them the receiver missed, because that
+    /// depends on when they were last shown anything. Only the room knows that, so the
+    /// room says it.
+    ///
+    /// It marks the stretch from the **action that triggered the settle**, not from the
+    /// settle's first pass: an opponent's spell is logged by their action, and a report
+    /// that began after it would omit the very event the player is trying to understand.
+    ///
+    /// Present only when [`Self::auto_passed_steps`] is non-empty — with nothing passed
+    /// for this seat there is no unattended stretch to describe. Advisory, transient,
+    /// and display-only like the rest of this group: the UI reconstructs fully without
+    /// it, and a client that cannot find the sequence in its log window simply shows
+    /// the steps as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_passed_from: Option<u64>,
     /// Whether this view was pushed **because the receiver's last in-game action was
     /// rejected** (issue #265): a stale-view race meant the chosen action was no longer
     /// on offer (unknown id, mismatched [`ValidAction::token`], or a now-illegal target),

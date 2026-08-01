@@ -162,12 +162,36 @@ test.describe('what the settle did on your behalf', () => {
     await serveFrames(page, [turn()])
     await page.goto('/')
 
-    const passed = page.getByRole('region', { name: 'Passed for you' })
+    const passed = page.getByRole('region', { name: 'While you were passed' })
     await expect(passed).toContainText('had nothing to ask you')
     // One entry per turn the path crossed, each keeping its own steps in order.
-    await expect(passed.getByRole('listitem')).toHaveCount(2)
-    await expect(passed.getByRole('listitem').first()).toHaveText('Turn 3 — End → Cleanup')
-    await expect(passed.getByRole('listitem').last()).toHaveText('Turn 4 — Untap')
+    const path = passed.locator('.side__path').getByRole('listitem')
+    await expect(path).toHaveCount(2)
+    await expect(path.first()).toHaveText('Turn 3 — End → Cleanup')
+    await expect(path.last()).toHaveText('Turn 4 — Untap')
+  })
+
+  test('says what happened while you were passed, not only which steps went by', async ({
+    page,
+  }) => {
+    // The reported bug (#644): a spell was cast on the opponent's turn, resolved, and killed
+    // a creature — all inside one settle — and the only trace was a dead creature and a step
+    // list nobody recognises. The events were always in the log; what was missing was any
+    // statement of *which* of them this seat never saw. The server marks it now.
+    await serveFrames(page, [turn()])
+    await page.goto('/')
+
+    const passed = page.getByRole('region', { name: 'While you were passed' })
+    const missed = passed.locator('.side__missed').getByRole('listitem')
+
+    // Exactly the entries from the server's mark onward — the cast, the damage, the death,
+    // and the step change that followed. The one before the mark stays out of it.
+    await expect(missed).toHaveCount(4)
+    // The whole point, in the fixture's own words: the spell, what it did, and the creature
+    // that died of it — read off the panel instead of reconstructed from the log afterwards.
+    await expect(missed.nth(0)).toContainText('casts Shock')
+    await expect(missed.nth(1)).toContainText('takes 2 damage')
+    await expect(missed.nth(2)).toContainText('Verdant Scout dies')
   })
 
   test('reads the log as turns rather than as a wall of sentences', async ({ page }) => {

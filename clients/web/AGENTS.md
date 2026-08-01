@@ -94,7 +94,11 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   read the *effective* lists the server reflects and send back the whole preference, because
   `set_stops` replaces it and is never a delta — nothing about a stop is stored client-side. A
   settle's path may cross a turn boundary, so only entries whose `turn` matches the view's may
-  mark a step in it.
+  mark a step in it. `passedEvents` is the other half: the path says *where* the settle acted
+  and never *what happened there*, which is the half a player reads — a spell cast, resolved,
+  and killing a creature inside one settle is three log events and no step anybody recognises.
+  The events are already in the log; which of them this receiver missed is the server's to say
+  (`auto_passed_from`), so this filters and never infers.
 - `src/game-log.ts` — the wording for one log event, and the class of thing it is so a column of
   sentences can be scanned. Events carry data, never prose.
 - `src/lobby.ts` — the pre-game joins: the directory as rows, and the seats of the table you are

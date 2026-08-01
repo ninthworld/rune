@@ -177,6 +177,14 @@ impl Room {
             .cloned()
             .unwrap_or_default();
         view.auto_passed = !view.auto_passed_steps.is_empty();
+        // Where that stretch began in the log, so a client can report what happened in
+        // it rather than only which steps went by. Kept strictly in step with the list
+        // above: no steps means no unattended stretch to describe.
+        view.auto_passed_from = if view.auto_passed {
+            self.auto_passed_from.get(seat).copied().flatten()
+        } else {
+            None
+        };
         // Room-owned presentation metadata (issue #553): the match format, and each
         // seat's connection/AI state. Engine-derived commander identity and the
         // per-permanent commander marker already rode the pure projection.
