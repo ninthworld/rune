@@ -6,11 +6,14 @@
  * with the card's identity — which is how a hand of `C…`, `Dis…`, `Sna…` happened: the cost took
  * a fixed slice of a 100px band and the name got what was left.
  *
- * The rule this module implements is §2's: **shrink → wrap → abbreviate, floor 9px, and
- * truncation is not a step in it.** A name is made smaller until it fits, then broken over two
- * lines, and only on the battlefield — never in the hand, where a player is choosing — is it
- * allowed to give up characters, and then only down to a stem that still names a card a player
- * knows. `Troll Asce` is one. `C…` is not information at all.
+ * The rule this module implements is §2's: **type size, then line count, then completeness — and
+ * truncation is not a step in it.** That is the order things are *sacrificed* in, not a sequence
+ * of loops: wrapping is one of the ways text fits at a given size, so the answer is the largest
+ * size at which the text fits within the lines the box can afford, fewer lines preferred at equal
+ * size. Only where the floor cannot hold it — and only on the battlefield, never in the hand
+ * where a player is choosing — is a name allowed to give up characters, and then only down to a
+ * stem that still names a card a player knows. `Troll Asce` is one. `C…` is not information
+ * at all.
  *
  * XMage is the bar: a complete name, cost, type line, keyword line, and P/T inside 72×100, all
  * of it complete, at roughly 9px. Complete-and-small is readable; large-and-truncated is not.
@@ -148,13 +151,18 @@ export interface NameOptions {
 }
 
 /**
- * A card's name, fitted: shrink, then wrap, then — last and only where it is allowed —
- * abbreviate.
+ * A card's name, fitted: the largest size that works, then — last and only where it is allowed —
+ * abbreviated.
  *
- * Shrinking comes first and goes all the way to the floor before a second line is considered,
- * because a name on one line is read in one movement and 9px is a size XMage proves is legible.
- * Only when the floor cannot hold it does the name take a second line, and it takes it at the
- * largest size that works rather than at the floor.
+ * **One search over size, not two.** Size is what §2 sacrifices first, so the outer loop walks it
+ * down from the designed size; but the line count is one of the ways a string *fits* at a size
+ * rather than a step that happens after shrinking, so every line count the box can afford is
+ * tried before the size is given up, fewer lines first because a name on one line is read in one
+ * movement. Reading it the other way — all the way to the 9px floor on one line, and only then a
+ * second line — makes the result non-monotonic in the box: a 130px card drew
+ * `Sword of Feast and Famine` at 9px on one line while a 100px card drew it at 13px on two. The
+ * widest card there is rendering the smallest text is indefensible, and it is why §2 now says so
+ * outright.
  */
 export function fitName(name: string, box: { width: number }, opts: NameOptions): Fitted {
   const width = Math.max(0, box.width)
@@ -162,13 +170,10 @@ export function fitName(name: string, box: { width: number }, opts: NameOptions)
   const floor = opts.floor
   const top = Math.max(floor, opts.designed)
 
+  const counts: readonly (1 | 2)[] = maxLines === 1 ? [1] : [1, 2]
   for (let size = top; size >= floor; size--) {
-    if (textWidth(name, size) <= width) return { text: name, lines: 1, size, abbreviated: false }
-  }
-
-  if (maxLines === 2) {
-    for (let size = top; size >= floor; size--) {
-      if (wraps(name, width, size, 2)) return { text: name, lines: 2, size, abbreviated: false }
+    for (const lines of counts) {
+      if (wraps(name, width, size, lines)) return { text: name, lines, size, abbreviated: false }
     }
   }
 
@@ -452,9 +457,10 @@ function fitTable(
     if (typeLine) left -= lineHeight(typeSize) + GAP
   }
 
-  // §6's table gives rules text to `designed` and keeps `compact` to name, art, and marks — but
-  // the keyword line survives at both, because it is one of the five things XMage fits onto the
-  // 72×100 tile this whole section is measured against.
+  // §6's table names the *order* things leave in, not a fixed manifest: rules text is what
+  // `compact` gives up, and everything below the name is drawn while it fits. The keyword line
+  // survives at both, because it is one of the five things XMage fits onto the 72×100 tile this
+  // whole section is measured against.
   const text = fitTextBox(content, inner, left, name.size, presentation === 'designed')
   if (text) left -= text.height + GAP
 

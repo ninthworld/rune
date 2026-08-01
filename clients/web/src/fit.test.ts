@@ -49,7 +49,7 @@ describe('estimating how wide text draws', () => {
   })
 })
 
-describe('fitting a name: shrink, then wrap, then abbreviate', () => {
+describe('fitting a name: the largest size that works, then abbreviate', () => {
   it('draws a short name at the designed size on one line', () => {
     expect(name('Forest', 130)).toEqual({
       text: 'Forest',
@@ -59,23 +59,31 @@ describe('fitting a name: shrink, then wrap, then abbreviate', () => {
     })
   })
 
-  it('shrinks before it wraps', () => {
-    // Wide enough for `Llanowar Elves` on one line, but not at 13px. Shrinking is the first
-    // step, so it stays one line at a smaller size rather than taking a second at a larger one.
+  it('takes a second line before it gives up a size', () => {
+    // Wide enough for `Llanowar Elves` on one line, but not at 13px. §2: wrapping is one of the
+    // ways text fits at a size, not a step after shrinking — so the second line is spent first
+    // and the name is still drawn at the designed size.
     const fitted = name('Llanowar Elves', 78)
-    expect(fitted.lines).toBe(1)
-    expect(fitted.size).toBeLessThan(NAME_DESIGNED)
-    expect(fitted.size).toBeGreaterThanOrEqual(NAME_FLOOR)
+    expect(fitted.size).toBe(NAME_DESIGNED)
+    expect(fitted.lines).toBe(2)
     expect(fitted.text).toBe('Llanowar Elves')
   })
 
-  it('wraps to a second line rather than shrinking below the floor', () => {
-    // Wide enough for the name at 9px would keep it on one line, so this is the width where
-    // shrinking has genuinely run out: the floor cannot hold it and the second line is the
-    // next rung rather than the first.
+  it('prefers fewer lines at equal size', () => {
+    // The same name in a box wide enough to hold it whole at 13px: the second line buys nothing
+    // here, so it is not taken. Fewer lines is the tiebreak, never the thing traded for size.
+    const fitted = name('Llanowar Elves', HAND_MIN.width)
+    expect(fitted.size).toBe(NAME_DESIGNED)
+    expect(fitted.lines).toBe(1)
+  })
+
+  it('shrinks only when no line count works at that size', () => {
+    // Two lines of 100px cannot hold this at 13px, so a size is given up — but only one at a
+    // time, and the result is the largest size two lines *do* hold, not the floor.
     const fitted = name('Nissa, Who Shakes the World', HAND_MIN.width)
     expect(fitted.lines).toBe(2)
-    expect(fitted.size).toBeGreaterThanOrEqual(NAME_FLOOR)
+    expect(fitted.size).toBeGreaterThan(NAME_FLOOR)
+    expect(fitted.size).toBeLessThan(NAME_DESIGNED)
     expect(fitted.text).toBe('Nissa, Who Shakes the World')
     expect(fitted.abbreviated).toBe(false)
   })
@@ -124,6 +132,69 @@ describe('fitting a name: shrink, then wrap, then abbreviate', () => {
   it('leaves no dangling punctuation where it cut', () => {
     const fitted = name('Nissa, Who Shakes the World', 62)
     expect(fitted.text).not.toMatch(/[\s,]$/)
+  })
+})
+
+describe('a wider box never draws smaller text', () => {
+  // The property, not a table of expectations. A per-case number would have been satisfied by the
+  // defect that prompted this: `Sword of Feast and Famine` drew at 9px on one line in a 130px card
+  // and 13px on two in a 100px one, because size was searched to the floor before a second line
+  // was considered at all. Every individual answer there is defensible; only the *relation*
+  // between them is wrong, so only a sweep can see it.
+  const LONG = [
+    'Sword of Feast and Famine',
+    'Nissa, Who Shakes the World',
+    'Jace, the Mind Sculptor',
+    'Elesh Norn, Grand Cenobite',
+    'Sakashima of a Thousand Faces',
+    'Kozilek, Butcher of Truth',
+    'Llanowar Elves',
+    'Grizzly Bears',
+    'Forest',
+  ]
+
+  /** Every supported width from a chip to the inspector, at 1px — the resolution zoom moves in. */
+  const widths = Array.from({ length: 341 }, (_, index) => index + 20)
+
+  const variants = [
+    { mayAbbreviate: true, maxLines: undefined },
+    { mayAbbreviate: false, maxLines: undefined },
+    { mayAbbreviate: true, maxLines: 1 as const },
+  ]
+
+  it('is monotonic in the width, for every name and every variant', () => {
+    for (const text of LONG) {
+      for (const variant of variants) {
+        let previous = 0
+        for (const width of widths) {
+          const size = fitName(
+            text,
+            { width },
+            {
+              floor: NAME_FLOOR,
+              designed: NAME_DESIGNED,
+              mayAbbreviate: variant.mayAbbreviate,
+              ...(variant.maxLines ? { maxLines: variant.maxLines } : {}),
+            },
+          ).size
+          expect(
+            size,
+            `${text} at ${width}px (mayAbbreviate=${variant.mayAbbreviate}, ` +
+              `maxLines=${variant.maxLines ?? 2}) shrank from ${previous} to ${size}`,
+          ).toBeGreaterThanOrEqual(previous)
+          previous = size
+        }
+      }
+    }
+  })
+
+  it('draws the designed permanent width at the designed size, not the floor', () => {
+    // The concrete half of the same property: 130px is the widest card the table draws, and it
+    // rendering a long name at 9px was the report.
+    for (const text of LONG) {
+      expect(name(text, DESIGNED.width).size).toBe(NAME_DESIGNED)
+      expect(name(text, DESIGNED.width).abbreviated).toBe(false)
+    }
   })
 })
 
