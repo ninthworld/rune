@@ -85,11 +85,11 @@ export function Motion({ changes }: { changes: Changes }) {
       // style behind on the element it finished with, and starting it again on an object that
       // moves twice simply replaces the running one.
       //
-      // `translate` and `scale` rather than `transform: translate(…) scale(…)`. A permanent on
-      // the board is already transformed — centred in its slot, and turned when it taps — and an
-      // animation on the `transform` property *replaces* that for its whole duration, so every
-      // card would fly from the wrong place and land half its own width sideways. The
-      // independent properties compose with it instead.
+      // `translate` and `scale` rather than `transform: translate(…) scale(…)`. An animation on
+      // the `transform` property *replaces* whatever transform the surface put on the element
+      // for its whole duration, so a card drawn with one would fly from the wrong place and land
+      // sideways. The independent properties compose with it instead, which keeps this
+      // component's ignorance of what it is moving honest.
       const from = flight && previous.get(flight.from)
       if (flight && from) {
         const to = element.getBoundingClientRect()

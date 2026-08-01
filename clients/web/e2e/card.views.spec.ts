@@ -125,8 +125,9 @@ test.describe('a card says what it is', () => {
       .getByRole('region', { name: 'Your battlefield' })
       .getByRole('button', { name: /^Grizzly Bears/ })
 
-    // The laid-out box, not the painted one: this permanent is tapped in the fixture and a
-    // rotated card's bounding rectangle is its own height by its own width.
+    // The laid-out box, not the painted one: an object that has just arrived is animated in
+    // from a scale of its own, and its painted rectangle during that quarter second is not the
+    // box the fitting was planned against.
     const box = await bear.evaluate((node: HTMLElement) => ({
       width: node.offsetWidth,
       height: node.offsetHeight,
@@ -153,6 +154,41 @@ test.describe('a card says what it is', () => {
 
     // The complete rules text too, whether or not there was room to draw it.
     await expect(nissa).toHaveAccessibleName(/Whenever you tap a Forest for mana/)
+  })
+
+  test('says a tapped permanent is tapped without taking its name away', async ({ page }) => {
+    // The whole of §6's tapped rule, at both ends of the supported range. A quarter turn used to
+    // take the name with it, so what is checked is that the identity survives the state a
+    // permanent spends most of the game in — drawn horizontally, in full, and said in words to
+    // anyone who can see neither the mark nor a turn.
+    for (const size of [DESKTOP, SHORT]) {
+      await page.setViewportSize(size)
+      await serveFrames(page, [fixture('gameview.json')])
+      await page.goto('/')
+
+      const bear = page
+        .getByRole('region', { name: 'Your battlefield' })
+        .getByRole('button', { name: /^Grizzly Bears/ })
+      await expect(bear).toBeVisible()
+
+      // Whole where there is room, and a recognisable stem of it where there is not — never a
+      // fact traded away for the tap. The complete name is stated either way.
+      const drawn = (await bear.locator('.card__name').innerText()).replace(/…$/, '')
+      expect('Grizzly Bears'.startsWith(drawn)).toBe(true)
+      expect(drawn.length).toBeGreaterThanOrEqual(10)
+      await expect(bear).toHaveAccessibleName(/Grizzly Bears/)
+      await expect(bear).toHaveAccessibleName(/Tapped/)
+
+      // Horizontal, and no residue of the turn: no rotation on the frame, and none on the band
+      // the name is drawn in.
+      const turned = await bear.evaluate((card: HTMLElement) => {
+        const band = card.querySelector('.card__name')
+        return [card, band]
+          .map((node) => (node ? getComputedStyle(node).transform : 'none'))
+          .filter((transform) => transform !== 'none' && !transform.startsWith('matrix(1, 0, 0, 1'))
+      })
+      expect(turned).toEqual([])
+    }
   })
 
   test('is the same card at the same size whichever surface drew it', async ({ page }) => {

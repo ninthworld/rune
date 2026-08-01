@@ -78,18 +78,22 @@ export function RelationOverlay({
 
     measure()
 
-    // Everything that moves a card without re-rendering this component: the window, the regions
-    // that scroll inside their own areas, and the half second a permanent takes to turn.
+    // Everything that moves a card without re-rendering this component: the window, the boxes
+    // themselves, and the regions that scroll inside their own areas.
+    //
+    // A `transitionend` listener used to be here too, for the half second a permanent took to
+    // turn — a card and its neighbours changed size and place with no render behind it. Tapping
+    // is a mark on an upright card now (§6) and nothing it animates moves anything, so the
+    // listener was waiting on an event that no longer describes a board that moved. If a
+    // transition that *does* move a card is introduced, this is where it is answered.
     const observer = new ResizeObserver(measure)
     observer.observe(host)
     for (const element of host.querySelectorAll(`[${ANCHOR}]`)) observer.observe(element)
     host.addEventListener('scroll', measure, true)
-    host.addEventListener('transitionend', measure, true)
     window.addEventListener('resize', measure)
     return () => {
       observer.disconnect()
       host.removeEventListener('scroll', measure, true)
-      host.removeEventListener('transitionend', measure, true)
       window.removeEventListener('resize', measure)
     }
   })

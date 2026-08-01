@@ -78,9 +78,10 @@ function useMeasuredBox(): [(node: HTMLElement | null) => void, Box | undefined]
     if (!node) return
     const read = () => {
       // `offsetWidth`, not `getBoundingClientRect` — the laid-out box rather than the painted
-      // one. A tapped permanent is drawn rotated a quarter turn, and its *painted* rectangle is
-      // its own height by its own width: reading that would plan a portrait card against a
-      // landscape box and decide it was a chip because it tapped.
+      // one. An object arriving on the table is animated in from a scale of its own
+      // (`Motion.tsx`), and its painted rectangle during that quarter second is a fraction of
+      // the box it is laid out in: reading that would re-plan the card at every frame of the
+      // animation and settle it on a presentation it only briefly deserved.
       const width = node.offsetWidth
       const height = node.offsetHeight
       if (width <= 0 || height <= 0) return
@@ -213,7 +214,11 @@ export function Card({
             {marker}
           </span>
         ))}
-        {face.tapped && <span className="badge badge--tapped">Tapped</span>}
+        {/* Tapped is the mark drawn across the whole face (`cards.css`), so there is no badge:
+            a pill saying it would spend the frame's scarcest room restating what the card
+            already looks like. The word is what assistive technology gets, which can perceive
+            neither a mark nor a turn. */}
+        {face.tapped && <span className="visually-hidden">Tapped</span>}
         {face.counters.map((counter) => (
           <span key={counter.kind} className="badge badge--counter">
             {counter.count}× {counter.kind}

@@ -63,7 +63,12 @@ test.describe('the board, from one view', () => {
     await expect(bear).toContainText('2/2')
     await expect(bear).toContainText('1 damage')
     await expect(bear).toContainText('2× +1/+1')
-    await expect(bear).toContainText('Tapped')
+
+    // The fourth is drawn rather than written (§6): tapped is the mark across the face, and the
+    // word is what a screen reader is told in its place.
+    await expect(bear.getByRole('button', { name: /^Grizzly Bears/ })).toHaveAccessibleName(
+      /Tapped/,
+    )
   })
 
   test('shows a planeswalker the loyalty it has, not the loyalty it was printed with', async ({
@@ -1020,31 +1025,49 @@ test.describe('the keyboard, and what the frame draws', () => {
     await expect(bolt.getByRole('img', { name: 'red mana' })).toBeVisible()
   })
 
-  test('turns a tapped permanent, in a slot that reserves the room', async ({ page }) => {
+  test('marks a tapped permanent across the face, and never turns it', async ({ page }) => {
     await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 
-    const bear = page
-      .getByRole('region', { name: 'Your battlefield' })
-      .getByRole('button', { name: /^Grizzly Bears/ })
+    const field = page.getByRole('region', { name: 'Your battlefield' })
+    const bear = field.getByRole('button', { name: /^Grizzly Bears/ })
+    const thopter = field.getByRole('button', { name: /^Thopter/ })
 
-    // A quarter turn, clockwise. Asserted as the matrix the browser resolved rather than as the
-    // declaration, so a rule that stops applying fails here.
-    await expect
-      .poll(() => bear.evaluate((card) => getComputedStyle(card).transform))
-      .toMatch(/^matrix\(0, 1, -1, 0/)
+    // Nothing is turned. Asserted as the matrix the browser resolved rather than as a
+    // declaration, so a rotation reintroduced anywhere above this element fails here.
+    await expect.poll(() => bear.evaluate((card) => getComputedStyle(card).transform)).toBe('none')
 
-    // And the slot it turned inside widened to hold it, so it did not land on its neighbour.
-    const slot = page.locator('.card-slot').filter({ hasText: 'Grizzly Bears' })
-    await expect
-      .poll(async () => {
-        const box = await slot.boundingBox()
-        const card = await bear.boundingBox()
-        // Both boxes are what the browser painted, so the card's width here is already its
-        // *rotated* width — which is exactly what the slot has to be wide enough to hold.
-        return box && card ? box.width >= card.width - 1 : false
+    // The mark itself, read off the frame's own layer. A *pattern*, not a tint: every fact on
+    // this board has to survive being seen without colour, and a hatch does where a wash of
+    // Canvas would not.
+    const mark = (card: typeof bear) =>
+      card.evaluate((node) => {
+        const style = getComputedStyle(node, '::after')
+        return { opacity: style.opacity, image: style.backgroundImage }
       })
-      .toBe(true)
+    await expect
+      .poll(() => mark(bear))
+      .toMatchObject({
+        opacity: '1',
+        image: expect.stringContaining('repeating-linear-gradient'),
+      })
+    // And it is the tap that draws it, not the frame: the untapped permanent beside it carries
+    // the same layer, unpainted.
+    await expect.poll(() => mark(thopter)).toMatchObject({ opacity: '0' })
+
+    // One shape per tile whatever the server said about it. A tapped permanent that cost more
+    // room than an untapped one is the landscape footprint coming back by another route.
+    const [tapped, upright] = [await bear.boundingBox(), await thopter.boundingBox()]
+    expect(tapped?.width).toBeCloseTo(upright?.width ?? 0, 0)
+    expect(tapped?.height).toBeCloseTo(upright?.height ?? 0, 0)
+
+    // The name is horizontal and whole, which is the entire reason the turn went away.
+    await expect(bear.locator('.card__name')).toHaveText('Grizzly Bears')
+
+    // The badge is gone with it: the mark is the statement, and a pill repeating it spent the
+    // frame's scarcest room on a fact the card already shows.
+    await expect(page.locator('.badge--tapped')).toHaveCount(0)
+    await expect(bear).toHaveAccessibleName(/Tapped/)
   })
 })
 
