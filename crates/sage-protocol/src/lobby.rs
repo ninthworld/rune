@@ -662,16 +662,16 @@ mod tests {
         // The commander designation rides the submit-deck frame as a bare
         // `functional_id` (CR 903.3), present only when designated.
         let msg = LobbyCommand::SubmitDeck(SubmitDeck {
-            cards: vec!["ci_jedit".into(), "ci_forest".into()],
-            commander: Some("ci_jedit".into()),
+            cards: vec!["ci_lathliss".into(), "ci_forest".into()],
+            commander: Some("ci_lathliss".into()),
         });
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(
             json,
             serde_json::json!({
                 "type": "submit_deck",
-                "cards": ["ci_jedit", "ci_forest"],
-                "commander": "ci_jedit"
+                "cards": ["ci_lathliss", "ci_forest"],
+                "commander": "ci_lathliss"
             })
         );
         let back: LobbyCommand = serde_json::from_value(json).unwrap();
@@ -686,7 +686,7 @@ mod tests {
             seat: 2,
             kind: "random".into(),
             cards: vec!["ci_bear".into(), "ci_forest".into()],
-            commander: Some("ci_jedit".into()),
+            commander: Some("ci_lathliss".into()),
         });
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(
@@ -696,7 +696,7 @@ mod tests {
                 "seat": 2,
                 "kind": "random",
                 "cards": ["ci_bear", "ci_forest"],
-                "commander": "ci_jedit"
+                "commander": "ci_lathliss"
             })
         );
         let back: LobbyCommand = serde_json::from_value(json).unwrap();

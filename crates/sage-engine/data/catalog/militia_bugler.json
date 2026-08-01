@@ -15,6 +15,9 @@
   ],
   "power": 2,
   "toughness": 3,
+  "keywords": [
+    "vigilance"
+  ],
   "abilities": [
     {
       "type": "triggered",

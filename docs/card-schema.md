@@ -63,6 +63,7 @@ no Oracle text, flavor, art, or branding.
 | `restrictions` | no | Printed combat restrictions; creatures only |
 | `abilities` | no | Activated, triggered, or replacement-style ability IR |
 | `spell_effects` | no | Resolution effects for instants and sorceries |
+| `additional_cost` | no | An additional cost to **cast** the card (CR 601.2b); never on a land |
 | `aura` | no | Aura enchant restriction and static power/toughness, keyword, and/or combat-restriction grant |
 | `scripted` | no | Declares behavior implemented in `src/scripted.rs`; defaults to `false` |
 
@@ -101,6 +102,36 @@ keywords are read (combat legality, evasion, damage, view projection, generated 
   e.g. `{"kind": "grant_keyword", "target": "any_creature", "keyword": "trample"}`. The
   grant expires in the cleanup step (CR 514.2). Duplicate grants are redundant, not
   additive. Keyword *removal* and conditional grants are out of scope.
+- A card that pumps **and** grants in one breath — `Target creature gets +2/+2 and gains
+  flying until end of turn` — is **one** `pump` effect carrying `keywords`, never a
+  `pump` beside a `grant_keyword`:
+
+  ```json
+  {"kind": "pump", "target": "any_creature", "power": 2, "toughness": 2,
+   "keywords": ["flying"]}
+  ```
+
+  One effect declares one target group, so two effects would advertise two independent
+  slots and let a player pump one creature while a different one gained flying. Author
+  the two-effect form only when the card really names two targets.
+
+### Additional costs (CR 601.2b)
+
+A cost the card's own text adds to casting it, beyond its mana cost:
+
+```json
+"additional_cost": { "kind": "discard", "count": 1 }
+```
+
+A cost is **not** an effect, and authoring one as the other changes what the card does.
+A cost gates the cast: a spell whose additional cost cannot be paid is never offered,
+and it is paid as the spell goes on the stack (CR 601.2h) rather than on resolution — so
+it cannot be countered away, cannot be responded to, and cannot be skipped by a player
+with an empty hand. The discarded cards are chosen through the ordinary mid-resolution
+choice prompt, from a hand that no longer contains the spell itself.
+
+`discard` is the only kind today. A `count` of zero, or an `additional_cost` on a land
+(which is played, not cast — CR 116.2a), fails the catalog validator.
 
 ### Combat restrictions (CR 506.3, CR 509.1b)
 
@@ -147,7 +178,7 @@ The three restriction verbs mirror the keyword-granting ones exactly, and all im
   chosen target;
 - `{"kind": "restrict_self", "restriction": "cant_be_blocked"}` — the ability's own
   source, which is not a target and never fizzles;
-- `{"kind": "restrict_all", "affects": "creatures_without_flying", "restriction": "cant_block"}`
+- `{"kind": "restrict_all", "affects": {"scope": "creatures_without_flying"}, "restriction": "cant_block"}`
   — a class, whose members are locked in on resolution (CR 611.2c).
 
 An **Aura** imposes for as long as it is attached, via `aura.restrictions`, e.g.
@@ -159,12 +190,18 @@ combination may be present.
 
 A targeting effect names a **class** with `target`, not an object; the player chooses one
 member as the spell or ability is announced (CR 601.2c) and the choice is re-checked on
-resolution (CR 608.2b). The classes are `any_player`, `any_opponent`, `any_permanent`,
-`any_nonland_permanent`, `any_creature`, `any_creature_you_control`,
-`any_creature_an_opponent_controls`, `any_creature_with_flying`, `any_tapped_creature`,
-`any_artifact`, `any_enchantment`, `any_artifact_or_enchantment`,
-`any_artifact_enchantment_or_creature_with_flying`, `any_land`, `spell_on_stack`,
-`creature_spell_on_stack`, `any_target`, and `creature_card_in_your_graveyard`.
+resolution (CR 608.2b). The classes are `any_player`, `any_player_or_planeswalker`,
+`any_opponent`, `any_permanent`, `any_nonland_permanent`, `any_creature`,
+`any_creature_you_control`, `any_creature_an_opponent_controls`,
+`any_creature_with_flying`, `any_tapped_creature`, `any_artifact`, `any_enchantment`,
+`any_artifact_or_enchantment`, `any_artifact_enchantment_or_creature_with_flying`,
+`any_land`, `spell_on_stack`, `creature_spell_on_stack`, `any_target`, and
+`creature_card_in_your_graveyard`.
+
+`any_player_or_planeswalker` is the burn class that names both halves and no creature —
+`Lava Axe deals 5 damage to target player or planeswalker`. It is neither `any_player`
+(which would drop the planeswalker half) nor `any_target` (which would add creatures the
+card cannot hit).
 
 `creature_card_in_your_graveyard` is the one class that names a **card in a zone** rather than
 an object on the battlefield or the stack, so it is the only one a chosen card target
@@ -233,7 +270,7 @@ that key decides whether a target is chosen:
 ```json
 { "kind": "deal_damage", "target": "any_target",      "amount": 2 }
 { "kind": "deal_damage", "player_ref": "each_opponent", "amount": 2 }
-{ "kind": "deal_damage", "affects": "each_creature",  "amount": 2 }
+{ "kind": "deal_damage", "affects": {"scope": "each_creature"}, "amount": 2 }
 ```
 
 - `target` is a target spec: one slot, chosen on announcement, re-checked on resolution,
@@ -384,6 +421,20 @@ The resulting fixed modifier is what the layer system folds in, so a Zombie that
 the turn does not give the shrunk creature its toughness back — which is what the printed card
 means and what a re-evaluated selector would get wrong.
 
+### Mana in any combination of colours
+
+`add_mana_any_color` produces mana whose **colours the player chooses**, one point at a time:
+
+```json
+{ "kind": "add_mana_any_color", "amount": 2,
+  "restriction": { "kind": "spells_with_subtype", "subtype": "Dragon" } }
+```
+
+The amount is authored; the colours are not authored at all. On resolution the controller is
+asked once per point — so two mana may be two of one colour or one each of two — through the
+same mid-resolution choice queue a discard or a scry uses, answered with `answer_color`. The
+optional `restriction` rides on every point produced, exactly as `add_restricted_mana`'s does.
+
 ### Restricted mana (CR 106.6)
 
 `add_restricted_mana` adds mana that may be spent only on what its restriction names:
@@ -393,8 +444,9 @@ means and what a re-evaluated selector would get wrong.
   "restriction": { "kind": "spells_with_subtype", "subtype": "Dragon" } }
 ```
 
-It is a mana verb like `add_mana`, so an ability whose every effect is one of the three is a
-mana ability and never uses the stack (CR 605.1a). The restriction rides on the mana rather
+It is a mana verb like `add_mana`, so an ability whose every effect is one of the four is a
+mana ability and never uses the stack — unless it is a **loyalty** ability, which CR 605.1a
+excludes however it is written. The restriction rides on the mana rather
 than on the pool, so restricted and ordinary mana of the same colour coexist and both empty at
 the end of the step (CR 500.4). A payment is told what it is *for*: casting a spell whose
 printed subtypes match may spend it, and nothing else can. Restricted mana is spent first,
@@ -430,14 +482,18 @@ meaningless on a spell, which has no source permanent.
 target, so they choose nothing and never fizzle:
 
 ```json
-{ "kind": "pump_all", "affects": "creatures_you_control", "power": 2, "toughness": 1 }
+{ "kind": "pump_all", "affects": { "scope": "creatures_you_control" }, "power": 2, "toughness": 1 }
 ```
 
-The classes are `creatures_you_control`, `each_creature`,
+The `scope` values are `creatures_you_control`, `each_creature`,
 `creatures_your_opponents_control`, and `creatures_without_flying`. The first three are read
 relative to the effect's controller so one authored card means "you" from either seat; the
 last reads flying through the computed keywords, so a *granted* flying excludes a creature
 exactly as a printed one does. `deal_damage` takes the same set.
+
+`creatures_you_control` additionally takes a `subtype`, which narrows the class to a tribe
+and replaces the noun in the generated text — `{"scope": "creatures_you_control", "subtype":
+"Dragon"}` reads as "Dragons you control".
 
 The affected set is locked in on resolution (CR 611.2c) — a creature that arrives later in
 the turn is untouched. That is the whole difference between one of these and an
@@ -604,8 +660,10 @@ carries a selector wraps it:
 ```
 
 `permanent_enters` and `permanent_dies` take an observed-permanent selector — `scope` is
-`creatures_you_control` or `any_creature`, with an optional `subtype` and an `except_this`
-that means "another". `you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
+`creatures_you_control` or `any_creature`, with an optional `subtype`, an `except_this` that
+means "another", and a `nontoken` that excludes tokens (CR 111 — a token is not a card),
+which is what keeps a card that makes tokens off a loop with its own trigger.
+`you_cast_spell` takes `enchantment` or `instant_or_sorcery`.
 
 `beginning_of_step` is about the turn rather than about an object:
 

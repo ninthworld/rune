@@ -37,7 +37,7 @@
   },
   {
     "name": "Costs paid by sacrificing or discarding",
-    "blocker": "activation costs model only tapping and mana"
+    "blocker": "an activation cost models only tapping, mana, and loyalty, and the one additional cast cost is a discard"
   },
   {
     "name": "Damage prevention",
@@ -88,8 +88,8 @@
     "blocker": "no optional cost declared on announcement"
   },
   {
-    "name": "Mana of any colour, and mana filtering",
-    "blocker": "mana production names one fixed colour or colourless, with or without a spend restriction"
+    "name": "Mana filtering",
+    "blocker": "mana is produced and spent, never converted; nothing changes the colour of mana already in a pool"
   },
   {
     "name": "Maximum hand size modification",
@@ -141,6 +141,6 @@
   },
   {
     "name": "Trigger selectors that filter by a keyword",
-    "blocker": "observed-permanent selectors filter by subtype and controller only"
+    "blocker": "observed-permanent selectors filter by subtype, controller, and token-ness only"
   }
 ]

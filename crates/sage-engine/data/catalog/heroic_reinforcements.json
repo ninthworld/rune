@@ -31,13 +31,17 @@
     },
     {
       "kind": "pump_all",
-      "affects": "creatures_you_control",
+      "affects": {
+        "scope": "creatures_you_control"
+      },
       "power": 1,
       "toughness": 1
     },
     {
       "kind": "grant_keyword_all",
-      "affects": "creatures_you_control",
+      "affects": {
+        "scope": "creatures_you_control"
+      },
       "keyword": "haste"
     }
   ]

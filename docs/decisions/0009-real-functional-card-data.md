@@ -50,14 +50,24 @@ IR shapes that no clean M19 card exercises — P/T Auras, keyword-only Auras,
 colorless mana — remain valid vocabulary and keep full test coverage through inline `test_*`
 definitions built in tests, not through shipped cards.
 
-### One documented exception
+### The exception is closed
 
-`jedit_ojanen` is **not** an M19 card. The commander flow (CR 903) needs a legendary
-creature, and every legendary creature M19 prints — Goreclaw, Lena, Isareth, Sai, Lathliss,
-and the Elder Dragon cycle — turns on a mechanic the IR cannot express, so the set offers no
-legal substitute. It is carried as the commander fixture only, has no printing record in
-`data/sets/M19.json`, and is the single card in the catalog outside the set. It goes the
-moment either an expressible M19 legend exists or the single-set boundary widens.
+This decision briefly carried one: `jedit_ojanen`, a non-M19 legendary creature kept as the
+commander fixture because the CR 903 flow needs a legend and no M19 legend was expressible at
+the time. It was to go "the moment either an expressible M19 legend exists or the single-set
+boundary widens", and the first of those has happened.
+
+**Lathliss, Dragon Queen** (M19 #149) is now in the catalog and is the commander fixture, so
+`jedit_ojanen` is deleted and **every definition in the catalog is an M19 card**. Two small
+IR additions were what it took: a `nontoken` filter on an observed-permanent selector
+("whenever another **nontoken** Dragon you control enters") and a subtype on a mass effect
+("**Dragons** you control get +1/+0 until end of turn").
+
+The card carried a second lesson worth recording: the definition it was deleted from did not
+match the real Jedit Ojanen either — the printed card is a `{4}{W}{W}{U}` white-blue Cat
+Warrior, and the catalog held a `{4}{G}{G}` green one. A fixture invented under a real card's
+name is exactly the failure this ADR's "copied, not recalled" rule exists to prevent, and it
+survived because nothing checked the catalog against the set it claims to come from.
 
 ## Consequences
 

@@ -47,7 +47,7 @@ fn triggered_abilities_name_their_condition_and_effects() {
     assert_eq!(
         text_of(&db, "viashino_pyromancer"),
         "When Viashino Pyromancer enters the battlefield, \
-         Viashino Pyromancer deals 2 damage to target player."
+         Viashino Pyromancer deals 2 damage to target player or planeswalker."
     );
     // The dies trigger and the ETB-put-counter trigger have no clean M19 card, so
     // they are exercised inline (ADR 0009).
@@ -263,16 +263,16 @@ fn issue_611_damage_dealt_to_a_class_reads_as_a_sentence() {
         r#"[
             {"schema_version":1,"functional_id":"test_pyroclasm","name":"Test Pyroclasm",
              "types":["sorcery"],"mana_cost":"{1}{R}","colors":["red"],
-             "spell_effects":[{"kind":"deal_damage","affects":"each_creature","amount":2}]},
+             "spell_effects":[{"kind":"deal_damage","affects":{"scope":"each_creature"},"amount":2}]},
             {"schema_version":1,"functional_id":"test_slagstorm","name":"Test Slagstorm",
              "types":["sorcery"],"mana_cost":"{2}{R}","colors":["red"],
-             "spell_effects":[{"kind":"deal_damage","affects":"creatures_your_opponents_control","amount":3}]},
+             "spell_effects":[{"kind":"deal_damage","affects":{"scope":"creatures_your_opponents_control"},"amount":3}]},
             {"schema_version":1,"functional_id":"test_recoil","name":"Test Recoil",
              "types":["sorcery"],"mana_cost":"{R}","colors":["red"],
              "spell_effects":[{"kind":"deal_damage","player_ref":"controller","amount":1}]},
             {"schema_version":1,"functional_id":"test_rally","name":"Test Rally",
              "types":["sorcery"],"mana_cost":"{1}{G}","colors":["green"],
-             "spell_effects":[{"kind":"pump_all","affects":"each_creature","power":1,"toughness":1}]}
+             "spell_effects":[{"kind":"pump_all","affects":{"scope":"each_creature"},"power":1,"toughness":1}]}
         ]"#,
     )
     .unwrap();
@@ -406,13 +406,12 @@ fn issue_374_a_keyword_granting_aura_states_what_it_grants() {
 
 #[test]
 fn issue_374_a_grant_keyword_spell_reads_as_gaining_the_keyword() {
-    // Mighty Leap (bundled): "+2/+2 and gains flying until end of turn", written
-    // as the two clauses the IR actually carries.
+    // Mighty Leap (bundled): one effect, one target, one sentence — "+2/+2 **and**
+    // gains flying", the way the card is printed.
     let db = bundled();
     assert_eq!(
         text_of(&db, "mighty_leap"),
-        "Target creature gets +2/+2 until end of turn.\n\
-         Target creature gains flying until end of turn."
+        "Target creature gets +2/+2 and gains flying until end of turn."
     );
 }
 
@@ -624,7 +623,7 @@ fn issue_401_new_m19_cards_generate_their_rules_text() {
     // Burn aimed only at a player exercises the `target player` damage phrase.
     assert_eq!(
         text_of(&db, "lava_axe"),
-        "Lava Axe deals 5 damage to target player."
+        "Lava Axe deals 5 damage to target player or planeswalker."
     );
 
     // A negative pump keeps its signs.
@@ -633,16 +632,15 @@ fn issue_401_new_m19_cards_generate_their_rules_text() {
         "Target creature gets -3/-3 until end of turn."
     );
 
-    // Two-effect combat tricks render one sentence per effect, in order.
+    // A combat trick that pumps *and* grants is one sentence about one creature,
+    // because it is one effect with one target slot.
     assert_eq!(
         text_of(&db, "mighty_leap"),
-        "Target creature gets +2/+2 until end of turn.\n\
-         Target creature gains flying until end of turn."
+        "Target creature gets +2/+2 and gains flying until end of turn."
     );
     assert_eq!(
         text_of(&db, "sure_strike"),
-        "Target creature gets +3/+0 until end of turn.\n\
-         Target creature gains first strike until end of turn."
+        "Target creature gets +3/+0 and gains first strike until end of turn."
     );
 
     // A destroy-and-gain sorcery, and the two trigger shapes on shipped bodies.
@@ -777,11 +775,12 @@ fn issue_604_the_choice_effects_say_what_they_ask_and_what_follows() {
          it; target opponent discards it."
     );
 
-    // A spell's effects are one line each, in resolution order, so a player can read
-    // that Tormenting Voice discards *before* it draws and that Sift does the reverse.
+    // An additional cast cost is stated first, because it is paid first — before the
+    // spell is even on the stack (CR 601.2b) — and Sift's discard, which really is an
+    // effect, reads as one and comes after its draws.
     assert_eq!(
         text_of(&db, "tormenting_voice"),
-        "You discard a card.\nDraw two cards."
+        "As an additional cost to cast this spell, discard a card.\nDraw two cards."
     );
     assert_eq!(
         text_of(&db, "sift"),
@@ -796,7 +795,8 @@ fn issue_604_the_choice_effects_say_what_they_ask_and_what_follows() {
     );
     assert_eq!(
         text_of(&db, "militia_bugler"),
-        "When Militia Bugler enters the battlefield, look at the top four cards of your \
+        "Vigilance\n\
+         When Militia Bugler enters the battlefield, look at the top four cards of your \
          library, you may put up to one creature card with power 2 or less from among \
          them into your hand, then put the rest on the bottom of your library in a \
          random order."
@@ -804,7 +804,7 @@ fn issue_604_the_choice_effects_say_what_they_ask_and_what_follows() {
     assert!(text_of(&db, "elvish_rejuvenator").contains("onto the battlefield tapped"));
     assert_eq!(
         text_of(&db, "elvish_clancaller"),
-        "Other Elves you control get +1/+1.\n{3}{G}{G}, {T}: Search your library for up \
+        "Other Elves you control get +1/+1.\n{4}{G}{G}, {T}: Search your library for up \
          to one card with this card's name, put it onto the battlefield, then shuffle."
     );
 }

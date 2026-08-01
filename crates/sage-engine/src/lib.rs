@@ -54,15 +54,15 @@ pub use actions::{
 pub use apply::apply_action;
 pub use automation::{forced_declaration_without_choice, priority_has_no_meaningful_action};
 pub use card::{
-    abilities_of, abilities_of_permanent, AuraGrant, CardData, CardDatabase, CatalogError,
-    CombatRestriction, Keyword, Printing, PrintingDatabase, Rarity, SCHEMA_VERSION,
+    abilities_of, abilities_of_permanent, AdditionalCost, AuraGrant, CardData, CardDatabase,
+    CatalogError, CombatRestriction, Keyword, Printing, PrintingDatabase, Rarity, SCHEMA_VERSION,
 };
 pub use card_type::{CardType, Supertype};
 pub use catalog::Violation;
 pub use characteristics::{characteristics, Characteristics};
 pub use choice::{
     choice_bounds, choice_candidates, confirm_is_payable, pending_player_choice, ChoiceOutcome,
-    ChoiceQuestion, ChoiceRequest, ChoiceZone, ConfirmRequest, PendingChoice, Resume,
+    ChoiceQuestion, ChoiceRequest, ChoiceZone, ColorRequest, ConfirmRequest, PendingChoice, Resume,
     SuspendedSpell,
 };
 pub use combat::{

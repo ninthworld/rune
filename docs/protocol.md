@@ -639,6 +639,13 @@ distinguish it from a card selection:
 - Nothing is revealed: a yes-or-no is about an effect, not a zone, so `revealed` stays
   empty.
 
+The same `player_choice` action carries a third question: **which colour of mana**, for an
+effect that adds mana in any combination of colours. It adds no wire shape either — it is
+the `option` prompt on the same `choice` slot, listing the five colours, and every one of
+them is always a legal answer, so unlike the yes-or-no it never withholds an option. An
+effect producing more than one mana poses **one question per point**, so the client answers
+this action once per mana and may name a different colour each time. Nothing is revealed.
+
 Combat declarations also use requirements. The `attackers` slot lists creatures eligible to
 attack; blocker slots list eligible blockers for each attacker. When there is more than one
 thing to attack (issue #345, widened by #608), `declare_attackers` additionally offers one
@@ -945,7 +952,7 @@ Lobby commands are tagged by `type`:
 { "type": "join_room", "room_id": "r:7f3" }
 { "type": "spectate_room", "room_id": "r:7f3" }
 { "type": "submit_deck", "cards": ["forest", "verdant_scout"] }
-{ "type": "submit_deck", "cards": ["jedit_ojanen", "forest"], "commander": "jedit_ojanen" }
+{ "type": "submit_deck", "cards": ["lathliss_dragon_queen", "mountain"], "commander": "lathliss_dragon_queen" }
 { "type": "add_ai", "seat": 1, "kind": "random", "cards": ["forest", "verdant_scout"] }
 { "type": "remove_ai", "seat": 1 }
 { "type": "ready", "ready": true }

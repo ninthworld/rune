@@ -107,7 +107,7 @@ describe('seating the table', () => {
     const damaged = seat('gameview-commander.json', 'p0')
     const dealer = seat('gameview-commander.json', 'p1')
 
-    expect(dealer.commanderName).toBe('Jedit Ojanen')
+    expect(dealer.commanderName).toBe('Lathliss, Dragon Queen')
     expect(dealer.commanderCasts).toBe(1)
     expect(dealer.commanderTax).toBe(2)
     // Damage is filed against the seat that took it, named by who dealt it — it kills at 21

@@ -155,7 +155,13 @@ fn block_selection(
                 return None;
             }
             let survives = toughness_of(perm) > attacker_power;
-            let kills = power_of(perm) >= attacker_toughness && attacker_toughness > 0;
+            // Deathtouch (CR 702.2b): any nonzero damage is lethal, so a 2/5 deathtouch
+            // blocker kills a 6/6 that a power comparison says it cannot touch. Without
+            // this the agent declines every such block — the blocker looks strictly
+            // outclassed, and the one thing that makes it not is invisible.
+            let deathtouch = has_keyword(perm, "deathtouch") && power_of(perm) > 0;
+            let kills =
+                deathtouch || (power_of(perm) >= attacker_toughness && attacker_toughness > 0);
             (survives || kills).then(|| id.clone())
         });
 

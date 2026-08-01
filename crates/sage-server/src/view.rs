@@ -17,10 +17,10 @@ use sage_engine::{
     defender_candidates, is_mana_ability, pending_blocker_declarer, pending_player_choice,
     scripted_rules_text, target_requirements, valid_actions, AbilityOrigin, Action, Attack,
     AttackTarget, Block, CardData, CardDatabase, CardId, CardInstance, CardInstanceId,
-    ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ConfirmRequest, CounterKind,
-    DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword, LoggedIdentity,
-    LoggedPermanent, LossReason, PermanentId, Player, PlayerId, PrintedFace, StackId, StackObject,
-    StackObjectKind, Step, Target, TargetSpec,
+    ChoiceOutcome, ChoiceQuestion, ChoiceRequest, ChoiceZone, Color, ColorRequest, ConfirmRequest,
+    CounterKind, DamageOrder, DamageTarget, GameEvent, GameResult, GameState, Keyword,
+    LoggedIdentity, LoggedPermanent, LossReason, PermanentId, Player, PlayerId, PrintedFace,
+    StackId, StackObject, StackObjectKind, Step, Target, TargetSpec,
 };
 
 use crate::rules_text::{
@@ -486,6 +486,9 @@ pub(crate) fn resolve_action(
             // The yes-or-no of an optional effect (issue #610) is answered on the same
             // slot with an option id, and only one the offer listed.
             Action::AnswerConfirm { .. } => bind_player_confirm(state, &offered, &choice.targets),
+            // A color choice is answered on the same slot with a color's option id
+            // (issue #620) — again, only one the offer listed.
+            Action::AnswerColor { .. } => bind_player_color(state, &offered, &choice.targets),
             _ => {
                 if !targets_fill_requirements(&choice.targets, &offered.requirements) {
                     return None;
@@ -658,9 +661,9 @@ mod tests {
         let mut state = GameState::new_multiplayer(3);
         state.step = Step::PrecombatMain;
 
-        // Seat 0 designates a green commander and casts it: the command zone is empty
+        // Seat 0 designates a red commander and casts it: the command zone is empty
         // and the commander is an ordinary-looking permanent on the battlefield.
-        let commander_card = fixture("jedit_ojanen");
+        let commander_card = fixture("lathliss_dragon_queen");
         let commander = state.new_instance(commander_card);
         state.players[0].commander = Some(sage_engine::CommanderState::new(
             commander.card,
@@ -696,8 +699,8 @@ mod tests {
         assert_eq!(view.commander_identity.len(), 1);
         let identity = &view.commander_identity[0];
         assert_eq!(identity.commander, "p0");
-        assert_eq!(identity.name, "Jedit Ojanen");
-        assert_eq!(identity.color_identity, vec![sage_protocol::Color::Green]);
+        assert_eq!(identity.name, "Lathliss, Dragon Queen");
+        assert_eq!(identity.color_identity, vec![sage_protocol::Color::Red]);
 
         // Exactly the commander's object is marked — a lookup on the designation's
         // card instance, never on the name or the type line.

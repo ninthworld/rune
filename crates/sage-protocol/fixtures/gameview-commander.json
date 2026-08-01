@@ -25,17 +25,17 @@
   ],
   "battlefield": [
     {
-      "id": "perm_jedit",
+      "id": "perm_lathliss",
       "controller": "p1",
       "owner": "p1",
       "card": {
-        "id": "perm_jedit",
-        "name": "Jedit Ojanen",
-        "type_line": "Legendary Creature — Cat Warrior",
-        "mana_cost": "{4}{G}{G}",
-        "power": "5",
-        "toughness": "5",
-        "functional_id": "jedit_ojanen"
+        "id": "perm_lathliss",
+        "name": "Lathliss, Dragon Queen",
+        "type_line": "Legendary Creature — Dragon",
+        "mana_cost": "{4}{R}{R}",
+        "power": "6",
+        "toughness": "6",
+        "functional_id": "lathliss_dragon_queen"
       },
       "is_commander": true
     },
@@ -110,8 +110,8 @@
     },
     {
       "commander": "p1",
-      "name": "Jedit Ojanen",
-      "color_identity": ["G"]
+      "name": "Lathliss, Dragon Queen",
+      "color_identity": ["R"]
     },
     {
       "commander": "p2",

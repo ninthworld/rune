@@ -209,7 +209,7 @@ mod tests {
             }),
             commander_identity: vec![CommanderIdentity {
                 commander: "p0".into(),
-                name: "Jedit Ojanen".into(),
+                name: "Lathliss, Dragon Queen".into(),
                 color_identity: vec![Color::Green],
             }],
         };

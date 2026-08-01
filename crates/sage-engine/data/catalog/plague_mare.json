@@ -27,7 +27,9 @@
       "effects": [
         {
           "kind": "pump_all",
-          "affects": "creatures_your_opponents_control",
+          "affects": {
+        "scope": "creatures_your_opponents_control"
+      },
           "power": -1,
           "toughness": -1
         }

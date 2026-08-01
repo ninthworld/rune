@@ -94,6 +94,16 @@ pub(crate) fn target_is_legal(
     match (spec, target) {
         // A player is a legal target while they are still in the game.
         (TargetSpec::AnyPlayer, Target::Player(player)) => player_in_game(state, player),
+        // "Target player or planeswalker": the same two arms as "any target" minus the
+        // creature one. A player is legal while in the game; a permanent is legal only
+        // while it is a planeswalker on the battlefield, so a creature is never a
+        // candidate however the spell is aimed.
+        (TargetSpec::AnyPlayerOrPlaneswalker, Target::Player(player)) => {
+            player_in_game(state, player)
+        }
+        (TargetSpec::AnyPlayerOrPlaneswalker, Target::Permanent(id)) => {
+            permanent_matches(state, id, |p| has_type(p, CardType::Planeswalker, db))
+        }
         // "Target opponent" excludes the controller's own seat (CR 102.1), which for
         // a life-loss effect is the difference between a drain and a way to lose.
         (TargetSpec::AnyOpponent, Target::Player(player)) => {

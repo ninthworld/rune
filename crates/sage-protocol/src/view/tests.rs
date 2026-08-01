@@ -439,11 +439,11 @@ fn issue_372_command_zone_pile_round_trips_with_its_commander() {
         player_id: "p0".into(),
         cards: vec![CardView {
             id: "c9".into(),
-            name: "Jedit Ojanen".into(),
+            name: "Lathliss, Dragon Queen".into(),
             type_line: "Legendary Creature — Cat Warrior".into(),
             mana_cost: Some("{4}{G}{G}".into()),
             rules_text: String::new(),
-            functional_id: "jedit_ojanen".into(),
+            functional_id: "lathliss_dragon_queen".into(),
             token: false,
             power: Some("5".into()),
             toughness: Some("5".into()),
@@ -456,7 +456,7 @@ fn issue_372_command_zone_pile_round_trips_with_its_commander() {
     assert_eq!(json["command"][0]["player_id"], "p0");
     assert_eq!(
         json["command"][0]["cards"][0]["functional_id"],
-        "jedit_ojanen"
+        "lathliss_dragon_queen"
     );
     let back: GameView = serde_json::from_value(json).unwrap();
     assert_eq!(back.command, view.command);
@@ -725,8 +725,8 @@ fn issue_553_commander_fixture_renders_without_a_populated_command_zone() {
             .find(|c| c.commander == seat)
             .unwrap_or_else(|| panic!("seat {seat} has a commander identity"))
     };
-    assert_eq!(identity("p1").name, "Jedit Ojanen");
-    assert_eq!(identity("p1").color_identity, vec![Color::Green]);
+    assert_eq!(identity("p1").name, "Lathliss, Dragon Queen");
+    assert_eq!(identity("p1").color_identity, vec![Color::Red]);
     assert_eq!(
         identity("p2").color_identity,
         vec![Color::Blue, Color::Black, Color::Red]
@@ -743,7 +743,7 @@ fn issue_553_commander_fixture_renders_without_a_populated_command_zone() {
             .find(|p| p.id == id)
             .unwrap_or_else(|| panic!("{id} is on the battlefield"))
     };
-    assert!(perm("perm_jedit").is_commander);
+    assert!(perm("perm_lathliss").is_commander);
     assert!(!perm("perm_bear").is_commander);
 
     // Local elimination while the game continues: the receiver is out, and says so
@@ -902,8 +902,8 @@ fn issue_553_commander_identity_survives_a_zone_change() {
         }),
         commander_identity: vec![CommanderIdentity {
             commander: "p0".into(),
-            name: "Jedit Ojanen".into(),
-            color_identity: vec![Color::Green],
+            name: "Lathliss, Dragon Queen".into(),
+            color_identity: vec![Color::Red],
         }],
         ..Default::default()
     };

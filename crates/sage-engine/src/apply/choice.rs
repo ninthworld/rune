@@ -43,6 +43,35 @@ pub(crate) fn apply_answer_choice(
     }
 }
 
+/// Answer the pending **color choice** with `color`: put that one mana in the chooser's
+/// pool, then let the suspended resolution continue.
+///
+/// The same three steps [`apply_answer_choice`] takes, and the simplest instance of
+/// them: there is no candidate set to re-derive, because every color is always a legal
+/// answer (CR 105.1), and no aftermath for the points not chosen. An effect producing
+/// more than one mana queued one question per point, so answering this one leaves the
+/// next at the head of the queue and the player is asked again — which is the whole
+/// meaning of "in any combination of colors".
+///
+/// An answer with no color choice pending is a no-op.
+pub(crate) fn apply_answer_color(
+    state: &mut GameState,
+    color: crate::mana::Color,
+    db: &CardDatabase,
+) {
+    let Some(ChoiceQuestion::Color(_)) = pending_player_choice(state).map(|p| &p.question) else {
+        return;
+    };
+    let answered = state.pending_choices.remove(0);
+    let ChoiceQuestion::Color(request) = &answered.question else {
+        return;
+    };
+    crate::choice::add_chosen_color(state, answered.chooser, request, color);
+    if let Some(resume) = answered.resume {
+        resume_after_choice(state, resume, db);
+    }
+}
+
 /// Answer the pending **yes-or-no** with `accept`, then let the suspended resolution
 /// continue (CR 608.2 — see [`crate::Effect::May`]).
 ///

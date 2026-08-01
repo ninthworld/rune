@@ -129,8 +129,19 @@ pub(crate) fn apply_activate_ability(
 
     if is_mana_ability(&ability) {
         // Mana ability: resolve now, no stack object, priority unchanged.
+        //
+        // "Add one mana of any color" is a mana ability that still asks a question
+        // (CR 605.3b permits exactly that), so its colors are posed here rather than
+        // applied. No remainder is carried: every effect of a mana ability is a mana
+        // verb, and mana verbs commute — the pool ends up the same whether the fixed
+        // points land before or after the chosen ones.
         for effect in effects {
-            apply_effect(state, effect, controller, Some(permanent), db);
+            match crate::choice::choices_for_effect(state, effect, controller, None, None) {
+                Some(choices) => {
+                    crate::choice::pose_choices(state, choices, db);
+                }
+                None => apply_effect(state, effect, controller, Some(permanent), db),
+            }
         }
     } else {
         let id = state.mint_id();
@@ -262,6 +273,50 @@ pub(crate) fn apply_cast_spell(
         card,
     });
     state.consecutive_passes = 0;
+    pay_additional_cost(state, controller, data, db);
+}
+
+/// Pay `data`'s additional cast cost (CR 601.2b), if it has one.
+///
+/// Posed **after** the card is on the stack, which is what stops a spell being
+/// discarded to pay for itself, and before any player receives priority: a pending
+/// choice is the only thing the game will accept until it is answered
+/// ([`crate::apply_action`] step 6), so nothing can be cast, activated, or responded
+/// with in between. The offer gate has already established the cost is payable
+/// ([`GameState::additional_cost_is_payable`]), so the question always has an answer.
+///
+/// The choice carries **no [`Resume`](crate::choice::Resume)**: paying a cost is not a
+/// suspended resolution. The spell is on the stack and stays there whatever the answer
+/// names; there is nothing left of the cast to resume.
+fn pay_additional_cost(
+    state: &mut GameState,
+    controller: PlayerId,
+    data: &crate::CardData,
+    db: &CardDatabase,
+) {
+    let Some(cost) = data.additional_cost else {
+        return;
+    };
+    match cost {
+        crate::AdditionalCost::Discard { count } => {
+            crate::choice::pose_choices(
+                state,
+                vec![(
+                    controller,
+                    crate::choice::ChoiceQuestion::Cards(crate::choice::ChoiceRequest {
+                        subject: controller,
+                        zone: crate::choice::ChoiceZone::Hand,
+                        filter: crate::ability::CardFilter::Any,
+                        source_card: None,
+                        min: u32::from(count),
+                        max: u32::from(count),
+                        outcome: crate::choice::ChoiceOutcome::Discard,
+                    }),
+                )],
+                db,
+            );
+        }
+    }
 }
 
 /// Apply a single [`Effect`] to `state` on behalf of `controller`.
@@ -286,6 +341,11 @@ pub(crate) fn apply_effect(
                 player.mana_pool.add_colorless(*amount);
             }
         }
+        // "Add N mana in any combination of colors": nothing is added *here*. Each
+        // point's color is a question for the controller, posed by the resolution path
+        // ([`crate::choice::choices_for_effect`]) and applied one answer at a time, so
+        // reaching this arm at all means the effect was applied without its questions.
+        Effect::AddManaAnyColor { .. } => {}
         // CR 106.6: mana that may be spent only on certain things. It joins the same
         // pool as ordinary mana and empties with it at the end of the step (CR 500.4);
         // the restriction rides on the mana, so nothing about the pool has to remember
@@ -412,7 +472,7 @@ pub(crate) fn apply_effect(
                 }
             }
             DamageSubject::Permanents(affects) => {
-                for id in permanents_in(state, *affects, controller, db) {
+                for id in permanents_in(state, affects, controller, db) {
                     state.deal_damage_to_permanent(id, *amount, db);
                 }
             }
@@ -429,7 +489,7 @@ pub(crate) fn apply_effect(
         } => {
             apply_mass_modification(
                 state,
-                *affects,
+                affects,
                 controller,
                 Modification::PowerToughness {
                     power: *power,
@@ -441,7 +501,7 @@ pub(crate) fn apply_effect(
         Effect::GrantKeywordAll { affects, keyword } => {
             apply_mass_modification(
                 state,
-                *affects,
+                affects,
                 controller,
                 Modification::GrantKeyword(*keyword),
                 db,
@@ -453,7 +513,7 @@ pub(crate) fn apply_effect(
         } => {
             apply_mass_modification(
                 state,
-                *affects,
+                affects,
                 controller,
                 Modification::GrantRestriction(*restriction),
                 db,
@@ -543,7 +603,7 @@ pub(crate) fn apply_effect(
 /// duration or timestamp ordering is special-cased for the mass case.
 fn apply_mass_modification(
     state: &mut GameState,
-    affects: MassAffects,
+    affects: &MassAffects,
     controller: PlayerId,
     modification: Modification,
     db: &CardDatabase,
@@ -570,7 +630,7 @@ fn apply_mass_modification(
 /// what lets one authored card mean "you" from either seat.
 fn permanents_in(
     state: &GameState,
-    affects: MassAffects,
+    affects: &MassAffects,
     controller: PlayerId,
     db: &CardDatabase,
 ) -> Vec<PermanentId> {
@@ -585,7 +645,17 @@ fn permanents_in(
         .filter(|p| {
             is_creature(p)
                 && match affects {
-                    MassAffects::CreaturesYouControl => p.controller == controller,
+                    // A subtype narrows the class to a lord's tribe ("Dragons you
+                    // control"), read off the printed face — the same place every other
+                    // subtype question is answered.
+                    MassAffects::CreaturesYouControl { subtype } => {
+                        p.controller == controller
+                            && subtype.as_deref().is_none_or(|wanted| {
+                                p.printed
+                                    .face(db)
+                                    .is_some_and(|face| face.has_subtype(wanted))
+                            })
+                    }
                     MassAffects::EachCreature => true,
                     // A seat that has lost is no longer an opponent (CR 102.1); its
                     // permanents are on their way off the battlefield in the same SBA
@@ -752,8 +822,15 @@ pub(crate) fn apply_targeted_effect(
         // permanent — so removing it at cleanup reverts the value with nothing to
         // invalidate (ADR 0005). The caller has re-checked the target is still a
         // creature (CR 608.2b); a permanent that has since left is skipped.
+        // Any keywords the same effect grants ride along on the same target and the
+        // same duration, each its own layer-6 modification — the two halves of
+        // "gets +2/+2 and gains flying" applied to one creature because one effect
+        // chose one target.
         Effect::Pump {
-            power, toughness, ..
+            power,
+            toughness,
+            keywords,
+            ..
         } => {
             if let Target::Permanent(id) = target {
                 if state.battlefield.iter().any(|p| p.id == id) {
@@ -767,6 +844,15 @@ pub(crate) fn apply_targeted_effect(
                         },
                         duration: Duration::UntilEndOfTurn,
                     });
+                    for keyword in keywords {
+                        let source = state.mint_id();
+                        state.static_effects.push(StaticEffect {
+                            source,
+                            affects: EffectAffects::SpecificPermanent(id),
+                            modification: Modification::GrantKeyword(*keyword),
+                            duration: Duration::UntilEndOfTurn,
+                        });
+                    }
                 }
             }
         }
@@ -913,6 +999,7 @@ pub(crate) fn apply_targeted_effect(
         Effect::AddMana { .. }
         | Effect::AddColorlessMana { .. }
         | Effect::AddRestrictedMana { .. }
+        | Effect::AddManaAnyColor { .. }
         | Effect::DrawCard { .. }
         | Effect::CreateEmblem { .. }
         | Effect::AllowCastingFromGraveyard { .. }
@@ -1254,7 +1341,7 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: jump,
-                targets: vec![Target::Permanent(creature), Target::Permanent(creature)],
+                targets: vec![Target::Permanent(creature)],
             },
             &db,
         );
@@ -2175,9 +2262,9 @@ mod tests {
 
     #[test]
     fn issue_401_mighty_leap_pumps_and_grants_flying_in_one_spell() {
-        // Mighty Leap: +2/+2 *and* gains flying until end of turn — two spell
-        // effects, so the cast supplies the same creature as the target of each
-        // (the pump slot and the grant slot).
+        // Mighty Leap: +2/+2 *and* gains flying until end of turn — **one** effect
+        // and therefore one target slot, so the cast supplies a single creature and
+        // both halves land on it.
         use crate::characteristics::characteristics;
         let db = db();
         let mut state = main_phase_p0();
@@ -2192,7 +2279,7 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: leap,
-                targets: vec![Target::Permanent(creature), Target::Permanent(creature)],
+                targets: vec![Target::Permanent(creature)],
             },
             &db,
         );
@@ -2205,6 +2292,57 @@ mod tests {
             ch.keywords.contains(&Keyword::Flying),
             "the same spell granted flying (CR 613.1f)"
         );
+    }
+
+    #[test]
+    fn mighty_leap_pumps_and_grants_to_one_creature_not_two() {
+        // The card reads "target creature gets +2/+2 **and** gains flying": one
+        // target, both halves. Before this it was authored as two effects, which the
+        // targeting pipeline advertised as two independent slots — so a player could
+        // pump one creature and hand a *different* one flying, a card strictly better
+        // than the printed one. The single slot is the fix, and naming two targets is
+        // now an illegal announcement rather than a bonus.
+        use crate::characteristics::characteristics;
+        let db = db();
+        let mut state = main_phase_p0();
+        let mine = place_permanent(&mut state, fixture("llanowar_elves"), PlayerId(0), false, 0);
+        let theirs = place_permanent(&mut state, fixture("onakke_ogre"), PlayerId(1), false, 0);
+        let leap = state.new_instance(fixture("mighty_leap"));
+        state.players[0].hand = vec![leap];
+        state.players[0].mana_pool.add(Color::White, 1);
+        state.players[0].mana_pool.colorless = 1;
+
+        // One slot: the spell advertises exactly one target requirement.
+        let groups = crate::CardData::cast_target_groups(db.card(fixture("mighty_leap")).unwrap());
+        assert_eq!(groups.len(), 1, "one effect, one target group");
+
+        // Two different creatures is not a legal announcement.
+        assert!(!crate::actions::action_is_legal(
+            &state,
+            &Action::CastSpell {
+                card: leap,
+                targets: vec![Target::Permanent(mine), Target::Permanent(theirs)],
+            },
+            &db
+        ));
+
+        let state = apply_action(
+            &state,
+            &Action::CastSpell {
+                card: leap,
+                targets: vec![Target::Permanent(mine)],
+            },
+            &db,
+        );
+        let state = pass_full_round(&state, &db);
+
+        // Everything landed on the one creature named, and nothing on the other.
+        let ch = characteristics(&state, mine, &db);
+        assert_eq!(ch.power, Some(3));
+        assert!(ch.keywords.contains(&Keyword::Flying));
+        let other = characteristics(&state, theirs, &db);
+        assert_eq!(other.power, Some(4), "the Ogre's printed power, unpumped");
+        assert!(!other.keywords.contains(&Keyword::Flying));
     }
 
     #[test]
@@ -2224,7 +2362,7 @@ mod tests {
             &state,
             &Action::CastSpell {
                 card: strike,
-                targets: vec![Target::Permanent(creature), Target::Permanent(creature)],
+                targets: vec![Target::Permanent(creature)],
             },
             &db,
         );
