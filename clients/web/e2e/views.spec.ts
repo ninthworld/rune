@@ -56,11 +56,13 @@ test.describe('the board, from one view', () => {
     const stack = page.getByRole('region', { name: 'Stack' })
     await expect(stack.getByRole('listitem').first()).toContainText('Lightning Bolt')
 
-    await expect(page.getByRole('region', { name: 'Battlefield' })).toContainText('Grizzly Bears')
+    await expect(page.getByRole('region', { name: 'Your battlefield' })).toContainText(
+      'Grizzly Bears',
+    )
 
     // A token (CR 111) is a permanent with no card behind it: it renders from the view's
     // characteristics like anything else, and is marked as a token so a player can tell.
-    const battlefield = page.getByRole('region', { name: 'Battlefield' })
+    const battlefield = page.getByRole('region', { name: 'Your battlefield' })
     await expect(battlefield.getByRole('listitem').filter({ hasText: 'Thopter' })).toContainText(
       'Token',
     )
@@ -71,7 +73,7 @@ test.describe('the board, from one view', () => {
     await page.goto('/')
 
     const bear = page
-      .getByRole('region', { name: 'Battlefield' })
+      .getByRole('region', { name: 'Your battlefield' })
       .getByRole('listitem')
       .filter({ hasText: 'Grizzly Bears' })
 
@@ -100,7 +102,7 @@ test.describe('the board, from one view', () => {
     await page.goto('/')
 
     const nissa = page
-      .getByRole('region', { name: 'Battlefield' })
+      .getByRole('region', { name: 'Your battlefield' })
       .getByRole('listitem')
       .filter({ hasText: 'Nissa' })
 
@@ -125,7 +127,7 @@ test.describe('the board, from one view', () => {
     )
 
     // The board too: `Tap for mana` names the bear, and nothing names the token.
-    const battlefield = page.getByRole('region', { name: 'Battlefield' })
+    const battlefield = page.getByRole('region', { name: 'Your battlefield' })
     await expect(battlefield.getByRole('button', { name: /^Grizzly Bears/ })).toHaveClass(
       /card--candidate/,
     )
@@ -160,7 +162,7 @@ test.describe('the board, from one view', () => {
     await page.goto('/')
 
     await page
-      .getByRole('region', { name: 'Battlefield' })
+      .getByRole('region', { name: 'Your battlefield' })
       .getByRole('button')
       .filter({ hasText: 'Thopter' })
       .click()
@@ -182,7 +184,7 @@ test.describe('the board, from one view', () => {
     await expect(emblems).toContainText('Creatures you control have indestructible.')
 
     // The board it modifies renders from the same view — the client computes no anthem.
-    await expect(page.getByRole('region', { name: 'Battlefield' })).toContainText('6/4')
+    await expect(page.getByRole('region', { name: 'Your battlefield' })).toContainText('6/4')
   })
 
   test('offers exactly the actions the server listed', async ({ page }) => {
@@ -205,6 +207,135 @@ test.describe('the board, from one view', () => {
 
     const submitted = sent.map((s) => JSON.parse(s)).find((m) => m.type === 'choose_action')
     expect(submitted).toMatchObject({ type: 'choose_action', action_id: 'a1' })
+  })
+})
+
+test.describe('the table as a composition', () => {
+  // Desktop landscape is the one layout (`docs/brief.md`), so it is the one these are sized to.
+  const DESKTOP = { width: 1440, height: 900 }
+
+  /**
+   * The page itself does not scroll, in either axis.
+   *
+   * Asked by trying to scroll rather than by comparing `scrollWidth` — a region that clips its
+   * own overflow still inflates the root element's reported scroll width in Chrome, and what
+   * actually matters to a player is whether the table can be scrolled out from under them.
+   */
+  const pageFits = (page: Page) =>
+    page.evaluate(() => {
+      window.scrollTo(9999, 9999)
+      return { x: window.scrollX === 0, y: window.scrollY === 0 }
+    })
+
+  test('seats both players with their own half of the board', async ({ page }) => {
+    // The point of a table over a state dump: a permanent's controller is answered by where
+    // the card is. `gameview-commander.json` has one permanent per opponent and none of yours,
+    // so a client that pooled them into one list would put Bob's commander on your side.
+    await page.setViewportSize(DESKTOP)
+    await serveFrames(page, [fixture('gameview-commander.json')])
+    await page.goto('/')
+
+    await expect(page.getByRole('region', { name: /^Bob .* battlefield/ })).toContainText(
+      'Jedit Ojanen',
+    )
+    await expect(page.getByRole('region', { name: /^Random .* battlefield/ })).toContainText(
+      'Grizzly Bears',
+    )
+    // Yours is empty, and says so rather than borrowing someone else's permanents.
+    await expect(page.getByRole('region', { name: 'Your battlefield' })).toContainText(
+      'No permanents',
+    )
+
+    // Each seat's own totals sit with that seat.
+    await expect(page.getByRole('region', { name: 'Your seat' })).toContainText('eliminated')
+    await expect(page.getByRole('region', { name: /^Bob .* seat/ })).toContainText('disconnected')
+    await expect(page.getByRole('region', { name: /^Random .* seat/ })).toContainText('AI')
+  })
+
+  test('lays out an empty board as a whole table, not a blank page', async ({ page }) => {
+    // Turn one: no permanents, no stack, no graveyard. Every surface must still be in its
+    // place, because a player learns where things are from the empty table.
+    await page.setViewportSize(DESKTOP)
+    await serveFrames(page, [
+      {
+        you: 'p1',
+        phase: 'upkeep',
+        turn: 1,
+        me: { life: 20, library_size: 53 },
+        opponents: [
+          { player_id: 'p2', hand_size: 7, life: 20, library_size: 53, graveyard_size: 0 },
+        ],
+        seat_order: ['p1', 'p2'],
+        active_player: 'p1',
+        priority_player: 'p1',
+        valid_actions: [{ id: 'a1', type: 'pass_priority', label: 'Pass' }],
+      },
+    ])
+    await page.goto('/')
+
+    for (const name of ['Your seat', 'p2 seat', 'Your battlefield', 'p2 battlefield', 'Stack']) {
+      await expect(page.getByRole('region', { name })).toBeVisible()
+    }
+    await expect(page.getByRole('region', { name: 'Your hand' })).toContainText('empty')
+    await expect(page.getByRole('region', { name: 'Actions' })).toBeVisible()
+    expect(await pageFits(page)).toEqual({ x: true, y: true })
+  })
+
+  test('keeps the dock reachable under a board and hand that will not fit', async ({ page }) => {
+    // The constraint the whole geometry exists for. Sixty permanents, a twenty-card hand, and
+    // a name far longer than any real one: every region scrolls inside its own area, and the
+    // controls that end the turn stay exactly where they were on an empty board. A player who
+    // has to scroll the page to find `Pass` has lost the game to the layout.
+    const base = fixture('gameview.json')
+    const bear = (base.battlefield as Record<string, unknown>[])[0]!
+    const card = (base.my_hand as Record<string, unknown>[])[0]!
+    const long = 'Wolfhearted Thunderskald of the Everflowing Cascade, Third of Their Name'
+
+    await page.setViewportSize(DESKTOP)
+    await serveFrames(page, [
+      {
+        ...base,
+        player_names: { p1: long, p2: long },
+        battlefield: Array.from({ length: 60 }, (_, i) => ({
+          ...bear,
+          id: `stress_${i}`,
+          card: { ...(bear.card as object), id: `stress_${i}`, name: `${long} ${i}` },
+        })),
+        my_hand: Array.from({ length: 20 }, (_, i) => ({
+          ...card,
+          id: `hand_${i}`,
+          name: `${long} ${i}`,
+        })),
+      },
+    ])
+    await page.goto('/')
+
+    const actions = page.getByRole('region', { name: 'Actions' })
+    await expect(actions.getByRole('button', { name: 'Pass' })).toBeInViewport()
+    await expect(page.getByRole('region', { name: 'Your hand' })).toBeInViewport()
+
+    // Sixty permanents are all rendered — they scroll within the board, they are not dropped.
+    await expect(
+      page.getByRole('region', { name: 'Your battlefield' }).getByRole('listitem'),
+    ).toHaveCount(60)
+
+    // And none of it grew the page.
+    expect(await pageFits(page)).toEqual({ x: true, y: true })
+  })
+
+  test('puts the public piles in front of the seat that owns them', async ({ page }) => {
+    await page.setViewportSize(DESKTOP)
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    // Exile is yours in this fixture and the graveyard is the opponent's; each is counted and
+    // opens in place rather than being listed somewhere central where ownership is a label.
+    const mine = page.getByRole('region', { name: 'Your seat' })
+    await expect(mine.getByText('Exile (1)')).toBeVisible()
+    await mine.getByText('Exile (1)').click()
+    await expect(mine).toContainText('Path to Exile')
+
+    await expect(page.getByRole('region', { name: 'p2 seat' })).toContainText('Graveyard (1)')
   })
 })
 
