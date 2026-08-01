@@ -1,9 +1,8 @@
-/* The grey box, in four files.
+/* The page, in four files.
 
    Split along the surfaces it dresses rather than by property: this file is the page itself —
-   the reset, the type scale, and the handful of primitives every screen shares — and each import
-   below dresses one surface. Nothing here is a visual decision; structure and legibility only,
-   because none of it can be judged until the game plays well.
+   the reset, the type scale, the shared tokens, and the handful of primitives every screen
+   shares — and each import below dresses one surface.
 
    The imports come first, as the cascade requires, so a later rule in this file wins over the
    same specificity in one of them. */
@@ -11,12 +10,56 @@
 @import './styles/game.css';
 @import './styles/lobby.css';
 
-/* Grey box on purpose. Legibility and structure only — no visual design decisions are
-   being made here, because none of them can be judged until the game is playable. */
 :root {
   color-scheme: light dark;
   font-family: system-ui, sans-serif;
   line-height: 1.4;
+}
+
+/* The tokens.
+
+   Every colour and every card measurement the client draws with lives here, once. Two reasons
+   it is a palette rather than values at the point of use: the same card is drawn by five
+   different surfaces and must be washed identically by all of them, and a page that respects
+   `color-scheme: light dark` needs its own hues to sit against either `Canvas` — which they do
+   because each one is mixed *with* `Canvas` at the point it is painted, never pasted over it.
+
+   The mana hues are the project's own approximations of the five colours as players name them.
+   No official symbol, frame, or palette is reproduced; a pip is a disc, a letter, and CSS. */
+:root {
+  --mana-w: #e8dfbe;
+  --mana-w-ink: #23201a;
+  --mana-u: #3a86bd;
+  --mana-u-ink: #f3f8fc;
+  --mana-b: #4a4551;
+  --mana-b-ink: #f1eef4;
+  --mana-r: #cd5341;
+  --mana-r-ink: #fdf2ef;
+  --mana-g: #3f915a;
+  --mana-g-ink: #f0f8f2;
+  --mana-c: #aaa398;
+  --mana-c-ink: #23201a;
+  --mana-gold: #c6a244;
+  --mana-gold-ink: #23201a;
+
+  /* One width per tier; every height follows from the printed 63:88, so a card is a card at
+     whatever size the surface can afford. */
+  --card-hand-w: 8.6rem;
+  --card-field-w: 6.8rem;
+  --card-field-h: calc(var(--card-field-w) * 88 / 63);
+
+  /* How long a permanent takes to turn, and the curve it turns on. Named because the slot that
+     reserves its rotated footprint has to widen over exactly the same half second. */
+  --tap-duration: 500ms;
+  --tap-easing: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Motion is the one thing here that is not decoration: it says a permanent tapped. Honour the
+   request to do without it by arriving at the same state instantly rather than not at all. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --tap-duration: 1ms;
+  }
 }
 
 body {

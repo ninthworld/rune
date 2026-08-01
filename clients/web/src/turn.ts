@@ -155,6 +155,73 @@ const order = (phases: readonly Phase[]): Phase[] =>
   [...phases].sort((a, b) => PHASES.indexOf(a) - PHASES.indexOf(b))
 
 // ---------------------------------------------------------------------------
+// Stop presets
+// ---------------------------------------------------------------------------
+
+/**
+ * The whole preference in one move.
+ *
+ * Editing twelve steps one at a time is the right control for "hand me priority in my opponent's
+ * end step" and the wrong one for the thing a player actually wants mid-game, which is a pace:
+ * run the game as far as it can go, or stop asking me nothing, or stop everywhere because
+ * something is about to happen. Those are three presets, and they are what the keyboard binds.
+ *
+ * They are the same mechanism, not a second one. Each is a `set_stops` — the message that
+ * replaces the whole preference — and the pacing that follows is the *server's* settle acting on
+ * a stored preference (ADR 0010). Nothing here loops, waits, or passes on the player's behalf.
+ *
+ * - `everywhere` is the way back: every step stops on every turn. This is what XMage's players
+ *   reach for as "cancel my skips", and it is the same intent — stop deciding for me.
+ * - `mains` is the server's own seeded default for a human seat (`docs/protocol.md`): the two
+ *   main phases of your own turn, so a turn never fast-forwards past where its owner would act.
+ * - `nowhere` clears the preference entirely, which the protocol states as the meaning of a bare
+ *   `set_stops`. The game then stops only where it genuinely has to ask.
+ */
+export type StopPreset = 'everywhere' | 'mains' | 'nowhere'
+
+/** The steps each preset claims, as the two lists `set_stops` replaces. */
+const PRESETS: Record<StopPreset, { stops: readonly Phase[]; own: readonly Phase[] }> = {
+  everywhere: { stops: PHASES, own: [] },
+  mains: { stops: [], own: ['precombat_main', 'postcombat_main'] },
+  nowhere: { stops: [], own: [] },
+}
+
+export const presetWording = (preset: StopPreset): string =>
+  preset === 'everywhere'
+    ? 'Stop at every step'
+    : preset === 'mains'
+      ? 'Stop at my main phases'
+      : 'Stop only where the game must ask'
+
+/** One preset as the message that replaces the preference. Empty lists are omitted, as the wire omits them. */
+export function presetStops(preset: StopPreset): ClientMessage {
+  const { stops, own } = PRESETS[preset]
+  return {
+    type: 'set_stops',
+    ...(stops.length > 0 ? { stops: order(stops) } : {}),
+    ...(own.length > 0 ? { own_turn: order(own) } : {}),
+  }
+}
+
+/**
+ * Which preset the server is currently honouring, if the effective lists are exactly one of them.
+ *
+ * Read off the view like every other stop question, so a preference edited step by step simply
+ * matches none of them and no control claims to be on. Nothing about the preset is remembered
+ * client-side; there is nowhere for this answer to go stale.
+ */
+export function presetOf(view: GameView): StopPreset | undefined {
+  const key = (phases: readonly Phase[]) => order(phases).join(',')
+  const stated = { stops: key(list(view.stops)), own: key(list(view.own_turn_stops)) }
+
+  for (const preset of ['everywhere', 'mains', 'nowhere'] as const) {
+    const { stops, own } = PRESETS[preset]
+    if (stated.stops === key(stops) && stated.own === key(own)) return preset
+  }
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
 // Who the game is waiting for
 // ---------------------------------------------------------------------------
 

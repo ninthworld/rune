@@ -46,6 +46,7 @@ import type {
   RoomConfig,
 } from './../protocol'
 import { CardInspector } from './CardInspector'
+import { ArtSettings } from './ArtSettings'
 import { DeckBuilder } from './lobby/DeckBuilder'
 import { DeckPanel } from './lobby/DeckPanel'
 import { SeatRoster } from './lobby/SeatRoster'
@@ -70,6 +71,10 @@ export function Lobby({
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<DeckDraft>(EMPTY_DECK)
+  // Where this device's card art comes from (ADR 0012). Offered here as well as at the table
+  // because the builder draws the same frames, and choosing before a game starts is the one
+  // moment a player has time to read what they are turning on.
+  const [settingArt, setSettingArt] = useState(false)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [inspecting, setInspecting] = useState<string | undefined>(undefined)
 
@@ -107,6 +112,11 @@ export function Lobby({
     <div className="lobby">
       <header className="lobby__head">
         <h1>SAGE</h1>
+        <p>
+          <button type="button" onClick={() => setSettingArt(true)}>
+            Card art
+          </button>
+        </p>
         <p>
           You are {view.name ? `${view.name} (${view.you})` : view.you}
           {view.session && <> · session held</>}
@@ -265,6 +275,7 @@ export function Lobby({
       {inspected && (
         <CardInspector face={catalogFace(inspected)} onClose={() => setInspecting(undefined)} />
       )}
+      {settingArt && <ArtSettings onClose={() => setSettingArt(false)} />}
     </div>
   )
 }

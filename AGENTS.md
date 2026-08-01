@@ -4,9 +4,12 @@ SAGE is a server-authoritative Magic: The Gathering implementation with a pure R
 a web client. Read [`docs/brief.md`](docs/brief.md) for the product and architecture, and
 [`docs/coding-standards.md`](docs/coding-standards.md) before changing code.
 
-**The web client is playable and deliberately ugly.** `clients/web` renders a grey-box lobby
-and board — structure and legibility only, no visual design, because none of it can be judged
-until the game plays well. Make it good before making it pretty.
+**The web client is playable, and the table is now drawn rather than boxed.** `clients/web`
+renders real card frames — proportions, a tint from the printed cost, mana pips, an art window,
+a permanent that turns when it taps — and the directness that goes with them: one click takes an
+action the server offered exactly one of, the pointer previews a card, and the keyboard carries
+priority. The lobby is still grey box. Playing is still the merge criterion: make it good before
+making it pretty, and nothing visual is worth a rule in `interaction.ts` bending for it.
 
 ## Hard rules
 

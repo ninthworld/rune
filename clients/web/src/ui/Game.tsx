@@ -27,12 +27,13 @@
  * here — the view is replaced by the server's, and the wait for an answer that is no longer
  * coming is dropped.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { ClientMessage, GameView, Phase, ValidAction } from './../protocol'
 import { list, playerLabel } from './../normalize'
 import { seats, type SeatPile } from './../table'
-import { withStop, type StopScope } from './../turn'
+import { presetOf, presetStops, withStop, type StopPreset, type StopScope } from './../turn'
+import { claims, intentFor, type KeyPress } from './../keys'
 import type { ConnectionStatus } from './../socket'
 import {
   cardFace,
@@ -47,6 +48,8 @@ import {
   IDLE,
   arm,
   ask,
+  clear,
+  disarm,
   fill,
   focus,
   gestureFor,
@@ -57,11 +60,14 @@ import {
   select,
   settle,
   submitted,
+  unask,
   type Interaction,
 } from './../interaction'
 import { buildChooseAction, type Draft } from './../submission'
+import { ArtSettings } from './ArtSettings'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
+import { Shortcuts } from './game/Shortcuts'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
 import { Hand } from './game/Hand'
 import { MatchHeader } from './game/MatchHeader'
@@ -110,6 +116,11 @@ export function Game({
   // presentation, and safe to hold across views: a game ends once, and the header keeps saying
   // so for as long as the view does.
   const [dismissed, setDismissed] = useState(false)
+  // The key list, open or not. It describes this build's own bindings and nothing about the
+  // game, so it is the one panel here that a new view has no opinion about.
+  const [helping, setHelping] = useState(false)
+  // The art panel, likewise: a device preference (ADR 0012), not a fact about this game.
+  const [settingArt, setSettingArt] = useState(false)
 
   // Settled during render rather than in an effect, so the frame that carries a new view is
   // never painted with the previous view's draft still in the dock.
@@ -217,6 +228,105 @@ export function Game({
     dispatch(current.action, interaction.draft)
   }
 
+  /**
+   * Pass priority, if that is a thing the server is currently offering.
+   *
+   * Looked up by the server's own `type` — "a free-form category used for presentation and input
+   * routing" (`docs/protocol.md`) — and taken through the same path as a click on the button.
+   * A build that does not recognise the classifier simply finds nothing and the key does
+   * nothing, which is the harmless direction to be wrong in.
+   */
+  const passPriority = () => {
+    const pass = actions.find((action) => action.type === 'pass_priority')
+    if (pass) take(pass)
+  }
+
+  /**
+   * Change the pace, then hand the game back.
+   *
+   * Two messages and no loop: the preference the server will honour, and one pass. Everything
+   * that happens after that is the server's settle acting on a stored preference (ADR 0010) —
+   * this client never decides that a step was uninteresting.
+   *
+   * Only the skips pass. Asking to stop *everywhere* is the opposite request, and passing on top
+   * of it would skip the very step the player just said they wanted.
+   */
+  const setPace = (preset: StopPreset) => {
+    send(presetStops(preset))
+    if (preset !== 'everywhere') passPriority()
+  }
+
+  /**
+   * Back out of whatever is open, one layer at a time.
+   *
+   * Innermost first, so one key unwinds the screen in the order a player built it up. Nothing
+   * here is sent and nothing is undone in the game — every layer this closes is client-side
+   * presentation, which is exactly why it is safe to bind to a key pressed by reflex.
+   */
+  /** Something is layered over the board, so the keyboard belongs to it rather than to the game. */
+  const layered = inspecting !== undefined || helping || settingArt
+
+  const back = () => {
+    if (inspecting !== undefined) return setInspecting(undefined)
+    if (helping) return setHelping(false)
+    if (settingArt) return setSettingArt(false)
+    if (browsing) return setBrowsing(undefined)
+    if (interaction.confirming) return setInteraction(unask(interaction))
+    if (interaction.armed) return setInteraction(disarm(interaction))
+    if (interaction.selected) return setInteraction(clear(interaction))
+  }
+
+  // Re-registered every render rather than memoised: the handler reads the current view, the
+  // current action list, and the current draft, and a stale closure over any of them would act
+  // on a game that has already moved.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target
+      const press: KeyPress = {
+        key: event.key,
+        ctrl: event.ctrlKey,
+        meta: event.metaKey,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        typing: isTyping(target),
+        onControl: target instanceof HTMLElement && target.closest('button, a[href]') !== null,
+      }
+      // A panel over the board takes the keyboard with it. Only backing out still means
+      // anything: a player reading a card, the key list, or the art settings has not asked to
+      // pass priority, and the space that would have done it belongs to the Close button they
+      // are focused on.
+      const asked = intentFor(press)
+      const intent = layered && asked?.kind !== 'cancel' ? undefined : asked
+      if (claims(press, intent)) event.preventDefault()
+      if (!intent) return
+
+      switch (intent.kind) {
+        case 'confirm':
+          // One key for the whole of "go on": answer the question if there is one, pass if
+          // there is not. A submission already in flight is neither, and a concede waiting for
+          // its second click is deliberately not reachable from here — a match-ending button
+          // asked twice must be answered by a deliberate click, not by the key a player is
+          // already holding down.
+          if (interaction.pending || interaction.confirming) return
+          if (focus(actions, interaction).ready) confirm()
+          else passPriority()
+          return
+        case 'cancel':
+          back()
+          return
+        case 'stops':
+          setPace(intent.preset)
+          return
+        case 'help':
+          setHelping((open) => !open)
+          return
+      }
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   // Tracing follows the look, and falls back to the click. Hovering or tabbing to an object
   // emphasises everything the server related it to, which costs nothing and reaches the objects
   // that most need it — a blocker or an enchanted creature usually owns no action, so a click on
@@ -236,17 +346,29 @@ export function Game({
     trace: setHovering,
     activate: (id: string) => {
       const gesture = gestureFor(actions, interaction, id)
-      if (gesture.kind === 'inspect') {
-        setInspecting(id)
-        return
+      switch (gesture.kind) {
+        case 'inspect':
+          setInspecting(id)
+          return
+        case 'select':
+          setInteraction(select(interaction, id))
+          return
+        case 'take': {
+          // The same path the dock's own button takes, so one click on a card and a click on
+          // the button that names it cannot behave differently — including the draft an action
+          // with questions opens, and the second click a concede asks for.
+          const action = actions.find((candidate) => candidate.id === gesture.action)
+          if (action) take(action)
+          return
+        }
+        case 'fill': {
+          const slot = focus(actions, interaction).slots.find((each) => each.slot === gesture.slot)
+          if (slot) setInteraction(fill(interaction, slot, id))
+          return
+        }
       }
-      if (gesture.kind === 'select') {
-        setInteraction(select(interaction, id))
-        return
-      }
-      const slot = focus(actions, interaction).slots.find((each) => each.slot === gesture.slot)
-      if (slot) setInteraction(fill(interaction, slot, id))
     },
+    inspect: setInspecting,
     labelFor: (id: string) => names.get(id) ?? id,
   }
 
@@ -281,6 +403,10 @@ export function Game({
         eliminated={local?.eliminated === true}
         connection={connection}
         onStop={setStop}
+        preset={presetOf(view)}
+        onPreset={setPace}
+        onHelp={() => setHelping(true)}
+        onArt={() => setSettingArt(true)}
       />
 
       <div className="table">
@@ -339,6 +465,9 @@ export function Game({
       <SidePanel
         zone={openZone}
         closeZone={() => setBrowsing(undefined)}
+        // The look, at full size. Resolved out of this frame's faces like everything else, so an
+        // object that leaves the view stops previewing rather than pinning a card that is gone.
+        preview={hovering === undefined ? undefined : faces.get(hovering)}
         revealed={revealedFaces}
         settled={list(view.auto_passed_steps)}
         log={list(view.log)}
@@ -351,6 +480,10 @@ export function Game({
           left the view simply stops resolving and the panel closes itself. */}
       {inspected && <CardInspector face={inspected} onClose={() => setInspecting(undefined)} />}
 
+      {helping && <Shortcuts onClose={() => setHelping(false)} />}
+
+      {settingArt && <ArtSettings onClose={() => setSettingArt(false)} />}
+
       {view.result && !dismissed && (
         <MatchResult
           result={view.result}
@@ -362,4 +495,17 @@ export function Game({
       )}
     </div>
   )
+}
+
+/**
+ * Whether the keyboard currently belongs to something that takes text.
+ *
+ * A shortcut that fires while someone is filling in the X of an X spell is a bug, and the number
+ * slot in the dock is a real text field. `isContentEditable` covers nothing this client renders
+ * today and is here because the cost of being wrong about it is a swallowed keystroke.
+ */
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 }

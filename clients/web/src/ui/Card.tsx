@@ -3,22 +3,30 @@
  *
  * Every card-shaped thing on the screen comes through here: a card in hand, a permanent on the
  * battlefield, an object on the stack, an emblem, a compact row in a pile, and the full face in
- * the inspector. They share a model (`card-face.ts`) and they share this component, so the
- * board cannot end up disagreeing with the hand about what a counter or a token looks like.
+ * the inspector. They share a model (`card-face.ts`) and they share this component, so the board
+ * cannot end up disagreeing with the hand about what a counter or a token looks like.
  *
  * A variant is a budget, not a different card. Each one decides how much of the same face there
- * is room to show, and anything it drops or clamps is still one click away in `inspect`, which
- * is the only variant that shows everything. That is the whole contract: nothing is ever the
- * *only* place a fact appears.
+ * is room to show, and anything it drops or clamps is still one gesture away — the pointer's
+ * preview, or the inspector, which is the only variant that shows everything. That is the whole
+ * contract: nothing is ever the *only* place a fact appears.
  *
- * The frame reserves an art window it currently fills with a procedural placeholder. Nothing
- * downloads and nothing is bundled — the window exists so the name band, cost, type line, and
- * stat keep their positions if ADR 0012's player-side art ever fills it.
+ * The frame is a real card's anatomy — name band, art window, type band, text box, and a stat in
+ * the corner — at a real card's proportions, because that is what makes a board readable at a
+ * glance rather than a list of tiles. The tint under it is `costTint`: the colours of the pips
+ * that were printed, and explicitly not colour, colour identity, or anything else the rules
+ * define (`mana.ts`). It is a wash under text that says the real thing.
  *
  * No decision about the game is made here. `state` is assigned by the caller from what the
  * server advertised; this component styles it and draws no conclusion of its own.
  */
+import type { MouseEvent } from 'react'
+
 import type { CardFace, CardFaceLink, CardFaceState, CardFaceVariant } from './../card-face'
+import { costTint } from './../mana'
+import { useCardArt } from './art'
+import { CardArt } from './CardArt'
+import { ManaCost } from './Mana'
 
 /** What each variant has room for. Everything omitted here remains available in `inspect`. */
 const SHOWS: Record<
@@ -84,64 +92,97 @@ export interface CardProps {
    */
   link?: CardFaceLink
   /**
-   * This card was clicked. One gesture for every card on the screen; what it does — fill a
-   * target slot, select a subject, open the inspector — is decided by the caller from what the
-   * server offered for this object (`interaction.ts`), never here.
+   * This card was clicked. One gesture for every card on the screen; what it does — take the one
+   * action the server offered for it, fill a target slot, open the dock — is decided by the
+   * caller from what the server advertised (`interaction.ts`), never here.
    */
   onActivate?(id: string): void
   /**
+   * This card was right-clicked. Reading a card is never a game action, so it is on the gesture
+   * that costs nothing and is available whatever else is in progress.
+   */
+  onInspect?(id: string): void
+  /**
    * The pointer or the keyboard reached this card, or left it (`undefined`).
    *
-   * Tracing relationships is a *look*, not a click. A card the server offered nothing for opens
-   * the inspector on its first click, so hanging the trace off selection would put the objects
-   * most worth tracing — a blocker, an enchanted creature, anything with no action of its own —
-   * behind a modal that covers the board they are on.
+   * Looking is its own channel: it raises the preview that makes a small frame readable, and it
+   * traces the relationships the server projected about this object. Neither is hung off
+   * selection, because the objects most worth reading and tracing — a blocker, an enchanted
+   * creature, anything with no action of its own — are exactly the ones a click cannot reach.
    */
   onTrace?(id: string | undefined): void
 }
 
-export function Card({ face, variant, state = 'idle', link, onActivate, onTrace }: CardProps) {
+export function Card({
+  face,
+  variant,
+  state = 'idle',
+  link,
+  onActivate,
+  onInspect,
+  onTrace,
+}: CardProps) {
   const shows = SHOWS[variant]
   const stateLabel = STATE_LABELS[state]
+  const tapped = shows.board && face.tapped
+
+  // A player-supplied illustration, if this device has a source and this card has resolved
+  // (`ui/art.tsx`). Absent is the normal answer and costs nothing: the frame draws its
+  // procedural face, which is what it draws when nothing is turned on at all.
+  const art = useCardArt(face)
+  // The whole card image as the face (ADR 0012). Only where the window has room to be a card:
+  // a one-line row in a pile and an object on the stack have no art window to fill, so they keep
+  // SAGE's text whatever the preference says.
+  const full = shows.art && face.typeLine !== undefined && art?.style === 'full'
+
   const className = [
     'card',
     `card--${variant}`,
+    `card--tint-${costTint(face.manaCost)}`,
+    full && 'card--full',
     state !== 'idle' && `card--${state}`,
     link && `card--${link}`,
-    shows.board && face.tapped && 'card--tapped',
+    tapped && 'card--tapped',
   ]
     .filter(Boolean)
     .join(' ')
 
   const body = (
     <>
-      <span className="card__band">
+      {/* Under a full card image the printed text is on the picture, so SAGE's copy of it is
+          hidden rather than removed: it is still this control's accessible name, still what a
+          screen reader reads, and still what a search of the page finds. What is *never* hidden
+          is anything the server computed — the stat, the counters, the damage, the state — which
+          is why those sit outside this block. */}
+      <span className={full ? 'visually-hidden' : 'card__band'}>
         <span className="card__name" title={face.name}>
           {face.name}
         </span>
-        {shows.cost && face.manaCost && <span className="card__cost">{face.manaCost}</span>}
+        {shows.cost && !full && <ManaCost cost={face.manaCost} className="card__cost" />}
       </span>
 
-      {/* Reserved by ADR 0012 and deliberately empty: a procedural placeholder, no bundled or
-          remote art, and the layout below it does not move if art ever arrives. Withheld for an
-          object with no type line — an emblem, or a bare ability on the stack — because those
-          are not printed cards and framing them as one would imply a face that does not exist. */}
-      {shows.art && face.typeLine && <span className="card__art" aria-hidden="true" />}
+      {/* Withheld for an object with no type line — an emblem, or a bare ability on the stack —
+          because those are not printed cards and framing them as one would imply a face that
+          does not exist. */}
+      {shows.art && face.typeLine && <CardArt face={face} url={art?.url} />}
 
       {shows.typeLine && face.typeLine && (
-        <span className="card__type" title={face.typeLine}>
+        <span className={full ? 'visually-hidden' : 'card__type'} title={face.typeLine}>
           {face.typeLine}
         </span>
       )}
 
-      {shows.rulesText && face.rulesText && (
-        <span className="card__rules" title={face.rulesText}>
-          {face.rulesText}
+      {(shows.rulesText || shows.keywords) && (face.rulesText || face.keywords.length > 0) && (
+        <span className={full ? 'visually-hidden' : 'card__text'}>
+          {shows.rulesText && face.rulesText && (
+            <span className="card__rules" title={face.rulesText}>
+              {face.rulesText}
+            </span>
+          )}
+          {shows.keywords && face.keywords.length > 0 && (
+            <span className="card__keywords">{face.keywords.join(' · ')}</span>
+          )}
         </span>
-      )}
-
-      {shows.keywords && face.keywords.length > 0 && (
-        <span className="card__keywords">{face.keywords.join(' · ')}</span>
       )}
 
       <span className="card__badges">
@@ -152,7 +193,7 @@ export function Card({ face, variant, state = 'idle', link, onActivate, onTrace 
             {marker}
           </span>
         ))}
-        {shows.board && face.tapped && <span className="badge badge--tapped">Tapped</span>}
+        {tapped && <span className="badge badge--tapped">Tapped</span>}
         {shows.board &&
           face.counters.map((counter) => (
             <span key={counter.kind} className="badge badge--counter">
@@ -162,22 +203,36 @@ export function Card({ face, variant, state = 'idle', link, onActivate, onTrace 
         {shows.board && face.damage !== undefined && (
           <span className="badge badge--damage">{face.damage} damage</span>
         )}
-        {face.stat && (
-          <span className={`card__stat card__stat--${face.stat.kind}`}>
-            <span className="visually-hidden">{face.stat.label} </span>
-            {face.stat.value}
-          </span>
-        )}
       </span>
+
+      {/* Outside the badge row and in the corner the printed one sits in, because it is the
+          number a player scans a whole board for and a row that reflows is the wrong place to
+          keep the one thing that must stay findable. */}
+      {face.stat && (
+        <span className={`card__stat card__stat--${face.stat.kind}`}>
+          <span className="visually-hidden">{face.stat.label} </span>
+          {face.stat.value}
+        </span>
+      )}
     </>
   )
 
-  // Pointer and keyboard say the same thing, so tracing is not a mouse-only affordance.
-  const traced = onTrace && {
+  // Pointer and keyboard say the same thing, so the preview and the trace are not mouse-only
+  // affordances.
+  const looked = onTrace && {
     onMouseEnter: () => onTrace(face.id),
     onMouseLeave: () => onTrace(undefined),
     onFocus: () => onTrace(face.id),
     onBlur: () => onTrace(undefined),
+  }
+
+  // The browser's own menu is suppressed only where this offers one of its own, so a surface
+  // that passed no handler behaves exactly as it did.
+  const inspected = onInspect && {
+    onContextMenu: (event: MouseEvent) => {
+      event.preventDefault()
+      onInspect(face.id)
+    },
   }
 
   // A button whenever it is clickable, so a keyboard reaches it on the same terms as a mouse and
@@ -186,13 +241,19 @@ export function Card({ face, variant, state = 'idle', link, onActivate, onTrace 
   // they most need to.
   if (!onActivate) {
     return (
-      <div className={className} {...traced}>
+      <div className={className} {...looked} {...inspected}>
         {body}
       </div>
     )
   }
   return (
-    <button type="button" className={className} onClick={() => onActivate(face.id)} {...traced}>
+    <button
+      type="button"
+      className={className}
+      onClick={() => onActivate(face.id)}
+      {...looked}
+      {...inspected}
+    >
       {body}
     </button>
   )

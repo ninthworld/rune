@@ -39,6 +39,23 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   the discriminators are structural and order-sensitive; the rules are the protocol's.
 - `src/normalize.ts` — turns wire absence into values a renderer can use. Every documented
   default lives here, so no component invents its own reading of a missing field.
+- `src/mana.ts` — a printed cost as symbols, and the tint a frame is washed in. Tokenizing
+  `{2}{G/U}` is presentation of a string the server sent; the tint is **the colours of the pips
+  that were printed** and deliberately none of the rules concepts it resembles — not colour, not
+  colour identity, not devotion. A card whose colour comes from anywhere else tints neutral,
+  which is the honest answer for a client that was handed a cost string, and is why the tint is
+  only ever a wash under text that states the real thing.
+- `src/keys.ts` — a keypress as an intent, and nothing else. Whether the intent is currently
+  possible is answered where the view is, out of `valid_actions`. The skip keys are **not** a
+  client-side auto-pass: each sends one `set_stops` and one pass, and the pacing that follows is
+  the server's settle acting on a preference it stores (ADR 0010). Nothing here loops or waits.
+- `src/art/` — ADR 0012's pipeline, keyed by `functional_id`. `procedural.ts` seeds a
+  composition from a card's own identity so the art window is never empty and nothing downloads;
+  `settings.ts` is the device preference, off by default; `source.ts` is the pluggable lookup
+  (Scryfall today) and the only thing that ever crosses it is a card name; `store.ts` is the
+  registry — one request per card ever, one at a time, spaced, with resolved URLs cached
+  device-local. **Art is cache, never state**: every test here is offline, and the whole UI must
+  still reconstruct from one `GameView` with the store empty.
 - `src/card-face.ts` — reduces the five card-shaped projections (`CardView`, `Permanent`,
   `StackItem`, `Emblem`, `CatalogCard`) to one `CardFace`. Every surface renders that and nothing
   else, so the hand, the board, the stack, and the deck builder cannot disagree about the same
@@ -78,10 +95,15 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   advertised, never rules reasoning.
 - `src/interaction.ts` — what one click *means*: which objects own an action, which slot a click
   answers, what is highlighted, and which submission is still unanswered. One gesture reaches
-  every object and resolves in a fixed order (fill a slot → inspect the selected → select a
-  subject → inspect), so the hand, the board, and a pile cannot behave differently. A click is
-  routed to the slot the server listed that id in, never to a cursor the client advances — that
-  is what lets one action ask "who attacks" and "what does each attack" at the same time.
+  every object and resolves in a fixed order (fill a slot → inspect the selected → **take the
+  one action the server offered** → select, where it offered more → inspect), so the hand, the
+  board, and a pile cannot behave differently. The count of actions the server attached to an
+  object is the whole of the take-versus-select rule: a "primary" action ranked by type would be
+  this client interpreting what an action *does*, which is exactly the reasoning that does not
+  live here. Reading is not a click at all — the pointer previews, the right-click inspects —
+  which is what makes a one-click action safe. A click is routed to the slot the server listed
+  that id in, never to a cursor the client advances; that is what lets one action ask "who
+  attacks" and "what does each attack" at the same time.
 - `src/socket.ts`, `src/useSession.ts` — the connection, and the latest frame it delivered. A
   dropped socket retries on its own and says `hello` with the stored token, which is what
   reclaims a held-open seat; the server answers by putting the connection back on whatever
@@ -90,7 +112,14 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   its `hello` is read, so a lobby frame carrying a different session is routine during a
   reconnect and adopting it would discard the token that owns the seat. Leaving a finished game
   is the deliberate opposite: forget the token, and connect as somebody new.
-- `src/ui/` — the screens. Grey-box on purpose: structure and legibility, no visual design.
+- `src/ui/` — the screens. The table is drawn: `Card.tsx` is one frame at five budgets, at a
+  printed card's proportions, with a name band, an art window, a text box, and the stat in the
+  corner; `Mana.tsx` draws a cost as the project's own discs (never an official symbol, never a
+  downloaded one) and hands assistive technology words instead; `CardArt.tsx` fills the window
+  with the procedural composition and lays a player-supplied illustration over it; `art.tsx` is
+  the provider the whole app is wrapped in, because the preference and the cache belong to the
+  *device* and a lobby, a builder, and a table all draw the same card. The lobby is still grey
+  box.
   `src/ui/game/` holds the table surfaces — header, seat panels, the two battlefields, the
   stack rail, hand, action dock, side panel. `Game.tsx` composes them and derives what they
   need; a surface receives answers, never the view, so none of them can grow a second reading
@@ -107,6 +136,11 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   row of steps, and that row is also where stops are set — a preference divorced from the strip
   it applies to is one nobody edits. The end of a match is the one panel that layers over the
   board, and the one action asked twice before it is sent.
+  Three surfaces exist because reading a card had to stop costing a click: `CardPreview` over
+  the side column follows the *look*, `Shortcuts` writes the keys down, and `PacePresets` puts
+  the whole stop preference on the same row as the strip it applies to — each shortcut printed
+  on the control that duplicates it, because a shortcut nobody can find is a shortcut nobody
+  uses.
   `src/ui/lobby/` holds the pre-game surfaces — table directory, table form, seat roster, deck
   panel, deck builder — with `Lobby.tsx` composing them the same way. Which of the two pre-game
   screens is on is the server's answer, not a client-held phase: a `LobbyView` with a `room` is a

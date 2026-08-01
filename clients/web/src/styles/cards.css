@@ -1,10 +1,19 @@
 /* Cards.
 
-   Still grey box: one procedural frame, no colour identity, no art, no theme. What is being
-   decided here is *anatomy* — where the name, cost, type, text, and stat sit, and that they sit
-   in the same places at every size — because that is what the layout work after this one
-   builds on. Which is also why the art window (ADR 0012) is reserved and empty rather than
-   absent: nothing below it moves if a player ever fills it. */
+   One frame, five budgets, and now a real card's anatomy: name band, art window, type band, text
+   box, and a stat in the corner, at the proportions a card is actually printed at. What that buys
+   is scanning — a board of forty permanents is read by shape, colour, and position long before it
+   is read by text, and a grid of same-coloured rectangles gives a player none of those.
+
+   The colour is `costTint` (`mana.ts`): the colours of the pips that were printed, and nothing
+   more. It is not colour, not colour identity, and not devotion — see that module's note. Every
+   frame is a wash *under* text that states the real thing, which is what makes a tint that
+   sometimes says less than the rules do a safe thing to draw.
+
+   The art window is ADR 0012's, and it is never empty: `art/procedural.ts` seeds a composition
+   from the card's own identity, and a player-supplied illustration covers it when there is one.
+   Nothing here downloads and nothing here is bundled. */
+
 .cards {
   list-style: none;
   padding: 0;
@@ -33,23 +42,59 @@
   max-width: 14rem;
 }
 
+/* ---------------------------------------------------------------------------
+   The frame
+   --------------------------------------------------------------------------- */
+
 .card {
-  /* A containing block for the absolutely-positioned screen-reader text inside. Without one,
-     those spans resolve against the viewport, escape every `overflow` on the way up — clipping
-     only applies to an ancestor that is in the containing-block chain — and a hand of twenty
-     cards ends up growing the page by the width of its own scroll area. */
+  /* The tint every part of the frame is mixed from. Overridden by the `card--tint-*` class the
+     component assigns; the neutral default is what a land, an artifact, and a card whose colour
+     the client was not told about all get. */
+  --tint: var(--mana-c);
+
+  /* A containing block for the corner stat, the badge strip, and the absolutely-positioned
+     screen-reader text inside. Without one, those spans resolve against the viewport, escape
+     every `overflow` on the way up — clipping only applies to an ancestor that is in the
+     containing-block chain — and a hand of twenty cards ends up growing the page by the width of
+     its own scroll area. */
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
   text-align: start;
-  padding: 0.35rem;
-  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, currentColor 5%, transparent);
+  padding: 0.3rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tint) 55%, transparent);
+  border-radius: 0.55rem;
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--tint) 28%, Canvas),
+    color-mix(in srgb, var(--tint) 9%, Canvas) 60%,
+    color-mix(in srgb, var(--tint) 18%, Canvas)
+  );
+  box-shadow: 0 1px 2px color-mix(in srgb, CanvasText 25%, transparent);
   color: inherit;
   font: inherit;
   line-height: 1.25;
+}
+
+.card--tint-w {
+  --tint: var(--mana-w);
+}
+.card--tint-u {
+  --tint: var(--mana-u);
+}
+.card--tint-b {
+  --tint: var(--mana-b);
+}
+.card--tint-r {
+  --tint: var(--mana-r);
+}
+.card--tint-g {
+  --tint: var(--mana-g);
+}
+.card--tint-multicolor {
+  --tint: var(--mana-gold);
 }
 
 button.card {
@@ -57,20 +102,20 @@ button.card {
 }
 
 button.card:hover {
-  border-color: currentColor;
+  border-color: var(--tint);
 }
 
 .card__band {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 0.3rem;
   font-weight: 600;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 /* The name is the one field that must never win a fight for space: it truncates, and the full
-   string is on the element and in the inspector. */
+   string is on the element, in the preview, and in the inspector. */
 .card__name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -79,31 +124,104 @@ button.card:hover {
 
 .card__cost {
   flex: none;
-  font-variant-numeric: tabular-nums;
 }
 
+/* The art window. Its box is fixed at roughly a printed card's, so nothing below it moves when
+   an illustration arrives, fails, or is switched off. */
 .card__art {
+  position: relative;
   display: block;
-  aspect-ratio: 4 / 3;
-  border: 1px dashed color-mix(in srgb, currentColor 30%, transparent);
+  flex: none;
+  aspect-ratio: 63 / 47;
   border-radius: 0.2rem;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0 6px,
-    color-mix(in srgb, currentColor 7%, transparent) 6px 12px
-  );
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tint) 40%, transparent);
+  /* Seeded per card by `art/procedural.ts`, which sets only the positions; every colour here is
+     the frame's own tint, so the same card is washed identically in the hand and on the board. */
+  background:
+    radial-gradient(
+      circle at var(--art-x1, 35%) var(--art-y1, 30%),
+      color-mix(in srgb, var(--tint) 88%, transparent),
+      transparent var(--art-r1, 60%)
+    ),
+    radial-gradient(
+      circle at var(--art-x2, 70%) var(--art-y2, 75%),
+      color-mix(in srgb, var(--tint) 60%, transparent),
+      transparent var(--art-r2, 55%)
+    ),
+    linear-gradient(
+      var(--art-angle, 200deg),
+      color-mix(in srgb, var(--tint) 40%, transparent) 0 var(--art-band, 50%),
+      color-mix(in srgb, CanvasText 12%, transparent) var(--art-band, 50%) 100%
+    ),
+    color-mix(in srgb, CanvasText 14%, Canvas);
+}
+
+/* A player-supplied illustration, over the procedural composition rather than instead of it: a
+   slow, broken, or transparent image leaves the generated face showing rather than a hole. */
+.card__illustration {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+/* The whole card image as the face (ADR 0012). The frame gives up its own text — which is on the
+   picture — and keeps everything the *server* computed: the stat, the counters, the marked
+   damage, the state outlines, the tap. A buffed 4/4 never reads as its printed 2/2. */
+.card--full {
+  padding: 0;
+  gap: 0;
+  border-color: transparent;
+  /* Every tier, not only the two that already have it. With the frame's own text hidden there
+     is nothing left in the flow to give the card a height, so the image's own proportions are
+     what the box is — which is also the only honest shape for a whole card image. */
+  aspect-ratio: 63 / 88;
+}
+
+.card--full .card__art {
+  flex: 1 1 auto;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: inherit;
+}
+
+/* Without the frame's padding the overlays would sit on the image's own rounded corner. */
+.card--full .card__badges {
+  inset-inline: 0.35rem;
+  inset-block-end: 0.35rem;
+}
+
+.card--full .card__stat {
+  inset-block-end: 0.35rem;
+  inset-inline-end: 0.4rem;
 }
 
 .card__type {
-  font-size: 0.68rem;
-  opacity: 0.8;
+  flex: none;
+  font-size: 0.66rem;
+  opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* The text box: one region, so the rules and the keywords clamp together rather than the
+   keywords being pushed out by a long paragraph above them. */
+.card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.2rem 0.25rem;
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, Canvas 70%, transparent);
+}
+
 .card__rules {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -112,7 +230,7 @@ button.card:hover {
 }
 
 .card__keywords {
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-style: italic;
   opacity: 0.85;
   overflow: hidden;
@@ -133,6 +251,7 @@ button.card:hover {
   padding: 0.05rem 0.25rem;
   border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
   border-radius: 0.6rem;
+  background: color-mix(in srgb, Canvas 75%, transparent);
   white-space: nowrap;
 }
 
@@ -142,12 +261,19 @@ button.card:hover {
   font-weight: 600;
 }
 
-/* The stat sits last and hard right, so a player scanning a row of permanents finds every
-   power/toughness and every loyalty in the same place. */
+/* The stat sits where the printed one does — bottom right, over the frame's own edge — because
+   it is the number a player scans a whole board for, and a row that reflows is the wrong place
+   to keep the one thing that must stay findable. */
 .card__stat {
-  margin-inline-start: auto;
+  position: absolute;
+  inset-block-end: 0.25rem;
+  inset-inline-end: 0.3rem;
+  padding: 0.02rem 0.3rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--tint) 65%, transparent);
+  background: color-mix(in srgb, Canvas 82%, var(--tint));
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -157,27 +283,42 @@ button.card:hover {
   font-weight: 400;
 }
 
-/* Sizes. One frame, five budgets. */
+/* ---------------------------------------------------------------------------
+   Sizes. One frame, five budgets.
+   --------------------------------------------------------------------------- */
+
+.card--hand,
+.card--battlefield {
+  aspect-ratio: 63 / 88;
+}
+
 .card--hand {
-  width: 9.5rem;
-  min-height: 11.5rem;
+  width: var(--card-hand-w);
 }
 
 .card--battlefield {
-  width: 8rem;
-  min-height: 8rem;
+  width: var(--card-field-w);
 }
 
-/* On the table both tiers give up art height rather than text height. A shorter window keeps
-   the name, the stat, and the badges — the things a player reads across a board — inside a
-   fixed row, and the art window is the one part of the frame with nothing in it yet. */
-.card--hand .card__art,
-.card--battlefield .card__art {
-  aspect-ratio: 3 / 2;
+/* On the table both tiers keep the badge strip out of the flow, pinned along the bottom edge
+   over whatever is there. A permanent can carry four counters, marked damage, a token marker and
+   a selection state at once, and a row that grew would either push the type line out of the frame
+   or force the frame to a height the board cannot afford. */
+.card--hand .card__badges,
+.card--battlefield .card__badges {
+  position: absolute;
+  inset-inline: 0.25rem;
+  inset-block-end: 0.25rem;
+  /* Clear of the corner stat, which never moves. */
+  padding-inline-end: 2.6rem;
+}
+
+.card--battlefield .card__band {
+  font-size: 0.7rem;
 }
 
 .card--battlefield .badge {
-  font-size: 0.58rem;
+  font-size: 0.56rem;
 }
 
 .card--stack,
@@ -196,9 +337,17 @@ button.card:hover {
   flex: 1 1 auto;
 }
 
+/* Off the table the stat returns to the flow: those variants are rows and short columns with no
+   corner to sit in, and a pill floating over a one-line summary would overlap its text. */
+.card--stack .card__stat,
+.card--compact .card__stat {
+  position: static;
+  margin-inline-start: auto;
+}
+
 .card--inspect {
-  width: 22rem;
-  padding: 0.6rem;
+  width: 21rem;
+  padding: 0.5rem;
 }
 
 .card--inspect .card__name {
@@ -210,6 +359,14 @@ button.card:hover {
   white-space: normal;
 }
 
+.card--inspect .card__band {
+  font-size: 0.95rem;
+}
+
+.card--inspect .card__type {
+  font-size: 0.78rem;
+}
+
 /* Nothing is clamped in the inspector — being the place the rest of it lives is the whole
    reason the other variants are allowed to truncate. */
 .card--inspect .card__rules {
@@ -219,16 +376,56 @@ button.card:hover {
   font-size: 0.8rem;
 }
 
-/* Tapped is drawn as a tilt plus a badge rather than the full 90° turn. A real turn needs a
-   slot that reserves the rotated footprint, and the board rows here are sized to the card's
-   upright height — the tilt is kept small enough that its overhang stays inside the row. */
-.card--tapped {
-  transform: rotate(3deg);
-  opacity: 0.85;
+/* ---------------------------------------------------------------------------
+   Tapping
+   --------------------------------------------------------------------------- */
+
+/* A permanent turns, because that is what tapping *is* at a table, and a board is read by which
+   cards are sideways long before it is read by badges. The turn needs a slot that reserves the
+   rotated footprint, so `Battlefield` wraps every permanent in one and the slot — not the card —
+   is what widens: neighbours slide aside over the same half second the card takes to turn, which
+   is exactly what happens when a real card is laid down.
+
+   The badge and the frame's own wash stay, because a turn is invisible to a screen reader and to
+   anyone who has asked for less motion. */
+.card-slot {
+  position: relative;
+  flex: none;
+  width: var(--card-field-w);
+  height: var(--card-field-h);
+  transition: width var(--tap-duration) var(--tap-easing);
 }
 
-/* Interaction states. Presentation only — the caller assigns these from what the server
-   advertised, and each is distinguishable without relying on colour alone. */
+.card-slot:has(.card--tapped) {
+  width: var(--card-field-h);
+}
+
+.card-slot > .card--battlefield {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  transform-origin: center;
+  transition: transform var(--tap-duration) var(--tap-easing);
+}
+
+.card-slot > .card--tapped {
+  transform: translateX(-50%) rotate(90deg);
+}
+
+/* Everywhere that is not a slot — the inspector, a pile — the card keeps its upright box and
+   says it is tapped in the badge and a slight fade. Rotating there would turn a panel opened to
+   *read* a card on its side. */
+.card--tapped:not(.card-slot > .card--tapped) {
+  opacity: 0.9;
+}
+
+/* ---------------------------------------------------------------------------
+   Interaction states
+   --------------------------------------------------------------------------- */
+
+/* Presentation only — the caller assigns these from what the server advertised, and each is
+   distinguishable without relying on colour alone. */
 .card--selected {
   outline: 3px solid currentColor;
   outline-offset: 1px;
@@ -262,6 +459,67 @@ button.card:hover {
 .card--linked {
   box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 55%, transparent);
 }
+
+/* ---------------------------------------------------------------------------
+   Mana
+   --------------------------------------------------------------------------- */
+
+/* The project's own shapes: a flat disc with a letter in it, drawn in CSS from the page's own
+   font. Nothing here reproduces an official symbol and nothing is downloaded. */
+/* Sized from its own font rather than from whatever text it sits beside, because a cost that
+   shrinks with the band it is in stops being readable exactly where the band is tightest — and
+   the cost is the second thing a player reads on a card, after the name. */
+.mana {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12em;
+  vertical-align: middle;
+  font-size: 0.85rem;
+}
+
+.mana__pip {
+  --pip-from: var(--mana-c);
+  --pip-to: var(--pip-from);
+  --pip-ink: var(--mana-c-ink);
+
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.15em;
+  block-size: 1.15em;
+  border-radius: 50%;
+  background: var(--pip-from);
+  color: var(--pip-ink);
+  font-size: 0.78em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  box-shadow: inset 0 -0.1em 0.14em color-mix(in srgb, CanvasText 32%, transparent);
+}
+
+/* Two colours, drawn as the two halves the pip actually has. */
+.mana__pip--split {
+  background: linear-gradient(135deg, var(--pip-from) 50%, var(--pip-to) 50%);
+  font-size: 0.62em;
+}
+
+/* A Phyrexian pip is paid with life, not with the colour it names, so it is marked as its own
+   thing rather than reading as an ordinary coloured pip. */
+.mana__pip--phyrexian {
+  border-radius: 40% 40% 50% 50%;
+  font-size: 0.62em;
+}
+
+.mana__pip--variable,
+.mana__pip--tap,
+.mana__pip--untap,
+.mana__pip--snow {
+  background: color-mix(in srgb, CanvasText 22%, Canvas);
+  color: CanvasText;
+}
+
+/* ---------------------------------------------------------------------------
+   Relationship trails
+   --------------------------------------------------------------------------- */
 
 /* One object's relationships, as the controls that reach them. Reads as a sentence rather than
    a row of buttons, so a trail under every permanent does not turn the board into a toolbar. */
@@ -302,13 +560,17 @@ button.card:hover {
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------------------
+   The inspector
+   --------------------------------------------------------------------------- */
+
 .inspector-backdrop {
   position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
   padding: 1.5rem;
-  background: color-mix(in srgb, currentColor 35%, transparent);
+  background: color-mix(in srgb, CanvasText 45%, transparent);
 }
 
 .inspector {

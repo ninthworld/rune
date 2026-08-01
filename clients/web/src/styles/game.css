@@ -115,7 +115,7 @@ main:has(.screen) {
   padding: 0.5rem;
   display: grid;
   gap: 0.4rem;
-  grid-template-columns: minmax(0, 1fr) 17rem;
+  grid-template-columns: minmax(0, 1fr) 19rem;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   grid-template-areas:
     'match side'
@@ -238,6 +238,127 @@ main:has(.screen) {
 .strip__mark {
   font-size: 0.6rem;
   opacity: 0.8;
+}
+
+/* The strip and the pace beside it: one preference at two grains, on one row. The pace wraps
+   under the steps on a narrow window rather than compressing them, because a twelve-step row
+   that has lost its labels has lost the thing it exists for. */
+.match__pacing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.75rem;
+}
+
+.pace {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-block-start: 0.25rem;
+  font-size: 0.7rem;
+}
+
+.pace__label {
+  opacity: 0.6;
+}
+
+.pace__preset,
+.pace__keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 0.2rem;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.pace__preset:hover,
+.pace__keys:hover,
+.pace__preset:focus-visible,
+.pace__keys:focus-visible {
+  opacity: 1;
+}
+
+/* The pace the server is actually honouring. Filled rather than outlined, because the controls
+   next to it are already outlined for their stop state and a third border weight would be a
+   third thing to learn. */
+.pace__preset[aria-pressed='true'] {
+  opacity: 1;
+  font-weight: 700;
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* A key, printed on the control that duplicates it — which is how a player finds out there is a
+   keyboard here at all. */
+kbd {
+  padding: 0 0.2rem;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-family: inherit;
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
+.shortcuts {
+  max-width: 28rem;
+}
+
+.shortcuts__list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.shortcuts__row {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.shortcuts__row dt,
+.shortcuts__row dd {
+  margin: 0;
+}
+
+.shortcuts__note {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+/* The art panel is a decision, not a toggle, so it is laid out to be read: one paragraph per
+   choice, at full width, rather than a row of labels. */
+.art-settings {
+  max-width: 34rem;
+}
+
+.art-settings__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 0.3rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.art-settings__group legend {
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.art-settings__note {
+  font-size: 0.8rem;
+  opacity: 0.75;
 }
 
 .match__notice {
@@ -562,6 +683,31 @@ main:has(.screen) {
 
 .side__block {
   flex: none;
+}
+
+/* The card under the pointer, over the top of this column.
+
+   Sticky rather than absolute because the column scrolls: the preview has to stay at the top of
+   what is *visible*, not at the top of what is scrolled past. It claims no height of its own and
+   its content overflows downward, so raising and dropping it moves nothing else — which is the
+   whole requirement for something that appears and disappears as a pointer crosses a board. */
+.preview {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 3;
+  height: 0;
+  /* Cancels the column's own gap, which a zero-height child would otherwise still contribute —
+     a 0.4rem jump on every hover is exactly the jitter this layout is avoiding. */
+  margin-block-end: -0.4rem;
+  overflow: visible;
+  /* A preview the pointer can land on steals the hover from the card that raised it, and then
+     flickers between the two forever. */
+  pointer-events: none;
+}
+
+.preview .card--inspect {
+  width: 100%;
+  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, CanvasText 45%, transparent);
 }
 
 /* Inside a column that already scrolls, the log's own cap would give it a second scrollbar. */

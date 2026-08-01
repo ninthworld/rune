@@ -199,8 +199,12 @@ test.describe('a board with relationships to trace', () => {
     // symbol, so it reaches the screen as a *marked* pip with the sentence that explains it —
     // an asterisk on its own is a fact a player has no way to read.
     const pool = page.getByRole('region', { name: 'Your seat' }).getByText(/^Pool:/)
-    await expect(pool).toContainText('{R}')
-    await expect(pool).toContainText('{G}*')
+    // Floating mana is drawn with the same discs a card's cost is, and reaches assistive
+    // technology as the same words, because a pool and the cost it is about to pay are the one
+    // comparison a player makes constantly.
+    await expect(pool.getByRole('img', { name: 'red mana' })).toBeVisible()
+    await expect(pool.getByRole('img', { name: 'green mana' })).toBeVisible()
+    await expect(pool).toContainText('restricted')
     await expect(pool).toContainText('spendable only on what made it')
 
     // None of it grew the page: every region still scrolls inside its own area.

@@ -11,7 +11,7 @@
  */
 import { expect, test } from '@playwright/test'
 
-import { DESKTOP, fixture, pageFits, serveFrames, submissions } from './frames'
+import { DESKTOP, fixture, messages, pageFits, serveFrames, submissions } from './frames'
 
 test.describe('the board, from one view', () => {
   test('renders the turn, the hand, and the stack the server sent', async ({ page }) => {
@@ -137,19 +137,38 @@ test.describe('the board, from one view', () => {
     await expect(inspector).toHaveCount(0)
   })
 
-  test('reads a card that does have an action, on the second click', async ({ page }) => {
-    // Selecting is the first click and inspecting the second, so an object with something to do
-    // never becomes an object that cannot be read. Nothing about either is sent.
+  test('casts a card the server offered one action for, on one click', async ({ page }) => {
+    // One action is one meaning, so the click is that meaning. What is sent is the id the
+    // server issued for it and nothing the client composed.
+    const { sent } = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    await page
+      .getByRole('region', { name: 'Your hand' })
+      .getByRole('button', { name: /^Lightning Bolt/ })
+      .click()
+
+    await expect.poll(() => submissions(sent)).toHaveLength(1)
+    expect(submissions(sent)[0]).toMatchObject({ type: 'choose_action', action_id: 'a3' })
+  })
+
+  test('reads a card without spending a click on it', async ({ page }) => {
+    // Which is what makes the click above safe: a card whose one action now fires immediately
+    // has to stay readable, so reading moved to gestures that cost nothing — the pointer, and
+    // the right-click that works on any object whatever else is in progress.
     const { sent } = await serveFrames(page, [fixture('gameview.json')])
     await page.goto('/')
 
     const bolt = page
       .getByRole('region', { name: 'Your hand' })
       .getByRole('button', { name: /^Lightning Bolt/ })
-    await bolt.click()
-    await expect(page.getByRole('region', { name: 'Actions' })).toContainText('Cast Lightning Bolt')
 
-    await bolt.click()
+    await bolt.hover()
+    await expect(page.getByRole('complementary')).toContainText(
+      'Lightning Bolt deals 3 damage to any target.',
+    )
+
+    await bolt.click({ button: 'right' })
     await expect(page.getByRole('dialog')).toContainText('Lightning Bolt')
     expect(submissions(sent)).toEqual([])
   })
@@ -216,25 +235,17 @@ test.describe('the board, from one view', () => {
 })
 
 test.describe('acting by clicking the table', () => {
-  test('offers only the actions the server attached to the card that was clicked', async ({
-    page,
-  }) => {
+  test('plays the land the click was on, and only that one', async ({ page }) => {
     const { sent } = await serveFrames(page, [fixture('gameview-actions.json')])
     await page.goto('/')
 
-    const actions = page.getByRole('region', { name: 'Actions' })
     await page
       .getByRole('region', { name: 'Your hand' })
       .getByRole('button', { name: /^Forest/ })
       .click()
 
-    const owned = actions.getByRole('list', { name: 'Actions for the selected object' })
-    await expect(owned.getByRole('button', { name: 'Play Forest' })).toBeVisible()
-    // The other card's action is the other card's business; a subject list is not a menu of
-    // everything that is legal right now.
-    await expect(owned.getByRole('button', { name: /Emberfall/ })).toHaveCount(0)
-
-    await owned.getByRole('button', { name: 'Play Forest' }).click()
+    // The action the *clicked object* owns, with the token the server issued for it. The other
+    // card's action is the other card's business: a click is never a menu of everything legal.
     await expect.poll(() => submissions(sent)).toHaveLength(1)
     expect(submissions(sent)[0]).toMatchObject({
       action_id: 'a1',
@@ -250,7 +261,6 @@ test.describe('acting by clicking the table', () => {
       .getByRole('region', { name: 'Your battlefield' })
       .getByRole('button', { name: /^Llanowar Elves/ })
       .click()
-    await page.getByRole('button', { name: '{T}: Add {G}. ⟨mana⟩' }).click()
 
     await expect.poll(() => submissions(sent)).toHaveLength(1)
     expect(submissions(sent)[0]).toMatchObject({ action_id: 'a3' })
@@ -261,8 +271,9 @@ test.describe('acting by clicking the table', () => {
     await page.goto('/')
 
     const hand = page.getByRole('region', { name: 'Your hand' })
+    // One click arms it, because the server offered exactly one action for this card and that
+    // action asks questions before it can be sent.
     await hand.getByRole('button', { name: /^Emberfall Surge/ }).click()
-    await page.getByRole('button', { name: /^Cast Emberfall Surge/ }).click()
 
     // `t0` lists the elves and the opponent. Both light up — a seat is a target like anything
     // else — and the Forest, which owns an action of its own, does not.
@@ -285,7 +296,6 @@ test.describe('acting by clicking the table', () => {
       .getByRole('region', { name: 'Your hand' })
       .getByRole('button', { name: /^Emberfall Surge/ })
       .click()
-    await page.getByRole('button', { name: /^Cast Emberfall Surge/ }).click()
 
     const confirm = page.getByRole('button', { name: 'Confirm' })
     // X has a range and no answer yet, so the draft is incomplete and cannot be sent.
@@ -320,7 +330,6 @@ test.describe('acting by clicking the table', () => {
       .getByRole('region', { name: 'Your hand' })
       .getByRole('button', { name: /^Emberfall Surge/ })
       .click()
-    await page.getByRole('button', { name: /^Cast Emberfall Surge/ }).click()
     await page.getByRole('button', { name: 'Cancel' }).click()
 
     // Back, not away: the card is still selected and its actions are offered again, so a
@@ -656,12 +665,14 @@ test.describe('a choice the game will not proceed past', () => {
 
     const stack = page.getByRole('region', { name: 'Stack' })
     await expect(stack.getByRole('button').first()).toHaveClass(/card--candidate/)
-    await stack.getByRole('button').first().click()
 
-    await page
-      .getByRole('list', { name: 'Actions for the selected object' })
-      .getByRole('button', { name: /Target opponent loses 1 life/ })
-      .click()
+    // One action, so the click on the stack object *is* arming it — and because that action
+    // asks a question, what the click reaches is the question rather than a submission.
+    await stack.getByRole('button').first().click()
+    await expect(page.getByRole('region', { name: 'Choices' })).toContainText(
+      'Target opponent loses 1 life',
+    )
+
     await page.getByRole('region', { name: 'p1 seat' }).getByRole('button', { name: 'p1' }).click()
     await page.getByRole('button', { name: 'Confirm' }).click()
 
@@ -930,5 +941,104 @@ test.describe('a message this client cannot read', () => {
 
     await expect(page.getByRole('status')).toContainText('could not be read')
     await expect(page.getByRole('button', { name: 'Create a table' })).toBeVisible()
+  })
+})
+
+test.describe('the keyboard, and what the frame draws', () => {
+  test('passes priority on space', async ({ page }) => {
+    // The most-pressed control in a game of Magic, under a thumb. What it sends is the action
+    // the server listed as the pass, by the id the server issued for it.
+    const { sent } = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: /^Turn \d+ — / })).toBeVisible()
+
+    await page.keyboard.press(' ')
+
+    await expect.poll(() => submissions(sent)).toHaveLength(1)
+    expect(submissions(sent)[0]).toMatchObject({ type: 'choose_action', action_id: 'a1' })
+  })
+
+  test('a skip key sets the stop preference and hands the game back', async ({ page }) => {
+    // Two messages and no loop: the preference the server will honour, and one pass. Everything
+    // after that is the server's settle acting on a preference it stores (ADR 0010) — nothing
+    // in this client decides that a step was uninteresting.
+    const { sent } = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: /^Turn \d+ — / })).toBeVisible()
+
+    await page.keyboard.press('F5')
+
+    // A bare `set_stops` is the protocol's own spelling of "stop nowhere".
+    await expect.poll(() => messages(sent, 'set_stops')).toEqual([{ type: 'set_stops' }])
+    await expect.poll(() => submissions(sent)).toHaveLength(1)
+    expect(submissions(sent)[0]).toMatchObject({ action_id: 'a1' })
+  })
+
+  test('asking to stop everywhere does not also skip', async ({ page }) => {
+    // The opposite request: passing on top of it would skip the very step just asked for.
+    const { sent } = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: /^Turn \d+ — / })).toBeVisible()
+
+    await page.keyboard.press('F3')
+
+    await expect.poll(() => messages(sent, 'set_stops')).toHaveLength(1)
+    expect(submissions(sent)).toEqual([])
+  })
+
+  test('escape backs out of an armed action without sending anything', async ({ page }) => {
+    const { sent } = await serveFrames(page, [fixture('gameview-actions.json')])
+    await page.goto('/')
+
+    await page
+      .getByRole('region', { name: 'Your hand' })
+      .getByRole('button', { name: /^Emberfall Surge/ })
+      .click()
+    await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible()
+
+    await page.keyboard.press('Escape')
+
+    await expect(page.getByRole('button', { name: 'Confirm' })).toHaveCount(0)
+    expect(submissions(sent)).toEqual([])
+  })
+
+  test('draws a cost as pips without losing it from the name', async ({ page }) => {
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    const bolt = page
+      .getByRole('region', { name: 'Your hand' })
+      .getByRole('button', { name: /^Lightning Bolt/ })
+
+    // The pips are a labelled image: a disc with an R in it says nothing when read out, so the
+    // cost reaches assistive technology as words instead.
+    await expect(bolt.getByRole('img', { name: 'red mana' })).toBeVisible()
+  })
+
+  test('turns a tapped permanent, in a slot that reserves the room', async ({ page }) => {
+    await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+
+    const bear = page
+      .getByRole('region', { name: 'Your battlefield' })
+      .getByRole('button', { name: /^Grizzly Bears/ })
+
+    // A quarter turn, clockwise. Asserted as the matrix the browser resolved rather than as the
+    // declaration, so a rule that stops applying fails here.
+    await expect
+      .poll(() => bear.evaluate((card) => getComputedStyle(card).transform))
+      .toMatch(/^matrix\(0, 1, -1, 0/)
+
+    // And the slot it turned inside widened to hold it, so it did not land on its neighbour.
+    const slot = page.locator('.card-slot').filter({ hasText: 'Grizzly Bears' })
+    await expect
+      .poll(async () => {
+        const box = await slot.boundingBox()
+        const card = await bear.boundingBox()
+        // Both boxes are what the browser painted, so the card's width here is already its
+        // *rotated* width — which is exactly what the slot has to be wide enough to hold.
+        return box && card ? box.width >= card.width - 1 : false
+      })
+      .toBe(true)
   })
 })
