@@ -318,6 +318,7 @@ ephemeral presentation only (an auto-dismissing toast) — never load-bearing st
 | `power`, `toughness` | `string?` | Computed creature values |
 | `loyalty` | `string?` | Printed **starting** loyalty (planeswalkers only, CR 306.5b) |
 | `keywords` | `string[]?` | Lowercase keyword names |
+| `card_types` | `CardType[]?` | The card's types (CR 300), as the structured set `type_line` is rendered from; omitted when the server states none |
 | `token` | `boolean?` | The object is a **token** (CR 111) rather than a card; omitted (and `false`) for every card |
 
 `id` identifies one physical game object and is used by actions. `functional_id` identifies
@@ -325,6 +326,24 @@ the underlying card definition and is not a legal-action handle. Clients treat b
 opaque strings. The web client uses `functional_id` as the key of its client-local card-art
 cache (ADR 0012) — a pure presentation enrichment; the wire contract is unchanged and a
 client that ignores the field renders completely without it.
+
+`card_types` is the **set** behind `type_line`'s sentence, and both are projected from one
+source so they can never disagree about the same card. It exists because the questions a
+presentation actually asks — group the battlefield, put the lands in a row, arrange combat —
+need to know that a permanent is a creature, and the only other way to find out is to parse
+`"Artifact Creature — Thopter"`. That parse is exactly what a client must not do: it
+re-implements a grammar in every consumer and it is wrong on the cards where the answer
+matters, an animated land or a permanent whose types an effect changed. Values are lowercase
+(`"land"`, `"creature"`, `"artifact"`, `"enchantment"`, `"instant"`, `"sorcery"`,
+`"planeswalker"`, `"battle"`); a client that meets one it does not know renders the card
+anyway, because the type line still says what it is.
+
+Subtypes are deliberately absent. They are an open set of thousands, they belong to the
+printed sentence, and no presentation keys off them. An **empty or omitted** list means the
+server stated no types — a defensive placeholder for an object it could not resolve — and
+never "this card has no types"; a client renders such an object normally rather than
+concluding anything from the absence. `CatalogCard` carries the same field, so a card being
+browsed and the same card in a hand present identically.
 
 `loyalty` is what a planeswalker card *enters the battlefield with* — the number printed
 in its corner — and never changes. It is **not** how much loyalty a planeswalker on the
@@ -1136,6 +1155,7 @@ in-game `CardView`, named by identity rather than a per-game entity id:
 | `toughness` | `string?` | Toughness (creatures only) |
 | `loyalty` | `string?` | Printed starting loyalty (planeswalkers only) |
 | `keywords` | `string[]?` | Keyword abilities as lowercase wire names; omitted when empty |
+| `card_types` | `CardType[]?` | The card's types, exactly as an in-game `CardView` states them |
 
 Each `CatalogFormat` exposes exactly the server-side deck-legality policy a `submit_deck` is
 validated against, so a client can build a legal deck ahead of time:

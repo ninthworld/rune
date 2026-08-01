@@ -27,7 +27,7 @@ use crate::rules_text::{
     ability_text, effects_description, optional_effect_question, rules_text, token_rules_text,
 };
 use sage_protocol::{
-    ActionDestination, CardView, ChooseAction, Color as ColorView,
+    ActionDestination, CardType, CardView, ChooseAction, Color as ColorView,
     CommanderDamage as CommanderDamageView, CommanderIdentity as CommanderIdentityView,
     CommanderTax as CommanderTaxView, Counter, Emblem as EmblemView, GameLogEntry, GameLogEvent,
     GameOverReason, GameResult as GameResultView, GameView, LogBlock, LogDamageTarget, LogEntity,

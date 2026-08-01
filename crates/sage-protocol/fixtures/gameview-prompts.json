@@ -6,6 +6,7 @@
       "id": "card_11",
       "name": "Grizzly Bears",
       "type_line": "Creature — Bear",
+      "card_types": ["creature"],
       "mana_cost": "{1}{G}",
       "power": "2",
       "toughness": "2"

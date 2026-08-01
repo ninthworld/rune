@@ -305,6 +305,7 @@ mod tests {
             toughness: None,
             loyalty: None,
             keywords: vec![],
+            card_types: Vec::new(),
         }
     }
 
@@ -326,6 +327,7 @@ mod tests {
                 toughness: Some(toughness.to_string()),
                 loyalty: None,
                 keywords: vec![],
+                card_types: Vec::new(),
             },
             tapped: false,
             attacking: false,

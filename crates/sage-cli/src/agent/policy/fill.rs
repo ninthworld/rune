@@ -327,6 +327,7 @@ mod tests {
                 toughness: Some(toughness.to_string()),
                 loyalty: None,
                 keywords: vec![],
+                card_types: Vec::new(),
             },
             tapped: false,
             attacking: false,
@@ -429,6 +430,7 @@ mod tests {
         let with_keyword = |id: &str, controller: &str, p: i64, t: i64, kw: &str| Permanent {
             card: CardView {
                 keywords: vec![kw.to_string()],
+                card_types: Vec::new(),
                 ..creature_perm(id, controller, p, t).card
             },
             ..creature_perm(id, controller, p, t)

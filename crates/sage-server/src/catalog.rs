@@ -39,6 +39,7 @@ fn catalog_card(data: &CardData) -> CatalogCard {
         toughness: view.toughness,
         loyalty: view.loyalty,
         keywords: view.keywords,
+        card_types: view.card_types,
     }
 }
 

@@ -18,12 +18,14 @@
       "id": "c_forest",
       "name": "Forest",
       "type_line": "Basic Land — Forest",
+      "card_types": ["land"],
       "functional_id": "forest"
     },
     {
       "id": "c_fireball",
       "name": "Emberfall Surge",
       "type_line": "Sorcery",
+      "card_types": ["sorcery"],
       "mana_cost": "{X}{R}",
       "rules_text": "Emberfall Surge deals X damage to any target.",
       "functional_id": "emberfall_surge"
@@ -38,6 +40,7 @@
         "id": "perm_elves",
         "name": "Llanowar Elves",
         "type_line": "Creature — Elf Druid",
+        "card_types": ["creature"],
         "mana_cost": "{G}",
         "power": "1",
         "toughness": "1",

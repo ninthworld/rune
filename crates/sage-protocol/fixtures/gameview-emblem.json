@@ -22,6 +22,7 @@
         "id": "perm_ogre",
         "name": "Onakke Ogre",
         "type_line": "Creature — Ogre Warrior",
+        "card_types": ["creature"],
         "mana_cost": "{2}{R}",
         "power": "6",
         "toughness": "4",
@@ -37,6 +38,7 @@
         "id": "perm_ajani",
         "name": "Ajani, Adversary of Tyrants",
         "type_line": "Legendary Planeswalker — Ajani",
+        "card_types": ["planeswalker"],
         "mana_cost": "{2}{W}{W}",
         "loyalty": "4",
         "functional_id": "ajani_adversary_of_tyrants"

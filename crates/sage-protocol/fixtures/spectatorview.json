@@ -25,6 +25,7 @@
         "id": "card_11",
         "name": "Llanowar Elves",
         "type_line": "Creature — Elf Druid",
+        "card_types": ["creature"],
         "mana_cost": "{G}",
         "rules_text": "{T}: Add {G}.",
         "functional_id": "llanowar_elves",
@@ -41,6 +42,7 @@
         "id": "card_19",
         "name": "Serra Angel",
         "type_line": "Creature — Angel",
+        "card_types": ["creature"],
         "mana_cost": "{3}{W}{W}",
         "functional_id": "serra_angel",
         "power": "4",
@@ -69,6 +71,7 @@
           "id": "card_30",
           "name": "Mountain",
           "type_line": "Basic Land — Mountain",
+          "card_types": ["land"],
           "functional_id": "mountain"
         }
       ]

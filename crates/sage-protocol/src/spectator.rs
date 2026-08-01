@@ -186,6 +186,7 @@ mod tests {
                     toughness: None,
                     loyalty: None,
                     keywords: vec![],
+                    card_types: Vec::new(),
                 }),
             }],
             graveyards: vec![],
