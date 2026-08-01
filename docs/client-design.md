@@ -466,9 +466,98 @@ What this settles:
 - Tier 1 before a game exists: which table you are at, who is in it, what it is waiting on, and how
   to leave.
 
-The composition itself — what the navigation carries, how the builder packs a catalog, what a table
-row shows — is a design pass of its own, tracked as a child of #652 and written into this section
-before any of it is built.
+### 9.1 What is wrong with it now
+
+Worth recording precisely, because every rule below is an answer to something on this list.
+
+- **`Card art` is a top-level button** in the header, competing with the game for the most expensive
+  space on the screen, to reach one device preference.
+- **`Display name` is a bare input and a `Set name` button, parked in the chrome permanently.** It
+  is a one-time setup task that every screen pays for, forever.
+- **Everything is narrated.** *"Plays a random legal action each decision. A simple sparring
+  partner."* · *"Waiting on — Seat 1 — No deck yet · Seat 2 — Nobody here yet"* · *"1v1 · 2 seats ·
+  public · id `r0`"*. The last of those prints a room identifier no player has any use for.
+- **Three nested boxes** — page, then table, then Seats, then Deck — each with its own heading, to
+  carry about six facts.
+- **A full-width native `<select>` whose arrow is clipped at the right edge at 120% zoom.**
+- **Roughly 40% of the screen is empty** below it all.
+
+### 9.2 The rules the lobby is drawn by
+
+1. **A control says what it does. It does not explain itself.** *"Plays a random legal action each
+   decision. A simple sparring partner"* is a description of an option, and it belongs where a
+   player asks for it — on the option, when they are choosing between options — not printed beside
+   the control forever.
+2. **State is shown, not narrated.** *"Waiting on — Seat 1 — No deck yet"* restates in prose what
+   the seat rows directly above already say. If a fact needs a sentence to be legible, the thing
+   drawing it is wrong; the sentence is not the fix.
+3. **No identifier a player has no use for.** A room id belongs in a log.
+4. **One box.** A panel inside a panel inside a panel, each with a heading, is a document's way of
+   grouping. Grouping is what space and alignment are for.
+5. **Setup happens in setup.** A task performed once does not live in the chrome of every screen.
+6. **Everything about the device is one destination**, not a scatter of buttons. See §9.6.
+7. Everything in §7 applies: fitted text, the 11px chrome floor, and **no native form control** —
+   a `<select>` that clips its own arrow at 120% zoom is the whole argument.
+
+### 9.3 Connect
+
+The first screen. It exists because a player should arrive at the lobby already being somebody,
+rather than finding an input box in the header asking who they are.
+
+- **Name**, prefilled with the last one this device used. A returning player presses one key.
+- **Server**, a list of predefined servers each carrying its **region**, plus a quick localhost
+  entry and a custom address. The list is client-side configuration — the protocol has no server
+  directory and this document is not proposing one — and the custom entry is what keeps that from
+  being a limitation.
+- **Connect.**
+- The gear reaches settings from here, so card art can be set up before ever joining a table.
+
+Neither field is a wire change: `hello` carries a token and nothing else, and the name is set by
+the command the client already sends.
+
+### 9.4 The shell
+
+A navigation rail and a content region. The rail carries the destinations — **Play**, **Decks**,
+**Settings** — with the player's identity and the gear at its foot, out of the way of the thing
+they came to do.
+
+**Which destination you are on is the client's answer. Which contract you are on is the server's.**
+That distinction is what keeps "no client-held phase" true: a `GameView` arriving replaces the
+whole shell, because the contract changed; choosing Decks does not, because it did not.
+
+At narrow widths the rail becomes a bar; the destinations do not change and neither does their
+order.
+
+### 9.5 Play
+
+**Land on the tables list.** A row is: what the table is, how full it is, and one button. Occupancy
+chooses which advertised command the button leads with, exactly as `lobby.ts` already decides — no
+new rule.
+
+Joining replaces the list with the table you are at, which shows the seats, what each is waiting
+on, your deck, and how to leave. **Waiting-on is drawn on the seat it belongs to**, not summarised
+in a sentence underneath. The AI kinds and the starter decks come from `CatalogView` as they do
+now; what changes is that choosing one is not a native `<select>` and its description is not
+printed beside it.
+
+### 9.6 Settings, and the art section
+
+One destination, sectioned. Card art stops being a button in the header and becomes a **section
+about obtaining and managing art**: which source to use, what is currently cached and how to clear
+it, card backs, and symbols. That is a real surface with real state in it, and it was never going
+to fit behind a header button.
+
+The rules of ADR 0012 are unchanged and this section is where they become visible to the player:
+the fetch is theirs, the cache is their device's, and nothing is bundled, served, proxied, or
+redistributed.
+
+### 9.7 Decks
+
+The deck builder is the densest surface in the product and has its own design pass. What is settled
+here: it is a destination in the shell, reachable without being at a table; a saved deck is
+**device-local**, in the manner of ADR 0012's art preference, and is an *input* to `submit_deck`
+rather than a substitute for it; and `deck.ts` still computes no legality — the verdict stays the
+server's `LobbyRejection`.
 
 ---
 
