@@ -315,6 +315,7 @@ mod tests {
             id: id.into(),
             controller: controller.into(),
             owner: controller.into(),
+            physical_card: None,
             card: CardView {
                 id: id.into(),
                 name: id.into(),

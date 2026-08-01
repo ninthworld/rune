@@ -141,6 +141,136 @@ test.describe('an object that was not there before', () => {
   })
 })
 
+test.describe('a card that moved between two zones', () => {
+  /**
+   * The same game, one message later: the Llanowar Elves that was in hand is now a permanent.
+   *
+   * Two *objects* — `c1` and `perm_elves` — joined only by the physical card the server named
+   * (CR 400.7: they are not the same object, and nothing here claims they are).
+   */
+  const cast = () => {
+    const base = fixture('gameview.json')
+    const hand = base.my_hand as Record<string, unknown>[]
+    return {
+      ...base,
+      my_hand: hand.filter((card) => card.id !== 'c1'),
+      battlefield: [
+        ...(base.battlefield as unknown[]),
+        {
+          id: 'perm_elves',
+          controller: 'p1',
+          owner: 'p1',
+          physical_card: 'c1',
+          card: {
+            id: 'perm_elves',
+            name: 'Llanowar Elves',
+            type_line: 'Creature — Elf Druid',
+            card_types: ['creature'],
+            power: '1',
+            toughness: '1',
+          },
+        },
+      ],
+    }
+  }
+
+  const elves = (page: Page) =>
+    page
+      .getByRole('region', { name: 'Your battlefield' })
+      .getByRole('button', { name: /^Llanowar Elves/ })
+
+  /**
+   * Record what the page asks the browser to animate, keyed by the object it animated.
+   *
+   * The alternative is catching a 320ms animation mid-flight, which is a race dressed up as an
+   * assertion. This reads the *decision* instead: a card that travelled is animated from an
+   * offset, and one that merely appeared is faded in place, and the two are distinguishable
+   * without waiting on a particular frame.
+   */
+  const recordAnimations = (page: Page) =>
+    page.addInitScript(() => {
+      const played: Record<string, unknown[]> = {}
+      ;(window as unknown as { __motion: typeof played }).__motion = played
+      const original = Element.prototype.animate
+      Element.prototype.animate = function (keyframes, options) {
+        const id = (this as HTMLElement).dataset?.entity
+        if (id !== undefined) played[id] = keyframes as unknown[]
+        return original.call(this, keyframes, options)
+      }
+    })
+
+  const animationOf = (page: Page, id: string) =>
+    page.evaluate(
+      (entity) => (window as unknown as { __motion: Record<string, unknown[]> }).__motion[entity],
+      id,
+    )
+
+  test('travels from the zone it was drawn in to the one it is drawn in now', async ({ page }) => {
+    await recordAnimations(page)
+    const served = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+    // The card is in hand on the first frame, which is where the flight has to start from.
+    await expect(page.getByRole('button', { name: /^Llanowar Elves/ }).first()).toBeVisible()
+
+    served.push(cast())
+    await expect(elves(page)).toBeVisible()
+
+    // It moved: the first keyframe offsets the card from where it now sits, and the last puts
+    // it exactly there. A card that had merely appeared would be a fade with no translation.
+    const frames = (await animationOf(page, 'perm_elves')) as { translate?: string }[]
+    expect(frames).toHaveLength(2)
+    const [start, end] = frames
+    expect(start?.translate).toMatch(/^-?[\d.]+px -?[\d.]+px$/)
+    expect(start?.translate).not.toBe('0px 0px')
+    expect(end?.translate).toBe('0px 0px')
+
+    // And what it leaves behind is nothing: the board underneath is the one this view
+    // describes, with no residual offset, scale, or opacity from the journey.
+    await expect(async () => {
+      const style = await elves(page).evaluate((element) => {
+        const computed = getComputedStyle(element)
+        return {
+          opacity: computed.opacity,
+          scale: computed.scale,
+          translate: computed.translate,
+          running: element.getAnimations().length,
+        }
+      })
+      expect(style).toMatchObject({ opacity: '1', scale: 'none', translate: 'none', running: 0 })
+    }).toPass()
+  })
+
+  test('lands on the latest view when a second message interrupts the flight', async ({ page }) => {
+    const served = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: /^Llanowar Elves/ }).first()).toBeVisible()
+
+    // Two messages back to back, the second arriving while the first one's flight would still
+    // be running. The board is the newest view's and the interrupted transition costs nothing.
+    served.push(cast())
+    served.push({ ...cast(), turn: 4 })
+
+    await expect(elves(page)).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Turn 4 — / })).toBeVisible()
+  })
+
+  test('reaches the same board for a device that asked for no motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await recordAnimations(page)
+    const served = await serveFrames(page, [fixture('gameview.json')])
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: /^Llanowar Elves/ }).first()).toBeVisible()
+
+    served.push(cast())
+
+    // The request is honoured by arriving at the same board at once: the card is simply there,
+    // nothing was animated, and nothing is left running.
+    await expect(elves(page)).toBeVisible()
+    expect(await animationOf(page, 'perm_elves')).toBeUndefined()
+    expect(await elves(page).evaluate((element) => element.getAnimations().length)).toBe(0)
+  })
+})
+
 test.describe('a board that moved while the socket was down', () => {
   test('is arrived at rather than watched, so nothing is claimed to have just happened', async ({
     page,

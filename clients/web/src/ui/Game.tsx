@@ -77,7 +77,7 @@ import { changes, NO_CHANGES } from './../motion'
 import { buildChooseAction, type Draft } from './../submission'
 import { CardInspector } from './CardInspector'
 import { ActionDock } from './game/ActionDock'
-import { Arrivals } from './game/Arrivals'
+import { Motion } from './game/Motion'
 import { Settings } from './game/Settings'
 import { TurnStrip } from './game/TurnStrip'
 import { Battlefield, type FieldEntry } from './game/Battlefield'
@@ -497,10 +497,11 @@ export function Game({
         <RelationOverlay relations={related.all} traced={traced} />
       </div>
 
-      {/* Nothing this draws; it moves what is already drawn. Anything it touches is already in
-          its final place, so an interrupted animation, a refresh, or a device that asked for no
-          motion at all lands on exactly the board this view describes. */}
-      <Arrivals arrived={moved.arrived} />
+      {/* Nothing this draws; it moves what is already drawn — an object appearing, and a card
+          travelling between the two zones the server said it was drawn in. Anything it touches is
+          already in its final place, so an interrupted animation, a refresh, or a device that
+          asked for no motion at all lands on exactly the board this view describes. */}
+      <Motion changes={moved} />
 
       <Hand faces={handFaces} surface={surface} />
 

@@ -214,6 +214,35 @@ pub struct Permanent {
     pub owner: PlayerId,
     /// The permanent's current (computed) card face.
     pub card: CardView,
+    /// The **physical card** (CR 108.1) this permanent is a projection of, as the same
+    /// entity id that card carries in [`CardView::id`] wherever a view shows it —
+    /// in a hand, on the stack, in a graveyard, in exile (issue #650).
+    ///
+    /// **It is not object identity, and a client must never read it as one.** CR 400.7:
+    /// *"An object that moves from one zone to another becomes a new object with no
+    /// memory of, or relation to, its previous existence."* The permanent that died and
+    /// the card now in the graveyard are two different objects with two different ids,
+    /// correctly so. This field says only that both are projections of one physical
+    /// card — the thing a player's eye follows across the table. Nothing else carried
+    /// over: not counters, not damage, not auras, not control, not targeting, not
+    /// anything the rules just discarded. CR 400.7's exceptions (400.7a–400.7m) are the
+    /// server's to apply and never become a client's business.
+    ///
+    /// **Never an addressing scheme.** [`Self::id`] stays the only handle for this
+    /// permanent — `valid_actions[].subject`, targets, `attached_to`, and `blocking` all
+    /// address objects by their per-zone entity ids, and this field addresses nothing.
+    ///
+    /// **Absent for a token.** A token (CR 111) is not a card, so there is no physical
+    /// card for it to be a projection of. The engine gives a token an instance handle
+    /// from the same counter it gives cards, but CR 111.7 means a token can never appear
+    /// in a hand, a graveyard, or exile, so such a value could only ever join to itself —
+    /// stating it would invite a join that never has a second end. Omitted, so `token:
+    /// true` and an absent `physical_card` say the same thing twice, from both ends.
+    ///
+    /// Additive: omitted by a server that predates the field, and a client that ignores
+    /// it renders exactly as it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical_card: Option<EntityId>,
     /// Whether the permanent is tapped.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub tapped: bool,
@@ -414,6 +443,24 @@ pub struct StackItem {
     /// Source permanent for an ability; `None` for a spell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<EntityId>,
+    /// The **physical card** (CR 108.1) this stack object is a projection of — the card
+    /// being cast — as the same entity id it carries in [`CardView::id`] in a hand, on the
+    /// battlefield, or in a graveyard (issue #650). See
+    /// [`Permanent::physical_card`], whose rules are these rules: it is *not* object
+    /// identity (CR 400.7), it addresses nothing, and it says only which card the two
+    /// projections are of.
+    ///
+    /// **Absent for an ability.** An ability on the stack (CR 113.3) is an object with no
+    /// card behind it at all — activated or triggered — so there is nothing here to name.
+    /// [`Self::source`] names the permanent it came from, which is a different question
+    /// and stays the only link an ability has.
+    ///
+    /// Distinct from [`Self::card`], which is a *face to render* and for an ability is the
+    /// source permanent's face, keyed by that permanent's id. Joining on `card.id` would
+    /// therefore mix a permanent id into a card-id join on exactly the entries where the
+    /// answer is "there is no card"; this field is the one that answers the question asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical_card: Option<EntityId>,
     /// What this object is (issue #550), as finely as the server can prove it —
     /// including whether an ability was activated or triggered (issue #579).
     /// Server-stated; a client never derives it from the presence of
@@ -554,6 +601,7 @@ mod tests {
             id: "perm_1".into(),
             controller: "p0".into(),
             owner: "p0".into(),
+            physical_card: None,
             card: CardView {
                 id: "perm_1".into(),
                 name: "Grizzly Bears".into(),
@@ -638,6 +686,7 @@ mod tests {
             id: "perm_1".into(),
             controller: "p0".into(),
             owner: "p0".into(),
+            physical_card: None,
             card: CardView {
                 id: "perm_1".into(),
                 name: "Ironbark Aegis".into(),
@@ -726,6 +775,7 @@ mod tests {
             controller: "p2".into(),
             description: "Lightning Bolt".into(),
             source: None,
+            physical_card: None,
             kind: None,
             targets: vec![],
             card: None,
@@ -789,6 +839,165 @@ mod tests {
     }
 
     #[test]
+    fn issue_650_the_physical_card_round_trips_and_elides_on_both_projections() {
+        // The projection of the physical card a permanent and a spell are of (CR 108.1).
+        // It rides the wire only when there is a card to name, so a token permanent and
+        // an ability on the stack are byte-for-byte what they were before the field
+        // existed — and a client that ignores it renders exactly as it did.
+        let face = CardView {
+            id: "perm_9".into(),
+            name: "Grizzly Bears".into(),
+            type_line: "Creature — Bear".into(),
+            mana_cost: Some("{1}{G}".into()),
+            rules_text: String::new(),
+            functional_id: "grizzly_bears".into(),
+            token: false,
+            power: Some("2".into()),
+            toughness: Some("2".into()),
+            loyalty: None,
+            keywords: vec![],
+            card_types: Vec::new(),
+        };
+        let permanent = Permanent {
+            id: "perm_9".into(),
+            controller: "p0".into(),
+            owner: "p0".into(),
+            card: face.clone(),
+            physical_card: Some("card_5".into()),
+            tapped: false,
+            attacking: false,
+            attacking_player: None,
+            attacking_planeswalker: None,
+            blocking: None,
+            damage: 0,
+            attached_to: None,
+            is_commander: false,
+            counters: vec![],
+        };
+        let json = serde_json::to_value(&permanent).unwrap();
+        assert_eq!(
+            json.get("physical_card"),
+            Some(&serde_json::json!("card_5"))
+        );
+        // The per-zone id and the physical card are *different* ids and stay so: CR 400.7
+        // makes the permanent and the card it becomes elsewhere two different objects.
+        assert_ne!(json.get("physical_card"), json.get("id"));
+        assert_eq!(
+            serde_json::from_value::<Permanent>(json).unwrap(),
+            permanent
+        );
+
+        // A token (CR 111) is not a card, so it names none — and CR 111.7 means the join
+        // it would offer could never have a second end.
+        let token = Permanent {
+            physical_card: None,
+            ..permanent.clone()
+        };
+        assert!(serde_json::to_value(&token)
+            .unwrap()
+            .get("physical_card")
+            .is_none());
+
+        // A spell names the card being cast; an ability, having no card, names nothing.
+        let spell = StackItem {
+            id: "stack_3".into(),
+            controller: "p0".into(),
+            description: "Grizzly Bears".into(),
+            source: None,
+            physical_card: Some("card_5".into()),
+            kind: Some(StackItemKind::Spell),
+            targets: vec![],
+            card: Some(face),
+        };
+        let spell_json = serde_json::to_value(&spell).unwrap();
+        assert_eq!(
+            spell_json.get("physical_card"),
+            Some(&serde_json::json!("card_5"))
+        );
+        assert_eq!(
+            serde_json::from_value::<StackItem>(spell_json).unwrap(),
+            spell
+        );
+
+        let ability = StackItem {
+            id: "stack_4".into(),
+            controller: "p0".into(),
+            description: "Add {G}.".into(),
+            source: Some("perm_9".into()),
+            physical_card: None,
+            kind: Some(StackItemKind::Activated),
+            targets: vec![],
+            card: None,
+        };
+        assert!(serde_json::to_value(&ability)
+            .unwrap()
+            .get("physical_card")
+            .is_none());
+    }
+
+    #[test]
+    fn issue_650_an_older_payload_parses_with_no_physical_card_claimed() {
+        // Backward compatibility, and the shape of the absence: a payload from a server
+        // predating #650 carries no `physical_card` on either projection. It must
+        // deserialize to "not stated" — never to a guess, and above all never to the
+        // object's own id, which would assert exactly the identity CR 400.7 denies.
+        let permanent: Permanent = serde_json::from_str(
+            r#"{"id":"perm_9","controller":"p0","owner":"p0",
+                "card":{"id":"perm_9","name":"Grizzly Bears","type_line":"Creature — Bear"}}"#,
+        )
+        .unwrap();
+        assert_eq!(permanent.physical_card, None);
+
+        let item: StackItem = serde_json::from_str(
+            r#"{"id":"stack_3","controller":"p0","description":"Grizzly Bears","kind":"spell"}"#,
+        )
+        .unwrap();
+        assert_eq!(item.physical_card, None);
+    }
+
+    #[test]
+    fn issue_650_two_copies_of_one_card_are_told_apart_by_the_physical_card_alone() {
+        // The case the whole field exists for. Two Forests differ in nothing a client can
+        // see — same name, same `functional_id`, same type line — so a join by either
+        // would be the client *deciding* which one moved, and wrong half the time.
+        let forest = |permanent: &str, card: &str| Permanent {
+            id: permanent.into(),
+            controller: "p0".into(),
+            owner: "p0".into(),
+            card: CardView {
+                id: permanent.into(),
+                name: "Forest".into(),
+                type_line: "Basic Land — Forest".into(),
+                mana_cost: None,
+                rules_text: String::new(),
+                functional_id: "forest".into(),
+                token: false,
+                power: None,
+                toughness: None,
+                loyalty: None,
+                keywords: vec![],
+                card_types: vec![CardType::Land],
+            },
+            physical_card: Some(card.into()),
+            tapped: false,
+            attacking: false,
+            attacking_player: None,
+            attacking_planeswalker: None,
+            blocking: None,
+            damage: 0,
+            attached_to: None,
+            is_commander: false,
+            counters: vec![],
+        };
+        let first = forest("perm_9", "card_5");
+        let second = forest("perm_10", "card_6");
+
+        assert_eq!(first.card.name, second.card.name);
+        assert_eq!(first.card.functional_id, second.card.functional_id);
+        assert_ne!(first.physical_card, second.physical_card);
+    }
+
+    #[test]
     fn issue_550_every_stack_target_variant_round_trips_tagged_by_kind() {
         // Targets are typed at the source (gap G6): each variant states what it names,
         // so a client never classifies a target by testing which collection its id is
@@ -835,6 +1044,7 @@ mod tests {
             controller: "p1".into(),
             description: "Twin Bolt deals 1 damage to each of two targets.".into(),
             source: None,
+            physical_card: Some("card_31".into()),
             kind: Some(StackItemKind::Spell),
             targets: vec![
                 StackTarget::Permanent {

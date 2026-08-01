@@ -19,6 +19,7 @@
   "battlefield": [
     {
       "id": "perm_4",
+      "physical_card": "card_4",
       "controller": "p0",
       "owner": "p0",
       "card": {
@@ -36,6 +37,7 @@
     },
     {
       "id": "perm_7",
+      "physical_card": "card_7",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -56,6 +58,7 @@
   "stack": [
     {
       "id": "stack_2",
+      "physical_card": "card_31",
       "controller": "p0",
       "description": "Lightning Strike",
       "source": "card_23",

@@ -42,6 +42,7 @@ mod choice;
 mod destinations;
 mod ids;
 mod log;
+mod physical;
 mod prompt;
 mod requirements;
 mod stack;
@@ -55,6 +56,7 @@ pub(crate) use choice::*;
 pub(crate) use destinations::*;
 pub(crate) use ids::*;
 pub(crate) use log::*;
+pub(crate) use physical::*;
 pub(crate) use prompt::*;
 pub(crate) use requirements::*;
 pub(crate) use stack::*;
@@ -132,6 +134,15 @@ pub(crate) fn personalized_view(
             // Current (computed) characteristics, so counters/pumps/Auras show on
             // the host's P/T (CR 613.7c), not the printed values.
             card: permanent_card_view(state, perm, db),
+            // The physical card this permanent is a projection of (CR 108.1, issue
+            // #650), read straight off the instance the engine already stores on it —
+            // no history, no diff, no server-side memory. It is *not* object identity:
+            // CR 400.7 makes the permanent and the card it becomes elsewhere two
+            // different objects, which is why their ids differ and stay differing.
+            // `None` for a token, which has no card. A permanent on the battlefield is
+            // public, so this is the same value in every seat's view and the
+            // spectator's.
+            physical_card: physical_card_of(perm),
             tapped: perm.tapped,
             // Combat declaration state (CR 508/509): whether this permanent is
             // attacking, what it attacks (issue #341/#345/#608), and which attacker it
@@ -336,6 +347,10 @@ pub(crate) fn spectator_view(state: &GameState, db: &CardDatabase) -> SpectatorV
             controller: player_id(perm.controller),
             owner: player_id(perm.controller),
             card: permanent_card_view(state, perm, db),
+            // Public, exactly as in a seated view (issue #650): the battlefield is the
+            // same board for everyone, so a spectator is told which physical card a
+            // permanent is a projection of on identical terms.
+            physical_card: physical_card_of(perm),
             tapped: perm.tapped,
             attacking: perm.attacking.is_some(),
             attacking_player: perm

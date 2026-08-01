@@ -36,6 +36,7 @@
   "battlefield": [
     {
       "id": "perm_serra",
+      "physical_card": "card_serra",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -55,6 +56,7 @@
     },
     {
       "id": "perm_ogre",
+      "physical_card": "card_ogre",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -92,6 +94,7 @@
     },
     {
       "id": "perm_gravedigger",
+      "physical_card": "card_gravedigger",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -108,6 +111,7 @@
     },
     {
       "id": "perm_axe",
+      "physical_card": "card_axe",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -123,6 +127,7 @@
     },
     {
       "id": "perm_pacifism",
+      "physical_card": "card_pacifism",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -138,6 +143,7 @@
     },
     {
       "id": "perm_mountain",
+      "physical_card": "card_mountain",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -151,6 +157,7 @@
     },
     {
       "id": "perm_vivien",
+      "physical_card": "card_vivien",
       "controller": "p2",
       "owner": "p2",
       "card": {
@@ -166,6 +173,7 @@
     },
     {
       "id": "perm_dreadmaw",
+      "physical_card": "card_dreadmaw",
       "controller": "p2",
       "owner": "p2",
       "card": {
@@ -184,6 +192,7 @@
     },
     {
       "id": "perm_elemental",
+      "physical_card": "card_elemental",
       "controller": "p2",
       "owner": "p2",
       "card": {
@@ -216,6 +225,7 @@
     },
     {
       "id": "perm_gearsmith",
+      "physical_card": "card_gearsmith",
       "controller": "p2",
       "owner": "p2",
       "card": {
@@ -242,6 +252,7 @@
   "stack": [
     {
       "id": "s1",
+      "physical_card": "card_verdict",
       "controller": "p1",
       "description": "Divine Verdict",
       "kind": "spell",
@@ -258,6 +269,7 @@
     },
     {
       "id": "s2",
+      "physical_card": "card_cancel",
       "controller": "p2",
       "description": "Cancel targeting Divine Verdict",
       "kind": "spell",
@@ -282,6 +294,7 @@
     },
     {
       "id": "s4",
+      "physical_card": "card_shock",
       "controller": "p2",
       "description": "Shock deals 2 damage to any target.",
       "kind": "spell",
@@ -305,6 +318,7 @@
     },
     {
       "id": "s6",
+      "physical_card": "card_strike",
       "controller": "p1",
       "description": "Lightning Strike deals 3 damage to any target.",
       "kind": "spell",
