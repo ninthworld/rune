@@ -248,10 +248,42 @@ The 72×100 minimum is measured off XMage, which fits a complete name, cost, typ
 line, and P/T into that box. The hand's minimum is larger because the hand is where a player
 *chooses*, and a name there may never be abbreviated at all.
 
-**Region heights** are fractions of scene height with stated minimums, allocated in contract
-order: the tier-1 items are satisfied first, and what is left goes to the board rows. An empty row
-costs nothing — a seat with no permanents yields its height to the seat that has them, which is
-the opposite of today, where an empty opponent board reserves 200px to say "No permanents."
+### Regions are sized by the viewport. Counts are absorbed by the cards.
+
+This is the whole rule, and everything else in this section is a consequence of it.
+
+**A region's height is a function of the viewport alone.** How many permanents a seat controls, how
+many cards are in a hand, how deep the stack is — none of it changes the size or position of any
+box. The layout a player learns on their first turn is the layout they have on their twentieth.
+
+**A count is absorbed by the things inside the region, by the formula above.** Fifteen permanents in
+a field sized for six do not make the field taller; they make the cards smaller, and then overlapped,
+and then chips. That is what `clamp(FLOOR, fitted, ideal)` is for. The cards scale to the box; the
+box never scales to the cards.
+
+So **the two battlefields are always the same height**, whatever is on them, and the dividing line
+across the middle of the table does not move for any game event. A seat that wipes the opponent's
+board does not watch its own permanents jump to a new size and a new place. A seat playing its first
+creature does not shove the other half of the table upward.
+
+An earlier draft of this section said the opposite — that an empty row costs nothing and yields its
+height to the seat with permanents on it. That is content-driven layout wearing a different hat, and
+the argument for it (a crowded board needs the room) dissolves once the cards are doing the scaling:
+the room was never the answer.
+
+It is also wrong about what an empty battlefield *is*. "My opponent has nothing" is one of the most
+important facts in the game, and the way to read it is by looking at an empty half of the table —
+not by noticing the absence of a region. What the current client gets wrong is narrower and is still
+worth fixing: it spends a card row's height printing the sentence **"No permanents."** The sentence
+goes; the place stays.
+
+**The stack is the one exception, and the distinction is the point: the stack is an event, a
+battlefield is a place.** An event that is not happening takes no room, so an empty stack has no box
+and the board takes the width back. A place at the table does not stop existing because nobody has
+put anything on it.
+
+Region heights are otherwise allocated in contract order: the tier-1 minimums are satisfied first,
+and what is left over goes to the board.
 
 ---
 
