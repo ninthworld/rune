@@ -390,7 +390,13 @@ defaulting to `false`) in a two-player game. `ZonePile` contains a `player_id` a
 
 A `Permanent` contains:
 
-- `id`, `controller`, `owner`, and a computed `card`;
+- `id`, `controller`, `owner`, and a computed `card`. `id` names **this permanent** and lives in
+  its own space, so it never collides with a card's — which says the two ids are different, and
+  deliberately says nothing about whether the objects can be followed from one to the other. That
+  question is `physical_card`'s;
+- optional `physical_card` (issue #650), naming the **physical card** (CR 108.1) this permanent
+  is a projection of. Omitted for a token, and by an older server — see
+  [Following a card between zones](#following-a-card-between-zones);
 - optional `tapped` and `attacking` booleans;
 - optional `attacking_player`, naming the **defending player** for this attack
   (CR 508.1a, issue #341/#345) — the seat that answers for it, which when a planeswalker
@@ -445,6 +451,7 @@ A `StackItem` describes one object on the stack:
 | `controller` | `PlayerId` | Player who controls it (chooses targets and resolution) |
 | `description` | `string` | Display text: a spell’s name, or an ability’s composed sentence |
 | `source` | `EntityId?` | Source permanent for an ability; **omitted for a spell** |
+| `physical_card` | `EntityId?` | The **physical card** being cast (CR 108.1, issue #650); **omitted for an ability**, which has no card, and by an older server |
 | `kind` | `"spell" \| "ability" \| "activated" \| "triggered"?` | What this object is (issues #550, #579); **omitted by an older server**, and then unclassified — never guessed |
 | `targets` | `StackTarget[]?` | Targets chosen for it, in the order its effects consume them; **omitted when empty** (and by an older server), meaning no targets |
 | `card` | `CardView?` | The face to render: a spell’s card, or an ability’s source permanent; **omitted when there is no face** (and by an older server) |
@@ -493,6 +500,59 @@ Three rules govern these fields:
   server. There is deliberately **no** mode/X/additional-cost summary and **no zone
   target kind**: the engine has no modal spells, no `X` costs, and no zone targets, so
   carrying either would be a field no projection could ever fill.
+
+### Following a card between zones
+
+`Permanent.physical_card` and `StackItem.physical_card` (issue #650) each name the **physical
+card** (CR 108.1) that projection is of, as an `EntityId` — the same id that card carries as its
+`CardView.id` wherever a view shows it in a zone: in `my_hand`, in a `ZonePile`, in `revealed`.
+No new id space is introduced; the values join to the rest of the view by construction.
+
+**It is not object identity.** CR 400.7: *"An object that moves from one zone to another becomes
+a new object with no memory of, or relation to, its previous existence."* The permanent that died
+and the card now in the graveyard are two different objects, and their differing ids are the rule
+rather than an oversight. This field states only that both are projections of one physical card —
+the thing a player's eye follows across the table, which is a strictly weaker claim than identity.
+
+A client may therefore use it to **follow a card**, and may never conclude that counters, damage,
+marked state, attachments, control, targeting, or anything else came across, because CR 400.7 says
+none of it did. The exceptions (CR 400.7a–400.7m) are the server's to apply; where one is in force
+the server states the resulting state on the new object directly, and nothing about it becomes a
+client's business.
+
+Four rules complete the shape:
+
+- **It addresses nothing.** `valid_actions[].subject`, `StackTarget`, `attached_to`, `blocking`,
+  `attacking_planeswalker`, and the relationship join all address objects by their per-zone entity
+  ids, unchanged. This field answers one question and is never a second handle for an object. A
+  client that sends it back where an `id` belongs is sending an id the server does not recognize.
+- **A token names none.** A token (CR 111) is not a card, so there is no physical card for it to
+  be a projection of, and the field is omitted. `card.token: true` and an absent `physical_card`
+  say the same thing from both ends. (The server does hold a per-object handle for a token, but
+  CR 111.7 — a token that leaves the battlefield ceases to exist — means it could never appear in
+  a hand, a graveyard, or exile, so stating it would offer a join with no possible second end.)
+- **An ability names none.** An ability on the stack (CR 113.3) has no card behind it, activated
+  or triggered alike. Its `source` names the permanent it came from, which is a different
+  question — and note that a `StackItem.card` for an ability is that *permanent's* face, keyed by
+  a `perm_` id, so joining on `card.id` would silently mix id spaces on exactly the entries where
+  the answer is "there is no card". Use this field.
+- **Nothing hidden becomes linkable.** The field rides only on a battlefield permanent and on a
+  spell on the stack, and both are public objects whose whole face the same view already carries —
+  so every seat and every spectator is told the identical thing, and there is no receiver-specific
+  withholding because there is no receiver for whom either object is hidden. The other half is
+  what is *not* projected: a card in a hand is in no view but its owner's, so no id for it reaches
+  anybody else and there is nothing for them to join to later.
+
+**Purely a function of the current state.** The server reads the card instance the engine already
+stores on the permanent and on a spell's stack object; there is no diff against a previous view,
+no history, and no server-side memory. That is deliberate — "what was this a moment ago" is
+history the engine drops on purpose (CR 400.7), and reconstructing it would mean either the engine
+remembering across a zone change or the server diffing two states, both of which ADR 0005 keeps
+out to leave the engine undo/replay/resync free. Correspondingly a client must hold no
+"what this used to be" map across messages: after an undo, such a map would describe a future that
+no longer happens. Every view states where every card it can see is, on its own.
+
+A client that does not know the field renders exactly as it did.
 
 ### Valid actions
 
@@ -1217,3 +1277,9 @@ is public data only — it never carries a deck, a roster, or any game state.
   from anything else. `Permanent.blocking`/`attacking_player`/`attached_to` and
   `StackItem.targets` are the whole set; each names its subject explicitly, and an
   omitted one means "no such relationship", never "work it out".
+- **Object ids name objects; `physical_card` names a card.** Every entity id is a handle on
+  one object in one zone, and two of them are never the same object (CR 400.7).
+  `physical_card` is the one field that crosses that boundary, and it crosses it only as far
+  as CR 108.1 allows: which physical card two projections are of, and nothing about what
+  either object carries. A client follows a card with it, addresses nothing with it, and
+  joins by `name` or `functional_id` never.

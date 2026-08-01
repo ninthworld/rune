@@ -31,6 +31,12 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             controller: player_id(object.controller),
             description: card_name(card.card, db),
             source: None,
+            // The physical card being cast (CR 108.1, issue #650). The engine carries
+            // the whole `CardInstance` across the stack precisely so this survives, and
+            // it is the same id the card had in hand and will have on the battlefield or
+            // in a graveyard — while the `stack_` id, like every per-zone id, is this
+            // object's alone (CR 400.7).
+            physical_card: Some(card_entity_id(card.id)),
             kind: Some(StackItemKind::Spell),
             targets,
             // The face of the card being cast, keyed by the physical instance so it
@@ -47,6 +53,12 @@ pub(crate) fn stack_item(state: &GameState, object: &StackObject, db: &CardDatab
             controller: player_id(object.controller),
             description: effects_description(&source_name(state, *source, db), effects),
             source: source.permanent().map(permanent_entity_id),
+            // An ability on the stack (CR 113.3) is an object with no card behind it, so
+            // there is no physical card to name (issue #650). `source` names the
+            // permanent it came from, which is a different question — and the card face
+            // below is that permanent's, keyed by its `perm_` id, which is exactly why
+            // this question needs its own field rather than a client reading `card.id`.
+            physical_card: None,
             // The engine records which push site put this here (issue #579), so the
             // projection states the finer kind rather than the coarse `ability` it
             // was limited to under #550. Still proof, not inference: the value comes

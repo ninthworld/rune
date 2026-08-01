@@ -177,6 +177,7 @@ fn issue_345_multiplayer_combat_and_elimination_fields_round_trip_and_elide() {
         controller: "p0".into(),
         owner: "p0".into(),
         card,
+        physical_card: None,
         tapped: false,
         attacking: true,
         attacking_player: Some("p2".into()),
@@ -289,6 +290,7 @@ fn game_view_round_trips_through_json() {
             id: "perm_xyz".into(),
             controller: "p1".into(),
             owner: "p1".into(),
+            physical_card: Some("card_77".into()),
             card: CardView {
                 id: "perm_xyz".into(),
                 name: "Grizzly Bears".into(),
@@ -321,6 +323,7 @@ fn game_view_round_trips_through_json() {
             controller: "p2".into(),
             description: "Lightning Bolt".into(),
             source: None,
+            physical_card: Some("card_78".into()),
             kind: Some(StackItemKind::Spell),
             targets: vec![StackTarget::Player {
                 player: "p1".into(),
@@ -605,6 +608,61 @@ fn issue_627_board_fixture_round_trips_with_every_relationship_a_view_projects()
     assert_eq!(mine.cards.len(), 10);
     assert!(!view.graveyards.iter().any(|pile| pile.player_id == "p2"));
     assert_eq!(view.opponents[0].graveyard_size, 3);
+}
+
+#[test]
+fn issue_650_the_board_fixture_names_the_physical_card_wherever_there_is_one() {
+    // The same cross-language fixture, read for the #650 projection: which physical card
+    // (CR 108.1) each battlefield and stack object is of. It is carried on the two
+    // projections that hold an *object* id and is absent from the two that have no card
+    // at all, which together are the whole of the rule.
+    let json = include_str!("../../fixtures/gameview-board.json");
+    let view: GameView = serde_json::from_str(json).unwrap();
+
+    let permanent = |id: &str| {
+        view.battlefield
+            .iter()
+            .find(|p| p.id == id)
+            .unwrap_or_else(|| panic!("{id} is on the battlefield"))
+    };
+    let stack = |id: &str| {
+        view.stack
+            .iter()
+            .find(|item| item.id == id)
+            .unwrap_or_else(|| panic!("{id} is on the stack"))
+    };
+
+    // A permanent that is a card names it, and the name is a *different* id from its own:
+    // CR 400.7 makes the permanent and the card it becomes elsewhere two objects.
+    let ogre = permanent("perm_ogre");
+    assert_eq!(ogre.physical_card.as_deref(), Some("card_ogre"));
+    assert_ne!(ogre.physical_card.as_deref(), Some(ogre.id.as_str()));
+
+    // A token (CR 111) is not a card and names none, from both ends: `token` on its face
+    // and an absent `physical_card` say the same thing.
+    let thopter = permanent("perm_thopter");
+    assert!(thopter.card.token);
+    assert_eq!(thopter.physical_card, None);
+
+    // A spell names the card being cast; an ability on the stack has no card to name, and
+    // its `source` — a permanent id — is deliberately a different question.
+    assert_eq!(stack("s1").physical_card.as_deref(), Some("card_verdict"));
+    let trigger = stack("s3");
+    assert_eq!(trigger.physical_card, None);
+    assert_eq!(trigger.source.as_deref(), Some("perm_gravedigger"));
+
+    // Two copies of one card, told apart. The fixture holds a Lightning Strike in hand and
+    // another on the stack: identical name, identical `functional_id`, and distinguishable
+    // only by which physical card each is — which is exactly why a client may never join
+    // on either of the other two.
+    let hand = &view.my_hand[0];
+    let cast = stack("s6");
+    assert_eq!(hand.name, "Lightning Strike");
+    assert_eq!(
+        cast.card.as_ref().map(|c| c.functional_id.as_str()),
+        Some(hand.functional_id.as_str())
+    );
+    assert_ne!(cast.physical_card.as_deref(), Some(hand.id.as_str()));
 }
 
 #[test]

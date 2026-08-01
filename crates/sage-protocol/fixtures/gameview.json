@@ -46,6 +46,7 @@
       "id": "perm_bear",
       "controller": "p1",
       "owner": "p1",
+      "physical_card": "card_bear",
       "card": {
         "id": "perm_bear",
         "name": "Grizzly Bears",
@@ -69,6 +70,7 @@
       "id": "perm_nissa",
       "controller": "p1",
       "owner": "p1",
+      "physical_card": "card_nissa",
       "card": {
         "id": "perm_nissa",
         "name": "Nissa, Who Shakes the World",
@@ -109,6 +111,7 @@
       "id": "s1",
       "controller": "p2",
       "description": "Lightning Bolt",
+      "physical_card": "card_31",
       "kind": "spell",
       "targets": [
         {
@@ -137,6 +140,7 @@
       "id": "s3",
       "controller": "p1",
       "description": "Twin Bolt deals 1 damage to each of two targets.",
+      "physical_card": "card_32",
       "kind": "spell",
       "targets": [
         {
@@ -162,6 +166,7 @@
       "id": "s4",
       "controller": "p2",
       "description": "Counterspell targeting Twin Bolt",
+      "physical_card": "card_33",
       "kind": "spell",
       "targets": [
         {

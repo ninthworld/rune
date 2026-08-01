@@ -53,6 +53,125 @@ describe('what arrived since the last view', () => {
   })
 })
 
+describe('a card followed between two zones', () => {
+  const inHand = (id: string) => ({ id, name: 'Llanowar Elves', type_line: 'Creature — Elf Druid' })
+  const asPermanent = (id: string, physical: string) => ({
+    id,
+    controller: 'p1',
+    owner: 'p1',
+    physical_card: physical,
+    card: { id, name: 'Llanowar Elves', type_line: 'Creature — Elf Druid' },
+  })
+  const asSpell = (id: string, physical: string) => ({
+    id,
+    controller: 'p1',
+    description: 'Llanowar Elves',
+    kind: 'spell' as const,
+    physical_card: physical,
+  })
+
+  it('joins the two ids the server said are of one physical card', () => {
+    const before = view({ my_hand: [inHand('card_5')] })
+    const after = view({ battlefield: [asPermanent('perm_9', 'card_5')] })
+
+    expect(changes(before, after).flights).toEqual([
+      { from: 'card_5', to: 'perm_9', card: 'card_5' },
+    ])
+  })
+
+  it('follows one card across hand, stack, battlefield and graveyard', () => {
+    // Each step is a join between two consecutive views and nothing else — no accumulated map,
+    // no memory of the step before it. The ids differ every time, which is CR 400.7 and not a
+    // gap: four objects, one physical card.
+    const hand = view({ my_hand: [inHand('card_5')] })
+    const stack = view({ stack: [asSpell('stack_2', 'card_5')] })
+    const field = view({ battlefield: [asPermanent('perm_9', 'card_5')] })
+    const grave = view({ graveyards: [{ player_id: 'p1', cards: [inHand('card_5')] }] })
+
+    expect(changes(hand, stack).flights).toEqual([
+      { from: 'card_5', to: 'stack_2', card: 'card_5' },
+    ])
+    expect(changes(stack, field).flights).toEqual([
+      { from: 'stack_2', to: 'perm_9', card: 'card_5' },
+    ])
+    expect(changes(field, grave).flights).toEqual([
+      { from: 'perm_9', to: 'card_5', card: 'card_5' },
+    ])
+  })
+
+  it('tells two copies of one card apart, because the join is never by name', () => {
+    // Both Forests agree on everything a client can see. Only one of them moved, and a join by
+    // name would be a coin flip dressed up as a fact.
+    const forest = (id: string) => ({ id, name: 'Forest', type_line: 'Basic Land — Forest' })
+    const before = view({ my_hand: [forest('card_5'), forest('card_6')] })
+    const after = view({
+      my_hand: [forest('card_5')],
+      battlefield: [
+        {
+          id: 'perm_9',
+          controller: 'p1',
+          owner: 'p1',
+          physical_card: 'card_6',
+          card: forest('perm_9'),
+        },
+      ],
+    })
+
+    expect(changes(before, after).flights).toEqual([
+      { from: 'card_6', to: 'perm_9', card: 'card_6' },
+    ])
+  })
+
+  it('says nothing about a projection that names no physical card', () => {
+    // A token (CR 111) is not a card and an ability on the stack has none, so neither is
+    // followable and neither is guessed at. They arrive; they do not fly.
+    const token = {
+      id: 'perm_t',
+      controller: 'p1',
+      owner: 'p1',
+      card: { ...inHand('perm_t'), token: true },
+    }
+    const before = view({ my_hand: [inHand('card_5')] })
+    const after = view({ my_hand: [inHand('card_5')], battlefield: [token] })
+
+    const got = changes(before, after)
+    expect(got.flights).toEqual([])
+    expect([...got.arrived]).toEqual(['perm_t'])
+  })
+
+  it('does not also call the destination an arrival', () => {
+    // The destination is a new id, so it qualifies as an arrival too — and playing both would
+    // draw one event twice, a card popping into existence and then flying there.
+    const before = view({ my_hand: [inHand('card_5')] })
+    const after = view({ battlefield: [asPermanent('perm_9', 'card_5')] })
+
+    expect(changes(before, after).arrived.size).toBe(0)
+  })
+
+  it('says nothing when a card stayed where it was', () => {
+    const board = view({ battlefield: [asPermanent('perm_9', 'card_5')] })
+    expect(changes(board, board).flights).toEqual([])
+  })
+
+  it('refuses to pick when one card is drawn in two places at once', () => {
+    // Which of the two an animation should fly from is not something the view states, so this
+    // states nothing either. Guessing quietly is the same mistake as joining by name.
+    const before = view({ my_hand: [inHand('card_5')] })
+    const after = view({
+      battlefield: [asPermanent('perm_9', 'card_5')],
+      stack: [asSpell('stack_2', 'card_5')],
+    })
+
+    expect(changes(before, after).flights).toEqual([])
+  })
+
+  it('says nothing on the first view of a game', () => {
+    expect(
+      changes(undefined, view({ battlefield: [asPermanent('perm_9', 'card_5')] })).flights,
+    ).toEqual([])
+  })
+})
+
 describe('what a seat’s life did', () => {
   it('states the change and its direction, for you and for them', () => {
     const got = changes(view(seats(20, 20)), view(seats(17, 22))).life

@@ -102,12 +102,14 @@ it decides nothing about the game. Read [`docs/brief.md`](../../docs/brief.md) a
   An armed draft, a confirmation, a submission in flight, and an empty selection each outrank it,
   because in all four something else already owns the next click.
 - `src/motion.ts` — what changed between the last two views: ids the board draws that it did not,
-  and how far a seat's life moved. Pure, so an animation is a *transition between* two
-  reconstructable states and never a third of its own; a reconnect resets it, because a board
-  that moved while the socket was down was not watched. **A card cannot be followed between
-  zones**: `card_`, `perm_`, and `stack_` are three id spaces the view links nowhere, so joining
-  them by name would be the client deciding which of two Forests moved. Arrival is what the wire
-  states; a flight needs the protocol to say two ids are one object.
+  which card moved zones, and how far a seat's life moved. Pure, so an animation is a *transition
+  between* two reconstructable states and never a third of its own; a reconnect resets it, because
+  a board that moved while the socket was down was not watched. **Following a card is the server's
+  join** — `physical_card`, the physical card (CR 108.1) a permanent or a spell is a projection of
+  — and matching by `name` or `functional_id` is a bug, not a fallback: two Forests agree on both,
+  so a name join is the client deciding which one moved. Following a card concludes **nothing**
+  about an object: CR 400.7 makes the two ends two different objects, and no counter, damage,
+  attachment, or control crosses the gap.
 - `src/overlay.ts` — the same relationships as geometry: where the line between two objects
   starts and ends, given a box for each. The split from `relations.ts` is the guarantee — what
   decides *what* is related knows nothing about pixels, and what knows where everything is

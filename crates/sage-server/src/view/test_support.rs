@@ -37,9 +37,13 @@ pub(crate) fn put_permanent(
     attacking: bool,
 ) -> PermanentId {
     let id = PermanentId(state.mint_id());
+    // A real per-copy instance, minted the way a card entering the battlefield gets one,
+    // so two permanents of the same card are two *physical cards* here as well as two
+    // objects — which is what the `physical_card` projection (issue #650) reads.
+    let instance = state.new_instance(card).id;
     state.battlefield.push(sage_engine::Permanent {
         id,
-        instance: CardInstanceId(0),
+        instance,
         printed: card.into(),
         controller,
         tapped,

@@ -192,6 +192,21 @@ export const Permanent = z.object({
   controller: PlayerId,
   owner: PlayerId,
   card: CardView,
+  /**
+   * The **physical card** (CR 108.1) this permanent is a projection of — the same id that
+   * card carries as its `CardView.id` in a hand, on the stack, in a graveyard, in exile.
+   *
+   * **Not object identity.** CR 400.7: an object that changes zone becomes a *new object*
+   * with no relation to its previous existence. The permanent that died and the card in
+   * the graveyard are two objects with two ids, correctly. This says only that both are
+   * projections of one physical card — enough to follow a card across the table, and never
+   * enough to conclude that counters, damage, auras, control, or anything else came with
+   * it. It addresses nothing: `id` stays the only handle for this permanent.
+   *
+   * Absent for a **token** (CR 111), which is not a card — and CR 111.7 means its instance
+   * could never turn up in a zone to join to. Absent from an older server.
+   */
+  physical_card: EntityId.optional(),
   tapped: z.boolean().optional(),
   attacking: z.boolean().optional(),
   /**
@@ -247,6 +262,16 @@ export const StackItem = z.object({
   controller: PlayerId,
   description: z.string(),
   source: EntityId.optional(),
+  /**
+   * The **physical card** (CR 108.1) being cast — see `Permanent.physical_card`, whose
+   * rules are these rules.
+   *
+   * Absent for an ability (CR 113.3), which has no card behind it: `source` names the
+   * permanent it came from, which is a different question. Deliberately not `card.id` —
+   * for an ability that is the *source permanent's* face, keyed by a `perm_` id, so a
+   * join on it would silently mix id spaces on exactly the entries with no card.
+   */
+  physical_card: EntityId.optional(),
   kind: StackItemKind.optional(),
   targets: z.array(StackTarget).optional(),
   card: CardView.optional(),

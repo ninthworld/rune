@@ -170,6 +170,10 @@ mod tests {
                 controller: "p0".into(),
                 description: "Lightning Bolt".into(),
                 source: None,
+                // A spell on the stack names the physical card it is a projection of
+                // (issue #650) — public, exactly like the rest of the entry, and the
+                // same value every seated view states for the same object.
+                physical_card: Some("card_31".into()),
                 kind: Some(StackItemKind::Spell),
                 targets: vec![StackTarget::Player {
                     player: "p2".into(),

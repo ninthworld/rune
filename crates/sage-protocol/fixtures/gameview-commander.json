@@ -26,6 +26,7 @@
   "battlefield": [
     {
       "id": "perm_lathliss",
+      "physical_card": "card_lathliss",
       "controller": "p1",
       "owner": "p1",
       "card": {
@@ -42,6 +43,7 @@
     },
     {
       "id": "perm_bear",
+      "physical_card": "card_bear",
       "controller": "p2",
       "owner": "p2",
       "card": {
