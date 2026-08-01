@@ -517,6 +517,12 @@ fn issue_627_board_fixture_round_trips_with_every_relationship_a_view_projects()
             .unwrap_or_else(|| panic!("{id} is on the battlefield"))
     };
 
+    // Restricted mana (CR 106.6) rides the pool as a pip suffixed `*`, beside an
+    // ordinary one. The suffix is the whole of what the wire says — that this mana is
+    // restricted, never what to — so a client may report the restriction and must not
+    // invent its condition.
+    assert_eq!(view.mana_pool, vec!["{R}".to_string(), "{G}*".to_string()]);
+
     // An attack on a planeswalker states both: the seat that answers for it, and the
     // planeswalker the damage is going to. A client that had only one of them would
     // draw the arrow at the wrong object.

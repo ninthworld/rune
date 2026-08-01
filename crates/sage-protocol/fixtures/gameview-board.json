@@ -420,7 +420,7 @@
       ]
     }
   ],
-  "mana_pool": ["{R}"],
+  "mana_pool": ["{R}", "{G}*"],
   "valid_actions": [
     {
       "id": "a1",

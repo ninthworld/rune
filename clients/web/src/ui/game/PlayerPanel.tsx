@@ -125,7 +125,33 @@ export function PlayerPanel({
         )}
       </p>
 
-      {seat.manaPool.length > 0 && <p className="seat__pool">Pool: {seat.manaPool.join(' ')}</p>}
+      {seat.manaPool.length > 0 && (
+        <p className="seat__pool">
+          Pool:{' '}
+          {seat.manaPool.map((pip, index) => (
+            <span
+              key={index}
+              className={`pip${pip.restricted ? ' pip--restricted' : ''}`}
+              // Marked twice, because the mark is the whole point: an asterisk a sighted player
+              // can see, and the word a screen reader hears. Colour alone would say neither.
+              title={pip.restricted ? 'Restricted mana' : undefined}
+            >
+              {pip.symbol}
+              {pip.restricted && (
+                <>
+                  *<span className="visually-hidden"> restricted</span>
+                </>
+              )}
+            </span>
+          ))}
+          {/* The legend appears only when there is something to explain. What it can say is
+              bounded by what the server said: the wire marks a pip restricted, never what to,
+              so this reports the restriction and does not guess at its condition. */}
+          {seat.manaPool.some((pip) => pip.restricted) && (
+            <span className="seat__pool-note"> — * spendable only on what made it</span>
+          )}
+        </p>
+      )}
 
       {seat.commanderName !== undefined && (
         <p className="seat__commander">

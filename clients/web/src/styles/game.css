@@ -330,6 +330,23 @@ main:has(.screen) {
   flex-basis: 100%;
 }
 
+/* One pip of floating mana. Restricted mana (CR 106.6) is marked rather than merely spelled
+   with an asterisk: the outline is what makes it findable at a glance, the `*` is what a
+   player can point at, and the legend beside the row is what says why. */
+.pip + .pip {
+  margin-inline-start: 0.3rem;
+}
+
+.pip--restricted {
+  outline: 1px dotted currentColor;
+  outline-offset: 1px;
+}
+
+.seat__pool-note {
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+
 /* A seat is a target like anything else, so its name is the control — styled as text so the
    panel does not read as a row of buttons, and carrying the same state outlines as a card. */
 .seat__name {
