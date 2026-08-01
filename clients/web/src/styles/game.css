@@ -87,16 +87,14 @@
 
 /* The table.
 
-   A fixed, full-viewport, two-player composition. Still grey box — no colour, no theme, no
-   art — but the *spatial* decisions are real ones and they are the point: opponent across from
+   The *spatial* decisions here are the real ones and they are the point: opponent across from
    you, your side nearest you, the stack in the column between them, your hand on the edge only
    you can see, and the controls that move the game pinned below it.
 
-   What the geometry is protecting is that last part. Every scrolling region below is bounded
-   (`min-height: 0` inside a grid track, then `overflow` on the region itself) so that a board
-   with sixty permanents or a hand of twenty scrolls *within its own area* instead of growing
-   the page and pushing the action dock out of reach. A player must never have to scroll to
-   find the button that ends their turn. */
+   Everything about how much room each of those gets is `docs/client-design.md`, which is
+   binding, and the rules below have not caught up with it yet: the regions are bounded but they
+   respond to overflow by *scrolling*, which the spec forbids outright — a region that runs out
+   of room packs tighter and then degrades. See #652. Do not add a new `overflow: auto` here. */
 body:has(.screen) {
   padding: 0;
 }

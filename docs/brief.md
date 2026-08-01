@@ -71,9 +71,10 @@ change together.
 
 ### Clients
 
-The web client is the current milestone: one layout — desktop landscape, mouse and keyboard —
-two players, DOM and CSS, with inline SVG and canvas allowed for presentational overlays anchored
-to ids the server stated and no WebGL. Its two jobs are to make a legal game playable and to
+The web client is the current milestone: DOM and CSS, with inline SVG and canvas allowed for
+presentational overlays anchored to ids the server stated. What it must look like and how it must
+hold at any zoom, resolution, and aspect ratio is [`client-design.md`](client-design.md), which is
+binding. Its two jobs are to make a legal game playable and to
 **make a settle legible**: when the server auto-passes you through several steps, you must be
 able to tell what happened. That second job is the actual product hypothesis and the thing
 XMage does badly.

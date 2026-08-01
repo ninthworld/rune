@@ -5,13 +5,15 @@ a web client. Read [`docs/brief.md`](docs/brief.md) for the product and architec
 [`docs/coding-standards.md`](docs/coding-standards.md) before changing code.
 
 **The web client is a dark table, not a form.** `clients/web` renders real card frames —
-printed proportions, a tint from the printed cost, mana pips, an art window, a permanent that
-turns when it taps — arranged as a board: chrome at the edges, the turn down the left rail, each
-seat's permanents in creature and land rows the *server's* `card_types` decide, and one gear for
-everything about the device rather than the game. The directness goes with it: one click takes an
-action the server offered exactly one of, the pointer previews a card, and the keyboard carries
-priority. The lobby is still grey box. Playing is still the merge criterion: make it good before
-making it pretty, and nothing visual is worth a rule in `interaction.ts` bending for it.
+printed proportions, a tint from the printed cost, mana pips, an art window — arranged as a board:
+chrome at the edges, each seat's permanents in creature and land rows the *server's* `card_types`
+decide, and one gear for everything about the device rather than the game. The directness goes
+with it: one click takes an action the server offered exactly one of, the pointer previews a card,
+and the keyboard carries priority. **How it occupies space is
+[`docs/client-design.md`](docs/client-design.md)**, which is binding: zoom, resolution, and aspect
+are the same problem; the board never scrolls; text is fitted, never truncated. Playing is still
+the merge criterion: make it good before making it pretty, and nothing visual is worth a rule in
+`interaction.ts` bending for it.
 
 ## Hard rules
 
