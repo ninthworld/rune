@@ -97,6 +97,15 @@ const writeToken = (token: string | undefined): void => {
   }
 }
 
+/**
+ * The token this tab holds, if any.
+ *
+ * Read outside the hook by the connect screen's gate: a tab carrying a token has already been
+ * issued an identity and is owed whatever seat that identity holds, so it is put back on the
+ * screen the server answers with rather than being asked who it is again.
+ */
+export const heldSession = (): string | undefined => readToken()
+
 /** How long to wait before the nth retry: quick at first, then backing off to eight seconds. */
 const retryDelay = (attempt: number): number => Math.min(8000, 500 * 2 ** Math.min(attempt, 4))
 

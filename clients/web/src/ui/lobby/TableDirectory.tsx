@@ -1,10 +1,20 @@
 /**
- * The table directory: every browsable room, as rows you can act on.
+ * The tables list: the screen Play lands on.
  *
- * A row's button is there because the server advertised the command it sends (`lobby.ts`), so
- * this draws what it was handed and gates nothing itself. The room id stays visible on every
- * row: a private table is reachable only by an id its host shares out of band, and the box at
- * the bottom is where that id goes.
+ * `docs/client-design.md` §9.5 states the row in one line — **what the table is, how full it is,
+ * and one button** — and everything that used to ride along is gone. The room id is the clearest
+ * case: it was printed on every row, and a player has no use for an identifier they never type.
+ * It has exactly one use, reaching an unlisted table somebody shared out of band, and that use
+ * has a box at the bottom of this list.
+ *
+ * How full a table is is drawn rather than counted out: one pip per seat, filled or open. A
+ * player scanning for somewhere to sit is asking "is there room", and a row of pips answers that
+ * without being read. The count is still the accessible name, because a pip is not a fact
+ * assistive technology can perceive.
+ *
+ * A row's button is there because the server advertised the command it sends (`lobby.ts`), and
+ * occupancy only chooses which of the two advertised commands it leads with. This gates nothing
+ * itself.
  */
 import { useState } from 'react'
 
@@ -13,43 +23,72 @@ import type { TableEntry } from './../../lobby'
 export function TableDirectory({
   entries,
   joinById,
+  canCreate,
+  onCreate,
   onReach,
   onJoinById,
 }: {
   entries: readonly TableEntry[]
   /** Whether the server is offering `join_room` at all; the id box is pointless without it. */
   joinById: boolean
+  canCreate: boolean
+  onCreate(): void
   onReach(entry: TableEntry): void
   onJoinById(roomId: string): void
 }) {
   const [id, setId] = useState('')
 
   return (
-    <section aria-labelledby="directory-heading" className="directory">
-      <h2 id="directory-heading">Tables</h2>
+    <section aria-label="Tables" className="page">
+      <header className="page__head">
+        <h1>Tables</h1>
+        {canCreate && (
+          <button type="button" onClick={onCreate}>
+            New table
+          </button>
+        )}
+      </header>
 
       {entries.length === 0 ? (
-        <p className="directory__empty">No public tables right now. Create one.</p>
+        <p className="page__pending">No tables yet.</p>
       ) : (
-        <ul className="directory__list">
+        <ul className="tables">
           {entries.map((entry) => (
-            <li key={entry.roomId} className={`table-row table-row--${entry.state}`}>
-              <span className="table-row__label">{entry.label}</span>
-              <span className="table-row__format">{entry.format}</span>
-              <span className="table-row__seats">
-                {entry.filled}/{entry.seats} seats
-                {entry.open > 0 && <> · {entry.open} open</>}
+            <li key={entry.roomId} className={`table table--${entry.state}`}>
+              <span className="table__main">
+                <span className="table__name">{entry.label}</span>
+                <span className="table__about">
+                  <span className="table__format">{entry.format}</span>
+                  {entry.state === 'in_progress' && (
+                    <span className="table__state">In progress</span>
+                  )}
+                  {entry.spectators > 0 && (
+                    <span className="table__watchers">{entry.spectators} watching</span>
+                  )}
+                </span>
               </span>
-              <span className="table-row__state">{entry.stateLabel}</span>
-              <span className="table-row__watchers">
-                {entry.spectators > 0 && <>{entry.spectators} watching</>}
+              <span
+                className="table__seats"
+                aria-label={`${entry.filled} of ${entry.seats} seats taken`}
+              >
+                {Array.from({ length: entry.seats }, (_, index) => (
+                  <span
+                    key={index}
+                    aria-hidden="true"
+                    className={`pip${index < entry.filled ? ' pip--taken' : ''}`}
+                  />
+                ))}
               </span>
-              <span className="table-row__id" title="Table id">
-                <code>{entry.roomId}</code>
-              </span>
-              <span className="table-row__reach">
+              <span className="table__reach">
                 {entry.reach && (
-                  <button type="button" onClick={() => onReach(entry)}>
+                  <button
+                    type="button"
+                    // Getting into a table that can still be joined is the one thing this
+                    // screen is for. Watching a game already running is a real thing to do and
+                    // not that thing, so it does not take the accent.
+                    className={entry.reach === 'join_room' ? 'page__lead' : undefined}
+                    onClick={() => onReach(entry)}
+                  >
                     {entry.reach === 'join_room' ? 'Join' : 'Watch'}
                   </button>
                 )}
@@ -59,17 +98,19 @@ export function TableDirectory({
         </ul>
       )}
 
+      {/* The one place a room id is worth a control: a private table is unlisted, and the id its
+          host shared is the only way in. */}
       {joinById && (
-        <p className="directory__by-id">
-          <label>
-            Have a table id?{' '}
-            <input
-              aria-label="Table id"
-              placeholder="r_204"
-              value={id}
-              onChange={(event) => setId(event.target.value)}
-            />
-          </label>{' '}
+        <p className="tables__by-id">
+          <input
+            aria-label="Table id"
+            placeholder="Table id"
+            value={id}
+            onChange={(event) => setId(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && id.trim()) onJoinById(id.trim())
+            }}
+          />
           <button
             type="button"
             disabled={id.trim().length === 0}

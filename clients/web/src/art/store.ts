@@ -99,6 +99,18 @@ export class ArtStore {
     this.announce()
   }
 
+  /**
+   * How many cards this device has a settled answer for.
+   *
+   * A number rather than a list, because what a player is deciding is whether there is anything
+   * to clear — and it is one number so a subscriber can compare it without allocating.
+   */
+  cached(): number {
+    let settled = 0
+    for (const entry of this.entries.values()) if (entry.status !== 'loading') settled += 1
+    return settled
+  }
+
   /** Forget every resolved image, on this device. The next look re-asks. */
   clear(): void {
     this.entries = new Map()

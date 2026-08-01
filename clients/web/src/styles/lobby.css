@@ -1,201 +1,417 @@
-/* The lobby.
+/* The pre-game surfaces inside the shell: the tables, the table you are at, the deck, and the
+   builder. The shell itself — connect, the rail, the content region, and the controls all three
+   are made of — is `shell.css`.
 
-   The shape came first and has not changed: a table directory reads as rows because rows
-   compare, a roster reads as one line per seat because a seat is one thing, and the deck builder
-   puts the pool and the deck side by side because building a deck is a comparison between the
-   two.
+   One idea runs through all of it, and it is `docs/client-design.md` §9.2 rule 4: **one box.** A
+   panel inside a panel inside a panel, each with its own heading, is a document's way of
+   grouping, and grouping is what space and alignment are for. So a table row is a row on the
+   felt rather than a card in a box in a section; the seats and the deck sit side by side on the
+   same surface rather than in two bordered regions with two headings; and what used to be four
+   nested frames carrying six facts is one list.
 
-   What is added here is that it now looks like the same product as the table. It is the first
-   screen anybody sees, and a dark felt board reached through a page of default form controls
-   reads as two applications — so the lobby borrows the table's own tokens: the same panels on the
-   same felt, the same lift instead of a rule between regions, the same accent spent only on the
-   thing the player is being asked to do. Nothing about *what* is on the screen changed; every
-   control is the one the server advertised, in the same order, saying the same words. */
-main:has(.lobby) {
-  /* The builder is two columns of card frames; 70rem squeezes the pool to three across. */
-  max-width: 90rem;
+   The facts on a row are drawn rather than written wherever drawing is shorter. Occupancy is a
+   run of pips, because "is there room" is answered by looking; what a seat still owes is a mark
+   on that seat, lit or unlit, because the sentence underneath was restating the row above it. */
+
+/* ---------------------------------------------------------------------------
+   The tables
+   --------------------------------------------------------------------------- */
+
+.app .tables {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 
-.lobby__head h1 {
-  margin-block-end: 0.2rem;
+.app .table {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.4rem;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
+  transition: background var(--trace-duration) ease;
 }
 
-.lobby__name {
-  font-size: 0.85rem;
+.app .table:hover {
+  background: var(--panel);
 }
 
-.directory__list,
-.roster__list,
-.builder__entries {
+.app .table__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.app .table__name {
+  font-size: var(--text-md);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.app .table__about {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.app .table__state {
+  color: var(--ink-dim);
+}
+
+/* One pip per seat: filled where somebody is sitting. A count read at a glance rather than a
+   fraction read as text — the fraction is still the row's accessible name. */
+.app .table__seats {
+  display: flex;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.app .pip {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  border: 1px solid var(--ink-faint);
+}
+
+.app .pip--taken {
+  background: var(--ink-dim);
+  border-color: var(--ink-dim);
+}
+
+.app .table__reach {
+  flex: 0 0 auto;
+}
+
+.app .tables__by-id {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.app .tables__by-id input {
+  flex: 0 1 12rem;
+}
+
+/* ---------------------------------------------------------------------------
+   The table you are at
+   --------------------------------------------------------------------------- */
+
+/* Seats and deck on one surface, side by side where there is width for it. Two panels with two
+   headings was the nesting §9.2 rule 4 retires; the split between them is space. */
+.app .table-at {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1rem 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 52rem) {
+  .app .table-at {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.app .seats__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.app .seat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.4rem;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
+}
+
+/* Your own seat, marked the way the near half of the board is: brighter, because it is yours. */
+.app .seat--you {
+  background: var(--board-you);
+}
+
+.app .seat--empty {
+  background: color-mix(in srgb, var(--panel) 40%, var(--felt));
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.app .seat__index {
+  width: 1.3rem;
+  height: 1.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+  flex: 0 0 auto;
+}
+
+.app .seat__who {
+  font-size: var(--text-md);
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app .seat--empty .seat__who {
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.app .seat__you {
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+
+.app .seat__kind {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--tone-waiting) 55%, transparent);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+}
+
+/* What a seat still owes, on the seat. Unlit is the whole statement of "not yet"; the word does
+   not change, so the pair is scanned rather than read. */
+.app .seat__marks {
+  display: flex;
+  gap: 0.25rem;
+  margin-inline-start: auto;
+}
+
+.app .mark {
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--line);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.app .mark--met {
+  border-color: color-mix(in srgb, var(--tone-yours) 60%, transparent);
+  background: color-mix(in srgb, var(--tone-yours) 25%, transparent);
+  color: var(--ink);
+}
+
+.app .seat__controls {
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* Choosing an opponent happens on the seat being filled, when the choice is being made — never
+   as a description printed beside a control forever (§9.2 rule 1). */
+.app .seat__fill {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 1px solid var(--line);
+}
+
+.app .seat__fill-go {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   The deck
+   --------------------------------------------------------------------------- */
+
+.app .deck {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.app .deck__count {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.app .deck__cards {
+  font-size: var(--text-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.app .deck__unit,
+.app .deck__different,
+.app .deck__commander {
+  font-size: var(--text-xs);
+  color: var(--ink-dim);
+}
+
+.app .deck__advice {
+  /* Advice, not a verdict: the server's rejection is the only thing that gets the alert role. */
+  margin: 0;
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--ink-dim);
+}
+
+.app .deck__rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.app .deck__starters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.app .deck__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.app .deck__rejected {
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   The builder
+   --------------------------------------------------------------------------- */
+
+.app .builder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.app .builder__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.app .builder__head h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--ink-dim);
+}
+
+.app .builder__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .app .builder__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.app .builder__pool,
+.app .builder__deck {
+  padding: 0.6rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 60%, var(--felt));
+  min-width: 0;
+}
+
+/* One row of pool tiles is as tall as its tallest card, so every Add sits on the same line
+   rather than hanging off the bottom of a short one. */
+.app .builder__results {
+  align-items: stretch;
+}
+
+.app .builder__results > li {
+  justify-content: space-between;
+  width: 9rem;
+}
+
+/* Both columns scroll inside themselves. A three-hundred-card pool must not push the deck
+   column, or the controls under it, off the bottom of the content region. */
+.app .builder__results,
+.app .builder__deck {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.app .builder__entries {
   list-style: none;
   padding: 0;
   margin-block: 0.35rem;
 }
 
-.directory__empty,
-.builder__empty,
-.deck__summary,
-.roster__waiting {
-  opacity: 0.8;
+.app .builder__add {
+  font-size: var(--text-xs);
 }
 
-.table-row,
-.seat-row {
+.app .builder__search {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 0.3rem;
-  margin-block-end: 0.3rem;
-}
-
-.table-row__label,
-.seat-row__who {
-  font-weight: 600;
-  min-width: 9rem;
-}
-
-.table-row__format,
-.table-row__seats,
-.table-row__state,
-.table-row__watchers,
-.table-row__id,
-.seat-row__index,
-.seat-row__awaiting {
-  font-size: 0.8rem;
-  opacity: 0.8;
-}
-
-/* The reach control is the row's one action, so it sits at the end of every row rather than
-   wherever the text before it happens to stop. */
-.table-row__reach,
-.seat-row__controls {
-  margin-inline-start: auto;
-  display: flex;
-  gap: 0.3rem;
-}
-
-.table-row--in_progress {
-  border-style: dashed;
-}
-
-.seat-row--you {
-  border-color: currentColor;
-}
-
-.seat-row__status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem;
-}
-
-.table-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 0.75rem;
-  margin-block: 0.5rem;
 }
 
-.table-form__rules,
-.table-form__controls,
-.table-form__waiting,
-.deck__rules,
-.builder__rules,
-.roster__ai-note {
-  font-size: 0.8rem;
-  opacity: 0.8;
+.app .builder__count,
+.app .builder__rules,
+.app .builder__empty {
+  font-size: var(--text-xs);
+  color: var(--ink-dim);
 }
 
-.table-form__controls {
-  flex-basis: 100%;
-  opacity: 1;
-}
-
-.deck__advice,
-.builder__advice {
-  /* Advice, not a verdict: the server's rejection is the only thing that gets the alert role. */
+.app .builder__advice {
+  font-size: var(--text-xs);
   font-style: italic;
+  color: var(--ink-dim);
 }
 
-.builder {
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  border-radius: 0.3rem;
-  padding: 0.5rem 0.75rem;
-  margin-block: 0.75rem;
-}
-
-.builder__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.builder__head h3 {
-  margin-block: 0;
-}
-
-.builder__body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 20rem;
-  gap: 0.75rem;
-  align-items: start;
-}
-
-/* One row of pool tiles is as tall as its tallest card, so every Add sits on the same line
-   rather than hanging off the bottom of a short one. */
-.builder__results {
-  align-items: stretch;
-}
-
-.builder__results > li {
-  justify-content: space-between;
-}
-
-/* Both columns scroll inside themselves. A three-hundred-card pool must not push the deck
-   column, or the controls under it, off the bottom of the page. */
-.builder__results,
-.builder__deck {
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.builder__results > li {
-  width: 9rem;
-}
-
-.builder__add {
-  font-size: 0.75rem;
-}
-
-.builder__search {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.builder__count {
-  font-size: 0.8rem;
-  opacity: 0.8;
-}
-
-.deck-entry {
+.app .deck-entry {
   display: flex;
   align-items: baseline;
   gap: 0.4rem;
-  padding-block: 0.15rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.3rem;
 }
 
-.deck-entry__count {
+.app .deck-entry:hover {
+  background: color-mix(in srgb, var(--panel) 90%, var(--felt));
+}
+
+.app .deck-entry__count {
   min-width: 2rem;
   font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
 }
 
-.deck-entry__name {
+.app .deck-entry__name {
   /* A name that opens the inspector; a button so the keyboard reaches it, styled as text. */
   border: none;
   background: none;
@@ -205,210 +421,11 @@ main:has(.lobby) {
   text-align: start;
   text-decoration: underline dotted;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
-.deck-entry__controls {
+.app .deck-entry__controls {
   margin-inline-start: auto;
   display: flex;
   gap: 0.2rem;
-}
-
-/* ---------------------------------------------------------------------------
-   Dressing
-   --------------------------------------------------------------------------- */
-
-/* The page the lobby sits on: the table's felt, so the two screens are lit the same way. */
-body:has(.lobby) {
-  background: var(--felt);
-  color: var(--ink);
-}
-
-.lobby {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-/* One band across the top, the same shape as the match header: who you are on the left, what
-   is about the device on the right. */
-.lobby__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  background: linear-gradient(var(--panel), color-mix(in srgb, var(--panel) 70%, var(--felt)));
-  border: 1px solid var(--line);
-}
-
-.lobby__head h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  letter-spacing: 0.06em;
-  font-weight: 800;
-}
-
-.lobby__name {
-  margin: 0;
-  color: var(--ink-dim);
-}
-
-/* Everything about the device goes to the far end, where the table keeps its gear. */
-.lobby__device {
-  order: 9;
-  margin-inline-start: auto;
-}
-
-/* Each region is a panel on the felt rather than a rule across the page. A border between two
-   regions says "these are separated"; a lifted surface says "this is a thing", which is what a
-   table in a list of tables actually is. */
-.lobby > section,
-.lobby .directory,
-.lobby .roster,
-.lobby .deck,
-.lobby .create,
-.lobby .room {
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
-}
-
-.lobby h2 {
-  margin-block: 0 0.5rem;
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-  color: var(--ink-dim);
-}
-
-/* A table in the directory, and a seat in the roster: the same panel, because they are the same
-   kind of row — one thing, with a control at the end of it. */
-.lobby .table-row,
-.lobby .seat-row {
-  padding: 0.5rem 0.7rem;
-  border-radius: 0.4rem;
-  border-color: transparent;
-  background: color-mix(in srgb, var(--panel) 92%, var(--felt));
-  transition: background var(--trace-duration) ease;
-}
-
-.lobby .table-row:hover,
-.lobby .seat-row:hover {
-  background: var(--panel);
-}
-
-/* Your own seat, marked the way the near half of the board is: brighter, because it is yours. */
-.lobby .seat-row--you {
-  background: var(--board-you);
-}
-
-.lobby .table-row__label,
-.lobby .seat-row__who {
-  font-size: var(--text-md);
-  font-weight: 700;
-}
-
-/* The facts about a table are chips rather than a run-on line, so the format, the seats, and
-   how far along it is can each be found without reading the other two. */
-.lobby .table-row__format,
-.lobby .table-row__seats,
-.lobby .table-row__state,
-.lobby .table-row__watchers,
-.lobby .table-row__id,
-.lobby .seat-row__index {
-  padding: 0.1rem 0.4rem;
-  border-radius: 0.8rem;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-  color: var(--ink-dim);
-}
-
-/* A chip with nothing in it is not a chip. The watcher count is absent far more often than it
-   is present, and an empty pill beside a real one reads as a stray dash. */
-.lobby .table-row__watchers:empty {
-  display: none;
-}
-
-/* An id is for copying, not for reading: it stays available and stops competing. */
-.lobby .table-row__id {
-  font-family: ui-monospace, monospace;
-  color: var(--ink-faint);
-}
-
-/* A table you can still get into is the one thing on this screen worth colour. */
-.lobby .table-row--gathering .table-row__state {
-  background: color-mix(in srgb, var(--tone-yours) 30%, transparent);
-  color: var(--ink);
-}
-
-.lobby .table-row__reach {
-  margin-inline-start: auto;
-}
-
-/* The controls. Dark, bordered, and lit on hover — the same object at rest and under the
-   pointer, rather than a platform default that belongs to a different page. */
-.lobby button {
-  padding: 0.3rem 0.7rem;
-  border-radius: 0.3rem;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel) 85%, var(--felt));
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.lobby button:hover:not(:disabled),
-.lobby button:focus-visible:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
-  background: var(--panel);
-}
-
-.lobby button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-/* The one action a screen is *for* carries the accent: getting into a table that can still be
-   joined, and sending a deck. Watching a game already in progress is a real thing to do and not
-   the thing this screen is for. */
-.lobby .table-row--gathering .table-row__reach button,
-.lobby .deck__controls button:first-child {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-  color: var(--accent);
-}
-
-.lobby input,
-.lobby select {
-  padding: 0.25rem 0.45rem;
-  border-radius: 0.3rem;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--felt) 70%, var(--panel));
-  color: var(--ink);
-}
-
-.lobby input:focus-visible,
-.lobby select:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
-  outline-offset: 1px;
-}
-
-/* The builder's two halves, each on its own surface, because the comparison is between them. */
-.lobby .builder__pool,
-.lobby .builder__deck {
-  padding: 0.6rem;
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--panel) 60%, var(--felt));
-}
-
-.lobby .deck-entry {
-  padding: 0.2rem 0.4rem;
-  border-radius: 0.3rem;
-}
-
-.lobby .deck-entry:hover {
-  background: color-mix(in srgb, var(--panel) 90%, var(--felt));
-}
-
-.lobby .deck-entry__count {
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-dim);
 }

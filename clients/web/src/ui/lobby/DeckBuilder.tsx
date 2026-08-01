@@ -27,6 +27,7 @@ import {
 } from './../../deck'
 import type { CatalogFormat } from './../../protocol'
 import { Card } from './../Card'
+import { Picker } from './../controls'
 
 /** How many faces the pool draws at once before asking for a narrower search. */
 const SHOWN = 60
@@ -79,21 +80,19 @@ export function DeckBuilder({
                 onChange={(event) => setText(event.target.value)}
               />
             </label>{' '}
-            <label>
-              Keyword{' '}
-              <select
-                aria-label="Keyword"
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-              >
-                <option value="">any</option>
-                {catalog.keywords.map((word) => (
-                  <option key={word} value={word}>
-                    {word}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* A `<select>` clips its own arrow at 120% zoom (§9.2 rule 7), so this is the
+                shell's own listbox. The filter is unchanged: the keywords are the ones the
+                cards themselves state. */}
+            <Picker
+              label="Keyword"
+              value={keyword}
+              placeholder="any keyword"
+              options={[
+                { value: '', label: 'any keyword' },
+                ...catalog.keywords.map((word) => ({ value: word, label: word })),
+              ]}
+              onChange={setKeyword}
+            />
           </p>
 
           <p className="builder__count" role="status">

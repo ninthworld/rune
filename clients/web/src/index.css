@@ -1,10 +1,12 @@
-/* The page, in six files.
+/* The page, in seven files.
 
    Split along the surfaces it dresses rather than by property: this file is the page itself —
    the reset, the type scale, the shared tokens, and the handful of primitives every screen
    shares — and each import below dresses one surface. `game.css` is the table's own geometry and
    the regions in it; `dock.css` and `side.css` are the two surfaces that had grown large enough
-   inside it to be their own files.
+   inside it to be their own files. `shell.css` is the client shell — connect, the rail, the
+   content region, and the controls those are made of — and `lobby.css` is the pre-game surfaces
+   inside it, split for the same reason.
 
    The imports come first, as the cascade requires, so a later rule in this file wins over the
    same specificity in one of them. */
@@ -12,6 +14,7 @@
 @import './styles/game.css';
 @import './styles/dock.css';
 @import './styles/side.css';
+@import './styles/shell.css';
 @import './styles/lobby.css';
 
 :root {

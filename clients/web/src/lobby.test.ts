@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { awaiting, roster, tableLabel, tables } from './lobby'
+import { roster, tableLabel, tables } from './lobby'
 import { LobbyView } from './protocol'
 
 const FIXTURES = join(
@@ -109,14 +109,18 @@ describe('the roster of a table', () => {
   it('restates the seat flags rather than interpreting them', () => {
     const rows = roster(room(), 'p0')
     expect(rows[0]).toMatchObject({ decked: true, ready: true, awaiting: undefined })
-    expect(rows[0]?.status).toEqual(['Deck submitted', 'Ready'])
+    expect(rows[0]?.marks).toEqual([
+      { label: 'Deck', met: true, detail: 'Deck submitted' },
+      { label: 'Ready', met: true, detail: 'Ready' },
+    ])
     // The fixture's AI seat is decked but carries no `ready`, and that is reported as sent —
     // an AI seat is not given a readiness the server did not state.
     expect(rows[1]).toMatchObject({ ai: 'random', decked: true, ready: false })
+    expect(rows[1]?.marks[1]).toEqual({ label: 'Ready', met: false, detail: 'Not ready' })
     expect(rows[1]?.awaiting).toBe('Not ready')
   })
 
-  it('says what each unset seat still owes, in seat order', () => {
+  it('marks what each seat still owes, on that seat', () => {
     const rows = roster(
       {
         room_id: 'r_1',
@@ -129,10 +133,16 @@ describe('the roster of a table', () => {
       },
       'p0',
     )
-    expect(awaiting(rows)).toEqual(['Seat 2 — No deck yet', 'Seat 3 — Nobody here yet'])
-    // Every seat set: nothing is waited on, which is a report and not a prediction that the
-    // server is about to start the game.
-    expect(awaiting(rows.slice(0, 1))).toEqual([])
+    // The word does not change with the state — a mark is scanned, not read — and the whole
+    // fact rides alongside for assistive technology.
+    expect(rows.map((row) => row.marks.map((mark) => `${mark.label}:${mark.met}`))).toEqual([
+      ['Deck:true', 'Ready:true'],
+      ['Deck:false', 'Ready:false'],
+      // A seat nobody is in owes neither: what it is waiting for is somebody, which is the
+      // seat itself rather than a mark on it.
+      [],
+    ])
+    expect(rows.map((row) => row.awaiting)).toEqual([undefined, 'No deck yet', 'Nobody here yet'])
   })
 
   it('reads a room with no seat roster as an empty one', () => {
