@@ -623,10 +623,20 @@ button.card:hover {
   place-items: center;
   inline-size: 1.15em;
   block-size: 1.15em;
+  /* The disc is a share of its own type, and the type has a floor, so below a certain cost size
+     the two stop agreeing: a 9px glyph needs more than a 10px circle. The floor is stated on the
+     shape as well, in the same units the glyph's is, and above it nothing changes. */
+  min-inline-size: 12px;
+  min-block-size: 12px;
   border-radius: 50%;
   background: var(--pip-from);
   color: var(--pip-ink);
-  font-size: 0.78em;
+  /* A share of the cost's own type, floored at §7's 9px. A pip is graphic and reads at sizes
+     text does not, but the digit inside one is still a digit: at a 72px tile the cost was
+     planned at 9px and the pip drew its glyph at 7, which is under the floor for the same
+     reason everything else on the card is held to it. The disc grows with the glyph, so the
+     shape a player scans for stays the shape and only stops shrinking. */
+  font-size: max(9px, 0.78em);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;

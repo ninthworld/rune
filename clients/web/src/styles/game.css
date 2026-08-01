@@ -1,100 +1,25 @@
-/* The action dock's own primitives: an action list, one question, and the log column. They
-   dress the game screen and live with it, even though the dock is composed a few files away. */
-.actions {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.choices {
-  border: 1px solid currentColor;
-  padding: 0.5rem 0.75rem;
-  margin-block: 0.5rem;
-}
-
-.choices__what {
-  margin: 0 0 0.4rem;
-  font-size: 0.9rem;
-}
-
-.choices__controls {
-  margin-block-end: 0;
-}
-
-/* One question. Each is bounded, because an action asking three of them at once — which
-   creatures attack, and what each of them attacks — is otherwise one undifferentiated wall. */
-.slot {
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  padding: 0.35rem 0.5rem;
-  margin-block: 0.4rem;
-}
-
-.slot__tally {
-  opacity: 0.75;
-}
-
-.slot__hint,
-.dock__hint {
-  margin-block: 0.2rem;
-  font-size: 0.75rem;
-  opacity: 0.7;
-}
-
-.slot__number input {
-  width: 5rem;
-}
-
-/* A chosen candidate, in a list of buttons rather than checkboxes: the same click that picks it
-   on the table picks it here, so the two paths cannot behave differently. */
-.actions button[aria-pressed='true'] {
-  outline: 2px solid currentColor;
-  outline-offset: 1px;
-}
-
-.dock__subject {
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  padding: 0.35rem 0.5rem;
-  margin-block: 0.4rem;
-}
-
-/* Louder than a selection box on purpose: this is the one thing the player must do, and the
-   game does not move until they do it. */
-.dock__owed {
-  border: 1px solid currentColor;
-  padding: 0.35rem 0.5rem;
-  margin-block: 0.4rem;
-}
-
-.dock__who {
-  margin-block-start: 0;
-}
-
-.dock__all {
-  margin-block-start: 0.4rem;
-  font-size: 0.8rem;
-}
-
-.dock__all summary {
-  cursor: pointer;
-}
-
-.log {
-  max-height: 16rem;
-  overflow-y: auto;
-}
-
 /* The table.
 
    The *spatial* decisions here are the real ones and they are the point: opponent across from
    you, your side nearest you, the stack in the column between them, your hand on the edge only
-   you can see, and the controls that move the game pinned below it.
+   you can see, and the controls that move the game pinned below it. That order is invariant —
+   `docs/client-design.md` §4 — and nothing in this file rearranges it for any screen.
 
-   Everything about how much room each of those gets is `docs/client-design.md`, which is
-   binding, and the rules below have not caught up with it yet: the regions are bounded but they
-   respond to overflow by *scrolling*, which the spec forbids outright — a region that runs out
-   of room packs tighter and then degrades. See #652. Do not add a new `overflow: auto` here. */
+   **What changed is the substrate.** This used to be a grid of `auto` tracks: every region's
+   size was whatever the content in it asked for, and `overflow-y: auto` underneath absorbed the
+   difference. That is a document, and §5 says a table is a scene — "a region's position is
+   computed, never the residue of what came before it". So `scene.ts` decides every box from the
+   viewport, `ui/game/frame.tsx` places it, and what is left here is *dressing*: colour, type,
+   depth, and how the contents of a box arrange inside it.
+
+   Two rules follow from that and are not negotiable in this file. **No `overflow: auto` inside
+   the board**, ever — §3's last line is that no region of the board scrolls, and a region that
+   cannot hold its content is a region whose contents must pack tighter. And **no height, width,
+   or position stated here for a region** — every one of them arrives as an inline style, so a
+   number in this file could only ever be a second opinion that goes stale.
+
+   Read with `dock.css` and `side.css`, which dress the two surfaces that used to live here. */
+
 body:has(.screen) {
   padding: 0;
 }
@@ -104,37 +29,42 @@ main:has(.screen) {
   margin: 0;
 }
 
-/* Every region below carries `min-width: 0` / `min-height: 0`. A grid or flex item's default
-   content floor lets it push past its own track no matter what `overflow` says, and one card
-   too many in a hand would then widen the whole page instead of scrolling inside its row. */
+/* The screen *is* the viewport — fixed to it rather than sized in `dvh`, so the box the regions
+   are measured against and the box they are drawn in are the same box, and a mobile browser's
+   collapsing address bar cannot put the two half a bar apart. Nothing here scrolls: the page is
+   not a document and there is nothing below the fold, because there is no fold. */
 .screen {
-  box-sizing: border-box;
-  height: 100dvh;
-  display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr) var(--side-w, 14rem);
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  grid-template-areas:
-    'phases match side'
-    'phases table side'
-    'phases dock  side'
-    'phases hand  side';
+  position: fixed;
+  inset: 0;
   overflow: hidden;
   background: var(--felt);
   color: var(--ink);
 }
 
-/* A pile is opened to be read, and reading a pile is looking at cards. The column it opens in
-   widens to hold a grid of faces, and the board gives that width back the moment the pile
-   closes — which is the trade a player is making when they open one, made explicit. Driven by
-   what is on the screen rather than by a flag this client would then have to keep in step. */
-.screen:has(.zone) {
-  --side-w: 21rem;
+/* One region of the table, at the box the scene gave it.
+
+   `overflow: hidden` and never `auto`. The difference is the whole of §3's last line: `auto`
+   says "when this does not fit, the player can go looking for the rest", which is a board that
+   has to be scrolled to be seen; `hidden` says "this does not fit, and the fix is upstream" —
+   the ladder tightens until it does. While the packing that does the tightening is still being
+   built (#660), a crowded field is cut off rather than scrollable, and cut off is the honest
+   report of a box whose contents have not learnt to shrink yet. */
+.region {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
-/* The chrome is at the edges and the board is in the middle, which is the whole layout in one
-   sentence. Every band around the table earns its height: the top is one line about the match,
-   the left is the turn, the right is what you opened, and the bottom is your hand and the one
-   button that moves the game. */
+/* Whatever a region holds fills it. A surface states no box of its own — it is handed one by
+   being drawn inside one, the same way it is handed its answers rather than the view. */
+.region > * {
+  box-sizing: border-box;
+  block-size: 100%;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
 .screen section {
   border-top: none;
 }
@@ -147,34 +77,52 @@ main:has(.screen) {
   color: var(--ink-dim);
 }
 
-/* One line about the match, and nothing else in it. */
+/* ---------------------------------------------------------------------------
+   One line about the match
+   --------------------------------------------------------------------------- */
+
+/* The band is 40–48px whatever the screen is, so what it carries is decided by how wide the box
+   is rather than by how much there is to say. Container queries, not media queries: the question
+   is "how much room does this region have", and the region already knows. */
+.region--header,
+.region--dock {
+  container-type: inline-size;
+}
+
 .match {
-  grid-area: match;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
-  padding: 0.4rem 0.75rem;
+  padding: 0.1rem 0.5rem;
+  line-height: 1.2;
   background: linear-gradient(var(--panel), color-mix(in srgb, var(--panel) 70%, var(--felt)));
   border-block-end: 1px solid var(--line);
+  overflow: hidden;
 }
 
 .match__turn {
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: 700;
   letter-spacing: -0.01em;
   margin: 0;
+  white-space: nowrap;
 }
 
 .match__line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  column-gap: 1rem;
-  row-gap: 0.1rem;
+  column-gap: 0.8rem;
+  row-gap: 0;
+  min-width: 0;
 }
 
 .match__state {
   margin: 0;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--ink-faint);
+  white-space: nowrap;
 }
 
 .match__who + .match__who::before {
@@ -187,12 +135,15 @@ main:has(.screen) {
 }
 
 /* The status is the one line a player checks between every action, so it is the one piece of
-   the band that is allowed to shout — and only when the answer is "you". */
+   the band that is allowed to shout — and only when the answer is "you". It is also the first
+   thing the band gives up, because the dock says the same thing in colour directly under the
+   board and this is the copy that is furthest from where a player is looking. */
 .match__status {
   margin: 0;
   margin-inline-start: auto;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--ink-faint);
+  white-space: nowrap;
 }
 
 .match__status--yours {
@@ -204,12 +155,21 @@ main:has(.screen) {
   font-variant-numeric: tabular-nums;
 }
 
-/* Everything about this device, behind one control at the far edge. */
-.match__settings {
+@container (max-width: 46rem) {
+  .match__status {
+    display: none;
+  }
+}
+
+/* One control each, at the far edge: everything about this device, and — where the ladder took
+   the side column — everything the side column held. A header that carried each of them
+   separately is the header a player stopped reading. */
+.match__control {
   flex: none;
-  padding: 0.1rem 0.4rem;
+  align-self: center;
+  padding: 0 0.35rem;
   font-size: var(--text-md);
-  line-height: 1;
+  line-height: 1.4;
   background: none;
   border: 1px solid var(--line);
   border-radius: 0.25rem;
@@ -217,51 +177,95 @@ main:has(.screen) {
   cursor: pointer;
 }
 
-.match__settings:hover,
-.match__settings:focus-visible {
+.match__control:hover,
+.match__control:focus-visible {
   color: var(--ink);
   border-color: var(--ink-faint);
 }
 
-/* The turn, down the left edge — a rail the width of a word, so twelve steps cost no band
-   above the board. Each step is still the control that sets a stop there. */
+.match__settings {
+  margin-inline-start: 0.3rem;
+}
+
+.match__notice {
+  margin-block: 0;
+  padding: 0.1rem 0.4rem;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.match__notice h2 {
+  display: inline;
+  margin-inline-end: 0.4rem;
+}
+
+.match__notice p {
+  display: inline;
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   The turn
+   --------------------------------------------------------------------------- */
+
+/* Three shapes of the same row, chosen by the scene: a rail down the left edge, a band under the
+   header where the viewport is square, and the current step alone where neither fits (§3, step
+   7). The names read horizontally in all three — the rail is a hundred-odd pixels wide now
+   rather than the width of a word, so turning the text on its side would spend legibility to
+   save room that is already there. */
 .strip {
-  grid-area: phases;
   display: flex;
-  flex-direction: column;
   gap: 1px;
   list-style: none;
   margin: 0;
-  padding: 0.35rem 0;
+  padding: 0;
   overflow: hidden;
   background: color-mix(in srgb, var(--panel) 60%, var(--felt));
+}
+
+.strip--rail {
+  flex-direction: column;
+  padding-block: 0.25rem;
   border-inline-end: 1px solid var(--line);
+}
+
+.strip--strip,
+.strip--chip {
+  flex-direction: row;
+  border-block-end: 1px solid var(--line);
 }
 
 .strip > li {
   min-height: 0;
+  min-width: 0;
   flex: 1 1 auto;
   display: flex;
 }
 
 .strip__step {
   flex: 1 1 auto;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  padding: 0.1rem 0;
-  font-size: 0.55rem;
-  line-height: 1.1;
+  gap: 0.3rem;
+  padding: 0 0.35rem;
+  font-size: var(--text-xs);
+  line-height: 1.15;
   border: 0;
   border-inline-start: 2px solid transparent;
   background: none;
   color: var(--ink-faint);
   cursor: pointer;
-  /* The names are long and the rail is narrow, so they turn with it. */
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
+  text-align: center;
+  overflow: hidden;
+}
+
+.strip--strip .strip__step,
+.strip--chip .strip__step {
+  border-inline-start: 0;
+  border-block-end: 2px solid transparent;
 }
 
 .strip__step:hover,
@@ -289,82 +293,595 @@ main:has(.screen) {
   border-inline-start-color: var(--ink-faint);
 }
 
+.strip--strip .strip__step--stop-own,
+.strip--strip .strip__step--stop-always,
+.strip--chip .strip__step--stop-own,
+.strip--chip .strip__step--stop-always {
+  border-block-end-color: var(--ink-faint);
+}
+
 .strip__step--now.strip__step--stop-own,
 .strip__step--now.strip__step--stop-always {
   color: var(--felt);
 }
 
+.strip__name {
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* The stop marker earns its pixel only where the step names are drawn beside each other and the
+   colour of one step cannot be compared with the next at a glance. */
 .strip__mark {
+  flex: none;
+  opacity: 0.8;
+}
+
+.strip--chip .strip__mark {
   display: none;
 }
 
-.match__notice {
-  margin-block: 0.35rem 0;
-  padding: 0.3rem 0.5rem;
-  font-size: 0.8rem;
+/* ---------------------------------------------------------------------------
+   The seats
+   --------------------------------------------------------------------------- */
+
+/* One line where it fits. The bar is a fixed band between the header and the board, so what it
+   carries is a question of what fits in a band rather than of how much there is to say: life and
+   the status marks are always drawn, and the counts fold (§2, "The seat bar"). */
+.seat {
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
+  font-size: var(--text-sm);
+  line-height: 1.2;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  column-gap: 0.5rem;
+  overflow: hidden;
 }
 
-.match__notice h2 {
-  display: inline;
-  margin-inline-end: 0.4rem;
+/* One line, and it stays one line. A bar that wrapped would be a bar whose height came from
+   what happened to be in it — the seat is a band the scene sized, and what does not fit is what
+   §2 folds rather than what pushes the board down. */
+.seat > * {
+  min-width: 0;
 }
 
-.match__notice p {
-  display: inline;
+.seat .trail,
+.seat .trail__line {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.seat__who,
+.seat__life,
+.seat__marks,
+.seat__pool,
+.seat__commander {
   margin: 0;
 }
 
-.table {
-  grid-area: table;
-  min-height: 0;
-  min-width: 0;
-  /* The frame the drawn relationships are measured against, and the reason they are measured
-     against *this* box: everything an arrow can join — both halves of the board, both seats,
-     and the stack rail — is inside it, and nothing that is about the device rather than the
-     game is. */
-  position: relative;
-  display: grid;
-  gap: 0.4rem;
-  padding: 0.4rem;
-  grid-template-columns: minmax(0, 1fr) 13rem;
-  /* The halves are not a fixed 50/50, and the difference is most of the board on a short
-     screen. An even split is only fair when both sides have something to draw: on turn one the
-     opponent has an empty battlefield and a two-line seat panel, and half the table went to the
-     words "No permanents." while the player's own lands were clipped off the bottom of theirs.
-     `fit-content(50%)` gives the far side exactly what it is using, up to half — so an empty
-     board costs nothing, a full one still gets its half, and the remainder always goes to the
-     side the player is actually acting from. */
-  grid-template-rows: fit-content(50%) minmax(0, 1fr);
-  grid-template-areas:
-    'opponent rail'
-    'you      rail';
+/* The number a player watches more than any other, at a size that says so. Tabular so it does
+   not jump between 9 and 10 while they are looking at it. */
+.seat__life-value {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
-.table__side {
-  min-height: 0;
+/* Eliminated, disconnected, monarch — facts about the seat rather than about the board. */
+.seat__marks {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.seat__who {
   min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A seat is a target like anything else, so its name is the control — styled as text so the
+   panel does not read as a row of buttons, and carrying the same state outlines as a card. */
+.seat__name {
+  background: none;
+  border: 0;
+  padding: 0.1rem 0.2rem;
+  margin: -0.1rem -0.2rem;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.seat__pool,
+.seat__commander {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+/* Unspent mana is compared against a cost dozens of times a turn, so it is drawn at the size a
+   cost is drawn at rather than at the size of the sentence it sits in. */
+.seat__pool {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.2rem;
 }
 
-.table__side--opponent {
-  grid-area: opponent;
+.seat__pool .mana {
+  font-size: 0.95rem;
 }
 
-.table__side--you {
-  grid-area: you;
+.seat__pool-note {
+  font-size: var(--text-xs);
+  opacity: 0.75;
 }
 
-/* One seat's strip: their panel on the outside edge, their half of the board on the inside, so
-   the two sides mirror each other across the stack rail. */
-.table__seat {
-  min-height: 0;
-  min-width: 0;
-  flex: 1;
+/* One pip of floating mana. Restricted mana (CR 106.6) is marked rather than merely spelled
+   with an asterisk: the outline is what makes it findable at a glance, the `*` is what a
+   player can point at, and the legend beside the row is what says why. */
+.pip + .pip {
+  margin-inline-start: 0.3rem;
+}
+
+.pip--restricted {
+  outline: 1px dotted currentColor;
+  outline-offset: 1px;
+  border-radius: 50%;
+}
+
+/* The zone row. A public pile is a control and a hidden zone is a number, and the two are
+   deliberately drawn differently — a player must be able to tell "I may look through this" from
+   "this is all anyone will tell me" without clicking to find out. */
+.seat__zones {
+  margin: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.seat__zone {
+  padding: 0 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: #ffffff0d;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seat__zone:hover,
+.seat__zone:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
+.seat__zone--closed {
+  border-style: dashed;
+  opacity: 0.7;
+  cursor: default;
+}
+
+.seat__zone[aria-pressed='true'] {
+  color: var(--felt);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+/* The fold (§2, "The seat bar"). Symmetric by construction: one component, one class, both
+   seats. What opens is a popover in the browser's top layer, because every region here clips what
+   does not fit in it and a disclosure inside a 40px band would open into a box 40px tall. */
+.seat__fold {
+  flex: none;
+  font-size: var(--text-xs);
+}
+
+.seat__fold-summary {
+  padding: 0 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: #ffffff0d;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.seat__fold-summary:hover,
+.seat__fold-summary:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink-faint);
+}
+
+.seat__fold-body {
+  /* Centred, which is the browser's own default for a popover and the right answer here: the
+     bar it belongs to is a 40px band at one edge of the screen, and a panel hugging that band
+     would be a panel half off it. */
+  max-inline-size: min(20rem, 88vw);
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--panel) 94%, black);
+  color: var(--ink);
+  box-shadow: 0 0.6rem 1.6rem #000b;
+  font-size: var(--text-xs);
+}
+
+.seat__fold-body:popover-open {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+}
+
+.seat__fold-body .seat__zones,
+.seat__fold-body .seat__pool {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.seat__fold-body .seat__commander {
+  white-space: normal;
+}
+
+/* What the last message did to a life total, beside the total itself. Small, because the number
+   is the thing being played off and this is only the reason it changed; and animated in, because
+   an appearing figure is what makes a player look at it — arriving instantly when the device
+   asked for less motion, which is the same state without the arrival. */
+.seat__delta {
+  margin-inline-start: 0.3rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  animation: delta var(--trace-duration) ease;
+}
+
+.seat__delta--down {
+  color: #e07a6b;
+}
+
+.seat__delta--up {
+  color: #7cc08d;
+}
+
+@keyframes delta {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   The two halves of the board
+   --------------------------------------------------------------------------- */
+
+/* Two surfaces, one lighter than the other — which is the whole of how a player knows whose
+   permanent they are looking at, and it is answered without reading a single word. Yours is the
+   nearer and brighter one, because a table is lit from where you sit.
+
+   **Both are the same height, always.** The line across the middle of the table is drawn by the
+   viewport and moves for nothing that happens in the game: a seat that wipes the opponent's
+   board does not watch its own permanents jump to a new size and a new place, and a seat playing
+   its first creature does not shove the other half of the table upward. An empty half of the
+   table is how "my opponent has nothing" is read — there is no sentence in it saying so, because
+   a sentence would cost a card row's height to state what the empty place already states. */
+.field {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  border-radius: 0.4rem;
+  overflow: hidden;
+}
+
+/* A row of one kind of permanent. Separated by space rather than by a rule, because a board
+   already has enough lines on it and the grouping is legible from the gap alone. The rows are
+   mirrored across the table (`board.ts`), so both sets of creatures meet at the dividing line.
+
+   `flex: none`, so a row keeps the height its cards need and the *field* is what runs out. A
+   shrinking row is the old defect in miniature: the row gives way, the cards inside it do not,
+   and a creature row ends up drawn over the land row under it. Where there is not enough field
+   for the rows in it the bottom one is cut off — which is what a box with no packing in it yet
+   looks like, and is #660's to make unnecessary. */
+.field__row {
+  margin: 0;
+  min-height: 0;
+  flex: none;
+}
+
+.field__row + .field__row {
+  margin-block-start: 0.35rem;
+  padding-block-start: 0.35rem;
+  border-block-start: 1px dashed color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* Lands are the row a player scans past, not the row they read, so they take less height and
+   sit quieter. Nothing is hidden: a land is the same frame at the same tier, and hovering it
+   previews the whole face like anything else. */
+.field__row--lands {
+  --card-field-w: clamp(4.5rem, 8vh, 5.4rem);
+  opacity: 0.92;
+}
+
+.field--opponent {
+  background: var(--board);
+}
+
+.field--you {
+  background: var(--board-you);
+}
+
+/* The one thing a field still says in words, and it is not about the game: there is no seat here
+   to draw a half of the table for. */
+.field__empty {
+  margin: 0;
+  padding: 0.3rem 0.4rem;
+  font-size: var(--text-xs);
+  opacity: 0.6;
+}
+
+/* ---------------------------------------------------------------------------
+   The stack
+   --------------------------------------------------------------------------- */
+
+.rail {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow: hidden;
+}
+
+.rail__zone {
+  /* Shrinks rather than running past the rail, so the rail is not a box hiding an overflow one
+     level down: what does not fit is reported against the region that owns it. */
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 0.3rem;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 0.3rem;
+  overflow: hidden;
+}
+
+.rail__heading {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+  margin: 0 0 0.3rem;
+}
+
+.rail__empty {
+  margin: 0;
+  font-size: var(--text-xs);
+  opacity: 0.6;
+}
+
+/* One object on the stack, read top down in resolution order. The position is stated in words
+   above the card rather than left to be inferred from which end of the column it is on, because
+   a column of six cards does not say which end resolves first. */
+.stack__order {
+  margin: 0;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.stack--top .stack__order {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.rail .stack--top {
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 75%, var(--felt));
+}
+
+/* Collapsed (§3, step 7): the top item's name and a count, which is what that step says the
+   stack never degrades below. Everything else it would have drawn is in the document and out of
+   the picture — a screen reader still reads the whole stack in resolution order. */
+.badge-rail {
+  display: flex;
+  align-items: center;
+  padding: 0 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--panel) 90%, var(--felt));
+  overflow: hidden;
+}
+
+.badge-rail__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.badge-rail__items > li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.badge-rail__name {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-rail__count {
+  flex: none;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------------
+   Your hand
+   --------------------------------------------------------------------------- */
+
+/* The one zone only you can see, on the edge nearest you. Its box is the scene's: a hand of
+   twenty cards does not make the band taller, and the row inside it packs instead. */
+.hand {
+  position: relative;
+  min-width: 0;
+  padding: 0.3rem 0.5rem 0;
+  background: linear-gradient(color-mix(in srgb, var(--panel) 55%, var(--felt)), var(--panel));
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hand .cards--hand {
+  flex-wrap: nowrap;
+  margin: 0;
+}
+
+.hand__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
+}
+
+/* The peek strip (§2). The dock has the band while the game is asking something, and what is
+   left of the hand is a row of landscape chips — below the card floor a frame is not a smaller
+   card, it is an unreadable one (§3, step 6), and a chip still carries the name. Small, and
+   never invisible. */
+.hand--peek {
+  padding: 0.2rem 0.5rem;
+  align-items: stretch;
+}
+
+.hand--peek .cards--hand {
+  block-size: 100%;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+
+.hand--peek .cards--hand > li {
+  block-size: 100%;
+}
+
+.hand--peek .cards--hand > li > .card {
+  aspect-ratio: auto;
+  inline-size: 8.5rem;
+  max-inline-size: 100%;
+  block-size: 100%;
+}
+
+/* One gesture back to the whole hand, at the edge where it costs the strip no card. */
+.hand__raise {
+  position: absolute;
+  inset-block-end: 0.2rem;
+  inset-inline-end: 0.3rem;
+  z-index: 1;
+  padding: 0 0.4rem;
+  font-size: var(--text-xs);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--panel) 92%, black);
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.hand__raise:hover,
+.hand__raise:focus-visible {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+/* The hand raised over the table: a thing drawn on top of the board, the same class of object as
+   an opened pile, because the height a full hand needs belongs to tier-1 minimums the board
+   cannot give up while something is being asked. */
+.raised {
+  position: fixed;
+  z-index: 7;
+  inset-inline: 0;
+  inset-block-end: 0;
+  padding: 0.5rem 0.6rem;
+  background: color-mix(in srgb, var(--panel) 95%, black);
+  border-block-start: 2px solid var(--accent);
+  box-shadow: 0 -0.6rem 1.6rem #0009;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  overflow-x: auto;
+}
+
+.raised .cards--hand {
+  flex-wrap: nowrap;
+  margin: 0;
+}
+
+.raised__close {
+  position: absolute;
+  inset-block-start: 0.3rem;
+  inset-inline-end: 0.4rem;
+  flex: none;
+  padding: 0.1rem 0.5rem;
+  font-size: var(--text-xs);
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  background: none;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+   Below the floor
+   --------------------------------------------------------------------------- */
+
+/* §1's third class, and the only one with no board in it. */
+.screen--unsupported {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.unsupported {
+  max-width: 28rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+}
+
+.unsupported__head {
+  margin: 0 0 0.4rem;
+  font-size: var(--text-lg);
+}
+
+.unsupported__note {
+  font-size: var(--text-sm);
+  color: var(--ink-dim);
 }
 
 /* ---------------------------------------------------------------------------
@@ -472,727 +989,4 @@ main:has(.screen) {
 
 .overlay__edge--dimmed {
   stroke-opacity: 0.18;
-}
-
-/* One line where it fits. The panel is beside the board, not on it, and every row it takes comes
-   out of the height the battlefield has to draw cards in — so the name, the totals, and the zone
-   row flow inline and wrap only when they must. The relationship trail takes a row of its own
-   because it is the one part that names other objects. */
-.seat {
-  flex: none;
-  padding: 0.3rem 0.6rem;
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
-  font-size: var(--text-sm);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 0.5rem;
-  row-gap: 0.1rem;
-}
-
-.seat .trail {
-  flex-basis: 100%;
-  max-width: none;
-}
-
-.seat__who,
-.seat__life,
-.seat__marks,
-.seat__pool,
-.seat__commander {
-  margin: 0;
-}
-
-/* The number a player watches more than any other, at a size that says so. Tabular so it does
-   not jump between 9 and 10 while they are looking at it. */
-.seat__life-value {
-  font-size: var(--text-xl);
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-
-/* Eliminated, disconnected, monarch — facts about the seat rather than about the board. */
-.seat__marks {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent);
-}
-
-.seat__who {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The commander block and the pool are their own rows: both are lists that grow. */
-.seat__pool,
-.seat__commander {
-  flex-basis: 100%;
-}
-
-/* One pip of floating mana. Restricted mana (CR 106.6) is marked rather than merely spelled
-   with an asterisk: the outline is what makes it findable at a glance, the `*` is what a
-   player can point at, and the legend beside the row is what says why. */
-.pip + .pip {
-  margin-inline-start: 0.3rem;
-}
-
-.pip--restricted {
-  outline: 1px dotted currentColor;
-  outline-offset: 1px;
-  border-radius: 50%;
-}
-
-/* Unspent mana is compared against a cost dozens of times a turn, so it is drawn at the size a
-   cost is drawn at rather than at the size of the sentence it sits in. */
-.seat__pool {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: var(--text-sm);
-}
-
-.seat__pool .mana {
-  font-size: 0.95rem;
-}
-
-.seat__pool-note {
-  font-size: 0.7rem;
-  opacity: 0.75;
-}
-
-/* A seat is a target like anything else, so its name is the control — styled as text so the
-   panel does not read as a row of buttons, and carrying the same state outlines as a card. */
-.seat__name {
-  background: none;
-  border: 0;
-  padding: 0.1rem 0.2rem;
-  margin: -0.1rem -0.2rem;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-
-.seat__pool,
-.seat__commander {
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-}
-
-/* The zone row. A public pile is a control and a hidden zone is a number, and the two are
-   deliberately drawn differently — a player must be able to tell "I may look through this" from
-   "this is all anyone will tell me" without clicking to find out. */
-.seat__zones {
-  margin: 0.15rem 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  font-size: 0.72rem;
-}
-
-.seat__zone {
-  padding: 0.05rem 0.4rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: #ffffff0d;
-  color: var(--ink-dim);
-  font: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
-
-.seat__zone:hover,
-.seat__zone:focus-visible {
-  color: var(--ink);
-  border-color: var(--ink-faint);
-}
-
-.seat__zone[aria-pressed='true'] {
-  color: var(--felt);
-  background: var(--accent);
-  border-color: var(--accent);
-  font-weight: 700;
-}
-
-/* The counts a player checks constantly — library, graveyard, exile, the opponent's hand — read
-   as numbers rather than as parenthetical asides in a sentence. */
-.seat__zones {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.seat__zone,
-.seat__zone--closed {
-  font-size: var(--text-sm);
-  font-variant-numeric: tabular-nums;
-}
-
-.seat__zone--closed {
-  border-style: dashed;
-  opacity: 0.7;
-  cursor: default;
-}
-
-.seat__zone[aria-pressed='true'] {
-  border-color: currentColor;
-  font-weight: 700;
-}
-
-/* A pile opened beside the table. Capped and scrolling inside itself, so a fifty-card graveyard
-   never pushes the log — or anything else in the column — out of reach. */
-.zone__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.4rem;
-}
-
-.zone__close {
-  flex: none;
-  font-size: 0.7rem;
-  padding: 0.05rem 0.35rem;
-}
-
-.zone__note,
-.zone__empty {
-  margin: 0 0 0.25rem;
-  font-size: 0.72rem;
-  opacity: 0.75;
-}
-
-/* A pile scrolls inside its own block rather than pushing the log off the column, and it is
-   given enough of the screen to be worth opening: at sixteen rem a graveyard was four cards and
-   a scrollbar. The cap is against the viewport as well, so the panel keeps its share of a short
-   screen instead of claiming the same rems whatever the screen is. */
-.zone .cards {
-  max-height: min(34rem, 52vh);
-  overflow-y: auto;
-}
-
-/* Each half of the board scrolls inside its own track. Two surfaces, one lighter than the
-   other — which is the whole of how a player knows whose permanent they are looking at, and it
-   is answered without reading a single word. Yours is the nearer and brighter one, because a
-   table is lit from where you sit. */
-.field {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  overflow-y: auto;
-  padding: 0.5rem 0.6rem;
-  border-radius: 0.4rem;
-}
-
-/* A row of one kind of permanent. Separated by space rather than by a rule, because a board
-   already has enough lines on it and the grouping is legible from the gap alone. The rows are
-   mirrored across the table (`board.ts`), so both sets of creatures meet at the dividing line. */
-.field__row {
-  margin: 0;
-}
-
-.field__row + .field__row {
-  margin-block-start: 0.5rem;
-  padding-block-start: 0.5rem;
-  border-block-start: 1px dashed color-mix(in srgb, currentColor 14%, transparent);
-}
-
-/* Lands are the row a player scans past, not the row they read, so they take less height and
-   sit quieter. Nothing is hidden: a land is the same frame at the same tier, and hovering it
-   previews the whole face like anything else. */
-/* Lands are drawn smaller than the permanents doing something, and — the half that was missing —
-   they give ground with the viewport like every other card. A width fixed in `rem` alone kept
-   claiming the same pixels as the screen shrank, until on a short viewport the land row was
-   *taller* than the creature row above it and pushed itself off the bottom of the board. */
-.field__row--lands {
-  --card-field-w: clamp(4.5rem, 8vh, 5.4rem);
-  opacity: 0.92;
-}
-
-.field--opponent {
-  background: var(--board);
-}
-
-.field--you {
-  background: var(--board-you);
-}
-
-.field__empty {
-  margin: 0;
-  font-size: 0.78rem;
-  opacity: 0.6;
-}
-
-.rail {
-  grid-area: rail;
-  min-height: 0;
-  min-width: 0;
-  overflow-y: auto;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.rail__zone {
-  flex: none;
-  padding: 0.35rem;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  border-radius: 0.3rem;
-}
-
-.rail__heading {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.7;
-  margin: 0 0 0.3rem;
-}
-
-.rail__empty {
-  margin: 0;
-  font-size: 0.78rem;
-  opacity: 0.6;
-}
-
-/* One object on the stack, read top down in resolution order. The position is stated in words
-   above the card rather than left to be inferred from which end of the column it is on, because
-   a column of six cards does not say which end resolves first. */
-.stack__order {
-  margin: 0;
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.6;
-}
-
-.stack--top .stack__order {
-  opacity: 1;
-  font-weight: 700;
-}
-
-.stack--top {
-  padding: 0.4rem 0.5rem;
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--panel) 75%, var(--felt));
-}
-
-/* The hand scrolls sideways rather than wrapping. A second row would come out of the table's
-   height, and the table is what the player is looking at. */
-.hand {
-  grid-area: hand;
-  min-width: 0;
-  /* Exactly one card tall plus its own padding. A fixed cap in `rem` is the other half of the
-     bug the card tokens fix: it would keep claiming the same height as the viewport shrank. */
-  max-height: calc(var(--card-hand-h) + 1.1rem);
-  overflow: auto;
-  padding: 0.4rem 0.6rem 0;
-  background: linear-gradient(color-mix(in srgb, var(--panel) 55%, var(--felt)), var(--panel));
-  display: flex;
-  justify-content: center;
-}
-
-.hand .cards--hand {
-  flex-wrap: nowrap;
-}
-
-.hand__empty {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--ink-faint);
-}
-
-/* Pinned. A choice panel with many candidates scrolls the dock, never the page. */
-.dock {
-  grid-area: dock;
-  min-width: 0;
-  max-height: 38vh;
-  overflow-y: auto;
-  padding: 0.35rem 0.6rem 0.5rem;
-  background: var(--panel);
-  display: flex;
-  justify-content: center;
-}
-
-/* One band, not a stack of blocks. What the game wants, the hint, the global actions, and the
-   disclosure are each one line, and four one-line blocks cost the board four lines of height it
-   needs more than they do. They lay out as a row that wraps only when it has to; the things that
-   are genuinely a panel — a question being drafted, a confirmation, a selected object's actions —
-   take the full width, because those are the moments the dock is the whole task. */
-.dock > section {
-  width: 100%;
-  max-width: 62rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 1.1rem;
-  row-gap: 0.3rem;
-}
-
-.dock__owed,
-.dock__subject,
-.dock__confirm,
-.dock__pending,
-.dock__rejected,
-.dock > section > .choices {
-  flex-basis: 100%;
-}
-
-/* Sized to what it says instead of to the row, so the buttons sit beside it rather than under
-   it, and the step it restates stays at its own end of the band. */
-.dock > section > .dock__tone {
-  flex: 0 1 auto;
-  margin-block-end: 0;
-}
-
-.dock > section > .dock__tone .dock__where {
-  margin-inline-start: 0.6rem;
-}
-
-.dock > section > .dock__hint,
-.dock > section > .actions {
-  margin-block: 0;
-}
-
-/* The disclosure goes last on the row wherever it falls, so "every action" is never sitting
-   between the state and the buttons that change it. */
-.dock__all {
-  margin-block-start: 0;
-  margin-inline-start: auto;
-}
-
-/* The dock heading earns nothing when the dock is one button, and the board needs the pixels
-   more than the word "Actions" does. It stays in the accessibility tree. */
-.dock h2 {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.side {
-  grid-area: side;
-  min-height: 0;
-  min-width: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.4rem 0.5rem;
-  background: color-mix(in srgb, var(--panel) 55%, var(--felt));
-  border-inline-start: 1px solid var(--line);
-  font-size: var(--text-sm);
-}
-
-.side__block {
-  flex: none;
-}
-
-/* The card under the pointer, over the top of this column.
-
-   Sticky rather than absolute because the column scrolls: the preview has to stay at the top of
-   what is *visible*, not at the top of what is scrolled past. It claims no height of its own and
-   its content overflows downward, so raising and dropping it moves nothing else — which is the
-   whole requirement for something that appears and disappears as a pointer crosses a board. */
-.preview {
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 3;
-  height: 0;
-  /* Cancels the column's own gap, which a zero-height child would otherwise still contribute —
-     a 0.4rem jump on every hover is exactly the jitter this layout is avoiding. */
-  margin-block-end: -0.4rem;
-  overflow: visible;
-  /* A preview the pointer can land on steals the hover from the card that raised it, and then
-     flickers between the two forever. */
-  pointer-events: none;
-}
-
-.preview > .card {
-  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, CanvasText 45%, transparent);
-}
-
-/* Inside a column that already scrolls, the log's own cap would give it a second scrollbar. */
-.side .log {
-  max-height: none;
-  overflow-y: visible;
-  padding-inline-start: 1.1rem;
-}
-
-/* What happened while you were passed, above the ground it covered. The events read as the
-   log does, because they are the log — the same wording and the same colour per kind, so a
-   player who has learnt to scan one has learnt to scan the other. */
-.side__missed {
-  margin-block: 0.25rem 0.4rem;
-}
-
-/* The path is context for the events above it, so it recedes rather than competing. */
-.side__path {
-  margin-block: 0.25rem 0;
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-}
-
-.side__note {
-  margin: 0 0 0.25rem;
-  opacity: 0.8;
-}
-
-/* A column of sentences is read by scanning, so the classes are about weight and division and
-   nothing else. A step change is where one turn ends and the next begins; a result is the last
-   thing that will ever be said. */
-.log__entry--step {
-  margin-inline-start: -1.1rem;
-  list-style: none;
-  font-weight: 700;
-  padding-block-start: 0.25rem;
-  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
-}
-
-.log__entry--step:first-child {
-  border-top: none;
-  padding-block-start: 0;
-}
-
-.log__entry--life,
-.log__entry--combat {
-  font-weight: 600;
-}
-
-.log__entry--zone,
-.log__entry--choice,
-.log__entry--other {
-  opacity: 0.8;
-}
-
-.log__entry--result {
-  font-weight: 700;
-}
-
-/* The end of the match, over the board it is about. */
-.result__outcome {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
-}
-
-.result__reason,
-.result__losers,
-.result__controls,
-.result__note {
-  margin: 0;
-  font-size: 0.85rem;
-}
-
-.result__note {
-  opacity: 0.7;
-}
-
-.dock__confirm {
-  padding: 0.35rem 0.5rem;
-  border: 1px solid currentColor;
-  border-radius: 0.3rem;
-}
-
-.dock__confirm p {
-  margin: 0 0 0.35rem;
-}
-
-.dock__confirm p:last-child {
-  margin-bottom: 0;
-}
-
-/* The global actions are the row a player's hand rests on. `Pass` is pressed more than every
-   other control on the screen put together, so it is a button rather than a link-sized word. */
-.dock .actions button {
-  padding: 0.3rem 0.9rem;
-  font-size: var(--text-md);
-  border: 1px solid var(--line);
-  border-radius: 0.3rem;
-  background: #ffffff12;
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.dock .actions button:hover:not(:disabled),
-.dock .actions button:focus-visible:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--ink);
-}
-
-.dock .actions button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.dock__hint {
-  color: var(--ink-faint);
-}
-
-/* The band that says what the game wants. Sits at the top of the dock — which is now directly
-   under the board — so it is between the thing a player is looking at and the controls they are
-   reaching for, rather than at the bottom edge of the screen where neither is. */
-.dock {
-  --tone: var(--tone-waiting);
-  border-block-start: 2px solid var(--tone);
-}
-
-.dock--yours {
-  --tone: var(--tone-yours);
-}
-.dock--asking {
-  --tone: var(--tone-asking);
-}
-.dock--sent {
-  --tone: var(--tone-sent);
-}
-.dock--confirm {
-  --tone: var(--tone-confirm);
-}
-.dock--waiting {
-  --tone: var(--tone-waiting);
-}
-.dock--over {
-  --tone: var(--tone-over);
-}
-
-.dock__tone {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0 0 0.35rem;
-  font-size: var(--text-sm);
-}
-
-.dock__tone strong {
-  color: color-mix(in srgb, var(--tone) 55%, var(--ink));
-  font-weight: 700;
-}
-
-/* A second channel for the same fact, for anyone the hue does not reach. */
-.dock__tone-mark {
-  flex: none;
-  inline-size: 0.6rem;
-  block-size: 0.6rem;
-  border-radius: 50%;
-  background: var(--tone);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 25%, transparent);
-}
-
-.dock__where {
-  margin-inline-start: auto;
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The draft panel takes the tone too, because it *is* the question the band is announcing. */
-.dock .choices {
-  border-color: color-mix(in srgb, var(--tone) 60%, transparent);
-  border-radius: 0.3rem;
-  background: color-mix(in srgb, var(--tone) 8%, transparent);
-}
-
-/* A pile, as cards. A grid rather than the column the rail's other lists use: a graveyard is
-   scanned, and a column of ten cards is ten scroll positions. The track floor is the card's own
-   width, so the number of columns follows the panel instead of being asserted here. */
-.cards--pile {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.6rem, 1fr));
-  gap: 0.4rem;
-  align-items: start;
-}
-
-/* The pile's own list items are grid items, not the flex columns the rail's lists are. */
-.cards--pile > li {
-  min-width: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   An object's actions, at the object
-   --------------------------------------------------------------------------- */
-
-/* Beside the card rather than over it, and small enough to leave the board readable: the whole
-   point is that the object and what can be done to it are visible at once. It is fixed to the
-   viewport because it is positioned from the object's own box, which is inside a region that
-   scrolls — anchoring it to the flow would put it in the scroller and clip it against the same
-   edge the card is at. */
-.menu {
-  position: fixed;
-  z-index: 6;
-  min-width: 9rem;
-  max-width: 16rem;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--panel) 92%, black);
-  box-shadow: 0 0.6rem 1.4rem #0009;
-  font-size: var(--text-sm);
-}
-
-.menu__who {
-  margin: 0 0 0.3rem;
-  color: var(--ink-dim);
-}
-
-.menu__empty {
-  margin: 0 0 0.3rem;
-  color: var(--ink-faint);
-}
-
-.menu__actions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-/* Full width and left-aligned, so a list of abilities reads as a list rather than as a row of
-   pills a player has to scan horizontally to find the one they meant. */
-.menu__actions button {
-  width: 100%;
-  text-align: start;
-}
-
-.menu__reading {
-  margin: 0.35rem 0 0;
-  padding-block-start: 0.35rem;
-  border-block-start: 1px solid var(--line);
-}
-
-/* What the last message did to a life total, beside the total itself. Small, because the number
-   is the thing being played off and this is only the reason it changed; and animated in, because
-   an appearing figure is what makes a player look at it — arriving instantly when the device
-   asked for less motion, which is the same state without the arrival. */
-.seat__delta {
-  margin-inline-start: 0.35rem;
-  font-size: var(--text-sm);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  animation: delta var(--trace-duration) ease;
-}
-
-.seat__delta--down {
-  color: #e07a6b;
-}
-
-.seat__delta--up {
-  color: #7cc08d;
-}
-
-@keyframes delta {
-  from {
-    opacity: 0;
-    transform: translateY(-0.25rem);
-  }
 }

@@ -9,7 +9,15 @@
  */
 import { expect, test } from '@playwright/test'
 
-import { DESKTOP, fixture, messages, serveFrames, serveSockets, submissions } from './frames'
+import {
+  DESKTOP,
+  fixture,
+  messages,
+  openHistory,
+  serveFrames,
+  serveSockets,
+  submissions,
+} from './frames'
 
 const turn = () => fixture('gameview-turn.json')
 
@@ -161,6 +169,7 @@ test.describe('what the settle did on your behalf', () => {
   test('groups the path per turn and says why it happened', async ({ page }) => {
     await serveFrames(page, [turn()])
     await page.goto('/')
+    await openHistory(page)
 
     const passed = page.getByRole('region', { name: 'While you were passed' })
     await expect(passed).toContainText('had nothing to ask you')
@@ -180,6 +189,7 @@ test.describe('what the settle did on your behalf', () => {
     // statement of *which* of them this seat never saw. The server marks it now.
     await serveFrames(page, [turn()])
     await page.goto('/')
+    await openHistory(page)
 
     const passed = page.getByRole('region', { name: 'While you were passed' })
     const missed = passed.locator('.side__missed').getByRole('listitem')
@@ -197,6 +207,7 @@ test.describe('what the settle did on your behalf', () => {
   test('reads the log as turns rather than as a wall of sentences', async ({ page }) => {
     await serveFrames(page, [turn()])
     await page.goto('/')
+    await openHistory(page)
 
     const log = page.getByRole('region', { name: 'Log' })
     // A step change divides the column; the entries between two of them belong to that turn.

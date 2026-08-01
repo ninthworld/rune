@@ -1,13 +1,17 @@
-/* The page, in four files.
+/* The page, in six files.
 
    Split along the surfaces it dresses rather than by property: this file is the page itself —
    the reset, the type scale, the shared tokens, and the handful of primitives every screen
-   shares — and each import below dresses one surface.
+   shares — and each import below dresses one surface. `game.css` is the table's own geometry and
+   the regions in it; `dock.css` and `side.css` are the two surfaces that had grown large enough
+   inside it to be their own files.
 
    The imports come first, as the cascade requires, so a later rule in this file wins over the
    same specificity in one of them. */
 @import './styles/cards.css';
 @import './styles/game.css';
+@import './styles/dock.css';
+@import './styles/side.css';
 @import './styles/lobby.css';
 
 :root {
@@ -113,8 +117,14 @@
   --tone-over: #7a6f86;
 
   /* A type scale, because the loudest problem with a screen where everything is 0.7rem is that
-     nothing is. Sizes are named for the job, not the number. */
-  --text-xs: 0.66rem;
+     nothing is. Sizes are named for the job, not the number.
+
+     `xs` is the chrome floor and is 11px exactly (§7), not a hair under it: at 0.66rem it drew
+     at 10.56px, which is below the floor everywhere it was used — the seat's mana pool, the zone
+     counts, the settle's path. Card text floors lower, at 9px, and gets there through `fit.ts`
+     rather than through this scale, because a card's type is *computed* against the box it is
+     drawn in and chrome's is not. */
+  --text-xs: 0.6875rem;
   --text-sm: 0.76rem;
   --text-md: 0.88rem;
   --text-lg: 1.1rem;

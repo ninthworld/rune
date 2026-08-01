@@ -43,16 +43,28 @@ export interface EmblemEntry {
 export function StackRail({
   stack,
   emblems,
+  collapsed = false,
   label,
   surface,
 }: {
   /** Bottom first, exactly as the server sent it. Reversed here, never upstream. */
   stack: readonly StackEntry[]
   emblems: readonly EmblemEntry[]
+  /**
+   * §3, step 7: there is no width for a rail, so the stack is a badge.
+   *
+   * What a badge keeps is what §3 says never degrades — the top item **by name**, and a count —
+   * and everything under it moves into the accessibility tree rather than out of the document,
+   * so a screen reader still reads the whole stack in resolution order. Drawing the rest of it
+   * as faces is #662's; this is the flag arriving and the one fact being protected.
+   */
+  collapsed?: boolean
   label(id: string): string
   surface: Surface
 }) {
   const resolving = [...stack].reverse()
+
+  if (collapsed) return <StackBadge resolving={resolving} label={label} />
 
   return (
     <div className="rail">
@@ -122,5 +134,54 @@ export function StackRail({
         </section>
       )}
     </div>
+  )
+}
+
+/**
+ * The stack with no room for a rail: the top item's name, and how many are behind it.
+ *
+ * The name is the visible half because that is the fact §3 protects, and it is the *card's* name
+ * rather than the server's composed description — a description is a sentence and a badge is a
+ * word, and the sentence is directly below it for anything that reads the document. Everything
+ * the rail would have drawn is still here in resolution order, so the top item, its description,
+ * its controller, and every item under it are one query away for assistive technology and for
+ * the gesture #662 will hang on this.
+ */
+function StackBadge({
+  resolving,
+  label,
+}: {
+  resolving: readonly StackEntry[]
+  label(id: string): string
+}) {
+  const top = resolving[0]
+  if (!top) return null
+
+  return (
+    <section className="badge-rail" aria-label="Stack">
+      <h2 className="visually-hidden">Stack</h2>
+      <ol className="badge-rail__items">
+        {resolving.map(({ item, face }, index) => (
+          <li key={item.id} className={index === 0 ? 'stack stack--top' : 'stack visually-hidden'}>
+            {index === 0 ? (
+              <>
+                <span className="badge-rail__name">{face.name}</span>
+                <span className="badge-rail__count">
+                  ×{resolving.length}
+                  <span className="visually-hidden"> on the stack</span>
+                </span>
+                <span className="visually-hidden">
+                  Resolves next — {item.description} — {label(item.controller)}
+                </span>
+              </>
+            ) : (
+              <>
+                {index + 1} of {resolving.length} — {item.description} — {label(item.controller)}
+              </>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
   )
 }

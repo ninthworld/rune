@@ -89,6 +89,20 @@ export const pageFits = (page: Page) =>
   })
 
 /**
+ * Open the drawer the side column becomes wherever the board wants the width back.
+ *
+ * `docs/client-design.md` §3 step 8 and §2's tier 3: the preview, the log, and the settle summary
+ * are the last things on the screen to earn a permanent column, and a 224px column standing open
+ * to say "Log / Nothing yet." is width the board can use. So they live behind one gesture at every
+ * band except the widest, where there is genuinely room to spare and the column is already open —
+ * which is why this is a no-op when there is no control to press.
+ */
+export const openHistory = async (page: Page) => {
+  const control = page.getByRole('button', { name: 'History' })
+  if ((await control.count()) > 0) await control.click()
+}
+
+/**
  * A representative desktop viewport — the Wide band of `docs/client-design.md` §4, comfortably
  * inside the Optimized class. It is one sample, not the layout: a test asserting behaviour that
  * must hold *at every* supported size belongs in `scale.views.spec.ts`, which sweeps the bands.

@@ -24,6 +24,7 @@ export function MatchHeader({
   sent,
   eliminated,
   connection,
+  onHistory,
   onSettings,
 }: {
   view: GameView
@@ -33,6 +34,13 @@ export function MatchHeader({
   /** Whether the seat this client is playing is out of the game (CR 104.3). */
   eliminated: boolean
   connection: ConnectionStatus
+  /**
+   * Open what the side column holds when there is no side column (§3, step 8).
+   *
+   * Absent where the column is beside the board, because a control that opens something already
+   * open is a control that teaches a player the wrong thing about where it lives.
+   */
+  onHistory?(): void
   onSettings(): void
 }) {
   const status = matchStatus(view, sent)
@@ -68,12 +76,19 @@ export function MatchHeader({
             </span>
           )}
         </p>
+        {/* Tier 3, behind one gesture, where the ladder took the column it used to live in. */}
+        {onHistory && (
+          <button type="button" className="match__control" aria-label="History" onClick={onHistory}>
+            <span aria-hidden="true">☰</span>
+          </button>
+        )}
+
         {/* One control, at the far edge, for everything that is about this device rather than
             about the board. A header that carried each of them separately is the header a
             player stopped reading. */}
         <button
           type="button"
-          className="match__settings"
+          className="match__control match__settings"
           aria-label="Settings"
           onClick={onSettings}
         >
