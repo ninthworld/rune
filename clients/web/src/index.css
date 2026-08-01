@@ -59,8 +59,13 @@
      has to fit in does not, so the hand eats the board and the lands scroll out from under it.
      Sized against `vh` as well, a card gives ground when there is less screen to have: it stays
      as large as it can be and no larger. */
-  --card-hand-w: min(9.4rem, 15.5vh);
-  --card-field-w: min(7.6rem, 11vh);
+  /* The board outranks the hand. A hand is seven cards read once a turn and a board is
+     everything both players have committed, so a hand drawn half again as large as the
+     permanents it is about had the weighting backwards — most visibly on a short viewport,
+     where the hand kept its size and the board was the thing that got clipped. The two are
+     closer now, and the board is the one that gives ground last. */
+  --card-hand-w: min(8.6rem, 13vh);
+  --card-field-w: min(7.6rem, 12vh);
   --card-field-h: calc(var(--card-field-w) * 88 / 63);
   --card-hand-h: calc(var(--card-hand-w) * 88 / 63);
 

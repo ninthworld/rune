@@ -112,7 +112,10 @@ export function Lobby({
     <div className="lobby">
       <header className="lobby__head">
         <h1>SAGE</h1>
-        <p>
+        {/* Everything about the *device* rather than about a table, at the far end of the band —
+            the same place the game screen keeps its gear, so a player looks in one place for it
+            on both screens. */}
+        <p className="lobby__device">
           <button type="button" onClick={() => setSettingArt(true)}>
             Card art
           </button>

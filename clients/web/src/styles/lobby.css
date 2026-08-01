@@ -1,9 +1,16 @@
 /* The lobby.
 
-   Still grey box, and still structure only. What is being decided here is *shape*: a table
-   directory reads as rows because rows compare, a roster reads as one line per seat because a
-   seat is one thing, and the deck builder puts the pool and the deck side by side because
-   building a deck is a comparison between the two. None of it is a visual decision. */
+   The shape came first and has not changed: a table directory reads as rows because rows
+   compare, a roster reads as one line per seat because a seat is one thing, and the deck builder
+   puts the pool and the deck side by side because building a deck is a comparison between the
+   two.
+
+   What is added here is that it now looks like the same product as the table. It is the first
+   screen anybody sees, and a dark felt board reached through a page of default form controls
+   reads as two applications — so the lobby borrows the table's own tokens: the same panels on the
+   same felt, the same lift instead of a rule between regions, the same accent spent only on the
+   thing the player is being asked to do. Nothing about *what* is on the screen changed; every
+   control is the one the server advertised, in the same order, saying the same words. */
 main:has(.lobby) {
   /* The builder is two columns of card frames; 70rem squeezes the pool to three across. */
   max-width: 90rem;
@@ -204,4 +211,204 @@ main:has(.lobby) {
   margin-inline-start: auto;
   display: flex;
   gap: 0.2rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Dressing
+   --------------------------------------------------------------------------- */
+
+/* The page the lobby sits on: the table's felt, so the two screens are lit the same way. */
+body:has(.lobby) {
+  background: var(--felt);
+  color: var(--ink);
+}
+
+.lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* One band across the top, the same shape as the match header: who you are on the left, what
+   is about the device on the right. */
+.lobby__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(var(--panel), color-mix(in srgb, var(--panel) 70%, var(--felt)));
+  border: 1px solid var(--line);
+}
+
+.lobby__head h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+}
+
+.lobby__name {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+/* Everything about the device goes to the far end, where the table keeps its gear. */
+.lobby__device {
+  order: 9;
+  margin-inline-start: auto;
+}
+
+/* Each region is a panel on the felt rather than a rule across the page. A border between two
+   regions says "these are separated"; a lifted surface says "this is a thing", which is what a
+   table in a list of tables actually is. */
+.lobby > section,
+.lobby .directory,
+.lobby .roster,
+.lobby .deck,
+.lobby .create,
+.lobby .room {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 80%, var(--felt));
+}
+
+.lobby h2 {
+  margin-block: 0 0.5rem;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+}
+
+/* A table in the directory, and a seat in the roster: the same panel, because they are the same
+   kind of row — one thing, with a control at the end of it. */
+.lobby .table-row,
+.lobby .seat-row {
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.4rem;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--panel) 92%, var(--felt));
+  transition: background var(--trace-duration) ease;
+}
+
+.lobby .table-row:hover,
+.lobby .seat-row:hover {
+  background: var(--panel);
+}
+
+/* Your own seat, marked the way the near half of the board is: brighter, because it is yours. */
+.lobby .seat-row--you {
+  background: var(--board-you);
+}
+
+.lobby .table-row__label,
+.lobby .seat-row__who {
+  font-size: var(--text-md);
+  font-weight: 700;
+}
+
+/* The facts about a table are chips rather than a run-on line, so the format, the seats, and
+   how far along it is can each be found without reading the other two. */
+.lobby .table-row__format,
+.lobby .table-row__seats,
+.lobby .table-row__state,
+.lobby .table-row__watchers,
+.lobby .table-row__id,
+.lobby .seat-row__index {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink-dim);
+}
+
+/* A chip with nothing in it is not a chip. The watcher count is absent far more often than it
+   is present, and an empty pill beside a real one reads as a stray dash. */
+.lobby .table-row__watchers:empty {
+  display: none;
+}
+
+/* An id is for copying, not for reading: it stays available and stops competing. */
+.lobby .table-row__id {
+  font-family: ui-monospace, monospace;
+  color: var(--ink-faint);
+}
+
+/* A table you can still get into is the one thing on this screen worth colour. */
+.lobby .table-row--gathering .table-row__state {
+  background: color-mix(in srgb, var(--tone-yours) 30%, transparent);
+  color: var(--ink);
+}
+
+.lobby .table-row__reach {
+  margin-inline-start: auto;
+}
+
+/* The controls. Dark, bordered, and lit on hover — the same object at rest and under the
+   pointer, rather than a platform default that belongs to a different page. */
+.lobby button {
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 85%, var(--felt));
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.lobby button:hover:not(:disabled),
+.lobby button:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: var(--panel);
+}
+
+.lobby button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The one action a screen is *for* carries the accent: getting into a table that can still be
+   joined, and sending a deck. Watching a game already in progress is a real thing to do and not
+   the thing this screen is for. */
+.lobby .table-row--gathering .table-row__reach button,
+.lobby .deck__controls button:first-child {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+}
+
+.lobby input,
+.lobby select {
+  padding: 0.25rem 0.45rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--felt) 70%, var(--panel));
+  color: var(--ink);
+}
+
+.lobby input:focus-visible,
+.lobby select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 1px;
+}
+
+/* The builder's two halves, each on its own surface, because the comparison is between them. */
+.lobby .builder__pool,
+.lobby .builder__deck {
+  padding: 0.6rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 60%, var(--felt));
+}
+
+.lobby .deck-entry {
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.3rem;
+}
+
+.lobby .deck-entry:hover {
+  background: color-mix(in srgb, var(--panel) 90%, var(--felt));
+}
+
+.lobby .deck-entry__count {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
 }
